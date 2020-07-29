@@ -1,0 +1,10 @@
+# This file defines constraint violation message translations
+# For FK constraints, there can be two messages per constraint:
+# first one for delete and 2nd one for insert operation.
+
+# uk_trn_pasakuma_dalibnieks_trn_rinda_uz_pasakumu_id:
+# - Pieteikums šim pasākumam ar šo kartes numuru jau eksistē
+#
+# fk_kla_certificate_parent_id:
+# - Nevar dzēst, jo sertifikātam ir apakšieraksti
+# - Nevar atrast virslīmeņa ierakstu

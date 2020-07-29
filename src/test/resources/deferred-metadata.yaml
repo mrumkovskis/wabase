@@ -1,0 +1,36 @@
+table:   file_info
+columns:
+  - id
+  - filename      ! 240
+  - upload_time   !
+  - content_type  ! 100
+  - sha_256       ! file_body_info.sha_256
+
+
+table:   file_body_info
+columns:
+  - sha_256 ! 64
+  - size    ! long
+  - path    ! 240
+pk: sha_256
+
+
+table:   deferred_request
+columns:
+  - username               ! 50
+  - priority               ! int
+  - request_time           !
+  - status                 ! 5 (OK, ERR, QUEUE, EXE, DEL)
+  - topic                  ! 50
+  - state                    300
+  - params                   2000
+  - request_hash           ! 100
+  - request                ! base64Binary
+  - response_time
+  - result                   base64Binary
+  - result_file_id
+  - result_file_sha_256      64
+pk: request_hash
+idx:
+  - priority, request_time
+  - username

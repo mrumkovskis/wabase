@@ -1,0 +1,14 @@
+table: deferred_request
+columns:
+- username ! string
+- priority ! int
+- request_time ! dateTime
+- status ! string
+- topic ! string
+- request_hash ! string
+- request ! base64Binary
+- response_time dateTime
+- result base64Binary
+- result_file_id long
+- result_file_sha_256 string
+pk: request_hash

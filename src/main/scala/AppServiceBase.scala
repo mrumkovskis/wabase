@@ -1,0 +1,516 @@
+package org.wabase
+
+import akka.stream.scaladsl._
+import akka.http.scaladsl.coding.{Deflate, Gzip, NoCoding}
+import akka.http.scaladsl.model._
+import akka.http.scaladsl.model.headers._
+import akka.http.scaladsl.server._
+import akka.http.scaladsl.server.Directives._
+import StatusCodes._
+
+import scala.language.postfixOps
+import scala.util.matching.Regex
+import spray.json._
+import org.slf4j.LoggerFactory
+import org.tresql.MissingBindVariableException
+
+import scala.concurrent.duration._
+import scala.concurrent.Future
+import AppServiceBase._
+import Authentication.SessionUserExtractor
+import DeferredControl._
+import java.net.URLEncoder
+
+import akka.http.scaladsl.server.util.Tuple
+import akka.util.ByteString
+
+trait AppProvider[User] {
+  type App <: AppBase[User]
+  final val app: App = initApp
+  /** Override this method in subclass to initialize {{{app}}}. */
+  protected def initApp: App
+}
+
+trait AppServiceBase[User]
+  extends AppProvider[User]
+  with AppStateExtractor
+  with JsonConverterProvider
+  with DbAccessProvider
+  with Marshalling {
+  this: QueryTimeoutExtractor with Execution =>
+
+  import app.qe.metadataConventions
+
+  //custom directives
+  def metadataPath = path("metadata" / Segment ~ Slash.?) & get
+  def apiPath = path("api" ~ Slash.?) & get
+
+  def crudPath = pathPrefix("data")
+  def viewWithIdPath = path(Segment / LongNumber)
+  def viewWithNamePath = path(Segment / Segment / Segment)
+  def createPath = path("create" / Segment) & get
+  def viewWithoutIdPath = path(Segment ~ (PathEnd | Slash))
+  def getByIdPath = viewWithIdPath & get
+  def getByNamePath = viewWithNamePath & get
+  def deletePath = viewWithIdPath & delete
+  def updatePath = viewWithIdPath & put
+  def insertPath = viewWithoutIdPath & post
+  def listPath = viewWithoutIdPath & get
+  def countPath = path("count" / Segment) & get
+
+  def getByIdAction(viewName: String, id: Long)(implicit user: User, state: Map[String, Any]) =
+    parameterMultiMap{ params =>
+      extractTimeout{ implicit timeout =>
+        complete(app.get(viewName, id, filterPars(params)))
+      }
+    }
+
+  def getByNameAction(viewName: String, name: String, value: String)(implicit user: User, state: Map[String, Any]) =
+    parameterMultiMap { params =>
+      extractTimeout { implicit timeout =>
+        app.list(viewName, filterPars(params) + (name -> value), 0, 2).toList match {
+          case List(result) => complete(result)
+          case Nil => complete(StatusCodes.NotFound)
+          case l if l.size > 1 => complete(
+            HttpResponse(
+              status = StatusCodes.PreconditionFailed,
+              entity = HttpEntity.Strict(
+                contentType = ContentTypes.`text/plain(UTF-8)`,
+                data = ByteString("Too many rows returned")
+              )
+            )
+          )
+        }
+      }
+    }
+
+  def createAction(viewName: String)(implicit user: User, state: Map[String, Any]) =
+    parameterMultiMap{ params =>
+      extractTimeout{ implicit timeout =>
+        complete(app.create(viewName, filterPars(params)))
+      }
+    }
+
+  def deleteAction(viewName: String, id: Long)(implicit user: User, state: Map[String, Any]) =
+    parameterMultiMap { params =>
+      extractTimeout{ implicit timeout =>
+        complete {
+          try {
+            app.delete(viewName, id, filterPars(params))
+            StatusCodes.NoContent
+          } catch {
+            case e: querease.NotFoundException => StatusCodes.NotFound
+          }
+        }
+      }
+    }
+
+  def updateAction(viewName: String, id: Long)(implicit user: User, state: Map[String, Any]) =
+    extractUri { requestUri =>
+      parameterMultiMap { params =>
+        extractTimeout { implicit timeout =>
+          entity(as[JsValue]) { data =>
+            try {
+              val id = app.save(viewName, data.asInstanceOf[JsObject], filterPars(params))
+              redirect(Uri(path = requestUri.path), StatusCodes.SeeOther)
+            } catch {
+              case e: querease.NotFoundException => complete(StatusCodes.NotFound)
+            }
+          }
+        }
+      }
+    }
+
+  def listAction(viewName: String)(implicit user: User, state: Map[String, Any]) =
+    parameterMultiMap { params =>
+      extractTimeout { implicit timeout =>
+        complete {
+          app.list(
+            viewName,
+            filterPars(params),
+            params.get("offset").flatMap(_.headOption).map(_.toInt) getOrElse 0,
+            params.get("limit").flatMap(_.headOption).map(_.toInt) getOrElse 0,
+            params.get("sort").flatMap(_.headOption).map(_.toString).orNull)
+        }
+      }
+    }
+
+  def insertAction(viewName: String)(implicit user: User, state: Map[String, Any]) =
+    extractUri { requestUri =>
+      parameterMultiMap { params =>
+        extractTimeout { implicit timeout =>
+          entity(as[JsValue]) { data =>
+            try {
+              val id = app.save(viewName, data.asInstanceOf[JsObject], filterPars(params))
+              redirect(Uri(path = requestUri.path / id.toString), StatusCodes.SeeOther)
+            } catch {
+              case e: querease.NotFoundException => complete(StatusCodes.NotFound)
+            }
+          }
+        }
+      }
+    }
+
+  def countAction(viewName: String)(implicit user: User, state: Map[String, Any]) =
+    parameterMultiMap { params =>
+      extractTimeout {implicit timeout =>
+        complete(app.count(viewName, filterPars(params)).toString)
+      }
+    }
+
+  import app.qe.MapJsonFormat
+  def filterPars(params: Map[String, List[String]]) =
+    params.get("filter")
+      .flatMap(_.headOption)
+      .map(_.parseJson.convertTo[Map[String, Any]])
+      .getOrElse(decodeParams(params))
+  def parsStringOpt(params: Map[String, List[String]]) = // TODO escape or retrieve all as string
+    Option(params).filterNot(_.isEmpty).map { params => (for {
+      keyValues <- params
+      value <- keyValues._2
+    } yield s"${keyValues._1}=$value").mkString("&") }
+
+  def crudAction(implicit user: User) = applicationState{implicit state =>
+    getByIdPath{ getByIdAction
+    } ~ getByNamePath { getByNameAction
+    } ~ createPath { createAction
+    } ~ deletePath{ deleteAction
+    } ~ updatePath{ updateAction
+    } ~ listPath{ listAction
+    } ~ insertPath{ insertAction}
+  }
+
+  def apiAction(implicit user: User) = complete(app.api)
+  def metadataAction(viewName: String)(implicit user: User) = respondWithHeader(ETag(EntityTag(app.metadataVersionString))) {
+    conditional(EntityTag(app.metadataVersionString), DateTime.now) {
+      val obj = if (viewName == "*") app.apiMetadata else app.metadata(viewName)
+      complete(obj)
+    }
+  }
+
+  val DefaultResourceExtensions = "js,css,html,png,gif,jpg,jpeg,svg,woff,ttf,woff2".split(",").toSet
+  val DefaultResourcePathBase = "app"
+  def staticResources(extensions: Set[String] = DefaultResourceExtensions, basePath: String = DefaultResourcePathBase): Route =
+    pathSuffixTest(new Regex(extensions.map("\\." + _).mkString(".*(", "|", ")$"))) { p =>
+      path(Remaining) { resource =>
+        (encodeResponseWith(NoCoding, Gzip, Deflate) & respondWithHeader(ETag(EntityTag(app.metadataVersionString)))) {
+          getFromResource(basePath + "/" + resource)
+        }
+      }
+    }
+  def decodeParams(params: Map[String, List[String]]): Map[String, Any] = params map { t =>
+    t._1 -> (t._2.map(decodeParam(t._1, _)) match {
+      case List(x) => x
+      case x @ List(_, _*) => x
+    })
+  }
+  def decodeMultiParams(params: Map[String, List[String]]) = params map { t => t._1 -> t._2.map(decodeParam(t._1, _)) }
+  val namesForInts = Set("limit", "offset")
+  def decodeParam(key: String, value: String) = {
+    def throwBadType(type_ : String, cause: Exception = null) =
+      throw new BusinessException(
+        s"Failed to decode as $type_: parameter: '$key', value: '$value'" +
+          (if (cause == null) "" else " - caused by " + cause.toString))
+    def handleType[T](goodPath: String => T, typeStr:String)= {
+      try value match {
+        case "" | "null" | null => null
+        case d => goodPath(d)
+      } catch {
+        case ex: Exception => throwBadType(typeStr, ex)
+      }
+    }
+    if (metadataConventions.isBooleanName(key)) {
+      handleType({
+        case "true" => TRUE
+        case "false" => FALSE
+      }, "boolean")
+    } else if (metadataConventions.isDateName(key)) {
+          handleType(d => new java.sql.Date(Format.parseDate(d.replaceAll("\"", "")).getTime),"date")
+    } else if (metadataConventions.isDateTimeName(key)) {
+          handleType(d => new java.sql.Timestamp(Format.parseDateTime(d.replaceAll("\"", "")).getTime), "dateTime (not supported yet)")
+    } else if (namesForInts.contains(key) ||
+               metadataConventions.isIntegerName(key) ||
+               metadataConventions.isIdName(key) ||
+               metadataConventions.isIdRefName(key)) {
+          handleType(l => java.lang.Long.valueOf(l), "long")
+    } else if (metadataConventions.isDecimalName(key)) {
+        handleType(d => BigDecimal(d), "bigDecimal")
+    } else value
+  }
+  override protected def initJsonConverter = app.qe
+  override def dbAccess = app.dbAccess
+}
+
+trait AppFileServiceBase[User] {
+    this: AppProvider[User] with JsonConverterProvider with BasicJsonMarshalling
+          { type App <: AppBase[User] with Audit[User] } =>
+  val fileStreamer: AppFileStreamer[User] = initFileStreamer
+  /** Override this method in subclass. Method usage instead of direct
+  {{{val fileStreamer: AppFileStreamer}}} initialization ensures that this.fileStreamer and subclass fileStreamer
+  have the same instance in the case fileStreamer is overrided in subclass */
+  protected def initFileStreamer: AppFileStreamer[User]
+  def uploadPath: Directive1[Option[String]] =
+    path("upload") & provide(None) |
+    path("upload" / Segment).flatMap { filename => provide(Some(filename))}
+  def uploadMultiplePath = path("upload-multiple")
+  def downloadPath = path("download" / LongNumber / Segment) & get
+  def uploadSizeLimit =  Some("app.upload.size-limit").filter(config.hasPath).map(config.getBytes).map(_.toLong).getOrElse((10 * 1024 * 1024).toLong)
+
+  //make visible implicit querease for fileInfo methods
+  private implicit val qe = DefaultAppQuerease
+  import AppFileStreamer._
+  def validateFileName(fileName: String) = {}
+
+  def extractFileDirective(filenameOpt: Option[String])(implicit user: User, state: Map[String, Any]): Directive[(Source[ByteString, Any], String, String)] =
+    (withSizeLimit(uploadSizeLimit) & post & extractRequestContext).flatMap { ctx =>
+      def multipartFormUpload = {
+        entity(as[Multipart.FormData]).flatMap { _ =>
+          fileUpload("file").flatMap {
+            case (fileInfo, bytes) =>
+              validateFileName(fileInfo.fileName)
+              provide(bytes) & provide(fileInfo.fileName) & provide(fileInfo.contentType.toString)
+          }
+        }
+      }
+      def simpleUpload(fileName: String) = {
+        val contentType = ctx.request.entity.contentType
+        validateFileName(fileName)
+        provide (ctx.request.entity.dataBytes) & provide(fileName) & provide(contentType.toString)
+      }
+      filenameOpt match {
+        case None =>
+          multipartFormUpload | simpleUpload("file")
+        case Some(fileName) =>
+          simpleUpload(fileName)
+      }
+    }
+
+  def uploadFileDirective(bytes: Source[ByteString, Any],
+                          fileName: String,
+                          contentType: String
+                         )(implicit
+                          user: User,
+                          state: Map[String, Any]
+                         ): Directive1[Future[FileInfo]] =
+    extractRequestContext.map { ctx =>
+      import ctx._
+      bytes.runWith(fileStreamer.fileSink(fileName, contentType)).andThen {
+        case scala.util.Success(fileInfo) => app.auditSave(fileInfo.id, fileStreamer.file_info_table, fileInfo.toMap, null)
+        case scala.util.Failure(error) => app.auditSave(null, fileStreamer.file_info_table,
+          Map("filename" -> fileName, "content_type" -> contentType.toString), error.getMessage)
+      }
+    }
+
+
+  implicit class DirectiveChain1[A](directive: Directive[(A)]) {
+    def andThen[T](fun: A => Directive[T])(implicit arg0: Tuple[T]): Directive[T] =
+      directive.tflatMap { case (a) => fun(a) }
+  }
+
+  implicit class DirectiveChain2[A, B](directive: Directive[(A, B)]) {
+    def andThen[T](fun: (A, B) => Directive[T])(implicit arg0: Tuple[T]): Directive[T] =
+      directive.tflatMap { case (a, b) => fun(a, b) }
+  }
+
+  implicit class DirectiveChain3[A, B, C](directive: Directive[(A, B, C)]) {
+    def andThen[T](fun: (A, B, C) => Directive[T])(implicit arg0: Tuple[T]): Directive[T] =
+      directive.tflatMap { case (a, b, c) => fun(a, b, c) }
+  }
+
+  def uploadAction(filenameOpt: Option[String])(implicit
+          user: User,
+          state: Map[String, Any]
+         ): Route = {
+    val ufd = extractFileDirective(filenameOpt).andThen(uploadFileDirective _).flatMap(onSuccess(_))
+    ufd(fi => complete(fi.toMap))
+  }
+
+  def uploadMultipleAction(implicit
+      user: User,
+      state: Map[String, Any],
+  ): Route = withSizeLimit(uploadSizeLimit) {
+    post {
+      extractRequestContext { ctx =>
+        import ctx._
+        entity(as[Multipart.FormData]) { formdata =>
+          val partsInfoFuture: Future[Seq[PartInfo]] = formdata.parts.mapAsync(1) {
+            case filePart if filePart.filename.isDefined =>
+              val name = filePart.name
+              val filename = filePart.filename.getOrElse("some_file")
+              // FIXME filePart content-type? additionalHeaders empty for some reason
+              val contentTypeString = filePart.additionalHeaders.collectFirst {
+                case ctHeader@`Content-Type`(_) => ctHeader.toString
+              }.getOrElse("application/octet-stream")
+              val bytes = filePart.entity.dataBytes
+              bytes.runWith(fileStreamer.fileSink(filename, contentTypeString))
+                .map { fileInfo =>
+                  PartInfo(
+                    name = name,
+                    value = null,
+                    file_info = fileInfo,
+                  )
+                }.andThen { // audit file save
+                  case scala.util.Success(partInfo) =>
+                    val fileInfo = partInfo.file_info
+                    app.auditSave(fileInfo.id, fileStreamer.file_info_table, fileInfo.toMap, null)
+                  case scala.util.Failure(error) => app.auditSave(null, fileStreamer.file_info_table,
+                    Map("filename" -> filename, "content_type" -> contentTypeString), error.getMessage)
+                }
+            case dataPart =>
+              dataPart.toStrict(1.second).map { strict =>
+                PartInfo(
+                  name = dataPart.name,
+                  value = strict.entity.data.utf8String,
+                  file_info = null,
+                )
+              }
+          }.runFold(Seq.empty[PartInfo])(_ :+ _)
+          // TODO hook
+          ctx => complete(partsInfoFuture.map(_.map(_.toMap).toList))
+        }
+      }
+    }
+  }
+
+  def downloadAction(fileInfoHelperOpt: Option[FileInfoHelper])(implicit user: User, state: Map[String, Any]): Route = {
+    fileInfoHelperOpt match {
+      case Some(fi) =>
+        complete(HttpResponse(
+          StatusCodes.OK,
+          contentDisposition(fi.filename, ContentDispositionTypes.attachment),
+          HttpEntity.Default(
+            // This will always be MediaType.Binary, if 2nd param is true
+            // application/octet-stream as a fallback
+            MediaType.custom(Option(fi.content_type).filter(_ != null).filter(_ != "").getOrElse("application/octet-stream"), true).asInstanceOf[MediaType.Binary],
+            fi.size,
+            fi.source
+          )
+        ))
+      case None => complete(StatusCodes.NotFound)
+    }
+  }
+
+  def downloadAction(id: Long, sha256: String)(implicit user: User, state: Map[String, Any]): Route =
+    downloadAction(fileStreamer.getFileInfo(id, sha256))
+}
+
+object AppServiceBase {
+
+  trait AppStateExtractor { this: AppServiceBase[_] =>
+    val ApplicationStateCookiePrefix = "current_"
+    def applicationState = extract(r => extractState(r.request, ApplicationStateCookiePrefix))
+    protected def extractState(req: HttpRequest, prefix: String) = req.headers.flatMap {
+      case c: Cookie => c.cookies.filter(_.name.startsWith(prefix))
+      case _ => Nil
+    } map (c => c.name -> decodeParam(c.name, c.value)) toMap
+  }
+
+  trait AppVersion {
+    def appVersion: String
+  }
+
+  trait QueryTimeoutExtractor {
+    def maxQueryTimeout: QueryTimeout = QueryTimeout(5)
+    lazy val queryTimeout: QueryTimeout = DefaultQueryTimeout
+      .orElse(Some(maxQueryTimeout))
+      .filter(_.timeoutSeconds <= maxQueryTimeout.timeoutSeconds)
+      .getOrElse {
+        LoggerFactory.getLogger("JdbcTimeoutLogger")
+          .error(s"Illegal configuration for jdbc.query-timeout setting = $DefaultQueryTimeout. " +
+            s"Must be less or equals than $maxQueryTimeout.")
+        maxQueryTimeout
+      }
+
+    def extractTimeout: Directive1[QueryTimeout]
+  }
+
+  /** Always returns queryTimeout */
+  trait ConstantQueryTimeout extends QueryTimeoutExtractor {
+    override def extractTimeout = extract(_ => queryTimeout)
+  }
+
+  trait AppExceptionHandler {
+    val appExceptionHandler: ExceptionHandler
+  }
+
+  object AppExceptionHandler{
+    def entityStreamSizeExceptionHandler(marshalling: BasicJsonMarshalling) = ExceptionHandler {
+      case e: EntityStreamSizeException =>
+        import marshalling._
+        val response = Map[String, Any]("actualSize"-> e.actualSize.orNull, "limit" -> e.limit)
+        complete(StatusCodes.PayloadTooLarge -> response)
+    }
+
+    def businessExceptionHandler(logger: com.typesafe.scalalogging.Logger) = ExceptionHandler {
+      case e: BusinessException =>
+        logger.trace(e.getMessage, e)
+        extractUri { uri =>
+          complete(HttpResponse(InternalServerError, entity = e.getMessage.format(e.getParams: _*)))
+        }
+    }
+    def bindVariableExceptionHandler(logger: com.typesafe.scalalogging.Logger,
+        bindVariableExceptionResponseMessage: MissingBindVariableException => String = _.getMessage) = ExceptionHandler {
+      case e: MissingBindVariableException =>
+        logger.debug(e.getMessage, e)
+        extractUri { uri =>
+          complete(HttpResponse(BadRequest, entity = bindVariableExceptionResponseMessage(e)))
+        }
+    }
+    def viewNotFoundExceptionHandler = ExceptionHandler {
+      case e: querease.ViewNotFoundException => complete(HttpResponse(NotFound, entity = e.getMessage))
+    }
+
+    /** Handles and logs PostgreSQL timeout exceptions */
+    trait PostgresTimeoutExceptionHandler[User] extends AppExceptionHandler {
+      this: AppStateExtractor with SessionUserExtractor[User] with ServerStatistics with DeferredCheck =>
+      override val appExceptionHandler = PostgresTimeoutExceptionHandler(this)
+    }
+
+    object PostgresTimeoutExceptionHandler {
+      val timeoutLogger = LoggerFactory.getLogger("JdbcTimeoutLogger")
+      val TimeoutSignature = "ERROR: canceling statement due to user request"
+      val TimeoutFriendlyMessage = "Request canceled due to too long processing time"
+      def apply[User](
+        appService: AppStateExtractor with SessionUserExtractor[User]
+          with ServerStatistics with DeferredCheck) = ExceptionHandler {
+       case e: org.postgresql.util.PSQLException if e.getMessage == TimeoutSignature =>
+        import appService._
+        registerTimeout
+        (extractUserFromSession & extractRequest & applicationState) { (userOpt, req, appState) =>
+          val aState = appState.map{ case (k,v) => s"$k = $v" }.mkString("{", ", ", "}")
+          val userString = userOpt.map(_.toString).orNull
+          val msg = s"JDBC timeout, statement cancelled - ${req.method} ${req.uri}, state - $aState, user - $userString"
+          isDeferred
+          .tmap { _ =>
+            timeoutLogger.error("Deferred " + msg)
+          }.recover { _ =>
+            timeoutLogger.error(msg)
+            pass
+          }.apply { //somehow apply method must be called explicitly ???
+            complete(HttpResponse(InternalServerError, entity = TimeoutFriendlyMessage))
+          }
+        }
+      }
+    }
+
+    /** Handles [[org.wabase.BusinessException]]s and [[org.tresql.MissingBindVariableException]]s and
+      * [[querease.ViewNotFoundException]]*/
+    trait SimpleExceptionHandler extends AppExceptionHandler { this: Loggable =>
+      def bindVariableExceptionResponseMessage(e: MissingBindVariableException): String = e.getMessage
+      override val appExceptionHandler =
+        businessExceptionHandler(this.logger)
+          .withFallback(bindVariableExceptionHandler(this.logger, this.bindVariableExceptionResponseMessage))
+          .withFallback(viewNotFoundExceptionHandler)
+    }
+
+    trait DefaultAppExceptionHandler[User] extends SimpleExceptionHandler with PostgresTimeoutExceptionHandler[User] {
+      this: AppStateExtractor with SessionUserExtractor[User] with ServerStatistics with Loggable with DeferredCheck with BasicJsonMarshalling =>
+      override val appExceptionHandler =
+        businessExceptionHandler(this.logger)
+          .withFallback(entityStreamSizeExceptionHandler(this))
+          .withFallback(bindVariableExceptionHandler(this.logger, this.bindVariableExceptionResponseMessage))
+          .withFallback(PostgresTimeoutExceptionHandler(this))
+          .withFallback(viewNotFoundExceptionHandler)
+    }
+  }
+}

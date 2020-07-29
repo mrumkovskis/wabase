@@ -1,0 +1,7 @@
+table:   validation
+comment: Konfigurējama datu pareizības pārbaude ar kļūdas ziņojuma tekstu
+columns:
+- id
+- context              ! 100 : Konteksts - skatījuma nosaukums
+- expression           ! 500 : Izteiksme - javascript loģiskā izteiksme
+- message              ! 500 : Ziņojums - kļūdas ziņojums, ja izteiksmes vērtība nav patiesa

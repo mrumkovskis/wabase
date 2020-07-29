@@ -1,0 +1,67 @@
+table: file_ref_1
+columns:
+- id
+- file_info_1.id !
+
+
+table:   file_info_1
+columns:
+- id
+- filename      ! 240
+- upload_time   !
+- content_type  ! 100
+- sha_256       ! file_body_info_1.sha_256
+
+
+table:   file_body_info_1
+columns:
+- sha_256 ! 64
+- size    ! long
+- path    ! 240
+pk: sha_256
+
+
+table: file_ref_2
+columns:
+- id
+- file_info_2.id !
+
+
+table:   file_info_2
+columns:
+- id
+- filename      ! 240
+- upload_time   !
+- content_type  ! 100
+- sha_256       ! file_body_info_2.sha_256
+
+
+table:   file_body_info_2
+columns:
+- sha_256 ! 64
+- size    ! long
+- path    ! 240
+pk: sha_256
+
+
+table:   files_on_disk
+columns:
+- path    ! 512
+pk: path
+
+
+table:   file_info
+columns:
+  - id
+  - filename      ! 240
+  - upload_time   !
+  - content_type  ! 100
+  - sha_256       ! file_body_info.sha_256
+
+
+table:   file_body_info
+columns:
+  - sha_256 ! 64
+  - size    ! long
+  - path    ! 240
+pk: sha_256

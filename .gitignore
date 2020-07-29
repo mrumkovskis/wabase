@@ -1,0 +1,29 @@
+/.idea/
+target/
+lib_managed/
+src_managed/
+bin/
+src/it/resources/application.conf
+logback.xml
+lib/
+tmp
+wabase.iml
+
+# eclipse conf file
+.eclipse
+.settings
+.classpath
+.history
+.project
+.cache
+
+# scalatest reports
+report/
+it-report/
+
+#ensime plugin files
+.ensime
+.ensime_cache/
+
+#macos
+.DS_Store
