@@ -59,13 +59,13 @@ class ValidationEngineTests extends FlatSpec with Matchers {
         "my_string_field",
         "string throws"
       ))
-    }.getMessage should be ("""Kļūda (pārbaude "string throws"): mystring""")
+    }.getMessage should be ("""Error (validation "string throws"): mystring""")
     intercept[BusinessException] {
       TestValidationEngine.validate(validationTestDto(
         "my_string_field + ', ' + my_int_field",
         "dynamic message"
       ))
-    }.getMessage should be ("""Kļūda (pārbaude "dynamic message"): mystring, 42""")
+    }.getMessage should be ("""Error (validation "dynamic message"): mystring, 42""")
     intercept[BusinessException] {
       TestValidationEngine.validate(validationTestDto(
         "my_int_field === 43",

@@ -37,10 +37,10 @@ create table validation(
   expression varchar(500) not null,
   message varchar(500) not null
 );
-comment on table validation is 'Konfigurējama datu pareizības pārbaude ar kļūdas ziņojuma tekstu';
-comment on column validation.context is 'Konteksts - skatījuma nosaukums';
-comment on column validation.expression is 'Izteiksme - javascript loģiskā izteiksme';
-comment on column validation.message is 'Ziņojums - kļūdas ziņojums, ja izteiksmes vērtība nav patiesa';
+comment on table validation is 'Configurable data validation with error message';
+comment on column validation.context is 'Context - view name';
+comment on column validation.expression is 'Expression - javascript logical expression';
+comment on column validation.message is 'Message - error message, if expression is false';
 alter table validation add constraint pk_validation primary key (id);
 
 alter table file_info add constraint fk_file_info_sha_256 foreign key (sha_256) references file_body_info(sha_256);

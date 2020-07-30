@@ -70,7 +70,7 @@ trait DefaultValidationEngine extends ValidationEngine with Loggable {
         val result = try engine.eval(v.expression) catch {
           case ex: Exception =>
             val msg =
-              (("Kļūda izpildot pārbaudi \"" + v.message + "\"") :: Format.msgList(ex))
+              (("Validation error \"" + v.message + "\"") :: Format.msgList(ex))
                 .mkString("\n  caused by: ")
             logger.debug(msg)
             throw new BusinessException(msg)
@@ -81,11 +81,11 @@ trait DefaultValidationEngine extends ValidationEngine with Loggable {
             throw new BusinessException(v.message)
           case s: String =>
             throw new BusinessException(
-              s"""Kļūda (pārbaude "${v.message}"): $s""")
+              s"""Error (validation "${v.message}"): $s""")
           case x =>
             throw new BusinessException(
-              "Kļūda izpildot pārbaudi \"" + v.message + "\": " +
-                "Neatbilstošs pārbaudes rezultāta datu tips: " +
+              "Validation error \"" + v.message + "\": " +
+                "Wrong validation result type: " +
                 Option(x).map(_.getClass.getName).getOrElse(x))
         }
       }

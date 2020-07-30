@@ -491,7 +491,7 @@ object DeferredControl extends Loggable with AppConfig {
 
     import HttpMessageSerialization._
     val ServerRestartResponse = HttpResponse(StatusCodes.InternalServerError,
-      entity = "Serveris pārstartēts, lūdzu atkārtojiet pieprasījumu")
+      entity = "Server restarted please repeat request")
     def onRestart(): Unit = {
       val responseTime = new Timestamp(currentTime)
       transaction {

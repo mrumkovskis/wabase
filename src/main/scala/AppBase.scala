@@ -515,7 +515,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
         }.orNull
       }
       if (idOpt.isDefined && old == null)
-        throw new BusinessException("Ierakstu nevar labot, jo to neizdodas atrast")
+        throw new BusinessException("Record not found, cannot edit")
       if (old != null)
         // overwrite incoming values of non-updatable fields with old values from db
         // TODO for lookups and children?

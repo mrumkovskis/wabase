@@ -90,7 +90,7 @@ class AppFileCleanup(dbAccess: DbAccess, fileStreamers: AppFileStreamerConfig*) 
       val files =
         listFilesRecursively(wd, fileFilter)
           .map(_.getAbsolutePath)
-          // aiztiks tikai tos failus, kuri atbilst pattern-am: [fileStreamer.rootPath]/gads/mēnesis/diena/sha256
+          // process files according to the parttern: [fileStreamer.rootPath]/year/mmonth/day/sha256
           .filter(f => f match {
             case YYYY_MM_DD_SHA(x) =>
               allRootPaths.exists(_ + x == f)

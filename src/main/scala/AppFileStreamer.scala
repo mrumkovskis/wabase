@@ -179,7 +179,7 @@ trait AppFileStreamer[User] extends AppFileStreamerConfig with Loggable { this: 
       def badFileException =
         // TODO log! (BusinessExceptions are not logged)
         new BusinessException(
-          "Neizdodas apstrādāt failu, lūdzu ziņojiet administratoram: " + sha)
+          "Cannot process file, please contact administrator: " + sha)
       def oldPathOpt = dbUse {
         Query(s"$file_body_info_table[$shaColName=?]{path}", sha).uniqueOption[String]
       }

@@ -350,10 +350,10 @@ object Authentication {
       env.put(Context.SECURITY_AUTHENTICATION, "simple");
 
       if (username == null || "".equals(username)) {
-        throw new BusinessException("Nepareiza parole vai lietotājvārds")
+        throw new BusinessException("Wrong password or username")
       }
       if (password == null || "".equals(password)) {
-        throw new BusinessException("Nepareiza parole vai lietotājvārds")
+        throw new BusinessException("Wrong password or username")
       }
       env.put(Context.SECURITY_PRINCIPAL, username + accountPostfix)
       env.put(Context.SECURITY_CREDENTIALS, password)
@@ -364,11 +364,11 @@ object Authentication {
         ctx.close
       } catch {
         case e: AuthenticationException =>
-          logger.error("Neveiksmīga autentifikācija", e)
-          throw new BusinessException("Neveiksmīga autentifikācija")
+          logger.error("Authentication failed", e)
+          throw new BusinessException("Authentication failed")
         case e: Exception =>
-          logger.error("Neparedzēta autentifikācijas kļūda", e)
-          throw new BusinessException("Neparedzēta autentifikācijas kļūda")
+          logger.error("Unexpected authentication error", e)
+          throw new BusinessException("Unexpected authentication error")
       }
     }
   }
