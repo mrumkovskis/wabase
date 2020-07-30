@@ -35,7 +35,6 @@ lazy val testDependencies = Seq(
 
 lazy val commonSettings = Seq(
   name := "wabase",
-  version := "0.1",
   scalaVersion := scalaV,
   crossScalaVersions := Seq(
     scalaV,
