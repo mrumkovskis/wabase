@@ -179,10 +179,8 @@ trait AppMetadata extends querease.QuereaseMetadata { this: AppQuerease =>
   }
 
   object FieldDefExtrasUtils {
-    def fieldNameToLabel(n: String) = {
-      (if (n startsWith "kla_") n.substring(4) else n) // TODO wt?
-        .replace("_", " ").capitalize
-    }
+    def fieldNameToLabel(n: String) =
+      n.replace("_", " ").capitalize
     def fieldLabelFromName(f: FieldDef) = Option(f.alias).orElse(Option(f.name)).map(fieldNameToLabel).get
     def getExtraOpt(f: FieldDef, key: String) =
       Option(f.extras).flatMap(_ get key).map {
