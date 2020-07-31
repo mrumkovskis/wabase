@@ -34,6 +34,7 @@ lazy val testDependencies = Seq(
 )
 
 lazy val commonSettings = Seq(
+  organization := "org.wabase",
   name := "wabase",
   scalaVersion := scalaV,
   crossScalaVersions := Seq(
@@ -93,6 +94,17 @@ lazy val webapp = (project in file("."))
         "-doc-source-url", "https://github.com/mrumkovskis/wabase/blob/develop€{FILE_PATH}.scala")
     }).value)
   .settings(
+    publishTo := version { v: String =>
+      val nexus = "https://oss.sonatype.org/"
+      if (v.trim.endsWith("SNAPSHOT"))
+        Some("snapshots" at nexus + "content/repositories/snapshots")
+      else
+        Some("releases" at nexus + "service/local/staging/deploy/maven2")
+    }.value,
+    publishMavenStyle := true,
+    publishArtifact in Test := false
+  )
+  .settings(
     pomIncludeRepository := { _ => false },
     pomExtra := <url>https://github.com/mrumkovskis/wabase</url>
       <licenses>
@@ -116,6 +128,21 @@ lazy val webapp = (project in file("."))
           <id>guntiso</id>
           <name>Guntis Ozols</name>
           <url>https://github.com/guntiso/</url>
+        </developer>
+        <developer>
+          <id>guntiso</id>
+          <name>Guntis Ozols</name>
+          <url>https://github.com/guntiso/</url>
+        </developer>
+        <developer>
+          <id>muntis</id>
+          <name>Muntis Grube</name>
+          <url>https://github.com/muntis/</url>
+        </developer>
+        <developer>
+          <id>janqis</id>
+          <name>Janis Birgelis</name>
+          <url>https://github.com/janqis/</url>
         </developer>
       </developers>
   )
