@@ -264,6 +264,11 @@ class Macros extends TresqlComparisonMacros {
     else b.SQLExpr(sqlSnippet, vars)
   }
 
+  import org.tresql.macro_._
+  import org.tresql.parsing.{ Exp, QueryParsers }
+  def if_not(implicit p: QueryParsers, bool: Exp, exprThen: Exp) =
+    macro_"""case($bool, null, $exprThen)"""
+
   override def shouldUnaccent(s: String) = true
   override def shouldIgnoreCase(s: String) = true
 }

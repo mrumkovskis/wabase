@@ -71,10 +71,11 @@ trait AppMetadata extends querease.QuereaseMetadata { this: AppQuerease =>
     val Api = "api"
     val Auth = "auth"
     val Limit = "limit"
+    val Validations = "validations"
     val ConnectionPool = "cp"
     val AppCoreViewExtrasKey = AppMetadata.AppCoreViewExtrasKey
     def apply() =
-      Set(Api, Auth, Limit, ConnectionPool, AppCoreViewExtrasKey)
+      Set(Api, Auth, Limit, Validations, ConnectionPool, AppCoreViewExtrasKey)
   }
 
   lazy val knownViewExtras = KnownViewExtras()
@@ -309,6 +310,7 @@ trait AppMetadata extends querease.QuereaseMetadata { this: AppQuerease =>
       if (knownApiMethods contains x) (mr._1 + (x -> mr._2), mr._2) else (mr._1, x.toUpperCase))._1
 
     val limit = getIntExtra(Limit, viewDef.extras) getOrElse 100
+    val validations = getStringSeq(Validations, viewDef.extras)
     val cp = getStringExtra(ConnectionPool, viewDef.extras) getOrElse DEFAULT_CP.connectionPoolName
     val extras =
       Option(viewDef.extras)
@@ -350,7 +352,7 @@ trait AppMetadata extends querease.QuereaseMetadata { this: AppQuerease =>
       )
     val appView = MojozViewDef(name, table, tableAlias, joins, filter,
       viewDef.groupBy, viewDef.having, orderBy, extends_, draftOf, detailsOf,
-      comments, appFields, viewDef.saveTo, extras).updateExtras(_ => AppViewDef(limit, cp, auth, apiMap))
+      comments, appFields, viewDef.saveTo, extras).updateExtras(_ => AppViewDef(limit, validations, cp, auth, apiMap))
     def hasAuthFilter(viewDef: ViewDef): Boolean = viewDef.auth match {
       case AuthFilters(g, l, i, u, d) =>
         !(g.isEmpty && l.isEmpty && i.isEmpty && u.isEmpty && d.isEmpty)
@@ -400,6 +402,7 @@ object AppMetadata {
 
   trait AppViewDefExtras {
     val limit: Int
+    val validations: Seq[String]
     val cp: String
     val auth: AuthFilters
     val apiMethodToRole: Map[String, String]
@@ -407,6 +410,7 @@ object AppMetadata {
 
   private [wabase] case class AppViewDef(
     limit: Int = 1000,
+    validations: Seq[String] = Nil,
     cp: String = DEFAULT_CP.connectionPoolName,
     auth: AuthFilters = AuthFilters(Nil, Nil, Nil, Nil, Nil),
     apiMethodToRole: Map[String, String] = Map()
@@ -450,6 +454,7 @@ object AppMetadata {
     private val defaultExtras = AppViewDef()
     private val appExtras = extras(AppCoreViewExtrasKey, defaultExtras)
     override val limit = appExtras.limit
+    override val validations = appExtras.validations
     override val cp = appExtras.cp
     override val auth = appExtras.auth
     override val apiMethodToRole = appExtras.apiMethodToRole

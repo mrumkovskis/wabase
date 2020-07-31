@@ -268,6 +268,22 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
     override def defaultAction(ctx: SaveContext[Dto]): SaveContext[Dto] =
       defaultSave(ctx)
   }
+  def validate(ctx: SaveContext[Dto]) = {
+    import ctx._
+    val viewDef = qe.viewDef(viewName)
+    if (viewDef.validations != null && viewDef.validations.nonEmpty) {
+      val query =
+        "messages(# idx, msg) {" +
+          viewDef.validations.zipWithIndex.map {
+            case (v, i) => s"{ $i idx, if_not($v) msg }"
+          }.mkString(" + ") +
+        "} messages[msg != null] { msg } #(idx)"
+      val result = Query.list[String](query, ctx.obj.toSaveableMap ++ ctx.params)
+      val msg = result.filter(_ != null).filter(_ != "").mkString("\n").trim
+      if (msg != "")
+        throw new BusinessException(msg)
+    }
+  }
   def defaultSave(ctx: SaveContext[Dto]): SaveContext[Dto] = {
       import ctx._
       if (!ctx.obj.isInstanceOf[org.wabase.DtoWithId])
@@ -276,6 +292,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
              + ctx.obj.getClass.getName)
       val obj = ctx.obj.asInstanceOf[DtoWithId]
       val viewDef = qe.viewDef(viewName)
+      validate(ctx)
       val implicitProps = viewDef.fields
        .map(_.name)
        .filter(autoTimeFieldNames)
