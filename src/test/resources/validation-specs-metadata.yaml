@@ -1,0 +1,16 @@
+table:    validations_test_table
+columns:
+- id
+- int_col                int
+
+
+name:     validations_test
+table:    validations_test_table
+api:      save
+fields:
+- id
+- int_col
+validations:
+- :int_col >  5, 'int_col should be greater than 5 but is ' || :int_col
+- :int_col > 10, 'int_col should be greater than 10 but is ' || :int_col
+- :int_col < 12, 'int_col should be less than 12 but is ' || :int_col
