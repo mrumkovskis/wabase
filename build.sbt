@@ -102,7 +102,11 @@ lazy val webapp = (project in file("."))
         Some("releases" at nexus + "service/local/staging/deploy/maven2")
     }.value,
     publishMavenStyle := true,
-    publishArtifact in Test := false
+    publishArtifact in Test := true,
+    //publishArtifact in IntegrationTest := true, --does not work
+    addArtifact(artifact in (IntegrationTest, packageBin), packageBin in IntegrationTest),
+    addArtifact(artifact in (IntegrationTest, packageDoc), packageDoc in IntegrationTest),
+    addArtifact(artifact in (IntegrationTest, packageSrc), packageSrc in IntegrationTest)
   )
   .settings(
     pomIncludeRepository := { _ => false },
