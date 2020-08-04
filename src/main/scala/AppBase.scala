@@ -17,6 +17,7 @@ import scala.util.Try
 import org.tresql.{Env, Resources, RowLike}
 import AppMetadata._
 import ValidationEngine.CustomValidationFunctions.is_valid_email
+import spray.json.DefaultJsonProtocol.{StringJsonFormat, jsonFormat2, listFormat}
 
 import scala.util.control.NonFatal
 
@@ -269,19 +270,28 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
       defaultSave(ctx)
   }
   def validate(ctx: SaveContext[Dto]) = {
-    import ctx._
-    val viewDef = qe.viewDef(viewName)
-    if (viewDef.validations != null && viewDef.validations.nonEmpty) {
+    def validateView(path: List[Any], validations: Seq[String]): List[qe.ValidationResult] = {
       val query =
         "messages(# idx, msg) {" +
-          viewDef.validations.zipWithIndex.map {
+          validations.zipWithIndex.map {
             case (v, i) => s"{ $i idx, if_not($v) msg }"
           }.mkString(" + ") +
-        "} messages[msg != null] { msg } #(idx)"
+          "} messages[msg != null] { msg } #(idx)"
       val result = Query.list[String](query, ctx.obj.toSaveableMap ++ ctx.params)
-      val msg = result.filter(_ != null).filter(_ != "").mkString("\n").trim
-      if (msg != "")
-        throw new BusinessException(msg)
+      result.filter(_ != null).filter(_ != "") match {
+        case Nil => Nil
+        case errs => List(qe.ValidationResult(path, errs))
+      }
+    }
+    import ctx._
+    val viewDef = qe.viewDef(viewName)
+    import qe._
+    implicit val f02 = jsonFormat2(qe.ValidationResult)
+    if (viewDef.validations != null && viewDef.validations.nonEmpty) {
+      validateView(Nil, viewDef.validations) match {
+        case errs if errs.nonEmpty => throw new BusinessException(errs.toJson.compactPrint)
+        case _ => ()
+      }
     }
   }
   def defaultSave(ctx: SaveContext[Dto]): SaveContext[Dto] = {

@@ -24,6 +24,8 @@ trait AppQuereaseIo extends querease.ScalaDtoQuereaseIo with JsonConverter { sel
 
   def fill[B <: DTO: Manifest](jsObject: JsObject): B =
     implicitly[Manifest[B]].runtimeClass.getConstructor().newInstance().asInstanceOf[B {type QE = AppQuerease}].fill(jsObject)(this)
+
+  case class ValidationResult(path: List[Any], errors: List[String])
 }
 
 abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata
