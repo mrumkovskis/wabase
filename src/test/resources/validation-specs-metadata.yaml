@@ -42,4 +42,4 @@ validations:
 name:     validations_test_child2
 extends:  validations_test_child
 validations:
-  - :int_col > 2 & :int_col.int_col >  3, 'child2 int_col should be greater than 2 and parent must be greater than 3 but is ' || :int_col || ',' || :int_col.int_col
+  - :int_col > 2 & :_parent.int_col > 3, 'child2 int_col should be greater than 2 and parent must be greater than 3 but is ' || :int_col || ',' || :_parent.int_col

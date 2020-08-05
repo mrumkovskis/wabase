@@ -270,28 +270,48 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
       defaultSave(ctx)
   }
   def validate(ctx: SaveContext[Dto]) = {
-    def validateView(path: List[Any], validations: Seq[String]): List[qe.ValidationResult] = {
+    def validateView(validations: Seq[String], obj: Map[String, Any]): List[String] = {
       val query =
         "messages(# idx, msg) {" +
           validations.zipWithIndex.map {
             case (v, i) => s"{ $i idx, if_not($v) msg }"
           }.mkString(" + ") +
           "} messages[msg != null] { msg } #(idx)"
-      val result = Query.list[String](query, ctx.obj.toSaveableMap ++ ctx.params)
-      result.filter(_ != null).filter(_ != "") match {
-        case Nil => Nil
-        case errs => List(qe.ValidationResult(path, errs))
-      }
+      Query.list[String](query, obj)
     }
-    import ctx._
-    val viewDef = qe.viewDef(viewName)
-    import qe._
-    implicit val f02 = jsonFormat2(qe.ValidationResult)
-    if (viewDef.validations != null && viewDef.validations.nonEmpty) {
-      validateView(Nil, viewDef.validations) match {
-        case errs if errs.nonEmpty => throw new BusinessException(errs.toJson.compactPrint)
-        case _ => ()
-      }
+    def validateViewAndSubviews(path: List[Any], viewDef: ViewDef, obj: Map[String, Any],
+                                res: List[qe.ValidationErrors]): List[qe.ValidationErrors] = {
+      val viewRes =
+        if (viewDef.validations != null && viewDef.validations.nonEmpty) {
+          validateView(viewDef.validations, obj ++ ctx.params) match {
+            case errs if errs.nonEmpty => List(qe.ValidationErrors(path.reverse, errs))
+            case _ => Nil
+          }
+        } else Nil
+      viewDef.fields
+        .collect { case f if f.type_.isComplexType => (f.name, qe.viewDef(f.type_.name)) }
+        .foldLeft(viewRes ::: res) { (r, nv) =>
+          val (n, vd) = nv
+          def maybeAddParent(m: Map[String, Any]) =
+            if(!m.contains("_parent")) m + ("_parent" -> obj) else m
+          obj.get(n).map {
+            case m: Map[String, _] =>
+              validateViewAndSubviews(n :: path, vd, maybeAddParent(m), r)
+            case l: List[Map[String, _]] =>
+              val p = n :: path
+              l.zipWithIndex.foldLeft(r){ (r1, owi) =>
+                val (o, i) = owi
+                validateViewAndSubviews(i :: p, vd, maybeAddParent(o), r1)
+              }
+            case _ => r
+          }.getOrElse(r)
+        }
+    }
+    import qe.ListJsonFormat
+    implicit val f02 = jsonFormat2(qe.ValidationErrors)
+    validateViewAndSubviews(Nil, qe.viewDef(ctx.viewName), ctx.obj.toMap, Nil).reverse match {
+      case errs if errs.nonEmpty => throw new BusinessException(errs.toJson.compactPrint)
+      case _ => ()
     }
   }
   def defaultSave(ctx: SaveContext[Dto]): SaveContext[Dto] = {
