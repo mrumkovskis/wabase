@@ -103,7 +103,7 @@ lazy val webapp = (project in file("."))
     }.value,
     publishMavenStyle := true,
     publishArtifact in Test := true,
-    //publishArtifact in IntegrationTest := true, --does not work
+    //publishArtifact in IntegrationTest := true, --does not work, https://github.com/sbt/sbt/issues/2458
     addArtifact(artifact in (IntegrationTest, packageBin), packageBin in IntegrationTest),
     addArtifact(artifact in (IntegrationTest, packageDoc), packageDoc in IntegrationTest),
     addArtifact(artifact in (IntegrationTest, packageSrc), packageSrc in IntegrationTest)
