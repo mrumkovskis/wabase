@@ -10,14 +10,3 @@ In progress...
 
 ## use in your sbt project
 add to your build.sbt file - libraryDependencies += "org.wabase" %% "wabase" % "1.0.0"
-
-
-wabase is web application based on [akka.io](http://akka.io/) web server providing framework to develop json rest services based on sql databases.
-
-Reference Documentation
------------------------
-
-In progress...
-
-## use in your sbt project
-add to your build.sbt file - libraryDependencies += "org.wabase" %% "wabase" % "1.0.0"
