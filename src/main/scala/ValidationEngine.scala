@@ -73,7 +73,7 @@ trait DefaultValidationEngine extends ValidationEngine with Loggable {
         try { String.valueOf(engine.eval(msg)) } catch {
           case NonFatal(_) => msg //return original message
           case x => throw x
-      }
+        }
 
       validationList foreach { v =>
         val result = try engine.eval(v.expression) catch {
