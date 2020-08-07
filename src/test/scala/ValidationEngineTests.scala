@@ -96,4 +96,13 @@ class ValidationEngineTests extends FlatSpec with Matchers {
       ))
     }.getMessage should be ("invalid email")
   }
+
+  "validation engine" should "support dynamic error messages" in {
+    intercept[BusinessException] {
+      TestValidationEngine.validate(validationTestDto(
+        "my_int_field === 43",
+        "'Should be 43, found - ' + my_int_field"
+      ))
+    }.getMessage should be ("Should be 43, found - 42")
+  }
 }

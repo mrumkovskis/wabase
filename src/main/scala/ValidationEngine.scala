@@ -1,9 +1,10 @@
 package org.wabase
 
 import javax.script.ScriptEngineManager
-
 import org.tresql.Query
 import spray.json._
+
+import scala.util.control.NonFatal
 
 trait ValidationEngine {
   def validate(instance: Dto)
@@ -66,11 +67,23 @@ trait DefaultValidationEngine extends ValidationEngine with Loggable {
     val validationList = validations(instance)
     if (validationList.nonEmpty) {
       val engine = get(instance)
+
+      def errorMsg(msg: String) = if (msg.startsWith("\"") || msg.startsWith("'")) {
+        //dynamic error messages if message starts with single or double quote
+        try { String.valueOf(engine.eval(msg)) } catch {
+          case NonFatal(e) =>
+            val emsg = s"Error evaluating validation error msg - $msg"
+            logger.error(emsg, e)
+            emsg
+          case x => throw x
+      }
+      } else msg
+
       validationList foreach { v =>
         val result = try engine.eval(v.expression) catch {
           case ex: Exception =>
             val msg =
-              (("Validation error \"" + v.message + "\"") :: Format.msgList(ex))
+              (("Validation error \"" + errorMsg(v.message) + "\"") :: Format.msgList(ex))
                 .mkString("\n  caused by: ")
             logger.debug(msg)
             throw new BusinessException(msg)
@@ -78,13 +91,13 @@ trait DefaultValidationEngine extends ValidationEngine with Loggable {
         result match {
           case TRUE => // OK
           case FALSE =>
-            throw new BusinessException(v.message)
+            throw new BusinessException(errorMsg(v.message))
           case s: String =>
             throw new BusinessException(
-              s"""Error (validation "${v.message}"): $s""")
+              s"""Error (validation "${errorMsg(v.message)}"): $s""")
           case x =>
             throw new BusinessException(
-              "Validation error \"" + v.message + "\": " +
+              "Validation error \"" + errorMsg(v.message) + "\": " +
                 "Wrong validation result type: " +
                 Option(x).map(_.getClass.getName).getOrElse(x))
         }
