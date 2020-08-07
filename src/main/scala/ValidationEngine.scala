@@ -68,16 +68,12 @@ trait DefaultValidationEngine extends ValidationEngine with Loggable {
     if (validationList.nonEmpty) {
       val engine = get(instance)
 
-      def errorMsg(msg: String) = if (msg.startsWith("\"") || msg.startsWith("'")) {
-        //dynamic error messages if message starts with single or double quote
+      def errorMsg(msg: String) =
+        //try to evaluate message as javascript
         try { String.valueOf(engine.eval(msg)) } catch {
-          case NonFatal(e) =>
-            val emsg = s"Error evaluating validation error msg - $msg"
-            logger.error(emsg, e)
-            emsg
+          case NonFatal(_) => msg //return original message
           case x => throw x
       }
-      } else msg
 
       validationList foreach { v =>
         val result = try engine.eval(v.expression) catch {
