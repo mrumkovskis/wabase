@@ -407,7 +407,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
       val after = action("after", clazz)
       before andThen on andThen after
     }
-    private def action(act: String, clazz: Class[_], defaultAction: T => T = (x: T) => x,
+    private def action(act: String, clazz: Class[_], defaultAction: T => T = identity,
       boundaryClass: Class[_] = classOf[org.wabase.Dto]): T => T =
       actions.getOrElse(act -> clazz,
         if (clazz.getSuperclass != null && boundaryClass.isAssignableFrom(clazz.getSuperclass))
