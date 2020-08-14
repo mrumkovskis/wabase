@@ -304,9 +304,9 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
           def maybeAddParent(m: Map[String, Any]) =
             if(!m.contains("_parent")) m + ("_parent" -> obj) else m
           obj.get(n).map {
-            case m: Map[String, _] =>
+            case m: Map[String, _]@unchecked =>
               validateViewAndSubviews(n :: path, vd, maybeAddParent(m), r)
-            case l: List[Map[String, _]] =>
+            case l: List[Map[String, _]@unchecked] =>
               val p = n :: path
               l.zipWithIndex.foldLeft(r){ (r1, owi) =>
                 val (o, i) = owi
