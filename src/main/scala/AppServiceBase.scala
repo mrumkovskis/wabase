@@ -68,7 +68,7 @@ trait AppServiceBase[User]
   def getByNameAction(viewName: String, name: String, value: String)(implicit user: User, state: Map[String, Any]) =
     parameterMultiMap { params =>
       extractTimeout { implicit timeout =>
-        complete(app.get(viewName, -1, filterPars(params)))
+        complete(app.get(viewName, -1, filterPars(params) + (name -> value)))
       }
     }
 
