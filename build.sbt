@@ -1,7 +1,7 @@
 val scalaV = "2.13.3"
 
-val akkaHttpV = "10.1.12"
-val akkaV = "2.6.5"
+val akkaHttpV = "10.2.0"
+val akkaV = "2.6.8"
 
 lazy val dependencies = {
   Seq(
