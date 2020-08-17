@@ -179,8 +179,17 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
   }
   def defaultView(ctx: ViewContext[Dto]): ViewContext[Dto] = {
     import ctx._
-    ctx.copy(result = qe.get(id, (viewFilter(viewName), params))(
-      ManifestFactory.classType(viewNameToClassMap(viewName)), tresqlResources))
+    if (id == -1) {
+      //get by name
+      qe.list[Dto](params, 0, 2)(
+        ManifestFactory.classType(viewNameToClassMap(viewName)), implicitly[Resources]) match {
+        case List(result) => ctx.copy(result = Some(result))
+        case Nil => ctx.copy(result = None)
+        case _ => throw new BusinessException("Too many rows returned")
+      }
+    } else
+      ctx.copy(result = qe.get(id, (viewFilter(viewName), params))(
+        ManifestFactory.classType(viewNameToClassMap(viewName)), implicitly[Resources]))
   }
   implicit object Create extends HExt[CreateContext[Dto]] {
     override def defaultAction(ctx: CreateContext[Dto]): CreateContext[Dto] =

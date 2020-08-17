@@ -68,19 +68,7 @@ trait AppServiceBase[User]
   def getByNameAction(viewName: String, name: String, value: String)(implicit user: User, state: Map[String, Any]) =
     parameterMultiMap { params =>
       extractTimeout { implicit timeout =>
-        app.list(viewName, filterPars(params) + (name -> value), 0, 2).toList match {
-          case List(result) => complete(result)
-          case Nil => complete(StatusCodes.NotFound)
-          case l if l.size > 1 => complete(
-            HttpResponse(
-              status = StatusCodes.PreconditionFailed,
-              entity = HttpEntity.Strict(
-                contentType = ContentTypes.`text/plain(UTF-8)`,
-                data = ByteString("Too many rows returned")
-              )
-            )
-          )
-        }
+        complete(app.get(viewName, -1, filterPars(params)))
       }
     }
 
