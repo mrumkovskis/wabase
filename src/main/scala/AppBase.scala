@@ -172,7 +172,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
 
  /** before(), after() and on() methods can be used from business code. */
   /** Names of date or time fields updated automatically on save */
-  lazy val autoTimeFieldNames = Set("aktualizacijas_laiks", "aktualizacijas_datums")
+  val autoTimeFieldNames = Set("update_time")
   implicit object View extends HExt[ViewContext[Dto]] {
     override def defaultAction(ctx: ViewContext[Dto]): ViewContext[Dto] =
       defaultView(ctx)
