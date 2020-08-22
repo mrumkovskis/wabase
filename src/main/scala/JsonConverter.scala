@@ -73,12 +73,4 @@ trait JsonConverter { self: AppQuerease =>
       w(value).asInstanceOf[JsArray]
     }
   }
-
-  /*
-  implicit object ErrorJsonFormat extends JsonFormat[Error] with JsonConverter {
-    def read(value: JsValue) = sys.error("not implemented yet")
-    def write(value: Error) = JsObject(Map("messages" -> w(value.messages),
-      "field_messages" -> w(value.fieldMessages)))
-  }
-  */
 }
