@@ -19,7 +19,7 @@ import scala.concurrent.Future
 import AppServiceBase._
 import Authentication.SessionUserExtractor
 import DeferredControl._
-import java.net.URLEncoder
+import java.util.Locale
 
 import akka.http.scaladsl.server.util.Tuple
 import akka.util.ByteString
@@ -36,6 +36,7 @@ trait AppServiceBase[User]
   with AppStateExtractor
   with JsonConverterProvider
   with DbAccessProvider
+  with AppIi18nService
   with Marshalling {
   this: QueryTimeoutExtractor with Execution =>
 
@@ -387,10 +388,17 @@ object AppServiceBase {
   trait AppStateExtractor { this: AppServiceBase[_] =>
     val ApplicationStateCookiePrefix = "current_"
     def applicationState = extract(r => extractState(r.request, ApplicationStateCookiePrefix))
-    protected def extractState(req: HttpRequest, prefix: String) = req.headers.flatMap {
-      case c: Cookie => c.cookies.filter(_.name.startsWith(prefix))
-      case _ => Nil
-    } map (c => c.name -> decodeParam(c.name, c.value)) toMap
+    protected def extractState(req: HttpRequest, prefix: String) = {
+      val state = req.headers.flatMap {
+        case c: Cookie => c.cookies.filter(_.name.startsWith(prefix))
+        case _ => Nil
+      } map (c => c.name -> decodeParam(c.name, c.value)) toMap
+      val langKey = ApplicationStateCookiePrefix + ApplicationLanguageCookiePostfix
+      if (state.contains(langKey))
+        state
+      else
+        currentLangFromHeader(req).map(l => state + (langKey -> l)).getOrElse(state)
+    }
   }
 
   trait AppVersion {
@@ -499,6 +507,61 @@ object AppServiceBase {
           .withFallback(bindVariableExceptionHandler(this.logger, this.bindVariableExceptionResponseMessage))
           .withFallback(PostgresTimeoutExceptionHandler(this))
           .withFallback(viewNotFoundExceptionHandler)
+    }
+  }
+
+  trait AppIi18nService { this: AppServiceBase[_] =>
+    val ApplicationLanguageCookiePostfix = "lang"
+
+    val i18n: I18n = initI18n
+    protected def initI18n: I18n
+
+    def i18nPath = pathPrefix("i18n") & get
+    def i18nLanguagePath = path("lang" / Segment)
+    def i18nResourcePath = i18nPath & path(Segment ~ Slash.?)
+    def i18nTranslatePath = i18nPath & path(Segment / Segment / RemainingPath ~ Slash.?)
+
+    def setLanguage: Route = (i18nPath & i18nLanguagePath) { lang =>
+      setCookie(
+        HttpCookie(ApplicationStateCookiePrefix + ApplicationLanguageCookiePostfix,
+          value = lang,
+          path = Some("/")
+        )
+      ) { complete("Ok") }
+    }
+
+    import jsonConverter._
+
+    def i18nResources: Route = (i18nPath & i18nResourcePath) { resources =>
+      applicationLocale { locale =>
+        complete(i18n.resources(resources, locale))
+      }
+    }
+
+    def i18nTranslate: Route = (i18nPath & i18nTranslatePath) { (name, key, params) =>
+      applicationLocale { locale =>
+        import akka.http.scaladsl.model.Uri._
+        def paramsList(path: Path): List[String] = path match {
+          case Path.Empty => Nil
+          case _: Path.Slash => paramsList(path.tail)
+          case Path.Segment(h, t) => h :: paramsList(t)
+        }
+        complete(i18n.translate(name, locale, key, paramsList(params): _*))
+      }
+    }
+
+    def currentLangFromHeader(request: HttpRequest) = {
+      LanguageNegotiator(request.headers)
+        .acceptedLanguageRanges
+        .headOption
+        .map(l => l.primaryTag +: l.subTags)
+        .map(_.mkString("-"))
+    }
+
+    def applicationLocale = applicationState.map { state =>
+      state.get(ApplicationStateCookiePrefix + ApplicationLanguageCookiePostfix)
+        .map(l => new Locale(String.valueOf(l)))
+        .getOrElse(Locale.getDefault)
     }
   }
 }

@@ -45,6 +45,7 @@ class TestAppService(system: ActorSystem) extends ExecutionImpl()(system)
   override type App = TestApp
   override def initApp: App = TestApp
   override def initFileStreamer: TestApp = TestApp
+  override def initI18n: I18n = new I18n{}
   override lazy val deferredUris = Set("long-req")
   override lazy val deferredTimeouts = Map("long-req" -> Duration("10s"))
   override lazy val deferredWorkerCount = 3

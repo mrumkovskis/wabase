@@ -54,12 +54,23 @@ trait JsonConverter { self: AppQuerease =>
   implicit object MapJsonFormat extends JsonFormat[Map[String, Any]] {
     def read(value: JsValue) = {
       value match {
-        case JsObject(fields: Map[String, JsValue]) => r(value).asInstanceOf[Map[String, Any]]
+        case _: JsObject => r(value).asInstanceOf[Map[String, Any]]
         case x => sys.error("Invalid JsValue object, unable to produce map: " + x)
       }
     }
     def write(value: Map[String, Any]) = {
       w(value).asInstanceOf[JsObject]
+    }
+  }
+  implicit object TupleJsonFormat extends JsonFormat[(String, Any)] {
+    def read(value: JsValue) = {
+      value match {
+        case JsObject(f) if f.size == 1 => r(value).asInstanceOf[Map[String, Any]].head
+        case x => sys.error("Invalid JsValue object, unable to produce tuple: " + x)
+      }
+    }
+    def write(value: (String, Any)) = {
+      w(Map(value)).asInstanceOf[JsObject]
     }
   }
   implicit object ListJsonFormat extends JsonFormat[List[Any]] {

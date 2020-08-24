@@ -124,6 +124,21 @@ trait AppMarshalling { this: AppServiceBase[_] with Execution =>
     override def close() = result.close()
   }
 
+  class JsonListChunker[T: JsonFormat](val result: Iterator[T], writer: Writer) extends RowWriter {
+    override def header() = writer write "["
+
+    var first = true
+    override def row(): Unit = {
+      if(first) first = false else writer write ",\n"
+      writer write result.next.toJson.compactPrint
+    }
+
+    override def footer() = writer write "]\n"
+
+    def hasNext = result.hasNext
+    def close() = {}
+  }
+
   val dbBufferSize = 1024 * 32
   val dbDataFileMaxSize = MarshallingConfig.dbDataFileMaxSize
 
@@ -168,8 +183,17 @@ trait AppMarshalling { this: AppServiceBase[_] with Execution =>
     }
   }
 
+  import RowSource._
+  implicit def toResponseListJsonMarshaller[T: JsonFormat]: FutureResponseMarshaller[Iterator[T]] =
+    Marshaller.withFixedContentType(`application/json`) {
+      result =>
+        httpResponse(`application/json`, new JsonListChunker(result, _: Writer), dbDataFileMaxSize)
+    }
+
   type FutureResponse = Future[HttpResponse]
   type FutureResponseMarshaller[T] = Marshaller[T, FutureResponse]
+
+
 
   implicit def toFutureResponseMarshallable[A](_value: A)(implicit _marshaller: FutureResponseMarshaller[A]): ToResponseMarshallable =
     new ToResponseMarshallable {
