@@ -15,7 +15,7 @@ trait I18n {
 
   def translate(name: String, locale: Locale, str: String, params: String*): String = {
     Try(bundle(name, locale).getString(str))
-      .recover(_ => str)
+      .recover { case _ => str }
       .map(s => Try(s.format(params: _*)).getOrElse(s))
       .getOrElse(str)
   }
