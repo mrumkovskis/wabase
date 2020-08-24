@@ -21,7 +21,8 @@ object TestDbAccess extends DbAccess with Loggable {
 }
 
 trait TestApp extends AppBase[TestUsr] with NoAudit[TestUsr] with PostgreSqlConstraintMessage with
-  DbAccessDelegate with NoAuthorization[TestUsr] with AppFileStreamer[TestUsr] with AppConfig with DefaultValidationEngine {
+  DbAccessDelegate with NoAuthorization[TestUsr] with AppFileStreamer[TestUsr] with AppConfig with
+  DefaultValidationEngine with I18n {
   override type QE = AppQuerease
   override protected def initQuerease: QE = DefaultAppQuerease
   override def dbAccessDelegate: DbAccess = TestDbAccess
@@ -45,7 +46,7 @@ class TestAppService(system: ActorSystem) extends ExecutionImpl()(system)
   override type App = TestApp
   override def initApp: App = TestApp
   override def initFileStreamer: TestApp = TestApp
-  override def initI18n: I18n = new I18n{}
+  override def initI18n: I18n = TestApp
   override lazy val deferredUris = Set("long-req")
   override lazy val deferredTimeouts = Map("long-req" -> Duration("10s"))
   override lazy val deferredWorkerCount = 3

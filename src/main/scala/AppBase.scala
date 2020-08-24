@@ -28,7 +28,12 @@ object AppBase {
 }
 
 trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider with DbAccessProvider {
-  this: DbAccess with Authorization[User] with ValidationEngine with DbConstraintMessage with Audit[User] =>
+  this: DbAccess
+    with Authorization[User]
+    with ValidationEngine
+    with DbConstraintMessage
+    with Audit[User]
+    with I18n =>
 
   override def dbAccess = this
 

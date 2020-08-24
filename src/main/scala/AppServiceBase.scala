@@ -458,7 +458,7 @@ object AppServiceBase {
 
     /** Handles and logs PostgreSQL timeout exceptions */
     trait PostgresTimeoutExceptionHandler[User] extends AppExceptionHandler {
-      this: AppStateExtractor with SessionUserExtractor[User] with ServerStatistics with DeferredCheck =>
+      this: AppStateExtractor with SessionUserExtractor[User] with ServerStatistics with DeferredCheck with AppIi18nService =>
       override val appExceptionHandler = PostgresTimeoutExceptionHandler(this)
     }
 
@@ -468,7 +468,7 @@ object AppServiceBase {
       val TimeoutFriendlyMessage = "Request canceled due to too long processing time"
       def apply[User](
         appService: AppStateExtractor with SessionUserExtractor[User]
-          with ServerStatistics with DeferredCheck) = ExceptionHandler {
+          with ServerStatistics with DeferredCheck with AppIi18nService) = ExceptionHandler {
        case e: org.postgresql.util.PSQLException if e.getMessage == TimeoutSignature =>
         import appService._
         registerTimeout
@@ -483,7 +483,8 @@ object AppServiceBase {
             timeoutLogger.error(msg)
             pass
           }.apply { //somehow apply method must be called explicitly ???
-            complete(HttpResponse(InternalServerError, entity = TimeoutFriendlyMessage))
+            complete(HttpResponse(InternalServerError,
+              entity = i18n.translate(getApplicationLocale(appState), TimeoutFriendlyMessage)))
           }
         }
       }
@@ -500,7 +501,13 @@ object AppServiceBase {
     }
 
     trait DefaultAppExceptionHandler[User] extends SimpleExceptionHandler with PostgresTimeoutExceptionHandler[User] {
-      this: AppStateExtractor with SessionUserExtractor[User] with ServerStatistics with Loggable with DeferredCheck with BasicJsonMarshalling =>
+      this: AppStateExtractor
+        with SessionUserExtractor[User]
+        with ServerStatistics
+        with Loggable
+        with DeferredCheck
+        with BasicJsonMarshalling
+        with AppIi18nService =>
       override val appExceptionHandler =
         businessExceptionHandler(this.logger)
           .withFallback(entityStreamSizeExceptionHandler(this))
@@ -558,10 +565,11 @@ object AppServiceBase {
         .map(_.mkString("-"))
     }
 
-    def applicationLocale = applicationState.map { state =>
+    def applicationLocale = applicationState.map(getApplicationLocale)
+
+    def getApplicationLocale(state: Map[String, Any]): Locale =
       state.get(ApplicationStateCookiePrefix + ApplicationLanguageCookiePostfix)
         .map(l => new Locale(String.valueOf(l)))
         .getOrElse(Locale.getDefault)
-    }
   }
 }
