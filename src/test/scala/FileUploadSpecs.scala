@@ -103,7 +103,7 @@ class FileUploadSpecs extends FlatSpec with Matchers with ScalatestRouteTest {
     val content = List.fill(10000)(ByteString("FILE CONTENT UTF-8 (зимние rūķīši) "))
     val source = Source(content)
 
-    val route = service.uploadPath { _ => service.uploadAction(None)(usr, Map())}
+    val route = service.uploadPath { _ => service.uploadAction(None)(usr, ApplicationState(Map()))}
     val entity = Default(ContentTypes.`text/plain(UTF-8)`, content.length, source)
     Post(uploadPath, entity) ~> route ~> check {
       implicit val m = service.jsObjectUnmarshaller(service.sprayJsValueUnmarshaller)
@@ -116,7 +116,7 @@ class FileUploadSpecs extends FlatSpec with Matchers with ScalatestRouteTest {
     val contentSent = "FILE CONTENT UTF-8 (зимние rūķīši) " * 10000
     val multipartForm = CoreClient.fileUploadForm(HttpEntity(ContentTypes.`text/plain(UTF-8)`, ByteString(contentSent)), "Test.txt")
 
-    val route = service.uploadPath { _ => service.uploadAction(None)(usr, Map())}
+    val route = service.uploadPath { _ => service.uploadAction(None)(usr, ApplicationState(Map()))}
     Post(uploadPath, multipartForm) ~> route ~> check {
       implicit val m = service.jsObjectUnmarshaller(service.sprayJsValueUnmarshaller)
       val res = responseAs[JsObject]
@@ -128,7 +128,7 @@ class FileUploadSpecs extends FlatSpec with Matchers with ScalatestRouteTest {
     val content = "1" * (service.uploadSizeLimit.toInt + 1)
     val multipartForm = CoreClient.fileUploadForm(HttpEntity(ContentTypes.`text/plain(UTF-8)`, ByteString(content)), "Test.txt")
 
-    val route = service.uploadPath { _ => service.uploadAction(None)(usr, Map())}
+    val route = service.uploadPath { _ => service.uploadAction(None)(usr, ApplicationState(Map()))}
     Post(uploadPath, multipartForm) ~> route ~> check {
       assertResult(status)(StatusCodes.PayloadTooLarge)
     }
@@ -142,7 +142,7 @@ class FileUploadSpecs extends FlatSpec with Matchers with ScalatestRouteTest {
     val chunkCount = service.uploadSizeLimit.toInt / 1024 + 1
     val source = Source(List.fill(chunkCount)(chunk))
 
-    val route = service.uploadPath { _ => service.uploadAction(None)(usr, Map())}
+    val route = service.uploadPath { _ => service.uploadAction(None)(usr, ApplicationState(Map()))}
     val entity = Chunked(ContentTypes.`text/plain(UTF-8)`, source)
     Post(uploadPath, entity) ~> route ~> check {
       assertResult(status)(StatusCodes.PayloadTooLarge)

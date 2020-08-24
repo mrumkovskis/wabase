@@ -59,28 +59,28 @@ trait AppServiceBase[User]
   def listPath = viewWithoutIdPath & get
   def countPath = path("count" / Segment) & get
 
-  def getByIdAction(viewName: String, id: Long)(implicit user: User, state: Map[String, Any]) =
+  def getByIdAction(viewName: String, id: Long)(implicit user: User, state: ApplicationState) =
     parameterMultiMap{ params =>
       extractTimeout{ implicit timeout =>
         complete(app.get(viewName, id, filterPars(params)))
       }
     }
 
-  def getByNameAction(viewName: String, name: String, value: String)(implicit user: User, state: Map[String, Any]) =
+  def getByNameAction(viewName: String, name: String, value: String)(implicit user: User, state: ApplicationState) =
     parameterMultiMap { params =>
       extractTimeout { implicit timeout =>
         complete(app.get(viewName, -1, filterPars(params) + (name -> value)))
       }
     }
 
-  def createAction(viewName: String)(implicit user: User, state: Map[String, Any]) =
+  def createAction(viewName: String)(implicit user: User, state: ApplicationState) =
     parameterMultiMap{ params =>
       extractTimeout{ implicit timeout =>
         complete(app.create(viewName, filterPars(params)))
       }
     }
 
-  def deleteAction(viewName: String, id: Long)(implicit user: User, state: Map[String, Any]) =
+  def deleteAction(viewName: String, id: Long)(implicit user: User, state: ApplicationState) =
     parameterMultiMap { params =>
       extractTimeout{ implicit timeout =>
         complete {
@@ -94,7 +94,7 @@ trait AppServiceBase[User]
       }
     }
 
-  def updateAction(viewName: String, id: Long)(implicit user: User, state: Map[String, Any]) =
+  def updateAction(viewName: String, id: Long)(implicit user: User, state: ApplicationState) =
     extractUri { requestUri =>
       parameterMultiMap { params =>
         extractTimeout { implicit timeout =>
@@ -110,7 +110,7 @@ trait AppServiceBase[User]
       }
     }
 
-  def listAction(viewName: String)(implicit user: User, state: Map[String, Any]) =
+  def listAction(viewName: String)(implicit user: User, state: ApplicationState) =
     parameterMultiMap { params =>
       extractTimeout { implicit timeout =>
         complete {
@@ -124,7 +124,7 @@ trait AppServiceBase[User]
       }
     }
 
-  def insertAction(viewName: String)(implicit user: User, state: Map[String, Any]) =
+  def insertAction(viewName: String)(implicit user: User, state: ApplicationState) =
     extractUri { requestUri =>
       parameterMultiMap { params =>
         extractTimeout { implicit timeout =>
@@ -140,7 +140,7 @@ trait AppServiceBase[User]
       }
     }
 
-  def countAction(viewName: String)(implicit user: User, state: Map[String, Any]) =
+  def countAction(viewName: String)(implicit user: User, state: ApplicationState) =
     parameterMultiMap { params =>
       extractTimeout {implicit timeout =>
         complete(app.count(viewName, filterPars(params)).toString)
@@ -159,7 +159,7 @@ trait AppServiceBase[User]
       value <- keyValues._2
     } yield s"${keyValues._1}=$value").mkString("&") }
 
-  def crudAction(implicit user: User) = applicationState{implicit state =>
+  def crudAction(implicit user: User) = applicationState{ implicit state =>
     getByIdPath{ getByIdAction
     } ~ getByNamePath { getByNameAction
     } ~ createPath { createAction
@@ -250,7 +250,7 @@ trait AppFileServiceBase[User] {
   import AppFileStreamer._
   def validateFileName(fileName: String) = {}
 
-  def extractFileDirective(filenameOpt: Option[String])(implicit user: User, state: Map[String, Any]): Directive[(Source[ByteString, Any], String, String)] =
+  def extractFileDirective(filenameOpt: Option[String])(implicit user: User, state: ApplicationState): Directive[(Source[ByteString, Any], String, String)] =
     (withSizeLimit(uploadSizeLimit) & post & extractRequestContext).flatMap { ctx =>
       def multipartFormUpload = {
         entity(as[Multipart.FormData]).flatMap { _ =>
@@ -279,7 +279,7 @@ trait AppFileServiceBase[User] {
                           contentType: String
                          )(implicit
                           user: User,
-                          state: Map[String, Any]
+                          state: ApplicationState
                          ): Directive1[Future[FileInfo]] =
     extractRequestContext.map { ctx =>
       import ctx._
@@ -308,7 +308,7 @@ trait AppFileServiceBase[User] {
 
   def uploadAction(filenameOpt: Option[String])(implicit
           user: User,
-          state: Map[String, Any]
+          state: ApplicationState
          ): Route = {
     val ufd = extractFileDirective(filenameOpt).andThen(uploadFileDirective _).flatMap(onSuccess(_))
     ufd(fi => complete(fi.toMap))
@@ -316,7 +316,7 @@ trait AppFileServiceBase[User] {
 
   def uploadMultipleAction(implicit
       user: User,
-      state: Map[String, Any],
+      state: ApplicationState,
   ): Route = withSizeLimit(uploadSizeLimit) {
     post {
       extractRequestContext { ctx =>
@@ -361,7 +361,7 @@ trait AppFileServiceBase[User] {
     }
   }
 
-  def downloadAction(fileInfoHelperOpt: Option[FileInfoHelper])(implicit user: User, state: Map[String, Any]): Route = {
+  def downloadAction(fileInfoHelperOpt: Option[FileInfoHelper])(implicit user: User, state: ApplicationState): Route = {
     fileInfoHelperOpt match {
       case Some(fi) =>
         complete(HttpResponse(
@@ -379,7 +379,7 @@ trait AppFileServiceBase[User] {
     }
   }
 
-  def downloadAction(id: Long, sha256: String)(implicit user: User, state: Map[String, Any]): Route =
+  def downloadAction(id: Long, sha256: String)(implicit user: User, state: ApplicationState): Route =
     downloadAction(fileStreamer.getFileInfo(id, sha256))
 }
 
@@ -395,9 +395,11 @@ object AppServiceBase {
       } map (c => c.name -> decodeParam(c.name, c.value)) toMap
       val langKey = ApplicationStateCookiePrefix + ApplicationLanguageCookiePostfix
       if (state.contains(langKey))
-        state
+        ApplicationState(state, new Locale(String.valueOf(state(langKey))))
       else
-        currentLangFromHeader(req).map(l => state + (langKey -> l)).getOrElse(state)
+        currentLangFromHeader(req)
+          .map(l => ApplicationState(state + (langKey -> l), new Locale(l)))
+          .getOrElse(ApplicationState(state))
     }
   }
 
@@ -473,7 +475,7 @@ object AppServiceBase {
         import appService._
         registerTimeout
         (extractUserFromSession & extractRequest & applicationState) { (userOpt, req, appState) =>
-          val aState = appState.map{ case (k,v) => s"$k = $v" }.mkString("{", ", ", "}")
+          val aState = appState.state.map{ case (k,v) => s"$k = $v" }.mkString("{", ", ", "}")
           val userString = userOpt.map(_.toString).orNull
           val msg = s"JDBC timeout, statement cancelled - ${req.method} ${req.uri}, state - $aState, user - $userString"
           isDeferred
@@ -567,8 +569,8 @@ object AppServiceBase {
 
     def applicationLocale = applicationState.map(getApplicationLocale)
 
-    def getApplicationLocale(state: Map[String, Any]): Locale =
-      state.get(ApplicationStateCookiePrefix + ApplicationLanguageCookiePostfix)
+    def getApplicationLocale(state: ApplicationState): Locale =
+      state.state.get(ApplicationStateCookiePrefix + ApplicationLanguageCookiePostfix)
         .map(l => new Locale(String.valueOf(l)))
         .getOrElse(Locale.getDefault)
   }

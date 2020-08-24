@@ -14,14 +14,14 @@ import org.wabase.MapUtils._
 /** Audit and all subimplementations use {{{qe.DTO}}} and {{{qe.DWI}}} */
 trait Audit[User] { this: AppBase[User] =>
   def audit[C <: RequestContext[_]](originalContext: C)(action: => C): C
-  def auditSave(id: jLong, viewName: String, instance: Map[String, Any], error: String)(implicit user: User, state: Map[String, Any]): Unit
+  def auditSave(id: jLong, viewName: String, instance: Map[String, Any], error: String)(implicit user: User, state: ApplicationState): Unit
   def auditLogin(user: User, loginInfo: qe.DTO)
 }
 
 object Audit {
  trait NoAudit[User] extends Audit[User] { this: AppBase[User] =>
   def audit[C <: RequestContext[_]](originalContext: C)(action: => C): C = action
-  def auditSave(id: jLong, viewName: String, instance: Map[String, Any], error: String)(implicit user: User, state: Map[String, Any]) {}
+  def auditSave(id: jLong, viewName: String, instance: Map[String, Any], error: String)(implicit user: User, state: ApplicationState) {}
   def auditLogin(user: User, loginInfo: qe.DTO) {}
  }
 
@@ -116,7 +116,7 @@ object Audit {
      )
    }
 
-   def logList(view: String, user: User, inParams: Map[String, Any], offset: Int, limit: Int, orderBy: String, state: Map[String, Any], doCount: Boolean) {
+   def logList(view: String, user: User, inParams: Map[String, Any], offset: Int, limit: Int, orderBy: String, state: ApplicationState, doCount: Boolean) {
      audit(AuditData(
        action = "list",
        entity = view,
@@ -129,7 +129,7 @@ object Audit {
      )
    }
 
-   override def auditSave(id: jLong, viewName: String, map: Map[String, Any], error: String)(implicit user: User, state: Map[String, Any]) {
+   override def auditSave(id: jLong, viewName: String, map: Map[String, Any], error: String)(implicit user: User, state: ApplicationState) {
      val relevantIds = getRelevantIds(viewName, id, map, loadFromDb = false, null)
      audit(AuditData(action = "create", entity_id = id, user = user, time = now, entity = viewName,
        newData = map, relevant_id = relevantIds, error = error))

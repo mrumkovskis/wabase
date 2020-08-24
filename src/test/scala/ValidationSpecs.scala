@@ -95,7 +95,7 @@ class ValidationSpecs extends FlatSpec with Matchers with BeforeAndAfterAll {
   }
 
   implicit val usr = TestUsr(1)
-  implicit val state: Map[String, Any] = Map.empty
+  implicit val state: ApplicationState = ApplicationState(Map())
   implicit val timeout: QueryTimeout = DefaultQueryTimeout.get
 
   implicit val f02 = jsonFormat2(querease.ValidationErrors)

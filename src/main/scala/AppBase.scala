@@ -1,5 +1,7 @@
 package org.wabase
 
+import java.util.Locale
+
 import mojoz.metadata.Type
 import querease.NotFoundException
 import querease.FilterType
@@ -14,7 +16,7 @@ import scala.language.implicitConversions
 import scala.collection.immutable.TreeMap
 import scala.reflect.ManifestFactory
 import scala.util.Try
-import org.tresql.{Env, Resources, RowLike}
+import org.tresql.{Resources, RowLike}
 import AppMetadata._
 import ValidationEngine.CustomValidationFunctions.is_valid_email
 import spray.json.DefaultJsonProtocol.{StringJsonFormat, jsonFormat2, listFormat}
@@ -26,6 +28,8 @@ object AppBase {
     lazy val appConfig: Config = config.getConfig("app")
   }
 }
+
+case class ApplicationState(state: Map[String, Any], locale: Locale = Locale.getDefault)
 
 trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider with DbAccessProvider {
   this: DbAccess
@@ -95,10 +99,13 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
     def close() = onCloseAction(())
   }
 
+  implicit def appStateToMap(state: ApplicationState): Map[String, Any] = state.state
+  implicit def mapToAppState(state: Map[String, Any]) = ApplicationState(state)
+
   sealed trait RequestContext[+T] {
     def user: User
     def inParams: Map[String, Any]
-    def state: Map[String, Any]
+    def state: ApplicationState
     def result: T
     def viewName: String
     def params: Map[String, Any]
@@ -107,7 +114,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
   case class ViewContext[+T <: Dto](viewName: String, id: Long,
     inParams: Map[String, Any] = Map(),
     user: User,
-    state: Map[String, Any] = Map(), result: Option[T] = null)
+    state: ApplicationState = Map[String, Any](), result: Option[T] = null)
     extends RequestContext[Option[T]] {
     val params = state ++ inParams ++ current_user_param(user)
   }
@@ -115,7 +122,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
   case class CreateContext[+T <: Dto](viewName: String,
     inParams: Map[String, Any] = Map(),
     user: User,
-    state: Map[String, Any] = Map(), result: T = null)
+    state: ApplicationState = Map[String, Any](), result: T = null)
     extends RequestContext[T] {
     val params = state ++ inParams ++ current_user_param(user)
   }
@@ -127,7 +134,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
     limit: Int = 0,
     orderBy: String = null,
     user: User,
-    state: Map[String, Any] = Map(),
+    state: ApplicationState = Map[String, Any](),
     completePromise: Promise[Unit],
     doCount: Boolean = false,
     timeoutSeconds: QueryTimeout,
@@ -153,7 +160,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
       inParams: Map[String, Any] = Map(),
       user: User,
       completePromise: Promise[Long],
-      state: Map[String, Any] = Map(),
+      state: ApplicationState = Map[String, Any](),
       extraPropsToSave: Map[String, Any] = Map(),
       transform: Map[String, Any] => Map[String, Any] = m => m,
       result: Long = -1) extends RequestContext[Long] {
@@ -166,7 +173,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
       inParams: Map[String, Any] = Map(),
       user: User,
       completePromise: Promise[Unit],
-      state: Map[String, Any] = Map(),
+      state: ApplicationState = Map[String, Any](),
       result: Long = -1,
       old: T = null)
     extends RequestContext[Long] {
@@ -431,7 +438,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
 
   //rest services entry points
   def getRaw(viewName: String, id: Long, params: Map[String, Any] = Map())(
-    implicit user: User, state: Map[String, Any], timeoutSeconds: QueryTimeout, poolName: PoolName) =
+    implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout, poolName: PoolName) =
     checkApi(viewName, "get", user) {
       dbUse {
         implicit val clazz = viewNameToClassMap(viewName)
@@ -442,12 +449,12 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
     }
 
   def get(viewName: String, id: Long, params: Map[String, Any] = Map())(
-    implicit user: User, state: Map[String, Any], timeoutSeconds: QueryTimeout,
+    implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout,
       poolName: PoolName = PoolName(viewDef(viewName).cp)) =
     createViewResult(getRaw(viewName, id, params))
 
   def createRaw(viewName: String, params: Map[String, Any] = Map.empty)(
-    implicit user: User, state: Map[String, Any], timeoutSeconds: QueryTimeout, poolName: PoolName) =
+    implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout, poolName: PoolName) =
     checkApi(viewName, "get", user) {
       dbUse {
         implicit val clazz = viewNameToClassMap(viewName)
@@ -458,7 +465,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
     }
 
   def create(viewName: String, params: Map[String, Any] = Map.empty)(
-    implicit user: User, state: Map[String, Any], timeoutSeconds: QueryTimeout,
+    implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout,
       poolName: PoolName = PoolName(viewDef(viewName).cp)) =
     createCreateResult(createRaw(viewName, params))
 
@@ -470,7 +477,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
     orderBy: String = null,
     doCount: Boolean = false)(
       implicit user: User,
-      state: Map[String, Any],
+      state: ApplicationState,
       timeoutSeconds: QueryTimeout,
       poolName: PoolName) =
     checkApi(viewName, "list", user) {
@@ -492,14 +499,14 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
     orderBy: String = null,
     doCount: Boolean = false)(
       implicit user: User,
-      state: Map[String, Any],
+      state: ApplicationState,
       timeoutSeconds: QueryTimeout,
       poolName: PoolName = PoolName(viewDef(viewName).cp)) =
     createListResult(listRaw(viewName, params, offset, limit, orderBy, doCount))
 
   def count(viewName: String, params: Map[String, Any])(
     implicit user: User,
-    state: Map[String, Any],
+    state: ApplicationState,
     timeoutSeconds: QueryTimeout,
     poolName: PoolName = PoolName(viewDef(viewName).cp)) = checkApi(viewName, "list", user) {
     val result = listInternal(viewName, params, doCount = true)
@@ -515,7 +522,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
     orderBy: String = null,
     doCount: Boolean = false)(
       implicit user: User,
-      state: Map[String, Any],
+      state: ApplicationState,
       timeoutSeconds: QueryTimeout,
       poolName: PoolName) = {
 
@@ -536,14 +543,14 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
   }
 
   def save(viewName: String, obj: JsObject, params: Map[String, Any] = Map(), emptyStringsToNull: Boolean = true)(
-    implicit user: User, state: Map[String, Any], timeoutSeconds: QueryTimeout,
+    implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout,
       poolName: PoolName = PoolName(viewDef(viewName).cp)) = {
     val instance = qe.fill[Dto](obj)(Manifest.classType(viewNameToClassMap(viewName)))
     saveInternal(viewName, instance, params, emptyStringsToNull)
   }
 
   def saveApp(instance: Dto, params: Map[String, Any] = Map(), emptyStringsToNull: Boolean = true, extraPropsToSave: Map[String, Any] = Map())(
-    implicit user: User, state: Map[String, Any], timeoutSeconds: QueryTimeout,
+    implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout,
       poolName: PoolName = PoolName(viewDef(classToViewNameMap(instance.getClass)).cp)) = {
     saveInternal(classToViewNameMap(instance.getClass), instance, params, emptyStringsToNull, extraPropsToSave)
   }
@@ -556,7 +563,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
     extraPropsToSave: Map[String, Any] = Map()
   )(
     implicit user: User,
-    state: Map[String, Any],
+    state: ApplicationState,
     timeoutSeconds: QueryTimeout,
     poolName: PoolName
   ) = {
@@ -606,7 +613,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
   }
 
   def delete(viewName: String, id: Long, params: Map[String, Any] = Map())(
-    implicit user: User, state: Map[String, Any], timeoutSeconds: QueryTimeout,
+    implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout,
       poolName: PoolName = PoolName(viewDef(viewName).cp)) =
     checkApi(viewName, "delete", user) {
       val promise = Promise[Unit]()
