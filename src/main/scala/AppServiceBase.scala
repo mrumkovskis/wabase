@@ -170,11 +170,12 @@ trait AppServiceBase[User]
   }
 
   def apiAction(implicit user: User) = complete(app.api)
-  def metadataAction(viewName: String)(implicit user: User) = respondWithHeader(ETag(EntityTag(app.metadataVersionString))) {
-    conditional(EntityTag(app.metadataVersionString), DateTime.now) {
-      val obj = if (viewName == "*") app.apiMetadata else app.metadata(viewName)
-      complete(obj)
-    }
+  def metadataAction(viewName: String)(implicit user: User, state: ApplicationState) =
+    respondWithHeader(ETag(EntityTag(app.metadataVersionString))) {
+      conditional(EntityTag(app.metadataVersionString), DateTime.now) {
+        val obj = if (viewName == "*") app.apiMetadata else app.metadata(viewName)
+        complete(obj)
+      }
   }
 
   val DefaultResourceExtensions = "js,css,html,png,gif,jpg,jpeg,svg,woff,ttf,woff2".split(",").toSet
@@ -486,7 +487,7 @@ object AppServiceBase {
             pass
           }.apply { //somehow apply method must be called explicitly ???
             complete(HttpResponse(InternalServerError,
-              entity = i18n.translate(getApplicationLocale(appState), TimeoutFriendlyMessage)))
+              entity = i18n.translate(TimeoutFriendlyMessage)(getApplicationLocale(appState))))
           }
         }
       }
@@ -541,21 +542,25 @@ object AppServiceBase {
 
     import jsonConverter._
 
-    def i18nResources: Route = (i18nPath & i18nResourcePath) { resources =>
-      applicationLocale { locale =>
-        complete(i18n.resources(resources, locale))
+    def i18nResources: Route = (i18nPath & applicationLocale) { implicit locale =>
+      complete(i18n.i18nResources)
+    }
+
+    def i18nResourcesFromBundle: Route = (i18nPath & i18nResourcePath) { resources =>
+      applicationLocale { implicit locale =>
+        complete(i18n.i18nResourcesFromBundle(resources))
       }
     }
 
     def i18nTranslate: Route = (i18nPath & i18nTranslatePath) { (name, key, params) =>
-      applicationLocale { locale =>
+      applicationLocale { implicit locale =>
         import akka.http.scaladsl.model.Uri._
         def paramsList(path: Path): List[String] = path match {
           case Path.Empty => Nil
           case _: Path.Slash => paramsList(path.tail)
           case Path.Segment(h, t) => h :: paramsList(t)
         }
-        complete(i18n.translate(name, locale, key, paramsList(params): _*))
+        complete(i18n.translateFromBundle(name, key, paramsList(params): _*))
       }
     }
 

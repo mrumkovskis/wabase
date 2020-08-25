@@ -31,13 +31,12 @@ object AppBase {
 
 case class ApplicationState(state: Map[String, Any], locale: Locale = Locale.getDefault)
 
-trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider with DbAccessProvider {
+trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider with DbAccessProvider with I18n {
   this: DbAccess
     with Authorization[User]
     with ValidationEngine
     with DbConstraintMessage
-    with Audit[User]
-    with I18n =>
+    with Audit[User] =>
 
   override def dbAccess = this
 
@@ -583,7 +582,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
         }.orNull
       }
       if (idOpt.isDefined && old == null)
-        throw new BusinessException("Record not found, cannot edit")
+        throw new BusinessException(translate("Record not found, cannot edit")(state.locale))
       if (old != null)
         // overwrite incoming values of non-updatable fields with old values from db
         // TODO for lookups and children?
@@ -661,11 +660,11 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
   lazy val metadataVersionString = org.apache.commons.codec.binary.Base64.encodeBase64URLSafeString(
     java.security.MessageDigest.getInstance("MD5").digest(qe.collectViews{ case v => v }.toList.toString.getBytes))
 
-  def metadata(viewName: String)(implicit user: User): JsObject = {
+  def metadata(viewName: String)(implicit user: User, state: ApplicationState): JsObject = {
     metadata(viewDef(viewName))
   }
 
-  def metadata(viewDef: ViewDef)(implicit user: User): JsObject = {
+  def metadata(viewDef: ViewDef)(implicit user: User, state: ApplicationState): JsObject = {
     import qe.{ FieldRefRegexp_ => FieldRefRegexp }
     JsObject(Map(
       "name" -> JsString(viewDef.name),
@@ -727,32 +726,32 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
   private val ContainsOpFilterDef = s"^.*%~+%\\s*:($ident)\\??$$".r
   private val EndsWithOpFilterDef = s"^.*%~+\\s*:($ident)\\??$$".r
   private val StartsWithOpFilterDef = s"^.*~+%\\s*:($ident)\\??$$".r
-  def filterFieldLabel(name: String, colLabel: String, filterType: FilterType): String = {
+  def filterFieldLabel(name: String, colLabel: String, filterType: FilterType): FilterLabel = {
     import querease.FilterType._
     filterType match {
       case ComparisonFilter(col, op, name, opt) =>
         op match {
           // TODO more operators?
-          case "%~~~%" | "%~~%" | "%~%" => colLabel + " (contains)"
-          case "%~~~" | "%~~" | "%~" => colLabel + " (ends with)"
-          case "~~~%" | "~~%" | "~%" => colLabel + " (begins with)"
-          case _ => colLabel
+          case "%~~~%" | "%~~%" | "%~%" => FilterLabel(colLabel, "contains")
+          case "%~~~" | "%~~" | "%~" => FilterLabel(colLabel, "ends with")
+          case "~~~%" | "~~%" | "~%" => FilterLabel(colLabel, "begins with")
+          case _ => FilterLabel(colLabel, null)
         }
       case IntervalFilter(nameFrom, optFrom, opFrom, col, opTo, nameTo, optTo) =>
-        if (name == nameFrom) colLabel.replace(" from", " (from)")
-        else if (name == nameTo) colLabel.replace(" to", " (to)")
-        else colLabel
+        if (name == nameFrom) FilterLabel(colLabel.replace(" from", ""), "from")
+        else if (name == nameTo) FilterLabel(colLabel.replace(" to", ""), "to")
+        else FilterLabel(colLabel, null)
       case OtherFilter(fExpr) => fExpr match {
-        case ContainsOpFilterDef(vName) if vName == name => colLabel + " (contains)"
-        case EndsWithOpFilterDef(vName) if vName == name => colLabel + " (ends with)"
-        case StartsWithOpFilterDef(vName) if vName == name => colLabel + " (begins with)"
-        case _ => colLabel
+        case ContainsOpFilterDef(vName) if vName == name => FilterLabel(colLabel, "contains")
+        case EndsWithOpFilterDef(vName) if vName == name => FilterLabel(colLabel, "ends with")
+        case StartsWithOpFilterDef(vName) if vName == name => FilterLabel(colLabel, "begins with")
+        case _ => FilterLabel(colLabel, null)
       }
-      case _ => colLabel
+      case _ => FilterLabel(colLabel, null)
     }
   }
 
-  def filterMetadata(view: ViewDef)(implicit user: User): Map[String, JsValue] =
+  def filterMetadata(view: ViewDef)(implicit user: User, state: ApplicationState): Map[String, JsValue] =
     Option(view.name).filter(viewNameToFilterMetadata.contains(_)).map(viewName => //bi reports isn't presented in viewNameToFilterMetadata
       Map(
         "filter" -> JsArray(viewNameToFilterMetadata(viewName).map(f => JsObject(Map(
@@ -760,7 +759,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
           "type" -> JsString(f.type_.name),
           "nullable" -> JsBoolean(f.nullable),
           "required" -> JsBoolean(f.required),
-          "label" -> Option(f.label).map(JsString(_)).getOrElse(JsNull),
+          "label" -> Option(f.label).map(fl => JsString(fl.render(state.locale))).getOrElse(JsNull),
           "enum" -> Option(f)
             .map(_.enum)
             .filter(_ != null)
@@ -787,8 +786,12 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
         )): _*)
       )).getOrElse(Map.empty)
 
+  case class FilterLabel(fieldName: String, filterName: String) {
+    def render(locale: Locale) = fieldName +
+      Option(filterName).map(fn => s" (${translate(fn)(locale)})").getOrElse("")
+  }
   case class FilterParameter(
-    name: String, table: String, label: String, nullable: Boolean, required: Boolean, type_ : Type, enum: Seq[String],
+    name: String, table: String, label: FilterLabel, nullable: Boolean, required: Boolean, type_ : Type, enum: Seq[String],
     refViewName: String, filterType: FilterType,
   )
   def currentUserParamNames: Set[String] = Set.empty
@@ -907,7 +910,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
   lazy val viewNameToFilterMetadata = qe.viewNameToClassMap.keys.toList.sorted
     .map(viewName => viewName -> filterParameters(qe.viewDef(viewName))).toMap
 
-  def apiMetadata(implicit user: User) = {
+  def apiMetadata(implicit user: User, state: ApplicationState) = {
     // TODO duplicate code, just filter differs
     val q = new collection.mutable.Queue[ViewDef]
     val names = collection.mutable.Set[String]()
@@ -964,8 +967,8 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
     throw noApiException(viewName, method, user)
   )
 
-  def fieldRequiredErrorMessage(viewName: String, field: qe.FieldDef): String =
-    s"""Field "${field.label}" is mandatory."""
+  def fieldRequiredErrorMessage(viewName: String, field: qe.FieldDef)(implicit locale: Locale): String =
+    translate("""Field\ %1$s\ is\ mandatory.""", field.label)
   def isFieldRequiredViolated(viewName: String, field: qe.FieldDef, value: Any): Boolean =
     field.required &&
     (value match {
@@ -974,24 +977,25 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
       case _ => false
     })
 
-  def fieldValueTooLongErrorMessage(viewName: String, field: qe.FieldDef, value: Any): String =
-    s"""Field "${field.label}" value length ${value.toString.length} exceeds maximum limit ${field.type_.length.get}."""
+  def fieldValueTooLongErrorMessage(viewName: String, field: qe.FieldDef, value: Any)(implicit locale: Locale): String =
+    translate("""Field "%1$s" value length %2$s exceeds maximum limit %3$s.""",
+      field.label, value.toString.length.toString, field.type_.length.get.toString)
   def isFieldValueMaxLengthViolated(viewName: String, field: qe.FieldDef, value: Any): Boolean =
     value != null &&
     field.type_.name == "string" &&
     field.type_.length.isDefined &&
     value.toString.length > field.type_.length.get
 
-  def fieldValueNotInEnumErrorMessage(viewName: String, field: qe.FieldDef, value: Any): String =
-    s"""Field "${field.label}" value must be from available value list."""
+  def fieldValueNotInEnumErrorMessage(viewName: String, field: qe.FieldDef, value: Any)(implicit locale: Locale): String =
+    translate("""Field "$%1$s" value must be from available value list.""", field.label)
   def isFieldValueEnumViolated(viewName: String, field: qe.FieldDef, value: Any): Boolean =
     value != null &&
     field.enum != null &&
     field.enum.size > 0 &&
     !field.enum.contains(value.toString)
 
-  def badEmailAddressErrorMessage(viewName: String, field: qe.FieldDef, value: Any): String =
-    s"""Field "${field.label}" is not valid e-mail address"""
+  def badEmailAddressErrorMessage(viewName: String, field: qe.FieldDef, value: Any)(implicit locale: Locale): String =
+    translate("""Field "%1$s" is not valid e-mail address""", field.label)
   def isEmailAddressField(viewName: String, field: qe.FieldDef): Boolean =
     field.type_.name == "email"  ||
     field.type_.name == "epasts" ||
@@ -1002,7 +1006,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
     isEmailAddressField(viewName, field) &&
     !is_valid_email(value.toString)
 
-  def validationErrorMessage(viewName: String, field: qe.FieldDef, value: Any): Option[String] = {
+  def validationErrorMessage(viewName: String, field: qe.FieldDef, value: Any)(implicit locale: Locale): Option[String] = {
     if (isFieldRequiredViolated(viewName, field, value))
       Option(fieldRequiredErrorMessage(viewName, field))
     else if (isFieldValueMaxLengthViolated(viewName, field, value))
@@ -1014,12 +1018,13 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
     else None
   }
 
-  def checkFieldValues(instance: Dto): Unit = {
+  def checkFieldValues(instance: Dto)(implicit state: ApplicationState): Unit = {
     def validateFields(viewName: String, map: Map[String, Any]): Unit = {
       val viewDef = qe.viewDef(viewName)
       // TODO ensure field ordering
       val errorMessages = viewDef.fields
-        .map(fld => validationErrorMessage(viewName, fld, map.getOrElse(Option(fld.alias).getOrElse(fld.name), null)))
+        .map(fld =>
+          validationErrorMessage(viewName, fld, map.getOrElse(Option(fld.alias).getOrElse(fld.name), null))(state.locale))
         .filter(_.isDefined)
         .map(_.get)
         .filter(_ != null)
@@ -1040,7 +1045,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
     validateFields(classToViewNameMap(instance.getClass), qe.toMap(instance))
   }
 
-  def validateFields(instance: Dto) = {
+  def validateFields(instance: Dto)(implicit state: ApplicationState) = {
     checkFieldValues(instance)
   }
 }

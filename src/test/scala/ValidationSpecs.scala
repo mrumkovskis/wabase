@@ -38,7 +38,7 @@ object ValidationSpecsQuerease extends ValidationSpecsQuerease {
 }
 
 class ValidationSpecsApp(val validationsDbAccess: DbAccess) extends AppBase[TestUsr] with NoAudit[TestUsr] with PostgreSqlConstraintMessage with
-  DbAccessDelegate with NoAuthorization[TestUsr] with I18n with NoValidation /* ha ha yeah */ {
+  DbAccessDelegate with NoAuthorization[TestUsr] with NoValidation /* ha ha yeah */ {
   override type QE = ValidationSpecsQuerease
   override protected def initQuerease: QE = ValidationSpecsQuerease
   override def dbAccessDelegate: DbAccess = validationsDbAccess

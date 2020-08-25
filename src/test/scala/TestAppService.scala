@@ -22,7 +22,7 @@ object TestDbAccess extends DbAccess with Loggable {
 
 trait TestApp extends AppBase[TestUsr] with NoAudit[TestUsr] with PostgreSqlConstraintMessage with
   DbAccessDelegate with NoAuthorization[TestUsr] with AppFileStreamer[TestUsr] with AppConfig with
-  DefaultValidationEngine with I18n {
+  DefaultValidationEngine {
   override type QE = AppQuerease
   override protected def initQuerease: QE = DefaultAppQuerease
   override def dbAccessDelegate: DbAccess = TestDbAccess
