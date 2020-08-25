@@ -13,6 +13,7 @@ wabase is web application based on [akka.io](http://akka.io/) web server providi
 * Framework for request audit.
 * Stateless session management.
 * Dynamic data validation in javascript.
+* Framework for I18n support.
 
 ## use in your sbt project
 add to your build.sbt file - libraryDependencies += "org.wabase" %% "wabase" % "1.0.0"
