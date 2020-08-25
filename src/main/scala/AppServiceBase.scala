@@ -36,7 +36,7 @@ trait AppServiceBase[User]
   with AppStateExtractor
   with JsonConverterProvider
   with DbAccessProvider
-  with AppIi18nService
+  with AppI18nService
   with Marshalling {
   this: QueryTimeoutExtractor with Execution =>
 
@@ -461,7 +461,7 @@ object AppServiceBase {
 
     /** Handles and logs PostgreSQL timeout exceptions */
     trait PostgresTimeoutExceptionHandler[User] extends AppExceptionHandler {
-      this: AppStateExtractor with SessionUserExtractor[User] with ServerStatistics with DeferredCheck with AppIi18nService =>
+      this: AppStateExtractor with SessionUserExtractor[User] with ServerStatistics with DeferredCheck with AppI18nService =>
       override val appExceptionHandler = PostgresTimeoutExceptionHandler(this)
     }
 
@@ -471,7 +471,7 @@ object AppServiceBase {
       val TimeoutFriendlyMessage = "Request canceled due to too long processing time"
       def apply[User](
         appService: AppStateExtractor with SessionUserExtractor[User]
-          with ServerStatistics with DeferredCheck with AppIi18nService) = ExceptionHandler {
+          with ServerStatistics with DeferredCheck with AppI18nService) = ExceptionHandler {
        case e: org.postgresql.util.PSQLException if e.getMessage == TimeoutSignature =>
         import appService._
         registerTimeout
@@ -510,7 +510,7 @@ object AppServiceBase {
         with Loggable
         with DeferredCheck
         with BasicJsonMarshalling
-        with AppIi18nService =>
+        with AppI18nService =>
       override val appExceptionHandler =
         businessExceptionHandler(this.logger)
           .withFallback(entityStreamSizeExceptionHandler(this))
@@ -520,7 +520,7 @@ object AppServiceBase {
     }
   }
 
-  trait AppIi18nService { this: AppServiceBase[_] =>
+  trait AppI18nService { this: AppServiceBase[_] =>
     val ApplicationLanguageCookiePostfix = "lang"
 
     val i18n: I18n = initI18n
