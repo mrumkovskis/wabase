@@ -193,8 +193,6 @@ trait AppMarshalling { this: AppServiceBase[_] with Execution =>
   type FutureResponse = Future[HttpResponse]
   type FutureResponseMarshaller[T] = Marshaller[T, FutureResponse]
 
-
-
   implicit def toFutureResponseMarshallable[A](_value: A)(implicit _marshaller: FutureResponseMarshaller[A]): ToResponseMarshallable =
     new ToResponseMarshallable {
       type T = A
