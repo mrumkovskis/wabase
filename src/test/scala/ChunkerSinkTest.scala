@@ -24,7 +24,7 @@ class ChunkerSinkTest extends AsyncFlatSpec {
     Future.foldLeft {
       res.map(_.flatMap {
         case (IncompleteSourceValue(s), x) => s.runReduce(_ ++ _).map(_ -> x)
-        case x => Future.successful(x)
+        case (CompleteSourceValue(s), x) => Future.successful(s -> x)
       })
     } (List[(Any, ByteString)]()) { (l, r) => r :: l }
     .map(_.unzip)
