@@ -39,7 +39,7 @@ lazy val commonSettings = Seq(
   scalaVersion := scalaV,
   crossScalaVersions := Seq(
     scalaV,
-    "2.12.10",
+    "2.12.12",
   ),
   scalacOptions ++= Seq("-unchecked", "-deprecation", "-feature",
     "-Xmacro-settings:metadataFactoryClass=querease.TresqlMetadataFactory" +
