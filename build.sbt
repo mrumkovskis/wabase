@@ -134,11 +134,6 @@ lazy val webapp = (project in file("."))
           <url>https://github.com/guntiso/</url>
         </developer>
         <developer>
-          <id>guntiso</id>
-          <name>Guntis Ozols</name>
-          <url>https://github.com/guntiso/</url>
-        </developer>
-        <developer>
           <id>muntis</id>
           <name>Muntis Grube</name>
           <url>https://github.com/muntis/</url>
