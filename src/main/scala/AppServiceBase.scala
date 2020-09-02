@@ -524,7 +524,7 @@ object AppServiceBase {
     val ApplicationLanguageCookiePostfix = "lang"
 
     val i18n: I18n = initI18n
-    protected def initI18n: I18n
+    protected def initI18n: I18n = app
 
     def i18nPath = pathPrefix("i18n") & get
     def i18nLanguagePath = path("lang" / Segment)
