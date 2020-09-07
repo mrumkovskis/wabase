@@ -14,7 +14,7 @@ lazy val dependencies = {
     "com.zaxxer"                  % "HikariCP"                          % "3.4.2",
     "ch.qos.logback"              % "logback-classic"                   % "1.2.3",
     "org.mojoz"                  %% "querease"                          % "4.0.0",
-    "org.tresql"                 %% "tresql"                            % "10.0.0",
+    "org.tresql"                 %% "tresql"                            % "10.1.0-SNAPSHOT",
     "org.mojoz"                  %% "mojoz"                             % "1.2.1",
     "commons-validator"           % "commons-validator"                 % "1.5.0",
     "commons-codec"               % "commons-codec"                     % "1.10",
