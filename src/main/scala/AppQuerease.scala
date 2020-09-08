@@ -52,7 +52,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
 trait Dto extends querease.Dto { self =>
 
   override protected type QE = AppQuerease
-  override protected type QDto >: Null <: Dto { type QE = self.QE }
+  override protected type QDto >: Null <: this.type
 
   import AppMetadata._
 
