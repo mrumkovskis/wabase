@@ -4,7 +4,6 @@ import org.tresql._
 
 import querease.Querease
 
-import scala.collection.immutable.Seq
 import scala.reflect.ManifestFactory
 
 import spray.json._
@@ -30,7 +29,7 @@ trait AppQuereaseIo extends querease.ScalaDtoQuereaseIo with JsonConverter { sel
 }
 
 abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata {
-  import AppMetadata._
+  import AppMetadata.AugmentedAppViewDef
   def validationsQueryString(viewDef: ViewDef): Option[String] = Option(
     if (viewDef.validations != null && viewDef.validations.nonEmpty)
       "messages(# idx, msg) {" +
@@ -45,7 +44,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       viewDef.fields
         .collect { case f if f.type_.isComplexType => this.viewDef(f.type_.name) }
         .flatMap(validationsQueryStrings)
-  override def allQueryStrings(viewDef: ViewDef): Seq[String] =
+  override def allQueryStrings(viewDef: ViewDef): collection.immutable.Seq[String] =
     super.allQueryStrings(viewDef) ++ validationsQueryStrings(viewDef)
 }
 
