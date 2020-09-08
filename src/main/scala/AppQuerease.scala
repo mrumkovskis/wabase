@@ -4,6 +4,7 @@ import org.tresql._
 
 import querease.Querease
 
+import scala.collection.immutable.Seq
 import scala.reflect.ManifestFactory
 
 import spray.json._
@@ -28,7 +29,25 @@ trait AppQuereaseIo extends querease.ScalaDtoQuereaseIo with JsonConverter { sel
   case class ValidationErrors(path: List[Any], errors: List[String])
 }
 
-abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata
+abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata {
+  import AppMetadata._
+  def validationsQueryString(viewDef: ViewDef): Option[String] = Option(
+    if (viewDef.validations != null && viewDef.validations.nonEmpty)
+      "messages(# idx, msg) {" +
+        viewDef.validations.zipWithIndex.map {
+          case (v, i) => s"{ $i idx, if_not($v) msg }"
+        }.mkString(" + ") +
+      "} messages[msg != null] { msg } #(idx)"
+    else null
+  )
+  def validationsQueryStrings(viewDef: ViewDef): Seq[String] =
+    validationsQueryString(viewDef).toList ++
+      viewDef.fields
+        .collect { case f if f.type_.isComplexType => this.viewDef(f.type_.name) }
+        .flatMap(validationsQueryStrings)
+  override def allQueryStrings(viewDef: ViewDef): Seq[String] =
+    super.allQueryStrings(viewDef) ++ validationsQueryStrings(viewDef)
+}
 
 trait Dto extends querease.Dto { self =>
 

@@ -290,24 +290,19 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
       defaultSave(ctx)
   }
   def validate(ctx: SaveContext[Dto]) = {
-    def validateView(validations: Seq[String], obj: Map[String, Any]): List[String] = {
-      val query =
-        "messages(# idx, msg) {" +
-          validations.zipWithIndex.map {
-            case (v, i) => s"{ $i idx, if_not($v) msg }"
-          }.mkString(" + ") +
-          "} messages[msg != null] { msg } #(idx)"
-      Query.list[String](query, obj)
-    }
+    def validateView(viewDef: ViewDef, obj: Map[String, Any]): List[String] =
+      qe.validationsQueryString(viewDef) match {
+        case Some(query) =>
+          Query.list[String](query, obj)
+        case _ => Nil
+      }
     def validateViewAndSubviews(path: List[Any], viewDef: ViewDef, obj: Map[String, Any],
                                 res: List[qe.ValidationErrors]): List[qe.ValidationErrors] = {
       val viewRes =
-        if (viewDef.validations != null && viewDef.validations.nonEmpty) {
-          validateView(viewDef.validations, obj ++ ctx.params) match {
-            case errs if errs.nonEmpty => List(qe.ValidationErrors(path.reverse, errs))
-            case _ => Nil
-          }
-        } else Nil
+        validateView(viewDef, obj ++ ctx.params) match {
+          case errs if errs.nonEmpty => List(qe.ValidationErrors(path.reverse, errs))
+          case _ => Nil
+        }
       viewDef.fields
         .collect { case f if f.type_.isComplexType => (f.name, qe.viewDef(f.type_.name)) }
         .foldLeft(viewRes ::: res) { (r, nv) =>
