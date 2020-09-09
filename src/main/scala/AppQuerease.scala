@@ -1,11 +1,10 @@
 package org.wabase
 
 import org.tresql._
-
 import querease.Querease
+import spray.json.DefaultJsonProtocol.{StringJsonFormat, jsonFormat2, listFormat}
 
 import scala.reflect.ManifestFactory
-
 import spray.json._
 
 trait QuereaseProvider {
@@ -46,6 +45,47 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
         .flatMap(validationsQueryStrings)
   override def allQueryStrings(viewDef: ViewDef): collection.immutable.Seq[String] =
     super.allQueryStrings(viewDef) ++ validationsQueryStrings(viewDef)
+
+  override def validate[B <: DTO](pojo: B, params: Map[String, Any])(implicit resources: Resources): Unit = {
+    def validateView(viewDef: ViewDef, obj: Map[String, Any]): List[String] =
+      validationsQueryString(viewDef) match {
+        case Some(query) =>
+          Query.list[String](query, obj)
+        case _ => Nil
+      }
+    def validateViewAndSubviews(path: List[Any], viewDef: ViewDef, obj: Map[String, Any],
+                                res: List[ValidationErrors]): List[ValidationErrors] = {
+      val viewRes =
+        validateView(viewDef, obj ++ params) match {
+          case errs if errs.nonEmpty => List(ValidationErrors(path.reverse, errs))
+          case _ => Nil
+        }
+      viewDef.fields
+        .collect { case f if f.type_.isComplexType => (f.name, nameToViewDef(f.type_.name)) }
+        .foldLeft(viewRes ::: res) { (r, nv) =>
+          val (n, vd) = nv
+          def maybeAddParent(m: Map[String, Any]) =
+            if(!m.contains("_parent")) m + ("_parent" -> obj) else m
+          obj.get(n).map {
+            case m: Map[String, _]@unchecked =>
+              validateViewAndSubviews(n :: path, vd, maybeAddParent(m), r)
+            case l: List[Map[String, _]@unchecked] =>
+              val p = n :: path
+              l.zipWithIndex.foldLeft(r){ (r1, owi) =>
+                val (o, i) = owi
+                validateViewAndSubviews(i :: p, vd, maybeAddParent(o), r1)
+              }
+            case _ => r
+          }.getOrElse(r)
+        }
+    }
+    implicit val f02 = jsonFormat2(ValidationErrors)
+    val view = viewDef(ManifestFactory.classType(pojo.getClass))
+    validateViewAndSubviews(Nil, view, pojo.toMap(this), Nil).reverse match {
+      case errs if errs.nonEmpty => throw new BusinessException(errs.toJson.compactPrint)
+      case _ => ()
+    }
+  }
 }
 
 trait Dto extends querease.Dto { self =>

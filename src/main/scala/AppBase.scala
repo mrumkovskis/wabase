@@ -161,7 +161,6 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
       completePromise: Promise[Long],
       state: ApplicationState = Map[String, Any](),
       extraPropsToSave: Map[String, Any] = Map(),
-      transform: Map[String, Any] => Map[String, Any] = m => m,
       result: Long = -1) extends RequestContext[Long] {
     val params = state ++ inParams ++ current_user_param(user)
   }
@@ -289,46 +288,6 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
     override def defaultAction(ctx: SaveContext[Dto]): SaveContext[Dto] =
       defaultSave(ctx)
   }
-  def validate(ctx: SaveContext[Dto]) = {
-    def validateView(viewDef: ViewDef, obj: Map[String, Any]): List[String] =
-      qe.validationsQueryString(viewDef) match {
-        case Some(query) =>
-          Query.list[String](query, obj)
-        case _ => Nil
-      }
-    def validateViewAndSubviews(path: List[Any], viewDef: ViewDef, obj: Map[String, Any],
-                                res: List[qe.ValidationErrors]): List[qe.ValidationErrors] = {
-      val viewRes =
-        validateView(viewDef, obj ++ ctx.params) match {
-          case errs if errs.nonEmpty => List(qe.ValidationErrors(path.reverse, errs))
-          case _ => Nil
-        }
-      viewDef.fields
-        .collect { case f if f.type_.isComplexType => (f.name, qe.viewDef(f.type_.name)) }
-        .foldLeft(viewRes ::: res) { (r, nv) =>
-          val (n, vd) = nv
-          def maybeAddParent(m: Map[String, Any]) =
-            if(!m.contains("_parent")) m + ("_parent" -> obj) else m
-          obj.get(n).map {
-            case m: Map[String, _]@unchecked =>
-              validateViewAndSubviews(n :: path, vd, maybeAddParent(m), r)
-            case l: List[Map[String, _]@unchecked] =>
-              val p = n :: path
-              l.zipWithIndex.foldLeft(r){ (r1, owi) =>
-                val (o, i) = owi
-                validateViewAndSubviews(i :: p, vd, maybeAddParent(o), r1)
-              }
-            case _ => r
-          }.getOrElse(r)
-        }
-    }
-    import qe.ListJsonFormat
-    implicit val f02 = jsonFormat2(qe.ValidationErrors)
-    validateViewAndSubviews(Nil, qe.viewDef(ctx.viewName), ctx.obj.toMap, Nil).reverse match {
-      case errs if errs.nonEmpty => throw new BusinessException(errs.toJson.compactPrint)
-      case _ => ()
-    }
-  }
   def defaultSave(ctx: SaveContext[Dto]): SaveContext[Dto] = {
       import ctx._
       if (!ctx.obj.isInstanceOf[org.wabase.DtoWithId])
@@ -337,7 +296,6 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
              + ctx.obj.getClass.getName)
       val obj = ctx.obj.asInstanceOf[DtoWithId]
       val viewDef = qe.viewDef(viewName)
-      validate(ctx)
       val implicitProps = viewDef.fields
        .map(_.name)
        .filter(autoTimeFieldNames)
@@ -346,7 +304,6 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
       obj.id = qe.save(
         obj,
         Option(extraPropsToSave).getOrElse(Map.empty) ++ implicitProps,
-        ctx.transform,
         false,
         (if (authFilter.isEmpty) null else authFilter, params)
       )(tresqlResources)
