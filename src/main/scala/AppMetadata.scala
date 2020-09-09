@@ -15,10 +15,13 @@ trait AppMetadata extends querease.QuereaseMetadata { this: AppQuerease =>
   import AppMetadata._
 
   override lazy val metadataConventions: AppMdConventions = new DefaultAppMdConventions
-  override protected lazy val viewDefs: Map[String, ViewDef] = resolveAuth {
+  override protected lazy val viewDefs: Map[String, ViewDef] = {
     val mojozViewDefs =
       YamlViewDefLoader(tableMetadata, yamlMetadata, tresqlJoinsParser, metadataConventions, Seq("api"))
         .extendedViewDefs
+    toAppViewDefs(mojozViewDefs)
+  }
+  def toAppViewDefs(mojozViewDefs: Map[String, ViewDef]) = resolveAuth {
     val inlineViewDefNames =
       mojozViewDefs.values.flatMap { viewDef =>
         viewDef.fields.filter { field =>
