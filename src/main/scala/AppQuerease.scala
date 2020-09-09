@@ -38,11 +38,22 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       "} messages[msg != null] { msg } #(idx)"
     else null
   )
-  def validationsQueryStrings(viewDef: ViewDef): Seq[String] =
-    validationsQueryString(viewDef).toList ++
-      viewDef.fields
-        .collect { case f if f.type_.isComplexType => this.viewDef(f.type_.name) }
-        .flatMap(validationsQueryStrings)
+  def validationsQueryStrings(viewDef: ViewDef): Seq[String] = {
+    val visited: collection.mutable.Set[String] = collection.mutable.Set.empty
+    def vqsRecursively(viewDef: ViewDef): Seq[String] = {
+      if (visited contains viewDef.name) Nil
+      else {
+        visited += viewDef.name
+        validationsQueryString(viewDef).toList ++
+          viewDef.fields.flatMap { f =>
+            if (f.type_.isComplexType)
+              vqsRecursively(this.viewDef(f.type_.name))
+            else Nil
+          }
+      }
+    }
+    vqsRecursively(viewDef)
+  }
   override def allQueryStrings(viewDef: ViewDef): collection.immutable.Seq[String] =
     super.allQueryStrings(viewDef) ++ validationsQueryStrings(viewDef)
 
