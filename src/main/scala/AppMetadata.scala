@@ -15,7 +15,7 @@ trait AppMetadata extends querease.QuereaseMetadata { this: AppQuerease =>
   import AppMetadata._
 
   override lazy val metadataConventions: AppMdConventions = new DefaultAppMdConventions
-  override protected lazy val viewDefs: Map[String, ViewDef] = {
+  override lazy val nameToViewDef: Map[String, ViewDef] = {
     val mojozViewDefs =
       YamlViewDefLoader(tableMetadata, yamlMetadata, tresqlJoinsParser, metadataConventions, Seq("api"))
         .extendedViewDefs
@@ -56,7 +56,7 @@ trait AppMetadata extends querease.QuereaseMetadata { this: AppQuerease =>
     }) getOrElse (null, null)
   }
 
-  def collectViews[A](f: PartialFunction[ViewDef, A]): Iterable[A] = viewDefs.values.collect(f)
+  def collectViews[A](f: PartialFunction[ViewDef, A]): Iterable[A] = nameToViewDef.values.collect(f)
 
   object KnownAuthOps {
     val Get = "get"
