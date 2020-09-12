@@ -198,7 +198,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
         case _ => throw new BusinessException("Too many rows returned")
       }
     } else
-      ctx.copy(result = qe.get(id, (viewFilter(viewName), params))(
+      ctx.copy(result = qe.get(id, viewFilter(viewName), params)(
         ManifestFactory.classType(viewNameToClassMap(viewName)), implicitly[Resources]))
   }
   implicit object Create extends HExt[CreateContext[Dto]] {
@@ -238,7 +238,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
           throw new BusinessException(s"Not sortable: $viewName by " + notSortable.mkString(", "), null)
       }
       if (ctx.doCount)
-        ctx.copy(count = qe.countAll(params, (listFilter(viewName), Map[String, Any]()))(
+        ctx.copy(count = qe.countAll(params, listFilter(viewName), Map[String, Any]())(
           ManifestFactory.classType(viewNameToClassMap(viewName)), tresqlResources))
       else {
         ctx.copy(result = new AppListResult[Dto] {
@@ -253,7 +253,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
               offset,
               limit,
               stableOrderBy(viewDef, orderBy),
-              (listFilter(viewName), Map[String, Any]()))(
+              listFilter(viewName), Map[String, Any]())(
               ManifestFactory.classType(viewNameToClassMap(viewName).asInstanceOf[Class[Dto]]),
               resources)
             catch {
@@ -573,7 +573,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
           transaction {
             implicit val clazz = viewNameToClassMap(viewName).asInstanceOf[Class[DtoWithId]]
             val ctx = createDeleteCtx(RemoveContext[DtoWithId](viewName, id, params, user, promise, state))
-            qe.get[DtoWithId](id, (deleteFilter(viewName), ctx.params))(ManifestFactory.classType(clazz), tresqlResources) match {
+            qe.get[DtoWithId](id, deleteFilter(viewName), ctx.params)(ManifestFactory.classType(clazz), tresqlResources) match {
               case None => throw new NotFoundException(s"$viewName not found, id: $id, params: $params")
               case Some(oldValue) => rest(ctx.copy(old = oldValue))
             }
