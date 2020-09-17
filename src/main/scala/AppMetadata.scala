@@ -76,9 +76,9 @@ trait AppMetadata extends querease.QuereaseMetadata { this: AppQuerease =>
     val Limit = "limit"
     val Validations = "validations"
     val ConnectionPool = "cp"
-    val AppCoreViewExtrasKey = AppMetadata.AppCoreViewExtrasKey
+    val WabaseViewExtrasKey = AppMetadata.WabaseViewExtrasKey
     def apply() =
-      Set(Api, Auth, Limit, Validations, ConnectionPool, AppCoreViewExtrasKey)
+      Set(Api, Auth, Limit, Validations, ConnectionPool, WabaseViewExtrasKey)
   }
 
   lazy val knownViewExtras = KnownViewExtras()
@@ -104,11 +104,11 @@ trait AppMetadata extends querease.QuereaseMetadata { this: AppQuerease =>
     val Hidden = "hidden"
     val Visible = "visible"
     val Initial = "initial"
-    val AppCoreFieldExtrasKey = AppMetadata.AppCoreFieldExtrasKey
+    val WabaseFieldExtrasKey = AppMetadata.WabaseFieldExtrasKey
     def apply() = Set(
       Domain, Hidden, Sortable, Visible, Required,
       NoGet, NoSave, Readonly, NoInsert, NoUpdate,
-      FieldApi, FieldDb, Initial, AppCoreFieldExtrasKey)
+      FieldApi, FieldDb, Initial, WabaseFieldExtrasKey)
   }
 
   lazy val knownFieldExtras = KnownFieldExtras()
@@ -419,8 +419,8 @@ object AppMetadata {
     visible: Boolean = false,
   ) extends AppFieldDefExtras
 
-  val AppCoreViewExtrasKey = "app-core-view-extras"
-  val AppCoreFieldExtrasKey = "app-core-field-extras"
+  val WabaseViewExtrasKey = "wabase-view-extras"
+  val WabaseFieldExtrasKey = "wabase-field-extras"
   trait ExtrasMap {
     protected def updateExtrasMap(extras: Map[String, Any]): Any
     protected def extrasMap: Map[String, Any]
@@ -432,21 +432,21 @@ object AppMetadata {
   }
   implicit class AugmentedAppViewDef(viewDef: AppMetadata#ViewDef) extends AppViewDefExtras with ExtrasMap {
     private val defaultExtras = AppViewDef()
-    private val appExtras = extras(AppCoreViewExtrasKey, defaultExtras)
+    private val appExtras = extras(WabaseViewExtrasKey, defaultExtras)
     override val limit = appExtras.limit
     override val validations = appExtras.validations
     override val cp = appExtras.cp
     override val auth = appExtras.auth
     override val apiMethodToRole = appExtras.apiMethodToRole
     def updateExtras(updater: AppViewDef => AppViewDef): AppMetadata#ViewDef =
-      updateExtras(AppCoreViewExtrasKey, updater, defaultExtras)
+      updateExtras(WabaseViewExtrasKey, updater, defaultExtras)
 
     override protected def updateExtrasMap(extras: Map[String, Any]) = viewDef.copy(extras = extras)
     override protected def extrasMap = viewDef.extras
   }
   implicit class AugmentedAppFieldDef(fieldDef: AppMetadata#FieldDef) extends AppFieldDefExtras with ExtrasMap {
     private val defaultExtras = AppFieldDef()
-    val appExtras = extras(AppCoreFieldExtrasKey, defaultExtras)
+    val appExtras = extras(WabaseFieldExtrasKey, defaultExtras)
     override val api = appExtras.api
     override val db = appExtras.db
     override val label = appExtras.label
@@ -454,7 +454,7 @@ object AppMetadata {
     override val sortable = appExtras.sortable
     override val visible = appExtras.visible
     def updateExtras(updater: AppFieldDef => AppFieldDef): AppMetadata#FieldDef =
-      updateExtras(AppCoreFieldExtrasKey, updater, defaultExtras)
+      updateExtras(WabaseFieldExtrasKey, updater, defaultExtras)
 
     override protected def updateExtrasMap(extras: Map[String, Any]): Any = fieldDef.copy(extras = extras)
     override protected def extrasMap = fieldDef.extras
