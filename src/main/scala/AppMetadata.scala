@@ -328,29 +328,8 @@ trait AppMetadata extends querease.QuereaseMetadata { this: AppQuerease =>
         s"Unknown properties for viewDef ${viewDef.name}: ${unknownKeys.mkString(", ")}")
 
     def createRelevanceField(name: String, expression: String): FieldDef =
-      MojozFieldDef(
-        table = null,
-        tableAlias = null,
-        name = name,
-        alias = null,
-        options = "",
-        isCollection = false,
-        maxOccurs = "1",
-        isExpression = true,
-        expression = expression,
-        saveTo = null,
-        resolver = null,
-        nullable = true,
-        initial = null,
-        isForcedCardinality = false,
-        type_ = Type("boolean", None, None, None, false),
-        enum = null,
-        joinToParent = null,
-        orderBy = null,
-        isI18n = false,
-        comments = null,
-        extras = null
-      )
+      (new MojozFieldDef(name, Type("boolean", None, None, None, false)))
+        .copy(options = "", isExpression = true, expression = expression)
     val appView = MojozViewDef(name, table, tableAlias, joins, filter,
       viewDef.groupBy, viewDef.having, orderBy, extends_, draftOf, detailsOf,
       comments, appFields, viewDef.saveTo, extras).updateExtras(_ => AppViewDef(limit, validations, cp, auth, apiMap))
