@@ -307,7 +307,7 @@ trait AppMetadata extends querease.QuereaseMetadata { this: AppQuerease =>
       sys.error(
         s"Unknown api method(s), viewDef: ${viewDef.name}, method(s): ${unknownApiMethods.mkString(", ")}")
     */
-    val apiMap = api.foldLeft((Map[String, String](), "SISTEMA_ADMINISTRET"))((mr, x) =>
+    val apiMap = api.foldLeft((Map[String, String](), "SISTEMA_ADMINISTRET"))((mr, x) => // FIXME default role name for api
       if (knownApiMethods contains x) (mr._1 + (x -> mr._2), mr._2) else (mr._1, x.toUpperCase))._1
 
     val limit = getIntExtra(Limit, viewDef.extras) getOrElse 100
