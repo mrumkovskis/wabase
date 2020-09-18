@@ -88,7 +88,7 @@ trait AppServiceBase[User]
             app.delete(viewName, id, filterPars(params))
             StatusCodes.NoContent
           } catch {
-            case e: querease.NotFoundException => StatusCodes.NotFound
+            case e: org.mojoz.querease.NotFoundException => StatusCodes.NotFound
           }
         }
       }
@@ -103,7 +103,7 @@ trait AppServiceBase[User]
               val id = app.save(viewName, data.asInstanceOf[JsObject], filterPars(params))
               redirect(Uri(path = requestUri.path), StatusCodes.SeeOther)
             } catch {
-              case e: querease.NotFoundException => complete(StatusCodes.NotFound)
+              case e: org.mojoz.querease.NotFoundException => complete(StatusCodes.NotFound)
             }
           }
         }
@@ -133,7 +133,7 @@ trait AppServiceBase[User]
               val id = app.save(viewName, data.asInstanceOf[JsObject], filterPars(params))
               redirect(Uri(path = requestUri.path / id.toString), StatusCodes.SeeOther)
             } catch {
-              case e: querease.NotFoundException => complete(StatusCodes.NotFound)
+              case e: org.mojoz.querease.NotFoundException => complete(StatusCodes.NotFound)
             }
           }
         }
@@ -456,7 +456,7 @@ object AppServiceBase {
         }
     }
     def viewNotFoundExceptionHandler = ExceptionHandler {
-      case e: querease.ViewNotFoundException => complete(HttpResponse(NotFound, entity = e.getMessage))
+      case e: org.mojoz.querease.ViewNotFoundException => complete(HttpResponse(NotFound, entity = e.getMessage))
     }
 
     /** Handles and logs PostgreSQL timeout exceptions */

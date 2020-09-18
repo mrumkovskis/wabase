@@ -11,8 +11,8 @@ import akka.http.scaladsl.testkit.{RouteTestTimeout, ScalatestRouteTest}
 import akka.http.scaladsl.unmarshalling.FromResponseUnmarshaller
 import akka.stream.scaladsl.Source
 import akka.util.ByteString
-import mojoz.metadata.in.YamlMd
-import mojoz.metadata.out.SqlWriter
+import org.mojoz.metadata.in.YamlMd
+import org.mojoz.metadata.out.SqlWriter
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers
 import org.tresql.dialects

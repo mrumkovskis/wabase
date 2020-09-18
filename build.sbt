@@ -42,7 +42,7 @@ lazy val commonSettings = Seq(
     "2.12.12",
   ),
   scalacOptions ++= Seq("-unchecked", "-deprecation", "-feature",
-    "-Xmacro-settings:metadataFactoryClass=querease.TresqlMetadataFactory" +
+    "-Xmacro-settings:metadataFactoryClass=org.mojoz.querease.TresqlMetadataFactory" +
       ", tableMetadataFile=" + (baseDirectory.value / "tresql-table-metadata.yaml").getAbsolutePath),
   resolvers += "snapshots" at "https://oss.sonatype.org/content/repositories/snapshots",
   libraryDependencies ++= dependencies ++ testDependencies,

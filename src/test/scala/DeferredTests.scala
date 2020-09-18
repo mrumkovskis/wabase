@@ -10,8 +10,8 @@ import akka.http.scaladsl.model.headers._
 import akka.http.scaladsl.model.ws.TextMessage
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.testkit.{ScalatestRouteTest, WSProbe}
-import mojoz.metadata.in.YamlMd
-import mojoz.metadata.out.SqlWriter
+import org.mojoz.metadata.in.YamlMd
+import org.mojoz.metadata.out.SqlWriter
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import org.tresql._

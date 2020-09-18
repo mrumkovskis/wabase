@@ -9,8 +9,8 @@ import akka.actor.ActorSystem
 import akka.http.scaladsl.model.{ContentType, ContentTypes}
 import akka.stream.scaladsl.Source
 import akka.util.ByteString
-import mojoz.metadata.in.YamlMd
-import mojoz.metadata.out.SqlWriter
+import org.mojoz.metadata.in.YamlMd
+import org.mojoz.metadata.out.SqlWriter
 import org.scalatest.BeforeAndAfterEach
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers

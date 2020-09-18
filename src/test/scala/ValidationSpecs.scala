@@ -2,8 +2,8 @@ package org.wabase
 
 import java.sql.{Connection, DriverManager}
 
-import mojoz.metadata.in.YamlMd
-import mojoz.metadata.out.SqlWriter
+import org.mojoz.metadata.in.YamlMd
+import org.mojoz.metadata.out.SqlWriter
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers

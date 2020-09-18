@@ -2,10 +2,10 @@ package org.wabase
 
 import java.util.Locale
 
-import mojoz.metadata.Type
-import querease.NotFoundException
-import querease.FilterType
-import querease.FilterType._
+import org.mojoz.metadata.Type
+import org.mojoz.querease.NotFoundException
+import org.mojoz.querease.FilterType
+import org.mojoz.querease.FilterType._
 import org.tresql._
 import spray.json._
 import com.typesafe.config.Config
@@ -305,7 +305,8 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
         obj,
         Option(extraPropsToSave).getOrElse(Map.empty) ++ implicitProps,
         false,
-        (if (authFilter.isEmpty) null else authFilter, params)
+        if (authFilter.isEmpty) null else authFilter,
+        params
       )(tresqlResources)
       ctx.copy(result = obj.id)
   }
@@ -318,8 +319,8 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
       val viewDef = qe.viewDef(viewName)
       val authFilter = deleteFilter(viewName)
       val result = qe.delete(old,
-        (if (authFilter.isEmpty) null else authFilter,
-          state ++ ctx.keyMap ++ current_user_param(user)))(tresqlResources)
+        if (authFilter.isEmpty) null else authFilter,
+        state ++ ctx.keyMap ++ current_user_param(user))(tresqlResources)
       ctx.copy(result = result.toString.toLong)
   }
 
@@ -679,7 +680,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
   private val EndsWithOpFilterDef = s"^.*%~+\\s*:($ident)\\??$$".r
   private val StartsWithOpFilterDef = s"^.*~+%\\s*:($ident)\\??$$".r
   def filterFieldLabel(name: String, colLabel: String, filterType: FilterType): FilterLabel = {
-    import querease.FilterType._
+    import org.mojoz.querease.FilterType._
     filterType match {
       case ComparisonFilter(col, op, name, opt) =>
         op match {
@@ -791,7 +792,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
           qe.analyzeFilter(f, v, v.tableAlias)
         }
       // TODO duplicate code, reuse querease code!
-      val joinsParser = new querease.TresqlJoinsParser(qe.tresqlMetadata)
+      val joinsParser = new org.mojoz.querease.TresqlJoinsParser(qe.tresqlMetadata)
       val (needsBaseTable, parsedJoins) =
         Option(v.joins)
           .map(joins =>
@@ -832,8 +833,8 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
             .flatMap(_.find(_.name == colName))
             .orNull
           val name = v.variable
-          val (conventionsType, impliedNullable) =
-            qe.metadataConventions.fromExternal(name, None, Some(v.opt))
+          val conventionsType =
+            qe.metadataConventions.typeFromExternal(name, None)
           val table = joinAliasToJoin.get(tableAlias).map(_.table).orNull
           val label = Option(col)
             .map(_.comments)

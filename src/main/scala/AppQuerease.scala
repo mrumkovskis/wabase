@@ -1,7 +1,7 @@
 package org.wabase
 
 import org.tresql._
-import querease.Querease
+import org.mojoz.querease.Querease
 import spray.json.DefaultJsonProtocol.{StringJsonFormat, jsonFormat2, listFormat}
 
 import scala.reflect.ManifestFactory
@@ -14,7 +14,7 @@ trait QuereaseProvider {
   protected def initQuerease: QE
 }
 
-trait AppQuereaseIo extends querease.ScalaDtoQuereaseIo with JsonConverter { self: AppQuerease =>
+trait AppQuereaseIo extends org.mojoz.querease.ScalaDtoQuereaseIo with JsonConverter { self: AppQuerease =>
 
   override type DTO >: Null <: Dto
   override type DWI >: Null <: DTO with DtoWithId
@@ -29,34 +29,6 @@ trait AppQuereaseIo extends querease.ScalaDtoQuereaseIo with JsonConverter { sel
 
 abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata {
   import AppMetadata.AugmentedAppViewDef
-  def validationsQueryString(viewDef: ViewDef): Option[String] = Option(
-    if (viewDef.validations != null && viewDef.validations.nonEmpty)
-      "messages(# idx, msg) {" +
-        viewDef.validations.zipWithIndex.map {
-          case (v, i) => s"{ $i idx, if_not($v) msg }"
-        }.mkString(" + ") +
-      "} messages[msg != null] { msg } #(idx)"
-    else null
-  )
-  def validationsQueryStrings(viewDef: ViewDef): Seq[String] = {
-    val visited: collection.mutable.Set[String] = collection.mutable.Set.empty
-    def vqsRecursively(viewDef: ViewDef): Seq[String] = {
-      if (visited contains viewDef.name) Nil
-      else {
-        visited += viewDef.name
-        validationsQueryString(viewDef).toList ++
-          viewDef.fields.flatMap { f =>
-            if (f.type_.isComplexType)
-              vqsRecursively(this.viewDef(f.type_.name))
-            else Nil
-          }
-      }
-    }
-    vqsRecursively(viewDef)
-  }
-  override def allQueryStrings(viewDef: ViewDef): collection.immutable.Seq[String] =
-    super.allQueryStrings(viewDef) ++ validationsQueryStrings(viewDef)
-
   override def validate[B <: DTO](pojo: B, params: Map[String, Any])(implicit resources: Resources): Unit = {
     def validateView(viewDef: ViewDef, obj: Map[String, Any]): List[String] =
       validationsQueryString(viewDef) match {
@@ -99,7 +71,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
   }
 }
 
-trait Dto extends querease.Dto { self =>
+trait Dto extends org.mojoz.querease.Dto { self =>
 
   override protected type QE = AppQuerease
   override protected type QDto >: Null <: this.type
@@ -264,7 +236,7 @@ trait Dto extends querease.Dto { self =>
   }
 }
 
-trait DtoWithId extends Dto with querease.DtoWithId
+trait DtoWithId extends Dto with org.mojoz.querease.DtoWithId
 
 object DefaultAppQuerease extends AppQuerease {
   override type DTO = Dto
