@@ -36,6 +36,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     classToViewNameMap.getOrElse(mf.runtimeClass, mf.runtimeClass.getSimpleName)
 
   def dtoMappingClassName = "dto.DtoMapping"
+  def defaultApiRoleName  = "ADMIN"
 
   lazy val viewNameToClassMap: Map[String, Class[_ <: DTO]] = {
     val objectClass = Class.forName(dtoMappingClassName + "$")
@@ -311,7 +312,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       sys.error(
         s"Unknown api method(s), viewDef: ${viewDef.name}, method(s): ${unknownApiMethods.mkString(", ")}")
     */
-    val apiMap = api.foldLeft((Map[String, String](), "SISTEMA_ADMINISTRET"))((mr, x) => // FIXME default role name for api
+    val apiMap = api.foldLeft((Map[String, String](), defaultApiRoleName))((mr, x) =>
       if (knownApiMethods contains x) (mr._1 + (x -> mr._2), mr._2) else (mr._1, x.toUpperCase))._1
 
     val limit = getIntExtra(Limit, viewDef.extras) getOrElse 100
