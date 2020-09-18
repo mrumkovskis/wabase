@@ -11,7 +11,7 @@ import akka.http.scaladsl.model.ws.TextMessage
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.testkit.{ScalatestRouteTest, WSProbe}
 import org.mojoz.metadata.in.YamlMd
-import org.mojoz.metadata.out.SqlWriter
+import org.mojoz.metadata.out.SqlGenerator
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import org.tresql._
@@ -39,7 +39,7 @@ class DeferredTests extends AnyFlatSpec with Matchers with ScalatestRouteTest {
 
     val db = new DbAccess with Loggable {
       logger.debug("Creating database for file upload ...\n")
-      SqlWriter.hsqldb().schema(querease.tableMetadata.tableDefs)
+      SqlGenerator.hsqldb().schema(querease.tableMetadata.tableDefs)
         .split(";\\s+").map(_ + ";")
         .foreach { sql =>
           logger.debug(sql)

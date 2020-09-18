@@ -3,7 +3,7 @@ package org.wabase
 import java.sql.{Connection, DriverManager}
 
 import org.mojoz.metadata.in.YamlMd
-import org.mojoz.metadata.out.SqlWriter
+import org.mojoz.metadata.out.SqlGenerator
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers
@@ -61,7 +61,7 @@ class ValidationSpecs extends FlatSpec with Matchers with BeforeAndAfterAll {
 
     val db = new DbAccess with Loggable {
       logger.debug("Creating database for validation tests ...\n")
-      SqlWriter.hsqldb().schema(querease.tableMetadata.tableDefs)
+      SqlGenerator.hsqldb().schema(querease.tableMetadata.tableDefs)
         .split(";\\s+").map(_ + ";")
         .foreach { sql =>
           logger.debug(sql)

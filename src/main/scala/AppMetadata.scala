@@ -5,7 +5,7 @@ import org.mojoz.metadata.{ViewDef => MojozViewDef}
 import org.mojoz.metadata.{FieldDef => MojozFieldDef}
 import org.mojoz.metadata.in._
 import org.mojoz.metadata.io.MdConventions
-import org.mojoz.metadata.out.SqlWriter.SimpleConstraintNamingRules
+import org.mojoz.metadata.out.SqlGenerator.SimpleConstraintNamingRules
 import org.mojoz.querease._
 import scala.collection.immutable.Seq
 import scala.collection.JavaConverters._

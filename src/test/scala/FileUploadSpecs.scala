@@ -12,7 +12,7 @@ import akka.http.scaladsl.unmarshalling.FromResponseUnmarshaller
 import akka.stream.scaladsl.Source
 import akka.util.ByteString
 import org.mojoz.metadata.in.YamlMd
-import org.mojoz.metadata.out.SqlWriter
+import org.mojoz.metadata.out.SqlGenerator
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers
 import org.tresql.dialects
@@ -41,7 +41,7 @@ class FileUploadSpecs extends FlatSpec with Matchers with ScalatestRouteTest {
 
     val db = new DbAccess with Loggable {
       logger.debug("Creating database for file upload ...\n")
-      SqlWriter.hsqldb().schema(querease.tableMetadata.tableDefs)
+      SqlGenerator.hsqldb().schema(querease.tableMetadata.tableDefs)
         .split(";\\s+").map(_ + ";")
         .foreach { sql =>
           logger.debug(sql)
