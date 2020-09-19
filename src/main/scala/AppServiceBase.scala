@@ -443,18 +443,16 @@ object AppServiceBase {
     def businessExceptionHandler(logger: com.typesafe.scalalogging.Logger) = ExceptionHandler {
       case e: BusinessException =>
         logger.trace(e.getMessage, e)
-        extractUri { uri =>
-          complete(HttpResponse(InternalServerError, entity = e.getMessage.format(e.getParams: _*)))
-        }
+        complete(HttpResponse(InternalServerError, entity = e.getMessage.format(e.getParams: _*)))
     }
+
     def bindVariableExceptionHandler(logger: com.typesafe.scalalogging.Logger,
         bindVariableExceptionResponseMessage: MissingBindVariableException => String = _.getMessage) = ExceptionHandler {
       case e: MissingBindVariableException =>
         logger.debug(e.getMessage, e)
-        extractUri { uri =>
-          complete(HttpResponse(BadRequest, entity = bindVariableExceptionResponseMessage(e)))
-        }
+        complete(HttpResponse(BadRequest, entity = bindVariableExceptionResponseMessage(e)))
     }
+
     def viewNotFoundExceptionHandler = ExceptionHandler {
       case e: org.mojoz.querease.ViewNotFoundException => complete(HttpResponse(NotFound, entity = e.getMessage))
     }
