@@ -2,7 +2,7 @@ package org.wabase
 
 import org.tresql._
 import org.mojoz.querease.Querease
-import org.mojoz.querease.ValidationResult
+import org.mojoz.querease.{ValidationException, ValidationResult}
 import spray.json.DefaultJsonProtocol.{StringJsonFormat, jsonFormat2, listFormat}
 
 import scala.reflect.ManifestFactory
@@ -28,10 +28,10 @@ trait AppQuereaseIo extends org.mojoz.querease.ScalaDtoQuereaseIo with JsonConve
 
 abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata {
   override def validate[B <: DTO](pojo: B, params: Map[String, Any])(implicit resources: Resources): Unit = {
-    implicit val f02 = jsonFormat2(ValidationResult)
-    validationResults(pojo, params) match {
-      case errs if errs.nonEmpty => throw new BusinessException(errs.toJson.compactPrint)
-      case _ => ()
+    try super.validate(pojo, params) catch {
+      case vExc: ValidationException =>
+        implicit val f02 = jsonFormat2(ValidationResult)
+        throw new BusinessException(vExc.details.toJson.compactPrint, vExc)
     }
   }
 }
