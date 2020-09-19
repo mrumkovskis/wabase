@@ -23,6 +23,7 @@ import java.util.Locale
 
 import akka.http.scaladsl.server.util.Tuple
 import akka.util.ByteString
+import org.mojoz.querease.{ValidationException, ValidationResult}
 
 trait AppProvider[User] {
   type App <: AppBase[User]
@@ -457,6 +458,22 @@ object AppServiceBase {
       case e: org.mojoz.querease.ViewNotFoundException => complete(HttpResponse(NotFound, entity = e.getMessage))
     }
 
+    def validationExceptionHandler(logger: com.typesafe.scalalogging.Logger) = ExceptionHandler {
+      case e: ValidationException =>
+        logger.trace(e.getMessage, e)
+        complete(HttpResponse(BadRequest, entity = e.getMessage))
+    }
+
+    def validationExceptionHandlerWithPaths(logger: com.typesafe.scalalogging.Logger,
+                                           jsonConverter: JsonConverter) = ExceptionHandler {
+      case e: ValidationException =>
+        logger.trace(e.getMessage, e)
+        import spray.json.DefaultJsonProtocol.{ jsonFormat2, listFormat, StringJsonFormat }
+        import jsonConverter._
+        implicit val f02 = jsonFormat2(ValidationResult)
+        complete(HttpResponse(BadRequest, entity = e.details.toJson.compactPrint))
+    }
+
     /** Handles and logs PostgreSQL timeout exceptions */
     trait PostgresTimeoutExceptionHandler[User] extends AppExceptionHandler {
       this: AppStateExtractor with SessionUserExtractor[User] with ServerStatistics with DeferredCheck with AppI18nService =>
@@ -511,6 +528,7 @@ object AppServiceBase {
         with AppI18nService =>
       override val appExceptionHandler =
         businessExceptionHandler(this.logger)
+          .withFallback(validationExceptionHandler(this.logger))
           .withFallback(entityStreamSizeExceptionHandler(this))
           .withFallback(bindVariableExceptionHandler(this.logger, this.bindVariableExceptionResponseMessage))
           .withFallback(PostgresTimeoutExceptionHandler(this))
