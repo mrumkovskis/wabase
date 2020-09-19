@@ -4,6 +4,7 @@ import java.sql.{Connection, DriverManager}
 
 import org.mojoz.metadata.in.YamlMd
 import org.mojoz.metadata.out.SqlGenerator
+import org.mojoz.querease.ValidationResult
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers
@@ -98,7 +99,7 @@ class ValidationSpecs extends FlatSpec with Matchers with BeforeAndAfterAll {
   implicit val state: ApplicationState = ApplicationState(Map())
   implicit val timeout: QueryTimeout = DefaultQueryTimeout.get
 
-  implicit val f02 = jsonFormat2(querease.ValidationErrors)
+  implicit val f02 = jsonFormat2(ValidationResult)
 
   it should "validate on save" in {
     val dto = new validations_test
@@ -106,14 +107,14 @@ class ValidationSpecs extends FlatSpec with Matchers with BeforeAndAfterAll {
     dto.int_col = 3
     intercept[BusinessException] {
       testApp.saveApp(dto)
-    }.getMessage.parseJson.convertTo[List[querease.ValidationErrors]] should be(List(querease.ValidationErrors(Nil,
+    }.getMessage.parseJson.convertTo[List[ValidationResult]] should be(List(ValidationResult(Nil,
       List("int_col should be greater than 5 but is 3", "int_col should be greater than 10 but is 3")
     )))
 
     dto.int_col = 7
     intercept[BusinessException] {
       testApp.saveApp(dto)
-    }.getMessage.parseJson.convertTo[List[querease.ValidationErrors]] should be(List(querease.ValidationErrors(Nil,
+    }.getMessage.parseJson.convertTo[List[ValidationResult]] should be(List(ValidationResult(Nil,
       List("int_col should be greater than 10 but is 7")
     )))
 
@@ -123,7 +124,7 @@ class ValidationSpecs extends FlatSpec with Matchers with BeforeAndAfterAll {
     dto.int_col = 13
     intercept[BusinessException] {
       testApp.saveApp(dto)
-    }.getMessage.parseJson.convertTo[List[querease.ValidationErrors]] should be(List(querease.ValidationErrors(Nil,
+    }.getMessage.parseJson.convertTo[List[ValidationResult]] should be(List(ValidationResult(Nil,
       List("int_col should be less than 12 but is 13")
     )))
 
@@ -140,22 +141,22 @@ class ValidationSpecs extends FlatSpec with Matchers with BeforeAndAfterAll {
     dto.children2 = List(ch21, ch22)
     intercept[BusinessException] {
       testApp.saveApp(dto)
-    }.getMessage.parseJson.convertTo[List[querease.ValidationErrors]] should be(
-      List(querease.ValidationErrors(List("children1", 0), List("child1 int_col should be greater than 1 but is 0")),
-        querease.ValidationErrors(List("children1", 1), List("child1 int_col should be greater than 1 but is 1")),
-        querease.ValidationErrors(List("children2", 0), List("child2 int_col should be greater than 2 and parent must be greater than 3 but is 0,11")),
-        querease.ValidationErrors(List("children2", 1), List("child2 int_col should be greater than 2 and parent must be greater than 3 but is 1,11")))
+    }.getMessage.parseJson.convertTo[List[ValidationResult]] should be(
+      List(ValidationResult(List("children1", 0), List("child1 int_col should be greater than 1 but is 0")),
+        ValidationResult(List("children1", 1), List("child1 int_col should be greater than 1 but is 1")),
+        ValidationResult(List("children2", 0), List("child2 int_col should be greater than 2 and parent must be greater than 3 but is 0,11")),
+        ValidationResult(List("children2", 1), List("child2 int_col should be greater than 2 and parent must be greater than 3 but is 1,11")))
     )
 
     dto.int_col = 0
     intercept[BusinessException] {
       testApp.saveApp(dto)
-    }.getMessage.parseJson.convertTo[List[querease.ValidationErrors]] should be(
-      List(querease.ValidationErrors(Nil, List("int_col should be greater than 5 but is 0", "int_col should be greater than 10 but is 0")),
-        querease.ValidationErrors(List("children1", 0), List("child1 int_col should be greater than 1 but is 0")),
-        querease.ValidationErrors(List("children1", 1), List("child1 int_col should be greater than 1 but is 1")),
-        querease.ValidationErrors(List("children2", 0), List("child2 int_col should be greater than 2 and parent must be greater than 3 but is 0,0")),
-        querease.ValidationErrors(List("children2", 1), List("child2 int_col should be greater than 2 and parent must be greater than 3 but is 1,0")))
+    }.getMessage.parseJson.convertTo[List[ValidationResult]] should be(
+      List(ValidationResult(Nil, List("int_col should be greater than 5 but is 0", "int_col should be greater than 10 but is 0")),
+        ValidationResult(List("children1", 0), List("child1 int_col should be greater than 1 but is 0")),
+        ValidationResult(List("children1", 1), List("child1 int_col should be greater than 1 but is 1")),
+        ValidationResult(List("children2", 0), List("child2 int_col should be greater than 2 and parent must be greater than 3 but is 0,0")),
+        ValidationResult(List("children2", 1), List("child2 int_col should be greater than 2 and parent must be greater than 3 but is 1,0")))
     )
 
     dto.int_col = 11
@@ -170,9 +171,9 @@ class ValidationSpecs extends FlatSpec with Matchers with BeforeAndAfterAll {
     dto.children2(1).int_col = 2
     intercept[BusinessException] {
       testApp.saveApp(dto)
-    }.getMessage.parseJson.convertTo[List[querease.ValidationErrors]] should be(
-      List(querease.ValidationErrors(List("children1", 0), List("child1 int_col should be greater than 1 but is 1")),
-        querease.ValidationErrors(List("children2", 1), List("child2 int_col should be greater than 2 and parent must be greater than 3 but is 2,11")))
+    }.getMessage.parseJson.convertTo[List[ValidationResult]] should be(
+      List(ValidationResult(List("children1", 0), List("child1 int_col should be greater than 1 but is 1")),
+        ValidationResult(List("children2", 1), List("child2 int_col should be greater than 2 and parent must be greater than 3 but is 2,11")))
     )
   }
 }
