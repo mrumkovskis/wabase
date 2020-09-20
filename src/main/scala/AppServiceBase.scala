@@ -464,8 +464,8 @@ object AppServiceBase {
         complete(HttpResponse(BadRequest, entity = e.getMessage))
     }
 
-    def validationExceptionHandlerWithPaths(logger: com.typesafe.scalalogging.Logger,
-                                           jsonConverter: JsonConverter) = ExceptionHandler {
+    def validationExceptionPathsHandler(logger: com.typesafe.scalalogging.Logger,
+                                        jsonConverter: JsonConverter) = ExceptionHandler {
       case e: ValidationException =>
         logger.trace(e.getMessage, e)
         import spray.json.DefaultJsonProtocol.{ jsonFormat2, listFormat, StringJsonFormat }
