@@ -529,7 +529,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
         .filter(_ != null)
       val old = dbUse{
         validateFields(instance)
-        validate(instance)
+        validate(instance)(state.locale)
         idOpt.flatMap { id =>
           rest(ViewContext[DtoWithId](viewName, id, params, user, state)).result
         }.orNull

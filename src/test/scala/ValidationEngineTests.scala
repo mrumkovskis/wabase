@@ -1,5 +1,7 @@
 package org.wabase
 
+import java.util.Locale
+
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers
 
@@ -22,6 +24,7 @@ object TestValidationEngine extends org.wabase.TestApp {
 }
 
 class ValidationEngineTests extends FlatSpec with Matchers {
+  implicit val locale: Locale = Locale.getDefault()
 
   def validationTestDto(expression: String, message: String) = {
     val t = new ValidationEngineTestDto

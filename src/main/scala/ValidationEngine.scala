@@ -1,5 +1,7 @@
 package org.wabase
 
+import java.util.Locale
+
 import javax.script.ScriptEngineManager
 import org.tresql.Query
 import spray.json._
@@ -7,7 +9,7 @@ import spray.json._
 import scala.util.control.NonFatal
 
 trait ValidationEngine {
-  def validate(instance: Dto)
+  def validate(instance: Dto)(implicit locale: Locale)
 }
 
 /** Default validation engine, executes validation javascript stored in "validation" table */
@@ -63,7 +65,7 @@ trait DefaultValidationEngine extends ValidationEngine with Loggable {
     val viewName = viewDef(classToViewNameMap(instance.getClass)).name
     Query(validationsQuery, Map("context" -> viewName))(tresqlResources).map(r => new Validation().fill(r)).toList
   }
-  override def validate(instance: Dto) {
+  override def validate(instance: Dto)(implicit locale: Locale) {
     val validationList = validations(instance)
     if (validationList.nonEmpty) {
       val engine = get(instance)
@@ -103,7 +105,7 @@ trait DefaultValidationEngine extends ValidationEngine with Loggable {
 }
 
 trait NoValidation extends ValidationEngine {
-  override def validate(instance: Dto) {}
+  override def validate(instance: Dto)(implicit locale: Locale) {}
 }
 
 object ValidationEngine {
