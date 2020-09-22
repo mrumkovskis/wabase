@@ -921,7 +921,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
   )
 
   def fieldRequiredErrorMessage(viewName: String, field: qe.FieldDef)(implicit locale: Locale): String =
-    translate("""Field\ %1$s\ is\ mandatory.""", field.label)
+    translate("""Field %1$s is mandatory.""", field.label)
   def isFieldRequiredViolated(viewName: String, field: qe.FieldDef, value: Any): Boolean =
     field.required &&
     (value match {
