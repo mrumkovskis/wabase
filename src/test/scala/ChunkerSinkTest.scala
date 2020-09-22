@@ -46,7 +46,7 @@ class ChunkerSinkTest extends AsyncFlatSpec {
   }
   it should "return CompleteSourceValue from RowSource" in {
     val n = 4
-    RowSource.value(n + 1, 0, src(n)).map {
+    RowSource.value(n + 2, 0, src(n)).map {
       case CompleteSourceValue(v) => assert(v == res(n))
       case x => assert(x == res(n))
     }
