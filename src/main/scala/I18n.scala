@@ -10,8 +10,11 @@ trait I18n {
 
   val I18nWabaseResourceName = "wabase"
 
-  /** Subclass can override this value */
+  /** Application default resource bundle. Subclass can override this value */
   val I18nResourceName = I18nWabaseResourceName
+
+  /** Application resource bundle dependencies. */
+  def i18nResourceDependencies: Map[String, String] = Map()
 
   private lazy val loaderControl =
     new ResourceBundle.Control {
@@ -46,7 +49,8 @@ trait I18n {
             val bundle: ResourceBundle =
               if (baseName == I18nWabaseResourceName) new PropertyResourceBundle(br) else {
                 new PropertyResourceBundle(br) {
-                  setParent(I18n.this.bundle(I18n.this.I18nWabaseResourceName)(locale))
+                  val parentBundle = i18nResourceDependencies.getOrElse(baseName, I18nWabaseResourceName)
+                  setParent(I18n.this.bundle(parentBundle)(locale))
                 }
               }
             br.close()
