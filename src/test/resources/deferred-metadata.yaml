@@ -25,9 +25,9 @@ columns:
   - state                    300
   - params                   2000
   - request_hash           ! 100
-  - request                ! base64Binary
+  - request                ! bytes
   - response_time
-  - result                   base64Binary
+  - result                   bytes
   - result_file_id
   - result_file_sha_256      64
 pk: request_hash

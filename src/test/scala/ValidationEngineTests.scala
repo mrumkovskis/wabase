@@ -1,5 +1,7 @@
 package org.wabase
 
+import java.util.Locale
+
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers
 
@@ -22,6 +24,7 @@ object TestValidationEngine extends org.wabase.TestApp {
 }
 
 class ValidationEngineTests extends FlatSpec with Matchers {
+  implicit val locale: Locale = Locale.getDefault()
 
   def validationTestDto(expression: String, message: String) = {
     val t = new ValidationEngineTestDto
@@ -95,5 +98,14 @@ class ValidationEngineTests extends FlatSpec with Matchers {
         "invalid email"
       ))
     }.getMessage should be ("invalid email")
+  }
+
+  "validation engine" should "support dynamic error messages" in {
+    intercept[BusinessException] {
+      TestValidationEngine.validate(validationTestDto(
+        "my_int_field === 43",
+        "'Should be 43, found - ' + my_int_field"
+      ))
+    }.getMessage should be ("Should be 43, found - 42")
   }
 }

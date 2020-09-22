@@ -32,7 +32,7 @@ trait Marshalling extends DtoMarshalling
   with BasicJsonMarshalling
   with BasicMarshalling { this: AppServiceBase[_] with Execution => }
 
-trait BasicJsonMarshalling extends akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport with BasicMarshalling{
+trait BasicJsonMarshalling extends akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport with BasicMarshalling {
   this: JsonConverterProvider =>
 
   import jsonConverter._
@@ -124,6 +124,21 @@ trait AppMarshalling { this: AppServiceBase[_] with Execution =>
     override def close() = result.close()
   }
 
+  class JsonListChunker[T: JsonFormat](val result: Iterator[T], writer: Writer) extends RowWriter {
+    override def header() = writer write "["
+
+    var first = true
+    override def row(): Unit = {
+      if(first) first = false else writer write ",\n"
+      writer write result.next.toJson.compactPrint
+    }
+
+    override def footer() = writer write "]\n"
+
+    def hasNext = result.hasNext
+    def close() = {}
+  }
+
   val dbBufferSize = 1024 * 32
   val dbDataFileMaxSize = MarshallingConfig.dbDataFileMaxSize
 
@@ -168,46 +183,54 @@ trait AppMarshalling { this: AppServiceBase[_] with Execution =>
     }
   }
 
+  import RowSource._
+  implicit def toResponseListJsonMarshaller[T: JsonFormat]: FutureResponseMarshaller[Iterator[T]] =
+    Marshaller.withFixedContentType(`application/json`) {
+      result =>
+        httpResponse(`application/json`, new JsonListChunker(result, _: Writer), dbDataFileMaxSize)
+    }
+
   type FutureResponse = Future[HttpResponse]
   type FutureResponseMarshaller[T] = Marshaller[T, FutureResponse]
 
-  implicit def toFutureResponseMarshallable[A](_value: A)(implicit _marshaller: FutureResponseMarshaller[A]): ToResponseMarshallable = new ToResponseMarshallable{
-    type T = A
-    def value: T = _value
-    implicit def marshaller: ToResponseMarshaller[A] = null
+  implicit def toFutureResponseMarshallable[A](_value: A)(implicit _marshaller: FutureResponseMarshaller[A]): ToResponseMarshallable =
+    new ToResponseMarshallable {
+      type T = A
+      def value: T = _value
+      implicit def marshaller: ToResponseMarshaller[A] = null
 
-    override def apply(request: HttpRequest)(implicit ec: ExecutionContext): Future[HttpResponse] = {
-      import akka.http.scaladsl.util.FastFuture._
-      import akka.http.scaladsl.marshalling.Marshal._
-      val ctn = ContentNegotiator(request.headers)
+      override def apply(request: HttpRequest)(implicit ec: ExecutionContext): Future[HttpResponse] = {
+        import akka.http.scaladsl.util.FastFuture._
+        import akka.http.scaladsl.marshalling.Marshal._
+        val ctn = ContentNegotiator(request.headers)
 
-      _marshaller(value).fast.map { marshallings =>
-        val supportedAlternatives: List[ContentNegotiator.Alternative] =
-          marshallings.collect {
-            case Marshalling.WithFixedContentType(ct, _) => ContentNegotiator.Alternative(ct)
-            case Marshalling.WithOpenCharset(mt, _)      => ContentNegotiator.Alternative(mt)
-          }
-        val bestMarshal = {
-          if (supportedAlternatives.nonEmpty) {
-            ctn.pickContentType(supportedAlternatives).flatMap {
-              case best @ (_: ContentType.Binary | _: ContentType.WithFixedCharset | _: ContentType.WithMissingCharset) =>
-                marshallings collectFirst { case Marshalling.WithFixedContentType(`best`, marshal) => marshal }
-              case best @ ContentType.WithCharset(bestMT, bestCS) =>
-                marshallings collectFirst {
-                  case Marshalling.WithFixedContentType(`best`, marshal) => marshal
-                  case Marshalling.WithOpenCharset(`bestMT`, marshal)    => () => marshal(bestCS)
-                }
+        _marshaller(value).fast.map { marshallings =>
+          val supportedAlternatives: List[ContentNegotiator.Alternative] =
+            marshallings.collect {
+              case Marshalling.WithFixedContentType(ct, _) => ContentNegotiator.Alternative(ct)
+              case Marshalling.WithOpenCharset(mt, _)      => ContentNegotiator.Alternative(mt)
             }
-          } else None
-        } orElse {
-          marshallings collectFirst { case Marshalling.Opaque(marshal) => marshal }
-        } getOrElse {
-          throw UnacceptableResponseContentTypeException(supportedAlternatives.toSet)
-        }
-        bestMarshal()
-      }.flatMap(identity)
+          val bestMarshal = {
+            if (supportedAlternatives.nonEmpty) {
+              ctn.pickContentType(supportedAlternatives).flatMap {
+                case best @ (_: ContentType.Binary | _: ContentType.WithFixedCharset | _: ContentType.WithMissingCharset) =>
+                  marshallings collectFirst { case Marshalling.WithFixedContentType(`best`, marshal) => marshal }
+                case best @ ContentType.WithCharset(bestMT, bestCS) =>
+                  marshallings collectFirst {
+                    case Marshalling.WithFixedContentType(`best`, marshal) => marshal
+                    case Marshalling.WithOpenCharset(`bestMT`, marshal)    => () => marshal(bestCS)
+                  }
+              }
+            } else None
+          } orElse {
+            marshallings collectFirst { case Marshalling.Opaque(marshal) => marshal }
+          } getOrElse {
+            throw UnacceptableResponseContentTypeException(supportedAlternatives.toSet)
+          }
+          bestMarshal()
+        }.flatMap(identity)
+      }
     }
-  }
 }
 
 trait TresqlResultMarshalling extends AppMarshalling { this: AppServiceBase[_] with Execution =>

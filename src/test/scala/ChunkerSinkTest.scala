@@ -24,7 +24,7 @@ class ChunkerSinkTest extends AsyncFlatSpec {
     Future.foldLeft {
       res.map(_.flatMap {
         case (IncompleteSourceValue(s), x) => s.runReduce(_ ++ _).map(_ -> x)
-        case x => Future.successful(x)
+        case (CompleteSourceValue(s), x) => Future.successful(s -> x)
       })
     } (List[(Any, ByteString)]()) { (l, r) => r :: l }
     .map(_.unzip)
@@ -46,7 +46,7 @@ class ChunkerSinkTest extends AsyncFlatSpec {
   }
   it should "return CompleteSourceValue from RowSource" in {
     val n = 4
-    RowSource.value(n + 1, 0, src(n)).map {
+    RowSource.value(n + 2, 0, src(n)).map {
       case CompleteSourceValue(v) => assert(v == res(n))
       case x => assert(x == res(n))
     }

@@ -6,9 +6,9 @@ columns:
 - status                 ! 5 (OK, ERR, QUEUE, EXE, DEL)
 - topic                  ! 50
 - request_hash           ! 100
-- request                ! base64Binary
+- request                ! bytes
 - response_time
-- result                   base64Binary
+- result                   bytes
 pk: request_hash
 idx:
 - priority, request_time

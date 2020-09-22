@@ -1,24 +1,28 @@
 package org.wabase
 
-import mojoz.metadata._
-import mojoz.metadata.{ViewDef => MojozViewDef}
-import mojoz.metadata.{FieldDef => MojozFieldDef}
-import mojoz.metadata.in._
-import mojoz.metadata.io.MdConventions
-import mojoz.metadata.out.SqlWriter.SimpleConstraintNamingRules
+import org.mojoz.metadata._
+import org.mojoz.metadata.{ViewDef => MojozViewDef}
+import org.mojoz.metadata.{FieldDef => MojozFieldDef}
+import org.mojoz.metadata.in._
+import org.mojoz.metadata.io.MdConventions
+import org.mojoz.metadata.out.SqlGenerator.SimpleConstraintNamingRules
+import org.mojoz.querease._
 import scala.collection.immutable.Seq
 import scala.collection.JavaConverters._
 import scala.language.reflectiveCalls
 
-trait AppMetadata extends querease.QuereaseMetadata { this: AppQuerease =>
+trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
   import AppMetadata._
 
   override lazy val metadataConventions: AppMdConventions = new DefaultAppMdConventions
-  override protected lazy val viewDefs: Map[String, ViewDef] = resolveAuth {
+  override lazy val nameToViewDef: Map[String, ViewDef] = {
     val mojozViewDefs =
       YamlViewDefLoader(tableMetadata, yamlMetadata, tresqlJoinsParser, metadataConventions, Seq("api"))
-        .extendedViewDefs
+        .nameToViewDef
+    toAppViewDefs(mojozViewDefs)
+  }
+  def toAppViewDefs(mojozViewDefs: Map[String, ViewDef]) = resolveAuth {
     val inlineViewDefNames =
       mojozViewDefs.values.flatMap { viewDef =>
         viewDef.fields.filter { field =>
@@ -32,6 +36,7 @@ trait AppMetadata extends querease.QuereaseMetadata { this: AppQuerease =>
     classToViewNameMap.getOrElse(mf.runtimeClass, mf.runtimeClass.getSimpleName)
 
   def dtoMappingClassName = "dto.DtoMapping"
+  def defaultApiRoleName  = "ADMIN"
 
   lazy val viewNameToClassMap: Map[String, Class[_ <: DTO]] = {
     val objectClass = Class.forName(dtoMappingClassName + "$")
@@ -53,7 +58,7 @@ trait AppMetadata extends querease.QuereaseMetadata { this: AppQuerease =>
     }) getOrElse (null, null)
   }
 
-  def collectViews[A](f: PartialFunction[ViewDef, A]): Iterable[A] = viewDefs.values.collect(f)
+  def collectViews[A](f: PartialFunction[ViewDef, A]): Iterable[A] = nameToViewDef.values.collect(f)
 
   object KnownAuthOps {
     val Get = "get"
@@ -73,13 +78,14 @@ trait AppMetadata extends querease.QuereaseMetadata { this: AppQuerease =>
     val Limit = "limit"
     val Validations = "validations"
     val ConnectionPool = "cp"
-    val AppCoreViewExtrasKey = AppMetadata.AppCoreViewExtrasKey
+    val QuereaseViewExtrasKey = QuereaseMetadata.QuereaseViewExtrasKey
+    val WabaseViewExtrasKey = AppMetadata.WabaseViewExtrasKey
     def apply() =
-      Set(Api, Auth, Limit, Validations, ConnectionPool, AppCoreViewExtrasKey)
+      Set(Api, Auth, Limit, Validations, ConnectionPool, QuereaseViewExtrasKey, WabaseViewExtrasKey)
   }
 
   lazy val knownViewExtras = KnownViewExtras()
-  protected val handledViewExtras = KnownViewExtras()
+  protected val handledViewExtras = KnownViewExtras() - KnownViewExtras.QuereaseViewExtrasKey
 
   lazy val knownPrefixes = Set(KnownViewExtras.Auth)
 
@@ -101,15 +107,16 @@ trait AppMetadata extends querease.QuereaseMetadata { this: AppQuerease =>
     val Hidden = "hidden"
     val Visible = "visible"
     val Initial = "initial"
-    val AppCoreFieldExtrasKey = AppMetadata.AppCoreFieldExtrasKey
+    val QuereaseFieldExtrasKey = QuereaseMetadata.QuereaseFieldExtrasKey
+    val WabaseFieldExtrasKey = AppMetadata.WabaseFieldExtrasKey
     def apply() = Set(
       Domain, Hidden, Sortable, Visible, Required,
       NoGet, NoSave, Readonly, NoInsert, NoUpdate,
-      FieldApi, FieldDb, Initial, AppCoreFieldExtrasKey)
+      FieldApi, FieldDb, Initial, QuereaseFieldExtrasKey, WabaseFieldExtrasKey)
   }
 
   lazy val knownFieldExtras = KnownFieldExtras()
-  protected val handledFieldExtras = KnownFieldExtras()
+  protected val handledFieldExtras = KnownFieldExtras() - KnownFieldExtras.QuereaseFieldExtrasKey
 
   lazy val knownInlineViewExtras = knownViewExtras ++ knownFieldExtras
 
@@ -206,11 +213,12 @@ trait AppMetadata extends querease.QuereaseMetadata { this: AppQuerease =>
 
   }
 
-  protected def toAppViewDef(viewDef: ViewDef, isInline: Boolean): ViewDef = {
+  protected def toAppViewDef(vd: ViewDef, isInline: Boolean): ViewDef = {
     import KnownAuthOps._
     import KnownViewExtras._
     import KnownFieldExtras._
     import ViewDefExtrasUtils._
+    val viewDef = QuereaseMetadata.toQuereaseViewDef(vd)
     val appFields = viewDef.fields map { f =>
       import FieldDefExtrasUtils._
 
@@ -259,7 +267,6 @@ trait AppMetadata extends querease.QuereaseMetadata { this: AppQuerease =>
       if (hiddenOpt.isDefined && visibleOpt.isDefined && hiddenOpt == visibleOpt)
         sys.error(s"Conflicting values of visible and hidden, viewDef field: ${viewDef.name}.${f.name}")
       val visible = hiddenOpt.map(! _).getOrElse(visibleOpt getOrElse true)
-      val initial = getExtraOpt(f, Initial).orNull
 
       val knownExtras =
         if (f.type_.isComplexType) knownFieldExtras ++ knownViewExtras ++
@@ -285,10 +292,11 @@ trait AppMetadata extends querease.QuereaseMetadata { this: AppQuerease =>
       val expression = if (fieldDb.gettable) f.expression else null
       val persistenceOptions = Option(f.options) getOrElse ""
       import f._
-      MojozFieldDef(table, tableAlias, name, alias, persistenceOptions, isCollection, maxOccurs,
-        isExpression, expression, f.saveTo, resolver, nullable, initial, f.isForcedCardinality,
-        type_, enum, joinToParent, orderBy, f.isI18n,
-        comments, extras).updateExtras(_ => AppFieldDef(fieldApi, fieldDb, label, required, sortable, visible))
+      MojozFieldDef(table, tableAlias, name, alias, persistenceOptions, isOverride, isCollection,
+        isExpression, expression, f.saveTo, resolver, nullable,
+        type_, enum, joinToParent, orderBy,
+        comments, extras)
+      .updateWabaseExtras(_ => AppFieldDef(fieldApi, fieldDb, label, required, sortable, visible))
     }
     import viewDef._
     val auth = toAuth(viewDef, Auth)
@@ -304,11 +312,10 @@ trait AppMetadata extends querease.QuereaseMetadata { this: AppQuerease =>
       sys.error(
         s"Unknown api method(s), viewDef: ${viewDef.name}, method(s): ${unknownApiMethods.mkString(", ")}")
     */
-    val apiMap = api.foldLeft((Map[String, String](), "SISTEMA_ADMINISTRET"))((mr, x) =>
+    val apiMap = api.foldLeft((Map[String, String](), defaultApiRoleName))((mr, x) =>
       if (knownApiMethods contains x) (mr._1 + (x -> mr._2), mr._2) else (mr._1, x.toUpperCase))._1
 
     val limit = getIntExtra(Limit, viewDef.extras) getOrElse 100
-    val validations = getStringSeq(Validations, viewDef.extras)
     val cp = getStringExtra(ConnectionPool, viewDef.extras) getOrElse DEFAULT_CP.connectionPoolName
     val extras =
       Option(viewDef.extras)
@@ -325,32 +332,11 @@ trait AppMetadata extends querease.QuereaseMetadata { this: AppQuerease =>
         s"Unknown properties for viewDef ${viewDef.name}: ${unknownKeys.mkString(", ")}")
 
     def createRelevanceField(name: String, expression: String): FieldDef =
-      MojozFieldDef(
-        table = null,
-        tableAlias = null,
-        name = name,
-        alias = null,
-        options = "",
-        isCollection = false,
-        maxOccurs = "1",
-        isExpression = true,
-        expression = expression,
-        saveTo = null,
-        resolver = null,
-        nullable = true,
-        initial = null,
-        isForcedCardinality = false,
-        type_ = Type("boolean", None, None, None, false),
-        enum = null,
-        joinToParent = null,
-        orderBy = null,
-        isI18n = false,
-        comments = null,
-        extras = null
-      )
+      (new MojozFieldDef(name, Type("boolean", None, None, None, false)))
+        .copy(options = "", isExpression = true, expression = expression)
     val appView = MojozViewDef(name, table, tableAlias, joins, filter,
-      viewDef.groupBy, viewDef.having, orderBy, extends_, draftOf, detailsOf,
-      comments, appFields, viewDef.saveTo, extras).updateExtras(_ => AppViewDef(limit, validations, cp, auth, apiMap))
+      viewDef.groupBy, viewDef.having, orderBy, extends_,
+      comments, appFields, viewDef.saveTo, extras).updateWabaseExtras(_ => AppViewDef(limit, cp, auth, apiMap))
     def hasAuthFilter(viewDef: ViewDef): Boolean = viewDef.auth match {
       case AuthFilters(g, l, i, u, d) =>
         !(g.isEmpty && l.isEmpty && i.isEmpty && u.isEmpty && d.isEmpty)
@@ -400,7 +386,6 @@ object AppMetadata {
 
   trait AppViewDefExtras {
     val limit: Int
-    val validations: Seq[String]
     val cp: String
     val auth: AuthFilters
     val apiMethodToRole: Map[String, String]
@@ -408,7 +393,6 @@ object AppMetadata {
 
   private [wabase] case class AppViewDef(
     limit: Int = 1000,
-    validations: Seq[String] = Nil,
     cp: String = DEFAULT_CP.connectionPoolName,
     auth: AuthFilters = AuthFilters(Nil, Nil, Nil, Nil, Nil),
     apiMethodToRole: Map[String, String] = Map()
@@ -437,42 +421,32 @@ object AppMetadata {
     visible: Boolean = false,
   ) extends AppFieldDefExtras
 
-  val AppCoreViewExtrasKey = "app-core-view-extras"
-  val AppCoreFieldExtrasKey = "app-core-field-extras"
-  trait ExtrasMap {
-    protected def updateExtrasMap(extras: Map[String, Any]): Any
-    protected def extrasMap: Map[String, Any]
-
-    private def extrasMapOrEmpty: Map[String, Any] = Option(extrasMap).getOrElse(Map())
-    protected def updateExtras[T, E](key: String, updater: E => E, default: E): T =
-      updateExtrasMap(extrasMapOrEmpty + (key -> updater(extras(key, default)))).asInstanceOf[T]
-    protected def extras[E](key: String, default: E): E = extrasMapOrEmpty.getOrElse(key, default).asInstanceOf[E]
-  }
-  implicit class AugmentedAppViewDef(viewDef: AppMetadata#ViewDef) extends AppViewDefExtras with ExtrasMap {
+  val WabaseViewExtrasKey = "wabase-view-extras"
+  val WabaseFieldExtrasKey = "wabase-field-extras"
+  implicit class AugmentedAppViewDef(viewDef: AppMetadata#ViewDef) extends QuereaseMetadata.AugmentedQuereaseViewDef(viewDef) with AppViewDefExtras {
     private val defaultExtras = AppViewDef()
-    private val appExtras = extras(AppCoreViewExtrasKey, defaultExtras)
+    private val appExtras = extras(WabaseViewExtrasKey, defaultExtras)
     override val limit = appExtras.limit
-    override val validations = appExtras.validations
     override val cp = appExtras.cp
     override val auth = appExtras.auth
     override val apiMethodToRole = appExtras.apiMethodToRole
-    def updateExtras(updater: AppViewDef => AppViewDef): AppMetadata#ViewDef =
-      updateExtras(AppCoreViewExtrasKey, updater, defaultExtras)
+    def updateWabaseExtras(updater: AppViewDef => AppViewDef): AppMetadata#ViewDef =
+      updateExtras(WabaseViewExtrasKey, updater, defaultExtras)
 
     override protected def updateExtrasMap(extras: Map[String, Any]) = viewDef.copy(extras = extras)
     override protected def extrasMap = viewDef.extras
   }
-  implicit class AugmentedAppFieldDef(fieldDef: AppMetadata#FieldDef) extends AppFieldDefExtras with ExtrasMap {
+  implicit class AugmentedAppFieldDef(fieldDef: AppMetadata#FieldDef) extends QuereaseMetadata.AugmentedQuereaseFieldDef(fieldDef) with AppFieldDefExtras {
     private val defaultExtras = AppFieldDef()
-    val appExtras = extras(AppCoreFieldExtrasKey, defaultExtras)
+    val appExtras = extras(WabaseFieldExtrasKey, defaultExtras)
     override val api = appExtras.api
     override val db = appExtras.db
     override val label = appExtras.label
     override val required = appExtras.required
     override val sortable = appExtras.sortable
     override val visible = appExtras.visible
-    def updateExtras(updater: AppFieldDef => AppFieldDef): AppMetadata#FieldDef =
-      updateExtras(AppCoreFieldExtrasKey, updater, defaultExtras)
+    def updateWabaseExtras(updater: AppFieldDef => AppFieldDef): AppMetadata#FieldDef =
+      updateExtras(WabaseFieldExtrasKey, updater, defaultExtras)
 
     override protected def updateExtrasMap(extras: Map[String, Any]): Any = fieldDef.copy(extras = extras)
     override protected def extrasMap = fieldDef.extras

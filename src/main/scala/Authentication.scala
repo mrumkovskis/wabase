@@ -1,6 +1,7 @@
 package org.wabase
 
 import java.security.SecureRandom
+import java.util.Locale
 
 import akka.http.scaladsl.model._
 import akka.http.scaladsl.model.Uri
@@ -332,7 +333,7 @@ object Authentication {
     }
   }
 
-  trait LdapAuthentication { this: AppConfig with Loggable =>
+  trait LdapAuthentication { this: AppConfig with AppProvider[_] with Loggable =>
 
     import javax.naming._
     import javax.naming.directory.DirContext
@@ -342,7 +343,7 @@ object Authentication {
     val ldapUrl = Try(appConfig.getString("ldap-url")).toOption.getOrElse("")
     val accountPostfix = Try(appConfig.getString("account-postfix")).toOption.getOrElse("")
 
-    def ldapLogin(username: String, password: String) {
+    def ldapLogin(username: String, password: String)(implicit locale: Locale) {
       val env = new java.util.Hashtable[String, String]()
       env.put(Context.INITIAL_CONTEXT_FACTORY, "com.sun.jndi.ldap.LdapCtxFactory")
       env.put(Context.PROVIDER_URL, ldapUrl)
@@ -350,10 +351,10 @@ object Authentication {
       env.put(Context.SECURITY_AUTHENTICATION, "simple");
 
       if (username == null || "".equals(username)) {
-        throw new BusinessException("Wrong password or username")
+        throw new BusinessException(app.translate("Wrong password or username"))
       }
       if (password == null || "".equals(password)) {
-        throw new BusinessException("Wrong password or username")
+        throw new BusinessException(app.translate("Wrong password or username"))
       }
       env.put(Context.SECURITY_PRINCIPAL, username + accountPostfix)
       env.put(Context.SECURITY_CREDENTIALS, password)
@@ -365,10 +366,10 @@ object Authentication {
       } catch {
         case e: AuthenticationException =>
           logger.error("Authentication failed", e)
-          throw new BusinessException("Authentication failed")
+          throw new BusinessException(app.translate("Authentication failed"))
         case e: Exception =>
           logger.error("Unexpected authentication error", e)
-          throw new BusinessException("Unexpected authentication error")
+          throw new BusinessException(app.translate("Unexpected authentication error"))
       }
     }
   }

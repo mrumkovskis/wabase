@@ -1,9 +1,11 @@
 package org.wabase
 
-import mojoz.metadata.Type
-import querease.NotFoundException
-import querease.FilterType
-import querease.FilterType._
+import java.util.Locale
+
+import org.mojoz.metadata.Type
+import org.mojoz.querease.NotFoundException
+import org.mojoz.querease.FilterType
+import org.mojoz.querease.FilterType._
 import org.tresql._
 import spray.json._
 import com.typesafe.config.Config
@@ -14,7 +16,7 @@ import scala.language.implicitConversions
 import scala.collection.immutable.TreeMap
 import scala.reflect.ManifestFactory
 import scala.util.Try
-import org.tresql.{Env, Resources, RowLike}
+import org.tresql.{Resources, RowLike}
 import AppMetadata._
 import ValidationEngine.CustomValidationFunctions.is_valid_email
 
@@ -26,8 +28,14 @@ object AppBase {
   }
 }
 
-trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider with DbAccessProvider {
-  this: DbAccess with Authorization[User] with ValidationEngine with DbConstraintMessage with Audit[User] =>
+case class ApplicationState(state: Map[String, Any], locale: Locale = Locale.getDefault)
+
+trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider with DbAccessProvider with I18n {
+  this: DbAccess
+    with Authorization[User]
+    with ValidationEngine
+    with DbConstraintMessage
+    with Audit[User] =>
 
   override def dbAccess = this
 
@@ -89,10 +97,13 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
     def close() = onCloseAction(())
   }
 
+  implicit def appStateToMap(state: ApplicationState): Map[String, Any] = state.state
+  implicit def mapToAppState(state: Map[String, Any]) = ApplicationState(state)
+
   sealed trait RequestContext[+T] {
     def user: User
     def inParams: Map[String, Any]
-    def state: Map[String, Any]
+    def state: ApplicationState
     def result: T
     def viewName: String
     def params: Map[String, Any]
@@ -101,7 +112,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
   case class ViewContext[+T <: Dto](viewName: String, id: Long,
     inParams: Map[String, Any] = Map(),
     user: User,
-    state: Map[String, Any] = Map(), result: Option[T] = null)
+    state: ApplicationState = Map[String, Any](), result: Option[T] = null)
     extends RequestContext[Option[T]] {
     val params = state ++ inParams ++ current_user_param(user)
   }
@@ -109,7 +120,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
   case class CreateContext[+T <: Dto](viewName: String,
     inParams: Map[String, Any] = Map(),
     user: User,
-    state: Map[String, Any] = Map(), result: T = null)
+    state: ApplicationState = Map[String, Any](), result: T = null)
     extends RequestContext[T] {
     val params = state ++ inParams ++ current_user_param(user)
   }
@@ -121,7 +132,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
     limit: Int = 0,
     orderBy: String = null,
     user: User,
-    state: Map[String, Any] = Map(),
+    state: ApplicationState = Map[String, Any](),
     completePromise: Promise[Unit],
     doCount: Boolean = false,
     timeoutSeconds: QueryTimeout,
@@ -147,9 +158,8 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
       inParams: Map[String, Any] = Map(),
       user: User,
       completePromise: Promise[Long],
-      state: Map[String, Any] = Map(),
+      state: ApplicationState = Map[String, Any](),
       extraPropsToSave: Map[String, Any] = Map(),
-      transform: Map[String, Any] => Map[String, Any] = m => m,
       result: Long = -1) extends RequestContext[Long] {
     val params = state ++ inParams ++ current_user_param(user)
   }
@@ -160,7 +170,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
       inParams: Map[String, Any] = Map(),
       user: User,
       completePromise: Promise[Unit],
-      state: Map[String, Any] = Map(),
+      state: ApplicationState = Map[String, Any](),
       result: Long = -1,
       old: T = null)
     extends RequestContext[Long] {
@@ -171,15 +181,24 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
 
  /** before(), after() and on() methods can be used from business code. */
   /** Names of date or time fields updated automatically on save */
-  lazy val autoTimeFieldNames = Set("aktualizacijas_laiks", "aktualizacijas_datums")
+  val autoTimeFieldNames = Set("update_time")
   implicit object View extends HExt[ViewContext[Dto]] {
     override def defaultAction(ctx: ViewContext[Dto]): ViewContext[Dto] =
       defaultView(ctx)
   }
   def defaultView(ctx: ViewContext[Dto]): ViewContext[Dto] = {
     import ctx._
-    ctx.copy(result = qe.get(id, (viewFilter(viewName), params))(
-      ManifestFactory.classType(viewNameToClassMap(viewName)), tresqlResources))
+    if (id == -1) {
+      //get by name
+      qe.list[Dto](params, 0, 2)(
+        ManifestFactory.classType(viewNameToClassMap(viewName)), implicitly[Resources]) match {
+        case List(result) => ctx.copy(result = Some(result))
+        case Nil => ctx.copy(result = None)
+        case _ => throw new BusinessException("Too many rows returned")
+      }
+    } else
+      ctx.copy(result = qe.get(id, viewFilter(viewName), params)(
+        ManifestFactory.classType(viewNameToClassMap(viewName)), implicitly[Resources]))
   }
   implicit object Create extends HExt[CreateContext[Dto]] {
     override def defaultAction(ctx: CreateContext[Dto]): CreateContext[Dto] =
@@ -218,7 +237,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
           throw new BusinessException(s"Not sortable: $viewName by " + notSortable.mkString(", "), null)
       }
       if (ctx.doCount)
-        ctx.copy(count = qe.countAll(params, (listFilter(viewName), Map[String, Any]()))(
+        ctx.copy(count = qe.countAll(params, listFilter(viewName), Map[String, Any]())(
           ManifestFactory.classType(viewNameToClassMap(viewName)), tresqlResources))
       else {
         ctx.copy(result = new AppListResult[Dto] {
@@ -233,7 +252,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
               offset,
               limit,
               stableOrderBy(viewDef, orderBy),
-              (listFilter(viewName), Map[String, Any]()))(
+              listFilter(viewName), Map[String, Any]())(
               ManifestFactory.classType(viewNameToClassMap(viewName).asInstanceOf[Class[Dto]]),
               resources)
             catch {
@@ -268,22 +287,6 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
     override def defaultAction(ctx: SaveContext[Dto]): SaveContext[Dto] =
       defaultSave(ctx)
   }
-  def validate(ctx: SaveContext[Dto]) = {
-    import ctx._
-    val viewDef = qe.viewDef(viewName)
-    if (viewDef.validations != null && viewDef.validations.nonEmpty) {
-      val query =
-        "messages(# idx, msg) {" +
-          viewDef.validations.zipWithIndex.map {
-            case (v, i) => s"{ $i idx, if_not($v) msg }"
-          }.mkString(" + ") +
-        "} messages[msg != null] { msg } #(idx)"
-      val result = Query.list[String](query, ctx.obj.toSaveableMap ++ ctx.params)
-      val msg = result.filter(_ != null).filter(_ != "").mkString("\n").trim
-      if (msg != "")
-        throw new BusinessException(msg)
-    }
-  }
   def defaultSave(ctx: SaveContext[Dto]): SaveContext[Dto] = {
       import ctx._
       if (!ctx.obj.isInstanceOf[org.wabase.DtoWithId])
@@ -292,7 +295,6 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
              + ctx.obj.getClass.getName)
       val obj = ctx.obj.asInstanceOf[DtoWithId]
       val viewDef = qe.viewDef(viewName)
-      validate(ctx)
       val implicitProps = viewDef.fields
        .map(_.name)
        .filter(autoTimeFieldNames)
@@ -301,9 +303,9 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
       obj.id = qe.save(
         obj,
         Option(extraPropsToSave).getOrElse(Map.empty) ++ implicitProps,
-        ctx.transform,
         false,
-        (if (authFilter.isEmpty) null else authFilter, params)
+        if (authFilter.isEmpty) null else authFilter,
+        params
       )(tresqlResources)
       ctx.copy(result = obj.id)
   }
@@ -316,8 +318,8 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
       val viewDef = qe.viewDef(viewName)
       val authFilter = deleteFilter(viewName)
       val result = qe.delete(old,
-        (if (authFilter.isEmpty) null else authFilter,
-          state ++ ctx.keyMap ++ current_user_param(user)))(tresqlResources)
+        if (authFilter.isEmpty) null else authFilter,
+        state ++ ctx.keyMap ++ current_user_param(user))(tresqlResources)
       ctx.copy(result = result.toString.toLong)
   }
 
@@ -377,7 +379,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
       val after = action("after", clazz)
       before andThen on andThen after
     }
-    private def action(act: String, clazz: Class[_], defaultAction: T => T = (x: T) => x,
+    private def action(act: String, clazz: Class[_], defaultAction: T => T = identity,
       boundaryClass: Class[_] = classOf[org.wabase.Dto]): T => T =
       actions.getOrElse(act -> clazz,
         if (clazz.getSuperclass != null && boundaryClass.isAssignableFrom(clazz.getSuperclass))
@@ -387,7 +389,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
 
   //rest services entry points
   def getRaw(viewName: String, id: Long, params: Map[String, Any] = Map())(
-    implicit user: User, state: Map[String, Any], timeoutSeconds: QueryTimeout, poolName: PoolName) =
+    implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout, poolName: PoolName) =
     checkApi(viewName, "get", user) {
       dbUse {
         implicit val clazz = viewNameToClassMap(viewName)
@@ -398,12 +400,12 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
     }
 
   def get(viewName: String, id: Long, params: Map[String, Any] = Map())(
-    implicit user: User, state: Map[String, Any], timeoutSeconds: QueryTimeout,
+    implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout,
       poolName: PoolName = PoolName(viewDef(viewName).cp)) =
     createViewResult(getRaw(viewName, id, params))
 
   def createRaw(viewName: String, params: Map[String, Any] = Map.empty)(
-    implicit user: User, state: Map[String, Any], timeoutSeconds: QueryTimeout, poolName: PoolName) =
+    implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout, poolName: PoolName) =
     checkApi(viewName, "get", user) {
       dbUse {
         implicit val clazz = viewNameToClassMap(viewName)
@@ -414,7 +416,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
     }
 
   def create(viewName: String, params: Map[String, Any] = Map.empty)(
-    implicit user: User, state: Map[String, Any], timeoutSeconds: QueryTimeout,
+    implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout,
       poolName: PoolName = PoolName(viewDef(viewName).cp)) =
     createCreateResult(createRaw(viewName, params))
 
@@ -426,7 +428,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
     orderBy: String = null,
     doCount: Boolean = false)(
       implicit user: User,
-      state: Map[String, Any],
+      state: ApplicationState,
       timeoutSeconds: QueryTimeout,
       poolName: PoolName) =
     checkApi(viewName, "list", user) {
@@ -448,14 +450,14 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
     orderBy: String = null,
     doCount: Boolean = false)(
       implicit user: User,
-      state: Map[String, Any],
+      state: ApplicationState,
       timeoutSeconds: QueryTimeout,
       poolName: PoolName = PoolName(viewDef(viewName).cp)) =
     createListResult(listRaw(viewName, params, offset, limit, orderBy, doCount))
 
   def count(viewName: String, params: Map[String, Any])(
     implicit user: User,
-    state: Map[String, Any],
+    state: ApplicationState,
     timeoutSeconds: QueryTimeout,
     poolName: PoolName = PoolName(viewDef(viewName).cp)) = checkApi(viewName, "list", user) {
     val result = listInternal(viewName, params, doCount = true)
@@ -471,7 +473,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
     orderBy: String = null,
     doCount: Boolean = false)(
       implicit user: User,
-      state: Map[String, Any],
+      state: ApplicationState,
       timeoutSeconds: QueryTimeout,
       poolName: PoolName) = {
 
@@ -492,14 +494,14 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
   }
 
   def save(viewName: String, obj: JsObject, params: Map[String, Any] = Map(), emptyStringsToNull: Boolean = true)(
-    implicit user: User, state: Map[String, Any], timeoutSeconds: QueryTimeout,
+    implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout,
       poolName: PoolName = PoolName(viewDef(viewName).cp)) = {
     val instance = qe.fill[Dto](obj)(Manifest.classType(viewNameToClassMap(viewName)))
     saveInternal(viewName, instance, params, emptyStringsToNull)
   }
 
   def saveApp(instance: Dto, params: Map[String, Any] = Map(), emptyStringsToNull: Boolean = true, extraPropsToSave: Map[String, Any] = Map())(
-    implicit user: User, state: Map[String, Any], timeoutSeconds: QueryTimeout,
+    implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout,
       poolName: PoolName = PoolName(viewDef(classToViewNameMap(instance.getClass)).cp)) = {
     saveInternal(classToViewNameMap(instance.getClass), instance, params, emptyStringsToNull, extraPropsToSave)
   }
@@ -512,7 +514,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
     extraPropsToSave: Map[String, Any] = Map()
   )(
     implicit user: User,
-    state: Map[String, Any],
+    state: ApplicationState,
     timeoutSeconds: QueryTimeout,
     poolName: PoolName
   ) = {
@@ -526,13 +528,13 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
         .filter(_ != null)
       val old = dbUse{
         validateFields(instance)
-        validate(instance)
+        validate(instance)(state.locale)
         idOpt.flatMap { id =>
           rest(ViewContext[DtoWithId](viewName, id, params, user, state)).result
         }.orNull
       }
       if (idOpt.isDefined && old == null)
-        throw new BusinessException("Record not found, cannot edit")
+        throw new BusinessException(translate("Record not found, cannot edit")(state.locale))
       if (old != null)
         // overwrite incoming values of non-updatable fields with old values from db
         // TODO for lookups and children?
@@ -562,7 +564,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
   }
 
   def delete(viewName: String, id: Long, params: Map[String, Any] = Map())(
-    implicit user: User, state: Map[String, Any], timeoutSeconds: QueryTimeout,
+    implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout,
       poolName: PoolName = PoolName(viewDef(viewName).cp)) =
     checkApi(viewName, "delete", user) {
       val promise = Promise[Unit]()
@@ -571,7 +573,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
           transaction {
             implicit val clazz = viewNameToClassMap(viewName).asInstanceOf[Class[DtoWithId]]
             val ctx = createDeleteCtx(RemoveContext[DtoWithId](viewName, id, params, user, promise, state))
-            qe.get[DtoWithId](id, (deleteFilter(viewName), ctx.params))(ManifestFactory.classType(clazz), tresqlResources) match {
+            qe.get[DtoWithId](id, deleteFilter(viewName), ctx.params)(ManifestFactory.classType(clazz), tresqlResources) match {
               case None => throw new NotFoundException(s"$viewName not found, id: $id, params: $params")
               case Some(oldValue) => rest(ctx.copy(old = oldValue))
             }
@@ -610,11 +612,11 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
   lazy val metadataVersionString = org.apache.commons.codec.binary.Base64.encodeBase64URLSafeString(
     java.security.MessageDigest.getInstance("MD5").digest(qe.collectViews{ case v => v }.toList.toString.getBytes))
 
-  def metadata(viewName: String)(implicit user: User): JsObject = {
+  def metadata(viewName: String)(implicit user: User, state: ApplicationState): JsObject = {
     metadata(viewDef(viewName))
   }
 
-  def metadata(viewDef: ViewDef)(implicit user: User): JsObject = {
+  def metadata(viewDef: ViewDef)(implicit user: User, state: ApplicationState): JsObject = {
     import qe.{ FieldRefRegexp_ => FieldRefRegexp }
     JsObject(Map(
       "name" -> JsString(viewDef.name),
@@ -676,32 +678,32 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
   private val ContainsOpFilterDef = s"^.*%~+%\\s*:($ident)\\??$$".r
   private val EndsWithOpFilterDef = s"^.*%~+\\s*:($ident)\\??$$".r
   private val StartsWithOpFilterDef = s"^.*~+%\\s*:($ident)\\??$$".r
-  def filterFieldLabel(name: String, colLabel: String, filterType: FilterType): String = {
-    import querease.FilterType._
+  def filterFieldLabel(name: String, colLabel: String, filterType: FilterType): FilterLabel = {
+    import org.mojoz.querease.FilterType._
     filterType match {
       case ComparisonFilter(col, op, name, opt) =>
         op match {
           // TODO more operators?
-          case "%~~~%" | "%~~%" | "%~%" => colLabel + " (contains)"
-          case "%~~~" | "%~~" | "%~" => colLabel + " (ends with)"
-          case "~~~%" | "~~%" | "~%" => colLabel + " (begins with)"
-          case _ => colLabel
+          case "%~~~%" | "%~~%" | "%~%" => FilterLabel(colLabel, "contains")
+          case "%~~~" | "%~~" | "%~" => FilterLabel(colLabel, "ends with")
+          case "~~~%" | "~~%" | "~%" => FilterLabel(colLabel, "begins with")
+          case _ => FilterLabel(colLabel, null)
         }
       case IntervalFilter(nameFrom, optFrom, opFrom, col, opTo, nameTo, optTo) =>
-        if (name == nameFrom) colLabel.replace(" from", " (from)")
-        else if (name == nameTo) colLabel.replace(" to", " (to)")
-        else colLabel
+        if (name == nameFrom) FilterLabel(colLabel.replace(" from", ""), "from")
+        else if (name == nameTo) FilterLabel(colLabel.replace(" to", ""), "to")
+        else FilterLabel(colLabel, null)
       case OtherFilter(fExpr) => fExpr match {
-        case ContainsOpFilterDef(vName) if vName == name => colLabel + " (contains)"
-        case EndsWithOpFilterDef(vName) if vName == name => colLabel + " (ends with)"
-        case StartsWithOpFilterDef(vName) if vName == name => colLabel + " (begins with)"
-        case _ => colLabel
+        case ContainsOpFilterDef(vName) if vName == name => FilterLabel(colLabel, "contains")
+        case EndsWithOpFilterDef(vName) if vName == name => FilterLabel(colLabel, "ends with")
+        case StartsWithOpFilterDef(vName) if vName == name => FilterLabel(colLabel, "begins with")
+        case _ => FilterLabel(colLabel, null)
       }
-      case _ => colLabel
+      case _ => FilterLabel(colLabel, null)
     }
   }
 
-  def filterMetadata(view: ViewDef)(implicit user: User): Map[String, JsValue] =
+  def filterMetadata(view: ViewDef)(implicit user: User, state: ApplicationState): Map[String, JsValue] =
     Option(view.name).filter(viewNameToFilterMetadata.contains(_)).map(viewName => //bi reports isn't presented in viewNameToFilterMetadata
       Map(
         "filter" -> JsArray(viewNameToFilterMetadata(viewName).map(f => JsObject(Map(
@@ -709,7 +711,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
           "type" -> JsString(f.type_.name),
           "nullable" -> JsBoolean(f.nullable),
           "required" -> JsBoolean(f.required),
-          "label" -> Option(f.label).map(JsString(_)).getOrElse(JsNull),
+          "label" -> Option(f.label).map(fl => JsString(fl.render(state.locale))).getOrElse(JsNull),
           "enum" -> Option(f)
             .map(_.enum)
             .filter(_ != null)
@@ -736,8 +738,12 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
         )): _*)
       )).getOrElse(Map.empty)
 
+  case class FilterLabel(fieldName: String, filterName: String) {
+    def render(locale: Locale) = fieldName +
+      Option(filterName).map(fn => s" (${translate(fn)(locale)})").getOrElse("")
+  }
   case class FilterParameter(
-    name: String, table: String, label: String, nullable: Boolean, required: Boolean, type_ : Type, enum: Seq[String],
+    name: String, table: String, label: FilterLabel, nullable: Boolean, required: Boolean, type_ : Type, enum: Seq[String],
     refViewName: String, filterType: FilterType,
   )
   def currentUserParamNames: Set[String] = Set.empty
@@ -785,7 +791,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
           qe.analyzeFilter(f, v, v.tableAlias)
         }
       // TODO duplicate code, reuse querease code!
-      val joinsParser = new querease.TresqlJoinsParser(qe.tresqlMetadata)
+      val joinsParser = new org.mojoz.querease.TresqlJoinsParser(qe.tresqlMetadata)
       val (needsBaseTable, parsedJoins) =
         Option(v.joins)
           .map(joins =>
@@ -826,8 +832,8 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
             .flatMap(_.find(_.name == colName))
             .orNull
           val name = v.variable
-          val (conventionsType, impliedNullable) =
-            qe.metadataConventions.fromExternal(name, None, Some(v.opt))
+          val conventionsType =
+            qe.metadataConventions.typeFromExternal(name, None)
           val table = joinAliasToJoin.get(tableAlias).map(_.table).orNull
           val label = Option(col)
             .map(_.comments)
@@ -856,7 +862,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
   lazy val viewNameToFilterMetadata = qe.viewNameToClassMap.keys.toList.sorted
     .map(viewName => viewName -> filterParameters(qe.viewDef(viewName))).toMap
 
-  def apiMetadata(implicit user: User) = {
+  def apiMetadata(implicit user: User, state: ApplicationState) = {
     // TODO duplicate code, just filter differs
     val q = new collection.mutable.Queue[ViewDef]
     val names = collection.mutable.Set[String]()
@@ -913,8 +919,8 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
     throw noApiException(viewName, method, user)
   )
 
-  def fieldRequiredErrorMessage(viewName: String, field: qe.FieldDef): String =
-    s"""Field "${field.label}" is mandatory."""
+  def fieldRequiredErrorMessage(viewName: String, field: qe.FieldDef)(implicit locale: Locale): String =
+    translate("""Field %1$s is mandatory.""", field.label)
   def isFieldRequiredViolated(viewName: String, field: qe.FieldDef, value: Any): Boolean =
     field.required &&
     (value match {
@@ -923,24 +929,25 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
       case _ => false
     })
 
-  def fieldValueTooLongErrorMessage(viewName: String, field: qe.FieldDef, value: Any): String =
-    s"""Field "${field.label}" value length ${value.toString.length} exceeds maximum limit ${field.type_.length.get}."""
+  def fieldValueTooLongErrorMessage(viewName: String, field: qe.FieldDef, value: Any)(implicit locale: Locale): String =
+    translate("""Field "%1$s" value length %2$s exceeds maximum limit %3$s.""",
+      field.label, value.toString.length.toString, field.type_.length.get.toString)
   def isFieldValueMaxLengthViolated(viewName: String, field: qe.FieldDef, value: Any): Boolean =
     value != null &&
     field.type_.name == "string" &&
     field.type_.length.isDefined &&
     value.toString.length > field.type_.length.get
 
-  def fieldValueNotInEnumErrorMessage(viewName: String, field: qe.FieldDef, value: Any): String =
-    s"""Field "${field.label}" value must be from available value list."""
+  def fieldValueNotInEnumErrorMessage(viewName: String, field: qe.FieldDef, value: Any)(implicit locale: Locale): String =
+    translate("""Field "$%1$s" value must be from available value list.""", field.label)
   def isFieldValueEnumViolated(viewName: String, field: qe.FieldDef, value: Any): Boolean =
     value != null &&
     field.enum != null &&
     field.enum.size > 0 &&
     !field.enum.contains(value.toString)
 
-  def badEmailAddressErrorMessage(viewName: String, field: qe.FieldDef, value: Any): String =
-    s"""Field "${field.label}" is not valid e-mail address"""
+  def badEmailAddressErrorMessage(viewName: String, field: qe.FieldDef, value: Any)(implicit locale: Locale): String =
+    translate("""Field "%1$s" is not valid e-mail address""", field.label)
   def isEmailAddressField(viewName: String, field: qe.FieldDef): Boolean =
     field.type_.name == "email"  ||
     field.type_.name == "epasts" ||
@@ -951,7 +958,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
     isEmailAddressField(viewName, field) &&
     !is_valid_email(value.toString)
 
-  def validationErrorMessage(viewName: String, field: qe.FieldDef, value: Any): Option[String] = {
+  def validationErrorMessage(viewName: String, field: qe.FieldDef, value: Any)(implicit locale: Locale): Option[String] = {
     if (isFieldRequiredViolated(viewName, field, value))
       Option(fieldRequiredErrorMessage(viewName, field))
     else if (isFieldValueMaxLengthViolated(viewName, field, value))
@@ -963,12 +970,13 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
     else None
   }
 
-  def checkFieldValues(instance: Dto): Unit = {
+  def checkFieldValues(instance: Dto)(implicit state: ApplicationState): Unit = {
     def validateFields(viewName: String, map: Map[String, Any]): Unit = {
       val viewDef = qe.viewDef(viewName)
       // TODO ensure field ordering
       val errorMessages = viewDef.fields
-        .map(fld => validationErrorMessage(viewName, fld, map.getOrElse(Option(fld.alias).getOrElse(fld.name), null)))
+        .map(fld =>
+          validationErrorMessage(viewName, fld, map.getOrElse(Option(fld.alias).getOrElse(fld.name), null))(state.locale))
         .filter(_.isDefined)
         .map(_.get)
         .filter(_ != null)
@@ -989,7 +997,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
     validateFields(classToViewNameMap(instance.getClass), qe.toMap(instance))
   }
 
-  def validateFields(instance: Dto) = {
+  def validateFields(instance: Dto)(implicit state: ApplicationState) = {
     checkFieldValues(instance)
   }
 }

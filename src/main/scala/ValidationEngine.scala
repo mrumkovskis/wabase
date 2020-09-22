@@ -1,12 +1,15 @@
 package org.wabase
 
-import javax.script.ScriptEngineManager
+import java.util.Locale
 
+import javax.script.ScriptEngineManager
 import org.tresql.Query
 import spray.json._
 
+import scala.util.control.NonFatal
+
 trait ValidationEngine {
-  def validate(instance: Dto)
+  def validate(instance: Dto)(implicit locale: Locale)
 }
 
 /** Default validation engine, executes validation javascript stored in "validation" table */
@@ -62,15 +65,23 @@ trait DefaultValidationEngine extends ValidationEngine with Loggable {
     val viewName = viewDef(classToViewNameMap(instance.getClass)).name
     Query(validationsQuery, Map("context" -> viewName))(tresqlResources).map(r => new Validation().fill(r)).toList
   }
-  override def validate(instance: Dto) {
+  override def validate(instance: Dto)(implicit locale: Locale) {
     val validationList = validations(instance)
     if (validationList.nonEmpty) {
       val engine = get(instance)
+
+      def errorMsg(msg: String) =
+        //try to evaluate message as javascript
+        try { String.valueOf(engine.eval(msg)) } catch {
+          case NonFatal(_) => msg //return original message
+          case x => throw x
+        }
+
       validationList foreach { v =>
         val result = try engine.eval(v.expression) catch {
           case ex: Exception =>
             val msg =
-              (("Validation error \"" + v.message + "\"") :: Format.msgList(ex))
+              (("Validation error \"" + errorMsg(v.message) + "\"") :: Format.msgList(ex))
                 .mkString("\n  caused by: ")
             logger.debug(msg)
             throw new BusinessException(msg)
@@ -78,13 +89,13 @@ trait DefaultValidationEngine extends ValidationEngine with Loggable {
         result match {
           case TRUE => // OK
           case FALSE =>
-            throw new BusinessException(v.message)
+            throw new BusinessException(errorMsg(v.message))
           case s: String =>
             throw new BusinessException(
-              s"""Error (validation "${v.message}"): $s""")
+              s"""Error (validation "${errorMsg(v.message)}"): $s""")
           case x =>
             throw new BusinessException(
-              "Validation error \"" + v.message + "\": " +
+              "Validation error \"" + errorMsg(v.message) + "\": " +
                 "Wrong validation result type: " +
                 Option(x).map(_.getClass.getName).getOrElse(x))
         }
@@ -94,7 +105,7 @@ trait DefaultValidationEngine extends ValidationEngine with Loggable {
 }
 
 trait NoValidation extends ValidationEngine {
-  override def validate(instance: Dto) {}
+  override def validate(instance: Dto)(implicit locale: Locale) {}
 }
 
 object ValidationEngine {

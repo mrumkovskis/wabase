@@ -9,8 +9,8 @@ import akka.actor.ActorSystem
 import akka.http.scaladsl.model.{ContentType, ContentTypes}
 import akka.stream.scaladsl.Source
 import akka.util.ByteString
-import mojoz.metadata.in.YamlMd
-import mojoz.metadata.out.SqlWriter
+import org.mojoz.metadata.in.YamlMd
+import org.mojoz.metadata.out.SqlGenerator
 import org.scalatest.BeforeAndAfterEach
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers
@@ -25,7 +25,7 @@ class FileCleanupSpecs extends FlatSpec with Matchers with BeforeAndAfterEach {
   import FileCleanupSpecsHelper._
   import FileCleanupSpecsHelper.db._
 
-  val schemaSql: String = SqlWriter.hsqldb().schema(FileCleanupSpecsQuerease.tableMetadata.tableDefs)
+  val schemaSql: String = SqlGenerator.hsqldb().schema(FileCleanupSpecsQuerease.tableMetadata.tableDefs)
   transaction {
     executeStatements(schemaSql.split(";\\s+").map(_ + ";"): _*)
     executeStatements("create sequence seq;")

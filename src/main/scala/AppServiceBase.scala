@@ -19,10 +19,11 @@ import scala.concurrent.Future
 import AppServiceBase._
 import Authentication.SessionUserExtractor
 import DeferredControl._
-import java.net.URLEncoder
+import java.util.Locale
 
 import akka.http.scaladsl.server.util.Tuple
 import akka.util.ByteString
+import org.mojoz.querease.{ValidationException, ValidationResult}
 
 trait AppProvider[User] {
   type App <: AppBase[User]
@@ -36,6 +37,7 @@ trait AppServiceBase[User]
   with AppStateExtractor
   with JsonConverterProvider
   with DbAccessProvider
+  with AppI18nService
   with Marshalling {
   this: QueryTimeoutExtractor with Execution =>
 
@@ -58,40 +60,28 @@ trait AppServiceBase[User]
   def listPath = viewWithoutIdPath & get
   def countPath = path("count" / Segment) & get
 
-  def getByIdAction(viewName: String, id: Long)(implicit user: User, state: Map[String, Any]) =
+  def getByIdAction(viewName: String, id: Long)(implicit user: User, state: ApplicationState) =
     parameterMultiMap{ params =>
       extractTimeout{ implicit timeout =>
         complete(app.get(viewName, id, filterPars(params)))
       }
     }
 
-  def getByNameAction(viewName: String, name: String, value: String)(implicit user: User, state: Map[String, Any]) =
+  def getByNameAction(viewName: String, name: String, value: String)(implicit user: User, state: ApplicationState) =
     parameterMultiMap { params =>
       extractTimeout { implicit timeout =>
-        app.list(viewName, filterPars(params) + (name -> value), 0, 2).toList match {
-          case List(result) => complete(result)
-          case Nil => complete(StatusCodes.NotFound)
-          case l if l.size > 1 => complete(
-            HttpResponse(
-              status = StatusCodes.PreconditionFailed,
-              entity = HttpEntity.Strict(
-                contentType = ContentTypes.`text/plain(UTF-8)`,
-                data = ByteString("Too many rows returned")
-              )
-            )
-          )
-        }
+        complete(app.get(viewName, -1, filterPars(params) + (name -> value)))
       }
     }
 
-  def createAction(viewName: String)(implicit user: User, state: Map[String, Any]) =
+  def createAction(viewName: String)(implicit user: User, state: ApplicationState) =
     parameterMultiMap{ params =>
       extractTimeout{ implicit timeout =>
         complete(app.create(viewName, filterPars(params)))
       }
     }
 
-  def deleteAction(viewName: String, id: Long)(implicit user: User, state: Map[String, Any]) =
+  def deleteAction(viewName: String, id: Long)(implicit user: User, state: ApplicationState) =
     parameterMultiMap { params =>
       extractTimeout{ implicit timeout =>
         complete {
@@ -99,13 +89,13 @@ trait AppServiceBase[User]
             app.delete(viewName, id, filterPars(params))
             StatusCodes.NoContent
           } catch {
-            case e: querease.NotFoundException => StatusCodes.NotFound
+            case e: org.mojoz.querease.NotFoundException => StatusCodes.NotFound
           }
         }
       }
     }
 
-  def updateAction(viewName: String, id: Long)(implicit user: User, state: Map[String, Any]) =
+  def updateAction(viewName: String, id: Long)(implicit user: User, state: ApplicationState) =
     extractUri { requestUri =>
       parameterMultiMap { params =>
         extractTimeout { implicit timeout =>
@@ -114,14 +104,14 @@ trait AppServiceBase[User]
               val id = app.save(viewName, data.asInstanceOf[JsObject], filterPars(params))
               redirect(Uri(path = requestUri.path), StatusCodes.SeeOther)
             } catch {
-              case e: querease.NotFoundException => complete(StatusCodes.NotFound)
+              case e: org.mojoz.querease.NotFoundException => complete(StatusCodes.NotFound)
             }
           }
         }
       }
     }
 
-  def listAction(viewName: String)(implicit user: User, state: Map[String, Any]) =
+  def listAction(viewName: String)(implicit user: User, state: ApplicationState) =
     parameterMultiMap { params =>
       extractTimeout { implicit timeout =>
         complete {
@@ -135,7 +125,7 @@ trait AppServiceBase[User]
       }
     }
 
-  def insertAction(viewName: String)(implicit user: User, state: Map[String, Any]) =
+  def insertAction(viewName: String)(implicit user: User, state: ApplicationState) =
     extractUri { requestUri =>
       parameterMultiMap { params =>
         extractTimeout { implicit timeout =>
@@ -144,14 +134,14 @@ trait AppServiceBase[User]
               val id = app.save(viewName, data.asInstanceOf[JsObject], filterPars(params))
               redirect(Uri(path = requestUri.path / id.toString), StatusCodes.SeeOther)
             } catch {
-              case e: querease.NotFoundException => complete(StatusCodes.NotFound)
+              case e: org.mojoz.querease.NotFoundException => complete(StatusCodes.NotFound)
             }
           }
         }
       }
     }
 
-  def countAction(viewName: String)(implicit user: User, state: Map[String, Any]) =
+  def countAction(viewName: String)(implicit user: User, state: ApplicationState) =
     parameterMultiMap { params =>
       extractTimeout {implicit timeout =>
         complete(app.count(viewName, filterPars(params)).toString)
@@ -170,7 +160,7 @@ trait AppServiceBase[User]
       value <- keyValues._2
     } yield s"${keyValues._1}=$value").mkString("&") }
 
-  def crudAction(implicit user: User) = applicationState{implicit state =>
+  def crudAction(implicit user: User) = applicationState{ implicit state =>
     getByIdPath{ getByIdAction
     } ~ getByNamePath { getByNameAction
     } ~ createPath { createAction
@@ -181,11 +171,12 @@ trait AppServiceBase[User]
   }
 
   def apiAction(implicit user: User) = complete(app.api)
-  def metadataAction(viewName: String)(implicit user: User) = respondWithHeader(ETag(EntityTag(app.metadataVersionString))) {
-    conditional(EntityTag(app.metadataVersionString), DateTime.now) {
-      val obj = if (viewName == "*") app.apiMetadata else app.metadata(viewName)
-      complete(obj)
-    }
+  def metadataAction(viewName: String)(implicit user: User, state: ApplicationState) =
+    respondWithHeader(ETag(EntityTag(app.metadataVersionString))) {
+      conditional(EntityTag(app.metadataVersionString), DateTime.now) {
+        val obj = if (viewName == "*") app.apiMetadata else app.metadata(viewName)
+        complete(obj)
+      }
   }
 
   val DefaultResourceExtensions = "js,css,html,png,gif,jpg,jpeg,svg,woff,ttf,woff2".split(",").toSet
@@ -261,7 +252,7 @@ trait AppFileServiceBase[User] {
   import AppFileStreamer._
   def validateFileName(fileName: String) = {}
 
-  def extractFileDirective(filenameOpt: Option[String])(implicit user: User, state: Map[String, Any]): Directive[(Source[ByteString, Any], String, String)] =
+  def extractFileDirective(filenameOpt: Option[String])(implicit user: User, state: ApplicationState): Directive[(Source[ByteString, Any], String, String)] =
     (withSizeLimit(uploadSizeLimit) & post & extractRequestContext).flatMap { ctx =>
       def multipartFormUpload = {
         entity(as[Multipart.FormData]).flatMap { _ =>
@@ -290,7 +281,7 @@ trait AppFileServiceBase[User] {
                           contentType: String
                          )(implicit
                           user: User,
-                          state: Map[String, Any]
+                          state: ApplicationState
                          ): Directive1[Future[FileInfo]] =
     extractRequestContext.map { ctx =>
       import ctx._
@@ -319,7 +310,7 @@ trait AppFileServiceBase[User] {
 
   def uploadAction(filenameOpt: Option[String])(implicit
           user: User,
-          state: Map[String, Any]
+          state: ApplicationState
          ): Route = {
     val ufd = extractFileDirective(filenameOpt).andThen(uploadFileDirective _).flatMap(onSuccess(_))
     ufd(fi => complete(fi.toMap))
@@ -327,7 +318,7 @@ trait AppFileServiceBase[User] {
 
   def uploadMultipleAction(implicit
       user: User,
-      state: Map[String, Any],
+      state: ApplicationState,
   ): Route = withSizeLimit(uploadSizeLimit) {
     post {
       extractRequestContext { ctx =>
@@ -372,7 +363,7 @@ trait AppFileServiceBase[User] {
     }
   }
 
-  def downloadAction(fileInfoHelperOpt: Option[FileInfoHelper])(implicit user: User, state: Map[String, Any]): Route = {
+  def downloadAction(fileInfoHelperOpt: Option[FileInfoHelper])(implicit user: User, state: ApplicationState): Route = {
     fileInfoHelperOpt match {
       case Some(fi) =>
         complete(HttpResponse(
@@ -390,7 +381,7 @@ trait AppFileServiceBase[User] {
     }
   }
 
-  def downloadAction(id: Long, sha256: String)(implicit user: User, state: Map[String, Any]): Route =
+  def downloadAction(id: Long, sha256: String)(implicit user: User, state: ApplicationState): Route =
     downloadAction(fileStreamer.getFileInfo(id, sha256))
 }
 
@@ -399,10 +390,19 @@ object AppServiceBase {
   trait AppStateExtractor { this: AppServiceBase[_] =>
     val ApplicationStateCookiePrefix = "current_"
     def applicationState = extract(r => extractState(r.request, ApplicationStateCookiePrefix))
-    protected def extractState(req: HttpRequest, prefix: String) = req.headers.flatMap {
-      case c: Cookie => c.cookies.filter(_.name.startsWith(prefix))
-      case _ => Nil
-    } map (c => c.name -> decodeParam(c.name, c.value)) toMap
+    protected def extractState(req: HttpRequest, prefix: String) = {
+      val state = req.headers.flatMap {
+        case c: Cookie => c.cookies.filter(_.name.startsWith(prefix))
+        case _ => Nil
+      } map (c => c.name -> decodeParam(c.name, c.value)) toMap
+      val langKey = ApplicationStateCookiePrefix + ApplicationLanguageCookiePostfix
+      if (state.contains(langKey))
+        ApplicationState(state, new Locale(String.valueOf(state(langKey))))
+      else
+        currentLangFromHeader(req)
+          .map(l => ApplicationState(state + (langKey -> l), new Locale(l)))
+          .getOrElse(ApplicationState(state))
+    }
   }
 
   trait AppVersion {
@@ -444,25 +444,39 @@ object AppServiceBase {
     def businessExceptionHandler(logger: com.typesafe.scalalogging.Logger) = ExceptionHandler {
       case e: BusinessException =>
         logger.trace(e.getMessage, e)
-        extractUri { uri =>
-          complete(HttpResponse(InternalServerError, entity = e.getMessage.format(e.getParams: _*)))
-        }
+        complete(HttpResponse(InternalServerError, entity = e.getMessage.format(e.getParams: _*)))
     }
+
     def bindVariableExceptionHandler(logger: com.typesafe.scalalogging.Logger,
         bindVariableExceptionResponseMessage: MissingBindVariableException => String = _.getMessage) = ExceptionHandler {
       case e: MissingBindVariableException =>
         logger.debug(e.getMessage, e)
-        extractUri { uri =>
-          complete(HttpResponse(BadRequest, entity = bindVariableExceptionResponseMessage(e)))
-        }
+        complete(HttpResponse(BadRequest, entity = bindVariableExceptionResponseMessage(e)))
     }
+
     def viewNotFoundExceptionHandler = ExceptionHandler {
-      case e: querease.ViewNotFoundException => complete(HttpResponse(NotFound, entity = e.getMessage))
+      case e: org.mojoz.querease.ViewNotFoundException => complete(HttpResponse(NotFound, entity = e.getMessage))
+    }
+
+    def validationExceptionHandler(logger: com.typesafe.scalalogging.Logger) = ExceptionHandler {
+      case e: ValidationException =>
+        logger.trace(e.getMessage, e)
+        complete(HttpResponse(BadRequest, entity = e.getMessage))
+    }
+
+    def validationExceptionPathsHandler(logger: com.typesafe.scalalogging.Logger,
+                                        jsonConverter: JsonConverter) = ExceptionHandler {
+      case e: ValidationException =>
+        logger.trace(e.getMessage, e)
+        import spray.json.DefaultJsonProtocol.{ jsonFormat2, listFormat, StringJsonFormat }
+        import jsonConverter._
+        implicit val f02 = jsonFormat2(ValidationResult)
+        complete(HttpResponse(BadRequest, entity = e.details.toJson.compactPrint))
     }
 
     /** Handles and logs PostgreSQL timeout exceptions */
     trait PostgresTimeoutExceptionHandler[User] extends AppExceptionHandler {
-      this: AppStateExtractor with SessionUserExtractor[User] with ServerStatistics with DeferredCheck =>
+      this: AppStateExtractor with SessionUserExtractor[User] with ServerStatistics with DeferredCheck with AppI18nService =>
       override val appExceptionHandler = PostgresTimeoutExceptionHandler(this)
     }
 
@@ -472,12 +486,12 @@ object AppServiceBase {
       val TimeoutFriendlyMessage = "Request canceled due to too long processing time"
       def apply[User](
         appService: AppStateExtractor with SessionUserExtractor[User]
-          with ServerStatistics with DeferredCheck) = ExceptionHandler {
+          with ServerStatistics with DeferredCheck with AppI18nService) = ExceptionHandler {
        case e: org.postgresql.util.PSQLException if e.getMessage == TimeoutSignature =>
         import appService._
         registerTimeout
         (extractUserFromSession & extractRequest & applicationState) { (userOpt, req, appState) =>
-          val aState = appState.map{ case (k,v) => s"$k = $v" }.mkString("{", ", ", "}")
+          val aState = appState.state.map{ case (k,v) => s"$k = $v" }.mkString("{", ", ", "}")
           val userString = userOpt.map(_.toString).orNull
           val msg = s"JDBC timeout, statement cancelled - ${req.method} ${req.uri}, state - $aState, user - $userString"
           isDeferred
@@ -487,7 +501,8 @@ object AppServiceBase {
             timeoutLogger.error(msg)
             pass
           }.apply { //somehow apply method must be called explicitly ???
-            complete(HttpResponse(InternalServerError, entity = TimeoutFriendlyMessage))
+            complete(HttpResponse(InternalServerError,
+              entity = i18n.translate(TimeoutFriendlyMessage)(getApplicationLocale(appState))))
           }
         }
       }
@@ -504,13 +519,80 @@ object AppServiceBase {
     }
 
     trait DefaultAppExceptionHandler[User] extends SimpleExceptionHandler with PostgresTimeoutExceptionHandler[User] {
-      this: AppStateExtractor with SessionUserExtractor[User] with ServerStatistics with Loggable with DeferredCheck with BasicJsonMarshalling =>
+      this: AppStateExtractor
+        with SessionUserExtractor[User]
+        with ServerStatistics
+        with Loggable
+        with DeferredCheck
+        with BasicJsonMarshalling
+        with AppI18nService =>
       override val appExceptionHandler =
         businessExceptionHandler(this.logger)
+          .withFallback(validationExceptionHandler(this.logger))
           .withFallback(entityStreamSizeExceptionHandler(this))
           .withFallback(bindVariableExceptionHandler(this.logger, this.bindVariableExceptionResponseMessage))
           .withFallback(PostgresTimeoutExceptionHandler(this))
           .withFallback(viewNotFoundExceptionHandler)
     }
+  }
+
+  trait AppI18nService { this: AppServiceBase[_] =>
+    val ApplicationLanguageCookiePostfix = "lang"
+
+    val i18n: I18n = initI18n
+    protected def initI18n: I18n = app
+
+    def i18nPath = pathPrefix("i18n") & get
+    def i18nLanguagePath = path("lang" / Segment)
+    def i18nResourcePath = i18nPath & path(Segment ~ Slash.?)
+    def i18nTranslatePath = i18nPath & path(Segment / Segment / RemainingPath ~ Slash.?)
+
+    def setLanguage: Route = (i18nPath & i18nLanguagePath) { lang =>
+      setCookie(
+        HttpCookie(ApplicationStateCookiePrefix + ApplicationLanguageCookiePostfix,
+          value = lang,
+          path = Some("/")
+        )
+      ) { complete("Ok") }
+    }
+
+    import jsonConverter._
+
+    def i18nResources: Route = (i18nPath & applicationLocale) { implicit locale =>
+      complete(i18n.i18nResources)
+    }
+
+    def i18nResourcesFromBundle: Route = (i18nPath & i18nResourcePath) { resources =>
+      applicationLocale { implicit locale =>
+        complete(i18n.i18nResourcesFromBundle(resources))
+      }
+    }
+
+    def i18nTranslate: Route = (i18nPath & i18nTranslatePath) { (name, key, params) =>
+      applicationLocale { implicit locale =>
+        import akka.http.scaladsl.model.Uri._
+        def paramsList(path: Path): List[String] = path match {
+          case Path.Empty => Nil
+          case _: Path.Slash => paramsList(path.tail)
+          case Path.Segment(h, t) => h :: paramsList(t)
+        }
+        complete(i18n.translateFromBundle(name, key, paramsList(params): _*))
+      }
+    }
+
+    def currentLangFromHeader(request: HttpRequest) = {
+      LanguageNegotiator(request.headers)
+        .acceptedLanguageRanges
+        .headOption
+        .map(l => l.primaryTag +: l.subTags)
+        .map(_.mkString("-"))
+    }
+
+    def applicationLocale = applicationState.map(getApplicationLocale)
+
+    def getApplicationLocale(state: ApplicationState): Locale =
+      state.state.get(ApplicationStateCookiePrefix + ApplicationLanguageCookiePostfix)
+        .map(l => new Locale(String.valueOf(l)))
+        .getOrElse(Locale.getDefault)
   }
 }

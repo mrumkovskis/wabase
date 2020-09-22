@@ -1,11 +1,9 @@
 package org.wabase
 
 import org.tresql._
-
-import querease.Querease
+import org.mojoz.querease.Querease
 
 import scala.reflect.ManifestFactory
-
 import spray.json._
 
 trait QuereaseProvider {
@@ -15,7 +13,7 @@ trait QuereaseProvider {
   protected def initQuerease: QE
 }
 
-trait AppQuereaseIo extends querease.ScalaDtoQuereaseIo with JsonConverter { self: AppQuerease =>
+trait AppQuereaseIo extends org.mojoz.querease.ScalaDtoQuereaseIo with JsonConverter { self: AppQuerease =>
 
   override type DTO >: Null <: Dto
   override type DWI >: Null <: DTO with DtoWithId
@@ -28,10 +26,10 @@ trait AppQuereaseIo extends querease.ScalaDtoQuereaseIo with JsonConverter { sel
 
 abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata
 
-trait Dto extends querease.Dto { self =>
+trait Dto extends org.mojoz.querease.Dto { self =>
 
   override protected type QE = AppQuerease
-  override protected type QDto >: Null <: Dto { type QE = self.QE }
+  override protected type QDto >: Null <: this.type
 
   import AppMetadata._
 
@@ -193,7 +191,7 @@ trait Dto extends querease.Dto { self =>
   }
 }
 
-trait DtoWithId extends Dto with querease.DtoWithId
+trait DtoWithId extends Dto with org.mojoz.querease.DtoWithId
 
 object DefaultAppQuerease extends AppQuerease {
   override type DTO = Dto

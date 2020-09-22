@@ -67,7 +67,7 @@ class FileBufferedFlow private (bufferSize: Int, maxFileSize: Long, outBufferSiz
       private def checkFileSize(length: Long) =
         if (length > maxFileSize) {
           failStage(new InsufficientStorageException(
-            s"Max file size limit '$maxFileSize bytes' exceeded for buffer"))
+            s"Too many bytes '$length'. Max file size limit '$maxFileSize bytes' exceeded for buffer"))
           false
         } else true
 

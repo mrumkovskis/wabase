@@ -6,9 +6,9 @@ columns:
 - status ! string
 - topic ! string
 - request_hash ! string
-- request ! base64Binary
+- request ! bytes
 - response_time dateTime
-- result base64Binary
+- result bytes
 - result_file_id long
 - result_file_sha_256 string
 pk: request_hash

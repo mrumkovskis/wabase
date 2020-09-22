@@ -1,7 +1,7 @@
 val scalaV = "2.13.3"
 
-val akkaHttpV = "10.1.12"
-val akkaV = "2.6.5"
+val akkaHttpV = "10.2.0"
+val akkaV = "2.6.9"
 
 lazy val dependencies = {
   Seq(
@@ -13,9 +13,7 @@ lazy val dependencies = {
     "com.typesafe.scala-logging" %% "scala-logging"                     % "3.9.2",
     "com.zaxxer"                  % "HikariCP"                          % "3.4.2",
     "ch.qos.logback"              % "logback-classic"                   % "1.2.3",
-    "org.mojoz"                  %% "querease"                          % "4.0.0",
-    "org.tresql"                 %% "tresql"                            % "10.0.0",
-    "org.mojoz"                  %% "mojoz"                             % "1.2.1",
+    "org.mojoz"                  %% "querease"                          % "5.0.0",
     "commons-validator"           % "commons-validator"                 % "1.5.0",
     "commons-codec"               % "commons-codec"                     % "1.10",
     "org.postgresql"              % "postgresql"                        % "42.2.5",
@@ -39,10 +37,10 @@ lazy val commonSettings = Seq(
   scalaVersion := scalaV,
   crossScalaVersions := Seq(
     scalaV,
-    "2.12.10",
+    "2.12.12",
   ),
   scalacOptions ++= Seq("-unchecked", "-deprecation", "-feature",
-    "-Xmacro-settings:metadataFactoryClass=querease.TresqlMetadataFactory" +
+    "-Xmacro-settings:metadataFactoryClass=org.mojoz.querease.TresqlMetadataFactory" +
       ", tableMetadataFile=" + (baseDirectory.value / "tresql-table-metadata.yaml").getAbsolutePath),
   resolvers += "snapshots" at "https://oss.sonatype.org/content/repositories/snapshots",
   libraryDependencies ++= dependencies ++ testDependencies,
@@ -102,7 +100,11 @@ lazy val webapp = (project in file("."))
         Some("releases" at nexus + "service/local/staging/deploy/maven2")
     }.value,
     publishMavenStyle := true,
-    publishArtifact in Test := false
+    publishArtifact in Test := true,
+    //publishArtifact in IntegrationTest := true, --does not work, https://github.com/sbt/sbt/issues/2458
+    addArtifact(artifact in (IntegrationTest, packageBin), packageBin in IntegrationTest),
+    addArtifact(artifact in (IntegrationTest, packageDoc), packageDoc in IntegrationTest),
+    addArtifact(artifact in (IntegrationTest, packageSrc), packageSrc in IntegrationTest)
   )
   .settings(
     pomIncludeRepository := { _ => false },
@@ -123,11 +125,6 @@ lazy val webapp = (project in file("."))
           <id>mrumkovskis</id>
           <name>Martins Rumkovskis</name>
           <url>https://github.com/mrumkovskis/</url>
-        </developer>
-        <developer>
-          <id>guntiso</id>
-          <name>Guntis Ozols</name>
-          <url>https://github.com/guntiso/</url>
         </developer>
         <developer>
           <id>guntiso</id>
