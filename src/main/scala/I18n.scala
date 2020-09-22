@@ -9,14 +9,12 @@ import scala.util.Try
 
 trait I18n {
 
-  val WabaseResourceName = "wabase"
+  val I18nWabaseResourceName = "wabase"
 
   /** Subclass can override this value */
-  val ResourceName = WabaseResourceName
+  val I18nResourceName = I18nWabaseResourceName
 
-  /** java.properties resource loader in utf-8 encoding,
-    * until java 8 (including) properties by default are loaded in ISO 8859-1 encoding */
-  private lazy val loaderControl = if (System.getProperty("java.version") >= "1.9") null else {
+  private lazy val loaderControl =
     new ResourceBundle.Control {
       override def newBundle(baseName: String,
                              locale: Locale,
@@ -46,7 +44,12 @@ trait I18n {
           }
           if (stream != null) {
             val br = new BufferedReader(new InputStreamReader(stream, "UTF-8"))
-            val bundle = new PropertyResourceBundle(br)
+            val bundle: ResourceBundle =
+              if (baseName == I18nWabaseResourceName) new PropertyResourceBundle(br) else {
+                new PropertyResourceBundle(br) {
+                  setParent(I18n.this.bundle(I18n.this.I18nWabaseResourceName)(locale))
+                }
+              }
             br.close()
             bundle
           } else null
@@ -55,14 +58,12 @@ trait I18n {
         }
       }
     }
-  }
 
-  def bundle(name: String)(implicit locale: Locale): ResourceBundle = Option(loaderControl)
-    .map(ResourceBundle.getBundle(name, locale, _))
-    .getOrElse(ResourceBundle.getBundle(name, locale))
+  def bundle(name: String)(implicit locale: Locale): ResourceBundle =
+    ResourceBundle.getBundle(name, locale, loaderControl)
 
   def translate(str: String, params: String*)(implicit locale: Locale): String = {
-    translateFromBundle(ResourceName, str, params: _*)
+    translateFromBundle(I18nResourceName, str, params: _*)
   }
 
   def translateFromBundle(name: String, str: String, params: String*)(implicit locale: Locale): String = {
@@ -74,7 +75,7 @@ trait I18n {
 
   /** Calls {{{i18nResourcesFromBundle(ResourceName)}}} */
   def i18nResources(implicit locale: Locale): Iterator[(String, Any)] = {
-    i18nResourcesFromBundle(ResourceName)
+    i18nResourcesFromBundle(I18nResourceName)
   }
 
   /** Returns resources as {{{Iterator[(String, Any)]}}}. Iterator element is {{{(String, Any)}}} instead

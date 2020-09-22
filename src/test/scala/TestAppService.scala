@@ -26,6 +26,7 @@ trait TestApp extends AppBase[TestUsr] with NoAudit[TestUsr] with PostgreSqlCons
   override type QE = AppQuerease
   override protected def initQuerease: QE = DefaultAppQuerease
   override def dbAccessDelegate: DbAccess = TestDbAccess
+  override val I18nResourceName = "test"
 }
 
 object TestApp extends TestApp
