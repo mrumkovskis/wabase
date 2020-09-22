@@ -19,7 +19,6 @@ import scala.util.Try
 import org.tresql.{Resources, RowLike}
 import AppMetadata._
 import ValidationEngine.CustomValidationFunctions.is_valid_email
-import spray.json.DefaultJsonProtocol.{StringJsonFormat, jsonFormat2, listFormat}
 
 import scala.util.control.NonFatal
 
