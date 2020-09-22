@@ -1,6 +1,5 @@
 package org.wabase
 
-import java.util
 import java.util.{Locale, PropertyResourceBundle, ResourceBundle}
 
 //for scala 2.12 compatibility
