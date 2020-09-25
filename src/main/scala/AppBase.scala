@@ -551,7 +551,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
             implicit val clazz = instance.getClass
             rest(createSaveCtx(SaveContext(viewName, old, instance, params, user, promise, state, extraPropsToSave = extraPropsToSave)))
           }
-        })
+        })(state.locale)
         val result = createSaveResult(res)
         promise.success(result)
         result
@@ -578,7 +578,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
               case Some(oldValue) => rest(ctx.copy(old = oldValue))
             }
           }
-        }
+        }(state.locale)
         promise.success(())
         createDeleteResult(res)
       } catch {
