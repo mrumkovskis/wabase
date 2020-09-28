@@ -1,0 +1,17 @@
+table: table1
+columns:
+  - id
+  - some_field ! : Field name in tableDef
+
+name: view1
+table: table1
+fields:
+  - id
+  - some_field   : Field name in viewDef
+
+
+name: view2
+table: table1
+fields:
+  - id
+  - some_field

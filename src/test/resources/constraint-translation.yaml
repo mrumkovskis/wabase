@@ -8,3 +8,13 @@
 # fk_kla_certificate_parent_id:
 # - Nevar dzēst, jo sertifikātam ir apakšieraksti
 # - Nevar atrast virslīmeņa ierakstu
+
+fk_kla_kodifikatora_ieraksts_parent_id_ct:
+  - Can't delete error message
+  - Can't find error message
+
+uk_persona_personas_kods_ct:
+  - Unique contraint violation error message
+
+department_check_ct:
+  - Contraint violation error message
