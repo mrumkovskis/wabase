@@ -121,6 +121,7 @@ object DbConstraintMessage {
         import AppMetadata._
         def viewLabel = for{
           vd <- Option(viewDef)
+          if vd.table == tableName
           field <- vd.fields.find(f => f.name == name || f.saveTo == name)
           label = field.label
           if label != null

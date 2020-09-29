@@ -7,7 +7,7 @@ table: child_table
 columns:
   - id
   - table1.id
-  - some_field ! : Field in child
+  - some_field ! : Field name in child
 
 name: view1
 table: table1
@@ -26,6 +26,7 @@ name: view_with_childs
 table: table1
 fields:
   - id
+  - some_field : Field name in parent
   - childs *:
       table: child_table
       fields:

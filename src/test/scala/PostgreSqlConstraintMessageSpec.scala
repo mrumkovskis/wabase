@@ -59,8 +59,8 @@ class PostgreSqlConstraintMessageSpec extends FlatSpec with Matchers {
     val err = "ERROR: null value in column \"some_field\" violates not-null constraint"
     val childErr = childError("child_table", "23502", err)
 
-    getMessageFromException(childErr, "en", "view_with_childs") should be("Field \"Field in child\" must not be empty")
-    getMessageFromException(childErr, "lv", "view_with_childs") should be("Lauks \"Field in child\" ir obligāts.")
+    getMessageFromException(childErr, "en", "view_with_childs") should be("Field \"Field name in child\" must not be empty")
+    getMessageFromException(childErr, "lv", "view_with_childs") should be("Lauks \"Field name in child\" ir obligāts.")
   }
 
   it should "handle fk error on delete" in {
