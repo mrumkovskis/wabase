@@ -3,6 +3,12 @@ columns:
   - id
   - some_field ! : Field name in tableDef
 
+table: child_table
+columns:
+  - id
+  - table1.id
+  - some_field ! : Field in child
+
 name: view1
 table: table1
 fields:
@@ -15,3 +21,12 @@ table: table1
 fields:
   - id
   - some_field
+
+name: view_with_childs
+table: table1
+fields:
+  - id
+  - childs *:
+      table: child_table
+      fields:
+        - some_field

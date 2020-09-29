@@ -94,7 +94,10 @@ object DbConstraintMessage {
     translate(violation.genericMessage, details)
   }
 
-   def getFriendlyConstraintErrorMessage(e: java.sql.SQLException, viewDef: AppMetadata#ViewDef)(implicit locale: Locale) = {
+  def getFriendlyConstraintErrorMessage(e: java.sql.SQLException, viewDef: AppMetadata#ViewDef)(implicit locale: Locale): Nothing =
+    getFriendlyConstraintErrorMessage(e, viewDef, viewDef.table)
+
+  def getFriendlyConstraintErrorMessage(e: java.sql.SQLException, viewDef: AppMetadata#ViewDef, tableName: String)(implicit locale: Locale): Nothing = {
     val dbMsg = Option(e.getMessage) getOrElse ""
 
     val violation = e.getSQLState match {
@@ -124,7 +127,7 @@ object DbConstraintMessage {
         } yield label
 
         def tableLabel = for{
-          tableDef <- qe.tableMetadata.tableDefOption(viewDef.table)
+          tableDef <- qe.tableMetadata.tableDefOption(tableName)
           column <- tableDef.cols.find(_.name == name)
           label = column.comments
           if label != null
@@ -144,6 +147,12 @@ object DbConstraintMessage {
 
   override def friendlyConstraintErrorMessage[T](viewDef: AppMetadata#ViewDef , f: => T)(implicit locale: Locale): T = try f catch {
     case e: java.sql.SQLException => getFriendlyConstraintErrorMessage(e, viewDef)
+    case e: org.tresql.ChildSaveException => e.getCause match {
+      case ee: java.sql.SQLException =>
+        logger.debug(e.getMessage, e)
+        getFriendlyConstraintErrorMessage(ee, viewDef, e.tableName)
+      case _ => throw e
+    }
     case e: java.lang.RuntimeException => e.getCause match {
       case ee: java.sql.SQLException =>
         logger.debug(e.getMessage, e)

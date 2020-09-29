@@ -6,6 +6,7 @@ import org.mojoz.metadata.ViewDef.ViewDefBase
 import org.mojoz.metadata.in.YamlMd
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers
+import org.tresql.ChildSaveException
 import org.wabase.DefaultAppQuerease.ViewDef
 
 import scala.collection.immutable.{Map, Seq}
@@ -24,11 +25,16 @@ class PostgreSqlConstraintMessageSpec extends FlatSpec with Matchers {
   }
 
   def error(code: String, message: String) = new SQLException(message, code)
-  def getMessage(code: String, message: String, locale: String, viewName: String = "view1"): String = {
+  def childError(table: String, code: String, message: String) = new ChildSaveException(table, error(code, message))
+  def getMessage(code: String, message: String, locale: String, viewName: String = "view1"): String =
+    getMessageFromException(error(code, message), locale, viewName)
+
+  def getMessageFromException(e: Exception, locale: String, viewName: String = "view1"): String = {
     try{
       val viewDef = ConstraintTestApp.qe.viewDef(viewName)
-      ConstraintTestApp.getFriendlyConstraintErrorMessage(error(code, message), viewDef)(new java.util.Locale(locale))
-      null
+      ConstraintTestApp.friendlyConstraintErrorMessage(viewDef, {
+        throw e
+      })(new java.util.Locale(locale))
     }catch{
       case e: BusinessException => e.getMessage
     }
@@ -47,6 +53,14 @@ class PostgreSqlConstraintMessageSpec extends FlatSpec with Matchers {
     // find column in table def
     getMessage("23502", someFieldErr, "en", "view2" ) should be("Field \"Field name in tableDef\" must not be empty")
     getMessage("23502", someFieldErr, "lv", "view2") should be("Lauks \"Field name in tableDef\" ir obligāts.")
+  }
+
+  it should "handle not-null constraint message in child" in {
+    val err = "ERROR: null value in column \"some_field\" violates not-null constraint"
+    val childErr = childError("child_table", "23502", err)
+
+    getMessageFromException(childErr, "en", "view_with_childs") should be("Field \"Field in child\" must not be empty")
+    getMessageFromException(childErr, "lv", "view_with_childs") should be("Lauks \"Field in child\" ir obligāts.")
   }
 
   it should "handle fk error on delete" in {
