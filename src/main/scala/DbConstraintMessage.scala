@@ -95,7 +95,7 @@ object DbConstraintMessage {
   }
 
   def getFriendlyConstraintErrorMessage(e: java.sql.SQLException, viewDef: AppMetadata#ViewDef)(implicit locale: Locale): Nothing =
-    getFriendlyConstraintErrorMessage(e, viewDef, viewDef.table)
+    getFriendlyConstraintErrorMessage(e, viewDef, Option(viewDef).map(_.table).orNull)
 
   def getFriendlyConstraintErrorMessage(e: java.sql.SQLException, viewDef: AppMetadata#ViewDef, tableName: String)(implicit locale: Locale): Nothing = {
     val dbMsg = Option(e.getMessage) getOrElse ""
