@@ -17,6 +17,7 @@ trait DbAccess { this: Loggable =>
   protected def defaultQueryTimeout: QueryTimeout = DefaultQueryTimeout.getOrElse(QueryTimeout(5))
 
   private def setenv(pool: DataSource, timeout: QueryTimeout) {
+    tresqlResources.initFromTemplate
     tresqlResources.conn = pool.getConnection
     tresqlResources.queryTimeout = timeout.timeoutSeconds
   }
