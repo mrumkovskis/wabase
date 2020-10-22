@@ -3,7 +3,7 @@ package org.wabase
 import com.typesafe.scalalogging.Logger
 import javax.sql.DataSource
 import org.slf4j.LoggerFactory
-import org.tresql.{Dialect, Expr, LogTopic, QueryBuilder, SimpleCache, ThreadLocalResources, dialects}
+import org.tresql.{Dialect, Expr, LogTopic, QueryBuilder, SimpleCache, ThreadLocalResources, ResourcesTemplate, dialects}
 
 import scala.language.postfixOps
 
