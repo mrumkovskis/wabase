@@ -21,11 +21,11 @@ import scala.language.postfixOps
 import scala.util.{Failure, Success}
 
 
-class ClientException(message: String, cause: Throwable, val status: StatusCode, val responseContent: String) extends Exception(message, cause)
+class ClientException(message: String, cause: Throwable, val status: StatusCode, val responseContent: String, val request: HttpRequest) extends Exception(message, cause)
 object ClientException{
-  def apply(status: StatusCode, message: String, responseContent: String): ClientException = new ClientException(message, null, status, responseContent)
-  def apply(status: StatusCode, message: String): ClientException = new ClientException(message, null, status, null)
-  def apply(message: String, cause: Throwable): ClientException = new ClientException(message, cause, null, null)
+  def apply(status: StatusCode, message: String, responseContent: String, request: HttpRequest): ClientException = new ClientException(message, null, status, responseContent, request)
+  def apply(status: StatusCode, message: String, request: HttpRequest): ClientException = new ClientException(message, null, status, null, request)
+  def apply(message: String, cause: Throwable): ClientException = new ClientException(message, cause, null, null, null)
   def apply(cause: Throwable): ClientException = apply(cause.getMessage, cause)
   def apply(message: String): ClientException = apply(message, null)
 }
@@ -141,7 +141,7 @@ trait RestClient extends Loggable{
           case _ =>
             val content = await(Unmarshal(decodeResponse(response).entity).to[String]).flatMap(_.toOption).getOrElse("")
             val exceptionMessage = response.status.value + "\n" + response.status.defaultMessage + "\n" + content
-            throw ClientException(response.status, exceptionMessage, content)
+            throw ClientException(response.status, exceptionMessage, content, req)
         }
     }
   }
@@ -170,7 +170,7 @@ object RestClient extends Loggable{
     case error: TimeoutException =>
       logger.error(error.getMessage, error)
       throw new TimeoutException(error.getMessage)
-    case error: ClientException => throw new ClientException(error.getMessage, error, error.status, error.responseContent)
+    case error: ClientException => throw new ClientException(error.getMessage, error, error.status, error.responseContent, error.request)
     case error => throw ClientException(error)
   }
 
