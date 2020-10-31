@@ -357,7 +357,7 @@ trait DtoMarshalling extends AppMarshalling with Loggable { this: AppServiceBase
 
   implicit def dtoResultToWrapper(res: app.AppListResult[app.Dto]): AbstractDtoChunker#Result = new Iterator[Wrapper] with AutoCloseable {
     override def hasNext = res.hasNext
-    override def next = res.next()
+    override def next() = res.next()
     def view = res.view
     override def close = res.close
   }

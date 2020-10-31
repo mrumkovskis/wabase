@@ -67,7 +67,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
     override final def hasNext = exe(hasNextInternal)
     /** Override {{{nextInternal}}} method instead of this.
         This method calls {{{nextInternal}}} and in the case of non fatal error calls {{{close}}}*/
-    override final def next: T = exe(nextInternal)
+    override final def next(): T = exe(nextInternal)
     private def exe[A](block: => A): A = try block catch {
       case NonFatal(e) =>
         close

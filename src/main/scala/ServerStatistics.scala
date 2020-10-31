@@ -85,7 +85,7 @@ object ServerStatistics {
     var concurrentDeferredRequests: Long = _
     var maxConcurrentDeferredRequests: Long = _
 
-    override def preStart = {
+    override def preStart() = {
       acceptedRequests = 0
       processedRequests = 0
       timedOutRequests = 0
@@ -135,7 +135,7 @@ object ServerStatistics {
         concurrentRequests -= 1
     }
 
-    override def postStop = {
+    override def postStop() = {
       logger.info("Stats actor stopped")
     }
   }

@@ -208,14 +208,14 @@ object RowSource {
       var buf: ByteStringBuilder = _
       var writer: OutputStreamWriter = _
       var src: RowWriter = _
-      override def preStart = {
+      override def preStart() = {
         buf = new ByteStringBuilder
         writer = new OutputStreamWriter(buf.asOutputStream, "UTF-8")
         src = createRowWriter(writer)
         src.header()
         writer.flush()
       }
-      override def postStop = src.close()
+      override def postStop() = src.close()
       setHandler(out, new OutHandler {
         override def onPull = {
           while (buf.isEmpty && src.hasNext) {
@@ -242,14 +242,14 @@ object RowSource {
       var buf: ByteStringBuilder = _
       var zos: ZipOutputStream = _
       var src: RowWriter = _
-      override def preStart = {
+      override def preStart() = {
         buf = new ByteStringBuilder
         zos = new ZipOutputStream(buf.asOutputStream)
         src = createRowWriter(zos)
         src.header()
         zos.flush()
       }
-      override def postStop = src.close()
+      override def postStop() = src.close()
       setHandler(out, new OutHandler {
         override def onPull = {
           while (buf.isEmpty && src.hasNext) {

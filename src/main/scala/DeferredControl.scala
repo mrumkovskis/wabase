@@ -312,7 +312,7 @@ object DeferredControl extends Loggable with AppConfig {
 
   class DeferredCleanup(defControl: DeferredControl) extends Actor {
     var processedCount = 0L
-    override def preStart = {
+    override def preStart() = {
       val fd = FiniteDuration(
         deferredCleanupInterval.length,
         deferredCleanupInterval.unit)
