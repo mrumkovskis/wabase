@@ -55,7 +55,7 @@ object MapRecursiveExtensions {
   // path matcher support
   case class /(node: Any, item: Any){
     def /(i2: Any) = new /(this, i2)
-    override def toString = node + "/" + item
+    override def toString = node.toString + "/" + item
   }
   implicit class atRoot(s: String){
     def /(s2: Any) = new /(s, s2)

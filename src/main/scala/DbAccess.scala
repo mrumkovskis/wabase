@@ -132,7 +132,7 @@ trait TresqlResources extends ThreadLocalResources {
   override val cache = new SimpleCache(4096)
 
   def sqlWithParams(sql: String, params: Map[String, Any]) = params.foldLeft(sql) {
-    case (sql, (name, value)) => sql.replaceAllLiterally(s"?/*$name*/", value match {
+    case (sql, (name, value)) => sql.replace(s"?/*$name*/", value match {
       case _: Int | _: Long | _: Double | _: BigDecimal | _: BigInt | _: Boolean => value.toString
       case _: String | _: java.sql.Date | _: java.sql.Timestamp => s"'$value'"
       case null => "null"

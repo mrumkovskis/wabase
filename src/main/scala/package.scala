@@ -22,7 +22,7 @@ package object wabase extends Loggable {
   type Timestamp = java.sql.Timestamp
   val TRUE = java.lang.Boolean.TRUE
   val FALSE = java.lang.Boolean.FALSE
-  def currentTime = compat.Platform.currentTime
+  def currentTime = System.currentTimeMillis
 
   val CommonFunctions = ValidationEngine.CustomValidationFunctions
 

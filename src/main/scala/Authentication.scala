@@ -241,7 +241,7 @@ object Authentication {
 
     import javax.crypto.{ Cipher, KeyGenerator, Mac }
     import javax.crypto.spec.{ IvParameterSpec, SecretKeySpec }
-    import compat.Platform.currentTime
+    import System.currentTimeMillis
     import org.apache.commons.codec.binary.Base64
     import org.wabase.config
 

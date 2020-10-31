@@ -30,7 +30,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
           field.type_.name == viewDef.name + "_" + field.name // XXX
         }.map(_.type_.name)
       }.toSet
-    mojozViewDefs.mapValues(v => toAppViewDef(v, isInline = inlineViewDefNames.contains(v.name))).toMap
+    mojozViewDefs.map{ case (k, v) => (k, toAppViewDef(v, isInline = inlineViewDefNames.contains(v.name))) }.toMap
   }
   override def viewName[T <: AnyRef](implicit mf: Manifest[T]): String =
     classToViewNameMap.getOrElse(mf.runtimeClass, mf.runtimeClass.getSimpleName)

@@ -297,7 +297,7 @@ object DeferredControl extends Loggable with AppConfig {
     userIdString: String,
     hash: String,
     request: HttpRequest,
-    processor: (HttpRequest) ⇒ Future[HttpResponse],
+    processor: (HttpRequest) => Future[HttpResponse],
     requestTime: Timestamp = new Timestamp(currentTime),
     result: HttpResponse = null,
     responseTime: Timestamp = null,

@@ -95,7 +95,7 @@ trait RestClient extends Loggable{
   def httpGetAsync[R](path: String, params: Map[String, Any] = Map.empty, headers: iSeq[HttpHeader] = iSeq(), cookieStorage: CookieMap = getCookiewStorage)
                      (implicit unmarshaller: FromResponseUnmarshaller[R]): Future[R] = {
     val plainUri = Uri(requestPath(path))
-    lazy val queryStringWithParams = plainUri.rawQueryString.map(_ + "&").getOrElse("") + Query(params.mapValues(Option(_).map(_.toString).getOrElse("")).toMap)
+    lazy val queryStringWithParams = plainUri.rawQueryString.map(_ + "&").getOrElse("") + Query(params.map { case (k, v) => (k, (Option(v).map(_.toString).getOrElse(""))) }.toMap)
     val requestUri = if (params.nonEmpty) plainUri.withRawQueryString(queryStringWithParams) else plainUri
     logger.debug(s"HTTP GET requestUri: $requestUri")
     for{

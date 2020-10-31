@@ -98,7 +98,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
         case kcPattern(key, cKey) => patchString(key.trim, cKey.trim)
         case ckPattern(cKey, key) => patchString(key.trim, cKey.trim)
         case kPattern(key) => patchString(key.trim, null)
-      } else context.foldLeft(s){case (string, (key, value)) => string.replaceAllLiterally(s"{{$key}}", value)} // Mustache like 'Template', for now it's enough
+      } else context.foldLeft(s){case (string, (key, value)) => string.replace(s"{{$key}}", value)} // Mustache like 'Template', for now it's enough
     }
     val result = map.map(e => (e._1, e._2 match {
       case l: List[_] => l.map {

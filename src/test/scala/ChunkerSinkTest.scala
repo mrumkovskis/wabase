@@ -35,7 +35,7 @@ class ChunkerSinkTest extends AsyncFlatSpec {
     src(n).runWith(new ChunkerSink)
       .map {
         case CompleteSourceValue(v) => assert(v == res(n))
-        case x => assert(x == res(n))
+        case IncompleteSourceValue(s) => assert(false)
       }
   }
   it should "return InCompleteSourceValue of 2 bytes" in {
@@ -48,7 +48,7 @@ class ChunkerSinkTest extends AsyncFlatSpec {
     val n = 4
     RowSource.value(n + 2, 0, src(n)).map {
       case CompleteSourceValue(v) => assert(v == res(n))
-      case x => assert(x == res(n))
+      case IncompleteSourceValue(s) => assert(false)
     }
   }
   it should "return IncompleteSourceValue(s) from RowSource" in {

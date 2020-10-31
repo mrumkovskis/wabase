@@ -130,7 +130,7 @@ class FileBufferedFlow private (bufferSize: Int, maxFileSize: Long, outBufferSiz
 
 import scala.util.{Success, Failure}
 
-trait SourceValue
+sealed trait SourceValue
 /** Value of this class can be materialized to {{{HttpEntity.Strict}}} */
 case class CompleteSourceValue(result: ByteString) extends SourceValue
 /** Value of this class can be materialized to {{{HttpEntity.Chunked}}} */
