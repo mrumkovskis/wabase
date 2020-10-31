@@ -5,7 +5,7 @@ import java.util.concurrent.TimeoutException
 
 import akka.actor.{ActorRef, ActorSystem}
 import akka.http.scaladsl.Http
-import akka.http.scaladsl.coding.{ Gzip, Deflate, NoCoding }
+import akka.http.scaladsl.coding.Coders.{ Gzip, Deflate, NoCoding }
 import akka.http.scaladsl.marshalling.{Marshal, Marshaller}
 import akka.http.scaladsl.model.Uri.Query
 import akka.http.scaladsl.model._
@@ -128,7 +128,7 @@ trait RestClient extends Loggable{
 
 
   private def doRequest(req: HttpRequest, cookieStorage: CookieMap): Future[HttpResponse] = {
-    val request = req.copy(headers = req.headers ++ cookieStorage.getCookies)
+    val request = req.withHeaders(req.headers ++ cookieStorage.getCookies)
     Source.single(request -> ((): Unit)).via(flow).completionTimeout(requestTimeout).runWith(Sink.head).map {
       case (Failure(error), _) => handleError(error)
       case (Success(response), _) =>

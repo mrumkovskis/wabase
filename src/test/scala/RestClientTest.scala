@@ -29,7 +29,7 @@ class RestClientTest  extends FlatSpec with Matchers with ScalatestRouteTest wit
     path("counter" / LongNumber) {num => complete{Thread.sleep(200);s"RESULT $num"}}
   }
 
-  val binding = Await.result(Http().bindAndHandle(route, "0.0.0.0", client.port), 1 minute)
+  val binding = Await.result(Http().newServerAt("0.0.0.0", client.port).bindFlow(route), 1 minute)
 
   override def afterAll() = Await.result(binding.unbind(), 1 minute)
 

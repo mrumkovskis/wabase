@@ -205,12 +205,9 @@ trait DeferredControl
     .tflatMap(_ => extractRequestContext.flatMap { ctx => mapInnerRoute { route =>
       val wrappedRoute = handleExceptions(appExceptionHandler)(route)
       val requestProcessor =
-        Route.asyncHandler { requestContext =>
+        Route.toFunction { requestContext =>
           wrappedRoute(requestContext.withUnmatchedPath(ctx.unmatchedPath))
-        }(ctx.settings,
-          ctx.parserSettings,
-          ctx.materializer,
-          RoutingLog(ctx.log))
+        }
       import EventBus._
       val hash = requestHash(user, ctx.request)
       val deferredCtx = DeferredContext(user, hash, ctx.request, requestProcessor)

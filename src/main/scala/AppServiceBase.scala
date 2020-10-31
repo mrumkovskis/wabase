@@ -1,7 +1,7 @@
 package org.wabase
 
 import akka.stream.scaladsl._
-import akka.http.scaladsl.coding.{Deflate, Gzip, NoCoding}
+import akka.http.scaladsl.coding.Coders.{Deflate, Gzip, NoCoding}
 import akka.http.scaladsl.model._
 import akka.http.scaladsl.model.headers._
 import akka.http.scaladsl.server._

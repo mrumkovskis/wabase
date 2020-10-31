@@ -99,7 +99,7 @@ trait Authentication[User] extends SecurityDirectives with SessionInfoRemover wi
   protected val IP = "IP"
   protected val UserAgent = "User-Agent"
 
-  def extractUserAgent = optionalHeaderValueByType[`User-Agent`](()).map(_.map(_.value))
+  def extractUserAgent = optionalHeaderValueByType(`User-Agent`).map(_.map(_.value))
 
   def extractSessionToken(user: User) = (extractClientIP.map(remoteAddressToString).filter(_ != null) & extractUserAgent)
     .recover { _ =>
