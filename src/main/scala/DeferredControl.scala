@@ -94,7 +94,7 @@ trait DeferredControl
       })
       private def pushIfQueued = {
         if (queue.nonEmpty) {
-          val nctx = queue.dequeue.copy(status = DEFERRED_EXE)
+          val nctx = queue.dequeue().copy(status = DEFERRED_EXE)
           push(exe, nctx)
         }
       }
@@ -256,7 +256,7 @@ trait DeferredControl
 
   protected def doCleanup: Int = deferredStorage.cleanupDeferredRequests
 
-  def onRestartDeferred(): Unit = deferredStorage.onRestart
+  def onRestartDeferred(): Unit = deferredStorage.onRestart()
 }
 
 object DeferredControl extends Loggable with AppConfig {
@@ -327,7 +327,7 @@ object DeferredControl extends Loggable with AppConfig {
         info("DeferredCleanup started")
         processedCount += defControl.doCleanup
         info(s"DeferredCleanup job ended, total processed deferred count: $processedCount")
-      case GetProcessedDeferredCount => sender ! ProcessedDeferredCount(processedCount)
+      case GetProcessedDeferredCount => sender() ! ProcessedDeferredCount(processedCount)
     }
 
     override def postStop() = {

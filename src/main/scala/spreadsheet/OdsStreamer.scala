@@ -10,7 +10,7 @@ class OdsStreamer(val zip: java.util.zip.ZipOutputStream, styles: List[OdsStyle]
   private val contentStreamer = new OdsContentStreamer(writer, styles)
   private def resourceToZip(resourceName: String) = {
     val source = Source.fromResource(resourceName)
-    val value  = source.getLines.mkString("\n")
+    val value  = source.getLines().mkString("\n")
     source.close
     zip.write(value.getBytes("UTF-8"))
   }

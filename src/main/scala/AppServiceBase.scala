@@ -444,7 +444,7 @@ object AppServiceBase {
     def businessExceptionHandler(logger: com.typesafe.scalalogging.Logger) = ExceptionHandler {
       case e: BusinessException =>
         logger.trace(e.getMessage, e)
-        complete(HttpResponse(InternalServerError, entity = e.getMessage.format(e.getParams: _*)))
+        complete(HttpResponse(InternalServerError, entity = e.getMessage.format(e.getParams(): _*)))
     }
 
     def bindVariableExceptionHandler(logger: com.typesafe.scalalogging.Logger,
