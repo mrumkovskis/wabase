@@ -12,18 +12,18 @@ import org.slf4j.LoggerFactory
 import scala.language.postfixOps
 
 trait ServerStatistics extends Loggable {
-  def registerTimeout
+  def registerTimeout: Unit
   // TODO fix namespace problem and method names
-  def statsRegisterDeferredRequest
-  def statsRegisterDeferredResult
-  def registerStats(stats: Statistics) { sys.error ("Unimplemented") }
+  def statsRegisterDeferredRequest: Unit
+  def statsRegisterDeferredResult: Unit
+  def registerStats(stats: Statistics): Unit = { sys.error ("Unimplemented") }
 }
 
 object ServerStatistics {
  trait NoServerStatistics extends ServerStatistics {
-  def registerTimeout {}
-  def statsRegisterDeferredRequest {}
-  def statsRegisterDeferredResult {}
+  def registerTimeout: Unit = {}
+  def statsRegisterDeferredRequest: Unit = {}
+  def statsRegisterDeferredResult: Unit = {}
  }
 
  trait DefaultServerStatistics extends ServerStatistics { this: Execution =>

@@ -2,7 +2,7 @@ package org.wabase
 
 trait Authorization[User] { this: AppBase[User] =>
   /** performs authorization, on failure throws UnauthorizedException, otherwise returns */
-  def check[C <: RequestContext[_]](ctx: C, clazz: Class[_])
+  def check[C <: RequestContext[_]](ctx: C, clazz: Class[_]): Unit
   /** performs authorization, on success returns true otherwise false */
   def can[C <: RequestContext[_]](ctx: C, clazz: Class[_]): Boolean
   /** adds authZ information regarding result to context, i.e is result editable, etc... */
@@ -20,7 +20,7 @@ object Authorization {
   class UnauthorizedException(msg: String) extends BusinessException(msg)
 
   trait NoAuthorization[User] extends Authorization[User] { this: AppBase[User] =>
-    override def check[C <: RequestContext[_]](ctx: C, clazz: Class[_]) {}
+    override def check[C <: RequestContext[_]](ctx: C, clazz: Class[_]): Unit = {}
     override def can[C <: RequestContext[_]](ctx: C, clazz: Class[_]) = true
     override def relevant[C <: RequestContext[_]](ctx: C, clazz: Class[_]) = ctx
     override def hasRole(user: User, role: String): Boolean = true

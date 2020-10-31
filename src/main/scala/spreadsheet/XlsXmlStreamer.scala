@@ -4,7 +4,7 @@ import java.io._
 import org.wabase.Format
 
 case class Font(bold: Boolean) {
-  def write(out: Writer) {
+  def write(out: Writer): Unit = {
     out write "    <Font ss:Bold=\""
     out write (if (bold) "1" else "0")
     out write "\"/>\r\n"
@@ -15,7 +15,7 @@ object Font {
 }
 case class NumberFormat(format: String) {
   require(format != null, "NumberFormat format must not be null")
-  def write(out: Writer) {
+  def write(out: Writer): Unit = {
     out write "    <NumberFormat ss:Format=\""
     out write format
     out write "\"/>\r\n"
@@ -26,7 +26,7 @@ object NumberFormat {
 }
 case class Style(id: String, numberFormat: NumberFormat = null, font: Font = null) {
   require(id != null, "Style id must not be null")
-  def write(out: Writer) {
+  def write(out: Writer): Unit = {
     out write "   <Style ss:ID=\""
     out write id
     out write "\">\r\n"
@@ -47,7 +47,7 @@ case class Cell(type_ : DataType, value: String, style: Style)
 
 class XlsXmlStreamer(val out: Writer) {
 
-  def startWorkbook(styles: Seq[Style]) {
+  def startWorkbook(styles: Seq[Style]): Unit = {
     out write """  |<?xml version="1.0" encoding="UTF-8"?>
                    |<?mso-application progid="Excel.Sheet"?>
                    |<Workbook xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
@@ -61,18 +61,18 @@ class XlsXmlStreamer(val out: Writer) {
                    |""".stripMargin
     }
   }
-  def startWorksheet(name: String) {
+  def startWorksheet(name: String): Unit = {
     out write "  <Worksheet ss:Name=\""
     out write name
     out write "\">\r\n"
   }
-  def startTable {
+  def startTable: Unit = {
     out write "    <Table>\r\n"
   }
-  def startRow {
+  def startRow: Unit = {
     out write "      <Row>"
   }
-  def cell(value: Any, style: Style = null) {
+  def cell(value: Any, style: Style = null): Unit = {
     var t: DataType = null
     var v: String = null
     value match {
@@ -104,16 +104,16 @@ class XlsXmlStreamer(val out: Writer) {
     }
     out write "</Cell>"
   }
-  def endRow {
+  def endRow: Unit = {
     out write "</Row>\r\n"
   }
   def endTable: Unit = {
     out write "    </Table>\r\n"
   }
-  def endWorksheet {
+  def endWorksheet: Unit = {
     out write "  </Worksheet>\r\n"
   }
-  def endWorkbook {
+  def endWorkbook: Unit = {
     out write "</Workbook>\r\n"
   }
 }

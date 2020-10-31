@@ -9,7 +9,7 @@ import spray.json._
 import scala.util.control.NonFatal
 
 trait ValidationEngine {
-  def validate(instance: Dto)(implicit locale: Locale)
+  def validate(instance: Dto)(implicit locale: Locale): Unit
 }
 
 /** Default validation engine, executes validation javascript stored in "validation" table */
@@ -65,7 +65,7 @@ trait DefaultValidationEngine extends ValidationEngine with Loggable {
     val viewName = viewDef(classToViewNameMap(instance.getClass)).name
     Query(validationsQuery, Map("context" -> viewName))(tresqlResources).map(r => new Validation().fill(r)).toList
   }
-  override def validate(instance: Dto)(implicit locale: Locale) {
+  override def validate(instance: Dto)(implicit locale: Locale): Unit = {
     val validationList = validations(instance)
     if (validationList.nonEmpty) {
       val engine = get(instance)
@@ -105,7 +105,7 @@ trait DefaultValidationEngine extends ValidationEngine with Loggable {
 }
 
 trait NoValidation extends ValidationEngine {
-  override def validate(instance: Dto)(implicit locale: Locale) {}
+  override def validate(instance: Dto)(implicit locale: Locale): Unit = {}
 }
 
 object ValidationEngine {

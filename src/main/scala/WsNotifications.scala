@@ -79,17 +79,17 @@ object WsNotifications extends Loggable {
 
   /** Publishes events to newly created websocket */
   trait WsInitialEventsPublisher {
-    def publishInitialWsEvents(userIdString: String)
+    def publishInitialWsEvents(userIdString: String): Unit
   }
 
   trait NoWsInitialEvents extends WsInitialEventsPublisher {
-    def publishInitialWsEvents(user: String) {}
+    def publishInitialWsEvents(user: String): Unit = {}
   }
 
   /** Publishes app version and deferred events status info */
   trait DefaultWsInitialEventsPublisher extends WsInitialEventsPublisher {
       this: WsNotifications with AppVersion with DeferredStatusPublisher =>
-    def publishInitialWsEvents(user: String) {
+    def publishInitialWsEvents(user: String): Unit = {
       publishUserEvent(user, Map("version" -> appVersion).toJson.prettyPrint)
       publishUserDeferredStatuses(user)
       publishUserEvents(user, getActualUserEvents(user))
@@ -121,7 +121,7 @@ object WsNotifications extends Loggable {
   case class MsgEnvelope(topic: String, payload: Any)
   case class DeferredNotification(value: JsValue)
 
-  def publish(msgEnvelope: MsgEnvelope)(implicit ws: WsNotifications) {
+  def publish(msgEnvelope: MsgEnvelope)(implicit ws: WsNotifications): Unit = {
     ws.publishUserEvent(msgEnvelope.topic, msgEnvelope.payload match {
       case DeferredNotification(value) => value.prettyPrint
       case x => x

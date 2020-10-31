@@ -351,7 +351,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
   private def register(typ: String, actions: Magnet*) = actions foreach (_.register(typ))
 
   //implicit conversions from functions to magnets
-  sealed abstract class Magnet { def register(actionType: String) }
+  sealed abstract class Magnet { def register(actionType: String): Unit }
   implicit class FunctionMagnet[T](private[AppBase] val fun: T => T)(
     implicit ext: Ext[T], mf: Manifest[T]) extends Magnet {
     override def register(actionType: String) = ext.asInstanceOf[HExt[T]].register(actionType, mf, fun)

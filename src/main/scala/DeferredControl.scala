@@ -73,7 +73,7 @@ trait DeferredControl
         pull(in)
       }
       setHandler(in, new InHandler {
-        override def onPush() {
+        override def onPush(): Unit = {
           val ctx = grab(in)
           if (queue.size >= MaxQueueSize) {
             emit(overflow, ctx.copy(status = DEFERRED_ERR, result = QueueOverflowResponse))
@@ -99,7 +99,7 @@ trait DeferredControl
         }
       }
       //does nothing
-      override def onPull() {}
+      override def onPull(): Unit = {}
       setHandler(overflow, this)
     }
   }
@@ -155,7 +155,7 @@ trait DeferredControl
     import EventBus._
     publish(Message(WsNotifications.UserAddressee(ctx.userIdString), ctx))
   }
-  def publishUserDeferredStatuses(user: String) {
+  def publishUserDeferredStatuses(user: String): Unit = {
     val deferredRequests = deferredStorage.getUserDeferredStatuses(user)
     import EventBus._
     deferredRequests.foreach { ctx =>

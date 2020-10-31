@@ -249,7 +249,7 @@ trait AppFileStreamer[User] extends AppFileStreamerConfig with Loggable { this: 
       )}
   }
 
-  def copy(source: String, dest: String, mkdirs: Boolean = false) {
+  def copy(source: String, dest: String, mkdirs: Boolean = false): Unit = {
     if (source != dest) {
       val s = new File(source)
       val d = new File(dest)

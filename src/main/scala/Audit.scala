@@ -15,14 +15,14 @@ import org.wabase.MapUtils._
 trait Audit[User] { this: AppBase[User] =>
   def audit[C <: RequestContext[_]](originalContext: C)(action: => C): C
   def auditSave(id: jLong, viewName: String, instance: Map[String, Any], error: String)(implicit user: User, state: ApplicationState): Unit
-  def auditLogin(user: User, loginInfo: qe.DTO)
+  def auditLogin(user: User, loginInfo: qe.DTO): Unit
 }
 
 object Audit {
  trait NoAudit[User] extends Audit[User] { this: AppBase[User] =>
   def audit[C <: RequestContext[_]](originalContext: C)(action: => C): C = action
-  def auditSave(id: jLong, viewName: String, instance: Map[String, Any], error: String)(implicit user: User, state: ApplicationState) {}
-  def auditLogin(user: User, loginInfo: qe.DTO) {}
+  def auditSave(id: jLong, viewName: String, instance: Map[String, Any], error: String)(implicit user: User, state: ApplicationState): Unit = {}
+  def auditLogin(user: User, loginInfo: qe.DTO): Unit = {}
  }
 
 
@@ -106,7 +106,7 @@ object Audit {
      audit(AuditData(action = "login", user = user, newData = mapFromObj(loginInfo), time = now))
    }
 
-   def logView(id: jLong, view: String, user: User, inParams: Map[String, Any]) {
+   def logView(id: jLong, view: String, user: User, inParams: Map[String, Any]): Unit = {
      audit(AuditData(
        action = "view",
        entity = view,
@@ -116,7 +116,7 @@ object Audit {
      )
    }
 
-   def logList(view: String, user: User, inParams: Map[String, Any], offset: Int, limit: Int, orderBy: String, state: ApplicationState, doCount: Boolean) {
+   def logList(view: String, user: User, inParams: Map[String, Any], offset: Int, limit: Int, orderBy: String, state: ApplicationState, doCount: Boolean): Unit = {
      audit(AuditData(
        action = "list",
        entity = view,
@@ -129,14 +129,14 @@ object Audit {
      )
    }
 
-   override def auditSave(id: jLong, viewName: String, map: Map[String, Any], error: String)(implicit user: User, state: ApplicationState) {
+   override def auditSave(id: jLong, viewName: String, map: Map[String, Any], error: String)(implicit user: User, state: ApplicationState): Unit = {
      val relevantIds = getRelevantIds(viewName, id, map, loadFromDb = false, null)
      audit(AuditData(action = "create", entity_id = id, user = user, time = now, entity = viewName,
        newData = map, relevant_id = relevantIds, error = error))
    }
 
    def logSave(id: Long, view: String, old: qe.DTO, obj: qe.DTO, inParams: Map[String, Any],
-               user: User, save: Map[String, Any], extraPropsToSave: Map[String, Any], error: Throwable) {
+               user: User, save: Map[String, Any], extraPropsToSave: Map[String, Any], error: Throwable): Unit = {
      val newData = mapFromObj(obj)
      val oldData = mapFromObj(old)
      val relevantIds = getRelevantIds(view, id, newData ++ Option(extraPropsToSave).getOrElse(Map.empty), error == null, error)
@@ -146,13 +146,13 @@ object Audit {
          newData = newData, oldData = oldData, diff = diff, relevant_id = relevantIds, error = Option(error).map(_.getMessage).orNull))
    }
 
-   def logRemove(id: Long, view: String, user: User, oldData: qe.DWI, error: Throwable) {
+   def logRemove(id: Long, view: String, user: User, oldData: qe.DWI, error: Throwable): Unit = {
      val data = mapFromObj(oldData)
      audit(AuditData(action = "remove", entity = view, entity_id = id, user = user, time = now,
        oldData = data, relevant_id = getRelevantIds(view, id, data, error != null, error), error = Option(error).map(_.getMessage).orNull))
    }
 
-   def audit[C <: RequestContext[_]](res: C, error: Throwable) {
+   def audit[C <: RequestContext[_]](res: C, error: Throwable): Unit = {
      res match {
        case _: CreateContext[_] => // IGNORE
        case ViewContext(view, id, inParams, user, _, _) =>

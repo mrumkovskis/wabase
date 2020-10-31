@@ -343,7 +343,7 @@ object Authentication {
     val ldapUrl = Try(appConfig.getString("ldap-url")).toOption.getOrElse("")
     val accountPostfix = Try(appConfig.getString("account-postfix")).toOption.getOrElse("")
 
-    def ldapLogin(username: String, password: String)(implicit locale: Locale) {
+    def ldapLogin(username: String, password: String)(implicit locale: Locale): Unit = {
       val env = new java.util.Hashtable[String, String]()
       env.put(Context.INITIAL_CONTEXT_FACTORY, "com.sun.jndi.ldap.LdapCtxFactory")
       env.put(Context.PROVIDER_URL, ldapUrl)
