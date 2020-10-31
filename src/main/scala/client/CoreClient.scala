@@ -60,12 +60,12 @@ trait CoreClient extends RestClient with JsonConverterProvider with BasicJsonMar
     httpGet[String](pathForDtoCount(viewClass), params).toInt
   def listRaw[T <: Dto](viewClass: Class[T], params: Map[String, Any]): String = httpGet[String](pathForDto(viewClass, null), params) /*in case response is not JSON*/
 
-  override def httpGetAsync[R](path: String, params: Map[String, Any], headers: iSeq[HttpHeader], cookieStorage: CookieMap = getCookiewStorage)
+  override def httpGetAsync[R](path: String, params: Map[String, Any], headers: iSeq[HttpHeader], cookieStorage: CookieMap = getCookieStorage)
                               (implicit unmarshaller: FromResponseUnmarshaller[R]): Future[R] = {
     super.httpGetAsync[(R, iSeq[HttpHeader])](path, params, headers ++ getDefaultApiHeaders(cookieStorage), cookieStorage = cookieStorage).flatMap(handleDeferredResponse[R](cookieStorage))
   }
 
-  override def httpPostAsync[T, R](method: HttpMethod, path: String, content: T, headers: iSeq[HttpHeader], cookieStorage: CookieMap = getCookiewStorage)
+  override def httpPostAsync[T, R](method: HttpMethod, path: String, content: T, headers: iSeq[HttpHeader], cookieStorage: CookieMap = getCookieStorage)
                                   (implicit marshaller: Marshaller[T, MessageEntity], unmarshaller: FromResponseUnmarshaller[R]): Future[R] =
     super.httpPostAsync(method, path, content, headers ++ getDefaultApiHeaders(cookieStorage), cookieStorage = cookieStorage)(marshaller = marshaller, unmarshaller = unmarshaller)
 

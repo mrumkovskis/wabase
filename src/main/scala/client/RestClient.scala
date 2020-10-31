@@ -67,7 +67,7 @@ trait RestClient extends Loggable{
   }
 
   private val cookiesThreadLocal = new ThreadLocal[CookieMap](){override def initialValue = new CookieMap}
-  def getCookiewStorage = cookiesThreadLocal.get()
+  def getCookieStorage = cookiesThreadLocal.get()
   def clearCookies = cookiesThreadLocal.remove
 
   def decodeResponse(response: HttpResponse): HttpResponse = {
@@ -92,7 +92,7 @@ trait RestClient extends Loggable{
                     (implicit marshaller: Marshaller[T, RequestEntity], umarshaller: FromResponseUnmarshaller[R]): R =
     handleFuture(httpPostAsync[T, R](method, path, content, headers))
 
-  def httpGetAsync[R](path: String, params: Map[String, Any] = Map.empty, headers: iSeq[HttpHeader] = iSeq(), cookieStorage: CookieMap = getCookiewStorage)
+  def httpGetAsync[R](path: String, params: Map[String, Any] = Map.empty, headers: iSeq[HttpHeader] = iSeq(), cookieStorage: CookieMap = getCookieStorage)
                      (implicit unmarshaller: FromResponseUnmarshaller[R]): Future[R] = {
     val plainUri = Uri(requestPath(path))
     lazy val queryStringWithParams = plainUri.rawQueryString.map(_ + "&").getOrElse("") + Query(params.map { case (k, v) => (k, (Option(v).map(_.toString).getOrElse(""))) }.toMap)
@@ -104,7 +104,7 @@ trait RestClient extends Loggable{
     } yield responseEntity
   }
 
-  def httpPostAsync[T, R](method: HttpMethod, path: String, content: T, headers: iSeq[HttpHeader] = iSeq(), cookieStorage: CookieMap = getCookiewStorage)
+  def httpPostAsync[T, R](method: HttpMethod, path: String, content: T, headers: iSeq[HttpHeader] = iSeq(), cookieStorage: CookieMap = getCookieStorage)
                          (implicit marshaller: Marshaller[T, RequestEntity], unmarshaller: FromResponseUnmarshaller[R]): Future[R] = {
     val requestUri = requestPath(path)
     logger.debug(s"HTTP ${method.value} requestUri: $requestUri")
@@ -154,7 +154,7 @@ trait RestClient extends Loggable{
         Source.maybe[Message])(Keep.right)
 
     val (upgradeResponse, promise) = Http().singleWebSocketRequest(
-      WebSocketRequest(serverWsPath, extraHeaders = getCookiewStorage.getCookies), deferredFlow)
+      WebSocketRequest(serverWsPath, extraHeaders = getCookieStorage.getCookies), deferredFlow)
     clearCookies
   }
 
