@@ -509,7 +509,7 @@ object AppServiceBase {
     }
 
     /** Handles [[org.wabase.BusinessException]]s and [[org.tresql.MissingBindVariableException]]s and
-      * [[querease.ViewNotFoundException]]*/
+      * [[org.mojoz.querease.ViewNotFoundException]]*/
     trait SimpleExceptionHandler extends AppExceptionHandler { this: Loggable =>
       def bindVariableExceptionResponseMessage(e: MissingBindVariableException): String = e.getMessage
       override val appExceptionHandler =
