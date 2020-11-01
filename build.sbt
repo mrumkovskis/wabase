@@ -44,10 +44,8 @@ lazy val commonSettings = Seq(
       ", tableMetadataFile=" + (baseDirectory.value / "tresql-table-metadata.yaml").getAbsolutePath),
   resolvers += "snapshots" at "https://oss.sonatype.org/content/repositories/snapshots",
   libraryDependencies ++= dependencies ++ testDependencies,
-  autoAPIMappings := true,
   apiMappings ++= (fullClasspath in Compile map { fcp =>
     // fix bad api mappings,
-    // other mappings are automagical by autoAPIMappings and sbt-api-mappings plugin
     val mappings: Map[String, String] =
       fcp.files.map(_.getName).filter(_ startsWith "akka-").filterNot(_ startsWith "akka-http-")
         .map(akkajar => (akkajar, s"http://doc.akka.io/api/akka/$akkaV/")).toMap ++
