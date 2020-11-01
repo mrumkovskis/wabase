@@ -31,7 +31,10 @@ lazy val testDependencies = Seq(
     "com.vladsch.flexmark"        % "flexmark-all"                      % "0.35.10" % "it,test",
 )
 
-lazy val commonSettings = Seq(
+lazy val wabase = (project in file("."))
+  .configs(IntegrationTest extend(Test))
+  .settings(Defaults.itSettings : _*)
+  .settings(
   organization := "org.wabase",
   name := "wabase",
   scalaVersion := scalaV,
@@ -55,11 +58,7 @@ lazy val commonSettings = Seq(
       .map(f => (f, new java.net.URL(mappings(f.getName)))).toMap
   }).value,
   updateOptions := updateOptions.value.withLatestSnapshots(false),
-)
-
-lazy val wabase = (project in file("."))
-  .settings(commonSettings: _*)
-  .configs(IntegrationTest extend(Test))
+  )
   /*
   .settings(
     initialCommands in console := s"""
@@ -83,7 +82,6 @@ lazy val wabase = (project in file("."))
       |//implicit val executionContext = system.dispatcher""".stripMargin
 )
 */
-  .settings(Defaults.itSettings : _*)
   .settings(
     Compile / unmanagedSourceDirectories ++= {
       val sharedSourceDir = (ThisBuild / baseDirectory).value / "compat"
