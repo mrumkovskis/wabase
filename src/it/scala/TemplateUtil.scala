@@ -3,7 +3,7 @@ package org.wabase
 import java.io.{File, PrintWriter}
 import java.nio.file.{Files, Paths}
 import org.yaml.snakeyaml.{DumperOptions, Yaml}
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 import scala.io.{Codec, Source}
 import scala.language.{implicitConversions, reflectiveCalls}
 import spray.json._

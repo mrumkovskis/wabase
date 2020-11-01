@@ -5,7 +5,7 @@ import java.util.Locale
 import org.yaml.snakeyaml.Yaml
 
 import scala.language.postfixOps
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 
 trait DbConstraintMessage {
   def friendlyConstraintErrorMessage[T](f: => T)(implicit locale: Locale): T = friendlyConstraintErrorMessage(null, f)

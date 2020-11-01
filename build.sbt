@@ -88,6 +88,14 @@ lazy val webapp = (project in file("."))
 */
   .settings(Defaults.itSettings : _*)
   .settings(
+    Compile / unmanagedSourceDirectories ++= {
+      val sharedSourceDir = (ThisBuild / baseDirectory).value / "compat"
+      if (scalaVersion.value.startsWith("2.12."))
+        Seq(sharedSourceDir / "scala-2.12")
+      else Nil
+    },
+  )
+  .settings(
     scalacOptions in (Compile, doc) ++= (baseDirectory map { bd =>
       Seq("-sourcepath", bd.getAbsolutePath,
         "-doc-source-url", "https://github.com/mrumkovskis/wabase/blob/develop€{FILE_PATH}.scala")

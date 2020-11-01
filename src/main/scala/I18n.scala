@@ -2,8 +2,7 @@ package org.wabase
 
 import java.util.{Locale, PropertyResourceBundle, ResourceBundle}
 
-//for scala 2.12 compatibility
-import scala.collection.convert.ImplicitConversions.`enumeration AsScalaIterator`
+import scala.jdk.CollectionConverters._
 import scala.util.Try
 
 trait I18n {
@@ -86,6 +85,6 @@ trait I18n {
     * */
   def i18nResourcesFromBundle(name: String)(implicit locale: Locale): Iterator[(String, Any)] = {
     val b = bundle(name)
-    b.getKeys.map(s => s -> Try(b.getString(s)).getOrElse(s))
+    b.getKeys.asScala.map(s => s -> Try(b.getString(s)).getOrElse(s))
   }
 }

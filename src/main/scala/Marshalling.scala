@@ -444,7 +444,7 @@ object MarshallingConfig extends AppBase.AppConfig with Loggable {
       appConfig.getBytes("db-data-file-max-size")
     else 1024 * 1024 * 8L
 
-  import scala.collection.JavaConverters._
+  import scala.jdk.CollectionConverters._
   lazy val customDataFileMaxSizes: Map[String, Long] = {
     val vals = Try {
       appConfig.getConfig("db-data-file-max-sizes")

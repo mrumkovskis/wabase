@@ -18,7 +18,7 @@ import DefaultJsonProtocol._
 import DeferredControl.DeferredCheck
 import DeferredControl.DeferredStatusPublisher
 
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 import AppServiceBase._
 import Authentication.SessionInfoRemover
 import com.typesafe.config.Config

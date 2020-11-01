@@ -8,7 +8,7 @@ import org.mojoz.metadata.io.MdConventions
 import org.mojoz.metadata.out.SqlGenerator.SimpleConstraintNamingRules
 import org.mojoz.querease._
 import scala.collection.immutable.Seq
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 import scala.language.reflectiveCalls
 
 trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
