@@ -59,7 +59,7 @@ lazy val commonSettings = Seq(
   updateOptions := updateOptions.value.withLatestSnapshots(false),
 )
 
-lazy val webapp = (project in file("."))
+lazy val wabase = (project in file("."))
   .settings(commonSettings: _*)
   .configs(IntegrationTest extend(Test))
   /*
