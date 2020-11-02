@@ -17,6 +17,9 @@ wabase.iml
 .project
 .cache
 
+# sbt
+.bsp
+
 # scalatest reports
 report/
 it-report/
