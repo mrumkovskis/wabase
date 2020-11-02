@@ -42,32 +42,32 @@ trait CoreClient extends RestClient with JsonConverterProvider with BasicJsonMar
   }
 
   def login(username: String = defaultUsername, password: String = defaultPassword) = {
-    httpGet[String]("api", headers = iSeq(AuthorizationHeader(BasicHttpCredentials(username, password))))
+    httpGetAwait[String]("api", headers = iSeq(AuthorizationHeader(BasicHttpCredentials(username, password))))
   }
 
   // TODO use marshallers to convert from json to dto
   def save[T <: DtoWithId](dto: T): T = {
-    val response = httpPost[JsValue, JsValue](if(dto.id == null) HttpMethods.POST else HttpMethods.PUT, pathForDto(dto.getClass, dto.id),
+    val response = httpPostAwait[JsValue, JsValue](if(dto.id == null) HttpMethods.POST else HttpMethods.PUT, pathForDto(dto.getClass, dto.id),
       dto.toMap.toJson)
     getDtoFromJson(dto.getClass, response)
   }
 
-  def delete[T <: Dto](viewClass: Class[T], id: Long): Unit = httpPost[String, Unit](HttpMethods.DELETE, pathForDto(viewClass, id), "")
-  def get[T <: Dto](viewClass: Class[T], id: Long, params: Map[String, Any] = Map.empty): T = getDtoFromJson(viewClass, httpGet[JsValue](pathForDto(viewClass, id), params))
+  def delete[T <: Dto](viewClass: Class[T], id: Long): Unit = httpPostAwait[String, Unit](HttpMethods.DELETE, pathForDto(viewClass, id), "")
+  def get[T <: Dto](viewClass: Class[T], id: Long, params: Map[String, Any] = Map.empty): T = getDtoFromJson(viewClass, httpGetAwait[JsValue](pathForDto(viewClass, id), params))
   def list[T <: Dto](viewClass: Class[T], params: Map[String, Any]): List[T] =
-    getDtoListFromJson(viewClass, httpGet[JsValue](pathForDto(viewClass, null), params))
+    getDtoListFromJson(viewClass, httpGetAwait[JsValue](pathForDto(viewClass, null), params))
   def count[T <: Dto](viewClass: Class[T], params: Map[String, Any]): Int =
-    httpGet[String](pathForDtoCount(viewClass), params).toInt
-  def listRaw[T <: Dto](viewClass: Class[T], params: Map[String, Any]): String = httpGet[String](pathForDto(viewClass, null), params) /*in case response is not JSON*/
+    httpGetAwait[String](pathForDtoCount(viewClass), params).toInt
+  def listRaw[T <: Dto](viewClass: Class[T], params: Map[String, Any]): String = httpGetAwait[String](pathForDto(viewClass, null), params) /*in case response is not JSON*/
 
-  override def httpGetAsync[R](path: String, params: Map[String, Any], headers: iSeq[HttpHeader], cookieStorage: CookieMap = getCookieStorage)
+  override def httpGet[R](path: String, params: Map[String, Any], headers: iSeq[HttpHeader], cookieStorage: CookieMap = getCookieStorage)
                               (implicit unmarshaller: FromResponseUnmarshaller[R]): Future[R] = {
-    super.httpGetAsync[(R, iSeq[HttpHeader])](path, params, headers ++ getDefaultApiHeaders(cookieStorage), cookieStorage = cookieStorage).flatMap(handleDeferredResponse[R](cookieStorage))
+    super.httpGet[(R, iSeq[HttpHeader])](path, params, headers ++ getDefaultApiHeaders(cookieStorage), cookieStorage = cookieStorage).flatMap(handleDeferredResponse[R](cookieStorage))
   }
 
-  override def httpPostAsync[T, R](method: HttpMethod, path: String, content: T, headers: iSeq[HttpHeader], cookieStorage: CookieMap = getCookieStorage)
+  override def httpPost[T, R](method: HttpMethod, path: String, content: T, headers: iSeq[HttpHeader], cookieStorage: CookieMap = getCookieStorage)
                                   (implicit marshaller: Marshaller[T, MessageEntity], unmarshaller: FromResponseUnmarshaller[R]): Future[R] =
-    super.httpPostAsync(method, path, content, headers ++ getDefaultApiHeaders(cookieStorage), cookieStorage = cookieStorage)(marshaller = marshaller, unmarshaller = unmarshaller)
+    super.httpPost(method, path, content, headers ++ getDefaultApiHeaders(cookieStorage), cookieStorage = cookieStorage)(marshaller = marshaller, unmarshaller = unmarshaller)
 
   def getDtoListFromJson[T <: Dto](viewClass: Class[T], jsValue: JsValue): List[T] = jsValue match{
     case JsArray(elements) => elements.map(getDtoFromJson(viewClass, _)).toList
@@ -94,7 +94,7 @@ trait CoreClient extends RestClient with JsonConverterProvider with BasicJsonMar
           case JsString(DeferredControl.DEFERRED_OK) => // OK
           case JsString(DeferredControl.DEFERRED_ERR) => // ERR
           case _ => throw ClientException(s"Received error while processing deferred request: \n$deferredResult")
-        }}.flatMap(_ => httpGetAsync[R](deferredResultUri(hash), cookieStorage = cookieStorage))
+        }}.flatMap(_ => httpGet[R](deferredResultUri(hash), cookieStorage = cookieStorage))
     }
   }
 

@@ -84,15 +84,15 @@ trait RestClient extends Loggable{
   }
 
 
-  def httpGet[R](path: String, params: Map[String, Any] = Map.empty, headers: iSeq[HttpHeader] = iSeq())
+  def httpGetAwait[R](path: String, params: Map[String, Any] = Map.empty, headers: iSeq[HttpHeader] = iSeq())
                 (implicit unmarshaller: FromResponseUnmarshaller[R]): R =
-    handleFuture(httpGetAsync[R](path, params, headers))
+    handleFuture(httpGet[R](path, params, headers))
 
-  def httpPost[T, R](method: HttpMethod, path: String, content: T, headers: iSeq[HttpHeader] = iSeq())
+  def httpPostAwait[T, R](method: HttpMethod, path: String, content: T, headers: iSeq[HttpHeader] = iSeq())
                     (implicit marshaller: Marshaller[T, RequestEntity], umarshaller: FromResponseUnmarshaller[R]): R =
-    handleFuture(httpPostAsync[T, R](method, path, content, headers))
+    handleFuture(httpPost[T, R](method, path, content, headers))
 
-  def httpGetAsync[R](path: String, params: Map[String, Any] = Map.empty, headers: iSeq[HttpHeader] = iSeq(), cookieStorage: CookieMap = getCookieStorage)
+  def httpGet[R](path: String, params: Map[String, Any] = Map.empty, headers: iSeq[HttpHeader] = iSeq(), cookieStorage: CookieMap = getCookieStorage)
                      (implicit unmarshaller: FromResponseUnmarshaller[R]): Future[R] = {
     val plainUri = Uri(requestPath(path))
     lazy val queryStringWithParams = plainUri.rawQueryString.map(_ + "&").getOrElse("") + Query(params.map { case (k, v) => (k, (Option(v).map(_.toString).getOrElse(""))) }.toMap)
@@ -104,7 +104,7 @@ trait RestClient extends Loggable{
     } yield responseEntity
   }
 
-  def httpPostAsync[T, R](method: HttpMethod, path: String, content: T, headers: iSeq[HttpHeader] = iSeq(), cookieStorage: CookieMap = getCookieStorage)
+  def httpPost[T, R](method: HttpMethod, path: String, content: T, headers: iSeq[HttpHeader] = iSeq(), cookieStorage: CookieMap = getCookieStorage)
                          (implicit marshaller: Marshaller[T, RequestEntity], unmarshaller: FromResponseUnmarshaller[R]): Future[R] = {
     val requestUri = requestPath(path)
     logger.debug(s"HTTP ${method.value} requestUri: $requestUri")
