@@ -108,7 +108,7 @@ trait CoreClient extends RestClient with JsonConverterProvider with BasicJsonMar
 }
 
 object CoreClient{
-  import RestClient._
+  import RestClient.WsClosed
   case class GetDeferred(hash: String)
 
   class DeferredActor extends Actor with Loggable{
