@@ -10,6 +10,7 @@ import org.scalatest.BeforeAndAfterAll
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers
 import org.wabase.client.RestClient
+import org.wabase.client.ClientException
 
 import scala.concurrent.Await
 import scala.concurrent.duration._
@@ -17,9 +18,21 @@ import scala.language.postfixOps
 
 class RestClientTest  extends FlatSpec with Matchers with ScalatestRouteTest with BeforeAndAfterAll with Loggable{
   behavior of "RestClient"
-  val client = new RestClient{
+  class TestClient extends RestClient {
+    override def handleError(e: Throwable): Nothing = e match{
+      case error if error.getCause != null => handleError(error.getCause)
+      case error: TimeoutException =>
+        logger.error(error.getMessage, error)
+        throw new TimeoutException(error.getMessage)
+      case error: ClientException => throw new ClientException(error.getMessage, error, error.status, error.responseContent, error.request)
+      case error => throw ClientException(error)
+    }
   }
-  val fastClient = new RestClient{
+  val client = new TestClient{
+    override val requestTimeout = 50 seconds
+    override val awaitTimeout   = 55 seconds
+  }
+  val fastClient = new TestClient{
     override val requestTimeout = 2 seconds
   }
 
