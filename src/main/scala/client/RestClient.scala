@@ -1,8 +1,6 @@
 package org.wabase
 package client
 
-import java.util.concurrent.TimeoutException
-
 import akka.actor.{ActorRef, ActorSystem}
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.coding.Coders.{ Gzip, Deflate, NoCoding }
@@ -87,13 +85,13 @@ trait RestClient extends Loggable{
   def httpGetAwait[R](path: String, params: Map[String, Any] = Map.empty, headers: iSeq[HttpHeader] = iSeq())
                 (implicit unmarshaller: FromResponseUnmarshaller[R]): R =
     try Await.result(httpGet[R](path, params, headers), awaitTimeout) catch {
-      case util.control.NonFatal(e) => handleError(ClientException(s"Request failed (server: $serverPath, path: $path): ${e.getMessage}", e))
+      case util.control.NonFatal(e) => requestFailed(s"Request failed (server: $serverPath, path: $path): ${e.getMessage}", e)
     }
 
   def httpPostAwait[T, R](method: HttpMethod, path: String, content: T, headers: iSeq[HttpHeader] = iSeq())
                     (implicit marshaller: Marshaller[T, RequestEntity], umarshaller: FromResponseUnmarshaller[R]): R =
     try Await.result(httpPost[T, R](method, path, content, headers), awaitTimeout) catch {
-      case util.control.NonFatal(e) => handleError(ClientException(s"Request failed (server: $serverPath, path: $path): ${e.getMessage}", e))
+      case util.control.NonFatal(e) => requestFailed(s"Request failed (server: $serverPath, path: $path): ${e.getMessage}", e)
     }
 
   def httpGet[R](path: String, params: Map[String, Any] = Map.empty, headers: iSeq[HttpHeader] = iSeq(), cookieStorage: CookieMap = getCookieStorage)
@@ -160,12 +158,16 @@ trait RestClient extends Loggable{
     }
   }
 
-  protected def requestFailed(message: String, cause: Throwable, status: StatusCode, content: String, request: HttpRequest): Nothing = {
+  protected def requestFailed(
+      message: String, cause: Throwable,
+      status: StatusCode = null, content: String = null, request: HttpRequest = null): Nothing = {
     val verboseMessage = if (request != null) s"Request to '${request.uri}' failed: $message" else message
-    throw new ClientException(verboseMessage, cause, status, content, request)
+    val causeStatus = cause match {
+      case ce: ClientException => ce.status
+      case _ => status
+    }
+    throw new ClientException(verboseMessage, cause, causeStatus, content, request)
   }
-
-  protected def handleError(e: Throwable): Nothing = throw e
 
   def listenToWs(actor: ActorRef) = {
     val deferredFlow: Flow[Message, Message, Promise[Option[Message]]] =

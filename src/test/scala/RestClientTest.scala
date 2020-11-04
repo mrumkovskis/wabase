@@ -4,6 +4,8 @@ import java.util.concurrent.TimeoutException
 
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.server.Directives._
+import akka.http.scaladsl.model.HttpRequest
+import akka.http.scaladsl.model.StatusCode
 import akka.http.scaladsl.server.Route
 import akka.http.scaladsl.testkit.ScalatestRouteTest
 import org.scalatest.BeforeAndAfterAll
@@ -19,7 +21,7 @@ import scala.language.postfixOps
 class RestClientTest  extends FlatSpec with Matchers with ScalatestRouteTest with BeforeAndAfterAll with Loggable{
   behavior of "RestClient"
   class TestClient extends RestClient {
-    override def handleError(e: Throwable): Nothing = e match{
+    def handleError(e: Throwable): Nothing = e match{
       case error if error.getCause != null => handleError(error.getCause)
       case error: TimeoutException =>
         logger.error(error.getMessage, error)
@@ -27,6 +29,12 @@ class RestClientTest  extends FlatSpec with Matchers with ScalatestRouteTest wit
       case error: ClientException => throw new ClientException(error.getMessage, error, error.status, error.responseContent, error.request)
       case error => throw ClientException(error)
     }
+    override def requestFailed(
+        message: String, cause: Throwable,
+        status: StatusCode = null, content: String = null, request: HttpRequest = null): Nothing =
+      try super.requestFailed(message, cause, status, content, request) catch {
+        case e: Throwable => handleError(e)
+      }
   }
   val client = new TestClient{
     override val requestTimeout = 50 seconds
