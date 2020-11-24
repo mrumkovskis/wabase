@@ -26,7 +26,7 @@ trait JsonConverterProvider {
 trait JsonConverter { self: AppQuerease =>
   private[this] def r(value: JsValue): Any = JsonToAny(value)
   private[this] def w(value: Any): JsValue = value match {
-    case m: Map[String @unchecked, Any @unchecked] => JsObject((m mapValues w).toMap)
+    case m: Map[String @unchecked, Any @unchecked] => JsObject(m.map { case (k, v) => (k, w(v)) }.toMap)
     case l: Traversable[Any] => JsArray((l map w) toSeq : _*)
     case d: DTO @unchecked => DtoJsonFormat.write(d)
     case s: String => JsString(s)

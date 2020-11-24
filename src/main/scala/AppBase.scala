@@ -52,7 +52,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
     override def resources = ???
     override def view = qe.viewDef[T]
     override protected def hasNextInternal = if (!iter.hasNext) { close; false } else true
-    override protected def nextInternal = iter.next
+    override protected def nextInternal = iter.next()
   }
 
   trait AppListResult[+T] extends Iterator[T] with AutoCloseable { self =>
@@ -67,7 +67,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
     override final def hasNext = exe(hasNextInternal)
     /** Override {{{nextInternal}}} method instead of this.
         This method calls {{{nextInternal}}} and in the case of non fatal error calls {{{close}}}*/
-    override final def next: T = exe(nextInternal)
+    override final def next(): T = exe(nextInternal)
     private def exe[A](block: => A): A = try block catch {
       case NonFatal(e) =>
         close
@@ -85,10 +85,10 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
       }
     }
     def mapRow[R](f: T => R) = new Wrapper[R] {
-      override protected def nextInternal: R = f(self.next)
+      override protected def nextInternal: R = f(self.next())
     }
     def mapRowWithResources[R](f: Resources => T => R) = new Wrapper[R] {
-      override protected def nextInternal: R = f(resources)(self.next)
+      override protected def nextInternal: R = f(resources)(self.next())
     }
     def andThen(action: => Unit): AppListResult[T] = {
       onCloseAction = onCloseAction andThen (_ => action)
@@ -262,7 +262,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
             }
           override def view = viewDef
           override protected def hasNextInternal = if (!result.hasNext) { close; false } else true
-          override protected def nextInternal = result.next
+          override protected def nextInternal = result.next()
           override def close =
             if (!closed) {
               try super.close finally
@@ -351,7 +351,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
   private def register(typ: String, actions: Magnet*) = actions foreach (_.register(typ))
 
   //implicit conversions from functions to magnets
-  sealed abstract class Magnet { def register(actionType: String) }
+  sealed abstract class Magnet { def register(actionType: String): Unit }
   implicit class FunctionMagnet[T](private[AppBase] val fun: T => T)(
     implicit ext: Ext[T], mf: Manifest[T]) extends Magnet {
     override def register(actionType: String) = ext.asInstanceOf[HExt[T]].register(actionType, mf, fun)
@@ -479,7 +479,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
 
     implicit val clazz = viewNameToClassMap(viewName)
     dbUse {
-      val promise = Promise[Unit]
+      val promise = Promise[Unit]()
       try{
         val result = rest(createListCtx(ListContext[Dto](viewName, params, offset, forcedLimit, orderBy,
           user, state, promise, doCount, timeoutSeconds, poolName)))
@@ -551,7 +551,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
             implicit val clazz = instance.getClass
             rest(createSaveCtx(SaveContext(viewName, old, instance, params, user, promise, state, extraPropsToSave = extraPropsToSave)))
           }
-        })
+        })(state.locale)
         val result = createSaveResult(res)
         promise.success(result)
         result
@@ -578,7 +578,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
               case Some(oldValue) => rest(ctx.copy(old = oldValue))
             }
           }
-        }
+        }(state.locale)
         promise.success(())
         createDeleteResult(res)
       } catch {
@@ -868,7 +868,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
     val names = collection.mutable.Set[String]()
     q ++= qe.collectViews { case v if v.apiMethodToRole != null && v.apiMethodToRole.nonEmpty => v }
     while (q.nonEmpty) {
-      val v = q.dequeue
+      val v = q.dequeue()
       names += v.name
       v.fields.foreach { f =>
         if (f.type_.isComplexType && !names.contains(f.type_.name))

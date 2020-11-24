@@ -76,12 +76,12 @@ class FileBufferedFlow private (bufferSize: Int, maxFileSize: Long, outBufferSiz
         val l = inBytes.length
         if (l >= bufferSize) {
           if (isAvailable(out) && writePos == readPos) {
-            push(out, inBytes.result)
+            push(out, inBytes.result())
           } else if (checkFileSize(l + writePos)) {
-            val bytes = inBytes.result.asByteBuffer
+            val bytes = inBytes.result().asByteBuffer
             while(bytes.hasRemaining) writePos += getChannel.write(bytes, writePos)
           }
-          inBytes.clear
+          inBytes.clear()
         }
         //check whether port is open because checkFileSize method can fail stage
         if (!isClosed(in)) pull(in)
@@ -99,8 +99,8 @@ class FileBufferedFlow private (bufferSize: Int, maxFileSize: Long, outBufferSiz
           push(out, byteStringFromBuffer(outBytes))
           readPos += r
         } else if (inBytes.nonEmpty) {
-          push(out, inBytes.result)
-          inBytes.clear
+          push(out, inBytes.result())
+          inBytes.clear()
         } else if (isClosed(in)) completeStage()
       }
 
@@ -108,8 +108,8 @@ class FileBufferedFlow private (bufferSize: Int, maxFileSize: Long, outBufferSiz
         if (readPos == writePos)
           if (inBytes.isEmpty) completeStage()
           else if (isAvailable(out)) {
-            push(out, inBytes.result)
-            inBytes.clear
+            push(out, inBytes.result())
+            inBytes.clear()
           }
         log.debug("Upstream finished")
       }
@@ -122,7 +122,7 @@ class FileBufferedFlow private (bufferSize: Int, maxFileSize: Long, outBufferSiz
           if (file.delete) log.debug(s"File data buffer (${s} bytes) deleted $file")
           else log.error(s"File data buffer $file delete attempt failed")
         }
-        inBytes.clear
+        inBytes.clear()
       }
     }
   }
@@ -130,7 +130,7 @@ class FileBufferedFlow private (bufferSize: Int, maxFileSize: Long, outBufferSiz
 
 import scala.util.{Success, Failure}
 
-trait SourceValue
+sealed trait SourceValue
 /** Value of this class can be materialized to {{{HttpEntity.Strict}}} */
 case class CompleteSourceValue(result: ByteString) extends SourceValue
 /** Value of this class can be materialized to {{{HttpEntity.Chunked}}} */
@@ -146,7 +146,7 @@ class ChunkerSink (implicit ec: scala.concurrent.ExecutionContext)
   val in = Inlet[ByteString]("in")
   override val shape = SinkShape(in)
   override def createLogicAndMaterializedValue(attrs: Attributes) = {
-    val result = Promise[SourceValue]
+    val result = Promise[SourceValue]()
     new GraphStageLogic(shape) {
       var byteString: ByteString = _
       override def preStart() = {
@@ -168,7 +168,7 @@ class ChunkerSink (implicit ec: scala.concurrent.ExecutionContext)
         override def onUpstreamFailure(ex: Throwable) = result.failure(ex)
       })
       def streamingHandler(init: ByteString) = new InHandler {
-        val sourceCompleted = Promise[Unit]
+        val sourceCompleted = Promise[Unit]()
         var pushCallback: AsyncCallback[ByteString] = _
         val source = Source.fromGraph(new GraphStage[SourceShape[ByteString]] {
           val out = Outlet[ByteString]("out")
@@ -180,7 +180,7 @@ class ChunkerSink (implicit ec: scala.concurrent.ExecutionContext)
               emit(out, init)
               pushCallback = getAsyncCallback[ByteString]{ elem => push(out, elem) }
               sourceCompleted.future.onComplete {
-                case Success(_) => getAsyncCallback[Unit](_ => completeStage).invoke(())
+                case Success(_) => getAsyncCallback[Unit](_ => completeStage()).invoke(())
                 case Failure(ex) => getAsyncCallback[Unit](_ => failStage(ex)).invoke(())
               }
             }
@@ -208,14 +208,14 @@ object RowSource {
       var buf: ByteStringBuilder = _
       var writer: OutputStreamWriter = _
       var src: RowWriter = _
-      override def preStart = {
+      override def preStart() = {
         buf = new ByteStringBuilder
         writer = new OutputStreamWriter(buf.asOutputStream, "UTF-8")
         src = createRowWriter(writer)
         src.header()
         writer.flush()
       }
-      override def postStop = src.close()
+      override def postStop() = src.close()
       setHandler(out, new OutHandler {
         override def onPull = {
           while (buf.isEmpty && src.hasNext) {
@@ -226,10 +226,10 @@ object RowSource {
             src.footer()
             writer.flush()
           }
-          val chunk = buf.result
+          val chunk = buf.result()
           buf.clear()
           push(out, chunk)
-          if (!src.hasNext) completeStage
+          if (!src.hasNext) completeStage()
         }
       })
     }
@@ -242,14 +242,14 @@ object RowSource {
       var buf: ByteStringBuilder = _
       var zos: ZipOutputStream = _
       var src: RowWriter = _
-      override def preStart = {
+      override def preStart() = {
         buf = new ByteStringBuilder
         zos = new ZipOutputStream(buf.asOutputStream)
         src = createRowWriter(zos)
         src.header()
         zos.flush()
       }
-      override def postStop = src.close()
+      override def postStop() = src.close()
       setHandler(out, new OutHandler {
         override def onPull = {
           while (buf.isEmpty && src.hasNext) {
@@ -260,10 +260,10 @@ object RowSource {
             src.footer()
             zos.close()
           }
-          val chunk = buf.result
+          val chunk = buf.result()
           buf.clear()
           push(out, chunk)
-          if (!src.hasNext) completeStage
+          if (!src.hasNext) completeStage()
         }
       })
     }

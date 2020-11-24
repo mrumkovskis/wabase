@@ -18,7 +18,7 @@ class MultiPoolTest extends FlatSpec with Matchers with ScalatestRouteTest with 
 
   import db._
 
-  override def beforeAll = {
+  override def beforeAll() = {
     transaction {
       val statement = db.tresqlResources.conn.createStatement
       statement execute """ALTER SCHEMA PUBLIC RENAME TO TEST1"""

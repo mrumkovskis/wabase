@@ -179,13 +179,13 @@ trait Dto extends org.mojoz.querease.Dto { self =>
     this
   }
 
-  def updateDynamic(field: String)(value: Any)(implicit qe: QE) {
+  def updateDynamic(field: String)(value: Any)(implicit qe: QE): Unit = {
     if (qe.authFieldNames contains field)
       setAuthField(field, value.asInstanceOf[Boolean])
     //ignore any other field
   }
 
-  def setAuthField(field: String, value: Boolean)(implicit qe: QE) {
+  def setAuthField(field: String, value: Boolean)(implicit qe: QE): Unit = {
     if (qe.authFieldNames contains field) auth(field) = value
     else sys.error(s"Unsupported auth field: $field")
   }

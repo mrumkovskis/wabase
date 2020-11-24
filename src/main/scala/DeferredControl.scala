@@ -18,7 +18,7 @@ import DefaultJsonProtocol._
 import DeferredControl.DeferredCheck
 import DeferredControl.DeferredStatusPublisher
 
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 import AppServiceBase._
 import Authentication.SessionInfoRemover
 import com.typesafe.config.Config
@@ -73,7 +73,7 @@ trait DeferredControl
         pull(in)
       }
       setHandler(in, new InHandler {
-        override def onPush() {
+        override def onPush(): Unit = {
           val ctx = grab(in)
           if (queue.size >= MaxQueueSize) {
             emit(overflow, ctx.copy(status = DEFERRED_ERR, result = QueueOverflowResponse))
@@ -94,12 +94,12 @@ trait DeferredControl
       })
       private def pushIfQueued = {
         if (queue.nonEmpty) {
-          val nctx = queue.dequeue.copy(status = DEFERRED_EXE)
+          val nctx = queue.dequeue().copy(status = DEFERRED_EXE)
           push(exe, nctx)
         }
       }
       //does nothing
-      override def onPull() {}
+      override def onPull(): Unit = {}
       setHandler(overflow, this)
     }
   }
@@ -155,7 +155,7 @@ trait DeferredControl
     import EventBus._
     publish(Message(WsNotifications.UserAddressee(ctx.userIdString), ctx))
   }
-  def publishUserDeferredStatuses(user: String) {
+  def publishUserDeferredStatuses(user: String): Unit = {
     val deferredRequests = deferredStorage.getUserDeferredStatuses(user)
     import EventBus._
     deferredRequests.foreach { ctx =>
@@ -205,12 +205,9 @@ trait DeferredControl
     .tflatMap(_ => extractRequestContext.flatMap { ctx => mapInnerRoute { route =>
       val wrappedRoute = handleExceptions(appExceptionHandler)(route)
       val requestProcessor =
-        Route.asyncHandler { requestContext =>
+        Route.toFunction { requestContext =>
           wrappedRoute(requestContext.withUnmatchedPath(ctx.unmatchedPath))
-        }(ctx.settings,
-          ctx.parserSettings,
-          ctx.materializer,
-          RoutingLog(ctx.log))
+        }
       import EventBus._
       val hash = requestHash(user, ctx.request)
       val deferredCtx = DeferredContext(user, hash, ctx.request, requestProcessor)
@@ -256,7 +253,7 @@ trait DeferredControl
 
   protected def doCleanup: Int = deferredStorage.cleanupDeferredRequests
 
-  def onRestartDeferred(): Unit = deferredStorage.onRestart
+  def onRestartDeferred(): Unit = deferredStorage.onRestart()
 }
 
 object DeferredControl extends Loggable with AppConfig {
@@ -297,7 +294,7 @@ object DeferredControl extends Loggable with AppConfig {
     userIdString: String,
     hash: String,
     request: HttpRequest,
-    processor: (HttpRequest) ⇒ Future[HttpResponse],
+    processor: (HttpRequest) => Future[HttpResponse],
     requestTime: Timestamp = new Timestamp(currentTime),
     result: HttpResponse = null,
     responseTime: Timestamp = null,
@@ -312,7 +309,7 @@ object DeferredControl extends Loggable with AppConfig {
 
   class DeferredCleanup(defControl: DeferredControl) extends Actor {
     var processedCount = 0L
-    override def preStart = {
+    override def preStart() = {
       val fd = FiniteDuration(
         deferredCleanupInterval.length,
         deferredCleanupInterval.unit)
@@ -327,7 +324,7 @@ object DeferredControl extends Loggable with AppConfig {
         info("DeferredCleanup started")
         processedCount += defControl.doCleanup
         info(s"DeferredCleanup job ended, total processed deferred count: $processedCount")
-      case GetProcessedDeferredCount => sender ! ProcessedDeferredCount(processedCount)
+      case GetProcessedDeferredCount => sender() ! ProcessedDeferredCount(processedCount)
     }
 
     override def postStop() = {

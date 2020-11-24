@@ -99,7 +99,7 @@ trait Authentication[User] extends SecurityDirectives with SessionInfoRemover wi
   protected val IP = "IP"
   protected val UserAgent = "User-Agent"
 
-  def extractUserAgent = optionalHeaderValueByType[`User-Agent`](()).map(_.map(_.value))
+  def extractUserAgent = optionalHeaderValueByType(`User-Agent`).map(_.map(_.value))
 
   def extractSessionToken(user: User) = (extractClientIP.map(remoteAddressToString).filter(_ != null) & extractUserAgent)
     .recover { _ =>
@@ -241,7 +241,7 @@ object Authentication {
 
     import javax.crypto.{ Cipher, KeyGenerator, Mac }
     import javax.crypto.spec.{ IvParameterSpec, SecretKeySpec }
-    import compat.Platform.currentTime
+    import System.currentTimeMillis
     import org.apache.commons.codec.binary.Base64
     import org.wabase.config
 
@@ -343,7 +343,7 @@ object Authentication {
     val ldapUrl = Try(appConfig.getString("ldap-url")).toOption.getOrElse("")
     val accountPostfix = Try(appConfig.getString("account-postfix")).toOption.getOrElse("")
 
-    def ldapLogin(username: String, password: String)(implicit locale: Locale) {
+    def ldapLogin(username: String, password: String)(implicit locale: Locale): Unit = {
       val env = new java.util.Hashtable[String, String]()
       env.put(Context.INITIAL_CONTEXT_FACTORY, "com.sun.jndi.ldap.LdapCtxFactory")
       env.put(Context.PROVIDER_URL, ldapUrl)

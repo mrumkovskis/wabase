@@ -8,7 +8,7 @@ import org.mojoz.metadata.io.MdConventions
 import org.mojoz.metadata.out.SqlGenerator.SimpleConstraintNamingRules
 import org.mojoz.querease._
 import scala.collection.immutable.Seq
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 import scala.language.reflectiveCalls
 
 trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
@@ -30,7 +30,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
           field.type_.name == viewDef.name + "_" + field.name // XXX
         }.map(_.type_.name)
       }.toSet
-    mojozViewDefs.mapValues(v => toAppViewDef(v, isInline = inlineViewDefNames.contains(v.name))).toMap
+    mojozViewDefs.map{ case (k, v) => (k, toAppViewDef(v, isInline = inlineViewDefNames.contains(v.name))) }.toMap
   }
   override def viewName[T <: AnyRef](implicit mf: Manifest[T]): String =
     classToViewNameMap.getOrElse(mf.runtimeClass, mf.runtimeClass.getSimpleName)

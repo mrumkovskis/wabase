@@ -3,7 +3,7 @@ package org
 import java.util.concurrent.TimeUnit.MILLISECONDS
 import com.zaxxer.hikari.{HikariConfig, HikariDataSource}
 import scala.concurrent.duration.{Duration, FiniteDuration}
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 
 package object wabase extends Loggable {
 
@@ -22,7 +22,7 @@ package object wabase extends Loggable {
   type Timestamp = java.sql.Timestamp
   val TRUE = java.lang.Boolean.TRUE
   val FALSE = java.lang.Boolean.FALSE
-  def currentTime = compat.Platform.currentTime
+  def currentTime = System.currentTimeMillis
 
   val CommonFunctions = ValidationEngine.CustomValidationFunctions
 

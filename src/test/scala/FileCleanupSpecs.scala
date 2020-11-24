@@ -27,7 +27,7 @@ class FileCleanupSpecs extends FlatSpec with Matchers with BeforeAndAfterEach {
 
   val schemaSql: String = SqlGenerator.hsqldb().schema(FileCleanupSpecsQuerease.tableMetadata.tableDefs)
   transaction {
-    executeStatements(schemaSql.split(";\\s+").map(_ + ";"): _*)
+    executeStatements(schemaSql.split(";\\s+").map(_ + ";").toIndexedSeq: _*)
     executeStatements("create sequence seq;")
   }
 

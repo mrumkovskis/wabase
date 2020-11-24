@@ -120,7 +120,7 @@ trait AppMarshalling { this: AppServiceBase[_] with Execution =>
     def row(r: Obj): Unit
     def result: Result
     override def hasNext = result.hasNext
-    override def row() = row(result.next)
+    override def row() = row(result.next())
     override def close() = result.close()
   }
 
@@ -130,7 +130,7 @@ trait AppMarshalling { this: AppServiceBase[_] with Execution =>
     var first = true
     override def row(): Unit = {
       if(first) first = false else writer write ",\n"
-      writer write result.next.toJson.compactPrint
+      writer write result.next().toJson.compactPrint
     }
 
     override def footer() = writer write "]\n"
@@ -357,7 +357,7 @@ trait DtoMarshalling extends AppMarshalling with Loggable { this: AppServiceBase
 
   implicit def dtoResultToWrapper(res: app.AppListResult[app.Dto]): AbstractDtoChunker#Result = new Iterator[Wrapper] with AutoCloseable {
     override def hasNext = res.hasNext
-    override def next = res.next
+    override def next() = res.next()
     def view = res.view
     override def close = res.close
   }
@@ -444,7 +444,7 @@ object MarshallingConfig extends AppBase.AppConfig with Loggable {
       appConfig.getBytes("db-data-file-max-size")
     else 1024 * 1024 * 8L
 
-  import scala.collection.JavaConverters._
+  import scala.jdk.CollectionConverters._
   lazy val customDataFileMaxSizes: Map[String, Long] = {
     val vals = Try {
       appConfig.getConfig("db-data-file-max-sizes")

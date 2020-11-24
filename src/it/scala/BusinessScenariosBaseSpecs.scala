@@ -98,7 +98,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
         case kcPattern(key, cKey) => patchString(key.trim, cKey.trim)
         case ckPattern(cKey, key) => patchString(key.trim, cKey.trim)
         case kPattern(key) => patchString(key.trim, null)
-      } else context.foldLeft(s){case (string, (key, value)) => string.replaceAllLiterally(s"{{$key}}", value)} // Mustache like 'Template', for now it's enough
+      } else context.foldLeft(s){case (string, (key, value)) => string.replace(s"{{$key}}", value)} // Mustache like 'Template', for now it's enough
     }
     val result = map.map(e => (e._1, e._2 match {
       case l: List[_] => l.map {
@@ -213,18 +213,18 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
     println("=========================")
 
     def doRequest = (method, requestMap, requestString, requestBytes, requestFormData) match {
-      case ("GET",   null, null,   null, null) => httpGet [String](path, params, headers)
-      case ("POST",   map, null,   null, null) => httpPost[JsValue,     String](HttpMethods.POST,   path, map.toJson, headers)
-      case ("POST",  null, string, null, null) => httpPost[String,      String](HttpMethods.POST,   path, string,     headers)
-      case ("POST",  null, null,  bytes, null) => httpPost[Array[Byte], String](HttpMethods.POST,   path, bytes,      headers)
-      case ("POST",  null, null,   null, form) => httpPost[
+      case ("GET",   null, null,   null, null) => httpGetAwait [String](path, params, headers)
+      case ("POST",   map, null,   null, null) => httpPostAwait[JsValue,     String](HttpMethods.POST,   path, map.toJson, headers)
+      case ("POST",  null, string, null, null) => httpPostAwait[String,      String](HttpMethods.POST,   path, string,     headers)
+      case ("POST",  null, null,  bytes, null) => httpPostAwait[Array[Byte], String](HttpMethods.POST,   path, bytes,      headers)
+      case ("POST",  null, null,   null, form) => httpPostAwait[
         Multipart.FormData, String](HttpMethods.POST,   path, form,       headers)
-      case ("PUT",    map, null,   null, null) => httpPost[JsValue,     String](HttpMethods.PUT,    path, map.toJson, headers)
-      case ("PUT",   null, string, null, null) => httpPost[String,      String](HttpMethods.PUT,    path, string,     headers)
-      case ("PUT",   null, null,  bytes, null) => httpPost[Array[Byte], String](HttpMethods.PUT,    path, bytes,      headers)
-      case ("PUT",   null, null,   null, form) => httpPost[
+      case ("PUT",    map, null,   null, null) => httpPostAwait[JsValue,     String](HttpMethods.PUT,    path, map.toJson, headers)
+      case ("PUT",   null, string, null, null) => httpPostAwait[String,      String](HttpMethods.PUT,    path, string,     headers)
+      case ("PUT",   null, null,  bytes, null) => httpPostAwait[Array[Byte], String](HttpMethods.PUT,    path, bytes,      headers)
+      case ("PUT",   null, null,   null, form) => httpPostAwait[
         Multipart.FormData, String](HttpMethods.PUT,    path, form,       headers)
-      case ("DELETE", null, null,  null, null) => httpPost[String,      String](HttpMethods.DELETE, path, "",         headers)
+      case ("DELETE", null, null,  null, null) => httpPostAwait[String,      String](HttpMethods.DELETE, path, "",         headers)
       case r => sys.error("Unsupported request type: "+r)
     }
 

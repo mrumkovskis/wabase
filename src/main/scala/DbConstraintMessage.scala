@@ -1,20 +1,22 @@
 package org.wabase
 
+import java.util.Locale
+
 import org.yaml.snakeyaml.Yaml
 
 import scala.language.postfixOps
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 
 trait DbConstraintMessage {
-  def friendlyConstraintErrorMessage[T](f: => T): T = friendlyConstraintErrorMessage(null, f)
-  def friendlyConstraintErrorMessage[T](viewDef: AppMetadata#ViewDef , f: => T): T
+  def friendlyConstraintErrorMessage[T](f: => T)(implicit locale: Locale): T = friendlyConstraintErrorMessage(null, f)
+  def friendlyConstraintErrorMessage[T](viewDef: AppMetadata#ViewDef , f: => T)(implicit locale: Locale): T
 }
 
 object DbConstraintMessage {
  trait NoCustomConstraintMessage extends DbConstraintMessage {
-  override def friendlyConstraintErrorMessage[T](viewDef: AppMetadata#ViewDef , f: => T): T = f
+  override def friendlyConstraintErrorMessage[T](viewDef: AppMetadata#ViewDef , f: => T)(implicit locale: Locale): T = f
  }
- trait PostgreSqlConstraintMessage extends DbConstraintMessage with QuereaseProvider { this: Loggable =>
+ trait PostgreSqlConstraintMessage extends DbConstraintMessage with QuereaseProvider { this: I18n with Loggable  =>
   case class ConstraintViolationInfo(
     dbErrorCode: String,
     dbMessagePattern: String,
@@ -88,10 +90,14 @@ object DbConstraintMessage {
       None
   }
 
-  def postgreSqlConstraintGenericMessage(violation: ConstraintViolationInfo, details: String): String =
-    violation.genericMessage.format(details)
+  def postgreSqlConstraintGenericMessage(violation: ConstraintViolationInfo, details: String)(implicit locale: Locale): String = {
+    translate(violation.genericMessage, details)
+  }
 
-  def getFriendlyConstraintErrorMessage(e: java.sql.SQLException, viewDef: AppMetadata#ViewDef) = {
+  def getFriendlyConstraintErrorMessage(e: java.sql.SQLException, viewDef: AppMetadata#ViewDef)(implicit locale: Locale): Nothing =
+    getFriendlyConstraintErrorMessage(e, viewDef, Option(viewDef).map(_.table).orNull)
+
+  def getFriendlyConstraintErrorMessage(e: java.sql.SQLException, viewDef: AppMetadata#ViewDef, tableName: String)(implicit locale: Locale): Nothing = {
     val dbMsg = Option(e.getMessage) getOrElse ""
 
     val violation = e.getSQLState match {
@@ -115,13 +121,14 @@ object DbConstraintMessage {
         import AppMetadata._
         def viewLabel = for{
           vd <- Option(viewDef)
+          if vd.table == tableName
           field <- vd.fields.find(f => f.name == name || f.saveTo == name)
           label = field.label
           if label != null
         } yield label
 
         def tableLabel = for{
-          tableDef <- qe.tableMetadata.tableDefOption(viewDef.table)
+          tableDef <- qe.tableMetadata.tableDefOption(tableName)
           column <- tableDef.cols.find(_.name == name)
           label = column.comments
           if label != null
@@ -139,8 +146,14 @@ object DbConstraintMessage {
     throw new BusinessException(friendlyMessage, e)
   }
 
-  override def friendlyConstraintErrorMessage[T](viewDef: AppMetadata#ViewDef , f: => T): T = try f catch {
+  override def friendlyConstraintErrorMessage[T](viewDef: AppMetadata#ViewDef , f: => T)(implicit locale: Locale): T = try f catch {
     case e: java.sql.SQLException => getFriendlyConstraintErrorMessage(e, viewDef)
+    case e: org.tresql.ChildSaveException => e.getCause match {
+      case ee: java.sql.SQLException =>
+        logger.debug(e.getMessage, e)
+        getFriendlyConstraintErrorMessage(ee, viewDef, e.tableName)
+      case _ => throw e
+    }
     case e: java.lang.RuntimeException => e.getCause match {
       case ee: java.sql.SQLException =>
         logger.debug(e.getMessage, e)

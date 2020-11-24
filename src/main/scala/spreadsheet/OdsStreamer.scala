@@ -10,7 +10,7 @@ class OdsStreamer(val zip: java.util.zip.ZipOutputStream, styles: List[OdsStyle]
   private val contentStreamer = new OdsContentStreamer(writer, styles)
   private def resourceToZip(resourceName: String) = {
     val source = Source.fromResource(resourceName)
-    val value  = source.getLines.mkString("\n")
+    val value  = source.getLines().mkString("\n")
     source.close
     zip.write(value.getBytes("UTF-8"))
   }
@@ -58,7 +58,7 @@ class OdsStreamer(val zip: java.util.zip.ZipOutputStream, styles: List[OdsStyle]
 
 case class OdsStyle(name: String, family: String, body: String)
 class OdsContentStreamer(val out: Writer, styles: List[OdsStyle] = Nil) {
-  def startWorkbook {
+  def startWorkbook: Unit = {
     out write """|<?xml version="1.0" encoding="UTF-8"?>
                  |<office:document-content
                  |  xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
@@ -121,10 +121,10 @@ class OdsContentStreamer(val out: Writer, styles: List[OdsStyle] = Nil) {
                  |""".stripMargin
   }
 
-  def startWorksheet {
+  def startWorksheet: Unit = {
     out write s"""|    <office:spreadsheet>""".stripMargin
   }
-  def startTable(name: String, individualStyles: List[OdsStyle] = Nil) {
+  def startTable(name: String, individualStyles: List[OdsStyle] = Nil): Unit = {
     out write s"""|      <table:table table:name="$name"${
                     ( if (!individualStyles.filter(_.family=="table").isEmpty)
                         " table:style-name=\"" + individualStyles.filter(_.family=="table").head.name + "\""
@@ -134,7 +134,7 @@ class OdsContentStreamer(val out: Writer, styles: List[OdsStyle] = Nil) {
                         else "")}
                   |""".stripMargin
   }
-  def startRow(style: String) {
+  def startRow(style: String): Unit = {
     out write "        <table:table-row"
     if (style != null) {
       out write " table:style-name=\""
@@ -143,7 +143,7 @@ class OdsContentStreamer(val out: Writer, styles: List[OdsStyle] = Nil) {
     }
     out write ">"
   }
-  def cell(value: Any, style: String = null, formula: String = null) {
+  def cell(value: Any, style: String = null, formula: String = null): Unit = {
     var t: String = null
     var a: String = null
     var v: String = null
@@ -221,16 +221,16 @@ class OdsContentStreamer(val out: Writer, styles: List[OdsStyle] = Nil) {
     out write "</table:table-cell>"
   }
 
-  def endRow {
+  def endRow: Unit = {
     out write "</table:table-row>\r\n"
   }
-  def endTable {
+  def endTable: Unit = {
     out write "      </table:table>\r\n"
   }
-  def endWorksheet {
+  def endWorksheet: Unit = {
     out write "    </office:spreadsheet>\r\n"
   }
-  def endWorkbook {
+  def endWorkbook: Unit = {
     out write "  </office:body>\r\n"
     out write "</office:document-content>\r\n"
   }

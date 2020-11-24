@@ -1,7 +1,7 @@
 package org.wabase
 
 import akka.stream.scaladsl._
-import akka.http.scaladsl.coding.{Deflate, Gzip, NoCoding}
+import akka.http.scaladsl.coding.Coders.{Deflate, Gzip, NoCoding}
 import akka.http.scaladsl.model._
 import akka.http.scaladsl.model.headers._
 import akka.http.scaladsl.server._
@@ -444,7 +444,7 @@ object AppServiceBase {
     def businessExceptionHandler(logger: com.typesafe.scalalogging.Logger) = ExceptionHandler {
       case e: BusinessException =>
         logger.trace(e.getMessage, e)
-        complete(HttpResponse(InternalServerError, entity = e.getMessage.format(e.getParams: _*)))
+        complete(HttpResponse(InternalServerError, entity = e.getMessage.format(e.getParams(): _*)))
     }
 
     def bindVariableExceptionHandler(logger: com.typesafe.scalalogging.Logger,
@@ -509,7 +509,7 @@ object AppServiceBase {
     }
 
     /** Handles [[org.wabase.BusinessException]]s and [[org.tresql.MissingBindVariableException]]s and
-      * [[querease.ViewNotFoundException]]*/
+      * [[org.mojoz.querease.ViewNotFoundException]]*/
     trait SimpleExceptionHandler extends AppExceptionHandler { this: Loggable =>
       def bindVariableExceptionResponseMessage(e: MissingBindVariableException): String = e.getMessage
       override val appExceptionHandler =

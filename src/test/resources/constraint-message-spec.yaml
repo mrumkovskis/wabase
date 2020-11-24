@@ -1,0 +1,33 @@
+table: table1
+columns:
+  - id
+  - some_field ! : Field name in tableDef
+
+table: child_table
+columns:
+  - id
+  - table1.id
+  - some_field ! : Field name in child
+
+name: view1
+table: table1
+fields:
+  - id
+  - some_field   : Field name in viewDef
+
+
+name: view2
+table: table1
+fields:
+  - id
+  - some_field
+
+name: view_with_childs
+table: table1
+fields:
+  - id
+  - some_field : Field name in parent
+  - childs *:
+      table: child_table
+      fields:
+        - some_field

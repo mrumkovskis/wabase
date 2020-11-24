@@ -153,7 +153,7 @@ class DeferredTests extends AnyFlatSpec with Matchers with ScalatestRouteTest {
         import spray.json._
         var receiveNotifications = true
         while(receiveNotifications) {
-          val message = wsClient.expectMessage
+          val message = wsClient.expectMessage()
           message match {
             case TextMessage.Strict("DONE") =>
               receiveNotifications = false
@@ -187,7 +187,7 @@ class DeferredTests extends AnyFlatSpec with Matchers with ScalatestRouteTest {
     // wait, complete, check results
     Thread.sleep(5000)
     service.publishUserEvent("1", "DONE")
-    wsClient.sendCompletion
+    wsClient.sendCompletion()
 
     processedCount shouldEqual reqCount
   }
@@ -234,7 +234,7 @@ class DeferredTests extends AnyFlatSpec with Matchers with ScalatestRouteTest {
 
     import spray.json._
     1 to 5 foreach { _ => // 1 version, 2 start execution statuses, 2 results
-      val TextMessage.Strict(msg) = wsClient.expectMessage
+      val TextMessage.Strict(msg) = wsClient.expectMessage()
       msg.parseJson.asJsObject.fields.toList match{
         case List(("version", JsString(version))) => version shouldBe service.appVersion
         case List((hash, JsObject(statusObj))) =>
@@ -254,6 +254,6 @@ class DeferredTests extends AnyFlatSpec with Matchers with ScalatestRouteTest {
     exeCount shouldEqual 2
     okCount shouldEqual 1
     errCount shouldEqual 1
-    wsClient.sendCompletion
+    wsClient.sendCompletion()
   }
 }

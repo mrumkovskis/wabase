@@ -213,7 +213,7 @@ trait AppFileStreamer[User] extends AppFileStreamerConfig with Loggable { this: 
           val tailPath = new java.text.SimpleDateFormat("yyyy/MM/dd").format(new jDate)
           val fullPath = new File(rootPath + "/" + tailPath)
           fullPath.mkdirs
-          val targetFile = new File(fullPath + "/" + sha)
+          val targetFile = new File(fullPath.toString + "/" + sha)
           if (!tempFile.renameTo(targetFile))
             if (!targetFile.exists || !Files.isRegularFile(targetFile.toPath))
               throw badFileException
@@ -249,7 +249,7 @@ trait AppFileStreamer[User] extends AppFileStreamerConfig with Loggable { this: 
       )}
   }
 
-  def copy(source: String, dest: String, mkdirs: Boolean = false) {
+  def copy(source: String, dest: String, mkdirs: Boolean = false): Unit = {
     if (source != dest) {
       val s = new File(source)
       val d = new File(dest)

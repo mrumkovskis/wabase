@@ -3,7 +3,7 @@ package org.wabase
 import com.typesafe.scalalogging.Logger
 import javax.sql.DataSource
 import org.slf4j.LoggerFactory
-import org.tresql.{Dialect, Expr, LogTopic, QueryBuilder, SimpleCache, ThreadLocalResources, dialects}
+import org.tresql.{Dialect, Expr, LogTopic, QueryBuilder, SimpleCache, ThreadLocalResources, ResourcesTemplate, dialects}
 
 import scala.language.postfixOps
 
@@ -16,7 +16,8 @@ trait DbAccess { this: Loggable =>
 
   protected def defaultQueryTimeout: QueryTimeout = DefaultQueryTimeout.getOrElse(QueryTimeout(5))
 
-  private def setenv(pool: DataSource, timeout: QueryTimeout) {
+  private def setenv(pool: DataSource, timeout: QueryTimeout): Unit = {
+    tresqlResources.initFromTemplate
     tresqlResources.conn = pool.getConnection
     tresqlResources.queryTimeout = timeout.timeoutSeconds
   }
@@ -131,7 +132,7 @@ trait TresqlResources extends ThreadLocalResources {
   override val cache = new SimpleCache(4096)
 
   def sqlWithParams(sql: String, params: Map[String, Any]) = params.foldLeft(sql) {
-    case (sql, (name, value)) => sql.replaceAllLiterally(s"?/*$name*/", value match {
+    case (sql, (name, value)) => sql.replace(s"?/*$name*/", value match {
       case _: Int | _: Long | _: Double | _: BigDecimal | _: BigInt | _: Boolean => value.toString
       case _: String | _: java.sql.Date | _: java.sql.Timestamp => s"'$value'"
       case null => "null"

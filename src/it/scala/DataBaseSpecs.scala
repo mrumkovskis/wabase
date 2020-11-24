@@ -39,7 +39,7 @@ abstract class DataBaseSpecs[User] extends FlatSpec with Matchers with CoreClien
   def testList(viewClass: Class[_ <: Dto], params: => Map[String, Any]): Unit = {
     login()
     val (cookies, filteredParams) = params.partition(_._1.startsWith(ApplicationStateCookiePrefix))
-    getCookiewStorage.setCookies(cookies)
+    getCookieStorage.setCookies(cookies)
     list(viewClass, filteredParams ++ defaultListParams)
     clearCookies
   }
@@ -47,7 +47,7 @@ abstract class DataBaseSpecs[User] extends FlatSpec with Matchers with CoreClien
   def testCount(viewClass: Class[_ <: Dto], params: => Map[String, Any]): Unit = {
     login()
     val (cookies, filteredParams) = params.partition(_._1.startsWith(ApplicationStateCookiePrefix))
-    getCookiewStorage.setCookies(cookies)
+    getCookieStorage.setCookies(cookies)
     count(viewClass, filteredParams ++ defaultListParams)
     clearCookies
   }

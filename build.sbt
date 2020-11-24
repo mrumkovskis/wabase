@@ -1,7 +1,7 @@
 val scalaV = "2.13.3"
 
-val akkaHttpV = "10.2.0"
-val akkaV = "2.6.9"
+val akkaHttpV = "10.2.1"
+val akkaV = "2.6.10"
 
 lazy val dependencies = {
   Seq(
@@ -11,27 +11,30 @@ lazy val dependencies = {
     "com.typesafe.akka"          %% "akka-slf4j"                        % akkaV,
     "com.typesafe.akka"          %% "akka-stream"                       % akkaV,
     "com.typesafe.scala-logging" %% "scala-logging"                     % "3.9.2",
-    "com.zaxxer"                  % "HikariCP"                          % "3.4.2",
+    "com.zaxxer"                  % "HikariCP"                          % "3.4.5",
     "ch.qos.logback"              % "logback-classic"                   % "1.2.3",
+    "org.tresql"                 %% "tresql"                            % "10.1.0-SNAPSHOT",
     "org.mojoz"                  %% "querease"                          % "5.0.0",
-    "commons-validator"           % "commons-validator"                 % "1.5.0",
-    "commons-codec"               % "commons-codec"                     % "1.10",
-    "org.postgresql"              % "postgresql"                        % "42.2.5",
+    "commons-validator"           % "commons-validator"                 % "1.7",
+    "commons-codec"               % "commons-codec"                     % "1.15",
+    "org.postgresql"              % "postgresql"                        % "42.2.18",
     "com.lambdaworks"             % "scrypt"                            % "1.4.0",
   )
 }
 
 lazy val testDependencies = Seq(
-    "org.scalatest"              %% "scalatest"                         % "3.2.0" % "it,test",
+    "org.scalatest"              %% "scalatest"                         % "3.2.2" % "it,test",
     "com.typesafe.akka"          %% "akka-http-testkit"                 % akkaHttpV % "it,test",
     "com.typesafe.akka"          %% "akka-testkit"                      % akkaV   % "it,test",
     "com.typesafe.akka"          %% "akka-stream-testkit"               % akkaV   % "it,test",
-    "org.pegdown"                 % "pegdown"                           % "1.6.0" % "it,test",
-    "org.hsqldb"                  % "hsqldb"                            % "2.5.0"     %    "test",
+    "org.hsqldb"                  % "hsqldb"                            % "2.5.1" %    "test",
     "com.vladsch.flexmark"        % "flexmark-all"                      % "0.35.10" % "it,test",
 )
 
-lazy val commonSettings = Seq(
+lazy val wabase = (project in file("."))
+  .configs(IntegrationTest extend(Test))
+  .settings(Defaults.itSettings : _*)
+  .settings(
   organization := "org.wabase",
   name := "wabase",
   scalaVersion := scalaV,
@@ -44,10 +47,8 @@ lazy val commonSettings = Seq(
       ", tableMetadataFile=" + (baseDirectory.value / "tresql-table-metadata.yaml").getAbsolutePath),
   resolvers += "snapshots" at "https://oss.sonatype.org/content/repositories/snapshots",
   libraryDependencies ++= dependencies ++ testDependencies,
-  autoAPIMappings := true,
   apiMappings ++= (fullClasspath in Compile map { fcp =>
     // fix bad api mappings,
-    // other mappings are automagical by autoAPIMappings and sbt-api-mappings plugin
     val mappings: Map[String, String] =
       fcp.files.map(_.getName).filter(_ startsWith "akka-").filterNot(_ startsWith "akka-http-")
         .map(akkajar => (akkajar, s"http://doc.akka.io/api/akka/$akkaV/")).toMap ++
@@ -57,11 +58,7 @@ lazy val commonSettings = Seq(
       .map(f => (f, new java.net.URL(mappings(f.getName)))).toMap
   }).value,
   updateOptions := updateOptions.value.withLatestSnapshots(false),
-)
-
-lazy val webapp = (project in file("."))
-  .settings(commonSettings: _*)
-  .configs(IntegrationTest extend(Test))
+  )
   /*
   .settings(
     initialCommands in console := s"""
@@ -85,7 +82,14 @@ lazy val webapp = (project in file("."))
       |//implicit val executionContext = system.dispatcher""".stripMargin
 )
 */
-  .settings(Defaults.itSettings : _*)
+  .settings(
+    Compile / unmanagedSourceDirectories ++= {
+      val sharedSourceDir = (ThisBuild / baseDirectory).value / "compat"
+      if (scalaVersion.value.startsWith("2.12."))
+        Seq(sharedSourceDir / "scala-2.12")
+      else Nil
+    },
+  )
   .settings(
     scalacOptions in (Compile, doc) ++= (baseDirectory map { bd =>
       Seq("-sourcepath", bd.getAbsolutePath,

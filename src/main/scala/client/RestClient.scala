@@ -1,11 +1,9 @@
 package org.wabase
 package client
 
-import java.util.concurrent.TimeoutException
-
 import akka.actor.{ActorRef, ActorSystem}
 import akka.http.scaladsl.Http
-import akka.http.scaladsl.coding.{ Gzip, Deflate, NoCoding }
+import akka.http.scaladsl.coding.Coders.{ Gzip, Deflate, NoCoding }
 import akka.http.scaladsl.marshalling.{Marshal, Marshaller}
 import akka.http.scaladsl.model.Uri.Query
 import akka.http.scaladsl.model._
@@ -21,18 +19,18 @@ import scala.language.postfixOps
 import scala.util.{Failure, Success}
 
 
-class ClientException(message: String, cause: Throwable, val status: StatusCode, val responseContent: String) extends Exception(message, cause)
+class ClientException(message: String, cause: Throwable, val status: StatusCode, val responseContent: String, val request: HttpRequest) extends Exception(message, cause)
 object ClientException{
-  def apply(status: StatusCode, message: String, responseContent: String): ClientException = new ClientException(message, null, status, responseContent)
-  def apply(status: StatusCode, message: String): ClientException = new ClientException(message, null, status, null)
-  def apply(message: String, cause: Throwable): ClientException = new ClientException(message, cause, null, null)
+  def apply(status: StatusCode, message: String, responseContent: String, request: HttpRequest): ClientException = new ClientException(message, null, status, responseContent, request)
+  def apply(status: StatusCode, message: String, request: HttpRequest): ClientException = new ClientException(message, null, status, null, request)
+  def apply(message: String, cause: Throwable): ClientException = new ClientException(message, cause, null, null, null)
   def apply(cause: Throwable): ClientException = apply(cause.getMessage, cause)
   def apply(message: String): ClientException = apply(message, null)
 }
 
 trait RestClient extends Loggable{
 
-  import RestClient._
+  import RestClient.WsClosed
   def actorSystemName = "rest-client"
   def createActorSystem = ActorSystem(actorSystemName)
   implicit val system = createActorSystem
@@ -44,7 +42,8 @@ trait RestClient extends Loggable{
 
   val flow = Http().superPool[Unit]()
 
-  val requestTimeout = RestClient.requestTimeout
+  val requestTimeout = RestClient.defaultRequestTimeout
+  val awaitTimeout   = RestClient.defaultAwaitTimeout
   val defaultUsername: String = "admin"
   val defaultPassword: String = "admin"
 
@@ -67,7 +66,7 @@ trait RestClient extends Loggable{
   }
 
   private val cookiesThreadLocal = new ThreadLocal[CookieMap](){override def initialValue = new CookieMap}
-  def getCookiewStorage = cookiesThreadLocal.get()
+  def getCookieStorage = cookiesThreadLocal.get()
   def clearCookies = cookiesThreadLocal.remove
 
   def decodeResponse(response: HttpResponse): HttpResponse = {
@@ -83,19 +82,22 @@ trait RestClient extends Loggable{
     decoder.decodeMessage(response)
   }
 
-
-  def httpGet[R](path: String, params: Map[String, Any] = Map.empty, headers: iSeq[HttpHeader] = iSeq())
+  def httpGetAwait[R](path: String, params: Map[String, Any] = Map.empty, headers: iSeq[HttpHeader] = iSeq())
                 (implicit unmarshaller: FromResponseUnmarshaller[R]): R =
-    handleFuture(httpGetAsync[R](path, params, headers))
+    try Await.result(httpGet[R](path, params, headers), awaitTimeout) catch {
+      case util.control.NonFatal(e) => requestFailed(s"Request failed (server: $serverPath, path: $path): ${e.getMessage}", e)
+    }
 
-  def httpPost[T, R](method: HttpMethod, path: String, content: T, headers: iSeq[HttpHeader] = iSeq())
+  def httpPostAwait[T, R](method: HttpMethod, path: String, content: T, headers: iSeq[HttpHeader] = iSeq())
                     (implicit marshaller: Marshaller[T, RequestEntity], umarshaller: FromResponseUnmarshaller[R]): R =
-    handleFuture(httpPostAsync[T, R](method, path, content, headers))
+    try Await.result(httpPost[T, R](method, path, content, headers), awaitTimeout) catch {
+      case util.control.NonFatal(e) => requestFailed(s"Request failed (server: $serverPath, path: $path): ${e.getMessage}", e)
+    }
 
-  def httpGetAsync[R](path: String, params: Map[String, Any] = Map.empty, headers: iSeq[HttpHeader] = iSeq(), cookieStorage: CookieMap = getCookiewStorage)
+  def httpGet[R](path: String, params: Map[String, Any] = Map.empty, headers: iSeq[HttpHeader] = iSeq(), cookieStorage: CookieMap = getCookieStorage)
                      (implicit unmarshaller: FromResponseUnmarshaller[R]): Future[R] = {
     val plainUri = Uri(requestPath(path))
-    lazy val queryStringWithParams = plainUri.rawQueryString.map(_ + "&").getOrElse("") + Query(params.mapValues(Option(_).map(_.toString).getOrElse("")).toMap)
+    lazy val queryStringWithParams = plainUri.rawQueryString.map(_ + "&").getOrElse("") + Query(params.map { case (k, v) => (k, (Option(v).map(_.toString).getOrElse(""))) }.toMap)
     val requestUri = if (params.nonEmpty) plainUri.withRawQueryString(queryStringWithParams) else plainUri
     logger.debug(s"HTTP GET requestUri: $requestUri")
     for{
@@ -104,7 +106,7 @@ trait RestClient extends Loggable{
     } yield responseEntity
   }
 
-  def httpPostAsync[T, R](method: HttpMethod, path: String, content: T, headers: iSeq[HttpHeader] = iSeq(), cookieStorage: CookieMap = getCookiewStorage)
+  def httpPost[T, R](method: HttpMethod, path: String, content: T, headers: iSeq[HttpHeader] = iSeq(), cookieStorage: CookieMap = getCookieStorage)
                          (implicit marshaller: Marshaller[T, RequestEntity], unmarshaller: FromResponseUnmarshaller[R]): Future[R] = {
     val requestUri = requestPath(path)
     logger.debug(s"HTTP ${method.value} requestUri: $requestUri")
@@ -126,26 +128,46 @@ trait RestClient extends Loggable{
     else if (!uri.startsWith("/") && !serverPath.endsWith("/")) serverPath + "/" + uri
     else serverPath + uri
 
-
-  private def doRequest(req: HttpRequest, cookieStorage: CookieMap): Future[HttpResponse] = {
-    val request = req.copy(headers = req.headers ++ cookieStorage.getCookies)
-    Source.single(request -> ((): Unit)).via(flow).completionTimeout(requestTimeout).runWith(Sink.head).map {
-      case (Failure(error), _) => handleError(error)
+  protected def doRequest(req: HttpRequest, cookieStorage: CookieMap, maxRedirects: Int = 20): Future[HttpResponse] = {
+    val request = req.withHeaders(req.headers ++ cookieStorage.getCookies)
+    Source.single(request -> ((): Unit)).via(flow).completionTimeout(requestTimeout).runWith(Sink.head).flatMap {
+      case (Failure(error), _) =>
+        requestFailed(error.getMessage, error, null, null, request)
       case (Success(response), _) =>
         cookieStorage.setCookiesFromHeaders(response.headers)
         (response.status.intValue, response.header[Location]) match {
-          case (200 | 201 | 204, _) => response
+          case (200 | 201 | 204, _) => Future.successful(response)
           case (301 | 302 | 303, Some(Location(uri))) =>
             response.discardEntityBytes()
-            handleFuture(doRequest(HttpRequest(uri = requestPath(uri.toString), headers = req.headers),cookieStorage))
+            if (maxRedirects > 0)
+              doRequest(HttpRequest(uri = requestPath(uri.toString), headers = req.headers), cookieStorage, maxRedirects - 1).recover {
+                case util.control.NonFatal(e) => requestFailed(e.getMessage, e, response.status, null, request)
+              }
+            else
+              requestFailed("Too many http redirects", null, response.status, null, request)
           case _ =>
-            val content = await(Unmarshal(decodeResponse(response).entity).to[String]).flatMap(_.toOption).getOrElse("")
-            val exceptionMessage = response.status.value + "\n" + response.status.defaultMessage + "\n" + content
-            throw ClientException(response.status, exceptionMessage, content)
+            Unmarshal(decodeResponse(response).entity).to[String].recover {
+              case util.control.NonFatal(e) =>
+                logger.error("Failed to unmarshal response for unexpected status ${response.status.intValue}", e)
+                ""
+            }.flatMap { content =>
+              val exceptionMessage = response.status.value + "\n" + response.status.defaultMessage + "\n" + content
+              requestFailed(exceptionMessage, null, response.status, content, request)
+            }
         }
     }
   }
 
+  protected def requestFailed(
+      message: String, cause: Throwable,
+      status: StatusCode = null, content: String = null, request: HttpRequest = null): Nothing = {
+    val verboseMessage = if (request != null) s"Request to '${request.uri}' failed: $message" else message
+    val causeStatus = cause match {
+      case ce: ClientException => ce.status
+      case _ => status
+    }
+    throw new ClientException(verboseMessage, cause, causeStatus, content, request)
+  }
 
   def listenToWs(actor: ActorRef) = {
     val deferredFlow: Flow[Message, Message, Promise[Option[Message]]] =
@@ -154,33 +176,13 @@ trait RestClient extends Loggable{
         Source.maybe[Message])(Keep.right)
 
     val (upgradeResponse, promise) = Http().singleWebSocketRequest(
-      WebSocketRequest(serverWsPath, extraHeaders = getCookiewStorage.getCookies), deferredFlow)
+      WebSocketRequest(serverWsPath, extraHeaders = getCookieStorage.getCookies), deferredFlow)
     clearCookies
   }
-
 }
 
 object RestClient extends Loggable{
-  val requestTimeout = durationConfig("app.rest-client.request-timeout", 50 seconds)
-  val awaitTimeout = durationConfig("app.rest-client.await-timeout", requestTimeout + (10 seconds))
-  def await[T](f: Future[T]) = Await.ready(f, awaitTimeout).value
-
-  def handleError(e: Throwable): Nothing = e match{
-    case error if error.getCause != null => handleError(error.getCause)
-    case error: TimeoutException =>
-      logger.error(error.getMessage, error)
-      throw new TimeoutException(error.getMessage)
-    case error: ClientException => throw new ClientException(error.getMessage, error, error.status, error.responseContent)
-    case error => throw ClientException(error)
-  }
-
-  def handleFuture[T](future: Future[T]) = {
-    await(future) match {
-      case Some(Success(result)) => result
-      case Some(Failure(error)) => handleError(error)
-      case None => sys.error("Future reached timeout "+awaitTimeout)
-    }
-  }
-
+  val defaultRequestTimeout = durationConfig("app.rest-client.request-timeout", 5 seconds)
+  val defaultAwaitTimeout = durationConfig("app.rest-client.await-timeout", defaultRequestTimeout + (2 seconds))
   object WsClosed
 }
