@@ -13,7 +13,7 @@ lazy val dependencies = {
     "com.typesafe.scala-logging" %% "scala-logging"                     % "3.9.2",
     "com.zaxxer"                  % "HikariCP"                          % "3.4.5",
     "ch.qos.logback"              % "logback-classic"                   % "1.2.3",
-    "org.tresql"                 %% "tresql"                            % "10.1.0-SNAPSHOT",
+    "org.tresql"                 %% "tresql"                            % "10.1.1",
     "org.mojoz"                  %% "querease"                          % "5.0.0",
     "commons-validator"           % "commons-validator"                 % "1.7",
     "commons-codec"               % "commons-codec"                     % "1.15",
