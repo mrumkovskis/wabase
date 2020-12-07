@@ -248,6 +248,7 @@ class DeferredTests extends AnyFlatSpec with Matchers with ScalatestRouteTest {
               checkDeferredResult(hash, "fault")
               errCount += 1
           }
+        case x => throw new IllegalStateException("unexpected: " + x)
       }
     }
 
