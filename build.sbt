@@ -31,6 +31,8 @@ lazy val testDependencies = Seq(
     "com.vladsch.flexmark"        % "flexmark-all"                      % "0.35.10" % "it,test",
 )
 
+ThisBuild / sbt.Keys.versionScheme := Some("semver-spec")
+
 lazy val wabase = (project in file("."))
   .configs(IntegrationTest extend(Test))
   .settings(Defaults.itSettings : _*)
