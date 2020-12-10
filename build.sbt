@@ -1,6 +1,6 @@
 val scalaV = "2.13.4"
 
-val akkaHttpV = "10.2.1"
+val akkaHttpV = "10.2.2"
 val akkaV = "2.6.10"
 
 lazy val dependencies = {
