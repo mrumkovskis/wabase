@@ -8,6 +8,7 @@ import marshalling._
 import spray.json.JsValue
 import java.io.Writer
 import java.net.URLEncoder
+import java.text.Normalizer
 import java.util.zip.ZipOutputStream
 
 import scala.collection.immutable.Seq
@@ -94,11 +95,17 @@ trait BasicMarshalling {
   def contentDisposition(fileName: String, dispositionType: ContentDispositionType) = {
     def maybeQuote(n: String): String = if (n.exists(
       Set(' ', ',', ';', ':', '(', ')', '[', ']', '{', '}', '<', '>', '@', '?', '=').contains)) s""""$n"""" else n
-    val fileNameLegacy = maybeQuote(fileName.toList.map(x => if (x.toInt >= 0 && x.toInt <= 255) x else "?").mkString)
+    val fileNameLegacy = maybeQuote(fallbackFilename(fileName).toList.map(x => if (x.toInt >= 0 && x.toInt <= 255) x else "?").mkString)
     val fileNameUrlencoded = URLEncoder.encode(fileName, "UTF-8").replace("+", "%20")
     val dispositionValue = s"""$dispositionType; filename=$fileNameLegacy; filename*=UTF-8''$fileNameUrlencoded"""
     // Play framework fixes akka-http #1240 with RawHeader, this should work better
     List(RawHeader("Content-Disposition", dispositionValue))
+  }
+  def fallbackFilename(filename: String) = stripAccents(filename)
+
+  def stripAccents(s: String) = {
+    val DiacriticsRegex = "\\p{InCombiningDiacriticalMarks}+".r
+    DiacriticsRegex.replaceAllIn(Normalizer.normalize(s, Normalizer.Form.NFD), "")
   }
 
   implicit val generatedFileMarshaller: ToResponseMarshaller[GeneratedFile] = Marshaller.combined(file =>
