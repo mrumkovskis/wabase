@@ -55,6 +55,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     Option(s).map(_.trim.split("(^|\\s+)-(\\s+|$)", 2).toList match {
       case List(label) => (clear(unescape(label)), null)
       case List(label, comments) => (clear(unescape(label)), clear(comments))
+      case x => throw new IllegalStateException("impossible: " + x)
     }) getOrElse (null, null)
   }
 

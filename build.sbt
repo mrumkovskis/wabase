@@ -1,6 +1,6 @@
-val scalaV = "2.13.3"
+val scalaV = "2.13.4"
 
-val akkaHttpV = "10.2.1"
+val akkaHttpV = "10.2.2"
 val akkaV = "2.6.10"
 
 lazy val dependencies = {
@@ -30,6 +30,8 @@ lazy val testDependencies = Seq(
     "org.hsqldb"                  % "hsqldb"                            % "2.5.1" %    "test",
     "com.vladsch.flexmark"        % "flexmark-all"                      % "0.35.10" % "it,test",
 )
+
+ThisBuild / sbt.Keys.versionScheme := Some("semver-spec")
 
 lazy val wabase = (project in file("."))
   .configs(IntegrationTest extend(Test))

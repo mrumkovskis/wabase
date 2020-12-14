@@ -193,6 +193,7 @@ trait AppServiceBase[User]
     t._1 -> (t._2.map(decodeParam(t._1, _)) match {
       case List(x) => x
       case x @ List(_, _*) => x
+      case x => throw new IllegalStateException("unexpected: " + x)
     })
   }
   def decodeMultiParams(params: Map[String, List[String]]) = params map { t => t._1 -> t._2.map(decodeParam(t._1, _)) }

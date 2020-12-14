@@ -1,9 +1,9 @@
 language: scala
 dist: xenial
 script:
-  - sbt ++$TRAVIS_SCALA_VERSION clean update compile test it:test
+  - sbt ++$TRAVIS_SCALA_VERSION clean update compile test it:test versionPolicyCheck
 scala:
-  - 2.13.3
+  - 2.13.4
   - 2.12.12
 jdk:
   - oraclejdk11
