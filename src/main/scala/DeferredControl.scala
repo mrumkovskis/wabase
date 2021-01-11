@@ -184,17 +184,26 @@ trait DeferredControl
   def enableDeferred(user: String) = (isDeferredPath | hasDeferredHeader)
     .tflatMap(_ => deferred(user)) | pass
 
-  // FIXME must not increase query timeout!
+
+  def deferredTimeout(viewName: Option[String], timeout: Option[Int]): Int = {
+    val limit = viewName.flatMap(deferredTimeouts.get).getOrElse(defaultTimeout).toSeconds.toInt
+    if (timeout.isDefined)
+      timeout.filter(_ <= limit).getOrElse {
+        throw new BusinessException(s"Max request timeout exceeded: ${timeout.get} > $limit")
+      }
+    else limit
+  }
+
   override
   def extractTimeout = headerValuePF { case `X-Deferred`(timeoutString) =>
       `X-Deferred`(timeoutString).timeout }
     .flatMap {
       //timeout specified in header value
-      case Right(timeoutDuration) => provide(QueryTimeout(timeoutDuration.toSeconds.toInt))
+      case Right(timeoutDuration) => provide(QueryTimeout(deferredTimeout(None, Some(timeoutDuration.toSeconds.toInt))))
       //timeout must be taken from configuration
       case Left(true) => rawPathPrefixTest(Segment ~ Remaining)
         .tflatMap { case (segment, _) =>
-          provide(QueryTimeout(deferredTimeouts.getOrElse(segment, defaultTimeout).toSeconds.toInt))
+          provide(QueryTimeout(deferredTimeout(Some(segment), None)))
         }
       //provide default jdbc timeout X-Deferred negated
       case Left(false) => provide(queryTimeout) }
