@@ -72,7 +72,7 @@ trait AppServiceBase[User]
     }
 
   def createAction(viewName: String)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
-    parameterMultiMap{ params =>
+    parameterMultiMap { params =>
       complete(app.create(viewName, filterPars(params)))
     }
 
@@ -147,13 +147,13 @@ trait AppServiceBase[User]
 
   def crudAction(implicit user: User) = applicationState { implicit state =>
     extractTimeout { implicit timeout =>
-      getByIdPath { getByIdAction
-      } ~ getByNamePath { getByNameAction
-      } ~ createPath { createAction
-      } ~ deletePath{ deleteAction
-      } ~ updatePath{ updateAction
-      } ~ listPath{ listAction
-      } ~ insertPath{ insertAction}
+      getByIdPath { getByIdAction } ~
+        getByNamePath { getByNameAction } ~
+        createPath { createAction } ~
+        deletePath { deleteAction } ~
+        updatePath { updateAction } ~
+        listPath { listAction } ~
+        insertPath { insertAction }
     }
   }
 
