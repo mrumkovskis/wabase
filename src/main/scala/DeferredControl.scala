@@ -169,11 +169,10 @@ trait DeferredControl
   **************************/
   def deferredRequestPath = path("deferred" / Segment / "request") & get
   def deferredResultPath = path("deferred" / Segment / "result") & get
-  def isDeferredPath = rawPathPrefixTest(Segment ~ Remaining)
+  def isDeferredPath = pathPrefixTest(Segment ~ Remaining)
     .tfilter { case (segment, _) => deferredUris contains segment }
     .tflatMap { case (segment, _) =>
-      val timeout = deferredTimeouts(segment)
-      mapRequest(_.addHeader(new `X-Deferred`(Right(timeout))))
+      mapRequest(_.addHeader(new `X-Deferred`(Left(true))))
     }
 
   def hasDeferredHeader = headerValuePF { case `X-Deferred`(timeoutString)
@@ -185,13 +184,13 @@ trait DeferredControl
     .tflatMap(_ => deferred(user)) | pass
 
 
-  def deferredTimeout(viewName: Option[String], timeout: Option[Int]): Int = {
+  def deferredTimeout(viewName: Option[String], timeout: Option[Int]): QueryTimeout = {
     val limit = viewName.flatMap(deferredTimeouts.get).getOrElse(defaultTimeout).toSeconds.toInt
     if (timeout.isDefined)
-      timeout.filter(_ <= limit).getOrElse {
+      timeout.filter(_ <= limit).map(QueryTimeout).getOrElse {
         throw new BusinessException(s"Max request timeout exceeded: ${timeout.get} > $limit")
       }
-    else limit
+    else QueryTimeout(limit)
   }
 
   override
@@ -199,14 +198,15 @@ trait DeferredControl
       `X-Deferred`(timeoutString).timeout }
     .flatMap {
       //timeout specified in header value
-      case Right(timeoutDuration) => provide(QueryTimeout(deferredTimeout(None, Some(timeoutDuration.toSeconds.toInt))))
-      //timeout must be taken from configuration
-      case Left(true) => rawPathPrefixTest(Segment ~ Remaining)
+      case Right(timeoutDuration) => provide(deferredTimeout(None, Some(timeoutDuration.toSeconds.toInt)))
+      case Left(true) => pathPrefixTest(Segment ~ Remaining)
         .tflatMap { case (segment, _) =>
-          provide(QueryTimeout(deferredTimeout(Some(segment), None)))
+          provide(deferredTimeout(Some(segment), None))
         }
+        .recover(_ => provide(deferredTimeout(None, None)))
       //provide default jdbc timeout X-Deferred negated
-      case Left(false) => provide(queryTimeout) }
+      case Left(false) => provide(queryTimeout)
+    }
     .recover(_ => provide(queryTimeout)) //no deferred header provided - provide default jdbc timeout
 
   def deferred(user: String) = hasDeferredHeader.recover(_ =>

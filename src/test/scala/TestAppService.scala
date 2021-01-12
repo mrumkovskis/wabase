@@ -47,8 +47,9 @@ class TestAppService(system: ActorSystem) extends ExecutionImpl()(system)
   override type App = TestApp
   override def initApp: App = TestApp
   override def initFileStreamer: TestApp = TestApp
+  override lazy val defaultTimeout = Duration("60s")
   override lazy val deferredUris = Set("long-req")
-  override lazy val deferredTimeouts = Map("long-req" -> Duration("10s"))
+  override lazy val deferredTimeouts = Map("long-req" -> Duration("300s"))
   override lazy val deferredWorkerCount = 3
   override def encodeSession(session: Authentication.Session[TestUsr]): String = ???
   override def decodeSession(session: String) = ???
