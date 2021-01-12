@@ -95,15 +95,15 @@ class DeferredTests extends AnyFlatSpec with Matchers with ScalatestRouteTest {
     val route = service.isDeferredPath(service.extractTimeout {
       timeout => complete(s"defered-timeout:${timeout.timeoutSeconds}")})
 
-      Get("long-req") ~> route ~> check {
-        responseAs[String] shouldEqual "defered-timeout:10"
-      }
-      Get("long-req/") ~> route ~> check {
-        handled shouldBe true
-      }
-      Get("long-req/123") ~> route ~> check {
-        handled shouldBe true
-      }
+    Get("long-req") ~> route ~> check {
+      responseAs[String] shouldEqual "defered-timeout:10"
+    }
+    Get("long-req/") ~> route ~> check {
+      handled shouldBe true
+    }
+    Get("long-req/123") ~> route ~> check {
+      handled shouldBe true
+    }
   }
 
   "The isDeferredPath directive" should "not be deferred paths" in {
@@ -117,9 +117,9 @@ class DeferredTests extends AnyFlatSpec with Matchers with ScalatestRouteTest {
   "The hasDeferredHeader directive" should "have deferred header" in {
     val route = service.hasDeferredHeader(complete("ok"))
 
-      Get("/") ~> RawHeader("X-Deferred", "10s") ~> route ~> check {
-        handled shouldBe true
-      }
+    Get("/") ~> RawHeader("X-Deferred", "10s") ~> route ~> check {
+      handled shouldBe true
+    }
   }
 
   "The hasDeferredHeader directive" should "not have deferred header" in {
