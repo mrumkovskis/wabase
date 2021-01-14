@@ -250,6 +250,7 @@ class DeferredTests extends AnyFlatSpec with Matchers with ScalatestRouteTest {
       results += (parseDeferredResponse(responseAs[String]) -> "fault")
       handled shouldBe true
     }
+    // no need of X-Deferred header as long-req is in deferredTimeouts
     Get("/data/long-req") ~> route ~> check {
       results += (parseDeferredResponse(responseAs[String]) -> "long-req:300")
       handled shouldBe true
