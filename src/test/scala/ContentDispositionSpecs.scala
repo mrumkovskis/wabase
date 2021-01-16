@@ -24,6 +24,7 @@ class ContentDispositionSpecs extends FlatSpec with Matchers {
 
   it should "handle some special ascii chars in filenames" in {
     params("esc-\"\\%.x")       should be("""filename="esc-???.x"; filename*=UTF-8''esc-%22%5C%25.x""")
+    params("p=2*2+1€")          should be("""filename="p=2*2+1?"; filename*=UTF-8''p%3D2%2A2%2B1%E2%82%AC""")
   }
 
   it should "create Content-Disposition parameters for unicode filename correctly" in {
