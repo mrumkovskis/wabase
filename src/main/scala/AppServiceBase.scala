@@ -24,6 +24,7 @@ import java.util.Locale
 import akka.http.scaladsl.server.util.Tuple
 import akka.util.ByteString
 import org.mojoz.querease.{ValidationException, ValidationResult}
+import xml.Utility.escape
 
 trait AppProvider[User] {
   type App <: AppBase[User]
@@ -187,9 +188,9 @@ trait AppServiceBase[User]
   val namesForInts = Set("limit", "offset")
   def decodeParam(key: String, value: String) = {
     def throwBadType(type_ : String, cause: Exception = null) =
-      throw new BusinessException(
+      throw new BusinessException(escape(
         s"Failed to decode as $type_: parameter: '$key', value: '$value'" +
-          (if (cause == null) "" else " - caused by " + cause.toString))
+          (if (cause == null) "" else " - caused by " + cause.toString)))
     def handleType[T](goodPath: String => T, typeStr:String)= {
       try value match {
         case "" | "null" | null => null
