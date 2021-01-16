@@ -6,16 +6,15 @@ import org.wabase.Format
 import java.util.zip._
 
 class OdsStreamer(val zip: java.util.zip.ZipOutputStream, styles: List[OdsStyle] = Nil) {
-  private val writer = new OutputStreamWriter(zip)
-  private val contentStreamer = new OdsContentStreamer(writer, styles)
-  private def resourceToZip(resourceName: String) = {
+  protected val writer = new OutputStreamWriter(zip)
+  protected val contentStreamer = new OdsContentStreamer(writer, styles)
+  protected def resourceToZip(resourceName: String) = {
     val source = Source.fromResource(resourceName)
     val value  = source.getLines().mkString("\n")
     source.close
     zip.write(value.getBytes("UTF-8"))
   }
   def startWorkbook: Unit = {
-    import scala.io.Source
     zip.putNextEntry(new ZipEntry("META-INF/"))
     zip.putNextEntry(new ZipEntry("META-INF/manifest.xml"))
     resourceToZip("spreadsheet/ods/META-INF/manifest.xml")
@@ -36,8 +35,9 @@ class OdsStreamer(val zip: java.util.zip.ZipOutputStream, styles: List[OdsStyle]
     contentStreamer.startRow(null)
   def startRow(style: String) =
     contentStreamer.startRow(style)
-  def cell(value: Any, style: String = null, formula: String = null) =
-    contentStreamer.cell(value, style, formula)
+  def cell(value: Any, style: String = null, formula: String = null,
+           colrep: Int = 1, colspan: Int = 1, rowspan: Int = 1) =
+    contentStreamer.cell(value, style, formula, colrep, colspan, rowspan)
   def endRow = {
     contentStreamer.endRow
     writer.flush
@@ -143,7 +143,14 @@ class OdsContentStreamer(val out: Writer, styles: List[OdsStyle] = Nil) {
     }
     out write ">"
   }
-  def cell(value: Any, style: String = null, formula: String = null): Unit = {
+
+  def cell(value: Any, style: String = null, formula: String = null,
+           colrep: Int = 1, colspan: Int = 1, rowspan: Int = 1): Unit = {
+    val (t, a, v, s, l) = cellValuePrimitives(value)
+    writeCell(t, a, v, s, l, style, formula, colrep, colspan, rowspan)
+  }
+
+  protected def cellValuePrimitives(value: Any): (String, String, String, String, String) = {
     var t: String = null
     var a: String = null
     var v: String = null
@@ -185,7 +192,31 @@ class OdsContentStreamer(val out: Writer, styles: List[OdsStyle] = Nil) {
         v = Format.xmlEscape(x.toString) // TODO do not build escaped string, stream it!
     }
     if (l == null) l = v
+    (t, a, v, s, l)
+  }
+
+  protected def writeCell(
+      t: String = null, a: String = null,
+      v: String = null, s: String = null, l: String = null,
+      style: String = null, formula: String = null,
+      colrep: Int = 1, colspan: Int = 1, rowspan: Int = 1): Unit = {
+
     out write "<table:table-cell"
+    if (colrep > 1) {
+      out write (" table:number-columns-repeated=\"")
+      out write (colrep.toString)
+      out write "\""
+    }
+    if (colspan > 1) {
+      out write (" table:number-columns-spanned=\"")
+      out write (colspan.toString)
+      out write "\""
+    }
+    if (rowspan > 1) {
+      out write " table:number-rows-spanned=\""
+      out write (rowspan.toString)
+      out write "\""
+    }
 
     val styleName = List(style, s).filter(_!= null).mkString("_")
     if (styleName.nonEmpty) {
