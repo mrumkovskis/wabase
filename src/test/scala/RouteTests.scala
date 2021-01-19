@@ -94,7 +94,7 @@ class RouteTests extends FlatSpec with Matchers with ScalatestRouteTest{
   }
 
   it should "handle list" in {
-    val route = (service.crudPath & service.listPath) { path =>
+    val route = (service.crudPath & service.listOrGetPath) { path =>
         complete("OK")
     }
 

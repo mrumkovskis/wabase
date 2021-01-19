@@ -83,7 +83,7 @@ class DeferredTests extends AnyFlatSpec with Matchers with ScalatestRouteTest {
       override def initApp: App = appl
       override def initFileStreamer = appl
 
-      override def listAction(viewName: String)(
+      override def listOrGetAction(viewName: String)(
         implicit user: TestUsr, state: ApplicationState, timeout: QueryTimeout): Route =
         complete(s"$viewName:${timeout.timeoutSeconds}")
     }

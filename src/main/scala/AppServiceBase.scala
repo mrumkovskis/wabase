@@ -58,7 +58,7 @@ trait AppServiceBase[User]
   def deletePath = viewWithIdPath & delete
   def updatePath = viewWithIdPath & put
   def insertPath = viewWithoutIdPath & post
-  def listPath = viewWithoutIdPath & get
+  def listOrGetPath = viewWithoutIdPath & get
   def countPath = path("count" / Segment) & get
 
   def getByIdAction(viewName: String, id: Long)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
@@ -103,16 +103,22 @@ trait AppServiceBase[User]
       }
     }
 
-  def listAction(viewName: String)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
+  def listOrGetAction(viewName: String)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
-      complete {
-        app.list(
-          viewName,
-          filterPars(params),
-          params.get("offset").flatMap(_.headOption).map(_.toInt) getOrElse 0,
-          params.get("limit").flatMap(_.headOption).map(_.toInt) getOrElse 0,
-          params.get("sort").flatMap(_.headOption).map(_.toString).orNull)
-      }
+      val impliedIdForGetOpt = app.impliedIdForGetOverList(viewName)
+      if (impliedIdForGetOpt.isDefined)
+        complete(
+          app.get(viewName, impliedIdForGetOpt.get, filterPars(params))
+        )
+      else
+        complete {
+          app.list(
+            viewName,
+            filterPars(params),
+            params.get("offset").flatMap(_.headOption).map(_.toInt) getOrElse 0,
+            params.get("limit").flatMap(_.headOption).map(_.toInt) getOrElse 0,
+            params.get("sort").flatMap(_.headOption).map(_.toString).orNull)
+        }
     }
 
   def insertAction(viewName: String)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
@@ -153,7 +159,7 @@ trait AppServiceBase[User]
         createPath { createAction } ~
         deletePath { deleteAction } ~
         updatePath { updateAction } ~
-        listPath { listAction } ~
+        listOrGetPath { listOrGetAction } ~
         insertPath { insertAction }
     }
   }
