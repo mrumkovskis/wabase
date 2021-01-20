@@ -8,6 +8,7 @@ import marshalling._
 import spray.json.JsValue
 import java.io.Writer
 import java.net.URLEncoder
+import java.text.Normalizer
 import java.util.zip.ZipOutputStream
 
 import scala.collection.immutable.Seq
@@ -84,21 +85,30 @@ trait BasicMarshalling {
   case class GeneratedFile(name: String, contentType: ContentType, content: Array[Byte], contentDispositionType: ContentDispositionType = ContentDispositionTypes.attachment)
   case class StreamedFile(name: String, contentType: ContentType, content: Source[ByteString, Any], contentDispositionType: ContentDispositionType = ContentDispositionTypes.attachment)
 
-  /*    `Content-Disposition`(ContentDispositionTypes.attachment, Map(
+  /*    `Content-Disposition`(ContentDispositionTypes.attachment, Map("filename" -> "...", "filename*" -> "...")
         // TODO content disposition akka-http bug: https://github.com/akka/akka-http/issues/1240
-        // TODO content disposition browser support tests: http://test.greenbytes.de/tech/tc2231/
-        // TODO content disposition interoperability advice: https://greenbytes.de/tech/webdav/rfc6266.html#rfc.section.D
-        //"filename" -> fi.filename.toList.map(x => if (x.toInt >= 0 && x.toInt <= 255) x else "?").mkString,
-        "filename*" -> s"UTF-8''${URLEncoder.encode(fileName, "UTF-8").replace("+", "%20")}"
       ))*/
   def contentDisposition(fileName: String, dispositionType: ContentDispositionType) = {
-    def maybeQuote(n: String): String = if (n.exists(
-      Set(' ', ',', ';', ':', '(', ')', '[', ']', '{', '}', '<', '>', '@', '?', '=').contains)) s""""$n"""" else n
-    val fileNameLegacy = maybeQuote(fileName.toList.map(x => if (x.toInt >= 0 && x.toInt <= 255) x else "?").mkString)
-    val fileNameUrlencoded = URLEncoder.encode(fileName, "UTF-8").replace("+", "%20")
-    val dispositionValue = s"""$dispositionType; filename=$fileNameLegacy; filename*=UTF-8''$fileNameUrlencoded"""
-    // Play framework fixes akka-http #1240 with RawHeader, this should work better
+    // US-ASCII visual chars except for '"' and escape chars '\' and (for faulty clients) '%'. Placeholder for other chars
+    // https://www.greenbytes.de/tech/webdav/rfc7230.html#rule.quoted-string
+    // https://tools.ietf.org/html/rfc6266#appendix-D
+    val asciiFileName = fallbackFilename(fileName).toList
+      .map(c => if (c >= ' ' && c <= '~' && c != '\\' && c != '%' && c != '\"') c else '?').toSeq.mkString
+    val extended =
+      if   (fileName == asciiFileName) ""
+      // Can be left unencoded: alpha, digit, !#$&+-.^_`|~
+      // https://www.greenbytes.de/tech/webdav/rfc8187.html#definition
+      // URLEncoder encodes more, but converts space to '+' and leaves '*' unencoded
+      else s"""; filename*=UTF-8''${URLEncoder.encode(fileName, "UTF-8").replace("+", "%20").replace("*", "%2A")}"""
+    val dispositionValue = s"""$dispositionType; filename="$asciiFileName"""" + extended
+    // Use RawHeader because akka-http puts value of extended `filename*` parameter in double quotes
     List(RawHeader("Content-Disposition", dispositionValue))
+  }
+  def fallbackFilename(filename: String) = stripAccents(filename)
+
+  def stripAccents(s: String) = {
+    val DiacriticsRegex = "\\p{InCombiningDiacriticalMarks}+".r
+    DiacriticsRegex.replaceAllIn(Normalizer.normalize(s, Normalizer.Form.NFD), "")
   }
 
   implicit val generatedFileMarshaller: ToResponseMarshaller[GeneratedFile] = Marshaller.combined(file =>

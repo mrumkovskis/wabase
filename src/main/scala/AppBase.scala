@@ -919,6 +919,11 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
     throw noApiException(viewName, method, user)
   )
 
+  def impliedIdForGetOverList[F](viewName: String): Option[Long] =
+    viewDefOption(viewName)
+      .filter(v => v.apiMethodToRole.contains("get") && !v.apiMethodToRole.contains("list"))
+      .map(_ => 0)
+
   def fieldRequiredErrorMessage(viewName: String, field: qe.FieldDef)(implicit locale: Locale): String =
     translate("""Field %1$s is mandatory.""", field.label)
   def isFieldRequiredViolated(viewName: String, field: qe.FieldDef, value: Any): Boolean =

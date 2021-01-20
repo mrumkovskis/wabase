@@ -4,11 +4,11 @@ import java.io.File
 import java.nio.file.Files
 import java.sql.{Connection, DriverManager}
 import java.util.UUID
-
 import akka.http.scaladsl.model.StatusCodes
 import akka.http.scaladsl.model.headers._
 import akka.http.scaladsl.model.ws.TextMessage
 import akka.http.scaladsl.server.Directives._
+import akka.http.scaladsl.server.Route
 import akka.http.scaladsl.testkit.{ScalatestRouteTest, WSProbe}
 import org.mojoz.metadata.in.YamlMd
 import org.mojoz.metadata.out.SqlGenerator
@@ -18,6 +18,7 @@ import org.tresql._
 
 import scala.concurrent.Future
 import scala.language.implicitConversions
+import scala.util.Try
 
 class DeferredTests extends AnyFlatSpec with Matchers with ScalatestRouteTest {
   var conn: Connection = _
@@ -81,6 +82,10 @@ class DeferredTests extends AnyFlatSpec with Matchers with ScalatestRouteTest {
     service = new TestAppService(system) {
       override def initApp: App = appl
       override def initFileStreamer = appl
+
+      override def listOrGetAction(viewName: String)(
+        implicit user: TestUsr, state: ApplicationState, timeout: QueryTimeout): Route =
+        complete(s"$viewName:${timeout.timeoutSeconds}")
     }
   }
 
@@ -95,15 +100,15 @@ class DeferredTests extends AnyFlatSpec with Matchers with ScalatestRouteTest {
     val route = service.isDeferredPath(service.extractTimeout {
       timeout => complete(s"defered-timeout:${timeout.timeoutSeconds}")})
 
-      Get("long-req") ~> route ~> check {
-        responseAs[String] shouldEqual "defered-timeout:10"
-      }
-      Get("long-req/") ~> route ~> check {
-        handled shouldBe true
-      }
-      Get("long-req/123") ~> route ~> check {
-        handled shouldBe true
-      }
+    Get("/long-req") ~> route ~> check {
+      responseAs[String] shouldEqual "defered-timeout:300"
+    }
+    Get("/long-req/") ~> route ~> check {
+      handled shouldBe true
+    }
+    Get("/long-req/123") ~> route ~> check {
+      handled shouldBe true
+    }
   }
 
   "The isDeferredPath directive" should "not be deferred paths" in {
@@ -117,9 +122,13 @@ class DeferredTests extends AnyFlatSpec with Matchers with ScalatestRouteTest {
   "The hasDeferredHeader directive" should "have deferred header" in {
     val route = service.hasDeferredHeader(complete("ok"))
 
-      Get("/") ~> RawHeader("X-Deferred", "10s") ~> route ~> check {
-        handled shouldBe true
-      }
+    Get("/") ~> RawHeader("X-Deferred", "10s") ~> route ~> check {
+      handled shouldBe true
+    }
+
+    Get("/") ~> RawHeader("X-Deferred", "true") ~> route ~> check {
+      handled shouldBe true
+    }
   }
 
   "The hasDeferredHeader directive" should "not have deferred header" in {
@@ -128,6 +137,9 @@ class DeferredTests extends AnyFlatSpec with Matchers with ScalatestRouteTest {
       handled shouldBe false
     }
     Get("/") ~> route ~> check {
+      handled shouldBe false
+    }
+    Get("/") ~> RawHeader("X-Deferred", "false") ~> route ~> check {
       handled shouldBe false
     }
   }
@@ -201,7 +213,7 @@ class DeferredTests extends AnyFlatSpec with Matchers with ScalatestRouteTest {
             complete("OK")
           } ~ pathPrefix("fault") {
             throw new BusinessException("fault")
-          }
+          } ~ service.crudAction
         }
       }
     }
@@ -222,39 +234,73 @@ class DeferredTests extends AnyFlatSpec with Matchers with ScalatestRouteTest {
 
     WS("/ws", wsClient.flow) ~> route
 
+    var results = Map[String, String]()
+
+    import spray.json._
+    import DefaultJsonProtocol._
+
+    def parseDeferredResponse(resp: String): String =
+     resp.parseJson.convertTo[Map[String, String]].apply("deferred")
+
     Get("/data/action") ~> RawHeader("X-Deferred", "10s") ~> route ~> check {
+      results += (parseDeferredResponse(responseAs[String]) -> "OK")
       handled shouldBe true
     }
     Get("/data/fault") ~> RawHeader("X-Deferred", "10s") ~> route ~> check {
+      results += (parseDeferredResponse(responseAs[String]) -> "fault")
+      handled shouldBe true
+    }
+    // no need of X-Deferred header as long-req is in deferredTimeouts
+    Get("/data/long-req") ~> route ~> check {
+      results += (parseDeferredResponse(responseAs[String]) -> "long-req:300")
+      handled shouldBe true
+    }
+    Get("/data/long-req1") ~> RawHeader("X-Deferred", "30s") ~> route ~> check {
+      results += (parseDeferredResponse(responseAs[String]) -> "long-req1:30")
+      handled shouldBe true
+    }
+    Get("/data/long-req1") ~> RawHeader("X-Deferred", "100s") ~> route ~> check {
+      results += (parseDeferredResponse(responseAs[String]) -> "Max request timeout exceeded: 100 > 60")
+      handled shouldBe true
+    }
+    Get("/data/long-req1") ~> RawHeader("X-Deferred", "true") ~> route ~> check {
+      results += (parseDeferredResponse(responseAs[String]) -> "long-req1:60")
       handled shouldBe true
     }
 
-    def checkDeferredResult(hash: String, status: String) =
-      Get("/") ~> service.deferredResultAction(hash, user) ~> check {responseAs[String] shouldEqual status}
+    def checkDeferredResult(hash: String) =
+      Get("/") ~> service.deferredResultAction(hash, user) ~> check {
+        responseAs[String] shouldEqual results(hash)
+      }
 
-    import spray.json._
-    1 to 5 foreach { _ => // 1 version, 2 start execution statuses, 2 results
-      val TextMessage.Strict(msg) = wsClient.expectMessage()
-      msg.parseJson.asJsObject.fields.toList match{
-        case List(("version", JsString(version))) => version shouldBe service.appVersion
-        case List((hash, JsObject(statusObj))) =>
-          val JsString(status) = statusObj("status")
-          status match {
-            case "EXE" => exeCount += 1
-            case "OK" =>
-              checkDeferredResult(hash, "OK")
-              okCount += 1
-            case "ERR" =>
-              checkDeferredResult(hash, "fault")
-              errCount += 1
-          }
-        case x => throw new IllegalStateException("unexpected: " + x)
+    Try {
+      while(true) {
+        val TextMessage.Strict(msg) = wsClient.expectMessage()
+        msg.parseJson.asJsObject.fields.toList match {
+          case List(("version", JsString(version))) => version shouldBe service.appVersion
+          case List((hash, JsObject(statusObj))) =>
+            val JsString(status) = statusObj("status")
+            status match {
+              case "EXE" => exeCount += 1
+              case "OK" =>
+                checkDeferredResult(hash)
+                okCount += 1
+              case "ERR" =>
+                checkDeferredResult(hash)
+                errCount += 1
+              case "QUEUE" => //do nothing
+            }
+          case x => throw new IllegalStateException("unexpected: " + x)
+        }
       }
     }
+    .failed.foreach {
+      case _: AssertionError => //ws message read timeout occured, all messages consumed
+    }
 
-    exeCount shouldEqual 2
-    okCount shouldEqual 1
-    errCount shouldEqual 1
+    exeCount shouldEqual 6
+    okCount shouldEqual 4
+    errCount shouldEqual 2
     wsClient.sendCompletion()
   }
 }

@@ -24,6 +24,7 @@ import java.util.Locale
 import akka.http.scaladsl.server.util.Tuple
 import akka.util.ByteString
 import org.mojoz.querease.{ValidationException, ValidationResult}
+import xml.Utility.escape
 
 trait AppProvider[User] {
   type App <: AppBase[User]
@@ -57,63 +58,59 @@ trait AppServiceBase[User]
   def deletePath = viewWithIdPath & delete
   def updatePath = viewWithIdPath & put
   def insertPath = viewWithoutIdPath & post
-  def listPath = viewWithoutIdPath & get
+  def listOrGetPath = viewWithoutIdPath & get
   def countPath = path("count" / Segment) & get
 
-  def getByIdAction(viewName: String, id: Long)(implicit user: User, state: ApplicationState) =
+  def getByIdAction(viewName: String, id: Long)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap{ params =>
-      extractTimeout{ implicit timeout =>
-        complete(app.get(viewName, id, filterPars(params)))
-      }
+      complete(app.get(viewName, id, filterPars(params)))
     }
 
-  def getByNameAction(viewName: String, name: String, value: String)(implicit user: User, state: ApplicationState) =
+  def getByNameAction(viewName: String, name: String, value: String)(
+    implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
-      extractTimeout { implicit timeout =>
-        complete(app.get(viewName, -1, filterPars(params) + (name -> value)))
-      }
+      complete(app.get(viewName, -1, filterPars(params) + (name -> value)))
     }
 
-  def createAction(viewName: String)(implicit user: User, state: ApplicationState) =
-    parameterMultiMap{ params =>
-      extractTimeout{ implicit timeout =>
-        complete(app.create(viewName, filterPars(params)))
-      }
-    }
-
-  def deleteAction(viewName: String, id: Long)(implicit user: User, state: ApplicationState) =
+  def createAction(viewName: String)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
-      extractTimeout{ implicit timeout =>
-        complete {
-          try {
-            app.delete(viewName, id, filterPars(params))
-            StatusCodes.NoContent
-          } catch {
-            case e: org.mojoz.querease.NotFoundException => StatusCodes.NotFound
-          }
+      complete(app.create(viewName, filterPars(params)))
+    }
+
+  def deleteAction(viewName: String, id: Long)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
+    parameterMultiMap { params =>
+      complete {
+        try {
+          app.delete(viewName, id, filterPars(params))
+          StatusCodes.NoContent
+        } catch {
+          case e: org.mojoz.querease.NotFoundException => StatusCodes.NotFound
         }
       }
     }
 
-  def updateAction(viewName: String, id: Long)(implicit user: User, state: ApplicationState) =
+  def updateAction(viewName: String, id: Long)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     extractUri { requestUri =>
       parameterMultiMap { params =>
-        extractTimeout { implicit timeout =>
-          entity(as[JsValue]) { data =>
-            try {
-              val id = app.save(viewName, data.asInstanceOf[JsObject], filterPars(params))
-              redirect(Uri(path = requestUri.path), StatusCodes.SeeOther)
-            } catch {
-              case e: org.mojoz.querease.NotFoundException => complete(StatusCodes.NotFound)
-            }
+        entity(as[JsValue]) { data =>
+          try {
+            val id = app.save(viewName, data.asInstanceOf[JsObject], filterPars(params))
+            redirect(Uri(path = requestUri.path), StatusCodes.SeeOther)
+          } catch {
+            case e: org.mojoz.querease.NotFoundException => complete(StatusCodes.NotFound)
           }
         }
       }
     }
 
-  def listAction(viewName: String)(implicit user: User, state: ApplicationState) =
+  def listOrGetAction(viewName: String)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
-      extractTimeout { implicit timeout =>
+      val impliedIdForGetOpt = app.impliedIdForGetOverList(viewName)
+      if (impliedIdForGetOpt.isDefined)
+        complete(
+          app.get(viewName, impliedIdForGetOpt.get, filterPars(params))
+        )
+      else
         complete {
           app.list(
             viewName,
@@ -122,30 +119,25 @@ trait AppServiceBase[User]
             params.get("limit").flatMap(_.headOption).map(_.toInt) getOrElse 0,
             params.get("sort").flatMap(_.headOption).map(_.toString).orNull)
         }
-      }
     }
 
-  def insertAction(viewName: String)(implicit user: User, state: ApplicationState) =
+  def insertAction(viewName: String)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     extractUri { requestUri =>
       parameterMultiMap { params =>
-        extractTimeout { implicit timeout =>
-          entity(as[JsValue]) { data =>
-            try {
-              val id = app.save(viewName, data.asInstanceOf[JsObject], filterPars(params))
-              redirect(Uri(path = requestUri.path / id.toString), StatusCodes.SeeOther)
-            } catch {
-              case e: org.mojoz.querease.NotFoundException => complete(StatusCodes.NotFound)
-            }
+        entity(as[JsValue]) { data =>
+          try {
+            val id = app.save(viewName, data.asInstanceOf[JsObject], filterPars(params))
+            redirect(Uri(path = requestUri.path / id.toString), StatusCodes.SeeOther)
+          } catch {
+            case e: org.mojoz.querease.NotFoundException => complete(StatusCodes.NotFound)
           }
         }
       }
     }
 
-  def countAction(viewName: String)(implicit user: User, state: ApplicationState) =
+  def countAction(viewName: String)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
-      extractTimeout {implicit timeout =>
-        complete(app.count(viewName, filterPars(params)).toString)
-      }
+      complete(app.count(viewName, filterPars(params)).toString)
     }
 
   import app.qe.MapJsonFormat
@@ -160,14 +152,16 @@ trait AppServiceBase[User]
       value <- keyValues._2
     } yield s"${keyValues._1}=$value").mkString("&") }
 
-  def crudAction(implicit user: User) = applicationState{ implicit state =>
-    getByIdPath{ getByIdAction
-    } ~ getByNamePath { getByNameAction
-    } ~ createPath { createAction
-    } ~ deletePath{ deleteAction
-    } ~ updatePath{ updateAction
-    } ~ listPath{ listAction
-    } ~ insertPath{ insertAction}
+  def crudAction(implicit user: User) = applicationState { implicit state =>
+    extractTimeout { implicit timeout =>
+      getByIdPath { getByIdAction } ~
+        getByNamePath { getByNameAction } ~
+        createPath { createAction } ~
+        deletePath { deleteAction } ~
+        updatePath { updateAction } ~
+        listOrGetPath { listOrGetAction } ~
+        insertPath { insertAction }
+    }
   }
 
   def apiAction(implicit user: User) = complete(app.api)
@@ -200,9 +194,9 @@ trait AppServiceBase[User]
   val namesForInts = Set("limit", "offset")
   def decodeParam(key: String, value: String) = {
     def throwBadType(type_ : String, cause: Exception = null) =
-      throw new BusinessException(
+      throw new BusinessException(escape(
         s"Failed to decode as $type_: parameter: '$key', value: '$value'" +
-          (if (cause == null) "" else " - caused by " + cause.toString))
+          (if (cause == null) "" else " - caused by " + cause.toString)))
     def handleType[T](goodPath: String => T, typeStr:String)= {
       try value match {
         case "" | "null" | null => null
