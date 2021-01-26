@@ -254,8 +254,12 @@ trait TresqlResultMarshalling extends AppMarshalling { this: AppServiceBase[_] w
 
   class OdsTresqlResultChunker(val result: TresqlResult[RowLike], zos: ZipOutputStream) extends OdsChunker(zos) with AbstractTresqlResultChunker
   class CsvTresqlResultChunker(val result: TresqlResult[RowLike], writer: Writer) extends AbstractTresqlResultChunker {
+    def escapeValue(s: String) =
+      if (s.contains(",") || s.contains("\"")) ("\"" + s.replaceAll("\"", "\"\"") + "\"")
+      else s
+
     override def header() = {
-      writer.write(labels.mkString("",",","\n"))
+      writer.write(labels.map(escapeValue).mkString("",",","\n"))
       writer.flush
     }
     override def row(r: Obj) = rowWriter(r.toMap)
@@ -274,10 +278,7 @@ trait TresqlResultMarshalling extends AppMarshalling { this: AppServiceBase[_] w
       case t: Timestamp => xlsxDateTime(t)
       case d: jDate => xsdDate(d)
       case x => x.toString
-    }.map{ s =>
-      if (s.contains(",") || s.contains("\"")) ("\"" + s.replaceAll("\"", "\"\"") + "\"")
-      else s
-    }.getOrElse("")
+    }.map(escapeValue).getOrElse("")
   }
 
   import RowSource._
@@ -373,8 +374,12 @@ trait DtoMarshalling extends AppMarshalling with Loggable { this: AppServiceBase
   }
 
   class CsvDtoChunker(val result: AbstractDtoChunker#Result, writer: Writer) extends AbstractDtoChunker {
+    def escapeValue(s: String) =
+      if (s.contains(",") || s.contains("\"")) ("\"" + s.replaceAll("\"", "\"\"") + "\"")
+      else s
+
     override def header() = {
-      writer.write(labels.mkString("",",","\n"))
+      writer.write(labels.map(escapeValue).mkString("",",","\n"))
       writer.flush
     }
     override def row(r: Wrapper) = rowWriter(r.toMap)
@@ -393,10 +398,7 @@ trait DtoMarshalling extends AppMarshalling with Loggable { this: AppServiceBase
       case t: Timestamp => xlsxDateTime(t)
       case d: jDate => xsdDate(d)
       case x => x.toString
-    }.map{ s =>
-      if (s.contains(",") || s.contains("\"")) ("\"" + s.replaceAll("\"", "\"\"") + "\"")
-      else s
-    }.getOrElse("")
+    }.map(escapeValue).getOrElse("")
   }
 
   import RowSource._
