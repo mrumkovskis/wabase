@@ -104,7 +104,7 @@ trait TemplateUtil { this: client.CoreClient =>
       case (k, v) => k -> v
     }
     val content = Source.fromFile(file)(Codec.UTF8).mkString
-    val yaml = (new Yaml).load(content)
+    val yaml = (new Yaml).loadAs(content, classOf[java.util.Map[String, _]])
     val map = javaMapToMap(yaml.asInstanceOf[java.util.Map[String, _]])
     val ret = process(map)
     ret
