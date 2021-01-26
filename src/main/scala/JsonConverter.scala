@@ -1,6 +1,7 @@
 package org.wabase
 
 import Format._
+import scala.collection.immutable.TreeMap
 import scala.language.postfixOps
 import spray.json._
 
@@ -26,7 +27,10 @@ trait JsonConverterProvider {
 trait JsonConverter { self: AppQuerease =>
   private[this] def r(value: JsValue): Any = JsonToAny(value)
   private[this] def w(value: Any): JsValue = value match {
-    case m: Map[String @unchecked, Any @unchecked] => JsObject(m.map { case (k, v) => (k, w(v)) }.toMap)
+    case m: Map[String @unchecked, Any @unchecked] =>
+      JsObject(
+        TreeMap()(new self.FieldOrdering(m.keys.zipWithIndex.toMap)) ++
+          (m.map { case (k, v) => (k, w(v)) }))
     case l: Traversable[Any] => JsArray((l map w) toSeq : _*)
     case d: DTO @unchecked => DtoJsonFormat.write(d)
     case s: String => JsString(s)
