@@ -25,20 +25,4 @@ object Authorization {
     override def relevant[C <: RequestContext[_]](ctx: C, clazz: Class[_]) = ctx
     override def hasRole(user: User, role: String): Boolean = true
   }
-
-  trait RowAuthorization { this: AppBase[_] =>
-    //horizontal auth filters
-    import qe.viewDef
-    import AppMetadata._
-    def viewFilter(viewName: String) =
-      viewDef(viewName).auth.forGet.map(a => s"($a)").mkString(" & ")
-    def listFilter(viewName: String) =
-      viewDef(viewName).auth.forList.map(a => s"($a)").mkString(" & ")
-    def insertFilter(viewName: String) =
-      viewDef(viewName).auth.forInsert.map(a => s"($a)").mkString(" & ")
-    def updateFilter(viewName: String) =
-      viewDef(viewName).auth.forUpdate.map(a => s"($a)").mkString(" & ")
-    def deleteFilter(viewName: String) =
-      viewDef(viewName).auth.forDelete.map(a => s"($a)").mkString(" & ")
-  }
 }

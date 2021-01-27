@@ -24,7 +24,64 @@ trait AppQuereaseIo extends org.mojoz.querease.ScalaDtoQuereaseIo with JsonConve
     implicitly[Manifest[B]].runtimeClass.getConstructor().newInstance().asInstanceOf[B {type QE = AppQuerease}].fill(jsObject)(this)
 }
 
-abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata
+abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata {
+  import AppMetadata._
+  override def get[B <: DTO](id: Long, extraFilter: String = null, extraParams: Map[String, Any] = null)(
+      implicit mf: Manifest[B], resources: Resources): Option[B] = {
+    val v = viewDef[B]
+    val extraFilterAndAuth =
+      Option((Option(extraFilter).toSeq ++ v.auth.forGet).map(a => s"($a)").mkString(" & "))
+        .filterNot(_.isEmpty).orNull
+    super.get(id, extraFilterAndAuth, extraParams)
+  }
+  override def result[B <: DTO: Manifest](params: Map[String, Any],
+      offset: Int = 0, limit: Int = 0, orderBy: String = null,
+      extraFilter: String = null, extraParams: Map[String, Any] = Map())(
+      implicit resources: Resources): CloseableResult[B] = {
+    val v = viewDef[B]
+    val extraFilterAndAuth =
+      Option((Option(extraFilter).toSeq ++ v.auth.forList).map(a => s"($a)").mkString(" & "))
+        .filterNot(_.isEmpty).orNull
+    super.result(params, offset, limit, orderBy, extraFilterAndAuth, extraParams)
+  }
+  override protected def countAll_(viewDef: ViewDef, params: Map[String, Any],
+      extraFilter: String = null, extraParams: Map[String, Any] = Map())(implicit resources: Resources): Int = {
+    val extraFilterAndAuth =
+      Option((Option(extraFilter).toSeq ++ viewDef.auth.forList).map(a => s"($a)").mkString(" & "))
+        .filterNot(_.isEmpty).orNull
+    super.countAll_(viewDef, params, extraFilterAndAuth, extraParams)
+  }
+  override protected def insert[B <: DTO](
+      tables: Seq[String],
+      pojo: B,
+      filter: String = null,
+      propMap: Map[String, Any])(implicit resources: Resources): Long = {
+    val v = viewDef(ManifestFactory.classType(pojo.getClass))
+    val filterAndAuth =
+      Option((Option(filter).toSeq ++ v.auth.forInsert).map(a => s"($a)").mkString(" & "))
+        .filterNot(_.isEmpty).orNull
+    super.insert(tables, pojo, filterAndAuth, propMap)
+  }
+  override protected def update[B <: DTO](
+      tables: Seq[String],
+      pojo: B,
+      filter: String,
+      propMap: Map[String, Any])(implicit resources: Resources): Unit = {
+    val v = viewDef(ManifestFactory.classType(pojo.getClass))
+    val filterAndAuth =
+      Option((Option(filter).toSeq ++ v.auth.forUpdate).map(a => s"($a)").mkString(" & "))
+        .filterNot(_.isEmpty).orNull
+    super.update(tables, pojo, filterAndAuth, propMap)
+  }
+  override def delete[B <: DTO](instance: B, filter: String = null, params: Map[String, Any] = null)(
+    implicit resources: Resources) = {
+    val v = viewDef(ManifestFactory.classType(instance.getClass))
+    val filterAndAuth =
+      Option((Option(filter).toSeq ++ v.auth.forDelete).map(a => s"($a)").mkString(" & "))
+        .filterNot(_.isEmpty).orNull
+    super.delete(instance, filterAndAuth, params)
+  }
+}
 
 trait Dto extends org.mojoz.querease.Dto { self =>
 

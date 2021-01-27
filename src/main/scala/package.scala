@@ -46,7 +46,6 @@ package object wabase extends Loggable {
   type NoWsInitialEvents = WsNotifications.NoWsInitialEvents
 
   type CustomValidationFunctions = ValidationEngine.CustomValidationFunctions
-  type RowAuthorization = Authorization.RowAuthorization
   type LdapAuthentication = Authentication.LdapAuthentication
   type SimpleExceptionHandler = AppServiceBase.AppExceptionHandler.SimpleExceptionHandler
   type Statistics = ServerStatistics.Statistics

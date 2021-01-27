@@ -30,7 +30,7 @@ object AppBase {
 
 case class ApplicationState(state: Map[String, Any], locale: Locale = Locale.getDefault)
 
-trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider with DbAccessProvider with I18n {
+trait AppBase[User] extends Loggable with QuereaseProvider with DbAccessProvider with I18n {
   this: DbAccess
     with Authorization[User]
     with ValidationEngine
@@ -197,7 +197,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
         case _ => throw new BusinessException("Too many rows returned")
       }
     } else
-      ctx.copy(result = qe.get(id, viewFilter(viewName), params)(
+      ctx.copy(result = qe.get(id, null, params)(
         ManifestFactory.classType(viewNameToClassMap(viewName)), implicitly[Resources]))
   }
   implicit object Create extends HExt[CreateContext[Dto]] {
@@ -237,7 +237,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
           throw new BusinessException(s"Not sortable: $viewName by " + notSortable.mkString(", "), null)
       }
       if (ctx.doCount)
-        ctx.copy(count = qe.countAll(params, listFilter(viewName), Map[String, Any]())(
+        ctx.copy(count = qe.countAll(params)(
           ManifestFactory.classType(viewNameToClassMap(viewName)), tresqlResources))
       else {
         ctx.copy(result = new AppListResult[Dto] {
@@ -252,7 +252,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
               offset,
               limit,
               stableOrderBy(viewDef, orderBy),
-              listFilter(viewName), Map[String, Any]())(
+              )(
               ManifestFactory.classType(viewNameToClassMap(viewName).asInstanceOf[Class[Dto]]),
               resources)
             catch {
@@ -299,12 +299,11 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
        .map(_.name)
        .filter(autoTimeFieldNames)
        .map(_ -> CommonFunctions.now).toMap
-      val authFilter = if (obj.id == null) insertFilter(viewName) else updateFilter(viewName)
       obj.id = qe.save(
         obj,
         Option(extraPropsToSave).getOrElse(Map.empty) ++ implicitProps,
         false,
-        if (authFilter.isEmpty) null else authFilter,
+        null,
         params
       )(tresqlResources)
       ctx.copy(result = obj.id)
@@ -316,9 +315,8 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
   def defaultRemove(ctx: RemoveContext[DtoWithId]): RemoveContext[DtoWithId] = {
       import ctx._
       val viewDef = qe.viewDef(viewName)
-      val authFilter = deleteFilter(viewName)
       val result = qe.delete(old,
-        if (authFilter.isEmpty) null else authFilter,
+        null,
         state ++ ctx.keyMap ++ current_user_param(user))(tresqlResources)
       ctx.copy(result = result.toString.toLong)
   }
@@ -573,7 +571,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
           transaction {
             implicit val clazz = viewNameToClassMap(viewName).asInstanceOf[Class[DtoWithId]]
             val ctx = createDeleteCtx(RemoveContext[DtoWithId](viewName, id, params, user, promise, state))
-            qe.get[DtoWithId](id, deleteFilter(viewName), ctx.params)(ManifestFactory.classType(clazz), tresqlResources) match {
+            qe.get[DtoWithId](id, null, ctx.params)(ManifestFactory.classType(clazz), tresqlResources) match {
               case None => throw new NotFoundException(s"$viewName not found, id: $id, params: $params")
               case Some(oldValue) => rest(ctx.copy(old = oldValue))
             }
