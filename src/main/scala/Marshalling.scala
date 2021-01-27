@@ -255,7 +255,8 @@ trait TresqlResultMarshalling extends AppMarshalling { this: AppServiceBase[_] w
   class OdsTresqlResultChunker(val result: TresqlResult[RowLike], zos: ZipOutputStream) extends OdsChunker(zos) with AbstractTresqlResultChunker
   class CsvTresqlResultChunker(val result: TresqlResult[RowLike], writer: Writer) extends AbstractTresqlResultChunker {
     def escapeValue(s: String) =
-      if (s.contains(",") || s.contains("\"")) ("\"" + s.replaceAll("\"", "\"\"") + "\"")
+      if (s == null) null
+      else if (s.contains(",") || s.contains("\"")) ("\"" + s.replaceAll("\"", "\"\"") + "\"")
       else s
 
     override def header() = {
@@ -375,7 +376,8 @@ trait DtoMarshalling extends AppMarshalling with Loggable { this: AppServiceBase
 
   class CsvDtoChunker(val result: AbstractDtoChunker#Result, writer: Writer) extends AbstractDtoChunker {
     def escapeValue(s: String) =
-      if (s.contains(",") || s.contains("\"")) ("\"" + s.replaceAll("\"", "\"\"") + "\"")
+      if (s == null) null
+      else if (s.contains(",") || s.contains("\"")) ("\"" + s.replaceAll("\"", "\"\"") + "\"")
       else s
 
     override def header() = {
