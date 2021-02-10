@@ -66,6 +66,7 @@ trait AppServiceBase[User]
       complete(app.get(viewName, id, filterPars(params)))
     }
 
+
   def getByNameAction(viewName: String, name: String, value: String)(
     implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
@@ -84,7 +85,7 @@ trait AppServiceBase[User]
           app.delete(viewName, id, filterPars(params))
           StatusCodes.NoContent
         } catch {
-          case e: org.mojoz.querease.NotFoundException => StatusCodes.NotFound
+          case _: org.mojoz.querease.NotFoundException => StatusCodes.NotFound
         }
       }
     }
@@ -94,10 +95,10 @@ trait AppServiceBase[User]
       parameterMultiMap { params =>
         entity(as[JsValue]) { data =>
           try {
-            val id = app.save(viewName, data.asInstanceOf[JsObject], filterPars(params))
+            app.save(viewName, data.asInstanceOf[JsObject], filterPars(params))
             redirect(Uri(path = requestUri.path), StatusCodes.SeeOther)
           } catch {
-            case e: org.mojoz.querease.NotFoundException => complete(StatusCodes.NotFound)
+            case _: org.mojoz.querease.NotFoundException => complete(StatusCodes.NotFound)
           }
         }
       }
@@ -117,7 +118,7 @@ trait AppServiceBase[User]
             filterPars(params),
             params.get("offset").flatMap(_.headOption).map(_.toInt) getOrElse 0,
             params.get("limit").flatMap(_.headOption).map(_.toInt) getOrElse 0,
-            params.get("sort").flatMap(_.headOption).map(_.toString).orNull)
+            params.get("sort").flatMap(_.headOption).orNull)
         }
     }
 
@@ -129,7 +130,7 @@ trait AppServiceBase[User]
             val id = app.save(viewName, data.asInstanceOf[JsObject], filterPars(params))
             redirect(Uri(path = requestUri.path / id.toString), StatusCodes.SeeOther)
           } catch {
-            case e: org.mojoz.querease.NotFoundException => complete(StatusCodes.NotFound)
+            case _: org.mojoz.querease.NotFoundException => complete(StatusCodes.NotFound)
           }
         }
       }
