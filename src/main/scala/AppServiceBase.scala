@@ -62,10 +62,9 @@ trait AppServiceBase[User]
   def countPath = path("count" / Segment) & get
 
   def getByIdAction(viewName: String, id: Long)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
-    parameterMultiMap{ params =>
+    parameterMultiMap { params =>
       complete(app.get(viewName, id, filterPars(params)))
     }
-
 
   def getByNameAction(viewName: String, name: String, value: String)(
     implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
@@ -112,14 +111,18 @@ trait AppServiceBase[User]
           app.get(viewName, impliedIdForGetOpt.get, filterPars(params))
         )
       else
-        complete {
-          app.list(
-            viewName,
-            filterPars(params),
-            params.get("offset").flatMap(_.headOption).map(_.toInt) getOrElse 0,
-            params.get("limit").flatMap(_.headOption).map(_.toInt) getOrElse 0,
-            params.get("sort").flatMap(_.headOption).orNull)
-        }
+        listAction(viewName, params)
+    }
+
+  protected def listAction(viewName: String, params: Map[String, List[String]])(
+    implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
+    complete {
+      app.list(
+        viewName,
+        filterPars(params),
+        params.get("offset").flatMap(_.headOption).map(_.toInt) getOrElse 0,
+        params.get("limit").flatMap(_.headOption).map(_.toInt) getOrElse 0,
+        params.get("sort").flatMap(_.headOption).orNull)
     }
 
   def insertAction(viewName: String)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
