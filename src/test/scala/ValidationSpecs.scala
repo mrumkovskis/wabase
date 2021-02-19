@@ -1,20 +1,9 @@
 package org.wabase
 
-import java.sql.{Connection, DriverManager}
-
-import org.mojoz.metadata.in.YamlMd
-import org.mojoz.metadata.out.SqlGenerator
 import org.mojoz.querease.{ValidationException, ValidationResult}
-import org.scalatest.BeforeAndAfterAll
-import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
-import org.scalatest.matchers.should.Matchers
-import org.tresql.dialects
 
-trait ValidationSpecsQuerease extends AppQuerease {
+class ValidationSpecsQuerease extends QuereaseBase("/validation-specs-metadata.yaml") {
   import ValidationSpecsQuerease._
-  override type DTO = org.wabase.Dto
-  override type DWI = org.wabase.DtoWithId
-  override lazy val yamlMetadata = YamlMd.fromResource("/validation-specs-metadata.yaml")
   override lazy val viewNameToClassMap = Map[String, Class[_ <: Dto]](
     "validations_test" -> classOf[validations_test],
     "validations_test" -> classOf[validations_test],
@@ -43,45 +32,17 @@ class ValidationSpecsApp(val validationsDbAccess: DbAccess) extends AppBase[Test
   override def dbAccessDelegate: DbAccess = validationsDbAccess
 }
 
-class ValidationSpecs extends FlatSpec with Matchers with BeforeAndAfterAll {
+class ValidationSpecs extends QuereaseBaseSpecs {
 
   import ValidationSpecsQuerease._
 
-  var conn: Connection = _
-
   var testApp: ValidationSpecsApp = _
 
-  val querease: AppQuerease = ValidationSpecsQuerease
-
   override def beforeAll(): Unit = {
+    querease = ValidationSpecsQuerease
     super.beforeAll()
-    Class.forName("org.hsqldb.jdbc.JDBCDriver")
-    this.conn = DriverManager.getConnection("jdbc:hsqldb:mem:validation_test")
-
     val db = new DbAccess with Loggable {
-      logger.debug("Creating database for validation tests ...\n")
-      SqlGenerator.hsqldb().schema(querease.tableMetadata.tableDefs)
-        .split(";\\s+").map(_ + ";")
-        .foreach { sql =>
-          logger.debug(sql)
-          val st = conn.createStatement
-          st.execute(sql)
-          st.close
-        }
-      val st = conn.createStatement
-      st.execute("create sequence seq")
-      st.close
-      logger.debug("Database created successfully.")
-
-      override val tresqlResources  = new TresqlResources {
-        override val resourcesTemplate =
-          super.resourcesTemplate.copy(
-            conn = ValidationSpecs.this.conn,
-            metadata = querease.tresqlMetadata,
-            dialect = dialects.HSQLDialect,
-            idExpr = s => "nextval('seq')"
-          )
-      }
+      override val tresqlResources = ValidationSpecs.this.tresqlResources
 
       override def dbUse[A](a: => A)(implicit timeout: QueryTimeout, pool: PoolName): A =
         try a finally tresqlResources.conn.rollback
@@ -89,7 +50,6 @@ class ValidationSpecs extends FlatSpec with Matchers with BeforeAndAfterAll {
                                                                                           pool: PoolName): A =
         try a finally tresqlResources.conn.commit
     }
-
     testApp = new ValidationSpecsApp(db)
   }
 
