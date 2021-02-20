@@ -2,7 +2,6 @@ package org.wabase
 
 import java.io.File
 import java.nio.file.Files
-import java.sql.{Connection, DriverManager}
 import java.util.UUID
 
 import akka.http.scaladsl.model.HttpEntity.{Chunk, Chunked, Default}
@@ -11,11 +10,6 @@ import akka.http.scaladsl.testkit.{RouteTestTimeout, ScalatestRouteTest}
 import akka.http.scaladsl.unmarshalling.FromResponseUnmarshaller
 import akka.stream.scaladsl.Source
 import akka.util.ByteString
-import org.mojoz.metadata.in.YamlMd
-import org.mojoz.metadata.out.SqlGenerator
-import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
-import org.scalatest.matchers.should.Matchers
-import org.tresql.dialects
 import spray.json.{JsObject, JsString}
 import org.wabase.client.CoreClient
 
@@ -23,46 +17,18 @@ import scala.concurrent.duration
 import scala.concurrent.duration.{Duration, FiniteDuration}
 import scala.reflect.ClassTag
 
-class FileUploadSpecs extends FlatSpec with Matchers with ScalatestRouteTest {
-
-  var conn: Connection = _
+class FileUploadSpecs extends QuereaseBaseSpecs with ScalatestRouteTest {
 
   var streamerConfQe: QuereaseProvider with AppFileStreamerConfig = _
 
   var service: TestAppService = _
 
   override def beforeAll(): Unit = {
+    querease = new QuereaseBase("/filestreamer-specs-table-metadata.yaml")
     super.beforeAll()
-    Class.forName("org.hsqldb.jdbc.JDBCDriver")
-    this.conn = DriverManager.getConnection("jdbc:hsqldb:mem:file_upload_test")
-    val querease = new AppQuerease {
-      override lazy val yamlMetadata = YamlMd.fromResource("/filestreamer-specs-table-metadata.yaml")
-    }
 
     val db = new DbAccess with Loggable {
-      logger.debug("Creating database for file upload ...\n")
-      SqlGenerator.hsqldb().schema(querease.tableMetadata.tableDefs)
-        .split(";\\s+").map(_ + ";")
-        .foreach { sql =>
-          logger.debug(sql)
-          val st = conn.createStatement
-          st.execute(sql)
-          st.close
-        }
-      val st = conn.createStatement
-      st.execute("create sequence seq")
-      st.close
-      logger.debug("Database created successfully.")
-
-      override val tresqlResources  = new TresqlResources {
-        override val resourcesTemplate =
-          super.resourcesTemplate.copy(
-            conn = FileUploadSpecs.this.conn,
-            metadata = querease.tresqlMetadata,
-            dialect = dialects.HSQLDialect,
-            idExpr = s => "nextval('seq')"
-          )
-      }
+      override val tresqlResources  = FileUploadSpecs.this.tresqlResources
 
       override def dbUse[A](a: => A)(implicit timeout: QueryTimeout, pool: PoolName): A =
         try a finally tresqlResources.conn.rollback

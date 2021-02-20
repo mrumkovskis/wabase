@@ -2,7 +2,6 @@ package org.wabase
 
 import java.io.File
 import java.nio.file.Files
-import java.sql.{Connection, DriverManager}
 import java.util.UUID
 import akka.http.scaladsl.model.StatusCodes
 import akka.http.scaladsl.model.headers._
@@ -10,18 +9,12 @@ import akka.http.scaladsl.model.ws.TextMessage
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
 import akka.http.scaladsl.testkit.{ScalatestRouteTest, WSProbe}
-import org.mojoz.metadata.in.YamlMd
-import org.mojoz.metadata.out.SqlGenerator
-import org.scalatest.flatspec.AnyFlatSpec
-import org.scalatest.matchers.should.Matchers
-import org.tresql._
 
 import scala.concurrent.Future
 import scala.language.implicitConversions
 import scala.util.Try
 
-class DeferredTests extends AnyFlatSpec with Matchers with ScalatestRouteTest {
-  var conn: Connection = _
+class DeferredTests extends QuereaseBaseSpecs with ScalatestRouteTest {
 
   var streamerConfQe: QuereaseProvider with AppFileStreamerConfig = _
 
@@ -31,37 +24,11 @@ class DeferredTests extends AnyFlatSpec with Matchers with ScalatestRouteTest {
   implicit def userToString(user: TestUsr) = user.id.toString
 
   override def beforeAll(): Unit = {
+    querease = new QuereaseBase("/deferred-metadata.yaml")
     super.beforeAll()
-    Class.forName("org.hsqldb.jdbc.JDBCDriver")
-    this.conn = DriverManager.getConnection("jdbc:hsqldb:mem:deferred_test")
-    val querease = new AppQuerease {
-      override lazy val yamlMetadata = YamlMd.fromResource("/deferred-metadata.yaml")
-    }
 
     val db = new DbAccess with Loggable {
-      logger.debug("Creating database for file upload ...\n")
-      SqlGenerator.hsqldb().schema(querease.tableMetadata.tableDefs)
-        .split(";\\s+").map(_ + ";")
-        .foreach { sql =>
-          logger.debug(sql)
-          val st = conn.createStatement
-          st.execute(sql)
-          st.close
-        }
-      val st = conn.createStatement
-      st.execute("create sequence seq")
-      st.close
-      logger.debug("Database created successfully.")
-
-      override val tresqlResources  = new TresqlResources {
-        override val resourcesTemplate =
-          super.resourcesTemplate.copy(
-            conn = DeferredTests.this.conn,
-            metadata = querease.tresqlMetadata,
-            dialect = dialects.HSQLDialect,
-            idExpr = s => "nextval('seq')"
-          )
-      }
+      override val tresqlResources = DeferredTests.this.tresqlResources
 
       override def dbUse[A](a: => A)(implicit timeout: QueryTimeout, pool: PoolName): A =
         try a finally tresqlResources.conn.rollback
