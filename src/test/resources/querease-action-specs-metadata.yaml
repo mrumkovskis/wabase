@@ -56,6 +56,6 @@ save:
 - validations:
     - :amount > 0, 'Wrong amount ' || :amount || '. Amount must be greater than 0'
 - payment.save
-- =account[number = :originator] { balance } account[number = :originator] { balance - :amount }
-- =account[number = :beneficiary] { balance } account[number = :beneficiary] { balance + :amount }
+- =account[number = :originator] { balance, last_modified } account[number = :originator] { balance - :amount, now() }
+- =account[number = :beneficiary] { balance, last_modified } account[number = :beneficiary] { balance + :amount, now() }
 - return('id')
