@@ -82,7 +82,8 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val QuereaseViewExtrasKey = QuereaseMetadata.QuereaseViewExtrasKey
     val WabaseViewExtrasKey = AppMetadata.WabaseViewExtrasKey
     def apply() =
-      Set(Api, Auth, Limit, Validations, ConnectionPool, QuereaseViewExtrasKey, WabaseViewExtrasKey)
+      Set(Api, Auth, Limit, Validations, ConnectionPool, QuereaseViewExtrasKey, WabaseViewExtrasKey) ++
+        Action()
   }
 
   lazy val knownViewExtras = KnownViewExtras()
@@ -385,18 +386,41 @@ object AppMetadata {
 
   val AuthEmpty = AuthFilters(Nil, Nil, Nil, Nil, Nil)
 
+  object Action {
+    val Get = "get"
+    val List = "list"
+    val Save = "save"
+    val Delete = "delete"
+    val Create = "create"
+    def apply() =
+      Set(Get, List, Save, Delete, Create)
+
+    trait Step
+
+    case class Tresql(name: String, tresql: String) extends Step
+    case class ViewCall(name: String, view: String, method: String, params: Option[String])
+    case class Validations(validations: Seq[String]) extends Step
+    case class Invocation(function: String) extends Step
+    case class Return(values: List[String]) extends Step
+  }
+
+  case class Action(steps: List[Action.Step])
+
+
   trait AppViewDefExtras {
     val limit: Int
     val cp: String
     val auth: AuthFilters
     val apiMethodToRole: Map[String, String]
+    val actions: Map[String, Action]
   }
 
   private [wabase] case class AppViewDef(
     limit: Int = 1000,
     cp: String = DEFAULT_CP.connectionPoolName,
     auth: AuthFilters = AuthFilters(Nil, Nil, Nil, Nil, Nil),
-    apiMethodToRole: Map[String, String] = Map()
+    apiMethodToRole: Map[String, String] = Map(),
+    actions: Map[String, Action] = Map()
   ) extends AppViewDefExtras
 
   case class FieldOps(
@@ -431,6 +455,7 @@ object AppMetadata {
     override val cp = appExtras.cp
     override val auth = appExtras.auth
     override val apiMethodToRole = appExtras.apiMethodToRole
+    override val actions = appExtras.actions
     def updateWabaseExtras(updater: AppViewDef => AppViewDef): AppMetadata#ViewDef =
       updateExtras(WabaseViewExtrasKey, updater, defaultExtras)
 

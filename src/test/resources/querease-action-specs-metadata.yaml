@@ -1,0 +1,61 @@
+table:   person
+columns:
+  - id
+  - name                 ! 51
+  - surname                52
+  - sex                  ! 1   (M F)
+  - birthdate            ! date
+
+
+table:   account
+columns:
+  - id
+  - number               !
+  - balance              ! 64
+  - last_modified        ! dateTime
+
+
+table:   transaction
+columns:
+  - id
+  - originator.id          account.id
+  - beneficiary.id       ! account.id
+  - amount               ! decimal 10 2
+  - date_time            ! dateTime
+
+
+name: person
+fields:
+- id
+- name
+- surname
+- sex
+- birthdate
+- accounts *
+  table: account
+  fields:
+  - id
+  - number
+  - balance
+  - last_modified
+save:
+- person.save
+- p: person.get('id')
+- return ('p')
+
+
+name: payment
+table: transaction
+fields:
+- id
+- originator -> = account [number = _] { id }
+- beneficiary -> = account [number = _] { id }
+- amount
+- date_time -> now()
+save:
+- validations:
+    - :amount > 0, 'Wrong amount ' || :amount || '. Amount must be greater than 0'
+- payment.save
+- =account[number = :originator] { balance } account[number = :originator] { balance - :amount }
+- =account[number = :beneficiary] { balance } account[number = :beneficiary] { balance + :amount }
+- return('id')
