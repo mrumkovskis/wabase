@@ -336,9 +336,22 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     def createRelevanceField(name: String, expression: String): FieldDef =
       (new MojozFieldDef(name, Type("boolean", None, None, None, false)))
         .copy(options = "", isExpression = true, expression = expression)
+
+    def parseAction(actionName: String): Option[Action] = getSeq(actionName, extras) match {
+      case s if s.isEmpty => None
+      case steps =>
+        println("STEPS")
+        steps foreach println
+        println("------------\n")
+        None
+    }
+    val actions = Action().foldLeft(Map[String, Action]()) { (res, actionName) =>
+      parseAction(actionName).map(a => res + (actionName -> a)).getOrElse(res)
+    }
     val appView = MojozViewDef(name, table, tableAlias, joins, filter,
       viewDef.groupBy, viewDef.having, orderBy, extends_,
-      comments, appFields, viewDef.saveTo, extras).updateWabaseExtras(_ => AppViewDef(limit, cp, auth, apiMap))
+      comments, appFields, viewDef.saveTo, extras)
+      .updateWabaseExtras(_ => AppViewDef(limit, cp, auth, apiMap, actions))
     def hasAuthFilter(viewDef: ViewDef): Boolean = viewDef.auth match {
       case AuthFilters(g, l, i, u, d) =>
         !(g.isEmpty && l.isEmpty && i.isEmpty && u.isEmpty && d.isEmpty)

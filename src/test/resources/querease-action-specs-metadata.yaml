@@ -1,4 +1,4 @@
-table:   person
+table: person
 columns:
   - id
   - name                 ! 51
@@ -7,7 +7,7 @@ columns:
   - birthdate            ! date
 
 
-table:   account
+table: account
 columns:
   - id
   - number               !
@@ -15,7 +15,7 @@ columns:
   - last_modified        ! dateTime
 
 
-table:   transaction
+table: transaction
 columns:
   - id
   - originator.id          account.id
@@ -39,16 +39,16 @@ fields:
   - balance
   - last_modified
 save:
-- person.save
-- p: person.get(:id)
+- save person
+- p: get person
 - return (:p)
 
 
 name: person1
 extends: person
 save:
-- person.save
-- return (person.get(:id))
+- save person
+- return (get person)
 
 
 name: payment
@@ -62,7 +62,7 @@ fields:
 save:
 - validations:
     - :amount > 0, 'Wrong amount ' || :amount || '. Amount must be greater than 0'
-- payment.save
+- save payment
 - =account[number = :originator] { balance, last_modified } account[number = :originator] { balance - :amount, now() }
 - =account[number = :beneficiary] { balance, last_modified } account[number = :beneficiary] { balance + :amount, now() }
 - return(:id)
