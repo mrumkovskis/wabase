@@ -40,8 +40,15 @@ fields:
   - last_modified
 save:
 - person.save
-- p: person.get('id')
-- return ('p')
+- p: person.get(:id)
+- return (:p)
+
+
+name: person1
+extends: person
+save:
+- person.save
+- return (person.get(:id))
 
 
 name: payment
@@ -58,4 +65,4 @@ save:
 - payment.save
 - =account[number = :originator] { balance, last_modified } account[number = :originator] { balance - :amount, now() }
 - =account[number = :beneficiary] { balance, last_modified } account[number = :beneficiary] { balance + :amount, now() }
-- return('id')
+- return(:id)
