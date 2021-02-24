@@ -1,27 +1,29 @@
 table: person
 columns:
-  - id
-  - name                 ! 51
-  - surname                52
-  - sex                  ! 1   (M F)
-  - birthdate            ! date
+- id
+- name                 ! 51
+- surname                52
+- sex                  ! 1   (M F)
+- birthdate            ! date
 
 
 table: account
 columns:
-  - id
-  - number               !
-  - balance              ! 64
-  - last_modified        ! dateTime
+- id
+- number               ! 64
+- balance              ! 64
+- last_modified        ! dateTime
+uk:
+- number
 
 
 table: transaction
 columns:
-  - id
-  - originator.id          account.id
-  - beneficiary.id       ! account.id
-  - amount               ! decimal 10 2
-  - date_time            ! dateTime
+- id
+- originator.id          account.id
+- beneficiary.id       ! account.id
+- amount               ! decimal 10 2
+- date_time            ! dateTime
 
 
 name: person
