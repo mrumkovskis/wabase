@@ -25,19 +25,20 @@ columns:
 
 
 name: person
+table: person
 fields:
 - id
 - name
 - surname
 - sex
 - birthdate
-- accounts *
-  table: account
-  fields:
-  - id
-  - number
-  - balance
-  - last_modified
+- accounts * :
+    table: account
+    fields:
+    - id
+    - number
+    - balance
+    - last_modified
 save:
 - save person
 - p: get person
@@ -55,8 +56,8 @@ name: payment
 table: transaction
 fields:
 - id
-- originator -> = account [number = _] { id }
-- beneficiary -> = account [number = _] { id }
+- originator  = originator.number  -> = account [number = _] { id }
+- beneficiary = beneficiary.number -> = account [number = _] { id }
 - amount
 - date_time -> now()
 save:
