@@ -7,9 +7,11 @@ import org.mojoz.metadata.in._
 import org.mojoz.metadata.io.MdConventions
 import org.mojoz.metadata.out.SqlGenerator.SimpleConstraintNamingRules
 import org.mojoz.querease._
+
 import scala.collection.immutable.Seq
 import scala.jdk.CollectionConverters._
 import scala.language.reflectiveCalls
+import scala.util.matching.Regex
 
 trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
@@ -319,6 +321,26 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
     val limit = getIntExtra(Limit, viewDef.extras) getOrElse 100
     val cp = getStringExtra(ConnectionPool, viewDef.extras) getOrElse DEFAULT_CP.connectionPoolName
+
+    val actions = Action().foldLeft(Map[String, Action]()) { (res, actionName) =>
+      val viewCallRegex = new Regex(Action().mkString("(", "|", """)\s+(\w+)"""))
+      val returnRegex = """(?s)return\s+(.+)""".r
+      def parseAction(actionName: String): Option[Action] = getSeq(actionName, viewDef.extras) match {
+        case s if s.isEmpty => None
+        case stepSeq: Seq[Any] =>
+          val steps = stepSeq.zipWithIndex.map { case (step, idx) =>
+            step match {
+              case s: String =>
+              case m: java.util.Map[String, Any] =>
+            }
+          }
+          None
+          //Some(Action(steps))
+      }
+
+      parseAction(actionName).map(a => res + (actionName -> a)).getOrElse(res)
+    }
+
     val extras =
       Option(viewDef.extras)
         .map(_ -- handledViewExtras)
@@ -337,17 +359,6 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       (new MojozFieldDef(name, Type("boolean", None, None, None, false)))
         .copy(options = "", isExpression = true, expression = expression)
 
-    def parseAction(actionName: String): Option[Action] = getSeq(actionName, extras) match {
-      case s if s.isEmpty => None
-      case steps =>
-        println("STEPS")
-        steps foreach println
-        println("------------\n")
-        None
-    }
-    val actions = Action().foldLeft(Map[String, Action]()) { (res, actionName) =>
-      parseAction(actionName).map(a => res + (actionName -> a)).getOrElse(res)
-    }
     val appView = MojozViewDef(name, table, tableAlias, joins, filter,
       viewDef.groupBy, viewDef.having, orderBy, extends_,
       comments, appFields, viewDef.saveTo, extras)
@@ -408,17 +419,20 @@ object AppMetadata {
     def apply() =
       Set(Get, List, Save, Delete, Create)
 
+    trait Op
     trait Step
 
-    case class Tresql(name: String, tresql: String) extends Step
-    case class ViewCall(name: String, view: String, method: String, params: Option[String])
-    case class Validations(validations: Seq[String]) extends Step
-    case class Invocation(function: String) extends Step
-    case class Return(values: List[String]) extends Step
+    case class Tresql(tresql: String) extends Op
+    case class ViewCall(method: String, view: String) extends Op
+    case class VariableValue(name: List[String]) extends Op
+    case class Invocation(function: String) extends Op
+
+    case class Evaluation(name: String, op: Op) extends Step
+    case class Return(values: List[Op]) extends Step
+    case class Validation(validations: Seq[String]) extends Step
   }
 
   case class Action(steps: List[Action.Step])
-
 
   trait AppViewDefExtras {
     val limit: Int

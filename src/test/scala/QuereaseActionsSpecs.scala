@@ -4,7 +4,7 @@ class QuereaseActionsSpecs extends QuereaseBaseSpecs {
 
   override def beforeAll(): Unit = {
     querease = new QuereaseBase("/querease-action-specs-metadata.yaml")
-    querease.nameToViewDef
+    println(querease.nameToViewDef("person"))
     super.beforeAll()
   }
 
