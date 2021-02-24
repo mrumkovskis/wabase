@@ -542,14 +542,14 @@ object AppServiceBase {
     def i18nResourcePath = i18nPath & path(Segment ~ Slash.?)
     def i18nTranslatePath = i18nPath & path(Segment / Segment / RemainingPath ~ Slash.?)
 
-    protected def langCookieTransformer(cookie: HttpCookie): HttpCookie = cookie.withSameSite(SameSite.Lax)
+    protected def langCookieTransformer(cookie: HttpCookie): HttpCookie = cookie
 
     def setLanguage: Route = (i18nPath & i18nLanguagePath) { lang =>
       setCookie(langCookieTransformer(
         HttpCookie(ApplicationStateCookiePrefix + ApplicationLanguageCookiePostfix,
           value = lang,
           path = Some("/")
-        ))
+        ).withSameSite(SameSite.Lax))
       ) { complete("Ok") }
     }
 

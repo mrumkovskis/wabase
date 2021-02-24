@@ -79,7 +79,7 @@ trait CSRFDefence { this: AppConfig with Authentication[_] with Loggable =>
   private def hash(string: String) = org.apache.commons.codec.digest.DigestUtils.sha256Hex(
     string + String.valueOf(Authentication.Crypto.randomBytes(8)))
 
-  protected def csfrCookieTransformer(cookie: HttpCookie): HttpCookie = cookie.withSameSite(SameSite.Lax)
+  protected def csfrCookieTransformer(cookie: HttpCookie): HttpCookie = cookie
 
   def setCSFRCookie: Directive0 = setCookie(
     csfrCookieTransformer(
@@ -87,7 +87,8 @@ trait CSRFDefence { this: AppConfig with Authentication[_] with Loggable =>
         CSRFCookieName,
         value = uniqueSessionId,
         path = Some("/"),
-        secure = secureCookies)))
+        secure = secureCookies
+      ).withSameSite(SameSite.Lax)))
 
   def deleteCSRFCookie: Directive0 = deleteCookie(CSRFCookieName)
 }
