@@ -5,8 +5,7 @@ import akka.http.scaladsl.server.{Directive0, Directive1}
 import akka.http.scaladsl.server.{AuthenticationFailedRejection, InvalidOriginRejection}
 import akka.http.scaladsl.server.AuthenticationFailedRejection._
 import akka.http.scaladsl.model.Uri
-import akka.http.scaladsl.model.headers.{
-  HttpOriginRange, HttpOrigin, Origin, Host, Referer, HttpCookie}
+import akka.http.scaladsl.model.headers.{Host, HttpCookie, HttpOrigin, HttpOriginRange, Origin, Referer, SameSite}
 
 trait CSRFDefence { this: AppConfig with Authentication[_] with Loggable =>
 
@@ -80,14 +79,15 @@ trait CSRFDefence { this: AppConfig with Authentication[_] with Loggable =>
   private def hash(string: String) = org.apache.commons.codec.digest.DigestUtils.sha256Hex(
     string + String.valueOf(Authentication.Crypto.randomBytes(8)))
 
-  def setCSFRCookie: Directive0 = {
-      setCookie(HttpCookie(
+  protected def csfrCookieTransformer(cookie: HttpCookie): HttpCookie = cookie.withSameSite(SameSite.Lax)
+
+  def setCSFRCookie: Directive0 = setCookie(
+    csfrCookieTransformer(
+      HttpCookie(
         CSRFCookieName,
         value = uniqueSessionId,
         path = Some("/"),
-        secure = secureCookies
-      ))
-  }
+        secure = secureCookies)))
 
   def deleteCSRFCookie: Directive0 = deleteCookie(CSRFCookieName)
 }

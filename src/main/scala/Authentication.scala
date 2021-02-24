@@ -114,15 +114,17 @@ trait Authentication[User] extends SecurityDirectives with SessionInfoRemover wi
           ) -> expirationTime
     }
 
+  protected def sessionCookieTransformer(cookie: HttpCookie): HttpCookie = cookie.withSameSite(SameSite.Lax)
+
   def setSessionCookie(user: User): Directive0 = extractSessionToken(user)
     .tflatMap { case (sessionToken, _) =>
-      setCookie(HttpCookie(
+      setCookie(sessionCookieTransformer(HttpCookie(
         SessionCookieName,
         value = sessionToken,
         path = Some("/"),
         httpOnly= httpOnlyCookies,
         secure = secureCookies
-      ))
+      )))
     }
 
   /** Extract session from session id cookie. If cookie does not exist throws rejection */
@@ -173,14 +175,16 @@ trait Authentication[User] extends SecurityDirectives with SessionInfoRemover wi
   /** Deletes session-id cookie if exists */
   protected def removeSessionCookie = deleteCookie(SessionCookieName, path = "/")
   /** On failed authentication sets requested-uri cookie if request has not been Ajax */
+  protected def reqestedUriCookieTransformer(cookie: HttpCookie): HttpCookie = cookie.withSameSite(SameSite.Lax)
+
   protected def setRequestedUriCookie = (isAjaxRequest & deleteCookie(RequestedUriCookieName, path = "/")) |
     extractUri.flatMap { uri =>
-      setCookie(HttpCookie(
+      setCookie(reqestedUriCookieTransformer(HttpCookie(
         RequestedUriCookieName,
         value = uri.withScheme("").withAuthority(Uri.Authority.Empty).toString,
         path = Some("/"),
         httpOnly = true)
-      )
+      ))
   }
   def authRejectionHandler = RejectionHandler.newBuilder().handle {
     case MissingCookieRejection(SessionCookieName) =>
