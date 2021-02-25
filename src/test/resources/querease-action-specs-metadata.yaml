@@ -43,6 +43,7 @@ fields:
     - last_modified
 save:
 - save person
+- org.wabase.QuereaseActionSpecs.bizMethod
 - p: get person
 - return :p
 

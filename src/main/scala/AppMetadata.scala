@@ -7,6 +7,7 @@ import org.mojoz.metadata.in._
 import org.mojoz.metadata.io.MdConventions
 import org.mojoz.metadata.out.SqlGenerator.SimpleConstraintNamingRules
 import org.mojoz.querease._
+import org.tresql.parsing.{Arr, Exp}
 
 import scala.collection.immutable.Seq
 import scala.jdk.CollectionConverters._
@@ -324,18 +325,55 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
     val actions = Action().foldLeft(Map[String, Action]()) { (res, actionName) =>
       val viewCallRegex = new Regex(Action().mkString("(", "|", """)\s+(\w+)"""))
-      val returnRegex = """(?s)return\s+(.+)""".r
+      val invocationRegex = """(\w|\$)+\.(\w|\$)+(\.(\w|\$)+)*""".r
+      val returnRegex = """(?s)return\s+(.+)""".r //dot matches new line as well
       def parseAction(actionName: String): Option[Action] = getSeq(actionName, viewDef.extras) match {
         case s if s.isEmpty => None
         case stepSeq: Seq[Any] =>
           val steps = stepSeq.zipWithIndex.map { case (step, idx) =>
+            def parseOp(st: String): List[Action.Op] = {
+              def parse(exp: Exp): List[Action.Op] = exp match {
+                case Arr(elements) => elements flatMap parse
+                case e =>
+                  val tresql = e.tresql
+                  if (viewCallRegex.matches(tresql)) {
+                    val viewCallRegex(method, view) = tresql
+                    Action.ViewCall(method, view) :: Nil
+                  } else if (invocationRegex.matches(tresql)) {
+                    val idx = tresql.lastIndexOf('.')
+                    Action.Invocation(tresql.substring(0, idx), tresql.substring(idx + 1)) :: Nil
+                  } else {
+                    Action.Tresql(tresql) :: Nil
+                  }
+              }
+              parse(parser.parseExp(st))
+            }
+            def parseStep(name: String, statement: String): Action.Step = {
+              if (returnRegex.matches(statement)) {
+                val returnRegex(ret) = statement
+                Action.Return(parseOp(ret))
+              } else {
+                Action.Evaluation(name, parseOp(statement))
+              }
+            }
             step match {
               case s: String =>
-              case m: java.util.Map[String, Any] =>
+                parseStep((idx + 1).toString, s)
+              case jm: java.util.Map[String, Any]@unchecked if jm.size() == 1 =>
+                val m = jm.asScala.toMap
+                val (name, value) = m.head
+                if (name == Action.ValidationsKey) {
+                  val validations = getSeq(Action.ValidationsKey, m).map(_.toString)
+                  Action.Validations(validations)
+                } else {
+                  parseStep(name, value.toString)
+                }
+              case x =>
+                sys.error(s"View '${viewDef.name}' parsing error," +
+                  s"invalid action '$actionName' value: $x")
             }
-          }
-          None
-          //Some(Action(steps))
+          }.toList
+          Some(Action(steps))
       }
 
       parseAction(actionName).map(a => res + (actionName -> a)).getOrElse(res)
@@ -419,17 +457,18 @@ object AppMetadata {
     def apply() =
       Set(Get, List, Save, Delete, Create)
 
+    val ValidationsKey = "validations"
+
     trait Op
     trait Step
 
     case class Tresql(tresql: String) extends Op
     case class ViewCall(method: String, view: String) extends Op
-    case class VariableValue(name: List[String]) extends Op
-    case class Invocation(function: String) extends Op
+    case class Invocation(className: String, function: String) extends Op
 
-    case class Evaluation(name: String, op: Op) extends Step
+    case class Evaluation(name: String, ops: List[Op]) extends Step
     case class Return(values: List[Op]) extends Step
-    case class Validation(validations: Seq[String]) extends Step
+    case class Validations(validations: Seq[String]) extends Step
   }
 
   case class Action(steps: List[Action.Step])
