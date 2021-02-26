@@ -6,6 +6,8 @@ import org.mojoz.querease.Querease
 import scala.reflect.ManifestFactory
 import spray.json._
 
+import scala.concurrent.{ExecutionContext, Future}
+
 trait QuereaseProvider {
   type QE <: AppQuerease
   final implicit val qe: QE = initQuerease
@@ -80,6 +82,45 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       Option((Option(filter).toSeq ++ v.auth.forDelete).map(a => s"($a)").mkString(" & "))
         .filterNot(_.isEmpty).orNull
     super.delete(instance, filterAndAuth, params)
+  }
+
+  protected def executeActionOp(op: Action.Op, env: Map[String, Any])(
+    implicit res: Resources): Any = op match {
+    case Action.Tresql(tresql) => Query(tresql)(res.withParams(env))
+    case Action.ViewCall(method, view) =>
+      val v = viewDef(view)
+      implicit val mf = ManifestFactory.classType(viewNameToClassMap(v.name)).asInstanceOf[Manifest[DTO]]
+      def long(name: String) = env.get(name).map {
+        case x: Long => x
+        case x: Number => x.longValue
+        case x: String => x.toLong
+        case x => x.toString.toLong
+      }
+      def int(name: String) = env.get(name).map {
+        case x: Int => x
+        case x: Number => x.intValue
+        case x: String => x.toInt
+        case x => x.toString.toInt
+      }
+      def string(name: String) = env.get(name) map String.valueOf
+      method match {
+        case Action.Get =>
+          long("id").flatMap(get(_, null, env)(mf, res))
+        case Action.List =>
+          result(env, int("offset").getOrElse(0), int("limit").getOrElse(0),
+            string("orderBy").orNull)(mf, res)
+        case Action.Save =>
+          val dto = fill(env.toJson.asJsObject)(mf)
+          val params = env -- dto.toSaveableMap(this).keySet
+          save(dto, null, false, null, params)
+        case Action.Delete =>
+          val dto = fill(env.toJson.asJsObject)(mf)
+          val params = env -- dto.toSaveableMap(this).keySet
+          delete(dto, null, params)
+        case Action.Create =>
+          create(env)(mf, res)
+      }
+    case Action.Invocation(className, function) =>
   }
 }
 

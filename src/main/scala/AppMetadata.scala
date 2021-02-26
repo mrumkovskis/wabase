@@ -351,7 +351,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
             def parseStep(name: String, statement: String): Action.Step = {
               if (returnRegex.matches(statement)) {
                 val returnRegex(ret) = statement
-                Action.Return(parseOp(ret))
+                Action.Return(name, parseOp(ret))
               } else {
                 Action.Evaluation(name, parseOp(statement))
               }
@@ -467,7 +467,7 @@ object AppMetadata {
     case class Invocation(className: String, function: String) extends Op
 
     case class Evaluation(name: String, ops: List[Op]) extends Step
-    case class Return(values: List[Op]) extends Step
+    case class Return(name: String, values: List[Op]) extends Step
     case class Validations(validations: Seq[String]) extends Step
   }
 

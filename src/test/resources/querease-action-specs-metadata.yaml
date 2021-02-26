@@ -13,6 +13,7 @@ columns:
 - number               ! 64
 - balance              ! 64
 - last_modified        ! dateTime
+- person.id            !
 uk:
 - number
 
