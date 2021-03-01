@@ -1,7 +1,7 @@
 package org.wabase
 
 import org.tresql._
-import org.mojoz.querease.Querease
+import org.mojoz.querease.{NotFoundException, Querease}
 
 import scala.reflect.ManifestFactory
 import spray.json._
@@ -75,6 +75,17 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
         .filterNot(_.isEmpty).orNull
     super.update(tables, pojo, filterAndAuth, propMap)
   }
+
+  def saveMap(view: ViewDef,
+           data: Map[String, Any],
+           forceInsert: Boolean = false,
+           filter: String = null,
+           params: Map[String, Any])(implicit resources: Resources): Long = {
+    val mf = ManifestFactory.classType(viewNameToClassMap(view.name)).asInstanceOf[Manifest[DTO]]
+    val dto = fill(data.toJson.asJsObject)(mf)
+    save(dto, null, forceInsert, filter, params)
+  }
+
   override def delete[B <: DTO](instance: B, filter: String = null, params: Map[String, Any] = null)(
     implicit resources: Resources) = {
     val v = viewDef(ManifestFactory.classType(instance.getClass))
@@ -84,7 +95,22 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     super.delete(instance, filterAndAuth, params)
   }
 
-  protected def executeActionOp(op: Action.Op, env: Map[String, Any])(
+  def deleteById(view: ViewDef, id: Any, filter: String = null, params: Map[String, Any] = null)(
+    implicit resources: Resources): Int = {
+    val filterAndAuth =
+      Option((Option(filter).toSeq ++ view.auth.forDelete).map(a => s"($a)").mkString(" & "))
+        .filterNot(_.isEmpty).orNull
+    val result = ORT.delete(
+      view.table + Option(view.tableAlias).map(" " + _).getOrElse(""),
+      id,
+      filterAndAuth,
+      params) match { case r: DeleteResult => r.count.get }
+    if (result == 0)
+      throw new NotFoundException(s"Record not deleted in table ${view.table}")
+    else result
+  }
+
+  protected def executeActionOp(op: Action.Op, env: Map[String, Any], params: Map[String, Any])(
     implicit res: Resources): Any = op match {
     case Action.Tresql(tresql) => Query(tresql)(res.withParams(env))
     case Action.ViewCall(method, view) =>
@@ -110,13 +136,11 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
           result(env, int("offset").getOrElse(0), int("limit").getOrElse(0),
             string("orderBy").orNull)(mf, res)
         case Action.Save =>
-          val dto = fill(env.toJson.asJsObject)(mf)
-          val params = env -- dto.toSaveableMap(this).keySet
-          save(dto, null, false, null, params)
+          saveMap(v, env, false, null, params)
         case Action.Delete =>
-          val dto = fill(env.toJson.asJsObject)(mf)
-          val params = env -- dto.toSaveableMap(this).keySet
-          delete(dto, null, params)
+          long("id")
+            .map { deleteById(v, _, null, params) }
+            .getOrElse(sys.error(s"id not found in data"))
         case Action.Create =>
           create(env)(mf, res)
       }
