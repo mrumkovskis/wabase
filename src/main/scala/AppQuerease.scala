@@ -76,6 +76,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     super.update(tables, pojo, filterAndAuth, propMap)
   }
 
+  // TODO after decoupling QereaseIo from Querease this method should be removed
   def saveMap(view: ViewDef,
            data: Map[String, Any],
            forceInsert: Boolean = false,
@@ -95,6 +96,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     super.delete(instance, filterAndAuth, params)
   }
 
+  // TODO after decoupling QereaseIo from Querease this method should be removed
   def deleteById(view: ViewDef, id: Any, filter: String = null, params: Map[String, Any] = null)(
     implicit resources: Resources): Int = {
     val filterAndAuth =
@@ -145,6 +147,10 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
           create(env)(mf, res)
       }
     case Action.Invocation(className, function) =>
+      val clazz = Class.forName(className)
+      clazz
+        .getMethod(function, classOf[Map[_, _]], classOf[Map[_, _]])
+        .invoke(clazz.newInstance, env, params)
   }
 }
 
