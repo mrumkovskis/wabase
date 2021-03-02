@@ -204,16 +204,19 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case x => sys.error(s"Unrecognized result type: ${x.getClass}, value: $x")
     }
     val clazz = Class.forName(className)
-    def getMethod = Try {
-      clazz.getMethod(function, classOf[Map[_, _]], classOf[Map[_, _]], classOf[Resources])
+    Try {
+      clazz
+        .getMethod(function, classOf[Map[_, _]], classOf[Map[_, _]], classOf[Resources])
+        .invoke(clazz.newInstance, data, env, res)
     }.recover {
       case _: NoSuchMethodException =>
-        clazz.getMethod(function, classOf[Map[_, _]], classOf[Map[_, _]])
-    }
-    getMethod.map(_.invoke(clazz.newInstance, data, env) match {
+        clazz
+          .getMethod(function, classOf[Map[_, _]], classOf[Map[_, _]])
+          .invoke(clazz.newInstance, data, env)
+    }.map {
       case f: Future[_] => f map qresult
       case x => Future.successful(qresult(x))
-    }).get
+    }.get
   }
 
   protected def doActionOp(op: Action.Op, data: Map[String, Any], env: Map[String, Any])(
