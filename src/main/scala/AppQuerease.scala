@@ -7,6 +7,7 @@ import scala.reflect.ManifestFactory
 import spray.json._
 
 import scala.concurrent.{ExecutionContext, Future}
+import scala.util.Try
 
 trait QuereaseProvider {
   type QE <: AppQuerease
@@ -14,6 +15,21 @@ trait QuereaseProvider {
   /** Override this method in subclass to initialize {{{qe}}} */
   protected def initQuerease: QE
 }
+
+trait QuereaseResult
+case class TresqlResult(result: Result[RowLike]) extends QuereaseResult
+// TODO after decoupling QereaseIo from Querease this class should be refactored to PojoResult[X]
+case class MapResult(result: Map[String, Any]) extends QuereaseResult
+// TODO after decoupling QereaseIo from Querease this class should be refactored to PojoResult[X]
+case class PojoResult(result: AppQuerease#DTO) extends QuereaseResult
+// TODO after decoupling QereaseIo from Querease this class should be refactored to ListResult[X]
+case class ListResult(result: List[Any]) extends QuereaseResult
+// TODO after decoupling QereaseIo from Querease this class should be refactored to IteratorResult[X]
+case class IteratorResult(result: AppQuerease#CloseableResult[AppQuerease#DTO]) extends QuereaseResult
+// TODO after decoupling QereaseIo from Querease this class should be refactored to OptionResult[X]
+case class OptionResult(result: Option[AppQuerease#DTO]) extends QuereaseResult
+case class NumberResult(id: Long) extends QuereaseResult
+case class CodeResult(code: String) extends QuereaseResult
 
 trait AppQuereaseIo extends org.mojoz.querease.ScalaDtoQuereaseIo with JsonConverter { self: AppQuerease =>
 
@@ -27,6 +43,7 @@ trait AppQuereaseIo extends org.mojoz.querease.ScalaDtoQuereaseIo with JsonConve
 }
 
 abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata {
+
   import AppMetadata._
   override def get[B <: DTO](id: Long, extraFilter: String = null, extraParams: Map[String, Any] = null)(
       implicit mf: Manifest[B], resources: Resources): Option[B] = {
@@ -112,45 +129,104 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     else result
   }
 
-  protected def executeActionOp(op: Action.Op, env: Map[String, Any], params: Map[String, Any])(
-    implicit res: Resources): Any = op match {
-    case Action.Tresql(tresql) => Query(tresql)(res.withParams(env))
-    case Action.ViewCall(method, view) =>
-      val v = viewDef(view)
-      implicit val mf = ManifestFactory.classType(viewNameToClassMap(v.name)).asInstanceOf[Manifest[DTO]]
-      def long(name: String) = env.get(name).map {
-        case x: Long => x
-        case x: Number => x.longValue
-        case x: String => x.toLong
-        case x => x.toString.toLong
+  def doAction(view: String,
+               actionName: String,
+               data: Map[String, Any],
+               env: Map[String, Any])(
+    implicit resources: Resources, ec: ExecutionContext): Future[QuereaseResult] = {
+    import Action._
+    def doSteps(steps: List[Step],
+                curRes: Future[QuereaseResult]): Future[QuereaseResult] = {
+      steps match {
+        case Nil => curRes
+        case last :: Nil => curRes
+        case l => curRes
       }
-      def int(name: String) = env.get(name).map {
-        case x: Int => x
-        case x: Number => x.intValue
-        case x: String => x.toInt
-        case x => x.toString.toInt
-      }
-      def string(name: String) = env.get(name) map String.valueOf
-      method match {
-        case Action.Get =>
-          long("id").flatMap(get(_, null, env)(mf, res))
-        case Action.List =>
-          result(env, int("offset").getOrElse(0), int("limit").getOrElse(0),
-            string("orderBy").orNull)(mf, res)
-        case Action.Save =>
-          saveMap(v, env, false, null, params)
-        case Action.Delete =>
-          long("id")
-            .map { deleteById(v, _, null, params) }
-            .getOrElse(sys.error(s"id not found in data"))
-        case Action.Create =>
-          create(env)(mf, res)
-      }
-    case Action.Invocation(className, function) =>
-      val clazz = Class.forName(className)
-      clazz
-        .getMethod(function, classOf[Map[_, _]], classOf[Map[_, _]])
-        .invoke(clazz.newInstance, env, params)
+    }
+    val vd = viewDef(view)
+    vd.actions.get(actionName)
+      .map(a => doSteps(a.steps, Future.successful(MapResult(data))))
+      .getOrElse(Future.successful(doViewCall(actionName, view, data, env)))
+  }
+
+  protected def doViewCall(method: String,
+                           view: String,
+                           data: Map[String, Any],
+                           env: Map[String, Any])(implicit res: Resources): QuereaseResult = {
+    import Action._
+    val v = viewDef(view)
+    implicit val mf = ManifestFactory.classType(viewNameToClassMap(v.name)).asInstanceOf[Manifest[DTO]]
+    def long(name: String) = data.get(name).map {
+      case x: Long => x
+      case x: Number => x.longValue
+      case x: String => x.toLong
+      case x => x.toString.toLong
+    }
+    def int(name: String) = data.get(name).map {
+      case x: Int => x
+      case x: Number => x.intValue
+      case x: String => x.toInt
+      case x => x.toString.toInt
+    }
+    def string(name: String) = data.get(name) map String.valueOf
+    method match {
+      case Get =>
+        OptionResult(long("id").flatMap(get(_, null, data)(mf, res)))
+      case Action.List =>
+        IteratorResult(result(data, int(OffsetKey).getOrElse(0), int(LimitKey).getOrElse(0),
+          string(OrderKey).orNull)(mf, res))
+      case Save =>
+        NumberResult(saveMap(v, data, false, null, env))
+      case Delete =>
+        NumberResult(long("id")
+          .map { deleteById(v, _, null, env) }
+          .getOrElse(sys.error(s"id not found in data")))
+      case Create =>
+        PojoResult(create(data)(mf, res))
+    }
+  }
+
+  protected def doInvocation(className: String,
+                             function: String,
+                             data: Map[String, Any],
+                             env: Map[String, Any])(
+                            implicit res: Resources,
+                            ec: ExecutionContext): Future[QuereaseResult] = {
+    def qresult(r: Any) = r match {
+      case m: Map[String, Any]@unchecked => MapResult(m)
+      case l: List[Any] => ListResult(l)
+      case r: Result[_] => TresqlResult(r)
+      case l: Long => NumberResult(l)
+      case s: String => CodeResult(s)
+      case r: CloseableResult[DTO]@unchecked => IteratorResult(r)
+      case d: DTO@unchecked => PojoResult(d)
+      case o: Option[DTO]@unchecked => OptionResult(o)
+      case x => sys.error(s"Unrecognized result type: ${x.getClass}, value: $x")
+    }
+    val clazz = Class.forName(className)
+    def getMethod = Try {
+      clazz.getMethod(function, classOf[Map[_, _]], classOf[Map[_, _]], classOf[Resources])
+    }.recover {
+      case _: NoSuchMethodException =>
+        clazz.getMethod(function, classOf[Map[_, _]], classOf[Map[_, _]])
+    }
+    getMethod.map(_.invoke(clazz.newInstance, data, env) match {
+      case f: Future[_] => f map qresult
+      case x => Future.successful(qresult(x))
+    }).get
+  }
+
+  protected def doActionOp(op: Action.Op, data: Map[String, Any], env: Map[String, Any])(
+    implicit res: Resources, ec: ExecutionContext): Future[QuereaseResult] = {
+    import Action._
+    op match {
+      case Tresql(tresql) =>
+        Future.successful(TresqlResult(Query(tresql)(res.withParams(data))))
+      case ViewCall(method, view) =>
+        Future.successful(doViewCall(method, view, data, env))
+      case Invocation(className, function) =>
+        doInvocation(className, function, data, env)
+    }
   }
 }
 

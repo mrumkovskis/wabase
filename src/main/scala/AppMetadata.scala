@@ -458,6 +458,9 @@ object AppMetadata {
       Set(Get, List, Save, Delete, Create)
 
     val ValidationsKey = "validations"
+    val OffsetKey = "$offset"
+    val LimitKey = "$limit"
+    val OrderKey = "$order"
 
     trait Op
     trait Step

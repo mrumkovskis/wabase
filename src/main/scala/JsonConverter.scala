@@ -31,7 +31,7 @@ trait JsonConverter { self: AppQuerease =>
       JsObject(
         TreeMap()(new self.FieldOrdering(m.keys.zipWithIndex.toMap)) ++
           (m.map { case (k, v) => (k, w(v)) }))
-    case l: Traversable[Any] => JsArray((l map w) toSeq : _*)
+    case l: Iterable[Any] => JsArray((l map w) toSeq : _*)
     case d: DTO @unchecked => DtoJsonFormat.write(d)
     case s: String => JsString(s)
     case n: Int => JsNumber(n)
