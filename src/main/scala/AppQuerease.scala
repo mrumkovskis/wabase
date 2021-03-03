@@ -135,12 +135,19 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
                env: Map[String, Any])(
     implicit resources: Resources, ec: ExecutionContext): Future[QuereaseResult] = {
     import Action._
+    def doStep(step: Step): Future[QuereaseResult] = step match {
+      case Evaluation(name, ops) => Future.successful(null)
+      case Return(name, ops) => Future.successful(null)
+      case Validations(validations) => Future.successful(null)
+    }
     def doSteps(steps: List[Step],
                 curRes: Future[QuereaseResult]): Future[QuereaseResult] = {
       steps match {
         case Nil => curRes
-        case last :: Nil => curRes
-        case l => curRes
+        case l => curRes.flatMap {
+          case x @ TresqlResult(tr) => Future.successful(x)
+          //case PojoResult
+        }
       }
     }
     val vd = viewDef(view)
@@ -183,6 +190,8 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
           .getOrElse(sys.error(s"id not found in data")))
       case Create =>
         PojoResult(create(data)(mf, res))
+      case x =>
+        sys.error(s"Unknown view action $x")
     }
   }
 
