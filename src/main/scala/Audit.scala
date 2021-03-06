@@ -106,7 +106,7 @@ object Audit {
      audit(AuditData(action = "login", user = user, newData = mapFromObj(loginInfo), time = now))
    }
 
-  def logView(id: jLong, view: String, user: User, inParams: Map[String, Any], state: Map[String, Any], data: Map[String, Any]) {
+  def logView(id: jLong, view: String, user: User, inParams: Map[String, Any], state: Map[String, Any], data: Map[String, Any]): Unit = {
     audit(AuditData(
       action = "view",
       entity = view,
