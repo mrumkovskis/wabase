@@ -106,15 +106,16 @@ object Audit {
      audit(AuditData(action = "login", user = user, newData = mapFromObj(loginInfo), time = now))
    }
 
-   def logView(id: jLong, view: String, user: User, inParams: Map[String, Any]): Unit = {
-     audit(AuditData(
-       action = "view",
-       entity = view,
-       entity_id = id,
-       user = user,
-       newData = Map[String, Any]("params" -> removeBlacklistedFields(inParams)))
-     )
-   }
+  def logView(id: jLong, view: String, user: User, inParams: Map[String, Any], state: Map[String, Any], data: Map[String, Any]): Unit = {
+    audit(AuditData(
+      action = "view",
+      entity = view,
+      entity_id = id,
+      user = user,
+      oldData = Map.empty[String, Any],
+      newData = data)
+    )
+  }
 
    def logList(view: String, user: User, inParams: Map[String, Any], offset: Int, limit: Int, orderBy: String, state: ApplicationState, doCount: Boolean): Unit = {
      audit(AuditData(
@@ -155,11 +156,15 @@ object Audit {
    def audit[C <: RequestContext[_]](res: C, error: Throwable): Unit = {
      res match {
        case _: CreateContext[_] => // IGNORE
-       case ViewContext(view, id, inParams, user, _, _) =>
-         logView(id, view, user, inParams)
+       case ViewContext(view, id, inParams, user, state, result) =>
+         logView(id, view, user, inParams, state,
+           result
+             .filter(_.isInstanceOf[qe.DWI@unchecked])
+             .map(_.asInstanceOf[qe.DWI])
+             .map(v => mapFromObj(v))
+             .getOrElse(Map.empty[String, Any]))
        case ListContext(view, inParams, offset, limit, orderBy, user, state, _, doCount, _, _, _, _) =>
          logList(view, user, inParams, offset, limit, orderBy, state, doCount)
-
        case SaveContext(view, old, obj, inParams, user, _, state, extraPropsToSave, result) =>
          if (old != null || error == null) logSave( //do not audit error on insert
            Option(old).
