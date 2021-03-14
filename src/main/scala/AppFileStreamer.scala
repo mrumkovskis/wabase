@@ -79,7 +79,11 @@ object AppFileStreamer {
     file_info: FileInfo,
   ) {
     def toMap: Map[String, Any] =
-      TreeMap[String, Any]("name" -> name, "value" -> value, "file_info" -> file_info.toMap)(pFieldOrdering)
+      TreeMap[String, Any](
+        "name" -> name,
+        "value" -> value,
+        "file_info" -> Option(file_info).map(_.toMap).orNull
+      )(pFieldOrdering)
   }
 
   def sha256sink(implicit executor: ExecutionContext): Sink[ByteString, Future[String]] = {
