@@ -69,7 +69,9 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
     override final def next(): T = exe(nextInternal)
     private def exe[A](block: => A): A = try block catch {
       case NonFatal(e) =>
-        try close catch { case NonFatal(e) => logger.error("Error on processing error: ", e)}
+        try close catch { case NonFatal(e) =>
+          logger.error("Exception in exception handler - list result close() failed: ", e)
+        }
         throw e
     }
     private var onCloseAction: Unit => Unit = identity
