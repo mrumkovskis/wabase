@@ -315,45 +315,52 @@ trait AppFileServiceBase[User] {
       user: User,
       state: ApplicationState,
   ): Route = withSizeLimit(uploadSizeLimit) {
-    post {
+    (post & uploadMultiple) { partsInfoFuture =>
       extractRequestContext { ctx =>
         import ctx._
-        entity(as[Multipart.FormData]) { formdata =>
-          val partsInfoFuture: Future[Seq[PartInfo]] = formdata.parts.mapAsync(1) {
-            case filePart if filePart.filename.isDefined =>
-              val name = filePart.name
-              val filename = filePart.filename.getOrElse("some_file")
-              // FIXME filePart content-type? additionalHeaders empty for some reason
-              val contentTypeString = filePart.additionalHeaders.collectFirst {
-                case ctHeader@`Content-Type`(_) => ctHeader.toString
-              }.getOrElse("application/octet-stream")
-              val bytes = filePart.entity.dataBytes
-              bytes.runWith(fileStreamer.fileSink(filename, contentTypeString))
-                .map { fileInfo =>
-                  PartInfo(
-                    name = name,
-                    value = null,
-                    file_info = fileInfo,
-                  )
-                }.andThen { // audit file save
-                  case scala.util.Success(partInfo) =>
-                    val fileInfo = partInfo.file_info
-                    app.auditSave(fileInfo.id, fileStreamer.file_info_table, fileInfo.toMap, null)
-                  case scala.util.Failure(error) => app.auditSave(null, fileStreamer.file_info_table,
-                    Map("filename" -> filename, "content_type" -> contentTypeString), error.getMessage)
-                }
-            case dataPart =>
-              dataPart.toStrict(1.second).map { strict =>
+        ctx => complete(partsInfoFuture.map(_.map(_.toMap).toList))
+      }
+    }
+  }
+
+  def uploadMultiple(implicit
+        user: User,
+        state: ApplicationState
+    ): Directive1[Future[Seq[PartInfo]]] = {
+    (entity(as[Multipart.FormData]) & extractRequestContext).tflatMap { case (formdata, ctx) =>
+      provide {
+        import ctx._
+        formdata.parts.mapAsync(1) {
+          case filePart if filePart.filename.isDefined =>
+            val name = filePart.name
+            val filename = filePart.filename.getOrElse("file")
+            val contentTypeString =
+              Option(filePart.entity.contentType.toString)
+                .getOrElse("application/octet-stream")
+            val bytes = filePart.entity.dataBytes
+            bytes.runWith(fileStreamer.fileSink(filename, contentTypeString))
+              .map { fileInfo =>
                 PartInfo(
-                  name = dataPart.name,
-                  value = strict.entity.data.utf8String,
-                  file_info = null,
+                  name = name,
+                  value = null,
+                  file_info = fileInfo,
                 )
+              }.andThen { // audit file save
+                case scala.util.Success(partInfo) =>
+                  val fileInfo = partInfo.file_info
+                  app.auditSave(fileInfo.id, fileStreamer.file_info_table, fileInfo.toMap, null)
+                case scala.util.Failure(error) => app.auditSave(null, fileStreamer.file_info_table,
+                  Map("filename" -> filename, "content_type" -> contentTypeString), error.getMessage)
               }
-          }.runFold(Seq.empty[PartInfo])(_ :+ _)
-          // TODO hook
-          ctx => complete(partsInfoFuture.map(_.map(_.toMap).toList))
-        }
+          case dataPart =>
+            dataPart.toStrict(1.second).map { strict =>
+              PartInfo(
+                name = dataPart.name,
+                value = strict.entity.data.utf8String,
+                file_info = null,
+              )
+            }
+        }.runFold(Seq.empty[PartInfo])(_ :+ _)
       }
     }
   }
