@@ -80,8 +80,15 @@ class AppFileCleanup(dbAccess: DbAccess, fileStreamers: AppFileStreamerConfig*) 
   }
 
   protected def cleanupFiles = {
+    prepCompareTable
+    fillCompareTable()
+    compareDataAndMoveFilesToTrash
+  }
+
+  protected def prepCompareTable: Unit =
     logDeleteResult("files_on_disk cleaned up: ", transaction(Query("files_on_disk-[]")))
 
+  protected def fillCompareTable(batchSize: Int = 500): Unit = {
     // file system list all files applicable for deletion
     val YYYY_MM_DD_SHA = """.*(/\d\d\d\d/\d\d/\d\d/[0-9a-fA-F]{64})$""".r
     val allRootPaths = fileStreamers.map(_.rootPath).distinct
@@ -104,7 +111,7 @@ class AppFileCleanup(dbAccess: DbAccess, fileStreamers: AppFileStreamerConfig*) 
           files.foldLeft((prepareStatement, 0)) { case ((stmt, count), file) =>
             stmt.setString(1, file)
             stmt.addBatch()
-            if(count >= 500) {
+            if(count >= batchSize) {
               stmt.executeBatch()
               tresqlResources.conn.commit()
               (prepareStatement, 0)
@@ -113,9 +120,13 @@ class AppFileCleanup(dbAccess: DbAccess, fileStreamers: AppFileStreamerConfig*) 
         if (lastBatch._2 > 0)
           lastBatch._1.executeBatch()
       }
-      logger.debug(s"Number of records inserted into files_on_disk for $rootPath: "+
-        dbUse(Query("files_on_disk{count(1)}").unique[Long]))
+      //filesUploaded as count query also for "warming up" DB (something like sql "analyze file_body_info"); independent of logger.debug scope
+      val filesUploaded = dbUse(Query("files_on_disk{count(1)}").unique[Long])
+      logger.debug(s"Number of records inserted into files_on_disk for $rootPath: $filesUploaded")
     }
+  }
+
+  protected def compareDataAndMoveFilesToTrash: Unit = {
     // delete files from file system
     val query = fileStreamers.zipWithIndex.map {
       case (fs, idx) =>
