@@ -331,22 +331,16 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
         case s if s.isEmpty => None
         case stepSeq: Seq[Any] =>
           val steps = stepSeq.zipWithIndex.map { case (step, idx) =>
-            def parseOp(st: String): List[Action.Op] = {
-              def parse(exp: Exp): List[Action.Op] = exp match {
-                case Arr(elements) => elements flatMap parse
-                case e =>
-                  val tresql = e.tresql
-                  if (viewCallRegex.matches(tresql)) {
-                    val viewCallRegex(method, view) = tresql
-                    Action.ViewCall(method, view) :: Nil
-                  } else if (invocationRegex.matches(tresql)) {
-                    val idx = tresql.lastIndexOf('.')
-                    Action.Invocation(tresql.substring(0, idx), tresql.substring(idx + 1)) :: Nil
-                  } else {
-                    Action.Tresql(tresql) :: Nil
-                  }
+            def parseOp(st: String): Action.Op = {
+              if (viewCallRegex.matches(st)) {
+                val viewCallRegex(method, view) = st
+                Action.ViewCall(method, view)
+              } else if (invocationRegex.matches(st)) {
+                val idx = st.lastIndexOf('.')
+                Action.Invocation(st.substring(0, idx), st.substring(idx + 1))
+              } else {
+                Action.Tresql(st)
               }
-              parse(parser.parseExp(st))
             }
             def parseStep(name: String, statement: String): Action.Step = {
               if (returnRegex.matches(statement)) {
@@ -463,15 +457,19 @@ object AppMetadata {
     val OrderKey = "$order"
 
     trait Op
-    trait Step
+    trait Step {
+      def name: String
+    }
 
     case class Tresql(tresql: String) extends Op
     case class ViewCall(method: String, view: String) extends Op
     case class Invocation(className: String, function: String) extends Op
 
-    case class Evaluation(name: String, ops: List[Op]) extends Step
-    case class Return(name: String, values: List[Op]) extends Step
-    case class Validations(validations: Seq[String]) extends Step
+    case class Evaluation(name: String, op: Op) extends Step
+    case class Return(name: String, value: Op) extends Step
+    case class Validations(validations: Seq[String]) extends Step {
+      def name = ValidationsKey
+    }
   }
 
   case class Action(steps: List[Action.Step])

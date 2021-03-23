@@ -1,7 +1,7 @@
 package org.wabase
 
 import org.tresql._
-import org.mojoz.querease.{NotFoundException, Querease}
+import org.mojoz.querease.{NotFoundException, Querease, ValidationException}
 
 import scala.reflect.ManifestFactory
 import spray.json._
@@ -135,25 +135,84 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
                env: Map[String, Any])(
     implicit resources: Resources, ec: ExecutionContext): Future[QuereaseResult] = {
     import Action._
-    def doStep(step: Step): Future[QuereaseResult] = step match {
-      case Evaluation(name, ops) => Future.successful(null)
-      case Return(name, ops) => Future.successful(null)
-      case Validations(validations) => Future.successful(null)
+    val vd = viewDef(view)
+    def dataForNewStep(res: QuereaseResult) = res match {
+      case TresqlResult(tr) => tr match {
+        case dml: DMLResult =>
+          dml.id.map("id" -> _) orElse dml.count getOrElse 0
+        case SingleValueResult(v) => v
+        case ar: ArrayResult[_] => ar.values.toList
+        case r: Result[_] => r.toListOfMaps
+      }
+      case MapResult(mr) => mr
+      case PojoResult(pr) => pr.toMap(this)
+      case ListResult(lr) => lr
+      case IteratorResult(ir) => ir.map(_.toMap(this)).toList
+      case OptionResult(or) => or.map(_.toMap(this))
+      case NumberResult(id) => id
+      case CodeResult(code) => code
     }
-    def doSteps(steps: List[Step],
-                curRes: Future[QuereaseResult]): Future[QuereaseResult] = {
-      steps match {
-        case Nil => curRes
-        case l => curRes.flatMap {
-          case x @ TresqlResult(tr) => Future.successful(x)
-          //case PojoResult
+    def doStep(step: Step, stepDataF: Future[Map[String, Any]]): Future[QuereaseResult] = {
+      stepDataF flatMap { stepData =>
+        step match {
+          case Evaluation(_, op) => doActionOp(op, stepData, env)
+          case Return(_, op) => doActionOp(op, stepData, env)
+          case Validations(validations) =>
+            Future(doValidationStep(validations, stepData ++ env)).map(_ => MapResult(stepData))
         }
       }
     }
-    val vd = viewDef(view)
+
+    def doSteps(steps: List[Step],
+                curEnv: Future[Map[String, Any]]): Future[QuereaseResult] = {
+      def updateCurRes(cr: Map[String, Any], k: String, r: Any) = r match {
+        case it @ ("id", id) => cr
+          .get("id")
+          .filter(i => i != null && i != id)
+          .map(_ => cr + (k -> Map(it)))
+          .getOrElse(cr + ("id" -> id))
+        case r => cr + (k -> r)
+      }
+      steps match {
+        case Nil => curEnv map MapResult
+        case s :: Nil => doStep(s, curEnv) flatMap { finalRes =>
+          s match {
+            case Evaluation(name, _) =>
+              doSteps(Nil, curEnv.map(updateCurRes(_, name, dataForNewStep(finalRes))))
+            case _ => Future.successful(finalRes)
+          }
+        }
+        case s :: tail =>
+          val newEnv =
+            doStep(s, curEnv) flatMap { stepRes =>
+              s match {
+                case Evaluation(name, _) =>
+                  curEnv.map(updateCurRes(_, name, dataForNewStep(stepRes)))
+                case Return(name, _) => dataForNewStep(stepRes) match {
+                  case m: Map[String, Any]@unchecked => Future.successful(m)
+                  case x => Future.successful(Map(name -> x))
+                }
+                case _ => curEnv
+              }
+            }
+          doSteps(tail, newEnv)
+      }
+    }
     vd.actions.get(actionName)
-      .map(a => doSteps(a.steps, Future.successful(MapResult(data))))
+      .map(a => doSteps(a.steps, Future.successful(data)))
       .getOrElse(Future.successful(doViewCall(actionName, view, data, env)))
+  }
+
+  protected def doValidationStep(validations: Seq[String], params: Map[String, Any])(implicit res: Resources): Unit = {
+    validationsQueryString(validations) map { vs =>
+      Query(vs, params)
+        .map(_.s("msg"))
+        .filter(_ != null).filter(_ != "")
+        .toList match {
+        case messages if messages.nonEmpty => throw new ValidationException(messages.mkString("\n"), Nil)
+        case _ => ()
+      }
+    }
   }
 
   protected def doViewCall(method: String,
@@ -233,7 +292,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     import Action._
     op match {
       case Tresql(tresql) =>
-        Future.successful(TresqlResult(Query(tresql)(res.withParams(data))))
+        Future.successful(TresqlResult(Query(tresql)(res.withParams(data ++ env))))
       case ViewCall(method, view) =>
         Future.successful(doViewCall(method, view, data, env))
       case Invocation(className, function) =>
