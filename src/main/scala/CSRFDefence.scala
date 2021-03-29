@@ -12,7 +12,7 @@ trait CSRFDefence { this: AppConfig with Authentication[_] with Loggable =>
   lazy val CSRFCookieName = "XSRF-TOKEN"
   lazy val CSRFHeaderName = "X-XSRF-TOKEN"
 
-  def csrfCheck = checkSameOrigin & checkCSFRToken
+  def csrfCheck = checkSameOrigin & checkCSRFToken
 
   protected val targetOrigin =
     if (appConfig.hasPath("host")) Uri(appConfig.getString("host")) match {
@@ -67,7 +67,7 @@ trait CSRFDefence { this: AppConfig with Authentication[_] with Loggable =>
       }
     }
 
-  def checkCSFRToken: Directive0 = (cookie(CSRFCookieName) & headerValueByName(CSRFHeaderName))
+  def checkCSRFToken: Directive0 = (cookie(CSRFCookieName) & headerValueByName(CSRFHeaderName))
     .tflatMap {
       case (cookie, header) =>
         if (cookie.value == header) pass
@@ -79,10 +79,10 @@ trait CSRFDefence { this: AppConfig with Authentication[_] with Loggable =>
   private def hash(string: String) = org.apache.commons.codec.digest.DigestUtils.sha256Hex(
     string + String.valueOf(Authentication.Crypto.randomBytes(8)))
 
-  protected def csfrCookieTransformer(cookie: HttpCookie): HttpCookie = cookie
+  protected def csrfCookieTransformer(cookie: HttpCookie): HttpCookie = cookie
 
-  def setCSFRCookie: Directive0 = setCookie(
-    csfrCookieTransformer(
+  def setCSRFCookie: Directive0 = setCookie(
+    csrfCookieTransformer(
       HttpCookie(
         CSRFCookieName,
         value = uniqueSessionId,

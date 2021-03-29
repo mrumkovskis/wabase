@@ -212,7 +212,7 @@ class RouteTests extends FlatSpec with Matchers with ScalatestRouteTest{
       route1 ~> check (handled shouldBe false)
 
     //check token
-    val route2 = service.checkCSFRToken {
+    val route2 = service.checkCSRFToken {
       complete("OK")
     }
     Get("/") ~> Cookie(service.CSRFCookieName -> "abc") ~> RawHeader(service.CSRFHeaderName, "abc") ~>
