@@ -87,7 +87,7 @@ filter:
 - surname %~~~%
 list:
 - data: list person_list
-- count: person[name %~~~% :name? & surname %~~~% :surname]
+- count: person[name %~~~% :name? & surname %~~~% :surname] {count(*)}
 
 name: person_with_main_account
 table:
