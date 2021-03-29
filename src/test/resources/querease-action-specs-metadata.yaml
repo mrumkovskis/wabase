@@ -5,6 +5,7 @@ columns:
 - surname                52
 - sex                  ! 1   (M F)
 - birthdate            ! date
+- main_account_id        account.id
 
 
 table: account
@@ -35,6 +36,7 @@ fields:
 - surname
 - sex
 - birthdate
+- main_account = account a[a.id = (person p[p.id = :id] {main_account_id})] {number} -> = account[number = _]{id}
 - accounts * :
     table: account
     fields:
@@ -45,7 +47,7 @@ fields:
 save:
 - save person
 - org.wabase.QuereaseActionSpecs.bizMethod
-- p: get person
+- p: :id -> get person
 - return :p
 
 
@@ -71,3 +73,28 @@ save:
 - =account[number = :originator] { balance, last_modified } account[number = :originator] { balance - :amount, now() }
 - =account[number = :beneficiary] { balance, last_modified } account[number = :beneficiary] { balance + :amount, now() }
 - return :id
+
+name: person_list
+table: person
+fields:
+- id
+- name
+- surname
+- sex
+- birthdate
+filter:
+- name %~~~%
+- surname %~~~%
+list:
+- data: list person_list
+- count: person[name %~~~% :name? & surname %~~~% :surname]
+
+name: person_with_main_account
+table:
+fields:
+- id
+get:
+- person: get person
+- main_acc_id: account[number = :person.main_account] {id}
+- account: (:main_acc_id.0.id -> :id) -> get account
+- :person, (:account.number -> :acc_number), (:account.balance -> :acc_balance) ->

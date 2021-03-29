@@ -1,13 +1,17 @@
 package org.wabase
 
+import org.mojoz.querease.QuereaseExpressions.DefaultParser
 import org.tresql._
-import org.mojoz.querease.{NotFoundException, Querease, ValidationException}
+import org.mojoz.querease.{NotFoundException, Querease, QuereaseExpressions, ValidationException}
+import org.tresql.parsing.{Exp, Variable}
+import org.wabase.AppMetadata.Action.VariableTransform
 
 import scala.reflect.ManifestFactory
 import spray.json._
 
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Try
+import scala.util.parsing.input.CharSequenceReader
 
 trait QuereaseProvider {
   type QE <: AppQuerease
@@ -153,10 +157,16 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case CodeResult(code) => code
     }
     def doStep(step: Step, stepDataF: Future[Map[String, Any]]): Future[QuereaseResult] = {
+      def transformStepData(stepData: Map[String, Any], vts: List[VariableTransform]) = {
+        vts.foldLeft(stepData) { (sd, vt) => stepData(vt.form) match {
+          case m: Map[String, _]@unchecked => sd ++ m
+          case x: Any => sd + (vt.to.getOrElse(vt.form) -> x)
+        }}
+      }
       stepDataF flatMap { stepData =>
         step match {
-          case Evaluation(_, op) => doActionOp(op, stepData, env)
-          case Return(_, op) => doActionOp(op, stepData, env)
+          case Evaluation(_, vts, op) => doActionOp(op, transformStepData(stepData, vts), env)
+          case Return(_, vts, op) => doActionOp(op, transformStepData(stepData, vts), env)
           case Validations(validations) =>
             Future(doValidationStep(validations, stepData ++ env)).map(_ => MapResult(stepData))
         }
@@ -177,8 +187,8 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
         case Nil => curEnv map MapResult
         case s :: Nil => doStep(s, curEnv) flatMap { finalRes =>
           s match {
-            case Evaluation(name, _) =>
-              doSteps(Nil, curEnv.map(updateCurRes(_, name, dataForNewStep(finalRes))))
+            case e: Evaluation =>
+              doSteps(Nil, curEnv.map(updateCurRes(_, e.name, dataForNewStep(finalRes))))
             case _ => Future.successful(finalRes)
           }
         }
@@ -186,11 +196,11 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
           val newEnv =
             doStep(s, curEnv) flatMap { stepRes =>
               s match {
-                case Evaluation(name, _) =>
-                  curEnv.map(updateCurRes(_, name, dataForNewStep(stepRes)))
-                case Return(name, _) => dataForNewStep(stepRes) match {
+                case e: Evaluation =>
+                  curEnv.map(updateCurRes(_, e.name, dataForNewStep(stepRes)))
+                case r: Return => dataForNewStep(stepRes) match {
                   case m: Map[String, Any]@unchecked => Future.successful(m)
-                  case x => Future.successful(Map(name -> x))
+                  case x => Future.successful(Map(r.name -> x))
                 }
                 case _ => curEnv
               }
@@ -297,8 +307,39 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
         Future.successful(doViewCall(method, view, data, env))
       case Invocation(className, function) =>
         doInvocation(className, function, data, env)
+      case NoOp => Future.successful(MapResult(data))
     }
   }
+
+  abstract class AppQuereaseDefaultParser extends DefaultParser {
+    def stepWithVars: MemParser[(List[VariableTransform], String)] = {
+      def varTrans: MemParser[VariableTransform] = {
+        def v2s(v: Variable) = (v.variable :: v.members) mkString "."
+        (variable | ("(" ~> variable ~ "->" ~ variable <~ ")")) ^^ {
+          case v: Variable => VariableTransform(v2s(v), None)
+          case (v1: Variable) ~ _ ~ (v2: Variable) => VariableTransform(v2s(v1), Option(v2s(v2)))
+        }
+      }
+
+      (rep1sep(varTrans, ",") ~ ("->" ~> "(?s).*".r)) ^^ {
+        case vts ~ step => vts -> step
+      } named "step-with-Vars"
+    }
+
+    def parseWithParser[T](p: Parser[T])(expr:String): T = {
+      phrase(p)(new CharSequenceReader(expr)) match {
+        case Success(r, _) => r
+        case x => sys.error(x.toString)
+      }
+    }
+  }
+
+  object AppQuereaseDefaultParser extends AppQuereaseDefaultParser {
+    override val cache = Some(new SimpleCacheBase[Exp](tresqlParserCacheSize))
+  }
+
+  val tresqlParserCacheSize: Int = 4096
+  override val parser: QuereaseExpressions.Parser = this.AppQuereaseDefaultParser
 }
 
 trait Dto extends org.mojoz.querease.Dto { self =>

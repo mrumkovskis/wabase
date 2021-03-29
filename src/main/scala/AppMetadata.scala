@@ -7,11 +7,12 @@ import org.mojoz.metadata.in._
 import org.mojoz.metadata.io.MdConventions
 import org.mojoz.metadata.out.SqlGenerator.SimpleConstraintNamingRules
 import org.mojoz.querease._
-import org.tresql.parsing.{Arr, Exp}
+import org.wabase.AppMetadata.Action.{NoOp, VariableTransform}
 
 import scala.collection.immutable.Seq
 import scala.jdk.CollectionConverters._
 import scala.language.reflectiveCalls
+import scala.util.Try
 import scala.util.matching.Regex
 
 trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
@@ -343,11 +344,25 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
               }
             }
             def parseStep(name: String, statement: String): Action.Step = {
-              if (returnRegex.matches(statement)) {
-                val returnRegex(ret) = statement
-                Action.Return(name, parseOp(ret))
+              def parseSt(st: String, varTrs: List[VariableTransform]) = {
+                if (returnRegex.matches(statement)) {
+                  val returnRegex(ret) = statement
+                  Action.Return(name, varTrs, parseOp(ret))
+                } else {
+                  Action.Evaluation(name, varTrs, parseOp(statement))
+                }
+              }
+              if (statement.contains("->")) {
+                val p = parser.asInstanceOf[AppQuereaseDefaultParser] // FIXME get rid of typecast
+                Try(p.parseWithParser(p.stepWithVars)(statement))
+                  .map { case (vtrs, st) =>
+                    if (st.isEmpty) Action.Evaluation(name, vtrs, NoOp)
+                    else parseSt(st, vtrs)
+                  }
+                  .toOption
+                  .getOrElse(parseSt(statement, Nil))
               } else {
-                Action.Evaluation(name, parseOp(statement))
+                parseSt(statement, Nil)
               }
             }
             step match {
@@ -461,12 +476,15 @@ object AppMetadata {
       def name: String
     }
 
+    case class VariableTransform(form: String, to: Option[String])
+
     case class Tresql(tresql: String) extends Op
     case class ViewCall(method: String, view: String) extends Op
     case class Invocation(className: String, function: String) extends Op
+    case object NoOp extends Op
 
-    case class Evaluation(name: String, op: Op) extends Step
-    case class Return(name: String, value: Op) extends Step
+    case class Evaluation(name: String, varTrans: List[VariableTransform], op: Op) extends Step
+    case class Return(name: String, varTrans: List[VariableTransform], value: Op) extends Step
     case class Validations(validations: Seq[String]) extends Step {
       def name = ValidationsKey
     }
