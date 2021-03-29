@@ -321,7 +321,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
         }
       }
 
-      (rep1sep(varTrans, ",") ~ ("->" ~> "(?s).*".r)) ^^ {
+      (rep1sep(varTrans, "+") ~ ("->" ~> "(?s).*".r)) ^^ {
         case vts ~ step => vts -> step
       } named "step-with-Vars"
     }

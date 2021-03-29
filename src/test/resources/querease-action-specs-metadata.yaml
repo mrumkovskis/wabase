@@ -74,6 +74,7 @@ save:
 - =account[number = :beneficiary] { balance, last_modified } account[number = :beneficiary] { balance + :amount, now() }
 - return :id
 
+
 name: person_list
 table: person
 fields:
@@ -89,6 +90,7 @@ list:
 - data: list person_list
 - count: person[name %~~~% :name? & surname %~~~% :surname] {count(*)}
 
+
 name: person_with_main_account
 table:
 fields:
@@ -97,4 +99,4 @@ get:
 - person: get person
 - main_acc_id: account[number = :person.main_account] {id}
 - account: (:main_acc_id.0.id -> :id) -> get account
-- :person, (:account.number -> :acc_number), (:account.balance -> :acc_balance) ->
+- :person + (:account.number -> :acc_number) + (:account.balance -> :acc_balance) ->
