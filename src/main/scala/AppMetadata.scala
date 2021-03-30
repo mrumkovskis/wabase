@@ -345,11 +345,11 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
             }
             def parseStep(name: String, statement: String): Action.Step = {
               def parseSt(st: String, varTrs: List[VariableTransform]) = {
-                if (returnRegex.matches(statement)) {
-                  val returnRegex(ret) = statement
+                if (returnRegex.matches(st)) {
+                  val returnRegex(ret) = st
                   Action.Return(name, varTrs, parseOp(ret))
                 } else {
-                  Action.Evaluation(name, varTrs, parseOp(statement))
+                  Action.Evaluation(name, varTrs, parseOp(st))
                 }
               }
               if (statement.contains("->")) {

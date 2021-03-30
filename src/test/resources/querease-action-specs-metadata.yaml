@@ -5,7 +5,7 @@ columns:
 - surname                52
 - sex                  ! 1   (M F)
 - birthdate            ! date
-- main_account_id        account.id
+- main_account.id        account.id
 
 
 table: account
