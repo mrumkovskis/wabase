@@ -62,24 +62,24 @@ class ValidationSpecs extends QuereaseBaseSpecs {
 
     dto.int_col = 3
     intercept[ValidationException] {
-      testApp.saveApp(dto)
+      testApp.saveDto(dto)
     }.details should be(List(ValidationResult(Nil,
       List("int_col should be greater than 5 but is 3", "int_col should be greater than 10 but is 3")
     )))
 
     dto.int_col = 7
     intercept[ValidationException] {
-      testApp.saveApp(dto)
+      testApp.saveDto(dto)
     }.details should be(List(ValidationResult(Nil,
       List("int_col should be greater than 10 but is 7")
     )))
 
     dto.int_col = 11
-    testApp.saveApp(dto) should be(0)
+    testApp.saveDto(dto) should be(0)
 
     dto.int_col = 13
     intercept[ValidationException] {
-      testApp.saveApp(dto)
+      testApp.saveDto(dto)
     }.details should be(List(ValidationResult(Nil,
       List("int_col should be less than 12 but is 13")
     )))
@@ -96,7 +96,7 @@ class ValidationSpecs extends QuereaseBaseSpecs {
     dto.children1 = List(ch11, ch12)
     dto.children2 = List(ch21, ch22)
     intercept[ValidationException] {
-      testApp.saveApp(dto)
+      testApp.saveDto(dto)
     }.details should be(
       List(ValidationResult(List("children1", 0), List("child1 int_col should be greater than 1 but is 0")),
         ValidationResult(List("children1", 1), List("child1 int_col should be greater than 1 but is 1")),
@@ -106,7 +106,7 @@ class ValidationSpecs extends QuereaseBaseSpecs {
 
     dto.int_col = 0
     intercept[ValidationException] {
-      testApp.saveApp(dto)
+      testApp.saveDto(dto)
     }.details should be(
       List(ValidationResult(Nil, List("int_col should be greater than 5 but is 0", "int_col should be greater than 10 but is 0")),
         ValidationResult(List("children1", 0), List("child1 int_col should be greater than 1 but is 0")),
@@ -120,13 +120,13 @@ class ValidationSpecs extends QuereaseBaseSpecs {
     dto.children1(1).int_col = 2
     dto.children2(0).int_col = 3
     dto.children2(1).int_col = 3
-    testApp.saveApp(dto) should be(0)
+    testApp.saveDto(dto) should be(0)
 
     dto.int_col = 11
     dto.children1(0).int_col = 1
     dto.children2(1).int_col = 2
     intercept[ValidationException] {
-      testApp.saveApp(dto)
+      testApp.saveDto(dto)
     }.details should be(
       List(ValidationResult(List("children1", 0), List("child1 int_col should be greater than 1 but is 1")),
         ValidationResult(List("children2", 1), List("child2 int_col should be greater than 2 and parent must be greater than 3 but is 2,11")))

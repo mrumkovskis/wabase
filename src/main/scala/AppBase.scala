@@ -500,7 +500,7 @@ trait AppBase[User] extends Loggable with QuereaseProvider with DbAccessProvider
     saveInternal(viewName, instance, params, emptyStringsToNull)
   }
 
-  def saveApp(instance: Dto, params: Map[String, Any] = Map(), emptyStringsToNull: Boolean = true, extraPropsToSave: Map[String, Any] = Map())(
+  def saveDto(instance: Dto, params: Map[String, Any] = Map(), emptyStringsToNull: Boolean = true, extraPropsToSave: Map[String, Any] = Map())(
     implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout,
       poolName: PoolName = PoolName(viewDef(classToViewNameMap(instance.getClass)).cp)) = {
     saveInternal(classToViewNameMap(instance.getClass), instance, params, emptyStringsToNull, extraPropsToSave)
