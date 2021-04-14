@@ -3,7 +3,7 @@ package org.wabase
 import org.mojoz.querease.QuereaseExpressions.DefaultParser
 import org.tresql._
 import org.mojoz.querease.{NotFoundException, Querease, QuereaseExpressions, ValidationException}
-import org.tresql.parsing.{Exp, Variable}
+import org.tresql.parsing.{Exp, ExpTransformer, Fun, Join, Obj, Query => PQuery, Variable, With}
 import org.wabase.AppMetadata.Action.VariableTransform
 
 import scala.reflect.ManifestFactory
@@ -340,6 +340,39 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
 
   val tresqlParserCacheSize: Int = 4096
   override val parser: QuereaseExpressions.Parser = this.AppQuereaseDefaultParser
+
+  protected def bindVarsCursorsCreator(cursorPrefix: String, bindVars: Map[String, Any]): parser.Transformer = {
+    def cursorData(vars: List[String]) = {
+      val wabaseQuereaseParser = parser.asInstanceOf[AppQuereaseDefaultParser]
+      implicit val env = new Resources {}.withParams(bindVars)
+      vars match {
+        case Nil => bindVars
+        case l => l.foldLeft(Map[String, Any]()) { (r, v) =>
+          Query(v) match {
+            case SingleValueResult(value) => value match {
+              case m: Map[String, _]@unchecked => r ++ m
+              case x: Any =>
+                r + (wabaseQuereaseParser.parseWithParser(wabaseQuereaseParser.variable)(v).variable -> x)
+            }
+            case x => sys.error(s"Cannot extract variable value from result: $x")
+          }
+        }
+      }
+    }
+    parser.transformer {
+      case q @ PQuery(List(
+        Obj(_, _, Join(_, Fun(Action.BindVarCursorsFunctionName, varPars, _, _, _), _), _, _), _*),
+          _, _, _, _, _, _) if varPars.forall(_.isInstanceOf[Variable]) =>
+        val cd = cursorData(varPars.map(_.tresql))
+        parser.parseExp(cursors(this.cursorData(cd, cursorPrefix, Map())) + " x") match {
+          case With(tables, _) => With(tables, q)
+          case _ => q
+        }
+      case With(tables, query) => bindVarsCursorsCreator(cursorPrefix, bindVars)(query) match {
+        case w: With => With(tables ++ w.tables, w.query)
+      }
+    }
+  }
 }
 
 trait Dto extends org.mojoz.querease.Dto { self =>

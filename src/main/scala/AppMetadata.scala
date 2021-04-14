@@ -471,6 +471,8 @@ object AppMetadata {
     val LimitKey = "$limit"
     val OrderKey = "$order"
 
+    val BindVarCursorsFunctionName = "bind_var_cursors"
+
     trait Op
     trait Step {
       def name: String
