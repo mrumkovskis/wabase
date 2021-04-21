@@ -165,10 +165,11 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       }
       stepDataF flatMap { stepData =>
         step match {
-          case Evaluation(_, vts, op) => doActionOp(op, transformStepData(stepData, vts), env)
-          case Return(_, vts, op) => doActionOp(op, transformStepData(stepData, vts), env)
+          case Evaluation(n, vts, op) => doActionOp(n, op, transformStepData(stepData, vts), env)
+          case Return(n, vts, op) => doActionOp(n, op, transformStepData(stepData, vts), env)
           case Validations(validations) =>
-            Future(doValidationStep(validations, stepData ++ env)).map(_ => MapResult(stepData))
+            Future(doValidationStep(validations, stepData ++ env, view))
+              .map(_ => MapResult(stepData))
         }
       }
     }
@@ -213,8 +214,10 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       .getOrElse(Future.successful(doViewCall(actionName, view, data, env)))
   }
 
-  protected def doValidationStep(validations: Seq[String], params: Map[String, Any])(implicit res: Resources): Unit = {
-    validationsQueryString(validations) map { vs =>
+  protected def doValidationStep(validations: Seq[String],
+                                 params: Map[String, Any],
+                                 cursorPrefix: String)(implicit res: Resources): Unit = {
+    validationsQueryString(validations, params, cursorPrefix) map { vs =>
       Query(vs, params)
         .map(_.s("msg"))
         .filter(_ != null).filter(_ != "")
@@ -223,6 +226,13 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
         case _ => ()
       }
     }
+  }
+
+  protected def doTresql(tresql: String,
+                         bindVars: Map[String, Any],
+                         cursorPrefix: String)(implicit res: Resources): QuereaseResult = {
+    val tresqlWithCursors = maybeExpandWithBindVarsCursors(tresql, cursorPrefix, bindVars)
+    TresqlResult(Query(tresqlWithCursors)(res.withParams(bindVars)))
   }
 
   protected def doViewCall(method: String,
@@ -297,12 +307,15 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     }.get
   }
 
-  protected def doActionOp(op: Action.Op, data: Map[String, Any], env: Map[String, Any])(
-    implicit res: Resources, ec: ExecutionContext): Future[QuereaseResult] = {
+  protected def doActionOp(stepName: String,
+                           op: Action.Op,
+                           data: Map[String, Any],
+                           env: Map[String, Any])(implicit res: Resources,
+                                                  ec: ExecutionContext): Future[QuereaseResult] = {
     import Action._
     op match {
       case Tresql(tresql) =>
-        Future.successful(TresqlResult(Query(tresql)(res.withParams(data ++ env))))
+        Future.successful(doTresql(tresql, data ++ env, stepName))
       case ViewCall(method, view) =>
         Future.successful(doViewCall(method, view, data, env))
       case Invocation(className, function) =>
@@ -325,13 +338,6 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
         case vts ~ step => vts -> step
       } named "step-with-Vars"
     }
-
-    def parseWithParser[T](p: Parser[T])(expr:String): T = {
-      phrase(p)(new CharSequenceReader(expr)) match {
-        case Success(r, _) => r
-        case x => sys.error(x.toString)
-      }
-    }
   }
 
   object AppQuereaseDefaultParser extends AppQuereaseDefaultParser {
@@ -341,36 +347,26 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
   val tresqlParserCacheSize: Int = 4096
   override val parser: QuereaseExpressions.Parser = this.AppQuereaseDefaultParser
 
-  protected def bindVarsCursorsCreator(cursorPrefix: String, bindVars: Map[String, Any]): parser.Transformer = {
-    def cursorData(vars: List[String]) = {
-      val wabaseQuereaseParser = parser.asInstanceOf[AppQuereaseDefaultParser]
-      implicit val env = new Resources {}.withParams(bindVars)
-      vars match {
-        case Nil => bindVars
-        case l => l.foldLeft(Map[String, Any]()) { (r, v) =>
-          Query(v) match {
-            case SingleValueResult(value) => value match {
-              case m: Map[String, _]@unchecked => r ++ m
-              case x: Any =>
-                r + (wabaseQuereaseParser.parseWithParser(wabaseQuereaseParser.variable)(v).variable -> x)
+  protected def maybeExpandWithBindVarsCursors(tresql: String, cursorPrefix: String, bindVars: Map[String, Any]): String = {
+    if (tresql.indexOf(Action.BindVarCursorsFunctionName) == -1) tresql
+    else {
+      def bindVarsCursorsCreator(cursorPrefix: String, bindVars: Map[String, Any]): parser.Transformer = {
+        parser.transformer {
+          case q @ PQuery(List(
+          Obj(_, _, Join(_, Fun(Action.BindVarCursorsFunctionName, varPars, _, _, _), _), _, _), _*),
+          _, _, _, _, _, _) if varPars.forall(_.isInstanceOf[Variable]) =>
+            val cd = cursorDataForVars(bindVars, varPars.map(_.tresql))
+            parser.parseExp(cursors(cursorData(cd, cursorPrefix, Map())) + " x") match {
+              case With(tables, _) => With(tables, q)
+              case _ => q
             }
-            case x => sys.error(s"Cannot extract variable value from result: $x")
+          case With(tables, query) => bindVarsCursorsCreator(cursorPrefix, bindVars)(query) match {
+            case w: With => With(tables ++ w.tables, w.query)
+            case q: Exp => With(tables, q)
           }
         }
       }
-    }
-    parser.transformer {
-      case q @ PQuery(List(
-        Obj(_, _, Join(_, Fun(Action.BindVarCursorsFunctionName, varPars, _, _, _), _), _, _), _*),
-          _, _, _, _, _, _) if varPars.forall(_.isInstanceOf[Variable]) =>
-        val cd = cursorData(varPars.map(_.tresql))
-        parser.parseExp(cursors(this.cursorData(cd, cursorPrefix, Map())) + " x") match {
-          case With(tables, _) => With(tables, q)
-          case _ => q
-        }
-      case With(tables, query) => bindVarsCursorsCreator(cursorPrefix, bindVars)(query) match {
-        case w: With => With(tables ++ w.tables, w.query)
-      }
+      bindVarsCursorsCreator(cursorPrefix, bindVars)(parser.parseExp(tresql)).tresql
     }
   }
 }
