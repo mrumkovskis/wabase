@@ -34,3 +34,9 @@ class QuereaseActionsSpecs extends QuereaseBaseSpecs {
      true should be(true)
   }
 }
+
+class QuereaseActionTestManager {
+  def personSaveBizMethod(data: Map[String, Any]) = {
+    data + ("name" -> s"Mr. ${data("name")}")
+  }
+}

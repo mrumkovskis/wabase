@@ -45,8 +45,11 @@ fields:
     - balance
     - last_modified
 save:
+- validations:
+      - bind_var_cursors
+      - person_accounts {count(*)} < 3, "person cannot have more than 3 accounts, instead '" || person_accounts {count(*)} || "' encountered"
 - save person
-- org.wabase.QuereaseActionSpecs.bizMethod
+- org.wabase.QuereaseActionTestManager.personSaveBizMethod
 - p: :id -> get person
 - return :p
 
