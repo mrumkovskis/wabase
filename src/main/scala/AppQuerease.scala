@@ -136,7 +136,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
   def doAction(view: String,
                actionName: String,
                data: Map[String, Any],
-               env: Map[String, Any])(
+               env: Map[String, Any])( // TODO get rid from env, combine together with data
     implicit resources: Resources, ec: ExecutionContext): Future[QuereaseResult] = {
     import Action._
     val vd = viewDef(view)
@@ -276,8 +276,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
 
   protected def doInvocation(className: String,
                              function: String,
-                             data: Map[String, Any],
-                             env: Map[String, Any])(
+                             data: Map[String, Any])(
                             implicit res: Resources,
                             ec: ExecutionContext): Future[QuereaseResult] = {
     def qresult(r: Any) = r match {
@@ -294,13 +293,13 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     val clazz = Class.forName(className)
     Try {
       clazz
-        .getMethod(function, classOf[Map[_, _]], classOf[Map[_, _]], classOf[Resources])
-        .invoke(clazz.newInstance, data, env, res)
+        .getMethod(function, classOf[Map[_, _]], classOf[Resources])
+        .invoke(clazz.newInstance, data, res)
     }.recover {
       case _: NoSuchMethodException =>
         clazz
-          .getMethod(function, classOf[Map[_, _]], classOf[Map[_, _]])
-          .invoke(clazz.newInstance, data, env)
+          .getMethod(function, classOf[Map[_, _]])
+          .invoke(clazz.newInstance, data)
     }.map {
       case f: Future[_] => f map qresult
       case x => Future.successful(qresult(x))
@@ -310,7 +309,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
   protected def doActionOp(stepName: String,
                            op: Action.Op,
                            data: Map[String, Any],
-                           env: Map[String, Any])(implicit res: Resources,
+                           env: Map[String, Any])(implicit res: Resources, // TODO get rid from param env, combine with data
                                                   ec: ExecutionContext): Future[QuereaseResult] = {
     import Action._
     op match {
@@ -319,7 +318,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case ViewCall(method, view) =>
         Future.successful(doViewCall(method, view, data, env))
       case Invocation(className, function) =>
-        doInvocation(className, function, data, env)
+        doInvocation(className, function, data ++ env)
       case NoOp => Future.successful(MapResult(data))
     }
   }
