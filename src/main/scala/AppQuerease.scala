@@ -355,7 +355,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
           Obj(_, _, Join(_, Fun(Action.BindVarCursorsFunctionName, varPars, _, _, _), _), _, _), _*),
           _, _, _, _, _, _) if varPars.forall(_.isInstanceOf[Variable]) =>
             val cd = cursorDataForVars(bindVars, varPars.map(_.tresql))
-            parser.parseExp(cursors(cursorData(cd, cursorPrefix, Map())) + " x") match {
+            parser.parseExp(cursorsFromBindVars(cd, cursorPrefix)) match {
               case With(tables, _) => With(tables, q)
               case _ => q
             }
