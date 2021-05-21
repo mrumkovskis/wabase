@@ -1,6 +1,7 @@
 package org.wabase
 
 import java.util.Locale
+
 import org.mojoz.metadata.Type
 import org.mojoz.querease.NotFoundException
 import org.mojoz.querease.FilterType
@@ -9,7 +10,7 @@ import org.tresql._
 import spray.json._
 import com.typesafe.config.Config
 
-import scala.concurrent.{ExecutionContextExecutor, Promise}
+import scala.concurrent.Promise
 import scala.language.existentials
 import scala.language.implicitConversions
 import scala.collection.immutable.TreeMap
@@ -133,7 +134,6 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
     user: User,
     state: ApplicationState = Map[String, Any](),
     completePromise: Promise[Unit],
-    executor: ExecutionContextExecutor,
     doCount: Boolean = false,
     timeoutSeconds: QueryTimeout,
     poolName: PoolName,
@@ -240,7 +240,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
         ctx.copy(count = qe.countAll(params, listFilter(viewName), Map[String, Any]())(
           ManifestFactory.classType(viewNameToClassMap(viewName)), tresqlResources))
       else {
-        val ctxCopy = ctx.copy(result = new AppListResult[Dto] {
+        ctx.copy(result = new AppListResult[Dto] {
           private [this] var closed = false
           private val connection = ConnectionPools(poolName).getConnection
           override val resources = tresqlResources
@@ -271,12 +271,6 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
               closed = true
             }
         })
-
-        ctxCopy.completePromise.future.failed.foreach{ _ =>
-          if (ctxCopy.result != null) ctxCopy.result.close()
-        }(executor)
-
-        ctxCopy
       }
   }
   def stableOrderBy(viewDef: ViewDef, orderBy: String): String = {
@@ -436,8 +430,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
       implicit user: User,
       state: ApplicationState,
       timeoutSeconds: QueryTimeout,
-      poolName: PoolName,
-      executor: ExecutionContextExecutor) =
+      poolName: PoolName) =
     checkApi(viewName, "list", user) {
       val maxLimitForView = viewDef(viewName).limit
       if (maxLimitForView > 0 && limit > maxLimitForView)
@@ -459,16 +452,14 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
       implicit user: User,
       state: ApplicationState,
       timeoutSeconds: QueryTimeout,
-      poolName: PoolName = PoolName(viewDef(viewName).cp),
-      executor: ExecutionContextExecutor) =
+      poolName: PoolName = PoolName(viewDef(viewName).cp)) =
     createListResult(listRaw(viewName, params, offset, limit, orderBy, doCount))
 
   def count(viewName: String, params: Map[String, Any])(
     implicit user: User,
     state: ApplicationState,
     timeoutSeconds: QueryTimeout,
-    poolName: PoolName = PoolName(viewDef(viewName).cp),
-    executor: ExecutionContextExecutor) = checkApi(viewName, "list", user) {
+    poolName: PoolName = PoolName(viewDef(viewName).cp)) = checkApi(viewName, "list", user) {
     val result = listInternal(viewName, params, doCount = true)
     createCountResult(result)
   }
@@ -484,15 +475,14 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
       implicit user: User,
       state: ApplicationState,
       timeoutSeconds: QueryTimeout,
-      poolName: PoolName,
-      executor: ExecutionContextExecutor) = {
+      poolName: PoolName) = {
 
     implicit val clazz = viewNameToClassMap(viewName)
     dbUse {
       val promise = Promise[Unit]()
       try{
         val result = rest(createListCtx(ListContext[Dto](viewName, params, offset, forcedLimit, orderBy,
-          user, state, promise, executor, doCount, timeoutSeconds, poolName)))
+          user, state, promise, doCount, timeoutSeconds, poolName)))
         promise.success(())
         result
       }catch{
