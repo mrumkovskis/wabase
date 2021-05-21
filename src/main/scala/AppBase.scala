@@ -135,7 +135,6 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
     user: User,
     state: ApplicationState = Map[String, Any](),
     completePromise: Promise[Unit],
-    executor: ExecutionContextExecutor,
     doCount: Boolean = false,
     timeoutSeconds: QueryTimeout,
     poolName: PoolName,
@@ -276,7 +275,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
 
         ctxCopy.completePromise.future.failed.foreach{ _ =>
           if (ctxCopy.result != null) ctxCopy.result.close()
-        }(executor)
+        }(scala.concurrent.ExecutionContext.global)
 
         ctxCopy
       }
@@ -438,8 +437,7 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
       implicit user: User,
       state: ApplicationState,
       timeoutSeconds: QueryTimeout,
-      poolName: PoolName,
-      executor: ExecutionContextExecutor) =
+      poolName: PoolName) =
     checkApi(viewName, "list", user) {
       val maxLimitForView = viewDef(viewName).limit
       if (maxLimitForView > 0 && limit > maxLimitForView)
@@ -461,16 +459,14 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
       implicit user: User,
       state: ApplicationState,
       timeoutSeconds: QueryTimeout,
-      poolName: PoolName = PoolName(viewDef(viewName).cp),
-      executor: ExecutionContextExecutor) =
+      poolName: PoolName = PoolName(viewDef(viewName).cp)) =
     createListResult(listRaw(viewName, params, offset, limit, orderBy, doCount))
 
   def count(viewName: String, params: Map[String, Any])(
     implicit user: User,
     state: ApplicationState,
     timeoutSeconds: QueryTimeout,
-    poolName: PoolName = PoolName(viewDef(viewName).cp),
-    executor: ExecutionContextExecutor) = checkApi(viewName, "list", user) {
+    poolName: PoolName = PoolName(viewDef(viewName).cp)) = checkApi(viewName, "list", user) {
     val result = listInternal(viewName, params, doCount = true)
     createCountResult(result)
   }
@@ -486,15 +482,14 @@ trait AppBase[User] extends RowAuthorization with Loggable with QuereaseProvider
       implicit user: User,
       state: ApplicationState,
       timeoutSeconds: QueryTimeout,
-      poolName: PoolName,
-      executor: ExecutionContextExecutor) = {
+      poolName: PoolName) = {
 
     implicit val clazz = viewNameToClassMap(viewName)
     dbUse {
       val promise = Promise[Unit]()
       try{
         val result = rest(createListCtx(ListContext[Dto](viewName, params, offset, forcedLimit, orderBy,
-          user, state, promise, executor, doCount, timeoutSeconds, poolName)))
+          user, state, promise, doCount, timeoutSeconds, poolName)))
         promise.success(())
         result
       }catch{
