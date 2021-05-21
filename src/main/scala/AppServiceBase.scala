@@ -66,6 +66,7 @@ trait AppServiceBase[User]
       complete(app.get(viewName, id, filterPars(params)))
     }
 
+
   def getByNameAction(viewName: String, name: String, value: String)(
     implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
