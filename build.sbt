@@ -1,4 +1,4 @@
-val scalaV = "2.13.4"
+val scalaV = "2.13.6"
 
 val akkaHttpV = "10.2.4"
 val akkaV = "2.6.14"
