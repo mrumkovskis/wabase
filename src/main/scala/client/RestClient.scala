@@ -99,7 +99,6 @@ trait RestClient extends Loggable{
     val plainUri = Uri(requestPath(path))
     lazy val queryStringWithParams = plainUri.rawQueryString.map(_ + "&").getOrElse("") + Query(params.map { case (k, v) => (k, (Option(v).map(_.toString).getOrElse(""))) }.toMap)
     val requestUri = if (params.nonEmpty) plainUri.withRawQueryString(queryStringWithParams) else plainUri
-    logger.debug(s"HTTP GET requestUri: $requestUri")
     for{
       response <- doRequest(HttpRequest(uri = requestUri, headers = headers), cookieStorage)
       responseEntity <- Unmarshal(decodeResponse(response)).to[R]
@@ -109,7 +108,6 @@ trait RestClient extends Loggable{
   def httpPost[T, R](method: HttpMethod, path: String, content: T, headers: iSeq[HttpHeader] = iSeq(), cookieStorage: CookieMap = getCookieStorage)
                          (implicit marshaller: Marshaller[T, RequestEntity], unmarshaller: FromResponseUnmarshaller[R]): Future[R] = {
     val requestUri = requestPath(path)
-    logger.debug(s"HTTP ${method.value} requestUri: $requestUri")
     for{
       requestEntity <- Marshal(content).to[RequestEntity].map { requestEntity =>
         headers.find(_.isInstanceOf[`Content-Type`])
@@ -130,6 +128,7 @@ trait RestClient extends Loggable{
 
   protected def doRequest(req: HttpRequest, cookieStorage: CookieMap, maxRedirects: Int = 20): Future[HttpResponse] = {
     val request = req.withHeaders(req.headers ++ cookieStorage.getCookies)
+    logger.debug(s"HTTP ${request.method.value} ${request.uri}")
     Source.single(request -> ((): Unit)).via(flow).completionTimeout(requestTimeout).runWith(Sink.head).flatMap {
       case (Failure(error), _) =>
         requestFailed(error.getMessage, error, null, null, request)
@@ -144,7 +143,7 @@ trait RestClient extends Loggable{
                 case util.control.NonFatal(e) => requestFailed(e.getMessage, e, response.status, null, request)
               }
             else
-              requestFailed("Too many http redirects", null, response.status, null, request)
+              requestFailed("Too many http redirects", null, response.status, uri.toString, request)
           case _ =>
             Unmarshal(decodeResponse(response).entity).to[String].recover {
               case util.control.NonFatal(e) =>

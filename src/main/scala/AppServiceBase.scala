@@ -515,6 +515,16 @@ object AppServiceBase {
       }
     }
 
+    object TresqExceptionHandler {
+      def apply[User](
+        appService: AppStateExtractor with SessionUserExtractor[User]
+          with ServerStatistics with DeferredCheck with AppI18nService) = ExceptionHandler {
+        case e: org.tresql.TresqlException if e.getCause.isInstanceOf[org.postgresql.util.PSQLException] &&
+          e.getCause.getMessage == PostgresTimeoutExceptionHandler.TimeoutSignature =>
+          PostgresTimeoutExceptionHandler(appService)(e.getCause)
+      }
+    }
+
     /** Handles [[org.wabase.BusinessException]]s and [[org.tresql.MissingBindVariableException]]s and
       * [[org.mojoz.querease.ViewNotFoundException]]*/
     trait SimpleExceptionHandler extends AppExceptionHandler { this: Loggable =>
@@ -539,6 +549,7 @@ object AppServiceBase {
           .withFallback(entityStreamSizeExceptionHandler(this))
           .withFallback(bindVariableExceptionHandler(this.logger, this.bindVariableExceptionResponseMessage))
           .withFallback(PostgresTimeoutExceptionHandler(this))
+          .withFallback(TresqExceptionHandler(this))
           .withFallback(viewNotFoundExceptionHandler)
     }
   }
