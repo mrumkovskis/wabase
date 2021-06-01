@@ -1,11 +1,14 @@
 package org.wabase
 
 import java.util.Locale
-
+import java.sql.SQLException
+import java.lang.RuntimeException
+import org.tresql.ChildSaveException
 import org.yaml.snakeyaml.Yaml
 
 import scala.language.postfixOps
 import scala.jdk.CollectionConverters._
+import scala.util.control.NonFatal
 
 trait DbConstraintMessage {
   def friendlyConstraintErrorMessage[T](f: => T)(implicit locale: Locale): T = friendlyConstraintErrorMessage(null, f)
@@ -94,10 +97,10 @@ object DbConstraintMessage {
     translate(violation.genericMessage, details)
   }
 
-  def getFriendlyConstraintErrorMessage(e: java.sql.SQLException, viewDef: AppMetadata#ViewDef)(implicit locale: Locale): Nothing =
+  def getFriendlyConstraintErrorMessage(e: SQLException, viewDef: AppMetadata#ViewDef)(implicit locale: Locale): Nothing =
     getFriendlyConstraintErrorMessage(e, viewDef, Option(viewDef).map(_.table).orNull)
 
-  def getFriendlyConstraintErrorMessage(e: java.sql.SQLException, viewDef: AppMetadata#ViewDef, tableName: String)(implicit locale: Locale): Nothing = {
+  def getFriendlyConstraintErrorMessage(e: SQLException, viewDef: AppMetadata#ViewDef, tableName: String)(implicit locale: Locale): Nothing = {
     val dbMsg = Option(e.getMessage) getOrElse ""
 
     val violation = e.getSQLState match {
@@ -145,21 +148,29 @@ object DbConstraintMessage {
       customMessage getOrElse postgreSqlConstraintGenericMessage(violation, name)
     throw new BusinessException(friendlyMessage, e)
   }
-
-  override def friendlyConstraintErrorMessage[T](viewDef: AppMetadata#ViewDef , f: => T)(implicit locale: Locale): T = try f catch {
-    case e: java.sql.SQLException => getFriendlyConstraintErrorMessage(e, viewDef)
-    case e: org.tresql.ChildSaveException => e.getCause match {
-      case ee: java.sql.SQLException =>
-        logger.debug(e.getMessage, e)
-        getFriendlyConstraintErrorMessage(ee, viewDef, e.tableName)
-      case _ => throw e
+  override def friendlyConstraintErrorMessage[T](viewDef: AppMetadata#ViewDef, f: => T)(implicit locale: Locale): T = {
+    def onSqlException(e: java.sql.SQLException, originalException: Throwable, tableName: String): T = {
+      logger.debug(originalException.getMessage, originalException)
+      Option(tableName)
+        .map(t => getFriendlyConstraintErrorMessage(e, viewDef, t))
+        .getOrElse(getFriendlyConstraintErrorMessage(e, viewDef))
     }
-    case e: java.lang.RuntimeException => e.getCause match {
-      case ee: java.sql.SQLException =>
-        logger.debug(e.getMessage, e)
-        getFriendlyConstraintErrorMessage(ee, viewDef)
-      case _ => throw e
-   }
+
+    def checkForRuntimeException(exception: Throwable, originalException: Throwable = null, tableName: String = null): T = exception match {
+     case e: java.lang.RuntimeException => e.getCause match {
+       case ee: java.sql.SQLException => onSqlException(ee, Option(originalException).getOrElse(exception), tableName)
+       case _ => throw exception
+     }
+     case _ => throw exception
+    }
+    try f catch {
+      case e: java.sql.SQLException => getFriendlyConstraintErrorMessage(e, viewDef)
+      case e: org.tresql.ChildSaveException => e.getCause match {
+        case ee: java.sql.SQLException => onSqlException(ee, e, e.tableName)
+        case NonFatal(ee) => checkForRuntimeException(ee, e, e.tableName)
+      }
+      case NonFatal(e) => checkForRuntimeException(e)
+    }
   }
  }
 }
