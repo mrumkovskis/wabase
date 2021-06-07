@@ -48,6 +48,19 @@ save:
 - validations:
       - bind_var_cursors
       - person_accounts {count(*)} < 3, "person cannot have more than 3 accounts, instead '" || person_accounts {count(*)} || "' encountered"
+      - transactions_balance(# number, balance) {
+          (person_accounts pa_deb[originator_id = pa_deb.id] transaction deb_tr?
+            { number, sum(amount) amount_deb }(pa_deb.number)) a_deb
+          [a_deb.number = a_cre.number]
+          (person_accounts pa_cre[beneficiary_id = pa_cre.id] transaction cre_tr?
+            { number, sum(amount) amount_cre }(pa_cre.number)) a_cre
+          { a_cre.number, amount_cre - amount_deb }
+        }, wrong_balances(# number, denormalized_balance, transaction_balance) {
+          person_accounts pa[pa.number = tb.number]transactions_balance tb
+          [pa.balance != ta.balance]
+          { pa.number, pa.balance, ta.balance }
+        }, wrong_balances{count(*)} == 0,
+        'Wrong balance for accounts (' || wrong_balances{group_concat(number)} || ')'
 - save person
 - org.wabase.QuereaseActionTestManager.personSaveBizMethod
 - p: :id -> get person
@@ -98,6 +111,7 @@ name: person_with_main_account
 table:
 fields:
 - id
+-
 get:
 - person: get person
 - main_acc_id: account[number = :person.main_account] {id}

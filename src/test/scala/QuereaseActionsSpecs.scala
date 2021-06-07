@@ -28,6 +28,11 @@ class QuereaseActionsSpecs extends QuereaseBaseSpecs {
               VariableTransform("account.balance", Some("acc_balance"))),
             NoOp)))
     }
+    val pVd = querease.viewDef("person")
+    pVd.actions("save").steps.head.isInstanceOf[Action.Validations] should be (true)
+    pVd.actions("save").steps.head.asInstanceOf[Action.Validations].validations.head should be {
+      "bind_var_cursors"
+    }
   }
 
   "person save action" should "return person" in {

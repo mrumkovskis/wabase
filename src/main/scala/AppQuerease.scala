@@ -165,10 +165,10 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       }
       stepDataF flatMap { stepData =>
         step match {
-          case Evaluation(n, vts, op) => doActionOp(n, op, transformStepData(stepData, vts), env)
-          case Return(n, vts, op) => doActionOp(n, op, transformStepData(stepData, vts), env)
+          case Evaluation(n, vts, op) => doActionOp(vd, op, transformStepData(stepData, vts), env)
+          case Return(n, vts, op) => doActionOp(vd, op, transformStepData(stepData, vts), env)
           case Validations(validations) =>
-            Future(doValidationStep(validations, stepData ++ env, view))
+            Future(doValidationStep(validations, stepData ++ env, vd))
               .map(_ => MapResult(stepData))
         }
       }
@@ -216,8 +216,8 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
 
   protected def doValidationStep(validations: Seq[String],
                                  params: Map[String, Any],
-                                 cursorPrefix: String)(implicit res: Resources): Unit = {
-    validationsQueryString(validations, params, cursorPrefix) map { vs =>
+                                 view: ViewDef)(implicit res: Resources): Unit = {
+    validationsQueryString(view, params, validations) map { vs =>
       Query(vs, params)
         .map(_.s("msg"))
         .filter(_ != null).filter(_ != "")
@@ -230,8 +230,8 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
 
   protected def doTresql(tresql: String,
                          bindVars: Map[String, Any],
-                         cursorPrefix: String)(implicit res: Resources): QuereaseResult = {
-    val tresqlWithCursors = maybeExpandWithBindVarsCursors(tresql, cursorPrefix, bindVars)
+                         viewDef: ViewDef)(implicit res: Resources): QuereaseResult = {
+    val tresqlWithCursors = maybeExpandWithBindVarsCursors(tresql, bindVars, viewDef)
     TresqlResult(Query(tresqlWithCursors)(res.withParams(bindVars)))
   }
 
@@ -306,7 +306,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     }.get
   }
 
-  protected def doActionOp(stepName: String,
+  protected def doActionOp(viewDef: ViewDef,
                            op: Action.Op,
                            data: Map[String, Any],
                            env: Map[String, Any])(implicit res: Resources, // TODO get rid from param env, combine with data
@@ -314,7 +314,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     import Action._
     op match {
       case Tresql(tresql) =>
-        Future.successful(doTresql(tresql, data ++ env, stepName))
+        Future.successful(doTresql(tresql, data ++ env, viewDef))
       case ViewCall(method, view) =>
         Future.successful(doViewCall(method, view, data, env))
       case Invocation(className, function) =>
@@ -346,26 +346,25 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
   val tresqlParserCacheSize: Int = 4096
   override val parser: QuereaseExpressions.Parser = this.AppQuereaseDefaultParser
 
-  protected def maybeExpandWithBindVarsCursors(tresql: String, cursorPrefix: String, bindVars: Map[String, Any]): String = {
+  protected def maybeExpandWithBindVarsCursors(tresql: String, env: Map[String, Any], viewDef: ViewDef): String = {
     if (tresql.indexOf(Action.BindVarCursorsFunctionName) == -1) tresql
     else {
-      def bindVarsCursorsCreator(cursorPrefix: String, bindVars: Map[String, Any]): parser.Transformer = {
+      def bindVarsCursorsCreator(bindVars: Map[String, Any]): parser.Transformer = {
         parser.transformer {
           case q @ PQuery(List(
           Obj(_, _, Join(_, Fun(Action.BindVarCursorsFunctionName, varPars, _, _, _), _), _, _), _*),
           _, _, _, _, _, _) if varPars.forall(_.isInstanceOf[Variable]) =>
-            val cd = cursorDataForVars(bindVars, varPars.map(_.tresql))
-            parser.parseExp(cursorsFromBindVars(cd, cursorPrefix)) match {
+            parser.parseExp(cursorsFromViewBindVars(bindVars, viewDef)) match {
               case With(tables, _) => With(tables, q)
               case _ => q
             }
-          case With(tables, query) => bindVarsCursorsCreator(cursorPrefix, bindVars)(query) match {
-            case w: With => With(tables ++ w.tables, w.query)
+          case With(tables, query) => bindVarsCursorsCreator(bindVars)(query) match {
+            case w: With => With(w.tables ++ tables, w.query) //put bind var cursor tables first
             case q: Exp => With(tables, q)
           }
         }
       }
-      bindVarsCursorsCreator(cursorPrefix, bindVars)(parser.parseExp(tresql)).tresql
+      bindVarsCursorsCreator(env)(parser.parseExp(tresql)).tresql
     }
   }
 }
