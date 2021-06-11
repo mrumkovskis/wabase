@@ -4,7 +4,7 @@ script:
   - sbt ++$TRAVIS_SCALA_VERSION clean update compile test it:test versionPolicyCheck
 scala:
   - 2.13.6
-  - 2.12.13
+  - 2.12.14
 jdk:
   - oraclejdk11
   - openjdk11
