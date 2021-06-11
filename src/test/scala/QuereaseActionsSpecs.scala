@@ -6,12 +6,62 @@ class QuereaseActionsSpecs extends QuereaseBaseSpecs {
 
   import AppMetadata._
 
+  object Dtos {
+    class Person extends DtoWithId {
+      var id: java.lang.Long = null
+      var name: String = null
+      var surname: String = null
+      var sex: String = null
+      var birthdate: java.sql.Date = null
+      var main_account: String = null
+      var accounts: List[PersonAccounts] = Nil
+    }
+    class PersonAccounts extends DtoWithId {
+      var id: java.lang.Long = null
+      var number: String = null
+      var balance: String = null
+      var last_modified: java.sql.Timestamp = null
+    }
+    class Person1 extends Person with DtoWithId {}
+    class Payment extends DtoWithId {
+      var id: java.lang.Long = null
+      var originator: String = null
+      var beneficiary: String = null
+      var amount: BigDecimal = null
+      var date_time: java.sql.Timestamp = null
+    }
+    class PersonList extends DtoWithId {
+      var id: java.lang.Long = null
+      var name: String = null
+      var surname: String = null
+      var sex: String = null
+      var birthdate: java.sql.Date = null
+    }
+    class PersonWithMainAccount extends DtoWithId {
+      var id: java.lang.Long = null
+    }
+
+    val viewNameToClass = Map[String, Class[_ <: Dto]](
+      "Person" -> classOf[Person],
+      "PersonAccounts" -> classOf[PersonAccounts],
+      "Person1" -> classOf[Person1],
+      "Payment" -> classOf[Payment],
+      "PersonList" -> classOf[PersonList],
+      "PersonWithMainAccount" -> classOf[PersonWithMainAccount]
+    )
+  }
+
+
   override def beforeAll(): Unit = {
-    querease = new QuereaseBase("/querease-action-specs-metadata.yaml")
+    querease = new QuereaseBase("/querease-action-specs-metadata.yaml") {
+      override lazy val viewNameToClassMap = Dtos.viewNameToClass
+    }
     super.beforeAll()
   }
 
-  "metadata" should "have" in {
+  behavior of "metadata"
+
+  it should "have" in {
     val paVd = querease.viewDef("person_with_main_account")
     paVd.actions("get") should be {
       Action(
@@ -35,7 +85,20 @@ class QuereaseActionsSpecs extends QuereaseBaseSpecs {
     }
   }
 
-  "person save action" should "return person" in {
+  behavior of "person save action"
+  import Dtos._
+
+  it should "fail account count validation" in {
+    val p = new Person
+    val pa = List(new PersonAccounts, new PersonAccounts, new PersonAccounts, new PersonAccounts)
+    true should be(true)
+  }
+
+  it should "fail balance validation" in {
+    true should be(true)
+  }
+
+  it should "return person" in {
      true should be(true)
   }
 }

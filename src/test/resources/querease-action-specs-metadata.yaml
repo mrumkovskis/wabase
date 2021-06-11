@@ -47,22 +47,20 @@ fields:
 save:
 - validations:
       - bind_var_cursors
-      - person_accounts {count(*)} < 3, "person cannot have more than 3 accounts, instead '" || person_accounts {count(*)} || "' encountered"
-      - transactions_balance(# number, balance) {
-          (person_accounts pa_deb[originator_id = pa_deb.id] transaction deb_tr?
+      - ac(# c) { accounts {count(*)} }, ac{c} <= 3, "person cannot have more than 3 accounts, instead '" || ac{c} || "' encountered"
+      - transactions_balance(# number, balance, tr_balance) {
+          (accounts pa_deb[originator_id = pa_deb.id] transaction deb_tr?
             { number, sum(amount) amount_deb }(pa_deb.number)) a_deb
           [a_deb.number = a_cre.number]
-          (person_accounts pa_cre[beneficiary_id = pa_cre.id] transaction cre_tr?
+          (accounts pa_cre[beneficiary_id = pa_cre.id] transaction cre_tr?
             { number, sum(amount) amount_cre }(pa_cre.number)) a_cre
-          { a_cre.number, amount_cre - amount_deb }
-        }, wrong_balances(# number, denormalized_balance, transaction_balance) {
-          person_accounts pa[pa.number = tb.number]transactions_balance tb
-          [pa.balance != ta.balance]
-          { pa.number, pa.balance, ta.balance }
+          { a_cre.number, a_cre.balance, amount_cre - amount_deb }
+        }, wrong_balances(# number, balance, tr_balance) {
+          transactions_balance tb[balance != tr_balance] { number, balance, tr_balance }
         }, wrong_balances{count(*)} == 0,
-        'Wrong balance for accounts (' || wrong_balances{group_concat(number)} || ')'
-- save person
+        'Wrong balance for accounts (' || wrong_balances{group_concat(number || '(' || balance || ' != ' || tr_balance || ')')} || ')'
 - org.wabase.QuereaseActionTestManager.personSaveBizMethod
+- save person
 - p: :id -> get person
 - return :p
 
@@ -75,7 +73,10 @@ save:
 
 
 name: payment
-table: transaction
+table: transaction tr
+joins:
+- tr[tr.originator_id = originator.id]account originator?
+- tr[tr.beneficiary_id = beneficiary.id]account beneficiary?
 fields:
 - id
 - originator  = originator.number  -> = account [number = _] { id }
@@ -86,8 +87,8 @@ save:
 - validations:
     - :amount > 0, 'Wrong amount ' || :amount || '. Amount must be greater than 0'
 - save payment
-- =account[number = :originator] { balance, last_modified } account[number = :originator] { balance - :amount, now() }
-- =account[number = :beneficiary] { balance, last_modified } account[number = :beneficiary] { balance + :amount, now() }
+- =account[number = :originator] { balance, last_modified } [balance - :amount, now()]
+- =account[number = :beneficiary] { balance, last_modified } [balance + :amount, now()]
 - return :id
 
 
@@ -111,7 +112,6 @@ name: person_with_main_account
 table:
 fields:
 - id
--
 get:
 - person: get person
 - main_acc_id: account[number = :person.main_account] {id}
