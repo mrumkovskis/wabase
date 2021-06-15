@@ -2,8 +2,8 @@ package org.wabase
 
 import org.mojoz.querease.QuereaseExpressions.DefaultParser
 import org.tresql._
-import org.mojoz.querease.{NotFoundException, Querease, QuereaseExpressions, ValidationException}
-import org.tresql.parsing.{Exp, ExpTransformer, Fun, Join, Obj, Query => PQuery, Variable, With}
+import org.mojoz.querease.{NotFoundException, Querease, QuereaseExpressions, ValidationException, ValidationResult}
+import org.tresql.parsing.{Exp, Fun, Join, Obj, Variable, With, Query => PQuery}
 import org.wabase.AppMetadata.Action.VariableTransform
 
 import scala.reflect.ManifestFactory
@@ -11,7 +11,6 @@ import spray.json._
 
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Try
-import scala.util.parsing.input.CharSequenceReader
 
 trait QuereaseProvider {
   type QE <: AppQuerease
@@ -99,10 +98,10 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
 
   // TODO after decoupling QereaseIo from Querease this method should be removed
   def saveMap(view: ViewDef,
-           data: Map[String, Any],
-           forceInsert: Boolean = false,
-           filter: String = null,
-           params: Map[String, Any])(implicit resources: Resources): Long = {
+              data: Map[String, Any],
+              params: Map[String, Any],
+              forceInsert: Boolean = false,
+              filter: String = null)(implicit resources: Resources): Long = {
     val mf = ManifestFactory.classType(viewNameToClassMap(view.name)).asInstanceOf[Manifest[DTO]]
     val dto = fill(data.toJson.asJsObject)(mf)
     save(dto, null, forceInsert, filter, params)
@@ -222,7 +221,8 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
         .map(_.s("msg"))
         .filter(_ != null).filter(_ != "")
         .toList match {
-        case messages if messages.nonEmpty => throw new ValidationException(messages.mkString("\n"), Nil)
+        case messages if messages.nonEmpty =>
+          throw new ValidationException(messages.mkString("\n"), List(ValidationResult(Nil, messages)))
         case _ => ()
       }
     }
@@ -262,7 +262,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
         IteratorResult(result(data, int(OffsetKey).getOrElse(0), int(LimitKey).getOrElse(0),
           string(OrderKey).orNull)(mf, res))
       case Save =>
-        NumberResult(saveMap(v, data, false, null, env))
+        NumberResult(saveMap(v, data, env, false, null))
       case Delete =>
         NumberResult(long("id")
           .map { deleteById(v, _, null, env) }

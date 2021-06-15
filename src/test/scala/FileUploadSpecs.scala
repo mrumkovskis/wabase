@@ -3,13 +3,13 @@ package org.wabase
 import java.io.File
 import java.nio.file.Files
 import java.util.UUID
-
 import akka.http.scaladsl.model.HttpEntity.{Chunk, Chunked, Default}
 import akka.http.scaladsl.model._
 import akka.http.scaladsl.testkit.{RouteTestTimeout, ScalatestRouteTest}
 import akka.http.scaladsl.unmarshalling.FromResponseUnmarshaller
 import akka.stream.scaladsl.Source
 import akka.util.ByteString
+import org.scalatest.flatspec.AnyFlatSpec
 import spray.json.{JsObject, JsString}
 import org.wabase.client.CoreClient
 
@@ -17,7 +17,7 @@ import scala.concurrent.duration
 import scala.concurrent.duration.{Duration, FiniteDuration}
 import scala.reflect.ClassTag
 
-class FileUploadSpecs extends QuereaseBaseSpecs with ScalatestRouteTest {
+class FileUploadSpecs extends AnyFlatSpec with QuereaseBaseSpecs with ScalatestRouteTest {
 
   var streamerConfQe: QuereaseProvider with AppFileStreamerConfig = _
 

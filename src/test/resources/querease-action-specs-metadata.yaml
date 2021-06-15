@@ -46,19 +46,20 @@ fields:
     - last_modified
 save:
 - validations:
-      - bind_var_cursors
-      - ac(# c) { accounts {count(*)} }, ac{c} <= 3, "person cannot have more than 3 accounts, instead '" || ac{c} || "' encountered"
-      - transactions_balance(# number, balance, tr_balance) {
-          (accounts pa_deb[originator_id = pa_deb.id] transaction deb_tr?
-            { number, sum(amount) amount_deb }(pa_deb.number)) a_deb
-          [a_deb.number = a_cre.number]
-          (accounts pa_cre[beneficiary_id = pa_cre.id] transaction cre_tr?
-            { number, sum(amount) amount_cre }(pa_cre.number)) a_cre
-          { a_cre.number, a_cre.balance, amount_cre - amount_deb }
-        }, wrong_balances(# number, balance, tr_balance) {
-          transactions_balance tb[balance != tr_balance] { number, balance, tr_balance }
-        }, wrong_balances{count(*)} == 0,
-        'Wrong balance for accounts (' || wrong_balances{group_concat(number || '(' || balance || ' != ' || tr_balance || ')')} || ')'
+  - bind_var_cursors
+  - ac(# c) { accounts {count(*)} }, (ac{c}) <= 3, "person cannot have more than 3 accounts, instead '" || (ac{c}) || "' encountered"
+  - transactions_balance(# number, balance, tr_balance) {
+      (accounts pa_deb[originator_id = pa_deb.id] transaction deb_tr?
+        { number, sum(amount) amount_deb }(pa_deb.number)) a_deb
+      [a_deb.number = a_cre.number]
+      (accounts pa_cre[beneficiary_id = pa_cre.id] transaction cre_tr?
+        { number, sum(amount) amount_cre }(pa_cre.number)) a_cre
+      [a_cre.number = a.number] accounts a
+      { a.number, a.balance, amount_cre - amount_deb }
+    }, wrong_balances(# number, balance, tr_balance) {
+      transactions_balance tb[balance != tr_balance] { number, balance, tr_balance }
+    }, (wrong_balances{count(*)}) = 0,
+    'Wrong balance for accounts (' || (wrong_balances{group_concat(number || '(' || balance || ' != ' || tr_balance || ')')}) || ')'
 - org.wabase.QuereaseActionTestManager.personSaveBizMethod
 - save person
 - p: :id -> get person

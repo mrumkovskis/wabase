@@ -9,12 +9,13 @@ import akka.http.scaladsl.model.ws.TextMessage
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
 import akka.http.scaladsl.testkit.{ScalatestRouteTest, WSProbe}
+import org.scalatest.flatspec.AnyFlatSpec
 
 import scala.concurrent.Future
 import scala.language.implicitConversions
 import scala.util.Try
 
-class DeferredTests extends QuereaseBaseSpecs with ScalatestRouteTest {
+class DeferredTests extends AnyFlatSpec with QuereaseBaseSpecs with ScalatestRouteTest {
 
   var streamerConfQe: QuereaseProvider with AppFileStreamerConfig = _
 
