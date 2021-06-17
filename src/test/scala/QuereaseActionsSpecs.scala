@@ -17,10 +17,9 @@ object Dtos {
   class PersonAccounts extends DtoWithId {
     var id: java.lang.Long = null
     var number: String = null
-    var balance: String = null
+    var balance: BigDecimal = null
     var last_modified: java.sql.Timestamp = null
   }
-  class Person1 extends Person with DtoWithId {}
   class Payment extends DtoWithId {
     var id: java.lang.Long = null
     var originator: String = null
@@ -42,7 +41,6 @@ object Dtos {
   val viewNameToClass = Map[String, Class[_ <: Dto]](
     "person" -> classOf[Person],
     "person_accounts" -> classOf[PersonAccounts],
-    "person1" -> classOf[Person1],
     "payment" -> classOf[Payment],
     "person_list" -> classOf[PersonList],
     "person_with_main_account" -> classOf[PersonWithMainAccount]
@@ -99,14 +97,55 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Asy
     }.map(_.details should be(List(ValidationResult(Nil,
       List("person cannot have more than 3 accounts, instead '4' encountered")
     ))))
+    p.accounts = Nil
+    recoverToExceptionIf[ValidationException] {
+      querease.doAction("person", "save", p.toMap(querease), Map())
+    }.map(_.details should be(List(ValidationResult(Nil,
+      List("person must have at least one account")
+    ))))
   }
 
   it should "fail balance validation" in {
-    true should be(true)
+    val p = new Person
+    val pa = new PersonAccounts
+    pa.number = "AAA"
+    pa.balance = 10
+    p.accounts = List(new PersonAccounts, new PersonAccounts, pa)
+    recoverToExceptionIf[ValidationException] {
+      querease.doAction("person", "save", p.toMap(querease), Map())
+    }.map(_.details should be(List(ValidationResult(Nil,
+      List("Wrong balance for accounts 'AAA(10 != 0.00)'")
+    ))))
+    val pa1 = new PersonAccounts
+    pa1.number = "BBB"
+    pa1.balance = 2
+    p.accounts = List(new PersonAccounts, pa, pa1)
+    recoverToExceptionIf[ValidationException] {
+      querease.doAction("person", "save", p.toMap(querease), Map())
+    }.map(_.details should be(List(ValidationResult(Nil,
+      List("Wrong balance for accounts 'AAA(10 != 0.00),BBB(2 != 0.00)'")
+    ))))
   }
 
   it should "return person" in {
-     true should be(true)
+    val p = new Person
+    p.name = "Kalis"
+    p.surname = "Calis"
+    p.sex = "M"
+    p.birthdate = java.sql.Date.valueOf("1980-12-14")
+    val pa = new PersonAccounts
+    pa.number = "AAA"
+    pa.balance = 0
+    pa.last_modified = java.sql.Timestamp.valueOf("2021-06-17 17:16:00")
+    p.accounts = List(pa)
+    querease.doAction("person", "save", p.toMap(querease), Map()).map {
+      case OptionResult(Some(pers)) => pers.toMap(querease) should be {
+        Map("id" -> 0, "name" -> "Mr. Kalis", "surname" -> "Calis", "sex" -> "M",
+          "birthdate" -> java.sql.Date.valueOf("1980-12-14"), "main_account" -> null, "accounts" ->
+            List(Map("id" -> 1, "number" -> "AAA", "balance" -> 0.00,
+              "last_modified" -> java.sql.Timestamp.valueOf("2021-06-17 17:16:00.0"))))
+      }
+    }
   }
 
   override def customStatements: Seq[String] = super.customStatements ++

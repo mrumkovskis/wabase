@@ -33,6 +33,9 @@ case class IteratorResult(result: AppQuerease#CloseableResult[AppQuerease#DTO]) 
 case class OptionResult(result: Option[AppQuerease#DTO]) extends QuereaseResult
 case class NumberResult(id: Long) extends QuereaseResult
 case class CodeResult(code: String) extends QuereaseResult
+case class IdResult(id: Any) extends QuereaseResult
+
+
 
 trait AppQuereaseIo extends org.mojoz.querease.ScalaDtoQuereaseIo with JsonConverter { self: AppQuerease =>
 
@@ -45,7 +48,12 @@ trait AppQuereaseIo extends org.mojoz.querease.ScalaDtoQuereaseIo with JsonConve
     implicitly[Manifest[B]].runtimeClass.getConstructor().newInstance().asInstanceOf[B {type QE = AppQuerease}].fill(jsObject)(this)
 }
 
-abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata {
+class QuereaseEnvException(val env: Map[String, Any], cause: Exception) extends Exception(cause) {
+  override def getMessage: String = s"Error occured while processing env: ${cause.getMessage}. Env: ${
+    String.valueOf(env)}"
+}
+
+abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata with Loggable {
 
   import AppMetadata._
   override def get[B <: DTO](id: Long, extraFilter: String = null, extraParams: Map[String, Any] = null)(
@@ -132,6 +140,10 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     else result
   }
 
+  private def tryOp[T](op: => T, env: Map[String, Any]) = try op catch {
+    case e: Exception => throw new QuereaseEnvException(env, e)
+  }
+
   def doAction(view: String,
                actionName: String,
                data: Map[String, Any],
@@ -139,50 +151,53 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     implicit resources: Resources, ec: ExecutionContext): Future[QuereaseResult] = {
     import Action._
     val vd = viewDef(view)
-    def dataForNewStep(res: QuereaseResult) = res match {
-      case TresqlResult(tr) => tr match {
-        case dml: DMLResult =>
-          dml.id.map("id" -> _) orElse dml.count getOrElse 0
-        case SingleValueResult(v) => v
-        case ar: ArrayResult[_] => ar.values.toList
-        case r: Result[_] => r.toListOfMaps
-      }
-      case MapResult(mr) => mr
-      case PojoResult(pr) => pr.toMap(this)
-      case ListResult(lr) => lr
-      case IteratorResult(ir) => ir.map(_.toMap(this)).toList
-      case OptionResult(or) => or.map(_.toMap(this))
-      case NumberResult(id) => id
-      case CodeResult(code) => code
-    }
-    def doStep(step: Step, stepDataF: Future[Map[String, Any]]): Future[QuereaseResult] = {
-      def transformStepData(stepData: Map[String, Any], vts: List[VariableTransform]) = {
-        vts.foldLeft(stepData) { (sd, vt) => stepData(vt.form) match {
-          case m: Map[String, _]@unchecked => sd ++ m
-          case x: Any => sd + (vt.to.getOrElse(vt.form) -> x)
-        }}
-      }
-      stepDataF flatMap { stepData =>
-        step match {
-          case Evaluation(n, vts, op) => doActionOp(vd, op, transformStepData(stepData, vts), env)
-          case Return(n, vts, op) => doActionOp(vd, op, transformStepData(stepData, vts), env)
-          case Validations(validations) =>
-            Future(doValidationStep(validations, stepData ++ env, vd))
-              .map(_ => MapResult(stepData))
-        }
-      }
-    }
 
     def doSteps(steps: List[Step],
                 curEnv: Future[Map[String, Any]]): Future[QuereaseResult] = {
+      def dataForNewStep(res: QuereaseResult) = res match {
+        case TresqlResult(tr) => tr match {
+          case dml: DMLResult =>
+            dml.id.map(IdResult(_)) orElse dml.count getOrElse 0
+          case SingleValueResult(v) => v
+          case ar: ArrayResult[_] => ar.values.toList
+          case r: Result[_] => r.toListOfMaps
+        }
+        case MapResult(mr) => mr
+        case PojoResult(pr) => pr.toMap(this)
+        case ListResult(lr) => lr
+        case IteratorResult(ir) => ir.map(_.toMap(this)).toList
+        case OptionResult(or) => or.map(_.toMap(this))
+        case NumberResult(nr) => nr
+        case CodeResult(code) => code
+        case id: IdResult => id
+      }
       def updateCurRes(cr: Map[String, Any], k: String, r: Any) = r match {
-        case it @ ("id", id) => cr
+        case IdResult(id) => cr
           .get("id")
           .filter(i => i != null && i != id)
-          .map(_ => cr + (k -> Map(it)))
+          .map(_ => cr + (k -> Map("id" -> id)))
           .getOrElse(cr + ("id" -> id))
         case r => cr + (k -> r)
       }
+      def doStep(step: Step, stepDataF: Future[Map[String, Any]]): Future[QuereaseResult] = {
+        def transformStepData(stepData: Map[String, Any], vts: List[VariableTransform]) = {
+          vts.foldLeft(stepData) { (sd, vt) => stepData(vt.form) match {
+            case m: Map[String, _]@unchecked => sd ++ m
+            case x => sd + (vt.to.getOrElse(vt.form) -> x)
+          }}
+        }
+        stepDataF flatMap { stepData =>
+          logger.debug(s"Doing view '$view' action '$actionName' step '$step'.\nData: $stepData")
+          step match {
+            case Evaluation(_, vts, op) => doActionOp(vd, op, transformStepData(stepData, vts), env)
+            case Return(_, vts, op) => doActionOp(vd, op, transformStepData(stepData, vts), env)
+            case Validations(validations) =>
+              Future(doValidationStep(validations, stepData ++ env, vd))
+                .map(_ => MapResult(stepData))
+          }
+        }
+      }
+
       steps match {
         case Nil => curEnv map MapResult
         case s :: Nil => doStep(s, curEnv) flatMap { finalRes =>
@@ -242,18 +257,18 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     import Action._
     val v = viewDef(view)
     implicit val mf = ManifestFactory.classType(viewNameToClassMap(v.name)).asInstanceOf[Manifest[DTO]]
-    def long(name: String) = data.get(name).map {
+    def long(name: String) = tryOp(data.get(name).map {
       case x: Long => x
       case x: Number => x.longValue
       case x: String => x.toLong
       case x => x.toString.toLong
-    }
-    def int(name: String) = data.get(name).map {
+    }, data)
+    def int(name: String) = tryOp(data.get(name).map {
       case x: Int => x
       case x: Number => x.intValue
       case x: String => x.toInt
       case x => x.toString.toInt
-    }
+    }, data)
     def string(name: String) = data.get(name) map String.valueOf
     method match {
       case Get =>
@@ -262,7 +277,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
         IteratorResult(result(data, int(OffsetKey).getOrElse(0), int(LimitKey).getOrElse(0),
           string(OrderKey).orNull)(mf, res))
       case Save =>
-        NumberResult(saveMap(v, data, env, false, null))
+        IdResult(saveMap(v, data, env, false, null))
       case Delete =>
         NumberResult(long("id")
           .map { deleteById(v, _, null, env) }

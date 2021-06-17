@@ -12,7 +12,7 @@ table: account
 columns:
 - id
 - number               ! 64
-- balance              ! 64
+- balance              ! decimal 10 2
 - last_modified        ! dateTime
 - person.id            !
 uk:
@@ -44,6 +44,9 @@ fields:
     - number
     - balance
     - last_modified
+validations:
+  - bind_var_cursors
+  - ac(# c) { accounts {count(*)} }, (ac{c}) > 0, "person must have at least one account"
 save:
 - validations:
   - bind_var_cursors
@@ -55,20 +58,12 @@ save:
       (accounts pa_cre[beneficiary_id = pa_cre.id] transaction cre_tr?
         { number, sum(amount) amount_cre }(pa_cre.number)) a_cre
       [a_cre.number = a.number] accounts a
-      { a.number, a.balance, amount_cre - amount_deb }
+      { a.number, a.balance, coalesce(amount_cre - amount_deb, 0) }
     }, wrong_balances(# number, balance, tr_balance) {
       transactions_balance tb[balance != tr_balance] { number, balance, tr_balance }
     }, (wrong_balances{count(*)}) = 0,
-    'Wrong balance for accounts (' || (wrong_balances{group_concat(number || '(' || balance || ' != ' || tr_balance || ')')}) || ')'
-- org.wabase.QuereaseActionTestManager.personSaveBizMethod
-- save person
-- p: :id -> get person
-- return :p
-
-
-name: person1
-extends: person
-save:
+    "Wrong balance for accounts '" || (wrong_balances{group_concat(number || '(' || balance || ' != ' || tr_balance || ')')}) || "'"
+- return org.wabase.QuereaseActionTestManager.personSaveBizMethod
 - save person
 - return get person
 
