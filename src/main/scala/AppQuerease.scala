@@ -112,7 +112,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
               filter: String = null)(implicit resources: Resources): Long = {
     val mf = ManifestFactory.classType(viewNameToClassMap(view.name)).asInstanceOf[Manifest[DTO]]
     val dto = fill(data.toJson.asJsObject)(mf)
-    save(dto, null, forceInsert, filter, params)
+    save(dto, null, forceInsert, filter, data ++ params)
   }
 
   override def delete[B <: DTO](instance: B, filter: String = null, params: Map[String, Any] = null)(
