@@ -171,13 +171,14 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
         case CodeResult(code) => code
         case id: IdResult => id
       }
-      def updateCurRes(cr: Map[String, Any], k: String, r: Any) = r match {
+      def updateCurRes(cr: Map[String, Any], key: Option[String], res: Any) = res match {
         case IdResult(id) => cr
           .get("id")
           .filter(i => i != null && i != id)
-          .map(_ => cr + (k -> Map("id" -> id)))
+          .flatMap(_ => key)
+          .map(k => cr + (k -> Map("id" -> id)))
           .getOrElse(cr + ("id" -> id))
-        case r => cr + (k -> r)
+        case r => key.map(k => cr + (k -> r)).getOrElse(cr)
       }
       def doStep(step: Step, stepDataF: Future[Map[String, Any]]): Future[QuereaseResult] = {
         def transformStepData(stepData: Map[String, Any], vts: List[VariableTransform]) = {
@@ -215,7 +216,9 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
                   curEnv.map(updateCurRes(_, e.name, dataForNewStep(stepRes)))
                 case r: Return => dataForNewStep(stepRes) match {
                   case m: Map[String, Any]@unchecked => Future.successful(m)
-                  case x => Future.successful(Map(r.name -> x))
+                  case x =>
+                    //in the case of primitive value return step must have name
+                    r.name.map(n => Future.successful(Map(n -> x))).getOrElse(curEnv)
                 }
                 case _ => curEnv
               }

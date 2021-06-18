@@ -2,6 +2,7 @@ package org.wabase
 
 import org.mojoz.querease.{ValidationException, ValidationResult}
 import org.scalatest.flatspec.{AsyncFlatSpec, AsyncFlatSpecLike}
+import org.tresql.Query
 import org.wabase.AppMetadata.Action.{Evaluation, NoOp, Tresql, VariableTransform, ViewCall}
 
 object Dtos {
@@ -65,13 +66,13 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Asy
     paVd.actions("get") should be {
       Action(
         List(
-          Evaluation("person", List(), ViewCall("get", "person")),
-          Evaluation("main_acc_id", List(),
+          Evaluation(Some("person"), List(), ViewCall("get", "person")),
+          Evaluation(Some("main_acc_id"), List(),
             Tresql("account[number = :person.main_account] {id}")),
-          Evaluation("account",
+          Evaluation(Some("account"),
             List(VariableTransform("main_acc_id.0.id", Some("id"))),
             ViewCall("get", "account")),
-          Evaluation("4",
+          Evaluation(None,
             List(VariableTransform("person", None),
               VariableTransform("account.number", Some("acc_number")),
               VariableTransform("account.balance", Some("acc_balance"))),
@@ -139,12 +140,69 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Asy
     pa.last_modified = java.sql.Timestamp.valueOf("2021-06-17 17:16:00")
     p.accounts = List(pa)
     querease.doAction("person", "save", p.toMap(querease), Map()).map {
-      case OptionResult(Some(pers)) => pers.toMap(querease) should be {
-        Map("id" -> 0, "name" -> "Mr. Kalis", "surname" -> "Calis", "sex" -> "M",
+      case OptionResult(Some(pers)) => removeIds(pers.toMap(querease)) should be {
+        Map("name" -> "Mr. Kalis", "surname" -> "Calis", "sex" -> "M",
           "birthdate" -> java.sql.Date.valueOf("1980-12-14"), "main_account" -> null, "accounts" ->
-            List(Map("id" -> 1, "number" -> "AAA", "balance" -> 0.00,
+            List(Map("number" -> "AAA", "balance" -> 0.00,
               "last_modified" -> java.sql.Timestamp.valueOf("2021-06-17 17:16:00.0"))))
       }
+    }
+
+    p.name = "Zina"
+    p.surname = "Mina"
+    p.sex = "F"
+    p.birthdate = java.sql.Date.valueOf("1982-12-14")
+    pa.number = "BBB"
+    pa.balance = 0
+    pa.last_modified = java.sql.Timestamp.valueOf("2021-06-19 00:15:00")
+    p.accounts = List(pa)
+    querease.doAction("person", "save", p.toMap(querease), Map()).map {
+      case OptionResult(Some(pers)) => removeIds(pers.toMap(querease)) should be {
+        Map("main_account" -> null, "name" -> "Ms. Zina", "surname" -> "Mina", "sex" -> "F",
+          "birthdate" -> java.sql.Date.valueOf("1982-12-14"), "accounts" ->
+            List(Map("number" -> "BBB", "balance" -> 0.00,
+              "last_modified" -> java.sql.Timestamp.valueOf("2021-06-19 00:15:00.0"))))
+      }
+    }
+  }
+
+  behavior of "payment save action"
+
+  it should "fail amount validation" in {
+    val p = new Payment
+    p.amount = 0
+    p.beneficiary = "AAA"
+    recoverToExceptionIf[ValidationException] {
+      querease.doAction("payment", "save", p.toMap(querease), Map())
+    }.map(_.details should be(List(ValidationResult(Nil,
+      List("Wrong amount 0. Amount must be greater than 0")
+    ))))
+
+    p.originator = "BBB"
+    p.amount = 10
+    recoverToExceptionIf[ValidationException] {
+      querease.doAction("payment", "save", p.toMap(querease), Map())
+    }.map(_.details should be(List(ValidationResult(Nil,
+      List("Insufficient funds for account 'BBB'")
+    ))))
+  }
+
+  it should "register payments" in {
+    val p = new Payment
+    p.amount = 10
+    p.beneficiary = "AAA"
+    querease.doAction("payment", "save", p.toMap(querease), Map()).map { res =>
+      res.getClass.getName should be ("org.wabase.TresqlResult")
+    }.flatMap { _ =>
+      p.originator = "AAA"
+      p.beneficiary = "BBB"
+      p.amount = 2
+      querease.doAction("payment", "save", p.toMap(querease), Map()).map { res =>
+        res.getClass.getName should be ("org.wabase.TresqlResult")
+      }
+    }.map { _ =>
+      Query("account{number, balance}#(1)").toListOfMaps should be(
+        List(Map("number" -> "AAA", "balance" -> 8.00), Map("number" -> "BBB", "balance" -> 2.00)))
     }
   }
 
@@ -182,6 +240,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Asy
 
 class QuereaseActionTestManager {
   def personSaveBizMethod(data: Map[String, Any]) = {
-    data + ("name" -> s"Mr. ${data("name")}")
+    val address = if (data("sex") == "M") "Mr." else "Ms."
+    data + ("name" -> s"$address ${data("name")}")
   }
 }

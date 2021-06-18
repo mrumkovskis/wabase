@@ -331,7 +331,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       def parseAction(actionName: String): Option[Action] = getSeq(actionName, viewDef.extras) match {
         case s if s.isEmpty => None
         case stepSeq: Seq[Any] =>
-          val steps = stepSeq.zipWithIndex.map { case (step, idx) =>
+          val steps = stepSeq.map { step =>
             def parseOp(st: String): Action.Op = {
               if (viewCallRegex.matches(st)) {
                 val viewCallRegex(method, view) = st
@@ -343,7 +343,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
                 Action.Tresql(st)
               }
             }
-            def parseStep(name: String, statement: String): Action.Step = {
+            def parseStep(name: Option[String], statement: String): Action.Step = {
               def parseSt(st: String, varTrs: List[VariableTransform]) = {
                 if (returnRegex.matches(st)) {
                   val returnRegex(ret) = st
@@ -367,7 +367,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
             }
             step match {
               case s: String =>
-                parseStep((idx + 1).toString, s)
+                parseStep(None, s)
               case jm: java.util.Map[String, Any]@unchecked if jm.size() == 1 =>
                 val m = jm.asScala.toMap
                 val (name, value) = m.head
@@ -375,7 +375,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
                   val validations = getSeq(Action.ValidationsKey, m).map(_.toString)
                   Action.Validations(validations)
                 } else {
-                  parseStep(name, value.toString)
+                  parseStep(Option(name), value.toString)
                 }
               case x =>
                 sys.error(s"View '${viewDef.name}' parsing error," +
@@ -475,7 +475,7 @@ object AppMetadata {
 
     trait Op
     trait Step {
-      def name: String
+      def name: Option[String]
     }
 
     case class VariableTransform(form: String, to: Option[String])
@@ -485,10 +485,10 @@ object AppMetadata {
     case class Invocation(className: String, function: String) extends Op
     case object NoOp extends Op
 
-    case class Evaluation(name: String, varTrans: List[VariableTransform], op: Op) extends Step
-    case class Return(name: String, varTrans: List[VariableTransform], value: Op) extends Step
+    case class Evaluation(name: Option[String], varTrans: List[VariableTransform], op: Op) extends Step
+    case class Return(name: Option[String], varTrans: List[VariableTransform], value: Op) extends Step
     case class Validations(validations: Seq[String]) extends Step {
-      def name = ValidationsKey
+      def name = None
     }
   }
 

@@ -78,13 +78,16 @@ fields:
 - originator  = originator.number  -> = account [number = _] { id }
 - beneficiary = beneficiary.number -> = account [number = _] { id }
 - amount
-- date_time -> now()
+- date_time -> = now()
 save:
 - validations:
     - :amount > 0, 'Wrong amount ' || :amount || '. Amount must be greater than 0'
+    - balance(# s) { account[number = :originator] {balance} }, ((balance{s}) = null | (balance{s}) >= :amount),
+        "Insufficient funds for account '" || :originator || "'"
 - save payment
-- =account[number = :originator] { balance, last_modified } [balance - :amount, now()]
-- =account[number = :beneficiary] { balance, last_modified } [balance + :amount, now()]
+- time: "{now() now}"
+- =account[number = :originator] { balance, last_modified } [balance - :amount, :time.0.now]
+- =account[number = :beneficiary] { balance, last_modified } [balance + :amount, :time.0.now]
 - return :id
 
 
@@ -100,8 +103,8 @@ filter:
 - name %~~~%
 - surname %~~~%
 list:
-- data: list person_list
 - count: person[name %~~~% :name? & surname %~~~% :surname] {count(*)}
+- data: list person_list
 
 
 name: person_with_main_account
