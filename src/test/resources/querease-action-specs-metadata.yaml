@@ -113,7 +113,7 @@ fields:
 - id
 get:
 - person: get person
-- main_acc_id: "{coalesce((account[number = :person.main_account] {id}), -1)}"
+- main_acc_id: coalesce((account[number = :person.main_account] {id}), -1)
 - account: (:main_acc_id -> :id) -> get person_accounts
-- account_data: if_defined_or_else(:account.number, :account.number || '(' || :account.balance || ')', '<no main account>')
-- :person + (:account_data -> :main_account) ->
+- main_account_data: if_defined_or_else(:account.number, :account.number || '(' || :account.balance || ')', '<no main account>')
+- :person + (:main_account_data -> :main_account) ->
