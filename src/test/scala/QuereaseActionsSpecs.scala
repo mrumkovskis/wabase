@@ -62,22 +62,6 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Asy
   behavior of "metadata"
 
   it should "have correct data" in {
-    val paVd = querease.viewDef("person_with_main_account")
-    paVd.actions("get") should be {
-      Action(
-        List(
-          Evaluation(Some("person"), List(), ViewCall("get", "person")),
-          Evaluation(Some("main_acc_id"), List(),
-            Tresql("account[number = :person.main_account] {id}")),
-          Evaluation(Some("account"),
-            List(VariableTransform("main_acc_id.0.id", Some("id"))),
-            ViewCall("get", "account")),
-          Evaluation(None,
-            List(VariableTransform("person", None),
-              VariableTransform("account.number", Some("acc_number")),
-              VariableTransform("account.balance", Some("acc_balance"))),
-            NoOp)))
-    }
     val pVd = querease.viewDef("person")
     pVd.actions("save").steps.head.isInstanceOf[Action.Validations] should be (true)
     pVd.actions("save").steps.head.asInstanceOf[Action.Validations].validations.head should be {
@@ -205,6 +189,41 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Asy
         List(Map("number" -> "AAA", "balance" -> 8.00), Map("number" -> "BBB", "balance" -> 2.00)))
     }
   }
+
+  behavior of "person list"
+
+  it should "return person list with count" in {
+    querease.doAction("person_list", "list", Map(), Map()).map {
+      case MapResult(res) => removeIds(res) should be (
+        Map("count" -> 2, "data" ->
+          List(Map("name" -> "Mr. Kalis", "surname" -> "Calis", "sex" -> "M", "birthdate" -> java.sql.Date.valueOf("1980-12-14")),
+            Map("name" -> "Ms. Zina", "surname" -> "Mina", "sex" -> "F", "birthdate" -> java.sql.Date.valueOf("1982-12-14"))))
+      )
+    }
+    querease.doAction("person_list", "list", Map("name" -> "Ms"), Map()).map {
+      case MapResult(res) => removeIds(res) should be (
+        Map("count" -> 2, "data" ->
+          List(Map("name" -> "Mr. Kalis", "surname" -> "Calis", "sex" -> "M", "birthdate" -> java.sql.Date.valueOf("1980-12-14")),
+            Map("name" -> "Ms. Zina", "surname" -> "Mina", "sex" -> "F", "birthdate" -> java.sql.Date.valueOf("1982-12-14"))))
+      )
+    }
+    querease.doAction("person_list", "list", Map("name" -> "Ms"), Map()).map {
+      case MapResult(res) => removeIds(res) should be (
+        Map("name" -> "Ms", "count" -> 1, "data" ->
+          List(Map("name" -> "Ms. Zina", "surname" -> "Mina", "sex" -> "F", "birthdate" -> java.sql.Date.valueOf("1982-12-14"))))
+      )
+    }
+  }
+
+//  behavior of "person with main account"
+//
+//  it should "return person with main account" in {
+//    val name = "Kalis"
+//    val id = Query("person[name %~~% ?] {id}", name).unique[Long]
+//    querease.doAction("person_with_main_account", "get", Map("id" -> id), Map()).map {
+//      res => res should be (1)
+//    }
+//  }
 
   override def customStatements: Seq[String] = super.customStatements ++
     List(

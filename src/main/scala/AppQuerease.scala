@@ -160,13 +160,17 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
             dml.id.map(IdResult(_)) orElse dml.count getOrElse 0
           case SingleValueResult(v) => v
           case ar: ArrayResult[_] => ar.values.toList
-          case r: Result[_] => r.toListOfMaps
+          case r: Result[_] => r.toListOfMaps match {
+            case row :: Nil if row.size == 1 => row.head._2 // unwrap if result is one row, one column
+            case rows => rows
+          }
+
         }
         case MapResult(mr) => mr
         case PojoResult(pr) => pr.toMap(this)
         case ListResult(lr) => lr
         case IteratorResult(ir) => ir.map(_.toMap(this)).toList
-        case OptionResult(or) => or.map(_.toMap(this))
+        case OptionResult(or) => or.map(_.toMap(this)).getOrElse(null)
         case NumberResult(nr) => nr
         case CodeResult(code) => code
         case id: IdResult => id
