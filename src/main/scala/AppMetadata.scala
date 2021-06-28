@@ -7,7 +7,7 @@ import org.mojoz.metadata.in._
 import org.mojoz.metadata.io.MdConventions
 import org.mojoz.metadata.out.SqlGenerator.SimpleConstraintNamingRules
 import org.mojoz.querease._
-import org.wabase.AppMetadata.Action.{NoOp, VariableTransform}
+import org.wabase.AppMetadata.Action.VariableTransform
 
 import scala.collection.immutable.Seq
 import scala.jdk.CollectionConverters._
@@ -332,33 +332,37 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
         case s if s.isEmpty => None
         case stepSeq: Seq[Any] =>
           val steps = stepSeq.map { step =>
-            def parseOp(st: String): Action.Op = {
-              if (viewCallRegex.matches(st)) {
-                val viewCallRegex(method, view) = st
-                Action.ViewCall(method, view)
-              } else if (invocationRegex.matches(st)) {
-                val idx = st.lastIndexOf('.')
-                Action.Invocation(st.substring(0, idx), st.substring(idx + 1))
-              } else {
-                Action.Tresql(st)
-              }
-            }
             def parseStep(name: Option[String], statement: String): Action.Step = {
+              def parseOp(st: String): Action.Op = {
+                if (viewCallRegex.matches(st)) {
+                  val viewCallRegex(method, view) = st
+                  Action.ViewCall(method, view)
+                } else if (invocationRegex.matches(st)) {
+                  val idx = st.lastIndexOf('.')
+                  Action.Invocation(st.substring(0, idx), st.substring(idx + 1))
+                } else {
+                  Action.Tresql(st)
+                }
+              }
               def parseSt(st: String, varTrs: List[VariableTransform]) = {
                 if (returnRegex.matches(st)) {
                   val returnRegex(ret) = st
-                  Action.Return(name, varTrs, parseOp(ret))
+                  Action.Return(name, varTrs,
+                    if (ret.contains("->"))
+                      Try {
+                        val p = parser.asInstanceOf[AppQuereaseDefaultParser] // FIXME get rid of typecast
+                        p.parseWithParser(p.varsTransforms)(ret)
+                      }.toOption.getOrElse(parseOp(ret))
+                    else parseOp(ret)
+                  )
                 } else {
                   Action.Evaluation(name, varTrs, parseOp(st))
                 }
               }
               if (statement.contains("->")) {
                 val p = parser.asInstanceOf[AppQuereaseDefaultParser] // FIXME get rid of typecast
-                Try(p.parseWithParser(p.stepWithVars)(statement))
-                  .map { case (vtrs, st) =>
-                    if (st.isEmpty) Action.Evaluation(name, vtrs, NoOp)
-                    else parseSt(st, vtrs)
-                  }
+                Try(p.parseWithParser(p.stepWithVarsTransform)(statement))
+                  .map { case (vtrs, st) => parseSt(st, vtrs) }
                   .toOption
                   .getOrElse(parseSt(statement, Nil))
               } else {
@@ -483,7 +487,7 @@ object AppMetadata {
     case class Tresql(tresql: String) extends Op
     case class ViewCall(method: String, view: String) extends Op
     case class Invocation(className: String, function: String) extends Op
-    case object NoOp extends Op
+    case class VariableTransforms(transforms: List[VariableTransform]) extends Op
 
     case class Evaluation(name: Option[String], varTrans: List[VariableTransform], op: Op) extends Step
     case class Return(name: Option[String], varTrans: List[VariableTransform], value: Op) extends Step

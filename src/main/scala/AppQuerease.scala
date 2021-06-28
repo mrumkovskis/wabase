@@ -4,7 +4,7 @@ import org.mojoz.querease.QuereaseExpressions.DefaultParser
 import org.tresql._
 import org.mojoz.querease.{NotFoundException, Querease, QuereaseExpressions, ValidationException, ValidationResult}
 import org.tresql.parsing.{Exp, Fun, Join, Obj, Variable, With, Query => PQuery}
-import org.wabase.AppMetadata.Action.VariableTransform
+import org.wabase.AppMetadata.Action.{VariableTransform, VariableTransforms}
 
 import scala.reflect.ManifestFactory
 import spray.json._
@@ -185,17 +185,13 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
         case r => key.map(k => cr + (k -> r)).getOrElse(cr)
       }
       def doStep(step: Step, stepDataF: Future[Map[String, Any]]): Future[QuereaseResult] = {
-        def transformStepData(stepData: Map[String, Any], vts: List[VariableTransform]) = {
-          vts.foldLeft(stepData) { (sd, vt) => stepData(vt.form) match {
-            case m: Map[String, _]@unchecked => sd ++ m
-            case x => sd + (vt.to.getOrElse(vt.form) -> x)
-          }}
-        }
         stepDataF flatMap { stepData =>
           logger.debug(s"Doing view '$view' action '$actionName' step '$step'.\nData: $stepData")
           step match {
-            case Evaluation(_, vts, op) => doActionOp(vd, op, transformStepData(stepData, vts), env)
-            case Return(_, vts, op) => doActionOp(vd, op, transformStepData(stepData, vts), env)
+            case Evaluation(_, vts, op) =>
+              doActionOp(vd, op, doVarsTransforms(vts, stepData, stepData).result, env)
+            case Return(_, vts, op) =>
+              doActionOp(vd, op, doVarsTransforms(vts, stepData, stepData).result, env)
             case Validations(validations) =>
               Future(doValidationStep(validations, stepData ++ env, vd))
                 .map(_ => MapResult(stepData))
@@ -328,6 +324,18 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     }.get
   }
 
+  protected def doVarsTransforms(transforms: List[VariableTransform],
+                                 seed: Map[String, Any],
+                                 data: Map[String, Any]): MapResult = {
+    val transRes = transforms.foldLeft(seed) { (sd, vt) =>
+      data(vt.form) match {
+        case m: Map[String, _]@unchecked => sd ++ m
+        case x => sd + (vt.to.getOrElse(vt.form) -> x)
+      }
+    }
+    MapResult(transRes)
+  }
+
   protected def doActionOp(viewDef: ViewDef,
                            op: Action.Op,
                            data: Map[String, Any],
@@ -341,23 +349,26 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
         Future.successful(doViewCall(method, view, data, env))
       case Invocation(className, function) =>
         doInvocation(className, function, data ++ env)
-      case NoOp => Future.successful(MapResult(data))
+      case VariableTransforms(vts) =>
+        Future.successful(doVarsTransforms(vts, Map[String, Any](), data ++ env))
     }
   }
 
   abstract class AppQuereaseDefaultParser extends DefaultParser {
-    def stepWithVars: MemParser[(List[VariableTransform], String)] = {
-      def varTrans: MemParser[VariableTransform] = {
-        def v2s(v: Variable) = (v.variable :: v.members) mkString "."
-        (variable | ("(" ~> variable ~ "->" ~ variable <~ ")")) ^^ {
-          case v: Variable => VariableTransform(v2s(v), None)
-          case (v1: Variable) ~ _ ~ (v2: Variable) => VariableTransform(v2s(v1), Option(v2s(v2)))
-        }
+    private def varsTransform: MemParser[VariableTransform] = {
+      def v2s(v: Variable) = (v.variable :: v.members) mkString "."
+      (variable | ("(" ~> variable ~ "->" ~ variable <~ ")")) ^^ {
+        case v: Variable => VariableTransform(v2s(v), None)
+        case (v1: Variable) ~ _ ~ (v2: Variable) => VariableTransform(v2s(v1), Option(v2s(v2)))
       }
-
-      (rep1sep(varTrans, "+") ~ ("->" ~> "(?s).*".r)) ^^ {
-        case vts ~ step => vts -> step
-      } named "step-with-Vars"
+    }
+    def varsTransforms: MemParser[VariableTransforms] = {
+      rep1sep(varsTransform, "+") ^^ (VariableTransforms(_)) named "var-transforms"
+    }
+    def stepWithVarsTransform: MemParser[(List[VariableTransform], String)] = {
+      (varsTransforms ~ ("->" ~> "(?s).*".r)) ^^ {
+        case VariableTransforms(vts) ~ step => vts -> step
+      } named "step-with-vars-transform"
     }
   }
 

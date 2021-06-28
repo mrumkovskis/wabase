@@ -3,7 +3,6 @@ package org.wabase
 import org.mojoz.querease.{ValidationException, ValidationResult}
 import org.scalatest.flatspec.{AsyncFlatSpec, AsyncFlatSpecLike}
 import org.tresql.Query
-import org.wabase.AppMetadata.Action.{Evaluation, NoOp, Tresql, VariableTransform, ViewCall}
 
 object Dtos {
   class Person extends DtoWithId {
@@ -215,15 +214,32 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Asy
     }
   }
 
-//  behavior of "person with main account"
-//
-//  it should "return person with main account" in {
-//    val name = "Kalis"
-//    val id = Query("person[name %~~% ?] {id}", name).unique[Long]
-//    querease.doAction("person_with_main_account", "get", Map("id" -> id), Map()).map {
-//      res => res should be (1)
-//    }
-//  }
+  behavior of "person with main account"
+
+  it should "return person with main account" in {
+    val name = "Kalis"
+    val id = Query("person[name %~~% ?] {id}", name).unique[Long]
+    querease.doAction("person_with_main_account", "get", Map("id" -> id), Map()).map {
+      case MapResult(res) => removeKeys(res, Set("id", "last_modified")) should be (Map(
+        "main_account" -> "<no main account>",
+        "name" -> "Mr. Kalis",
+        "surname" -> "Calis",
+        "sex" -> "M",
+        "birthdate" -> java.sql.Date.valueOf("1980-12-14"),
+        "accounts" -> List(Map("number" -> "AAA", "balance" -> 8.00))))
+    }
+    //set main account
+    Query("=person[id = ?] {main_account_id = account[number = 'AAA' & person_id = ?]{id}}", id, id)
+    querease.doAction("person_with_main_account", "get", Map("id" -> id), Map()).map {
+      case MapResult(res) => removeKeys(res, Set("id", "last_modified")) should be (Map(
+        "main_account" -> "AAA(8.00)",
+        "name" -> "Mr. Kalis",
+        "surname" -> "Calis",
+        "sex" -> "M",
+        "birthdate" -> java.sql.Date.valueOf("1980-12-14"),
+        "accounts" -> List(Map("number" -> "AAA", "balance" -> 8.00))))
+    }
+  }
 
   override def customStatements: Seq[String] = super.customStatements ++
     List(

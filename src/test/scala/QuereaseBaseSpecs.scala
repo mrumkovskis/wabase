@@ -80,18 +80,18 @@ trait QuereaseBaseSpecs extends Matchers with BeforeAndAfterAll with Loggable { 
     }
   }
 
-  def removeKey(map: Map[String, Any], key: String): Map[String, Any] = {
+  def removeKeys(map: Map[String, Any], keys: Set[String]): Map[String, Any] = {
     def rk(v: Any): Any = v match {
       case m: Map[String, _] => rm(m)
       case i: Iterable[_] => i map rk
       case x => x
     }
     def rm(m: Map[String, Any]): Map[String, Any] = m.flatMap {
-      case (k, v) if k != key => List(k -> rk(v))
+      case (k, v) if !keys.contains(k) => List(k -> rk(v))
       case _ => Nil
     }
     rm(map)
   }
 
-  def removeIds(map: Map[String, Any]): Map[String, Any] = removeKey(map, "id")
+  def removeIds(map: Map[String, Any]): Map[String, Any] = removeKeys(map, Set("id"))
 }
