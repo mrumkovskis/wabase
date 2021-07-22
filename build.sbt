@@ -1,7 +1,7 @@
 val scalaV = "2.13.6"
 
 val akkaHttpV = "10.2.4"
-val akkaV = "2.6.14"
+val akkaV = "2.6.15"
 
 lazy val dependencies = {
   Seq(
@@ -16,7 +16,7 @@ lazy val dependencies = {
     "org.mojoz"                  %% "querease"                          % "6.0.0-SNAPSHOT",
     "commons-validator"           % "commons-validator"                 % "1.7",
     "commons-codec"               % "commons-codec"                     % "1.15",
-    "org.postgresql"              % "postgresql"                        % "42.2.19",
+    "org.postgresql"              % "postgresql"                        % "42.2.23",
     "com.lambdaworks"             % "scrypt"                            % "1.4.0",
   )
 }
@@ -42,7 +42,7 @@ lazy val wabase = (project in file("."))
   scalaVersion := scalaV,
   crossScalaVersions := Seq(
     scalaV,
-    "2.12.13",
+    "2.12.14",
   ),
   scalacOptions ++= Seq("-unchecked", "-deprecation", "-feature",
     "-Xmacro-settings:metadataFactoryClass=org.mojoz.querease.TresqlMetadataFactory" +
