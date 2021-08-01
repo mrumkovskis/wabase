@@ -84,7 +84,7 @@ save:
   - :amount > 0, 'Wrong amount ' || :amount || '. Amount must be greater than 0'
   - balance(# s) { account[number = :originator] {balance} }, ((balance{s}) = null | (balance{s}) >= :amount),
       "Insufficient funds for account '" || :originator || "'"
-- time: now()
+- time = now()
 - save payment
 - =account[number = :originator] { balance, last_modified } [balance - :amount, :time]
 - =account[number = :beneficiary] { balance, last_modified } [balance + :amount, :time]
@@ -103,8 +103,8 @@ filter:
 - name %~~%
 - surname %~~%
 list:
-- count: person[name %~~% :name? & surname %~~% :surname?] {count(*)}
-- data: list person_list
+- count = person[name %~~% :name? & surname %~~% :surname?] {count(*)}
+- data = list person_list
 
 
 name: person_with_main_account
@@ -112,8 +112,8 @@ table:
 fields:
 - id
 get:
-- person: get person
-- main_acc_id: coalesce((account[number = :person.main_account] {id}), -1)
-- account: (:main_acc_id -> :id) -> get person_accounts
-- main_account_data: if_defined_or_else(:account.number, :account.number || '(' || :account.balance || ')', '<no main account>')
+- person = get person
+- main_acc_id = coalesce((account[number = :person.main_account] {id}), -1)
+- account = (:main_acc_id -> :id) -> get person_accounts
+- main_account_data = if_defined_or_else(:account.number, :account.number || '(' || :account.balance || ')', '<no main account>')
 - return :person + (:main_account_data -> :main_account)

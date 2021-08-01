@@ -332,6 +332,14 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
         case s if s.isEmpty => None
         case stepSeq: Seq[Any] =>
           val steps = stepSeq.map { step =>
+            def parseNamedStep(str: String) = {
+              def isIdent(str: String) = str.nonEmpty &&
+                Character.isJavaIdentifierStart(str.charAt(1)) && str.drop(1).forall(Character.isJavaIdentifierPart)
+              val idx = str.indexOf('=')
+              if (idx != -1 && isIdent(str.substring(0, idx).trim))
+                Some(str.substring(0, idx).trim) -> str.substring(idx + 1).trim
+              else None -> str
+            }
             def parseStep(name: Option[String], statement: String): Action.Step = {
               def parseOp(st: String): Action.Op = {
                 if (viewCallRegex.matches(st)) {
@@ -371,7 +379,8 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
             }
             step match {
               case s: String =>
-                parseStep(None, s)
+                val (name, st) = parseNamedStep(s)
+                parseStep(name, st)
               case jm: java.util.Map[String, Any]@unchecked if jm.size() == 1 =>
                 val m = jm.asScala.toMap
                 val (name, value) = m.head
@@ -379,8 +388,8 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
                   val validations = getSeq(Action.ValidationsKey, m).map(_.toString)
                   Action.Validations(validations)
                 } else {
-                  parseStep(Option(name), value.toString)
-                }
+                  sys.error(s"View '${viewDef.name}' parsing error," +
+                    s"invalid action '$actionName' value: $m")                }
               case x =>
                 sys.error(s"View '${viewDef.name}' parsing error," +
                   s"invalid action '$actionName' value: $x")
