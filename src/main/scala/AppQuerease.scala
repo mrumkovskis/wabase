@@ -357,9 +357,9 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
   abstract class AppQuereaseDefaultParser extends DefaultParser {
     private def varsTransform: MemParser[VariableTransform] = {
       def v2s(v: Variable) = (v.variable :: v.members) mkString "."
-      (variable | ("(" ~> variable ~ "->" ~ variable <~ ")")) ^^ {
+      (variable | ("(" ~> ident ~ "=" ~ variable <~ ")")) ^^ {
         case v: Variable => VariableTransform(v2s(v), None)
-        case (v1: Variable) ~ _ ~ (v2: Variable) => VariableTransform(v2s(v1), Option(v2s(v2)))
+        case (v1: String) ~ _ ~ (v2: Variable) => VariableTransform(v2s(v2), Option(v1))
       }
     }
     def varsTransforms: MemParser[VariableTransforms] = {

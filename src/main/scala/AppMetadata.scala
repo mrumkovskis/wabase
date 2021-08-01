@@ -356,7 +356,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
                 if (returnRegex.matches(st)) {
                   val returnRegex(ret) = st
                   Action.Return(name, varTrs,
-                    if (ret.contains("->"))
+                    if (ret.contains("="))
                       Try {
                         val p = parser.asInstanceOf[AppQuereaseDefaultParser] // FIXME get rid of typecast
                         p.parseWithParser(p.varsTransforms)(ret)

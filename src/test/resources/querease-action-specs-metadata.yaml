@@ -114,6 +114,6 @@ fields:
 get:
 - person = get person
 - main_acc_id = coalesce((account[number = :person.main_account] {id}), -1)
-- account = (:main_acc_id -> :id) -> get person_accounts
+- account = (id = :main_acc_id) -> get person_accounts
 - main_account_data = if_defined_or_else(:account.number, :account.number || '(' || :account.balance || ')', '<no main account>')
-- return :person + (:main_account_data -> :main_account)
+- return :person + (main_account = :main_account_data)
