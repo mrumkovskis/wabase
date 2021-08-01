@@ -103,7 +103,7 @@ filter:
 - name %~~%
 - surname %~~%
 list:
-- count = person[name %~~% :name? & surname %~~% :surname?] {count(*)}
+- count = count person_list
 - data = list person_list
 
 

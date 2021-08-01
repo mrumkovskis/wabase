@@ -476,8 +476,9 @@ object AppMetadata {
     val Save = "save"
     val Delete = "delete"
     val Create = "create"
+    val Count = "count"
     def apply() =
-      Set(Get, List, Save, Delete, Create)
+      Set(Get, List, Save, Delete, Create, Count)
 
     val ValidationsKey = "validations"
     val OffsetKey = "$offset"

@@ -287,6 +287,8 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
           .getOrElse(sys.error(s"id not found in data")))
       case Create =>
         PojoResult(create(data)(mf, res))
+      case Count =>
+        NumberResult(countAll(data))
       case x =>
         sys.error(s"Unknown view action $x")
     }
