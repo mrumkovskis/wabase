@@ -388,7 +388,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
         parser.transformer {
           case q @ PQuery(List(
           Obj(_, _, Join(_, Fun(Action.BindVarCursorsFunctionName, varPars, _, _, _), _), _, _), _*),
-          _, _, _, _, _, _) if varPars.forall(_.isInstanceOf[Variable]) =>
+          _, _, _, _, _, _) if varPars.isEmpty =>
             parser.parseExp(cursorsFromViewBindVars(bindVars, viewDef)) match {
               case With(tables, _) => With(tables, q)
               case _ => q

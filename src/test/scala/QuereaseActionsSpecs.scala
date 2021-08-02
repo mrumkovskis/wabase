@@ -64,7 +64,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Asy
     val pVd = querease.viewDef("person")
     pVd.actions("save").steps.head.isInstanceOf[Action.Validations] should be (true)
     pVd.actions("save").steps.head.asInstanceOf[Action.Validations].validations.head should be {
-      "bind_var_cursors"
+      "build cursors"
     }
   }
 
