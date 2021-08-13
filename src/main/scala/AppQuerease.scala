@@ -34,6 +34,7 @@ case class OptionResult(result: Option[AppQuerease#DTO]) extends QuereaseResult
 case class NumberResult(id: Long) extends QuereaseResult
 case class CodeResult(code: String) extends QuereaseResult
 case class IdResult(id: Any) extends QuereaseResult
+case object NoResult extends QuereaseResult
 
 
 
@@ -174,6 +175,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
         case NumberResult(nr) => nr
         case CodeResult(code) => code
         case id: IdResult => id
+        case NoResult => NoResult
       }
       def updateCurRes(cr: Map[String, Any], key: Option[String], res: Any) = res match {
         case IdResult(id) => cr
@@ -182,6 +184,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
           .flatMap(_ => key)
           .map(k => cr + (k -> Map("id" -> id)))
           .getOrElse(cr + ("id" -> id))
+        case NoResult => cr
         case r => key.map(k => cr + (k -> r)).getOrElse(cr)
       }
       def doStep(step: Step, stepDataF: Future[Map[String, Any]]): Future[QuereaseResult] = {
@@ -308,6 +311,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case r: CloseableResult[DTO]@unchecked => IteratorResult(r)
       case d: DTO@unchecked => PojoResult(d)
       case o: Option[DTO]@unchecked => OptionResult(o)
+      case _: Unit => NoResult
       case x => sys.error(s"Unrecognized result type: ${x.getClass}, value: $x")
     }
     val clazz = Class.forName(className)
