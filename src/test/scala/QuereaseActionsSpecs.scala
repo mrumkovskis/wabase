@@ -278,4 +278,8 @@ class QuereaseActionTestManager {
     val address = if (data("sex") == "M") "Mr." else "Ms."
     data + ("name" -> s"$address ${data("name")}")
   }
+
+  def sendNotifications(data: Map[String, Any]): Unit = {
+    println("Sending person data change notifications")
+  }
 }

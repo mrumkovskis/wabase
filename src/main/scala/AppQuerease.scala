@@ -303,6 +303,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
                             implicit res: Resources,
                             ec: ExecutionContext): Future[QuereaseResult] = {
     def qresult(r: Any) = r match {
+      case null => NoResult // reflection call on function with Unit (void) return type returns null
       case m: Map[String, Any]@unchecked => MapResult(m)
       case l: List[Any] => ListResult(l)
       case r: Result[_] => TresqlResult(r)
@@ -311,7 +312,6 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case r: CloseableResult[DTO]@unchecked => IteratorResult(r)
       case d: DTO@unchecked => PojoResult(d)
       case o: Option[DTO]@unchecked => OptionResult(o)
-      case _: Unit => NoResult
       case x => sys.error(s"Unrecognized result type: ${x.getClass}, value: $x")
     }
     val clazz = Class.forName(className)
