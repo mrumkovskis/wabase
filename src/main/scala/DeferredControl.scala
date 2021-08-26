@@ -104,7 +104,7 @@ trait DeferredControl
     }
   }
 
-  val deferredGraph = GraphDSL.create(new DeferredQueue) { implicit b => deferredQueue =>
+  val deferredGraph = GraphDSL.createGraph(new DeferredQueue) { implicit b => deferredQueue =>
     import GraphDSL.Implicits._
     val entry = b.add(Flow
       .fromFunction(deferredStorage.registerDeferredRequest)
