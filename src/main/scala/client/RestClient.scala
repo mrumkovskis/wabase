@@ -129,7 +129,9 @@ trait RestClient extends Loggable{
   protected def doRequest(req: HttpRequest, cookieStorage: CookieMap, maxRedirects: Int = 20): Future[HttpResponse] = {
     val request = req.withHeaders(req.headers ++ cookieStorage.getCookies)
     logger.debug(s"HTTP ${request.method.value} ${request.uri}")
-    Source.single(request -> ((): Unit)).via(flow).completionTimeout(requestTimeout).runWith(Sink.head).flatMap {
+    Source.single((request, ())).via(flow).completionTimeout(requestTimeout).runWith(Sink.head).recover {
+      case util.control.NonFatal(ex) => (Failure(ex), ())
+    }.flatMap {
       case (Failure(error), _) =>
         requestFailed(error.getMessage, error, null, null, request)
       case (Success(response), _) =>
