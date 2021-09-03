@@ -94,29 +94,20 @@ trait RestClient extends Loggable{
       case util.control.NonFatal(e) => requestFailed(s"Request failed (server: $serverPath, path: $path): ${e.getMessage}", e)
     }
 
-  def httpGet[R](path: String, params: Map[String, Any] = Map.empty, headers: iSeq[HttpHeader] = iSeq(), cookieStorage: CookieMap = getCookieStorage)
+  def httpGet[R](path: String, params: Map[String, Any] = Map.empty, headers: iSeq[HttpHeader] = iSeq(),
+                 cookieStorage: CookieMap = getCookieStorage, timeout: FiniteDuration = requestTimeout)
                      (implicit unmarshaller: FromResponseUnmarshaller[R]): Future[R] = {
     val plainUri = Uri(requestPath(path))
     lazy val queryStringWithParams = plainUri.rawQueryString.map(_ + "&").getOrElse("") + Query(params.map { case (k, v) => (k, (Option(v).map(_.toString).getOrElse(""))) }.toMap)
     val requestUri = if (params.nonEmpty) plainUri.withRawQueryString(queryStringWithParams) else plainUri
     for{
-      response <- doRequest(HttpRequest(uri = requestUri, headers = headers), cookieStorage)
+      response <- doRequest(HttpRequest(uri = requestUri, headers = headers), cookieStorage, timeout)
       responseEntity <- Unmarshal(decodeResponse(response)).to[R]
     } yield responseEntity
   }
 
-  def httpGetWithTimeout[R](path: String, timeout: FiniteDuration, params: Map[String, Any] = Map.empty, headers: iSeq[HttpHeader] = iSeq(), cookieStorage: CookieMap = getCookieStorage)
-                     (implicit unmarshaller: FromResponseUnmarshaller[R]): Future[R] = {
-    val plainUri = Uri(requestPath(path))
-    lazy val queryStringWithParams = plainUri.rawQueryString.map(_ + "&").getOrElse("") + Query(params.map { case (k, v) => (k, (Option(v).map(_.toString).getOrElse(""))) }.toMap)
-    val requestUri = if (params.nonEmpty) plainUri.withRawQueryString(queryStringWithParams) else plainUri
-    for{
-      response <- doRequestWithTimeout(HttpRequest(uri = requestUri, headers = headers), cookieStorage, timeout)
-      responseEntity <- Unmarshal(decodeResponse(response)).to[R]
-    } yield responseEntity
-  }
-
-  def httpPost[T, R](method: HttpMethod, path: String, content: T, headers: iSeq[HttpHeader] = iSeq(), cookieStorage: CookieMap = getCookieStorage)
+  def httpPost[T, R](method: HttpMethod, path: String, content: T, headers: iSeq[HttpHeader] = iSeq(),
+                     cookieStorage: CookieMap = getCookieStorage, timeout: FiniteDuration = requestTimeout)
                          (implicit marshaller: Marshaller[T, RequestEntity], unmarshaller: FromResponseUnmarshaller[R]): Future[R] = {
     val requestUri = requestPath(path)
     for{
@@ -125,21 +116,6 @@ trait RestClient extends Loggable{
           .map(ct => requestEntity.withContentType(ct.asInstanceOf[`Content-Type`].contentType)).getOrElse(requestEntity)
       }
       response <- doRequest(HttpRequest(method = method, uri = requestUri, entity = requestEntity,
-        headers = headers.filterNot(_.isInstanceOf[`Content-Type`])), cookieStorage)
-      responseEntity <- Unmarshal(decodeResponse(response)).to[R]
-    } yield  responseEntity
-
-  }
-
-  def httpPostWithTimeout[T, R](method: HttpMethod, path: String, content: T, timeout: FiniteDuration, headers: iSeq[HttpHeader] = iSeq(), cookieStorage: CookieMap = getCookieStorage)
-                         (implicit marshaller: Marshaller[T, RequestEntity], unmarshaller: FromResponseUnmarshaller[R]): Future[R] = {
-    val requestUri = requestPath(path)
-    for{
-      requestEntity <- Marshal(content).to[RequestEntity].map { requestEntity =>
-        headers.find(_.isInstanceOf[`Content-Type`])
-          .map(ct => requestEntity.withContentType(ct.asInstanceOf[`Content-Type`].contentType)).getOrElse(requestEntity)
-      }
-      response <- doRequestWithTimeout(HttpRequest(method = method, uri = requestUri, entity = requestEntity,
         headers = headers.filterNot(_.isInstanceOf[`Content-Type`])), cookieStorage, timeout)
       responseEntity <- Unmarshal(decodeResponse(response)).to[R]
     } yield  responseEntity
@@ -152,10 +128,7 @@ trait RestClient extends Loggable{
     else if (!uri.startsWith("/") && !serverPath.endsWith("/")) serverPath + "/" + uri
     else serverPath + uri
 
-  protected def doRequest(req: HttpRequest, cookieStorage: CookieMap, maxRedirects: Int = 20): Future[HttpResponse] = {
-    doRequestWithTimeout(req, cookieStorage, requestTimeout, maxRedirects)
-  }
-  protected def doRequestWithTimeout(req: HttpRequest, cookieStorage: CookieMap, timeout: FiniteDuration, maxRedirects: Int = 20): Future[HttpResponse] = {
+  protected def doRequest(req: HttpRequest, cookieStorage: CookieMap, timeout: FiniteDuration, maxRedirects: Int = 20): Future[HttpResponse] = {
     val request = req.withHeaders(req.headers ++ cookieStorage.getCookies)
     logger.debug(s"HTTP ${request.method.value} ${request.uri}")
     Source.single((request, ())).via(flow).completionTimeout(timeout).runWith(Sink.head).recover {
@@ -170,7 +143,7 @@ trait RestClient extends Loggable{
           case (301 | 302 | 303, Some(Location(uri))) =>
             response.discardEntityBytes()
             if (maxRedirects > 0)
-              doRequestWithTimeout(HttpRequest(uri = requestPath(uri.toString), headers = req.headers), cookieStorage, timeout, maxRedirects - 1).recover {
+              doRequest(HttpRequest(uri = requestPath(uri.toString), headers = req.headers), cookieStorage, timeout, maxRedirects - 1).recover {
                 case util.control.NonFatal(e) => requestFailed(e.getMessage, e, response.status, null, request)
               }
             else

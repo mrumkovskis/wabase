@@ -17,6 +17,8 @@ import DeferredControl.`X-Deferred-Hash`
 import akka.http.scaladsl.marshalling.Marshaller
 import akka.pattern.ask
 
+import scala.concurrent.duration.FiniteDuration
+
 trait CoreClient extends RestClient with JsonConverterProvider with BasicJsonMarshalling {
 
   implicit lazy val qe: AppQuerease = initQuerease
@@ -60,14 +62,14 @@ trait CoreClient extends RestClient with JsonConverterProvider with BasicJsonMar
     httpGetAwait[String](pathForDtoCount(viewClass), params).toInt
   def listRaw[T <: Dto](viewClass: Class[T], params: Map[String, Any]): String = httpGetAwait[String](pathForDto(viewClass, null), params) /*in case response is not JSON*/
 
-  override def httpGet[R](path: String, params: Map[String, Any], headers: iSeq[HttpHeader], cookieStorage: CookieMap = getCookieStorage)
+  override def httpGet[R](path: String, params: Map[String, Any], headers: iSeq[HttpHeader], cookieStorage: CookieMap = getCookieStorage, timeout: FiniteDuration)
                               (implicit unmarshaller: FromResponseUnmarshaller[R]): Future[R] = {
-    super.httpGet[(R, iSeq[HttpHeader])](path, params, headers ++ getDefaultApiHeaders(cookieStorage), cookieStorage = cookieStorage).flatMap(handleDeferredResponse[R](cookieStorage))
+    super.httpGet[(R, iSeq[HttpHeader])](path, params, headers ++ getDefaultApiHeaders(cookieStorage), cookieStorage, timeout).flatMap(handleDeferredResponse[R](cookieStorage))
   }
 
-  override def httpPost[T, R](method: HttpMethod, path: String, content: T, headers: iSeq[HttpHeader], cookieStorage: CookieMap = getCookieStorage)
+  override def httpPost[T, R](method: HttpMethod, path: String, content: T, headers: iSeq[HttpHeader], cookieStorage: CookieMap = getCookieStorage, timeout: FiniteDuration)
                                   (implicit marshaller: Marshaller[T, MessageEntity], unmarshaller: FromResponseUnmarshaller[R]): Future[R] =
-    super.httpPost(method, path, content, headers ++ getDefaultApiHeaders(cookieStorage), cookieStorage = cookieStorage)(marshaller = marshaller, unmarshaller = unmarshaller)
+    super.httpPost(method, path, content, headers ++ getDefaultApiHeaders(cookieStorage), cookieStorage, timeout)(marshaller = marshaller, unmarshaller = unmarshaller)
 
   def getDtoListFromJson[T <: Dto](viewClass: Class[T], jsValue: JsValue): List[T] = jsValue match{
     case JsArray(elements) => elements.map(getDtoFromJson(viewClass, _)).toList
