@@ -30,8 +30,8 @@ lazy val testDependencies = Seq(
     "com.vladsch.flexmark"        % "flexmark-all"                      % "0.35.10" % "it,test",
 )
 
-ThisBuild / sbt.Keys.versionScheme := Some("semver-spec")
-ThisBuild / versionPolicyIntention := Compatibility.BinaryAndSourceCompatible
+ThisBuild / versionScheme          := Some("semver-spec")
+ThisBuild / versionPolicyIntention := Compatibility.BinaryCompatible
 
 lazy val wabase = (project in file("."))
   .configs(IntegrationTest extend(Test))
@@ -49,7 +49,7 @@ lazy val wabase = (project in file("."))
       ", tableMetadataFile=" + (baseDirectory.value / "tresql-table-metadata.yaml").getAbsolutePath),
   resolvers += "snapshots" at "https://oss.sonatype.org/content/repositories/snapshots",
   libraryDependencies ++= dependencies ++ testDependencies,
-  apiMappings ++= (fullClasspath in Compile map { fcp =>
+  apiMappings ++= (Compile / fullClasspath map { fcp =>
     // fix bad api mappings,
     val mappings: Map[String, String] =
       fcp.files.map(_.getName).filter(_ startsWith "akka-").filterNot(_ startsWith "akka-http-")
@@ -93,7 +93,7 @@ lazy val wabase = (project in file("."))
     },
   )
   .settings(
-    scalacOptions in (Compile, doc) ++= (baseDirectory map { bd =>
+    Compile / doc / scalacOptions ++= (baseDirectory map { bd =>
       Seq("-sourcepath", bd.getAbsolutePath,
         "-doc-source-url", "https://github.com/mrumkovskis/wabase/blob/develop€{FILE_PATH}.scala")
     }).value)
@@ -106,11 +106,11 @@ lazy val wabase = (project in file("."))
         Some("releases" at nexus + "service/local/staging/deploy/maven2")
     }.value,
     publishMavenStyle := true,
-    publishArtifact in Test := true,
+    Test / publishArtifact := true,
     //publishArtifact in IntegrationTest := true, --does not work, https://github.com/sbt/sbt/issues/2458
-    addArtifact(artifact in (IntegrationTest, packageBin), packageBin in IntegrationTest),
-    addArtifact(artifact in (IntegrationTest, packageDoc), packageDoc in IntegrationTest),
-    addArtifact(artifact in (IntegrationTest, packageSrc), packageSrc in IntegrationTest)
+    addArtifact(IntegrationTest / packageBin / artifact, IntegrationTest / packageBin),
+    addArtifact(IntegrationTest / packageDoc / artifact, IntegrationTest / packageDoc),
+    addArtifact(IntegrationTest / packageSrc / artifact, IntegrationTest / packageSrc)
   )
   .settings(
     pomIncludeRepository := { _ => false },
@@ -150,13 +150,13 @@ lazy val wabase = (project in file("."))
       </developers>
   )
 
-fork in IntegrationTest in ThisBuild := true
-javaOptions in IntegrationTest in ThisBuild := Seq("-Xmx1G")
+ThisBuild / IntegrationTest / fork := true
+ThisBuild / IntegrationTest / javaOptions := Seq("-Xmx1G")
 
-testOptions in Test += Tests.Argument(TestFrameworks.ScalaTest, "-h", "report")
+Test            / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-h", "report")
 
-testOptions in IntegrationTest += Tests.Argument(TestFrameworks.ScalaTest, "-h", "it-report")
+IntegrationTest / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-h", "it-report")
 
-testOptions in Test += Tests.Argument(TestFrameworks.ScalaTest, "-oDS")
+Test            / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-oDS")
 
-testOptions in IntegrationTest += Tests.Argument(TestFrameworks.ScalaTest, "-oDS")
+IntegrationTest / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-oDS")

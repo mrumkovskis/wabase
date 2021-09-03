@@ -105,6 +105,17 @@ trait RestClient extends Loggable{
     } yield responseEntity
   }
 
+  def httpGetWithTimeout[R](path: String, timeout: FiniteDuration, params: Map[String, Any] = Map.empty, headers: iSeq[HttpHeader] = iSeq(), cookieStorage: CookieMap = getCookieStorage)
+                     (implicit unmarshaller: FromResponseUnmarshaller[R]): Future[R] = {
+    val plainUri = Uri(requestPath(path))
+    lazy val queryStringWithParams = plainUri.rawQueryString.map(_ + "&").getOrElse("") + Query(params.map { case (k, v) => (k, (Option(v).map(_.toString).getOrElse(""))) }.toMap)
+    val requestUri = if (params.nonEmpty) plainUri.withRawQueryString(queryStringWithParams) else plainUri
+    for{
+      response <- doRequestWithTimeout(HttpRequest(uri = requestUri, headers = headers), cookieStorage, timeout)
+      responseEntity <- Unmarshal(decodeResponse(response)).to[R]
+    } yield responseEntity
+  }
+
   def httpPost[T, R](method: HttpMethod, path: String, content: T, headers: iSeq[HttpHeader] = iSeq(), cookieStorage: CookieMap = getCookieStorage)
                          (implicit marshaller: Marshaller[T, RequestEntity], unmarshaller: FromResponseUnmarshaller[R]): Future[R] = {
     val requestUri = requestPath(path)
@@ -120,6 +131,21 @@ trait RestClient extends Loggable{
 
   }
 
+  def httpPostWithTimeout[T, R](method: HttpMethod, path: String, content: T, timeout: FiniteDuration, headers: iSeq[HttpHeader] = iSeq(), cookieStorage: CookieMap = getCookieStorage)
+                         (implicit marshaller: Marshaller[T, RequestEntity], unmarshaller: FromResponseUnmarshaller[R]): Future[R] = {
+    val requestUri = requestPath(path)
+    for{
+      requestEntity <- Marshal(content).to[RequestEntity].map { requestEntity =>
+        headers.find(_.isInstanceOf[`Content-Type`])
+          .map(ct => requestEntity.withContentType(ct.asInstanceOf[`Content-Type`].contentType)).getOrElse(requestEntity)
+      }
+      response <- doRequestWithTimeout(HttpRequest(method = method, uri = requestUri, entity = requestEntity,
+        headers = headers.filterNot(_.isInstanceOf[`Content-Type`])), cookieStorage, timeout)
+      responseEntity <- Unmarshal(decodeResponse(response)).to[R]
+    } yield  responseEntity
+
+  }
+
   def requestPath(uri: String) =
     if (uri.startsWith("http://") || uri.startsWith("https://")) uri
     else if (uri.startsWith("/") && serverPath.endsWith("/")) serverPath + uri.drop(1)
@@ -127,9 +153,14 @@ trait RestClient extends Loggable{
     else serverPath + uri
 
   protected def doRequest(req: HttpRequest, cookieStorage: CookieMap, maxRedirects: Int = 20): Future[HttpResponse] = {
+    doRequestWithTimeout(req, cookieStorage, requestTimeout, maxRedirects)
+  }
+  protected def doRequestWithTimeout(req: HttpRequest, cookieStorage: CookieMap, timeout: FiniteDuration, maxRedirects: Int = 20): Future[HttpResponse] = {
     val request = req.withHeaders(req.headers ++ cookieStorage.getCookies)
     logger.debug(s"HTTP ${request.method.value} ${request.uri}")
-    Source.single(request -> ((): Unit)).via(flow).completionTimeout(requestTimeout).runWith(Sink.head).flatMap {
+    Source.single((request, ())).via(flow).completionTimeout(timeout).runWith(Sink.head).recover {
+      case util.control.NonFatal(ex) => (Failure(ex), ())
+    }.flatMap {
       case (Failure(error), _) =>
         requestFailed(error.getMessage, error, null, null, request)
       case (Success(response), _) =>
@@ -139,7 +170,7 @@ trait RestClient extends Loggable{
           case (301 | 302 | 303, Some(Location(uri))) =>
             response.discardEntityBytes()
             if (maxRedirects > 0)
-              doRequest(HttpRequest(uri = requestPath(uri.toString), headers = req.headers), cookieStorage, maxRedirects - 1).recover {
+              doRequestWithTimeout(HttpRequest(uri = requestPath(uri.toString), headers = req.headers), cookieStorage, timeout, maxRedirects - 1).recover {
                 case util.control.NonFatal(e) => requestFailed(e.getMessage, e, response.status, null, request)
               }
             else
