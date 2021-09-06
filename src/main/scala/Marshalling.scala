@@ -263,13 +263,11 @@ trait TresqlResultMarshalling extends AppMarshalling { this: AppServiceBase[_] w
       writer.write(labels.map(escapeValue).mkString("",",","\n"))
       writer.flush
     }
-    override def row(r: Obj) = rowWriter(r.toMap)
-    override def footer() = {}
-
-    def rowWriter(m: Map[String, Any]) = {
-      writer.write(m.values.map(v => csvValue(v)).mkString("",",","\n"))
+    override def row(r: Obj) = {
+      writer.write(r.rowToVector.map(v => csvValue(v)).mkString("",",","\n"))
       writer.flush
     }
+    override def footer() = {}
 
     def csvValue(v: Any): String = Option(v).map{
       case m: Map[String @unchecked, Any @unchecked] => ""
