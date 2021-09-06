@@ -172,6 +172,13 @@ class DeferredTests extends AnyFlatSpec with QuereaseBaseSpecs with ScalatestRou
     processedCount shouldEqual reqCount
   }
 
+  import spray.json._
+  import DefaultJsonProtocol._
+
+  def parseDeferredRequestId(resp: String): String = {
+    resp.parseJson.convertTo[Map[String, String]].apply("deferred")
+  }
+
   "The enableDeferred directive" should "work" in {
     implicit val user = TestUsr(2)
     val route = handleExceptions(service.appExceptionHandler) {
@@ -204,35 +211,29 @@ class DeferredTests extends AnyFlatSpec with QuereaseBaseSpecs with ScalatestRou
 
     var results = Map[String, String]()
 
-    import spray.json._
-    import DefaultJsonProtocol._
-
-    def parseDeferredResponse(resp: String): String =
-     resp.parseJson.convertTo[Map[String, String]].apply("deferred")
-
     Get("/data/action") ~> RawHeader("X-Deferred", "10s") ~> route ~> check {
-      results += (parseDeferredResponse(responseAs[String]) -> "OK")
+      results += (parseDeferredRequestId(responseAs[String]) -> "OK")
       handled shouldBe true
     }
     Get("/data/fault") ~> RawHeader("X-Deferred", "10s") ~> route ~> check {
-      results += (parseDeferredResponse(responseAs[String]) -> "fault")
+      results += (parseDeferredRequestId(responseAs[String]) -> "fault")
       handled shouldBe true
     }
     // no need of X-Deferred header as long-req is in deferredTimeouts
     Get("/data/long-req") ~> route ~> check {
-      results += (parseDeferredResponse(responseAs[String]) -> "long-req:300")
+      results += (parseDeferredRequestId(responseAs[String]) -> "long-req:300")
       handled shouldBe true
     }
     Get("/data/long-req1") ~> RawHeader("X-Deferred", "30s") ~> route ~> check {
-      results += (parseDeferredResponse(responseAs[String]) -> "long-req1:30")
+      results += (parseDeferredRequestId(responseAs[String]) -> "long-req1:30")
       handled shouldBe true
     }
     Get("/data/long-req1") ~> RawHeader("X-Deferred", "100s") ~> route ~> check {
-      results += (parseDeferredResponse(responseAs[String]) -> "Max request timeout exceeded: 100 > 60")
+      results += (parseDeferredRequestId(responseAs[String]) -> "Max request timeout exceeded: 100 > 60")
       handled shouldBe true
     }
     Get("/data/long-req1") ~> RawHeader("X-Deferred", "true") ~> route ~> check {
-      results += (parseDeferredResponse(responseAs[String]) -> "long-req1:60")
+      results += (parseDeferredRequestId(responseAs[String]) -> "long-req1:60")
       handled shouldBe true
     }
 
@@ -270,5 +271,34 @@ class DeferredTests extends AnyFlatSpec with QuereaseBaseSpecs with ScalatestRou
     okCount shouldEqual 4
     errCount shouldEqual 2
     wsClient.sendCompletion()
+  }
+
+  "The deferred directive" should "properly handle exceptions" in {
+    implicit val user = TestUsr(3)
+
+    def err_route(err: Throwable) = service.deferred(user) {
+      complete(throw err)
+    }
+
+    var requests = List[String]()
+
+    Get("/exception") ~> RawHeader("X-Deferred", "true") ~> err_route(new Exception("EXCEPTION!")) ~> check {
+      requests ::= parseDeferredRequestId(responseAs[String])
+      handled shouldBe true
+    }
+
+    Get("/non_fatal_error" /** On fatal error akka initiates JVM exit */) ~>
+      RawHeader("X-Deferred", "true") ~> err_route(new Error("ERROR!")) ~> check {
+      requests ::= parseDeferredRequestId(responseAs[String])
+      handled shouldBe true
+    }
+
+    Thread.sleep(100)
+
+    requests.foreach { req_hash =>
+      Get("/results") ~> service.deferredRequest(req_hash, user) ~> check {
+        responseAs[String].parseJson.convertTo[Map[String, String]].apply("status") shouldBe "ERR"
+      }
+    }
   }
 }

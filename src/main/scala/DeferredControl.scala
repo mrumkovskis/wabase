@@ -131,7 +131,7 @@ trait DeferredControl
   Source.actorRef[DeferredContext](PartialFunction.empty, PartialFunction.empty, 8, OverflowStrategy.dropNew)
    .to(deferredGraph)
    .mapMaterializedValue(EventBus.subscribe(_, DeferredRequestArrived))
-   .withAttributes(ActorAttributes.supervisionStrategy{
+   .withAttributes(ActorAttributes.supervisionStrategy {
      case ex: Exception =>
        logger.error("DeferredGraph crashed", ex)
        Supervision.Resume
@@ -392,7 +392,17 @@ object DeferredControl extends Loggable with AppConfig {
     implicit private lazy val queryTimeout: QueryTimeout = DefaultQueryTimeout.getOrElse(QueryTimeout(10))
 
     override lazy val rootPath =
-      conf.getString("deferred-requests.files.path").replaceAll("/+$", "")
+      Try(conf.getString("deferred-requests.files.path").replaceAll("/+$", "")).recover {
+        case e: Exception =>
+          logger.warn("'app.deferred-requests.files.path' setting indicating directory where to" +
+          "store deferred results not found. Using <app.files.path>/deferred-results directory.")
+          Try(conf.getString("files.path").replaceAll("/+$", "")).getOrElse {
+            logger.error("Neither 'app.deferred-requests.files.path' nor 'app.files.path' configuration setting " +
+              "not found indicating directory for deferred results. Stopping server...")
+            System.exit(-1)
+            ""
+          }
+      }.get
     override lazy val file_info_table =
       Try(conf.getString("deferred-requests.file-info-table")).getOrElse("deferred_file_info")
     override lazy val file_body_info_table =
@@ -430,20 +440,12 @@ object DeferredControl extends Loggable with AppConfig {
       import ctx._
       implicit val usr = userIdString
       serializeHttpResponse(this, result) match {
-        case (bytes, Some(fif)) =>
+        case (bytes, fif) =>
           fif.map { fi =>
             transaction {
               statsRegisterDeferredResult
               tresql"""=deferred_request[$hash] {status, response_time, result, result_file_id, result_file_sha_256 }
                [$status, $responseTime, $bytes, ${fi.id}, ${fi.sha_256}]"""
-              ctx
-            }
-          }
-        case (bytes, None) =>
-          Future.successful {
-            transaction {
-              statsRegisterDeferredResult
-              tresql"""=deferred_request[$hash] {status, response_time, result } [$status, $responseTime, $bytes]"""
               ctx
             }
           }
@@ -459,7 +461,7 @@ object DeferredControl extends Loggable with AppConfig {
           null, r._2, null, r._3, r._4, r._5))
     }
 
-    def cleanupDeferredRequests: Int = transaction{
+    def cleanupDeferredRequests: Int = transaction {
       val old = new java.sql.Timestamp(currentTime - deferredCleanupInterval.toMillis)
       tresql"=deferred_request[status in ($DEFERRED_OK, $DEFERRED_ERR) & response_time < $old] {status} [$DEFERRED_DEL]"
       tresql"deferred_request - [status = $DEFERRED_DEL]" match {
@@ -481,10 +483,7 @@ object DeferredControl extends Loggable with AppConfig {
       tresql"""deferred_request [request_hash = $hash & username = $userIdString &
                  status in ($DEFERRED_OK, $DEFERRED_ERR)] { result, result_file_id, result_file_sha_256 }"""
         .headOption[java.io.InputStream, Long, String]
-        .map {
-          case (in, _, null) =>
-            deserializeHttpMessage(in, None).asInstanceOf[HttpResponse]
-          case (in, id, sha) =>
+        .map { case (in, id, sha) =>
             deserializeHttpMessage(in, Some((this, userIdString, (id, sha)))).asInstanceOf[HttpResponse]
         }
     }
@@ -543,25 +542,15 @@ object DeferredControl extends Loggable with AppConfig {
         s"HttpMessage not serializable, check whether message entity is HttpEntity.Strict:$x")
   }
   def serializeHttpResponse(fs: AppFileStreamer[String], resp: HttpResponse)(
-    implicit user: String, executor: ExecutionContextExecutor, materializer: akka.stream.Materializer): (Array[Byte], Option[Future[FileInfo]]) =
+    implicit user: String, executor: ExecutionContextExecutor, materializer: akka.stream.Materializer): (Array[Byte], Future[FileInfo]) =
   resp match {
-    case HttpResponse(status, headers, HttpEntity.Strict(contentType, content), protocol) =>
-      serialize (
-        ( status,
-          headers map (h => (h.name, h.value)),
-          (contentType.value, content),
-          protocol
-        )
-      ) -> None
     case HttpResponse(status, headers, body, protocol) =>
       serialize (
         ( status,
           headers map (h => (h.name, h.value)),
           protocol
         )
-      ) -> Some(body.dataBytes.runWith(fs.fileSink("deferred result", body.contentType.value)))
-    case x => sys.error(
-      s"HttpMessage not serializable, check whether message entity is HttpEntity.Strict:$x")
+      ) -> body.dataBytes.runWith(fs.fileSink("deferred result", body.contentType.value))
   }
 
   def deserializeHttpMessage(
@@ -610,26 +599,6 @@ object DeferredControl extends Loggable with AppConfig {
                   identity
                 ),
               content),
-            protocol
-          )
-        case
-          ( status: StatusCode,
-            headers: scala.collection.immutable.Seq[(String, String)]@unchecked,
-            (contentType: String, content: ByteString),
-            protocol: HttpProtocol
-          ) =>
-          HttpResponse(
-            status,
-            headers map (h => RawHeader(h._1, h._2)),
-            HttpEntity.Strict(
-              ContentType
-                .parse(contentType)
-                .fold(
-                  err => sys.error(s"Unparsable content type: $err"),
-                  identity
-                ),
-              content
-            ),
             protocol
           )
         case x => sys.error(s"Cannot deserialize http message: $x")
