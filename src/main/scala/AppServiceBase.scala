@@ -494,7 +494,7 @@ object AppServiceBase {
       def apply[User](
         appService: AppStateExtractor with SessionUserExtractor[User]
           with ServerStatistics with DeferredCheck with AppI18nService) = ExceptionHandler {
-       case e: org.postgresql.util.PSQLException if e.getMessage == TimeoutSignature =>
+       case e: org.postgresql.util.PSQLException if e.getMessage.startsWith(TimeoutSignature) =>
         import appService._
         registerTimeout
         (extractUserFromSession & extractRequest & applicationState) { (userOpt, req, appState) =>
