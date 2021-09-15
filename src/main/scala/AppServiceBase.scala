@@ -451,7 +451,13 @@ object AppServiceBase {
     def businessExceptionHandler(logger: com.typesafe.scalalogging.Logger) = ExceptionHandler {
       case e: BusinessException =>
         logger.trace(e.getMessage, e)
-        complete(HttpResponse(InternalServerError, entity = e.getMessage.format(e.getParams(): _*)))
+        complete(HttpResponse(InternalServerError, entity = e.getMessage))
+    }
+
+    def unprocessableEntityExceptionHandler(logger: com.typesafe.scalalogging.Logger) = ExceptionHandler {
+      case e: UnprocessableEntityException =>
+        logger.trace(e.getMessage, e)
+        complete(HttpResponse(UnprocessableEntity, entity = e.getMessage))
     }
 
     def bindVariableExceptionHandler(logger: com.typesafe.scalalogging.Logger,
@@ -530,7 +536,8 @@ object AppServiceBase {
     trait SimpleExceptionHandler extends AppExceptionHandler { this: Loggable =>
       def bindVariableExceptionResponseMessage(e: MissingBindVariableException): String = e.getMessage
       override val appExceptionHandler =
-        businessExceptionHandler(this.logger)
+        unprocessableEntityExceptionHandler(this.logger)
+          .withFallback(businessExceptionHandler(this.logger))
           .withFallback(bindVariableExceptionHandler(this.logger, this.bindVariableExceptionResponseMessage))
           .withFallback(viewNotFoundExceptionHandler)
     }
@@ -544,7 +551,8 @@ object AppServiceBase {
         with BasicJsonMarshalling
         with AppI18nService =>
       override val appExceptionHandler =
-        businessExceptionHandler(this.logger)
+        unprocessableEntityExceptionHandler(this.logger)
+          .withFallback(businessExceptionHandler(this.logger))
           .withFallback(validationExceptionHandler(this.logger))
           .withFallback(entityStreamSizeExceptionHandler(this))
           .withFallback(bindVariableExceptionHandler(this.logger, this.bindVariableExceptionResponseMessage))
