@@ -1,8 +1,8 @@
 package org.wabase
 
 import akka.http.scaladsl.server.PathMatchers.{Remaining, Segment}
-import akka.http.scaladsl.server.{Directive, Route, RoutingLog}
-import akka.http.scaladsl.model.{ContentTypes, HttpEntity, HttpRequest, HttpResponse, MediaType, StatusCodes}
+import akka.http.scaladsl.server.{Directive, Route}
+import akka.http.scaladsl.model.{HttpRequest, HttpResponse, MediaType, StatusCodes}
 import akka.http.scaladsl.model.headers.{ModeledCustomHeader, ModeledCustomHeaderCompanion}
 import akka.http.scaladsl.server.Directives._
 import akka.stream._

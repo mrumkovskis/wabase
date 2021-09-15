@@ -15,7 +15,6 @@ import org.scalatest.flatspec.AnyFlatSpec
 
 import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.Future
-import scala.concurrent.duration.{DurationInt, FiniteDuration}
 import scala.language.implicitConversions
 import scala.util.Try
 
