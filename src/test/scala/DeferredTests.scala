@@ -3,15 +3,19 @@ package org.wabase
 import java.io.File
 import java.nio.file.Files
 import java.util.UUID
-import akka.http.scaladsl.model.StatusCodes
+import akka.http.scaladsl.model.{ContentTypes, HttpEntity, HttpResponse, StatusCodes}
 import akka.http.scaladsl.model.headers._
 import akka.http.scaladsl.model.ws.TextMessage
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
 import akka.http.scaladsl.testkit.{ScalatestRouteTest, WSProbe}
+import akka.stream.scaladsl.Source
+import akka.util.ByteString
 import org.scalatest.flatspec.AnyFlatSpec
 
+import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.Future
+import scala.concurrent.duration.{DurationInt, FiniteDuration}
 import scala.language.implicitConversions
 import scala.util.Try
 
@@ -20,6 +24,8 @@ class DeferredTests extends AnyFlatSpec with QuereaseBaseSpecs with ScalatestRou
   var streamerConfQe: QuereaseProvider with AppFileStreamerConfig = _
 
   var service: TestAppService = _
+
+  var deferredResultFileRootPath: String = _
 
   implicit val queryTimeout = QueryTimeout(10)
   implicit def userToString(user: TestUsr) = user.id.toString
@@ -47,6 +53,9 @@ class DeferredTests extends AnyFlatSpec with QuereaseBaseSpecs with ScalatestRou
 
     streamerConfQe = appl
 
+    deferredResultFileRootPath =
+      new File(System.getProperty("java.io.tmpdir"),"wabase-deferred-results-tests/" + UUID.randomUUID().toString).getPath
+
     service = new TestAppService(system) {
       override def initApp: App = appl
       override def initFileStreamer = appl
@@ -54,12 +63,15 @@ class DeferredTests extends AnyFlatSpec with QuereaseBaseSpecs with ScalatestRou
       override def listOrGetAction(viewName: String)(
         implicit user: TestUsr, state: ApplicationState, timeout: QueryTimeout): Route =
         complete(s"$viewName:${timeout.timeoutSeconds}")
+      override protected def initDeferredStorage = new DbDeferredStorage(appConfig, this, dbAccess, this) {
+        override lazy val rootPath = deferredResultFileRootPath
+      }
     }
   }
 
   override def afterAll(): Unit = {
     super.afterAll()
-    val p = new File(streamerConfQe.rootPath).toPath
+    val p = new File(deferredResultFileRootPath).toPath
     if (p.toFile.exists)
       Files.walk(p).sorted(java.util.Comparator.reverseOrder()).map[File](_.toFile).forEach(_.delete)
   }
@@ -280,20 +292,29 @@ class DeferredTests extends AnyFlatSpec with QuereaseBaseSpecs with ScalatestRou
       complete(throw err)
     }
 
-    var requests = List[String]()
+    def err_marshalling(err: Throwable, len: Int) = service.deferred(user) {
+      complete(HttpResponse(status = StatusCodes.OK,
+        entity = HttpEntity.Default(contentType = ContentTypes.`text/plain(UTF-8)`,
+          contentLength = 1,
+          data = Source.fromIterator[ByteString](() => (1 to len map (ByteString(_))).iterator) ++
+            Source.failed[ByteString](err))))
+    }
+
+    val requests = ArrayBuffer[String]()
 
     Get("/exception") ~> RawHeader("X-Deferred", "true") ~> err_route(new Exception("EXCEPTION!")) ~> check {
-      requests ::= parseDeferredRequestId(responseAs[String])
+      requests += parseDeferredRequestId(responseAs[String])
       handled shouldBe true
     }
 
-    Get("/non_fatal_error" /** On fatal error akka initiates JVM exit */) ~>
-      RawHeader("X-Deferred", "true") ~> err_route(new Error("ERROR!")) ~> check {
-      requests ::= parseDeferredRequestId(responseAs[String])
-      handled shouldBe true
+    0 until 100 foreach { len =>
+      Get("/marshalling_error") ~> err_marshalling(new Exception("Marshalling ere"), len) ~> check {
+        requests += parseDeferredRequestId(responseAs[String])
+        handled shouldBe true
+      }
     }
 
-    Thread.sleep(100)
+    Thread.sleep(1000)
 
     requests.foreach { req_hash =>
       Get("/results") ~> service.deferredRequest(req_hash, user) ~> check {

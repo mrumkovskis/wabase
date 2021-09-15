@@ -16,7 +16,6 @@ import akka.util.ByteString
 import org.tresql._
 
 import scala.util.Failure
-import scala.util.control.NonFatal
 
 object AppFileStreamer {
   private class FieldOrdering(val nameToIndex: Map[String, Int]) extends Ordering[String] {

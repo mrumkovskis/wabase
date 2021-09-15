@@ -6,6 +6,7 @@ import akka.http.scaladsl.model.HttpRequest
 import akka.http.scaladsl.server._
 import akka.stream.{ActorMaterializer, Materializer}
 import org.tresql.ThreadLocalResources
+import org.wabase.DeferredControl.DeferredStorage
 
 import java.io.File
 import java.util.UUID
@@ -57,8 +58,5 @@ class TestAppService(system: ActorSystem) extends ExecutionImpl()(system)
   override def decodeSession(session: String) = ???
   override def signInUser = ???
   override def appVersion: String = "TEST"
-  override protected def initDeferredStorage = new DbDeferredStorage(appConfig, this, dbAccess, this) {
-    override lazy val rootPath =
-      new File(System.getProperty("java.io.tmpdir"),"wabase-deferred-results-tests/" + UUID.randomUUID().toString).getPath
-  }
+  override protected def initDeferredStorage: DeferredStorage = new DbDeferredStorage(appConfig, this, dbAccess, this)
 }

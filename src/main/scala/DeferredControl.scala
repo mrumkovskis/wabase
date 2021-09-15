@@ -2,7 +2,7 @@ package org.wabase
 
 import akka.http.scaladsl.server.PathMatchers.{Remaining, Segment}
 import akka.http.scaladsl.server.{Directive, Route, RoutingLog}
-import akka.http.scaladsl.model.{HttpRequest, HttpResponse, MediaType, StatusCodes}
+import akka.http.scaladsl.model.{ContentTypes, HttpEntity, HttpRequest, HttpResponse, MediaType, StatusCodes}
 import akka.http.scaladsl.model.headers.{ModeledCustomHeader, ModeledCustomHeaderCompanion}
 import akka.http.scaladsl.server.Directives._
 import akka.stream._
@@ -23,6 +23,10 @@ import AppServiceBase._
 import Authentication.SessionInfoRemover
 import com.typesafe.config.Config
 import AppFileStreamer.FileInfo
+import akka.util.ByteString
+
+import scala.annotation.tailrec
+import scala.util.control.NonFatal
 
 trait DeferredControl
   extends DeferredCheck with QueryTimeoutExtractor with DeferredStatusPublisher {
@@ -134,6 +138,7 @@ trait DeferredControl
    .withAttributes(ActorAttributes.supervisionStrategy {
      case ex: Exception =>
        logger.error("DeferredGraph crashed", ex)
+       onRestartDeferred()
        Supervision.Resume
    }).run()
 
@@ -149,7 +154,15 @@ trait DeferredControl
         status = if (response.status.intValue < 400) DEFERRED_OK else DEFERRED_ERR,
         responseTime = new Timestamp(currentTime)
       ))
-    } flatMap identity
+    } recover {
+      case NonFatal(e) =>
+        logger.error(s"Deferred processor error: ${ctx.request.uri}", e)
+        Future.successful(ctx.copy(
+          result = HttpResponse(status = StatusCodes.InternalServerError, entity = "Error processing deferred request"),
+          status = DEFERRED_ERR,
+          responseTime = new Timestamp(currentTime)
+        ))
+    } flatMap identity //unwrap outer future
   }
   def publishDeferredStatus(ctx: DeferredContext) = {
     import EventBus._
@@ -393,15 +406,17 @@ object DeferredControl extends Loggable with AppConfig {
 
     override lazy val rootPath =
       Try(conf.getString("deferred-requests.files.path").replaceAll("/+$", "")).recover {
-        case e: Exception =>
+        case _: Exception =>
           logger.warn("'app.deferred-requests.files.path' setting indicating directory where to" +
           "store deferred results not found. Using <app.files.path>/deferred-results directory.")
-          Try(conf.getString("files.path").replaceAll("/+$", "")).getOrElse {
-            logger.error("Neither 'app.deferred-requests.files.path' nor 'app.files.path' configuration setting " +
-              "not found indicating directory for deferred results. Stopping server...")
-            System.exit(-1)
-            ""
-          }
+          Try(conf.getString("files.path").replaceAll("/+$", ""))
+            .map(_ + "/deferred-results")
+            .getOrElse {
+              logger.error("Neither 'app.deferred-requests.files.path' nor 'app.files.path' configuration setting " +
+                "not found indicating directory for deferred results. Stopping server...")
+              System.exit(-1)
+              ""
+            }
       }.get
     override lazy val file_info_table =
       Try(conf.getString("deferred-requests.file-info-table")).getOrElse("deferred_file_info")
@@ -439,16 +454,27 @@ object DeferredControl extends Loggable with AppConfig {
     def registerDeferredResult(ctx: DeferredContext): Future[DeferredContext] = {
       import ctx._
       implicit val usr = userIdString
-      serializeHttpResponse(this, result) match {
-        case (bytes, fif) =>
-          fif.map { fi =>
-            transaction {
-              statsRegisterDeferredResult
-              tresql"""=deferred_request[$hash] {status, response_time, result, result_file_id, result_file_sha_256 }
-               [$status, $responseTime, $bytes, ${fi.id}, ${fi.sha_256}]"""
-              ctx
-            }
-          }
+      @tailrec
+      def isMarshallingException(e: Throwable): Boolean = e match {
+        case null => false
+        case _: HttpResponseMarshallingException => true
+        case e => isMarshallingException(e.getCause)
+      }
+      val (header, fif) = serializeHttpResponse(this, result)
+      fif.map { fi =>
+        transaction {
+          statsRegisterDeferredResult
+          tresql"""=deferred_request[$hash] {status, response_time, result, result_file_id, result_file_sha_256 }
+            [$status, $responseTime, $header, ${fi.id}, ${fi.sha_256}]"""
+          ctx
+        }
+      }.recoverWith {
+        case NonFatal(e) if isMarshallingException(e) =>
+          logger.error("Error marshalling deferred result", e)
+          registerDeferredResult(ctx.copy(
+            status = DEFERRED_ERR,
+            result = HttpResponse(status = StatusCodes.InternalServerError,
+              entity = "Error marshalling deferred result")))
       }
     }
 
@@ -494,24 +520,20 @@ object DeferredControl extends Loggable with AppConfig {
         .map(deserializeHttpMessage(_, None).asInstanceOf[HttpRequest])
     }
 
-    import HttpMessageSerialization._
-    val ServerRestartResponse = HttpResponse(StatusCodes.InternalServerError,
-      entity = "Server restarted please repeat request")
     def onRestart(): Unit = {
-      val responseTime = new Timestamp(currentTime)
       transaction {
-        tresql"""=deferred_request[status in ($DEFERRED_EXE, $DEFERRED_QUEUE)] {status, response_time, result}
-          [$DEFERRED_ERR, $responseTime, ${serializeHttpResponse(null, ServerRestartResponse)(null, null, null)._1}]"""
+        val c = tresql"""-deferred_request[status in ($DEFERRED_EXE, $DEFERRED_QUEUE)]""".unique[Int]
+        if (c > 0) logger.warn(s"Deleted ($c) uncompleted deferred record(s) on deferred request processor restart")
       }
     }
   }
 
-  import akka.http.scaladsl.model.{HttpMessage, HttpEntity, HttpRequest, HttpResponse, HttpHeader,
+  import akka.http.scaladsl.model.{HttpMessage, HttpEntity, HttpRequest, HttpResponse,
   Uri, ContentType, HttpMethod, HttpProtocol, StatusCode}
  import akka.http.scaladsl.model.headers.RawHeader
- import akka.util.ByteString
 
   object HttpMessageSerialization {
+    class HttpResponseMarshallingException(cause: Throwable) extends Exception(cause)
   def serialize(obj: Serializable) = {
     val bos = new java.io.ByteArrayOutputStream()
     val oos = new java.io.ObjectOutputStream(bos)
@@ -550,7 +572,10 @@ object DeferredControl extends Loggable with AppConfig {
           headers map (h => (h.name, h.value)),
           protocol
         )
-      ) -> body.dataBytes.runWith(fs.fileSink("deferred result", body.contentType.value))
+      ) ->
+        body.dataBytes
+          .mapError { case NonFatal(e) => new HttpResponseMarshallingException(e) }
+          .runWith(fs.fileSink("deferred result", body.contentType.value))
   }
 
   def deserializeHttpMessage(
