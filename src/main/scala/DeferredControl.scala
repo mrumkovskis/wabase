@@ -529,105 +529,109 @@ object DeferredControl extends Loggable with AppConfig {
   }
 
   import akka.http.scaladsl.model.{HttpMessage, HttpEntity, HttpRequest, HttpResponse,
-  Uri, ContentType, HttpMethod, HttpProtocol, StatusCode}
- import akka.http.scaladsl.model.headers.RawHeader
+    Uri, ContentType, HttpMethod, HttpProtocol, StatusCode}
+  import akka.http.scaladsl.model.headers.RawHeader
 
   object HttpMessageSerialization {
     class HttpResponseMarshallingException(cause: Throwable) extends Exception(cause)
-  def serialize(obj: Serializable) = {
-    val bos = new java.io.ByteArrayOutputStream()
-    val oos = new java.io.ObjectOutputStream(bos)
-    oos.writeObject(obj)
-    oos.close
-    bos.toByteArray
-  }
-  def deserialize(in: java.io.InputStream) = {
-    val oin = new java.io.ObjectInputStream(in)
-    val obj = oin.readObject
-    oin.close
-    obj
-  }
-  /* *********************************************************************************************
-  HTTP request & response serialization, deserialization. Media types, headers not serializable :(
-  ************************************************************************************************/
-  def serializeHttpRequest(req: HttpRequest): Array[Byte] = req match {
-      case HttpRequest(method, uri, headers, HttpEntity.Strict(contentType, content), protocol) =>
-        serialize(
-          ( method,
-            uri,
-            headers map (h => (h.name, h.value)),
-            (contentType.value, content),
-            protocol
-          )
-        )
-      case x => sys.error(
-        s"HttpMessage not serializable, check whether message entity is HttpEntity.Strict:$x")
-  }
-  def serializeHttpResponse(fs: AppFileStreamer[String], resp: HttpResponse)(
-    implicit user: String, executor: ExecutionContextExecutor, materializer: akka.stream.Materializer): (Array[Byte], Future[FileInfo]) =
-  resp match {
-    case HttpResponse(status, headers, body, protocol) =>
-      serialize (
-        ( status,
-          headers map (h => (h.name, h.value)),
-          protocol
-        )
-      ) ->
-        body.dataBytes
-          .mapError { case NonFatal(e) => new HttpResponseMarshallingException(e) }
-          .runWith(fs.fileSink("deferred result", body.contentType.value))
-  }
 
-  def deserializeHttpMessage(
-                              in: java.io.InputStream,
-                              fileBody: Option[(AppFileStreamer[String], String, (Long, String))]): HttpMessage =
-    fileBody.map {
-      case (fs, usr, (fid, sha)) =>
+    def serialize(obj: Serializable) = {
+      val bos = new java.io.ByteArrayOutputStream()
+      val oos = new java.io.ObjectOutputStream(bos)
+      oos.writeObject(obj)
+      oos.close
+      bos.toByteArray
+    }
+    def deserialize(in: java.io.InputStream) = {
+      val oin = new java.io.ObjectInputStream(in)
+      val obj = oin.readObject
+      oin.close
+      obj
+    }
+    /* *********************************************************************************************
+    HTTP request & response serialization, deserialization. Media types, headers not serializable :(
+    ************************************************************************************************/
+    def serializeHttpRequest(req: HttpRequest): Array[Byte] = req match {
+        case HttpRequest(method, uri, headers, HttpEntity.Strict(contentType, content), protocol) =>
+          serialize(
+            ( method,
+              uri,
+              headers map (h => (h.name, h.value)),
+              (contentType.value, content),
+              protocol
+            )
+          )
+        case x => sys.error(
+          s"HttpMessage not serializable, check whether message entity is HttpEntity.Strict:$x")
+    }
+    def serializeHttpResponse(fs: AppFileStreamer[String],
+                              resp: HttpResponse)(implicit user: String,
+                                                  executor: ExecutionContextExecutor,
+                                                  materializer: Materializer): (Array[Byte], Future[FileInfo]) =
+      resp match {
+        case HttpResponse(status, headers, body, protocol) =>
+          serialize (
+            ( status,
+              headers map (h => (h.name, h.value)),
+              protocol
+            )
+          ) ->
+            body.dataBytes
+              .mapError { case NonFatal(e) => new HttpResponseMarshallingException(e) }
+              .runWith(fs.fileSink("deferred result", body.contentType.value))
+      }
+
+    def deserializeHttpMessage(
+                                in: java.io.InputStream,
+                                fileBody: Option[(AppFileStreamer[String], String, (Long, String))]): HttpMessage =
+      fileBody.map {
+        case (fs, usr, (fid, sha)) =>
+          deserialize(in) match {
+            case (status: StatusCode, headers: scala.collection.immutable.Seq[(String, String)]@unchecked, protocol: HttpProtocol) =>
+              fs.getFileInfo(fid, sha)(usr)
+                .map { fi =>
+                  HttpResponse(status = status
+                    , headers = headers map (h => RawHeader(h._1, h._2))
+                    , entity =
+                        HttpEntity.Default(
+                          // This will always be MediaType.Binary, if 2nd param is true
+                          // application/octet-stream as a fallback
+                          MediaType.custom(Option(fi.content_type).filter(_ != null).filter(_ != "")
+                            .getOrElse("application/octet-stream"), true)
+                            .asInstanceOf[MediaType.Binary],
+                          fi.size,
+                          fi.source
+                        )
+                    , protocol = protocol
+                  )
+                }.getOrElse(HttpResponse(status = StatusCodes.NotFound, entity = "Result not found"))
+            case x => sys.error(s"Cannot deserialize http message: $x")
+          }
+      }.getOrElse {
         deserialize(in) match {
-          case (status: StatusCode, headers: scala.collection.immutable.Seq[(String, String)]@unchecked, protocol: HttpProtocol) =>
-            fs.getFileInfo(fid, sha)(usr)
-              .map { fi =>
-                HttpResponse(status = status
-                  , headers = headers map (h => RawHeader(h._1, h._2))
-                  , entity =
-                      HttpEntity.Default(
-                        // This will always be MediaType.Binary, if 2nd param is true
-                        // application/octet-stream as a fallback
-                        MediaType.custom(Option(fi.content_type).filter(_ != null).filter(_ != "").getOrElse("application/octet-stream"), true)
-                          .asInstanceOf[MediaType.Binary],
-                        fi.size,
-                        fi.source
-                      )
-                  , protocol = protocol
-                )
-              }.getOrElse(HttpResponse(status = StatusCodes.NotFound, entity = "Result not found"))
+          case
+            ( method: HttpMethod,
+              uri: Uri,
+              headers: scala.collection.immutable.Seq[(String, String)]@unchecked,
+              (contentType: String, content: ByteString),
+              protocol: HttpProtocol
+            ) =>
+            HttpRequest(
+              method,
+              uri,
+              headers map (h => RawHeader(h._1, h._2)),
+              HttpEntity.Strict(
+                ContentType
+                  .parse(contentType)
+                  .fold(
+                    err => sys.error(s"Unparsable content type: $err"),
+                    identity
+                  ),
+                content),
+              protocol
+            )
           case x => sys.error(s"Cannot deserialize http message: $x")
         }
-    }.getOrElse {
-      deserialize(in) match {
-        case
-          ( method: HttpMethod,
-            uri: Uri,
-            headers: scala.collection.immutable.Seq[(String, String)]@unchecked,
-            (contentType: String, content: ByteString),
-            protocol: HttpProtocol
-          ) =>
-          HttpRequest(
-            method,
-            uri,
-            headers map (h => RawHeader(h._1, h._2)),
-            HttpEntity.Strict(
-              ContentType
-                .parse(contentType)
-                .fold(
-                  err => sys.error(s"Unparsable content type: $err"),
-                  identity
-                ),
-              content),
-            protocol
-          )
-        case x => sys.error(s"Cannot deserialize http message: $x")
       }
-    }
   }
 }
