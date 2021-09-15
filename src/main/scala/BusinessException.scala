@@ -12,3 +12,6 @@ object BusinessException {
   def apply(message: String):BusinessException = new BusinessException(message, null, Nil: _*)
   def apply(message: String, cause: Throwable):BusinessException = new BusinessException(message, cause, Nil: _*)
 }
+
+class UnprocessableEntityException(message: String, cause: Throwable, params: Any*)
+  extends BusinessException(message, cause, params: _*)
