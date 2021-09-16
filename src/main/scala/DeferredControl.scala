@@ -276,6 +276,10 @@ trait DeferredControl
   protected def doCleanup: Int = deferredStorage.cleanupDeferredRequests
 
   def onRestartDeferred(): Unit = deferredStorage.onRestart()
+
+  def fileStreamerConfig: Option[AppFileStreamerConfig] = {
+    Option(deferredStorage).collect { case ds: DbDeferredStorage => ds }
+  }
 }
 
 object DeferredControl extends Loggable with AppConfig {
