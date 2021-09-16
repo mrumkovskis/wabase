@@ -342,10 +342,10 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
             }
             def parseStep(name: Option[String], statement: String): Action.Step = {
               def parseOp(st: String): Action.Op = {
-                if (viewCallRegex.matches(st)) {
+                if (viewCallRegex.pattern.matcher(st).matches) {
                   val viewCallRegex(method, view) = st
                   Action.ViewCall(method, view)
-                } else if (invocationRegex.matches(st)) {
+                } else if (invocationRegex.pattern.matcher(st).matches) {
                   val idx = st.lastIndexOf('.')
                   Action.Invocation(st.substring(0, idx), st.substring(idx + 1))
                 } else {
@@ -353,7 +353,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
                 }
               }
               def parseSt(st: String, varTrs: List[VariableTransform]) = {
-                if (returnRegex.matches(st)) {
+                if (returnRegex.pattern.matcher(st).matches) {
                   val returnRegex(ret) = st
                   Action.Return(name, varTrs,
                     if (ret.contains("="))

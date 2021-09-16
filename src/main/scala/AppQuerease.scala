@@ -28,7 +28,7 @@ case class PojoResult(result: AppQuerease#DTO) extends QuereaseResult
 // TODO after decoupling QereaseIo from Querease this class should be refactored to ListResult[X]
 case class ListResult(result: List[Any]) extends QuereaseResult
 // TODO after decoupling QereaseIo from Querease this class should be refactored to IteratorResult[X]
-case class IteratorResult(result: AppQuerease#CloseableResult[AppQuerease#DTO]) extends QuereaseResult
+case class IteratorResult(result: Iterator[AppQuerease#DTO] with AutoCloseable) extends QuereaseResult
 // TODO after decoupling QereaseIo from Querease this class should be refactored to OptionResult[X]
 case class OptionResult(result: Option[AppQuerease#DTO]) extends QuereaseResult
 case class NumberResult(id: Long) extends QuereaseResult

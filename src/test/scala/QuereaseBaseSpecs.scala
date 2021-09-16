@@ -33,7 +33,7 @@ trait QuereaseBaseSpecs extends Matchers with BeforeAndAfterAll with Loggable { 
     logger.debug(s"Creating database for ${getClass.getName} tests ...\n")
     SqlGenerator.hsqldb().schema(querease.tableMetadata.tableDefs)
       .split(";\\s+").map(_ + ";")
-      .appendedAll(customStatements)
+      .++(customStatements)
       .foreach { sql =>
         logger.debug(sql)
         val st = conn.createStatement
