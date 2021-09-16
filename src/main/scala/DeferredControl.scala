@@ -108,7 +108,7 @@ trait DeferredControl
     }
   }
 
-  val deferredGraph = GraphDSL.createGraph(new DeferredQueue) { implicit b => deferredQueue =>
+  protected def deferredGraph(parallelism: Int) = GraphDSL.createGraph(new DeferredQueue) { implicit b =>deferredQueue =>
     import GraphDSL.Implicits._
     val entry = b.add(Flow
       .fromFunction(deferredStorage.registerDeferredRequest)
@@ -122,18 +122,18 @@ trait DeferredControl
     deferredQueue.out0 ~> Flow[DeferredContext] //exe port
       .map(deferredStorage.registerDeferredStatus)
       .map{ x => publishDeferredStatus(x); x}
-      .mapAsyncUnordered(deferredWorkerCount)(executeDeferred)
-      .mapAsyncUnordered(deferredWorkerCount)(deferredStorage.registerDeferredResult)
+      .mapAsyncUnordered(parallelism)(executeDeferred)
+      .mapAsyncUnordered(parallelism)(deferredStorage.registerDeferredResult)
       .to(Sink.foreach(publishDeferredStatus))
     deferredQueue.out1 ~> Flow[DeferredContext] //overflow port
-      .mapAsyncUnordered(deferredWorkerCount)(deferredStorage.registerDeferredResult)
+      .mapAsyncUnordered(parallelism)(deferredStorage.registerDeferredResult)
       .to(Sink.foreach(publishDeferredStatus))
     SinkShape(entry.in)
   }
 
   //Start deferred request processing flow - subscribe entry actor to DeferredRequestArrived message
   Source.actorRef[DeferredContext](PartialFunction.empty, PartialFunction.empty, 8, OverflowStrategy.dropNew)
-   .to(deferredGraph)
+   .to(deferredGraph(deferredWorkerCount))
    .mapMaterializedValue(EventBus.subscribe(_, DeferredRequestArrived))
    .withAttributes(ActorAttributes.supervisionStrategy {
      case ex: Exception =>
