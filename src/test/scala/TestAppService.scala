@@ -1,17 +1,7 @@
 package org.wabase
 
 import akka.actor.ActorSystem
-import akka.http.scaladsl.model.headers.HttpCredentials
-import akka.http.scaladsl.model.HttpRequest
-import akka.http.scaladsl.server._
-import akka.stream.{ActorMaterializer, Materializer}
-import org.tresql.ThreadLocalResources
 import org.wabase.DeferredControl.DeferredStorage
-
-import java.io.File
-import java.util.UUID
-import scala.concurrent.{ExecutionContextExecutor, Future}
-import scala.concurrent.duration.Duration
 
 case class TestUsr(id: Long) {
   def toMap: Map[String, Any] = Map("id" -> id)
@@ -50,10 +40,6 @@ class TestAppService(system: ActorSystem) extends ExecutionImpl()(system)
   override type App = TestApp
   override def initApp: App = TestApp
   override def initFileStreamer: TestApp = TestApp
-  override lazy val defaultTimeout = Duration("60s")
-  override lazy val deferredUris = Set("long-req")
-  override lazy val deferredTimeouts = Map("long-req" -> Duration("300s"))
-  override lazy val deferredWorkerCount = 3
   override def encodeSession(session: Authentication.Session[TestUsr]): String = ???
   override def decodeSession(session: String) = ???
   override def signInUser = ???

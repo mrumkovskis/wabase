@@ -15,6 +15,7 @@ import org.scalatest.flatspec.AnyFlatSpec
 
 import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.Future
+import scala.concurrent.duration.Duration
 import scala.language.implicitConversions
 import scala.util.Try
 
@@ -58,6 +59,10 @@ class DeferredTests extends AnyFlatSpec with QuereaseBaseSpecs with ScalatestRou
     service = new TestAppService(system) {
       override def initApp: App = appl
       override def initFileStreamer = appl
+      override lazy val defaultTimeout = Duration("60s")
+      override lazy val deferredUris = Set("long-req")
+      override lazy val deferredTimeouts = Map("long-req" -> Duration("300s"))
+      override lazy val deferredWorkerCount = 3
 
       override def listOrGetAction(viewName: String)(
         implicit user: TestUsr, state: ApplicationState, timeout: QueryTimeout): Route =
