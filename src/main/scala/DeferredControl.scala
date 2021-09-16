@@ -43,15 +43,17 @@ trait DeferredControl
   import HttpMessageSerialization._
   import jsonConverter.MapJsonFormat
 
-  //this is not placed in DeferredControl object so that each instance of DeferredControl trait
-  //subscribes to it's own notification message
-  case object DeferredRequestArrived extends WsNotifications.Addressee
-
   lazy val defaultTimeout = DeferredControl.defaultTimeout
   lazy val deferredWorkerCount = DeferredControl.deferredWorkerCount
   lazy val deferredUris = DeferredControl.deferredUris
   lazy val deferredTimeouts = DeferredControl.deferredTimeouts
   lazy val deferredCleanupInterval = DeferredControl.deferredCleanupInterval
+  lazy val deferredModules = DeferredControl.deferredModules
+
+  /** This object is not placed in DeferredControl object so that each instance of DeferredControl trait
+      subscribes to it's own notification message
+    */
+  case object DeferredRequestArrived extends WsNotifications.Addressee
 
   protected val cleanupActor = system.actorOf(Props(classOf[DeferredControl.DeferredCleanup], this))
 
@@ -131,16 +133,24 @@ trait DeferredControl
     SinkShape(entry.in)
   }
 
+  protected def startDeferredGraph(workerCount: Int, notificationMsg: WsNotifications.Addressee) = {
+    logger.info(s"Starting deferred request processor, worker count - ($workerCount), notification msg - ($notificationMsg)")
+    Source.actorRef[DeferredContext](PartialFunction.empty, PartialFunction.empty, 8, OverflowStrategy.dropNew)
+      .to(deferredGraph(workerCount))
+      .mapMaterializedValue(EventBus.subscribe(_, notificationMsg))
+      .withAttributes(ActorAttributes.supervisionStrategy {
+        case ex: Exception =>
+          logger.error("DeferredGraph crashed", ex)
+          onRestartDeferred()
+          Supervision.Resume
+      }).run()
+  }
+
   //Start deferred request processing flow - subscribe entry actor to DeferredRequestArrived message
-  Source.actorRef[DeferredContext](PartialFunction.empty, PartialFunction.empty, 8, OverflowStrategy.dropNew)
-   .to(deferredGraph(deferredWorkerCount))
-   .mapMaterializedValue(EventBus.subscribe(_, DeferredRequestArrived))
-   .withAttributes(ActorAttributes.supervisionStrategy {
-     case ex: Exception =>
-       logger.error("DeferredGraph crashed", ex)
-       onRestartDeferred()
-       Supervision.Resume
-   }).run()
+  startDeferredGraph(deferredWorkerCount, DeferredRequestArrived)
+  deferredModules.foreach { case (mod, workerCount) =>
+    startDeferredGraph(workerCount, DeferredControl.DeferredModuleRequestArrived(mod))
+  }
 
   /* ***********************
   **** Deferred phases *****
@@ -222,7 +232,7 @@ trait DeferredControl
     }
     .recover(_ => provide(queryTimeout)) //no deferred header provided - provide default jdbc timeout
 
-  def deferred(user: String) = hasDeferredHeader.recover(_ =>
+  def deferred(user: String, module: String = null) = hasDeferredHeader.recover(_ =>
     mapRequest(_.addHeader(new `X-Deferred`(Right(defaultTimeout)))))
     .tflatMap(_ => extractRequestContext.flatMap { ctx => mapInnerRoute { route =>
       val wrappedRoute = handleExceptions(appExceptionHandler)(route)
@@ -233,7 +243,9 @@ trait DeferredControl
       import EventBus._
       val hash = requestHash(user, ctx.request)
       val deferredCtx = DeferredContext(user, hash, ctx.request, requestProcessor)
-      publish(Message(DeferredRequestArrived, deferredCtx))
+      publish(Message(if (module == null) DeferredRequestArrived else
+        DeferredControl.DeferredModuleRequestArrived(module),
+        deferredCtx))
       respondWithHeader(`X-Deferred-Hash`(hash))(complete(Map("deferred" -> hash).toJson))
     }
   })
@@ -309,12 +321,23 @@ object DeferredControl extends Loggable with AppConfig {
       .entrySet.asScala.map(e => e.getKey -> Duration(e.getValue.unwrapped.toString)).toMap
     ).toOption.getOrElse(Map())
   lazy val deferredCleanupInterval = Duration(Try(appConfig.getString("deferred-requests.cleanup-job-interval")).toOption.getOrElse("1800s"))
+  lazy val deferredModules: Map[String, Int] =
+    Try {
+      val mc = appConfig.getConfig("deferred-requests.modules")
+      mc.entrySet().asScala.map(_.getKey).map { m => m.split('.').head -> mc.getInt(m) }.toMap
+    }.recover {
+      case NonFatal(e) =>
+        logger.error("Error reading defered modules conf", e)
+        Map[String, Int]()
+    }.get
 
   logger.info(s"defaultTimeout: $defaultTimeout")
   logger.info(s"deferredWorkerCount: $deferredWorkerCount")
   logger.info(s"deferredUris: $deferredUris")
   logger.info(s"deferredTimeouts: $deferredTimeouts")
   logger.info(s"deferredCleanupInterval: $deferredCleanupInterval")
+
+  case class DeferredModuleRequestArrived(module: String) extends WsNotifications.Addressee
 
   case class DeferredContext(
     userIdString: String,
