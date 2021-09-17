@@ -111,17 +111,23 @@ trait DeferredControl
       }
   }
 
-  protected def deferredSink(parallelism: Int) =
+  protected def deferredSink(name: String, parallelism: Int) =
     GraphDSL.createGraph(new DeferredQueue) { implicit b => deferredQueue =>
       import GraphDSL.Implicits._
       val entry = b.add(Flow
         .fromFunction(deferredStorage.registerDeferredRequest)
-        .mapConcat(ctx => ctx.status match {
-          case DeferredExists =>
-            publishDeferredStatus(ctx)
-            Nil
-          case _ => List(ctx)
-        }))
+        .mapConcat { ctx =>
+          logger.debug(s"Deferred request registered ${ctx.request}${
+            if (name != null) s" for module $name" else ""
+          }")
+          ctx.status match {
+            case DeferredExists =>
+              publishDeferredStatus(ctx)
+              Nil
+            case _ => List(ctx)
+          }
+        }
+      )
       entry.out ~> deferredQueue.in
       deferredQueue.out0 ~> Flow[DeferredContext] //exe port
         .map(deferredStorage.registerDeferredStatus)
@@ -135,11 +141,14 @@ trait DeferredControl
       SinkShape(entry.in)
     }
 
-  protected def startDeferredGraph(workerCount: Int, notificationMsg: WsNotifications.Addressee) = {
-    logger.info(s"Starting deferred request processor, worker count - ($workerCount), notification msg - ($notificationMsg)")
+  protected def startDeferredGraph(name: String, workerCount: Int) = {
+    logger.info(s"Starting deferred request processor${
+      if (name != null) s" ($name)" else ""}, worker count - ($workerCount)")
     Source.actorRef[DeferredContext](PartialFunction.empty, PartialFunction.empty, 8, OverflowStrategy.dropNew)
-      .to(deferredSink(workerCount))
-      .mapMaterializedValue(EventBus.subscribe(_, notificationMsg))
+      .to(deferredSink(name, workerCount))
+      .mapMaterializedValue(
+        EventBus.subscribe(_, if (name == null) DeferredRequestArrived else
+          DeferredModuleRequestArrived(name)))
       .withAttributes(ActorAttributes.supervisionStrategy {
         case ex: Exception =>
           logger.error("DeferredGraph crashed", ex)
@@ -149,9 +158,9 @@ trait DeferredControl
   }
 
   //Start deferred request processing flow - subscribe entry actor to DeferredRequestArrived message
-  startDeferredGraph(deferredWorkerCount, DeferredRequestArrived)
+  startDeferredGraph(null, deferredWorkerCount)
   deferredModules.foreach { case (mod, workerCount) =>
-    startDeferredGraph(workerCount, DeferredControl.DeferredModuleRequestArrived(mod))
+    startDeferredGraph(mod, workerCount)
   }
 
   /* ***********************

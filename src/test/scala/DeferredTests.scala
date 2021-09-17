@@ -3,7 +3,7 @@ package org.wabase
 import java.io.File
 import java.nio.file.Files
 import java.util.UUID
-import akka.http.scaladsl.model.{ContentTypes, HttpEntity, HttpResponse, StatusCodes}
+import akka.http.scaladsl.model.{ContentTypes, HttpEntity, HttpResponse, StatusCode, StatusCodes}
 import akka.http.scaladsl.model.headers._
 import akka.http.scaladsl.model.ws.TextMessage
 import akka.http.scaladsl.server.Directives._
@@ -325,5 +325,39 @@ class DeferredTests extends AnyFlatSpec with QuereaseBaseSpecs with ScalatestRou
         responseAs[String].parseJson.convertTo[Map[String, String]].apply("status") shouldBe "ERR"
       }
     }
+  }
+
+  "The deferred directive" should "support deferred modules" in {
+    implicit val user = TestUsr(3)
+
+    def defered_route(module: String, idx: Int) = service.deferred(user, module) {
+      complete(s"$module call ($idx)")
+    }
+
+    val requests = ArrayBuffer[String]()
+
+    val modules = List(("audit", 100), ("no_module", 1))
+
+    modules foreach { case (module, count) =>
+      1 to count foreach { i =>
+        Get(s"/deferred/$module/$i") ~> defered_route(module, i) ~> check {
+          requests += parseDeferredRequestId(responseAs[String])
+          handled shouldBe true
+        }
+      }
+    }
+
+    Thread.sleep(1000)
+
+    val results = ArrayBuffer[StatusCode]()
+
+    requests.foreach { req_hash =>
+      Get("/results") ~> service.deferredRequest(req_hash, user) ~> check {
+        results += status
+      }
+    }
+
+    results.groupBy(identity).map { case (s, r) => s -> r.size} shouldBe
+      Map(StatusCodes.OK -> 100, StatusCodes.NotFound -> 1)
   }
 }
