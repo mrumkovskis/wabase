@@ -7,9 +7,9 @@ create table deferred_request(
   request_hash varchar(100),
   request bytea not null,
   response_time timestamp,
-  result bytea,
-  result_file_id bigint,
-  result_file_sha_256 varchar(64)
+  response_headers bytea,
+  response_entity_file_id bigint,
+  response_entity_file_sha_256 varchar(64)
 );
 alter table deferred_request add constraint pk_deferred_request primary key (request_hash);
 create index idx_deferred_request_priority_request_time on deferred_request(priority, request_time);
@@ -62,4 +62,4 @@ create table deferred_file_info(
 alter table deferred_file_info add constraint pk_deferred_file_info primary key (id);
 alter table deferred_file_info add constraint fk_deferred_file_info_sha_256 foreign key (sha_256) references deferred_file_body_info(sha_256);
 
-alter table deferred_request add constraint fk_deferred_file_info_id foreign key (result_file_id) references deferred_file_info(id);
+alter table deferred_request add constraint fk_deferred_file_info_id foreign key (response_entity_file_id) references deferred_file_info(id);
