@@ -110,7 +110,7 @@ trait DeferredControl
     }
   }
 
-  protected def deferredGraph(parallelism: Int) = GraphDSL.createGraph(new DeferredQueue) { implicit b =>deferredQueue =>
+  protected def deferredSink(parallelism: Int) = GraphDSL.createGraph(new DeferredQueue) { implicit b =>deferredQueue =>
     import GraphDSL.Implicits._
     val entry = b.add(Flow
       .fromFunction(deferredStorage.registerDeferredRequest)
@@ -136,7 +136,7 @@ trait DeferredControl
   protected def startDeferredGraph(workerCount: Int, notificationMsg: WsNotifications.Addressee) = {
     logger.info(s"Starting deferred request processor, worker count - ($workerCount), notification msg - ($notificationMsg)")
     Source.actorRef[DeferredContext](PartialFunction.empty, PartialFunction.empty, 8, OverflowStrategy.dropNew)
-      .to(deferredGraph(workerCount))
+      .to(deferredSink(workerCount))
       .mapMaterializedValue(EventBus.subscribe(_, notificationMsg))
       .withAttributes(ActorAttributes.supervisionStrategy {
         case ex: Exception =>
