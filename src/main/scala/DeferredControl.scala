@@ -335,7 +335,11 @@ object DeferredControl extends Loggable with AppConfig {
   lazy val deferredModules: Map[String, Int] =
     Try {
       val mc = appConfig.getConfig("deferred-requests.modules")
-      mc.entrySet().asScala.map(_.getKey).map { m => m.split('.').head -> mc.getInt(m) }.toMap
+      mc.entrySet().asScala
+        .map(_.getKey)
+        .filter(_.endsWith(".worker-count"))
+        .map { m => m.split('.').head -> mc.getInt(m) }
+        .toMap
     }.recover {
       case NonFatal(e) =>
         logger.error("Error reading defered modules conf", e)
