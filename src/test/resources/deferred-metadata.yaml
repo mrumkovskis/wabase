@@ -27,9 +27,9 @@ columns:
   - request_hash           ! 100
   - request                ! bytes
   - response_time
-  - result                   bytes
-  - result_file_id
-  - result_file_sha_256      64
+  - response_headers                  bytes
+  - response_entity_file_id
+  - response_entity_file_sha_256      64
 pk: request_hash
 idx:
   - priority, request_time

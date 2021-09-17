@@ -8,7 +8,7 @@ columns:
 - request_hash ! string
 - request ! bytes
 - response_time dateTime
-- result bytes
-- result_file_id long
-- result_file_sha_256 string
+- response_headers bytes
+- response_entity_file_id long
+- response_entity_file_sha_256 string
 pk: request_hash

@@ -506,7 +506,7 @@ object DeferredControl extends Loggable with AppConfig {
       fif.map { fi =>
         transaction {
           statsRegisterDeferredResult
-          tresql"""=deferred_request[$hash] {status, response_time, result, result_file_id, result_file_sha_256 }
+          tresql"""=deferred_request[$hash] {status, response_time, response_headers, response_entity_file_id, response_entity_file_sha_256 }
             [$status, $responseTime, $header, ${fi.id}, ${fi.sha_256}]"""
           ctx
         }
@@ -549,7 +549,7 @@ object DeferredControl extends Loggable with AppConfig {
 
     def getDeferredResult(hash: String, userIdString: String) = dbUse {
       tresql"""deferred_request [request_hash = $hash & username = $userIdString &
-                 status in ($DEFERRED_OK, $DEFERRED_ERR)] { result, result_file_id, result_file_sha_256 }"""
+                 status in ($DEFERRED_OK, $DEFERRED_ERR)] { response_headers, response_entity_file_id, response_entity_file_sha_256 }"""
         .headOption[java.io.InputStream, Long, String]
         .map { case (in, id, sha) =>
             deserializeHttpMessage(in, Some((this, userIdString, (id, sha)))).asInstanceOf[HttpResponse]
