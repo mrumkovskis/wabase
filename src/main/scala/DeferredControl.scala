@@ -72,66 +72,68 @@ trait DeferredControl
     val QueueOverflowResponse = HttpResponse(StatusCodes.InternalServerError,
       entity = "Server too busy. Please try later again.")
 
-    override def createLogic(attributes: Attributes) = new GraphStageLogic(shape) with OutHandler {
-      var queue: scala.collection.mutable.Queue[DeferredContext] = _
-      override def preStart() = {
-        queue = scala.collection.mutable.Queue.empty
-        pull(in)
-      }
-      setHandler(in, new InHandler {
-        override def onPush(): Unit = {
-          val ctx = grab(in)
-          if (queue.size >= MaxQueueSize) {
-            emit(overflow, ctx.copy(status = DEFERRED_ERR, result = QueueOverflowResponse))
-          } else if (isAvailable(exe)) {
-            val nctx = ctx.copy(status = DEFERRED_EXE)
-            push(exe, nctx)
-          } else {
-            val nctx = ctx.copy(status = DEFERRED_QUEUE)
-            queue.enqueue(nctx)
-            deferredStorage.registerDeferredStatus(nctx)
-            publishDeferredStatus(nctx)
-          }
+    override def createLogic(attributes: Attributes) =
+      new GraphStageLogic(shape) with OutHandler {
+        var queue: scala.collection.mutable.Queue[DeferredContext] = _
+        override def preStart() = {
+          queue = scala.collection.mutable.Queue.empty
           pull(in)
         }
-      })
-      setHandler(exe, new OutHandler {
-        override def onPull() = pushIfQueued
-      })
-      private def pushIfQueued = {
-        if (queue.nonEmpty) {
-          val nctx = queue.dequeue().copy(status = DEFERRED_EXE)
-          push(exe, nctx)
+        setHandler(in, new InHandler {
+          override def onPush(): Unit = {
+            val ctx = grab(in)
+            if (queue.size >= MaxQueueSize) {
+              emit(overflow, ctx.copy(status = DEFERRED_ERR, result = QueueOverflowResponse))
+            } else if (isAvailable(exe)) {
+              val nctx = ctx.copy(status = DEFERRED_EXE)
+              push(exe, nctx)
+            } else {
+              val nctx = ctx.copy(status = DEFERRED_QUEUE)
+              queue.enqueue(nctx)
+              deferredStorage.registerDeferredStatus(nctx)
+              publishDeferredStatus(nctx)
+            }
+            pull(in)
+          }
+        })
+        setHandler(exe, new OutHandler {
+          override def onPull() = pushIfQueued
+        })
+        private def pushIfQueued = {
+          if (queue.nonEmpty) {
+            val nctx = queue.dequeue().copy(status = DEFERRED_EXE)
+            push(exe, nctx)
+          }
         }
+        //does nothing
+        override def onPull(): Unit = {}
+        setHandler(overflow, this)
       }
-      //does nothing
-      override def onPull(): Unit = {}
-      setHandler(overflow, this)
-    }
   }
 
-  protected def deferredSink(parallelism: Int) = GraphDSL.createGraph(new DeferredQueue) { implicit b =>deferredQueue =>
-    import GraphDSL.Implicits._
-    val entry = b.add(Flow
-      .fromFunction(deferredStorage.registerDeferredRequest)
-      .mapConcat(ctx => ctx.status match {
-        case DeferredExists =>
-          publishDeferredStatus(ctx)
-          Nil
-        case _ => List(ctx)
-      }))
-    entry.out ~> deferredQueue.in
-    deferredQueue.out0 ~> Flow[DeferredContext] //exe port
-      .map(deferredStorage.registerDeferredStatus)
-      .map{ x => publishDeferredStatus(x); x}
-      .mapAsyncUnordered(parallelism)(executeDeferred)
-      .mapAsyncUnordered(parallelism)(deferredStorage.registerDeferredResult)
-      .to(Sink.foreach(publishDeferredStatus))
-    deferredQueue.out1 ~> Flow[DeferredContext] //overflow port
-      .mapAsyncUnordered(parallelism)(deferredStorage.registerDeferredResult)
-      .to(Sink.foreach(publishDeferredStatus))
-    SinkShape(entry.in)
-  }
+  protected def deferredSink(parallelism: Int) =
+    GraphDSL.createGraph(new DeferredQueue) { implicit b => deferredQueue =>
+      import GraphDSL.Implicits._
+      val entry = b.add(Flow
+        .fromFunction(deferredStorage.registerDeferredRequest)
+        .mapConcat(ctx => ctx.status match {
+          case DeferredExists =>
+            publishDeferredStatus(ctx)
+            Nil
+          case _ => List(ctx)
+        }))
+      entry.out ~> deferredQueue.in
+      deferredQueue.out0 ~> Flow[DeferredContext] //exe port
+        .map(deferredStorage.registerDeferredStatus)
+        .map{ x => publishDeferredStatus(x); x}
+        .mapAsyncUnordered(parallelism)(executeDeferred)
+        .mapAsyncUnordered(parallelism)(deferredStorage.registerDeferredResult)
+        .to(Sink.foreach(publishDeferredStatus))
+      deferredQueue.out1 ~> Flow[DeferredContext] //overflow port
+        .mapAsyncUnordered(parallelism)(deferredStorage.registerDeferredResult)
+        .to(Sink.foreach(publishDeferredStatus))
+      SinkShape(entry.in)
+    }
 
   protected def startDeferredGraph(workerCount: Int, notificationMsg: WsNotifications.Addressee) = {
     logger.info(s"Starting deferred request processor, worker count - ($workerCount), notification msg - ($notificationMsg)")
