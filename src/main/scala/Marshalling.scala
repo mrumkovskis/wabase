@@ -182,11 +182,15 @@ trait AppMarshalling { this: AppServiceBase[_] with Execution =>
     RowSource.value(dbBufferSize, maxFileSize, src)
   }
 
-  def httpResponse(contentType: ContentType, src: Source[ByteString, _],
-                   maxFileSize: Long = dbDataFileMaxSize)(implicit ec: ExecutionContext) = {
+  def httpResponse(
+    contentType: ContentType,
+    src: Source[ByteString, _],
+    maxFileSize: Long = dbDataFileMaxSize,
+    transform: HttpResponse => HttpResponse = identity,
+  )(implicit ec: ExecutionContext) = {
     source(src, maxFileSize).map {
-      case CompleteSourceValue(data) => HttpResponse(entity = HttpEntity.Strict(contentType, data))
-      case IncompleteSourceValue(sourceData) => HttpResponse(entity = HttpEntity.Chunked.fromData(contentType, sourceData))
+      case CompleteSourceValue(data) => transform(HttpResponse(entity = HttpEntity.Strict(contentType, data)))
+      case IncompleteSourceValue(sourceData) => transform(HttpResponse(entity = HttpEntity.Chunked.fromData(contentType, sourceData)))
     }.recover { case InsufficientStorageException(msg) =>
       HttpResponse(status = StatusCodes.InsufficientStorage,
         entity = HttpEntity.Strict(ContentTypes.`text/plain(UTF-8)`, ByteString(msg)))
