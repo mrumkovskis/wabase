@@ -50,7 +50,10 @@ object Audit {
        (action, null)
      } catch {
        case NonFatal(e) =>
-         logger.error(e.getMessage, e)
+         if (e.isInstanceOf[BusinessException])
+           logger.info(e.getMessage, e)
+         else
+           logger.error(e.getMessage, e)
          (originalContext, e)
      }
      audit(res, error)
