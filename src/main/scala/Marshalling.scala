@@ -198,53 +198,18 @@ trait AppMarshalling { this: AppServiceBase[_] with Execution =>
   }
 
   import RowSource._
-  implicit def toResponseListJsonMarshaller[T: JsonFormat]: FutureResponseMarshaller[Iterator[T]] =
-    Marshaller.withFixedContentType(`application/json`) {
-      result =>
-        httpResponse(`application/json`, new JsonListChunker(result, _: Writer), dbDataFileMaxSize)
-    }
+  implicit def toResponseListJsonMarshaller[T: JsonFormat]: ToResponseMarshaller[Iterator[T]] =
+    responseMarshaller(`application/json`, iterator => new JsonListChunker(iterator, _: Writer))
 
-  type FutureResponse = Future[HttpResponse]
-  type FutureResponseMarshaller[T] = Marshaller[T, FutureResponse]
-
-  implicit def toFutureResponseMarshallable[A](_value: A)(implicit _marshaller: FutureResponseMarshaller[A]): ToResponseMarshallable =
-    new ToResponseMarshallable {
-      type T = A
-      def value: T = _value
-      implicit def marshaller: ToResponseMarshaller[A] = null
-
-      override def apply(request: HttpRequest)(implicit ec: ExecutionContext): Future[HttpResponse] = {
-        import akka.http.scaladsl.util.FastFuture._
-        import akka.http.scaladsl.marshalling.Marshal._
-        val ctn = ContentNegotiator(request.headers)
-
-        _marshaller(value).fast.map { marshallings =>
-          val supportedAlternatives: List[ContentNegotiator.Alternative] =
-            marshallings.collect {
-              case Marshalling.WithFixedContentType(ct, _) => ContentNegotiator.Alternative(ct)
-              case Marshalling.WithOpenCharset(mt, _)      => ContentNegotiator.Alternative(mt)
-            }
-          val bestMarshal = {
-            if (supportedAlternatives.nonEmpty) {
-              ctn.pickContentType(supportedAlternatives).flatMap {
-                case best @ (_: ContentType.Binary | _: ContentType.WithFixedCharset | _: ContentType.WithMissingCharset) =>
-                  marshallings collectFirst { case Marshalling.WithFixedContentType(`best`, marshal) => marshal }
-                case best @ ContentType.WithCharset(bestMT, bestCS) =>
-                  marshallings collectFirst {
-                    case Marshalling.WithFixedContentType(`best`, marshal) => marshal
-                    case Marshalling.WithOpenCharset(`bestMT`, marshal)    => () => marshal(bestCS)
-                  }
-              }
-            } else None
-          } orElse {
-            marshallings collectFirst { case Marshalling.Opaque(marshal) => marshal }
-          } getOrElse {
-            throw UnacceptableResponseContentTypeException(supportedAlternatives.toSet)
-          }
-          bestMarshal()
-        }.flatMap(identity)
-      }
-    }
+  def responseMarshaller[T](
+    contentType: ContentType,
+    toSource: T => Source[ByteString, _],
+    toMaxFileSize: T => Long = (_: T) => dbDataFileMaxSize,
+    transform: HttpResponse => HttpResponse = identity,
+  ): ToResponseMarshaller[T] =
+    Marshaller.combined((x: T) =>
+      httpResponse(contentType, toSource(x), toMaxFileSize(x), transform)
+    )(GenericMarshallers.futureMarshaller(Marshaller.withFixedContentType(contentType)(identity)))
 }
 
 trait TresqlResultMarshalling extends AppMarshalling { this: AppServiceBase[_] with Execution =>
@@ -285,17 +250,13 @@ trait TresqlResultMarshalling extends AppMarshalling { this: AppServiceBase[_] w
   }
 
   import RowSource._
-  val toResponseTresqlResultOdsMarshaller: FutureResponseMarshaller[TresqlResult[RowLike]] =
-    Marshaller.withFixedContentType(`application/vnd.oasis.opendocument.spreadsheet`) {
-      result => httpResponse(`application/vnd.oasis.opendocument.spreadsheet`, new OdsTresqlResultChunker(result, _))
-    }
+  val toResponseTresqlResultOdsMarshaller: ToResponseMarshaller[TresqlResult[RowLike]] =
+    responseMarshaller(`application/vnd.oasis.opendocument.spreadsheet`, result => new OdsTresqlResultChunker(result, _))
 
-  val toResponseTresqlResultCsvMarshaller: FutureResponseMarshaller[TresqlResult[RowLike]] =
-    Marshaller.withFixedContentType(ContentTypes.`text/plain(UTF-8)`) {
-      result => httpResponse(ContentTypes.`text/plain(UTF-8)`, new CsvTresqlResultChunker(result, _))
-    }
+  val toResponseTresqlResultCsvMarshaller: ToResponseMarshaller[TresqlResult[RowLike]] =
+    responseMarshaller(ContentTypes.`text/plain(UTF-8)`, result => new CsvTresqlResultChunker(result, _))
 
-  implicit val toResponseTresqlResultMarshaller: FutureResponseMarshaller[TresqlResult[RowLike]] =
+  implicit val toResponseTresqlResultMarshaller: ToResponseMarshaller[TresqlResult[RowLike]] =
     Marshaller.oneOf(
       toResponseTresqlResultOdsMarshaller,
       toResponseTresqlResultCsvMarshaller,
@@ -419,29 +380,16 @@ trait DtoMarshalling extends AppMarshalling with Loggable { this: AppServiceBase
       }.get
 
 
-  val toResponseAppListResultJsonMarshaller: FutureResponseMarshaller[app.AppListResult[app.Dto]] =
-    Marshaller.withFixedContentType(`application/json`) {
-      result =>
-        httpResponse(`application/json`, new JsonDtoChunker(result, _), resultMaxFileSize(result))
-    }
-  val toResponseAppListResultExcelMarshaller: FutureResponseMarshaller[app.AppListResult[app.Dto]] =
-    Marshaller.withFixedContentType(`application/vnd.ms-excel`) {
-      result =>
-        httpResponse(`application/vnd.ms-excel`, new XlsXmlDtoChunker(result, _), resultMaxFileSize(result))
-    }
-  val toResponseAppListResultOdsMarshaller: FutureResponseMarshaller[app.AppListResult[app.Dto]] =
-    Marshaller.withFixedContentType(`application/vnd.oasis.opendocument.spreadsheet`) {
-      result =>
-        httpResponse(`application/vnd.oasis.opendocument.spreadsheet`, new OdsDtoChunker(result, _),
-          resultMaxFileSize(result))
-    }
-  val toResponseAppListResultCsvMarshaller: FutureResponseMarshaller[app.AppListResult[app.Dto]] =
-    Marshaller.withFixedContentType(ContentTypes.`text/plain(UTF-8)`) {
-      result =>
-        httpResponse(ContentTypes.`text/plain(UTF-8)`, new CsvDtoChunker(result, _), resultMaxFileSize(result))
-    }
+  val toResponseAppListResultJsonMarshaller: ToResponseMarshaller[app.AppListResult[app.Dto]]  = responseMarshaller(
+    `application/json`, result => new JsonDtoChunker(result, _), resultMaxFileSize)
+  val toResponseAppListResultExcelMarshaller: ToResponseMarshaller[app.AppListResult[app.Dto]] = responseMarshaller(
+    `application/vnd.ms-excel`, result => new XlsXmlDtoChunker(result, _), resultMaxFileSize)
+  val toResponseAppListResultOdsMarshaller: ToResponseMarshaller[app.AppListResult[app.Dto]]   = responseMarshaller(
+    `application/vnd.oasis.opendocument.spreadsheet`, result => new OdsDtoChunker(result, _), resultMaxFileSize)
+  val toResponseAppListResultCsvMarshaller: ToResponseMarshaller[app.AppListResult[app.Dto]]   = responseMarshaller(
+    ContentTypes.`text/plain(UTF-8)`, result => new CsvDtoChunker(result, _), resultMaxFileSize)
 
-  implicit val toResponseAppListResultMarshaller: FutureResponseMarshaller[app.AppListResult[app.Dto]] =
+  implicit val toResponseAppListResultMarshaller: ToResponseMarshaller[app.AppListResult[app.Dto]] =
     Marshaller.oneOf(
       toResponseAppListResultJsonMarshaller,
       toResponseAppListResultOdsMarshaller,
