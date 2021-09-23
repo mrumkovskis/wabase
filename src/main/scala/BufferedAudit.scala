@@ -16,6 +16,7 @@ import java.time.format.DateTimeFormatter
 import java.time.{Instant, ZoneOffset}
 import scala.concurrent.Future
 import scala.concurrent.duration._
+import scala.util.{Failure, Success}
 
 class BufferedAudit(
   val writer: BufferedAuditWriter,
@@ -100,7 +101,7 @@ class BufferedAuditReader(
     maxBackoff    = 5.minutes,
     randomFactor  = 0.2 // adds 20% "noise" to vary the intervals slightly
   ),
-)(implicit val system: ActorSystem) {
+)(implicit val system: ActorSystem) extends Loggable {
   import writer.{filenamePrefix, rootPath}
   implicit val executionContext = system.dispatcher
   private val buffer = ByteBuffer.allocate(256)
@@ -177,9 +178,16 @@ class BufferedAuditReader(
         ch.truncate(ch.position())
         ch.force(true)
       }
+      logger.debug(s"Audit queue next read position saved: ${path.getFileName} byte $pos")
     } catch {
       case util.control.NonFatal(ex) =>
-        throw new RuntimeException("Failed to persist audit queue next read position", ex)
+        val info = s"Failed to persist audit queue next read position (${path.getFileName} byte $pos)"
+        if (writer.exitOnFailure) {
+          logger.error(info + ", exiting", ex)
+          System.exit(-1)
+        } else {
+          throw new RuntimeException(info, ex)
+        }
     }
   private val auditReader = RestartSource.withBackoff(restartSettings) { () => Source
     .single(Notification)
@@ -206,14 +214,14 @@ class BufferedAuditReader(
              writer.fileContentChangeNotificationsSource
         else Source.empty
       }
-      (source.via(new BufferedAuditFlow(path, pos, writer)), path)
+      (source.via(new BufferedAuditFlow(path, pos, writer)), path, pos)
     }
-    .flatMapConcat { case (source, path) => source
+    .flatMapConcat { case (source, path, pos) => source
       .via(Framing.delimiter(writer.delimiter, maximumFrameLength = maxRecordSize, allowTruncation = false))
-      .scan((ByteString.empty, 0))((bytesAndPos, bytes) => bytesAndPos match {
+      .scan((ByteString.empty, pos))((bytesAndPos, bytes) => bytesAndPos match {
         case (prevBytes, pos) => (bytes, pos + bytes.size + writer.delimiter.size)
       })
-      .filter { case (bytes, nextPos) => nextPos > 0 }
+      .filter { case (bytes, nextPos) => nextPos > pos }
       .map { case (bytes, nextPos) => (bytes, path, nextPos) }
     }
     .groupedWithin(maxBatchSize, maxBatchDelay)
@@ -226,6 +234,15 @@ class BufferedAuditReader(
             saveNextReadPos(path, nextPos)
             path
         }
+      }.transform {
+        case s: Success[Path] => s
+        case Failure(ex) =>
+          val (batchFilename, batchPos) = bytesAndPathAndNextPos.head match {
+            case (bytes, path, nextPos) =>
+              (path.getFileName.toString, nextPos - bytes.size - writer.delimiter.size)
+            }
+          val batchInfo = s"batch at $batchFilename byte $batchPos, ${records.size} record(s)"
+          Failure(new RuntimeException(s"Failed to process audit queue - $batchInfo", ex))
       }
     }
     .statefulMapConcat { () =>
@@ -286,7 +303,7 @@ class BufferedAuditFlow(path: Path, pos: Int, writer: BufferedAuditWriter) exten
               completeStage()
             else if (!hasBeenPulled(in))
               pull(in)
-          } else emit(out, chunk)
+          } else push(out, chunk)
         }
       })
       override def postStop(): Unit =
