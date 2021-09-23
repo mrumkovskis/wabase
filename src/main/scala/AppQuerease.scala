@@ -149,7 +149,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
   def doAction(view: String,
                actionName: String,
                data: Map[String, Any],
-               env: Map[String, Any])( // TODO get rid from env, combine together with data
+               env: Map[String, Any])( // TODO get rid of env, combine with data
     implicit resources: Resources, ec: ExecutionContext): Future[QuereaseResult] = {
     import Action._
     val vd = viewDef(view)
@@ -347,7 +347,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
   protected def doActionOp(viewDef: ViewDef,
                            op: Action.Op,
                            data: Map[String, Any],
-                           env: Map[String, Any])(implicit res: Resources, // TODO get rid from param env, combine with data
+                           env: Map[String, Any])(implicit res: Resources, // TODO get rid of env, combine with data
                                                   ec: ExecutionContext): Future[QuereaseResult] = {
     import Action._
     op match {
