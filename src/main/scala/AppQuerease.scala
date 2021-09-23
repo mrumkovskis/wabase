@@ -34,6 +34,7 @@ case class OptionResult(result: Option[AppQuerease#DTO]) extends QuereaseResult
 case class NumberResult(id: Long) extends QuereaseResult
 case class CodeResult(code: String) extends QuereaseResult
 case class IdResult(id: Any) extends QuereaseResult
+case class RedirectResult(uri: String) extends QuereaseResult
 case object NoResult extends QuereaseResult
 
 
@@ -175,6 +176,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
         case NumberResult(nr) => nr
         case CodeResult(code) => code
         case id: IdResult => id
+        case rd: RedirectResult => rd
         case NoResult => NoResult
       }
       def updateCurRes(cr: Map[String, Any], key: Option[String], res: Any) = res match {
