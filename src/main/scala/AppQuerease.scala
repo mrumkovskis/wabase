@@ -19,7 +19,7 @@ trait QuereaseProvider {
   protected def initQuerease: QE
 }
 
-trait QuereaseResult
+sealed trait QuereaseResult
 case class TresqlResult(result: Result[RowLike]) extends QuereaseResult
 // TODO after decoupling QereaseIo from Querease this class should be refactored to PojoResult[X]
 case class MapResult(result: Map[String, Any]) extends QuereaseResult

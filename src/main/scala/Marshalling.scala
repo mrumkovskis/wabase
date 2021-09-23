@@ -15,7 +15,8 @@ import scala.collection.immutable.Seq
 import scala.concurrent.{ExecutionContext, Future}
 import spray.json._
 import DefaultJsonProtocol._
-import akka.http.scaladsl.model.headers.{ContentDispositionType, ContentDispositionTypes, RawHeader, `Content-Disposition`}
+import akka.http.scaladsl.model.headers.{ContentDispositionType, ContentDispositionTypes, `Content-Disposition`}
+import akka.http.scaladsl.model.headers.{Location, RawHeader}
 import akka.http.scaladsl.server.ContentNegotiator
 import akka.http.scaladsl.unmarshalling.{FromEntityUnmarshaller, FromResponseUnmarshaller, Unmarshaller}
 import akka.stream.scaladsl.Source
@@ -31,7 +32,8 @@ import scala.util.control.NonFatal
 trait Marshalling extends DtoMarshalling
   with TresqlResultMarshalling
   with BasicJsonMarshalling
-  with BasicMarshalling { this: AppServiceBase[_] with Execution => }
+  with BasicMarshalling
+  with QuereaseResultMarshalling { this: AppServiceBase[_] with Execution => }
 
 trait BasicJsonMarshalling extends akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport with BasicMarshalling {
   this: JsonConverterProvider =>
@@ -400,6 +402,55 @@ trait DtoMarshalling extends AppMarshalling with Loggable { this: AppServiceBase
   implicit val dtoMarshaller: ToEntityMarshaller[app.Dto] = Marshaller.withFixedContentType(`application/json`) {
     dto => HttpEntity.Strict(`application/json`, ByteString(new Wrapper(dto).toMap.toJson.compactPrint))
   }
+}
+
+trait QuereaseResultMarshalling { this:
+    TresqlResultMarshalling with
+    BasicJsonMarshalling    with
+    DtoMarshalling          with
+    AppServiceBase[_] =>
+
+  import app.qe
+  import app.qe.ListJsonFormat
+  import app.qe.QuereaseIdResultJsonFormat
+  implicit val toResponseQuereaseTresqlResultMarshaller:    ToResponseMarshaller[TresqlResult]   =
+    Marshaller.combined(_.result)
+  implicit val toEntityQuereaseMapResultMarshaller:         ToEntityMarshaller  [MapResult]      =
+    Marshaller.combined(_.result)
+  implicit val toEntityQuereasePojoResultMarshaller:        ToEntityMarshaller  [PojoResult]     =
+    Marshaller.combined(_.result.toMap)
+  implicit val toEntityQuereaseListResultMarshaller:        ToEntityMarshaller  [ListResult]     =
+    Marshaller.combined(_.result.toJson)
+  implicit val toEntityQuereaseIteratorResultMarshaller:    ToResponseMarshaller[IteratorResult] =
+    Marshaller.combined(_.result.asInstanceOf[app.AppListResult[app.Dto]]) // FIXME asInstanceOf
+  implicit val toResponseQuereaseOptionResultMarshaller:    ToResponseMarshaller[OptionResult]   =
+    Marshaller.combined(_.result.map(_.toMap))
+  implicit val toEntityQuereaseNumberResultMarshaller:      ToEntityMarshaller  [NumberResult]   =
+    Marshaller.combined(id => s"$id")
+  implicit val toEntityQuereaseCodeResultMarshaller:        ToEntityMarshaller  [CodeResult]     =
+    Marshaller.combined(_.code)
+  implicit val toEntityQuereaseIdResultMarshaller:          ToEntityMarshaller  [IdResult]       =
+    Marshaller.combined(_.toJson)
+  implicit val toResponseQuereaseRedirectResultMarshaller:  ToResponseMarshaller[RedirectResult] =
+    Marshaller.combined(rr => (StatusCodes.SeeOther, Seq(Location(rr.uri))))
+  implicit val toEntityQuereaseNoResultMarshaller:          ToEntityMarshaller  [NoResult.type]  =
+    Marshaller.combined(_ => "")
+
+  implicit val toResponseQuereaseResultMarshaller: ToResponseMarshaller[QuereaseResult] =
+    Marshaller { implicit ec => value => value match {
+      case tq: TresqlResult   => (toResponseQuereaseTresqlResultMarshaller:   ToResponseMarshaller[TresqlResult]  )(tq)
+      case mp: MapResult      => (toEntityQuereaseMapResultMarshaller:        ToResponseMarshaller[MapResult]     )(mp)
+      case pj: PojoResult     => (toEntityQuereasePojoResultMarshaller:       ToResponseMarshaller[PojoResult]    )(pj)
+      case ls: ListResult     => (toEntityQuereaseListResultMarshaller:       ToResponseMarshaller[ListResult]    )(ls)
+      case it: IteratorResult => (toEntityQuereaseIteratorResultMarshaller:   ToResponseMarshaller[IteratorResult])(it)
+      case op: OptionResult   => (toResponseQuereaseOptionResultMarshaller:   ToResponseMarshaller[OptionResult]  )(op)
+      case nr: NumberResult   => (toEntityQuereaseNumberResultMarshaller:     ToResponseMarshaller[NumberResult]  )(nr)
+      case cd: CodeResult     => (toEntityQuereaseCodeResultMarshaller:       ToResponseMarshaller[CodeResult]    )(cd)
+      case id: IdResult       => (toEntityQuereaseIdResultMarshaller:         ToResponseMarshaller[IdResult]      )(id)
+      case rd: RedirectResult => (toResponseQuereaseRedirectResultMarshaller: ToResponseMarshaller[RedirectResult])(rd)
+      case no: NoResult.type  => (toEntityQuereaseNoResultMarshaller:         ToResponseMarshaller[NoResult.type] )(no)
+      case xx                 => sys.error(s"QuereaseResult marshaller for class ${xx.getClass.getName} not implemented")
+    }}
 }
 
 object MarshallingConfig extends AppBase.AppConfig with Loggable {
