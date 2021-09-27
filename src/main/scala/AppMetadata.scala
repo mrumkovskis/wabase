@@ -388,8 +388,8 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
                   val validations = getSeq(Action.ValidationsKey, m).map(_.toString)
                   Action.Validations(validations)
                 } else {
-                  sys.error(s"View '${viewDef.name}' parsing error," +
-                    s"invalid action '$actionName' value: $m")                }
+                  parseStep(Option(name), value.toString)
+                }
               case x =>
                 sys.error(s"View '${viewDef.name}' parsing error," +
                   s"invalid action '$actionName' value: $x")

@@ -104,8 +104,8 @@ filter:
 - name %~~%
 - surname %~~%
 list:
-- count = count person_list
-- data = list person_list
+- count: count person_list  # named step supports also colon notation
+- data: list person_list    # named step supports also colon notation
 
 
 name: person_with_main_account
