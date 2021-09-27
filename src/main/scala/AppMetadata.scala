@@ -325,80 +325,8 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val cp = getStringExtra(ConnectionPool, viewDef.extras) getOrElse DEFAULT_CP.connectionPoolName
 
     val actions = Action().foldLeft(Map[String, Action]()) { (res, actionName) =>
-      val viewCallRegex = new Regex(Action().mkString("(", "|", """)\s+(\w+)"""))
-      val invocationRegex = """(\w|\$)+\.(\w|\$)+(\.(\w|\$)+)*""".r
-      val returnRegex = """(?s)return\s+(.+)""".r //dot matches new line as well
-      def parseAction(actionName: String): Option[Action] = getSeq(actionName, viewDef.extras) match {
-        case s if s.isEmpty => None
-        case stepSeq: Seq[Any] =>
-          val steps = stepSeq.map { step =>
-            def parseNamedStep(str: String) = {
-              def isIdent(str: String) = str.nonEmpty &&
-                Character.isJavaIdentifierStart(str.charAt(1)) && str.drop(1).forall(Character.isJavaIdentifierPart)
-              val idx = str.indexOf('=')
-              if (idx != -1 && isIdent(str.substring(0, idx).trim))
-                Some(str.substring(0, idx).trim) -> str.substring(idx + 1).trim
-              else None -> str
-            }
-            def parseStep(name: Option[String], statement: String): Action.Step = {
-              def parseOp(st: String): Action.Op = {
-                if (viewCallRegex.pattern.matcher(st).matches) {
-                  val viewCallRegex(method, view) = st
-                  Action.ViewCall(method, view)
-                } else if (invocationRegex.pattern.matcher(st).matches) {
-                  val idx = st.lastIndexOf('.')
-                  Action.Invocation(st.substring(0, idx), st.substring(idx + 1))
-                } else {
-                  Action.Tresql(st)
-                }
-              }
-              def parseSt(st: String, varTrs: List[VariableTransform]) = {
-                if (returnRegex.pattern.matcher(st).matches) {
-                  val returnRegex(ret) = st
-                  Action.Return(name, varTrs,
-                    if (ret.contains("="))
-                      Try {
-                        val p = parser.asInstanceOf[AppQuereaseDefaultParser] // FIXME get rid of typecast
-                        p.parseWithParser(p.varsTransforms)(ret)
-                      }.toOption.getOrElse(parseOp(ret))
-                    else parseOp(ret)
-                  )
-                } else {
-                  Action.Evaluation(name, varTrs, parseOp(st))
-                }
-              }
-              if (statement.contains("->")) {
-                val p = parser.asInstanceOf[AppQuereaseDefaultParser] // FIXME get rid of typecast
-                Try(p.parseWithParser(p.stepWithVarsTransform)(statement))
-                  .map { case (vtrs, st) => parseSt(st, vtrs) }
-                  .toOption
-                  .getOrElse(parseSt(statement, Nil))
-              } else {
-                parseSt(statement, Nil)
-              }
-            }
-            step match {
-              case s: String =>
-                val (name, st) = parseNamedStep(s)
-                parseStep(name, st)
-              case jm: java.util.Map[String, Any]@unchecked if jm.size() == 1 =>
-                val m = jm.asScala.toMap
-                val (name, value) = m.head
-                if (name == Action.ValidationsKey) {
-                  val validations = getSeq(Action.ValidationsKey, m).map(_.toString)
-                  Action.Validations(validations)
-                } else {
-                  parseStep(Option(name), value.toString)
-                }
-              case x =>
-                sys.error(s"View '${viewDef.name}' parsing error," +
-                  s"invalid action '$actionName' value: $x")
-            }
-          }.toList
-          Some(Action(steps))
-      }
-
-      parseAction(actionName).map(a => res + (actionName -> a)).getOrElse(res)
+      val a = parseAction(s"${viewDef.name}.$actionName", getSeq(actionName, viewDef.extras))
+      if (a.steps.nonEmpty) res + (actionName -> a) else res
     }
 
     val extras =
@@ -454,6 +382,90 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
         }.getOrElse(field)
     })
   }
+
+  protected def parseAction(objectName: String, stepData: Seq[Any]): Action = {
+    val viewCallRegex = new Regex(Action().mkString("(", "|", """)\s+(\w+)"""))
+    val invocationRegex = """(\w|\$)+\.(\w|\$)+(\.(\w|\$)+)*""".r
+    val returnRegex = """(?s)return\s+(.+)""".r //dot matches new line as well
+    val jobCallRegex = """job\s+(\w+)""".r
+    import ViewDefExtrasUtils._
+    val steps = stepData.map { step =>
+      def parseNamedStep(str: String) = {
+        def isIdent(str: String) = str.nonEmpty &&
+          Character.isJavaIdentifierStart(str.charAt(1)) && str.drop(1).forall(Character.isJavaIdentifierPart)
+        val idx = str.indexOf('=')
+        if (idx != -1 && isIdent(str.substring(0, idx).trim))
+          Some(str.substring(0, idx).trim) -> str.substring(idx + 1).trim
+        else None -> str
+      }
+      def parseStep(name: Option[String], statement: String): Action.Step = {
+        def parseOp(st: String): Action.Op = {
+          if (viewCallRegex.pattern.matcher(st).matches) {
+            val viewCallRegex(method, view) = st
+            Action.ViewCall(method, view)
+          } else if (invocationRegex.pattern.matcher(st).matches) {
+            val idx = st.lastIndexOf('.')
+            Action.Invocation(st.substring(0, idx), st.substring(idx + 1))
+          } else if (jobCallRegex.pattern.matcher(st).matches()) {
+            val jobCallRegex(jobName) = st
+            Action.JobCall(jobName)
+          } else {
+            Action.Tresql(st)
+          }
+        }
+        def parseSt(st: String, varTrs: List[VariableTransform]) = {
+          if (returnRegex.pattern.matcher(st).matches) {
+            val returnRegex(ret) = st
+            Action.Return(name, varTrs,
+              if (ret.contains("="))
+                Try {
+                  val p = parser.asInstanceOf[AppQuereaseDefaultParser] // FIXME get rid of typecast
+                  p.parseWithParser(p.varsTransforms)(ret)
+                }.toOption.getOrElse(parseOp(ret))
+              else parseOp(ret)
+            )
+          } else {
+            Action.Evaluation(name, varTrs, parseOp(st))
+          }
+        }
+        if (statement.contains("->")) {
+          val p = parser.asInstanceOf[AppQuereaseDefaultParser] // FIXME get rid of typecast
+          Try(p.parseWithParser(p.stepWithVarsTransform)(statement))
+            .map { case (vtrs, st) => parseSt(st, vtrs) }
+            .toOption
+            .getOrElse(parseSt(statement, Nil))
+        } else {
+          parseSt(statement, Nil)
+        }
+      }
+      step match {
+        case s: String =>
+          val (name, st) = parseNamedStep(s)
+          parseStep(name, st)
+        case jm: java.util.Map[String, Any]@unchecked if jm.size() == 1 =>
+          val m = jm.asScala.toMap
+          val (name, value) = m.head
+          if (name == Action.ValidationsKey) {
+            val validations = getSeq(Action.ValidationsKey, m).map(_.toString)
+            Action.Validations(validations)
+          } else {
+            parseStep(Option(name), value.toString)
+          }
+        case x =>
+          sys.error(s"'$objectName' parsing error, invalid value: $x")
+      }
+    }.toList
+    Action(steps)
+  }
+
+  protected def parseJob(job: Map[String, Any]): Job = {
+    val name = job.get("name").map(String.valueOf)
+      .getOrElse(sys.error(s"Error parsing job, missing 'name' attribute"))
+    val schedule = job.get("schedule").map(String.valueOf)
+    val condition = job.get("condition").map(String.valueOf)
+    val action = parseAction(name, ViewDefExtrasUtils.getSeq("action", job))
+    Job(name, schedule, condition, action)
+  }
 }
 
 
@@ -498,6 +510,7 @@ object AppMetadata {
     case class ViewCall(method: String, view: String) extends Op
     case class Invocation(className: String, function: String) extends Op
     case class VariableTransforms(transforms: List[VariableTransform]) extends Op
+    case class JobCall(name: String) extends Op
 
     case class Evaluation(name: Option[String], varTrans: List[VariableTransform], op: Op) extends Step
     case class Return(name: Option[String], varTrans: List[VariableTransform], value: Op) extends Step
@@ -507,6 +520,11 @@ object AppMetadata {
   }
 
   case class Action(steps: List[Action.Step])
+
+  case class Job(name: String,
+                 schedule: Option[String],
+                 condition: Option[String],
+                 action: Action)
 
   trait AppViewDefExtras {
     val limit: Int

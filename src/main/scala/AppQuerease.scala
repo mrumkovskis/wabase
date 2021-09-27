@@ -57,6 +57,8 @@ class QuereaseEnvException(val env: Map[String, Any], cause: Exception) extends 
 
 abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata with Loggable {
 
+  case class ActionContext(name: String, env: Map[String, Any], view: Option[ViewDef])
+
   import AppMetadata._
   override def get[B <: DTO](id: Long, extraFilter: String = null, extraParams: Map[String, Any] = null)(
       implicit mf: Manifest[B], resources: Resources): Option[B] = {
@@ -154,18 +156,18 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     val vd = viewDef(view)
 
     vd.actions.get(actionName)
-      .map(a => doSteps(a.steps, env, view, actionName, Future.successful(data)))
+      .map { a =>
+        val ctx = ActionContext(s"$view.$actionName", env, Some(vd))
+        doSteps(a.steps, ctx, Future.successful(data))
+      }
       .getOrElse(Future.successful(doViewCall(actionName, view, data, env)))
   }
 
   protected def doSteps(steps: List[Action.Step],
-                        env: Map[String, Any],
-                        context: String, // view def or job
-                        actionName: String,
+                        context: ActionContext,
                         curData: Future[Map[String, Any]])(
       implicit resources: Resources, ec: ExecutionContext): Future[QuereaseResult] = {
     import Action._
-    val vd = viewDefOption(context)
 
     def dataForNewStep(res: QuereaseResult) = res match {
       case TresqlResult(tr) => tr match {
@@ -201,26 +203,30 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     }
     def doStep(step: Step, stepDataF: Future[Map[String, Any]]): Future[QuereaseResult] = {
       stepDataF flatMap { stepData =>
-        logger.debug(s"Doing action '$context:$actionName' step '$step'.\nData: $stepData")
+        logger.debug(s"Doing action '$context' step '$step'.\nData: $stepData")
         step match {
           case Evaluation(_, vts, op) =>
-            doActionOp(op, doVarsTransforms(vts, stepData, stepData).result, env, vd)
+            doActionOp(op, doVarsTransforms(vts, stepData, stepData).result, context.env, context.view)
           case Return(_, vts, op) =>
-            doActionOp(op, doVarsTransforms(vts, stepData, stepData).result, env, vd)
+            doActionOp(op, doVarsTransforms(vts, stepData, stepData).result, context.env, context.view)
           case Validations(validations) =>
-            Future(doValidationStep(validations, stepData ++ env, vd.get))
-              .map(_ => MapResult(stepData))
+            context.view.map { vd =>
+              Future(doValidationStep(validations, stepData ++ context.env, vd))
+                .map(_ => MapResult(stepData))
+            }.getOrElse(Future.failed(
+              new RuntimeException(s"Validation cannot be performed without view in context -" +
+                s"(${context.name})")))
         }
       }
     }
 
-    logger.debug(s"Doing action '$context:$actionName'.\n Env: $env")
+    logger.debug(s"Doing action '$context'.\n Env: ${context.env}")
     steps match {
       case Nil => curData map MapResult
       case s :: Nil => doStep(s, curData) flatMap { finalRes =>
         s match {
           case e: Evaluation =>
-            doSteps(Nil, env, context, actionName, curData.map(updateCurRes(_, e.name, dataForNewStep(finalRes))))
+            doSteps(Nil, context, curData.map(updateCurRes(_, e.name, dataForNewStep(finalRes))))
           case _ => Future.successful(finalRes)
         }
       }
@@ -239,7 +245,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
               case _ => curData
             }
           }
-        doSteps(tail, env, context, actionName, newData)
+        doSteps(tail, context, newData)
     }
   }
 
@@ -342,6 +348,19 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     }.get
   }
 
+  protected def doJobCall(job: Job,
+                          data: Map[String, Any],
+                          env: Map[String, Any])(implicit
+                                                 resources: Resources,
+                                                 ec: ExecutionContext): Future[QuereaseResult] = {
+    val ctx = ActionContext(job.name, env, None)
+    job.condition
+      .collect { case cond if Query(cond, data ++ env).unique[Boolean] =>
+        doSteps(job.action.steps, ctx, Future.successful(data))
+      }
+      .getOrElse(Future.successful(NoResult))
+  }
+
   protected def doVarsTransforms(transforms: List[VariableTransform],
                                  seed: Map[String, Any],
                                  data: Map[String, Any]): MapResult = {
@@ -367,6 +386,10 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
         Future.successful(doViewCall(method, view, data, env))
       case Invocation(className, function) =>
         doInvocation(className, function, data ++ env)
+      case JobCall(jobName) =>
+        // TODO get job from metadata
+        val job = null
+        doJobCall(job, data, env)
       case VariableTransforms(vts) =>
         Future.successful(doVarsTransforms(vts, Map[String, Any](), data ++ env))
     }
