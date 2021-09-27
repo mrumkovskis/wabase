@@ -149,91 +149,98 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
   def doAction(view: String,
                actionName: String,
                data: Map[String, Any],
-               env: Map[String, Any])( // TODO get rid of env, combine with data
-    implicit resources: Resources, ec: ExecutionContext): Future[QuereaseResult] = {
-    import Action._
+               env: Map[String, Any])(
+      implicit resources: Resources, ec: ExecutionContext): Future[QuereaseResult] = {
     val vd = viewDef(view)
 
-    def doSteps(steps: List[Step],
-                curEnv: Future[Map[String, Any]]): Future[QuereaseResult] = {
-      def dataForNewStep(res: QuereaseResult) = res match {
-        case TresqlResult(tr) => tr match {
-          case dml: DMLResult =>
-            dml.id.map(IdResult(_)) orElse dml.count getOrElse 0
-          case SingleValueResult(v) => v
-          case ar: ArrayResult[_] => ar.values.toList
-          case r: Result[_] => r.toListOfMaps match {
-            case row :: Nil if row.size == 1 => row.head._2 // unwrap if result is one row, one column
-            case rows => rows
-          }
+    vd.actions.get(actionName)
+      .map(a => doSteps(a.steps, env, view, actionName, Future.successful(data)))
+      .getOrElse(Future.successful(doViewCall(actionName, view, data, env)))
+  }
 
-        }
-        case MapResult(mr) => mr
-        case PojoResult(pr) => pr.toMap(this)
-        case ListResult(lr) => lr
-        case IteratorResult(ir) => ir.map(_.toMap(this)).toList
-        case OptionResult(or) => or.map(_.toMap(this)).getOrElse(null)
-        case NumberResult(nr) => nr
-        case CodeResult(code) => code
-        case id: IdResult => id
-        case rd: RedirectResult => rd
-        case NoResult => NoResult
-      }
-      def updateCurRes(cr: Map[String, Any], key: Option[String], res: Any) = res match {
-        case IdResult(id) => cr
-          .get("id")
-          .filter(i => i != null && i != id)
-          .flatMap(_ => key)
-          .map(k => cr + (k -> Map("id" -> id)))
-          .getOrElse(cr + ("id" -> id))
-        case NoResult => cr
-        case r => key.map(k => cr + (k -> r)).getOrElse(cr)
-      }
-      def doStep(step: Step, stepDataF: Future[Map[String, Any]]): Future[QuereaseResult] = {
-        stepDataF flatMap { stepData =>
-          logger.debug(s"Doing view '$view' action '$actionName' step '$step'.\nData: $stepData")
-          step match {
-            case Evaluation(_, vts, op) =>
-              doActionOp(vd, op, doVarsTransforms(vts, stepData, stepData).result, env)
-            case Return(_, vts, op) =>
-              doActionOp(vd, op, doVarsTransforms(vts, stepData, stepData).result, env)
-            case Validations(validations) =>
-              Future(doValidationStep(validations, stepData ++ env, vd))
-                .map(_ => MapResult(stepData))
-          }
-        }
-      }
+  protected def doSteps(steps: List[Action.Step],
+                        env: Map[String, Any],
+                        context: String, // view def or job
+                        actionName: String,
+                        curData: Future[Map[String, Any]])(
+      implicit resources: Resources, ec: ExecutionContext): Future[QuereaseResult] = {
+    import Action._
+    val vd = viewDefOption(context)
 
-      steps match {
-        case Nil => curEnv map MapResult
-        case s :: Nil => doStep(s, curEnv) flatMap { finalRes =>
-          s match {
-            case e: Evaluation =>
-              doSteps(Nil, curEnv.map(updateCurRes(_, e.name, dataForNewStep(finalRes))))
-            case _ => Future.successful(finalRes)
-          }
+    def dataForNewStep(res: QuereaseResult) = res match {
+      case TresqlResult(tr) => tr match {
+        case dml: DMLResult =>
+          dml.id.map(IdResult(_)) orElse dml.count getOrElse 0
+        case SingleValueResult(v) => v
+        case ar: ArrayResult[_] => ar.values.toList
+        case r: Result[_] => r.toListOfMaps match {
+          case row :: Nil if row.size == 1 => row.head._2 // unwrap if result is one row, one column
+          case rows => rows
         }
-        case s :: tail =>
-          val newEnv =
-            doStep(s, curEnv) flatMap { stepRes =>
-              s match {
-                case e: Evaluation =>
-                  curEnv.map(updateCurRes(_, e.name, dataForNewStep(stepRes)))
-                case r: Return => dataForNewStep(stepRes) match {
-                  case m: Map[String, Any]@unchecked => Future.successful(m)
-                  case x =>
-                    //in the case of primitive value return step must have name
-                    r.name.map(n => Future.successful(Map(n -> x))).getOrElse(curEnv)
-                }
-                case _ => curEnv
-              }
-            }
-          doSteps(tail, newEnv)
+      }
+      case MapResult(mr) => mr
+      case PojoResult(pr) => pr.toMap(this)
+      case ListResult(lr) => lr
+      case IteratorResult(ir) => ir.map(_.toMap(this)).toList
+      case OptionResult(or) => or.map(_.toMap(this)).getOrElse(null)
+      case NumberResult(nr) => nr
+      case CodeResult(code) => code
+      case id: IdResult => id
+      case rd: RedirectResult => rd
+      case NoResult => NoResult
+    }
+    def updateCurRes(cr: Map[String, Any], key: Option[String], res: Any) = res match {
+      case IdResult(id) => cr
+        .get("id")
+        .filter(i => i != null && i != id)
+        .flatMap(_ => key)
+        .map(k => cr + (k -> Map("id" -> id)))
+        .getOrElse(cr + ("id" -> id))
+      case NoResult => cr
+      case r => key.map(k => cr + (k -> r)).getOrElse(cr)
+    }
+    def doStep(step: Step, stepDataF: Future[Map[String, Any]]): Future[QuereaseResult] = {
+      stepDataF flatMap { stepData =>
+        logger.debug(s"Doing action '$context:$actionName' step '$step'.\nData: $stepData")
+        step match {
+          case Evaluation(_, vts, op) =>
+            doActionOp(op, doVarsTransforms(vts, stepData, stepData).result, env, vd)
+          case Return(_, vts, op) =>
+            doActionOp(op, doVarsTransforms(vts, stepData, stepData).result, env, vd)
+          case Validations(validations) =>
+            Future(doValidationStep(validations, stepData ++ env, vd.get))
+              .map(_ => MapResult(stepData))
+        }
       }
     }
-    vd.actions.get(actionName)
-      .map(a => doSteps(a.steps, Future.successful(data)))
-      .getOrElse(Future.successful(doViewCall(actionName, view, data, env)))
+
+    logger.debug(s"Doing action '$context:$actionName'.\n Env: $env")
+    steps match {
+      case Nil => curData map MapResult
+      case s :: Nil => doStep(s, curData) flatMap { finalRes =>
+        s match {
+          case e: Evaluation =>
+            doSteps(Nil, env, context, actionName, curData.map(updateCurRes(_, e.name, dataForNewStep(finalRes))))
+          case _ => Future.successful(finalRes)
+        }
+      }
+      case s :: tail =>
+        val newData =
+          doStep(s, curData) flatMap { stepRes =>
+            s match {
+              case e: Evaluation =>
+                curData.map(updateCurRes(_, e.name, dataForNewStep(stepRes)))
+              case r: Return => dataForNewStep(stepRes) match {
+                case m: Map[String, Any]@unchecked => Future.successful(m)
+                case x =>
+                  //in the case of primitive value return step must have name
+                  r.name.map(n => Future.successful(Map(n -> x))).getOrElse(curData)
+              }
+              case _ => curData
+            }
+          }
+        doSteps(tail, env, context, actionName, newData)
+    }
   }
 
   protected def doValidationStep(validations: Seq[String],
@@ -253,8 +260,11 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
 
   protected def doTresql(tresql: String,
                          bindVars: Map[String, Any],
-                         viewDef: ViewDef)(implicit res: Resources): QuereaseResult = {
-    val tresqlWithCursors = maybeExpandWithBindVarsCursors(tresql, bindVars, viewDef)
+                         context: Option[ViewDef])(implicit res: Resources): QuereaseResult = {
+    val tresqlWithCursors =
+      context
+        .map(viewDef => maybeExpandWithBindVarsCursors(tresql, bindVars, viewDef))
+        .getOrElse(tresql)
     TresqlResult(Query(tresqlWithCursors)(res.withParams(bindVars)))
   }
 
@@ -344,15 +354,15 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     MapResult(transRes)
   }
 
-  protected def doActionOp(viewDef: ViewDef,
-                           op: Action.Op,
+  protected def doActionOp(op: Action.Op,
                            data: Map[String, Any],
-                           env: Map[String, Any])(implicit res: Resources, // TODO get rid of env, combine with data
-                                                  ec: ExecutionContext): Future[QuereaseResult] = {
+                           env: Map[String, Any],
+                           context: Option[ViewDef])(implicit res: Resources,
+                                                     ec: ExecutionContext): Future[QuereaseResult] = {
     import Action._
     op match {
       case Tresql(tresql) =>
-        Future.successful(doTresql(tresql, data ++ env, viewDef))
+        Future.successful(doTresql(tresql, data ++ env, context))
       case ViewCall(method, view) =>
         Future.successful(doViewCall(method, view, data, env))
       case Invocation(className, function) =>
