@@ -110,7 +110,7 @@ trait CoreClient extends RestClient with JsonConverterProvider with BasicJsonMar
 }
 
 object CoreClient{
-  import RestClient.WsClosed
+  import RestClient.{WsClosed, WsFailed}
   case class GetDeferred(hash: String)
 
   class DeferredActor extends Actor with Loggable{
@@ -136,8 +136,11 @@ object CoreClient{
           sender() ! receivedMessages(hash)
         else
           context.become(queueResults(receivedMessages, subscribers + (hash -> sender())))
+      case WsFailed(ex) =>
+        logger.warn("Websocket failed, shutting down DeferredActor", ex)
+        context.stop(self)
       case WsClosed =>
-        println("******************************** ACTOR SYSTEM SHUTDOWN ********************************")
+        logger.info("Websocket closed, shutting down DeferredActor")
         context.stop(self)
     }
   }

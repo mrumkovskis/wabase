@@ -30,7 +30,7 @@ object ClientException{
 
 trait RestClient extends Loggable{
 
-  import RestClient.WsClosed
+  import RestClient.{WsClosed, WsFailed}
   def actorSystemName = "rest-client"
   def createActorSystem = ActorSystem(actorSystemName)
   implicit val system = createActorSystem
@@ -175,7 +175,7 @@ trait RestClient extends Loggable{
   def listenToWs(actor: ActorRef) = {
     val deferredFlow: Flow[Message, Message, Promise[Option[Message]]] =
       Flow.fromSinkAndSourceMat(
-        Sink.actorRef(actor, WsClosed, (e) => { logger.error("Knipis", e) }),
+        Sink.actorRef(actor, WsClosed, e => WsFailed(e)), // FIXME do not use INTERNAL API
         Source.maybe[Message])(Keep.right)
 
     val (upgradeResponse, promise) = Http().singleWebSocketRequest(
@@ -188,4 +188,5 @@ object RestClient extends Loggable{
   val defaultRequestTimeout = durationConfig("app.rest-client.request-timeout", 5 seconds)
   val defaultAwaitTimeout = durationConfig("app.rest-client.await-timeout", defaultRequestTimeout + (2 seconds))
   object WsClosed
+  case class WsFailed(cause: Throwable)
 }
