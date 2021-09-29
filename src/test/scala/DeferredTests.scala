@@ -133,9 +133,7 @@ class DeferredTests extends AnyFlatSpec with QuereaseBaseSpecs with ScalatestRou
     val route = service.wsNotificationsAction(user.id.toString) ~
       service.deferred(user) { path("deferred-req" / LongNumber) { id =>
         complete {
-          //println(s"Enter - $id")
           Thread.sleep(100)
-          //println(s"Exit - $id")
           //if (id % 2 == 0) sys.error("Fail on every even call")
           s"Req nr. $id"
         }

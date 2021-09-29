@@ -60,7 +60,7 @@ trait QuereaseBaseSpecs extends Matchers with BeforeAndAfterAll with Loggable { 
         case LogTopic.tresql => "tresql"
         case LogTopic.sql_with_params => null
       }
-      if (topicName != null) println(Timestamp(new Date()) + s"  [$topicName]  $msg")
+      if (topicName != null) logger.debug(/*Timestamp(new Date()) + */s"  [$topicName]  $msg")
     }
 
     this.tresqlResources  = new TresqlResources {
