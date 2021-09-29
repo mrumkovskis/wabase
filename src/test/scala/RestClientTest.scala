@@ -1,18 +1,13 @@
 package org.wabase
 
-import java.util.concurrent.TimeoutException
-
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.server.Directives._
-import akka.http.scaladsl.model.HttpRequest
-import akka.http.scaladsl.model.StatusCode
 import akka.http.scaladsl.server.Route
 import akka.http.scaladsl.testkit.ScalatestRouteTest
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers
-import org.wabase.client.RestClient
-import org.wabase.client.ClientException
+import org.wabase.client.{ClientException, RestClient}
 
 import scala.concurrent.Await
 import scala.concurrent.duration._
@@ -20,27 +15,11 @@ import scala.language.postfixOps
 
 class RestClientTest  extends FlatSpec with Matchers with ScalatestRouteTest with BeforeAndAfterAll with Loggable{
   behavior of "RestClient"
-  class TestClient extends RestClient {
-    def handleError(e: Throwable): Nothing = e match{
-      case error if error.getCause != null => handleError(error.getCause)
-      case error: TimeoutException =>
-        logger.error(error.getMessage, error)
-        throw new TimeoutException(error.getMessage)
-      case error: ClientException => throw new ClientException(error.getMessage, error, error.status, error.responseContent, error.request)
-      case error => throw ClientException(error)
-    }
-    override def requestFailed(
-        message: String, cause: Throwable,
-        status: StatusCode = null, content: String = null, request: HttpRequest = null): Nothing =
-      try super.requestFailed(message, cause, status, content, request) catch {
-        case e: Throwable => handleError(e)
-      }
-  }
-  val client = new TestClient{
+  val client = new RestClient{
     override val requestTimeout = 50 seconds
     override val awaitTimeout   = 55 seconds
   }
-  val fastClient = new TestClient{
+  val fastClient = new RestClient{
     override val requestTimeout = 2 seconds
   }
 
@@ -60,7 +39,12 @@ class RestClientTest  extends FlatSpec with Matchers with ScalatestRouteTest wit
   }
 
   it should "properly time out delayed response" in {
-    intercept[TimeoutException] {fastClient.httpGetAwait[String]("timeout")}.getMessage should be ("The stream has not been completed in 2 seconds.")
+    val errorMessage =
+      intercept[ClientException] {
+        fastClient.httpGetAwait[String]("timeout")
+      }.getMessage
+    errorMessage should include ("Request to 'http://localhost:8080/timeout' failed")
+    errorMessage should include ("The stream has not been completed in 2 seconds")
   }
 
   it should "properly handle multiple requests in parallel" in {
