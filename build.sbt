@@ -22,7 +22,7 @@ lazy val dependencies = {
 }
 
 lazy val testDependencies = Seq(
-    "org.scalatest"              %% "scalatest"                         % "3.2.2" % "it,test",
+    "org.scalatest"              %% "scalatest"                         % "3.2.9" % "it,test",
     "com.typesafe.akka"          %% "akka-http-testkit"                 % akkaHttpV % "it,test",
     "com.typesafe.akka"          %% "akka-testkit"                      % akkaV   % "it,test",
     "com.typesafe.akka"          %% "akka-stream-testkit"               % akkaV   % "it,test",
