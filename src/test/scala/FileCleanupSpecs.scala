@@ -110,8 +110,17 @@ class FileCleanupSpecs extends FlatSpec with Matchers with BeforeAndAfterEach {
 
   filestreamerConfigs foreach { fileStreamerList =>
     val fsConfigName = fileStreamerList.head.attachmentsRootPathTail.split("/")(0) + " paths"
+
     val fileCleaner = new TestFileCleanup(db, fileStreamerList: _*)
-    def doCleanup = fileCleaner.doCleanup(execution.system.log)
+    def comfortFileCleaner = {
+      fileStreamerList.foreach { fs =>
+        new File(fs.rootPath + "/" + "tmp").mkdirs
+      }
+    }
+    def doCleanup = {
+      comfortFileCleaner
+      fileCleaner.doCleanup(execution.system.log)
+    }
 
     it should ("cleanup file body info with references removed, for " + fsConfigName) in {
       fileStreamerList.foreach { fs =>
