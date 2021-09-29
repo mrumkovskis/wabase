@@ -29,7 +29,7 @@ trait QuereaseBaseSpecs extends Matchers with BeforeAndAfterAll with Loggable { 
   override def beforeAll(): Unit = {
     super.beforeAll()
     Class.forName("org.hsqldb.jdbc.JDBCDriver")
-    this.conn = DriverManager.getConnection("jdbc:hsqldb:mem:querease_base_test")
+    this.conn = DriverManager.getConnection(s"jdbc:hsqldb:mem:${getClass.getName}_db")
     logger.debug(s"Creating database for ${getClass.getName} tests ...\n")
     SqlGenerator.hsqldb().schema(querease.tableMetadata.tableDefs)
       .split(";\\s+").map(_ + ";")
