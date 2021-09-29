@@ -82,7 +82,7 @@ trait QuereaseBaseSpecs extends Matchers with BeforeAndAfterAll with Loggable { 
 
   def removeKeys(map: Map[String, Any], keys: Set[String]): Map[String, Any] = {
     def rk(v: Any): Any = v match {
-      case m: Map[String, _] => rm(m)
+      case m: Map[String@unchecked, _] => rm(m)
       case i: Iterable[_] => i map rk
       case x => x
     }

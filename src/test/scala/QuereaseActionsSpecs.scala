@@ -129,6 +129,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Asy
             List(Map("number" -> "AAA", "balance" -> 0.00,
               "last_modified" -> java.sql.Timestamp.valueOf("2021-06-17 17:16:00.0"))))
       }
+      case x => sys.error("Unexpected action result class: " + Option(x).map(_.getClass.getName).orNull)
     }
 
     p.name = "Zina"
@@ -146,6 +147,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Asy
             List(Map("number" -> "BBB", "balance" -> 0.00,
               "last_modified" -> java.sql.Timestamp.valueOf("2021-06-19 00:15:00.0"))))
       }
+      case x => sys.error("Unexpected action result class: " + Option(x).map(_.getClass.getName).orNull)
     }
   }
 
@@ -198,6 +200,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Asy
           List(Map("name" -> "Mr. Kalis", "surname" -> "Calis", "sex" -> "M", "birthdate" -> java.sql.Date.valueOf("1980-12-14")),
             Map("name" -> "Ms. Zina", "surname" -> "Mina", "sex" -> "F", "birthdate" -> java.sql.Date.valueOf("1982-12-14"))))
       )
+      case x => sys.error("Unexpected action result class: " + Option(x).map(_.getClass.getName).orNull)
     }
     querease.doAction("person_list", "list", Map("name" -> "Ms"), Map()).map {
       case MapResult(res) => removeIds(res) should be (
@@ -205,12 +208,14 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Asy
           List(Map("name" -> "Mr. Kalis", "surname" -> "Calis", "sex" -> "M", "birthdate" -> java.sql.Date.valueOf("1980-12-14")),
             Map("name" -> "Ms. Zina", "surname" -> "Mina", "sex" -> "F", "birthdate" -> java.sql.Date.valueOf("1982-12-14"))))
       )
+      case x => sys.error("Unexpected action result class: " + Option(x).map(_.getClass.getName).orNull)
     }
     querease.doAction("person_list", "list", Map("name" -> "Ms"), Map()).map {
       case MapResult(res) => removeIds(res) should be (
         Map("name" -> "Ms", "count" -> 1, "data" ->
           List(Map("name" -> "Ms. Zina", "surname" -> "Mina", "sex" -> "F", "birthdate" -> java.sql.Date.valueOf("1982-12-14"))))
       )
+      case x => sys.error("Unexpected action result class: " + Option(x).map(_.getClass.getName).orNull)
     }
   }
 
@@ -227,6 +232,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Asy
         "sex" -> "M",
         "birthdate" -> java.sql.Date.valueOf("1980-12-14"),
         "accounts" -> List(Map("number" -> "AAA", "balance" -> 8.00))))
+      case x => sys.error("Unexpected action result class: " + Option(x).map(_.getClass.getName).orNull)
     }
     //set main account
     Query("=person[id = ?] {main_account_id = account[number = 'AAA' & person_id = ?]{id}}", id, id)
@@ -238,6 +244,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Asy
         "sex" -> "M",
         "birthdate" -> java.sql.Date.valueOf("1980-12-14"),
         "accounts" -> List(Map("number" -> "AAA", "balance" -> 8.00))))
+      case x => sys.error("Unexpected action result class: " + Option(x).map(_.getClass.getName).orNull)
     }
   }
 

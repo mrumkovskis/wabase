@@ -5,7 +5,6 @@ import akka.stream._
 import akka.stream.scaladsl.{Framing, RestartSource, Sink, Source}
 import akka.stream.stage.{GraphStage, GraphStageLogic, InHandler, OutHandler}
 import akka.util.ByteString
-import org.wabase.{Loggable, config}
 
 import java.io.File
 import java.nio.ByteBuffer
