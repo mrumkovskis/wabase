@@ -50,7 +50,8 @@ class RestClientTest  extends FlatSpec with Matchers with ScalatestRouteTest wit
   it should "properly handle multiple requests in parallel" in {
     import scala.concurrent._
     val results = (1 to 100).map { i =>
-      Future {(i, client.httpGetAwait[String](s"counter/$i"))}
+      client.httpGet[String](s"counter/$i")
+        .map(response => (i, response))
         .filter { case (counter, response) => s"RESULT $counter" == response }
     }
     val res = Await.result(Future.foldLeft(results)(0){ case (c, _) => c + 1 }, 1 minute)
