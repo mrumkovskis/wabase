@@ -203,7 +203,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     }
     def doStep(step: Step, stepDataF: Future[Map[String, Any]]): Future[QuereaseResult] = {
       stepDataF flatMap { stepData =>
-        logger.debug(s"Doing action '$context' step '$step'.\nData: $stepData")
+        logger.debug(s"Doing action '${context.name}' step '$step'.\nData: $stepData")
         step match {
           case Evaluation(_, vts, op) =>
             doActionOp(op, doVarsTransforms(vts, stepData, stepData).result, context.env, context.view)
