@@ -384,10 +384,10 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   }
 
   protected def parseAction(objectName: String, stepData: Seq[Any]): Action = {
-    val viewCallRegex = new Regex(Action().mkString("(", "|", """)\s+(\w+)"""))
+    val viewCallRegex = new Regex(Action().mkString("(", "|", """)\s+(:?\w+)"""))
     val invocationRegex = """(\w|\$)+\.(\w|\$)+(\.(\w|\$)+)*""".r
     val returnRegex = """(?s)return\s+(.+)""".r //dot matches new line as well
-    val jobCallRegex = """job\s+(\w+)""".r
+    val jobCallRegex = """job\s+(:?\w+)""".r
     import ViewDefExtrasUtils._
     val steps = stepData.map { step =>
       def parseNamedStep(str: String) = {
@@ -467,7 +467,6 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     Job(name, schedule, condition, action)
   }
 }
-
 
 
 object AppMetadata {

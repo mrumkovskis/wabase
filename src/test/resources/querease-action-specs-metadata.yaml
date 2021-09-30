@@ -113,7 +113,8 @@ table:
 fields:
 - id
 get:
-- person = get person
+- view_name = 'person'
+- person = get :view_name
 - main_acc_id = coalesce((account[number = :person.main_account] {id}), -1)
 - account = (id = :main_acc_id) -> get person_accounts
 - main_account_data = if_defined_or_else(:account.number, :account.number || '(' || :account.balance || ')', '<no main account>')

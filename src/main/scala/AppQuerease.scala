@@ -279,7 +279,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
                            data: Map[String, Any],
                            env: Map[String, Any])(implicit res: Resources): QuereaseResult = {
     import Action._
-    val v = viewDef(view)
+    val v = viewDef(if (view.startsWith(":")) stringValue(view, data, env) else view)
     implicit val mf = ManifestFactory.classType(viewNameToClassMap(v.name)).asInstanceOf[Manifest[DTO]]
     def long(name: String) = tryOp(data.get(name).map {
       case x: Long => x
@@ -348,11 +348,14 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     }.get
   }
 
-  protected def doJobCall(job: Job,
+  protected def doJobCall(jobName: String,
                           data: Map[String, Any],
                           env: Map[String, Any])(implicit
                                                  resources: Resources,
                                                  ec: ExecutionContext): Future[QuereaseResult] = {
+    val job = null: Job
+    // TODO get job from metadata
+    //getJob(if (jobName.startsWith(":")) stringValue(jobName, data, env) else jobName)
     val ctx = ActionContext(job.name, env, None)
     job.condition
       .collect { case cond if Query(cond, data ++ env).unique[Boolean] =>
@@ -386,12 +389,18 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
         Future.successful(doViewCall(method, view, data, env))
       case Invocation(className, function) =>
         doInvocation(className, function, data ++ env)
-      case JobCall(jobName) =>
-        // TODO get job from metadata
-        val job = null
+      case JobCall(job) =>
         doJobCall(job, data, env)
       case VariableTransforms(vts) =>
         Future.successful(doVarsTransforms(vts, Map[String, Any](), data ++ env))
+    }
+  }
+
+  private def stringValue(tresql: String, data: Map[String, Any], env: Map[String, Any])(
+      implicit res: Resources): String = {
+    Query(tresql, data ++ env) match {
+      case SingleValueResult(value) => String.valueOf(value)
+      case r: Result[_] => r.unique[String]
     }
   }
 
