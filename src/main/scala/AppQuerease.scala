@@ -396,6 +396,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     }
   }
 
+  // used for example in view, job operations when name is referenced by bind variable
   private def stringValue(tresql: String, data: Map[String, Any], env: Map[String, Any])(
       implicit res: Resources): String = {
     Query(tresql, data ++ env) match {

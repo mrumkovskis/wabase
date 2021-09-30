@@ -114,7 +114,7 @@ fields:
 - id
 get:
 - view_name = 'person'
-- person = get :view_name
+- person = get :view_name # view name is referenced by bind variable
 - main_acc_id = coalesce((account[number = :person.main_account] {id}), -1)
 - account = (id = :main_acc_id) -> get person_accounts
 - main_account_data = if_defined_or_else(:account.number, :account.number || '(' || :account.balance || ')', '<no main account>')
