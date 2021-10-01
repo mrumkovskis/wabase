@@ -7,11 +7,13 @@ import akka.http.scaladsl.model.{ContentTypes, HttpEntity, HttpResponse, StatusC
 import akka.http.scaladsl.model.headers._
 import akka.http.scaladsl.model.ws.TextMessage
 import akka.http.scaladsl.server.Directives._
+import akka.http.scaladsl.server.ExceptionHandler
 import akka.http.scaladsl.server.Route
 import akka.http.scaladsl.testkit.{ScalatestRouteTest, WSProbe}
 import akka.stream.scaladsl.Source
 import akka.util.ByteString
 import org.scalatest.flatspec.AnyFlatSpec
+import org.wabase.AppServiceBase.AppExceptionHandler._
 
 import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.Future
@@ -20,6 +22,8 @@ import scala.language.implicitConversions
 import scala.util.Try
 
 class DeferredTests extends AnyFlatSpec with QuereaseBaseSpecs with ScalatestRouteTest {
+
+  class DeferredTestException(message: String) extends Exception(message)
 
   var streamerConfQe: QuereaseProvider with AppFileStreamerConfig = _
 
@@ -56,6 +60,12 @@ class DeferredTests extends AnyFlatSpec with QuereaseBaseSpecs with ScalatestRou
     deferredResultFileRootPath =
       new File(System.getProperty("java.io.tmpdir"),"wabase-deferred-results-tests/" + UUID.randomUUID().toString).getPath
 
+    def deferredTestExceptionHandler(logger: com.typesafe.scalalogging.Logger) = ExceptionHandler {
+      case e: DeferredTestException =>
+        logger.debug("Deferred test exception occurred: " + e.getMessage, e)
+        complete(StatusCodes.InternalServerError)
+    }
+
     service = new TestAppService(system) {
       override def initApp: App = appl
       override def initFileStreamer = appl
@@ -69,7 +79,12 @@ class DeferredTests extends AnyFlatSpec with QuereaseBaseSpecs with ScalatestRou
         complete(s"$viewName:${timeout.timeoutSeconds}")
       override protected def initDeferredStorage = new DbDeferredStorage(appConfig, this, dbAccess, this) {
         override lazy val rootPath = deferredResultFileRootPath
+        override protected def logDeferredResultMarshallingException(e: Throwable): Unit =
+          logger.debug(deferredResultMarshallingExceptionMessage(e), e)
       }
+      override val appExceptionHandler =
+        deferredTestExceptionHandler(this.logger)
+          .withFallback(businessExceptionHandler(this.logger))
     }
   }
 
@@ -304,7 +319,7 @@ class DeferredTests extends AnyFlatSpec with QuereaseBaseSpecs with ScalatestRou
 
     val requests = ArrayBuffer[String]()
 
-    Get("/exception") ~> RawHeader("X-Deferred", "true") ~> err_route(new Exception("EXCEPTION!")) ~> check {
+    Get("/exception") ~> RawHeader("X-Deferred", "true") ~> err_route(new DeferredTestException("EXCEPTION!")) ~> check {
       requests += parseDeferredRequestId(responseAs[String])
       handled shouldBe true
     }

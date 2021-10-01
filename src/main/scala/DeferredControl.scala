@@ -493,6 +493,11 @@ object DeferredControl extends Loggable with AppConfig {
       ctx
     }
 
+    protected def deferredResultMarshallingExceptionMessage(e: Throwable): String =
+      "Failed to marshal deferred result"
+    protected def logDeferredResultMarshallingException(e: Throwable): Unit =
+      logger.error(deferredResultMarshallingExceptionMessage(e), e)
+
     def registerDeferredResult(ctx: DeferredContext): Future[DeferredContext] = {
       import ctx._
       implicit val usr = userIdString
@@ -512,11 +517,11 @@ object DeferredControl extends Loggable with AppConfig {
         }
       }.recoverWith {
         case NonFatal(e) if isMarshallingException(e) =>
-          logger.error("Error marshalling deferred result", e)
+          logDeferredResultMarshallingException(e)
           registerDeferredResult(ctx.copy(
             status = DEFERRED_ERR,
             result = HttpResponse(status = StatusCodes.InternalServerError,
-              entity = "Error marshalling deferred result")))
+              entity = deferredResultMarshallingExceptionMessage(e))))
       }
     }
 
