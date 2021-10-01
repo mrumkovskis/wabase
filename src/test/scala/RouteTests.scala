@@ -1,13 +1,23 @@
 package org.wabase
 
+import akka.actor.ActorSystem
+import akka.http.scaladsl.model.HttpRequest
+import akka.http.scaladsl.model.headers.HttpOrigin
 import akka.http.scaladsl.testkit.ScalatestRouteTest
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers
-
 import akka.http.scaladsl.server.Directives._
 
 class RouteTests extends FlatSpec with Matchers with ScalatestRouteTest{
-  val service = new TestAppService(system)
+  class RouteTestsAppService(system: ActorSystem) extends TestAppService(system) {
+    override protected def logCsrfRejection(request: HttpRequest, sourceOrigins: Seq[HttpOrigin], targetOrigins: Seq[HttpOrigin]) =
+      logger.debug("CSRF rejection. " +
+        s"""Source origins: ${sourceOrigins.mkString(", ")}, """ +
+        s"""target origins: ${targetOrigins.mkString(", ")}, """ +
+        s"""uri: ${request.uri}""")
+  }
+  val service = new RouteTestsAppService(system)
+
   behavior of "Core routes"
 
   it should "handle get by id" in {
@@ -196,7 +206,7 @@ class RouteTests extends FlatSpec with Matchers with ScalatestRouteTest{
       RawHeader("X-Forwarded-Host", "localhost:91") ~> route ~> check (handled shouldBe false)
 
     //route with provided appConfig
-    val route1 = (new TestAppService(system) {
+    val route1 = (new RouteTestsAppService(system) {
       override lazy val appConfig = com.typesafe.config.ConfigFactory.parseString("""{"host": "http://localhost"}""")
     }).checkSameOrigin { complete("OK") }
     Get("/") ~> Origin(List(HttpOrigin("http", Host("localhost", 0))))  ~>
