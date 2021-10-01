@@ -340,7 +340,11 @@ object FileCleanupSpecsHelper {
     override def dbAccess = db
     override protected def fileStreamerConnectionPool: PoolName = TestCp
     override lazy val appConfig = null
-    lazy val attachmentsRootPath = System.getProperty("java.io.tmpdir") + "/" + "fs-test-uploads"
+    lazy val attachmentsRootPath = {
+      val fs = System.getProperty("file.separator")
+      val tmpdir = System.getProperty("java.io.tmpdir")
+      (if (tmpdir.endsWith(fs)) tmpdir else tmpdir + fs) + "fs-test-uploads"
+    }
     override lazy val rootPath = attachmentsRootPath + "/" + attachmentsRootPathTail
     lazy val file_ref_table: String = null
   }
