@@ -5,6 +5,8 @@ import java.nio.file.Files
 import java.util.UUID
 import akka.http.scaladsl.model.HttpEntity.{Chunk, Chunked, Default}
 import akka.http.scaladsl.model._
+import akka.http.scaladsl.server.Directives._
+import akka.http.scaladsl.server.ExceptionHandler
 import akka.http.scaladsl.testkit.{RouteTestTimeout, ScalatestRouteTest}
 import akka.http.scaladsl.unmarshalling.FromResponseUnmarshaller
 import akka.stream.scaladsl.Source
@@ -46,9 +48,17 @@ class FileUploadSpecs extends AnyFlatSpec with QuereaseBaseSpecs with ScalatestR
 
     streamerConfQe = appl
 
+    def entityStreamSizeExceptionHandler(logger: com.typesafe.scalalogging.Logger) = ExceptionHandler {
+      case e: EntityStreamSizeException =>
+        logger.debug("File upload specs: Stream size exception", e)
+        complete(StatusCodes.PayloadTooLarge)
+    }
+
     service = new TestAppService(system) {
       override def initApp: App = appl
       override def initFileStreamer = appl
+      override val appExceptionHandler =
+        entityStreamSizeExceptionHandler(this.logger)
     }
   }
 
@@ -94,7 +104,9 @@ class FileUploadSpecs extends AnyFlatSpec with QuereaseBaseSpecs with ScalatestR
     val content = "1" * (service.uploadSizeLimit.toInt + 1)
     val multipartForm = CoreClient.fileUploadForm(HttpEntity(ContentTypes.`text/plain(UTF-8)`, ByteString(content)), "Test.txt")
 
-    val route = service.uploadPath { _ => service.uploadAction(None)(usr, ApplicationState(Map()))}
+    val route = handleExceptions(service.appExceptionHandler) {
+      service.uploadPath { _ => service.uploadAction(None)(usr, ApplicationState(Map()))}
+    }
     Post(uploadPath, multipartForm) ~> route ~> check {
       assertResult(status)(StatusCodes.PayloadTooLarge)
     }
@@ -108,7 +120,9 @@ class FileUploadSpecs extends AnyFlatSpec with QuereaseBaseSpecs with ScalatestR
     val chunkCount = service.uploadSizeLimit.toInt / 1024 + 1
     val source = Source(List.fill(chunkCount)(chunk))
 
-    val route = service.uploadPath { _ => service.uploadAction(None)(usr, ApplicationState(Map()))}
+    val route = handleExceptions(service.appExceptionHandler) {
+      service.uploadPath { _ => service.uploadAction(None)(usr, ApplicationState(Map()))}
+    }
     val entity = Chunked(ContentTypes.`text/plain(UTF-8)`, source)
     Post(uploadPath, entity) ~> route ~> check {
       assertResult(status)(StatusCodes.PayloadTooLarge)
