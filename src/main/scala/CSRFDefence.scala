@@ -4,7 +4,7 @@ import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.{Directive0, Directive1}
 import akka.http.scaladsl.server.{AuthenticationFailedRejection, InvalidOriginRejection}
 import akka.http.scaladsl.server.AuthenticationFailedRejection._
-import akka.http.scaladsl.model.Uri
+import akka.http.scaladsl.model.{HttpRequest, Uri}
 import akka.http.scaladsl.model.headers.{Host, HttpCookie, HttpOrigin, HttpOriginRange, Origin, Referer, SameSite}
 
 trait CSRFDefence { this: AppConfig with Authentication[_] with Loggable =>
@@ -49,8 +49,14 @@ trait CSRFDefence { this: AppConfig with Authentication[_] with Loggable =>
     else origin
   }
 
+  protected def logCsrfRejection(request: HttpRequest, sourceOrigins: Seq[HttpOrigin], targetOrigins: Seq[HttpOrigin]) =
+    logger.error("CSRF rejection. " +
+      s"""Source origins: ${sourceOrigins.mkString(", ")}, """ +
+      s"""target origins: ${targetOrigins.mkString(", ")}, """ +
+      s"""uri: ${request.uri}""")
+
   def checkSameOrigin: Directive0 =
-    extractTargetOrigins.flatMap { targetOriginsRaw =>
+    (extractRequest & extractTargetOrigins).tflatMap { case (request, targetOriginsRaw) =>
       val targetOrigins = targetOriginsRaw.map(normalizePort)
       headerValuePF[Seq[HttpOrigin]]({
         case Origin(origins) =>
@@ -61,7 +67,7 @@ trait CSRFDefence { this: AppConfig with Authentication[_] with Loggable =>
       }).flatMap { sourceOrigins =>
         if (sourceOrigins.exists(HttpOriginRange(targetOrigins: _*).matches)) pass
         else {
-          logger.error(s"CSRF rejection, source origins: $sourceOrigins, target origins: $targetOrigins")
+          logCsrfRejection(request, sourceOrigins, targetOrigins)
           reject(InvalidOriginRejection(targetOrigins))
         }
       }
