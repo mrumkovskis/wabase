@@ -49,11 +49,16 @@ trait CSRFDefence { this: AppConfig with Authentication[_] with Loggable =>
     else origin
   }
 
-  protected def logCsrfRejection(request: HttpRequest, sourceOrigins: Seq[HttpOrigin], targetOrigins: Seq[HttpOrigin]) =
-    logger.error("CSRF rejection. " +
+  protected def csrfRejectionMessage(
+      request: HttpRequest, sourceOrigins: Seq[HttpOrigin], targetOrigins: Seq[HttpOrigin]) =
+    "CSRF rejection. " +
       s"""Source origins: ${sourceOrigins.mkString(", ")}, """ +
       s"""target origins: ${targetOrigins.mkString(", ")}, """ +
-      s"""uri: ${request.uri}""")
+      s"""uri: ${request.uri}"""
+
+  protected def logCsrfRejection(
+      request: HttpRequest, sourceOrigins: Seq[HttpOrigin], targetOrigins: Seq[HttpOrigin]) =
+    logger.error(csrfRejectionMessage(request, sourceOrigins, targetOrigins))
 
   def checkSameOrigin: Directive0 =
     (extractRequest & extractTargetOrigins).tflatMap { case (request, targetOriginsRaw) =>

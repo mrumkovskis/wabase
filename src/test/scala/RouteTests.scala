@@ -10,11 +10,9 @@ import akka.http.scaladsl.server.Directives._
 
 class RouteTests extends FlatSpec with Matchers with ScalatestRouteTest{
   class RouteTestsAppService(system: ActorSystem) extends TestAppService(system) {
-    override protected def logCsrfRejection(request: HttpRequest, sourceOrigins: Seq[HttpOrigin], targetOrigins: Seq[HttpOrigin]) =
-      logger.debug("CSRF rejection. " +
-        s"""Source origins: ${sourceOrigins.mkString(", ")}, """ +
-        s"""target origins: ${targetOrigins.mkString(", ")}, """ +
-        s"""uri: ${request.uri}""")
+    override protected def logCsrfRejection(
+        request: HttpRequest, sourceOrigins: Seq[HttpOrigin], targetOrigins: Seq[HttpOrigin]) =
+      logger.debug(csrfRejectionMessage(request, sourceOrigins, targetOrigins))
   }
   val service = new RouteTestsAppService(system)
 
