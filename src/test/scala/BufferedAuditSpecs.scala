@@ -1,6 +1,7 @@
 package org.wabase
 
 import akka.actor.ActorSystem
+import akka.stream.RestartSettings
 import akka.util.ByteString
 import org.scalatest.concurrent.Eventually
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
@@ -9,6 +10,7 @@ import org.scalatest.matchers.should.Matchers
 import java.io.File
 import scala.concurrent._
 import scala.concurrent.duration._
+import scala.util.Success
 
 class BufferedAuditSpecs extends FlatSpec with Matchers with Eventually {
   behavior of "BufferedAudit"
@@ -121,7 +123,7 @@ class BufferedAuditSpecs extends FlatSpec with Matchers with Eventually {
     resetPath(path)
     fileCount(path) shouldBe 0
     val consumer = new RecordConsumer(
-      recordNumberToRejectionCount = Map(1 -> 1, 9 -> 1)
+      recordNumberToRejectionCount = Map(1 -> 2, 9 -> 1, 20 -> 2, 99 -> 1)
     )
     val writer = new BufferedAuditWriter(
       rootPath    = path.toPath,
@@ -132,16 +134,23 @@ class BufferedAuditSpecs extends FlatSpec with Matchers with Eventually {
       writer,
       consumer.confirmRecords,
       maxBatchSize = 3, // small batch size to test current position management
+      restartSettings = RestartSettings( // tuned to speed up tests - restart soon
+        minBackoff    = 5.millis,
+        maxBackoff    = 1.second,
+        randomFactor  = 0.2 // adds 20% "noise" to vary the intervals slightly
+      ),
     )
-    val records = (1 to 100).map { i =>
+    val size = 100
+    val records = Future.sequence((1 to size).map { i =>
       Future(i).map { i =>
         val record = createNewRecord
         writer.writeRecord(ByteString(record))
         record
       }
-    }
-    val expected = Await.result(Future.sequence(records), 1.minute)
+    })
+    def expected = records.value.getOrElse(Success(Nil)).getOrElse(Nil)
     eventually(timeout(1.minute), interval(1.second)) {
+      size                           shouldBe expected.size
       consumer.consumedRecords.size  shouldBe expected.size
       consumer.consumedRecords.toSet shouldBe expected.toSet
     }
