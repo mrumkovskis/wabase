@@ -66,6 +66,56 @@ class BufferedAuditSpecs extends FlatSpec with Matchers with Eventually {
   private val recordSize    = ByteString(createNewRecord).size
   private val delimiter     = ByteString("\r\n")
 
+  it should ("buffer and deliver all records sequentially, switch and remove files") in {
+    val path = new File(tmpdir + slash + "buffered-audit-seq-test")
+    resetPath(path)
+    fileCount(path) shouldBe 0
+    var recordsWritten: List[String] = Nil
+    def writeNewRecord(writer: BufferedAuditWriter): Unit = {
+      val record = createNewRecord
+      writer.writeRecord(ByteString(record))
+      recordsWritten = record :: recordsWritten
+    }
+    val tinyFilesWriter = new BufferedAuditWriter(
+      rootPath    = path.toPath,
+      maxFileSize = 1, // small file size to test file management
+      delimiter   = delimiter,
+    )
+    val smallFilesWriter = new BufferedAuditWriter(
+      rootPath    = path.toPath,
+      maxFileSize = 2 * (recordSize + delimiter.size), // small file size to test file management
+      delimiter   = delimiter,
+    )
+    writeNewRecord(tinyFilesWriter)
+    fileCount(path) shouldBe 1
+    writeNewRecord(tinyFilesWriter)
+    fileCount(path) shouldBe 2
+    writeNewRecord(smallFilesWriter)
+    fileCount(path) shouldBe 3
+    writeNewRecord(smallFilesWriter)
+    fileCount(path) shouldBe 3
+    writeNewRecord(smallFilesWriter)
+    fileCount(path) shouldBe 4
+    val recordsWrittenBeforeRead = 5
+    val consumer = new RecordConsumer(
+      recordNumberToRejectionCount = Map.empty
+    )
+    val reader = new BufferedAuditReader(
+      smallFilesWriter,
+      consumer.confirmRecords,
+    )
+    eventually(timeout(1.minute), interval(1.second)) {
+      recordsWritten.size shouldBe recordsWrittenBeforeRead
+      consumer.consumedRecords shouldBe recordsWritten
+      fileCount(path) shouldBe 2 // file cleanup done
+      writeNewRecord(smallFilesWriter)
+    }
+    eventually(timeout(1.minute), interval(1.second)) {
+      recordsWritten.size shouldBe (recordsWrittenBeforeRead + 1)
+      consumer.consumedRecords shouldBe recordsWritten
+    }
+  }
+
   it should ("buffer records if called concurrently, backoff on exceptions, deliver all records") in {
     val path = new File(tmpdir + slash + "buffered-audit-concurrency-test")
     resetPath(path)
