@@ -8,6 +8,7 @@ import org.scalatest.matchers.should.Matchers
 
 import java.io.File
 import scala.concurrent._
+import scala.concurrent.duration._
 
 class BufferedAuditSpecs extends FlatSpec with Matchers with Eventually {
   behavior of "BufferedAudit"
@@ -51,7 +52,7 @@ class BufferedAuditSpecs extends FlatSpec with Matchers with Eventually {
       confirmedRecords = record.utf8String :: confirmedRecords
     }
     def consumedRecords = this.synchronized {
-      confirmedRecords.reverse
+      confirmedRecords
     }
     def confirmRecords(records: Seq[ByteString]): Future[Unit] = Future {
       (confirmedRecords.size to (confirmedRecords.size + records.size - 1)) foreach maybeReject
@@ -72,24 +73,20 @@ class BufferedAuditSpecs extends FlatSpec with Matchers with Eventually {
     val consumer = new RecordConsumer(
       recordNumberToRejectionCount = Map(1 -> 1, 9 -> 1)
     )
-    val bufferedAudit = {
-      val writer = new BufferedAuditWriter(
-        rootPath    = path.toPath,
-        maxFileSize = 20 * (recordSize + delimiter.size) + 1, // small file size to test file management
-        delimiter   = delimiter,
-      )
-      val reader = new BufferedAuditReader(
-        writer,
-        consumer.confirmRecords,
-        maxBatchSize = 3, // small batch size to test current position management
-      )
-      new BufferedAudit(writer, reader)
-    }
-    import scala.concurrent.duration._
+    val writer = new BufferedAuditWriter(
+      rootPath    = path.toPath,
+      maxFileSize = 20 * (recordSize + delimiter.size) + 1, // small file size to test file management
+      delimiter   = delimiter,
+    )
+    val reader = new BufferedAuditReader(
+      writer,
+      consumer.confirmRecords,
+      maxBatchSize = 3, // small batch size to test current position management
+    )
     val records = (1 to 100).map { i =>
       Future(i).map { i =>
         val record = createNewRecord
-        bufferedAudit.writer.writeRecord(ByteString(record))
+        writer.writeRecord(ByteString(record))
         record
       }
     }
