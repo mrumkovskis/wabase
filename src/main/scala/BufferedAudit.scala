@@ -92,7 +92,7 @@ class BufferedAuditWriter(
 class BufferedAuditReader(
   val writer: BufferedAuditWriter,
   val saveAuditRecords: (Seq[ByteString]) => Future[Unit],
-  val maxRecordSize: Int                = 64 * 1024,
+  val maxRecordSize: Int                = 1024 * 1024,
   val maxBatchSize: Int                 = 100,
   val maxBatchDelay: FiniteDuration     = 200.millis,
   val restartSettings: RestartSettings  = RestartSettings(
