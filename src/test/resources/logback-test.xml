@@ -19,4 +19,6 @@
         <appender-ref ref="STDOUT" />
         <!--<appender-ref ref="FILE" />-->
     </root>
+
+    <logger name="akka.stream.scaladsl.RestartWithBackoffSource" level="error"/>
 </configuration>
