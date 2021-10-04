@@ -520,6 +520,7 @@ trait Dto extends org.mojoz.querease.Dto { self =>
        v.getClass.getName, targetType.toString, s"${getClass.getName}.$fieldName")
   }
 
+  // TODO Drop or extract string parsing for number and boolean fields! Then rename parseJsValue() to exclude 'parse'!
   protected def parseJsValue(fieldName: String, emptyStringsToNull: Boolean)(implicit qe: QE): PartialFunction[JsValue, Any] = {
     import scala.language.existentials
     val (typ, parType) = setters(fieldName)._2
