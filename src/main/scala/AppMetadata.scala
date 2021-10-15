@@ -497,6 +497,7 @@ object AppMetadata {
     val OrderKey = "$order"
 
     val BindVarCursorsFunctionName = "build_cursors"
+    val BindVarCursorsForViewFunctionName = "build_cursors_for_view"
 
     trait Op
     trait Step {
