@@ -1,11 +1,13 @@
 package org.wabase
 
 import com.typesafe.scalalogging.Logger
+import java.sql.Connection
 import javax.sql.DataSource
 import org.slf4j.LoggerFactory
 import org.tresql.{Dialect, Expr, LogTopic, QueryBuilder, SimpleCache, ThreadLocalResources, ResourcesTemplate, dialects}
 
 import scala.language.postfixOps
+import scala.util.control.NonFatal
 
 trait DbAccessProvider {
   def dbAccess: DbAccess
@@ -27,6 +29,22 @@ trait DbAccess { this: Loggable =>
     tresqlResources.queryTimeout = 0
     if (rollback && conn != null) try conn.rollback catch { case e: Exception => e.printStackTrace }
     if (conn != null) try if (!conn.isClosed) conn.close catch { case e: Exception => e.printStackTrace }
+  }
+
+  def commitAndCloseConnection(dbConn: Connection): Unit = {
+    dbConn.commit()
+    try if (!dbConn.isClosed) dbConn.close catch {
+      case NonFatal(ex) => logger.warn("Failed to close db connection", ex)
+    }
+  }
+
+  def rollbackAndCloseConnection(dbConn: Connection): Unit = {
+    try dbConn.rollback catch {
+      case NonFatal(ex) => logger.warn("Failed to rollback db transaction", ex)
+    }
+    try if (!dbConn.isClosed) dbConn.close catch {
+      case NonFatal(ex) => logger.warn("Failed to close db connection", ex)
+    }
   }
 
   private val currentPool = new ThreadLocal[PoolName]

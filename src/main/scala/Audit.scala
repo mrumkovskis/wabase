@@ -4,9 +4,10 @@ import java.util.Date
 
 import MapRecursiveExtensions._
 
-import scala.language.reflectiveCalls
-import scala.util.control.NonFatal
 import scala.language.implicitConversions
+import scala.language.reflectiveCalls
+import scala.util.{Try, Failure, Success}
+import scala.util.control.NonFatal
 
 import org.tresql._
 import org.wabase.MapUtils._
@@ -14,6 +15,7 @@ import org.wabase.MapUtils._
 /** Audit and all subimplementations use {{{qe.DTO}}} and {{{qe.DWI}}} */
 trait Audit[User] { this: AppBase[User] =>
   def audit[C <: RequestContext[_]](originalContext: C)(action: => C): C
+  def audit(context: ActionContext, result: Try[QuereaseResult]): Unit
   def auditSave(id: jLong, viewName: String, instance: Map[String, Any], error: String)(implicit user: User, state: ApplicationState): Unit
   def auditLogin(user: User, loginInfo: qe.DTO): Unit
 }
@@ -21,6 +23,7 @@ trait Audit[User] { this: AppBase[User] =>
 object Audit {
  trait NoAudit[User] extends Audit[User] { this: AppBase[User] =>
   def audit[C <: RequestContext[_]](originalContext: C)(action: => C): C = action
+  def audit(context: ActionContext, result: Try[QuereaseResult]): Unit = {}
   def auditSave(id: jLong, viewName: String, instance: Map[String, Any], error: String)(implicit user: User, state: ApplicationState): Unit = {}
   def auditLogin(user: User, loginInfo: qe.DTO): Unit = {}
  }

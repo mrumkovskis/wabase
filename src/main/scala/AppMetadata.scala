@@ -52,7 +52,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
   val authFieldNames = Set("is_update_relevant", "is_delete_relevant")
 
-  val knownApiMethods = Set("count", "get", "list", "save", "delete")
+  val knownApiMethods = Set("create", "count", "get", "list", "save", "delete")
   def splitToLabelAndComments(s: String): (String, String) = {
     def clear(s: String) = Option(s).filter(_ != "").orNull
     def unescape(s: String) = s.replace("--", "-")
@@ -492,9 +492,9 @@ object AppMetadata {
       Set(Get, List, Save, Delete, Create, Count)
 
     val ValidationsKey = "validations"
-    val OffsetKey = "$offset"
-    val LimitKey = "$limit"
-    val OrderKey = "$order"
+    val OffsetKey = "offset"
+    val LimitKey  = "limit"
+    val OrderKey  = "sort"
 
     val BindVarCursorsFunctionName = "build_cursors"
     val BindVarCursorsForViewFunctionName = "build_cursors_for_view"

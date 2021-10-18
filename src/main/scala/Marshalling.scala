@@ -187,7 +187,7 @@ trait AppMarshalling { this: AppServiceBase[_] with Execution =>
   def httpResponse(
     contentType: ContentType,
     src: Source[ByteString, _],
-    maxFileSize: Long = dbDataFileMaxSize,
+    maxFileSize: Long,
     transform: HttpResponse => HttpResponse = identity,
   )(implicit ec: ExecutionContext) = {
     source(src, maxFileSize).map {

@@ -14,12 +14,18 @@ class ValidationEngineTestDto extends Dto {
 }
 
 object TestValidationEngine extends org.wabase.TestApp {
-  override def validations(instance: org.wabase.Dto) =  {
+  private val threadLocalValidations = new ThreadLocal[List[Validation]]
+  override def validations(viewName: String) = threadLocalValidations.get
+  def validations(instance: org.wabase.Dto) =  {
     val v = new Validation
     val test = instance.asInstanceOf[ValidationEngineTestDto]
     v.expression = test.expression
     v.message = test.message
     List(v)
+  }
+  def validate(instance: org.wabase.Dto)(implicit locale: Locale): Unit = {
+    threadLocalValidations.set(validations(instance))
+    validate("fake-view", instance.toMap(qe))
   }
 }
 

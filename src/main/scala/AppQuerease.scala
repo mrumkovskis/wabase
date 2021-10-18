@@ -118,6 +118,12 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     val dto = fill(data.toJson.asJsObject)(mf)
     save(dto, null, forceInsert, filter, data ++ params)
   }
+  def extractKeyMap(viewName: String, instance: Map[String, Any]): Map[String, Any] =
+    // TODO extractKeyMap - support any key (i.e. not only "id"). Move to querease?
+    Option(instance)
+      .filter(_ => classOf[DtoWithId] isAssignableFrom viewNameToClassMap(viewName))
+      .map(_ => Map("id" -> instance.get("id").orNull).filter(_._2 != null))
+      .getOrElse(Map.empty)
 
   override def delete[B <: DTO](instance: B, filter: String = null, params: Map[String, Any] = null)(
     implicit resources: Resources) = {

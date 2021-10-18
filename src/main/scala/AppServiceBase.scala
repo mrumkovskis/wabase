@@ -2,6 +2,7 @@ package org.wabase
 
 import akka.stream.scaladsl._
 import akka.http.scaladsl.coding.Coders.{Deflate, Gzip, NoCoding}
+import akka.http.scaladsl.marshalling.ToResponseMarshallable
 import akka.http.scaladsl.model._
 import akka.http.scaladsl.model.headers._
 import akka.http.scaladsl.server._
@@ -16,6 +17,8 @@ import org.tresql.MissingBindVariableException
 
 import scala.concurrent.duration._
 import scala.concurrent.Future
+import AppMetadata.Action
+import AppMetadata.AugmentedAppViewDef
 import AppServiceBase._
 import Authentication.SessionUserExtractor
 import DeferredControl._
@@ -25,6 +28,7 @@ import akka.http.scaladsl.server.util.Tuple
 import akka.util.ByteString
 import org.mojoz.querease.{ValidationException, ValidationResult}
 import xml.Utility.escape
+
 
 trait AppProvider[User] {
   type App <: AppBase[User]
@@ -43,6 +47,7 @@ trait AppServiceBase[User]
   this: QueryTimeoutExtractor with Execution =>
 
   import app.qe.metadataConventions
+  import app.qe.MapJsonFormat
 
   //custom directives
   def metadataPath = path("metadata" / Segment ~ Slash.?) & get
@@ -63,24 +68,41 @@ trait AppServiceBase[User]
 
   def getByIdAction(viewName: String, id: Long)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
-      complete(app.get(viewName, id, filterPars(params)))
+      if (isQuereaseActionDefined(viewName, "get")) {
+        complete(app.doWabaseAction(Action.Get, viewName, filterPars(params) + ("id" -> id)))
+      } else {
+        complete(app.get(viewName, id, filterPars(params)))
+      }
     }
-
 
   def getByNameAction(viewName: String, name: String, value: String)(
     implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
-      complete(app.get(viewName, -1, filterPars(params) + (name -> value)))
+      if (isQuereaseActionDefined(viewName, "get")) {
+        complete(app.doWabaseAction(Action.Get, viewName, filterPars(params) + (name -> value)))
+      } else {
+        complete(app.get(viewName, -1, filterPars(params) + (name -> value)))
+      }
     }
 
   def createAction(viewName: String)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
-      complete(app.create(viewName, filterPars(params)))
+      if (isQuereaseActionDefined(viewName, "create")) {
+        complete(app.doWabaseAction(Action.Create, viewName, filterPars(params)))
+      } else {
+        complete(app.create(viewName, filterPars(params)))
+      }
     }
 
   def deleteAction(viewName: String, id: Long)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
-      complete {
+      if (isQuereaseActionDefined(viewName, "delete")) complete {
+          app.doWabaseAction(Action.Delete, viewName, filterPars(params) + ("id" -> id))
+            .map { qr => qr: ToResponseMarshallable }
+            .recover {
+              case _: org.mojoz.querease.NotFoundException => StatusCodes.NotFound: ToResponseMarshallable
+            }
+      } else complete {
         try {
           app.delete(viewName, id, filterPars(params))
           StatusCodes.NoContent
@@ -95,8 +117,16 @@ trait AppServiceBase[User]
       parameterMultiMap { params =>
         entity(as[JsValue]) { data =>
           try {
-            app.save(viewName, data.asInstanceOf[JsObject], filterPars(params))
-            redirect(Uri(path = requestUri.path), StatusCodes.SeeOther)
+            if (isQuereaseActionDefined(viewName, "save")) complete {
+              val entityAsMap = data.asInstanceOf[JsObject].convertTo[Map[String, Any]]
+              app.doWabaseAction(Action.Save, viewName, entityAsMap ++ filterPars(params) + ("id" -> id)).map {
+                case IdResult(id) => RedirectResult(requestUri.path.toString)
+                case x => x
+              }
+            } else {
+              app.save(viewName, data.asInstanceOf[JsObject], filterPars(params))
+              redirect(Uri(path = requestUri.path), StatusCodes.SeeOther)
+            }
           } catch {
             case _: org.mojoz.querease.NotFoundException => complete(StatusCodes.NotFound)
           }
@@ -108,16 +138,31 @@ trait AppServiceBase[User]
     parameterMultiMap { params =>
       val impliedIdForGetOpt = app.impliedIdForGetOverList(viewName)
       if (impliedIdForGetOpt.isDefined)
-        complete(
-          app.get(viewName, impliedIdForGetOpt.get, filterPars(params))
-        )
+        if (isQuereaseActionDefined(viewName, "get")) {
+          val keyMap = impliedIdForGetOpt.map(id => Map("id" -> id)) getOrElse Map.empty
+          complete(app.doWabaseAction(Action.Get, viewName, keyMap ++ filterPars(params)))
+        } else {
+          complete(app.get(viewName, impliedIdForGetOpt.get, filterPars(params)))
+        }
       else
         listAction(viewName, params)
     }
 
   protected def listAction(viewName: String, params: Map[String, List[String]])(
     implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
-    complete {
+    if (isQuereaseActionDefined(viewName, "list")) complete {
+      app.doWabaseAction(
+        Action.List,
+        viewName,
+        filterPars(params) ++
+          params.filter { case (k, v) =>
+            k == "offset" ||
+            k == "limit"  ||
+            k == "sort"
+          }.map { case (k, v) => (k, v.headOption.orNull) },
+      )
+    }
+    else complete {
       app.list(
         viewName,
         filterPars(params),
@@ -131,8 +176,16 @@ trait AppServiceBase[User]
       parameterMultiMap { params =>
         entity(as[JsValue]) { data =>
           try {
-            val id = app.save(viewName, data.asInstanceOf[JsObject], filterPars(params))
-            redirect(Uri(path = requestUri.path / id.toString), StatusCodes.SeeOther)
+            if (isQuereaseActionDefined(viewName, "save")) complete {
+              val entityAsMap = data.asInstanceOf[JsObject].convertTo[Map[String, Any]]
+              app.doWabaseAction(Action.Save, viewName, entityAsMap ++ filterPars(params)).map {
+                case IdResult(id) => RedirectResult((requestUri.path / id.toString).toString)
+                case x => x
+              }
+            } else {
+              val id = app.save(viewName, data.asInstanceOf[JsObject], filterPars(params))
+              redirect(Uri(path = requestUri.path / id.toString), StatusCodes.SeeOther)
+            }
           } catch {
             case _: org.mojoz.querease.NotFoundException => complete(StatusCodes.NotFound)
           }
@@ -142,10 +195,13 @@ trait AppServiceBase[User]
 
   def countAction(viewName: String)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
-      complete(app.count(viewName, filterPars(params)).toString)
+      if (isQuereaseActionDefined(viewName, "count")) {
+        complete(app.doWabaseAction(Action.Count, viewName, filterPars(params)))
+      } else {
+        complete(app.count(viewName, filterPars(params)).toString)
+      }
     }
 
-  import app.qe.MapJsonFormat
   def filterPars(params: Map[String, List[String]]) =
     params.get("filter")
       .flatMap(_.headOption)
@@ -161,6 +217,7 @@ trait AppServiceBase[User]
     extractTimeout { implicit timeout =>
       getByIdPath { getByIdAction } ~
         getByNamePath { getByNameAction } ~
+        countPath  { countAction  } ~
         createPath { createAction } ~
         deletePath { deleteAction } ~
         updatePath { updateAction } ~
@@ -230,6 +287,8 @@ trait AppServiceBase[User]
   }
   override protected def initJsonConverter = app.qe
   override def dbAccess = app.dbAccess
+  private def isQuereaseActionDefined(viewName: String, actionName: String) =
+    app.qe.viewDefOption(viewName).flatMap(_.actions.get(actionName)).isDefined
 
   protected def fileStreamerConfigs: Seq[AppFileStreamerConfig] = {
     Option(this)

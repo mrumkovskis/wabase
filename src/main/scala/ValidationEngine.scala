@@ -9,7 +9,7 @@ import spray.json._
 import scala.util.control.NonFatal
 
 trait ValidationEngine {
-  def validate(instance: Dto)(implicit locale: Locale): Unit
+  def validate(viewName: String, instance: Map[String, Any])(implicit locale: Locale): Unit
 }
 
 /** Default validation engine, executes validation javascript stored in "validation" table */
@@ -41,11 +41,10 @@ trait DefaultValidationEngine extends ValidationEngine with Loggable {
     customFunctionsAndArgs
       .map { case (f, args) => s"$f = function($args) { return CustomFunctions.$f($args); };" }
       .mkString("\n")
-  def get(instance: Dto) = {
+  def get(viewName: String, instance: Map[String, Any]) = {
     val engine = scriptEngineFactory getEngineByName "JavaScript"
     val instancePropsToVars =
       instance
-        .toMap
         .toJson
         .asInstanceOf[JsObject]
         .fields
@@ -61,14 +60,13 @@ trait DefaultValidationEngine extends ValidationEngine with Loggable {
   val validationsQuery =
     "validation[context ~~ :context] {id, context, expression, message}#(context, id)"
 
-  def validations(instance: Dto): List[Validation] = {
-    val viewName = viewDef(classToViewNameMap(instance.getClass)).name
+  def validations(viewName: String): List[Validation] = {
     Query(validationsQuery, Map("context" -> viewName))(tresqlResources).map(r => new Validation().fill(r)).toList
   }
-  override def validate(instance: Dto)(implicit locale: Locale): Unit = {
-    val validationList = validations(instance)
+  override def validate(viewName: String, instance: Map[String, Any])(implicit locale: Locale): Unit = {
+    val validationList = validations(viewName)
     if (validationList.nonEmpty) {
-      val engine = get(instance)
+      val engine = get(viewName, instance)
 
       def errorMsg(msg: String) =
         //try to evaluate message as javascript
@@ -104,7 +102,7 @@ trait DefaultValidationEngine extends ValidationEngine with Loggable {
 }
 
 trait NoValidation extends ValidationEngine {
-  override def validate(instance: Dto)(implicit locale: Locale): Unit = {}
+  override def validate(viewName: String, instance: Map[String, Any])(implicit locale: Locale): Unit = {}
 }
 
 object ValidationEngine {

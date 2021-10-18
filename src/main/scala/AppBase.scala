@@ -29,7 +29,7 @@ object AppBase {
 
 case class ApplicationState(state: Map[String, Any], locale: Locale = Locale.getDefault)
 
-trait AppBase[User] extends Loggable with QuereaseProvider with DbAccessProvider with I18n {
+trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider with DbAccessProvider with I18n {
   this: DbAccess
     with Authorization[User]
     with ValidationEngine
@@ -228,21 +228,14 @@ trait AppBase[User] extends Loggable with QuereaseProvider with DbAccessProvider
   def defaultList(ctx: ListContext[Dto]): ListContext[Dto] = {
       import ctx._
       val viewDef = qe.viewDef(viewName)
-      if (orderBy != null) {
-        // orderBy validation
-        val sortableFields =
-          viewDef.fields.filter(_.sortable).map(n => Option(n.alias).getOrElse(n.name)).toSet
-        val sortCols = orderBy.replace("~", "").split("[\\s\\,]+").toList
-        val notSortable = sortCols.filterNot(sortableFields.contains)
-        if (notSortable.size > 0)
-          throw new BusinessException(s"Not sortable: $viewName by " + notSortable.mkString(", "), null)
-      }
+      checkOrderBy(viewDef, orderBy)
       if (ctx.doCount)
         ctx.copy(count = qe.countAll(params)(
           ManifestFactory.classType(viewNameToClassMap(viewName)), tresqlResources))
       else {
         val ctxCopy = ctx.copy(result = new AppListResult[Dto] {
           private [this] var closed = false
+          // FIXME do not get new connection here!
           private val connection = ConnectionPools(poolName).getConnection
           override val resources = tresqlResources
             .withConn(connection)
@@ -279,16 +272,6 @@ trait AppBase[User] extends Loggable with QuereaseProvider with DbAccessProvider
 
         ctxCopy
       }
-  }
-  def stableOrderBy(viewDef: ViewDef, orderBy: String): String = {
-    if (orderBy != null && orderBy != "" && viewDef.orderBy != null && viewDef.orderBy.size > 0) {
-      val forcedSortCols = orderBy.replace("~", "").split("[\\s\\,]+").toSet
-      Option(viewDef.orderBy)
-        .map(_.filter(c => c != null && c != "" && !forcedSortCols.contains(c.replace("~", ""))))
-        .filter(_.nonEmpty)
-        .map(s => (orderBy :: s.toList).mkString(", "))
-        .getOrElse(orderBy)
-    } else orderBy
   }
   implicit object Save extends HExt[SaveContext[Dto]] {
     override def defaultAction(ctx: SaveContext[Dto]): SaveContext[Dto] =
@@ -395,14 +378,15 @@ trait AppBase[User] extends Loggable with QuereaseProvider with DbAccessProvider
   //rest services entry points
   def getRaw(viewName: String, id: Long, params: Map[String, Any] = Map())(
     implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout, poolName: PoolName) =
-    checkApi(viewName, "get", user) {
+  {
+      checkApi(viewName, "get", user)
       dbUse {
         implicit val clazz = viewNameToClassMap(viewName)
         rest(
           createViewCtx(ViewContext[Dto](viewName, id, params, user, state))
         )
       }
-    }
+  }
 
   def get(viewName: String, id: Long, params: Map[String, Any] = Map())(
     implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout,
@@ -410,15 +394,16 @@ trait AppBase[User] extends Loggable with QuereaseProvider with DbAccessProvider
     createViewResult(getRaw(viewName, id, params))
 
   def createRaw(viewName: String, params: Map[String, Any] = Map.empty)(
-    implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout, poolName: PoolName) =
-    checkApi(viewName, "get", user) {
+    implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout, poolName: PoolName
+  ) = {
+      checkApi(viewName, "get", user)
       dbUse {
         implicit val clazz = viewNameToClassMap(viewName)
         rest(
           createCreateCtx(CreateContext[Dto](viewName, params, user, state))
         )
       }
-    }
+  }
 
   def create(viewName: String, params: Map[String, Any] = Map.empty)(
     implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout,
@@ -436,7 +421,8 @@ trait AppBase[User] extends Loggable with QuereaseProvider with DbAccessProvider
       state: ApplicationState,
       timeoutSeconds: QueryTimeout,
       poolName: PoolName) =
-    checkApi(viewName, "list", user) {
+    {
+      checkApi(viewName, "list", user)
       val maxLimitForView = viewDef(viewName).limit
       if (maxLimitForView > 0 && limit > maxLimitForView)
         throw new BusinessException(
@@ -464,7 +450,9 @@ trait AppBase[User] extends Loggable with QuereaseProvider with DbAccessProvider
     implicit user: User,
     state: ApplicationState,
     timeoutSeconds: QueryTimeout,
-    poolName: PoolName = PoolName(viewDef(viewName).cp)) = checkApi(viewName, "list", user) {
+    poolName: PoolName = PoolName(viewDef(viewName).cp)
+  ) = {
+    checkApi(viewName, "list", user)
     val result = listInternal(viewName, params, doCount = true)
     createCountResult(result)
   }
@@ -523,9 +511,9 @@ trait AppBase[User] extends Loggable with QuereaseProvider with DbAccessProvider
     timeoutSeconds: QueryTimeout,
     poolName: PoolName
   ) = {
-    implicit val clazz = instance.getClass
-    val viewDef = qe.viewDef(classToViewNameMap(clazz))
-    checkApi(viewName, "save", user) {
+      implicit val clazz = instance.getClass
+      val viewDef = qe.viewDef(classToViewNameMap(clazz))
+      checkApi(viewName, "save", user)
       val idOpt = Option(instance)
         .filter(_.isInstanceOf[org.wabase.DtoWithId])
         .map(_.asInstanceOf[DtoWithId])
@@ -533,7 +521,7 @@ trait AppBase[User] extends Loggable with QuereaseProvider with DbAccessProvider
         .filter(_ != null)
       val old = dbUse{
         validateFields(instance)
-        validate(instance)(state.locale)
+        validate(viewName, qe.toMap(instance))(state.locale)
         idOpt.flatMap { id =>
           rest(ViewContext[DtoWithId](viewName, id, params, user, state)).result
         }.orNull
@@ -565,13 +553,13 @@ trait AppBase[User] extends Loggable with QuereaseProvider with DbAccessProvider
           promise.failure(ex)
           throw ex
       }
-    }
   }
 
   def delete(viewName: String, id: Long, params: Map[String, Any] = Map())(
     implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout,
       poolName: PoolName = PoolName(viewDef(viewName).cp)) =
-    checkApi(viewName, "delete", user) {
+  {
+      checkApi(viewName, "delete", user)
       val promise = Promise[Unit]()
       try {
         val res = friendlyConstraintErrorMessage {
@@ -591,7 +579,7 @@ trait AppBase[User] extends Loggable with QuereaseProvider with DbAccessProvider
           promise.failure(ex)
           throw ex
       }
-    }
+  }
 
   def rest[C <: RequestContext[_]](ctx: C)(implicit mgr: Ext[C], clazz: Class[_]) = auth(ctx, clazz){audit(ctx){
     try mgr.asInstanceOf[HExt[C]].action(clazz)(ctx) catch {
@@ -914,16 +902,6 @@ trait AppBase[User] extends Loggable with QuereaseProvider with DbAccessProvider
         .map(v => v.copy(_2 = JsArray(v._2.keys.toSeq.map(JsString(_)): _*))))
   }
 
-  def noApiException(viewName: String, method: String, user: User): Exception =
-    new BusinessException(s"$viewName.$method is not a part of this API")
-  def checkApi[F](viewName: String, method: String, user: User)(f: => F) = (for {
-    view <- viewDefOption(viewName)
-    role <- view.apiMethodToRole.get(method)
-    if hasRole(user, role)
-  } yield f).getOrElse(
-    throw noApiException(viewName, method, user)
-  )
-
   def impliedIdForGetOverList[F](viewName: String): Option[Long] =
     viewDefOption(viewName)
       .filter(v => v.apiMethodToRole.contains("get") && !v.apiMethodToRole.contains("list"))
@@ -980,34 +958,30 @@ trait AppBase[User] extends Loggable with QuereaseProvider with DbAccessProvider
     else None
   }
 
-  def checkFieldValues(instance: Dto)(implicit state: ApplicationState): Unit = {
-    def validateFields(viewName: String, map: Map[String, Any]): Unit = {
-      val viewDef = qe.viewDef(viewName)
-      // TODO ensure field ordering
-      val errorMessages = viewDef.fields
-        .map(fld =>
-          validationErrorMessage(viewName, fld, map.getOrElse(Option(fld.alias).getOrElse(fld.name), null))(state.locale))
-        .filter(_.isDefined)
-        .map(_.get)
-        .filter(_ != null)
-      if (errorMessages.nonEmpty)
-        throw new BusinessException(errorMessages.mkString("\n"))
+  def validateFields(viewName: String, instance: Map[String, Any])(implicit state: ApplicationState): Unit = {
+    val viewDef = qe.viewDef(viewName)
+    // TODO ensure field ordering
+    val errorMessages = viewDef.fields
+      .map(fld =>
+        validationErrorMessage(viewName, fld, instance.getOrElse(Option(fld.alias).getOrElse(fld.name), null))(state.locale))
+      .filter(_.isDefined)
+      .map(_.get)
+      .filter(_ != null)
+    if (errorMessages.nonEmpty)
+      throw new BusinessException(errorMessages.mkString("\n"))
 
-      // TODO merge all errorMessages?
-      val complexFields = viewDef.fields.filter(_.type_.isComplexType).map(fld => Option(fld.alias).getOrElse(fld.name) -> fld.type_.name)
-      complexFields.foreach { case (fieldName, typeName) =>
-        map.getOrElse(fieldName, null) match {
-          case m: Map[String, Any] @unchecked => validateFields(typeName, m)
-          case l: List[Map[String, Any]] @unchecked => l.foreach(validateFields(typeName, _))
-          case null =>
-        }
+    // TODO merge all errorMessages?
+    val complexFields = viewDef.fields.filter(_.type_.isComplexType).map(fld => Option(fld.alias).getOrElse(fld.name) -> fld.type_.name)
+    complexFields.foreach { case (fieldName, typeName) =>
+      instance.getOrElse(fieldName, null) match {
+        case m: Map[String, Any] @unchecked => validateFields(typeName, m)
+        case l: List[Map[String, Any]] @unchecked => l.foreach(validateFields(typeName, _))
+        case null =>
       }
     }
-
-    validateFields(classToViewNameMap(instance.getClass), qe.toMap(instance))
   }
 
-  def validateFields(instance: Dto)(implicit state: ApplicationState) = {
-    checkFieldValues(instance)
+  def validateFields(instance: Dto)(implicit state: ApplicationState): Unit = {
+    validateFields(classToViewNameMap(instance.getClass), qe.toMap(instance))
   }
 }
