@@ -164,6 +164,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     vd.actions.get(actionName)
       .map { a =>
         val ctx = ActionContext(s"$view.$actionName", env, Some(vd))
+        logger.debug(s"Doing action '${ctx.name}'.\n Env: ${ctx.env}")
         doSteps(a.steps, ctx, Future.successful(data))
       }
       .getOrElse(Future.successful(doViewCall(actionName, view, data, env)))
@@ -215,7 +216,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
             doActionOp(op, doVarsTransforms(vts, stepData, stepData).result, context.env, context.view)
           case Return(_, vts, op) =>
             doActionOp(op, doVarsTransforms(vts, stepData, stepData).result, context.env, context.view)
-          case Validations(validations) =>
+          case Validations(_, validations) =>
             context.view.map { vd =>
               Future(doValidationStep(validations, stepData ++ context.env, vd))
                 .map(_ => MapResult(stepData))
@@ -226,7 +227,6 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       }
     }
 
-    logger.debug(s"Doing action '$context'.\n Env: ${context.env}")
     steps match {
       case Nil => curData map MapResult
       case s :: Nil => doStep(s, curData) flatMap { finalRes =>

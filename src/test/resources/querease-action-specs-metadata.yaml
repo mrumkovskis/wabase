@@ -81,8 +81,9 @@ fields:
 - amount
 - date_time -> = :time
 save:
-- validations:
+- validations amount:
   - :amount > 0, 'Wrong amount ' || :amount || '. Amount must be greater than 0'
+- validations balance:
   - balance(# s) { account[number = :originator] {balance} }, ((balance{s}) = null | (balance{s}) >= :amount),
       "Insufficient funds for account '" || :originator || "'"
 - time = now()

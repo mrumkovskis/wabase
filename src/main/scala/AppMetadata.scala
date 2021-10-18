@@ -384,6 +384,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   }
 
   protected def parseAction(objectName: String, stepData: Seq[Any]): Action = {
+    val validationRegex = new Regex(s"${Action.ValidationsKey}(\\s+\\w+)?")
     val viewCallRegex = new Regex(Action().mkString("(", "|", """)\s+(:?\w+)"""))
     val invocationRegex = """(\w|\$)+\.(\w|\$)+(\.(\w|\$)+)*""".r
     val returnRegex = """(?s)return\s+(.+)""".r //dot matches new line as well
@@ -445,9 +446,10 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
         case jm: java.util.Map[String, Any]@unchecked if jm.size() == 1 =>
           val m = jm.asScala.toMap
           val (name, value) = m.head
-          if (name == Action.ValidationsKey) {
-            val validations = getSeq(Action.ValidationsKey, m).map(_.toString)
-            Action.Validations(validations)
+          if (validationRegex.pattern.matcher(name).matches()) {
+            val validationRegex(vn) = name
+            val validations = getSeq(name, m).map(_.toString)
+            Action.Validations(Option(vn).map(_.trim), validations)
           } else {
             parseStep(Option(name), value.toString)
           }
@@ -514,9 +516,7 @@ object AppMetadata {
 
     case class Evaluation(name: Option[String], varTrans: List[VariableTransform], op: Op) extends Step
     case class Return(name: Option[String], varTrans: List[VariableTransform], value: Op) extends Step
-    case class Validations(validations: Seq[String]) extends Step {
-      def name = None
-    }
+    case class Validations(name: Option[String], validations: Seq[String]) extends Step
   }
 
   case class Action(steps: List[Action.Step])
