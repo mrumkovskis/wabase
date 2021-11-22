@@ -159,7 +159,7 @@ trait TresqlResources extends ThreadLocalResources {
   }
 }
 
-class PostgresSqlTresqlResources(qe: AppQuerease) extends TresqlResources {
+class PostgresSqlTresqlResources(qe: AppQuerease, db: String = null) extends TresqlResources {
   protected lazy val typeDefs = qe.typeDefs
   protected lazy val YamlToPgTypeMap =
     typeDefs.map(t => t.name -> t.name).toMap ++
@@ -178,10 +178,11 @@ class PostgresSqlTresqlResources(qe: AppQuerease) extends TresqlResources {
   protected def yamlToPgTypeMap = YamlToPgTypeMap
 
   override def resourcesTemplate: ResourcesTemplate =
-    super.resourcesTemplate
-      .copy(metadata = qe.tresqlMetadata)
-      .copy(dialect = AppPostgreSqlDialect orElse dialects.ANSISQLDialect orElse dialects.VariableNameDialect)
-      .copy(idExpr = _ => "nextval(\"seq\")")
+    super.resourcesTemplate.copy(
+      metadata = if (db == qe.tresqlMetadata.db) qe.tresqlMetadata else qe.tresqlMetadata.extraDbToMetadata(db),
+      dialect  = AppPostgreSqlDialect orElse dialects.ANSISQLDialect orElse dialects.VariableNameDialect,
+      idExpr   = _ => "nextval(\"seq\")",
+    )
 
   object AppPostgreSqlDialect extends Dialect {
     private val dialect: Dialect = {
@@ -209,7 +210,6 @@ class PostgresSqlTresqlResources(qe: AppQuerease) extends TresqlResources {
             //insertable column names
             val colNames = i.cols.collect { case b.ColExpr(b.IdentExpr(name), _, _, _) => name.last } toSet
             //second level query which needs column casts matching insertable column names
-            val db = null // FIXME db for AppPostgreSqlDialect ???   
             val colsWithCasts =
               vals.cols.cols.map {
                 case c@b.ColExpr(e, a, _, _) if colNames(a) =>
