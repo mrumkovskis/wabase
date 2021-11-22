@@ -124,7 +124,7 @@ trait DbAccess { this: Loggable =>
 }
 
 trait PostgresDbAccess extends DbAccess { this: QuereaseProvider with Loggable =>
-  override lazy val tresqlResources: ThreadLocalResources = new PostgresSqlTresqlResources(qe)
+  override lazy val tresqlResources: ThreadLocalResources = new PostgreSqlTresqlResources(qe)
 }
 
 trait TresqlResources extends ThreadLocalResources {
@@ -159,7 +159,7 @@ trait TresqlResources extends ThreadLocalResources {
   }
 }
 
-class PostgresSqlTresqlResources(qe: AppQuerease, db: String = null) extends TresqlResources {
+class PostgreSqlTresqlResources(qe: AppQuerease, db: String = null) extends TresqlResources {
   protected lazy val typeDefs = qe.typeDefs
   protected lazy val YamlToPgTypeMap =
     typeDefs.map(t => t.name -> t.name).toMap ++
