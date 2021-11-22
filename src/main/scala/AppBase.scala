@@ -627,13 +627,13 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
         "updatable" ->  JsBoolean(f.api.updatable  && !(f.isExpression && f.resolver == null && f.saveTo == null)),
         "enum" -> Option(f)
           .filterNot(_.type_.isComplexType)
-          .map(_.enum)
+          .map(_.enum_)
           .filter(_ != null)
           .orElse(Option(f)
             .filterNot(_.type_.isComplexType)
             .filter(_.table != null)
             .map(_ => qe.tableMetadata.columnDef(viewDef, f))
-            .map(_.enum)
+            .map(_.enum_)
             .filter(_ != null)
           )
           .map(e => JsArray(e.map(JsString(_)): _*)).getOrElse(JsNull),
@@ -788,9 +788,9 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
       val (needsBaseTable, parsedJoins) =
         Option(v.joins)
           .map(joins =>
-            Try(joinsParser(null, joins)).toOption
+            Try(joinsParser(v.db, null, joins)).toOption
               .map(joins => (false, joins))
-              .getOrElse((true, joinsParser(qe.tableAndAlias(v), joins))))
+              .getOrElse((true, joinsParser(v.db, qe.tableAndAlias(v), joins))))
           .getOrElse((false, Nil))
       val joinAliasToJoin =
         parsedJoins.map(j => (Option(j.alias) getOrElse j.table, j)).toMap
@@ -821,7 +821,7 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
             else colQName
           val col = joinAliasToJoin
             .get(tableAlias)
-            .map(j => qe.tableMetadata.tableDefOption(j.table).map(_.cols) getOrElse Nil)
+            .map(j => qe.tableMetadata.tableDefOption(j.table, view.db).map(_.cols) getOrElse Nil)
             .flatMap(_.find(_.name == colName))
             .orNull
           val name = v.variable
@@ -847,7 +847,7 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
             }
             .map(_.type_)
             .getOrElse(conventionsType)
-          val enum = Option(col).map(_.enum).orNull
+          val enum = Option(col).map(_.enum_).orNull
           FilterParameter(name, table, label, nullable, required, type_, enum, refViewName, filterType)
         }
     } else Nil
@@ -930,9 +930,9 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
     translate("""Field "$%1$s" value must be from available value list.""", field.label)
   def isFieldValueEnumViolated(viewName: String, field: qe.FieldDef, value: Any): Boolean =
     value != null &&
-    field.enum != null &&
-    field.enum.size > 0 &&
-    !field.enum.contains(value.toString)
+    field.enum_ != null &&
+    field.enum_.size > 0 &&
+    !field.enum_.contains(value.toString)
 
   def badEmailAddressErrorMessage(viewName: String, field: qe.FieldDef, value: Any)(implicit locale: Locale): String =
     translate("""Field "%1$s" is not valid e-mail address""", field.label)

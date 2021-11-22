@@ -149,7 +149,7 @@ trait TresqlResources extends ThreadLocalResources {
 
   override val cache = new SimpleCache(4096)
 
-  def sqlWithParams(sql: String, params: Map[String, Any]) = params.foldLeft(sql) {
+  def sqlWithParams(sql: String, params: Seq[(String, Any)]) = params.foldLeft(sql) {
     case (sql, (name, value)) => sql.replace(s"?/*$name*/", value match {
       case _: Int | _: Long | _: Double | _: BigDecimal | _: BigInt | _: Boolean => value.toString
       case _: String | _: java.sql.Date | _: java.sql.Timestamp => s"'$value'"
@@ -203,16 +203,17 @@ class PostgresSqlTresqlResources(qe: AppQuerease) extends TresqlResources {
         val b = i.builder
         i.vals match {
           case ivals@b.SelectExpr(
-          List(valstable@b.Table(b.BracesExpr(vals: b.SelectExpr), _, _, _, _)),
+          List(valstable@b.Table(b.BracesExpr(vals: b.SelectExpr), _, _, _, _, _)),
           _, _, _, _, _, _, _, _, _) =>
             val table = i.table.name.last
             //insertable column names
             val colNames = i.cols.collect { case b.ColExpr(b.IdentExpr(name), _, _, _) => name.last } toSet
             //second level query which needs column casts matching insertable column names
+            val db = null // FIXME db for AppPostgreSqlDialect ???   
             val colsWithCasts =
               vals.cols.cols.map {
                 case c@b.ColExpr(e, a, _, _) if colNames(a) =>
-                  qe.tableMetadata.col(table, a).flatMap(n => yamlToPgTypeMap.get(n.type_.name))
+                  qe.tableMetadata.col(table, a, db).flatMap(n => yamlToPgTypeMap.get(n.type_.name))
                     .map(typ => c.copy(col = b.CastExpr(e, typ)))
                     .getOrElse(c)
                 case x => x

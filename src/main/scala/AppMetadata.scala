@@ -265,7 +265,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       val sortable =
         getBooleanExtraOpt(f, Sortable) getOrElse {
           if (f.isExpression || f.isCollection || viewDef.table == null) false
-          else tableMetadata.tableDef(viewDef.table).idx.exists(_.cols(0) == f.name)
+          else tableMetadata.tableDef(viewDef.table, viewDef.db).idx.exists(_.cols(0) == f.name)
         }
 
       val hiddenOpt = getBooleanExtraOpt(f, Hidden)
@@ -300,7 +300,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       import f._
       MojozFieldDef(table, tableAlias, name, alias, persistenceOptions, isOverride, isCollection,
         isExpression, expression, f.saveTo, resolver, nullable,
-        type_, enum, joinToParent, orderBy,
+        type_, enum_, joinToParent, orderBy,
         comments, extras)
       .updateWabaseExtras(_ => AppFieldDef(fieldApi, fieldDb, label, required, sortable, visible))
     }
@@ -347,7 +347,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       (new MojozFieldDef(name, Type("boolean", None, None, None, false)))
         .copy(options = "", isExpression = true, expression = expression)
 
-    val appView = MojozViewDef(name, table, tableAlias, joins, filter,
+    val appView = MojozViewDef(name, db, table, tableAlias, joins, filter,
       viewDef.groupBy, viewDef.having, orderBy, extends_,
       comments, appFields, viewDef.saveTo, extras)
       .updateWabaseExtras(_ => AppViewDef(limit, cp, auth, apiMap, actions))

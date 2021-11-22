@@ -87,11 +87,16 @@ object Audit {
      }
      val fieldsInPojo = Option(data).map(_.filter(kv => relevantKeys(viewName).contains(kv._1)).filter(_._2 != null).toMap).getOrElse(Map.empty)
 
-     val missingFields = Option(viewName).filter(_ => loadFromDb).flatMap(viewDefOption).flatMap(v => Option(v.table)).flatMap{tableName =>
-       val tableCols = tableMetadata.tableDef(tableName).cols
+     val missingFields =
+      Option(viewName)
+        .filter(_ => loadFromDb)
+        .flatMap(viewDefOption)
+        .flatMap(v => Option(v.table).map(v.db -> _))
+        .flatMap{ case (db, tableName) =>
+       val tableCols = tableMetadata.tableDef(tableName, db).cols
        val relevantFieldsFromTable = tableCols.map(_.name).filter(relevantKeys(viewName)).filterNot(fieldsInPojo.contains)
        if (relevantFieldsFromTable.nonEmpty)
-         Query(s"$tableName[?]{${relevantFieldsFromTable.mkString(",")}}", viewId)(dbAccess.tresqlResources)
+         Query(s"${Option(db).map(db => s"db:").getOrElse("")}$tableName[?]{${relevantFieldsFromTable.mkString(",")}}", viewId)(dbAccess.tresqlResources)
            .toListOfMaps.headOption.map(_.filter(_._2 != null))
        else None
      }

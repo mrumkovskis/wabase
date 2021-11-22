@@ -4,7 +4,8 @@ import java.util.Locale
 import java.sql.SQLException
 import java.lang.RuntimeException
 import org.tresql.ChildSaveException
-import org.yaml.snakeyaml.Yaml
+import org.snakeyaml.engine.v2.api.LoadSettings
+import org.snakeyaml.engine.v2.api.Load
 
 import scala.language.postfixOps
 import scala.jdk.CollectionConverters._
@@ -73,8 +74,15 @@ object DbConstraintMessage {
       logger.info(s"Default constraint error messages will be used - $constraintYaml not found in resources.")
       Map()
     } else {
+      val loaderSettings = LoadSettings.builder()
+        .setLabel("constraint translations ")
+        .setAllowDuplicateKeys(false)
+        .build();
       val source = scala.io.Source.fromURL(resource)
-      Option((new Yaml).loadAs(source.mkString, classOf[java.util.Map[String, _]])).map(_.asScala.toMap) getOrElse Map()
+      Option(new Load(loaderSettings).loadFromString(source.mkString)).map {
+        case m: java.util.Map[String @unchecked, _] => m.asScala.toMap
+        case x => sys.error("Unexpected class: " + Option(x).map(_.getClass).orNull)
+      }.getOrElse(Map())
     }
   }
 
@@ -131,7 +139,7 @@ object DbConstraintMessage {
         } yield label
 
         def tableLabel = for{
-          tableDef <- qe.tableMetadata.tableDefOption(tableName)
+          tableDef <- qe.tableMetadata.tableDefOption(tableName, viewDef.db)
           column <- tableDef.cols.find(_.name == name)
           label = column.comments
           if label != null
