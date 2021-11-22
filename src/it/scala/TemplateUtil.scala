@@ -2,7 +2,8 @@ package org.wabase
 
 import java.io.{File, PrintWriter}
 import java.nio.file.{Files, Paths}
-import org.yaml.snakeyaml.{DumperOptions, Yaml}
+import org.snakeyaml.engine.v2.api.{Dump, DumpSettings, Load, LoadSettings}
+import org.snakeyaml.engine.v2.common.FlowStyle
 import scala.jdk.CollectionConverters._
 import scala.io.{Codec, Source}
 import scala.language.{implicitConversions, reflectiveCalls}
@@ -103,8 +104,14 @@ trait TemplateUtil { this: client.CoreClient =>
       case (k, v: List[MapTemplate] @unchecked) if v.nonEmpty && v.head.isInstanceOf[MapTemplate] => k -> v.map(process)
       case (k, v) => k -> v
     }
+    val loaderSettings = LoadSettings.builder()
+      .setAllowDuplicateKeys(false)
+      .build();
     val content = Source.fromFile(file)(Codec.UTF8).mkString
-    val yaml = (new Yaml).loadAs(content, classOf[java.util.Map[String, _]])
+    val yaml = new Load(loaderSettings).loadFromString(content) match {
+      case m: java.util.Map[String @unchecked, _] => m.asScala.toMap
+      case x => sys.error("Unexpected class: " + Option(x).map(_.getClass).orNull)
+    }
     val map = javaMapToMap(yaml.asInstanceOf[java.util.Map[String, _]])
     val ret = process(map)
     ret
@@ -163,13 +170,14 @@ trait TemplateUtil { this: client.CoreClient =>
   }*/
 
   def dumpYaml(m: MapTemplate, fileName: String) = {
-    val options = new DumperOptions
-    options.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK)
-    val yaml = new Yaml(options)
+    val options = DumpSettings.builder()
+      .setDefaultFlowStyle(FlowStyle.BLOCK)
+      .build()
+    val yaml = new Dump(options)
 
     val result = mapToJavaMap(m)
     val writer = new PrintWriter(new File(fileName))
-    writer.write(yaml.dump(result))
+    writer.write(yaml.dumpToString(result))
     writer.close()
   }
 
