@@ -235,12 +235,11 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
       else {
         val ctxCopy = ctx.copy(result = new AppListResult[Dto] {
           private [this] var closed = false
-          // FIXME do not get new connection here!
-          private val connection = ConnectionPools(poolName).getConnection
-          override val resources = tresqlResources
+          private lazy val connection = ConnectionPools(poolName).getConnection
+          override lazy val resources = tresqlResources
             .withConn(connection)
             .withQueryTimeout(timeoutSeconds.timeoutSeconds)
-          private val result: qe.CloseableResult[Dto] =
+          private lazy val result: qe.CloseableResult[Dto] =
             try qe.result[Dto](
               params,
               offset,
