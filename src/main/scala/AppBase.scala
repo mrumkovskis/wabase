@@ -705,7 +705,7 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
           "required" -> JsBoolean(f.required),
           "label" -> Option(f.label).map(fl => JsString(fl.render(state.locale))).getOrElse(JsNull),
           "enum" -> Option(f)
-            .map(_.enum)
+            .map(_.enum_)
             .filter(_ != null)
             .map(e => JsArray(e.map(JsString(_)): _*)).getOrElse(JsNull),
           "refViewName" -> Option(f.refViewName).map(JsString(_)).getOrElse(JsNull),
@@ -735,7 +735,7 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
       Option(filterName).map(fn => s" (${translate(fn)(locale)})").getOrElse("")
   }
   case class FilterParameter(
-    name: String, table: String, label: FilterLabel, nullable: Boolean, required: Boolean, type_ : Type, enum: Seq[String],
+    name: String, table: String, label: FilterLabel, nullable: Boolean, required: Boolean, type_ : Type, enum_ : Seq[String],
     refViewName: String, filterType: FilterType,
   )
   def currentUserParamNames: Set[String] = Set.empty
@@ -846,8 +846,8 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
             }
             .map(_.type_)
             .getOrElse(conventionsType)
-          val enum = Option(col).map(_.enum_).orNull
-          FilterParameter(name, table, label, nullable, required, type_, enum, refViewName, filterType)
+          val enum_ = Option(col).map(_.enum_).orNull
+          FilterParameter(name, table, label, nullable, required, type_, enum_, refViewName, filterType)
         }
     } else Nil
   }
