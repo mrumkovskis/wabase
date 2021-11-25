@@ -22,12 +22,12 @@ lazy val dependencies = {
 }
 
 lazy val testDependencies = Seq(
-    "org.scalatest"              %% "scalatest"                         % "3.2.9" % "it,test",
+    "org.scalatest"              %% "scalatest"                         % "3.2.10" % "it,test",
     "com.typesafe.akka"          %% "akka-http-testkit"                 % akkaHttpV % "it,test",
     "com.typesafe.akka"          %% "akka-testkit"                      % akkaV   % "it,test",
     "com.typesafe.akka"          %% "akka-stream-testkit"               % akkaV   % "it,test",
     "org.hsqldb"                  % "hsqldb"                            % "2.5.1" %    "test",
-    "com.vladsch.flexmark"        % "flexmark-all"                      % "0.35.10" % "it,test",
+    "com.vladsch.flexmark"        % "flexmark-all"                      % "0.62.2" % "it,test",
 )
 
 ThisBuild / versionScheme          := Some("semver-spec")
