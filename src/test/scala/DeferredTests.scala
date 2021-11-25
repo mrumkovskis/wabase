@@ -222,15 +222,6 @@ class DeferredTests extends AnyFlatSpec with QuereaseBaseSpecs with ScalatestRou
       }
     }
 
-    Get("/data/action") ~> route ~> check {
-      handled shouldBe true
-    }
-    Get("/data/fault") ~> route ~> check {
-      handled shouldBe true
-      status shouldBe StatusCodes.InternalServerError
-      responseAs[String] shouldEqual "fault"
-    }
-
     @volatile var exeCount = 0
     @volatile var errCount = 0
     @volatile var okCount = 0
@@ -239,7 +230,16 @@ class DeferredTests extends AnyFlatSpec with QuereaseBaseSpecs with ScalatestRou
     WS("/ws", wsClient.flow) ~> route
 
     var results = Map[String, String]()
+    var executedRequests = List[String]()
 
+    Get("/data/action") ~> route ~> check {
+      handled shouldBe true
+    }
+    Get("/data/fault") ~> route ~> check {
+      handled shouldBe true
+      status shouldBe StatusCodes.InternalServerError
+      responseAs[String] shouldEqual "fault"
+    }
     Get("/data/action") ~> RawHeader("X-Deferred", "10s") ~> route ~> check {
       results += (parseDeferredRequestId(responseAs[String]) -> "OK")
       handled shouldBe true
@@ -279,7 +279,9 @@ class DeferredTests extends AnyFlatSpec with QuereaseBaseSpecs with ScalatestRou
           case List((hash, JsObject(statusObj))) =>
             val JsString(status) = statusObj("status")
             status match {
-              case "EXE" => exeCount += 1
+              case "EXE" =>
+                executedRequests ::= hash
+                exeCount += 1
               case "OK" =>
                 checkDeferredResult(hash)
                 okCount += 1
@@ -296,6 +298,9 @@ class DeferredTests extends AnyFlatSpec with QuereaseBaseSpecs with ScalatestRou
       case _: AssertionError => //ws message read timeout occured, all messages consumed
     }
 
+    if (exeCount != 6) {
+      println(s"Executed requests: $executedRequests\nResults: $results")
+    }
     exeCount shouldEqual 6
     okCount shouldEqual 4
     errCount shouldEqual 2
