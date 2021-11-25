@@ -393,12 +393,12 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     Try {
       clazz
         .getMethod(function, classOf[Map[_, _]], classOf[Resources])
-        .invoke(clazz.newInstance, data, res)
+        .invoke(clazz.getDeclaredConstructor().newInstance(), data, res)
     }.recover {
       case _: NoSuchMethodException =>
         clazz
           .getMethod(function, classOf[Map[_, _]])
-          .invoke(clazz.newInstance, data)
+          .invoke(clazz.getDeclaredConstructor().newInstance(), data)
     }.map {
       case f: Future[_] => f map qresult
       case x => Future.successful(qresult(x))
