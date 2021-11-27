@@ -26,7 +26,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
         .nameToViewDef
     toAppViewDefs(mojozViewDefs)
   }
-  def toAppViewDefs(mojozViewDefs: Map[String, ViewDef]) = resolveAuth {
+  def toAppViewDefs(mojozViewDefs: Map[String, ViewDef]) = transformAppViewDefs {
     val inlineViewDefNames =
       mojozViewDefs.values.flatMap { viewDef =>
         viewDef.fields.filter { field =>
@@ -350,7 +350,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val appView = MojozViewDef(name, db, table, tableAlias, joins, filter,
       viewDef.groupBy, viewDef.having, orderBy, extends_,
       comments, appFields, viewDef.saveTo, extras)
-      .updateWabaseExtras(_ => AppViewDef(limit, cp, auth, apiMap, actions))
+      .updateWabaseExtras(_ => AppViewDef(limit, cp, auth, apiMap, actions, Map.empty))
     def hasAuthFilter(viewDef: ViewDef): Boolean = viewDef.auth match {
       case AuthFilters(g, l, i, u, d) =>
         !(g.isEmpty && l.isEmpty && i.isEmpty && u.isEmpty && d.isEmpty)
@@ -365,6 +365,12 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
           appView.auth.forDelete.map(a => s"($a)").mkString(" & ")) :: Nil)) //do not use List(..) because it conflicts with KnownAuthOps.List
     } else appView
   }
+
+  protected def transformAppViewDefs(viewDefs: Map[String, ViewDef]): Map[String, ViewDef] =
+    Option(viewDefs)
+      .map(resolveAuth)
+      .map(resolveDbAccessKeys)
+      .orNull
 
   /* Sets field options to horizontal auth statements if such are defined for child view, so that during ort auth
    * for child views are applied.
@@ -381,6 +387,69 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
             tresql(v.auth.forInsert)}, ${tresql(v.auth.forDelete)}, ${tresql(v.auth.forUpdate)}")
         }.getOrElse(field)
     })
+  }
+
+  protected def resolveDbAccessKeys(viewDefs: Map[String, ViewDef]): Map[String, ViewDef] = viewDefs.transform { case (name, viewDef) =>
+    import Action._
+    // current and result is Map of: (viewname, actionName) -> Seq[DbAccessKey]
+    def dbAccessKeys(v: ViewDef, action: String, current: Map[(String, String), Seq[DbAccessKey]]): Map[(String, String), Seq[DbAccessKey]] = {
+      if (current.contains((v.name, action)))
+        current
+      else {
+        val children =
+          v.fields
+            .collect {
+              case f if f.type_.isComplexType =>
+                (viewDefs(f.type_.name), action)
+            }
+        val opsAndValidations =
+          v.actions
+            .get(action)
+            .map(_.steps)
+            .getOrElse(Nil)
+            .flatMap {
+              case Evaluation(_, _, op)         => Seq(op)
+              case Return(_, _, op)             => Seq(op)
+              case Validations(_, validations)  => Nil // TODO search for db in validation expressions?
+            }
+        val dbNamesInTresql: Seq[String] =
+          opsAndValidations
+            .collect {
+              case Tresql(tresql) =>
+                tresql
+              /* TODO analyze validations?
+              case validationTresql: String =>
+                validationTresql
+              */
+            }.flatMap { tresql =>
+              Nil // TODO extract database names
+            }
+        val viewsCalled =
+          opsAndValidations
+            .collect {
+              // FIXME unable to collect metadata because of this :view_name variable feature. Drop it, clean up?
+              case ViewCall(method, calledView) if !calledView.startsWith(":") =>
+                (viewDefs(calledView), method)
+            }
+        val keys: Seq[DbAccessKey] =
+          dbNamesInTresql.distinct.map { db => DbAccessKey(db = db, cp = null) } ++
+          Seq(DbAccessKey(db = v.db, cp = v.cp))
+        val updated = current + ((v.name, action) -> keys)
+        (children ++ viewsCalled)
+          .foldLeft(updated) {
+            case (collected, (viewDef, action)) => dbAccessKeys(viewDef, action, collected)
+          }
+      }
+    }
+    val actionToDbAccessKeys = Action().map { case action =>
+      val viewAndActionToKeys = dbAccessKeys(viewDef, action, Map.empty)
+      // TODO group by db, ensure corresponding cp-s are all in Set(null), Set(cp) or Set(null, cp)
+      // TODO otherwise sys error 'multiple connection pools for db $db in view $view'
+      //      with corresponding view-names and action names grouped by cp names excluding null cp-s
+      // TODO cp = coalesce(cp, db)
+      // TODO action -> coalesced DbAccessKeys
+    }
+    viewDef // FIXME with actionToDbAccessKeys
   }
 
   protected def parseAction(objectName: String, stepData: Seq[Any]): Action = {
@@ -502,7 +571,7 @@ object AppMetadata {
     val BindVarCursorsForViewFunctionName = "build_cursors_for_view"
 
     trait Op
-    trait Step {
+    sealed trait Step {
       def name: Option[String]
     }
 
@@ -521,6 +590,12 @@ object AppMetadata {
 
   case class Action(steps: List[Action.Step])
 
+  /** Database name (as used in mojoz metadata) and corresponding connection pool name */
+  case class DbAccessKey(
+    db: String,
+    cp: String,
+  )
+
   case class Job(name: String,
                  schedule: Option[String],
                  condition: Option[String],
@@ -532,6 +607,7 @@ object AppMetadata {
     val auth: AuthFilters
     val apiMethodToRole: Map[String, String]
     val actions: Map[String, Action]
+    val actionToDbAccessKeys: Map[String, Seq[DbAccessKey]]
   }
 
   private [wabase] case class AppViewDef(
@@ -539,7 +615,8 @@ object AppMetadata {
     cp: String = DEFAULT_CP.connectionPoolName,
     auth: AuthFilters = AuthFilters(Nil, Nil, Nil, Nil, Nil),
     apiMethodToRole: Map[String, String] = Map(),
-    actions: Map[String, Action] = Map()
+    actions: Map[String, Action] = Map(),
+    actionToDbAccessKeys: Map[String, Seq[DbAccessKey]] = Map.empty,
   ) extends AppViewDefExtras
 
   case class FieldOps(
@@ -575,6 +652,7 @@ object AppMetadata {
     override val auth = appExtras.auth
     override val apiMethodToRole = appExtras.apiMethodToRole
     override val actions = appExtras.actions
+    override val actionToDbAccessKeys = appExtras.actionToDbAccessKeys
     def updateWabaseExtras(updater: AppViewDef => AppViewDef): AppMetadata#ViewDef =
       updateExtras(WabaseViewExtrasKey, updater, defaultExtras)
 
