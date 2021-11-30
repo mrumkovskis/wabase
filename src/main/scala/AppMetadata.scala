@@ -7,6 +7,7 @@ import org.mojoz.metadata.in._
 import org.mojoz.metadata.io.MdConventions
 import org.mojoz.metadata.out.SqlGenerator.SimpleConstraintNamingRules
 import org.mojoz.querease._
+import org.tresql.QueryParser
 import org.wabase.AppMetadata.Action.VariableTransform
 
 import scala.collection.immutable.Seq
@@ -389,68 +390,65 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     })
   }
 
-  protected def resolveDbAccessKeys(viewDefs: Map[String, ViewDef]): Map[String, ViewDef] = viewDefs.transform { case (name, viewDef) =>
-    import Action._
-    // current and result is Map of: (viewname, actionName) -> Seq[DbAccessKey]
-    def dbAccessKeys(v: ViewDef, action: String, current: Map[(String, String), Seq[DbAccessKey]]): Map[(String, String), Seq[DbAccessKey]] = {
-      if (current.contains((v.name, action)))
-        current
-      else {
+  protected def resolveDbAccessKeys(viewDefs: Map[String, ViewDef]): Map[String, ViewDef] =
+    viewDefs.transform { case (viewName, viewDef) =>
+      import Action._
+      // result is Map of: (viewName, actionName) -> Seq[DbAccessKey]
+      def dbAccessKeys(v: ViewDef, action: String): Map[(String, String), Seq[DbAccessKey]] = {
+        def collectFromAction[A](pf: PartialFunction[Step, A]): Seq[A] = {
+          v.actions
+            .get(action)
+            .map(_.steps)
+            .map(_.collect(pf))
+            .getOrElse(Nil)
+        }
+
+        val viewDbKeys = {
+          def dbs(tresqls: Seq[String]) = {
+            val p = new QueryParser(null, null)
+            tresqls.flatMap(t => p.traverser(p.dbExtractor)(Nil)(p.parseExp(t)))
+          }
+          val tresqls =
+            collectFromAction({
+              case Evaluation(_, _, Tresql(tresql)) => Seq(tresql)
+              case Return(_, _, Tresql(tresql)) => Seq(tresql)
+              case Validations(_, validations)  => validations
+              case _ => Nil
+            }).flatten
+          (if (v.db != null || v.cp != null) Seq(DbAccessKey(v.db, v.cp)) else Nil) ++
+            dbs(tresqls).map(DbAccessKey(_, null))
+        }
+
         val children =
           v.fields
             .collect {
               case f if f.type_.isComplexType =>
-                (viewDefs(f.type_.name), action)
+                (f.type_.name, action)
+            } ++
+            collectFromAction {
+              case Evaluation(_, _, ViewCall(m, vn)) if !vn.startsWith(":") => (vn, m)
+              case Return(_, _, ViewCall(m, vn)) if !vn.startsWith(":") => (vn, m)
             }
-        val opsAndValidations =
-          v.actions
-            .get(action)
-            .map(_.steps)
-            .getOrElse(Nil)
-            .flatMap {
-              case Evaluation(_, _, op)         => Seq(op)
-              case Return(_, _, op)             => Seq(op)
-              case Validations(_, validations)  => Nil // TODO search for db in validation expressions?
-            }
-        val dbNamesInTresql: Seq[String] =
-          opsAndValidations
-            .collect {
-              case Tresql(tresql) =>
-                tresql
-              /* TODO analyze validations?
-              case validationTresql: String =>
-                validationTresql
-              */
-            }.flatMap { tresql =>
-              Nil // TODO extract database names
-            }
-        val viewsCalled =
-          opsAndValidations
-            .collect {
-              // FIXME unable to collect metadata because of this :view_name variable feature. Drop it, clean up?
-              case ViewCall(method, calledView) if !calledView.startsWith(":") =>
-                (viewDefs(calledView), method)
-            }
-        val keys: Seq[DbAccessKey] =
-          dbNamesInTresql.distinct.map { db => DbAccessKey(db = db, cp = null) } ++
-          Seq(DbAccessKey(db = v.db, cp = v.cp))
-        val updated = current + ((v.name, action) -> keys)
-        (children ++ viewsCalled)
-          .foldLeft(updated) {
-            case (collected, (viewDef, action)) => dbAccessKeys(viewDef, action, collected)
-          }
+
+        children.distinct.foldLeft(Map[(String, String), Seq[DbAccessKey]]((v.name, action) -> viewDbKeys)) {
+          case (res, chna @ (child_name, act)) =>
+            if (res.contains(chna)) res else res ++ dbAccessKeys(viewDefs(child_name), act)
+        }
       }
+      val actionToDbAccessKeys = Action().map { case action =>
+        val viewAndActionKeys = dbAccessKeys(viewDef, action).flatMap(_._2).toList.distinct
+        // validate db access keys so that one db corresponds only to one connection pool
+        viewAndActionKeys.groupBy(_.db).foreach { case (db, gr) =>
+          if (gr.size > 1) {
+            val pools = gr.map(_.cp)
+            sys.error(s"Multiple connection pools - ($pools) for db $db in view $viewName")
+          }
+        }
+        (action, viewAndActionKeys)
+      }.toMap
+
+      viewDef.updateWabaseExtras(_.copy(actionToDbAccessKeys = actionToDbAccessKeys))
     }
-    val actionToDbAccessKeys = Action().map { case action =>
-      val viewAndActionToKeys = dbAccessKeys(viewDef, action, Map.empty)
-      // TODO group by db, ensure corresponding cp-s are all in Set(null), Set(cp) or Set(null, cp)
-      // TODO otherwise sys error 'multiple connection pools for db $db in view $view'
-      //      with corresponding view-names and action names grouped by cp names excluding null cp-s
-      // TODO cp = coalesce(cp, db)
-      // TODO action -> coalesced DbAccessKeys
-    }
-    viewDef // FIXME with actionToDbAccessKeys
-  }
 
   protected def parseAction(objectName: String, stepData: Seq[Any]): Action = {
     val validationRegex = new Regex(s"${Action.ValidationsKey}(\\s+\\w+)?")
