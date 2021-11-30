@@ -435,7 +435,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
             val new_processed = processed + (v.name -> action)
             children.distinct.foldLeft(Map[(String, String), Seq[DbAccessKey]]((v.name, action) -> viewDbKeys)) {
-              case (res, chna @ (child_name, act)) =>
+              case (res, (child_name, act)) =>
                 res ++ dbAccessKeys(viewDefs(child_name), act, new_processed)
             }
           }
