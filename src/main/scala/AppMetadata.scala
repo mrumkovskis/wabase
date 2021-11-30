@@ -432,14 +432,15 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
                 case Return(_, _, ViewCall(m, vn)) if !vn.startsWith(":") => (vn, m)
               }
 
-            val new_processed = processed + (v.name -> action)
+          val new_processed = processed + (v.name -> action)
 
-            children.distinct.foldLeft(Map[(String, String), Seq[DbAccessKey]]((v.name, action) -> viewDbKeys)) {
-              case (res, (child_name, act)) =>
-                res ++ dbAccessKeys(viewDefs(child_name), act, new_processed)
-            }
+          children.distinct.foldLeft(Map[(String, String), Seq[DbAccessKey]]((v.name, action) -> viewDbKeys)) {
+            case (res, (child_name, act)) =>
+              res ++ dbAccessKeys(viewDefs(child_name), act, new_processed)
           }
         }
+      }
+
       val actionToDbAccessKeys = Action().map { case action =>
         val viewAndActionKeys = dbAccessKeys(viewDef, action, Set()).flatMap(_._2).toList.distinct
         // validate db access keys so that one db corresponds only to one connection pool
