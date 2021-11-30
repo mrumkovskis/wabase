@@ -397,43 +397,43 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       def dbAccessKeys(v: ViewDef, action: String, processed: Set[(String, String)]): Map[(String, String), Seq[DbAccessKey]] = {
         if (processed(v.name -> action)) Map()
         else {
-            def collectFromAction[A](pf: PartialFunction[Step, A]): Seq[A] = {
-              v.actions
-                .get(action)
-                .map(_.steps)
-                .map(_.collect(pf))
-                .getOrElse(Nil)
-            }
+          def collectFromAction[A](pf: PartialFunction[Step, A]): Seq[A] = {
+            v.actions
+              .get(action)
+              .map(_.steps)
+              .map(_.collect(pf))
+              .getOrElse(Nil)
+          }
 
-            val viewDbKeys = {
-              def dbs(tresqls: Seq[String]) = {
-                val p = new QueryParser(null, null)
-                tresqls.flatMap(t => p.traverser(p.dbExtractor)(Nil)(p.parseExp(t)))
+          val viewDbKeys = {
+            def dbs(tresqls: Seq[String]) = {
+              val p = new QueryParser(null, null)
+              tresqls.flatMap(t => p.traverser(p.dbExtractor)(Nil)(p.parseExp(t)))
+            }
+            val tresqls =
+              collectFromAction({
+                case Evaluation(_, _, Tresql(tresql)) => Seq(tresql)
+                case Return(_, _, Tresql(tresql)) => Seq(tresql)
+                case Validations(_, validations)  => validations
+                case _ => Nil
+              }).flatten
+            (if (v.db != null || v.cp != null) Seq(DbAccessKey(v.db, v.cp)) else Nil) ++
+              dbs(tresqls).map(DbAccessKey(_, null))
+          }
+
+          val children =
+            v.fields
+              .collect {
+                case f if f.type_.isComplexType =>
+                  (f.type_.name, action)
+              } ++
+              collectFromAction {
+                case Evaluation(_, _, ViewCall(m, vn)) if !vn.startsWith(":") => (vn, m)
+                case Return(_, _, ViewCall(m, vn)) if !vn.startsWith(":") => (vn, m)
               }
-              val tresqls =
-                collectFromAction({
-                  case Evaluation(_, _, Tresql(tresql)) => Seq(tresql)
-                  case Return(_, _, Tresql(tresql)) => Seq(tresql)
-                  case Validations(_, validations)  => validations
-                  case _ => Nil
-                }).flatten
-              (if (v.db != null || v.cp != null) Seq(DbAccessKey(v.db, v.cp)) else Nil) ++
-                dbs(tresqls).map(DbAccessKey(_, null))
-            }
-
-            val children = {
-              v.fields
-                .collect {
-                  case f if f.type_.isComplexType =>
-                    (f.type_.name, action)
-                } ++
-                collectFromAction {
-                  case Evaluation(_, _, ViewCall(m, vn)) if !vn.startsWith(":") => (vn, m)
-                  case Return(_, _, ViewCall(m, vn)) if !vn.startsWith(":") => (vn, m)
-                }
-            }
 
             val new_processed = processed + (v.name -> action)
+
             children.distinct.foldLeft(Map[(String, String), Seq[DbAccessKey]]((v.name, action) -> viewDbKeys)) {
               case (res, (child_name, act)) =>
                 res ++ dbAccessKeys(viewDefs(child_name), act, new_processed)
