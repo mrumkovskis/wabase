@@ -32,7 +32,7 @@ class DeferredTests extends AnyFlatSpec with Matchers with ScalatestRouteTest {
 
   override def beforeAll(): Unit = {
     super.beforeAll()
-    Class.forName("org.hsqldb.jdbc.JDBCDriver")
+    DbDrivers.loadDrivers
     this.conn = DriverManager.getConnection("jdbc:hsqldb:mem:deferred_test")
     val querease = new AppQuerease {
       override lazy val yamlMetadata = YamlMd.fromResource("/deferred-metadata.yaml")

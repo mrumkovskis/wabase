@@ -55,7 +55,7 @@ class ValidationSpecs extends FlatSpec with Matchers with BeforeAndAfterAll {
 
   override def beforeAll(): Unit = {
     super.beforeAll()
-    Class.forName("org.hsqldb.jdbc.JDBCDriver")
+    DbDrivers.loadDrivers
     this.conn = DriverManager.getConnection("jdbc:hsqldb:mem:validation_test")
 
     val db = new DbAccess with Loggable {
