@@ -322,7 +322,7 @@ class FileCleanupSpecs extends FlatSpec with Matchers with BeforeAndAfterEach {
 object FileCleanupSpecsHelper {
   implicit val queryTimeout = QueryTimeout(10)
 
-  Class.forName("org.hsqldb.jdbc.JDBCDriver")
+  DbDrivers.loadDrivers
   val db: DbAccess = new DbAccess with Loggable {
     override implicit lazy val tresqlResources: ThreadLocalResources = new TresqlResources {
       override lazy val resourcesTemplate = super.resourcesTemplate
