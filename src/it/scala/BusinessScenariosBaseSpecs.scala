@@ -26,6 +26,8 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
   import db._
 
   implicit val queryTimeout = QueryTimeout(10)
+  implicit val Cp = DEFAULT_CP
+  implicit val extraPools: Seq[PoolName] = Nil
 
   override def beforeAll() = {
     login()
