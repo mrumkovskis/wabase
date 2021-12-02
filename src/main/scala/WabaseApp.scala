@@ -5,13 +5,11 @@ import org.tresql.Resources
 import org.wabase.AppMetadata.Action
 import org.wabase.AppMetadata.Action.{LimitKey, OffsetKey, OrderKey}
 import org.wabase.AppMetadata.{AugmentedAppFieldDef, AugmentedAppViewDef}
-import spray.json.JsObject
 
 import java.sql.Connection
 import scala.collection.immutable.Map
 import scala.concurrent.{ExecutionContext, Future}
 import scala.language.{existentials, implicitConversions}
-import scala.reflect.ManifestFactory
 import scala.util.{Try, Failure, Success}
 import scala.util.control.NonFatal
 
@@ -24,7 +22,7 @@ trait WabaseApp[User] {
     with DbConstraintMessage
     =>
 
-  import qe.{viewDefOption, classToViewNameMap, viewNameToClassMap}
+  import qe.viewDefOption
 
   type ActionHandlerResult = Future[(ActionContext, Try[QuereaseResult])]
   type ActionHandler       = ActionContext => ActionHandlerResult
@@ -213,7 +211,7 @@ trait WabaseApp[User] {
       else viewDef.fields.filter(f => !qe.authFieldNames.contains(f.name)).filterNot(_.api.updatable)
     if (fieldsToCopy.nonEmpty) {
       val fieldsToCopyNames = fieldsToCopy.map(f => Option(f.alias) getOrElse f.name).toSet
-      instance.toMap ++ old.toMap.filter { case (k, v) => fieldsToCopyNames.contains(k) }
+      instance ++ old.filter { case (k, v) => fieldsToCopyNames.contains(k) }
     } else
       instance
   }
@@ -260,7 +258,7 @@ trait WabaseApp[User] {
         viewDef.fields.filter(_.sortable).map(n => Option(n.alias).getOrElse(n.name)).toSet
       val sortCols = orderBy.replace("~", "").split("[\\s\\,]+").toList
       val notSortable = sortCols.filterNot(sortableFields.contains)
-      if (notSortable.size > 0)
+      if (notSortable.nonEmpty)
         throw new BusinessException(s"Not sortable: ${viewDef.name} by " + notSortable.mkString(", "), null)
     }
   }
@@ -287,6 +285,6 @@ trait WabaseApp[User] {
     // FIXME do not close db connection for AutoCloseable AppListResult when it is fixed to use provided connection
     result.onComplete {
       case Success((_, Success(_))) => commitAndCloseConnection(dbConn)
-      case failure                  => rollbackAndCloseConnection(dbConn)
+      case _                        => rollbackAndCloseConnection(dbConn)
     }
 }
