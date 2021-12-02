@@ -336,37 +336,38 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
                            env: Map[String, Any])(implicit res: Resources): QuereaseResult = {
     import Action._
     import CoreTypes._
-    val v = viewDef(if (view.startsWith(":")) singleValue[String](view, data ++ env) else view)
+    val callData = data ++ env
+    val v = viewDef(if (view.startsWith(":")) singleValue[String](view, callData) else view)
     implicit val mf = ManifestFactory.classType(viewNameToClassMap(v.name)).asInstanceOf[Manifest[DTO]]
-    def long(name: String) = tryOp(data.get(name).map {
+    def long(name: String) = tryOp(callData.get(name).map {
       case x: Long => x
       case x: Number => x.longValue
       case x: String => x.toLong
       case x => x.toString.toLong
-    }, data)
-    def int(name: String) = tryOp(data.get(name).map {
+    }, callData)
+    def int(name: String) = tryOp(callData.get(name).map {
       case x: Int => x
       case x: Number => x.intValue
       case x: String => x.toInt
       case x => x.toString.toInt
-    }, data)
-    def string(name: String) = data.get(name) map String.valueOf
+    }, callData)
+    def string(name: String) = callData.get(name) map String.valueOf
     method match {
       case Get =>
         OptionResult(long("id").flatMap(get(_, null, data)(mf, res)))
       case Action.List =>
-        IteratorResult(result(data, int(OffsetKey).getOrElse(0), int(LimitKey).getOrElse(0),
+        IteratorResult(result(callData, int(OffsetKey).getOrElse(0), int(LimitKey).getOrElse(0),
           string(OrderKey).orNull)(mf, res))
       case Save =>
-        IdResult(saveMap(v, data, env, false, null))
+        IdResult(saveMap(v, callData, env, false, null))
       case Delete =>
         NumberResult(long("id")
           .map { deleteById(v, _, null, env) }
           .getOrElse(sys.error(s"id not found in data")))
       case Create =>
-        PojoResult(create(data)(mf, res))
+        PojoResult(create(callData)(mf, res))
       case Count =>
-        NumberResult(countAll(data))
+        NumberResult(countAll(callData))
       case x =>
         sys.error(s"Unknown view action $x")
     }

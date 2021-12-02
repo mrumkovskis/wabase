@@ -334,6 +334,7 @@ object FileCleanupSpecsHelper {
   import db._
 
   implicit val TestCp = PoolName("file-cleanup-test")
+  implicit val extraPools: Seq[PoolName] = Nil
   class TestFileStreamer(val attachmentsRootPathTail: String) extends AppFileStreamer[String]
     with AppConfig with QuereaseProvider with DbAccessProvider {
     override type QE = FileCleanupSpecsQuerease.type

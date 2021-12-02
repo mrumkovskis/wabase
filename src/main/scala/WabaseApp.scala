@@ -37,7 +37,8 @@ trait WabaseApp[User] {
     val state:    ApplicationState,
     val timeout:  QueryTimeout,
     val ec:       ExecutionContext,
-    val poolName: PoolName = viewDefOption(viewName).map(_.cp).map(PoolName) getOrElse DEFAULT_CP,
+    val poolName: PoolName,
+    val extraPools: Seq[PoolName],
   )
 
   protected def getActionHandler(context: ActionContext): ActionHandler = {
@@ -59,9 +60,14 @@ trait WabaseApp[User] {
     state:    ApplicationState,
     timeout:  QueryTimeout,
     ec:       ExecutionContext,
-    poolName: PoolName = viewDefOption(viewName).map(_.cp).map(PoolName) getOrElse DEFAULT_CP,
-  ): Future[QuereaseResult] =
+  ): Future[QuereaseResult] = {
+    val vdo = viewDefOption(viewName)
+    implicit val poolName = vdo.map(_.cp).map(PoolName) getOrElse DEFAULT_CP
+    // interesting compiler error:
+    // if field is named extraPoolNames which overlaps with DbAccess same name method, implicit parameter resolving in copy method fails.
+    implicit val extraPools = extraPoolNames(vdo.map(_.actionToDbAccessKeys(actionName).toList).getOrElse(Nil))
     doWabaseAction(ActionContext(actionName, viewName, values))
+  }
 
   def doWabaseAction(context: ActionContext): Future[QuereaseResult] =
     doWabaseAction(getActionHandler(context), context)
@@ -266,16 +272,29 @@ trait WabaseApp[User] {
     action: Resources => ActionHandlerResult,
   )(implicit
     poolName: PoolName,
+    extraPools: Seq[PoolName],
     ec: ExecutionContext,
   ): ActionHandlerResult = {
     val dbConn = ConnectionPools(poolName).getConnection
+    var extraConns = List[Connection]()
     try {
-      val resources = tresqlResources.resourcesTemplate.withConn(dbConn)
+      val resources = {
+        val res = tresqlResources.resourcesTemplate.withConn(dbConn)
+        if (extraPools.isEmpty) res
+        else extraPools.foldLeft(res) { case (res, p @ PoolName(cp)) =>
+          if (res.extraResources.contains(cp)) {
+            extraConns ::= ConnectionPools(p).getConnection
+            res.withUpdatedExtra(cp)(_.withConn(extraConns.head))
+          } else res
+        }
+      }
       val result = action(resources)
+      extraConns foreach commitAndCloseConnection
       finalizeAndCloseWhenReady(result, dbConn)
       result
     } catch {
       case NonFatal(ex) =>
+        extraConns foreach rollbackAndCloseConnection
         rollbackAndCloseConnection(dbConn)
         throw ex
     }

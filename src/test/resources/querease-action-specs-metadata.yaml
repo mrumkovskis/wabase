@@ -7,6 +7,14 @@ columns:
 - birthdate            ! date
 - main_account.id        account.id
 
+table: person_health
+db: med
+columns:
+- id
+- name                 ! 51
+- manipulation_date    ! date
+- vaccine                64
+- had_virus              boolean
 
 table: account
 columns:
@@ -69,6 +77,16 @@ save:
 - return get person
 
 
+name: person_simple
+table: person
+fields:
+- id
+- name
+- surname
+- sex
+- birthdate
+
+
 name: payment
 table: transaction tr
 joins:
@@ -105,8 +123,9 @@ filter:
 - name %~~%
 - surname %~~%
 list:
-- count: count person_list  # named step supports also colon notation
-- data: list person_list    # named step supports also colon notation
+- c: count person_list  # named step supports also colon notation
+- d: list person_list    # named step supports also colon notation
+- return (count = :c) + (data = :d)
 
 
 name: person_with_main_account
@@ -120,3 +139,39 @@ get:
 - account = (id = :main_acc_id) -> get person_accounts
 - main_account_data = if_defined_or_else(:account.number, :account.number || '(' || :account.balance || ')', '<no main account>')
 - return :person + (main_account = :main_account_data)
+
+
+name: person_health
+db: med
+table: person_health
+fields:
+- id
+- name
+- manipulation_date
+- vaccine
+- had_virus
+save:
+- validations check_person:
+  - (person[name = :name]{count(1)}) > 0, "Person '" || :name || "' must be registered"
+- save person_health
+
+
+name: person_with_health_data
+table: person p
+fields:
+- name
+- sex
+- birthdate
+- health * [p.name = ph.name]:
+    db: med
+    table:  person_health ph
+    fields:
+    - manipulation_date
+    - vaccine
+    - had_virus
+    order:
+    - manipulation_date
+filter:
+- name in :names
+order:
+- name

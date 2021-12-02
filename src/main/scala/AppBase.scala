@@ -379,7 +379,8 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
     implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout, poolName: PoolName) =
   {
       checkApi(viewName, "get", user)
-      dbUse {
+    implicit val extraPools = extraPoolNames(viewDef(viewName).actionToDbAccessKeys(Action.Get))
+    dbUse {
         implicit val clazz = viewNameToClassMap(viewName)
         rest(
           createViewCtx(ViewContext[Dto](viewName, id, params, user, state))
@@ -396,6 +397,7 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
     implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout, poolName: PoolName
   ) = {
       checkApi(viewName, "get", user)
+      implicit val extraPools = extraPoolNames(viewDef(viewName).actionToDbAccessKeys(Action.Create))
       dbUse {
         implicit val clazz = viewNameToClassMap(viewName)
         rest(
@@ -470,6 +472,7 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
       poolName: PoolName) = {
 
     implicit val clazz = viewNameToClassMap(viewName)
+    implicit val extraPools = extraPoolNames(viewDef(viewName).actionToDbAccessKeys(Action.List))
     dbUse {
       val promise = Promise[Unit]()
       try{
@@ -518,12 +521,15 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
         .map(_.asInstanceOf[DtoWithId])
         .map(_.id)
         .filter(_ != null)
-      val old = dbUse{
-        validateFields(instance)
-        validate(viewName, qe.toMap(instance))(state.locale)
-        idOpt.flatMap { id =>
-          rest(ViewContext[DtoWithId](viewName, id, params, user, state)).result
-        }.orNull
+      val old = {
+        implicit val extraPools = extraPoolNames(viewDef.actionToDbAccessKeys(Action.Get))
+        dbUse {
+          validateFields(instance)
+          validate(viewName, qe.toMap(instance))(state.locale)
+          idOpt.flatMap { id =>
+            rest(ViewContext[DtoWithId](viewName, id, params, user, state)).result
+          }.orNull
+        }
       }
       if (idOpt.isDefined && old == null)
         throw new BusinessException(translate("Record not found, cannot edit")(state.locale))
@@ -538,6 +544,7 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
         }
       val promise = Promise[Long]()
       try {
+        implicit val extraPools = extraPoolNames(viewDef.actionToDbAccessKeys(Action.Save))
         val res = friendlyConstraintErrorMessage(viewDef, {
           transaction {
             implicit val clazz = instance.getClass
@@ -562,6 +569,7 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
       val promise = Promise[Unit]()
       try {
         val res = friendlyConstraintErrorMessage {
+          implicit val extraPools = extraPoolNames(viewDef.actionToDbAccessKeys(Action.Delete))
           transaction {
             implicit val clazz = viewNameToClassMap(viewName).asInstanceOf[Class[DtoWithId]]
             val ctx = createDeleteCtx(RemoveContext[DtoWithId](viewName, id, params, user, promise, state))

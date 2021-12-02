@@ -3,6 +3,7 @@ package org.wabase
 import java.sql.{Connection, DriverManager}
 import org.mojoz.metadata.in.YamlMd
 import org.mojoz.metadata.out.SqlGenerator
+import org.mojoz.querease.TresqlMetadata
 import org.scalatest.{BeforeAndAfterAll, Suite}
 import org.scalatest.matchers.should.Matchers
 import org.tresql.dialects.HSQLDialect
@@ -20,7 +21,6 @@ class QuereaseBase(metadataFile: String) extends AppQuerease {
 
 trait QuereaseBaseSpecs extends Matchers with BeforeAndAfterAll with Loggable { this: Suite =>
 
-  protected var conn: Connection = _
   protected implicit var tresqlResources: TresqlResources = _
   protected var querease: AppQuerease = _
 
@@ -28,23 +28,6 @@ trait QuereaseBaseSpecs extends Matchers with BeforeAndAfterAll with Loggable { 
 
   override def beforeAll(): Unit = {
     super.beforeAll()
-    DbDrivers.loadDrivers
-    this.conn = DriverManager.getConnection(s"jdbc:hsqldb:mem:${getClass.getName}_db")
-    logger.debug(s"Creating database for ${getClass.getName} tests ...\n")
-    SqlGenerator.hsqldb().schema(querease.tableMetadata.tableDefs)
-      .split(";\\s+").map(_ + ";")
-      .++(customStatements)
-      .foreach { sql =>
-        logger.debug(sql)
-        val st = conn.createStatement
-        st.execute(sql)
-        st.close
-      }
-    val st = conn.createStatement
-    st.execute("create sequence seq")
-    st.close
-    logger.debug("Database created successfully.")
-
     class ThreadLocalDateFormat(val pattern: String) extends ThreadLocal[SimpleDateFormat] {
       override def initialValue = { val f = new SimpleDateFormat(pattern); f.setLenient(false); f }
       def apply(date: Date) = get.format(date)
@@ -63,20 +46,53 @@ trait QuereaseBaseSpecs extends Matchers with BeforeAndAfterAll with Loggable { 
       if (topicName != null) logger.debug(/*Timestamp(new Date()) + */s"  [$topicName]  $msg")
     }
 
-    this.tresqlResources  = new TresqlResources {
-      override val resourcesTemplate =
-        super.resourcesTemplate.copy(
-          conn = QuereaseBaseSpecs.this.conn,
-          metadata = querease.tresqlMetadata,
-          dialect = HSQLDialect orElse {
-            case c: QueryBuilder#CastExpr => c.typ match {
-              case "bigint" | "long" | "int" => s"convert(${c.exp.sql}, BIGINT)"
-              case _ => c.exp.sql
-            }
-          },
-          idExpr = _ => "nextval('seq')"
-        )
-      override val logger = TresqlLogger
+    DbDrivers.loadDrivers
+
+    def init_db(db: String): (String, Connection) = {
+      val url = s"jdbc:hsqldb:mem:${getClass.getName}_db${ if(db != null) db else ""}"
+      val db_conn = DriverManager.getConnection(url)
+      logger.debug(s"Creating database $url ...\n")
+      SqlGenerator.hsqldb().schema(querease.tableMetadata.dbToTableDefs(db))
+        .split(";\\s+").map(_ + ";")
+        .++(customStatements)
+        .foreach { sql =>
+          logger.debug(sql)
+          val st = db_conn.createStatement
+          st.execute(sql)
+          st.close
+        }
+      val st = db_conn.createStatement
+      st.execute("create sequence seq")
+      st.close
+      logger.debug("Database created successfully.")
+      (db, db_conn)
+    }
+    def create_resources(db_conn: Connection, md: TresqlMetadata) = {
+      new TresqlResources {
+        override val resourcesTemplate =
+          super.resourcesTemplate.copy(
+            conn = db_conn,
+            metadata = md,
+            dialect = HSQLDialect orElse {
+              case c: QueryBuilder#CastExpr => c.typ match {
+                case "bigint" | "long" | "int" => s"convert(${c.exp.sql}, BIGINT)"
+                case _ => c.exp.sql
+              }
+            },
+            idExpr = _ => "nextval('seq')"
+          )
+        override val logger = TresqlLogger
+      }
+    }
+    this.tresqlResources = querease.tableMetadata.dbToTableDefs.keys.map(init_db).toList.partition(_._1 == null) match {
+      case (List((null, conn)), extra) =>
+        val res = create_resources(conn, querease.tresqlMetadata)
+        val extra_res = extra.map { case (db, conn) =>
+          db -> create_resources(conn, querease.tresqlMetadata.extraDbToMetadata(db))
+        }.toMap
+        res.extraResources = extra_res
+        res
+      case x => sys.error(s"No main database found - null name: $x")
     }
   }
 

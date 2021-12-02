@@ -15,6 +15,7 @@ class AppFileCleanup(dbAccess: DbAccess, fileStreamers: AppFileStreamerConfig*) 
   protected lazy val ageCheckSql: String = "now() - interval '1 days'"
   protected lazy val refsToIgnore: Set[(String, String)] = Set.empty
   implicit lazy val connectionPool: PoolName = DEFAULT_CP
+  implicit lazy val extraPools: Seq[PoolName] = Nil
   implicit lazy val queryTimeout: QueryTimeout = DefaultQueryTimeout.getOrElse(QueryTimeout(10))
 
   /*

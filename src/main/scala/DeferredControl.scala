@@ -445,6 +445,8 @@ object DeferredControl extends Loggable with AppConfig {
     import exec._
 
     implicit private lazy val queryTimeout: QueryTimeout = DefaultQueryTimeout.getOrElse(QueryTimeout(10))
+    implicit private lazy val Cp = DEFAULT_CP
+    implicit private lazy val extraPools: Seq[PoolName] = Nil
 
     override lazy val rootPath =
       Try(conf.getString("deferred-requests.files.path").replaceAll("/+$", "")).recover {
