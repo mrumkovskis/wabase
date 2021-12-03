@@ -406,19 +406,19 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
           }
 
           val viewDbKeys = {
-            def dbs(tresqls: Seq[String]) = {
+            def dbs(tresql: String) = {
               val p = new QueryParser(null, null)
-              tresqls.flatMap(t => p.traverser(p.dbExtractor)(Nil)(p.parseExp(t)))
+              p.traverser(p.dbExtractor)(Nil)(p.parseExp(tresql))
             }
-            val tresqls =
-              collectFromAction({
-                case Evaluation(_, _, Tresql(tresql)) => Seq(tresql)
-                case Return(_, _, Tresql(tresql)) => Seq(tresql)
-                case Validations(_, validations)  => validations
+            val actionDbs =
+              collectFromAction {
+                case Evaluation(_, _, Tresql(tresql)) => dbs(tresql)
+                case Return(_, _, Tresql(tresql)) => dbs(tresql)
+                case Validations(_, _, db)  => db.toList
                 case _ => Nil
-              }).flatten
-            (if (v.db != null || v.cp != null) Seq(DbAccessKey(v.db, v.cp)) else Nil) ++
-              dbs(tresqls).map(DbAccessKey(_, null))
+              } .flatten
+                .map(DbAccessKey(_, null))
+            (if (v.db != null || v.cp != null) Seq(DbAccessKey(v.db, v.cp)) else Nil) ++ actionDbs
           }
 
           val children =
@@ -457,7 +457,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     }
 
   protected def parseAction(objectName: String, stepData: Seq[Any]): Action = {
-    val validationRegex = new Regex(s"${Action.ValidationsKey}(\\s+\\w+)?")
+    val validationRegex = new Regex(s"${Action.ValidationsKey}(?:\\s+(\\w+))?(?:\\s+\\[(\\w+)\\])?")
     val viewCallRegex = new Regex(Action().mkString("(", "|", """)\s+(:?\w+)"""))
     val invocationRegex = """(\w|\$)+\.(\w|\$)+(\.(\w|\$)+)*""".r
     val returnRegex = """(?s)return\s+(.+)""".r //dot matches new line as well
@@ -520,9 +520,9 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
           val m = jm.asScala.toMap
           val (name, value) = m.head
           if (validationRegex.pattern.matcher(name).matches()) {
-            val validationRegex(vn) = name
+            val validationRegex(vn, db) = name
             val validations = getSeq(name, m).map(_.toString)
-            Action.Validations(Option(vn).map(_.trim), validations)
+            Action.Validations(Option(vn), validations, Option(db))
           } else {
             parseStep(Option(name), value.toString)
           }
@@ -589,7 +589,7 @@ object AppMetadata {
 
     case class Evaluation(name: Option[String], varTrans: List[VariableTransform], op: Op) extends Step
     case class Return(name: Option[String], varTrans: List[VariableTransform], value: Op) extends Step
-    case class Validations(name: Option[String], validations: Seq[String]) extends Step
+    case class Validations(name: Option[String], validations: Seq[String], db: Option[String]) extends Step
   }
 
   case class Action(steps: List[Action.Step])

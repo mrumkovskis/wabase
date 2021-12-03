@@ -216,9 +216,9 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
             doActionOp(op, doVarsTransforms(vts, stepData, stepData).result, context.env, context.view)
           case Return(_, vts, op) =>
             doActionOp(op, doVarsTransforms(vts, stepData, stepData).result, context.env, context.view)
-          case Validations(_, validations) =>
+          case Validations(_, validations, db) =>
             context.view.map { vd =>
-              Future(doValidationStep(validations, stepData ++ context.env, vd))
+              Future(doValidationStep(validations, db, stepData ++ context.env, vd))
                 .map(_ => MapResult(stepData))
             }.getOrElse(Future.failed(
               new RuntimeException(s"Validation cannot be performed without view in context -" +
@@ -256,10 +256,11 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
   }
 
   protected def doValidationStep(validations: Seq[String],
+                                 db: Option[String],
                                  params: Map[String, Any],
                                  view: ViewDef)(implicit res: Resources): Unit = {
     validationsQueryString(view, params, validations) map { vs =>
-      Query(vs, params)
+      Query(db.map("|" + _ + ":").mkString("", "", vs), params)
         .map(_.s("msg"))
         .filter(_ != null).filter(_ != "")
         .toList match {

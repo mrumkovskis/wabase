@@ -8,7 +8,7 @@ columns:
 - main_account.id        account.id
 
 table: person_health
-db: med
+db: med_db
 columns:
 - id
 - name                 ! 51
@@ -26,7 +26,6 @@ columns:
 uk:
 - number
 
-
 table: transaction
 columns:
 - id
@@ -34,6 +33,15 @@ columns:
 - beneficiary.id       ! account.id
 - amount               ! decimal 10 2
 - date_time            ! dateTime
+
+table: purchase
+db: shop_db
+columns:
+- id
+- customer            ! 64
+- purchase_time       ! dateTime
+- item                ! 256
+- amount              ! decimal 10 2
 
 
 name: person
@@ -142,7 +150,7 @@ get:
 
 
 name: person_health
-db: med
+db: med_db
 table: person_health
 fields:
 - id
@@ -163,7 +171,7 @@ fields:
 - sex
 - birthdate
 - health * [p.name = ph.name]:
-    db: med
+    db: med_db
     table:  person_health ph
     fields:
     - manipulation_date
@@ -175,3 +183,22 @@ filter:
 - name in :names
 order:
 - name
+
+
+name: purchase
+api: save, get
+db: shop_db
+table: purchase
+fields:
+- id
+- customer
+- purchase_time
+- item
+- amount
+save:
+- validations is_vaccinated [med_db]:
+    - exists(person_health[name = :customer & vaccine != null]{1}), "Pardon, customer '" || :customer || "' is not vaccinated..."
+- validations has_funds:
+    - funds(# s) { account[person_id = (person[name = :customer]{id})] {max(balance)} },
+        (funds{s}) >= :amount, "Insufficient funds, available (" || (funds{s}) || ")"
+- save purchase

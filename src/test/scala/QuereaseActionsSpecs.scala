@@ -6,7 +6,7 @@ import org.tresql.{Query, Resources}
 
 import scala.concurrent.{ExecutionContext, Future}
 
-object Dtos {
+object QuereaseActionsDtos {
   class Person extends DtoWithId {
     var id: java.lang.Long = null
     var name: String = null
@@ -83,7 +83,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Asy
 
   override def beforeAll(): Unit = {
     querease = new QuereaseBase("/querease-action-specs-metadata.yaml") {
-      override lazy val viewNameToClassMap = Dtos.viewNameToClass
+      override lazy val viewNameToClassMap = QuereaseActionsDtos.viewNameToClass
     }
     super.beforeAll()
   }
@@ -99,7 +99,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Asy
   }
 
   behavior of "person save action"
-  import Dtos._
+  import QuereaseActionsDtos._
   implicit val ec: scala.concurrent.ExecutionContext = scala.concurrent.ExecutionContext.global
 
   it should "fail account count validation" in {
@@ -309,7 +309,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Asy
       data.foldLeft(Future.successful[QuereaseResult](NumberResult(0))) { (r, d) =>
         r.flatMap(_ => querease.doAction(view, "save", d, Map())(res, implicitly[ExecutionContext]))
       }
-    // TODO Cannot use thread local resources, get rid of them!!!
+    // TODO Cannot use thread local resources for async execution, get rid of them!!!
     val newres = tresqlResources.withConn(tresqlResources.conn)
     saveData("person_simple", persons)(newres)
       .flatMap(_ => saveData("person_health", vaccines)(newres))
