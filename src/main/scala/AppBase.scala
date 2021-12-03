@@ -379,7 +379,7 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
     implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout, poolName: PoolName) =
   {
       checkApi(viewName, "get", user)
-    implicit val extraPools = extraPoolNames(viewDef(viewName).actionToDbAccessKeys(Action.Get))
+    implicit val extraDbs = extraDb(viewDef(viewName).actionToDbAccessKeys(Action.Get))
     dbUse {
         implicit val clazz = viewNameToClassMap(viewName)
         rest(
@@ -397,7 +397,7 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
     implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout, poolName: PoolName
   ) = {
       checkApi(viewName, "get", user)
-      implicit val extraPools = extraPoolNames(viewDef(viewName).actionToDbAccessKeys(Action.Create))
+      implicit val extraDbs = extraDb(viewDef(viewName).actionToDbAccessKeys(Action.Create))
       dbUse {
         implicit val clazz = viewNameToClassMap(viewName)
         rest(
@@ -472,7 +472,7 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
       poolName: PoolName) = {
 
     implicit val clazz = viewNameToClassMap(viewName)
-    implicit val extraPools = extraPoolNames(viewDef(viewName).actionToDbAccessKeys(Action.List))
+    implicit val extraDbs = extraDb(viewDef(viewName).actionToDbAccessKeys(Action.List))
     dbUse {
       val promise = Promise[Unit]()
       try{
@@ -522,7 +522,7 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
         .map(_.id)
         .filter(_ != null)
       val old = {
-        implicit val extraPools = extraPoolNames(viewDef.actionToDbAccessKeys(Action.Get))
+        implicit val extraDbs = extraDb(viewDef.actionToDbAccessKeys(Action.Get))
         dbUse {
           validateFields(instance)
           validate(viewName, qe.toMap(instance))(state.locale)
@@ -544,7 +544,7 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
         }
       val promise = Promise[Long]()
       try {
-        implicit val extraPools = extraPoolNames(viewDef.actionToDbAccessKeys(Action.Save))
+        implicit val extraDbs = extraDb(viewDef.actionToDbAccessKeys(Action.Save))
         val res = friendlyConstraintErrorMessage(viewDef, {
           transaction {
             implicit val clazz = instance.getClass
@@ -569,7 +569,7 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
       val promise = Promise[Unit]()
       try {
         val res = friendlyConstraintErrorMessage {
-          implicit val extraPools = extraPoolNames(viewDef.actionToDbAccessKeys(Action.Delete))
+          implicit val extraDbs = extraDb(viewDef.actionToDbAccessKeys(Action.Delete))
           transaction {
             implicit val clazz = viewNameToClassMap(viewName).asInstanceOf[Class[DtoWithId]]
             val ctx = createDeleteCtx(RemoveContext[DtoWithId](viewName, id, params, user, promise, state))

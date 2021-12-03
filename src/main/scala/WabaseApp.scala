@@ -2,15 +2,14 @@ package org.wabase
 
 import org.mojoz.querease.NotFoundException
 import org.tresql.Resources
-import org.wabase.AppMetadata.Action
+import org.wabase.AppMetadata.{Action, AugmentedAppFieldDef, AugmentedAppViewDef, DbAccessKey}
 import org.wabase.AppMetadata.Action.{LimitKey, OffsetKey, OrderKey}
-import org.wabase.AppMetadata.{AugmentedAppFieldDef, AugmentedAppViewDef}
 
 import java.sql.Connection
 import scala.collection.immutable.Map
 import scala.concurrent.{ExecutionContext, Future}
 import scala.language.{existentials, implicitConversions}
-import scala.util.{Try, Failure, Success}
+import scala.util.{Failure, Success, Try}
 import scala.util.control.NonFatal
 
 trait WabaseApp[User] {
@@ -38,7 +37,7 @@ trait WabaseApp[User] {
     val timeout:  QueryTimeout,
     val ec:       ExecutionContext,
     val poolName: PoolName,
-    val extraPools: Seq[PoolName],
+    val extraDbs: Seq[DbAccessKey],
   )
 
   protected def getActionHandler(context: ActionContext): ActionHandler = {
@@ -64,8 +63,8 @@ trait WabaseApp[User] {
     val vdo = viewDefOption(viewName)
     implicit val poolName = vdo.map(_.cp).map(PoolName) getOrElse DEFAULT_CP
     // interesting compiler error:
-    // if field is named extraPoolNames which overlaps with DbAccess same name method, implicit parameter resolving in copy method fails.
-    implicit val extraPools = extraPoolNames(vdo.map(_.actionToDbAccessKeys(actionName).toList).getOrElse(Nil))
+    // if field name below which overlaps with DbAccess same name method, implicit parameter resolving in copy method fails.
+    implicit val extraDbs = extraDb(vdo.map(_.actionToDbAccessKeys(actionName).toList).getOrElse(Nil))
     doWabaseAction(ActionContext(actionName, viewName, values))
   }
 
@@ -272,7 +271,7 @@ trait WabaseApp[User] {
     action: Resources => ActionHandlerResult,
   )(implicit
     poolName: PoolName,
-    extraPools: Seq[PoolName],
+    extraDb: Seq[DbAccessKey],
     ec: ExecutionContext,
   ): ActionHandlerResult = {
     val dbConn = ConnectionPools(poolName).getConnection
@@ -280,10 +279,10 @@ trait WabaseApp[User] {
     try {
       val resources = {
         val res = tresqlResources.resourcesTemplate.withConn(dbConn)
-        if (extraPools.isEmpty) res
-        else extraPools.foldLeft(res) { case (res, p @ PoolName(cp)) =>
-          if (res.extraResources.contains(cp)) {
-            extraConns ::= ConnectionPools(p).getConnection
+        if (extraDb.isEmpty) res
+        else extraDb.foldLeft(res) { case (res, DbAccessKey(db, cp)) =>
+          if (res.extraResources.contains(db)) {
+            extraConns ::= ConnectionPools(PoolName(if (cp == null) db else cp)).getConnection
             res.withUpdatedExtra(cp)(_.withConn(extraConns.head))
           } else res
         }

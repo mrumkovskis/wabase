@@ -12,6 +12,7 @@ import akka.http.scaladsl.unmarshalling.FromResponseUnmarshaller
 import akka.stream.scaladsl.Source
 import akka.util.ByteString
 import org.scalatest.flatspec.AnyFlatSpec
+import org.wabase.AppMetadata.DbAccessKey
 import spray.json.{JsObject, JsString}
 import org.wabase.client.CoreClient
 
@@ -32,11 +33,11 @@ class FileUploadSpecs extends AnyFlatSpec with QuereaseBaseSpecs with ScalatestR
     val db = new DbAccess with Loggable {
       override val tresqlResources  = FileUploadSpecs.this.tresqlResources
 
-      override def dbUse[A](a: => A)(implicit timeout: QueryTimeout, pool: PoolName, ep: Seq[PoolName]): A =
+      override def dbUse[A](a: => A)(implicit timeout: QueryTimeout, pool: PoolName, extraDb: Seq[DbAccessKey]): A =
         try a finally tresqlResources.conn.rollback
       override protected def transactionInternal[A](forceNewConnection: Boolean, a: => A)(implicit timeout: QueryTimeout,
                                                                                           pool: PoolName,
-                                                                                          ep: Seq[PoolName]): A =
+                                                                                          extraDb: Seq[DbAccessKey]): A =
         try a finally tresqlResources.conn.commit
     }
 

@@ -1,7 +1,6 @@
 package org.wabase
 
 import java.io.File
-
 import akka.http.scaladsl.model.{ContentTypes, HttpEntity, HttpHeader, HttpMethods, Multipart}
 import akka.http.scaladsl.model.headers.`Content-Type`
 import akka.http.scaladsl.model.headers.RawHeader
@@ -10,6 +9,7 @@ import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers
 import org.tresql.{Query, ThreadLocalResources}
 import org.tresql.result.Jsonizer
+import org.wabase.AppMetadata.DbAccessKey
 import spray.json._
 
 import scala.collection.immutable.Seq
@@ -27,7 +27,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
 
   implicit val queryTimeout = QueryTimeout(10)
   implicit val Cp = DEFAULT_CP
-  implicit val extraPools: Seq[PoolName] = Nil
+  implicit val extraDb: Seq[DbAccessKey] = Nil
 
   override def beforeAll() = {
     login()

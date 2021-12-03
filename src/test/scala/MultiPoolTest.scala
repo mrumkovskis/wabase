@@ -4,6 +4,7 @@ import akka.http.scaladsl.testkit.ScalatestRouteTest
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers
+import org.wabase.AppMetadata.DbAccessKey
 
 class MultiPoolTest extends FlatSpec with Matchers with ScalatestRouteTest with BeforeAndAfterAll {
   behavior of "dbUse() and transaction()"
@@ -34,7 +35,7 @@ class MultiPoolTest extends FlatSpec with Matchers with ScalatestRouteTest with 
 
   it should "work with default pool" in {
     implicit val pool = DEFAULT_CP
-    implicit val extraPools: Seq[PoolName] = Nil
+    implicit val extraDb: Seq[DbAccessKey] = Nil
     db.tresqlResources.conn should be(null)
     dbUse{
       db.tresqlResources.conn should not be(null)
@@ -49,7 +50,7 @@ class MultiPoolTest extends FlatSpec with Matchers with ScalatestRouteTest with 
   it should "work with implicit pool name" in {
     {
       implicit val pool = PoolName("test1")
-      implicit val extraPools: Seq[PoolName] = Nil
+      implicit val extraDb: Seq[DbAccessKey] = Nil
       db.tresqlResources.conn should be(null)
       dbUse{
         db.tresqlResources.conn should not be(null)
@@ -64,7 +65,7 @@ class MultiPoolTest extends FlatSpec with Matchers with ScalatestRouteTest with 
     }
     {
       implicit val pool = PoolName("test2")
-      implicit val extraPools: Seq[PoolName] = Nil
+      implicit val extraDb: Seq[DbAccessKey] = Nil
       db.tresqlResources.conn should be(null)
       dbUse{
         db.tresqlResources.conn should not be(null)
@@ -81,7 +82,7 @@ class MultiPoolTest extends FlatSpec with Matchers with ScalatestRouteTest with 
 
   it should "keep connection for nested calls" in {
     implicit val pool = PoolName("test1")
-    implicit val extraPools: Seq[PoolName] = Nil
+    implicit val extraDb: Seq[DbAccessKey] = Nil
     db.tresqlResources.conn should be(null)
     dbUse{
       val con = db.tresqlResources.conn
@@ -105,20 +106,20 @@ class MultiPoolTest extends FlatSpec with Matchers with ScalatestRouteTest with 
 
   it should "open connection if nested call is from different pool" in {
     implicit val pool = PoolName("test1")
-    implicit val extraPools: Seq[PoolName] = Nil
+    implicit val extraDb: Seq[DbAccessKey] = Nil
     db.tresqlResources.conn should be(null)
     dbUse{
       db.tresqlResources.conn.getSchema should be("TEST1")
 
       dbUse{
         db.tresqlResources.conn.getSchema should be("TEST2")
-      }(implicitly[QueryTimeout], pool = PoolName("test2"), extraPools = extraPools)
+      }(implicitly[QueryTimeout], pool = PoolName("test2"), extraDb = extraDb)
 
       db.tresqlResources.conn.getSchema should be("TEST1")
 
       transaction{
         db.tresqlResources.conn.getSchema should be("TEST2")
-      }(implicitly[QueryTimeout], pool = PoolName("test2"), extraPools = extraPools)
+      }(implicitly[QueryTimeout], pool = PoolName("test2"), extraDb = extraDb)
 
       db.tresqlResources.conn.getSchema should be("TEST1")
     }
@@ -129,13 +130,13 @@ class MultiPoolTest extends FlatSpec with Matchers with ScalatestRouteTest with 
 
       dbUse{
         db.tresqlResources.conn.getSchema should be("TEST2")
-      }(implicitly[QueryTimeout], pool = PoolName("test2"), extraPools = extraPools)
+      }(implicitly[QueryTimeout], pool = PoolName("test2"), extraDb = extraDb)
 
       db.tresqlResources.conn.getSchema should be("TEST1")
 
       transaction{
         db.tresqlResources.conn.getSchema should be("TEST2")
-      }(implicitly[QueryTimeout], pool = PoolName("test2"), extraPools = extraPools)
+      }(implicitly[QueryTimeout], pool = PoolName("test2"), extraDb = extraDb)
 
       db.tresqlResources.conn.getSchema should be("TEST1")
     }
@@ -145,7 +146,7 @@ class MultiPoolTest extends FlatSpec with Matchers with ScalatestRouteTest with 
 
   it should "handle multiple levels of nested calls" in {
     implicit val pool = DEFAULT_CP
-    implicit val extraPools: Seq[PoolName] = Nil
+    implicit val extraDb: Seq[DbAccessKey] = Nil
     db.tresqlResources.conn should be(null)
 
     transaction{
@@ -156,10 +157,10 @@ class MultiPoolTest extends FlatSpec with Matchers with ScalatestRouteTest with 
 
         transaction{
           db.tresqlResources.conn.getSchema should be("TEST1")
-        }(implicitly[QueryTimeout], pool = PoolName("test1"), extraPools = extraPools)
+        }(implicitly[QueryTimeout], pool = PoolName("test1"), extraDb = extraDb)
 
         db.tresqlResources.conn.getSchema should be("TEST2")
-      }(implicitly[QueryTimeout], pool = PoolName("test2"), extraPools = extraPools)
+      }(implicitly[QueryTimeout], pool = PoolName("test2"), extraDb = extraDb)
 
 
       db.tresqlResources.conn.getSchema should be("PUBLIC")
@@ -176,7 +177,7 @@ class MultiPoolTest extends FlatSpec with Matchers with ScalatestRouteTest with 
 
         transaction{
           db.tresqlResources.conn.getSchema should be("TEST1")
-        }(implicitly[QueryTimeout], pool = PoolName("test1"), extraPools = extraPools)
+        }(implicitly[QueryTimeout], pool = PoolName("test1"), extraDb = extraDb)
 
         db.tresqlResources.conn.getSchema should be("PUBLIC")
         db.tresqlResources.conn should be(publicCon)
@@ -193,7 +194,7 @@ class MultiPoolTest extends FlatSpec with Matchers with ScalatestRouteTest with 
 
   it should "work with transaction in transaction" in {
     implicit val pool = DEFAULT_CP
-    implicit val extraPools: Seq[PoolName] = Nil
+    implicit val extraDb: Seq[DbAccessKey] = Nil
     transaction{
       val publicCon = db.tresqlResources.conn
       transaction{
@@ -204,7 +205,7 @@ class MultiPoolTest extends FlatSpec with Matchers with ScalatestRouteTest with 
 
   it should "work with transactionNew in transaction" in {
     implicit val pool = DEFAULT_CP
-    implicit val extraPools: Seq[PoolName] = Nil
+    implicit val extraDb: Seq[DbAccessKey] = Nil
     transaction {
       val publicCon = db.tresqlResources.conn
       transactionNew {
@@ -215,7 +216,7 @@ class MultiPoolTest extends FlatSpec with Matchers with ScalatestRouteTest with 
 
   it should "work with transactionNew in transactionNew" in {
     implicit val pool = DEFAULT_CP
-    implicit val extraPools: Seq[PoolName] = Nil
+    implicit val extraDb: Seq[DbAccessKey] = Nil
     transactionNew {
       val publicCon = db.tresqlResources.conn
       transactionNew {
@@ -226,7 +227,7 @@ class MultiPoolTest extends FlatSpec with Matchers with ScalatestRouteTest with 
 
   it should "work with transaction in transactionNew" in {
     implicit val pool = DEFAULT_CP
-    implicit val extraPools: Seq[PoolName] = Nil
+    implicit val extraDb: Seq[DbAccessKey] = Nil
     transactionNew {
       val publicCon = db.tresqlResources.conn
       transaction {
@@ -237,7 +238,7 @@ class MultiPoolTest extends FlatSpec with Matchers with ScalatestRouteTest with 
 
   it should "keep connected for nested dbUse" in {
     implicit val pool = DEFAULT_CP
-    implicit val extraPools: Seq[PoolName] = Nil
+    implicit val extraDb: Seq[DbAccessKey] = Nil
     transaction{
       val publicCon = db.tresqlResources.conn
       dbUse{
@@ -255,7 +256,7 @@ class MultiPoolTest extends FlatSpec with Matchers with ScalatestRouteTest with 
 
   it should "use connection from dbUse when required" in {
     implicit val pool = DEFAULT_CP
-    implicit val extraPools: Seq[PoolName] = Nil
+    implicit val extraDb: Seq[DbAccessKey] = Nil
     dbUse {
       val publicCon = db.tresqlResources.conn
       transaction {

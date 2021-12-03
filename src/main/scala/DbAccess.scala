@@ -20,13 +20,17 @@ trait DbAccess { this: Loggable =>
 
   protected def defaultQueryTimeout: QueryTimeout = DefaultQueryTimeout.getOrElse(QueryTimeout(5))
 
-  private def setenv(pool: DataSource, timeout: QueryTimeout, extraPools: Seq[PoolName]): Unit = {
+  private def setenv(pool: DataSource, timeout: QueryTimeout, extraDb: Seq[DbAccessKey]): Unit = {
     tresqlResources.initFromTemplate
     tresqlResources.conn = pool.getConnection
     tresqlResources.queryTimeout = timeout.timeoutSeconds
-    if (extraPools.nonEmpty) tresqlResources.extraResources =
-      extraPools.map { case p @ PoolName(n) =>
-        (n, tresqlResources.extraResources(n).withConn(ConnectionPools(p).getConnection))
+    if (extraDb.nonEmpty) tresqlResources.extraResources =
+      extraDb.map { case DbAccessKey(db, cp) =>
+        ( db
+        , tresqlResources
+            .extraResources(db)
+            .withConn(ConnectionPools(PoolName(if (cp == null) db else cp)).getConnection)
+        )
       }.toMap
   }
   private def clearEnv(rollback: Boolean = false) = {
@@ -59,21 +63,20 @@ trait DbAccess { this: Loggable =>
     }
   }
 
-  def extraPoolNames(keys: Seq[DbAccessKey]): Seq[PoolName] =
-    keys.collect { case DbAccessKey(db, cp) if db != null => PoolName(if (cp != null) cp else db) }
+  def extraDb(keys: Seq[DbAccessKey]): Seq[DbAccessKey] = keys.filter(_.db != null)
 
   private val currentPool = new ThreadLocal[PoolName]
-  // TODO do not call nested dbUse with extraPools parameter set to avoid connection leaks
+  // TODO do not call nested dbUse with extraDb parameter set to avoid connection leaks
   def dbUse[A](a: => A)(implicit timeout: QueryTimeout = defaultQueryTimeout,
                         pool: PoolName,
-                        extraPools: Seq[PoolName]): A = {
+                        extraDb: Seq[DbAccessKey]): A = {
     val oldConn = tresqlResources.conn
     val oldPool = currentPool.get()
     val oldTimeout = tresqlResources.queryTimeout
     val poolChanges = oldPool != pool
     if (poolChanges) {
       logger.debug(s"""Using connection pool "$pool"""")
-      setenv(ConnectionPools(pool), timeout, extraPools)
+      setenv(ConnectionPools(pool), timeout, extraDb)
       currentPool.set(pool)
     }
     try {
@@ -90,42 +93,42 @@ trait DbAccess { this: Loggable =>
 
   val transaction: Transaction = new Transaction
 
-  // TODO do not call nested transaction with extraPools parameter set to avoid connection leaks
+  // TODO do not call nested transaction with extraDb parameter set to avoid connection leaks
   class Transaction {
     def apply[A](a: => A)(implicit timeout: QueryTimeout = defaultQueryTimeout,
                           pool: PoolName,
-                          extraPools: Seq[PoolName]): A =
+                          extraDb: Seq[DbAccessKey]): A =
       transactionInternal(forceNewConnection = false, a)
     def foreach(f: Unit => Unit)(implicit timeout: QueryTimeout = defaultQueryTimeout,
                                  pool: PoolName,
-                                 extraPools: Seq[PoolName]): Unit =
+                                 extraDb: Seq[DbAccessKey]): Unit =
       transactionInternal(forceNewConnection = false, f(()))
   }
 
   val transactionNew: TransactionNew = new TransactionNew
 
-  // TODO do not call nested transactionNew with extraPools parameter set to avoid connection leaks
+  // TODO do not call nested transactionNew with extraDb parameter set to avoid connection leaks
   class TransactionNew {
     def apply[A](a: => A)(implicit timeout: QueryTimeout = defaultQueryTimeout,
                           pool: PoolName,
-                          extraPools: Seq[PoolName]): A =
+                          extraDb: Seq[DbAccessKey]): A =
       transactionInternal(forceNewConnection = true, a)
     def foreach(f: Unit => Unit)(implicit timeout: QueryTimeout = defaultQueryTimeout,
                                  pool: PoolName,
-                                 extraPools: Seq[PoolName]): Unit =
+                                 extraDb: Seq[DbAccessKey]): Unit =
       transactionInternal(forceNewConnection = true, f(()))
   }
 
   protected def transactionInternal[A](forceNewConnection: Boolean, a: => A)(implicit timeout: QueryTimeout,
                                                                              pool: PoolName,
-                                                                             extraPools: Seq[PoolName]): A = {
+                                                                             extraDb: Seq[DbAccessKey]): A = {
     val oldConn = tresqlResources.conn
     val oldPool = currentPool.get()
     val oldTimeout = tresqlResources.queryTimeout
     val poolChanges = oldPool != pool
     if (forceNewConnection || poolChanges) {
       logger.debug(s"""Using connection pool "$pool"""")
-      setenv(ConnectionPools(pool), timeout, extraPools)
+      setenv(ConnectionPools(pool), timeout, extraDb)
       currentPool.set(pool)
     }
     try {
@@ -271,7 +274,7 @@ trait DbAccessDelegate extends DbAccess { this: Loggable =>
 
   override def dbUse[A](a: => A)(implicit timeout: QueryTimeout = defaultQueryTimeout,
                                  pool: PoolName,
-                                 extraPools: Seq[PoolName]): A = {
+                                 extraDb: Seq[DbAccessKey]): A = {
     dbAccessDelegate.dbUse(a)
   }
 
@@ -280,11 +283,11 @@ trait DbAccessDelegate extends DbAccess { this: Loggable =>
   class TransactionDelegate(tr: DbAccess#Transaction) extends Transaction {
     override def apply[A](a: => A)(implicit timeout: QueryTimeout = defaultQueryTimeout,
                                    pool: PoolName,
-                                   extraPools: Seq[PoolName]): A =
+                                   extraDb: Seq[DbAccessKey]): A =
       tr(a)
     override def foreach(f: Unit => Unit)(implicit timeout: QueryTimeout = defaultQueryTimeout,
                                           pool: PoolName,
-                                          extraPools: Seq[PoolName]): Unit =
+                                          extraDb: Seq[DbAccessKey]): Unit =
       tr.foreach(f)
   }
 
@@ -293,11 +296,11 @@ trait DbAccessDelegate extends DbAccess { this: Loggable =>
   class TransactionNewDelegate(tr: DbAccess#TransactionNew) extends TransactionNew {
     override def apply[A](a: => A)(implicit timeout: QueryTimeout = defaultQueryTimeout,
                                    pool: PoolName,
-                                   extraPools: Seq[PoolName]): A =
+                                   extraDb: Seq[DbAccessKey]): A =
       tr(a)
     override def foreach(f: Unit => Unit)(implicit timeout: QueryTimeout = defaultQueryTimeout,
                                           pool: PoolName,
-                                          extraPools: Seq[PoolName]): Unit =
+                                          extraDb: Seq[DbAccessKey]): Unit =
       tr.foreach(f)
   }
 }

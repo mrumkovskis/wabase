@@ -24,6 +24,7 @@ import Authentication.SessionInfoRemover
 import com.typesafe.config.Config
 import AppFileStreamer.FileInfo
 import akka.util.ByteString
+import org.wabase.AppMetadata.DbAccessKey
 
 import scala.annotation.tailrec
 import scala.util.control.NonFatal
@@ -446,7 +447,7 @@ object DeferredControl extends Loggable with AppConfig {
 
     implicit private lazy val queryTimeout: QueryTimeout = DefaultQueryTimeout.getOrElse(QueryTimeout(10))
     implicit private lazy val Cp = DEFAULT_CP
-    implicit private lazy val extraPools: Seq[PoolName] = Nil
+    implicit private lazy val extraDb: Seq[DbAccessKey] = Nil
 
     override lazy val rootPath =
       Try(conf.getString("deferred-requests.files.path").replaceAll("/+$", "")).recover {

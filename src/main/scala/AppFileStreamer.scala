@@ -5,7 +5,6 @@ import java.math.BigInteger
 import java.nio.channels.FileChannel
 import java.nio.file.Files
 import java.security.MessageDigest
-
 import akka.http.scaladsl.model.EntityStreamSizeException
 
 import scala.collection.immutable.TreeMap
@@ -14,6 +13,7 @@ import akka.stream._
 import akka.stream.scaladsl._
 import akka.util.ByteString
 import org.tresql._
+import org.wabase.AppMetadata.DbAccessKey
 
 import scala.util.Failure
 
@@ -122,7 +122,7 @@ trait AppFileStreamer[User] extends AppFileStreamerConfig with Loggable { this: 
   protected def fileStreamerConnectionPool: PoolName = DEFAULT_CP
 
   private implicit lazy val conpool: PoolName = fileStreamerConnectionPool
-  private implicit lazy val extraPools: Seq[PoolName] = Nil
+  private implicit lazy val extraDb: Seq[DbAccessKey] = Nil
 
   implicit private lazy val queryTimeout: QueryTimeout = DefaultQueryTimeout.getOrElse(QueryTimeout(10))
 

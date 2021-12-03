@@ -4,7 +4,6 @@ import java.io.File
 import java.nio.file.attribute.{BasicFileAttributeView, FileTime}
 import java.nio.file.{Files, Paths}
 import java.time.temporal.ChronoUnit
-
 import akka.actor.ActorSystem
 import akka.http.scaladsl.model.{ContentType, ContentTypes}
 import akka.stream.scaladsl.Source
@@ -15,6 +14,7 @@ import org.scalatest.BeforeAndAfterEach
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers
 import org.tresql._
+import org.wabase.AppMetadata.DbAccessKey
 
 import scala.concurrent._
 import scala.concurrent.duration._
@@ -334,7 +334,7 @@ object FileCleanupSpecsHelper {
   import db._
 
   implicit val TestCp = PoolName("file-cleanup-test")
-  implicit val extraPools: Seq[PoolName] = Nil
+  implicit val extraDbs: Seq[DbAccessKey] = Nil
   class TestFileStreamer(val attachmentsRootPathTail: String) extends AppFileStreamer[String]
     with AppConfig with QuereaseProvider with DbAccessProvider {
     override type QE = FileCleanupSpecsQuerease.type

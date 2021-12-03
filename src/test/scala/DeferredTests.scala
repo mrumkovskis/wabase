@@ -13,6 +13,7 @@ import akka.http.scaladsl.testkit.{ScalatestRouteTest, WSProbe}
 import akka.stream.scaladsl.Source
 import akka.util.ByteString
 import org.scalatest.flatspec.AnyFlatSpec
+import org.wabase.AppMetadata.DbAccessKey
 import org.wabase.AppServiceBase.AppExceptionHandler._
 
 import scala.collection.mutable.ArrayBuffer
@@ -41,11 +42,11 @@ class DeferredTests extends AnyFlatSpec with QuereaseBaseSpecs with ScalatestRou
     val db = new DbAccess with Loggable {
       override val tresqlResources = DeferredTests.this.tresqlResources
 
-      override def dbUse[A](a: => A)(implicit timeout: QueryTimeout, pool: PoolName, ep: Seq[PoolName]): A =
+      override def dbUse[A](a: => A)(implicit timeout: QueryTimeout, pool: PoolName, extraDb: Seq[DbAccessKey]): A =
         try a finally tresqlResources.conn.rollback
       override protected def transactionInternal[A](forceNewConnection: Boolean, a: => A)(implicit timeout: QueryTimeout,
                                                                                           pool: PoolName,
-                                                                                          ep: Seq[PoolName]): A =
+                                                                                          extraDb: Seq[DbAccessKey]): A =
         try a finally tresqlResources.conn.commit
     }
 
