@@ -12,6 +12,10 @@ import org.wabase.DefaultAppQuerease.ViewDef
 import scala.collection.immutable.{Map, Seq}
 
 class PostgreSqlConstraintMessageSpec extends FlatSpec with Matchers {
+
+  //try to load Drivers to avoid deadlock on paralel test execution when constructing SQLException
+  DbDrivers.loadDrivers
+
   behavior of "PostgreSqlConstraintMessage"
 
   object ConstraintTestApp extends AppBase[TestUsr] with NoAudit[TestUsr] with PostgresDbAccess with PostgreSqlConstraintMessage with NoAuthorization[TestUsr] with NoValidation {
