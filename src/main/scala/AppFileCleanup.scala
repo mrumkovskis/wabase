@@ -1,7 +1,7 @@
 package org.wabase
 
 import java.io.File
-import java.nio.file.{Files, Path, StandardCopyOption}
+import java.nio.file.{Files, StandardCopyOption}
 import org.tresql._
 import org.wabase.AppMetadata.DbAccessKey
 

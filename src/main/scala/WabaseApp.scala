@@ -78,7 +78,6 @@ trait WabaseApp[User] {
     import context.ec
     recoverWithContext(context) {
       val actionContext = beforeWabaseAction(context)
-      import actionContext._
       recoverWithContext(actionContext) {
         action(actionContext)
       }
