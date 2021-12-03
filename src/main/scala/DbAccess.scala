@@ -60,7 +60,7 @@ trait DbAccess { this: Loggable =>
   }
 
   def extraPoolNames(keys: Seq[DbAccessKey]): Seq[PoolName] =
-    keys.collect { case DbAccessKey(db, cp) if db != null || cp != null => PoolName(if (db != null) db else cp) }
+    keys.collect { case DbAccessKey(db, cp) if db != null => PoolName(if (cp != null) cp else db) }
 
   private val currentPool = new ThreadLocal[PoolName]
   // TODO do not call nested dbUse with extraPools parameter set to avoid connection leaks

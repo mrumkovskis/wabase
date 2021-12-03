@@ -323,7 +323,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       if (knownApiMethods contains x) (mr._1 + (x -> mr._2), mr._2) else (mr._1, x.toUpperCase))._1
 
     val limit = getIntExtra(Limit, viewDef.extras) getOrElse 100
-    val cp = getStringExtra(ConnectionPool, viewDef.extras) getOrElse DEFAULT_CP.connectionPoolName
+    val cp = getStringExtra(ConnectionPool, viewDef.extras).orNull
 
     val actions = Action().foldLeft(Map[String, Action]()) { (res, actionName) =>
       val a = parseAction(s"${viewDef.name}.$actionName", getSeq(actionName, viewDef.extras))
