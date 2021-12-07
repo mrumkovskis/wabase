@@ -256,11 +256,11 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
   }
 
   protected def doValidationStep(validations: Seq[String],
-                                 db: Option[String],
+                                 dbkey: Option[DbAccessKey],
                                  params: Map[String, Any],
                                  view: ViewDef)(implicit res: Resources): Unit = {
     validationsQueryString(view, params, validations) map { vs =>
-      Query(db.map("|" + _ + ":").mkString("", "", vs), params)
+      Query(dbkey.flatMap(k => Option(k.db)).map("|" + _ + ":").mkString("", "", vs), params)
         .map(_.s("msg"))
         .filter(_ != null).filter(_ != "")
         .toList match {

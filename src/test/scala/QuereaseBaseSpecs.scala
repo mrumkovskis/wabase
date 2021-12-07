@@ -24,8 +24,6 @@ trait QuereaseBaseSpecs extends Matchers with BeforeAndAfterAll with Loggable { 
   protected implicit var tresqlResources: TresqlResources = _
   protected var querease: AppQuerease = _
 
-  protected def customStatements: Seq[String] = Nil
-
   protected def dbNamePrefix: String = getClass.getName
 
   override def beforeAll(): Unit = {
@@ -95,6 +93,38 @@ trait QuereaseBaseSpecs extends Matchers with BeforeAndAfterAll with Loggable { 
         create_resources(conn, querease.tresqlMetadata, extra_res)
       case x => sys.error(s"No main database found - null name: $x")
     }
+  }
+
+  protected def customStatements: Seq[String] = {
+    List(
+      """create function array_length(sql_array bigint array) returns int
+       language java deterministic no sql
+       external name 'CLASSPATH:test.HsqldbCustomFunctions.array_length'""",
+      """create function array_length(sql_array char varying(1024) array) returns int
+       language java deterministic no sql
+       external name 'CLASSPATH:test.HsqldbCustomFunctions.array_length'""",
+      """create function checked_resolve(
+         resolvable char varying(1024), resolved bigint array, error_message char varying(1024)
+       ) returns bigint
+         if array_length(resolved) > 1 or resolvable is not null and (array_length(resolved) = 0 or resolved[1] is null) then
+           signal sqlstate '45000' set message_text = error_message;
+         elseif array_length(resolved) = 1 then
+           return resolved[1];
+         else
+           return null;
+         end if""",
+      """create function checked_resolve(
+         resolvable char varying(1024), resolved char varying(1024) array, error_message char varying(1024)
+       ) returns  char varying(1024)
+         if array_length(resolved) > 1 or resolvable is not null and (array_length(resolved) = 0 or resolved[1] is null) then
+           signal sqlstate '45000' set message_text = error_message;
+         elseif array_length(resolved) = 1 then
+           return resolved[1];
+         else
+           return null;
+         end if""",
+      "set database collation \"Latvian\""
+    )
   }
 
   def removeKeys(map: Map[String, Any], keys: Set[String]): Map[String, Any] = {

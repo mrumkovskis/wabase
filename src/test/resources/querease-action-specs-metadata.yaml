@@ -45,6 +45,7 @@ columns:
 
 
 name: person
+api: save, get
 table: person
 fields:
 - id
@@ -96,6 +97,7 @@ fields:
 
 
 name: payment
+api: save, get
 table: transaction tr
 joins:
 - tr[tr.originator_id = originator.id]account originator?
@@ -150,6 +152,7 @@ get:
 
 
 name: person_health
+api: save, get
 db: med_db
 table: person_health
 fields:
@@ -165,6 +168,7 @@ save:
 
 
 name: person_with_health_data
+api: list
 table: person p
 fields:
 - name
@@ -186,11 +190,12 @@ order:
 
 
 name: purchase
-api: save, get
+api: save, get, list
 db: shop_db
 table: purchase
 fields:
-- id
+- id:
+    sortable: true
 - customer
 - purchase_time
 - item
@@ -202,3 +207,4 @@ save:
     - funds(# s) { account[person_id = (person[name = :customer]{id})] {max(balance)} },
         (funds{s}) >= :amount, "Insufficient funds, available (" || (funds{s}) || ")"
 - save purchase
+

@@ -408,16 +408,15 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
           val viewDbKeys = {
             def dbs(tresql: String) = {
               val p = new QueryParser(null, null)
-              p.traverser(p.dbExtractor)(Nil)(p.parseExp(tresql))
+              p.traverser(p.dbExtractor)(Nil)(p.parseExp(tresql)).map(DbAccessKey(_, null))
             }
             val actionDbs =
               collectFromAction {
                 case Evaluation(_, _, Tresql(tresql)) => dbs(tresql)
                 case Return(_, _, Tresql(tresql)) => dbs(tresql)
-                case Validations(_, _, db)  => db.toList
+                case Validations(_, _, dbkey)  => dbkey.toList
                 case _ => Nil
               } .flatten
-                .map(DbAccessKey(_, null))
             (if (v.db != null || v.cp != null) Seq(DbAccessKey(v.db, v.cp)) else Nil) ++ actionDbs
           }
 
@@ -457,7 +456,8 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     }
 
   protected def parseAction(objectName: String, stepData: Seq[Any]): Action = {
-    val validationRegex = new Regex(s"${Action.ValidationsKey}(?:\\s+(\\w+))?(?:\\s+\\[(\\w+)\\])?")
+    // matches - 'validations validation_name [db:cp]'
+    val validationRegex = new Regex(s"${Action.ValidationsKey}(?:\\s+(\\w+))?(?:\\s+\\[(?:\\s*(\\w+)?\\s*(?::\\s*(\\w+)\\s*)?)\\])?")
     val viewCallRegex = new Regex(Action().mkString("(", "|", """)\s+(:?\w+)"""))
     val invocationRegex = """(\w|\$)+\.(\w|\$)+(\.(\w|\$)+)*""".r
     val returnRegex = """(?s)return\s+(.+)""".r //dot matches new line as well
@@ -520,9 +520,13 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
           val m = jm.asScala.toMap
           val (name, value) = m.head
           if (validationRegex.pattern.matcher(name).matches()) {
-            val validationRegex(vn, db) = name
+            val validationRegex(vn, db, cp) = name
             val validations = getSeq(name, m).map(_.toString)
-            Action.Validations(Option(vn), validations, Option(db))
+            Action.Validations(
+              Option(vn),
+              validations,
+              if (db == null && cp == null) None else Option(DbAccessKey(db, cp))
+            )
           } else {
             parseStep(Option(name), value.toString)
           }
@@ -589,7 +593,7 @@ object AppMetadata {
 
     case class Evaluation(name: Option[String], varTrans: List[VariableTransform], op: Op) extends Step
     case class Return(name: Option[String], varTrans: List[VariableTransform], value: Op) extends Step
-    case class Validations(name: Option[String], validations: Seq[String], db: Option[String]) extends Step
+    case class Validations(name: Option[String], validations: Seq[String], db: Option[DbAccessKey]) extends Step
   }
 
   case class Action(steps: List[Action.Step])
@@ -616,7 +620,7 @@ object AppMetadata {
 
   private [wabase] case class AppViewDef(
     limit: Int = 1000,
-    cp: String = DEFAULT_CP.connectionPoolName,
+    cp: String = null,
     auth: AuthFilters = AuthFilters(Nil, Nil, Nil, Nil, Nil),
     apiMethodToRole: Map[String, String] = Map(),
     actions: Map[String, Action] = Map(),

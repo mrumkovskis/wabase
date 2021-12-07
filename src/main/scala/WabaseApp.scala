@@ -23,6 +23,8 @@ trait WabaseApp[User] {
 
   import qe.viewDefOption
 
+  val DefaultCp: PoolName = DEFAULT_CP
+
   type ActionHandlerResult = Future[(ActionContext, Try[QuereaseResult])]
   type ActionHandler       = ActionContext => ActionHandlerResult
 
@@ -61,7 +63,7 @@ trait WabaseApp[User] {
     ec:       ExecutionContext,
   ): Future[QuereaseResult] = {
     val vdo = viewDefOption(viewName)
-    implicit val poolName = vdo.map(_.cp).map(PoolName) getOrElse DEFAULT_CP
+    implicit val poolName = vdo.flatMap(v => Option(v.cp)).map(PoolName) getOrElse DefaultCp
     // interesting compiler error:
     // if field name below which overlaps with DbAccess same name method, implicit parameter resolving in copy method fails.
     implicit val extraDbs = extraDb(vdo.map(_.actionToDbAccessKeys(actionName).toList).getOrElse(Nil))
@@ -282,13 +284,12 @@ trait WabaseApp[User] {
         else extraDb.foldLeft(res) { case (res, DbAccessKey(db, cp)) =>
           if (res.extraResources.contains(db)) {
             extraConns ::= ConnectionPools(PoolName(if (cp == null) db else cp)).getConnection
-            res.withUpdatedExtra(cp)(_.withConn(extraConns.head))
+            res.withUpdatedExtra(db)(_.withConn(extraConns.head))
           } else res
         }
       }
       val result = action(resources)
-      extraConns foreach commitAndCloseConnection
-      finalizeAndCloseWhenReady(result, dbConn)
+      finalizeAndCloseWhenReady(result, dbConn, extraConns)
       result
     } catch {
       case NonFatal(ex) =>
@@ -298,10 +299,16 @@ trait WabaseApp[User] {
     }
   }
 
-  protected def finalizeAndCloseWhenReady(result: ActionHandlerResult, dbConn: Connection)(implicit ec: ExecutionContext): Unit =
+  protected def finalizeAndCloseWhenReady(result: ActionHandlerResult,
+                                          dbConn: Connection,
+                                          extraConns: Seq[Connection])(implicit ec: ExecutionContext): Unit =
     // FIXME do not close db connection for AutoCloseable AppListResult when it is fixed to use provided connection
     result.onComplete {
-      case Success((_, Success(_))) => commitAndCloseConnection(dbConn)
-      case _                        => rollbackAndCloseConnection(dbConn)
+      case Success((_, Success(_))) =>
+        extraConns foreach commitAndCloseConnection
+        commitAndCloseConnection(dbConn)
+      case _                        =>
+        extraConns foreach rollbackAndCloseConnection
+        rollbackAndCloseConnection(dbConn)
     }
 }

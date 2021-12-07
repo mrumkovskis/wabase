@@ -19,6 +19,7 @@ import org.tresql.{Resources, RowLike}
 import AppMetadata._
 import ValidationEngine.CustomValidationFunctions.is_valid_email
 
+import java.sql.Connection
 import scala.util.control.NonFatal
 
 object AppBase {
@@ -138,6 +139,7 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
     doCount: Boolean = false,
     timeoutSeconds: QueryTimeout,
     poolName: PoolName,
+    extraDbs: Seq[DbAccessKey],
     result: AppListResult[T] = null,
     count: Long = -1)
     extends RequestContext[AppListResult[T]] {
@@ -235,10 +237,32 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
       else {
         val ctxCopy = ctx.copy(result = new AppListResult[Dto] {
           private [this] var closed = false
+          def closeConn(c: Connection) =
+            try c.rollback finally if (!c.isClosed) c.close
+
           private lazy val connection = ConnectionPools(poolName).getConnection
-          override lazy val resources = tresqlResources
-            .withConn(connection)
-            .withQueryTimeout(timeoutSeconds.timeoutSeconds)
+          override lazy val resources = {
+            val res =
+              tresqlResources
+                .withConn(connection)
+                .withQueryTimeout(timeoutSeconds.timeoutSeconds)
+            var extraConns = List[Connection]()
+            if (extraDbs.isEmpty) res
+            else extraDbs.foldLeft(res) { case (res, DbAccessKey(db, cp)) =>
+              if (res.extraResources.contains(db)) {
+                extraConns ::=
+                  (try ConnectionPools(PoolName(if (cp == null) db else cp)).getConnection catch {
+                    case NonFatal(e) =>
+                      //close opened connections to avoid connection leak
+                      (connection :: extraConns) foreach closeConn
+                      throw e
+                  })
+                res
+                  .withUpdatedExtra(db)(_.withConn(extraConns.head))
+                  .withUpdatedExtra(db)(_.withQueryTimeout(timeoutSeconds.timeoutSeconds))
+              } else res
+            }
+          }
           private lazy val result: qe.CloseableResult[Dto] =
             try qe.result[Dto](
               params,
@@ -256,13 +280,16 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
           override def view = viewDef
           override protected def hasNextInternal = if (!result.hasNext) { close; false } else true
           override protected def nextInternal = result.next()
-          override def close =
+          override def close = {
             if (!closed) {
               try super.close finally
-                try if (result != null) result.close finally
-                  try connection.rollback finally connection.close
+                try if (result != null) result.close finally {
+                  closeConn(connection)
+                  resources.extraResources.values foreach(r => closeConn(r.conn))
+                }
               closed = true
             }
+          }
         })
 
         ctxCopy.completePromise.future.failed.foreach{ _ =>
@@ -477,7 +504,7 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
       val promise = Promise[Unit]()
       try{
         val result = rest(createListCtx(ListContext[Dto](viewName, params, offset, forcedLimit, orderBy,
-          user, state, promise, doCount, timeoutSeconds, poolName)))
+          user, state, promise, doCount, timeoutSeconds, poolName, extraDbs)))
         promise.success(())
         result
       }catch{

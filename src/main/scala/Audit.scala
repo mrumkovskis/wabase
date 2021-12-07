@@ -174,7 +174,7 @@ object Audit {
              .map(_.asInstanceOf[qe.DWI])
              .map(v => mapFromObj(v))
              .getOrElse(Map.empty[String, Any]))
-       case ListContext(view, inParams, offset, limit, orderBy, user, state, _, doCount, _, _, _, _) =>
+       case ListContext(view, inParams, offset, limit, orderBy, user, state, _, doCount, _, _, _, _, _) =>
          logList(view, user, inParams, offset, limit, orderBy, state, doCount)
        case SaveContext(view, old, obj, inParams, user, _, state, extraPropsToSave, result) =>
          if (old != null || error == null) logSave( //do not audit error on insert
