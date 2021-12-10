@@ -81,11 +81,15 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Asy
 
   import AppMetadata._
 
+  implicit protected var tresqlResources: Resources = _
+
   override def beforeAll(): Unit = {
     querease = new QuereaseBase("/querease-action-specs-metadata.yaml") {
       override lazy val viewNameToClassMap = QuereaseActionsDtos.viewNameToClass
     }
     super.beforeAll()
+    // get rid from thread local resources
+    tresqlResources = tresqlThreadLocalResources.withConn(tresqlThreadLocalResources.conn)
   }
 
   behavior of "metadata"
@@ -303,17 +307,15 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Asy
       Map("name" -> "Mario", "vaccine" -> "Pfizer", "manipulation_date" -> java.sql.Date.valueOf("2021-08-10")),
       Map("name" -> "Gunzagi", "vaccine" -> "AstraZeneca", "manipulation_date" -> java.sql.Date.valueOf("2021-06-05")),
     )
-    def saveData(view: String, data: List[Map[String, Any]])(res: Resources) =
+    def saveData(view: String, data: List[Map[String, Any]])(implicit res: Resources) =
       data.foldLeft(Future.successful[QuereaseResult](NumberResult(0))) { (r, d) =>
         r.flatMap(_ => querease.doAction(view, "save", d, Map())(res, implicitly[ExecutionContext]))
       }
-    // TODO Cannot use thread local resources for async execution, get rid of them!!!
-    val newres = tresqlResources.withConn(tresqlResources.conn)
-    saveData("person_simple", persons)(newres)
-      .flatMap(_ => saveData("person_health", vaccines)(newres))
+
+    saveData("person_simple", persons)
+      .flatMap(_ => saveData("person_health", vaccines))
       .flatMap { _ =>
-        querease.doAction("person_with_health_data", "list", Map("names" -> List("Mario", "Gunzagi")), Map())(
-          newres, implicitly[ExecutionContext]).map {
+        querease.doAction("person_with_health_data", "list", Map("names" -> List("Mario", "Gunzagi")), Map()).map {
           case IteratorResult(res) =>
             res.map(_.toMap(querease)).toList should be (
               List(

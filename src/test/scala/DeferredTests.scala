@@ -40,14 +40,22 @@ class DeferredTests extends AnyFlatSpec with QuereaseBaseSpecs with ScalatestRou
     super.beforeAll()
 
     val db = new DbAccess with Loggable {
-      override val tresqlResources = DeferredTests.this.tresqlResources
+      override val tresqlResources = DeferredTests.this.tresqlThreadLocalResources
+      //save conn if later test execution happens in another thread
+      private val conn = tresqlResources.conn
 
-      override def dbUse[A](a: => A)(implicit timeout: QueryTimeout, pool: PoolName, extraDb: Seq[DbAccessKey]): A =
-        try a finally tresqlResources.conn.rollback
+      override def dbUse[A](a: => A)(implicit timeout: QueryTimeout, pool: PoolName, extraDb: Seq[DbAccessKey]): A = {
+        //set thread local connection
+        tresqlResources.conn = conn
+        try a finally conn.rollback
+      }
       override protected def transactionInternal[A](forceNewConnection: Boolean, a: => A)(implicit timeout: QueryTimeout,
                                                                                           pool: PoolName,
-                                                                                          extraDb: Seq[DbAccessKey]): A =
-        try a finally tresqlResources.conn.commit
+                                                                                          extraDb: Seq[DbAccessKey]): A = {
+        //set thread local connection
+        tresqlResources.conn = conn
+        try a finally conn.commit
+      }
     }
 
     val appl = new TestApp {

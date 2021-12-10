@@ -21,7 +21,7 @@ class QuereaseBase(metadataFile: String) extends AppQuerease {
 
 trait QuereaseBaseSpecs extends Matchers with BeforeAndAfterAll with Loggable { this: Suite =>
 
-  protected implicit var tresqlResources: TresqlResources = _
+  protected var tresqlThreadLocalResources: TresqlResources = _
   protected var querease: AppQuerease = _
 
   protected def dbNamePrefix: String = getClass.getName
@@ -67,12 +67,11 @@ trait QuereaseBaseSpecs extends Matchers with BeforeAndAfterAll with Loggable { 
       logger.debug("Database created successfully.")
       (db, db_conn)
     }
-    def create_resources(db_conn: Connection, md: TresqlMetadata, extra: Map[String, Resources]) = {
+    def create_resources(md: TresqlMetadata, extra: Map[String, Resources]) = {
       new TresqlResources {
         override def logger = TresqlLogger
         override val resourcesTemplate =
           super.resourcesTemplate.copy(
-            conn = db_conn,
             metadata = md,
             dialect = HSQLDialect orElse {
               case c: QueryBuilder#CastExpr => c.typ match {
@@ -85,14 +84,22 @@ trait QuereaseBaseSpecs extends Matchers with BeforeAndAfterAll with Loggable { 
           )
       }
     }
-    this.tresqlResources = querease.tableMetadata.dbToTableDefs.keys.map(init_db).toList.partition(_._1 == null) match {
-      case (List((null, conn)), extra) =>
-        val extra_res = extra.map { case (db, conn) =>
-          db -> create_resources(conn, querease.tresqlMetadata.extraDbToMetadata(db), Map())
-        }.toMap
-        create_resources(conn, querease.tresqlMetadata, extra_res)
-      case x => sys.error(s"No main database found - null name: $x")
-    }
+    this.tresqlThreadLocalResources =
+      querease.tableMetadata.dbToTableDefs.keys.map(init_db).toList.partition(_._1 == null) match {
+        case (List((null, conn)), extra) =>
+          val extra_res = extra.map { case (db, _) =>
+            db -> create_resources(querease.tresqlMetadata.extraDbToMetadata(db), Map())
+          }.toMap
+          val res = create_resources(querease.tresqlMetadata, extra_res)
+          res.conn = conn
+          res.extraResources = extra.map { case (db, extraConn) =>
+            ( db
+            , res.extraResources(db).withConn(extraConn)
+            )
+          }.toMap
+          res
+        case x => sys.error(s"No main database found - null name: $x")
+      }
   }
 
   protected def customStatements: Seq[String] = {

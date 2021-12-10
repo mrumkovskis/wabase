@@ -43,7 +43,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Async
     }
     super.beforeAll()
     val db = new DbAccess with Loggable {
-      override implicit val tresqlResources: ThreadLocalResources = WabaseActionsSpecs.this.tresqlResources
+      override implicit val tresqlResources: ThreadLocalResources = WabaseActionsSpecs.this.tresqlThreadLocalResources
     }
     app = new TestApp with NoValidation {
       override val DefaultCp: PoolName = PoolName("wabase_db")
