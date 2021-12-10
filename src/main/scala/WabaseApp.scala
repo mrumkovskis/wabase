@@ -2,15 +2,13 @@ package org.wabase
 
 import org.mojoz.querease.NotFoundException
 import org.tresql.Resources
-import org.wabase.AppMetadata.{Action, AugmentedAppFieldDef, AugmentedAppViewDef, DbAccessKey}
+import org.wabase.AppMetadata.{Action, AugmentedAppFieldDef, AugmentedAppViewDef}
 import org.wabase.AppMetadata.Action.{LimitKey, OffsetKey, OrderKey}
 
-import java.sql.Connection
 import scala.collection.immutable.Map
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.ExecutionContext
 import scala.language.{existentials, implicitConversions}
-import scala.util.{Failure, Success, Try}
-import scala.util.control.NonFatal
+import scala.util.Success
 
 trait WabaseApp[User] {
   this:  AppBase[User]
@@ -25,7 +23,7 @@ trait WabaseApp[User] {
 
   val DefaultCp: PoolName = DEFAULT_CP
 
-  type ActionHandlerResult = Future[(ActionContext, Try[QuereaseResult])]
+  type ActionHandlerResult = qe.QuereaseAction[(ActionContext, QuereaseResult)]
   type ActionHandler       = ActionContext => ActionHandlerResult
 
   case class ActionContext(
@@ -38,8 +36,6 @@ trait WabaseApp[User] {
     val state:    ApplicationState,
     val timeout:  QueryTimeout,
     val ec:       ExecutionContext,
-    val poolName: PoolName,
-    val extraDbs: Seq[DbAccessKey],
   )
 
   protected def getActionHandler(context: ActionContext): ActionHandler = {
@@ -52,6 +48,13 @@ trait WabaseApp[User] {
     }
   }
 
+  def initViewResources(viewName: String)(actionName: String): Resources = {
+    val vdo = viewDefOption(viewName)
+    val poolName = vdo.flatMap(v => Option(v.cp)).map(PoolName) getOrElse DefaultCp
+    val extraDbs = extraDb(vdo.map(_.actionToDbAccessKeys(actionName).toList).getOrElse(Nil))
+    initResources(tresqlResources.resourcesTemplate)(poolName, extraDbs)
+  }
+
   def doWabaseAction(
     actionName: String,
     viewName:   String,
@@ -61,32 +64,21 @@ trait WabaseApp[User] {
     state:    ApplicationState,
     timeout:  QueryTimeout,
     ec:       ExecutionContext,
-  ): Future[QuereaseResult] = {
-    val vdo = viewDefOption(viewName)
-    implicit val poolName = vdo.flatMap(v => Option(v.cp)).map(PoolName) getOrElse DefaultCp
-    // interesting compiler error:
-    // if field name below which overlaps with DbAccess same name method, implicit parameter resolving in copy method fails.
-    implicit val extraDbs = extraDb(vdo.map(_.actionToDbAccessKeys(actionName).toList).getOrElse(Nil))
+  ): ActionHandlerResult = {
     doWabaseAction(ActionContext(actionName, viewName, values))
   }
 
-  def doWabaseAction(context: ActionContext): Future[QuereaseResult] =
+  def doWabaseAction(context: ActionContext): ActionHandlerResult =
     doWabaseAction(getActionHandler(context), context)
 
   def doWabaseAction(
     action:   ActionHandler,
     context:  ActionContext,
-  ): Future[QuereaseResult] = {
+  ): ActionHandlerResult = {
+    val actionContext = beforeWabaseAction(context)
     import context.ec
-    recoverWithContext(context) {
-      val actionContext = beforeWabaseAction(context)
-      recoverWithContext(actionContext) {
-        action(actionContext)
-      }
-    }
-    .flatMap { case (context, result) =>
-      afterWabaseAction(context, result)
-    }
+    action(actionContext)
+      .andThen { case Success((ctx, res)) => afterWabaseAction(ctx, res) }
   }
 
   def beforeWabaseAction(context: ActionContext): ActionContext = {
@@ -96,113 +88,89 @@ trait WabaseApp[User] {
     context.copy(values = trusted)
   }
 
-  def afterWabaseAction(context: ActionContext, result: Try[QuereaseResult]): Future[QuereaseResult] = {
+  def afterWabaseAction(context: ActionContext, result: QuereaseResult): Unit = {
     audit(context, result)
-    result match {
-      case Success(qr) => Future.successful(qr)
-      case Failure(ex) => Future.failed(ex)
-    }
   }
 
   def simpleAction(context: ActionContext): ActionHandlerResult = {
     import context._
-    recoverWithContext(context) {
-      withTresqlDbAccess { resources =>
-        qe.doAction(viewName, actionName, values, Map.empty)(resources, ec)
-          .map(r => (context, Success(r)))
-      }
-    }
+    qe.QuereaseAction(viewName, actionName, values, Map())(initViewResources, closeResources)
+      .map(context -> _)
   }
 
   def list(context: ActionContext): ActionHandlerResult = {
     import context._
-    recoverWithContext(context) {
-      val offset  = values.get(OffsetKey).map(_.toString.toInt) getOrElse 0
-      val limit   = values.get(LimitKey ).map(_.toString.toInt) getOrElse 0
-      val orderBy = values.get(OrderKey ).map(_.toString).orNull
-      val viewDef = qe.viewDef(viewName)
-      checkLimit(viewDef, limit)
-      checkOffset(viewDef, offset)
-      checkOrderBy(viewDef, orderBy)
-      val forcedLimit =
-        Option(limit).filter(_ > 0) getOrElse Option(viewDef.limit).filter(_ > 0).map(_ + 1).getOrElse(0)
-      val trustedLimitOffsetOrderBy = Map(
-        OffsetKey -> offset,
-        LimitKey  -> forcedLimit,
-        OrderKey  -> stableOrderBy(viewDef, orderBy),
-      ).filterNot(_._2 == null)
-      val trusted = values ++ trustedLimitOffsetOrderBy ++ current_user_param(user)
-      simpleAction(context.copy(values = trusted))
-    }
+    val offset  = values.get(OffsetKey).map(_.toString.toInt) getOrElse 0
+    val limit   = values.get(LimitKey ).map(_.toString.toInt) getOrElse 0
+    val orderBy = values.get(OrderKey ).map(_.toString).orNull
+    val viewDef = qe.viewDef(viewName)
+    checkLimit(viewDef, limit)
+    checkOffset(viewDef, offset)
+    checkOrderBy(viewDef, orderBy)
+    val forcedLimit =
+      Option(limit).filter(_ > 0) getOrElse Option(viewDef.limit).filter(_ > 0).map(_ + 1).getOrElse(0)
+    val trustedLimitOffsetOrderBy = Map(
+      OffsetKey -> offset,
+      LimitKey  -> forcedLimit,
+      OrderKey  -> stableOrderBy(viewDef, orderBy),
+    ).filterNot(_._2 == null)
+    val trusted = values ++ trustedLimitOffsetOrderBy ++ current_user_param(user)
+    simpleAction(context.copy(values = trusted))
   }
 
   def save(context: ActionContext): ActionHandlerResult = {
     import context._
-    recoverWithContext(context) {
-      val viewDef = qe.viewDef(viewName)
-      val keyMap = qe.extractKeyMap(viewName, values)
-      withTresqlDbAccess { resources =>
-        val oldValueResult =
-          Option(keyMap)
-            .filter(_.nonEmpty)
-            .map(_ => qe.doAction(viewName, Action.Get, values, Map.empty)(resources, ec))
-            .getOrElse(Future.successful(OptionResult(None)))
-        oldValueResult.flatMap { qr =>
-          def insertOrUpdate(oldValue: Map[String, Any]) = {
-            val richContext = context.copy(oldValue = oldValue)
-            recoverWithContext(richContext) {
-              val saveable = applyReadonlyValues(viewDef, oldValue, values)
-              val saveableContext = richContext.copy(values = saveable)
-              recoverWithContext(saveableContext) {
-                validateFields(viewName, saveable)
-                validate(viewName, saveable)(state.locale)
-                qe.doAction(viewName, actionName, saveable, Map.empty)(resources, ec)
-                  .map(r => (saveableContext, Success(r)))
-                  .recover { case ex => friendlyConstraintErrorMessage(viewDef, throw ex)(state.locale) }
-              }
-            }
-          }
-          qr match {
-            case MapResult(oldValue) =>
-              insertOrUpdate(oldValue = oldValue)
-            case OptionResult(oldOpt) =>
-              if (keyMap.nonEmpty && oldOpt.isEmpty)
-                throw new BusinessException(translate("Record not found, cannot edit")(state.locale))
-              insertOrUpdate(oldValue = oldOpt.map(_.toMap).orNull)
-            case PojoResult(oldValue) =>
-              insertOrUpdate(oldValue = oldValue.toMap)
-            case x => sys.error(s"Unexpected querease result class: ${x.getClass.getName}")
-          }
-        }
+    val viewDef = qe.viewDef(viewName)
+    val keyMap = qe.extractKeyMap(viewName, values)
+    val oldValueResult =
+      Option(keyMap)
+        .filter(_.nonEmpty)
+        .map(_ => qe.QuereaseAction(viewName, Action.Get, values, Map.empty)(initViewResources, closeResources))
+        .getOrElse(qe.QuereaseAction.value(OptionResult(None)))
+    oldValueResult.flatMap { qr =>
+      def insertOrUpdate(oldValue: Map[String, Any]) = {
+        val richContext = context.copy(oldValue = oldValue)
+        val saveable = applyReadonlyValues(viewDef, oldValue, values)
+        val saveableContext = richContext.copy(values = saveable)
+        validateFields(viewName, saveable)
+        validate(viewName, saveable)(state.locale)
+        qe.QuereaseAction(viewName, actionName, saveable, Map.empty)(initViewResources, closeResources)
+          .map(saveableContext -> _)
+          .recover { case ex => friendlyConstraintErrorMessage(viewDef, throw ex)(state.locale) }
+      }
+      qr match {
+        case MapResult(oldValue) =>
+          insertOrUpdate(oldValue = oldValue)
+        case OptionResult(oldOpt) =>
+          if (keyMap.nonEmpty && oldOpt.isEmpty)
+            throw new BusinessException(translate("Record not found, cannot edit")(state.locale))
+          insertOrUpdate(oldValue = oldOpt.map(_.toMap).orNull)
+        case PojoResult(oldValue) =>
+          insertOrUpdate(oldValue = oldValue.toMap)
+        case x => sys.error(s"Unexpected querease result class: ${x.getClass.getName}")
       }
     }
   }
 
   def delete(context: ActionContext): ActionHandlerResult = {
     import context._
-    recoverWithContext(context) {
-      withTresqlDbAccess { resources =>
-        qe.doAction(viewName, Action.Get, values, Map.empty)(resources, ec).flatMap { qr =>
-          def delete(oldValue: Map[String, Any]) = {
-            val richContext = context.copy(oldValue = oldValue)
-            recoverWithContext(richContext) {
-              qe.doAction(viewName, actionName, values, Map.empty)(resources, ec)
-                .map(r => (richContext, Success(r)))
-                .recover { case ex => friendlyConstraintErrorMessage(throw ex)(state.locale) }
-              }
-          }
-          qr match {
-            case MapResult(oldValue) =>
-              delete(oldValue = oldValue)
-            case OptionResult(None) => throw new NotFoundException(
-              s"Record not found, cannot delete. View name: $viewName, values: $values")
-            case OptionResult(oldOpt) =>
-              delete(oldValue = oldOpt.map(_.toMap).orNull)
-            case PojoResult(oldValue) =>
-              delete(oldValue = oldValue.toMap)
-            case x => sys.error(s"Unexpected querease result class: ${x.getClass.getName}")
-          }
-        }
+    qe.QuereaseAction(viewName, Action.Get, values, Map.empty)(initViewResources, closeResources).flatMap { qr =>
+      def delete(oldValue: Map[String, Any]) = {
+        val richContext = context.copy(oldValue = oldValue)
+        qe.QuereaseAction(viewName, actionName, values, Map.empty)(initViewResources, closeResources)
+          .map(richContext -> _)
+          .recover { case ex => friendlyConstraintErrorMessage(throw ex)(state.locale) }
+      }
+      qr match {
+        case MapResult(oldValue) =>
+          delete(oldValue = oldValue)
+        case OptionResult(None) => throw new NotFoundException(
+          s"Record not found, cannot delete. View name: $viewName, values: $values")
+        case OptionResult(oldOpt) =>
+          delete(oldValue = oldOpt.map(_.toMap).orNull)
+        case PojoResult(oldValue) =>
+          delete(oldValue = oldValue.toMap)
+        case x => sys.error(s"Unexpected querease result class: ${x.getClass.getName}")
       }
     }
   }
@@ -233,12 +201,6 @@ trait WabaseApp[User] {
         .getOrElse(orderBy)
     } else orderBy
   }
-  protected def recoverWithContext(context: ActionContext)(result: => ActionHandlerResult): ActionHandlerResult = {
-    import context.ec
-    try result.recover { case ex => (context, Failure(ex)) } catch {
-      case NonFatal(ex) => Future.successful((context, Failure(ex)))
-    }
-  }
   protected def noApiException(viewName: String, method: String, user: User): Exception =
     new BusinessException(s"$viewName.$method is not a part of this API")
   protected def checkApi[F](viewName: String, method: String, user: User): Unit =
@@ -268,47 +230,4 @@ trait WabaseApp[User] {
         throw new BusinessException(s"Not sortable: ${viewDef.name} by " + notSortable.mkString(", "), null)
     }
   }
-  protected def withTresqlDbAccess(
-    action: Resources => ActionHandlerResult,
-  )(implicit
-    poolName: PoolName,
-    extraDb: Seq[DbAccessKey],
-    ec: ExecutionContext,
-  ): ActionHandlerResult = {
-    val dbConn = ConnectionPools(poolName).getConnection
-    var extraConns = List[Connection]()
-    try {
-      val resources = {
-        val res = tresqlResources.resourcesTemplate.withConn(dbConn)
-        if (extraDb.isEmpty) res
-        else extraDb.foldLeft(res) { case (res, DbAccessKey(db, cp)) =>
-          if (res.extraResources.contains(db)) {
-            extraConns ::= ConnectionPools(PoolName(if (cp == null) db else cp)).getConnection
-            res.withUpdatedExtra(db)(_.withConn(extraConns.head))
-          } else res
-        }
-      }
-      val result = action(resources)
-      finalizeAndCloseWhenReady(result, dbConn, extraConns)
-      result
-    } catch {
-      case NonFatal(ex) =>
-        extraConns foreach rollbackAndCloseConnection
-        rollbackAndCloseConnection(dbConn)
-        throw ex
-    }
-  }
-
-  protected def finalizeAndCloseWhenReady(result: ActionHandlerResult,
-                                          dbConn: Connection,
-                                          extraConns: Seq[Connection])(implicit ec: ExecutionContext): Unit =
-    // FIXME do not close db connection for AutoCloseable AppListResult when it is fixed to use provided connection
-    result.onComplete {
-      case Success((_, Success(_))) =>
-        extraConns foreach commitAndCloseConnection
-        commitAndCloseConnection(dbConn)
-      case _                        =>
-        extraConns foreach rollbackAndCloseConnection
-        rollbackAndCloseConnection(dbConn)
-    }
 }

@@ -69,6 +69,7 @@ trait QuereaseBaseSpecs extends Matchers with BeforeAndAfterAll with Loggable { 
     }
     def create_resources(db_conn: Connection, md: TresqlMetadata, extra: Map[String, Resources]) = {
       new TresqlResources {
+        override def logger = TresqlLogger
         override val resourcesTemplate =
           super.resourcesTemplate.copy(
             conn = db_conn,
@@ -82,7 +83,6 @@ trait QuereaseBaseSpecs extends Matchers with BeforeAndAfterAll with Loggable { 
             idExpr = _ => "nextval('seq')",
             extraResources = extra
           )
-        override val logger = TresqlLogger
       }
     }
     this.tresqlResources = querease.tableMetadata.dbToTableDefs.keys.map(init_db).toList.partition(_._1 == null) match {

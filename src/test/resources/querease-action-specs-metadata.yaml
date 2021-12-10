@@ -189,6 +189,38 @@ order:
 - name
 
 
+name: person_health_and_shop
+api: list
+table: person p
+fields:
+- name
+- sex
+- birthdate
+- health * [p.name = ph.name]:
+    db: med_db
+    table:  person_health ph
+    fields:
+    - manipulation_date
+    - vaccine
+    - had_virus
+    order:
+    - manipulation_date
+- purchases * [p.name = prch.customer]:
+    db: shop_db
+    table: purchase prch
+    fields:
+    - customer
+    - purchase_time
+    - item
+    - amount
+    order:
+    - id
+filter:
+- name in :names?
+order:
+- name
+
+
 name: purchase
 api: save, get, list
 db: shop_db

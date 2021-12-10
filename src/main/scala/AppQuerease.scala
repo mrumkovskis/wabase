@@ -3,7 +3,7 @@ package org.wabase
 import org.mojoz.querease.QuereaseExpressions.DefaultParser
 import org.tresql._
 import org.mojoz.querease.{NotFoundException, Querease, QuereaseExpressions, ValidationException, ValidationResult}
-import org.tresql.parsing.{Const, Exp, Fun, Join, Obj, Variable, With, Query => PQuery}
+import org.tresql.parsing.{Exp, Fun, Join, Obj, Variable, With, Query => PQuery}
 import org.wabase.AppMetadata.Action.{VariableTransform, VariableTransforms}
 
 import scala.reflect.ManifestFactory
@@ -11,6 +11,7 @@ import spray.json._
 
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Try
+import scala.util.control.NonFatal
 
 trait QuereaseProvider {
   type QE <: AppQuerease
@@ -36,8 +37,18 @@ case class CodeResult(code: String) extends QuereaseResult
 case class IdResult(id: Any) extends QuereaseResult
 case class RedirectResult(uri: String) extends QuereaseResult
 case object NoResult extends QuereaseResult
-
-
+case class DeferredQuereaseResult[T](result: Iterator[T], cleanup: Option[Throwable] => Unit) extends QuereaseResult {
+  def flatMap(f: Iterator[T] => QuereaseResult): QuereaseResult = {
+    Try(f(result)).map { r =>
+      cleanup(None)
+      r
+    }.recover {
+      case NonFatal(e) =>
+        cleanup(Option(e))
+        throw e
+    }.get
+  }
+}
 
 trait AppQuereaseIo extends org.mojoz.querease.ScalaDtoQuereaseIo with JsonConverter { self: AppQuerease =>
 
@@ -56,8 +67,6 @@ class QuereaseEnvException(val env: Map[String, Any], cause: Exception) extends 
 }
 
 abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata with Loggable {
-
-  case class ActionContext(name: String, env: Map[String, Any], view: Option[ViewDef])
 
   import AppMetadata._
   override def get[B <: DTO](id: Long, extraFilter: String = null, extraParams: Map[String, Any] = null)(
@@ -154,6 +163,47 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     case e: Exception => throw new QuereaseEnvException(env, e)
   }
 
+  /********************************
+   ******** Querease actions ******
+  *********************************/
+  trait QuereaseAction[A] {
+    def run(implicit ec: ExecutionContext): Future[A]
+    def map[B](f: A => B)(implicit ec: ExecutionContext): QuereaseAction[B] =
+      (_: ExecutionContext) => QuereaseAction.this.run.map(f)
+    def flatMap[B](f: A => QuereaseAction[B])(implicit ec: ExecutionContext): QuereaseAction[B] =
+      (_: ExecutionContext) => QuereaseAction.this.run.flatMap(f(_).run)
+    def andThen[U](pf: PartialFunction[Try[A], U])(implicit ec: ExecutionContext): QuereaseAction[A] =
+      (_: ExecutionContext) => QuereaseAction.this.run.andThen(pf)
+    def recover[U >: A](pf: PartialFunction[Throwable, U])(implicit ec: ExecutionContext): QuereaseAction[U] =
+      (_: ExecutionContext) => QuereaseAction.this.run.recover(pf)
+  }
+  object QuereaseAction {
+    def apply(viewName: String,
+              actionName: String,
+              data: Map[String, Any],
+              env: Map[String, Any])(initResources: String => String => Resources, // viewName, actionName
+                                     closeResources: Resources => Option[Throwable] => Unit): QuereaseAction[QuereaseResult] = {
+      implicit ec: ExecutionContext => {
+        implicit val res = initResources(viewName)(actionName)
+        try {
+          doAction(viewName, actionName, data, env).map {
+            case TresqlResult(r) => DeferredQuereaseResult(r, closeResources(res))
+            case IteratorResult(r) => DeferredQuereaseResult(r, closeResources(res))
+            case r: QuereaseResult =>
+              closeResources(res)(None)
+              r
+          }
+        } catch {
+          case NonFatal(e) =>
+            closeResources(res)(Option(e))
+            throw e
+        }
+      }
+    }
+    def value[A](a: => A): QuereaseAction[A] = (_: ExecutionContext) => Future.successful(a)
+  }
+
+  case class ActionContext(name: String, env: Map[String, Any], view: Option[ViewDef])
   def doAction(view: String,
                actionName: String,
                data: Map[String, Any],
@@ -161,13 +211,13 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       implicit resources: Resources, ec: ExecutionContext): Future[QuereaseResult] = {
     val vd = viewDef(view)
 
-    vd.actions.get(actionName)
-      .map { a =>
-        val ctx = ActionContext(s"$view.$actionName", env, Some(vd))
-        logger.debug(s"Doing action '${ctx.name}'.\n Env: ${ctx.env}")
-        doSteps(a.steps, ctx, Future.successful(data))
-      }
-      .getOrElse(Future.successful(doViewCall(actionName, view, data, env)))
+    val ctx = ActionContext(s"$view.$actionName", env, Some(vd))
+    logger.debug(s"Doing action '${ctx.name}'.\n Env: $env")
+    val steps =
+      vd.actions.get(actionName)
+        .map(_.steps)
+        .getOrElse(List(Action.Return(None, Nil, Action.ViewCall(actionName, view))))
+    doSteps(steps, ctx, Future.successful(data))
   }
 
   protected def doSteps(steps: List[Action.Step],
@@ -197,6 +247,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case id: IdResult => id
       case rd: RedirectResult => rd
       case NoResult => NoResult
+      case x: DeferredQuereaseResult[_] => sys.error(s"${x.getClass.getName} not expected here!")
     }
     def updateCurRes(cr: Map[String, Any], key: Option[String], res: Any) = res match {
       case IdResult(id) => cr

@@ -73,7 +73,7 @@ object QuereaseActionsDtos {
     "person_health" -> classOf[PersonHealth],
     "person_with_health_data" -> classOf[PersonWithHealthData],
     "person_with_health_data_health" -> classOf[PersonWithHealthDataHealth],
-    "person_simple" -> classOf[PersonSimple]
+    "person_simple" -> classOf[PersonSimple],
   )
 }
 
@@ -208,9 +208,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Asy
     val p = new Payment
     p.amount = 10
     p.beneficiary = "AAA"
-    querease.doAction("payment", "save", p.toMap(querease), Map()).map { res =>
-      res.getClass.getName should be ("org.wabase.TresqlResult")
-    }.flatMap { _ =>
+    querease.doAction("payment", "save", p.toMap(querease), Map()).flatMap { _ =>
       p.originator = "AAA"
       p.beneficiary = "BBB"
       p.amount = 2

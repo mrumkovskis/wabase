@@ -5,7 +5,7 @@ import com.typesafe.scalalogging.Logger
 import java.sql.Connection
 import javax.sql.DataSource
 import org.slf4j.LoggerFactory
-import org.tresql.{Dialect, Expr, LogTopic, QueryBuilder, ResourcesTemplate, SimpleCache, ThreadLocalResources, dialects}
+import org.tresql.{Cache, Dialect, Expr, LogTopic, Logging, QueryBuilder, Resources, ResourcesTemplate, SimpleCache, ThreadLocalResources, dialects}
 import org.wabase.AppMetadata.DbAccessKey
 
 import scala.language.postfixOps
@@ -47,21 +47,11 @@ trait DbAccess { this: Loggable =>
     tresqlResources.queryTimeout = 0
   }
 
-  def commitAndCloseConnection(dbConn: Connection): Unit = {
-    dbConn.commit()
-    try if (!dbConn.isClosed) dbConn.close catch {
-      case NonFatal(ex) => logger.warn("Failed to close db connection", ex)
-    }
-  }
-
-  def rollbackAndCloseConnection(dbConn: Connection): Unit = {
-    try dbConn.rollback catch {
-      case NonFatal(ex) => logger.warn("Failed to rollback db transaction", ex)
-    }
-    try if (!dbConn.isClosed) dbConn.close catch {
-      case NonFatal(ex) => logger.warn("Failed to close db connection", ex)
-    }
-  }
+  def commitAndCloseConnection: Connection => Unit = DbAccess.commitAndCloseConnection
+  def rollbackAndCloseConnection: Connection => Unit = DbAccess.rollbackAndCloseConnection
+  def closeConns: (Connection => Unit) => Resources => Unit = DbAccess.closeConns
+  def initResources: Resources => (PoolName, Seq[DbAccessKey]) => Resources = DbAccess.initResources
+  def closeResources: Resources => Option[Throwable] => Unit = DbAccess.closeResources
 
   def extraDb(keys: Seq[DbAccessKey]): Seq[DbAccessKey] = keys.filter(_.db != null)
 
@@ -163,23 +153,11 @@ trait TresqlResources extends ThreadLocalResources {
     super.resourcesTemplate.copy(maxResultSize = maxSize, macros = Macros)
   }.getOrElse(super.resourcesTemplate.copy(macros = Macros))
 
-  val infoLogger = Logger(LoggerFactory.getLogger("org.wabase.tresql"))
-  val tresqlLogger = Logger(LoggerFactory.getLogger("org.wabase.tresql.tresql"))
-  val sqlLogger = Logger(LoggerFactory.getLogger("org.wabase.tresql.db.sql"))
-  val varsLogger = Logger(LoggerFactory.getLogger("org.wabase.tresql.db.vars"))
-  val sqlWithParamsLogger = Logger(LoggerFactory.getLogger("org.wabase.tresql.sql_with_params"))
+  override def logger: TresqlLogger = TresqlResources.logger
+  override def cache: Cache = TresqlResources.cache
+}
 
-  override val logger = (m, params, topic) => topic match {
-    case LogTopic.sql => sqlLogger.debug(m)
-    case LogTopic.tresql => tresqlLogger.debug(m)
-    case LogTopic.params => varsLogger.debug(m)
-    case LogTopic.sql_with_params => sqlWithParamsLogger.debug(sqlWithParams(m, params))
-    case LogTopic.info => infoLogger.debug(m)
-    case _ => infoLogger.debug(m)
-  }
-
-  override val cache = new SimpleCache(4096)
-
+object TresqlResources {
   def sqlWithParams(sql: String, params: Seq[(String, Any)]) = params.foldLeft(sql) {
     case (sql, (name, value)) => sql.replace(s"?/*$name*/", value match {
       case _: Int | _: Long | _: Double | _: BigDecimal | _: BigInt | _: Boolean => value.toString
@@ -188,6 +166,22 @@ trait TresqlResources extends ThreadLocalResources {
       case _ => value.toString
     })
   }
+  val infoLogger = Logger(LoggerFactory.getLogger("org.wabase.tresql"))
+  val tresqlLogger = Logger(LoggerFactory.getLogger("org.wabase.tresql.tresql"))
+  val sqlLogger = Logger(LoggerFactory.getLogger("org.wabase.tresql.db.sql"))
+  val varsLogger = Logger(LoggerFactory.getLogger("org.wabase.tresql.db.vars"))
+  val sqlWithParamsLogger = Logger(LoggerFactory.getLogger("org.wabase.tresql.sql_with_params"))
+
+  val logger: Logging#TresqlLogger = (m, params, topic) => topic match {
+    case LogTopic.sql => sqlLogger.debug(m)
+    case LogTopic.tresql => tresqlLogger.debug(m)
+    case LogTopic.params => varsLogger.debug(m)
+    case LogTopic.sql_with_params => sqlWithParamsLogger.debug(sqlWithParams(m, params))
+    case LogTopic.info => infoLogger.debug(m)
+    case _ => infoLogger.debug(m)
+  }
+
+  val cache: Cache = new SimpleCache(4096)
 }
 
 class PostgreSqlTresqlResources(qe: AppQuerease, db: String = null) extends TresqlResources {
@@ -263,6 +257,50 @@ class PostgreSqlTresqlResources(qe: AppQuerease, db: String = null) extends Tres
     override def isDefinedAt(e: Expr) = dialect.isDefinedAt(e)
 
     override def apply(e: Expr) = dialect(e)
+  }
+}
+
+object DbAccess extends Loggable {
+  def commitAndCloseConnection(dbConn: Connection): Unit = {
+    try dbConn.commit() catch {
+      case NonFatal(ex) => logger.warn("Failed to commit db connection", ex)
+    }
+    try if (!dbConn.isClosed) dbConn.close catch {
+      case NonFatal(ex) => logger.warn("Failed to close db connection", ex)
+    }
+  }
+  def rollbackAndCloseConnection(dbConn: Connection): Unit = {
+    try dbConn.rollback catch {
+      case NonFatal(ex) => logger.warn("Failed to rollback db transaction", ex)
+    }
+    try if (!dbConn.isClosed) dbConn.close catch {
+      case NonFatal(ex) => logger.warn("Failed to close db connection", ex)
+    }
+  }
+  def closeConns(connCloser: Connection => Unit)(resources: Resources) = {
+    (resources.conn :: resources.extraResources.values.map(_.conn).toList) foreach connCloser
+  }
+  def initResources(initialResources: Resources)(poolName: PoolName, extraDb: Seq[DbAccessKey]): Resources = {
+    val dbConn = ConnectionPools(poolName).getConnection
+    var extraConns = List[Connection]()
+    try {
+      val res = initialResources.withConn(dbConn)
+      if (extraDb.isEmpty) res
+      else extraDb.foldLeft(res) { case (res, DbAccessKey(db, cp)) =>
+        if (res.extraResources.contains(db)) {
+          extraConns ::= ConnectionPools(PoolName(if (cp == null) db else cp)).getConnection
+          res.withUpdatedExtra(db)(_.withConn(extraConns.head))
+        } else res
+      }
+    } catch {
+      case NonFatal(ex) =>
+        (dbConn :: extraConns) foreach rollbackAndCloseConnection
+        throw ex
+    }
+  }
+  def closeResources(res: Resources)(err: Option[Throwable]): Unit = {
+    if (err.isEmpty) closeConns(commitAndCloseConnection)(res)
+    else closeConns(rollbackAndCloseConnection)(res)
   }
 }
 
