@@ -263,32 +263,34 @@ class PostgreSqlTresqlResources(qe: AppQuerease, db: String = null) extends Tres
 object DbAccess extends Loggable {
   def commitAndCloseConnection(dbConn: Connection): Unit = {
     try dbConn.commit() catch {
-      case NonFatal(ex) => logger.warn("Failed to commit db connection", ex)
+      case NonFatal(ex) => logger.warn(s"Failed to commit db connection $dbConn", ex)
     }
     try if (!dbConn.isClosed) dbConn.close catch {
-      case NonFatal(ex) => logger.warn("Failed to close db connection", ex)
+      case NonFatal(ex) => logger.warn(s"Failed to close db connection $dbConn", ex)
     }
   }
   def rollbackAndCloseConnection(dbConn: Connection): Unit = {
     try dbConn.rollback catch {
-      case NonFatal(ex) => logger.warn("Failed to rollback db transaction", ex)
+      case NonFatal(ex) => logger.warn(s"Failed to rollback db transaction $dbConn", ex)
     }
     try if (!dbConn.isClosed) dbConn.close catch {
-      case NonFatal(ex) => logger.warn("Failed to close db connection", ex)
+      case NonFatal(ex) => logger.warn(s"Failed to close db connection $dbConn", ex)
     }
   }
   def closeConns(connCloser: Connection => Unit)(resources: Resources) = {
-    (resources.conn :: resources.extraResources.values.map(_.conn).toList) foreach connCloser
+    (resources.conn :: resources
+      .extraResources.collect { case (_, r) if r.conn != null => r.conn }.toList) foreach connCloser
   }
   def initResources(initialResources: Resources)(poolName: PoolName, extraDb: Seq[DbAccessKey]): Resources = {
     val dbConn = ConnectionPools(poolName).getConnection
     var extraConns = List[Connection]()
     try {
-      val res = initialResources.withConn(dbConn)
-      if (extraDb.isEmpty) res
-      else extraDb.foldLeft(res) { case (res, DbAccessKey(db, cp)) =>
+      val initRes = initialResources.withConn(dbConn)
+      if (extraDb.isEmpty) initRes
+      else extraDb.foldLeft(initRes) { case (res, DbAccessKey(db, cp)) =>
         if (res.extraResources.contains(db)) {
-          extraConns ::= ConnectionPools(PoolName(if (cp == null) db else cp)).getConnection
+          val extraConn = ConnectionPools(PoolName(if (cp == null) db else cp)).getConnection
+          extraConns ::= extraConn
           res.withUpdatedExtra(db)(_.withConn(extraConns.head))
         } else res
       }
