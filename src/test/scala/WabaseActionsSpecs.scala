@@ -80,6 +80,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Async
 
   behavior of "purchase"
 
+  // this is deprecated use wabase action calls
   it should "should purchase without validation" in {
     val purchase = Map(
       "customer" -> "Ravus",
@@ -265,5 +266,44 @@ class WabaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Async
         case x => fail(s"Invalid purchase list: $x")
       }
     }
+  }
+
+  // this is deprecated, use wabase actions instead
+  it should "retrieve person health and purchase data old style" in {
+    //can recursive map trasformation remove elements?
+    import MapRecursiveExtensions._
+    def tf: PartialFunction[(Any, Any), Any] = {
+      case ("name", v) => v
+      case ("name" / "health" / "vaccine", v) => v
+      case ("name" / "purchases" / "item", v) => v
+      case x => null
+    }
+    def reduceMap(m: Map[String, Any], struct: Map[String, Any]): Map[String, Any] = {
+      struct.map {
+        case (name, chStruct: Map[String, Any]@unchecked) if m.contains(name) => name -> (m(name) match {
+          case l: List[Map[String, Any]@unchecked] => l.map(e => reduceMap(e, chStruct))
+          case chm: Map[String, Any]@unchecked => reduceMap(chm, chStruct)
+          case x => x
+        })
+        case (name, _) if m.contains(name) => name -> m(name)
+      }
+    }
+    app.list("person_health_and_shop", Map())
+      .map(_.toMap(app.qe)).toList
+      //.map(_ recursiveMap tf)
+      .map(reduceMap(_, Map("name" -> null, "purchases" -> Map("item" -> null),
+        "health" -> Map("vaccine" -> null)))) should be(
+      List(
+        Map(
+          "name" -> "Mr. Gunza",
+          "purchases" -> List(Map("item" -> "joystick")),
+          "health" -> List(Map("vaccine" -> "AstraZeneca"))),
+        Map(
+          "name" -> "Mr. Mario",
+          "purchases" -> List(Map("item" -> "beer")),
+          "health" -> List(Map("vaccine" -> "BioNTech"))
+        )
+      )
+    )
   }
 }
