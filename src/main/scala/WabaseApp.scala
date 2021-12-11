@@ -192,7 +192,7 @@ trait WabaseApp[User] {
 
 
   def stableOrderBy(viewDef: ViewDef, orderBy: String): String = {
-    if (orderBy != null && orderBy != "" && viewDef.orderBy != null && viewDef.orderBy.size > 0) {
+    if (orderBy != null && orderBy != "" && viewDef.orderBy != null && viewDef.orderBy.nonEmpty) {
       val forcedSortCols = orderBy.replace("~", "").split("[\\s\\,]+").toSet
       Option(viewDef.orderBy)
         .map(_.filter(c => c != null && c != "" && !forcedSortCols.contains(c.replace("~", ""))))
