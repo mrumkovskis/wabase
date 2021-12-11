@@ -278,21 +278,20 @@ class WabaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Async
       case ("name" / "purchases" / "item", v) => v
       case x => null
     }
-    def reduceMap(m: Map[String, Any], struct: Map[String, Any]): Map[String, Any] = {
+    def reduceMap(m: Map[String, _], struct: List[_]): Map[String, _] = {
       struct.map {
-        case (name, chStruct: Map[String, Any]@unchecked) if m.contains(name) => name -> (m(name) match {
-          case l: List[Map[String, Any]@unchecked] => l.map(e => reduceMap(e, chStruct))
-          case chm: Map[String, Any]@unchecked => reduceMap(chm, chStruct)
+        case (name: String, chStruct: List[_]) if m.contains(name) => name -> (m(name) match {
+          case l: List[Map[String, _]@unchecked] => l.map(e => reduceMap(e, chStruct))
+          case chm: Map[String@unchecked, _] => reduceMap(chm, chStruct)
           case x => x
         })
-        case (name, _) if m.contains(name) => name -> m(name)
+        case name: String if m.contains(name) => name -> m(name)
       }
-    }
+    }.toMap
     app.list("person_health_and_shop", Map())
       .map(_.toMap(app.qe)).toList
       //.map(_ recursiveMap tf)
-      .map(reduceMap(_, Map("name" -> null, "purchases" -> Map("item" -> null),
-        "health" -> Map("vaccine" -> null)))) should be(
+      .map(reduceMap(_, List("name", "purchases" -> List("item"), "health" -> List("vaccine")))) should be(
       List(
         Map(
           "name" -> "Mr. Gunza",
