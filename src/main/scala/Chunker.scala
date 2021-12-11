@@ -141,17 +141,23 @@ case class IncompleteSourceValue[Mat](result: Source[ByteString, Mat]) extends S
   * Otherwise produces {{{IncompleteSourceValue}}}. Running of {{{IncompleteSourceValue}}} source will consume
   * this {{{ChunkerSink}}} upstream.
   * */
-class ChunkerSink (implicit ec: scala.concurrent.ExecutionContext)
+class ChunkerSink(cleanupFun: Option[Throwable] => Unit = null)(implicit ec: scala.concurrent.ExecutionContext)
   extends GraphStageWithMaterializedValue[SinkShape[ByteString], Future[SourceValue]] {
   val in = Inlet[ByteString]("in")
   override val shape = SinkShape(in)
   override def createLogicAndMaterializedValue(attrs: Attributes) = {
     val result = Promise[SourceValue]()
     new GraphStageLogic(shape) {
-      var byteString: ByteString = _
+      private var flowError: Throwable = _
+      private var byteString: ByteString = _
+      private def setFlowError(e: Throwable) = this.flowError = e
+
       override def preStart() = {
         //generate initial demand since this is sink
         pull(in)
+      }
+      override def postStop() = {
+        Option(cleanupFun).foreach(_(Option(flowError)))
       }
       setHandler(in, new InHandler {
         override def onPush() = {
@@ -165,7 +171,10 @@ class ChunkerSink (implicit ec: scala.concurrent.ExecutionContext)
           }
         }
         override def onUpstreamFinish() = result.success(CompleteSourceValue(byteString))
-        override def onUpstreamFailure(ex: Throwable) = result.failure(ex)
+        override def onUpstreamFailure(ex: Throwable) = {
+          flowError = ex
+          result.failure(ex)
+        }
       })
       def streamingHandler(init: ByteString) = new InHandler {
         val sourceCompleted = Promise[Unit]()
@@ -173,7 +182,9 @@ class ChunkerSink (implicit ec: scala.concurrent.ExecutionContext)
         val source = Source.fromGraph(new GraphStage[SourceShape[ByteString]] {
           val out = Outlet[ByteString]("out")
           //generate demand during materialized source run, callback is used because demand is comes from another graph
-          val pullCallback: AsyncCallback[Unit] = getAsyncCallback[Unit](_ => pull(in))
+          private val pullCallback: AsyncCallback[Unit] = getAsyncCallback[Unit](_ => pull(in))
+          //callback for chunker sink to set downstream error
+          private val downstreamErrorCallback = getAsyncCallback(setFlowError)
           override val shape = SourceShape(out)
           override def createLogic(attrs: Attributes) = new GraphStageLogic(shape) {
             override def preStart() = {
@@ -186,6 +197,10 @@ class ChunkerSink (implicit ec: scala.concurrent.ExecutionContext)
             }
             setHandler(out, new OutHandler {
               override def onPull() = pullCallback.invoke(())
+              override def onDownstreamFinish(cause: Throwable): Unit = {
+                downstreamErrorCallback.invoke(cause)
+                super.onDownstreamFinish(cause)
+              }
             })
           }
         })
@@ -194,7 +209,10 @@ class ChunkerSink (implicit ec: scala.concurrent.ExecutionContext)
           pushCallback.invoke(grab(in))
         }
         override def onUpstreamFinish() = sourceCompleted.success(())
-        override def onUpstreamFailure(ex: Throwable) = sourceCompleted.failure(ex)
+        override def onUpstreamFailure(ex: Throwable) = {
+          flowError = ex
+          sourceCompleted.failure(ex)
+        }
       }
     } -> result.future
   }
@@ -278,9 +296,13 @@ object RowSource {
     Source.fromGraph(new RowWriteZipSource(createRowWriter)).async
 
   /** Runs {{{src}}} via {{{FileBufferedFlow}}} of {{{bufferSize}}} with {{{maxFileSize}}} to {{{ChunkerSink}}} */
-  def value(bufferSize: Int, maxFileSize: Long,
-            src: Source[ByteString, _])(implicit ec: ExecutionContext,
-                                                  mat: Materializer): Future[SourceValue] = {
-    src.via(FileBufferedFlow.create(bufferSize, maxFileSize)).runWith(new ChunkerSink)
+  def value(bufferSize: Int,
+            maxFileSize: Long,
+            src: Source[ByteString, _],
+            cleanupFun: Option[Throwable] => Unit = null)(implicit ec: ExecutionContext,
+                                                          mat: Materializer): Future[SourceValue] = {
+    src
+      .via(FileBufferedFlow.create(bufferSize, maxFileSize))
+      .runWith(new ChunkerSink(cleanupFun))
   }
 }
