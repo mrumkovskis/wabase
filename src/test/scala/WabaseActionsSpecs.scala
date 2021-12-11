@@ -270,7 +270,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Async
 
   // this is deprecated, use wabase actions instead
   it should "retrieve person health and purchase data old style" in {
-    //can recursive map trasformation remove elements?
+    //can recursive map transformation remove elements?
     import MapRecursiveExtensions._
     def tf: PartialFunction[(Any, Any), Any] = {
       case ("name", v) => v
