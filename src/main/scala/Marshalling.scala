@@ -437,7 +437,7 @@ trait QuereaseResultMarshalling { this:
     Marshaller.combined(_ => "")
 
   implicit val toResponseQuereaseResultMarshaller: ToResponseMarshaller[QuereaseResult] =
-    Marshaller { implicit ec => value => value match {
+    Marshaller { implicit ec => {
       case tq: TresqlResult   => (toResponseQuereaseTresqlResultMarshaller:   ToResponseMarshaller[TresqlResult]  )(tq)
       case mp: MapResult      => (toEntityQuereaseMapResultMarshaller:        ToResponseMarshaller[MapResult]     )(mp)
       case pj: PojoResult     => (toEntityQuereasePojoResultMarshaller:       ToResponseMarshaller[PojoResult]    )(pj)
