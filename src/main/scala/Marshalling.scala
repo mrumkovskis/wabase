@@ -205,24 +205,24 @@ trait DtoMarshalling extends AppMarshalling with Loggable { this: AppServiceBase
   trait DtoRowWriter extends app.AbstractRowWriter {
     type Row = Map[String, Any]
     type Result = Iterator[Row] with AutoCloseable
-    val alr: app.AppListResult[app.Dto]
-    override val labels = alr.view.fields.map(f => Option(f.label).getOrElse(f.name))
+    val dtoResult: qe.QuereaseIteratorResult[app.Dto]
+    override val labels = dtoResult.view.fields.map(f => Option(f.label).getOrElse(f.name))
     override val result = new Iterator[Row] with AutoCloseable {
-      override def hasNext: Boolean = alr.hasNext
-      override def next(): Map[String, Any] = alr.next().toMap
-      override def close(): Unit = alr.close()
+      override def hasNext: Boolean = dtoResult.hasNext
+      override def next(): Map[String, Any] = dtoResult.next().toMap
+      override def close(): Unit = dtoResult.close()
     }
   }
-  class OdsDtoRowWriter(override val alr: app.AppListResult[app.Dto], zos: ZipOutputStream)
+  class OdsDtoRowWriter(override val dtoResult: qe.QuereaseIteratorResult[app.Dto], zos: ZipOutputStream)
     extends app.OdsRowWriter(zos) with DtoRowWriter
-  class CsvDtoRowWriter(override val alr: app.AppListResult[app.Dto], writer: Writer)
+  class CsvDtoRowWriter(override val dtoResult: qe.QuereaseIteratorResult[app.Dto], writer: Writer)
     extends app.CsvRowWriter(writer) with DtoRowWriter
-  class XlsXmlDtoRowWriter(override val alr: app.AppListResult[app.Dto], writer: Writer)
+  class XlsXmlDtoRowWriter(override val dtoResult: qe.QuereaseIteratorResult[app.Dto], writer: Writer)
     extends app.XlsXmlRowWriter(writer) with DtoRowWriter
 
-  implicit val toResponseAppListResultMarshaller: ToResponseMarshaller[app.AppListResult[app.Dto]] = {
+  implicit val toResponseAppListResultMarshaller: ToResponseMarshaller[qe.QuereaseIteratorResult[app.Dto]] = {
     import RowSource._
-    def appListResMaxFs(r: app.AppListResult[app.Dto]) = resultMaxFileSize(r.view.name)
+    def appListResMaxFs(r: qe.QuereaseIteratorResult[app.Dto]) = resultMaxFileSize(r.view.name)
 
     import qe.DtoJsonFormat
     Marshaller.oneOf(
@@ -256,7 +256,7 @@ trait QuereaseResultMarshalling { this:
   implicit val toEntityQuereaseListResultMarshaller:        ToEntityMarshaller  [ListResult]     =
     Marshaller.combined(_.result.toJson)
   implicit val toEntityQuereaseIteratorResultMarshaller:    ToResponseMarshaller[IteratorResult] =
-    Marshaller.combined(_.result.asInstanceOf[app.AppListResult[app.Dto]]) // FIXME asInstanceOf
+    Marshaller.combined(_.result.asInstanceOf[qe.QuereaseIteratorResult[app.Dto]])
   implicit val toResponseQuereaseOptionResultMarshaller:    ToResponseMarshaller[OptionResult]   =
     Marshaller.combined(_.result.map(_.toMap))
   implicit val toEntityQuereaseNumberResultMarshaller:      ToEntityMarshaller  [NumberResult]   =

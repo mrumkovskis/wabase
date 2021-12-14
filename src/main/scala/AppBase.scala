@@ -55,7 +55,7 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
     override protected def nextInternal = iter.next()
   }
 
-  trait AppListResult[+T] extends Iterator[T] with AutoCloseable { self =>
+  trait AppListResult[+T <: Dto] extends qe.QuereaseIteratorResult[T] { self =>
     def view: ViewDef
     def resources: Resources
     /** this is to be overriden in subclasses instead of {{{hasNext}}} */
@@ -76,7 +76,7 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
         throw e
     }
     private var onCloseAction: Unit => Unit = identity
-    trait Wrapper[+A] extends AppListResult[A] { wrapper =>
+    trait Wrapper[+A <: Dto] extends AppListResult[A] { wrapper =>
       override def view = self.view
       override def resources = self.resources
       override protected def hasNextInternal: Boolean = self.hasNext
@@ -86,10 +86,10 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
         wrapper
       }
     }
-    def mapRow[R](f: T => R) = new Wrapper[R] {
+    def mapRow[R <: Dto](f: T => R) = new Wrapper[R] {
       override protected def nextInternal: R = f(self.next())
     }
-    def mapRowWithResources[R](f: Resources => T => R) = new Wrapper[R] {
+    def mapRowWithResources[R <: Dto](f: Resources => T => R) = new Wrapper[R] {
       override protected def nextInternal: R = f(resources)(self.next())
     }
     def andThen(action: => Unit): AppListResult[T] = {

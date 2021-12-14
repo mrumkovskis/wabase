@@ -103,7 +103,6 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       override def view: ViewDef = viewDef[B]
     }
 
-
   override protected def countAll_(viewDef: ViewDef, params: Map[String, Any],
       extraFilter: String = null, extraParams: Map[String, Any] = Map())(implicit resources: Resources): Int = {
     val extraFilterAndAuth =
