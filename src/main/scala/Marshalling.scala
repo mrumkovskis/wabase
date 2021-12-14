@@ -15,9 +15,8 @@ import scala.collection.immutable.Seq
 import scala.concurrent.{ExecutionContext, Future}
 import spray.json._
 import DefaultJsonProtocol._
-import akka.http.scaladsl.model.headers.{ContentDispositionType, ContentDispositionTypes, `Content-Disposition`}
+import akka.http.scaladsl.model.headers.{ContentDispositionType, ContentDispositionTypes}
 import akka.http.scaladsl.model.headers.{Location, RawHeader}
-import akka.http.scaladsl.server.ContentNegotiator
 import akka.http.scaladsl.unmarshalling.{FromEntityUnmarshaller, FromResponseUnmarshaller, Unmarshaller}
 import akka.stream.scaladsl.Source
 import akka.util.ByteString
@@ -27,7 +26,6 @@ import scala.collection.immutable.{Seq => iSeq}
 import scala.language.implicitConversions
 import scala.language.reflectiveCalls
 import scala.util.Try
-import scala.util.control.NonFatal
 
 trait Marshalling extends DtoMarshalling
   with TresqlResultMarshalling
@@ -180,19 +178,21 @@ trait AppMarshalling { this: AppServiceBase[_] with Execution =>
     }
   }
 
-  protected def source(src: Source[ByteString, _], maxFileSize: Long): Future[SourceValue] = {
-    RowSource.value(dbBufferSize, maxFileSize, src)
+  protected def resultMaxFileSize(viewName: String): Long =
+    MarshallingConfig.customDataFileMaxSizes.getOrElse(viewName, dbDataFileMaxSize)
+
+  protected def source(src: Source[ByteString, _],
+                       maxFileSize: Long,
+                       cleanupFun: Option[Throwable] => Unit = null): Future[SourceValue] = {
+    RowSource.value(dbBufferSize, maxFileSize, src, cleanupFun)
   }
 
-  def httpResponse(
-    contentType: ContentType,
-    src: Source[ByteString, _],
-    maxFileSize: Long,
-    transform: HttpResponse => HttpResponse = identity,
-  )(implicit ec: ExecutionContext) = {
+  protected def httpResponse(contentType: ContentType,
+                             src: Source[ByteString, _],
+                             maxFileSize: Long = dbBufferSize) = {
     source(src, maxFileSize).map {
-      case CompleteSourceValue(data) => transform(HttpResponse(entity = HttpEntity.Strict(contentType, data)))
-      case IncompleteSourceValue(sourceData) => transform(HttpResponse(entity = HttpEntity.Chunked.fromData(contentType, sourceData)))
+      case CompleteSourceValue(data) => HttpResponse(entity = HttpEntity.Strict(contentType, data))
+      case IncompleteSourceValue(sourceData) => HttpResponse(entity = HttpEntity.Chunked.fromData(contentType, sourceData))
     }.recover { case InsufficientStorageException(msg) =>
       HttpResponse(status = StatusCodes.InsufficientStorage,
         entity = HttpEntity.Strict(ContentTypes.`text/plain(UTF-8)`, ByteString(msg)))
@@ -200,18 +200,20 @@ trait AppMarshalling { this: AppServiceBase[_] with Execution =>
   }
 
   import RowSource._
-  implicit def toResponseListJsonMarshaller[T: JsonFormat]: ToResponseMarshaller[Iterator[T]] =
-    responseMarshaller(`application/json`, iterator => new JsonListChunker(iterator, _: Writer))
+  protected def resWriterToResponseMarshaller[T](contentType: ContentType,
+                                               writerFun: (T, Writer) => RowWriter,
+                                               fileBufferMaxSize: T => Long = (_: T) => dbDataFileMaxSize):
+  ToResponseMarshaller[T] =
+    Marshaller.combined(r => httpResponse(contentType, writerFun(r, _), fileBufferMaxSize(r)))
 
-  def responseMarshaller[T](
-    contentType: ContentType,
-    toSource: T => Source[ByteString, _],
-    toMaxFileSize: T => Long = (_: T) => dbDataFileMaxSize,
-    transform: HttpResponse => HttpResponse = identity,
-  ): ToResponseMarshaller[T] =
-    Marshaller.combined((x: T) =>
-      httpResponse(contentType, toSource(x), toMaxFileSize(x), transform)
-    )(GenericMarshallers.futureMarshaller(Marshaller.withFixedContentType(contentType)(identity)))
+  protected def resZipToResponseMarshaller[T](contentType: ContentType,
+                                              writerFun: (T, ZipOutputStream) => RowWriter,
+                                              fileBufferMaxSize: T => Long = (_: T) => dbDataFileMaxSize):
+  ToResponseMarshaller[T] =
+    Marshaller.combined(r => httpResponse(contentType, writerFun(r, _), fileBufferMaxSize(r)))
+
+  implicit def toResponseListJsonMarshaller[T: JsonFormat]: ToResponseMarshaller[Iterator[T]] =
+    resWriterToResponseMarshaller(`application/json`, new JsonListChunker(_, _))
 }
 
 trait TresqlResultMarshalling extends AppMarshalling { this: AppServiceBase[_] with Execution =>
@@ -252,16 +254,10 @@ trait TresqlResultMarshalling extends AppMarshalling { this: AppServiceBase[_] w
   }
 
   import RowSource._
-  val toResponseTresqlResultOdsMarshaller: ToResponseMarshaller[TresqlResult[RowLike]] =
-    responseMarshaller(`application/vnd.oasis.opendocument.spreadsheet`, result => new OdsTresqlResultChunker(result, _))
-
-  val toResponseTresqlResultCsvMarshaller: ToResponseMarshaller[TresqlResult[RowLike]] =
-    responseMarshaller(ContentTypes.`text/plain(UTF-8)`, result => new CsvTresqlResultChunker(result, _))
-
   implicit val toResponseTresqlResultMarshaller: ToResponseMarshaller[TresqlResult[RowLike]] =
     Marshaller.oneOf(
-      toResponseTresqlResultOdsMarshaller,
-      toResponseTresqlResultCsvMarshaller,
+      resZipToResponseMarshaller(`application/vnd.oasis.opendocument.spreadsheet`, new OdsTresqlResultChunker(_, _)),
+      resWriterToResponseMarshaller(ContentTypes.`text/plain(UTF-8)`, new CsvTresqlResultChunker(_, _))
     )
 }
 
@@ -369,34 +365,13 @@ trait DtoMarshalling extends AppMarshalling with Loggable { this: AppServiceBase
   }
 
   import RowSource._
-
-  protected def resultMaxFileSize(result: app.AppListResult[_]): Long =
-    Try(result.view.name)
-      .map(MarshallingConfig.customDataFileMaxSizes.getOrElse(_, dbDataFileMaxSize))
-      .recover {
-        //this can happen if view is of Nothing type as in a result of Nil conversion to AppListResult
-        case NonFatal(e) =>
-          logger.warn(s"Error getting data file buffer max size for view, " +
-            s"using default value $dbDataFileMaxSize", e)
-          dbDataFileMaxSize
-      }.get
-
-
-  val toResponseAppListResultJsonMarshaller: ToResponseMarshaller[app.AppListResult[app.Dto]]  = responseMarshaller(
-    `application/json`, result => new JsonDtoChunker(result, _), resultMaxFileSize)
-  val toResponseAppListResultExcelMarshaller: ToResponseMarshaller[app.AppListResult[app.Dto]] = responseMarshaller(
-    `application/vnd.ms-excel`, result => new XlsXmlDtoChunker(result, _), resultMaxFileSize)
-  val toResponseAppListResultOdsMarshaller: ToResponseMarshaller[app.AppListResult[app.Dto]]   = responseMarshaller(
-    `application/vnd.oasis.opendocument.spreadsheet`, result => new OdsDtoChunker(result, _), resultMaxFileSize)
-  val toResponseAppListResultCsvMarshaller: ToResponseMarshaller[app.AppListResult[app.Dto]]   = responseMarshaller(
-    ContentTypes.`text/plain(UTF-8)`, result => new CsvDtoChunker(result, _), resultMaxFileSize)
-
+  private def appListResMaxFs(r: app.AppListResult[app.Dto]) = resultMaxFileSize(r.view.name)
   implicit val toResponseAppListResultMarshaller: ToResponseMarshaller[app.AppListResult[app.Dto]] =
     Marshaller.oneOf(
-      toResponseAppListResultJsonMarshaller,
-      toResponseAppListResultOdsMarshaller,
-      toResponseAppListResultExcelMarshaller,
-      toResponseAppListResultCsvMarshaller,
+      resWriterToResponseMarshaller(`application/json`, new JsonDtoChunker(_, _), appListResMaxFs),
+      resWriterToResponseMarshaller(`application/vnd.ms-excel`, new XlsXmlDtoChunker(_, _), appListResMaxFs),
+      resZipToResponseMarshaller(`application/vnd.oasis.opendocument.spreadsheet`, new OdsDtoChunker(_, _), appListResMaxFs),
+      resWriterToResponseMarshaller(ContentTypes.`text/plain(UTF-8)`, new CsvDtoChunker(_, _), appListResMaxFs)
     )
 
   implicit val dtoMarshaller: ToEntityMarshaller[app.Dto] = Marshaller.withFixedContentType(`application/json`) {
