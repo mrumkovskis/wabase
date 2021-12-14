@@ -21,8 +21,8 @@ trait QuereaseProvider {
 }
 
 sealed trait QuereaseResult
-sealed trait CloseableQuereaseResult
-case class TresqlResult(result: Result[RowLike]) extends QuereaseResult with CloseableQuereaseResult
+sealed trait CloseableQuereaseResult extends QuereaseResult
+case class TresqlResult(result: Result[RowLike]) extends CloseableQuereaseResult
 // TODO after decoupling QereaseIo from Querease this class should be refactored to PojoResult[X]
 case class MapResult(result: Map[String, Any]) extends QuereaseResult
 // TODO after decoupling QereaseIo from Querease this class should be refactored to PojoResult[X]
@@ -30,7 +30,7 @@ case class PojoResult(result: AppQuerease#DTO) extends QuereaseResult
 // TODO after decoupling QereaseIo from Querease this class should be refactored to ListResult[X]
 case class ListResult(result: List[Any]) extends QuereaseResult
 // TODO after decoupling QereaseIo from Querease this class should be refactored to IteratorResult[X]
-case class IteratorResult(result: AppQuerease#QuereaseIteratorResult[AppQuerease#DTO]) extends QuereaseResult with CloseableQuereaseResult
+case class IteratorResult(result: AppQuerease#QuereaseIteratorResult[AppQuerease#DTO]) extends CloseableQuereaseResult
 // TODO after decoupling QereaseIo from Querease this class should be refactored to OptionResult[X]
 case class OptionResult(result: Option[AppQuerease#DTO]) extends QuereaseResult
 case class NumberResult(id: Long) extends QuereaseResult
@@ -38,7 +38,8 @@ case class CodeResult(code: String) extends QuereaseResult
 case class IdResult(id: Any) extends QuereaseResult
 case class RedirectResult(uri: String) extends QuereaseResult
 case object NoResult extends QuereaseResult
-case class DeferredQuereaseResult(result: CloseableQuereaseResult, cleanup: Option[Throwable] => Unit) extends QuereaseResult {
+case class QuereaseResultWithCleanup(result: CloseableQuereaseResult, cleanup: Option[Throwable] => Unit)
+  extends QuereaseResult {
   def flatMap(f: CloseableQuereaseResult => QuereaseResult): QuereaseResult = {
     Try(f(result)).map { r =>
       cleanup(None)
@@ -203,7 +204,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
         implicit val res = initResources(viewName)(actionName)
         try {
           doAction(viewName, actionName, data, env).map {
-            case r: CloseableQuereaseResult => DeferredQuereaseResult(r, closeResources(res))
+            case r: CloseableQuereaseResult => QuereaseResultWithCleanup(r, closeResources(res))
             case r: QuereaseResult =>
               closeResources(res)(None)
               r
@@ -266,7 +267,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case id: IdResult => id
       case rd: RedirectResult => rd
       case NoResult => NoResult
-      case x: DeferredQuereaseResult => sys.error(s"${x.getClass.getName} not expected here!")
+      case x: QuereaseResultWithCleanup => sys.error(s"${x.getClass.getName} not expected here!")
     }
     def updateCurRes(cr: Map[String, Any], key: Option[String], res: Any) = res match {
       case IdResult(id) => cr

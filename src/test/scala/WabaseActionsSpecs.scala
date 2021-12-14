@@ -67,7 +67,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Async
       .run
       .map(_._2)
       .map {
-        case dr: DeferredQuereaseResult =>
+        case dr: QuereaseResultWithCleanup =>
           Option(deferredTransformer)
             .map(dr.flatMap)
             .getOrElse(dr.flatMap {
