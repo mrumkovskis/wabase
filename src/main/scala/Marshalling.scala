@@ -364,15 +364,16 @@ trait DtoMarshalling extends AppMarshalling with Loggable { this: AppServiceBase
     }.map(escapeValue).getOrElse("")
   }
 
-  import RowSource._
-  private def appListResMaxFs(r: app.AppListResult[app.Dto]) = resultMaxFileSize(r.view.name)
-  implicit val toResponseAppListResultMarshaller: ToResponseMarshaller[app.AppListResult[app.Dto]] =
+  implicit val toResponseAppListResultMarshaller: ToResponseMarshaller[app.AppListResult[app.Dto]] = {
+    import RowSource._
+    def appListResMaxFs(r: app.AppListResult[app.Dto]) = resultMaxFileSize(r.view.name)
     Marshaller.oneOf(
       resWriterToResponseMarshaller(`application/json`, new JsonDtoChunker(_, _), appListResMaxFs),
       resWriterToResponseMarshaller(`application/vnd.ms-excel`, new XlsXmlDtoChunker(_, _), appListResMaxFs),
       resZipToResponseMarshaller(`application/vnd.oasis.opendocument.spreadsheet`, new OdsDtoChunker(_, _), appListResMaxFs),
       resWriterToResponseMarshaller(ContentTypes.`text/plain(UTF-8)`, new CsvDtoChunker(_, _), appListResMaxFs)
     )
+  }
 
   implicit val dtoMarshaller: ToEntityMarshaller[app.Dto] = Marshaller.withFixedContentType(`application/json`) {
     dto => HttpEntity.Strict(`application/json`, ByteString(new Wrapper(dto).toMap.toJson.compactPrint))
