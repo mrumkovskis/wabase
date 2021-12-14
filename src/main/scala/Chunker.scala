@@ -1,25 +1,16 @@
 package org.wabase
 
-import scala.concurrent.{ExecutionContext, Future, Promise}
+import scala.concurrent.{Future, Promise}
 import akka.stream._
 import akka.stream.scaladsl._
 import akka.stream.stage._
 import akka.util.{ByteString, ByteStringBuilder}
-import java.io.{File, OutputStreamWriter, Writer}
+import java.io.File
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 import java.nio.file.StandardOpenOption
-import java.util.zip.ZipOutputStream
 
 import akka.NotUsed
-
-trait RowWriter {
-  def header(): Unit
-  def hasNext: Boolean
-  def row(): Unit
-  def footer(): Unit
-  def close(): Unit
-}
 
 case class InsufficientStorageException(msg: String) extends Exception(msg)
 
@@ -215,94 +206,5 @@ class ChunkerSink(cleanupFun: Option[Throwable] => Unit = null)(implicit ec: sca
         }
       }
     } -> result.future
-  }
-}
-
-object RowSource {
-  private class RowWriteSource (createRowWriter: Writer => RowWriter) extends GraphStage[SourceShape[ByteString]] {
-    val out = Outlet[ByteString]("RowWriteSource")
-    override val shape = SourceShape(out)
-    override def createLogic(attrs: Attributes) = new GraphStageLogic(shape) {
-      var buf: ByteStringBuilder = _
-      var writer: OutputStreamWriter = _
-      var src: RowWriter = _
-      override def preStart() = {
-        buf = new ByteStringBuilder
-        writer = new OutputStreamWriter(buf.asOutputStream, "UTF-8")
-        src = createRowWriter(writer)
-        src.header()
-        writer.flush()
-      }
-      override def postStop() = src.close()
-      setHandler(out, new OutHandler {
-        override def onPull = {
-          while (buf.isEmpty && src.hasNext) {
-            src.row()
-            writer.flush()
-          }
-          if (!src.hasNext) {
-            src.footer()
-            writer.flush()
-          }
-          val chunk = buf.result()
-          buf.clear()
-          push(out, chunk)
-          if (!src.hasNext) completeStage()
-        }
-      })
-    }
-  }
-
-  private class RowWriteZipSource(createRowWriter: ZipOutputStream => RowWriter) extends GraphStage[SourceShape[ByteString]] {
-    val out = Outlet[ByteString]("RowWriteSource")
-    override val shape = SourceShape(out)
-    override def createLogic(attrs: Attributes) = new GraphStageLogic(shape) {
-      var buf: ByteStringBuilder = _
-      var zos: ZipOutputStream = _
-      var src: RowWriter = _
-      override def preStart() = {
-        buf = new ByteStringBuilder
-        zos = new ZipOutputStream(buf.asOutputStream)
-        src = createRowWriter(zos)
-        src.header()
-        zos.flush()
-      }
-      override def postStop() = src.close()
-      setHandler(out, new OutHandler {
-        override def onPull = {
-          while (buf.isEmpty && src.hasNext) {
-            src.row()
-            zos.flush()
-          }
-          if (!src.hasNext) {
-            src.footer()
-            zos.close()
-          }
-          val chunk = buf.result()
-          buf.clear()
-          push(out, chunk)
-          if (!src.hasNext) completeStage()
-        }
-      })
-    }
-  }
-  import scala.language.implicitConversions
-  /** Creates {{{RowWriteSource}}} and sets async boundary around. */
-  implicit def createRowWriteSource(createRowWriter: Writer => RowWriter): Source[ByteString, _] =
-    Source.fromGraph(new RowWriteSource(createRowWriter)).async
-
-  /** Creates {{{RowWriteZipSource}}} and sets async boundary around. */
-  implicit def createRowWriteZipSource(createRowWriter: ZipOutputStream => RowWriter): Source[ByteString, _] =
-    Source.fromGraph(new RowWriteZipSource(createRowWriter)).async
-
-  /** Runs {{{src}}} via {{{FileBufferedFlow}}} of {{{bufferSize}}} with {{{maxFileSize}}} to {{{ChunkerSink}}} */
-  def value(bufferSize: Int,
-            maxFileSize: Long,
-            src: Source[ByteString, _],
-            cleanupFun: Option[Throwable] => Unit = null)(implicit ec: ExecutionContext,
-                                                          mat: Materializer): Future[SourceValue] = {
-    src
-      .via(FileBufferedFlow.create(bufferSize, maxFileSize))
-      .runWith(new ChunkerSink(cleanupFun))
   }
 }

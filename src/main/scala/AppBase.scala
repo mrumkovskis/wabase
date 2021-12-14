@@ -30,7 +30,7 @@ object AppBase {
 
 case class ApplicationState(state: Map[String, Any], locale: Locale = Locale.getDefault)
 
-trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider with DbAccessProvider with I18n {
+trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider with DbAccessProvider with I18n with RowWriters {
   this: DbAccess
     with Authorization[User]
     with ValidationEngine

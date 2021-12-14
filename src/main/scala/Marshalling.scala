@@ -6,11 +6,11 @@ import model._
 import MediaTypes._
 import marshalling._
 import spray.json.JsValue
+
 import java.io.Writer
 import java.net.URLEncoder
 import java.text.Normalizer
 import java.util.zip.ZipOutputStream
-
 import scala.collection.immutable.Seq
 import scala.concurrent.{ExecutionContext, Future}
 import spray.json._
@@ -20,7 +20,6 @@ import akka.http.scaladsl.model.headers.{Location, RawHeader}
 import akka.http.scaladsl.unmarshalling.{FromEntityUnmarshaller, FromResponseUnmarshaller, Unmarshaller}
 import akka.stream.scaladsl.Source
 import akka.util.ByteString
-import org.wabase.Format.{xlsxDateTime, xsdDate}
 
 import scala.collection.immutable.{Seq => iSeq}
 import scala.language.implicitConversions
@@ -122,61 +121,8 @@ trait BasicMarshalling {
 
 trait AppMarshalling { this: AppServiceBase[_] with Execution =>
 
-  trait AbstractChunker extends RowWriter {
-    type Obj <: {def toMap: Map[String, Any]}
-    type Result <: Iterator[Obj] with AutoCloseable
-
-    def labels: Seq[String]
-    def row(r: Obj): Unit
-    def result: Result
-    override def hasNext = result.hasNext
-    override def row() = row(result.next())
-    override def close() = result.close()
-  }
-
-  class JsonListChunker[T: JsonFormat](val result: Iterator[T], writer: Writer) extends RowWriter {
-    override def header() = writer write "["
-
-    var first = true
-    override def row(): Unit = {
-      if(first) first = false else writer write ",\n"
-      writer write result.next().toJson.compactPrint
-    }
-
-    override def footer() = writer write "]\n"
-
-    def hasNext = result.hasNext
-    def close() = {}
-  }
-
   val dbBufferSize = 1024 * 32
   val dbDataFileMaxSize = MarshallingConfig.dbDataFileMaxSize
-
-  abstract class OdsChunker(zos: ZipOutputStream) extends AbstractChunker {
-
-    import org.wabase.spreadsheet.ods._
-
-    val streamer = new OdsStreamer(zos)
-
-    override def header() = {
-      streamer.startWorkbook
-      streamer.startWorksheet
-      streamer.startTable("dati")
-      streamer.startRow
-      labels foreach { h => streamer.cell(h) }
-      streamer.endRow
-    }
-    override def row(r: Obj) = {
-      streamer.startRow
-      r.toMap.values foreach { v: Any => streamer.cell(v) }
-      streamer.endRow
-    }
-    override def footer() = {
-      streamer.endTable
-      streamer.endWorksheet
-      streamer.endWorkbook
-    }
-  }
 
   protected def resultMaxFileSize(viewName: String): Long =
     MarshallingConfig.customDataFileMaxSizes.getOrElse(viewName, dbDataFileMaxSize)
@@ -214,52 +160,29 @@ trait AppMarshalling { this: AppServiceBase[_] with Execution =>
     Marshaller.combined(r => httpResponse(contentType, writerFun(r, _), fileBufferMaxSize(r), cleanupFun))
 
   implicit def toResponseListJsonMarshaller[T: JsonFormat]: ToResponseMarshaller[Iterator[T]] =
-    rowWriterToResponseMarshaller(`application/json`, new JsonListChunker(_, _))
+    rowWriterToResponseMarshaller(`application/json`, new app.JsonRowWriter(_, _))
 }
 
 trait TresqlResultMarshalling extends AppMarshalling { this: AppServiceBase[_] with Execution =>
   import org.tresql.{Result => TresqlResult, RowLike}
 
-  trait AbstractTresqlResultChunker extends AbstractChunker {
-    override type Obj = RowLike
-    override type Result = TresqlResult[Obj]
-    def labels = result.columns.map(_.name).toVector
+  trait TresqlResultRowWriter extends app.AbstractRowWriter {
+    type Row = RowLike
+    type Result = TresqlResult[RowLike]
+    lazy val labels = result.columns.map(_.name).toVector
   }
+  class OdsTresqlResultRowWriter(override val result: TresqlResult[RowLike], zos: ZipOutputStream)
+    extends app.OdsRowWriter(zos) with TresqlResultRowWriter
+  class CsvTresqlResultRowWriter(override val result: TresqlResult[RowLike], writer: Writer)
+    extends app.CsvRowWriter(writer) with TresqlResultRowWriter
 
-  class OdsTresqlResultChunker(val result: TresqlResult[RowLike], zos: ZipOutputStream) extends OdsChunker(zos) with AbstractTresqlResultChunker
-  class CsvTresqlResultChunker(val result: TresqlResult[RowLike], writer: Writer) extends AbstractTresqlResultChunker {
-    def escapeValue(s: String) =
-      if (s == null) null
-      else if (s.contains(",") || s.contains("\"")) ("\"" + s.replaceAll("\"", "\"\"") + "\"")
-      else s
-
-    override def header() = {
-      writer.write(labels.map(escapeValue).mkString("",",","\n"))
-      writer.flush
-    }
-    override def row(r: Obj) = {
-      writer.write(r.rowToVector.map(v => csvValue(v)).mkString("",",","\n"))
-      writer.flush
-    }
-    override def footer() = {}
-
-    def csvValue(v: Any): String = Option(v).map{
-      case m: Map[String @unchecked, Any @unchecked] => ""
-      case l: Traversable[Any] => ""
-      //case d: DTO @unchecked => ""
-      case n: java.lang.Number => String.valueOf(n)
-      case t: Timestamp => xlsxDateTime(t)
-      case d: jDate => xsdDate(d)
-      case x => x.toString
-    }.map(escapeValue).getOrElse("")
-  }
-
-  import RowSource._
-  implicit val toResponseTresqlResultMarshaller: ToResponseMarshaller[TresqlResult[RowLike]] =
+  implicit val toResponseTresqlResultMarshaller: ToResponseMarshaller[TresqlResult[RowLike]] = {
+    import RowSource._
     Marshaller.oneOf(
-      rowZipWriterToResponseMarshaller(`application/vnd.oasis.opendocument.spreadsheet`, new OdsTresqlResultChunker(_, _)),
-      rowWriterToResponseMarshaller(ContentTypes.`text/plain(UTF-8)`, new CsvTresqlResultChunker(_, _))
+      rowZipWriterToResponseMarshaller(`application/vnd.oasis.opendocument.spreadsheet`, new OdsTresqlResultRowWriter(_, _)),
+      rowWriterToResponseMarshaller(ContentTypes.`text/plain(UTF-8)`, new CsvTresqlResultRowWriter(_, _))
     )
+  }
 }
 
 trait DtoMarshalling extends AppMarshalling with Loggable { this: AppServiceBase[_] with Execution =>
@@ -268,9 +191,6 @@ trait DtoMarshalling extends AppMarshalling with Loggable { this: AppServiceBase
   import AppMetadata._
 
   import app.qe
-  implicit class Wrapper(dto: app.Dto) {
-    def toMap = dto.toMap
-  }
 
   implicit def dtoUnmarshaller[T <: app.Dto](implicit jsonUnmarshaller: FromEntityUnmarshaller[JsValue], m: Manifest[T]): FromEntityUnmarshaller[T] =
     jsonUnmarshaller.map(js => m.runtimeClass.getConstructor().newInstance().asInstanceOf[T].fill(js.asJsObject()))
@@ -282,102 +202,39 @@ trait DtoMarshalling extends AppMarshalling with Loggable { this: AppServiceBase
       }
     )
 
-  trait AbstractDtoChunker extends AbstractChunker {
-    override type Obj = Wrapper
-    override type Result = Iterator[Wrapper] with AutoCloseable {def view: app.qe.ViewDef}
-    def labels = result.view.fields.map(f => Option(f.label).getOrElse(f.name))
-  }
-
-  class JsonDtoChunker(val result: AbstractDtoChunker#Result, writer: Writer) extends AbstractDtoChunker {
-    override def header() = writer write "["
-
-    var first = true
-    override def row(r: Wrapper): Unit = {
-      if(first) first = false else writer write ",\n"
-      writer write r.toMap.toJson.compactPrint
-    }
-
-    override def footer() = writer write "]\n"
-  }
-
-  class XlsXmlDtoChunker(val result: AbstractDtoChunker#Result, writer: Writer) extends AbstractDtoChunker {
-
-    import org.wabase.spreadsheet.xlsxml._
-
-    val headerStyle = Style("header", null, Font.BOLD)
-    val streamer = new XlsXmlStreamer(writer)
-
-    override def header() = {
-      streamer.startWorkbook(Seq(headerStyle))
-      streamer.startWorksheet("dati")
-      streamer.startTable
-      streamer.startRow
-      labels foreach { h => streamer.cell(h, headerStyle) }
-      streamer.endRow
-    }
-    override def row(r: Wrapper) = {
-      streamer.startRow
-      r.toMap.values foreach { v: Any => streamer.cell(v) }
-      streamer.endRow
-    }
-    override def footer() = {
-      streamer.endTable
-      streamer.endWorksheet
-      streamer.endWorkbook
+  trait DtoRowWriter extends app.AbstractRowWriter {
+    type Row = Map[String, Any]
+    type Result = Iterator[Row] with AutoCloseable
+    val alr: app.AppListResult[app.Dto]
+    override val labels = alr.view.fields.map(f => Option(f.label).getOrElse(f.name))
+    override val result = new Iterator[Row] with AutoCloseable {
+      override def hasNext: Boolean = alr.hasNext
+      override def next(): Map[String, Any] = alr.next().toMap
+      override def close(): Unit = alr.close()
     }
   }
-
-  class OdsDtoChunker(val result: AbstractDtoChunker#Result, zos: ZipOutputStream) extends OdsChunker(zos) with AbstractDtoChunker
-
-  implicit def dtoResultToWrapper(res: app.AppListResult[app.Dto]): AbstractDtoChunker#Result = new Iterator[Wrapper] with AutoCloseable {
-    override def hasNext = res.hasNext
-    override def next() = res.next()
-    def view = res.view
-    override def close = res.close
-  }
-
-  class CsvDtoChunker(val result: AbstractDtoChunker#Result, writer: Writer) extends AbstractDtoChunker {
-    def escapeValue(s: String) =
-      if (s == null) null
-      else if (s.contains(",") || s.contains("\"")) ("\"" + s.replaceAll("\"", "\"\"") + "\"")
-      else s
-
-    override def header() = {
-      writer.write(labels.map(escapeValue).mkString("",",","\n"))
-      writer.flush
-    }
-    override def row(r: Wrapper) = rowWriter(r.toMap)
-    override def footer() = {}
-
-    def rowWriter(m: Map[String, Any]) = {
-      writer.write(m.values.map(v => csvValue(v)).mkString("",",","\n"))
-      writer.flush
-    }
-
-    def csvValue(v: Any): String = Option(v).map{
-      case m: Map[String @unchecked, Any @unchecked] => ""
-      case l: Traversable[Any] => ""
-      case d: app.Dto @unchecked => ""
-      case n: java.lang.Number => String.valueOf(n)
-      case t: Timestamp => xlsxDateTime(t)
-      case d: jDate => xsdDate(d)
-      case x => x.toString
-    }.map(escapeValue).getOrElse("")
-  }
+  class OdsDtoRowWriter(override val alr: app.AppListResult[app.Dto], zos: ZipOutputStream)
+    extends app.OdsRowWriter(zos) with DtoRowWriter
+  class CsvDtoRowWriter(override val alr: app.AppListResult[app.Dto], writer: Writer)
+    extends app.CsvRowWriter(writer) with DtoRowWriter
+  class XlsXmlDtoRowWriter(override val alr: app.AppListResult[app.Dto], writer: Writer)
+    extends app.XlsXmlRowWriter(writer) with DtoRowWriter
 
   implicit val toResponseAppListResultMarshaller: ToResponseMarshaller[app.AppListResult[app.Dto]] = {
     import RowSource._
     def appListResMaxFs(r: app.AppListResult[app.Dto]) = resultMaxFileSize(r.view.name)
+
+    import qe.DtoJsonFormat
     Marshaller.oneOf(
-      rowWriterToResponseMarshaller(`application/json`, new JsonDtoChunker(_, _), appListResMaxFs),
-      rowWriterToResponseMarshaller(`application/vnd.ms-excel`, new XlsXmlDtoChunker(_, _), appListResMaxFs),
-      rowZipWriterToResponseMarshaller(`application/vnd.oasis.opendocument.spreadsheet`, new OdsDtoChunker(_, _), appListResMaxFs),
-      rowWriterToResponseMarshaller(ContentTypes.`text/plain(UTF-8)`, new CsvDtoChunker(_, _), appListResMaxFs)
+      rowWriterToResponseMarshaller(`application/json`, new app.JsonRowWriter(_, _), appListResMaxFs),
+      rowWriterToResponseMarshaller(`application/vnd.ms-excel`, new XlsXmlDtoRowWriter(_, _), appListResMaxFs),
+      rowZipWriterToResponseMarshaller(`application/vnd.oasis.opendocument.spreadsheet`, new OdsDtoRowWriter(_, _), appListResMaxFs),
+      rowWriterToResponseMarshaller(ContentTypes.`text/plain(UTF-8)`, new CsvDtoRowWriter(_, _), appListResMaxFs)
     )
   }
 
   implicit val dtoMarshaller: ToEntityMarshaller[app.Dto] = Marshaller.withFixedContentType(`application/json`) {
-    dto => HttpEntity.Strict(`application/json`, ByteString(new Wrapper(dto).toMap.toJson.compactPrint))
+    dto => HttpEntity.Strict(`application/json`, ByteString(dto.toMap.toJson.compactPrint))
   }
 }
 
