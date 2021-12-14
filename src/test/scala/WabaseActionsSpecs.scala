@@ -62,21 +62,21 @@ class WabaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Async
   protected def doAction[T](action: String,
                          view: String,
                          params: Map[String, Any],
-                         deferredTransformer: Iterator[T] => QuereaseResult = null) = {
+                         deferredTransformer: CloseableQuereaseResult => QuereaseResult = null) = {
     app.doWabaseAction(action, view, params)
       .run
       .map(_._2)
       .map {
-        case dr: DeferredQuereaseResult[T@unchecked] =>
+        case dr: DeferredQuereaseResult =>
           Option(deferredTransformer)
             .map(dr.flatMap)
-            .getOrElse(dr.flatMap(r => ListResult(r.toList)))
+            .getOrElse(dr.flatMap {
+              case TresqlResult(r) => ListResult(r.toListOfMaps)
+              case IteratorResult(r) => ListResult(r.map(_.toMap(app.qe)).map(removeIds).toList)
+            })
         case r => r
       }
   }
-
-  protected def iteratorResultTransformer(i: Iterator[AppQuerease#DTO]) =
-    ListResult(i.map(_.toMap(app.qe)).map(removeIds).toList)
 
   behavior of "purchase"
 
@@ -161,7 +161,6 @@ class WabaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Async
       doAction("list",
         "purchase",
         Map("sort" -> "id"),
-        iteratorResultTransformer
       ).map {
         case ListResult(lr)  =>
           lr should be (
@@ -221,7 +220,6 @@ class WabaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Async
       doAction("list",
         "person_health_and_shop",
         Map(),
-        iteratorResultTransformer
       ).map {
         case ListResult(lr)  =>
           lr should be (
