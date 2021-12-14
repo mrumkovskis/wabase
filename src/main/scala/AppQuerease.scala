@@ -29,7 +29,7 @@ case class PojoResult(result: AppQuerease#DTO) extends QuereaseResult
 // TODO after decoupling QereaseIo from Querease this class should be refactored to ListResult[X]
 case class ListResult(result: List[Any]) extends QuereaseResult
 // TODO after decoupling QereaseIo from Querease this class should be refactored to IteratorResult[X]
-case class IteratorResult(result: Iterator[AppQuerease#DTO] with AutoCloseable) extends QuereaseResult
+case class IteratorResult(result: AppQuerease#QuereaseIteratorResult[AppQuerease#DTO]) extends QuereaseResult
 // TODO after decoupling QereaseIo from Querease this class should be refactored to OptionResult[X]
 case class OptionResult(result: Option[AppQuerease#DTO]) extends QuereaseResult
 case class NumberResult(id: Long) extends QuereaseResult
@@ -80,13 +80,28 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
   override def result[B <: DTO: Manifest](params: Map[String, Any],
       offset: Int = 0, limit: Int = 0, orderBy: String = null,
       extraFilter: String = null, extraParams: Map[String, Any] = Map())(
-      implicit resources: Resources): CloseableResult[B] = {
+      implicit resources: Resources): QuereaseIteratorResult[B] = {
     val v = viewDef[B]
     val extraFilterAndAuth =
       Option((Option(extraFilter).toSeq ++ v.auth.forList).map(a => s"($a)").mkString(" & "))
         .filterNot(_.isEmpty).orNull
-    super.result(params, offset, limit, orderBy, extraFilterAndAuth, extraParams)
+    // TODO call super and move rows below to Querease later
+    val (q, p) = queryStringAndParams(viewDef[B], params,
+      offset, limit, orderBy, extraFilterAndAuth, extraParams)
+    result(q, p)
   }
+  // TODO move this method to Querease later
+  override def result[B <: DTO: Manifest](query: String, params: Map[String, Any])(
+    implicit resources: Resources): QuereaseIteratorResult[B] =
+    new QuereaseIteratorResult[B] {
+      private val result = Query(query, params)
+      override def hasNext = result.hasNext
+      override def next() = convertRow[B](result.next())
+      override def close = result.close
+      override def view: ViewDef = viewDef[B]
+    }
+
+
   override protected def countAll_(viewDef: ViewDef, params: Map[String, Any],
       extraFilter: String = null, extraParams: Map[String, Any] = Map())(implicit resources: Resources): Int = {
     val extraFilterAndAuth =
@@ -201,6 +216,10 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       }
     }
     def value[A](a: => A): QuereaseAction[A] = (_: ExecutionContext) => Future.successful(a)
+  }
+
+  trait QuereaseIteratorResult[+B <: DTO] extends Iterator[B] with AutoCloseable {
+    def view: ViewDef
   }
 
   case class ActionContext(name: String, env: Map[String, Any], view: Option[ViewDef])
@@ -437,7 +456,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case r: Result[_] => TresqlResult(r)
       case l: Long => NumberResult(l)
       case s: String => CodeResult(s)
-      case r: CloseableResult[DTO]@unchecked => IteratorResult(r)
+      case r: QuereaseIteratorResult[DTO]@unchecked => IteratorResult(r)
       case d: DTO@unchecked => PojoResult(d)
       case o: Option[DTO]@unchecked => OptionResult(o)
       case x => sys.error(s"Unrecognized result type: ${x.getClass}, value: $x")
