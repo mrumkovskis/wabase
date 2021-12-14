@@ -288,11 +288,11 @@ object RowSource {
   }
   import scala.language.implicitConversions
   /** Creates {{{RowWriteSource}}} and sets async boundary around. */
-  implicit def createRowWriteSource(createRowWriter: Writer => RowWriter) =
+  implicit def createRowWriteSource(createRowWriter: Writer => RowWriter): Source[ByteString, _] =
     Source.fromGraph(new RowWriteSource(createRowWriter)).async
 
   /** Creates {{{RowWriteZipSource}}} and sets async boundary around. */
-  implicit def createRowWriteZipSource(createRowWriter: ZipOutputStream => RowWriter) =
+  implicit def createRowWriteZipSource(createRowWriter: ZipOutputStream => RowWriter): Source[ByteString, _] =
     Source.fromGraph(new RowWriteZipSource(createRowWriter)).async
 
   /** Runs {{{src}}} via {{{FileBufferedFlow}}} of {{{bufferSize}}} with {{{maxFileSize}}} to {{{ChunkerSink}}} */
