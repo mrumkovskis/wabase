@@ -176,13 +176,21 @@ trait TresqlResultMarshalling extends AppMarshalling { this: AppServiceBase[_] w
   class CsvTresqlResultRowWriter(override val result: TresqlResult[RowLike], writer: Writer)
     extends app.CsvRowWriter(writer) with TresqlResultRowWriter
 
-  implicit val toResponseTresqlResultMarshaller: ToResponseMarshaller[TresqlResult[RowLike]] = {
+  def tresqlResultWithCleanupMarshaller(f: Option[Throwable] => Unit): ToResponseMarshaller[TresqlResult[RowLike]] = {
     import RowSource._
     Marshaller.oneOf(
-      rowZipWriterToResponseMarshaller(`application/vnd.oasis.opendocument.spreadsheet`, new OdsTresqlResultRowWriter(_, _)),
-      rowWriterToResponseMarshaller(ContentTypes.`text/plain(UTF-8)`, new CsvTresqlResultRowWriter(_, _))
+      rowZipWriterToResponseMarshaller(
+        `application/vnd.oasis.opendocument.spreadsheet`,
+        new OdsTresqlResultRowWriter(_, _),
+        cleanupFun = f),
+      rowWriterToResponseMarshaller(
+        ContentTypes.`text/plain(UTF-8)`,
+        new CsvTresqlResultRowWriter(_, _),
+        cleanupFun = f)
     )
   }
+  implicit val toResponseTresqlResultMarshaller: ToResponseMarshaller[TresqlResult[RowLike]] =
+    tresqlResultWithCleanupMarshaller(null)
 }
 
 trait DtoMarshalling extends AppMarshalling with Loggable { this: AppServiceBase[_] with Execution =>
@@ -220,10 +228,9 @@ trait DtoMarshalling extends AppMarshalling with Loggable { this: AppServiceBase
   class XlsXmlDtoRowWriter(override val dtoResult: qe.QuereaseIteratorResult[app.Dto], writer: Writer)
     extends app.XlsXmlRowWriter(writer) with DtoRowWriter
 
-  implicit val toResponseAppListResultMarshaller: ToResponseMarshaller[qe.QuereaseIteratorResult[app.Dto]] = {
+  def quereaseIteratorWithCleanupMarshaller(f: Option[Throwable] => Unit): ToResponseMarshaller[qe.QuereaseIteratorResult[app.Dto]] = {
     import RowSource._
     def appListResMaxFs(r: qe.QuereaseIteratorResult[app.Dto]) = resultMaxFileSize(r.view.name)
-
     import qe.DtoJsonFormat
     Marshaller.oneOf(
       rowWriterToResponseMarshaller(`application/json`, new app.JsonRowWriter(_, _), appListResMaxFs),
@@ -232,6 +239,9 @@ trait DtoMarshalling extends AppMarshalling with Loggable { this: AppServiceBase
       rowWriterToResponseMarshaller(ContentTypes.`text/plain(UTF-8)`, new CsvDtoRowWriter(_, _), appListResMaxFs)
     )
   }
+
+  implicit val toResponseQuereaseIteratorMarshaller: ToResponseMarshaller[qe.QuereaseIteratorResult[app.Dto]] =
+    quereaseIteratorWithCleanupMarshaller(null)
 
   implicit val dtoMarshaller: ToEntityMarshaller[app.Dto] = Marshaller.withFixedContentType(`application/json`) {
     dto => HttpEntity.Strict(`application/json`, ByteString(dto.toMap.toJson.compactPrint))
@@ -269,8 +279,15 @@ trait QuereaseResultMarshalling { this:
     Marshaller.combined(rr => (StatusCodes.SeeOther, Seq(Location(rr.uri))))
   implicit val toEntityQuereaseNoResultMarshaller:          ToEntityMarshaller  [NoResult.type]  =
     Marshaller.combined(_ => "")
+  implicit val toResponseQuereaseResultWithCleanupMarshaller: ToResponseMarshaller[QuereaseResultWithCleanup] = // TODO code formatting?
+    Marshaller { implicit ec => {
+      case QuereaseResultWithCleanup(tr: TresqlResult, f) =>
+        tresqlResultWithCleanupMarshaller(f)(tr.result)
+      case QuereaseResultWithCleanup(ir: IteratorResult, f) =>
+        quereaseIteratorWithCleanupMarshaller(f)(ir.result.asInstanceOf[qe.QuereaseIteratorResult[app.Dto]])
+    }}
 
-  implicit val toResponseQuereaseResultMarshaller: ToResponseMarshaller[QuereaseResult] =
+  implicit val toResponseQuereaseResultMarshaller: ToResponseMarshaller[QuereaseResult] = {
     Marshaller { implicit ec => {
       case tq: TresqlResult   => (toResponseQuereaseTresqlResultMarshaller:   ToResponseMarshaller[TresqlResult]  )(tq)
       case mp: MapResult      => (toEntityQuereaseMapResultMarshaller:        ToResponseMarshaller[MapResult]     )(mp)
@@ -283,8 +300,14 @@ trait QuereaseResultMarshalling { this:
       case id: IdResult       => (toEntityQuereaseIdResultMarshaller:         ToResponseMarshaller[IdResult]      )(id)
       case rd: RedirectResult => (toResponseQuereaseRedirectResultMarshaller: ToResponseMarshaller[RedirectResult])(rd)
       case no: NoResult.type  => (toEntityQuereaseNoResultMarshaller:         ToResponseMarshaller[NoResult.type] )(no)
+      case cr: QuereaseResultWithCleanup => toResponseQuereaseResultWithCleanupMarshaller(cr) // TODO code formatting?
       case xx                 => sys.error(s"QuereaseResult marshaller for class ${xx.getClass.getName} not implemented")
     }}
+  }
+
+  implicit def toResponseWabaseResultMarshaller(implicit ec: ExecutionContext): ToResponseMarshaller[app.ActionHandlerResult] = {
+    Marshaller.combined(_.run.map(_._2))
+  }
 }
 
 object MarshallingConfig extends AppBase.AppConfig with Loggable {

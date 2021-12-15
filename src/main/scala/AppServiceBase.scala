@@ -69,8 +69,7 @@ trait AppServiceBase[User]
   def getByIdAction(viewName: String, id: Long)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
       if (isQuereaseActionDefined(viewName, "get")) {
-        sys.error("querease action not implemented yet")
-//        complete(app.doWabaseAction(Action.Get, viewName, filterPars(params) + ("id" -> id)))
+        complete(app.doWabaseAction(Action.Get, viewName, filterPars(params) + ("id" -> id)))
       } else {
         complete(app.get(viewName, id, filterPars(params)))
       }
@@ -80,8 +79,7 @@ trait AppServiceBase[User]
     implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
       if (isQuereaseActionDefined(viewName, "get")) {
-        sys.error("querease action not implemented yet")
-//        complete(app.doWabaseAction(Action.Get, viewName, filterPars(params) + (name -> value)))
+        complete(app.doWabaseAction(Action.Get, viewName, filterPars(params) + (name -> value)))
       } else {
         complete(app.get(viewName, -1, filterPars(params) + (name -> value)))
       }
@@ -90,8 +88,7 @@ trait AppServiceBase[User]
   def createAction(viewName: String)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
       if (isQuereaseActionDefined(viewName, "create")) {
-        sys.error("querease action not implemented yet")
-//        complete(app.doWabaseAction(Action.Create, viewName, filterPars(params)))
+        complete(app.doWabaseAction(Action.Create, viewName, filterPars(params)))
       } else {
         complete(app.create(viewName, filterPars(params)))
       }
@@ -124,14 +121,13 @@ trait AppServiceBase[User]
         entity(as[JsValue]) { data =>
           try {
             if (isQuereaseActionDefined(viewName, "save")) {
-              sys.error("querease action not implemented yet")
-//              complete {
-//                val entityAsMap = data.asInstanceOf[JsObject].convertTo[Map[String, Any]]
-//                app.doWabaseAction(Action.Save, viewName, entityAsMap ++ filterPars(params) + ("id" -> id)).map {
-//                  case IdResult(id) => RedirectResult(requestUri.path.toString)
-//                  case x => x
-//                }
-//              }
+              complete {
+                val entityAsMap = data.asInstanceOf[JsObject].convertTo[Map[String, Any]]
+                app.doWabaseAction(Action.Save, viewName, entityAsMap ++ filterPars(params) + ("id" -> id)).map {
+                  case (ac, _: IdResult) => (ac, RedirectResult(requestUri.path.toString))
+                  case x => x
+                }
+              }
             } else {
               app.save(viewName, data.asInstanceOf[JsObject], filterPars(params))
               redirect(Uri(path = requestUri.path), StatusCodes.SeeOther)
@@ -148,9 +144,8 @@ trait AppServiceBase[User]
       val impliedIdForGetOpt = app.impliedIdForGetOverList(viewName)
       if (impliedIdForGetOpt.isDefined)
         if (isQuereaseActionDefined(viewName, "get")) {
-          sys.error("querease action not implemented yet")
-//          val keyMap = impliedIdForGetOpt.map(id => Map("id" -> id)) getOrElse Map.empty
-//          complete(app.doWabaseAction(Action.Get, viewName, keyMap ++ filterPars(params)))
+          val keyMap = impliedIdForGetOpt.map(id => Map("id" -> id)) getOrElse Map.empty
+          complete(app.doWabaseAction(Action.Get, viewName, keyMap ++ filterPars(params)))
         } else {
           complete(app.get(viewName, impliedIdForGetOpt.get, filterPars(params)))
         }
@@ -161,19 +156,18 @@ trait AppServiceBase[User]
   protected def listAction(viewName: String, params: Map[String, List[String]])(
     implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     if (isQuereaseActionDefined(viewName, "list")) {
-      sys.error("querease action not implemented yet")
-//      complete {
-//        app.doWabaseAction(
-//          Action.List,
-//          viewName,
-//          filterPars(params) ++
-//            params.filter { case (k, v) =>
-//              k == "offset" ||
-//              k == "limit"  ||
-//              k == "sort"
-//            }.map { case (k, v) => (k, v.headOption.orNull) },
-//        )
-//      }
+      complete {
+        app.doWabaseAction(
+          Action.List,
+          viewName,
+          filterPars(params) ++
+            params.filter { case (k, v) =>
+              k == "offset" ||
+              k == "limit"  ||
+              k == "sort"
+            }.map { case (k, v) => (k, v.headOption.orNull) },
+        )
+      }
     }
     else complete {
       app.list(
@@ -190,14 +184,13 @@ trait AppServiceBase[User]
         entity(as[JsValue]) { data =>
           try {
             if (isQuereaseActionDefined(viewName, "save")) {
-              sys.error("querease action not implemented yet")
-//              complete {
-//                val entityAsMap = data.asInstanceOf[JsObject].convertTo[Map[String, Any]]
-//                app.doWabaseAction(Action.Save, viewName, entityAsMap ++ filterPars(params)).map {
-//                  case IdResult(id) => RedirectResult((requestUri.path / id.toString).toString)
-//                  case x => x
-//                }
-//              }
+              complete {
+                val entityAsMap = data.asInstanceOf[JsObject].convertTo[Map[String, Any]]
+                app.doWabaseAction(Action.Save, viewName, entityAsMap ++ filterPars(params)).map {
+                  case (ac, IdResult(id)) => (ac, RedirectResult((requestUri.path / id.toString).toString))
+                  case x => x
+                }
+              }
             } else {
               val id = app.save(viewName, data.asInstanceOf[JsObject], filterPars(params))
               redirect(Uri(path = requestUri.path / id.toString), StatusCodes.SeeOther)
@@ -212,8 +205,7 @@ trait AppServiceBase[User]
   def countAction(viewName: String)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
       if (isQuereaseActionDefined(viewName, "count")) {
-        sys.error("querease action not implemented yet")
-//        complete(app.doWabaseAction(Action.Count, viewName, filterPars(params)))
+        complete(app.doWabaseAction(Action.Count, viewName, filterPars(params)))
       } else {
         complete(app.count(viewName, filterPars(params)).toString)
       }
