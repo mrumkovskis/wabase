@@ -236,7 +236,7 @@ trait DtoMarshalling extends AppMarshalling with Loggable { this: AppServiceBase
       rowWriterToResponseMarshaller(`application/json`, new app.JsonRowWriter(_, _), appListResMaxFs),
       rowWriterToResponseMarshaller(`application/vnd.ms-excel`, new XlsXmlDtoRowWriter(_, _), appListResMaxFs),
       rowZipWriterToResponseMarshaller(`application/vnd.oasis.opendocument.spreadsheet`, new OdsDtoRowWriter(_, _), appListResMaxFs),
-      rowWriterToResponseMarshaller(ContentTypes.`text/plain(UTF-8)`, new CsvDtoRowWriter(_, _), appListResMaxFs)
+      rowWriterToResponseMarshaller(ContentTypes.`text/csv(UTF-8)`, new CsvDtoRowWriter(_, _), appListResMaxFs)
     )
   }
 
