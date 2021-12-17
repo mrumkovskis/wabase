@@ -305,8 +305,8 @@ trait QuereaseResultMarshalling { this:
     }}
   }
 
-  implicit def toResponseWabaseResultMarshaller(implicit ec: ExecutionContext): ToResponseMarshaller[app.ActionHandlerResult] = {
-    Marshaller.combined(_.run.map(_._2))
+  implicit def toResponseWabaseResultMarshaller(implicit ec: ExecutionContext): ToResponseMarshaller[Future[app.WabaseResult]] = {
+    Marshaller.combined(_.map(_.result))
   }
 }
 

@@ -6,7 +6,7 @@ import org.wabase.AppMetadata.{Action, AugmentedAppFieldDef, AugmentedAppViewDef
 import org.wabase.AppMetadata.Action.{LimitKey, OffsetKey, OrderKey}
 
 import scala.collection.immutable.Map
-import scala.concurrent.ExecutionContext
+import scala.concurrent.{ExecutionContext, Future}
 import scala.language.{existentials, implicitConversions}
 import scala.util.Success
 
@@ -23,7 +23,7 @@ trait WabaseApp[User] {
 
   val DefaultCp: PoolName = DEFAULT_CP
 
-  type ActionHandlerResult = qe.QuereaseAction[(ActionContext, QuereaseResult)]
+  type ActionHandlerResult = qe.QuereaseAction[WabaseResult]
   type ActionHandler       = ActionContext => ActionHandlerResult
 
   case class ActionContext(
@@ -37,6 +37,8 @@ trait WabaseApp[User] {
     val timeout:  QueryTimeout,
     val ec:       ExecutionContext,
   )
+
+  case class WabaseResult(ctx: ActionContext, result: QuereaseResult)
 
   protected def getActionHandler(context: ActionContext): ActionHandler = {
     import context._
@@ -64,21 +66,22 @@ trait WabaseApp[User] {
     state:    ApplicationState,
     timeout:  QueryTimeout,
     ec:       ExecutionContext,
-  ): ActionHandlerResult = {
+  ): Future[WabaseResult] = {
     doWabaseAction(ActionContext(actionName, viewName, values))
   }
 
-  def doWabaseAction(context: ActionContext): ActionHandlerResult =
+  def doWabaseAction(context: ActionContext): Future[WabaseResult] =
     doWabaseAction(getActionHandler(context), context)
 
   def doWabaseAction(
     action:   ActionHandler,
     context:  ActionContext,
-  ): ActionHandlerResult = {
+  ): Future[WabaseResult] = {
     val actionContext = beforeWabaseAction(context)
     import context.ec
     action(actionContext)
-      .andThen { case Success((ctx, res)) => afterWabaseAction(ctx, res) }
+      .andThen { case Success(WabaseResult(ctx, res)) => afterWabaseAction(ctx, res) }
+      .run
   }
 
   def beforeWabaseAction(context: ActionContext): ActionContext = {
@@ -95,7 +98,7 @@ trait WabaseApp[User] {
   def simpleAction(context: ActionContext): ActionHandlerResult = {
     import context._
     qe.QuereaseAction(viewName, actionName, values, Map())(initViewResources, closeResources)
-      .map(context -> _)
+      .map(WabaseResult(context, _))
   }
 
   def list(context: ActionContext): ActionHandlerResult = {
@@ -135,7 +138,7 @@ trait WabaseApp[User] {
         validateFields(viewName, saveable)
         validate(viewName, saveable)(state.locale)
         qe.QuereaseAction(viewName, actionName, saveable, Map.empty)(initViewResources, closeResources)
-          .map(saveableContext -> _)
+          .map(WabaseResult(saveableContext, _))
           .recover { case ex => friendlyConstraintErrorMessage(viewDef, throw ex)(state.locale) }
       }
       qr match {
@@ -158,7 +161,7 @@ trait WabaseApp[User] {
       def delete(oldValue: Map[String, Any]) = {
         val richContext = context.copy(oldValue = oldValue)
         qe.QuereaseAction(viewName, actionName, values, Map.empty)(initViewResources, closeResources)
-          .map(richContext -> _)
+          .map(WabaseResult(richContext, _))
           .recover { case ex => friendlyConstraintErrorMessage(throw ex)(state.locale) }
       }
       qr match {

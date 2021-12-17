@@ -64,8 +64,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Async
                          params: Map[String, Any],
                          deferredTransformer: CloseableQuereaseResult => QuereaseResult = null) = {
     app.doWabaseAction(action, view, params)
-      .run
-      .map(_._2)
+      .map(_.result)
       .map {
         case dr: QuereaseResultWithCleanup =>
           Option(deferredTransformer)

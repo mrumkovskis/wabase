@@ -124,7 +124,8 @@ trait AppServiceBase[User]
               complete {
                 val entityAsMap = data.asInstanceOf[JsObject].convertTo[Map[String, Any]]
                 app.doWabaseAction(Action.Save, viewName, entityAsMap ++ filterPars(params) + ("id" -> id)).map {
-                  case (ac, _: IdResult) => (ac, RedirectResult(requestUri.path.toString))
+                  case r @ app.WabaseResult(_, _: IdResult) =>
+                    r.copy(result = RedirectResult(requestUri.path.toString))
                   case x => x
                 }
               }
@@ -187,7 +188,8 @@ trait AppServiceBase[User]
               complete {
                 val entityAsMap = data.asInstanceOf[JsObject].convertTo[Map[String, Any]]
                 app.doWabaseAction(Action.Save, viewName, entityAsMap ++ filterPars(params)).map {
-                  case (ac, IdResult(id)) => (ac, RedirectResult((requestUri.path / id.toString).toString))
+                  case r @ app.WabaseResult(_, IdResult(id)) =>
+                    r.copy(result = RedirectResult((requestUri.path / id.toString).toString))
                   case x => x
                 }
               }
