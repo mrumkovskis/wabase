@@ -129,7 +129,7 @@ trait AppMarshalling { this: AppServiceBase[_] with Execution =>
 
   protected def source(src: Source[ByteString, _],
                        maxFileSize: Long,
-                       cleanupFun: Option[Throwable] => Unit): Future[SourceValue] = {
+                       cleanupFun: Option[Throwable] => Unit): Future[SerializedResult] = {
     RowSource.value(dbBufferSize, maxFileSize, src, cleanupFun)
   }
 
@@ -138,8 +138,8 @@ trait AppMarshalling { this: AppServiceBase[_] with Execution =>
                              maxFileSize: Long = dbBufferSize,
                              cleanupFun: Option[Throwable] => Unit): Future[HttpResponse] = {
     source(src, maxFileSize, cleanupFun).map {
-      case CompleteSourceValue(data) => HttpResponse(entity = HttpEntity.Strict(contentType, data))
-      case IncompleteSourceValue(sourceData) => HttpResponse(entity = HttpEntity.Chunked.fromData(contentType, sourceData))
+      case CompleteResult(data) => HttpResponse(entity = HttpEntity.Strict(contentType, data))
+      case IncompleteResultSource(sourceData) => HttpResponse(entity = HttpEntity.Chunked.fromData(contentType, sourceData))
     }.recover { case InsufficientStorageException(msg) =>
       HttpResponse(status = StatusCodes.InsufficientStorage,
         entity = HttpEntity.Strict(ContentTypes.`text/plain(UTF-8)`, ByteString(msg)))

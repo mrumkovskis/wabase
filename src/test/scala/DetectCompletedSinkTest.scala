@@ -6,7 +6,7 @@ import org.scalatest.flatspec.AsyncFlatSpec
 
 import scala.concurrent.Future
 
-class ChunkerSinkTest extends AsyncFlatSpec {
+class DetectCompletedSinkTest extends AsyncFlatSpec {
   import scala.language.postfixOps
 
   import StreamsEnv._
@@ -18,40 +18,40 @@ class ChunkerSinkTest extends AsyncFlatSpec {
     0 to n map(b => ByteString(b.toByte)) reduce(_ ++ _)
 
   private def incompleteTest(n: Int) =
-    validateIncomplete(List(src(n).runWith(new ChunkerSink).map(_ -> res(n))))
+    validateIncomplete(List(src(n).runWith(new DetectCompletedSink).map(_ -> res(n))))
 
-  private def validateIncomplete(res: List[Future[(SourceValue, ByteString)]]) =
+  private def validateIncomplete(res: List[Future[(SerializedResult, ByteString)]]) =
     Future.foldLeft {
       res.map(_.flatMap {
-        case (IncompleteSourceValue(s), x) => s.runReduce(_ ++ _).map(_ -> x)
-        case (CompleteSourceValue(s), x) => Future.successful(s -> x)
+        case (IncompleteResultSource(s), x) => s.runReduce(_ ++ _).map(_ -> x)
+        case (CompleteResult(s), x) => Future.successful(s -> x)
       })
     } (List[(Any, ByteString)]()) { (l, r) => r :: l }
     .map(_.unzip)
     .map { case (a, b) => assert (a == b) }
 
-  it should "return CompleteSourceValue" in {
+  it should "return CompleteResult" in {
     val n = 0
-    src(n).runWith(new ChunkerSink)
+    src(n).runWith(new DetectCompletedSink)
       .map {
-        case CompleteSourceValue(v) => assert(v == res(n))
-        case IncompleteSourceValue(s) => assert(false)
+        case CompleteResult(v) => assert(v == res(n))
+        case IncompleteResultSource(s) => assert(false)
       }
   }
-  it should "return InCompleteSourceValue of 2 bytes" in {
+  it should "return IncompleteResultSource of 2 bytes" in {
     incompleteTest(1)
   }
-  it should "return InCompleteSourceValue of 3 bytes" in {
+  it should "return IncompleteResultSource of 3 bytes" in {
     incompleteTest(2)
   }
-  it should "return CompleteSourceValue from RowSource" in {
+  it should "return CompleteResult from RowSource" in {
     val n = 4
     RowSource.value(n + 2, 0, src(n)).map {
-      case CompleteSourceValue(v) => assert(v == res(n))
-      case IncompleteSourceValue(s) => assert(false)
+      case CompleteResult(v) => assert(v == res(n))
+      case IncompleteResultSource(s) => assert(false)
     }
   }
-  it should "return IncompleteSourceValue(s) from RowSource" in {
+  it should "return IncompleteResultSource(s) from RowSource" in {
     val (a, b) = (5, 100)
     val r = (a to b map (n => RowSource.value(a, b, src(n)).map(_ -> res(n)))).toList
     validateIncomplete(r)

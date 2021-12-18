@@ -121,23 +121,23 @@ class FileBufferedFlow private (bufferSize: Int, maxFileSize: Long, outBufferSiz
 
 import scala.util.{Success, Failure}
 
-sealed trait SourceValue
+sealed trait SerializedResult
 /** Value of this class can be materialized to {{{HttpEntity.Strict}}} */
-case class CompleteSourceValue(result: ByteString) extends SourceValue
+case class CompleteResult(result: ByteString) extends SerializedResult
 /** Value of this class can be materialized to {{{HttpEntity.Chunked}}} */
-case class IncompleteSourceValue[Mat](result: Source[ByteString, Mat]) extends SourceValue
+case class IncompleteResultSource[Mat](result: Source[ByteString, Mat]) extends SerializedResult
 
 /**
-  * Sink materializes to {{{CompleteSourceValue}}} if one and only one element passes from upstream before it is finished.
-  * Otherwise produces {{{IncompleteSourceValue}}}. Running of {{{IncompleteSourceValue}}} source will consume
-  * this {{{ChunkerSink}}} upstream.
+  * Sink materializes to {{{CompleteResult}}} if one and only one element passes from upstream before it is finished.
+  * Otherwise produces {{{IncompleteResultSource}}}. Running of {{{IncompleteResultSource}}} source will consume
+  * this {{{CheckCompletedSink}}} upstream.
   * */
-class ChunkerSink(cleanupFun: Option[Throwable] => Unit = null)(implicit ec: scala.concurrent.ExecutionContext)
-  extends GraphStageWithMaterializedValue[SinkShape[ByteString], Future[SourceValue]] {
+class DetectCompletedSink(cleanupFun: Option[Throwable] => Unit = null)(implicit ec: scala.concurrent.ExecutionContext)
+  extends GraphStageWithMaterializedValue[SinkShape[ByteString], Future[SerializedResult]] {
   val in = Inlet[ByteString]("in")
   override val shape = SinkShape(in)
   override def createLogicAndMaterializedValue(attrs: Attributes) = {
-    val result = Promise[SourceValue]()
+    val result = Promise[SerializedResult]()
     new GraphStageLogic(shape) {
       private var flowError: Throwable = _
       private var byteString: ByteString = _
@@ -161,7 +161,7 @@ class ChunkerSink(cleanupFun: Option[Throwable] => Unit = null)(implicit ec: sca
             setHandler(in, streamingHandler(byteString ++ bs))
           }
         }
-        override def onUpstreamFinish() = result.success(CompleteSourceValue(byteString))
+        override def onUpstreamFinish() = result.success(CompleteResult(byteString))
         override def onUpstreamFailure(ex: Throwable) = {
           flowError = ex
           result.failure(ex)
@@ -195,7 +195,7 @@ class ChunkerSink(cleanupFun: Option[Throwable] => Unit = null)(implicit ec: sca
             })
           }
         })
-        result.success(IncompleteSourceValue(source))
+        result.success(IncompleteResultSource(source))
         override def onPush() = {
           pushCallback.invoke(grab(in))
         }

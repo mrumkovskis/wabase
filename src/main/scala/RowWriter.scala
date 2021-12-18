@@ -211,14 +211,14 @@ object RowSource {
   implicit def createRowWriteZipSource(createRowWriter: ZipOutputStream => RowWriter): Source[ByteString, _] =
     Source.fromGraph(new RowWriteZipSource(createRowWriter)).async
 
-  /** Runs {{{src}}} via {{{FileBufferedFlow}}} of {{{bufferSize}}} with {{{maxFileSize}}} to {{{ChunkerSink}}} */
+  /** Runs {{{src}}} via {{{FileBufferedFlow}}} of {{{bufferSize}}} with {{{maxFileSize}}} to {{{CheckCompletedSink}}} */
   def value(bufferSize: Int,
             maxFileSize: Long,
             src: Source[ByteString, _],
             cleanupFun: Option[Throwable] => Unit = null)(implicit ec: ExecutionContext,
-                                                          mat: Materializer): Future[SourceValue] = {
+                                                          mat: Materializer): Future[SerializedResult] = {
     src
       .via(FileBufferedFlow.create(bufferSize, maxFileSize))
-      .runWith(new ChunkerSink(cleanupFun))
+      .runWith(new DetectCompletedSink(cleanupFun))
   }
 }
