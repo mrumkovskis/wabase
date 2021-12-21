@@ -6,6 +6,7 @@ import akka.stream.{Attributes, Outlet, SourceShape}
 import akka.util.{ByteString, ByteStringBuilder}
 import io.bullet.borer._
 import org.tresql.Result
+import org.tresql.RowLike
 
 import java.io.OutputStream
 import java.lang.{Boolean => JBoolean, Byte => JByte, Double => JDouble, Float => JFloat, Long => JLong, Short => JShort}
@@ -59,17 +60,30 @@ object SerializerStreams {
     override def writeEndOfInput(): Unit = { if (wrap) w.writeBreak() }
   }
 
+  trait ValuesAccessor {
+    /** Returns values iterator or null, if item is not values container (is not row) */
+    def values(item: Any): Iterator[_]
+  }
+
+  object TresqlResultValuesAccessor extends ValuesAccessor {
+    override def values(item: Any): Iterator[_] = item match {
+      case row: RowLike => row.values.iterator
+      case _ => null
+    }
+  }
+
   /** Tresql result serialization Source - serializes as nested arrays, column names are not serialized */
   class SerializedArraysTresqlResultSource(
-    createEncodable: () => Result[_],
+    createEncodable: () => Iterator[_],
     createEncoder: OutputStream => ArrayTreeEncoder,
+    valuesAccessor: ValuesAccessor,
     bufferSizeHint: Int,
   ) extends GraphStage[SourceShape[ByteString]] {
     val out = Outlet[ByteString]("SerializedArraysTresqlResultSource")
     override val shape: SourceShape[ByteString] = SourceShape(out)
     override def createLogic(attrs: Attributes): GraphStageLogic = new GraphStageLogic(shape) {
       var buf:        ByteStringBuilder = _
-      var encodable:  Result[_]         = _
+      var encodable:  Iterator[_]       = _
       var encoder:    ArrayTreeEncoder  = _
       var iterators:  List[Iterator[_]] = _
       override def preStart(): Unit = {
@@ -81,38 +95,39 @@ object SerializerStreams {
       }
       def encodeNext(): Unit = {
         if (iterators == null) {
-          iterators = List(encodable: Iterator[_])
+          iterators = encodable :: Nil
           encoder.writeStartOfInput()
-        } else if (iterators.nonEmpty) iterators.head match {
-          case rows: Result[_] =>
-            if (rows.hasNext) {
-              val cols = rows.next().values
-              iterators = cols.iterator :: iterators
+        } else if (iterators.nonEmpty) {
+          val iterator = iterators.head
+          if (iterator.hasNext) iterator.next() match {
+            case row if row == iterator => // hack for tresql result
+              iterators = valuesAccessor.values(row) :: iterators
               encoder.writeArrayStart()
-            } else {
-              iterators = iterators.tail
-              if (rows == encodable)
-                encoder.writeEndOfInput()
-              else
-                encoder.writeArrayBreak()
-            }
-          case cols =>
-            if (cols.hasNext) {
-              cols.next() match {
-                case children: Iterator[_] =>
-                  iterators = children :: iterators
+            case children: Iterator[_] =>
+              iterators = children :: iterators
+              encoder.writeArrayStart()
+            // TODO blob / clob etc support
+            case item =>
+              valuesAccessor.values(item) match {
+                case null =>
+                  encoder.writeValue(item)
+                case values =>
+                  iterators = values :: iterators
                   encoder.writeArrayStart()
-                case value =>
-                  // TODO blob / clob etc support
-                  encoder.writeValue(value)
               }
-            } else {
-              iterators = iterators.tail
+          } else {
+            iterators = iterators.tail
+            if (iterators.nonEmpty)
               encoder.writeArrayBreak()
-            }
+            else
+              encoder.writeEndOfInput()
+          }
         }
       }
-      override def postStop(): Unit = encodable.close()
+      override def postStop(): Unit = encodable match {
+        case closeable: AutoCloseable => closeable.close()
+        case _ =>
+      }
       setHandler(out, new OutHandler {
         override def onPull: Unit = {
           do encodeNext() while (iterators.nonEmpty && buf.length < bufferSizeHint)
@@ -139,6 +154,7 @@ object SerializerStreams {
         case _: Json.type => Json.writer(Output.ToOutputStreamProvider(outputStream, 0, allowBufferCaching = true))
         case _: Cbor.type => Cbor.writer(Output.ToOutputStreamProvider(outputStream, 0, allowBufferCaching = true))
       }),
+      TresqlResultValuesAccessor,
       bufferSizeHint,
     ))
   }
