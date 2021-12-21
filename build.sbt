@@ -3,6 +3,8 @@ val scalaV = "2.13.7"
 val akkaHttpV = "10.2.7"
 val akkaV = "2.6.17"
 
+val borerV = "1.7.2"
+
 lazy val dependencies = {
   Seq(
     "com.typesafe.akka"          %% "akka-actor"                        % akkaV,
@@ -19,6 +21,7 @@ lazy val dependencies = {
     "org.postgresql"              % "postgresql"                        % "42.3.1",
     "com.lambdaworks"             % "scrypt"                            % "1.4.0",
     "org.tresql"                 %% "tresql"                            % "11.0.1-SNAPSHOT",
+    "io.bullet"                  %% "borer-core"                        % borerV,
   )
 }
 
