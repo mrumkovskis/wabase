@@ -9,7 +9,6 @@ import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import scala.concurrent.Await
 import scala.concurrent.duration.DurationInt
 import org.tresql._
-import org.wabase.SerializerStreams.BorerArrayTreeEncoder
 
 class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
 
@@ -35,8 +34,8 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
   behavior of "SerializedArraysTresqlResultSource"
 
   def serializeTresqlResult(query: String, format: Target, bufferSizeHint: Int = 8, wrap: Boolean = false) = {
-    val source = SerializerStreams.createBorerSerializedArraysTresqlResultSource(
-      () => Query(query), format, bufferSizeHint, new BorerArrayTreeEncoder(_, wrap = wrap)
+    val source = TresqlResultSerializer(
+      () => Query(query), format, bufferSizeHint, new BorerNestedArraysEncoder(_, wrap = wrap)
     )
     val sink   = Sink.fold[String, ByteString]("") { case (acc, str) =>
       acc + str.decodeString("UTF-8")
