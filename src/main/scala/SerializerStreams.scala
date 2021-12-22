@@ -38,34 +38,29 @@ class NestedArraysSerializer(
       buf       = new ByteStringBuilder
       encodable = createEncodable()
       encoder   = createEncoder(buf.asOutputStream)
-      iterators = null
+      iterators = encodable :: Nil
       buf.sizeHint(bufferSizeHint)
+      encoder.writeStartOfInput()
     }
     def encodeNext(): Unit = {
-      if (iterators == null) {
-        iterators = encodable :: Nil
-        encoder.writeStartOfInput()
-      } else if (iterators.nonEmpty) {
-        val iterator = iterators.head
-        if (iterator.hasNext) iterator.next() match {
-          case children: Iterator[_] =>
-            iterators = children :: iterators
-            encoder.writeArrayStart()
-          // TODO blob / clob etc support
-          case value =>
-            encoder.writeValue(value)
-        } else {
-          iterators = iterators.tail
-          if (iterators.nonEmpty)
-            encoder.writeArrayBreak()
-          else
-            encoder.writeEndOfInput()
-        }
+      val iterator = iterators.head
+      if (iterator.hasNext) iterator.next() match {
+        case children: Iterator[_] =>
+          iterators = children :: iterators
+          encoder.writeArrayStart()
+        // TODO blob / clob etc support
+        case value =>
+          encoder.writeValue(value)
+      } else {
+        iterators = iterators.tail
+        if (iterators.nonEmpty)
+          encoder.writeArrayBreak()
+        else
+          encoder.writeEndOfInput()
       }
     }
-    override def postStop(): Unit = encodable match {
+    override def postStop(): Unit = iterators.collect {
       case closeable: AutoCloseable => closeable.close()
-      case _ =>
     }
     setHandler(out, new OutHandler {
       override def onPull: Unit = {
@@ -120,12 +115,13 @@ class BorerNestedArraysEncoder(w: Writer, wrap: Boolean = false) extends NestedA
 import org.tresql.Result
 object TresqlResultSerializer {
   /** Tresql Result wrapper for serialization - returns column iterator instead of self */
-  class TresqlRowsIterator(rows: Result[_]) extends Iterator[TresqlColsIterator] {
+  class TresqlRowsIterator(rows: Result[_]) extends Iterator[TresqlColsIterator] with AutoCloseable {
     override def hasNext: Boolean = rows.hasNext
     override def next(): TresqlColsIterator = {
       rows.next()
       new TresqlColsIterator(rows.values.iterator)
     }
+    override def close(): Unit = rows.close()
   }
   class TresqlColsIterator(cols: Iterator[_]) extends Iterator[Any] {
     override def hasNext: Boolean = cols.hasNext
