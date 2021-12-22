@@ -3,7 +3,7 @@ package org.wabase
 import akka.actor.ActorSystem
 import akka.stream.scaladsl.Sink
 import akka.util.ByteString
-import io.bullet.borer.{Json, Target}
+import io.bullet.borer.{Cbor, Json, Target}
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 
 import scala.concurrent.Await
@@ -38,7 +38,11 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
       () => Query(query), format, bufferSizeHint, new BorerNestedArraysEncoder(_, wrap = wrap)
     )
     val sink   = Sink.fold[String, ByteString]("") { case (acc, str) =>
-      acc + str.decodeString("UTF-8")
+      acc + (format match {
+        case _: Cbor.type => str.toVector
+          .map(b => if (b < ' ' || b >= '~') String.format("~%02x", Byte.box(b)) else b.toChar.toString).mkString
+        case _: Json.type => str.decodeString("UTF-8")
+      })
     }
     Await.result(source.runWith(sink), 1.second)
   }
@@ -68,5 +72,16 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
     serializeTresqlResult(
       "person {|account {number, balance}}", Json
     ) shouldBe """[[["X64",1001.01],["X94",2002.02]]],[[]]"""
+  }
+
+  it should "serialize tresql result as arrays to cbor" in {
+    def queryString(maxId: Int) = s"person [id <= $maxId] {id, name, surname, sex, birthdate}"
+    def test(maxId: Int, wrap: Boolean = false) =
+      serializeTresqlResult(queryString(maxId), Cbor, bufferSizeHint = 8, wrap)
+    test(0) shouldBe ""
+    test(1) shouldBe """~9f~01dJohncDoeaMj1969-01-01~ff"""
+    test(2) shouldBe """~9f~01dJohncDoeaMj1969-01-01~ff~9f~02dJane~f6aFj1996-02-02~ff"""
+    test(0, wrap = true) shouldBe "~9f~ff"
+    test(1, wrap = true) shouldBe """~9f~9f~01dJohncDoeaMj1969-01-01~ff~ff"""
   }
 }
