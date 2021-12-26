@@ -60,6 +60,12 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
     Await.result(source.runWith(foldToStringSink(format)), 1.second)
   }
 
+  def serializeDtoResult(dtos: Seq[Dto], format: Target) = {
+    implicit val qe = querease
+    val source = DtoDataSerializer(() => dtos.iterator, format)
+    Await.result(source.runWith(foldToStringSink(format)), 1.second)
+  }
+
   def serializeValuesToHexString(values: Iterator[_], format: Target = Cbor, bufferSizeHint: Int = 8) = {
     val source = Source.fromGraph(new NestedArraysSerializer(
       () => values,
@@ -80,6 +86,23 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
     test(2, 1024) shouldBe """[1,"John","Doe","M","1969-01-01"],[2,"Jane",null,"F","1996-02-02"]"""
     test(0,    8, wrap = true) shouldBe "[]"
     test(1,    8, wrap = true) shouldBe """[[1,"John","Doe","M","1969-01-01"]]"""
+  }
+
+  it should "serialize dto result as arrays to json" in {
+    def test(dtos: Seq[Dto]) =
+      serializeDtoResult(dtos, Json)
+    val dto1 = new QuereaseActionsDtos.PersonAccounts
+    dto1.number = "42"
+    dto1.balance = 1001.01
+    dto1.last_modified = java.sql.Timestamp.valueOf("2021-12-26 23:57:00.1")
+    val dto2 = new QuereaseActionsDtos.PersonAccounts
+    dto2.id = 2
+    dto2.balance = 2002.02
+    dto2.last_modified = java.sql.Timestamp.valueOf("2021-12-26 23:58:15.151")
+    test(List(dto1, dto2)) shouldBe List(
+      """[null,"42",1001.01,"2021-12-26 23:57:00.1"]""",
+      """[2,null,2002.02,"2021-12-26 23:58:15.151"]""",
+    ).mkString(",")
   }
 
   it should "serialize hierarchical tresql result as arrays to json" in {

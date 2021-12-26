@@ -218,6 +218,36 @@ class BorerNestedArraysTransformer(reader: Reader, handler: NestedArraysHandler)
   }
 }
 
+object DtoDataSerializer {
+  /** Dto iterator wrapper for data serialization (without field names) */
+  class DtoDataIterator(items: Iterator[_])(implicit val qe: AppQuerease) extends Iterator[Any] with AutoCloseable {
+    override def hasNext: Boolean = items.hasNext
+    override def next() = { items.next() match {
+      case child: Dto => new DtoDataIterator(child.toMap.values.iterator)
+      case children: Seq[_] => new DtoDataIterator(children.iterator)
+      case x => x
+    }}
+    override def close(): Unit = items match {
+      case closeable: AutoCloseable => closeable.close()
+      case _ =>
+    }
+  }
+  def apply(
+    createResult: () => Iterator[_],
+    format: Target = Cbor,
+    bufferSizeHint: Int = 1024,
+    createEncoder: Writer => NestedArraysHandler = new BorerNestedArraysEncoder(_),
+  )(implicit
+    qe: AppQuerease,
+  ): Source[ByteString, _] = {
+    Source.fromGraph(new NestedArraysSerializer(
+      () => new DtoDataIterator(createResult()),
+      outputStream => createEncoder(BorerNestedArraysEncoder.createWriter(outputStream, format)),
+      bufferSizeHint,
+    ))
+  }
+}
+
 import org.tresql.Result
 object TresqlResultSerializer {
   /** Tresql Result wrapper for serialization - returns column iterator instead of self */
