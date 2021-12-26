@@ -5,11 +5,11 @@ import akka.stream.stage.{GraphStage, GraphStageLogic, OutHandler}
 import akka.stream.{Attributes, Outlet, SourceShape}
 import akka.util.{ByteString, ByteStringBuilder}
 
-import java.io.OutputStream
+import java.io.{InputStream, OutputStream}
 import java.lang.{Boolean => JBoolean, Byte => JByte, Double => JDouble, Float => JFloat, Long => JLong, Short => JShort}
 import java.math.{BigDecimal => JBigDecimal, BigInteger => JBigInteger}
 
-trait NestedArraysEncoder {
+trait NestedArraysHandler {
   def writeStartOfInput():    Unit
   def writeArrayStart():      Unit
   def writeValue(value: Any): Unit
@@ -24,15 +24,15 @@ trait NestedArraysEncoder {
 /** Serializes nested iterators as nested arrays. To serialize tresql Result, use TresqlRowsIterator */
 class NestedArraysSerializer(
   createEncodable: () => Iterator[_],
-  createEncoder:  OutputStream => NestedArraysEncoder,
-  bufferSizeHint: Int,
+  createEncoder:  OutputStream => NestedArraysHandler,
+  bufferSizeHint: Int = 1024,
 ) extends GraphStage[SourceShape[ByteString]] {
   val out = Outlet[ByteString]("SerializedArraysTresqlResultSource")
   override val shape: SourceShape[ByteString] = SourceShape(out)
   override def createLogic(attrs: Attributes): GraphStageLogic = new GraphStageLogic(shape) {
     var buf:        ByteStringBuilder   = _
     var encodable:  Iterator[_]         = _
-    var encoder:    NestedArraysEncoder = _
+    var encoder:    NestedArraysHandler = _
     var iterators:  List[Iterator[_]]   = _
     override def preStart(): Unit = {
       buf       = new ByteStringBuilder
@@ -78,7 +78,30 @@ class NestedArraysSerializer(
 }
 
 import io.bullet.borer._
-class BorerNestedArraysEncoder(w: Writer, wrap: Boolean = false) extends NestedArraysEncoder {
+import java.sql
+object BorerDatetimeEncoders {
+  implicit val javaSqlTimestampEncoder: Encoder[Timestamp] = Encoder { (w, value) =>
+    if (w.writingCbor) {
+      val seconds = value.getTime.toDouble / 1000 // TODO nanos?
+      w writeTag    Tag.EpochDateTime
+      w writeDouble seconds
+    } else {
+      w writeString value.toString
+    }
+  }
+  implicit val javaSqlDateEncoder: Encoder[sql.Date] = Encoder { (w, value) =>
+    if (w.writingCbor) {
+      val seconds = value.getTime / 1000
+      w writeTag    Tag.EpochDateTime
+      w writeLong   seconds
+    } else {
+      w writeString value.toString
+    }
+  }
+}
+
+class BorerNestedArraysEncoder(w: Writer, wrap: Boolean = false) extends NestedArraysHandler {
+  import BorerDatetimeEncoders._
   override def writeStartOfInput():     Unit = { if (wrap) w.writeArrayStart() }
   override def writeArrayStart():       Unit = w.writeArrayStart()
   override def writeValue(value: Any):  Unit = value match {
@@ -105,11 +128,94 @@ class BorerNestedArraysEncoder(w: Writer, wrap: Boolean = false) extends NestedA
     case value: BigDecimal  => w ~ value
     case value: JBigDecimal => w ~ value
     case value: Array[Byte] => w ~ value
+    case value: Timestamp   => w ~ value
+    case value: sql.Date    => w ~ value
     case x                  => w writeString x.toString
   }
   override def writeChunk(chunk: Any, isFirst: Boolean, isLast: Boolean): Unit = ??? // TODO blob / clob etc support
   override def writeArrayBreak(): Unit = w.writeBreak()
   override def writeEndOfInput(): Unit = { if (wrap) w.writeBreak() }
+}
+
+object BorerNestedArraysEncoder {
+  def createWriter(outputStream:  OutputStream, format: Target = Cbor): Writer = format match {
+    case _: Json.type => Json.writer(Output.ToOutputStreamProvider(outputStream, 0, allowBufferCaching = true))
+    case _: Cbor.type => Cbor.writer(Output.ToOutputStreamProvider(outputStream, 0, allowBufferCaching = true))
+  }
+}
+
+object BorerDatetimeDecoders {
+  import io.bullet.borer.{DataItem => DI}
+  implicit val javaSqlTimestampDecoder: Decoder[Timestamp] = Decoder { reader =>
+    import reader._
+    dataItem() match {
+      case DI.String => sql.Timestamp.valueOf(readString())
+      case _ if tryReadTag(Tag.DateTimeString)  =>
+        new sql.Timestamp(Format.jsIsoDateTime.parse(readString()).getTime)
+      case _ if tryReadTag(Tag.EpochDateTime)   => new Timestamp((readDouble() * 1000).toLong)
+      case _                                    => unexpectedDataItem(expected = "Timestamp")
+    }
+  }
+  implicit val javaSqlDateDecoder: Decoder[sql.Date] = Decoder { reader =>
+    import reader._
+    dataItem() match {
+      case DI.String => sql.Date.valueOf(readString())
+      case _ if tryReadTag(Tag.DateTimeString)  =>
+        new sql.Date(Format.jsIsoDateTime.parse(readString()).getTime)
+      case _ if tryReadTag(Tag.EpochDateTime)   => new sql.Date(readLong() * 1000)
+      case _                                    => unexpectedDataItem(expected = "Date")
+    }
+  }
+}
+
+class BorerNestedArraysTransformer(reader: Reader, handler: NestedArraysHandler) {
+  import reader._
+  import handler._
+  import BorerDatetimeDecoders._
+  import io.bullet.borer.{DataItem => DI}
+  def transformNext(): Boolean = {
+    val di = dataItem()
+    di match {
+      case DI.Null          => writeValue(readNull())
+      case DI.Undefined     => readUndefined();   writeValue(null)  // unexpected
+      case DI.Boolean       => writeValue(readBoolean())
+      case DI.Int           => writeValue(readInt())        // byte, char, short also here, convert if necessary
+      case DI.Long          => writeValue(readLong())
+      case DI.OverLong      => writeValue(read[JBigInteger]())
+      case DI.Float16       => writeValue(readFloat())
+      case DI.Float         => writeValue(readFloat())
+      case DI.Double        => writeValue(readDouble())
+      case DI.NumberString  => writeValue(read[JBigDecimal]())
+      case DI.String        => writeValue(readString())
+      case DI.Chars         => writeValue(readString())
+      case DI.Text          => writeValue(readString())
+      case DI.TextStart     => writeValue(readString())     // TODO blob / clob etc support
+      case DI.Bytes         => writeValue(readByteArray())
+      case DI.BytesStart    => writeValue(readByteArray())  // TODO blob / clob etc support
+      case DI.ArrayHeader   => readArrayHeader(); writeArrayStart()
+      case DI.ArrayStart    => readArrayStart();  writeArrayStart()
+      case DI.MapHeader     => readMapHeader();   writeArrayStart() // unexpected TODO map support?
+      case DI.MapStart      => readMapStart();    writeArrayStart() // unexpected TODO map support?
+      case DI.Break         => readBreak();       writeArrayBreak()
+      case DI.Tag           => writeValue {
+        if      (hasTag(Tag.PositiveBigNum))   read[JBigInteger]()
+        else if (hasTag(Tag.NegativeBigNum))   read[JBigInteger]()
+        else if (hasTag(Tag.DecimalFraction))  read[JBigDecimal]()
+        else if (hasTag(Tag.DateTimeString))   read[Timestamp]()
+        else if (hasTag(Tag.EpochDateTime)) {
+          readTag()
+          dataItem() match {
+            case DI.Int | DI.Long   => new sql.Date(readLong() * 1000)
+            case _                  => new Timestamp((readDouble() * 1000).toLong)
+          }
+        }
+        else readString()                                   // unexpected
+      }
+      case DI.SimpleValue   => writeValue(readInt())        // unexpected
+      case DI.EndOfInput    => readEndOfInput();  writeEndOfInput()
+    }
+    di != DI.EndOfInput
+  }
 }
 
 import org.tresql.Result
@@ -134,14 +240,11 @@ object TresqlResultSerializer {
     createResult: () => Result[_],
     format: Target = Cbor,
     bufferSizeHint: Int = 1024,
-    createEncoder: Writer => NestedArraysEncoder = new BorerNestedArraysEncoder(_),
+    createEncoder: Writer => NestedArraysHandler = new BorerNestedArraysEncoder(_),
   ): Source[ByteString, _] = {
     Source.fromGraph(new NestedArraysSerializer(
       () => new TresqlRowsIterator(createResult()),
-      outputStream => createEncoder(format match {
-        case _: Json.type => Json.writer(Output.ToOutputStreamProvider(outputStream, 0, allowBufferCaching = true))
-        case _: Cbor.type => Cbor.writer(Output.ToOutputStreamProvider(outputStream, 0, allowBufferCaching = true))
-      }),
+      outputStream => createEncoder(BorerNestedArraysEncoder.createWriter(outputStream, format)),
       bufferSizeHint,
     ))
   }
