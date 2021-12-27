@@ -16,7 +16,7 @@ trait NestedArraysHandler {
   def writeChunk( // for blob / clob etc support
     chunk:   Any,
     isFirst: Boolean,
-    isLast:  Boolean):        Unit
+    isLast:  Boolean):        Unit = ???
   def writeArrayBreak():      Unit
   def writeEndOfInput():      Unit
 }
