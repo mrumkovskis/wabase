@@ -1,5 +1,6 @@
 package org.wabase
 
+import akka.NotUsed
 import akka.stream.scaladsl.Source
 import akka.stream.stage.{GraphStage, GraphStageLogic, OutHandler}
 import akka.stream.{Attributes, Outlet, SourceShape}
@@ -216,6 +217,56 @@ class BorerNestedArraysTransformer(reader: Reader, handler: NestedArraysHandler)
     }
     di != DI.EndOfInput
   }
+}
+
+object BorerNestedArraysTransformer {
+  private class TransformerSource(
+    createTransformable:  () => InputStream,
+    createEncoder:        OutputStream => NestedArraysHandler,
+    transformFrom:        Target,
+    bufferSizeHint:       Int,
+  ) extends GraphStage[SourceShape[ByteString]] {
+    val out = Outlet[ByteString]("BorerNestedArraysTransformer")
+    override val shape: SourceShape[ByteString] = SourceShape(out)
+    override def createLogic(attrs: Attributes): GraphStageLogic = new GraphStageLogic(shape) {
+      var buf:          ByteStringBuilder             = _
+      var transformer:  BorerNestedArraysTransformer  = _
+      override def preStart(): Unit = {
+        buf         = new ByteStringBuilder
+        val encoder = createEncoder(buf.asOutputStream)
+        transformer = new BorerNestedArraysTransformer(
+          transformFrom match {
+            case _: Cbor.type => Cbor.reader(createTransformable())
+            case _: Json.type => Json.reader(createTransformable())
+          },
+          encoder,
+        )
+        buf.sizeHint(bufferSizeHint)
+        encoder.writeStartOfInput()
+      }
+      setHandler(out, new OutHandler {
+        override def onPull: Unit = {
+          while (transformer.transformNext() && buf.length < bufferSizeHint) {}
+          if (buf.nonEmpty) {
+            val chunk = buf.result()
+            buf.clear()
+            push(out, chunk)
+          } else {
+            completeStage()
+          }
+        }
+      })
+    }
+  }
+
+  def apply(
+    createTransformable:  () => InputStream,
+    createEncoder:        OutputStream => NestedArraysHandler,
+    transformFrom:        Target = Cbor,
+    bufferSizeHint:       Int = 1024,
+  ): Source[ByteString, NotUsed] = Source.fromGraph(
+    new TransformerSource(createTransformable, createEncoder, transformFrom, bufferSizeHint)
+  )
 }
 
 object DtoDataSerializer {

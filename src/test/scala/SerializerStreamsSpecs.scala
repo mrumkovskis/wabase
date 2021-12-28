@@ -1,11 +1,11 @@
 package org.wabase
 
 import akka.actor.ActorSystem
-import akka.stream.scaladsl.{Sink, Source}
+import akka.stream.scaladsl.{Sink, Source, StreamConverters}
 import akka.util.ByteString
 import org.apache.commons.codec.binary.Hex
 import io.bullet.borer.{Cbor, Json, Target}
-import java.io.ByteArrayInputStream
+import java.io.{ByteArrayInputStream, InputStream, OutputStream, OutputStreamWriter}
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 
 import scala.concurrent.Await
@@ -35,12 +35,12 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
 
   behavior of "SerializedArraysTresqlResultSource"
 
-  def foldToStringSink(format: Target) =
+  def foldToStringSink(format: Target = null) =
     Sink.fold[String, ByteString]("") { case (acc, str) =>
       acc + (format match {
         case _: Cbor.type => str.toVector
           .map(b => if (b < ' ' || b >= '~') String.format("~%02x", Byte.box(b)) else b.toChar.toString).mkString
-        case _: Json.type => str.decodeString("UTF-8")
+        case _ => str.decodeString("UTF-8")
       })
     }
 
@@ -58,6 +58,15 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
       () => Query(query), format, bufferSizeHint, new BorerNestedArraysEncoder(_, wrap = wrap)
     )
     Await.result(source.runWith(foldToStringSink(format)), 1.second)
+  }
+
+  def serializeAndTransformTresqlResult(
+      query: String, createEncoder: OutputStream => NestedArraysHandler) = {
+    val source = BorerNestedArraysTransformer(
+      () => TresqlResultSerializer(() => Query(query)).runWith(StreamConverters.asInputStream()),
+      createEncoder,
+    )
+    Await.result(source.runWith(foldToStringSink()), 1.second)
   }
 
   def serializeDtoResult(dtos: Seq[Dto], format: Target) = {
@@ -128,6 +137,29 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
     test(2) shouldBe """~9f~01dJohncDoeaMj1969-01-01~ff~9f~02dJane~f6aFj1996-02-02~ff"""
     test(0, wrap = true) shouldBe "~9f~ff"
     test(1, wrap = true) shouldBe """~9f~9f~01dJohncDoeaMj1969-01-01~ff~ff"""
+  }
+
+  it should "serialize to cbor and transform to csv" in {
+    val cols = "id, name, surname, sex, birthdate"
+    def queryString(maxId: Int) = s"person [id <= $maxId] {${cols}}"
+    def test(maxId: Int, withLabels: Boolean) = serializeAndTransformTresqlResult(
+      queryString(maxId),
+      outputStream => new CsvOutput(
+        writer = new OutputStreamWriter(outputStream, "UTF-8"),
+        labels = if (withLabels) cols.split(", ").toList else null,
+      )
+    )
+    test(0, false) shouldBe ""
+    test(1, false) shouldBe "1,John,Doe,M,1969-01-01\n"
+    test(1, true ) shouldBe List(
+      "id,name,surname,sex,birthdate",
+      "1,John,Doe,M,1969-01-01",
+    ).mkString("", "\n", "\n")
+    test(2, true ) shouldBe List(
+      "id,name,surname,sex,birthdate",
+      "1,John,Doe,M,1969-01-01",
+      "2,Jane,,F,1996-02-02",
+    ).mkString("", "\n", "\n")
   }
 
   it should "serialize known types to cbor and deserialize to somewhat similar types" in {

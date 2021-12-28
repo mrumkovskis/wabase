@@ -33,12 +33,14 @@ abstract class FlatTableOutput(val labels: Seq[String]) extends NestedArraysHand
   override def writeEndOfInput(): Unit =
     writeFooter()
   def writeHeader(): Unit = {
-    writeRowStart()
-    labels foreach { label =>
-      writeCell(label)
-      col += 1
+    if (labels != null && labels.nonEmpty) {
+      writeRowStart()
+      labels foreach { label =>
+        writeCell(label)
+        col += 1
+      }
+      writeRowEnd()
     }
-    writeRowEnd()
     row += 1
     col = 0
   }
