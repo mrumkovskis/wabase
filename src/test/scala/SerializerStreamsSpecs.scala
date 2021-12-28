@@ -138,10 +138,6 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
         override def writeStartOfInput():    Unit = {}
         override def writeArrayStart():      Unit = {}
         override def writeValue(value: Any): Unit = { deserialized = value }
-        override def writeChunk( // for blob / clob etc support
-          chunk:   Any,
-          isFirst: Boolean,
-          isLast:  Boolean):                 Unit = {}
         override def writeArrayBreak():      Unit = {}
         override def writeEndOfInput():      Unit = {}
       }
