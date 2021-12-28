@@ -6,7 +6,7 @@ import org.scalatest.flatspec.AsyncFlatSpec
 
 import scala.concurrent.Future
 
-class DetectCompletedSinkTest extends AsyncFlatSpec {
+class ResultCompletionSinkTest extends AsyncFlatSpec {
   import scala.language.postfixOps
 
   import StreamsEnv._
@@ -18,7 +18,7 @@ class DetectCompletedSinkTest extends AsyncFlatSpec {
     0 to n map(b => ByteString(b.toByte)) reduce(_ ++ _)
 
   private def incompleteTest(n: Int) =
-    validateIncomplete(List(src(n).runWith(new DetectCompletedSink).map(_ -> res(n))))
+    validateIncomplete(List(src(n).runWith(new ResultCompletionSink).map(_ -> res(n))))
 
   private def validateIncomplete(res: List[Future[(SerializedResult, ByteString)]]) =
     Future.foldLeft {
@@ -32,7 +32,7 @@ class DetectCompletedSinkTest extends AsyncFlatSpec {
 
   it should "return CompleteResult" in {
     val n = 0
-    src(n).runWith(new DetectCompletedSink)
+    src(n).runWith(new ResultCompletionSink)
       .map {
         case CompleteResult(v) => assert(v == res(n))
         case IncompleteResultSource(s) => assert(false)

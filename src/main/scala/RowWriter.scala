@@ -219,6 +219,6 @@ object RowSource {
                                                           mat: Materializer): Future[SerializedResult] = {
     src
       .via(FileBufferedFlow.create(bufferSize, maxFileSize))
-      .runWith(new DetectCompletedSink(cleanupFun))
+      .runWith(new ResultCompletionSink(cleanupFun))
   }
 }

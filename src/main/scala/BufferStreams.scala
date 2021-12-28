@@ -132,7 +132,7 @@ case class IncompleteResultSource[Mat](result: Source[ByteString, Mat]) extends 
   * Otherwise produces {{{IncompleteResultSource}}}. Running of {{{IncompleteResultSource}}} source will consume
   * this {{{CheckCompletedSink}}} upstream.
   * */
-class DetectCompletedSink(cleanupFun: Option[Throwable] => Unit = null)(implicit ec: scala.concurrent.ExecutionContext)
+class ResultCompletionSink(cleanupFun: Option[Throwable] => Unit = null)(implicit ec: scala.concurrent.ExecutionContext)
   extends GraphStageWithMaterializedValue[SinkShape[ByteString], Future[SerializedResult]] {
   val in = Inlet[ByteString]("in")
   override val shape = SinkShape(in)
