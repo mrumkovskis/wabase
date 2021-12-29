@@ -53,9 +53,12 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
       })
     }
 
-  def serializeTresqlResult(query: String, format: Target, bufferSizeHint: Int = 8, wrap: Boolean = false) = {
+  def serializeTresqlResult(
+    query: String, format: Target, includeHeaders: Boolean = false,
+    bufferSizeHint: Int = 8, wrap: Boolean = false,
+  ) = {
     val source = TresqlResultSerializer(
-      () => Query(query), format, bufferSizeHint, new BorerNestedArraysEncoder(_, wrap = wrap)
+      () => Query(query), format, includeHeaders, bufferSizeHint, new BorerNestedArraysEncoder(_, wrap = wrap)
     )
     Await.result(source.runWith(foldToStringSink(format)), 1.second)
   }
@@ -63,7 +66,7 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
   def serializeAndTransformTresqlResult(
       query: String, createEncoder: OutputStream => NestedArraysHandler) = {
     val source = BorerNestedArraysTransformer(
-      () => TresqlResultSerializer(() => Query(query)).runWith(StreamConverters.asInputStream()),
+      () => TresqlResultSerializer(() => Query(query), includeHeaders = false).runWith(StreamConverters.asInputStream()),
       createEncoder,
     )
     Await.result(source.runWith(foldToStringSink()), 1.second)
@@ -86,8 +89,8 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
 
   it should "serialize flat tresql result as arrays to json" in {
     def queryString(maxId: Int) = s"person [id <= $maxId] {id, name, surname, sex, birthdate}"
-    def test(maxId: Int, bufferSizeHint: Int, wrap: Boolean = false) =
-      serializeTresqlResult(queryString(maxId), Json, bufferSizeHint, wrap)
+    def test(maxId: Int, bufferSizeHint: Int, includeHeaders: Boolean = false, wrap: Boolean = false) =
+      serializeTresqlResult(queryString(maxId), Json, includeHeaders, bufferSizeHint, wrap)
     test(0,    8) shouldBe ""
     test(1,    8) shouldBe """[1,"John","Doe","M","1969-01-01"]"""
     test(1, 1024) shouldBe """[1,"John","Doe","M","1969-01-01"]"""
@@ -95,6 +98,11 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
     test(2, 1024) shouldBe """[1,"John","Doe","M","1969-01-01"],[2,"Jane",null,"F","1996-02-02"]"""
     test(0,    8, wrap = true) shouldBe "[]"
     test(1,    8, wrap = true) shouldBe """[[1,"John","Doe","M","1969-01-01"]]"""
+    test(0,    8, includeHeaders = true) shouldBe ""
+    test(1,    8, includeHeaders = true) shouldBe List(
+      """["id","name","surname","sex","birthdate"]""",
+      """[1,"John","Doe","M","1969-01-01"]""",
+    ).mkString(",")
   }
 
   it should "serialize dto result as arrays to json" in {
@@ -126,12 +134,30 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
     serializeTresqlResult(
       "person {|account {number, balance}}", Json
     ) shouldBe """[[["X64",1001.01],["X94",2002.02]]],[[]]"""
+    serializeTresqlResult(
+      s"person {id, name, |account[id < 2] {number, balance, last_modified}, sex}", Json, includeHeaders = true
+    ) shouldBe List(
+      """["id","name",null,"sex"]""",
+      """[1,"John",[["number","balance","last_modified"],["X64",1001.01,"2021-12-21 00:55:55.0"]],"M"]""",
+      """[2,"Jane",[],"F"]""",
+    ).mkString(",")
+
+    serializeTresqlResult(
+      "person {name, |account {number, balance}}", Json, includeHeaders = true
+    ) shouldBe """["name",null],["John",[["number","balance"],["X64",1001.01],["X94",2002.02]]],["Jane",[]]"""
+
+    serializeTresqlResult(
+      "person {|account {number, balance}}", Json, includeHeaders = true
+    ) shouldBe """[null],[[["number","balance"],["X64",1001.01],["X94",2002.02]]],[[]]"""
+    serializeTresqlResult(
+      "person {|account {number, balance} account}", Json, includeHeaders = true
+    ) shouldBe """["account"],[[["number","balance"],["X64",1001.01],["X94",2002.02]]],[[]]"""
   }
 
   it should "serialize tresql result as arrays to cbor" in {
     def queryString(maxId: Int) = s"person [id <= $maxId] {id, name, surname, sex, birthdate || ''}"
     def test(maxId: Int, wrap: Boolean = false) =
-      serializeTresqlResult(queryString(maxId), Cbor, bufferSizeHint = 8, wrap)
+      serializeTresqlResult(queryString(maxId), Cbor, wrap = wrap)
     test(0) shouldBe ""
     test(1) shouldBe """~9f~01dJohncDoeaMj1969-01-01~ff"""
     test(2) shouldBe """~9f~01dJohncDoeaMj1969-01-01~ff~9f~02dJane~f6aFj1996-02-02~ff"""

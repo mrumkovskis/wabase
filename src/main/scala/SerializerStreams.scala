@@ -302,29 +302,41 @@ object DtoDataSerializer {
 import org.tresql.Result
 object TresqlResultSerializer {
   /** Tresql Result wrapper for serialization - returns column iterator instead of self */
-  class TresqlRowsIterator(rows: Result[_]) extends Iterator[TresqlColsIterator] with AutoCloseable {
-    override def hasNext: Boolean = rows.hasNext
+  class TresqlRowsIterator(
+    rows: Result[_],
+    includeHeaders: Boolean,
+  ) extends Iterator[TresqlColsIterator] with AutoCloseable {
+    var isBeforeFirst = true
+    var headering = false
+    override def hasNext: Boolean = headering || rows.hasNext
     override def next(): TresqlColsIterator = {
-      rows.next()
-      new TresqlColsIterator(rows.values.iterator)
+      if (!headering)
+        rows.next()
+      headering = isBeforeFirst && includeHeaders
+      isBeforeFirst = false
+      if (headering)
+        new TresqlColsIterator(rows.columns.map(_.name).toVector.iterator, includeHeaders)
+      else
+        new TresqlColsIterator(rows.values.iterator, includeHeaders)
     }
     override def close(): Unit = rows.close()
   }
-  class TresqlColsIterator(cols: Iterator[_]) extends Iterator[Any] {
+  class TresqlColsIterator(cols: Iterator[_], includeHeaders: Boolean) extends Iterator[Any] {
     override def hasNext: Boolean = cols.hasNext
     override def next(): Any = cols.next() match {
-      case rows: Result[_] => new TresqlRowsIterator(rows)
+      case rows: Result[_] => new TresqlRowsIterator(rows, includeHeaders)
       case value => value
     }
   }
   def apply(
-    createResult: () => Result[_],
-    format: Target = Cbor,
-    bufferSizeHint: Int = 1024,
-    createEncoder: Writer => NestedArraysHandler = new BorerNestedArraysEncoder(_),
+    createResult:   () => Result[_],
+    format:         Target  = Cbor,
+    includeHeaders: Boolean = true,
+    bufferSizeHint: Int     = 1024,
+    createEncoder:  Writer => NestedArraysHandler = new BorerNestedArraysEncoder(_),
   ): Source[ByteString, _] = {
     Source.fromGraph(new NestedArraysSerializer(
-      () => new TresqlRowsIterator(createResult()),
+      () => new TresqlRowsIterator(createResult(), includeHeaders),
       outputStream => createEncoder(BorerNestedArraysEncoder.createWriter(outputStream, format)),
       bufferSizeHint,
     ))
