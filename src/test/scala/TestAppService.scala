@@ -46,3 +46,21 @@ class TestAppService(system: ActorSystem) extends ExecutionImpl()(system)
   override def appVersion: String = "TEST"
   override protected def initDeferredStorage: DeferredStorage = new DbDeferredStorage(appConfig, this, dbAccess, this)
 }
+
+object YamlUtils {
+  def parseYamlData(yamlStr: String): Any = {
+    import org.snakeyaml.engine.v2.api.LoadSettings
+    import org.snakeyaml.engine.v2.api.Load
+    import scala.jdk.CollectionConverters._
+    def toScalaType(v: Any): Any = v match {
+      case m: java.util.Map[_, _] => m.asScala.map { case (k, v) => (k, toScalaType(v)) }.toMap
+      case a: java.util.ArrayList[_] => a.asScala.map(toScalaType).toList
+      case x => x
+    }
+    val loaderSettings = LoadSettings.builder()
+      .setLabel("test data")
+      .setAllowDuplicateKeys(false)
+      .build()
+    toScalaType(new Load(loaderSettings).loadFromString(yamlStr))
+  }
+}
