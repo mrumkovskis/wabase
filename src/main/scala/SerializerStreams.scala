@@ -139,6 +139,8 @@ class BorerNestedArraysEncoder(w: Writer, wrap: Boolean = false) extends NestedA
 }
 
 object BorerNestedArraysEncoder {
+  def apply(outputStream:  OutputStream, format: Target = Cbor, wrap: Boolean = false) =
+    new BorerNestedArraysEncoder(createWriter(outputStream, format), wrap = wrap)
   def createWriter(outputStream:  OutputStream, format: Target = Cbor): Writer = format match {
     case _: Json.type => Json.writer(Output.ToOutputStreamProvider(outputStream, 0, allowBufferCaching = true))
     case _: Cbor.type => Cbor.writer(Output.ToOutputStreamProvider(outputStream, 0, allowBufferCaching = true))
@@ -330,15 +332,12 @@ object TresqlResultSerializer {
   }
   def apply(
     createResult:   () => Result[_],
-    format:         Target  = Cbor,
     includeHeaders: Boolean = true,
     bufferSizeHint: Int     = 1024,
-    createEncoder:  Writer => NestedArraysHandler = new BorerNestedArraysEncoder(_),
+    createEncoder:  OutputStream => NestedArraysHandler = BorerNestedArraysEncoder(_),
   ): Source[ByteString, _] = {
     Source.fromGraph(new NestedArraysSerializer(
-      () => new TresqlRowsIterator(createResult(), includeHeaders),
-      outputStream => createEncoder(BorerNestedArraysEncoder.createWriter(outputStream, format)),
-      bufferSizeHint,
+      () => new TresqlRowsIterator(createResult(), includeHeaders), createEncoder(_), bufferSizeHint
     ))
   }
 }

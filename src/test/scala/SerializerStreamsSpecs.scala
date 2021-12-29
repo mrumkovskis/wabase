@@ -58,7 +58,7 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
     bufferSizeHint: Int = 8, wrap: Boolean = false,
   ) = {
     val source = TresqlResultSerializer(
-      () => Query(query), format, includeHeaders, bufferSizeHint, new BorerNestedArraysEncoder(_, wrap = wrap)
+      () => Query(query), includeHeaders, bufferSizeHint, BorerNestedArraysEncoder(_, format, wrap)
     )
     Await.result(source.runWith(foldToStringSink(format)), 1.second)
   }
