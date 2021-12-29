@@ -273,29 +273,53 @@ object BorerNestedArraysTransformer {
 
 object DtoDataSerializer {
   /** Dto iterator wrapper for data serialization (without field names) */
-  class DtoDataIterator(items: Iterator[_])(implicit val qe: AppQuerease) extends Iterator[Any] with AutoCloseable {
-    override def hasNext: Boolean = items.hasNext
-    override def next() = { items.next() match {
-      case child: Dto => new DtoDataIterator(child.toMap.values.iterator)
-      case children: Seq[_] => new DtoDataIterator(children.iterator)
-      case x => x
-    }}
+  class DtoDataIterator(
+    items: Iterator[_],
+    asRows: Boolean,
+    includeHeaders: Boolean,
+  )(implicit val qe: AppQuerease) extends Iterator[Any] with AutoCloseable {
+    var isBeforeFirst = true
+    var headering = false
+    var nextItem: Any = null
+    override def hasNext: Boolean = headering || items.hasNext
+    override def next() = {
+      if (!headering)
+        nextItem = items.next()
+      nextItem match {
+        case child: Dto => nextItem = child.toMap
+        case _ =>
+      }
+      headering = asRows && isBeforeFirst && includeHeaders && nextItem.isInstanceOf[Map[_, _]]
+      isBeforeFirst = false
+      nextItem match {
+        case child: Map[_, _] =>
+          if (headering)
+            new DtoDataIterator(child.keys.iterator,    asRows = false, includeHeaders)
+          else if (asRows)
+            new DtoDataIterator(child.values.iterator,  asRows = false, includeHeaders)
+          else
+            new DtoDataIterator(List(child).iterator,   asRows = true,  includeHeaders)
+        case children: Seq[_] =>
+            new DtoDataIterator(children.iterator,      asRows = true,  includeHeaders)
+        case x => x
+      }
+    }
     override def close(): Unit = items match {
       case closeable: AutoCloseable => closeable.close()
       case _ =>
     }
   }
   def apply(
-    createResult: () => Iterator[_],
-    format: Target = Cbor,
-    bufferSizeHint: Int = 1024,
-    createEncoder: Writer => NestedArraysHandler = new BorerNestedArraysEncoder(_),
+    createResult:   () => Iterator[_],
+    includeHeaders: Boolean = true,
+    bufferSizeHint: Int     = 1024,
+    createEncoder:  OutputStream => NestedArraysHandler = BorerNestedArraysEncoder(_),
   )(implicit
     qe: AppQuerease,
   ): Source[ByteString, _] = {
     Source.fromGraph(new NestedArraysSerializer(
-      () => new DtoDataIterator(createResult()),
-      outputStream => createEncoder(BorerNestedArraysEncoder.createWriter(outputStream, format)),
+      () => new DtoDataIterator(createResult(), asRows = true, includeHeaders),
+      createEncoder(_),
       bufferSizeHint,
     ))
   }

@@ -72,9 +72,10 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
     Await.result(source.runWith(foldToStringSink()), 1.second)
   }
 
-  def serializeDtoResult(dtos: Seq[Dto], format: Target) = {
+  def serializeDtoResult(dtos: Seq[Dto], format: Target, includeHeaders: Boolean = false, wrap: Boolean = false) = {
     implicit val qe = querease
-    val source = DtoDataSerializer(() => dtos.iterator, format)
+    val source = DtoDataSerializer(() =>
+      dtos.iterator, includeHeaders, createEncoder = BorerNestedArraysEncoder(_, format, wrap))
     Await.result(source.runWith(foldToStringSink(format)), 1.second)
   }
 
@@ -106,8 +107,8 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
   }
 
   it should "serialize dto result as arrays to json" in {
-    def test(dtos: Seq[Dto]) =
-      serializeDtoResult(dtos, Json)
+    def test(dtos: Seq[Dto], includeHeaders: Boolean) =
+      serializeDtoResult(dtos, Json, includeHeaders)
     val dto1 = new QuereaseActionsDtos.PersonAccounts
     dto1.number = "42"
     dto1.balance = 1001.01
@@ -116,10 +117,34 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
     dto2.id = 2
     dto2.balance = 2002.02
     dto2.last_modified = java.sql.Timestamp.valueOf("2021-12-26 23:58:15.151")
-    test(List(dto1, dto2)) shouldBe List(
+    test(Nil, includeHeaders = false) shouldBe ""
+    test(Nil, includeHeaders = true)  shouldBe ""
+    test(List(dto1, dto2), includeHeaders = false) shouldBe List(
       """[null,"42",1001.01,"2021-12-26 23:57:00.1"]""",
       """[2,null,2002.02,"2021-12-26 23:58:15.151"]""",
     ).mkString(",")
+    test(List(dto1, dto2), includeHeaders = true)  shouldBe List(
+      """["id","number","balance","last_modified"]""",
+      """[null,"42",1001.01,"2021-12-26 23:57:00.1"]""",
+      """[2,null,2002.02,"2021-12-26 23:58:15.151"]""",
+    ).mkString(",")
+    val person = new QuereaseActionsDtos.Person
+    person.id = 0
+    person.name = "John"
+    person.surname = "Doe"
+    person.accounts = List(dto1, dto2)
+    test(List(person), includeHeaders = false)  shouldBe List(
+      """[0,"John","Doe",null,null,null,""",
+        """[[null,"42",1001.01,"2021-12-26 23:57:00.1"],""",
+        """[2,null,2002.02,"2021-12-26 23:58:15.151"]]]""",
+    ).mkString
+    test(List(person), includeHeaders = true)  shouldBe List(
+      """["id","name","surname","sex","birthdate","main_account","accounts"],""",
+      """[0,"John","Doe",null,null,null,""",
+      """[["id","number","balance","last_modified"],""",
+       """[null,"42",1001.01,"2021-12-26 23:57:00.1"],""",
+       """[2,null,2002.02,"2021-12-26 23:58:15.151"]]]""",
+    ).mkString
   }
 
   it should "serialize hierarchical tresql result as arrays to json" in {
