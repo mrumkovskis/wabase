@@ -268,7 +268,7 @@ object BorerNestedArraysTransformer {
     }
   }
 
-  def apply(
+  def source(
     createTransformable:  () => InputStream,
     createEncoder:        OutputStream => NestedArraysHandler,
     transformFrom:        Target = Cbor,
@@ -316,7 +316,7 @@ object DtoDataSerializer {
       case _ =>
     }
   }
-  def apply(
+  def source(
     createResult:   () => Iterator[_],
     includeHeaders: Boolean = true,
     bufferSizeHint: Int     = 1024,
@@ -361,7 +361,7 @@ object TresqlResultSerializer {
       case value => value
     }
   }
-  def apply(
+  def source(
     createResult:   () => Result[_],
     includeHeaders: Boolean = true,
     bufferSizeHint: Int     = 1024,

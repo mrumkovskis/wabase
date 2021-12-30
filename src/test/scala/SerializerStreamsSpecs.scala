@@ -57,7 +57,7 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
     query: String, format: Target, includeHeaders: Boolean = false,
     bufferSizeHint: Int = 8, wrap: Boolean = false,
   ) = {
-    val source = TresqlResultSerializer(
+    val source = TresqlResultSerializer.source(
       () => Query(query), includeHeaders, bufferSizeHint, BorerNestedArraysEncoder(_, format, wrap)
     )
     Await.result(source.runWith(foldToStringSink(format)), 1.second)
@@ -65,7 +65,7 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
 
   def serializeAndTransform(
       serializerSource: Source[ByteString, _], createEncoder: OutputStream => NestedArraysHandler) = {
-    val source = BorerNestedArraysTransformer(
+    val source = BorerNestedArraysTransformer.source(
       () => serializerSource.runWith(StreamConverters.asInputStream()),
       createEncoder,
     )
@@ -74,7 +74,7 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
 
   def serializeDtoResult(dtos: Seq[Dto], format: Target, includeHeaders: Boolean = false, wrap: Boolean = false) = {
     implicit val qe = querease
-    val source = DtoDataSerializer(() =>
+    val source = DtoDataSerializer.source(() =>
       dtos.iterator, includeHeaders, createEncoder = BorerNestedArraysEncoder(_, format, wrap))
     Await.result(source.runWith(foldToStringSink(format)), 1.second)
   }
@@ -218,7 +218,7 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
     val cols = "id, name, surname, sex, birthdate"
     def queryString(maxId: Int) = s"person [id <= $maxId] {${cols}}"
     def test(maxId: Int, withLabels: Boolean) = serializeAndTransform(
-      TresqlResultSerializer(() => Query(queryString(maxId)), includeHeaders = false),
+      TresqlResultSerializer.source(() => Query(queryString(maxId)), includeHeaders = false),
       outputStream => new CsvOutput(
         writer = new OutputStreamWriter(outputStream, "UTF-8"),
         labels = if (withLabels) cols.split(", ").toList else null,
@@ -240,7 +240,7 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
   it should "serialize dtos to cbor and reformat to json maps" in {
     implicit val qe = querease
     def test(dtos: Seq[Dto], isCollection: Boolean, viewName: String = null) = serializeAndTransform(
-      DtoDataSerializer(() => dtos.iterator),
+      DtoDataSerializer.source(() => dtos.iterator),
       outputStream => JsonOutput(outputStream, isCollection, viewName, qe.nameToViewDef)
     )
     val (person, person_a) = createPersonDtos
