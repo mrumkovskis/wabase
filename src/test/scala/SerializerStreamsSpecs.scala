@@ -63,10 +63,10 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
     Await.result(source.runWith(foldToStringSink(format)), 1.second)
   }
 
-  def serializeAndTransformTresqlResult(
-      query: String, createEncoder: OutputStream => NestedArraysHandler) = {
+  def serializeAndTransform(
+      serializerSource: Source[ByteString, _], createEncoder: OutputStream => NestedArraysHandler) = {
     val source = BorerNestedArraysTransformer(
-      () => TresqlResultSerializer(() => Query(query), includeHeaders = false).runWith(StreamConverters.asInputStream()),
+      () => serializerSource.runWith(StreamConverters.asInputStream()),
       createEncoder,
     )
     Await.result(source.runWith(foldToStringSink()), 1.second)
@@ -86,6 +86,30 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
       bufferSizeHint,
     ))
     Await.result(source.runWith(foldToHexString(format)), 1.second)
+  }
+
+  def createPersonDtos: (QuereaseActionsDtos.Person, QuereaseActionsDtos.PersonAccountsDetails) = {
+    val dto1 = new QuereaseActionsDtos.PersonAccounts
+    dto1.number = "42"
+    dto1.balance = 1001.01
+    dto1.last_modified = java.sql.Timestamp.valueOf("2021-12-26 23:57:00.1")
+    val dto2 = new QuereaseActionsDtos.PersonAccounts
+    dto2.id = 2
+    dto2.balance = 2002.02
+    dto2.last_modified = java.sql.Timestamp.valueOf("2021-12-26 23:58:15.151")
+    val person = new QuereaseActionsDtos.Person
+    person.id = 0
+    person.name = "John"
+    person.surname = "Doe"
+    person.accounts = List(dto1, dto2)
+    val person_a = new QuereaseActionsDtos.PersonAccountsDetails
+    person_a.id = 0
+    person_a.name = "John"
+    person_a.surname = "Doe"
+    person_a.main_account = dto1
+    person_a.accounts = List(dto1, dto2)
+    person_a.balances = person_a.accounts.map(_.balance.toString)
+    (person, person_a)
   }
 
   it should "serialize flat tresql result as arrays to json" in {
@@ -109,14 +133,9 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
   it should "serialize dto result as arrays to json" in {
     def test(dtos: Seq[Dto], includeHeaders: Boolean) =
       serializeDtoResult(dtos, Json, includeHeaders)
-    val dto1 = new QuereaseActionsDtos.PersonAccounts
-    dto1.number = "42"
-    dto1.balance = 1001.01
-    dto1.last_modified = java.sql.Timestamp.valueOf("2021-12-26 23:57:00.1")
-    val dto2 = new QuereaseActionsDtos.PersonAccounts
-    dto2.id = 2
-    dto2.balance = 2002.02
-    dto2.last_modified = java.sql.Timestamp.valueOf("2021-12-26 23:58:15.151")
+    val (person, person_a) = createPersonDtos
+    val dto1 = person.accounts(0)
+    val dto2 = person.accounts(1)
     test(Nil, includeHeaders = false) shouldBe ""
     test(Nil, includeHeaders = true)  shouldBe ""
     test(List(dto1, dto2), includeHeaders = false) shouldBe List(
@@ -128,11 +147,6 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
       """[null,"42",1001.01,"2021-12-26 23:57:00.1"]""",
       """[2,null,2002.02,"2021-12-26 23:58:15.151"]""",
     ).mkString(",")
-    val person = new QuereaseActionsDtos.Person
-    person.id = 0
-    person.name = "John"
-    person.surname = "Doe"
-    person.accounts = List(dto1, dto2)
     test(List(person), includeHeaders = false)  shouldBe List(
       """[0,"John","Doe",null,null,null,""",
         """[[null,"42",1001.01,"2021-12-26 23:57:00.1"],""",
@@ -144,6 +158,16 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
       """[["id","number","balance","last_modified"],""",
        """[null,"42",1001.01,"2021-12-26 23:57:00.1"],""",
        """[2,null,2002.02,"2021-12-26 23:58:15.151"]]]""",
+    ).mkString
+    test(List(person_a), includeHeaders = true)  shouldBe List(
+      """["id","name","surname","main_account","accounts","balances"],""",
+      """[0,"John","Doe",""",
+      """[["id","number","balance","last_modified"],""",
+       """[null,"42",1001.01,"2021-12-26 23:57:00.1"]],""",
+      """[["id","number","balance","last_modified"],""",
+       """[null,"42",1001.01,"2021-12-26 23:57:00.1"],""",
+       """[2,null,2002.02,"2021-12-26 23:58:15.151"]],""",
+       """["1001.01","2002.02"]]""",
     ).mkString
   }
 
@@ -190,11 +214,11 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
     test(1, wrap = true) shouldBe """~9f~9f~01dJohncDoeaMj1969-01-01~ff~ff"""
   }
 
-  it should "serialize to cbor and transform to csv" in {
+  it should "serialize tresql to cbor and transform to csv" in {
     val cols = "id, name, surname, sex, birthdate"
     def queryString(maxId: Int) = s"person [id <= $maxId] {${cols}}"
-    def test(maxId: Int, withLabels: Boolean) = serializeAndTransformTresqlResult(
-      queryString(maxId),
+    def test(maxId: Int, withLabels: Boolean) = serializeAndTransform(
+      TresqlResultSerializer(() => Query(queryString(maxId)), includeHeaders = false),
       outputStream => new CsvOutput(
         writer = new OutputStreamWriter(outputStream, "UTF-8"),
         labels = if (withLabels) cols.split(", ").toList else null,
@@ -211,6 +235,54 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
       "1,John,Doe,M,1969-01-01",
       "2,Jane,,F,1996-02-02",
     ).mkString("", "\n", "\n")
+  }
+
+  it should "serialize dtos to cbor and reformat to json maps" in {
+    implicit val qe = querease
+    def test(dtos: Seq[Dto], isCollection: Boolean, viewName: String = null) = serializeAndTransform(
+      DtoDataSerializer(() => dtos.iterator),
+      outputStream => JsonOutput(outputStream, isCollection, viewName, qe.nameToViewDef)
+    )
+    val (person, person_a) = createPersonDtos
+    val dto1 = person.accounts(0)
+    val dto2 = person.accounts(1)
+    test(Nil, isCollection = false)  shouldBe ""
+    test(Nil, isCollection = true)  shouldBe "[]"
+    test(List(dto1, dto2), isCollection = true)  shouldBe List(
+      """[{"id":null,"number":"42","balance":1001.01,"last_modified":"2021-12-26 23:57:00.1"},""",
+      """{"id":2,"number":null,"balance":2002.02,"last_modified":"2021-12-26 23:58:15.151"}]""",
+    ).mkString
+    test(List(person), isCollection = false)  shouldBe List(
+      """{"id":0,"name":"John","surname":"Doe","sex":null,"birthdate":null,"main_account":null,"accounts":""",
+      """[{"id":null,"number":"42","balance":1001.01,"last_modified":"2021-12-26 23:57:00.1"},""",
+      """{"id":2,"number":null,"balance":2002.02,"last_modified":"2021-12-26 23:58:15.151"}]}""",
+    ).mkString
+    test(List(person, person), isCollection = true)  shouldBe List(
+      """[{"id":0,"name":"John","surname":"Doe","sex":null,"birthdate":null,"main_account":null,"accounts":""",
+      """[{"id":null,"number":"42","balance":1001.01,"last_modified":"2021-12-26 23:57:00.1"},""",
+      """{"id":2,"number":null,"balance":2002.02,"last_modified":"2021-12-26 23:58:15.151"}]},""",
+      """{"id":0,"name":"John","surname":"Doe","sex":null,"birthdate":null,"main_account":null,"accounts":""",
+      """[{"id":null,"number":"42","balance":1001.01,"last_modified":"2021-12-26 23:57:00.1"},""",
+      """{"id":2,"number":null,"balance":2002.02,"last_modified":"2021-12-26 23:58:15.151"}]}]""",
+    ).mkString
+    // unknown wiew - wrap single child in array
+    test(List(person_a), isCollection = false)  shouldBe List(
+      """{"id":0,"name":"John","surname":"Doe","main_account":""",
+      """[{"id":null,"number":"42","balance":1001.01,"last_modified":"2021-12-26 23:57:00.1"}],""",
+      """"accounts":""",
+      """[{"id":null,"number":"42","balance":1001.01,"last_modified":"2021-12-26 23:57:00.1"},""",
+      """{"id":2,"number":null,"balance":2002.02,"last_modified":"2021-12-26 23:58:15.151"}],""",
+      """"balances":["1001.01","2002.02"]}""",
+    ).mkString
+    // known wiew - do not wrap single child in array
+    test(List(person_a), isCollection = false, viewName = "person_accounts_details")  shouldBe List(
+      """{"id":0,"name":"John","surname":"Doe","main_account":""",
+      """{"id":null,"number":"42","balance":1001.01,"last_modified":"2021-12-26 23:57:00.1"},""",
+      """"accounts":""",
+      """[{"id":null,"number":"42","balance":1001.01,"last_modified":"2021-12-26 23:57:00.1"},""",
+      """{"id":2,"number":null,"balance":2002.02,"last_modified":"2021-12-26 23:58:15.151"}],""",
+      """"balances":["1001.01","2002.02"]}""",
+    ).mkString
   }
 
   it should "serialize known types to cbor and deserialize to somewhat similar types" in {

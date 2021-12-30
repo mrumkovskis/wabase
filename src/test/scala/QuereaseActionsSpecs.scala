@@ -22,6 +22,14 @@ object QuereaseActionsDtos {
     var balance: BigDecimal = null
     var last_modified: java.sql.Timestamp = null
   }
+  class PersonAccountsDetails extends DtoWithId {
+    var id: java.lang.Long = null
+    var name: String = null
+    var surname: String = null
+    var main_account: PersonAccounts = null
+    var accounts: List[PersonAccounts] = Nil
+    var balances: List[String] = null
+  }
   class Payment extends DtoWithId {
     var id: java.lang.Long = null
     var originator: String = null
@@ -67,6 +75,7 @@ object QuereaseActionsDtos {
   val viewNameToClass = Map[String, Class[_ <: Dto]](
     "person" -> classOf[Person],
     "person_accounts" -> classOf[PersonAccounts],
+    "person_accounts_details" -> classOf[PersonAccountsDetails],
     "payment" -> classOf[Payment],
     "person_list" -> classOf[PersonList],
     "person_with_main_account" -> classOf[PersonWithMainAccount],

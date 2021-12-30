@@ -1,10 +1,113 @@
 package org.wabase
 
 import org.wabase.Format.{xlsxDateTime, xsdDate}
+import io.bullet.borer
+import io.bullet.borer.{Cbor, Json}
 
-import java.io.Writer
+import java.io
+import java.io.OutputStream
 import java.util.zip.ZipOutputStream
+import org.mojoz.metadata.MojozViewDef
+
 import scala.collection.immutable.Seq
+
+class CborOrJsonOutput(
+  w: borer.Writer,
+  isCollection: Boolean,
+  viewName: String,
+  nameToViewDef: Map[String, MojozViewDef],
+) extends BorerValueEncoder(w) with NestedArraysHandler {
+  import CborOrJsonOutput.Context
+  var contextStack: List[Context] = Nil
+  override def writeStartOfInput(): Unit = {
+    if (isCollection) w.writeArrayStart()
+    val viewDef =
+      if (viewName != null && nameToViewDef != null)
+        nameToViewDef.getOrElse(viewName, null)
+      else null
+    contextStack = new Context(isRow = true, viewDef) :: contextStack
+  }
+  override def writeArrayStart(): Unit = {
+    val context = contextStack.head
+    if (context.isRow) {
+      if (!context.isFirstRow) {
+        w.writeMapStart()
+        contextStack = new Context(isRow = false, context.viewDef, allNames = context.names) :: contextStack
+      } else {
+        context.readingNames = true
+      }
+    } else {
+      val name = context.names.head
+      val fieldDef =
+        if (context.viewDef != null)
+          context.viewDef.fields.find(f => Option(f.alias).getOrElse(f.name) == name).orNull
+        else null
+      val viewDef =
+        if (fieldDef != null && fieldDef.type_.isComplexType)
+          nameToViewDef.getOrElse(fieldDef.type_.name, null)
+        else null
+      val isCollection = fieldDef == null || fieldDef.isCollection
+      super.writeValue(name)
+      if (isCollection)
+        w.writeArrayStart()
+      context.names = context.names.tail
+      contextStack = new Context(isRow = true, viewDef, allNames = Nil, isCollection) :: contextStack
+    }
+  }
+  override def writeValue(value: Any): Unit = {
+    val context = contextStack.head
+    if (!context.isRow) {
+      super.writeValue(context.names.head)
+      super.writeValue(value)
+      context.names = context.names.tail
+    } else if (context.isFirstRow) {
+      if (context.readingNames) {
+        context.names = ("" + value) :: context.names
+      } else {
+        super.writeValue(value)
+      }
+    }
+  }
+  override def writeArrayBreak(): Unit = {
+    val context = contextStack.head
+    if (context.isRow && context.isFirstRow && context.readingNames) {
+      context.isFirstRow = false
+      context.readingNames = false
+      context.names = context.names.reverse
+    } else {
+      if (context.isCollection)
+        w.writeBreak()
+      contextStack = contextStack.tail
+    }
+  }
+  override def writeEndOfInput(): Unit = {
+    if (isCollection) w.writeBreak()
+    contextStack = contextStack.tail
+  }
+}
+
+object CborOrJsonOutput {
+  class Context(
+    val isRow: Boolean,
+    val viewDef: MojozViewDef,
+    val allNames: List[String] = Nil,
+    val isCollection: Boolean = true
+  ) {
+    var isFirstRow: Boolean = isRow
+    var readingNames: Boolean = false
+    var names: List[String] = allNames
+  }
+}
+
+object CborOutput {
+  def apply(outputStream: OutputStream, isCollection: Boolean, viewName: String, nameToViewDef: Map[String, MojozViewDef]) =
+    new CborOrJsonOutput(BorerNestedArraysEncoder.createWriter(outputStream, Cbor), isCollection, viewName, nameToViewDef)
+}
+
+object JsonOutput {
+  def apply(outputStream: OutputStream, isCollection: Boolean, viewName: String, nameToViewDef: Map[String, MojozViewDef]) =
+    new CborOrJsonOutput(BorerNestedArraysEncoder.createWriter(outputStream, Json), isCollection, viewName, nameToViewDef)
+}
 
 abstract class FlatTableOutput(val labels: Seq[String]) extends NestedArraysHandler {
   protected var row = 0
@@ -50,7 +153,7 @@ abstract class FlatTableOutput(val labels: Seq[String]) extends NestedArraysHand
   def writeFooter():          Unit = {}
 }
 
-class CsvOutput(writer: Writer, labels: Seq[String]) extends FlatTableOutput(labels) {
+class CsvOutput(writer: io.Writer, labels: Seq[String]) extends FlatTableOutput(labels) {
   def escapeValue(s: String) =
     if (s == null) null
     else if (s.contains(",") || s.contains("\"")) ("\"" + s.replaceAll("\"", "\"\"") + "\"")
@@ -94,7 +197,7 @@ class OdsOutput(zos: ZipOutputStream, labels: Seq[String], worksheetName: String
   }
 }
 
-class XlsXmlOutput(writer: Writer, labels: Seq[String], worksheetName: String = "data") extends FlatTableOutput(labels) {
+class XlsXmlOutput(writer: io.Writer, labels: Seq[String], worksheetName: String = "data") extends FlatTableOutput(labels) {
   import org.wabase.spreadsheet.xlsxml._
   val headerStyle = Style("header", null, Font.BOLD)
   val streamer = new XlsXmlStreamer(writer)

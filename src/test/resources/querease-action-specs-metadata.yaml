@@ -96,6 +96,17 @@ fields:
 - birthdate
 
 
+name: person_accounts_details
+table: person
+fields:
+- id
+- name
+- surname
+- main_account  person_accounts
+- accounts *    person_accounts
+- balances *    =
+
+
 name: payment
 api: save, get
 table: transaction tr

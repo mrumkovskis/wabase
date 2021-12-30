@@ -101,11 +101,9 @@ object BorerDatetimeEncoders {
   }
 }
 
-class BorerNestedArraysEncoder(w: Writer, wrap: Boolean = false) extends NestedArraysHandler {
+class BorerValueEncoder(w: Writer) {
   import BorerDatetimeEncoders._
-  override def writeStartOfInput():     Unit = { if (wrap) w.writeArrayStart() }
-  override def writeArrayStart():       Unit = w.writeArrayStart()
-  override def writeValue(value: Any):  Unit = value match {
+  def writeValue(value: Any):  Unit = value match {
     case null               => w.writeNull()
     case value: Boolean     => w writeBoolean value
     case value: Char        => w writeChar    value
@@ -133,6 +131,12 @@ class BorerNestedArraysEncoder(w: Writer, wrap: Boolean = false) extends NestedA
     case value: sql.Date    => w ~ value
     case x                  => w writeString x.toString
   }
+}
+
+class BorerNestedArraysEncoder(w: Writer, wrap: Boolean = false) extends BorerValueEncoder(w) with NestedArraysHandler {
+  override def writeStartOfInput():     Unit = { if (wrap) w.writeArrayStart() }
+  override def writeArrayStart():       Unit = w.writeArrayStart()
+  override def writeValue(value: Any):  Unit = super.writeValue(value)
   override def writeChunk(chunk: Any, isFirst: Boolean, isLast: Boolean): Unit = ??? // TODO blob / clob etc support
   override def writeArrayBreak(): Unit = w.writeBreak()
   override def writeEndOfInput(): Unit = { if (wrap) w.writeBreak() }
@@ -176,46 +180,49 @@ class BorerNestedArraysTransformer(reader: Reader, handler: NestedArraysHandler)
   import handler._
   import BorerDatetimeDecoders._
   import io.bullet.borer.{DataItem => DI}
+  private var di = DI.None
   def transformNext(): Boolean = {
-    val di = dataItem()
-    di match {
-      case DI.Null          => writeValue(readNull())
-      case DI.Undefined     => readUndefined();   writeValue(null)  // unexpected
-      case DI.Boolean       => writeValue(readBoolean())
-      case DI.Int           => writeValue(readInt())        // byte, char, short also here, convert if necessary
-      case DI.Long          => writeValue(readLong())
-      case DI.OverLong      => writeValue(read[JBigInteger]())
-      case DI.Float16       => writeValue(readFloat())
-      case DI.Float         => writeValue(readFloat())
-      case DI.Double        => writeValue(readDouble())
-      case DI.NumberString  => writeValue(read[JBigDecimal]())
-      case DI.String        => writeValue(readString())
-      case DI.Chars         => writeValue(readString())
-      case DI.Text          => writeValue(readString())
-      case DI.TextStart     => writeValue(readString())     // TODO blob / clob etc support
-      case DI.Bytes         => writeValue(readByteArray())
-      case DI.BytesStart    => writeValue(readByteArray())  // TODO blob / clob etc support
-      case DI.ArrayHeader   => readArrayHeader(); writeArrayStart()
-      case DI.ArrayStart    => readArrayStart();  writeArrayStart()
-      case DI.MapHeader     => readMapHeader();   writeArrayStart() // unexpected TODO map support?
-      case DI.MapStart      => readMapStart();    writeArrayStart() // unexpected TODO map support?
-      case DI.Break         => readBreak();       writeArrayBreak()
-      case DI.Tag           => writeValue {
-        if      (hasTag(Tag.PositiveBigNum))   read[JBigInteger]()
-        else if (hasTag(Tag.NegativeBigNum))   read[JBigInteger]()
-        else if (hasTag(Tag.DecimalFraction))  read[JBigDecimal]()
-        else if (hasTag(Tag.DateTimeString))   read[Timestamp]()
-        else if (hasTag(Tag.EpochDateTime)) {
-          readTag()
-          dataItem() match {
-            case DI.Int | DI.Long   => new sql.Date(readLong() * 1000)
-            case _                  => new Timestamp((readDouble() * 1000).toLong)
+    if (di != DI.EndOfInput) {
+      di = dataItem()
+      di match {
+        case DI.Null          => writeValue(readNull())
+        case DI.Undefined     => readUndefined();   writeValue(null)  // unexpected
+        case DI.Boolean       => writeValue(readBoolean())
+        case DI.Int           => writeValue(readInt())        // byte, char, short also here, convert if necessary
+        case DI.Long          => writeValue(readLong())
+        case DI.OverLong      => writeValue(read[JBigInteger]())
+        case DI.Float16       => writeValue(readFloat())
+        case DI.Float         => writeValue(readFloat())
+        case DI.Double        => writeValue(readDouble())
+        case DI.NumberString  => writeValue(read[JBigDecimal]())
+        case DI.String        => writeValue(readString())
+        case DI.Chars         => writeValue(readString())
+        case DI.Text          => writeValue(readString())
+        case DI.TextStart     => writeValue(readString())     // TODO blob / clob etc support
+        case DI.Bytes         => writeValue(readByteArray())
+        case DI.BytesStart    => writeValue(readByteArray())  // TODO blob / clob etc support
+        case DI.ArrayHeader   => readArrayHeader(); writeArrayStart()
+        case DI.ArrayStart    => readArrayStart();  writeArrayStart()
+        case DI.MapHeader     => readMapHeader();   writeArrayStart() // unexpected TODO map support?
+        case DI.MapStart      => readMapStart();    writeArrayStart() // unexpected TODO map support?
+        case DI.Break         => readBreak();       writeArrayBreak()
+        case DI.Tag           => writeValue {
+          if      (hasTag(Tag.PositiveBigNum))   read[JBigInteger]()
+          else if (hasTag(Tag.NegativeBigNum))   read[JBigInteger]()
+          else if (hasTag(Tag.DecimalFraction))  read[JBigDecimal]()
+          else if (hasTag(Tag.DateTimeString))   read[Timestamp]()
+          else if (hasTag(Tag.EpochDateTime)) {
+            readTag()
+            dataItem() match {
+              case DI.Int | DI.Long   => new sql.Date(readLong() * 1000)
+              case _                  => new Timestamp((readDouble() * 1000).toLong)
+            }
           }
+          else readString()                                   // unexpected
         }
-        else readString()                                   // unexpected
+        case DI.SimpleValue   => writeValue(readInt())        // unexpected
+        case DI.EndOfInput    => readEndOfInput(); writeEndOfInput()
       }
-      case DI.SimpleValue   => writeValue(readInt())        // unexpected
-      case DI.EndOfInput    => readEndOfInput();  writeEndOfInput()
     }
     di != DI.EndOfInput
   }
@@ -316,7 +323,7 @@ object DtoDataSerializer {
     createEncoder:  OutputStream => NestedArraysHandler = BorerNestedArraysEncoder(_),
   )(implicit
     qe: AppQuerease,
-  ): Source[ByteString, _] = {
+  ): Source[ByteString, NotUsed] = {
     Source.fromGraph(new NestedArraysSerializer(
       () => new DtoDataIterator(createResult(), asRows = true, includeHeaders),
       createEncoder(_),
