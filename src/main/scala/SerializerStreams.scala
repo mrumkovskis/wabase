@@ -276,6 +276,25 @@ object BorerNestedArraysTransformer {
   ): Source[ByteString, NotUsed] = Source.fromGraph(
     new TransformerSource(createTransformable, createEncoder, transformFrom, bufferSizeHint)
   )
+
+  def transform[T](
+    transformable: T,
+    createEncoder: OutputStream => NestedArraysHandler,
+    transformFrom: Target = Cbor,
+  )(implicit p: Input.Provider[T]): ByteString = {
+    val buf = new ByteStringBuilder
+    val encoder = createEncoder(buf.asOutputStream)
+    val transformer = new BorerNestedArraysTransformer(
+      transformFrom match {
+        case _: Cbor.type => Cbor.reader(transformable)
+        case _: Json.type => Json.reader(transformable)
+      },
+      encoder,
+    )
+    encoder.writeStartOfInput()
+    while (transformer.transformNext()) {}
+    buf.result()
+  }
 }
 
 object DtoDataSerializer {
