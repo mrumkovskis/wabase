@@ -66,8 +66,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Async
 
   protected def doAction[T](action: String,
                          view: String,
-                         params: Map[String, Any],
-                         deferredTransformer: CloseableQuereaseResult => QuereaseResult = null) = {
+                         params: Map[String, Any]) = {
     app.doWabaseAction(action, view, params)
       .map(_.result)
       .flatMap {
