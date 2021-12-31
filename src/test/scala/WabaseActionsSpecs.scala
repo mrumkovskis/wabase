@@ -1,9 +1,13 @@
 package org.wabase
 
+import akka.actor.ActorSystem
+import akka.stream.scaladsl.{Source, StreamConverters}
 import org.mojoz.querease.{ValidationException, ValidationResult}
 import org.scalatest.flatspec.{AsyncFlatSpec, AsyncFlatSpecLike}
 import org.tresql.ThreadLocalResources
 import org.wabase.QuereaseActionsDtos.PersonWithHealthDataHealth
+
+import scala.concurrent.Future
 
 object WabaseActionDtos {
   class Purchase extends Dto {
@@ -58,6 +62,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Async
   private implicit val state = ApplicationState(Map())
   private implicit val timeout = QueryTimeout(10)
   private implicit val defaultCp = PoolName(dbNamePrefix)
+  private implicit val as = ActorSystem("wabase-action-specs")
 
   protected def doAction[T](action: String,
                          view: String,
@@ -65,15 +70,24 @@ class WabaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Async
                          deferredTransformer: CloseableQuereaseResult => QuereaseResult = null) = {
     app.doWabaseAction(action, view, params)
       .map(_.result)
-      .map {
-        case dr: QuereaseResultWithCleanup =>
-          Option(deferredTransformer)
-            .map(dr.flatMap)
-            .getOrElse(dr.flatMap {
-              case TresqlResult(r) => ListResult(r.toListOfMaps)
-              case IteratorResult(r) => ListResult(r.map(_.toMap(app.qe)).map(removeIds).toList)
+      .flatMap {
+        case sr: SerializedQuereaseResult =>
+          val serializerSource = sr.result match {
+            case CompleteResult(result) => Source.single(result)
+            case IncompleteResultSource(result) => result
+          }
+          val source = BorerNestedArraysTransformer.source(
+            () => serializerSource.runWith(StreamConverters.asInputStream()),
+            JsonOutput(_, true, view, app.qe.nameToViewDef),
+          )
+          source
+            .runFold("")(_ + _.decodeString("UTF-8"))
+            .map(_.parseJson.convertTo[List[Any]](app.qe.ListJsonFormat))
+            .map(_.map {
+              case m: Map[String@unchecked, _] => removeIds(m)
+              case x => x
             })
-        case r => r
+        case r => Future.successful(r)
       }
   }
 
@@ -160,24 +174,20 @@ class WabaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Async
       doAction("list",
         "purchase",
         Map("sort" -> "id"),
-      ).map {
-        case ListResult(lr)  =>
-          lr should be (
-            List(
-              Map(
-                "customer" -> "Ravus",
-                "purchase_time" -> java.sql.Timestamp.valueOf("2021-12-04 00:06:53.0"),
-                "item" -> "sword",
-                "amount" -> 100.00
-              ), Map(
-                "customer" -> "Mr. Gunza",
-                "purchase_time" -> java.sql.Timestamp.valueOf("2021-12-04 15:15:23.0"),
-                "item" -> "joystick",
-                "amount" -> 60.00
-              )
-            )
+      ).map { _ should be (
+          YamlUtils.parseYamlData(
+          """
+            - customer: Ravus
+              purchase_time: 2021-12-04 00:06:53.0
+              item: sword
+              amount: 100.00
+            - customer: Mr. Gunza
+              purchase_time: 2021-12-04 15:15:23.0
+              item: joystick
+              amount: 60.00
+            """
           )
-        case x => fail(s"Invalid purchase list: $x")
+        )
       }
     }
   }
@@ -219,48 +229,34 @@ class WabaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Async
       doAction("list",
         "person_health_and_shop",
         Map(),
-      ).map {
-        case ListResult(lr)  =>
-          lr should be (
-            List(
-              Map(
-                "health" ->
-                  List(Map(
-                    "manipulation_date" -> java.sql.Date.valueOf("2021-06-05"),
-                    "vaccine" -> "AstraZeneca",
-                    "had_virus" -> null
-                  )),
-                "name" -> "Mr. Gunza",
-                "purchases" ->
-                  List(Map(
-                    "customer" -> "Mr. Gunza",
-                    "purchase_time" -> java.sql.Timestamp.valueOf("2021-12-04 15:15:23.0"),
-                    "item" -> "joystick",
-                    "amount" -> 60.00
-                  )),
-                "sex" -> "M",
-                "birthdate" -> java.sql.Date.valueOf("1999-04-23")
-              ), Map(
-                "health" ->
-                  List(Map(
-                    "manipulation_date" -> java.sql.Date.valueOf("2021-08-15"),
-                    "vaccine" -> "BioNTech",
-                    "had_virus" -> null
-                  )),
-                "name" -> "Mr. Mario",
-                "purchases" ->
-                  List(Map(
-                    "customer" -> "Mr. Mario",
-                    "purchase_time" -> java.sql.Timestamp.valueOf("2021-12-08 12:15:33.0"),
-                    "item" -> "beer",
-                    "amount" -> 2.00
-                  )),
-                "sex" -> "M",
-                "birthdate" -> java.sql.Date.valueOf("1988-09-20")
-              )
-            )
-        )
-        case x => fail(s"Invalid purchase list: $x")
+      ).map { _ should be ( YamlUtils.parseYamlData(
+          """
+                - name: Mr. Gunza
+                  sex: M
+                  birthdate: 1999-04-23
+                  health:
+                    - manipulation_date: 2021-06-05
+                      vaccine: AstraZeneca
+                      had_virus: null
+                  purchases:
+                    - customer: Mr. Gunza
+                      purchase_time: 2021-12-04 15:15:23.0
+                      item: joystick
+                      amount: 60.00
+                - name: Mr. Mario
+                  sex: M
+                  birthdate: 1988-09-20
+                  health:
+                    - manipulation_date: 2021-08-15
+                      vaccine: BioNTech
+                      had_virus: null
+                  purchases:
+                    - customer: Mr. Mario
+                      purchase_time: 2021-12-08 12:15:33.0
+                      item: beer
+                      amount: 2.00
+          """
+        ))
       }
     }
   }

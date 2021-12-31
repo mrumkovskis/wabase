@@ -1,5 +1,9 @@
 package org.wabase
 
+import akka.actor.ActorSystem
+import akka.stream.Materializer
+import akka.stream.scaladsl.Source
+import akka.util.ByteString
 import org.mojoz.querease.NotFoundException
 import org.tresql.Resources
 import org.wabase.AppMetadata.{Action, AugmentedAppFieldDef, AugmentedAppViewDef}
@@ -21,7 +25,13 @@ trait WabaseApp[User] {
 
   import qe.viewDefOption
 
-  val DefaultCp: PoolName = DEFAULT_CP
+  val DefaultCp: PoolName = WabaseAppConfig.DefaultCp
+  val SerializationBufferSize: Int = WabaseAppConfig.SerializationBufferSize
+  val SerializationBufferMaxFileSize: Long = WabaseAppConfig.SerializationBufferMaxFileSize
+  val SerializationBufferMaxFileSizes: Map[String, Long] = WabaseAppConfig.SerializationBufferMaxFileSizes
+
+  def viewSerializationBufferMaxFileSize(viewName: String): Long =
+    SerializationBufferMaxFileSizes.getOrElse(viewName, SerializationBufferMaxFileSize)
 
   type ActionHandlerResult = qe.QuereaseAction[WabaseResult]
   type ActionHandler       = ActionContext => ActionHandlerResult
@@ -36,26 +46,10 @@ trait WabaseApp[User] {
     val state:    ApplicationState,
     val timeout:  QueryTimeout,
     val ec:       ExecutionContext,
+    val as:       ActorSystem
   )
 
   case class WabaseResult(ctx: ActionContext, result: QuereaseResult)
-
-  protected def getActionHandler(context: ActionContext): ActionHandler = {
-    import context._
-    actionName match {
-      case Action.List    => list
-      case Action.Save    => save
-      case Action.Delete  => delete
-      case x              => simpleAction
-    }
-  }
-
-  def initViewResources(viewName: String)(actionName: String): Resources = {
-    val vdo = viewDefOption(viewName)
-    val poolName = vdo.flatMap(v => Option(v.cp)).map(PoolName) getOrElse DefaultCp
-    val extraDbs = extraDb(vdo.map(_.actionToDbAccessKeys(actionName).toList).getOrElse(Nil))
-    initResources(tresqlResources.resourcesTemplate)(poolName, extraDbs)
-  }
 
   def doWabaseAction(
     actionName: String,
@@ -66,6 +60,7 @@ trait WabaseApp[User] {
     state:    ApplicationState,
     timeout:  QueryTimeout,
     ec:       ExecutionContext,
+    as:       ActorSystem
   ): Future[WabaseResult] = {
     doWabaseAction(ActionContext(actionName, viewName, values))
   }
@@ -79,20 +74,24 @@ trait WabaseApp[User] {
   ): Future[WabaseResult] = {
     val actionContext = beforeWabaseAction(context)
     import context.ec
+    import context.as
     action(actionContext)
       .andThen { case Success(WabaseResult(ctx, res)) => afterWabaseAction(ctx, res) }
       .run
-  }
-
-  def beforeWabaseAction(context: ActionContext): ActionContext = {
-    import context._
-    checkApi(viewName, actionName, user)
-    val trusted = state ++ values ++ current_user_param(user)
-    context.copy(values = trusted)
-  }
-
-  def afterWabaseAction(context: ActionContext, result: QuereaseResult): Unit = {
-    audit(context, result)
+      .flatMap {
+        case WabaseResult(ac, QuereaseResultWithCleanup(result, cleanup)) =>
+          //do serialization phase if result is based on open database cursor
+          val resultSource = result match {
+            case TresqlResult(tr) =>
+              TresqlResultSerializer.source(() => tr)
+            case IteratorResult(ir) =>
+              DtoDataSerializer.source(() => ir)
+          }
+          serializeResult(SerializationBufferSize, viewSerializationBufferMaxFileSize(ac.viewName),
+            resultSource, cleanup)
+            .map(WabaseResult(ac, _))
+        case wr => Future.successful(wr)
+      }
   }
 
   def simpleAction(context: ActionContext): ActionHandlerResult = {
@@ -178,6 +177,46 @@ trait WabaseApp[User] {
     }
   }
 
+  protected def getActionHandler(context: ActionContext): ActionHandler = {
+    import context._
+    actionName match {
+      case Action.List    => list
+      case Action.Save    => save
+      case Action.Delete  => delete
+      case x              => simpleAction
+    }
+  }
+
+  protected def initViewResources(viewName: String)(actionName: String): Resources = {
+    val vdo = viewDefOption(viewName)
+    val poolName = vdo.flatMap(v => Option(v.cp)).map(PoolName) getOrElse DefaultCp
+    val extraDbs = extraDb(vdo.map(_.actionToDbAccessKeys(actionName).toList).getOrElse(Nil))
+    initResources(tresqlResources.resourcesTemplate)(poolName, extraDbs)
+  }
+
+  /** Runs {{{src}}} via {{{FileBufferedFlow}}} of {{{bufferSize}}} with {{{maxFileSize}}} to {{{CheckCompletedSink}}} */
+  protected def serializeResult(bufferSize: Int,
+                                maxFileSize: Long,
+                                result: Source[ByteString, _],
+                                cleanupFun: Option[Throwable] => Unit = null)(implicit ec: ExecutionContext,
+                                                                              mat: Materializer): Future[SerializedQuereaseResult] = {
+    result
+      .via(FileBufferedFlow.create(bufferSize, maxFileSize))
+      .runWith(new ResultCompletionSink(cleanupFun))
+      .map(SerializedQuereaseResult)
+  }
+
+  protected def beforeWabaseAction(context: ActionContext): ActionContext = {
+    import context._
+    checkApi(viewName, actionName, user)
+    val trusted = state ++ values ++ current_user_param(user)
+    context.copy(values = trusted)
+  }
+
+  protected def afterWabaseAction(context: ActionContext, result: QuereaseResult): Unit = {
+    audit(context, result)
+  }
+
   protected def applyReadonlyValues(
     viewDef: ViewDef, old: Map[String, Any], instance: Map[String, Any]
   ): Map[String, Any] = {
@@ -193,8 +232,7 @@ trait WabaseApp[User] {
       instance
   }
 
-
-  def stableOrderBy(viewDef: ViewDef, orderBy: String): String = {
+  protected def stableOrderBy(viewDef: ViewDef, orderBy: String): String = {
     if (orderBy != null && orderBy != "" && viewDef.orderBy != null && viewDef.orderBy.nonEmpty) {
       val forcedSortCols = orderBy.replace("~", "").split("[\\s\\,]+").toSet
       Option(viewDef.orderBy)
@@ -233,4 +271,15 @@ trait WabaseApp[User] {
         throw new BusinessException(s"Not sortable: ${viewDef.name} by " + notSortable.mkString(", "), null)
     }
   }
+}
+
+object WabaseAppConfig extends AppBase.AppConfig {
+  val DefaultCp: PoolName = DEFAULT_CP
+  val SerializationBufferSize: Int =
+    if (appConfig.hasPath("serialization-buffer-size"))
+      appConfig.getInt("serialization-buffer-size")
+    else 1024 * 32
+
+  val SerializationBufferMaxFileSize: Long = MarshallingConfig.dbDataFileMaxSize
+  val SerializationBufferMaxFileSizes: Map[String, Long] = MarshallingConfig.customDataFileMaxSizes
 }

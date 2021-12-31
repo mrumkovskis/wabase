@@ -48,10 +48,6 @@ class TestAppService(system: ActorSystem) extends ExecutionImpl()(system)
 }
 
 object YamlUtils {
-  def stripMargin(s: String) =
-    Option(s).map(_.replaceAll("^\\n+", "").split("\\n")).filter(_.nonEmpty).map { parts =>
-      (parts.head.indexWhere(_ != ' '), parts)
-    }.map { case (idx, parts) => parts.map(_ substring idx).mkString("\n") } getOrElse ""
   def parseYamlData(yamlStr: String): Any = {
     import org.snakeyaml.engine.v2.api.LoadSettings
     import org.snakeyaml.engine.v2.api.Load
@@ -61,10 +57,14 @@ object YamlUtils {
       case a: java.util.ArrayList[_] => a.asScala.map(toScalaType).toList
       case x => x
     }
+    def stripMargin(s: String) =
+      Option(s).map(_.replaceAll("^\\n+", "").split("\\n")).filter(_.nonEmpty).map { parts =>
+        (parts.head.indexWhere(_ != ' '), parts)
+      }.map { case (idx, parts) => parts.map(s => s substring Math.min(idx, s.length)).mkString("\n") } getOrElse ""
     val loaderSettings = LoadSettings.builder()
       .setLabel("test data")
       .setAllowDuplicateKeys(false)
       .build()
-    toScalaType(new Load(loaderSettings).loadFromString(yamlStr))
+    toScalaType(new Load(loaderSettings).loadFromString(stripMargin(yamlStr)))
   }
 }

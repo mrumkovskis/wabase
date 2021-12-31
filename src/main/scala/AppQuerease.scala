@@ -51,6 +51,7 @@ case class QuereaseResultWithCleanup(result: CloseableQuereaseResult, cleanup: O
     }.get
   }
 }
+case class SerializedQuereaseResult(result: SerializedResult) extends QuereaseResult
 
 trait AppQuereaseIo extends org.mojoz.querease.ScalaDtoQuereaseIo with JsonConverter { self: AppQuerease =>
 
@@ -266,7 +267,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case id: IdResult => id
       case rd: RedirectResult => rd
       case NoResult => NoResult
-      case x: QuereaseResultWithCleanup => sys.error(s"${x.getClass.getName} not expected here!")
+      case x => sys.error(s"${x.getClass.getName} not expected here!")
     }
     def updateCurRes(cr: Map[String, Any], key: Option[String], res: Any) = res match {
       case IdResult(id) => cr
