@@ -248,7 +248,8 @@ trait QuereaseResultMarshalling { this:
     Marshaller.combined(rr => (StatusCodes.SeeOther, Seq(Location(rr.uri))))
   implicit val toEntityQuereaseNoResultMarshaller:          ToEntityMarshaller  [NoResult.type]  =
     Marshaller.combined(_ => "")
-  implicit def toResponseQuereaseSerializedResult(viewName: String): ToResponseMarshaller[QuereaseSerializedResult] = { // TODO code formatting?
+
+  def toResponseQuereaseSerializedResult(viewName: String): ToResponseMarshaller[QuereaseSerializedResult] = { // TODO code formatting?
     def ser_source_marshaller(contentType: ContentType,
                               createEncoder: OutputStream => NestedArraysHandler): ToResponseMarshaller[SerializedResult] = {
       def formatted_source(serializerSource: Source[ByteString, _]) =
@@ -257,11 +258,12 @@ trait QuereaseResultMarshalling { this:
           createEncoder
         )
       def format_complete_res(bytes: ByteString) = {
-        val resF =
-          formatted_source(Source.single(bytes))
-            .via(FileBufferedFlow.create(1024 * 32, MarshallingConfig.dbDataFileMaxSize))
-            .runWith(new ResultCompletionSink())
-        Await.result(resF, 1.second)
+        Await.result (
+          app
+            .serializeResult(app.SerializationBufferSize, app.SerializationBufferMaxFileSize, Source.single(bytes))
+            .map(_.result),
+          1.second
+        )
       }
       def create_http_resp(formatted_res: SerializedResult) = {
         val entity =
