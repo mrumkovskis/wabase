@@ -12,7 +12,7 @@ import java.net.URLEncoder
 import java.text.Normalizer
 import java.util.zip.ZipOutputStream
 import scala.collection.immutable.Seq
-import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.concurrent.{ExecutionContext, Future}
 import spray.json._
 import DefaultJsonProtocol._
 import akka.http.scaladsl.model.headers.{ContentDispositionType, ContentDispositionTypes}
@@ -20,6 +20,7 @@ import akka.http.scaladsl.model.headers.{Location, RawHeader}
 import akka.http.scaladsl.unmarshalling.{FromEntityUnmarshaller, FromResponseUnmarshaller, Unmarshaller}
 import akka.stream.scaladsl.{Source, StreamConverters}
 import akka.util.ByteString
+import io.bullet.borer.compat.akka.ByteStringProvider
 
 import scala.collection.immutable.{Seq => iSeq}
 import scala.concurrent.duration.DurationInt
@@ -257,28 +258,13 @@ trait QuereaseResultMarshalling { this:
           () => serializerSource.runWith(StreamConverters.asInputStream()),
           createEncoder
         )
-      def format_complete_res(bytes: ByteString) = {
-        Await.result (
-          app.serializeResult(
-              app.SerializationBufferSize,
-              app.SerializationBufferMaxFileSize,
-              formatted_source(Source.single(bytes))
-            ).map(_.result),
-          1.second
-        )
-      }
-      def create_http_resp(formatted_res: SerializedResult) = {
-        val entity =
-          formatted_res match {
-            case IncompleteResultSource(src) => HttpEntity.Chunked.fromData(contentType, src)
-            case CompleteResult(bytes) => HttpEntity.Strict(contentType, bytes)
-          }
-        HttpResponse(entity = entity)
-      }
-
       Marshaller.withFixedContentType(contentType) {
-        case IncompleteResultSource(src) => create_http_resp(IncompleteResultSource(formatted_source(src)))
-        case CompleteResult(bytes) => create_http_resp(format_complete_res(bytes))
+        case CompleteResult(bytes) => HttpResponse(
+          entity = HttpEntity.Strict(contentType, BorerNestedArraysTransformer.transform(bytes, createEncoder))
+        )
+        case IncompleteResultSource(src) => HttpResponse(
+          entity = HttpEntity.Chunked.fromData(contentType, formatted_source(src))
+        )
       }
     }
 

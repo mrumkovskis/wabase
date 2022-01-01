@@ -22,6 +22,7 @@ lazy val dependencies = {
     "com.lambdaworks"             % "scrypt"                            % "1.4.0",
     "org.tresql"                 %% "tresql"                            % "11.0.1-SNAPSHOT",
     "io.bullet"                  %% "borer-core"                        % borerV,
+    "io.bullet"                  %% "borer-compat-akka"                 % borerV,
   )
 }
 
