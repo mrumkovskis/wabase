@@ -327,7 +327,7 @@ trait QuereaseResultMarshalling { this:
           DtoDataSerializer.source(() => qir))
       } (GenericMarshallers.futureMarshaller(toResponseQuereaseSerializedResult(viewName)))
 
-    Marshaller { implicit ec => res => marsh(res.view.name)(ec)(res) }
+    Marshaller { ec => res => marsh(res.view.name)(ec)(res) }
   }
 }
 
