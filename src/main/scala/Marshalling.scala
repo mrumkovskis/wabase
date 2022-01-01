@@ -259,9 +259,11 @@ trait QuereaseResultMarshalling { this:
         )
       def format_complete_res(bytes: ByteString) = {
         Await.result (
-          app
-            .serializeResult(app.SerializationBufferSize, app.SerializationBufferMaxFileSize, Source.single(bytes))
-            .map(_.result),
+          app.serializeResult(
+              app.SerializationBufferSize,
+              app.SerializationBufferMaxFileSize,
+              formatted_source(Source.single(bytes))
+            ).map(_.result),
           1.second
         )
       }
