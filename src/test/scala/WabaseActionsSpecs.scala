@@ -173,21 +173,18 @@ class WabaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Async
       doAction("list",
         "purchase",
         Map("sort" -> "id"),
-      ).map { _ should be (
-          YamlUtils.parseYamlData(
-          """
-            - customer: Ravus
-              purchase_time: 2021-12-04 00:06:53.0
-              item: sword
-              amount: 100.00
-            - customer: Mr. Gunza
-              purchase_time: 2021-12-04 15:15:23.0
-              item: joystick
-              amount: 60.00
-            """
-          )
-        )
-      }
+      ).map { _ should be ( YamlUtils.parseYamlData(
+        """
+        - customer: Ravus
+          purchase_time: 2021-12-04 00:06:53.0
+          item: sword
+          amount: 100.00
+        - customer: Mr. Gunza
+          purchase_time: 2021-12-04 15:15:23.0
+          item: joystick
+          amount: 60.00
+        """
+      ))}
     }
   }
 
@@ -229,34 +226,33 @@ class WabaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Async
         "person_health_and_shop",
         Map(),
       ).map { _ should be ( YamlUtils.parseYamlData(
-          """
-                - name: Mr. Gunza
-                  sex: M
-                  birthdate: 1999-04-23
-                  health:
-                    - manipulation_date: 2021-06-05
-                      vaccine: AstraZeneca
-                      had_virus: null
-                  purchases:
-                    - customer: Mr. Gunza
-                      purchase_time: 2021-12-04 15:15:23.0
-                      item: joystick
-                      amount: 60.00
-                - name: Mr. Mario
-                  sex: M
-                  birthdate: 1988-09-20
-                  health:
-                    - manipulation_date: 2021-08-15
-                      vaccine: BioNTech
-                      had_virus: null
-                  purchases:
-                    - customer: Mr. Mario
-                      purchase_time: 2021-12-08 12:15:33.0
-                      item: beer
-                      amount: 2.00
-          """
-        ))
-      }
+        """
+        - name: Mr. Gunza
+          sex: M
+          birthdate: 1999-04-23
+          health:
+            - manipulation_date: 2021-06-05
+              vaccine: AstraZeneca
+              had_virus: null
+          purchases:
+            - customer: Mr. Gunza
+              purchase_time: 2021-12-04 15:15:23.0
+              item: joystick
+              amount: 60.00
+        - name: Mr. Mario
+          sex: M
+          birthdate: 1988-09-20
+          health:
+            - manipulation_date: 2021-08-15
+              vaccine: BioNTech
+              had_virus: null
+          purchases:
+            - customer: Mr. Mario
+              purchase_time: 2021-12-08 12:15:33.0
+              item: beer
+              amount: 2.00
+        """
+      ))}
     }
   }
 
