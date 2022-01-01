@@ -195,15 +195,15 @@ trait WabaseApp[User] {
   }
 
   /** Runs {{{src}}} via {{{FileBufferedFlow}}} of {{{bufferSize}}} with {{{maxFileSize}}} to {{{CheckCompletedSink}}} */
-  protected def serializeResult(bufferSize: Int,
-                                maxFileSize: Long,
-                                result: Source[ByteString, _],
-                                cleanupFun: Option[Throwable] => Unit = null)(implicit ec: ExecutionContext,
-                                                                              mat: Materializer): Future[SerializedQuereaseResult] = {
+  def serializeResult(bufferSize: Int,
+                      maxFileSize: Long,
+                      result: Source[ByteString, _],
+                      cleanupFun: Option[Throwable] => Unit = null)(implicit ec: ExecutionContext,
+                                                                    mat: Materializer): Future[QuereaseSerializedResult] = {
     result
       .via(FileBufferedFlow.create(bufferSize, maxFileSize))
       .runWith(new ResultCompletionSink(cleanupFun))
-      .map(SerializedQuereaseResult)
+      .map(QuereaseSerializedResult)
   }
 
   protected def beforeWabaseAction(context: ActionContext): ActionContext = {

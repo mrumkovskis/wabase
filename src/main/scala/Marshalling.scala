@@ -7,21 +7,22 @@ import MediaTypes._
 import marshalling._
 import spray.json.JsValue
 
-import java.io.Writer
+import java.io.{OutputStream, OutputStreamWriter, Writer}
 import java.net.URLEncoder
 import java.text.Normalizer
 import java.util.zip.ZipOutputStream
 import scala.collection.immutable.Seq
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.{Await, ExecutionContext, Future}
 import spray.json._
 import DefaultJsonProtocol._
 import akka.http.scaladsl.model.headers.{ContentDispositionType, ContentDispositionTypes}
 import akka.http.scaladsl.model.headers.{Location, RawHeader}
 import akka.http.scaladsl.unmarshalling.{FromEntityUnmarshaller, FromResponseUnmarshaller, Unmarshaller}
-import akka.stream.scaladsl.Source
+import akka.stream.scaladsl.{Source, StreamConverters}
 import akka.util.ByteString
 
 import scala.collection.immutable.{Seq => iSeq}
+import scala.concurrent.duration.DurationInt
 import scala.language.implicitConversions
 import scala.language.reflectiveCalls
 import scala.util.Try
@@ -210,39 +211,6 @@ trait DtoMarshalling extends AppMarshalling with Loggable { this: AppServiceBase
       }
     )
 
-  trait DtoRowWriter extends app.AbstractRowWriter {
-    type Row = Map[String, Any]
-    type Result = Iterator[Row] with AutoCloseable
-    val dtoResult: qe.QuereaseIteratorResult[app.Dto]
-    override val labels = dtoResult.view.fields.map(f => Option(f.label).getOrElse(f.name))
-    override val result = new Iterator[Row] with AutoCloseable {
-      override def hasNext: Boolean = dtoResult.hasNext
-      override def next(): Map[String, Any] = dtoResult.next().toMap
-      override def close(): Unit = dtoResult.close()
-    }
-  }
-  class OdsDtoRowWriter(override val dtoResult: qe.QuereaseIteratorResult[app.Dto], zos: ZipOutputStream)
-    extends app.OdsRowWriter(zos) with DtoRowWriter
-  class CsvDtoRowWriter(override val dtoResult: qe.QuereaseIteratorResult[app.Dto], writer: Writer)
-    extends app.CsvRowWriter(writer) with DtoRowWriter
-  class XlsXmlDtoRowWriter(override val dtoResult: qe.QuereaseIteratorResult[app.Dto], writer: Writer)
-    extends app.XlsXmlRowWriter(writer) with DtoRowWriter
-
-  def quereaseIteratorWithCleanupMarshaller(f: Option[Throwable] => Unit): ToResponseMarshaller[qe.QuereaseIteratorResult[app.Dto]] = {
-    import RowSource._
-    def appListResMaxFs(r: qe.QuereaseIteratorResult[app.Dto]) = resultMaxFileSize(r.view.name)
-    import qe.DtoJsonFormat
-    Marshaller.oneOf(
-      rowWriterToResponseMarshaller(`application/json`, new app.JsonRowWriter(_, _), appListResMaxFs),
-      rowWriterToResponseMarshaller(`application/vnd.ms-excel`, new XlsXmlDtoRowWriter(_, _), appListResMaxFs),
-      rowZipWriterToResponseMarshaller(`application/vnd.oasis.opendocument.spreadsheet`, new OdsDtoRowWriter(_, _), appListResMaxFs),
-      rowWriterToResponseMarshaller(ContentTypes.`text/csv(UTF-8)`, new CsvDtoRowWriter(_, _), appListResMaxFs)
-    )
-  }
-
-  implicit val toResponseQuereaseIteratorMarshaller: ToResponseMarshaller[qe.QuereaseIteratorResult[app.Dto]] =
-    quereaseIteratorWithCleanupMarshaller(null)
-
   implicit val dtoMarshaller: ToEntityMarshaller[app.Dto] = Marshaller.withFixedContentType(`application/json`) {
     dto => HttpEntity.Strict(`application/json`, ByteString(dto.toMap.toJson.compactPrint))
   }
@@ -252,6 +220,7 @@ trait QuereaseResultMarshalling { this:
     TresqlResultMarshalling with
     BasicJsonMarshalling    with
     DtoMarshalling          with
+    Execution               with
     AppServiceBase[_] =>
 
   import app.qe
@@ -279,16 +248,63 @@ trait QuereaseResultMarshalling { this:
     Marshaller.combined(rr => (StatusCodes.SeeOther, Seq(Location(rr.uri))))
   implicit val toEntityQuereaseNoResultMarshaller:          ToEntityMarshaller  [NoResult.type]  =
     Marshaller.combined(_ => "")
-  implicit val toResponseQuereaseResultWithCleanupMarshaller: ToResponseMarshaller[QuereaseResultWithCleanup] = // TODO code formatting?
-    Marshaller { implicit ec => {
-      case QuereaseResultWithCleanup(tr: TresqlResult, f) =>
-        tresqlResultWithCleanupMarshaller(f)(tr.result)
-      case QuereaseResultWithCleanup(ir: IteratorResult, f) =>
-        quereaseIteratorWithCleanupMarshaller(f)(ir.result.asInstanceOf[qe.QuereaseIteratorResult[app.Dto]])
-    }}
+  implicit def toResponseQuereaseSerializedResult(viewName: String): ToResponseMarshaller[QuereaseSerializedResult] = { // TODO code formatting?
+    def ser_source_marshaller(contentType: ContentType,
+                              createEncoder: OutputStream => NestedArraysHandler): ToResponseMarshaller[SerializedResult] = {
+      def formatted_source(serializerSource: Source[ByteString, _]) =
+        BorerNestedArraysTransformer.source(
+          () => serializerSource.runWith(StreamConverters.asInputStream()),
+          createEncoder
+        )
+      def format_complete_res(bytes: ByteString) = {
+        val resF =
+          formatted_source(Source.single(bytes))
+            .via(FileBufferedFlow.create(1024 * 32, MarshallingConfig.dbDataFileMaxSize))
+            .runWith(new ResultCompletionSink())
+        Await.result(resF, 1.second)
+      }
+      def create_http_resp(formatted_res: SerializedResult) = {
+        val entity =
+          formatted_res match {
+            case IncompleteResultSource(src) => HttpEntity.Chunked.fromData(contentType, src)
+            case CompleteResult(bytes) => HttpEntity.Strict(contentType, bytes)
+          }
+        HttpResponse(entity = entity)
+      }
 
-  implicit val toResponseQuereaseResultMarshaller: ToResponseMarshaller[QuereaseResult] = {
-    Marshaller { implicit ec => {
+      Marshaller.withFixedContentType(contentType) {
+        case IncompleteResultSource(src) => create_http_resp(IncompleteResultSource(formatted_source(src)))
+        case CompleteResult(bytes) => create_http_resp(format_complete_res(bytes))
+      }
+    }
+
+    import AppMetadata._
+    val labels = qe.viewDef(viewName).fields.map(f => Option(f.label).getOrElse(f.name))
+
+    implicit val formats_marshaller: ToResponseMarshaller[SerializedResult] =
+      Marshaller.oneOf(
+        ser_source_marshaller(
+          `application/json`,
+          JsonOutput(_, true, viewName, app.qe.nameToViewDef)
+        ),
+        ser_source_marshaller(
+          ContentTypes.`text/csv(UTF-8)`,
+          os => new CsvOutput(new OutputStreamWriter(os, "UTF-8"), labels)
+        ),
+        ser_source_marshaller(
+          `application/vnd.oasis.opendocument.spreadsheet`,
+          os => new OdsOutput(new ZipOutputStream(os), labels)
+        ),
+        ser_source_marshaller(
+          `application/vnd.ms-excel`,
+          os => new XlsXmlOutput(new OutputStreamWriter(os, "UTF-8"), labels)
+        ),
+      )
+    Marshaller.combined(_.result)
+  }
+
+  implicit def toResponseWabaseResultMarshaller(implicit ec: ExecutionContext): ToResponseMarshaller[app.WabaseResult] =
+    Marshaller { implicit ec => wr => wr.result match {
       case tq: TresqlResult   => (toResponseQuereaseTresqlResultMarshaller:   ToResponseMarshaller[TresqlResult]  )(tq)
       case mp: MapResult      => (toEntityQuereaseMapResultMarshaller:        ToResponseMarshaller[MapResult]     )(mp)
       case pj: PojoResult     => (toEntityQuereasePojoResultMarshaller:       ToResponseMarshaller[PojoResult]    )(pj)
@@ -300,13 +316,18 @@ trait QuereaseResultMarshalling { this:
       case id: IdResult       => (toEntityQuereaseIdResultMarshaller:         ToResponseMarshaller[IdResult]      )(id)
       case rd: RedirectResult => (toResponseQuereaseRedirectResultMarshaller: ToResponseMarshaller[RedirectResult])(rd)
       case no: NoResult.type  => (toEntityQuereaseNoResultMarshaller:         ToResponseMarshaller[NoResult.type] )(no)
-      case cr: QuereaseResultWithCleanup => toResponseQuereaseResultWithCleanupMarshaller(cr) // TODO code formatting?
+      case cr: QuereaseSerializedResult => toResponseQuereaseSerializedResult(wr.ctx.viewName)(cr) // TODO code formatting?
       case xx                 => sys.error(s"QuereaseResult marshaller for class ${xx.getClass.getName} not implemented")
     }}
-  }
 
-  implicit def toResponseWabaseResultMarshaller(implicit ec: ExecutionContext): ToResponseMarshaller[Future[app.WabaseResult]] = {
-    Marshaller.combined(_.map(_.result))
+  implicit val toResponseQuereaseIteratorMarshaller: ToResponseMarshaller[qe.QuereaseIteratorResult[app.Dto]] = {
+    def marsh(viewName: String)(implicit ec: ExecutionContext): ToResponseMarshaller[qe.QuereaseIteratorResult[app.Dto]] =
+      Marshaller.combined { qir: qe.QuereaseIteratorResult[app.Dto] =>
+        app.serializeResult(app.SerializationBufferSize, app.viewSerializationBufferMaxFileSize(viewName),
+          DtoDataSerializer.source(() => qir))
+      } (GenericMarshallers.futureMarshaller(toResponseQuereaseSerializedResult(viewName)))
+
+    Marshaller { implicit ec => res => marsh(res.view.name)(ec)(res) }
   }
 }
 

@@ -70,7 +70,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Async
     app.doWabaseAction(action, view, params)
       .map(_.result)
       .flatMap {
-        case sr: SerializedQuereaseResult =>
+        case sr: QuereaseSerializedResult =>
           val serializerSource = sr.result match {
             case CompleteResult(result) => Source.single(result)
             case IncompleteResultSource(result) => result

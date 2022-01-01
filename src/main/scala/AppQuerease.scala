@@ -21,8 +21,8 @@ trait QuereaseProvider {
 }
 
 sealed trait QuereaseResult
-sealed trait CloseableQuereaseResult extends QuereaseResult
-case class TresqlResult(result: Result[RowLike]) extends CloseableQuereaseResult
+sealed trait QuereaseCloseableResult extends QuereaseResult
+case class TresqlResult(result: Result[RowLike]) extends QuereaseCloseableResult
 // TODO after decoupling QereaseIo from Querease this class should be refactored to PojoResult[X]
 case class MapResult(result: Map[String, Any]) extends QuereaseResult
 // TODO after decoupling QereaseIo from Querease this class should be refactored to PojoResult[X]
@@ -30,7 +30,7 @@ case class PojoResult(result: AppQuerease#DTO) extends QuereaseResult
 // TODO after decoupling QereaseIo from Querease this class should be refactored to ListResult[X]
 case class ListResult(result: List[Any]) extends QuereaseResult
 // TODO after decoupling QereaseIo from Querease this class should be refactored to IteratorResult[X]
-case class IteratorResult(result: AppQuerease#QuereaseIteratorResult[AppQuerease#DTO]) extends CloseableQuereaseResult
+case class IteratorResult(result: AppQuerease#QuereaseIteratorResult[AppQuerease#DTO]) extends QuereaseCloseableResult
 // TODO after decoupling QereaseIo from Querease this class should be refactored to OptionResult[X]
 case class OptionResult(result: Option[AppQuerease#DTO]) extends QuereaseResult
 case class NumberResult(id: Long) extends QuereaseResult
@@ -38,9 +38,9 @@ case class CodeResult(code: String) extends QuereaseResult
 case class IdResult(id: Any) extends QuereaseResult
 case class RedirectResult(uri: String) extends QuereaseResult
 case object NoResult extends QuereaseResult
-case class QuereaseResultWithCleanup(result: CloseableQuereaseResult, cleanup: Option[Throwable] => Unit)
+case class QuereaseResultWithCleanup(result: QuereaseCloseableResult, cleanup: Option[Throwable] => Unit)
   extends QuereaseResult {
-  def flatMap(f: CloseableQuereaseResult => QuereaseResult): QuereaseResult = {
+  def flatMap(f: QuereaseCloseableResult => QuereaseResult): QuereaseResult = {
     Try(f(result)).map { r =>
       cleanup(None)
       r
@@ -51,7 +51,7 @@ case class QuereaseResultWithCleanup(result: CloseableQuereaseResult, cleanup: O
     }.get
   }
 }
-case class SerializedQuereaseResult(result: SerializedResult) extends QuereaseResult
+case class QuereaseSerializedResult(result: SerializedResult) extends QuereaseResult
 
 trait AppQuereaseIo extends org.mojoz.querease.ScalaDtoQuereaseIo with JsonConverter { self: AppQuerease =>
 
@@ -204,7 +204,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
         implicit val res = initResources(viewName)(actionName)
         try {
           doAction(viewName, actionName, data, env).map {
-            case r: CloseableQuereaseResult => QuereaseResultWithCleanup(r, closeResources(res))
+            case r: QuereaseCloseableResult => QuereaseResultWithCleanup(r, closeResources(res))
             case r: QuereaseResult =>
               closeResources(res)(None)
               r
