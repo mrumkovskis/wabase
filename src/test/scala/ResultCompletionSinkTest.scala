@@ -38,7 +38,7 @@ class ResultCompletionSinkTest extends AsyncFlatSpec {
         case IncompleteResultSource(s) => assert(false)
       }
   }
-  it should "return empty CompleteResult" in {
+  it should "return empty CompleteResult on empty source" in {
     Source.empty[ByteString].runWith(new ResultCompletionSink)
       .map {
         case CompleteResult(v) => assert(v == ByteString())
