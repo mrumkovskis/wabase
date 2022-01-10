@@ -145,7 +145,6 @@ class ResultCompletionSink(cleanupFun: Option[Throwable] => Unit = null)(implici
 
       override def preStart() = {
         //generate initial demand since this is sink
-        byteString = ByteString()
         pull(in)
       }
       override def postStop() = {
@@ -154,7 +153,7 @@ class ResultCompletionSink(cleanupFun: Option[Throwable] => Unit = null)(implici
       setHandler(in, new InHandler {
         override def onPush() = {
           val bs = grab(in)
-          if (byteString.isEmpty) {
+          if (byteString == null) {
             byteString = bs
             pull(in)
           } else {
@@ -162,7 +161,8 @@ class ResultCompletionSink(cleanupFun: Option[Throwable] => Unit = null)(implici
             setHandler(in, streamingHandler(byteString ++ bs))
           }
         }
-        override def onUpstreamFinish() = result.success(CompleteResult(byteString))
+        override def onUpstreamFinish() =
+          result.success(CompleteResult(if (byteString == null) ByteString() else byteString))
         override def onUpstreamFailure(ex: Throwable) = {
           flowError = ex
           result.failure(ex)
