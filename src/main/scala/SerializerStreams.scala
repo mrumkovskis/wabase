@@ -1,9 +1,9 @@
 package org.wabase
 
 import akka.NotUsed
-import akka.stream.scaladsl.Source
-import akka.stream.stage.{GraphStage, GraphStageLogic, OutHandler}
-import akka.stream.{Attributes, Outlet, SourceShape}
+import akka.stream.scaladsl.{Flow, Source}
+import akka.stream.stage.{GraphStage, GraphStageLogic, InHandler, OutHandler}
+import akka.stream.{Attributes, FlowShape, Inlet, Outlet, SourceShape}
 import akka.util.{ByteString, ByteStringBuilder}
 
 import java.io.{InputStream, OutputStream}
@@ -324,6 +324,7 @@ class BorerNestedArraysTransformer(reader: Reader, handler: NestedArraysHandler)
   }
 }
 
+import io.bullet.borer.compat.akka.ByteStringProvider
 object BorerNestedArraysTransformer {
   private class TransformerSource(
     createTransformable:  () => InputStream,
@@ -331,7 +332,7 @@ object BorerNestedArraysTransformer {
     transformFrom:        Target,
     bufferSizeHint:       Int,
   ) extends GraphStage[SourceShape[ByteString]] {
-    val out = Outlet[ByteString]("BorerNestedArraysTransformer")
+    val out = Outlet[ByteString]("BorerNestedArraysTransformerSource.out")
     override val shape: SourceShape[ByteString] = SourceShape(out)
     override def createLogic(attrs: Attributes): GraphStageLogic = new GraphStageLogic(shape) {
       var buf:          ByteStringBuilder             = _
@@ -364,6 +365,76 @@ object BorerNestedArraysTransformer {
     }
   }
 
+  private class TransformerFlow(
+    createEncoder:        OutputStream => NestedArraysHandler,
+    transformFrom:        Target,
+    bufferSizeHint:       Int,
+  ) extends GraphStage[FlowShape[ByteString, ByteString]] {
+    val in = Inlet[ByteString]("BorerNestedArraysTransformerFlow.in")
+    val out = Outlet[ByteString]("BorerNestedArraysTransformerFlow.out")
+    override val shape = FlowShape.of(in, out)
+    override def createLogic(inheritedAttributes: Attributes): GraphStageLogic = new GraphStageLogic(shape) {
+      private val inQueue           = collection.mutable.Queue.empty[ByteString]
+      private var inQueueByteCount  = 0
+      private val buf               = new ByteStringBuilder
+      private val transformable     = new Iterator[ByteString] {
+        override def hasNext  = !isClosed(in)
+        override def next()   = {
+          if (inQueue.isEmpty) sys.error(
+            "TransformerFlow input buffer exhausted. " +
+            "Please use output of chunking serializer with matching buffer size" +
+            " or split at (atomic) data item boundaries"
+          )
+          val elem = inQueue.dequeue()
+          inQueueByteCount -= elem.size
+          elem
+        }
+      }
+      private val encoder       = createEncoder(buf.asOutputStream)
+      private val transformer   = new BorerNestedArraysTransformer(
+        transformFrom match {
+          case _: Cbor.type => Cbor.reader(transformable)
+          case _: Json.type => Json.reader(transformable)
+        },
+        encoder,
+      )
+      override def preStart(): Unit = {
+        buf.sizeHint(bufferSizeHint)
+        encoder.writeStartOfInput()
+      }
+      private def transform(): Unit = {
+        while ((inQueueByteCount >= bufferSizeHint || isClosed(in)) &&
+               buf.length < bufferSizeHint && transformer.transformNext()) {}
+        if (inQueueByteCount < bufferSizeHint && !isClosed(in) && !hasBeenPulled(in))
+          pull(in)
+        if (buf.nonEmpty) {
+          if (isAvailable(out)) {
+            val chunk = buf.result()
+            buf.clear()
+            push(out, chunk)
+          }
+        } else if (isClosed(in)) {
+          completeStage()
+        }
+      }
+      setHandler(in, new InHandler {
+        override def onPush(): Unit = {
+          val elem = grab(in)
+          inQueue.enqueue(elem)
+          inQueueByteCount += elem.size
+          transform()
+        }
+        override def onUpstreamFinish(): Unit = {
+          transform()
+        }
+      })
+      setHandler(out, new OutHandler {
+        override def onPull(): Unit =
+          transform()
+      })
+    }
+  }
+
   def source(
     createTransformable:  () => InputStream,
     createEncoder:        OutputStream => NestedArraysHandler,
@@ -371,6 +442,14 @@ object BorerNestedArraysTransformer {
     bufferSizeHint:       Int = 1024,
   ): Source[ByteString, NotUsed] = Source.fromGraph(
     new TransformerSource(createTransformable, createEncoder, transformFrom, bufferSizeHint)
+  )
+
+  def flow(
+    createEncoder:        OutputStream => NestedArraysHandler,
+    transformFrom:        Target = Cbor,
+    bufferSizeHint:       Int = 1024,
+  ): Flow[ByteString, ByteString, NotUsed] = Flow.fromGraph(
+    new TransformerFlow(createEncoder, transformFrom, bufferSizeHint)
   )
 
   def transform[T](

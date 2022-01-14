@@ -250,42 +250,38 @@ trait QuereaseResultMarshalling { this:
   implicit val toEntityQuereaseNoResultMarshaller:          ToEntityMarshaller  [NoResult.type]  =
     Marshaller.combined(_ => "")
 
-  def toResponseQuereaseSerializedResult(viewName: String): ToResponseMarshaller[QuereaseSerializedResult] = { // TODO code formatting?
-    def ser_source_marshaller(contentType: ContentType,
-                              createEncoder: OutputStream => NestedArraysHandler): ToResponseMarshaller[SerializedResult] = {
-      def formatted_source(serializerSource: Source[ByteString, _]) =
-        BorerNestedArraysTransformer.source(
-          () => serializerSource.runWith(StreamConverters.asInputStream()),
-          createEncoder
-        )
-      Marshaller.withFixedContentType(contentType) {
-        case CompleteResult(bytes) => HttpResponse(
-          entity = HttpEntity.Strict(contentType, BorerNestedArraysTransformer.transform(bytes, createEncoder))
-        )
-        case IncompleteResultSource(src) => HttpResponse(
-          entity = HttpEntity.Chunked.fromData(contentType, formatted_source(src))
-        )
-      }
+  def toResponseSerializedResultMarshaller(
+    contentType: ContentType,
+    createEncoder: OutputStream => NestedArraysHandler,
+  ): ToResponseMarshaller[SerializedResult] = {
+    Marshaller.withFixedContentType(contentType) {
+      case CompleteResult(bytes) => HttpResponse(
+        entity = HttpEntity.Strict(contentType, BorerNestedArraysTransformer.transform(bytes, createEncoder))
+      )
+      case IncompleteResultSource(src) => HttpResponse(
+        entity = HttpEntity.Chunked.fromData(contentType, src.via(BorerNestedArraysTransformer.flow(createEncoder)))
+      )
     }
+  }
 
+  def toResponseQuereaseSerializedResultMarshaller(viewName: String): ToResponseMarshaller[QuereaseSerializedResult] = {
     import AppMetadata._
     val labels = qe.viewDef(viewName).fields.map(f => Option(f.label).getOrElse(f.name))
-
     implicit val formats_marshaller: ToResponseMarshaller[SerializedResult] =
       Marshaller.oneOf(
-        ser_source_marshaller(
+        toResponseSerializedResultMarshaller(
           `application/json`,
           JsonOutput(_, true, viewName, app.qe.nameToViewDef)
         ),
-        ser_source_marshaller(
+        toResponseSerializedResultMarshaller(
           ContentTypes.`text/csv(UTF-8)`,
           os => new CsvOutput(new OutputStreamWriter(os, "UTF-8"), labels)
         ),
-        ser_source_marshaller(
+        toResponseSerializedResultMarshaller(
           `application/vnd.oasis.opendocument.spreadsheet`,
           os => new OdsOutput(new ZipOutputStream(os), labels)
         ),
-        ser_source_marshaller(
+        toResponseSerializedResultMarshaller(
           `application/vnd.ms-excel`,
           os => new XlsXmlOutput(new OutputStreamWriter(os, "UTF-8"), labels)
         ),
@@ -306,7 +302,7 @@ trait QuereaseResultMarshalling { this:
       case id: IdResult       => (toEntityQuereaseIdResultMarshaller:         ToResponseMarshaller[IdResult]      )(id)
       case rd: RedirectResult => (toResponseQuereaseRedirectResultMarshaller: ToResponseMarshaller[RedirectResult])(rd)
       case no: NoResult.type  => (toEntityQuereaseNoResultMarshaller:         ToResponseMarshaller[NoResult.type] )(no)
-      case cr: QuereaseSerializedResult => toResponseQuereaseSerializedResult(wr.ctx.viewName)(cr) // TODO code formatting?
+      case cr: QuereaseSerializedResult => toResponseQuereaseSerializedResultMarshaller(wr.ctx.viewName)(cr)
       case xx                 => sys.error(s"QuereaseResult marshaller for class ${xx.getClass.getName} not implemented")
     }}
 
@@ -315,7 +311,7 @@ trait QuereaseResultMarshalling { this:
       Marshaller.combined { qir: qe.QuereaseIteratorResult[app.Dto] =>
         app.serializeResult(app.SerializationBufferSize, app.viewSerializationBufferMaxFileSize(viewName),
           DtoDataSerializer.source(() => qir))
-      } (GenericMarshallers.futureMarshaller(toResponseQuereaseSerializedResult(viewName)))
+      } (GenericMarshallers.futureMarshaller(toResponseQuereaseSerializedResultMarshaller(viewName)))
 
     Marshaller { ec => res => marsh(res.view.name)(ec)(res) }
   }
