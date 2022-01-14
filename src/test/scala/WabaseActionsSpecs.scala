@@ -4,7 +4,7 @@ import akka.actor.ActorSystem
 import akka.stream.scaladsl.{Source, StreamConverters}
 import org.mojoz.querease.{ValidationException, ValidationResult}
 import org.scalatest.flatspec.{AsyncFlatSpec, AsyncFlatSpecLike}
-import org.tresql.ThreadLocalResources
+import org.tresql.{MissingBindVariableException, ThreadLocalResources}
 import org.wabase.QuereaseActionsDtos.PersonWithHealthDataHealth
 
 import scala.concurrent.Future
@@ -224,7 +224,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Async
     }.flatMap { _ =>
       doAction("list",
         "person_health_and_shop",
-        Map(),
+        Map("names" -> List("Mr. Gunza", "Mr. Mario")),
       ).map { _ should be ( YamlUtils.parseYamlData(
         """
         - name: Mr. Gunza
@@ -256,6 +256,13 @@ class WabaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Async
     }
   }
 
+  it should "throw MissingBindVariableException on list" in {
+    recoverToSucceededIf[MissingBindVariableException] {
+      doAction("list",
+        "person_health_and_shop", Map())
+    }
+  }
+
   // this is deprecated, use wabase actions instead
   it should "retrieve person health and purchase data old style" in {
     //can recursive map transformation remove elements?
@@ -276,7 +283,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Async
         case name: String if m.contains(name) => name -> m(name)
       }
     }.toMap
-    app.list("person_health_and_shop", Map())
+    app.list("person_health_and_shop", Map("names" -> List("Mr. Gunza", "Mr. Mario")))
       .map(_.toMap(app.qe)).toList
       //.map(_ recursiveMap tf)
       .map(reduceMap(_, List("name", "purchases" -> List("item"), "health" -> List("vaccine")))) should be(
@@ -292,5 +299,11 @@ class WabaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Async
         )
       )
     )
+  }
+
+  it should "throw MissingBindVariableException on old style list" in {
+    assertThrows[MissingBindVariableException] {
+      app.list("person_health_and_shop", Map()).toList
+    }
   }
 }

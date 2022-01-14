@@ -227,7 +227,7 @@ fields:
     order:
     - id
 filter:
-- name in :names?
+- name in :names
 order:
 - name
 
@@ -250,4 +250,3 @@ save:
     - funds(# s) { account[person_id = (person[name = :customer]{id})] {max(balance)} },
         (funds{s}) >= :amount, "Insufficient funds, available (" || (funds{s}) || ")"
 - save purchase
-

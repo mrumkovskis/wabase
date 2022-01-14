@@ -68,13 +68,7 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
     /** Override {{{nextInternal}}} method instead of this.
         This method calls {{{nextInternal}}} and in the case of non fatal error calls {{{close}}}*/
     override final def next(): T = exe(nextInternal)
-    private def exe[A](block: => A): A = try block catch {
-      case NonFatal(e) =>
-        try close catch { case NonFatal(e) =>
-          logger.error("Exception in exception handler - list result close() failed: ", e)
-        }
-        throw e
-    }
+    private def exe[A](block: => A): A = block
     private var onCloseAction: Unit => Unit = identity
     trait Wrapper[+A <: Dto] extends AppListResult[A] { wrapper =>
       override def view = self.view
@@ -97,6 +91,7 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
       self
     }
     def close() = onCloseAction(())
+
   }
 
   implicit def appStateToMap(state: ApplicationState): Map[String, Any] = state.state
@@ -238,7 +233,11 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
         val ctxCopy = ctx.copy(result = new AppListResult[Dto] {
           private [this] var closed = false
           def closeConn(c: Connection) =
-            try c.rollback finally if (!c.isClosed) c.close
+            try c.rollback catch {
+              case NonFatal(e) => logger.error("Cannot rollback connection", e)
+            } finally if (!c.isClosed) try c.close catch {
+              case NonFatal(e) => logger.error("Error closing connection", e)
+            }
 
           private lazy val connection = ConnectionPools(poolName).getConnection
           override lazy val resources = {
@@ -274,7 +273,7 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
               resources)
             catch {
               case NonFatal(e) =>
-                close
+                closeConns
                 throw e
             }
           override def view = viewDef
@@ -283,12 +282,13 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
           override def close = {
             if (!closed) {
               try super.close finally
-                try if (result != null) result.close finally {
-                  closeConn(connection)
-                  resources.extraResources.values foreach(r => closeConn(r.conn))
-                }
+                try if (result != null) result.close finally closeConns
               closed = true
             }
+          }
+          protected def closeConns = {
+            closeConn(connection)
+            resources.extraResources.values foreach(r => closeConn(r.conn))
           }
         })
 
