@@ -258,6 +258,4 @@ get:
 - customer = :customer              # ensure bind variable existence
 - return list purchase              # TODO offer possibility to return headOption from list
 delete:
-- purchase_time = :purchase_time    # ensure bind variable existence
-- customer = :customer              # ensure bind variable existence
 - return -shop_db:purchase [purchase_time = :purchase_time & customer = :customer]
