@@ -596,7 +596,7 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
       val promise = Promise[Unit]()
       try {
         val res = friendlyConstraintErrorMessage {
-          implicit val extraDbs = extraDb(viewDef.actionToDbAccessKeys(Action.Delete))
+          implicit val extraDbs = extraDb(viewDef(viewName).actionToDbAccessKeys(Action.Delete))
           transaction {
             implicit val clazz = viewNameToClassMap(viewName).asInstanceOf[Class[DtoWithId]]
             val ctx = createDeleteCtx(RemoveContext[DtoWithId](viewName, id, params, user, promise, state))

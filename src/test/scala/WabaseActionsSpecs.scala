@@ -65,8 +65,9 @@ class WabaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Async
   private implicit val as = ActorSystem("wabase-action-specs")
 
   protected def doAction[T](action: String,
-                         view: String,
-                         params: Map[String, Any]) = {
+                            view: String,
+                            params: Map[String, Any],
+                            removeIdsFlag: Boolean = true) = {
     app.doWabaseAction(action, view, params)
       .map(_.result)
       .flatMap {
@@ -83,7 +84,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Async
             .runFold("")(_ + _.decodeString("UTF-8"))
             .map(_.parseJson.convertTo[List[Any]](app.qe.ListJsonFormat))
             .map(_.map {
-              case m: Map[String@unchecked, _] => removeIds(m)
+              case m: Map[String@unchecked, _] => if (removeIdsFlag) removeIds(m) else m
               case x => x
             })
         case r => Future.successful(r)
@@ -306,4 +307,15 @@ class WabaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Async
       app.list("person_health_and_shop", Map()).toList
     }
   }
+
+  it should "delete purchase old style" in {
+    doAction("get", "purchase",
+      Map("purchase_time" -> "2021-12-04 15:15:23.0", "customer" -> "Mr. Gunza"), removeIdsFlag = false)
+      .map {
+        case List(m: Map[String@unchecked, _]) if m.contains("id") =>
+          app.delete("purchase", m("id").asInstanceOf[Long]) should be(1)
+        case x => fail(s"Unexpected result: $x")
+      }
+  }
+
 }
