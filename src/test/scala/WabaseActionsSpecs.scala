@@ -308,6 +308,13 @@ class WabaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Async
     }
   }
 
+// FIXME
+//  it should "delete purchase" in {
+//    doAction("delete", "purchase",
+//      Map("purchase_time" -> "2021-12-08 12:15:33.0", "customer" -> "Mr. Mario"))
+//      .map(_ should be(10))
+//  }
+
   it should "delete purchase old style" in {
     doAction("get", "purchase",
       Map("purchase_time" -> "2021-12-04 15:15:23.0", "customer" -> "Mr. Gunza"), removeIdsFlag = false)
@@ -317,5 +324,4 @@ class WabaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Async
         case x => fail(s"Unexpected result: $x")
       }
   }
-
 }
