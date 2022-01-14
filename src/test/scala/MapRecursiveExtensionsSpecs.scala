@@ -187,4 +187,18 @@ class MapRecursiveExtensionsSpecs extends FlatSpec with Matchers {
       }
     }.getMessage should be ("Position change in list is not supported. TransformationFunction should not return \"key\" / \"value\" on list items")
   }
+
+  it should "remove value from data structure if specific marker returned" in {
+    Map("a" -> 1, "b" -> 2).recursiveMap{
+      case ("a", _) => Delete
+    } shouldBe Map("b" -> 2)
+
+    Map("a" -> Map("a" -> "aa", "b" -> "ab"), "b" -> Map("a" -> "ba", "b" -> "bb")).recursiveMap{
+      case ("a" / "b", _) => Delete
+    } shouldBe Map("a" -> Map("a" -> "aa"), "b" -> Map("a" -> "ba", "b" -> "bb"))
+
+    Map("a" -> List("1", "2", "3", "4")).recursiveMap{
+      case ("a" / 2, _) => Delete
+    } shouldBe Map("a" -> List("1", "2", "4"))
+  }
 }

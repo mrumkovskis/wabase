@@ -60,7 +60,7 @@ object MapRecursiveExtensions {
   implicit class atRoot(s: String){
     def /(s2: Any) = new /(s, s2)
   }
-
+  case object Delete
   // map traveller
   type RecursiveMap = Map[String, Any]
   type TransformationFunction = PartialFunction[(Any, Any), Any]
@@ -84,15 +84,17 @@ object MapRecursiveExtensions {
       def notNullPath(path: Any, item: Any) = if (path == null) item else /(path, item)
 
       def iterateMap(m: RecursiveMap, path: Any): RecursiveMap =
-        m.map{case (k, v) => transformValue(v, notNullPath(path, k)) match {
-          case (newKey: String) / newValue =>  (newKey, newValue)
-          case newValue => (k, newValue)
+        m.flatMap{case (k, v) => transformValue(v, notNullPath(path, k)) match {
+          case (newKey: String) / newValue =>  List((newKey, newValue))
+          case Delete => Nil
+          case newValue => List((k, newValue))
         }}
 
       def iterateList(list: List[Any], path: Any):  List[Any] =
-        list.zipWithIndex.map{case (v, i) => transformValue(v,notNullPath(path, i))match {
+        list.zipWithIndex.flatMap{case (v, i) => transformValue(v,notNullPath(path, i))match {
           case _ / _ => sys.error("""Position change in list is not supported. TransformationFunction should not return "key" / "value" on list items""")
-          case newValue => newValue
+          case Delete => Nil
+          case newValue => List(newValue)
         }}
 
       if(map == null) null else iterateMap(map, null)
