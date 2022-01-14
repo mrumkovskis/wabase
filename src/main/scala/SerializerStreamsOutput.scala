@@ -1,13 +1,16 @@
 package org.wabase
 
+import akka.util.ByteString
 import org.wabase.Format.{xlsxDateTime, xsdDate}
 import io.bullet.borer
 import io.bullet.borer.{Cbor, Json}
+import io.bullet.borer.compat.akka.ByteStringByteAccess
 
 import java.io
 import java.io.OutputStream
 import java.util.zip.ZipOutputStream
 import org.mojoz.metadata.MojozViewDef
+import org.wabase.NestedArraysHandler.{ByteChunks, ChunkType, TextChunks}
 
 import scala.collection.immutable.Seq
 
@@ -19,6 +22,8 @@ class CborOrJsonOutput(
 ) extends BorerValueEncoder(w) with NestedArraysHandler {
   import CborOrJsonOutput.Context
   var contextStack: List[Context] = Nil
+  var chunkType: ChunkType = null
+  var buffer: ByteString = null
   override def writeStartOfInput(): Unit = {
     if (isCollection) w.writeArrayStart()
     val viewDef =
@@ -68,16 +73,56 @@ class CborOrJsonOutput(
       }
     }
   }
-  override def writeArrayBreak(): Unit = {
-    val context = contextStack.head
-    if (context.isRow && context.isFirstRow && context.readingNames) {
-      context.isFirstRow = false
-      context.readingNames = false
-      context.names = context.names.reverse
-    } else {
-      if (context.isCollection)
+  override def startChunks(chunkType: ChunkType): Unit = {
+    chunkType match {
+      case TextChunks => if (w.writingCbor) w.writeTextStart()
+      case ByteChunks => if (w.writingCbor) w.writeBytesStart()
+      case _ => sys.error("Unsupported ChunkType: " + chunkType)
+    }
+    this.chunkType = chunkType
+    if (!w.writingCbor)
+      buffer = ByteString.empty
+  }
+  override def writeChunk(chunk: Any): Unit = {
+    chunk match {
+      case bytes: ByteString =>
+        if (w.writingCbor) chunkType match {
+          case TextChunks => w.writeText(bytes)
+          case ByteChunks => w.writeBytes(bytes)
+          case _ => sys.error("Unsupported ChunkType: " + chunkType)
+        } else {
+          buffer = ByteStringByteAccess.concat(buffer, bytes)
+        }
+      case x => sys.error("Unsupported chunk class: " + x.getClass.getName)
+    }
+  }
+  /* Override to write bytes to json. See io.bullet.borer.encodings */
+  def writeBytes(bytes: Any) = bytes match {
+    case bytes: ByteString => w.writeBytes(bytes)
+    case x => sys.error("Unsupported bytes class: " + x.getClass.getName)
+  }
+  override def writeBreak(): Unit = {
+    if (chunkType != null) {
+      if (!w.writingCbor) chunkType match {
+        case TextChunks => w.writeString(buffer.utf8String)
+        case ByteChunks => writeBytes(buffer)
+        case _ => sys.error("Unsupported ChunkType: " + chunkType)
+      } else {
         w.writeBreak()
-      contextStack = contextStack.tail
+      }
+      chunkType = null
+      buffer = null
+    } else {
+      val context = contextStack.head
+      if (context.isRow && context.isFirstRow && context.readingNames) {
+        context.isFirstRow = false
+        context.readingNames = false
+        context.names = context.names.reverse
+      } else {
+        if (context.isCollection)
+          w.writeBreak()
+        contextStack = contextStack.tail
+      }
     }
   }
   override def writeEndOfInput(): Unit = {
@@ -113,6 +158,8 @@ abstract class FlatTableOutput(val labels: Seq[String]) extends NestedArraysHand
   protected var row = 0
   protected var col = 0
   protected var lvl = 0
+  protected var buffer: ByteString   = null
+  protected var chunkType: ChunkType = null
   override def writeStartOfInput(): Unit =
     writeHeader()
   override def writeArrayStart(): Unit = {
@@ -125,13 +172,35 @@ abstract class FlatTableOutput(val labels: Seq[String]) extends NestedArraysHand
       writeCell(value)
       col += 1
     }
-  override def writeArrayBreak(): Unit = {
-    if (lvl == 1) {
-      writeRowEnd()
-      row += 1
-      col = 0
+  override def startChunks(chunkType: ChunkType): Unit = {
+    this.chunkType = chunkType
+    buffer = ByteString.empty
+  }
+  override def writeChunk(chunk: Any): Unit = {
+    chunk match {
+      case bytes: ByteString =>
+        println(s"ByteString CHUNK RECEIVED, chunkType: $chunkType, buffer: $buffer, chunk: $chunk")
+        buffer = ByteStringByteAccess.concat(buffer, bytes)
+      case x => sys.error("Unsupported chunk class: " + x.getClass.getName)
     }
-    lvl -= 1
+  }
+  override def writeBreak(): Unit = {
+    if (chunkType != null) {
+      chunkType match {
+        case TextChunks => writeValue(buffer.utf8String)
+        case ByteChunks => writeValue(buffer)
+        case _ => sys.error("Unsupported ChunkType: " + chunkType)
+      }
+      chunkType = null
+      buffer = null
+    } else {
+      if (lvl == 1) {
+        writeRowEnd()
+        row += 1
+        col = 0
+      }
+      lvl -= 1
+    }
   }
   override def writeEndOfInput(): Unit =
     writeFooter()

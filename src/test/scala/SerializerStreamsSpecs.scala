@@ -7,10 +7,12 @@ import org.apache.commons.codec.binary.Hex
 import io.bullet.borer.{Cbor, Json, Target}
 import java.io.{ByteArrayInputStream, InputStream, OutputStream, OutputStreamWriter}
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
+import org.wabase.NestedArraysHandler.ChunkType
 
 import scala.concurrent.Await
 import scala.concurrent.duration.DurationInt
 import org.tresql._
+
 
 class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
 
@@ -76,6 +78,15 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
     implicit val qe = querease
     val source = DtoDataSerializer.source(() =>
       dtos.iterator, includeHeaders, createEncoder = BorerNestedArraysEncoder(_, format, wrap))
+    Await.result(source.runWith(foldToStringSink(format)), 1.second)
+  }
+
+  def serializeValuesToString(values: Iterator[_], format: Target = Cbor, bufferSizeHint: Int = 8) = {
+    val source = Source.fromGraph(new NestedArraysSerializer(
+      () => values,
+      outputStream => new BorerNestedArraysEncoder(BorerNestedArraysEncoder.createWriter(outputStream, format)),
+      bufferSizeHint,
+    ))
     Await.result(source.runWith(foldToStringSink(format)), 1.second)
   }
 
@@ -206,7 +217,7 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
   it should "serialize tresql result as arrays to cbor" in {
     def queryString(maxId: Int) = s"person [id <= $maxId] {id, name, surname, sex, birthdate || ''}"
     def test(maxId: Int, wrap: Boolean = false) =
-      serializeTresqlResult(queryString(maxId), Cbor, wrap = wrap)
+      serializeTresqlResult(queryString(maxId), Cbor, wrap = wrap, bufferSizeHint = 12)
     test(0) shouldBe ""
     test(1) shouldBe """~9f~01dJohncDoeaMj1969-01-01~ff"""
     test(2) shouldBe """~9f~01dJohncDoeaMj1969-01-01~ff~9f~02dJane~f6aFj1996-02-02~ff"""
@@ -293,10 +304,13 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
         override def writeStartOfInput():    Unit = {}
         override def writeArrayStart():      Unit = {}
         override def writeValue(value: Any): Unit = { deserialized = value }
-        override def writeArrayBreak():      Unit = {}
+        override def startChunks(
+                      chunkType: ChunkType): Unit = ???
+        override def writeChunk(chunk: Any): Unit = ???
+        override def writeBreak():           Unit = {}
         override def writeEndOfInput():      Unit = {}
       }
-      val serialized  = serializeValuesToHexString(List(value).iterator)
+      val serialized  = serializeValuesToHexString(List(value).iterator, bufferSizeHint = 256)
       val transformer = new BorerNestedArraysTransformer(
         Cbor.reader(new ByteArrayInputStream(Hex.decodeHex(serialized))), handler
       )
@@ -348,5 +362,22 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
       (classOf[java.sql.Timestamp], java.sql.Timestamp.valueOf("1969-01-01 00:00:00.001"))
     test(java.sql.Timestamp.valueOf("1971-01-01 00:00:00.001")) shouldBe
       (classOf[java.sql.Timestamp], java.sql.Timestamp.valueOf("1971-01-01 00:00:00.001"))
+  }
+
+  it should "chunk strings according to buffer size when serializing to cbor" in {
+    import scala.language.existentials
+    def test(value: String, bufferSizeHint: Int) =
+      serializeValuesToString(List(value).iterator, bufferSizeHint = bufferSizeHint)
+    test("Rūķīši",  2) shouldBe "~7faRa~c5a~aba~c4a~b7a~c4a~aba~c5a~a1ai~ff"
+    test("Rūķīši",  3) shouldBe "~7fbR~c5b~ab~c4b~b7~c4b~ab~c5b~a1i~ff"
+    test("Rūķīši",  4) shouldBe "~7fcR~c5~abc~c4~b7~c4c~ab~c5~a1ai~ff"
+    test("Rūķīši",  5) shouldBe "~7fdR~c5~ab~c4d~b7~c4~ab~c5b~a1i~ff"
+    test("Rūķīši", 10) shouldBe "~7fiR~c5~ab~c4~b7~c4~ab~c5~a1ai~ff"
+    test("Rūķīši", 11) shouldBe "jR~c5~ab~c4~b7~c4~ab~c5~a1i"
+    test("12345678901234567890123",  23) shouldBe "~7fv1234567890123456789012a3~ff"
+    test("12345678901234567890123",  24) shouldBe "w12345678901234567890123"
+    test("123456789012345678901234", 24) shouldBe "~7fw12345678901234567890123a4~ff"
+    test("123456789012345678901234", 25) shouldBe "~7fw12345678901234567890123a4~ff"
+    test("123456789012345678901234", 26) shouldBe "x~18123456789012345678901234"
   }
 }

@@ -10,18 +10,52 @@ import java.io.{InputStream, OutputStream}
 import java.lang.{Boolean => JBoolean, Byte => JByte, Double => JDouble, Float => JFloat, Long => JLong, Short => JShort}
 import java.math.{BigDecimal => JBigDecimal, BigInteger => JBigInteger}
 
-trait NestedArraysHandler {
-  def writeStartOfInput():    Unit
-  def writeArrayStart():      Unit
-  def writeValue(value: Any): Unit
-  def writeChunk( // for blob / clob etc support
-    chunk:   Any,
-    isFirst: Boolean,
-    isLast:  Boolean):        Unit = ???
-  def writeArrayBreak():      Unit
-  def writeEndOfInput():      Unit
+object NestedArraysHandler {
+  trait ChunkType
+  object TextChunks extends ChunkType
+  object ByteChunks extends ChunkType
 }
 
+import NestedArraysHandler._
+trait NestedArraysHandler {
+  def writeStartOfInput():      Unit
+  def writeArrayStart():        Unit
+  def writeValue(value: Any):   Unit
+  def startChunks(
+        chunkType: ChunkType):  Unit
+  def writeChunk(chunk: Any):   Unit
+  def writeBreak():             Unit
+  def writeEndOfInput():        Unit
+}
+
+trait SerializerChunkInfo {
+  def chunkSize(bufferSize: Int): Int
+}
+
+object NestedArraysSerializer {
+  class StringChunker(s: String, chunkSize: Int) {
+    // chunk strings to enable reactive streaming with limited buffer size
+    val bytes = ByteString.fromString(s)
+    val shouldChunk = chunkSize != Int.MaxValue && bytes.length > chunkSize
+    def chunks: Iterator[ByteString] = new Iterator[ByteString] {
+      var remaining = bytes
+      override def hasNext: Boolean = remaining.nonEmpty
+      override def next(): ByteString = {
+        if (remaining.length > chunkSize) {
+          val parts = remaining.splitAt(chunkSize)
+          remaining = parts._2
+          parts._1
+        } else {
+          val chunk = remaining
+          remaining = ByteString.empty
+          chunk
+        }
+      }
+    }
+  }
+}
+
+import NestedArraysSerializer._
 /** Serializes nested iterators as nested arrays. To serialize tresql Result, use TresqlRowsIterator */
 class NestedArraysSerializer(
   createEncodable: () => Iterator[_],
@@ -32,6 +66,8 @@ class NestedArraysSerializer(
   override val shape: SourceShape[ByteString] = SourceShape(out)
   override def createLogic(attrs: Attributes): GraphStageLogic = new GraphStageLogic(shape) {
     var buf:        ByteStringBuilder   = _
+    var chunkSize:  Int                 = _
+    var isChunking: Boolean             = _
     var encodable:  Iterator[_]         = _
     var encoder:    NestedArraysHandler = _
     var iterators:  List[Iterator[_]]   = _
@@ -39,6 +75,17 @@ class NestedArraysSerializer(
       buf       = new ByteStringBuilder
       encodable = createEncodable()
       encoder   = createEncoder(buf.asOutputStream)
+      chunkSize = encoder match {
+        case chunkInfo: SerializerChunkInfo =>
+          chunkInfo.chunkSize(bufferSizeHint)
+        case _ => Int.MaxValue
+      }
+      if (chunkSize <= 0) {
+        throw new IllegalArgumentException(
+          s"Unable to chunk for buffer size $bufferSizeHint. " +
+          s"Resulting chunk size is $chunkSize but should be > 0")
+      }
+      isChunking = false
       iterators = encodable :: Nil
       buf.sizeHint(bufferSizeHint)
       encoder.writeStartOfInput()
@@ -49,13 +96,26 @@ class NestedArraysSerializer(
         case children: Iterator[_] =>
           iterators = children :: iterators
           encoder.writeArrayStart()
+        case s: String if chunkSize != Int.MaxValue =>
+          val stringChunker = new StringChunker(s, chunkSize)
+          if (stringChunker.shouldChunk) {
+            isChunking = true
+            iterators = stringChunker.chunks :: iterators
+            encoder.startChunks(TextChunks)
+          } else {
+            encoder.writeValue(s)
+          }
         // TODO blob / clob etc support
         case value =>
-          encoder.writeValue(value)
+          if (isChunking)
+            encoder.writeChunk(value)
+          else
+            encoder.writeValue(value)
       } else {
         iterators = iterators.tail
+        isChunking = false
         if (iterators.nonEmpty)
-          encoder.writeArrayBreak()
+          encoder.writeBreak()
         else
           encoder.writeEndOfInput()
       }
@@ -79,6 +139,7 @@ class NestedArraysSerializer(
 }
 
 import io.bullet.borer._
+import io.bullet.borer.compat.akka.ByteStringByteAccess
 import java.sql
 object BorerDatetimeEncoders {
   implicit val javaSqlTimestampEncoder: Encoder[Timestamp] = Encoder { (w, value) =>
@@ -133,13 +194,43 @@ class BorerValueEncoder(w: Writer) {
   }
 }
 
-class BorerNestedArraysEncoder(w: Writer, wrap: Boolean = false) extends BorerValueEncoder(w) with NestedArraysHandler {
+class BorerNestedArraysEncoder(
+  w: Writer,
+  wrap: Boolean = false,
+) extends BorerValueEncoder(w) with NestedArraysHandler with SerializerChunkInfo {
+  private  var chunkType: ChunkType = null
   override def writeStartOfInput():     Unit = { if (wrap) w.writeArrayStart() }
   override def writeArrayStart():       Unit = w.writeArrayStart()
   override def writeValue(value: Any):  Unit = super.writeValue(value)
-  override def writeChunk(chunk: Any, isFirst: Boolean, isLast: Boolean): Unit = ??? // TODO blob / clob etc support
-  override def writeArrayBreak(): Unit = w.writeBreak()
-  override def writeEndOfInput(): Unit = { if (wrap) w.writeBreak() }
+  override def startChunks(chunkType: ChunkType): Unit = {
+    chunkType match {
+      case TextChunks => w.writeTextStart()
+      case ByteChunks => w.writeBytesStart()
+      case _ => sys.error("Unsupported ChunkType: " + chunkType)
+    }
+    this.chunkType = chunkType
+  }
+  override def writeChunk(chunk: Any):  Unit =
+    chunk match {
+      case bytes: ByteString =>
+        chunkType match {
+          case TextChunks => w.writeText(bytes)
+          case ByteChunks => w.writeBytes(bytes)
+          case _ => sys.error("Unsupported ChunkType: " + chunkType)
+        }
+      case x => sys.error("Unsupported chunk class: " + x.getClass.getName)
+    }
+  override def writeBreak():            Unit = {
+    chunkType = null
+    w.writeBreak()
+  }
+  override def writeEndOfInput():       Unit = { if (wrap) w.writeBreak() }
+  override def chunkSize(bufferSize: Int): Int =
+    if      (!w.writingCbor)            Int.MaxValue // borer does not support chunking for json
+    else if (bufferSize <= (   23 + 1)) bufferSize - 1
+    else if (bufferSize <= (  255 + 2)) bufferSize - 2
+    else if (bufferSize <= (65535 + 3)) bufferSize - 3
+    else 65535 // enough?
 }
 
 object BorerNestedArraysEncoder {
@@ -181,6 +272,7 @@ class BorerNestedArraysTransformer(reader: Reader, handler: NestedArraysHandler)
   import BorerDatetimeDecoders._
   import io.bullet.borer.{DataItem => DI}
   private var di = DI.None
+  private var isChunking = false
   def transformNext(): Boolean = {
     if (di != DI.EndOfInput) {
       di = dataItem()
@@ -197,15 +289,19 @@ class BorerNestedArraysTransformer(reader: Reader, handler: NestedArraysHandler)
         case DI.NumberString  => writeValue(read[JBigDecimal]())
         case DI.String        => writeValue(readString())
         case DI.Chars         => writeValue(readString())
-        case DI.Text          => writeValue(readString())
-        case DI.TextStart     => writeValue(readString())     // TODO blob / clob etc support
-        case DI.Bytes         => writeValue(readByteArray())
-        case DI.BytesStart    => writeValue(readByteArray())  // TODO blob / clob etc support
+        case DI.Text          => if  (isChunking)
+                                      writeChunk(readSizedTextBytes[ByteString]())
+                                 else writeValue(readString())
+        case DI.TextStart     => readTextStart();   isChunking = true;  startChunks(TextChunks)
+        case DI.Bytes         => if  (isChunking)
+                                      writeChunk(readSizedBytes[ByteString]())
+                                 else writeValue(readByteArray())
+        case DI.BytesStart    => readBytesStart();  isChunking = true;  startChunks(ByteChunks)
         case DI.ArrayHeader   => readArrayHeader(); writeArrayStart()
         case DI.ArrayStart    => readArrayStart();  writeArrayStart()
         case DI.MapHeader     => readMapHeader();   writeArrayStart() // unexpected TODO map support?
         case DI.MapStart      => readMapStart();    writeArrayStart() // unexpected TODO map support?
-        case DI.Break         => readBreak();       writeArrayBreak()
+        case DI.Break         => readBreak();       isChunking = false; writeBreak()
         case DI.Tag           => writeValue {
           if      (hasTag(Tag.PositiveBigNum))   read[JBigInteger]()
           else if (hasTag(Tag.NegativeBigNum))   read[JBigInteger]()
