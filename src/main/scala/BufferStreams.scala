@@ -162,7 +162,7 @@ class ResultCompletionSink(cleanupFun: Option[Throwable] => Unit = null)(implici
           }
         }
         override def onUpstreamFinish() =
-          result.success(CompleteResult(if (byteString == null) ByteString() else byteString))
+          result.success(CompleteResult(if (byteString == null) ByteString.empty else byteString))
         override def onUpstreamFailure(ex: Throwable) = {
           flowError = ex
           result.failure(ex)
