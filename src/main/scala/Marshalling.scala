@@ -264,7 +264,7 @@ trait QuereaseResultMarshalling { this:
 
   def toEntityQuereaseSerializedResultMarshaller(viewName: String): ToEntityMarshaller[QuereaseSerializedResult] = {
     import AppMetadata._
-    val labels = qe.viewDef(viewName).fields.map(f => Option(f.label).getOrElse(f.name))
+    val labels = qe.viewNameToLabels(viewName)
     implicit val formats_marshaller: ToEntityMarshaller[SerializedResult] =
       Marshaller.oneOf(
         toEntitySerializedResultMarshaller(

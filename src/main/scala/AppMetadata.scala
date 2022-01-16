@@ -27,6 +27,10 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
         .nameToViewDef
     toAppViewDefs(mojozViewDefs)
   }
+  lazy val viewNameToLabels: Map[String, Seq[String]] =
+    nameToViewDef.map { case (n, v) =>
+      (n, v.fields.map(f => Option(f.label).orElse(Option(f.alias)).getOrElse(f.name)))
+    }.toMap
   def toAppViewDefs(mojozViewDefs: Map[String, ViewDef]) = transformAppViewDefs {
     val inlineViewDefNames =
       mojozViewDefs.values.flatMap { viewDef =>
