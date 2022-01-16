@@ -250,38 +250,36 @@ trait QuereaseResultMarshalling { this:
   implicit val toEntityQuereaseNoResultMarshaller:          ToEntityMarshaller  [NoResult.type]  =
     Marshaller.combined(_ => "")
 
-  def toResponseSerializedResultMarshaller(
+  def toEntitySerializedResultMarshaller(
     contentType: ContentType,
     createEncoder: OutputStream => NestedArraysHandler,
-  ): ToResponseMarshaller[SerializedResult] = {
+  ): ToEntityMarshaller[SerializedResult] = {
     Marshaller.withFixedContentType(contentType) {
-      case CompleteResult(bytes) => HttpResponse(
-        entity = HttpEntity.Strict(contentType, BorerNestedArraysTransformer.transform(bytes, createEncoder))
-      )
-      case IncompleteResultSource(src) => HttpResponse(
-        entity = HttpEntity.Chunked.fromData(contentType, src.via(BorerNestedArraysTransformer.flow(createEncoder)))
-      )
+      case CompleteResult(bytes) =>
+        HttpEntity.Strict(contentType, BorerNestedArraysTransformer.transform(bytes, createEncoder))
+      case IncompleteResultSource(src)  =>
+        HttpEntity.Chunked.fromData(contentType, src.via(BorerNestedArraysTransformer.flow(createEncoder)))
     }
   }
 
-  def toResponseQuereaseSerializedResultMarshaller(viewName: String): ToResponseMarshaller[QuereaseSerializedResult] = {
+  def toEntityQuereaseSerializedResultMarshaller(viewName: String): ToEntityMarshaller[QuereaseSerializedResult] = {
     import AppMetadata._
     val labels = qe.viewDef(viewName).fields.map(f => Option(f.label).getOrElse(f.name))
-    implicit val formats_marshaller: ToResponseMarshaller[SerializedResult] =
+    implicit val formats_marshaller: ToEntityMarshaller[SerializedResult] =
       Marshaller.oneOf(
-        toResponseSerializedResultMarshaller(
+        toEntitySerializedResultMarshaller(
           `application/json`,
           JsonOutput(_, true, viewName, app.qe.nameToViewDef)
         ),
-        toResponseSerializedResultMarshaller(
+        toEntitySerializedResultMarshaller(
           ContentTypes.`text/csv(UTF-8)`,
           os => new CsvOutput(new OutputStreamWriter(os, "UTF-8"), labels)
         ),
-        toResponseSerializedResultMarshaller(
+        toEntitySerializedResultMarshaller(
           `application/vnd.oasis.opendocument.spreadsheet`,
           os => new OdsOutput(new ZipOutputStream(os), labels)
         ),
-        toResponseSerializedResultMarshaller(
+        toEntitySerializedResultMarshaller(
           `application/vnd.ms-excel`,
           os => new XlsXmlOutput(new OutputStreamWriter(os, "UTF-8"), labels)
         ),
@@ -289,6 +287,7 @@ trait QuereaseResultMarshalling { this:
     Marshaller.combined(_.result)
   }
 
+  import org.wabase.{QuereaseSerializedResult => QuereaseSerRes}
   implicit def toResponseWabaseResultMarshaller(implicit ec: ExecutionContext): ToResponseMarshaller[app.WabaseResult] =
     Marshaller { implicit ec => wr => wr.result match {
       case tq: TresqlResult   => (toResponseQuereaseTresqlResultMarshaller:   ToResponseMarshaller[TresqlResult]  )(tq)
@@ -302,7 +301,8 @@ trait QuereaseResultMarshalling { this:
       case id: IdResult       => (toEntityQuereaseIdResultMarshaller:         ToResponseMarshaller[IdResult]      )(id)
       case rd: RedirectResult => (toResponseQuereaseRedirectResultMarshaller: ToResponseMarshaller[RedirectResult])(rd)
       case no: NoResult.type  => (toEntityQuereaseNoResultMarshaller:         ToResponseMarshaller[NoResult.type] )(no)
-      case cr: QuereaseSerializedResult => toResponseQuereaseSerializedResultMarshaller(wr.ctx.viewName)(cr)
+      case cr: QuereaseSerRes => (toEntityQuereaseSerializedResultMarshaller(
+                                                            wr.ctx.viewName): ToResponseMarshaller[QuereaseSerRes])(cr)
       case xx                 => sys.error(s"QuereaseResult marshaller for class ${xx.getClass.getName} not implemented")
     }}
 
@@ -311,7 +311,7 @@ trait QuereaseResultMarshalling { this:
       Marshaller.combined { qir: qe.QuereaseIteratorResult[app.Dto] =>
         app.serializeResult(app.SerializationBufferSize, app.viewSerializationBufferMaxFileSize(viewName),
           DtoDataSerializer.source(() => qir))
-      } (GenericMarshallers.futureMarshaller(toResponseQuereaseSerializedResultMarshaller(viewName)))
+      } (GenericMarshallers.futureMarshaller(toEntityQuereaseSerializedResultMarshaller(viewName)))
 
     Marshaller { ec => res => marsh(res.view.name)(ec)(res) }
   }
