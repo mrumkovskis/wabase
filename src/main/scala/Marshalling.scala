@@ -227,6 +227,7 @@ trait QuereaseResultMarshalling { this:
   import app.qe
   import app.qe.ListJsonFormat
   import app.qe.QuereaseIdResultJsonFormat
+  import NestedArraysHandler.EncoderFactory
   implicit val toResponseQuereaseTresqlResultMarshaller:    ToResponseMarshaller[TresqlResult]   =
     Marshaller.combined(_.result)
   implicit val toEntityQuereaseMapResultMarshaller:         ToEntityMarshaller  [MapResult]      =
@@ -252,7 +253,7 @@ trait QuereaseResultMarshalling { this:
 
   def toEntitySerializedResultMarshaller(
     contentType: ContentType,
-    createEncoder: OutputStream => NestedArraysHandler,
+    createEncoder: EncoderFactory,
   ): ToEntityMarshaller[SerializedResult] = {
     Marshaller.withFixedContentType(contentType) {
       case CompleteResult(bytes) =>
@@ -262,27 +263,23 @@ trait QuereaseResultMarshalling { this:
     }
   }
 
+  def createJsonEncoderFactory(viewName: String): EncoderFactory =
+    JsonOutput(_, true, viewName, qe.nameToViewDef)
+  def createCsvEncoderFactory(viewName: String): EncoderFactory =
+    os => new CsvOutput(new OutputStreamWriter(os, "UTF-8"), qe.viewNameToLabels(viewName))
+  def createOdsEncoderFactory(viewName: String): EncoderFactory =
+    os => new OdsOutput(new ZipOutputStream(os), qe.viewNameToLabels(viewName))
+  def createXlsXmlEncoderFactory(viewName: String): EncoderFactory =
+    os => new XlsXmlOutput(new OutputStreamWriter(os, "UTF-8"), qe.viewNameToLabels(viewName))
+
   def toEntityQuereaseSerializedResultMarshaller(viewName: String): ToEntityMarshaller[QuereaseSerializedResult] = {
-    import AppMetadata._
-    val labels = qe.viewNameToLabels(viewName)
     implicit val formats_marshaller: ToEntityMarshaller[SerializedResult] =
       Marshaller.oneOf(
-        toEntitySerializedResultMarshaller(
-          `application/json`,
-          JsonOutput(_, true, viewName, app.qe.nameToViewDef)
-        ),
-        toEntitySerializedResultMarshaller(
-          ContentTypes.`text/csv(UTF-8)`,
-          os => new CsvOutput(new OutputStreamWriter(os, "UTF-8"), labels)
-        ),
-        toEntitySerializedResultMarshaller(
-          `application/vnd.oasis.opendocument.spreadsheet`,
-          os => new OdsOutput(new ZipOutputStream(os), labels)
-        ),
-        toEntitySerializedResultMarshaller(
-          `application/vnd.ms-excel`,
-          os => new XlsXmlOutput(new OutputStreamWriter(os, "UTF-8"), labels)
-        ),
+        toEntitySerializedResultMarshaller(`application/json`,                createJsonEncoderFactory(viewName)),
+        toEntitySerializedResultMarshaller(ContentTypes.`text/csv(UTF-8)`,    createCsvEncoderFactory(viewName)),
+        toEntitySerializedResultMarshaller(`application/vnd.oasis.opendocument.spreadsheet`,
+                                                                              createOdsEncoderFactory(viewName)),
+        toEntitySerializedResultMarshaller(`application/vnd.ms-excel`,        createXlsXmlEncoderFactory(viewName)),
       )
     Marshaller.combined(_.result)
   }

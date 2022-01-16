@@ -7,7 +7,7 @@ import org.apache.commons.codec.binary.Hex
 import io.bullet.borer.{Cbor, Json, Target}
 import java.io.{ByteArrayInputStream, InputStream, OutputStream, OutputStreamWriter}
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
-import org.wabase.NestedArraysHandler.ChunkType
+import org.wabase.NestedArraysHandler.{ChunkType, EncoderFactory}
 
 import scala.concurrent.Await
 import scala.concurrent.duration.DurationInt
@@ -66,7 +66,7 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
   }
 
   def serializeAndTransform(
-      serializerSource: Source[ByteString, _], createEncoder: OutputStream => NestedArraysHandler) = {
+      serializerSource: Source[ByteString, _], createEncoder: EncoderFactory) = {
     val source = BorerNestedArraysTransformer.source(
       () => serializerSource.runWith(StreamConverters.asInputStream()),
       createEncoder,

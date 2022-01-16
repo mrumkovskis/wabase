@@ -11,6 +11,7 @@ import java.lang.{Boolean => JBoolean, Byte => JByte, Double => JDouble, Float =
 import java.math.{BigDecimal => JBigDecimal, BigInteger => JBigInteger}
 
 object NestedArraysHandler {
+  type EncoderFactory = OutputStream => NestedArraysHandler
   trait ChunkType
   object TextChunks extends ChunkType
   object ByteChunks extends ChunkType
@@ -59,7 +60,7 @@ import NestedArraysSerializer._
 /** Serializes nested iterators as nested arrays. To serialize tresql Result, use TresqlRowsIterator */
 class NestedArraysSerializer(
   createEncodable: () => Iterator[_],
-  createEncoder:  OutputStream => NestedArraysHandler,
+  createEncoder:  EncoderFactory,
   bufferSizeHint: Int = 1024,
 ) extends GraphStage[SourceShape[ByteString]] {
   val out = Outlet[ByteString]("SerializedArraysTresqlResultSource")
@@ -328,7 +329,7 @@ import io.bullet.borer.compat.akka.ByteStringProvider
 object BorerNestedArraysTransformer {
   private class TransformerSource(
     createTransformable:  () => InputStream,
-    createEncoder:        OutputStream => NestedArraysHandler,
+    createEncoder:        EncoderFactory,
     transformFrom:        Target,
     bufferSizeHint:       Int,
   ) extends GraphStage[SourceShape[ByteString]] {
@@ -366,7 +367,7 @@ object BorerNestedArraysTransformer {
   }
 
   private class TransformerFlow(
-    createEncoder:        OutputStream => NestedArraysHandler,
+    createEncoder:        EncoderFactory,
     transformFrom:        Target,
     bufferSizeHint:       Int,
   ) extends GraphStage[FlowShape[ByteString, ByteString]] {
@@ -437,7 +438,7 @@ object BorerNestedArraysTransformer {
 
   def source(
     createTransformable:  () => InputStream,
-    createEncoder:        OutputStream => NestedArraysHandler,
+    createEncoder:        EncoderFactory,
     transformFrom:        Target = Cbor,
     bufferSizeHint:       Int = 1024,
   ): Source[ByteString, NotUsed] = Source.fromGraph(
@@ -445,7 +446,7 @@ object BorerNestedArraysTransformer {
   )
 
   def flow(
-    createEncoder:        OutputStream => NestedArraysHandler,
+    createEncoder:        EncoderFactory,
     transformFrom:        Target = Cbor,
     bufferSizeHint:       Int = 1024,
   ): Flow[ByteString, ByteString, NotUsed] = Flow.fromGraph(
@@ -454,7 +455,7 @@ object BorerNestedArraysTransformer {
 
   def transform[T](
     transformable: T,
-    createEncoder: OutputStream => NestedArraysHandler,
+    createEncoder: EncoderFactory,
     transformFrom: Target = Cbor,
   )(implicit p: Input.Provider[T]): ByteString = {
     val buf = new ByteStringBuilder
@@ -514,7 +515,7 @@ object DtoDataSerializer {
     createResult:   () => Iterator[_],
     includeHeaders: Boolean = true,
     bufferSizeHint: Int     = 1024,
-    createEncoder:  OutputStream => NestedArraysHandler = BorerNestedArraysEncoder(_),
+    createEncoder:  EncoderFactory = BorerNestedArraysEncoder(_),
   )(implicit
     qe: AppQuerease,
   ): Source[ByteString, NotUsed] = {
@@ -559,7 +560,7 @@ object TresqlResultSerializer {
     createResult:   () => Result[_],
     includeHeaders: Boolean = true,
     bufferSizeHint: Int     = 1024,
-    createEncoder:  OutputStream => NestedArraysHandler = BorerNestedArraysEncoder(_),
+    createEncoder:  EncoderFactory = BorerNestedArraysEncoder(_),
   ): Source[ByteString, _] = {
     Source.fromGraph(new NestedArraysSerializer(
       () => new TresqlRowsIterator(createResult(), includeHeaders), createEncoder(_), bufferSizeHint
