@@ -379,7 +379,7 @@ object BorerNestedArraysTransformer {
       private var inQueueByteCount  = 0
       private val buf               = new ByteStringBuilder
       private val transformable     = new Iterator[ByteString] {
-        override def hasNext  = !isClosed(in)
+        override def hasNext  = inQueue.nonEmpty || !isClosed(in)
         override def next()   = {
           if (inQueue.isEmpty) sys.error(
             "TransformerFlow input buffer exhausted. " +
