@@ -81,6 +81,9 @@ class WabaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Async
             JsonOutput(_, true, view, app.qe.nameToViewDef),
           )
           source
+          // FIXME
+          //serializerSource
+          //  .via(BorerNestedArraysTransformer.flow(JsonOutput(_, true, view, app.qe.nameToViewDef)))
             .runFold("")(_ + _.decodeString("UTF-8"))
             .map(_.parseJson.convertTo[List[Any]](app.qe.ListJsonFormat))
             .map(_.map {
