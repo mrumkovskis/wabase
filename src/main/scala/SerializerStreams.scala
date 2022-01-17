@@ -375,7 +375,8 @@ object BorerNestedArraysTransformer {
     val out = Outlet[ByteString]("BorerNestedArraysTransformerFlow.out")
     override val shape = FlowShape.of(in, out)
     override def createLogic(inheritedAttributes: Attributes): GraphStageLogic = new GraphStageLogic(shape) {
-      private val inQueue           = collection.mutable.Queue.empty[ByteString]
+      // XXX adding empty bytestring to queue because borer reader starts reading in constructor
+      private val inQueue           = collection.mutable.Queue(ByteString.empty)
       private var inQueueByteCount  = 0
       private val buf               = new ByteStringBuilder
       private val transformable     = new Iterator[ByteString] {
