@@ -227,7 +227,7 @@ trait QuereaseResultMarshalling { this:
   import app.qe
   import app.qe.ListJsonFormat
   import app.qe.QuereaseIdResultJsonFormat
-  import NestedArraysHandler.EncoderFactory
+  import ResultEncoder.EncoderFactory
   implicit val toResponseQuereaseTresqlResultMarshaller:    ToResponseMarshaller[TresqlResult]   =
     Marshaller.combined(_.result)
   implicit val toEntityQuereaseMapResultMarshaller:         ToEntityMarshaller  [MapResult]      =

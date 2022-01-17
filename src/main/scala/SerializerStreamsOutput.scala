@@ -10,16 +10,35 @@ import java.io
 import java.io.OutputStream
 import java.util.zip.ZipOutputStream
 import org.mojoz.metadata.MojozViewDef
-import org.wabase.NestedArraysHandler.{ByteChunks, ChunkType, TextChunks}
+import org.wabase.ResultEncoder.{ByteChunks, ChunkType, TextChunks}
 
 import scala.collection.immutable.Seq
+
+object ResultEncoder {
+  type EncoderFactory = OutputStream => ResultEncoder
+  trait ChunkType
+  object TextChunks extends ChunkType
+  object ByteChunks extends ChunkType
+}
+
+import ResultEncoder._
+trait ResultEncoder {
+  def writeStartOfInput():      Unit
+  def writeArrayStart():        Unit
+  def writeValue(value: Any):   Unit
+  def startChunks(
+        chunkType: ChunkType):  Unit
+  def writeChunk(chunk: Any):   Unit
+  def writeBreak():             Unit
+  def writeEndOfInput():        Unit
+}
 
 class CborOrJsonOutput(
   w: borer.Writer,
   isCollection: Boolean,
   viewName: String,
   nameToViewDef: Map[String, MojozViewDef],
-) extends BorerValueEncoder(w) with NestedArraysHandler {
+) extends BorerValueEncoder(w) with ResultEncoder {
   import CborOrJsonOutput.Context
   var contextStack: List[Context] = Nil
   var chunkType: ChunkType = null
@@ -154,7 +173,7 @@ object JsonOutput {
     new CborOrJsonOutput(BorerNestedArraysEncoder.createWriter(outputStream, Json), isCollection, viewName, nameToViewDef)
 }
 
-abstract class FlatTableOutput(val labels: Seq[String]) extends NestedArraysHandler {
+abstract class FlatTableOutput(val labels: Seq[String]) extends ResultEncoder {
   protected var row = 0
   protected var col = 0
   protected var lvl = 0

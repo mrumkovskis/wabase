@@ -7,7 +7,7 @@ import org.apache.commons.codec.binary.Hex
 import io.bullet.borer.{Cbor, Json, Target}
 import java.io.{ByteArrayInputStream, InputStream, OutputStream, OutputStreamWriter}
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
-import org.wabase.NestedArraysHandler.{ChunkType, EncoderFactory}
+import org.wabase.ResultEncoder.{ChunkType, EncoderFactory}
 
 import scala.concurrent.Await
 import scala.concurrent.duration.DurationInt
@@ -82,7 +82,7 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
   }
 
   def serializeValuesToString(values: Iterator[_], format: Target = Cbor, bufferSizeHint: Int = 8) = {
-    val source = Source.fromGraph(new NestedArraysSerializer(
+    val source = Source.fromGraph(new ResultSerializer(
       () => values,
       outputStream => new BorerNestedArraysEncoder(BorerNestedArraysEncoder.createWriter(outputStream, format)),
       bufferSizeHint,
@@ -91,7 +91,7 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
   }
 
   def serializeValuesToHexString(values: Iterator[_], format: Target = Cbor, bufferSizeHint: Int = 8) = {
-    val source = Source.fromGraph(new NestedArraysSerializer(
+    val source = Source.fromGraph(new ResultSerializer(
       () => values,
       outputStream => new BorerNestedArraysEncoder(BorerNestedArraysEncoder.createWriter(outputStream, format)),
       bufferSizeHint,
@@ -300,7 +300,7 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
     import scala.language.existentials
     def test(value: Any) = {
       var deserialized: Any = null
-      val handler = new NestedArraysHandler {
+      val handler = new ResultEncoder {
         override def writeStartOfInput():    Unit = {}
         override def writeArrayStart():      Unit = {}
         override def writeValue(value: Any): Unit = { deserialized = value }

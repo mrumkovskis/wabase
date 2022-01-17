@@ -10,30 +10,12 @@ import java.io.{InputStream, OutputStream}
 import java.lang.{Boolean => JBoolean, Byte => JByte, Double => JDouble, Float => JFloat, Long => JLong, Short => JShort}
 import java.math.{BigDecimal => JBigDecimal, BigInteger => JBigInteger}
 
-object NestedArraysHandler {
-  type EncoderFactory = OutputStream => NestedArraysHandler
-  trait ChunkType
-  object TextChunks extends ChunkType
-  object ByteChunks extends ChunkType
-}
+import ResultEncoder._
 
-import NestedArraysHandler._
-trait NestedArraysHandler {
-  def writeStartOfInput():      Unit
-  def writeArrayStart():        Unit
-  def writeValue(value: Any):   Unit
-  def startChunks(
-        chunkType: ChunkType):  Unit
-  def writeChunk(chunk: Any):   Unit
-  def writeBreak():             Unit
-  def writeEndOfInput():        Unit
-}
-
-trait SerializerChunkInfo {
-  def chunkSize(bufferSize: Int): Int
-}
-
-object NestedArraysSerializer {
+object ResultSerializer {
+  trait ChunkInfo {
+    def chunkSize(bufferSize: Int): Int
+  }
   class StringChunker(s: String, chunkSize: Int) {
     // chunk strings to enable reactive streaming with limited buffer size
     val bytes = ByteString.fromString(s)
@@ -56,9 +38,9 @@ object NestedArraysSerializer {
   }
 }
 
-import NestedArraysSerializer._
+import ResultSerializer._
 /** Serializes nested iterators as nested arrays. To serialize tresql Result, use TresqlRowsIterator */
-class NestedArraysSerializer(
+class ResultSerializer(
   createEncodable: () => Iterator[_],
   createEncoder:  EncoderFactory,
   bufferSizeHint: Int = 1024,
@@ -70,14 +52,14 @@ class NestedArraysSerializer(
     var chunkSize:  Int                 = _
     var isChunking: Boolean             = _
     var encodable:  Iterator[_]         = _
-    var encoder:    NestedArraysHandler = _
+    var encoder:    ResultEncoder = _
     var iterators:  List[Iterator[_]]   = _
     override def preStart(): Unit = {
       buf       = new ByteStringBuilder
       encodable = createEncodable()
       encoder   = createEncoder(buf.asOutputStream)
       chunkSize = encoder match {
-        case chunkInfo: SerializerChunkInfo =>
+        case chunkInfo: ChunkInfo =>
           chunkInfo.chunkSize(bufferSizeHint)
         case _ => Int.MaxValue
       }
@@ -198,7 +180,7 @@ class BorerValueEncoder(w: Writer) {
 class BorerNestedArraysEncoder(
   w: Writer,
   wrap: Boolean = false,
-) extends BorerValueEncoder(w) with NestedArraysHandler with SerializerChunkInfo {
+) extends BorerValueEncoder(w) with ResultEncoder with ChunkInfo {
   private  var chunkType: ChunkType = null
   override def writeStartOfInput():     Unit = { if (wrap) w.writeArrayStart() }
   override def writeArrayStart():       Unit = w.writeArrayStart()
@@ -267,7 +249,7 @@ object BorerDatetimeDecoders {
   }
 }
 
-class BorerNestedArraysTransformer(reader: Reader, handler: NestedArraysHandler) {
+class BorerNestedArraysTransformer(reader: Reader, handler: ResultEncoder) {
   import reader._
   import handler._
   import BorerDatetimeDecoders._
@@ -520,7 +502,7 @@ object DtoDataSerializer {
   )(implicit
     qe: AppQuerease,
   ): Source[ByteString, NotUsed] = {
-    Source.fromGraph(new NestedArraysSerializer(
+    Source.fromGraph(new ResultSerializer(
       () => new DtoDataIterator(createResult(), asRows = true, includeHeaders),
       createEncoder(_),
       bufferSizeHint,
@@ -563,7 +545,7 @@ object TresqlResultSerializer {
     bufferSizeHint: Int     = 1024,
     createEncoder:  EncoderFactory = BorerNestedArraysEncoder(_),
   ): Source[ByteString, _] = {
-    Source.fromGraph(new NestedArraysSerializer(
+    Source.fromGraph(new ResultSerializer(
       () => new TresqlRowsIterator(createResult(), includeHeaders), createEncoder(_), bufferSizeHint
     ))
   }
