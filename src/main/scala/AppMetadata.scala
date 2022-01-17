@@ -582,7 +582,7 @@ object AppMetadata {
     val BindVarCursorsFunctionName = "build_cursors"
     val BindVarCursorsForViewFunctionName = "build_cursors_for_view"
 
-    trait Op
+    sealed trait Op
     sealed trait Step {
       def name: Option[String]
     }

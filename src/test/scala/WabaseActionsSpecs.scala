@@ -76,13 +76,6 @@ class WabaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Async
             case CompleteResult(result) => Source.single(result)
             case IncompleteResultSource(result) => result
           }
-          /*
-          val source = BorerNestedArraysTransformer.source(
-            () => serializerSource.runWith(StreamConverters.asInputStream()),
-            JsonOutput(_, true, view, app.qe.nameToViewDef),
-          )
-          source
-          */
           serializerSource
             .via(BorerNestedArraysTransformer.flow(JsonOutput(_, true, view, app.qe.nameToViewDef)))
             .runFold("")(_ + _.decodeString("UTF-8"))
