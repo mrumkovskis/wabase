@@ -68,6 +68,7 @@ class ResultSerializer(
         s"Unable to chunk for buffer size $bufferSizeHint. " +
         s"Resulting chunk size is $chunkSize but should be > 0")
     }
+    private val neverChunkStringLength = chunkSize / 4   // max 4 utf-8 bytes per codepoint
     private var isChunking = false
     private var iterators  = encodable :: Nil
     override def preStart(): Unit = {
@@ -80,7 +81,7 @@ class ResultSerializer(
         case children: Iterator[_] =>
           iterators = children :: iterators
           encoder.writeArrayStart()
-        case s: String if chunkSize != Int.MaxValue =>
+        case s: String if chunkSize != Int.MaxValue && s.length > neverChunkStringLength =>
           val stringChunker = new StringChunker(s, chunkSize)
           if (stringChunker.shouldChunk) {
             isChunking = true
