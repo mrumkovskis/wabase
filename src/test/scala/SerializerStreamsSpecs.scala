@@ -82,20 +82,20 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
   }
 
   def serializeValuesToString(values: Iterator[_], format: Target = Cbor, bufferSizeHint: Int = 8) = {
-    val source = Source.fromGraph(new ResultSerializer(
+    val source = ResultSerializer.source(
       () => values,
       outputStream => new BorerNestedArraysEncoder(BorerNestedArraysEncoder.createWriter(outputStream, format)),
       bufferSizeHint,
-    ))
+    )
     Await.result(source.runWith(foldToStringSink(format)), 1.second)
   }
 
   def serializeValuesToHexString(values: Iterator[_], format: Target = Cbor, bufferSizeHint: Int = 8) = {
-    val source = Source.fromGraph(new ResultSerializer(
+    val source = ResultSerializer.source(
       () => values,
       outputStream => new BorerNestedArraysEncoder(BorerNestedArraysEncoder.createWriter(outputStream, format)),
       bufferSizeHint,
-    ))
+    )
     Await.result(source.runWith(foldToHexString(format)), 1.second)
   }
 

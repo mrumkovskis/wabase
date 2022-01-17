@@ -36,44 +36,45 @@ object ResultSerializer {
       }
     }
   }
+  def source(
+    createEncodable:  () => Iterator[_],
+    createEncoder:    EncoderFactory,
+    bufferSizeHint:   Int = 1024,
+  ): Source[ByteString, NotUsed] = {
+    Source.fromGraph(new ResultSerializer(createEncodable, createEncoder, bufferSizeHint))
+  }
 }
 
 import ResultSerializer._
 /** Serializes nested iterators as nested arrays. To serialize tresql Result, use TresqlRowsIterator */
 class ResultSerializer(
-  createEncodable: () => Iterator[_],
-  createEncoder:  EncoderFactory,
-  bufferSizeHint: Int = 1024,
+  createEncodable:  () => Iterator[_],
+  createEncoder:    EncoderFactory,
+  bufferSizeHint:   Int = 1024,
 ) extends GraphStage[SourceShape[ByteString]] {
   val out = Outlet[ByteString]("SerializedArraysTresqlResultSource")
   override val shape: SourceShape[ByteString] = SourceShape(out)
   override def createLogic(attrs: Attributes): GraphStageLogic = new GraphStageLogic(shape) {
-    var buf:        ByteStringBuilder   = _
-    var chunkSize:  Int                 = _
-    var isChunking: Boolean             = _
-    var encodable:  Iterator[_]         = _
-    var encoder:    ResultEncoder = _
-    var iterators:  List[Iterator[_]]   = _
+    private val buf       = new ByteStringBuilder
+    private val encodable = createEncodable()
+    private val encoder   = createEncoder(buf.asOutputStream)
+    private val chunkSize = encoder match {
+      case chunkInfo: ChunkInfo =>
+        chunkInfo.chunkSize(bufferSizeHint)
+      case _ => Int.MaxValue
+    }
+    if (chunkSize <= 0) {
+      throw new IllegalArgumentException(
+        s"Unable to chunk for buffer size $bufferSizeHint. " +
+        s"Resulting chunk size is $chunkSize but should be > 0")
+    }
+    private var isChunking = false
+    private var iterators  = encodable :: Nil
     override def preStart(): Unit = {
-      buf       = new ByteStringBuilder
-      encodable = createEncodable()
-      encoder   = createEncoder(buf.asOutputStream)
-      chunkSize = encoder match {
-        case chunkInfo: ChunkInfo =>
-          chunkInfo.chunkSize(bufferSizeHint)
-        case _ => Int.MaxValue
-      }
-      if (chunkSize <= 0) {
-        throw new IllegalArgumentException(
-          s"Unable to chunk for buffer size $bufferSizeHint. " +
-          s"Resulting chunk size is $chunkSize but should be > 0")
-      }
-      isChunking = false
-      iterators = encodable :: Nil
       buf.sizeHint(bufferSizeHint)
       encoder.writeStartOfInput()
     }
-    def encodeNext(): Unit = {
+    private def encodeNext(): Unit = {
       val iterator = iterators.head
       if (iterator.hasNext) iterator.next() match {
         case children: Iterator[_] =>
@@ -318,18 +319,16 @@ object BorerNestedArraysTransformer {
     val out = Outlet[ByteString]("BorerNestedArraysTransformerSource.out")
     override val shape: SourceShape[ByteString] = SourceShape(out)
     override def createLogic(attrs: Attributes): GraphStageLogic = new GraphStageLogic(shape) {
-      var buf:          ByteStringBuilder             = _
-      var transformer:  BorerNestedArraysTransformer  = _
+      private val buf         = new ByteStringBuilder
+      private val encoder     = createEncoder(buf.asOutputStream)
+      private val transformer = new BorerNestedArraysTransformer(
+        transformFrom match {
+          case _: Cbor.type => Cbor.reader(createTransformable())
+          case _: Json.type => Json.reader(createTransformable())
+        },
+        encoder,
+      )
       override def preStart(): Unit = {
-        buf         = new ByteStringBuilder
-        val encoder = createEncoder(buf.asOutputStream)
-        transformer = new BorerNestedArraysTransformer(
-          transformFrom match {
-            case _: Cbor.type => Cbor.reader(createTransformable())
-            case _: Json.type => Json.reader(createTransformable())
-          },
-          encoder,
-        )
         buf.sizeHint(bufferSizeHint)
         encoder.writeStartOfInput()
       }
@@ -349,9 +348,9 @@ object BorerNestedArraysTransformer {
   }
 
   private class TransformerFlow(
-    createEncoder:        EncoderFactory,
-    transformFrom:        Target,
-    bufferSizeHint:       Int,
+    createEncoder:  EncoderFactory,
+    transformFrom:  Target,
+    bufferSizeHint: Int,
   ) extends GraphStage[FlowShape[ByteString, ByteString]] {
     val in = Inlet[ByteString]("BorerNestedArraysTransformerFlow.in")
     val out = Outlet[ByteString]("BorerNestedArraysTransformerFlow.out")
@@ -374,8 +373,8 @@ object BorerNestedArraysTransformer {
           elem
         }
       }
-      private val encoder       = createEncoder(buf.asOutputStream)
-      private val transformer   = new BorerNestedArraysTransformer(
+      private val encoder     = createEncoder(buf.asOutputStream)
+      private val transformer = new BorerNestedArraysTransformer(
         transformFrom match {
           case _: Cbor.type => Cbor.reader(transformable)
           case _: Json.type => Json.reader(transformable)
@@ -429,17 +428,17 @@ object BorerNestedArraysTransformer {
   )
 
   def flow(
-    createEncoder:        EncoderFactory,
-    transformFrom:        Target = Cbor,
-    bufferSizeHint:       Int = 1024,
+    createEncoder:  EncoderFactory,
+    transformFrom:  Target = Cbor,
+    bufferSizeHint: Int = 1024,
   ): Flow[ByteString, ByteString, NotUsed] = Flow.fromGraph(
     new TransformerFlow(createEncoder, transformFrom, bufferSizeHint)
   )
 
   def transform[T](
-    transformable: T,
-    createEncoder: EncoderFactory,
-    transformFrom: Target = Cbor,
+    transformable:  T,
+    createEncoder:  EncoderFactory,
+    transformFrom:  Target = Cbor,
   )(implicit p: Input.Provider[T]): ByteString = {
     val buf = new ByteStringBuilder
     val encoder = createEncoder(buf.asOutputStream)
@@ -458,14 +457,14 @@ object BorerNestedArraysTransformer {
 
 object DtoDataSerializer {
   /** Dto iterator wrapper for data serialization (without field names) */
-  class DtoDataIterator(
-    items: Iterator[_],
+  private class DtoDataIterator(
+    items:  Iterator[_],
     asRows: Boolean,
     includeHeaders: Boolean,
   )(implicit val qe: AppQuerease) extends Iterator[Any] with AutoCloseable {
-    var isBeforeFirst = true
-    var headering = false
-    var nextItem: Any = null
+    private  var isBeforeFirst = true
+    private  var headering = false
+    private  var nextItem: Any = null
     override def hasNext: Boolean = headering || items.hasNext
     override def next() = {
       if (!headering)
@@ -502,23 +501,23 @@ object DtoDataSerializer {
   )(implicit
     qe: AppQuerease,
   ): Source[ByteString, NotUsed] = {
-    Source.fromGraph(new ResultSerializer(
+    ResultSerializer.source(
       () => new DtoDataIterator(createResult(), asRows = true, includeHeaders),
       createEncoder(_),
       bufferSizeHint,
-    ))
+    )
   }
 }
 
 import org.tresql.Result
 object TresqlResultSerializer {
   /** Tresql Result wrapper for serialization - returns column iterator instead of self */
-  class TresqlRowsIterator(
+  private class TresqlRowsIterator(
     rows: Result[_],
     includeHeaders: Boolean,
   ) extends Iterator[TresqlColsIterator] with AutoCloseable {
-    var isBeforeFirst = true
-    var headering = false
+    private  var isBeforeFirst = true
+    private  var headering = false
     override def hasNext: Boolean = headering || rows.hasNext
     override def next(): TresqlColsIterator = {
       if (!headering)
@@ -532,7 +531,7 @@ object TresqlResultSerializer {
     }
     override def close(): Unit = rows.close()
   }
-  class TresqlColsIterator(cols: Iterator[_], includeHeaders: Boolean) extends Iterator[Any] {
+  private class TresqlColsIterator(cols: Iterator[_], includeHeaders: Boolean) extends Iterator[Any] {
     override def hasNext: Boolean = cols.hasNext
     override def next(): Any = cols.next() match {
       case rows: Result[_] => new TresqlRowsIterator(rows, includeHeaders)
@@ -544,9 +543,9 @@ object TresqlResultSerializer {
     includeHeaders: Boolean = true,
     bufferSizeHint: Int     = 1024,
     createEncoder:  EncoderFactory = BorerNestedArraysEncoder(_),
-  ): Source[ByteString, _] = {
-    Source.fromGraph(new ResultSerializer(
+  ): Source[ByteString, NotUsed] = {
+    ResultSerializer.source(
       () => new TresqlRowsIterator(createResult(), includeHeaders), createEncoder(_), bufferSizeHint
-    ))
+    )
   }
 }
