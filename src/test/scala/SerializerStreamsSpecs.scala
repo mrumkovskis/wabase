@@ -298,23 +298,17 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
 
   it should "serialize known types to cbor and deserialize to somewhat similar types" in {
     import scala.language.existentials
-    def test(value: Any) = {
+    def test(value: Any, bufferSizeHint: Int = 256) = {
       var deserialized: Any = null
-      val handler = new ResultEncoder {
-        override def writeStartOfInput():    Unit = {}
-        override def writeArrayStart():      Unit = {}
+      val handler = new FlatTableOutput(labels = null) {
         override def writeValue(value: Any): Unit = { deserialized = value }
-        override def startChunks(
-                      chunkType: ChunkType): Unit = ???
-        override def writeChunk(chunk: Any): Unit = ???
-        override def writeBreak():           Unit = {}
-        override def writeEndOfInput():      Unit = {}
+        override def writeCell(value: Any): Unit = ???
       }
-      val serialized  = serializeValuesToHexString(List(value).iterator, bufferSizeHint = 256)
+      val serialized  = serializeValuesToHexString(List(value).iterator, bufferSizeHint = bufferSizeHint)
       val transformer = new BorerNestedArraysTransformer(
         Cbor.reader(new ByteArrayInputStream(Hex.decodeHex(serialized))), handler
       )
-      transformer.transformNext()
+      while (transformer.transformNext()) {}
       Option(deserialized)
         .map(d => (d.getClass, d))
         .getOrElse((null, deserialized))
@@ -341,6 +335,10 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
     test(Double.MinValue) shouldBe (classOf[java.lang.Double],  Double.MinValue)
     test("")              shouldBe (classOf[java.lang.String], "")
     test("Rūķīši")        shouldBe (classOf[java.lang.String], "Rūķīši")
+    test("Rūķīši", 2)     shouldBe (classOf[java.lang.String], "Rūķīši")
+    test("Rūķīši", 3)     shouldBe (classOf[java.lang.String], "Rūķīši")
+    test("Rūķīši", 4)     shouldBe (classOf[java.lang.String], "Rūķīši")
+    test("Rūķīši", 5)     shouldBe (classOf[java.lang.String], "Rūķīši")
     test(BigInt(-1))      shouldBe (classOf[java.lang.Integer], -1)
     test(BigInt(1))       shouldBe (classOf[java.lang.Integer], 1)
     test(BigInt(Long.MinValue))         shouldBe (classOf[java.lang.Long], Long.MinValue)

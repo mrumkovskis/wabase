@@ -198,7 +198,6 @@ abstract class FlatTableOutput(val labels: Seq[String]) extends ResultEncoder {
   override def writeChunk(chunk: Any): Unit = {
     chunk match {
       case bytes: ByteString =>
-        println(s"ByteString CHUNK RECEIVED, chunkType: $chunkType, buffer: $buffer, chunk: $chunk")
         buffer = ByteStringByteAccess.concat(buffer, bytes)
       case x => sys.error("Unsupported chunk class: " + x.getClass.getName)
     }
