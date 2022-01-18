@@ -8,7 +8,6 @@ import org.scalatest.BeforeAndAfterAll
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers
 import org.tresql.{Query, ThreadLocalResources}
-import org.tresql.result.Jsonizer
 import org.wabase.AppMetadata.DbAccessKey
 import spray.json._
 
@@ -46,32 +45,26 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
     if scenario.listFiles.exists(_.isFile)
   } yield scenario
 
-  def assertResponse(response: JsValue, expectedResponse: Any, path: String): Map[String, String] = {
+  def assertResponse(response: Any, expectedResponse: Any, path: String): Map[String, String] = {
     def err(message: String) = sys.error(path + ": " + message)
 
     (response, expectedResponse) match {
-      case (JsArray(elements), Nil) if elements.nonEmpty => err("List must be empty")
-      case (JsArray(elements), Nil) if elements.isEmpty => Map.empty
+      case (elements: Seq[_], Nil) if elements.nonEmpty => err("List must be empty")
+      case (elements: Seq[_], Nil) if elements.isEmpty => Map.empty
       case (_, Nil) => err("Element should not be here") // TODO test this
-      case (JsArray(elements), list: List[_]) =>
+      case (elements: Seq[_], list: List[_]) =>
         if (elements.size != list.size) err(s"List size ${elements.size} should be equal to ${list.size}")
         elements.zip(list).zipWithIndex.flatMap(e => assertResponse(e._1._1, e._1._2, path + "/" + e._2)).toMap
-      case (JsObject(elements), map: Map[String, Any]@unchecked) =>
+      case (elements: Map[String, Any]@unchecked, map: Map[String, Any]@unchecked) =>
         map.flatMap { case (key, expectedValue) =>
           elements.get(key) match {
             case None => err(s"Object should contain key: $key")
             case Some(value) => assertResponse(value, expectedValue, path + "/" + key)
           }
         }
-      case (JsString(a), s: String) if s.trim.startsWith("->") => Map(s.trim.substring(2).trim -> a)
-      case (JsNumber(a), s: String) if s.trim.startsWith("->") => Map(s.trim.substring(2).trim -> a.toString)
-      case (JsTrue, "true") => Map.empty
-      case (JsFalse, "false") => Map.empty
-      case (JsString(a), b) if b != null && a          == b.toString => Map.empty
-      case (JsNumber(a), b) if b != null && a.toString == b.toString => Map.empty
-      case (JsTrue, true) => Map.empty
-      case (JsFalse, false) => Map.empty
-      case (JsNull, null) => Map.empty
+      case (a, s: String) if s.trim.startsWith("->") => Map(s.trim.substring(2).trim -> String.valueOf(a))
+      case (a, b) if b != null && String.valueOf(a) == b.toString => Map.empty
+      case (null, null) => Map.empty
       case (a, b) => err(s"Element $a should be equal to $b")
     }
   }
@@ -230,17 +223,26 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
       case r => sys.error("Unsupported request type: "+r)
     }
 
+    def tresqlTransformDate(m: Any):Any = m match {
+      case mm: Map[String@unchecked, _] => mm.map { case (key, value) => (key, tresqlTransformDate(value))}
+      case s: Seq[_] => s map tresqlTransformDate
+      case t: java.sql.Timestamp => t.toString.substring(0, 19)
+      case d: java.util.Date => Format.humanDateTime(d)
+      case x => x
+    }
+
     val response =
       if (tresqlRow != null)
-        dbUse(Jsonizer.jsonize(Query(tresqlRow, context), Jsonizer.Object))
+        tresqlTransformDate(dbUse(Query(tresqlRow, context).toListOfMaps.headOption.getOrElse(Map())))
       else if (tresqlList != null)
-        dbUse(Jsonizer.jsonize(Query(tresqlList, context), Jsonizer.Objects))
+        tresqlTransformDate(dbUse(Query(tresqlList, context).toListOfMaps))
       else if (tresqlTransaction != null) {
         transaction(Query(tresqlTransaction, context))
-        "{'result': 'ok'}"
-      } else if (error == null)
-        doRequest
-      else {
+        Map("result" -> "ok")
+      } else if (error == null) {
+        val res = doRequest
+        Try(JsonToAny(res.parseJson)).toOption.getOrElse(res)
+      } else {
         val message = intercept[ClientException](doRequest).getMessage
         message should include (error)
         message
@@ -252,8 +254,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
     else
       println("[some response]")
     println("=========================")
-    val responseJsValue = try response.parseJson catch { case ex: Exception => JsString(response) }
-    if(expectedResponse != null) assertResponse(responseJsValue, expectedResponse, "[ROOT]")
+    if(expectedResponse != null) assertResponse(response, expectedResponse, "[ROOT]")
     else Map.empty[String, String]
   }
 
