@@ -82,13 +82,19 @@ class CborOrJsonOutput(
     val context = contextStack.head
     if (!context.isRow) {
       super.writeValue(context.names.head)
-      super.writeValue(value)
+      value match {
+        case bytes: Array[Byte] => writeBytes(bytes)
+        case _ => super.writeValue(value)
+      }
       context.names = context.names.tail
     } else if (context.isFirstRow) {
       if (context.readingNames) {
         context.names = ("" + value) :: context.names
       } else {
-        super.writeValue(value)
+        value match {
+          case bytes: Array[Byte] => writeBytes(bytes)
+          case _ => super.writeValue(value)
+        }
       }
     }
   }
@@ -115,16 +121,18 @@ class CborOrJsonOutput(
       case x => sys.error("Unsupported chunk class: " + x.getClass.getName)
     }
   }
-  /* Override to write bytes to json. See io.bullet.borer.encodings */
+  /* Override to change bytes encoding for json. Default is Base64. See io.bullet.borer.encodings */
   def writeBytes(bytes: Any) = bytes match {
-    case bytes: ByteString => w.writeBytes(bytes)
+    case bytes: Array[Byte] =>
+      if (w.writingCbor) w.writeBytes(bytes)
+      else               w.writeString(ByteString.fromArrayUnsafe(bytes).encodeBase64.utf8String)
     case x => sys.error("Unsupported bytes class: " + x.getClass.getName)
   }
   override def writeBreak(): Unit = {
     if (chunkType != null) {
       if (!w.writingCbor) chunkType match {
         case TextChunks => w.writeString(buffer.utf8String)
-        case ByteChunks => writeBytes(buffer)
+        case ByteChunks => writeBytes(buffer.toArrayUnsafe())
         case _ => sys.error("Unsupported ChunkType: " + chunkType)
       } else {
         w.writeBreak()
@@ -206,7 +214,7 @@ abstract class FlatTableOutput(val labels: Seq[String]) extends ResultEncoder {
     if (chunkType != null) {
       chunkType match {
         case TextChunks => writeValue(buffer.utf8String)
-        case ByteChunks => writeValue(buffer)
+        case ByteChunks => writeValue(buffer.toArrayUnsafe())
         case _ => sys.error("Unsupported ChunkType: " + chunkType)
       }
       chunkType = null

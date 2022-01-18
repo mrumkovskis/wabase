@@ -352,6 +352,10 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
       case ba: Array[Byte] =>
         new String(ba, "UTF-8")
     })                                  shouldBe  "abc"
+    (test("Rūķīši".getBytes("UTF-8"), 2)._2 match {
+      case ba: Array[Byte] =>
+        new String(ba, "UTF-8")
+    })                                  shouldBe  "Rūķīši"
     test(java.sql.Date.valueOf("1969-01-01")) shouldBe (classOf[java.sql.Date], java.sql.Date.valueOf("1969-01-01"))
     test(java.sql.Date.valueOf("1971-01-01")) shouldBe (classOf[java.sql.Date], java.sql.Date.valueOf("1971-01-01"))
     test(java.sql.Timestamp.valueOf("1969-01-01 00:00:00.0")) shouldBe
@@ -377,5 +381,14 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
     test("123456789012345678901234", 24) shouldBe "~7fw12345678901234567890123a4~ff"
     test("123456789012345678901234", 25) shouldBe "~7fw12345678901234567890123a4~ff"
     test("123456789012345678901234", 26) shouldBe "x~18123456789012345678901234"
+  }
+
+  it should "chunk byte arrays according to buffer size when serializing to cbor" in {
+    import scala.language.existentials
+    def test(value: Array[Byte], bufferSizeHint: Int) =
+      serializeValuesToString(List(value).iterator, bufferSizeHint = bufferSizeHint)
+    test("Rūķīši".getBytes("UTF-8"),  2) shouldBe "_ARA~c5A~abA~c4A~b7A~c4A~abA~c5A~a1Ai~ff"
+    test("Rūķīši".getBytes("UTF-8"),  3) shouldBe "_BR~c5B~ab~c4B~b7~c4B~ab~c5B~a1i~ff"
+    test("Rūķīši".getBytes("UTF-8"), 11) shouldBe "JR~c5~ab~c4~b7~c4~ab~c5~a1i"
   }
 }

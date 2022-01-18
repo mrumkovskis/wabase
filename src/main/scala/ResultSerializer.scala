@@ -16,9 +16,8 @@ object ResultSerializer {
   trait ChunkInfo {
     def chunkSize(bufferSize: Int): Int
   }
-  class StringChunker(s: String, chunkSize: Int) {
-    // chunk strings to enable reactive streaming with limited buffer size
-    val bytes = ByteString.fromString(s)
+  class ByteStringChunker(bytes: ByteString, chunkSize: Int) {
+    // chunk strings and byte arrays to enable reactive streaming with limited buffer size
     val shouldChunk = chunkSize != Int.MaxValue && bytes.length > chunkSize
     def chunks: Iterator[ByteString] = new Iterator[ByteString] {
       var remaining = bytes
@@ -36,6 +35,10 @@ object ResultSerializer {
       }
     }
   }
+  class ByteArrayChunker(bytes: Array[Byte], chunkSize: Int)
+    extends ByteStringChunker(ByteString(bytes), chunkSize)
+  class StringChunker(s: String, chunkSize: Int)
+    extends ByteStringChunker(ByteString.fromString(s), chunkSize)
   def source(
     createEncodable:  () => Iterator[_],
     createEncoder:    EncoderFactory,
@@ -90,6 +93,10 @@ class ResultSerializer(
           } else {
             encoder.writeValue(s)
           }
+        case bytes: Array[Byte] if chunkSize != Int.MaxValue && bytes.length > chunkSize =>
+          isChunking = true
+          iterators = new ByteArrayChunker(bytes, chunkSize).chunks :: iterators
+          encoder.startChunks(ByteChunks)
         // TODO blob / clob etc support
         case value =>
           if (isChunking)
