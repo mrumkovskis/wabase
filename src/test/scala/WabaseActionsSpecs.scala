@@ -305,19 +305,18 @@ class WabaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Async
     }
   }
 
-// FIXME
-//  it should "delete purchase" in {
-//    doAction("delete", "purchase",
-//      Map("purchase_time" -> "2021-12-08 12:15:33.0", "customer" -> "Mr. Mario"))
-//      .map(_ should be(10))
-//  }
+  it should "delete purchase" in {
+    doAction("delete", "purchase",
+      Map("purchase_time" -> "2021-12-08 12:15:33.0", "customer" -> "Mr. Mario"))
+      .map(_ should be(DeleteQuereaseResult(1)))
+  }
 
   it should "delete purchase old style" in {
     doAction("get", "purchase",
       Map("purchase_time" -> "2021-12-04 15:15:23.0", "customer" -> "Mr. Gunza"), removeIdsFlag = false)
       .map {
-        case List(m: Map[String@unchecked, _]) if m.contains("id") =>
-          app.delete("purchase", m("id").asInstanceOf[Long]) should be(1)
+        case OptionResult(Some(purch: QuereaseBase#DWI)) =>
+          app.delete("purchase", purch.id) should be(1)
         case x => fail(s"Unexpected result: $x")
       }
   }

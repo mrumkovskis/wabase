@@ -464,7 +464,8 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val validationRegex = new Regex(s"${Action.ValidationsKey}(?:\\s+(\\w+))?(?:\\s+\\[(?:\\s*(\\w+)?\\s*(?::\\s*(\\w+)\\s*)?)\\])?")
     val viewCallRegex = new Regex(Action().mkString("(", "|", """)\s+(:?\w+)"""))
     val invocationRegex = """(\w|\$)+\.(\w|\$)+(\.(\w|\$)+)*""".r
-    val returnRegex = """(?s)return\s+(.+)""".r //dot matches new line as well
+    val returnRegex = """return\s+(.+)""".r //dot matches new line as well
+    val uniqueOpRegex = """unique_opt\s+(.+)""".r
     val jobCallRegex = """job\s+(:?\w+)""".r
     import ViewDefExtrasUtils._
     val steps = stepData.map { step =>
@@ -487,6 +488,9 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
           } else if (jobCallRegex.pattern.matcher(st).matches()) {
             val jobCallRegex(jobName) = st
             Action.JobCall(jobName)
+          } else if (uniqueOpRegex.pattern.matcher(st).matches()) {
+            val uniqueOpRegex(inner) = st
+            Action.UniqueOpt(parseOp(inner))
           } else {
             Action.Tresql(st)
           }
@@ -591,6 +595,7 @@ object AppMetadata {
 
     case class Tresql(tresql: String) extends Op
     case class ViewCall(method: String, view: String) extends Op
+    case class UniqueOpt(innerOp: Op) extends Op
     case class Invocation(className: String, function: String) extends Op
     case class VariableTransforms(transforms: List[VariableTransform]) extends Op
     case class JobCall(name: String) extends Op

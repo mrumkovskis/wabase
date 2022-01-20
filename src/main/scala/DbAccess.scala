@@ -51,7 +51,7 @@ trait DbAccess { this: Loggable =>
   def rollbackAndCloseConnection: Connection => Unit = DbAccess.rollbackAndCloseConnection
   def closeConns: (Connection => Unit) => Resources => Unit = DbAccess.closeConns
   def initResources: Resources => (PoolName, Seq[DbAccessKey]) => Resources = DbAccess.initResources
-  def closeResources: Resources => Option[Throwable] => Unit = DbAccess.closeResources
+  def closeResources: (Resources, Option[Throwable]) => Unit = DbAccess.closeResources
 
   def extraDb(keys: Seq[DbAccessKey]): Seq[DbAccessKey] = keys.filter(_.db != null)
 
@@ -300,7 +300,7 @@ object DbAccess extends Loggable {
         throw ex
     }
   }
-  def closeResources(res: Resources)(err: Option[Throwable]): Unit = {
+  def closeResources(res: Resources, err: Option[Throwable]): Unit = {
     if (err.isEmpty) closeConns(commitAndCloseConnection)(res)
     else closeConns(rollbackAndCloseConnection)(res)
   }

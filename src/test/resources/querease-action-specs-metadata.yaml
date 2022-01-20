@@ -254,8 +254,7 @@ save:
         (funds{s}) >= :amount, "Insufficient funds, available (" || (funds{s}) || ")"
 - save purchase
 get:
-- purchase_time = :purchase_time    # ensure bind variable existence
-- customer = :customer              # ensure bind variable existence
-- return list purchase              # TODO offer possibility to return headOption from list
+- null{:purchase_time, :customer}    # ensure bind variable existence (must prefix columns with null table due to yaml parser)
+- return unique_opt list purchase
 delete:
 - return -shop_db:purchase [purchase_time = :purchase_time & customer = :customer]

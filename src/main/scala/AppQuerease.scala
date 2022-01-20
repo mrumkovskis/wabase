@@ -36,6 +36,7 @@ case class OptionResult(result: Option[AppQuerease#DTO]) extends QuereaseResult
 case class NumberResult(id: Long) extends QuereaseResult
 case class CodeResult(code: String) extends QuereaseResult
 case class IdResult(id: Any) extends QuereaseResult
+case class DeleteQuereaseResult(count: Int) extends QuereaseResult
 case class RedirectResult(uri: String) extends QuereaseResult
 case object NoResult extends QuereaseResult
 case class QuereaseResultWithCleanup(result: QuereaseCloseableResult, cleanup: Option[Throwable] => Unit)
@@ -199,19 +200,25 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
               actionName: String,
               data: Map[String, Any],
               env: Map[String, Any])(initResources: String => String => Resources, // viewName, actionName
-                                     closeResources: Resources => Option[Throwable] => Unit): QuereaseAction[QuereaseResult] = {
+                                     closeResources: (Resources, Option[Throwable]) => Unit): QuereaseAction[QuereaseResult] = {
       implicit ec: ExecutionContext => {
         implicit val res = initResources(viewName)(actionName)
         try {
           doAction(viewName, actionName, data, env).map {
-            case r: QuereaseCloseableResult => QuereaseResultWithCleanup(r, closeResources(res))
+            case TresqlResult(r: DMLResult) =>
+              closeResources(res, None)
+              r match {
+                case _: InsertResult | _: UpdateResult => IdResult(r.id)
+                case _: DeleteResult => DeleteQuereaseResult(r.count.getOrElse(0))
+              }
+            case r: QuereaseCloseableResult => QuereaseResultWithCleanup(r, closeResources(res, _))
             case r: QuereaseResult =>
-              closeResources(res)(None)
+              closeResources(res, None)
               r
           }
         } catch {
           case NonFatal(e) =>
-            closeResources(res)(Option(e))
+            closeResources(res, Option(e))
             throw e
         }
       }
@@ -511,12 +518,26 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
                            env: Map[String, Any],
                            context: Option[ViewDef])(implicit res: Resources,
                                                      ec: ExecutionContext): Future[QuereaseResult] = {
+    def createGetResult(res: QuereaseResult): QuereaseResult = res match {
+      case TresqlResult(r) if !r.isInstanceOf[DMLResult] =>
+        r.uniqueOption.map(row => MapResult(row.toMap)).getOrElse(OptionResult(None))
+      case IteratorResult(r) =>
+        try r.hasNext match {
+          case true =>
+            val v = r.next()
+            if (r.hasNext) sys.error("More than one row for unique result") else OptionResult(Option(v))
+          case false => OptionResult(None)
+        } finally r.close
+      case r => r
+    }
     import Action._
     op match {
       case Tresql(tresql) =>
         Future.successful(doTresql(tresql, data ++ env, context))
       case ViewCall(method, view) =>
         Future.successful(doViewCall(method, view, data, env))
+      case UniqueOpt(innerOp) =>
+        doActionOp(innerOp, data, env, context) map createGetResult
       case Invocation(className, function) =>
         doInvocation(className, function, data ++ env)
       case JobCall(job) =>
