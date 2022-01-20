@@ -308,7 +308,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Async
   it should "delete purchase" in {
     doAction("delete", "purchase",
       Map("purchase_time" -> "2021-12-08 12:15:33.0", "customer" -> "Mr. Mario"))
-      .map(_ should be(DeleteQuereaseResult(1)))
+      .map(_ should be(QuereaseDeleteResult(1)))
   }
 
   it should "delete purchase old style" in {

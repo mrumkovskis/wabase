@@ -250,6 +250,8 @@ trait QuereaseResultMarshalling { this:
     Marshaller.combined(rr => (StatusCodes.SeeOther, Seq(Location(rr.uri))))
   implicit val toEntityQuereaseNoResultMarshaller:          ToEntityMarshaller  [NoResult.type]  =
     Marshaller.combined(_ => "")
+  implicit val toEntityQuereaseDeleteResultMarshaller:      ToEntityMarshaller[QuereaseDeleteResult] =
+    Marshaller.combined(_.count.toString)
 
   def toEntitySerializedResultMarshaller(
     contentType: ContentType,
@@ -300,7 +302,10 @@ trait QuereaseResultMarshalling { this:
       case no: NoResult.type  => (toEntityQuereaseNoResultMarshaller:         ToResponseMarshaller[NoResult.type] )(no)
       case cr: QuereaseSerRes => (toEntityQuereaseSerializedResultMarshaller(
                                                             wr.ctx.viewName): ToResponseMarshaller[QuereaseSerRes])(cr)
-      case xx                 => sys.error(s"QuereaseResult marshaller for class ${xx.getClass.getName} not implemented")
+      case dr: QuereaseDeleteResult =>
+        (toEntityQuereaseDeleteResultMarshaller: ToResponseMarshaller[QuereaseDeleteResult])(dr)
+      case r: QuereaseResultWithCleanup =>
+        sys.error(s"QuereaseResult marshaller for class ${r.getClass.getName} not implemented")
     }}
 
   implicit val toResponseQuereaseIteratorMarshaller: ToResponseMarshaller[qe.QuereaseIteratorResult[app.Dto]] = {

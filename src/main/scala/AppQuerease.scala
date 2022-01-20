@@ -36,7 +36,7 @@ case class OptionResult(result: Option[AppQuerease#DTO]) extends QuereaseResult
 case class NumberResult(id: Long) extends QuereaseResult
 case class CodeResult(code: String) extends QuereaseResult
 case class IdResult(id: Any) extends QuereaseResult
-case class DeleteQuereaseResult(count: Int) extends QuereaseResult
+case class QuereaseDeleteResult(count: Int) extends QuereaseResult
 case class RedirectResult(uri: String) extends QuereaseResult
 case object NoResult extends QuereaseResult
 case class QuereaseResultWithCleanup(result: QuereaseCloseableResult, cleanup: Option[Throwable] => Unit)
@@ -209,7 +209,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
               closeResources(res, None)
               r match {
                 case _: InsertResult | _: UpdateResult => IdResult(r.id)
-                case _: DeleteResult => DeleteQuereaseResult(r.count.getOrElse(0))
+                case _: DeleteResult => QuereaseDeleteResult(r.count.getOrElse(0))
               }
             case r: QuereaseCloseableResult => QuereaseResultWithCleanup(r, closeResources(res, _))
             case r: QuereaseResult =>
