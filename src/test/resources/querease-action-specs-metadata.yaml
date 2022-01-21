@@ -244,8 +244,8 @@ fields:
 - item
 - amount
 filter:
-- purchase_time =
-- customer =
+- purchase_time
+- customer
 save:
 - validations is_vaccinated [med_db]:
     - exists(person_health[name = :customer & vaccine != null]{1}), "Pardon, customer '" || :customer || "' is not vaccinated..."
