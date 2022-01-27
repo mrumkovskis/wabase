@@ -353,7 +353,7 @@ class Macros extends TresqlComparisonMacros {
     * Expects [not double] colon, identifier, optional question mark.
     * Double colon is excluded to ignore postgresql typecasts.
     */
-  private val varRegex = new scala.util.matching.Regex(
+  protected val varRegex = new scala.util.matching.Regex(
     """(?<!:)(?::)([_a-zA-Z]\w*)(\?)?""", "name", "opt")
   override def sql(b: QueryBuilder, const: QueryBuilder#ConstExpr): b.SQLExpr = {
     val value = String.valueOf(const.value)
