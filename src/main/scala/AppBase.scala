@@ -1009,7 +1009,7 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
     complexFields.foreach { case (fieldName, typeName) =>
       instance.getOrElse(fieldName, null) match {
         case m: Map[String, Any] @unchecked => validateFields(typeName, m)
-        case l: List[Map[String, Any]] @unchecked => l.foreach(validateFields(typeName, _))
+        case l: Seq[Map[String, Any]] @unchecked => l.foreach(validateFields(typeName, _))
         case null =>
       }
     }
