@@ -2,7 +2,7 @@ package org.wabase
 
 import akka.http.scaladsl.server.PathMatchers.{Remaining, Segment}
 import akka.http.scaladsl.server.{Directive, Route}
-import akka.http.scaladsl.model.{HttpRequest, HttpResponse, MediaType, StatusCodes}
+import akka.http.scaladsl.model.{HttpEntity, HttpRequest, HttpResponse, MediaType, StatusCodes}
 import akka.http.scaladsl.model.headers.{ModeledCustomHeader, ModeledCustomHeaderCompanion}
 import akka.http.scaladsl.server.Directives._
 import akka.stream._
@@ -23,6 +23,8 @@ import AppServiceBase._
 import Authentication.SessionInfoRemover
 import com.typesafe.config.Config
 import AppFileStreamer.FileInfo
+import akka.http.scaladsl.model.MediaTypes.`application/json`
+import akka.http.scaladsl.server.RouteResult.Complete
 import akka.util.ByteString
 import org.wabase.AppMetadata.DbAccessKey
 
@@ -258,7 +260,15 @@ trait DeferredControl
       publish(Message(if (module == null) DeferredRequestArrived else
         DeferredControl.DeferredModuleRequestArrived(module),
         deferredCtx))
-      respondWithHeader(`X-Deferred-Hash`(hash))(complete(Map("deferred" -> hash).toJson))
+      respondWithHeader(`X-Deferred-Hash`(hash))(_ =>
+        // bypass marshalling to ignore request accept header
+        Future.successful(
+          Complete(
+            HttpResponse(
+              entity = HttpEntity.Strict(`application/json`, ByteString(Map("deferred" -> hash).toJson.compactPrint)))
+          )
+        )
+      )
     }
   })
   /* End of directives */
