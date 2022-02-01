@@ -131,8 +131,8 @@ class CborOrJsonOutput(
   override def writeBreak(): Unit = {
     if (chunkType != null) {
       if (!w.writingCbor) chunkType match {
-        case TextChunks => w.writeString(buffer.utf8String)
-        case ByteChunks => writeBytes(buffer.toArrayUnsafe())
+        case TextChunks => writeValue(buffer.utf8String)
+        case ByteChunks => writeValue(buffer.toArrayUnsafe())
         case _ => sys.error("Unsupported ChunkType: " + chunkType)
       } else {
         w.writeBreak()

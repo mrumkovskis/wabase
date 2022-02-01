@@ -66,10 +66,14 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
   }
 
   def serializeAndTransform(
-      serializerSource: Source[ByteString, _], createEncoder: EncoderFactory) = {
+      serializerSource: Source[ByteString, _],
+      createEncoder:    EncoderFactory,
+      bufferSizeHint:   Int,
+    ) = {
     val source = BorerNestedArraysTransformer.source(
       () => serializerSource.runWith(StreamConverters.asInputStream()),
       createEncoder,
+      bufferSizeHint = bufferSizeHint,
     )
     Await.result(source.runWith(foldToStringSink()), 1.second)
   }
@@ -228,12 +232,13 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
   it should "serialize tresql to cbor and transform to csv" in {
     val cols = "id, name, surname, sex, birthdate"
     def queryString(maxId: Int) = s"person [id <= $maxId] {${cols}}"
-    def test(maxId: Int, withLabels: Boolean) = serializeAndTransform(
-      TresqlResultSerializer.source(() => Query(queryString(maxId)), includeHeaders = false),
+    def test(maxId: Int, withLabels: Boolean, bufferSizeHint: Int = 8) = serializeAndTransform(
+      TresqlResultSerializer.source(() => Query(queryString(maxId)), includeHeaders = false, bufferSizeHint = bufferSizeHint),
       outputStream => new CsvOutput(
         writer = new OutputStreamWriter(outputStream, "UTF-8"),
         labels = if (withLabels) cols.split(", ").toList else null,
-      )
+      ),
+      bufferSizeHint = bufferSizeHint,
     )
     test(0, false) shouldBe ""
     test(1, false) shouldBe "1,John,Doe,M,1969-01-01\n"
@@ -250,10 +255,12 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
 
   it should "serialize dtos to cbor and reformat to json maps" in {
     implicit val qe = querease
-    def test(dtos: Seq[Dto], isCollection: Boolean, viewName: String = null) = serializeAndTransform(
-      DtoDataSerializer.source(() => dtos.iterator),
-      outputStream => JsonOutput(outputStream, isCollection, viewName, qe.nameToViewDef)
-    )
+    def test(dtos: Seq[Dto], isCollection: Boolean, viewName: String = null, bufferSizeHint: Int = 256) =
+      serializeAndTransform(
+        DtoDataSerializer.source(() => dtos.iterator, bufferSizeHint = bufferSizeHint),
+        outputStream => JsonOutput(outputStream, isCollection, viewName, qe.nameToViewDef),
+        bufferSizeHint = bufferSizeHint,
+      )
     val (person, person_a) = createPersonDtos
     val dto1 = person.accounts(0)
     val dto2 = person.accounts(1)
@@ -292,6 +299,22 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
       """"accounts":""",
       """[{"id":null,"number":"42","balance":1001.01,"last_modified":"2021-12-26 23:57:00.1"},""",
       """{"id":2,"number":null,"balance":2002.02,"last_modified":"2021-12-26 23:58:15.151"}],""",
+      """"balances":["1001.01","2002.02"]}""",
+    ).mkString
+    // buffer overflow test - key
+    person_a.accounts = Nil
+    test(List(person_a), isCollection = false, viewName = "person_accounts_details", bufferSizeHint = 8)  shouldBe List(
+      """{"id":0,"name":"John","surname":"Doe","main_account":""",
+      """{"id":null,"number":"42","balance":1001.01,"last_modified":"2021-12-26 23:57:00.1"},""",
+      """"accounts":[],""",
+      """"balances":["1001.01","2002.02"]}""",
+    ).mkString
+    // buffer overflow test - value
+    person_a.name = "John-0123456789abcdef"
+    test(List(person_a), isCollection = false, viewName = "person_accounts_details", bufferSizeHint = 20)  shouldBe List(
+      """{"id":0,"name":"John-0123456789abcdef","surname":"Doe","main_account":""",
+      """{"id":null,"number":"42","balance":1001.01,"last_modified":"2021-12-26 23:57:00.1"},""",
+      """"accounts":[],""",
       """"balances":["1001.01","2002.02"]}""",
     ).mkString
   }
