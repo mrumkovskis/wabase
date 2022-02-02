@@ -23,18 +23,11 @@ trait WsNotifications extends WebSocketDirectives {
     Props(classOf[WsNotifications.WsSubscriberWatcher], this))
 
   val wsNotificationGraph = {
-    var wsActor: ActorRef = null
     Flow.fromSinkAndSourceCoupledMat(
-      Sink.foreach[Message] {
-        case m @ TextMessage.Strict("close") => wsActor ! m
-        case _ =>
-      },
-      Source.actorRef[Any](PartialFunction.empty, PartialFunction.empty, 16, OverflowStrategy.dropNew)){ (_, actor) =>
-        wsActor = actor
-        actor
-      }
-      .takeWhile(_ != TextMessage.Strict("close"))
-      .map {
+      Sink.ignore, // ignore incoming messages from client
+      Source.actorRef[Any](PartialFunction.empty, PartialFunction.empty, 16, OverflowStrategy.dropNew)) {
+        (_, actor) => actor
+      }.map {
         case ctx: DeferredContext => notifyDeferredStatus(ctx)
         case x => notifyUserEvent(x)
       }.withAttributes(ActorAttributes.supervisionStrategy{
