@@ -32,10 +32,9 @@ trait WsNotifications extends WebSocketDirectives {
       Source.actorRef[Any](PartialFunction.empty, PartialFunction.empty, 16, OverflowStrategy.dropNew)){ (_, actor) =>
         wsActor = actor
         actor
-      }.takeWhile {
-        case TextMessage.Strict("close") => false
-        case _ => true
-      }.map {
+      }
+      .takeWhile(_ != TextMessage.Strict("close"))
+      .map {
         case ctx: DeferredContext => notifyDeferredStatus(ctx)
         case x => notifyUserEvent(x)
       }.withAttributes(ActorAttributes.supervisionStrategy{
