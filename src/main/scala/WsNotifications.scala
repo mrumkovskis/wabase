@@ -26,12 +26,15 @@ trait WsNotifications extends WebSocketDirectives {
     var wsActor: ActorRef = null
     Flow.fromSinkAndSourceCoupledMat(
       Sink.foreach[Message] {
-        case TextMessage.Strict("close") => wsActor ! PoisonPill
+        case m @ TextMessage.Strict("close") => wsActor ! m
         case _ =>
       },
       Source.actorRef[Any](PartialFunction.empty, PartialFunction.empty, 16, OverflowStrategy.dropNew)){ (_, actor) =>
         wsActor = actor
         actor
+      }.takeWhile {
+        case TextMessage.Strict("close") => false
+        case _ => true
       }.map {
         case ctx: DeferredContext => notifyDeferredStatus(ctx)
         case x => notifyUserEvent(x)
