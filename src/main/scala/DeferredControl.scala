@@ -177,15 +177,15 @@ trait DeferredControl
         result = response,
         status = if (response.status.intValue < 400) DEFERRED_OK else DEFERRED_ERR,
         responseTime = new Timestamp(currentTime)
-      ))
-    } recover {
-      case NonFatal(e) =>
-        logger.error(s"Deferred processor error: ${ctx.request.uri}", e)
-        Future.successful(ctx.copy(
-          result = HttpResponse(status = StatusCodes.InternalServerError, entity = "Error processing deferred request"),
-          status = DEFERRED_ERR,
-          responseTime = new Timestamp(currentTime)
-        ))
+      )) recover {
+        case NonFatal(e) =>
+          logger.error(s"Deferred processor error: ${ctx.request.uri}", e)
+          ctx.copy(
+            result = HttpResponse(status = StatusCodes.InternalServerError, entity = "Error processing deferred request"),
+            status = DEFERRED_ERR,
+            responseTime = new Timestamp(currentTime)
+          )
+      }
     } flatMap identity //unwrap outer future
   }
   def publishDeferredStatus(ctx: DeferredContext) = {
@@ -358,7 +358,6 @@ object DeferredControl extends Loggable with AppConfig {
           Map[String, Int]()
       }.get
     } else Map[String, Int]()
-
 
   logger.info(s"defaultTimeout: $defaultTimeout")
   logger.info(s"deferredWorkerCount: $deferredWorkerCount")
