@@ -344,18 +344,21 @@ object DeferredControl extends Loggable with AppConfig {
     ).toOption.getOrElse(Map())
   lazy val deferredCleanupInterval = Duration(Try(appConfig.getString("deferred-requests.cleanup-job-interval")).toOption.getOrElse("1800s"))
   lazy val deferredModules: Map[String, Int] =
-    Try {
-      val mc = appConfig.getConfig("deferred-requests.modules")
-      mc.entrySet().asScala
-        .map(_.getKey)
-        .filter(_.endsWith(".worker-count"))
-        .map { m => m.split('.').head -> mc.getInt(m) }
-        .toMap
-    }.recover {
-      case NonFatal(e) =>
-        logger.error("Error reading defered modules conf", e)
-        Map[String, Int]()
-    }.get
+    if (appConfig.hasPath("deferred-requests.modules")) {
+      Try {
+        val mc = appConfig.getConfig("deferred-requests.modules")
+        mc.entrySet().asScala
+          .map(_.getKey)
+          .filter(_.endsWith(".worker-count"))
+          .map { m => m.split('.').head -> mc.getInt(m) }
+          .toMap
+      }.recover {
+        case NonFatal(e) =>
+          logger.error("Error reading defered modules conf", e)
+          Map[String, Int]()
+      }.get
+    } else Map[String, Int]()
+
 
   logger.info(s"defaultTimeout: $defaultTimeout")
   logger.info(s"deferredWorkerCount: $deferredWorkerCount")
