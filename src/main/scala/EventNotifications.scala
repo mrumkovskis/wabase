@@ -2,16 +2,17 @@ package org.wabase
 
 import akka.http.scaladsl.server.directives.WebSocketDirectives
 import akka.http.scaladsl.model.ws.{Message, TextMessage}
-import akka.stream.{OverflowStrategy, ActorAttributes, Supervision}
-import akka.stream.scaladsl.{Source, Flow, Sink }
-
-import akka.actor.{Actor, Props, ActorRef, Terminated, PoisonPill}
-
+import akka.stream.{ActorAttributes, OverflowStrategy, Supervision}
+import akka.stream.scaladsl.{Flow, Sink, Source}
+import akka.actor.{Actor, ActorRef, Props, Terminated}
 import spray.json._
 import DefaultJsonProtocol._
 import DeferredControl._
+import akka.http.scaladsl.marshalling.sse.EventStreamMarshalling
+import akka.http.scaladsl.model.sse.ServerSentEvent
+import akka.http.scaladsl.server.{Directives, Route}
 
-trait WsNotifications extends WebSocketDirectives {
+trait WsNotifications extends WebSocketDirectives with EventStreamMarshalling {
   this: WsInitialEventsPublisher
     with Execution
     with Loggable
@@ -22,19 +23,25 @@ trait WsNotifications extends WebSocketDirectives {
   protected val wsSubscriberWatcherActor = system.actorOf(
     Props(classOf[WsNotifications.WsSubscriberWatcher], this))
 
-  val wsNotificationGraph = {
+  protected val serverEventsSource =
+    Source.actorRef[Any](PartialFunction.empty, PartialFunction.empty, 16, OverflowStrategy.dropNew)
+
+  protected val wsNotificationGraph = {
     Flow.fromSinkAndSourceCoupledMat(
       Sink.ignore, // ignore incoming messages from client
-      Source.actorRef[Any](PartialFunction.empty, PartialFunction.empty, 16, OverflowStrategy.dropNew)) {
-        (_, actor) => actor
-      }.map {
-        case ctx: DeferredContext => notifyDeferredStatus(ctx)
-        case x => notifyUserEvent(x)
-      }.withAttributes(ActorAttributes.supervisionStrategy{
+      serverEventsSource
+    ) ((_, actor) => actor)
+      .map(m => TextMessage.Strict(createServerEvent(m).data))
+        .withAttributes(ActorAttributes.supervisionStrategy{
         case ex: Exception =>
           logger.error("WsNotificationGraph crashed", ex)
           Supervision.Stop
       })
+    }
+
+    protected def createServerEvent(event: Any): ServerSentEvent = event match {
+      case ctx: DeferredContext => notifyDeferredStatus(ctx)
+      case x => notifyUserEvent(x)
     }
     /* ***********************
     *** Event notification ***
@@ -43,19 +50,24 @@ trait WsNotifications extends WebSocketDirectives {
       handleWebSocketMessages(wsNotificationGraph.mapMaterializedValue(
         wsSubscriberWatcherActor ! WsNotifications.WsActorRegister(_, userIdString)))
     }
-    private def notifyDeferredStatus(ctx: DeferredContext): Message =
-      TextMessage(Map(ctx.hash -> Map(
+    def serverSideEventAction(userIdString: String): Route = Directives.complete {
+      serverEventsSource
+        .map(createServerEvent)
+        .mapMaterializedValue(wsSubscriberWatcherActor ! WsNotifications.WsActorRegister(_, userIdString))
+    }
+    private def notifyDeferredStatus(ctx: DeferredContext): ServerSentEvent =
+      new ServerSentEvent(Map(ctx.hash -> Map(
         "status" -> ctx.status,
         "time" -> Option(ctx.responseTime).getOrElse(ctx.requestTime)))
         .asInstanceOf[Map[String, Any]]
         .toJson
-        .prettyPrint
+        .compactPrint
       )
-    private def notifyUserEvent(event: Any): Message = event match {
-      case m: Map[String, Any]@unchecked => TextMessage(m.toJson.prettyPrint)
-      case j: JsValue => TextMessage(j.prettyPrint)
-      case x => TextMessage(String valueOf x)
-    }
+    private def notifyUserEvent(event: Any): ServerSentEvent = new ServerSentEvent(event match {
+      case m: Map[String, Any]@unchecked => m.toJson.compactPrint
+      case j: JsValue => j.compactPrint
+      case x => String valueOf x
+    })
     def publishUserEvents(user: String, events: Iterable[Any]) = {
       events.foreach(publishUserEvent(user, _))
     }
@@ -85,7 +97,7 @@ object WsNotifications extends Loggable {
   trait DefaultWsInitialEventsPublisher extends WsInitialEventsPublisher {
       this: WsNotifications with AppVersion with DeferredStatusPublisher =>
     def publishInitialWsEvents(user: String): Unit = {
-      publishUserEvent(user, Map("version" -> appVersion).toJson.prettyPrint)
+      publishUserEvent(user, Map("version" -> appVersion).toJson.compactPrint)
       publishUserDeferredStatuses(user)
       publishUserEvents(user, getActualUserEvents(user))
     }
@@ -118,7 +130,7 @@ object WsNotifications extends Loggable {
 
   def publish(msgEnvelope: MsgEnvelope)(implicit ws: WsNotifications): Unit = {
     ws.publishUserEvent(msgEnvelope.topic, msgEnvelope.payload match {
-      case DeferredNotification(value) => value.prettyPrint
+      case DeferredNotification(value) => value.compactPrint
       case x => x
     })
   }
