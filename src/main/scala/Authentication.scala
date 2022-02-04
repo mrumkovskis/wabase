@@ -193,8 +193,13 @@ trait Authentication[User] extends SecurityDirectives with SessionInfoRemover wi
       (removeSessionCookie & setRequestedUriCookie){ authFailureRoute }
   }.result()
 
-  private val `X-Requested-With` = "X-Requested-With".toLowerCase
-  val isAjaxRequest: Directive0 = headerValueByName(`X-Requested-With`).filter{ _ == "XMLHttpRequest"}.map(_ => ())
+  private val `X-Requested-With` = "X-Requested-With".toLowerCase   // legacy ajax header name
+  private val `Sec-Fetch-Mode` = "Sec-Fetch-Mode".toLowerCase       // modern ajax header name
+  val isAjaxRequest = headerValueByName(`Sec-Fetch-Mode`).recover {
+    r => headerValueByName(`X-Requested-With`)
+      .filter { _ == "XMLHttpRequest" }
+      .recover { _ => reject(r: _*): Directive1[String] }
+  }.map(_ => ())
 }
 
 object Authentication {
