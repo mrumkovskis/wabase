@@ -54,6 +54,7 @@ trait ServerNotifications extends EventStreamMarshalling with WebSocketDirective
     /**
       * @deprecated use {{{serverSideEventAction}}}
       * */
+    @deprecated("Use serverSideEventAction instead", "6.0.0")
     def wsNotificationsAction(userIdString: String) = {
       handleWebSocketMessages(wsNotificationGraph.mapMaterializedValue(
         eventSubscriberWatcherActor ! ServerNotifications.EventSubscriberActorMsg(_, userIdString)))
