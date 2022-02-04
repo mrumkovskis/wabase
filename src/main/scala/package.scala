@@ -31,19 +31,18 @@ package object wabase extends Loggable {
   type AppVersion = AppServiceBase.AppVersion
   type DbDeferredStorage = DeferredControl.DbDeferredStorage
   type PostgreSqlConstraintMessage = DbConstraintMessage.PostgreSqlConstraintMessage
-  type WsInitialEventsPublisher = WsNotifications.WsInitialEventsPublisher
 
   type ConstantQueryTimeout = AppServiceBase.ConstantQueryTimeout
   type DefaultAppMdConventions = AppMetadata.DefaultAppMdConventions
   type DefaultAppExceptionHandler[User] = AppServiceBase.AppExceptionHandler.DefaultAppExceptionHandler[User]
   type DefaultServerStatistics = ServerStatistics.DefaultServerStatistics
-  type DefaultWsInitialEventsPublisher = WsNotifications.DefaultWsInitialEventsPublisher
+  type DefaultWsInitialEventsPublisher = ServerNotifications.DefaultInitialEventsPublisher
 
   type NoAudit[User] = Audit.NoAudit[User]
   type NoAuthorization[User] = Authorization.NoAuthorization[User]
   type NoCustomConstraintMessage = DbConstraintMessage.NoCustomConstraintMessage
   type NoServerStatistics = ServerStatistics.NoServerStatistics
-  type NoWsInitialEvents = WsNotifications.NoWsInitialEvents
+  type NoWsInitialEvents = ServerNotifications.NoInitialEvents
 
   type CustomValidationFunctions = ValidationEngine.CustomValidationFunctions
   type LdapAuthentication = Authentication.LdapAuthentication

@@ -1,7 +1,7 @@
 package org.wabase
 
 import akka.http.scaladsl.server.directives.WebSocketDirectives
-import akka.http.scaladsl.model.ws.{Message, TextMessage}
+import akka.http.scaladsl.model.ws.TextMessage
 import akka.stream.{ActorAttributes, OverflowStrategy, Supervision}
 import akka.stream.scaladsl.{Flow, Sink, Source}
 import akka.actor.{Actor, ActorRef, Props, Terminated}
@@ -12,16 +12,16 @@ import akka.http.scaladsl.marshalling.sse.EventStreamMarshalling
 import akka.http.scaladsl.model.sse.ServerSentEvent
 import akka.http.scaladsl.server.{Directives, Route}
 
-trait WsNotifications extends WebSocketDirectives with EventStreamMarshalling {
-  this: WsInitialEventsPublisher
+trait ServerNotifications extends EventStreamMarshalling with WebSocketDirectives {
+  this: ServerNotifications.InitialEventsPublisher
     with Execution
     with Loggable
     with JsonConverterProvider =>
 
   import jsonConverter.MapJsonFormat
 
-  protected val wsSubscriberWatcherActor = system.actorOf(
-    Props(classOf[WsNotifications.WsSubscriberWatcher], this))
+  protected val eventSubscriberWatcherActor = system.actorOf(
+    Props(classOf[ServerNotifications.EventSubscriberWatcher], this))
 
   protected val serverEventsSource =
     Source.actorRef[Any](PartialFunction.empty, PartialFunction.empty, 16, OverflowStrategy.dropNew)
@@ -46,14 +46,17 @@ trait WsNotifications extends WebSocketDirectives with EventStreamMarshalling {
     /* ***********************
     *** Event notification ***
     **************************/
-    def wsNotificationsAction(userIdString: String) = {
-      handleWebSocketMessages(wsNotificationGraph.mapMaterializedValue(
-        wsSubscriberWatcherActor ! WsNotifications.WsActorRegister(_, userIdString)))
-    }
     def serverSideEventAction(userIdString: String): Route = Directives.complete {
       serverEventsSource
         .map(createServerEvent)
-        .mapMaterializedValue(wsSubscriberWatcherActor ! WsNotifications.WsActorRegister(_, userIdString))
+        .mapMaterializedValue(eventSubscriberWatcherActor ! ServerNotifications.EventSubscriberActorMsg(_, userIdString))
+    }
+    /**
+      * @deprecated use {{{serverSideEventAction}}}
+      * */
+    def wsNotificationsAction(userIdString: String) = {
+      handleWebSocketMessages(wsNotificationGraph.mapMaterializedValue(
+        eventSubscriberWatcherActor ! ServerNotifications.EventSubscriberActorMsg(_, userIdString)))
     }
     private def notifyDeferredStatus(ctx: DeferredContext): ServerSentEvent =
       new ServerSentEvent(Map(ctx.hash -> Map(
@@ -72,8 +75,8 @@ trait WsNotifications extends WebSocketDirectives with EventStreamMarshalling {
       events.foreach(publishUserEvent(user, _))
     }
     def publishUserEvent(user: String, event: Any) = {
-      import WsNotifications._
-      val addressee = UserAddressee(user)
+      import ServerNotifications._
+      val addressee = UserAddresseeMsg(user)
       EventBus.publish(EventBus.Message(addressee, event))
     }
     /** Return all actual user events client through web socket should be notified about.
@@ -82,21 +85,21 @@ trait WsNotifications extends WebSocketDirectives with EventStreamMarshalling {
     /* End of event notification */
 }
 
-object WsNotifications extends Loggable {
+object ServerNotifications extends Loggable {
 
   /** Publishes events to newly created websocket */
-  trait WsInitialEventsPublisher {
-    def publishInitialWsEvents(userIdString: String): Unit
+  trait InitialEventsPublisher {
+    def publishInitialEvents(userIdString: String): Unit
   }
 
-  trait NoWsInitialEvents extends WsInitialEventsPublisher {
-    def publishInitialWsEvents(user: String): Unit = {}
+  trait NoInitialEvents extends InitialEventsPublisher {
+    def publishInitialEvents(user: String): Unit = {}
   }
 
   /** Publishes app version and deferred events status info */
-  trait DefaultWsInitialEventsPublisher extends WsInitialEventsPublisher {
-      this: WsNotifications with AppVersion with DeferredStatusPublisher =>
-    def publishInitialWsEvents(user: String): Unit = {
+  trait DefaultInitialEventsPublisher extends InitialEventsPublisher {
+      this: ServerNotifications with AppVersion with DeferredStatusPublisher =>
+    def publishInitialEvents(user: String): Unit = {
       publishUserEvent(user, Map("version" -> appVersion).toJson.compactPrint)
       publishUserDeferredStatuses(user)
       publishUserEvents(user, getActualUserEvents(user))
@@ -104,32 +107,32 @@ object WsNotifications extends Loggable {
   }
 
   trait Addressee
-  case class UserAddressee(user: String) extends Addressee
-  case class WsActorRegister(actor: ActorRef, user: String)
+  case class UserAddresseeMsg(user: String) extends Addressee
+  case class EventSubscriberActorMsg(actor: ActorRef, user: String)
 
-  class WsSubscriberWatcher(publisher: WsInitialEventsPublisher) extends Actor with akka.actor.ActorLogging {
+  class EventSubscriberWatcher(publisher: InitialEventsPublisher) extends Actor with akka.actor.ActorLogging {
     override def preStart() = {
-      logger.info(s"WsSubscriberWatcher actor started")
+      logger.info(s"EventSubscriberWatcher actor started")
     }
     override def receive = {
-      case WsActorRegister(actor, user: String) =>
+      case EventSubscriberActorMsg(actor, user: String) =>
         context watch actor
-        EventBus.subscribe(actor, UserAddressee(user))
-        publisher.publishInitialWsEvents(user)
+        EventBus.subscribe(actor, UserAddresseeMsg(user))
+        publisher.publishInitialEvents(user)
       case Terminated(actor) =>
         EventBus.unsubscribe(actor)
         context unwatch actor
     }
     override def postStop() = {
-      logger.info(s"WsSubscriberWatcher actor stopped")
+      logger.info(s"EventSubscriberWatcher actor stopped")
     }
   }
 
   case class MsgEnvelope(topic: String, payload: Any)
   case class DeferredNotification(value: JsValue)
 
-  def publish(msgEnvelope: MsgEnvelope)(implicit ws: WsNotifications): Unit = {
-    ws.publishUserEvent(msgEnvelope.topic, msgEnvelope.payload match {
+  def publish(msgEnvelope: MsgEnvelope)(implicit serverNotif: ServerNotifications): Unit = {
+    serverNotif.publishUserEvent(msgEnvelope.topic, msgEnvelope.payload match {
       case DeferredNotification(value) => value.compactPrint
       case x => x
     })

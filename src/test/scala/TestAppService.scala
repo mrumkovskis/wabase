@@ -31,7 +31,7 @@ class TestAppService(system: ActorSystem) extends ExecutionImpl()(system)
     with AppVersion
     with DefaultAppExceptionHandler[TestUsr]
     with DefaultWsInitialEventsPublisher
-    with WsNotifications
+    with ServerNotifications
     with Authentication[TestUsr]
     with DeferredControl
     with NoServerStatistics

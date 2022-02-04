@@ -56,7 +56,7 @@ trait DeferredControl
   /** This object is not placed in DeferredControl object so that each instance of DeferredControl trait
       subscribes to it's own notification message
     */
-  case object DeferredRequestArrived extends WsNotifications.Addressee
+  case object DeferredRequestArrived extends ServerNotifications.Addressee
 
   protected val cleanupActor = system.actorOf(Props(classOf[DeferredControl.DeferredCleanup], this))
 
@@ -190,13 +190,13 @@ trait DeferredControl
   }
   def publishDeferredStatus(ctx: DeferredContext) = {
     import EventBus._
-    publish(Message(WsNotifications.UserAddressee(ctx.userIdString), ctx))
+    publish(Message(ServerNotifications.UserAddresseeMsg(ctx.userIdString), ctx))
   }
   def publishUserDeferredStatuses(user: String): Unit = {
     val deferredRequests = deferredStorage.getUserDeferredStatuses(user)
     import EventBus._
     deferredRequests.foreach { ctx =>
-      if (ctx.userIdString == user) publish(Message(WsNotifications.UserAddressee(user), ctx))
+      if (ctx.userIdString == user) publish(Message(ServerNotifications.UserAddresseeMsg(user), ctx))
     }
   }
   /* end of deferred phases */
@@ -365,7 +365,7 @@ object DeferredControl extends Loggable with AppConfig {
   logger.info(s"deferredTimeouts: $deferredTimeouts")
   logger.info(s"deferredCleanupInterval: $deferredCleanupInterval")
 
-  case class DeferredModuleRequestArrived(module: String) extends WsNotifications.Addressee
+  case class DeferredModuleRequestArrived(module: String) extends ServerNotifications.Addressee
 
   case class DeferredContext(
     userIdString: String,
