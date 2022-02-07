@@ -39,6 +39,9 @@ trait ServerNotifications extends EventStreamMarshalling with WebSocketDirective
       })
     }
 
+    protected def subscribeToUserEvents(actor: ActorRef, userIdString: String) =
+      eventSubscriberWatcherActor ! ServerNotifications.EventSubscriberActorMsg(actor, userIdString)
+
     protected def createServerEvent(event: Any): ServerSentEvent = event match {
       case ctx: DeferredContext => notifyDeferredStatus(ctx)
       case x => notifyUserEvent(x)
@@ -49,15 +52,14 @@ trait ServerNotifications extends EventStreamMarshalling with WebSocketDirective
     def serverSideEventAction(userIdString: String): Route = Directives.complete {
       serverEventsSource
         .map(createServerEvent)
-        .mapMaterializedValue(eventSubscriberWatcherActor ! ServerNotifications.EventSubscriberActorMsg(_, userIdString))
+        .mapMaterializedValue(subscribeToUserEvents(_, userIdString))
     }
     /**
       * @deprecated use {{{serverSideEventAction}}}
       * */
     @deprecated("Use serverSideEventAction instead", "6.0.0")
     def wsNotificationsAction(userIdString: String) = {
-      handleWebSocketMessages(wsNotificationGraph.mapMaterializedValue(
-        eventSubscriberWatcherActor ! ServerNotifications.EventSubscriberActorMsg(_, userIdString)))
+      handleWebSocketMessages(wsNotificationGraph.mapMaterializedValue(subscribeToUserEvents(_, userIdString)))
     }
     private def notifyDeferredStatus(ctx: DeferredContext): ServerSentEvent =
       new ServerSentEvent(Map(ctx.hash -> Map(
