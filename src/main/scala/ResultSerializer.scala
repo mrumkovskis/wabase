@@ -517,7 +517,7 @@ object DtoDataSerializer {
   }
 }
 
-import org.tresql.Result
+import org.tresql.{Result, RowLike}
 object TresqlResultSerializer {
   /** Tresql Result wrapper for serialization - returns column iterator instead of self */
   private class TresqlRowsIterator(
@@ -532,10 +532,9 @@ object TresqlResultSerializer {
         rows.next()
       headering = isBeforeFirst && includeHeaders
       isBeforeFirst = false
-      if (headering)
-        new TresqlColsIterator(rows.columns.map(_.name).toVector.iterator, includeHeaders)
-      else
-        new TresqlColsIterator(rows.values.iterator, includeHeaders)
+      if  (headering)
+           headerIterator(rows, includeHeaders)
+      else valuesIterator(rows, includeHeaders)
     }
     override def close(): Unit = rows.close()
   }
@@ -546,14 +545,25 @@ object TresqlResultSerializer {
       case value => value
     }
   }
+  private def headerIterator(row: RowLike, includeHeaders: Boolean) =
+    new TresqlColsIterator(row.columns.map(_.name).toVector.iterator, includeHeaders)
+  private def valuesIterator(row: RowLike, includeHeaders: Boolean) =
+    new TresqlColsIterator(row.values.iterator, includeHeaders)
   def source(
-    createResult:   () => Result[_],
+    createResult:   () => RowLike,
     includeHeaders: Boolean = true,
     bufferSizeHint: Int     = 1024,
     createEncoder:  EncoderFactory = BorerNestedArraysEncoder(_),
   ): Source[ByteString, NotUsed] = {
-    ResultSerializer.source(
-      () => new TresqlRowsIterator(createResult(), includeHeaders), createEncoder(_), bufferSizeHint
-    )
+    def createEncodable() = createResult() match {
+      case result: Result[_] =>
+        new TresqlRowsIterator(result,  includeHeaders)
+      case row: RowLike =>
+        if  (includeHeaders)
+             Seq(headerIterator(row, includeHeaders),
+                 valuesIterator(row, includeHeaders)).iterator
+        else Seq(valuesIterator(row, includeHeaders)).iterator
+    }
+    ResultSerializer.source(createEncodable, createEncoder(_), bufferSizeHint)
   }
 }
