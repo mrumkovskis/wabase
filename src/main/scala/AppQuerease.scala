@@ -51,7 +51,7 @@ case class QuereaseResultWithCleanup(result: QuereaseCloseableResult, cleanup: O
     }.get
   }
 }
-case class QuereaseSerializedResult(result: SerializedResult, isCollection: Boolean) extends QuereaseResult
+case class QuereaseSerializedResult(result: SerializedResult) extends QuereaseResult
 
 trait AppQuereaseIo extends org.mojoz.querease.ScalaDtoQuereaseIo with JsonConverter { self: AppQuerease =>
 

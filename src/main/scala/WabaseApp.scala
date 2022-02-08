@@ -5,7 +5,7 @@ import akka.stream.Materializer
 import akka.stream.scaladsl.Source
 import akka.util.ByteString
 import org.mojoz.querease.NotFoundException
-import org.tresql.Resources
+import org.tresql.{Resources, RowLike}
 import org.wabase.AppMetadata.{Action, AugmentedAppFieldDef, AugmentedAppViewDef}
 import org.wabase.AppMetadata.Action.{LimitKey, OffsetKey, OrderKey}
 
@@ -84,11 +84,13 @@ trait WabaseApp[User] {
           val resultSource = result match {
             case TresqlResult(tr) =>
               TresqlResultSerializer.source(() => tr)
+            case TresqlSingleRowResult(row) =>
+              TresqlResultSerializer.source(() => row)
             case IteratorResult(ir) =>
               DtoDataSerializer.source(() => ir)
           }
           serializeResult(SerializationBufferSize, viewSerializationBufferMaxFileSize(ac.viewName),
-            resultSource,  context.actionName == Action.List, cleanup)
+            resultSource, cleanup)
             .map(WabaseResult(ac, _))
         case wr => Future.successful(wr)
       }
@@ -203,7 +205,6 @@ trait WabaseApp[User] {
     bufferSize: Int,
     maxFileSize: Long,
     result: Source[ByteString, _],
-    isCollection: Boolean,
     cleanupFun: Option[Throwable] => Unit = null,
   )(implicit
     ec: ExecutionContext,
@@ -212,7 +213,7 @@ trait WabaseApp[User] {
     result
       .via(FileBufferedFlow.create(bufferSize, maxFileSize))
       .runWith(new ResultCompletionSink(cleanupFun))
-      .map(QuereaseSerializedResult(_, isCollection))
+      .map(QuereaseSerializedResult)
   }
 
   protected def beforeWabaseAction(context: ActionContext): ActionContext = {

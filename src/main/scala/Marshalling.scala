@@ -18,18 +18,17 @@ import DefaultJsonProtocol._
 import akka.http.scaladsl.model.headers.{ContentDispositionType, ContentDispositionTypes}
 import akka.http.scaladsl.model.headers.{Location, RawHeader}
 import akka.http.scaladsl.unmarshalling.{FromEntityUnmarshaller, FromResponseUnmarshaller, Unmarshaller}
-import akka.stream.scaladsl.{Source, StreamConverters}
+import akka.stream.scaladsl.Source
 import akka.util.ByteString
 import io.bullet.borer.compat.akka.ByteStringProvider
+import org.tresql.{Resources, Result, RowLike}
 
 import scala.collection.immutable.{Seq => iSeq}
-import scala.concurrent.duration.DurationInt
 import scala.language.implicitConversions
 import scala.language.reflectiveCalls
 import scala.util.Try
 
 trait Marshalling extends DtoMarshalling
-  with TresqlResultMarshalling
   with BasicJsonMarshalling
   with BasicMarshalling
   with QuereaseResultMarshalling { this: AppServiceBase[_] with Execution => }
@@ -165,36 +164,6 @@ trait AppMarshalling { this: AppServiceBase[_] with Execution =>
     rowWriterToResponseMarshaller(`application/json`, new app.JsonRowWriter(_, _))
 }
 
-trait TresqlResultMarshalling extends AppMarshalling { this: AppServiceBase[_] with Execution =>
-  import org.tresql.{Result => TresqlResult, RowLike}
-
-  trait TresqlResultRowWriter extends app.AbstractRowWriter {
-    type Row = RowLike
-    type Result = TresqlResult[RowLike]
-    lazy val labels = result.columns.map(_.name).toVector
-  }
-  class OdsTresqlResultRowWriter(override val result: TresqlResult[RowLike], zos: ZipOutputStream)
-    extends app.OdsRowWriter(zos) with TresqlResultRowWriter
-  class CsvTresqlResultRowWriter(override val result: TresqlResult[RowLike], writer: Writer)
-    extends app.CsvRowWriter(writer) with TresqlResultRowWriter
-
-  def tresqlResultWithCleanupMarshaller(f: Option[Throwable] => Unit): ToResponseMarshaller[TresqlResult[RowLike]] = {
-    import RowSource._
-    Marshaller.oneOf(
-      rowZipWriterToResponseMarshaller(
-        `application/vnd.oasis.opendocument.spreadsheet`,
-        new OdsTresqlResultRowWriter(_, _),
-        cleanupFun = f),
-      rowWriterToResponseMarshaller(
-        ContentTypes.`text/plain(UTF-8)`,
-        new CsvTresqlResultRowWriter(_, _),
-        cleanupFun = f)
-    )
-  }
-  implicit val toResponseTresqlResultMarshaller: ToResponseMarshaller[TresqlResult[RowLike]] =
-    tresqlResultWithCleanupMarshaller(null)
-}
-
 trait DtoMarshalling extends AppMarshalling with Loggable { this: AppServiceBase[_] with Execution =>
 
   import jsonConverter._
@@ -218,7 +187,6 @@ trait DtoMarshalling extends AppMarshalling with Loggable { this: AppServiceBase
 }
 
 trait QuereaseResultMarshalling { this:
-    TresqlResultMarshalling with
     BasicJsonMarshalling    with
     DtoMarshalling          with
     Execution               with
@@ -228,16 +196,12 @@ trait QuereaseResultMarshalling { this:
   import app.qe.ListJsonFormat
   import app.qe.QuereaseIdResultJsonFormat
   import ResultEncoder.EncoderFactory
-  implicit val toResponseQuereaseTresqlResultMarshaller:    ToResponseMarshaller[TresqlResult]   =
-    Marshaller.combined(_.result)
   implicit val toEntityQuereaseMapResultMarshaller:         ToEntityMarshaller  [MapResult]      =
     Marshaller.combined(_.result)
   implicit val toEntityQuereasePojoResultMarshaller:        ToEntityMarshaller  [PojoResult]     =
     Marshaller.combined(_.result.toMap)
   implicit val toEntityQuereaseListResultMarshaller:        ToEntityMarshaller  [ListResult]     =
     Marshaller.combined(_.result.toJson)
-  implicit val toEntityQuereaseIteratorResultMarshaller:    ToResponseMarshaller[IteratorResult] =
-    Marshaller.combined(_.result.asInstanceOf[qe.QuereaseIteratorResult[app.Dto]])
   implicit val toResponseQuereaseOptionResultMarshaller:    ToResponseMarshaller[OptionResult]   =
     Marshaller.combined(_.result.map(_.toMap))
   implicit val toEntityQuereaseNumberResultMarshaller:      ToEntityMarshaller  [NumberResult]   =
@@ -274,28 +238,27 @@ trait QuereaseResultMarshalling { this:
   def createXlsXmlEncoderFactory(viewName: String): EncoderFactory =
     os => new XlsXmlOutput(new OutputStreamWriter(os, "UTF-8"), qe.viewNameToLabels(viewName))
 
-  def toEntityQuereaseSerializedResultMarshaller(viewName: String): ToEntityMarshaller[QuereaseSerializedResult] = {
-    def formats_marshaller(isCollection: Boolean): ToEntityMarshaller[SerializedResult] =
+  def toEntityQuereaseSerializedResultMarshaller(actionName: String, viewName: String): ToEntityMarshaller[QuereaseSerializedResult] = {
+    implicit val formats_marshaller: ToEntityMarshaller[SerializedResult] =
       Marshaller.oneOf(
-        toEntitySerializedResultMarshaller(`application/json`,                createJsonEncoderFactory(viewName, isCollection)),
+        toEntitySerializedResultMarshaller(`application/json`,                createJsonEncoderFactory(viewName, actionName == AppMetadata.Action.List)),
         toEntitySerializedResultMarshaller(ContentTypes.`text/csv(UTF-8)`,    createCsvEncoderFactory(viewName)),
         toEntitySerializedResultMarshaller(`application/vnd.oasis.opendocument.spreadsheet`,
                                                                               createOdsEncoderFactory(viewName)),
         toEntitySerializedResultMarshaller(`application/vnd.ms-excel`,        createXlsXmlEncoderFactory(viewName)),
       )
-    Marshaller { _ => qsr =>
-      formats_marshaller(qsr.isCollection)(qsr.result)
-    }
+    Marshaller.combined(_.result)
   }
 
   import org.wabase.{QuereaseSerializedResult => QuereaseSerRes}
   implicit def toResponseWabaseResultMarshaller(implicit ec: ExecutionContext): ToResponseMarshaller[app.WabaseResult] =
     Marshaller { implicit ec => wr => wr.result match {
-      case tq: TresqlResult   => (toResponseQuereaseTresqlResultMarshaller:   ToResponseMarshaller[TresqlResult]  )(tq)
+      case tq: TresqlResult   => sys.error("TresqlResult must be serialized before marshalling.")//(toResponseQuereaseTresqlResultMarshaller:   ToResponseMarshaller[TresqlResult]  )(tq)
+      case rr: TresqlSingleRowResult => sys.error("TresqlSingleRowResult must be serialized before marshalling.")
       case mp: MapResult      => (toEntityQuereaseMapResultMarshaller:        ToResponseMarshaller[MapResult]     )(mp)
       case pj: PojoResult     => (toEntityQuereasePojoResultMarshaller:       ToResponseMarshaller[PojoResult]    )(pj)
       case ls: ListResult     => (toEntityQuereaseListResultMarshaller:       ToResponseMarshaller[ListResult]    )(ls)
-      case it: IteratorResult => (toEntityQuereaseIteratorResultMarshaller:   ToResponseMarshaller[IteratorResult])(it)
+      case it: IteratorResult => sys.error("IteratorResult must be serialized before marshalling.")//(toEntityQuereaseIteratorResultMarshaller:   ToResponseMarshaller[IteratorResult])(it)
       case op: OptionResult   => (toResponseQuereaseOptionResultMarshaller:   ToResponseMarshaller[OptionResult]  )(op)
       case nr: NumberResult   => (toEntityQuereaseNumberResultMarshaller:     ToResponseMarshaller[NumberResult]  )(nr)
       case cd: CodeResult     => (toEntityQuereaseCodeResultMarshaller:       ToResponseMarshaller[CodeResult]    )(cd)
@@ -303,7 +266,8 @@ trait QuereaseResultMarshalling { this:
       case rd: RedirectResult => (toResponseQuereaseRedirectResultMarshaller: ToResponseMarshaller[RedirectResult])(rd)
       case no: NoResult.type  => (toEntityQuereaseNoResultMarshaller:         ToResponseMarshaller[NoResult.type] )(no)
       case cr: QuereaseSerRes => (toEntityQuereaseSerializedResultMarshaller(
-                                                            wr.ctx.viewName): ToResponseMarshaller[QuereaseSerRes])(cr)
+        AppMetadata.Action.List,
+        wr.ctx.viewName): ToResponseMarshaller[QuereaseSerRes])(cr)
       case dr: QuereaseDeleteResult =>
         (toEntityQuereaseDeleteResultMarshaller: ToResponseMarshaller[QuereaseDeleteResult])(dr)
       case r: QuereaseResultWithCleanup =>
@@ -314,11 +278,23 @@ trait QuereaseResultMarshalling { this:
     def marsh(viewName: String)(implicit ec: ExecutionContext): ToResponseMarshaller[qe.QuereaseIteratorResult[app.Dto]] =
       Marshaller.combined { qir: qe.QuereaseIteratorResult[app.Dto] =>
         app.serializeResult(app.SerializationBufferSize, app.viewSerializationBufferMaxFileSize(viewName),
-          DtoDataSerializer.source(() => qir), isCollection = true)
-      } (GenericMarshallers.futureMarshaller(toEntityQuereaseSerializedResultMarshaller(viewName)))
+          DtoDataSerializer.source(() => qir))
+      } (GenericMarshallers.futureMarshaller(toEntityQuereaseSerializedResultMarshaller(AppMetadata.Action.List, viewName)))
 
     Marshaller { ec => res => marsh(res.view.name)(ec)(res) }
   }
+
+  implicit def toResponseTresqlResultMarshaller(implicit res: Resources): ToEntityMarshaller[RowLike] =
+    Marshaller { _ => tresqlResult =>
+      val resType = tresqlResult match {
+        case _: Result[_] => AppMetadata.Action.List
+        case _ => AppMetadata.Action.Get
+      }
+      val sr = app.serializeResult(app.SerializationBufferSize, app.SerializationBufferMaxFileSize,
+        TresqlResultSerializer.source(() => tresqlResult), app.dbAccess.closeResources(res, _))
+      GenericMarshallers
+        .futureMarshaller(toEntityQuereaseSerializedResultMarshaller(resType, null))(sr)
+    }
 }
 
 object MarshallingConfig extends AppBase.AppConfig with Loggable {
