@@ -265,8 +265,8 @@ trait QuereaseResultMarshalling { this:
     }
   }
 
-  def createJsonEncoderFactory(viewName: String): EncoderFactory =
-    JsonOutput(_, true, viewName, qe.nameToViewDef)
+  def createJsonEncoderFactory(viewName: String, isCollection: Boolean): EncoderFactory =
+    JsonOutput(_, isCollection, viewName, qe.nameToViewDef)
   def createCsvEncoderFactory(viewName: String): EncoderFactory =
     os => new CsvOutput(new OutputStreamWriter(os, "UTF-8"), qe.viewNameToLabels(viewName))
   def createOdsEncoderFactory(viewName: String): EncoderFactory =
@@ -275,15 +275,17 @@ trait QuereaseResultMarshalling { this:
     os => new XlsXmlOutput(new OutputStreamWriter(os, "UTF-8"), qe.viewNameToLabels(viewName))
 
   def toEntityQuereaseSerializedResultMarshaller(viewName: String): ToEntityMarshaller[QuereaseSerializedResult] = {
-    implicit val formats_marshaller: ToEntityMarshaller[SerializedResult] =
+    def formats_marshaller(isCollection: Boolean): ToEntityMarshaller[SerializedResult] =
       Marshaller.oneOf(
-        toEntitySerializedResultMarshaller(`application/json`,                createJsonEncoderFactory(viewName)),
+        toEntitySerializedResultMarshaller(`application/json`,                createJsonEncoderFactory(viewName, isCollection)),
         toEntitySerializedResultMarshaller(ContentTypes.`text/csv(UTF-8)`,    createCsvEncoderFactory(viewName)),
         toEntitySerializedResultMarshaller(`application/vnd.oasis.opendocument.spreadsheet`,
                                                                               createOdsEncoderFactory(viewName)),
         toEntitySerializedResultMarshaller(`application/vnd.ms-excel`,        createXlsXmlEncoderFactory(viewName)),
       )
-    Marshaller.combined(_.result)
+    Marshaller { _ => qsr =>
+      formats_marshaller(qsr.isCollection)(qsr.result)
+    }
   }
 
   import org.wabase.{QuereaseSerializedResult => QuereaseSerRes}
@@ -312,7 +314,7 @@ trait QuereaseResultMarshalling { this:
     def marsh(viewName: String)(implicit ec: ExecutionContext): ToResponseMarshaller[qe.QuereaseIteratorResult[app.Dto]] =
       Marshaller.combined { qir: qe.QuereaseIteratorResult[app.Dto] =>
         app.serializeResult(app.SerializationBufferSize, app.viewSerializationBufferMaxFileSize(viewName),
-          DtoDataSerializer.source(() => qir))
+          DtoDataSerializer.source(() => qir), isCollection = true)
       } (GenericMarshallers.futureMarshaller(toEntityQuereaseSerializedResultMarshaller(viewName)))
 
     Marshaller { ec => res => marsh(res.view.name)(ec)(res) }

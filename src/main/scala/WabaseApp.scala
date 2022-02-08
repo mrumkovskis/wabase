@@ -88,7 +88,7 @@ trait WabaseApp[User] {
               DtoDataSerializer.source(() => ir)
           }
           serializeResult(SerializationBufferSize, viewSerializationBufferMaxFileSize(ac.viewName),
-            resultSource, cleanup)
+            resultSource,  context.actionName == Action.List, cleanup)
             .map(WabaseResult(ac, _))
         case wr => Future.successful(wr)
       }
@@ -143,6 +143,8 @@ trait WabaseApp[User] {
       qr match {
         case MapResult(oldValue) =>
           insertOrUpdate(oldValue = oldValue)
+        case TresqlSingleRowResult(row) =>
+          insertOrUpdate(oldValue = row.toMap)
         case OptionResult(oldOpt) =>
           if (keyMap.nonEmpty && oldOpt.isEmpty)
             throw new BusinessException(translate("Record not found, cannot edit")(state.locale))
@@ -166,6 +168,8 @@ trait WabaseApp[User] {
       qr match {
         case MapResult(oldValue) =>
           delete(oldValue = oldValue)
+        case TresqlSingleRowResult(row) =>
+          delete(oldValue = row.toMap)
         case OptionResult(None) => throw new NotFoundException(
           s"Record not found, cannot delete. View name: $viewName, values: $values")
         case OptionResult(oldOpt) =>
@@ -199,6 +203,7 @@ trait WabaseApp[User] {
     bufferSize: Int,
     maxFileSize: Long,
     result: Source[ByteString, _],
+    isCollection: Boolean,
     cleanupFun: Option[Throwable] => Unit = null,
   )(implicit
     ec: ExecutionContext,
@@ -207,7 +212,7 @@ trait WabaseApp[User] {
     result
       .via(FileBufferedFlow.create(bufferSize, maxFileSize))
       .runWith(new ResultCompletionSink(cleanupFun))
-      .map(QuereaseSerializedResult)
+      .map(QuereaseSerializedResult(_, isCollection))
   }
 
   protected def beforeWabaseAction(context: ActionContext): ActionContext = {

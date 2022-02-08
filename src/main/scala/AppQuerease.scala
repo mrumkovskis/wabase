@@ -23,12 +23,11 @@ trait QuereaseProvider {
 sealed trait QuereaseResult
 sealed trait QuereaseCloseableResult extends QuereaseResult
 case class TresqlResult(result: Result[RowLike]) extends QuereaseCloseableResult
-// TODO after decoupling QereaseIo from Querease this class should be refactored to PojoResult[X]
+case class TresqlSingleRowResult(row: RowLike) extends QuereaseCloseableResult
 case class MapResult(result: Map[String, Any]) extends QuereaseResult
+case class ListResult(result: List[Any]) extends QuereaseResult
 // TODO after decoupling QereaseIo from Querease this class should be refactored to PojoResult[X]
 case class PojoResult(result: AppQuerease#DTO) extends QuereaseResult
-// TODO after decoupling QereaseIo from Querease this class should be refactored to ListResult[X]
-case class ListResult(result: List[Any]) extends QuereaseResult
 // TODO after decoupling QereaseIo from Querease this class should be refactored to IteratorResult[X]
 case class IteratorResult(result: AppQuerease#QuereaseIteratorResult[AppQuerease#DTO]) extends QuereaseCloseableResult
 // TODO after decoupling QereaseIo from Querease this class should be refactored to OptionResult[X]
@@ -52,7 +51,7 @@ case class QuereaseResultWithCleanup(result: QuereaseCloseableResult, cleanup: O
     }.get
   }
 }
-case class QuereaseSerializedResult(result: SerializedResult) extends QuereaseResult
+case class QuereaseSerializedResult(result: SerializedResult, isCollection: Boolean) extends QuereaseResult
 
 trait AppQuereaseIo extends org.mojoz.querease.ScalaDtoQuereaseIo with JsonConverter { self: AppQuerease =>
 
@@ -264,6 +263,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
           case rows => rows
         }
       }
+      case TresqlSingleRowResult(row) => row.toMap
       case MapResult(mr) => mr
       case PojoResult(pr) => pr.toMap(this)
       case ListResult(lr) => lr
@@ -520,7 +520,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
                                                      ec: ExecutionContext): Future[QuereaseResult] = {
     def createGetResult(res: QuereaseResult): QuereaseResult = res match {
       case TresqlResult(r) if !r.isInstanceOf[DMLResult] =>
-        r.uniqueOption.map(row => MapResult(row.toMap)).getOrElse(OptionResult(None))
+        r.uniqueOption map TresqlSingleRowResult getOrElse OptionResult(None)
       case IteratorResult(r) =>
         try r.hasNext match {
           case true =>
