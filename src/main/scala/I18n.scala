@@ -1,9 +1,10 @@
 package org.wabase
 
 import java.util.{Locale, PropertyResourceBundle, ResourceBundle}
-
 import scala.jdk.CollectionConverters._
 import scala.util.Try
+
+case class I18Bundle(bundle: Iterator[(String, String)])
 
 trait I18n {
 
@@ -76,15 +77,15 @@ trait I18n {
   }
 
   /** Calls {{{i18nResourcesFromBundle(ResourceName)}}} */
-  def i18nResources(implicit locale: Locale): Iterator[(String, Any)] = {
+  def i18nResources(implicit locale: Locale): I18Bundle = {
     i18nResourcesFromBundle(I18nResourceName)
   }
 
-  /** Returns resources as {{{Iterator[(String, Any)]}}}. Iterator element is {{{(String, Any)}}} instead
-    * of {{{(String, String)}}} so that {{{TupleJsonFormat}}} can be used for response marshalling
+  /**
+    * Returns resources as {{{I18Bundle}}}.
     * */
-  def i18nResourcesFromBundle(name: String)(implicit locale: Locale): Iterator[(String, Any)] = {
+  def i18nResourcesFromBundle(name: String)(implicit locale: Locale): I18Bundle = {
     val b = bundle(name)
-    b.getKeys.asScala.map(s => s -> Try(b.getString(s)).getOrElse(s))
+    I18Bundle(b.getKeys.asScala.map(s => s -> Try(b.getString(s)).getOrElse(s)))
   }
 }

@@ -2,7 +2,7 @@ package org.wabase
 
 import akka.stream.scaladsl._
 import akka.http.scaladsl.coding.Coders.{Deflate, Gzip, NoCoding}
-import akka.http.scaladsl.marshalling.ToResponseMarshallable
+import akka.http.scaladsl.marshalling.{Marshaller, ToEntityMarshaller, ToResponseMarshallable}
 import akka.http.scaladsl.model._
 import akka.http.scaladsl.model.headers._
 import akka.http.scaladsl.server._
@@ -22,11 +22,14 @@ import AppMetadata.AugmentedAppViewDef
 import AppServiceBase._
 import Authentication.SessionUserExtractor
 import DeferredControl._
-import java.util.Locale
+import akka.http.scaladsl.model.MediaTypes.`application/json`
 
+import java.util.Locale
 import akka.http.scaladsl.server.util.Tuple
 import akka.util.ByteString
+import io.bullet.borer.{Json, Writer}
 import org.mojoz.querease.{ValidationException, ValidationResult}
+
 import xml.Utility.escape
 
 
@@ -704,5 +707,21 @@ object AppServiceBase {
       state.state.get(ApplicationStateCookiePrefix + ApplicationLanguageCookiePostfix)
         .map(l => new Locale(String.valueOf(l)))
         .getOrElse(Locale.getDefault)
+
+    implicit def i18BundleMarshaller: ToEntityMarshaller[I18Bundle] = Marshaller.combined { bundle =>
+      val source = ResultSerializer.source(() => bundle.bundle,
+        os => new ArraysOfTupleEncoder(BorerNestedArraysEncoder.createWriter(os, Json)))
+      HttpEntity.Chunked.fromData(`application/json`, source)
+    }
+    private class ArraysOfTupleEncoder(w: Writer) extends BorerNestedArraysEncoder(w, true) {
+      override def writeValue(value: Any): Unit = value match {
+        case (k: String, v: String) =>
+          w.writeMapStart()
+          writeValue(k)
+          writeValue(v)
+          w.writeBreak()
+        case v => super.writeValue(v)
+      }
+    }
   }
 }
