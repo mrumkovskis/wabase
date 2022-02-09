@@ -7,7 +7,7 @@ import MediaTypes._
 import marshalling._
 import spray.json.JsValue
 
-import java.io.{OutputStream, OutputStreamWriter, Writer}
+import java.io.OutputStreamWriter
 import java.net.URLEncoder
 import java.text.Normalizer
 import java.util.zip.ZipOutputStream
@@ -120,55 +120,9 @@ trait BasicMarshalling {
   )
 }
 
-trait AppMarshalling { this: AppServiceBase[_] with Execution =>
-
-  val dbBufferSize = 1024 * 32
-  val dbDataFileMaxSize = MarshallingConfig.dbDataFileMaxSize
-
-  protected def resultMaxFileSize(viewName: String): Long =
-    MarshallingConfig.customDataFileMaxSizes.getOrElse(viewName, dbDataFileMaxSize)
-
-  protected def source(src: Source[ByteString, _],
-                       maxFileSize: Long,
-                       cleanupFun: Option[Throwable] => Unit): Future[SerializedResult] = {
-    RowSource.value(dbBufferSize, maxFileSize, src, cleanupFun)
-  }
-
-  protected def httpResponse(contentType: ContentType,
-                             src: Source[ByteString, _],
-                             maxFileSize: Long = dbBufferSize,
-                             cleanupFun: Option[Throwable] => Unit): Future[HttpResponse] = {
-    source(src, maxFileSize, cleanupFun).map {
-      case CompleteResult(data) => HttpResponse(entity = HttpEntity.Strict(contentType, data))
-      case IncompleteResultSource(sourceData) => HttpResponse(entity = HttpEntity.Chunked.fromData(contentType, sourceData))
-    }.recover { case InsufficientStorageException(msg) =>
-      HttpResponse(status = StatusCodes.InsufficientStorage,
-        entity = HttpEntity.Strict(ContentTypes.`text/plain(UTF-8)`, ByteString(msg)))
-    }
-  }
-
-  import RowSource._
-  protected def rowWriterToResponseMarshaller[T](contentType: ContentType,
-                                                 writerFun: (T, Writer) => RowWriter,
-                                                 fileBufferMaxSize: T => Long = (_: T) => dbDataFileMaxSize,
-                                                 cleanupFun: Option[Throwable] => Unit = null): ToResponseMarshaller[T] =
-    Marshaller.combined(r => httpResponse(contentType, writerFun(r, _), fileBufferMaxSize(r), cleanupFun))
-
-  protected def rowZipWriterToResponseMarshaller[T](contentType: ContentType,
-                                                    writerFun: (T, ZipOutputStream) => RowWriter,
-                                                    fileBufferMaxSize: T => Long = (_: T) => dbDataFileMaxSize,
-                                                    cleanupFun: Option[Throwable] => Unit = null): ToResponseMarshaller[T] =
-    Marshaller.combined(r => httpResponse(contentType, writerFun(r, _), fileBufferMaxSize(r), cleanupFun))
-
-  implicit def toResponseListJsonMarshaller[T: JsonFormat]: ToResponseMarshaller[Iterator[T]] =
-    rowWriterToResponseMarshaller(`application/json`, new app.JsonRowWriter(_, _))
-}
-
-trait DtoMarshalling extends AppMarshalling with Loggable { this: AppServiceBase[_] with Execution =>
+trait DtoMarshalling extends Loggable { this: AppServiceBase[_] with Execution =>
 
   import jsonConverter._
-  import AppMetadata._
-
   import app.qe
 
   implicit def dtoUnmarshaller[T <: app.Dto](implicit jsonUnmarshaller: FromEntityUnmarshaller[JsValue], m: Manifest[T]): FromEntityUnmarshaller[T] =
