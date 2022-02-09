@@ -669,8 +669,6 @@ object AppServiceBase {
       ) { complete("Ok") }
     }
 
-    import jsonConverter._
-
     def i18nResources: Route = (i18nPath & applicationLocale) { implicit locale =>
       complete(i18n.i18nResources)
     }
