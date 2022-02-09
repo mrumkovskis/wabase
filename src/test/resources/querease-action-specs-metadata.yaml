@@ -258,3 +258,17 @@ get:
 - return unique_opt list purchase
 delete:
 - return -shop_db:purchase [purchase_time = :purchase_time & customer = :customer]
+
+
+name: purchase_get
+api: get
+db: shop_db
+table: purchase
+fields:
+- customer
+- purchase_time
+- item
+- amount
+get:
+- return unique_opt |shop_db:purchase[purchase_time = :purchase_time & customer = :customer]
+    {item, amount}

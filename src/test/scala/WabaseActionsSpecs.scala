@@ -305,6 +305,14 @@ class WabaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Async
     }
   }
 
+  it should "get purchase from tresql" in {
+    doAction("get", "purchase_get",
+      Map("purchase_time" -> "2021-12-04 15:15:23.0", "customer" -> "Mr. Gunza"))
+      .map {
+        _ should be (List(Map("amount" -> 60, "item" -> "joystick")))
+      }
+  }
+
   it should "delete purchase" in {
     doAction("delete", "purchase",
       Map("purchase_time" -> "2021-12-08 12:15:33.0", "customer" -> "Mr. Mario"))
