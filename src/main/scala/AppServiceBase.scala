@@ -712,7 +712,7 @@ object AppServiceBase {
           w.writeMapStart()
           writeValue(k)
           writeValue(v)
-          w.writeBreak()
+          writeBreak()
         case v => super.writeValue(v)
       }
     }
