@@ -232,11 +232,11 @@ trait QuereaseResultMarshalling { this:
   def createJsonEncoderFactory(viewName: String, isCollection: Boolean): EncoderFactory =
     JsonOutput(_, isCollection, viewName, qe.nameToViewDef)
   def createCsvEncoderFactory(viewName: String): EncoderFactory =
-    os => new CsvOutput(new OutputStreamWriter(os, "UTF-8"), qe.viewNameToLabels(viewName))
+    os => new CsvOutput(new OutputStreamWriter(os, "UTF-8"), Option(viewName).map(qe.viewNameToLabels).orNull)
   def createOdsEncoderFactory(viewName: String): EncoderFactory =
-    os => new OdsOutput(new ZipOutputStream(os), qe.viewNameToLabels(viewName))
+    os => new OdsOutput(new ZipOutputStream(os), Option(viewName).map(qe.viewNameToLabels).orNull)
   def createXlsXmlEncoderFactory(viewName: String): EncoderFactory =
-    os => new XlsXmlOutput(new OutputStreamWriter(os, "UTF-8"), qe.viewNameToLabels(viewName))
+    os => new XlsXmlOutput(new OutputStreamWriter(os, "UTF-8"), Option(viewName).map(qe.viewNameToLabels).orNull)
 
   def toEntityQuereaseSerializedResultMarshaller(actionName: String, viewName: String): ToEntityMarshaller[QuereaseSerializedResult] = {
     implicit val formats_marshaller: ToEntityMarshaller[SerializedResult] =
