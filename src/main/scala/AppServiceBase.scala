@@ -702,19 +702,17 @@ object AppServiceBase {
         .getOrElse(Locale.getDefault)
 
     implicit def i18BundleMarshaller: ToEntityMarshaller[I18Bundle] = Marshaller.combined { bundle =>
-      val source = ResultSerializer.source(() => bundle.bundle,
-        os => new ArraysOfTupleEncoder(BorerNestedArraysEncoder.createWriter(os, Json)))
+      val source = ResultSerializer.source(
+        () => bundle.bundle,
+        os => BorerNestedArraysEncoder(os, Json, wrap = true, encoder => {
+          case (k: String, v: String) =>
+            encoder.w.writeMapStart()
+            encoder.writeValue(k)
+            encoder.writeValue(v)
+            encoder.writeBreak()
+        })
+      )
       HttpEntity.Chunked.fromData(`application/json`, source)
-    }
-    private class ArraysOfTupleEncoder(w: Writer) extends BorerNestedArraysEncoder(w, true) {
-      override def writeValue(value: Any): Unit = value match {
-        case (k: String, v: String) =>
-          w.writeMapStart()
-          writeValue(k)
-          writeValue(v)
-          writeBreak()
-        case v => super.writeValue(v)
-      }
     }
   }
 }

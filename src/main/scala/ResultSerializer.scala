@@ -156,7 +156,7 @@ object BorerDatetimeEncoders {
 
 class BorerValueEncoder(w: Writer) {
   import BorerDatetimeEncoders._
-  def writeValue(value: Any):  Unit = value match {
+  val valueEncoder: PartialFunction[Any, Unit] = {
     case null               => w.writeNull()
     case value: Boolean     => w writeBoolean value
     case value: Char        => w writeChar    value
@@ -184,11 +184,12 @@ class BorerValueEncoder(w: Writer) {
     case value: sql.Date    => w ~ value
     case x                  => w writeString x.toString
   }
+  def writeValue(value: Any):  Unit = valueEncoder(value)
 }
 
 class BorerNestedArraysEncoder(
-  w: Writer,
-  wrap: Boolean = false,
+  val w: Writer,
+  val wrap: Boolean = false,
 ) extends BorerValueEncoder(w) with ResultEncoder with ChunkInfo {
   private  var chunkType: ChunkType = null
   override def writeStartOfInput():     Unit = { if (wrap) w.writeArrayStart() }
@@ -226,8 +227,20 @@ class BorerNestedArraysEncoder(
 }
 
 object BorerNestedArraysEncoder {
-  def apply(outputStream:  OutputStream, format: Target = Cbor, wrap: Boolean = false) =
-    new BorerNestedArraysEncoder(createWriter(outputStream, format), wrap = wrap)
+  def apply(
+    outputStream: OutputStream,
+    format:       Target  = Cbor,
+    wrap:         Boolean = false,
+    valueEncoderFactory: BorerNestedArraysEncoder => PartialFunction[Any, Unit] = null,
+  ) = {
+    if (valueEncoderFactory == null)
+      new BorerNestedArraysEncoder(createWriter(outputStream, format), wrap = wrap)
+    else
+      new BorerNestedArraysEncoder(createWriter(outputStream, format), wrap = wrap) {
+        val customValueEncoder = valueEncoderFactory(this)
+        override def writeValue(value: Any):  Unit = (customValueEncoder orElse valueEncoder)(value)
+      }
+  }
   def createWriter(outputStream:  OutputStream, format: Target = Cbor): Writer = format match {
     case _: Json.type => Json.writer(Output.ToOutputStreamProvider(outputStream, 0, allowBufferCaching = true))
     case _: Cbor.type => Cbor.writer(Output.ToOutputStreamProvider(outputStream, 0, allowBufferCaching = true))
