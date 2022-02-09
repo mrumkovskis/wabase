@@ -232,21 +232,41 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
   it should "serialize tresql to cbor and transform to csv" in {
     val cols = "id, name, surname, sex, birthdate"
     def queryString(maxId: Int) = s"person [id <= $maxId] {${cols}}"
-    def test(maxId: Int, withLabels: Boolean, bufferSizeHint: Int = 8) = serializeAndTransform(
-      TresqlResultSerializer.source(() => Query(queryString(maxId)), includeHeaders = false, bufferSizeHint = bufferSizeHint),
+    def test(
+      maxId: Int,
+      withLabels: Boolean,
+      includeHeaders: Boolean = false,
+      bufferSizeHint: Int = 8
+    ) = serializeAndTransform(
+      TresqlResultSerializer.source(
+        () => Query(queryString(maxId)),
+        includeHeaders = includeHeaders,
+        bufferSizeHint = bufferSizeHint
+      ),
       outputStream => new CsvOutput(
         writer = new OutputStreamWriter(outputStream, "UTF-8"),
-        labels = if (withLabels) cols.split(", ").toList else null,
+        labels = if (withLabels) cols.replace("birthdate", "birth date").split(", ").toList else null,
       ),
       bufferSizeHint = bufferSizeHint,
     )
     test(0, false) shouldBe ""
     test(1, false) shouldBe "1,John,Doe,M,1969-01-01\n"
     test(1, true ) shouldBe List(
-      "id,name,surname,sex,birthdate",
+      "id,name,surname,sex,birth date",
       "1,John,Doe,M,1969-01-01",
     ).mkString("", "\n", "\n")
     test(2, true ) shouldBe List(
+      "id,name,surname,sex,birth date",
+      "1,John,Doe,M,1969-01-01",
+      "2,Jane,,F,1996-02-02",
+    ).mkString("", "\n", "\n")
+    test(2, false, true) shouldBe List(
+      "id,name,surname,sex,birthdate",
+      "1,John,Doe,M,1969-01-01",
+      "2,Jane,,F,1996-02-02",
+    ).mkString("", "\n", "\n")
+    test(2, true, true) shouldBe List(
+      "id,name,surname,sex,birth date",
       "id,name,surname,sex,birthdate",
       "1,John,Doe,M,1969-01-01",
       "2,Jane,,F,1996-02-02",
