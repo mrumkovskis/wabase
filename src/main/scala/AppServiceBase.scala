@@ -2,7 +2,7 @@ package org.wabase
 
 import akka.stream.scaladsl._
 import akka.http.scaladsl.coding.Coders.{Deflate, Gzip, NoCoding}
-import akka.http.scaladsl.marshalling.{Marshaller, ToEntityMarshaller, ToResponseMarshallable}
+import akka.http.scaladsl.marshalling.{Marshaller, ToEntityMarshaller}
 import akka.http.scaladsl.model._
 import akka.http.scaladsl.model.headers._
 import akka.http.scaladsl.server._
@@ -100,14 +100,9 @@ trait AppServiceBase[User]
   def deleteAction(viewName: String, id: Long)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
       if (isQuereaseActionDefined(viewName, "delete")) {
-        sys.error("querease action not implemented yet")
-//        complete {
-//          app.doWabaseAction(Action.Delete, viewName, filterPars(params) + ("id" -> id))
-//            .map { qr => qr: ToResponseMarshallable }
-//            .recover {
-//              case _: org.mojoz.querease.NotFoundException => StatusCodes.NotFound: ToResponseMarshallable
-//            }
-//        }
+        complete {
+          app.doWabaseAction(Action.Delete, viewName, filterPars(params) + ("id" -> id))
+        }
       } else complete {
         try {
           app.delete(viewName, id, filterPars(params))
