@@ -26,10 +26,16 @@ object AppBase {
   trait AppConfig {
     lazy val appConfig: Config = config.getConfig("app")
   }
+  case class FilterLabel(fieldName: String, filterName: String)
+  case class FilterParameter(
+    name: String, table: String, label: FilterLabel, nullable: Boolean, required: Boolean, type_ : Type, enum_ : Seq[String],
+    refViewName: String, filterType: FilterType,
+  )
 }
 
 case class ApplicationState(state: Map[String, Any], locale: Locale = Locale.getDefault)
 
+import AppBase._
 trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider with DbAccessProvider with I18n with RowWriters {
   this: DbAccess
     with Authorization[User]
@@ -738,7 +744,9 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
           "type" -> JsString(f.type_.name),
           "nullable" -> JsBoolean(f.nullable),
           "required" -> JsBoolean(f.required),
-          "label" -> Option(f.label).map(fl => JsString(fl.render(state.locale))).getOrElse(JsNull),
+          "label" -> Option(f.label).map(fl => JsString(fl.fieldName +
+              Option(fl.filterName).map(fn => s" (${translate(fn)(state.locale)})").getOrElse("")
+            )).getOrElse(JsNull),
           "enum" -> Option(f)
             .map(_.enum_)
             .filter(_ != null)
@@ -765,14 +773,6 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
         )): _*)
       )).getOrElse(Map.empty)
 
-  case class FilterLabel(fieldName: String, filterName: String) {
-    def render(locale: Locale) = fieldName +
-      Option(filterName).map(fn => s" (${translate(fn)(locale)})").getOrElse("")
-  }
-  case class FilterParameter(
-    name: String, table: String, label: FilterLabel, nullable: Boolean, required: Boolean, type_ : Type, enum_ : Seq[String],
-    refViewName: String, filterType: FilterType,
-  )
   def currentUserParamNames: Set[String] = Set.empty
   private lazy val current_user_param_names = currentUserParamNames
   def filterToParameterNamesAndCols(filter: FilterType): Seq[(String, String)] = filter match {
@@ -817,7 +817,14 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
         Option(v.filter).getOrElse(Nil) flatMap { f =>
           qe.analyzeFilter(f, v, v.tableAlias)
         }
+
       // TODO duplicate code, reuse querease code!
+      def simpleName(name: String) = if (name == null) null else name.lastIndexOf('.') match {
+        case -1 => name
+        case  i => name.substring(i + 1)
+      }
+      def tailists[B](l: List[B]): List[List[B]] =
+        if (l.isEmpty) Nil else l :: tailists(l.tail)
       val joinsParser = new org.mojoz.querease.TresqlJoinsParser(qe.tresqlMetadata)
       val (needsBaseTable, parsedJoins) =
         Option(v.joins)
@@ -826,8 +833,23 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
               .map(joins => (false, joins))
               .getOrElse((true, joinsParser(v.db, qe.tableAndAlias(v), joins))))
           .getOrElse((false, Nil))
-      val joinAliasToJoin =
-        parsedJoins.map(j => (Option(j.alias) getOrElse j.table, j)).toMap
+      val joinAliasToTables: Map[String, Set[String]] =
+        parsedJoins.map(j => Option(j.alias).getOrElse(j.table) -> j.table).toSet
+          .filter(_._1 != null)
+          .flatMap { case (n, t) => tailists(n.split("\\.").toList).map(_.mkString(".") -> t) }
+          .groupBy(_._1)
+          .map { kkv => kkv._1 -> kkv._2.map(_._2).toSet }
+      val baseQualifier = qe.baseFieldsQualifier(view)
+      val aliasToTable = collection.mutable.Map[String, String]()
+      if (baseQualifier != null) {
+        if (view.table != null)
+          // FIXME exclude clashing simple names from different qualified names!
+          aliasToTable += (baseQualifier -> view.table)
+          aliasToTable += (simpleName(baseQualifier) -> view.table)
+      }
+      aliasToTable ++= joinAliasToTables.filter(_._2.size == 1).map { case (n, t) => n -> t.head }
+      // -----------------------------------------
+
       val parameterNameToCol =
         filters.flatMap(filterToParameterNamesAndCols).toMap
       val parameterNameToFilterType =
@@ -848,20 +870,20 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
           val tableAlias =
             if (colQName.indexOf(".") > 0)
               colQName.substring(0, colQName.indexOf("."))
-            else view.tableAlias
+            else Option(view.tableAlias).getOrElse(view.table)
           val colName =
             if (colQName.indexOf(".") > 0)
               colQName.substring(colQName.indexOf(".") + 1)
             else colQName
-          val col = joinAliasToJoin
+          val col = aliasToTable
             .get(tableAlias)
-            .map(j => qe.tableMetadata.tableDefOption(j.table, view.db).map(_.cols) getOrElse Nil)
+            .map(tableName => qe.tableMetadata.tableDefOption(tableName, view.db).map(_.cols) getOrElse Nil)
             .flatMap(_.find(_.name == colName))
             .orNull
           val name = v.variable
           val conventionsType =
             qe.metadataConventions.typeFromExternal(name, None)
-          val table = joinAliasToJoin.get(tableAlias).map(_.table).orNull
+          val table = aliasToTable.getOrElse(tableAlias, null)
           val label = Option(col)
             .map(_.comments)
             .filter(_ != null)

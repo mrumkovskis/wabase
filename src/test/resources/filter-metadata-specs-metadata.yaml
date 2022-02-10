@@ -1,0 +1,58 @@
+table:    person
+columns:
+- id
+- name                 ! 51
+- sex                  ! 1   (M F)
+- birthdate            ! date
+- main_account.id        account.id
+
+
+table:    account
+columns:
+- id
+- number               ! 64
+- balance              ! decimal 10 2
+- last_modified        ! dateTime
+- person.id            !
+uk:
+- number
+
+
+name:     filter_metadata_test_1
+api:      list
+table:    person
+fields:
+- id
+- name
+filter:
+- name %~~%
+- sex
+- <= birthdate <=
+
+
+name:     filter_metadata_test_2
+api:      list
+table:    person p
+joins:
+- p [main_account_id] account ma_
+fields:
+- id
+- name
+filter:
+- sex
+- birthdate
+- <= ma_.last_modified <=
+- ma_.balance
+
+
+name:     filter_metadata_test_3
+api:      list
+table:    person p
+joins:
+- p /[ma_.number > :ma_number] account ma_
+fields:
+- id
+- name
+filter:
+- sex!
+- ma_.last_modified < :modified_before_time
