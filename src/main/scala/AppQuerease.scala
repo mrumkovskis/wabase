@@ -10,7 +10,7 @@ import scala.reflect.ManifestFactory
 import spray.json._
 
 import scala.concurrent.{ExecutionContext, Future}
-import scala.util.Try
+import scala.util.{Failure, Try}
 import scala.util.control.NonFatal
 
 trait QuereaseProvider {
@@ -214,8 +214,11 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
             case r: QuereaseResult =>
               closeResources(res, None)
               r
-          }
-        } catch {
+            }
+            .andThen {
+              case Failure(NonFatal(exception)) => closeResources(res, Option(exception))
+            }
+        } catch { // catch exception also here in the case doAction is not executed into separate thread
           case NonFatal(e) =>
             closeResources(res, Option(e))
             throw e
