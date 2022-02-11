@@ -36,7 +36,7 @@ case class NumberResult(id: Long) extends QuereaseResult
 case class CodeResult(code: String) extends QuereaseResult
 case class IdResult(id: Any) extends QuereaseResult
 case class QuereaseDeleteResult(count: Int) extends QuereaseResult
-case class RedirectResult(uri: String) extends QuereaseResult
+case class RedirectResult(uri: String, key: Seq[Any] = Nil, params: Map[String, Any] = Map()) extends QuereaseResult
 case object NoResult extends QuereaseResult
 case class QuereaseResultWithCleanup(result: QuereaseCloseableResult, cleanup: Option[Throwable] => Unit)
   extends QuereaseResult {
@@ -354,7 +354,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
 
   protected def doTresql(tresql: String,
                          bindVars: Map[String, Any],
-                         context: Option[ViewDef])(implicit resources: Resources): QuereaseResult = {
+                         context: Option[ViewDef])(implicit resources: Resources): TresqlResult = {
     def maybeExpandWithBindVarsCursors(tresql: String, env: Map[String, Any]): String = {
       import CoreTypes._
       if (tresql.indexOf(Action.BindVarCursorsFunctionName) == -1) tresql
@@ -521,18 +521,6 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
                            env: Map[String, Any],
                            context: Option[ViewDef])(implicit res: Resources,
                                                      ec: ExecutionContext): Future[QuereaseResult] = {
-    def createGetResult(res: QuereaseResult): QuereaseResult = res match {
-      case TresqlResult(r) if !r.isInstanceOf[DMLResult] =>
-        r.uniqueOption map TresqlSingleRowResult getOrElse OptionResult(None)
-      case IteratorResult(r) =>
-        try r.hasNext match {
-          case true =>
-            val v = r.next()
-            if (r.hasNext) sys.error("More than one row for unique result") else OptionResult(Option(v))
-          case false => OptionResult(None)
-        } finally r.close
-      case r => r
-    }
     import Action._
     op match {
       case Tresql(tresql) =>
@@ -540,9 +528,27 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case ViewCall(method, view) =>
         Future.successful(doViewCall(method, view, data, env))
       case UniqueOpt(innerOp) =>
+        def createGetResult(res: QuereaseResult): QuereaseResult = res match {
+          case TresqlResult(r) if !r.isInstanceOf[DMLResult] =>
+            r.uniqueOption map TresqlSingleRowResult getOrElse OptionResult(None)
+          case IteratorResult(r) =>
+            try r.hasNext match {
+              case true =>
+                val v = r.next()
+                if (r.hasNext) sys.error("More than one row for unique result") else OptionResult(Option(v))
+              case false => OptionResult(None)
+            } finally r.close
+          case r => r
+        }
         doActionOp(innerOp, data, env, context) map createGetResult
       case Invocation(className, function) =>
         doInvocation(className, function, data ++ env)
+      case Redirect(pathAndKeyTresql, paramsTresql) =>
+        val uriAndKeys = doTresql(pathAndKeyTresql, data ++ env, context).result.unique.values
+        val params =
+          if (paramsTresql == null) Map[String, Any]()
+          else doTresql(paramsTresql, data ++ env, context).result.unique.toMap
+        Future.successful(RedirectResult(String.valueOf(uriAndKeys.head), uriAndKeys.tail, params))
       case JobCall(job) =>
         doJobCall(job, data, env)
       case VariableTransforms(vts) =>

@@ -8,6 +8,7 @@ import org.mojoz.metadata.io.MdConventions
 import org.mojoz.metadata.out.SqlGenerator.SimpleConstraintNamingRules
 import org.mojoz.querease._
 import org.tresql.QueryParser
+import org.tresql.parsing.Arr
 import org.wabase.AppMetadata.Action.VariableTransform
 
 import scala.collection.immutable.Seq
@@ -466,6 +467,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val invocationRegex = """(\w|\$)+\.(\w|\$)+(\.(\w|\$)+)*""".r
     val returnRegex = """return\s+(.+)""".r //dot matches new line as well
     val uniqueOpRegex = """unique_opt\s+(.+)""".r
+    val redirectOpRegex = """redirect\s+(.+)""".r
     val jobCallRegex = """job\s+(:?\w+)""".r
     import ViewDefExtrasUtils._
     val steps = stepData.map { step =>
@@ -491,6 +493,12 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
           } else if (uniqueOpRegex.pattern.matcher(st).matches()) {
             val uniqueOpRegex(inner) = st
             Action.UniqueOpt(parseOp(inner))
+          } else if (redirectOpRegex.pattern.matcher(st).matches()) {
+            val redirectOpRegex(tresqls) = st
+            parser.parseExp(tresqls) match {
+              case Arr(List(pathAndKeys, params)) => Action.Redirect(pathAndKeys.tresql, params.tresql)
+              case _ => Action.Redirect(tresqls, null)
+            }
           } else {
             Action.Tresql(st)
           }
@@ -597,6 +605,7 @@ object AppMetadata {
     case class ViewCall(method: String, view: String) extends Op
     case class UniqueOpt(innerOp: Op) extends Op
     case class Invocation(className: String, function: String) extends Op
+    case class Redirect(pathAndKeyTresql: String, paramsTresql: String) extends Op
     case class VariableTransforms(transforms: List[VariableTransform]) extends Op
     case class JobCall(name: String) extends Op
 

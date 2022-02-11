@@ -1,7 +1,7 @@
 package org.wabase
 
 import akka.actor.ActorSystem
-import akka.stream.scaladsl.{Source, StreamConverters}
+import akka.stream.scaladsl.Source
 import org.mojoz.querease.{ValidationException, ValidationResult}
 import org.scalatest.flatspec.{AsyncFlatSpec, AsyncFlatSpecLike}
 import org.tresql.{MissingBindVariableException, ThreadLocalResources}
@@ -145,7 +145,8 @@ class WabaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Async
     )
     recoverToExceptionIf[ValidationException](
       doAction("save", "person", person).flatMap { _ =>
-        doAction("save", "person_health", vaccine).flatMap { _ =>
+        doAction("save", "person_health", vaccine).flatMap { r =>
+          r shouldBe RedirectResult("person_health", Seq("Mr. Gunza", "2021-06-05"), Map("param" -> "x"))
           doAction("save", "purchase", purchase)
         }
       }
@@ -214,7 +215,8 @@ class WabaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Async
       "amount" -> 2
     )
     doAction("save", "person", person).flatMap { _ =>
-      doAction("save", "person_health", vaccine).flatMap { _ =>
+      doAction("save", "person_health", vaccine).flatMap { r =>
+        r shouldBe RedirectResult("person_health", Seq("Mr. Mario", "2021-08-15"), Map("param" -> "x"))
         doAction("save", "payment", payment).flatMap { _ =>
           doAction("save", "purchase", purchase)
         }
