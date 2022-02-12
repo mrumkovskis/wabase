@@ -10,7 +10,7 @@ import scala.reflect.ManifestFactory
 import spray.json._
 
 import scala.concurrent.{ExecutionContext, Future}
-import scala.jdk.CollectionConverters.{MapHasAsJava, MapHasAsScala}
+import scala.jdk.CollectionConverters._
 import scala.util.{Failure, Try}
 import scala.util.control.NonFatal
 
