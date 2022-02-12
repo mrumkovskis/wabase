@@ -10,6 +10,7 @@ import scala.reflect.ManifestFactory
 import spray.json._
 
 import scala.concurrent.{ExecutionContext, Future}
+import scala.jdk.CollectionConverters.{MapHasAsJava, MapHasAsScala}
 import scala.util.{Failure, Try}
 import scala.util.control.NonFatal
 
@@ -463,6 +464,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     def qresult(r: Any) = r match {
       case null => NoResult // reflection call on function with Unit (void) return type returns null
       case m: Map[String, Any]@unchecked => MapResult(m)
+      case m: java.util.Map[String, Any]@unchecked => MapResult(m.asScala.toMap)
       case l: List[Any] => ListResult(l)
       case r: Result[_] => TresqlResult(r)
       case l: Long => NumberResult(l)
@@ -472,20 +474,24 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case o: Option[DTO]@unchecked => OptionResult(o)
       case x => sys.error(s"Unrecognized result type: ${x.getClass}, value: $x")
     }
+    def param(parType: Class[_]) = {
+      if (classOf[Dto].isAssignableFrom(parType)) fill(data.toJson.asJsObject)
+      else if (parType.isAssignableFrom(classOf[java.util.Map[_, _]])) data.asJava
+      else data
+    }
+
     val clazz = Class.forName(className)
-    Try {
-      clazz
-        .getMethod(function, classOf[Map[_, _]], classOf[Resources])
-        .invoke(clazz.getDeclaredConstructor().newInstance(), data, res)
-    }.recover {
-      case _: NoSuchMethodException =>
-        clazz
-          .getMethod(function, classOf[Map[_, _]])
-          .invoke(clazz.getDeclaredConstructor().newInstance(), data)
+    clazz.getMethods.find(_.getName == function).map { method =>
+      val parTypes = method.getParameterTypes
+      val parCount = parTypes.length
+      val obj = clazz.getDeclaredConstructor().newInstance()
+      if (parCount == 0) method.invoke(obj)
+      else if (parCount == 1) method.invoke(obj, param(parTypes(0)))
+      else if (parCount == 2) method.invoke(obj, param(parTypes(0)), res)
     }.map {
       case f: Future[_] => f map qresult
       case x => Future.successful(qresult(x))
-    }.get
+    }.getOrElse(sys.error(s"Method $function not found in class $className"))
   }
 
   protected def doJobCall(jobName: String,
