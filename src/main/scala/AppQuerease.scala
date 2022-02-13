@@ -472,7 +472,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case r: QuereaseIteratorResult[DTO]@unchecked => IteratorResult(r)
       case d: DTO@unchecked => PojoResult(d)
       case o: Option[DTO]@unchecked => OptionResult(o)
-      case x => sys.error(s"Unrecognized result type: ${x.getClass}, value: $x")
+      case x => sys.error(s"Unrecognized result type: ${x.getClass}, value: $x from function $className.$function")
     }
     def param(parType: Class[_]) = {
       if (classOf[Dto].isAssignableFrom(parType)) fill(data.toJson.asJsObject)
