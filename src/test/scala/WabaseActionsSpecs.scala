@@ -77,7 +77,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Async
             case IncompleteResultSource(result) => result
           }
           serializerSource
-            .via(BorerNestedArraysTransformer.flow(JsonOutput(_, true, view, app.qe.nameToViewDef)))
+            .via(BorerNestedArraysTransformer.flow(JsonResultRenderer(_, true, view, app.qe.nameToViewDef)))
             .runFold("")(_ + _.decodeString("UTF-8"))
             .map(_.parseJson.convertTo[List[Any]](app.qe.ListJsonFormat))
             .map(_.map {

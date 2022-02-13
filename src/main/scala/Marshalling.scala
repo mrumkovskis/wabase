@@ -184,7 +184,7 @@ trait QuereaseResultMarshalling { this:
   }
 
   def createJsonEncoderFactory(viewName: String, isCollection: Boolean): EncoderFactory =
-    JsonOutput(_, isCollection, viewName, qe.nameToViewDef)
+    JsonResultRenderer(_, isCollection, viewName, qe.nameToViewDef)
   def createCsvEncoderFactory(viewName: String): EncoderFactory =
     os => new CsvOutput(new OutputStreamWriter(os, "UTF-8"), Option(viewName).map(qe.viewNameToLabels).orNull)
   def createOdsEncoderFactory(viewName: String): EncoderFactory =

@@ -33,29 +33,39 @@ trait ResultEncoder {
   def writeEndOfInput():        Unit
 }
 
-class CborOrJsonOutput(
-  w: borer.Writer,
+abstract class ResultRenderer(
   isCollection: Boolean,
   viewName: String,
   nameToViewDef: Map[String, MojozViewDef],
-) extends BorerValueEncoder(w) with ResultEncoder {
-  import CborOrJsonOutput.Context
+) extends ResultEncoder {
+  import ResultRenderer.Context
   var contextStack: List[Context] = Nil
   var chunkType: ChunkType = null
   var buffer: ByteString = null
+  protected def renderMapStart()   = {}
+  protected def renderArrayStart() = {}
+  protected def renderBreak()      = {}
+  protected def renderValue(value: Any): Unit
+  protected def renderValue(name: String, value: Any): Unit = {
+    renderValue(name)
+    value match {
+      case bytes: Array[Byte] => writeBytes(bytes)
+      case _ => renderValue(value)
+    }
+  }
   override def writeStartOfInput(): Unit = {
-    if (isCollection) w.writeArrayStart()
     val viewDef =
       if (viewName != null && nameToViewDef != null)
         nameToViewDef.getOrElse(viewName, null)
       else null
     contextStack = new Context(isRow = true, viewDef) :: contextStack
+    if (isCollection) renderArrayStart()
   }
   override def writeArrayStart(): Unit = {
     val context = contextStack.head
     if (context.isRow) {
       if (!context.isFirstRow) {
-        w.writeMapStart()
+        renderMapStart()
         contextStack = new Context(isRow = false, context.viewDef, allNames = context.names) :: contextStack
       } else {
         context.readingNames = true
@@ -71,9 +81,9 @@ class CborOrJsonOutput(
           nameToViewDef.getOrElse(fieldDef.type_.name, null)
         else null
       val isCollection = fieldDef == null || fieldDef.isCollection
-      super.writeValue(name)
+      renderValue(name)
       if (isCollection)
-        w.writeArrayStart()
+        renderArrayStart()
       context.names = context.names.tail
       contextStack = new Context(isRow = true, viewDef, allNames = Nil, isCollection) :: contextStack
     }
@@ -81,61 +91,39 @@ class CborOrJsonOutput(
   override def writeValue(value: Any): Unit = {
     val context = contextStack.head
     if (!context.isRow) {
-      super.writeValue(context.names.head)
-      value match {
-        case bytes: Array[Byte] => writeBytes(bytes)
-        case _ => super.writeValue(value)
-      }
+      renderValue(context.names.head, value)
       context.names = context.names.tail
     } else if (context.isFirstRow) {
       if (context.readingNames) {
         context.names = ("" + value) :: context.names
       } else {
-        value match {
-          case bytes: Array[Byte] => writeBytes(bytes)
-          case _ => super.writeValue(value)
-        }
+        renderValue(value)
       }
     }
   }
   override def startChunks(chunkType: ChunkType): Unit = {
-    chunkType match {
-      case TextChunks => if (w.writingCbor) w.writeTextStart()
-      case ByteChunks => if (w.writingCbor) w.writeBytesStart()
-      case _ => sys.error("Unsupported ChunkType: " + chunkType)
-    }
     this.chunkType = chunkType
-    if (!w.writingCbor)
-      buffer = ByteString.empty
+    buffer = ByteString.empty
   }
   override def writeChunk(chunk: Any): Unit = {
     chunk match {
       case bytes: ByteString =>
-        if (w.writingCbor) chunkType match {
-          case TextChunks => w.writeText(bytes)
-          case ByteChunks => w.writeBytes(bytes)
-          case _ => sys.error("Unsupported ChunkType: " + chunkType)
-        } else {
-          buffer = ByteStringByteAccess.concat(buffer, bytes)
-        }
+        buffer = ByteStringByteAccess.concat(buffer, bytes)
       case x => sys.error("Unsupported chunk class: " + x.getClass.getName)
     }
   }
-  /* Override to change bytes encoding for json. Default is Base64. See io.bullet.borer.encodings */
+  /* Override to change bytes encoding. Default is Base64. See io.bullet.borer.encodings */
   def writeBytes(bytes: Any) = bytes match {
     case bytes: Array[Byte] =>
-      if (w.writingCbor) w.writeBytes(bytes)
-      else               w.writeString(ByteString.fromArrayUnsafe(bytes).encodeBase64.utf8String)
+      renderValue(ByteString.fromArrayUnsafe(bytes).encodeBase64.utf8String)
     case x => sys.error("Unsupported bytes class: " + x.getClass.getName)
   }
   override def writeBreak(): Unit = {
     if (chunkType != null) {
-      if (!w.writingCbor) chunkType match {
+      chunkType match {
         case TextChunks => writeValue(buffer.utf8String)
         case ByteChunks => writeValue(buffer.toArrayUnsafe())
         case _ => sys.error("Unsupported ChunkType: " + chunkType)
-      } else {
-        w.writeBreak()
       }
       chunkType = null
       buffer = null
@@ -147,23 +135,23 @@ class CborOrJsonOutput(
         context.names = context.names.reverse
       } else {
         if (context.isCollection)
-          w.writeBreak()
+          renderBreak()
         contextStack = contextStack.tail
       }
     }
   }
   override def writeEndOfInput(): Unit = {
-    if (isCollection) w.writeBreak()
+    if (isCollection) renderBreak()
     contextStack = contextStack.tail
   }
 }
 
-object CborOrJsonOutput {
+object ResultRenderer {
   class Context(
     val isRow: Boolean,
     val viewDef: MojozViewDef,
     val allNames: List[String] = Nil,
-    val isCollection: Boolean = true
+    val isCollection: Boolean = true,
   ) {
     var isFirstRow: Boolean = isRow
     var readingNames: Boolean = false
@@ -171,14 +159,65 @@ object CborOrJsonOutput {
   }
 }
 
-object CborOutput {
-  def apply(outputStream: OutputStream, isCollection: Boolean, viewName: String, nameToViewDef: Map[String, MojozViewDef]) =
-    new CborOrJsonOutput(BorerNestedArraysEncoder.createWriter(outputStream, Cbor), isCollection, viewName, nameToViewDef)
+class CborOrJsonResultRenderer(
+  w: borer.Writer,
+  isCollection: Boolean,
+  viewName: String,
+  nameToViewDef: Map[String, MojozViewDef],
+) extends ResultRenderer(isCollection, viewName, nameToViewDef) {
+  val valueEncoder = new BorerValueEncoder(w)
+  override protected def renderMapStart()        = w.writeMapStart()
+  override protected def renderArrayStart()      = w.writeArrayStart()
+  override protected def renderBreak()           = w.writeBreak()
+  override protected def renderValue(value: Any) = valueEncoder.writeValue(value)
+  override def startChunks(chunkType: ChunkType): Unit = {
+    if (w.writingCbor) {
+      chunkType match {
+        case TextChunks => if (w.writingCbor) w.writeTextStart()
+        case ByteChunks => if (w.writingCbor) w.writeBytesStart()
+        case _ => sys.error("Unsupported ChunkType: " + chunkType)
+      }
+      this.chunkType = chunkType
+    } else super.startChunks(chunkType)
+  }
+  override def writeChunk(chunk: Any): Unit = {
+    if (w.writingCbor) {
+      chunk match {
+        case bytes: ByteString =>
+          chunkType match {
+            case TextChunks => w.writeText(bytes)
+            case ByteChunks => w.writeBytes(bytes)
+            case _ => sys.error("Unsupported ChunkType: " + chunkType)
+          }
+        case x => sys.error("Unsupported chunk class: " + x.getClass.getName)
+      }
+    } else super.writeChunk(chunk)
+  }
+  override def writeBytes(bytes: Any) = {
+    if (w.writingCbor) bytes match {
+      case bytes: Array[Byte] =>
+        w.writeBytes(bytes)
+      case x => sys.error("Unsupported bytes class: " + x.getClass.getName)
+    } else super.writeBytes(bytes)
+  }
+  override def writeBreak(): Unit = {
+    if (chunkType != null && w.writingCbor) {
+      w.writeBreak()
+      chunkType = null
+    } else {
+      super.writeBreak()
+    }
+  }
 }
 
-object JsonOutput {
+object CborResultRenderer {
   def apply(outputStream: OutputStream, isCollection: Boolean, viewName: String, nameToViewDef: Map[String, MojozViewDef]) =
-    new CborOrJsonOutput(BorerNestedArraysEncoder.createWriter(outputStream, Json), isCollection, viewName, nameToViewDef)
+    new CborOrJsonResultRenderer(BorerNestedArraysEncoder.createWriter(outputStream, Cbor), isCollection, viewName, nameToViewDef)
+}
+
+object JsonResultRenderer {
+  def apply(outputStream: OutputStream, isCollection: Boolean, viewName: String, nameToViewDef: Map[String, MojozViewDef]) =
+    new CborOrJsonResultRenderer(BorerNestedArraysEncoder.createWriter(outputStream, Json), isCollection, viewName, nameToViewDef)
 }
 
 abstract class FlatTableOutput(val labels: Seq[String]) extends ResultEncoder {

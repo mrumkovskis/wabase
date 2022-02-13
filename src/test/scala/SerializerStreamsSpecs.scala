@@ -278,7 +278,7 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
     def test(dtos: Seq[Dto], isCollection: Boolean, viewName: String = null, bufferSizeHint: Int = 256) =
       serializeAndTransform(
         DtoDataSerializer.source(() => dtos.iterator, bufferSizeHint = bufferSizeHint),
-        outputStream => JsonOutput(outputStream, isCollection, viewName, qe.nameToViewDef),
+        outputStream => JsonResultRenderer(outputStream, isCollection, viewName, qe.nameToViewDef),
         bufferSizeHint = bufferSizeHint,
       )
     val (person, person_a) = createPersonDtos
