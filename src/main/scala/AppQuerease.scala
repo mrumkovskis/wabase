@@ -61,8 +61,9 @@ trait AppQuereaseIo extends org.mojoz.querease.ScalaDtoQuereaseIo with JsonConve
 
   private [wabase] val FieldRefRegexp_ = FieldRefRegexp
 
-  def fill[B <: DTO: Manifest](jsObject: JsObject): B =
+  def fill[B <: DTO: Manifest](jsObject: JsObject): B = {
     implicitly[Manifest[B]].runtimeClass.getConstructor().newInstance().asInstanceOf[B {type QE = AppQuerease}].fill(jsObject)(this)
+  }
 }
 
 class QuereaseEnvException(val env: Map[String, Any], cause: Exception) extends Exception(cause) {
@@ -475,8 +476,10 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case x => sys.error(s"Unrecognized result type: ${x.getClass}, value: $x from function $className.$function")
     }
     def param(parType: Class[_]) = {
-      if (classOf[Dto].isAssignableFrom(parType)) fill(data.toJson.asJsObject)
-      else if (parType.isAssignableFrom(classOf[java.util.Map[_, _]])) data.asJava
+      if (classOf[Dto].isAssignableFrom(parType))
+        fill(data.toJson.asJsObject)(Manifest.classType(parType)) // specify manifest explicitly so it is not Nothing
+      else if (parType.isAssignableFrom(classOf[java.util.Map[_, _]]))
+        data.asJava
       else data
     }
 

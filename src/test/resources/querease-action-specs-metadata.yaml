@@ -80,6 +80,7 @@ save:
       transactions_balance tb[balance != tr_balance] { number, balance, tr_balance }
     }, (wrong_balances{count(*)}) = 0,
     "Wrong balance for accounts '" || (wrong_balances{group_concat(number || '(' || balance || ' != ' || tr_balance || ')')}) || "'"
+- return org.wabase.QuereaseActionTestManager.personSaveDtoBizMethod
 - return org.wabase.QuereaseActionTestManager.personSaveBizMethod
 - save person
 - org.wabase.QuereaseActionTestManager.sendNotifications

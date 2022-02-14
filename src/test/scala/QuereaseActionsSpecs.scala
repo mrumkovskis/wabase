@@ -3,6 +3,7 @@ package org.wabase
 import org.mojoz.querease.{ValidationException, ValidationResult}
 import org.scalatest.flatspec.{AsyncFlatSpec, AsyncFlatSpecLike}
 import org.tresql.{Query, Resources}
+import org.wabase.QuereaseActionsDtos.Person
 
 import scala.concurrent.{ExecutionContext, Future}
 
@@ -349,6 +350,10 @@ class QuereaseActionTestManager extends Loggable {
   def personSaveBizMethod(data: Map[String, Any]) = {
     val address = if (data("sex") == "M") "Mr." else "Ms."
     data + ("name" -> s"$address ${data("name")}")
+  }
+
+  def personSaveDtoBizMethod(data: Person): Person = {
+    data
   }
 
   def sendNotifications(data: Map[String, Any]): Unit = {
