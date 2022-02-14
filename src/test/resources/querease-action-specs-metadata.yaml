@@ -82,6 +82,7 @@ save:
     "Wrong balance for accounts '" || (wrong_balances{group_concat(number || '(' || balance || ' != ' || tr_balance || ')')}) || "'"
 - return org.wabase.QuereaseActionTestManager.personSaveDtoBizMethod
 - return org.wabase.QuereaseActionTestManager.personSaveBizMethod
+- return org.wabase.QuereaseActionTestManager.personSaveJavaMapBizMethod
 - save person
 - org.wabase.QuereaseActionTestManager.sendNotifications
 - return get person

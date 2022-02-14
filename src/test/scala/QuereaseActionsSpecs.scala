@@ -361,6 +361,10 @@ class QuereaseActionTestManager extends Loggable {
     else data
   }
 
+  def personSaveJavaMapBizMethod(data: java.util.Map[String, Any]) = {
+    data
+  }
+
   def sendNotifications(data: Map[String, Any]): Unit = {
     logger.info("Person data change notifications sender called")
   }
