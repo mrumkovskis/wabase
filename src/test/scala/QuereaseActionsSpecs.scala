@@ -348,12 +348,17 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Asy
 
 class QuereaseActionTestManager extends Loggable {
   def personSaveBizMethod(data: Map[String, Any]) = {
-    val address = if (data("sex") == "M") "Mr." else "Ms."
-    data + ("name" -> s"$address ${data("name")}")
+    if (data("sex") == "F")
+      data + ("name" -> s"Ms. ${data("name")}")
+    else data
   }
 
   def personSaveDtoBizMethod(data: Person): Person = {
-    data
+    if (data.sex == "M") {
+      data.name = s"Mr. ${data.name}"
+      data
+    }
+    else data
   }
 
   def sendNotifications(data: Map[String, Any]): Unit = {
