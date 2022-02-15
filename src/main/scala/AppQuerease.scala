@@ -297,6 +297,8 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
         step match {
           case Evaluation(_, vts, op) =>
             doActionOp(op, doVarsTransforms(vts, stepData, stepData).result, context.env, context.view)
+          case SetEnv(_, vts, op) =>
+            doActionOp(op, doVarsTransforms(vts, stepData, stepData).result, context.env, context.view)
           case Return(_, vts, op) =>
             doActionOp(op, doVarsTransforms(vts, stepData, stepData).result, context.env, context.view)
           case Validations(_, validations, db) =>
@@ -312,29 +314,25 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
 
     steps match {
       case Nil => curData map MapResult
-      case s :: Nil => doStep(s, curData) flatMap { finalRes =>
-        s match {
-          case e: Evaluation =>
-            doSteps(Nil, context, curData.map(updateCurRes(_, e.name, dataForNewStep(finalRes))))
-          case _ => Future.successful(finalRes)
-        }
-      }
+      case s :: Nil => doStep(s, curData)
       case s :: tail =>
-        val newData =
-          doStep(s, curData) flatMap { stepRes =>
-            s match {
-              case e: Evaluation =>
-                curData.map(updateCurRes(_, e.name, dataForNewStep(stepRes)))
-              case r: Return => dataForNewStep(stepRes) match {
-                case m: Map[String, Any]@unchecked => Future.successful(m)
-                case x =>
-                  //in the case of primitive value return step must have name
-                  r.name.map(n => Future.successful(Map(n -> x))).getOrElse(curData)
-              }
-              case _ => curData
-            }
+        doStep(s, curData) flatMap { stepRes =>
+          s match {
+            case e: Evaluation =>
+              doSteps(tail, context, curData.map(updateCurRes(_, e.name, dataForNewStep(stepRes))))
+            case se: SetEnv =>
+              val newData =
+                dataForNewStep(stepRes) match {
+                  case m: Map[String, Any]@unchecked => Future.successful(m)
+                  case x =>
+                    //in the case of primitive value return step must have name
+                    se.name.map(n => Future.successful(Map(n -> x))).getOrElse(curData)
+                }
+              doSteps(tail, context, newData)
+            case _: Return => Future.successful(stepRes)
+            case _ => doSteps(tail, context, curData)
           }
-        doSteps(tail, context, newData)
+        }
     }
   }
 

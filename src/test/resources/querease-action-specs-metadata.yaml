@@ -80,12 +80,12 @@ save:
       transactions_balance tb[balance != tr_balance] { number, balance, tr_balance }
     }, (wrong_balances{count(*)}) = 0,
     "Wrong balance for accounts '" || (wrong_balances{group_concat(number || '(' || balance || ' != ' || tr_balance || ')')}) || "'"
-- return org.wabase.QuereaseActionTestManager.personSaveDtoBizMethod
-- return org.wabase.QuereaseActionTestManager.personSaveBizMethod
-- return org.wabase.QuereaseActionTestManager.personSaveJavaMapBizMethod
+- setenv org.wabase.QuereaseActionTestManager.personSaveDtoBizMethod
+- setenv org.wabase.QuereaseActionTestManager.personSaveBizMethod
+- setenv org.wabase.QuereaseActionTestManager.personSaveJavaMapBizMethod
 - save person
 - org.wabase.QuereaseActionTestManager.sendNotifications
-- return get person
+- get person
 
 
 name: person_simple
@@ -131,7 +131,7 @@ save:
 - save payment
 - =account[number = :originator] { balance, last_modified } [balance - :amount, :time]
 - =account[number = :beneficiary] { balance, last_modified } [balance + :amount, :time]
-- return :id
+- :id
 
 
 name: person_list
@@ -178,7 +178,7 @@ save:
 - validations check_person:
   - (person[name = :name]{count(1)}) > 0, "Person '" || :name || "' must be registered"
 - save person_health
-- return redirect |med_db:{'person_health', :name, :manipulation_date}, {'x' param}
+- redirect |med_db:{'person_health', :name, :manipulation_date}, {'x' param}
 
 
 name: person_with_health_data
@@ -258,9 +258,9 @@ save:
 - save purchase
 get:
 - null{:purchase_time, :customer}    # ensure bind variable existence (must prefix columns with null table due to yaml parser)
-- return unique_opt list purchase
+- unique_opt list purchase
 delete:
-- return -shop_db:purchase [purchase_time = :purchase_time & customer = :customer]
+- -shop_db:purchase [purchase_time = :purchase_time & customer = :customer]
 
 
 name: purchase_get
@@ -273,5 +273,5 @@ fields:
 - item
 - amount
 get:
-- return unique_opt |shop_db:purchase[purchase_time = :purchase_time & customer = :customer]
+- unique_opt |shop_db:purchase[purchase_time = :purchase_time & customer = :customer]
     {item, amount}

@@ -465,6 +465,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val validationRegex = new Regex(s"${Action.ValidationsKey}(?:\\s+(\\w+))?(?:\\s+\\[(?:\\s*(\\w+)?\\s*(?::\\s*(\\w+)\\s*)?)\\])?")
     val viewCallRegex = new Regex(Action().mkString("(", "|", """)\s+(:?\w+)"""))
     val invocationRegex = """(\w|\$)+\.(\w|\$)+(\.(\w|\$)+)*""".r
+    val setEnvRegex = """setenv\s+(.+)""".r //dot matches new line as well
     val returnRegex = """return\s+(.+)""".r //dot matches new line as well
     val uniqueOpRegex = """unique_opt\s+(.+)""".r
     val redirectOpRegex = """redirect\s+(.+)""".r
@@ -504,20 +505,27 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
           }
         }
         def parseSt(st: String, varTrs: List[VariableTransform]) = {
-          if (returnRegex.pattern.matcher(st).matches) {
-            val returnRegex(ret) = st
-            Action.Return(name, varTrs,
-              if (ret.contains("="))
+          def setEnvOrRetStep(createStep: Action.Op => Action.Step, stepRegex: Regex): Action.Step = {
+            val stepRegex(opStr) = st
+            val op =
+              if (opStr.contains("="))
                 Try {
                   val p = parser.asInstanceOf[AppQuereaseDefaultParser] // FIXME get rid of typecast
-                  p.parseWithParser(p.varsTransforms)(ret)
-                }.toOption.getOrElse(parseOp(ret))
-              else parseOp(ret)
-            )
+                  p.parseWithParser(p.varsTransforms)(opStr)
+                }.toOption.getOrElse(parseOp(opStr))
+              else parseOp(opStr)
+            createStep(op)
+          }
+
+          if (setEnvRegex.pattern.matcher(st).matches()) {
+            setEnvOrRetStep(Action.SetEnv(name, varTrs, _), setEnvRegex)
+          } else if (returnRegex.pattern.matcher(st).matches) {
+            setEnvOrRetStep(Action.Return(name, varTrs, _), returnRegex)
           } else {
             Action.Evaluation(name, varTrs, parseOp(st))
           }
         }
+
         if (statement.contains("->")) {
           val p = parser.asInstanceOf[AppQuereaseDefaultParser] // FIXME get rid of typecast
           Try(p.parseWithParser(p.stepWithVarsTransform)(statement))
@@ -610,6 +618,7 @@ object AppMetadata {
     case class JobCall(name: String) extends Op
 
     case class Evaluation(name: Option[String], varTrans: List[VariableTransform], op: Op) extends Step
+    case class SetEnv(name: Option[String], varTrans: List[VariableTransform], value: Op) extends Step
     case class Return(name: Option[String], varTrans: List[VariableTransform], value: Op) extends Step
     case class Validations(name: Option[String], validations: Seq[String], db: Option[DbAccessKey]) extends Step
   }
