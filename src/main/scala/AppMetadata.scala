@@ -462,14 +462,14 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
   protected def parseAction(objectName: String, stepData: Seq[Any]): Action = {
     // matches - 'validations validation_name [db:cp]'
-    val validationRegex = new Regex(s"${Action.ValidationsKey}(?:\\s+(\\w+))?(?:\\s+\\[(?:\\s*(\\w+)?\\s*(?::\\s*(\\w+)\\s*)?)\\])?")
-    val viewCallRegex = new Regex(Action().mkString("(", "|", """)\s+(:?\w+)"""))
-    val invocationRegex = """(\w|\$)+\.(\w|\$)+(\.(\w|\$)+)*""".r
+    val validationRegex = new Regex(s"(?U)${Action.ValidationsKey}(?:\\s+(\\w+))?(?:\\s+\\[(?:\\s*(\\w+)?\\s*(?::\\s*(\\w+)\\s*)?)\\])?")
+    val viewCallRegex = new Regex(Action().mkString("(?U)(", "|", """)\s+(:?\w+)"""))
+    val invocationRegex = """(?U)(\w|\$)+\.(\w|\$)+(\.(\w|\$)+)*""".r
     val setEnvRegex = """setenv\s+(.+)""".r //dot matches new line as well
     val returnRegex = """return\s+(.+)""".r //dot matches new line as well
     val uniqueOpRegex = """unique_opt\s+(.+)""".r
     val redirectOpRegex = """redirect\s+(.+)""".r
-    val jobCallRegex = """job\s+(:?\w+)""".r
+    val jobCallRegex = """(?U)job\s+(:?\w+)""".r
     import ViewDefExtrasUtils._
     val steps = stepData.map { step =>
       def parseNamedStep(str: String) = {
