@@ -108,11 +108,10 @@ trait TemplateUtil { this: client.CoreClient =>
       .setAllowDuplicateKeys(false)
       .build();
     val content = Source.fromFile(file)(Codec.UTF8).mkString
-    val yaml = new Load(loaderSettings).loadFromString(content) match {
-      case m: java.util.Map[String @unchecked, _] => m.asScala.toMap
+    val map = new Load(loaderSettings).loadFromString(content) match {
+      case m: java.util.Map[String @unchecked, _] => javaMapToMap(m)
       case x => sys.error("Unexpected class: " + Option(x).map(_.getClass).orNull)
     }
-    val map = javaMapToMap(yaml.asInstanceOf[java.util.Map[String, _]])
     val ret = process(map)
     ret
   }
