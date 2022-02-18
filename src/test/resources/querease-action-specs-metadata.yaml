@@ -156,8 +156,7 @@ table:
 fields:
 - id
 get:
-- view_name = 'person'
-- person = get :view_name # view name is referenced by bind variable // FIXME db usage analysis stops here, expect runtime exceptions?
+- person = get person
 - main_acc_id = coalesce((account[number = :person.main_account] {id}), -1)
 - account = (id = :main_acc_id) -> get person_accounts
 - main_account_data = if_defined_or_else(:account.number, :account.number || '(' || :account.balance || ')', '<no main account>')
@@ -179,6 +178,18 @@ save:
   - (person[name = :name]{count(1)}) > 0, "Person '" || :name || "' must be registered"
 - save person_health
 - redirect |med_db:{'person_health', :name, :manipulation_date}, {'x' param}
+
+
+name: person_health_priv
+extends: person_health
+api: save, get
+db: med_db
+table: person_health
+fields:
+- id
+save:
+- name = :current_person
+- save person_health
 
 
 name: person_with_health_data

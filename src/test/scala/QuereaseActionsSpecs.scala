@@ -306,6 +306,12 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Asy
     recoverToExceptionIf[ValidationException] {
       querease.doAction("person_health", "save", ph.toMap(querease), Map())
     }.map(_.details should be (List(ValidationResult(Nil, List("Person 'Gunza' must be registered")))))
+
+    val m =
+      Map("current_person" -> "Gunzagi", "vaccine" -> "AstraZeneca", "manipulation_date" -> java.sql.Date.valueOf("2021-06-05"))
+    recoverToExceptionIf[ValidationException] {
+      querease.doAction("person_health_priv", "save", m, Map())
+    }.map(_.details should be (List(ValidationResult(Nil, List("Person 'Gunzagi' must be registered")))))
   }
 
   it should "register person health data" in {
@@ -315,7 +321,9 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Asy
     )
     val vaccines = List(
       Map("name" -> "Mario", "vaccine" -> "Pfizer", "manipulation_date" -> java.sql.Date.valueOf("2021-08-10")),
-      Map("name" -> "Gunzagi", "vaccine" -> "AstraZeneca", "manipulation_date" -> java.sql.Date.valueOf("2021-06-05")),
+    )
+    val vaccines_priv = List(
+      Map("current_person" -> "Gunzagi", "vaccine" -> "AstraZeneca", "manipulation_date" -> java.sql.Date.valueOf("2021-06-05")),
     )
     def saveData(view: String, data: List[Map[String, Any]])(implicit res: Resources) =
       data.foldLeft(Future.successful[QuereaseResult](NumberResult(0))) { (r, d) =>
@@ -324,6 +332,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Asy
 
     saveData("person_simple", persons)
       .flatMap(_ => saveData("person_health", vaccines))
+      .flatMap(_ => saveData("person_health_priv", vaccines_priv))
       .flatMap { _ =>
         querease.doAction("person_with_health_data", "list", Map("names" -> List("Mario", "Gunzagi")), Map()).map {
           case IteratorResult(res) =>

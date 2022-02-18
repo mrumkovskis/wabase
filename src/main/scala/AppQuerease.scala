@@ -415,7 +415,9 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
   protected def doViewCall(method: String,
                            view: String,
                            data: Map[String, Any],
-                           env: Map[String, Any])(implicit res: Resources): QuereaseResult = {
+                           env: Map[String, Any],
+                           context: Option[ViewDef])(implicit res: Resources,
+                                                     ec: ExecutionContext): Future[QuereaseResult] = {
     import Action._
     import CoreTypes._
     val callData = data ++ env
@@ -434,24 +436,30 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case x => x.toString.toInt
     }, callData)
     def string(name: String) = callData.get(name) map String.valueOf
-    method match {
-      case Get =>
-        OptionResult(long("id").flatMap(get(_, null, data)(mf, res)))
-      case Action.List =>
-        IteratorResult(result(callData, int(OffsetKey).getOrElse(0), int(LimitKey).getOrElse(0),
-          string(OrderKey).orNull)(mf, res))
-      case Save =>
-        IdResult(saveMap(v, callData, env, false, null))
-      case Delete =>
-        NumberResult(long("id")
-          .map { deleteById(v, _, null, env) }
-          .getOrElse(sys.error(s"id not found in data")))
-      case Create =>
-        PojoResult(create(callData)(mf, res))
-      case Count =>
-        NumberResult(countAll(callData))
-      case x =>
-        sys.error(s"Unknown view action $x")
+    if (context.exists(_.name == view)) {
+      Future.successful {
+        method match {
+          case Get =>
+            OptionResult(long("id").flatMap(get(_, null, data)(mf, res)))
+          case Action.List =>
+            IteratorResult(result(callData, int(OffsetKey).getOrElse(0), int(LimitKey).getOrElse(0),
+              string(OrderKey).orNull)(mf, res))
+          case Save =>
+            IdResult(saveMap(v, callData, env, false, null))
+          case Delete =>
+            NumberResult(long("id")
+              .map { deleteById(v, _, null, env) }
+              .getOrElse(sys.error(s"id not found in data")))
+          case Create =>
+            PojoResult(create(callData)(mf, res))
+          case Count =>
+            NumberResult(countAll(callData))
+          case x =>
+            sys.error(s"Unknown view action $x")
+        }
+      }
+    } else {
+      doAction(view, method, data, env)
     }
   }
 
@@ -533,7 +541,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case Tresql(tresql) =>
         Future.successful(doTresql(tresql, data ++ env, context))
       case ViewCall(method, view) =>
-        Future.successful(doViewCall(method, view, data, env))
+        doViewCall(method, view, data, env, context)
       case UniqueOpt(innerOp) =>
         def createGetResult(res: QuereaseResult): QuereaseResult = res match {
           case TresqlResult(r) if !r.isInstanceOf[DMLResult] =>
