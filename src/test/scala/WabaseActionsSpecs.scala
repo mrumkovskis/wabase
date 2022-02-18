@@ -69,22 +69,23 @@ class WabaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Async
                             params: Map[String, Any],
                             removeIdsFlag: Boolean = true) = {
     app.doWabaseAction(action, view, params)
-      .map(_.result)
-      .flatMap {
-        case sr: QuereaseSerializedResult =>
-          val serializerSource = sr.result match {
-            case CompleteResult(result) => Source.single(result)
-            case IncompleteResultSource(result) => result
-          }
-          serializerSource
-            .via(BorerNestedArraysTransformer.flow(JsonResultRenderer(_, true, view, app.qe.nameToViewDef)))
-            .runFold("")(_ + _.decodeString("UTF-8"))
-            .map(_.parseJson.convertTo[List[Any]](app.qe.ListJsonFormat))
-            .map(_.map {
-              case m: Map[String@unchecked, _] => if (removeIdsFlag) removeIds(m) else m
-              case x => x
-            })
-        case r => Future.successful(r)
+      .flatMap { wr =>
+        wr.result match {
+          case sr: QuereaseSerializedResult =>
+            val serializerSource = sr.result match {
+              case CompleteResult(result) => Source.single(result)
+              case IncompleteResultSource(result) => result
+            }
+            serializerSource
+              .via(BorerNestedArraysTransformer.flow(JsonResultRenderer(_, wr.isCollection, view, app.qe.nameToViewDef)))
+              .runFold("")(_ + _.decodeString("UTF-8"))
+              .map { strRes =>
+                if (wr.isCollection) strRes.parseJson.convertTo[List[Any]](app.qe.ListJsonFormat)
+                else strRes.parseJson.convertTo[Map[String, Any]](app.qe.MapJsonFormat)
+              }
+              .map(r => if (removeIdsFlag) removeIds(r) else r)
+          case r => Future.successful(r)
+        }
       }
   }
 
@@ -311,7 +312,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Async
     doAction("get", "purchase_get",
       Map("purchase_time" -> "2021-12-04 15:15:23.0", "customer" -> "Mr. Gunza"))
       .map {
-        _ should be (List(Map("amount" -> 60, "item" -> "joystick")))
+        _ should be (Map("amount" -> 60, "item" -> "joystick"))
       }
   }
 

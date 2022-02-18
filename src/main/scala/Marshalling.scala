@@ -192,10 +192,10 @@ trait QuereaseResultMarshalling { this:
   def createXlsXmlEncoderFactory(viewName: String): EncoderFactory =
     os => new XlsXmlOutput(new OutputStreamWriter(os, "UTF-8"), Option(viewName).map(qe.viewNameToLabels).orNull)
 
-  def toEntityQuereaseSerializedResultMarshaller(actionName: String, viewName: String): ToEntityMarshaller[QuereaseSerializedResult] = {
+  def toEntityQuereaseSerializedResultMarshaller(viewName: String, isCollection: Boolean): ToEntityMarshaller[QuereaseSerializedResult] = {
     implicit val formats_marshaller: ToEntityMarshaller[SerializedResult] =
       Marshaller.oneOf(
-        toEntitySerializedResultMarshaller(`application/json`,                createJsonEncoderFactory(viewName, actionName == AppMetadata.Action.List)),
+        toEntitySerializedResultMarshaller(`application/json`,                createJsonEncoderFactory(viewName, isCollection)),
         toEntitySerializedResultMarshaller(ContentTypes.`text/csv(UTF-8)`,    createCsvEncoderFactory(viewName)),
         toEntitySerializedResultMarshaller(`application/vnd.oasis.opendocument.spreadsheet`,
                                                                               createOdsEncoderFactory(viewName)),
@@ -220,8 +220,8 @@ trait QuereaseResultMarshalling { this:
       case rd: RedirectResult => (toResponseQuereaseRedirectResultMarshaller: ToResponseMarshaller[RedirectResult])(rd)
       case no: NoResult.type  => (toEntityQuereaseNoResultMarshaller:         ToResponseMarshaller[NoResult.type] )(no)
       case cr: QuereaseSerRes => (toEntityQuereaseSerializedResultMarshaller(
-        AppMetadata.Action.List,
-        wr.ctx.viewName): ToResponseMarshaller[QuereaseSerRes])(cr)
+        wr.ctx.viewName,
+        wr.isCollection): ToResponseMarshaller[QuereaseSerRes])(cr)
       case dr: QuereaseDeleteResult =>
         (toEntityQuereaseDeleteResultMarshaller: ToResponseMarshaller[QuereaseDeleteResult])(dr)
       case r: QuereaseResultWithCleanup =>
@@ -233,21 +233,18 @@ trait QuereaseResultMarshalling { this:
       Marshaller.combined { qir: qe.QuereaseIteratorResult[app.Dto] =>
         app.serializeResult(app.SerializationBufferSize, app.viewSerializationBufferMaxFileSize(viewName),
           DtoDataSerializer.source(() => qir))
-      } (GenericMarshallers.futureMarshaller(toEntityQuereaseSerializedResultMarshaller(AppMetadata.Action.List, viewName)))
+      } (GenericMarshallers.futureMarshaller(toEntityQuereaseSerializedResultMarshaller(viewName, isCollection = true)))
 
     Marshaller { ec => res => marsh(res.view.name)(ec)(res) }
   }
 
   implicit def toResponseTresqlResultMarshaller(implicit res: Resources): ToEntityMarshaller[RowLike] =
     Marshaller { _ => tresqlResult =>
-      val resType = tresqlResult match {
-        case _: Result[_] => AppMetadata.Action.List
-        case _ => AppMetadata.Action.Get
-      }
       val sr = app.serializeResult(app.SerializationBufferSize, app.SerializationBufferMaxFileSize,
         TresqlResultSerializer.source(() => tresqlResult), app.dbAccess.closeResources(res, _))
       GenericMarshallers
-        .futureMarshaller(toEntityQuereaseSerializedResultMarshaller(resType, null))(sr)
+        .futureMarshaller(toEntityQuereaseSerializedResultMarshaller(null,
+          tresqlResult.isInstanceOf[Result[_]]))(sr)
     }
 }
 

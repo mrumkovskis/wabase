@@ -49,7 +49,8 @@ trait WabaseApp[User] {
     val as:       ActorSystem
   )
 
-  case class WabaseResult(ctx: ActionContext, result: QuereaseResult)
+  /* isCollection parameter is only relevant for QuereaseSerializedResult rendering */
+  case class WabaseResult(ctx: ActionContext, result: QuereaseResult, isCollection: Boolean)
 
   def doWabaseAction(
     actionName: String,
@@ -76,22 +77,22 @@ trait WabaseApp[User] {
     import context.ec
     import context.as
     action(actionContext)
-      .andThen { case Success(WabaseResult(ctx, res)) => afterWabaseAction(ctx, res) }
+      .andThen { case Success(WabaseResult(ctx, res, _)) => afterWabaseAction(ctx, res) }
       .run
       .flatMap {
-        case WabaseResult(ac, QuereaseResultWithCleanup(result, cleanup)) =>
+        case WabaseResult(ac, QuereaseResultWithCleanup(result, cleanup), _) =>
           //do serialization phase if result is based on open database cursor
-          val resultSource = result match {
+          val (resultSource, isCollection) = result match {
             case TresqlResult(tr) =>
-              TresqlResultSerializer.source(() => tr)
+              (TresqlResultSerializer.source(() => tr), true)
             case TresqlSingleRowResult(row) =>
-              TresqlResultSerializer.source(() => row)
+              (TresqlResultSerializer.source(() => row), false)
             case IteratorResult(ir) =>
-              DtoDataSerializer.source(() => ir)
+              (DtoDataSerializer.source(() => ir), true)
           }
           serializeResult(SerializationBufferSize, viewSerializationBufferMaxFileSize(ac.viewName),
             resultSource, cleanup)
-            .map(WabaseResult(ac, _))
+            .map(WabaseResult(ac, _, isCollection))
         case wr => Future.successful(wr)
       }
   }
@@ -99,7 +100,7 @@ trait WabaseApp[User] {
   def simpleAction(context: ActionContext): ActionHandlerResult = {
     import context._
     qe.QuereaseAction(viewName, actionName, values, Map())(initViewResources, closeResources)
-      .map(WabaseResult(context, _))
+      .map(WabaseResult(context, _, isCollection = true))
   }
 
   def list(context: ActionContext): ActionHandlerResult = {
@@ -139,7 +140,7 @@ trait WabaseApp[User] {
         validateFields(viewName, saveable)
         validate(viewName, saveable)(state.locale)
         qe.QuereaseAction(viewName, actionName, saveable, Map.empty)(initViewResources, closeResources)
-          .map(WabaseResult(saveableContext, _))
+          .map(WabaseResult(saveableContext, _, isCollection = false))
           .recover { case ex => friendlyConstraintErrorMessage(viewDef, throw ex)(state.locale) }
       }
       qr match {
@@ -164,7 +165,7 @@ trait WabaseApp[User] {
       def delete(oldValue: Map[String, Any]) = {
         val richContext = context.copy(oldValue = oldValue)
         qe.QuereaseAction(viewName, actionName, values, Map.empty)(initViewResources, closeResources)
-          .map(WabaseResult(richContext, _))
+          .map(WabaseResult(richContext, _, isCollection = false))
           .recover { case ex => friendlyConstraintErrorMessage(throw ex)(state.locale) }
       }
       qr match {
