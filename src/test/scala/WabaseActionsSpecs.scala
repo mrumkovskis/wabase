@@ -69,23 +69,22 @@ class WabaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Async
                             params: Map[String, Any],
                             removeIdsFlag: Boolean = true) = {
     app.doWabaseAction(action, view, params)
-      .flatMap { wr =>
-        wr.result match {
-          case sr: QuereaseSerializedResult =>
-            val serializerSource = sr.result match {
-              case CompleteResult(result) => Source.single(result)
-              case IncompleteResultSource(result) => result
+      .map(_.result)
+      .flatMap {
+        case sr: QuereaseSerializedResult =>
+          val serializerSource = sr.result match {
+            case CompleteResult(result) => Source.single(result)
+            case IncompleteResultSource(result) => result
+          }
+          serializerSource
+            .via(BorerNestedArraysTransformer.flow(JsonResultRenderer(_, sr.isCollection, view, app.qe.nameToViewDef)))
+            .runFold("")(_ + _.decodeString("UTF-8"))
+            .map { strRes =>
+              if (sr.isCollection) strRes.parseJson.convertTo[List[Any]](app.qe.ListJsonFormat)
+              else strRes.parseJson.convertTo[Map[String, Any]](app.qe.MapJsonFormat)
             }
-            serializerSource
-              .via(BorerNestedArraysTransformer.flow(JsonResultRenderer(_, wr.isCollection, view, app.qe.nameToViewDef)))
-              .runFold("")(_ + _.decodeString("UTF-8"))
-              .map { strRes =>
-                if (wr.isCollection) strRes.parseJson.convertTo[List[Any]](app.qe.ListJsonFormat)
-                else strRes.parseJson.convertTo[Map[String, Any]](app.qe.MapJsonFormat)
-              }
-              .map(r => if (removeIdsFlag) removeIds(r) else r)
-          case r => Future.successful(r)
-        }
+            .map(r => if (removeIdsFlag) removeIds(r) else r)
+        case r => Future.successful(r)
       }
   }
 
