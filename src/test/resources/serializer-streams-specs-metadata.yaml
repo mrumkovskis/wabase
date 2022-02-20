@@ -1,0 +1,65 @@
+table: person
+columns:
+- id
+- name                 ! 51
+- surname                52
+- sex                  ! 1   (M F)
+- birthdate            ! date
+- main_account.id        account.id
+
+
+table: account
+columns:
+- id
+- number               ! 64
+- balance              ! decimal 10 2
+- last_modified        ! dateTime
+- person.id            !
+
+
+name: person
+api: save, get
+table: person
+fields:
+- id
+- name
+- surname
+- sex
+- birthdate
+- main_account = account a[a.id = (person p[p.id = :id] {main_account_id})] {number} -> = account[number = _]{id}
+- accounts * :
+    table: account
+    fields:
+    - id
+    - number
+    - balance
+    - last_modified
+
+
+name: person_simple
+table: person
+fields:
+- id
+- name
+- surname
+- sex
+- birthdate
+
+
+name: person_accounts_details
+table: person
+fields:
+- id
+- name
+- surname
+- main_account  person_accounts
+- accounts *    person_accounts
+- balances *    =
+
+
+name:   bytes_test
+table:  person
+fields:
+- id
+- name
+- bytes   bytes =

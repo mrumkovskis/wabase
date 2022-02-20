@@ -19,10 +19,11 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
   implicit protected var tresqlResources: Resources = _
   implicit val system = ActorSystem("serializer-streams-specs")
   implicit val executor = system.dispatcher
+  import SerializerStreamsSpecsDtos._
 
   override def beforeAll(): Unit = {
-    querease = new QuereaseBase("/querease-action-specs-metadata.yaml") {
-      override lazy val viewNameToClassMap = QuereaseActionsDtos.viewNameToClass
+    querease = new QuereaseBase("/serializer-streams-specs-metadata.yaml") {
+      override lazy val viewNameToClassMap = viewNameToClass
     }
     super.beforeAll()
     // TODO get rid of thread local resources
@@ -103,21 +104,21 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
     Await.result(source.runWith(foldToHexString(format)), 1.second)
   }
 
-  def createPersonDtos: (QuereaseActionsDtos.Person, QuereaseActionsDtos.PersonAccountsDetails) = {
-    val dto1 = new QuereaseActionsDtos.PersonAccounts
+  def createPersonDtos: (Person, PersonAccountsDetails) = {
+    val dto1 = new PersonAccounts
     dto1.number = "42"
     dto1.balance = 1001.01
     dto1.last_modified = java.sql.Timestamp.valueOf("2021-12-26 23:57:00.1")
-    val dto2 = new QuereaseActionsDtos.PersonAccounts
+    val dto2 = new PersonAccounts
     dto2.id = 2
     dto2.balance = 2002.02
     dto2.last_modified = java.sql.Timestamp.valueOf("2021-12-26 23:58:15.151")
-    val person = new QuereaseActionsDtos.Person
+    val person = new Person
     person.id = 0
     person.name = "John"
     person.surname = "Doe"
     person.accounts = List(dto1, dto2)
-    val person_a = new QuereaseActionsDtos.PersonAccountsDetails
+    val person_a = new PersonAccountsDetails
     person_a.id = 0
     person_a.name = "John"
     person_a.surname = "Doe"
@@ -243,9 +244,12 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
         includeHeaders = includeHeaders,
         bufferSizeHint = bufferSizeHint
       ),
-      outputStream => new CsvOutput(
-        writer = new OutputStreamWriter(outputStream, "UTF-8"),
-        labels = if (withLabels) cols.replace("birthdate", "birth date").split(", ").toList else null,
+      outputStream => new FlatTableResultRenderer(
+        renderer  = new CsvResultRenderer(new OutputStreamWriter(outputStream, "UTF-8")),
+        labels    = if (withLabels) cols.replace("birthdate", "birth date").split(", ").toList else null,
+        viewName  = null,
+        nameToViewDef = null,
+        hasHeaders = includeHeaders,
       ),
       bufferSizeHint = bufferSizeHint,
     )
@@ -267,7 +271,6 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
     ).mkString("", "\n", "\n")
     test(2, true, true) shouldBe List(
       "id,name,surname,sex,birth date",
-      "id,name,surname,sex,birthdate",
       "1,John,Doe,M,1969-01-01",
       "2,Jane,,F,1996-02-02",
     ).mkString("", "\n", "\n")
@@ -339,18 +342,172 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
     ).mkString
   }
 
+  it should "serialize tresql to cbor and reformat to csv - only top level fields in view" in {
+    implicit val qe = querease
+    def test(
+      viewName: String,
+      bufferSizeHint: Int = 256,
+    ) = serializeAndTransform(
+      TresqlResultSerializer.source(
+        () => Query("person {id, name, surname, sex, birthdate, |account {number, balance} accounts}"),
+      ),
+      outputStream => new FlatTableResultRenderer(
+        renderer  = new CsvResultRenderer(new OutputStreamWriter(outputStream, "UTF-8")),
+        labels    = null,
+        viewName  = viewName,
+        nameToViewDef = qe.nameToViewDef,
+      ),
+      bufferSizeHint = bufferSizeHint,
+    )
+    test(null) shouldBe List(
+      "id,name,surname,sex,birthdate,accounts",
+      "1,John,Doe,M,1969-01-01,",
+      "2,Jane,,F,1996-02-02,",
+    ).mkString("", "\n", "\n")
+    test("person_simple") shouldBe List(
+      "id,name,surname,sex,birthdate",
+      "1,John,Doe,M,1969-01-01",
+      "2,Jane,,F,1996-02-02",
+    ).mkString("", "\n", "\n")
+    test("person_accounts_details") shouldBe List(
+      "id,name,surname",
+      "1,John,Doe",
+      "2,Jane,",
+    ).mkString("", "\n", "\n")
+  }
+
+  it should "serialize tresql to cbor and reformat to json maps - only fields in view" in {
+    implicit val qe = querease
+    def test(
+      viewName: String,
+      bufferSizeHint: Int = 256,
+    ) = serializeAndTransform(
+      TresqlResultSerializer.source(
+        () => Query("person {id, name, surname, sex, birthdate, |account {number, balance} accounts}"),
+      ),
+      outputStream => JsonResultRenderer(outputStream, isCollection = true, viewName, qe.nameToViewDef),
+      bufferSizeHint = bufferSizeHint,
+    )
+    test(null) shouldBe List(
+      """{"id":1,"name":"John","surname":"Doe","sex":"M","birthdate":"1969-01-01","accounts":""" +
+        """[{"number":"X64","balance":1001.01},{"number":"X94","balance":2002.02}]}""",
+      """{"id":2,"name":"Jane","surname":null,"sex":"F","birthdate":"1996-02-02","accounts":[]}""",
+    ).mkString("[", ",", "]")
+    test("person_simple") shouldBe List(
+      """{"id":1,"name":"John","surname":"Doe","sex":"M","birthdate":"1969-01-01"}""",
+      """{"id":2,"name":"Jane","surname":null,"sex":"F","birthdate":"1996-02-02"}""",
+    ).mkString("[", ",", "]")
+    test("person_accounts_details") shouldBe List(
+      """{"id":1,"name":"John","surname":"Doe","accounts":[{"number":"X64","balance":1001.01},{"number":"X94","balance":2002.02}]}""",
+      """{"id":2,"name":"Jane","surname":null,"accounts":[]}""",
+    ).mkString("[", ",", "]")
+  }
+
+  it should "serialize tresql to cbor and reformat to json maps - with or without headers" in {
+    implicit val qe = querease
+    val queryString = qe.queryStringAndParams(qe.viewDef("person_accounts_details"), Map.empty)._1
+    def test(
+      viewName: String,
+      includeHeaders: Boolean,
+      bufferSizeHint: Int = 256,
+    ) = serializeAndTransform(
+      TresqlResultSerializer.source(
+        () => Query(queryString),
+        includeHeaders = includeHeaders,
+      ),
+      outputStream => new CborOrJsonResultRenderer(
+          BorerNestedArraysEncoder.createWriter(outputStream, Json),
+          isCollection = true, viewName, qe.nameToViewDef, hasHeaders = includeHeaders),
+      bufferSizeHint = bufferSizeHint,
+    )
+    val expected = List(
+      """{"id":1,"name":"John","surname":"Doe","main_account":null,"accounts":[""" +
+        """{"id":1,"number":"X64","balance":1001.01,"last_modified":"2021-12-21 00:55:55.0"},""" +
+        """{"id":2,"number":"X94","balance":2002.02,"last_modified":"2021-12-21 01:59:30.0"}]}""",
+      """{"id":2,"name":"Jane","surname":null,"main_account":null,"accounts":[]}""",
+    ).mkString("[", ",", "]")
+    test("person_accounts_details", false) shouldBe expected
+    test("person_accounts_details", true)  shouldBe expected
+  }
+
+  it should "serialize tresql to cbor and transform to csv - with or without headers" in {
+    implicit val qe = querease
+    val queryString = qe.queryStringAndParams(qe.viewDef("person_accounts_details"), Map.empty)._1
+    def test(
+      viewName: String,
+      includeHeaders: Boolean,
+      bufferSizeHint: Int = 256,
+    ) = serializeAndTransform(
+      TresqlResultSerializer.source(
+        () => Query(queryString),
+        includeHeaders = includeHeaders,
+      ),
+      outputStream => new FlatTableResultRenderer(
+        renderer = new CsvResultRenderer(new OutputStreamWriter(outputStream, "UTF-8")),
+        labels = null, viewName, qe.nameToViewDef, hasHeaders = includeHeaders),
+      bufferSizeHint = bufferSizeHint,
+    )
+    val expected = List(
+      "id,name,surname",
+      "1,John,Doe",
+      "2,Jane,",
+    ).mkString("", "\n", "\n")
+    test("person_accounts_details", false) shouldBe expected
+    test("person_accounts_details", true)  shouldBe expected
+  }
+
+  it should "invoke all table result renderer methods properly" in {
+    implicit val qe = querease
+    class TestTableRenderer(writer: java.io.Writer) extends TableResultRenderer {
+      def cellString(value: Any) = String.format("[%1$8s ] ", "" + Option(value).getOrElse("<null>"))
+      override def renderHeader()                =
+        writer.write("-- |---------| |---------| |---------| --\n")
+      override def renderRowStart()              = writer.write("#> ")
+      override def renderHeaderCell(value: Any)  = writer.write(cellString(value).toUpperCase)
+      override def renderCell(value: Any)        = writer.write(cellString(value))
+      override def renderRowEnd()                = writer.write("<#\n")
+      override def renderFooter()                = {
+        writer.write("-----------------------------------------\n")
+        writer.flush
+      }
+    }
+    val queryString = qe.queryStringAndParams(qe.viewDef("person_accounts_details"), Map.empty)._1
+    def test(
+      viewName: String,
+      includeHeaders: Boolean = true,
+      bufferSizeHint: Int = 256,
+    ) = serializeAndTransform(
+      TresqlResultSerializer.source(
+        () => Query(queryString),
+        includeHeaders = includeHeaders,
+      ),
+      outputStream => new FlatTableResultRenderer(
+        renderer = new TestTableRenderer(new OutputStreamWriter(outputStream, "UTF-8")),
+        labels = null, viewName, qe.nameToViewDef, hasHeaders = includeHeaders),
+      bufferSizeHint = bufferSizeHint,
+    )
+    test("person_accounts_details")  shouldBe List(
+      "-- |---------| |---------| |---------| --",
+      "#> [      ID ] [    NAME ] [ SURNAME ] <#",
+      "#> [       1 ] [    John ] [     Doe ] <#",
+      "#> [       2 ] [    Jane ] [  <null> ] <#",
+      "-----------------------------------------",
+    ).mkString("", "\n", "\n")
+  }
+
   it should "serialize known types to cbor and deserialize to somewhat similar types" in {
     import scala.language.existentials
     def test(value: Any, bufferSizeHint: Int = 256) = {
       var deserialized: Any = null
-      val handler = new FlatTableOutput(labels = null) {
+      val handler = new ResultRenderer(isCollection = false, viewName = null, nameToViewDef = null, hasHeaders = false) {
+        override def renderValue(value: Any): Unit = {}
         override def writeValue(value: Any): Unit = { deserialized = value }
-        override def writeCell(value: Any): Unit = ???
       }
       val serialized  = serializeValuesToHexString(List(value).iterator, bufferSizeHint = bufferSizeHint)
       val transformer = new BorerNestedArraysTransformer(
         Cbor.reader(new ByteArrayInputStream(Hex.decodeHex(serialized))), handler
       )
+      handler.writeStartOfInput()
       while (transformer.transformNext()) {}
       Option(deserialized)
         .map(d => (d.getClass, d))
@@ -434,4 +591,82 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
     test("Rūķīši".getBytes("UTF-8"),  3) shouldBe "_BR~c5B~ab~c4B~b7~c4B~ab~c5B~a1i~ff"
     test("Rūķīši".getBytes("UTF-8"), 11) shouldBe "JR~c5~ab~c4~b7~c4~ab~c5~a1i"
   }
+
+  it should "encode byte arrays to text formats" in {
+    implicit val qe = querease
+    def createCsvResultRenderer(os: OutputStream) =
+      new FlatTableResultRenderer(new CsvResultRenderer(new OutputStreamWriter(os, "UTF-8")),
+        labels = null, viewName = null, qe.nameToViewDef)
+    def createJsonResultRenderer(os: OutputStream) =
+      JsonResultRenderer(os, isCollection = true, viewName = null, qe.nameToViewDef)
+    def test(dtos: Seq[Dto], rendererFactory: OutputStream => ResultRenderer, bufferSizeHint: Int = 256) =
+      serializeAndTransform(
+        DtoDataSerializer.source(() => dtos.iterator, bufferSizeHint = bufferSizeHint),
+        rendererFactory,
+        bufferSizeHint = bufferSizeHint,
+      )
+    val dto = new BytesTest
+    dto.id    = 1
+    dto.name  = "John"
+    dto.bytes = "Rūķīši".getBytes("UTF-8")
+    val expectedCsv = List(
+      "id,name,bytes",
+      "1,John,UsWrxLfEq8WhaQ==",
+    ).mkString("", "\n", "\n")
+    val expectedJson =
+      """[{"id":1,"name":"John","bytes":"UsWrxLfEq8WhaQ=="}]"""
+    test(Seq(dto), createCsvResultRenderer,   2) shouldBe expectedCsv
+    test(Seq(dto), createCsvResultRenderer,  22) shouldBe expectedCsv
+    test(Seq(dto), createJsonResultRenderer,  2) shouldBe expectedJson
+    test(Seq(dto), createJsonResultRenderer, 22) shouldBe expectedJson
+  }
+}
+
+object SerializerStreamsSpecsDtos {
+  class Person extends DtoWithId {
+    var id: java.lang.Long = null
+    var name: String = null
+    var surname: String = null
+    var sex: String = null
+    var birthdate: java.sql.Date = null
+    var main_account: String = null
+    var accounts: List[PersonAccounts] = Nil
+  }
+  class PersonAccounts extends DtoWithId {
+    var id: java.lang.Long = null
+    var number: String = null
+    var balance: BigDecimal = null
+    var last_modified: java.sql.Timestamp = null
+  }
+  class PersonAccountsDetails extends DtoWithId {
+    var id: java.lang.Long = null
+    var name: String = null
+    var surname: String = null
+    var main_account: PersonAccounts = null
+    var accounts: List[PersonAccounts] = Nil
+    var balances: List[String] = null
+  }
+  class PersonWithMainAccount extends DtoWithId {
+    var id: java.lang.Long = null
+  }
+  class PersonSimple extends DtoWithId {
+    var id: java.lang.Long = null
+    var name: String = null
+    var sex: String = null
+    var birthdate: java.sql.Date = null
+  }
+  class BytesTest extends DtoWithId {
+    var id: java.lang.Long = null
+    var name: String = null
+    var bytes: Array[Byte] = null
+  }
+
+  val viewNameToClass = Map[String, Class[_ <: Dto]](
+    "person" -> classOf[Person],
+    "person_accounts" -> classOf[PersonAccounts],
+    "person_accounts_details" -> classOf[PersonAccountsDetails],
+    "person_with_main_account" -> classOf[PersonWithMainAccount],
+    "person_simple" -> classOf[PersonSimple],
+    "bytes_test" -> classOf[BytesTest],
+  )
 }

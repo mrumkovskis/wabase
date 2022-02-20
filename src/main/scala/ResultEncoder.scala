@@ -37,69 +37,108 @@ abstract class ResultRenderer(
   isCollection: Boolean,
   viewName: String,
   nameToViewDef: Map[String, MojozViewDef],
+  hasHeaders: Boolean,
 ) extends ResultEncoder {
   import ResultRenderer.Context
-  var contextStack: List[Context] = Nil
-  var chunkType: ChunkType = null
-  var buffer: ByteString = null
-  protected def renderMapStart()   = {}
-  protected def renderArrayStart() = {}
-  protected def renderBreak()      = {}
+  protected var contextStack: List[Context] = Nil
+  protected var chunkType: ChunkType = null
+  protected var buffer: ByteString = null
+  protected var level = 0
+  protected def renderHeader(): Unit      = {}
+  protected def renderHeaderData(): Unit  = {}
+  protected def renderArrayStart(): Unit  = {}
+  protected def renderMapStart(): Unit    = {}
+  protected def renderKey(key: Any): Unit = renderValue(key)
   protected def renderValue(value: Any): Unit
-  protected def renderValue(name: String, value: Any): Unit = {
-    renderValue(name)
-    value match {
-      case bytes: Array[Byte] => writeBytes(bytes)
-      case _ => renderValue(value)
-    }
+  protected def renderBreak(): Unit       = {}
+  protected def renderFooter(): Unit      = {}
+  protected def renderRawValue(value: Any): Unit = value match {
+    case bytes: Array[Byte] =>
+      renderValue(ByteString.fromArrayUnsafe(bytes).encodeBase64.utf8String)
+    case _ => renderValue(value)
+  }
+  protected def shouldRender(name: String): Boolean = {
+    val context = contextStack.head
+    context.viewDef == null || context.viewDef.fields.exists(f => Option(f.alias).getOrElse(f.name) == name)
+  }
+  protected def getViewDef(viewName: String) =
+    if (viewName != null)
+      nameToViewDef.getOrElse(viewName, sys.error(s"View $viewName not found - can not render result"))
+    else null
+  protected def impliedNames(viewDef: MojozViewDef): List[String] = {
+    if  (hasHeaders || viewDef == null) Nil
+    else viewDef.fields.map(f => Option(f.alias).getOrElse(f.name)).toList
+  }
+  protected def nextName(context: Context) = {
+    if (context.names.nonEmpty) {
+      val name = context.names.head
+      context.names = context.names.tail
+      name
+    } else null
   }
   override def writeStartOfInput(): Unit = {
-    val viewDef =
-      if (viewName != null && nameToViewDef != null)
-        nameToViewDef.getOrElse(viewName, null)
-      else null
-    contextStack = new Context(isRow = true, viewDef) :: contextStack
-    if (isCollection) renderArrayStart()
+    val viewDef = getViewDef(viewName)
+    val allNames = impliedNames(viewDef)
+    contextStack = new Context(isForRows = true, viewDef, allNames, isCollection = isCollection) :: contextStack
+    renderHeader()
+    if (!hasHeaders) {
+      renderHeaderData()
+    }
   }
   override def writeArrayStart(): Unit = {
+    level += 1
     val context = contextStack.head
-    if (context.isRow) {
-      if (!context.isFirstRow) {
-        renderMapStart()
-        contextStack = new Context(isRow = false, context.viewDef, allNames = context.names) :: contextStack
+    if (context.isForRows) {
+      val isHeaderRow = context.index == 0 && hasHeaders
+      val shouldRender_ = context.shouldRender && !isHeaderRow
+      contextStack = new Context(
+        isForRows = false, context.viewDef, context.names, shouldRender = shouldRender_) :: contextStack
+      if (isHeaderRow) {
+        contextStack.head.readingNames = true
       } else {
-        context.readingNames = true
+        contextStack.head.namesToHide = context.namesToHide
+        if (shouldRender_) {
+          renderMapStart()
+          context.hadContent = true
+        }
       }
     } else {
-      val name = context.names.head
+      val name = nextName(context)
       val fieldDef =
         if (context.viewDef != null)
+          // TODO performance!
           context.viewDef.fields.find(f => Option(f.alias).getOrElse(f.name) == name).orNull
         else null
-      val viewDef =
-        if (fieldDef != null && fieldDef.type_.isComplexType)
-          nameToViewDef.getOrElse(fieldDef.type_.name, null)
-        else null
       val isCollection = fieldDef == null || fieldDef.isCollection
-      renderValue(name)
-      if (isCollection)
-        renderArrayStart()
-      context.names = context.names.tail
-      contextStack = new Context(isRow = true, viewDef, allNames = Nil, isCollection) :: contextStack
+      val shouldRender_ = context.shouldRender && !context.namesToHide.contains(name)
+      val viewDef =
+        if (shouldRender_ && fieldDef != null && fieldDef.type_.isComplexType)
+          getViewDef(fieldDef.type_.name)
+        else null
+      val allNames = impliedNames(viewDef)
+      if (shouldRender_) {
+        renderKey(name)
+        if (isCollection)
+          renderArrayStart()
+      }
+      contextStack = new Context(isForRows = true, viewDef, allNames, isCollection, shouldRender_) :: contextStack
     }
   }
   override def writeValue(value: Any): Unit = {
     val context = contextStack.head
-    if (!context.isRow) {
-      renderValue(context.names.head, value)
-      context.names = context.names.tail
-    } else if (context.isFirstRow) {
-      if (context.readingNames) {
-        context.names = ("" + value) :: context.names
-      } else {
-        renderValue(value)
+    if (context.readingNames) {
+      context.names = ("" + value) :: context.names
+    } else if (!context.isForRows) {
+      val name = nextName(context)
+      val shouldRender_ = context.shouldRender && !context.namesToHide.contains(name)
+      if (shouldRender_) {
+        renderKey(name)
+        renderRawValue(value)
       }
+    } else  {
+      renderRawValue(value)
     }
+    context.index += 1
   }
   override def startChunks(chunkType: ChunkType): Unit = {
     this.chunkType = chunkType
@@ -112,12 +151,6 @@ abstract class ResultRenderer(
       case x => sys.error("Unsupported chunk class: " + x.getClass.getName)
     }
   }
-  /* Override to change bytes encoding. Default is Base64. See io.bullet.borer.encodings */
-  def writeBytes(bytes: Any) = bytes match {
-    case bytes: Array[Byte] =>
-      renderValue(ByteString.fromArrayUnsafe(bytes).encodeBase64.utf8String)
-    case x => sys.error("Unsupported bytes class: " + x.getClass.getName)
-  }
   override def writeBreak(): Unit = {
     if (chunkType != null) {
       chunkType match {
@@ -129,33 +162,46 @@ abstract class ResultRenderer(
       buffer = null
     } else {
       val context = contextStack.head
-      if (context.isRow && context.isFirstRow && context.readingNames) {
-        context.isFirstRow = false
-        context.readingNames = false
-        context.names = context.names.reverse
+      contextStack = contextStack.tail
+      if (context.readingNames) {
+        val parent = contextStack.head
+        parent.names = context.names.reverse
+        if (parent.shouldRender) {
+          parent.namesToHide = parent.names.filterNot(shouldRender).toSet
+          renderHeaderData()
+        }
       } else {
-        if (context.isCollection)
-          renderBreak()
-        contextStack = contextStack.tail
+        if (context.shouldRender)
+          if (context.isCollection)
+            renderBreak()
+          else if (!context.hadContent)
+            renderValue(null)
       }
+      level -= 1
     }
+    contextStack.head.index += 1
   }
   override def writeEndOfInput(): Unit = {
-    if (isCollection) renderBreak()
+    if (hasHeaders && contextStack.head.index == 0) // when no rows - handle missing headers
+      renderHeaderData()
+    renderFooter()
     contextStack = contextStack.tail
   }
 }
 
 object ResultRenderer {
   class Context(
-    val isRow: Boolean,
-    val viewDef: MojozViewDef,
-    val allNames: List[String] = Nil,
-    val isCollection: Boolean = true,
+    val isForRows:    Boolean,
+    val viewDef:      MojozViewDef,
+    val allNames:     List[String]  = Nil,
+    val isCollection: Boolean       = true,
+    val shouldRender: Boolean       = true,
   ) {
-    var isFirstRow: Boolean = isRow
-    var readingNames: Boolean = false
-    var names: List[String] = allNames
+    var index:        Int           = 0
+    var hadContent:   Boolean       = false
+    var readingNames: Boolean       = false
+    var names:        List[String]  = allNames
+    var namesToHide:  Set[String]   = Set.empty
   }
 }
 
@@ -164,17 +210,24 @@ class CborOrJsonResultRenderer(
   isCollection: Boolean,
   viewName: String,
   nameToViewDef: Map[String, MojozViewDef],
-) extends ResultRenderer(isCollection, viewName, nameToViewDef) {
+  hasHeaders: Boolean = true,
+) extends ResultRenderer(isCollection, viewName, nameToViewDef, hasHeaders) {
   val valueEncoder = new BorerValueEncoder(w)
-  override protected def renderMapStart()        = w.writeMapStart()
-  override protected def renderArrayStart()      = w.writeArrayStart()
-  override protected def renderBreak()           = w.writeBreak()
-  override protected def renderValue(value: Any) = valueEncoder.writeValue(value)
+  override protected def renderHeader()             = if (isCollection && level <= 1) renderArrayStart()
+  override protected def renderFooter()             = if (isCollection) renderBreak()
+  override protected def renderArrayStart()         = w.writeArrayStart()
+  override protected def renderMapStart()           = w.writeMapStart()
+  override protected def renderBreak()              = w.writeBreak()
+  override protected def renderValue(value: Any)    = valueEncoder.writeValue(value)
+  override protected def renderRawValue(value: Any) = value match {
+    case bytes: Array[Byte] if w.writingCbor => w.writeBytes(bytes)
+    case _ => super.renderRawValue(value)
+  }
   override def startChunks(chunkType: ChunkType): Unit = {
     if (w.writingCbor) {
       chunkType match {
-        case TextChunks => if (w.writingCbor) w.writeTextStart()
-        case ByteChunks => if (w.writingCbor) w.writeBytesStart()
+        case TextChunks => if (w.writingCbor && contextStack.head.shouldRender) w.writeTextStart()
+        case ByteChunks => if (w.writingCbor && contextStack.head.shouldRender) w.writeBytesStart()
         case _ => sys.error("Unsupported ChunkType: " + chunkType)
       }
       this.chunkType = chunkType
@@ -185,25 +238,20 @@ class CborOrJsonResultRenderer(
       chunk match {
         case bytes: ByteString =>
           chunkType match {
-            case TextChunks => w.writeText(bytes)
-            case ByteChunks => w.writeBytes(bytes)
+            case TextChunks => if (contextStack.head.shouldRender) w.writeText(bytes)
+            case ByteChunks => if (contextStack.head.shouldRender) w.writeBytes(bytes)
             case _ => sys.error("Unsupported ChunkType: " + chunkType)
           }
         case x => sys.error("Unsupported chunk class: " + x.getClass.getName)
       }
     } else super.writeChunk(chunk)
   }
-  override def writeBytes(bytes: Any) = {
-    if (w.writingCbor) bytes match {
-      case bytes: Array[Byte] =>
-        w.writeBytes(bytes)
-      case x => sys.error("Unsupported bytes class: " + x.getClass.getName)
-    } else super.writeBytes(bytes)
-  }
   override def writeBreak(): Unit = {
     if (chunkType != null && w.writingCbor) {
-      w.writeBreak()
+      if (contextStack.head.shouldRender)
+        w.writeBreak()
       chunkType = null
+      contextStack.head.index += 1
     } else {
       super.writeBreak()
     }
@@ -220,133 +268,121 @@ object JsonResultRenderer {
     new CborOrJsonResultRenderer(BorerNestedArraysEncoder.createWriter(outputStream, Json), isCollection, viewName, nameToViewDef)
 }
 
-abstract class FlatTableOutput(val labels: Seq[String]) extends ResultEncoder {
-  protected var row = 0
-  protected var col = 0
-  protected var lvl = 0
-  protected var buffer: ByteString   = null
-  protected var chunkType: ChunkType = null
-  override def writeStartOfInput(): Unit =
-    writeHeader()
+class FlatTableResultRenderer(
+  renderer: TableResultRenderer,
+  labels: Seq[String],
+  viewName: String,
+  nameToViewDef: Map[String, MojozViewDef],
+  hasHeaders: Boolean = true,
+) extends ResultRenderer(false, viewName, nameToViewDef, hasHeaders) {
+  import renderer._
+  override protected def renderHeaderData(): Unit =
+    if (level <= 1) {
+      val labels =
+        if  (this.labels != null && this.labels.nonEmpty)
+             this.labels
+        else contextStack.head.names.filter(shouldRender)
+      if (labels.nonEmpty) {
+        renderRowStart()
+        labels foreach { label =>
+          renderHeaderCell(label)
+        }
+        renderRowEnd()
+      }
+    }
+  override protected def shouldRender(name: String): Boolean = {
+    val context = contextStack.head
+    context.viewDef == null || context.viewDef.fields.exists { f =>
+      Option(f.alias).getOrElse(f.name) == name && !f.type_.isComplexType && !f.isCollection
+    }
+  }
+  override protected def renderHeader():  Unit = renderer.renderHeader()
+  override protected def renderKey(key: Any): Unit = {}
+  override protected def renderValue(value: Any): Unit = {
+    if (level == 1) {
+      renderCell(value)
+    }
+  }
+  override protected def renderBreak():   Unit = if (level == 1) renderRowEnd()
+  override protected def renderFooter():  Unit = renderer.renderFooter()
   override def writeArrayStart(): Unit = {
-    lvl += 1
-    if (lvl == 1)
-      writeRowStart()
-  }
-  override def writeValue(value: Any): Unit =
-    if (lvl == 1) {
-      writeCell(value)
-      col += 1
+    super.writeArrayStart()
+    if (level == 1 && contextStack.head.shouldRender) {
+      renderRowStart()
     }
-  override def startChunks(chunkType: ChunkType): Unit = {
-    this.chunkType = chunkType
-    buffer = ByteString.empty
+    if (level == 2 && viewName == null)
+      renderCell("") // placeholder for nested when structure unknown
   }
-  override def writeChunk(chunk: Any): Unit = {
-    chunk match {
-      case bytes: ByteString =>
-        buffer = ByteStringByteAccess.concat(buffer, bytes)
-      case x => sys.error("Unsupported chunk class: " + x.getClass.getName)
-    }
-  }
-  override def writeBreak(): Unit = {
-    if (chunkType != null) {
-      chunkType match {
-        case TextChunks => writeValue(buffer.utf8String)
-        case ByteChunks => writeValue(buffer.toArrayUnsafe())
-        case _ => sys.error("Unsupported ChunkType: " + chunkType)
-      }
-      chunkType = null
-      buffer = null
-    } else {
-      if (lvl == 1) {
-        writeRowEnd()
-        row += 1
-        col = 0
-      }
-      lvl -= 1
-    }
-  }
-  override def writeEndOfInput(): Unit =
-    writeFooter()
-  def writeHeader(): Unit = {
-    if (labels != null && labels.nonEmpty) {
-      writeRowStart()
-      labels foreach { label =>
-        writeCell(label)
-        col += 1
-      }
-      writeRowEnd()
-    }
-    row += 1
-    col = 0
-  }
-  def writeRowStart():        Unit = {}
-  def writeCell(value: Any):  Unit
-  def writeRowEnd():          Unit = {}
-  def writeFooter():          Unit = {}
 }
 
-class CsvOutput(writer: io.Writer, labels: Seq[String]) extends FlatTableOutput(labels) {
-  def escapeValue(s: String) =
+trait TableResultRenderer {
+  def renderHeader()                = {}
+  def renderRowStart()              = {}
+  def renderHeaderCell(value: Any)  = { renderCell(value) }
+  def renderCell(value: Any): Unit
+  def renderRowEnd(): Unit
+  def renderFooter()                = {}
+}
+
+class CsvResultRenderer(writer: io.Writer) extends TableResultRenderer {
+  protected var isAtRowStart = true
+  protected def escapeValue(s: String) =
     if (s == null) null
     else if (s.contains(",") || s.contains("\"")) ("\"" + s.replaceAll("\"", "\"\"") + "\"")
     else s
-  def csvValue(v: Any): String = Option(v).map{
-    case m: Map[String @unchecked, Any @unchecked] => ""
-    case l: Traversable[Any] => ""
+  protected def csvValue(v: Any): String = Option(v).map{
     case n: java.lang.Number => String.valueOf(n)
     case t: Timestamp => xlsxDateTime(t)
     case d: jDate => xsdDate(d)
     case x => x.toString
   }.map(escapeValue).getOrElse("")
-  override def writeCell(value: Any) = {
-    if (col > 0)
+  override def renderCell(value: Any) = {
+    if (!isAtRowStart)
       writer.write(",")
     writer.write(csvValue(value))
     writer.flush
+    isAtRowStart = false
   }
-  override def writeRowEnd() = {
+  override def renderRowEnd() = {
     writer.write("\n")
     writer.flush
+    isAtRowStart = true
   }
 }
 
-class OdsOutput(zos: ZipOutputStream, labels: Seq[String], worksheetName: String = "data") extends FlatTableOutput(labels) {
+class OdsResultRenderer(zos: ZipOutputStream, worksheetName: String = "data") extends TableResultRenderer {
   import org.wabase.spreadsheet.ods._
   val streamer = new OdsStreamer(zos)
-  override def writeHeader() = {
+  override def renderHeader() = {
     streamer.startWorkbook
     streamer.startWorksheet
     streamer.startTable(worksheetName)
-    super.writeHeader()
   }
-  override def writeRowStart()        = streamer.startRow
-  override def writeCell(value: Any)  = streamer.cell(value)
-  override def writeRowEnd()          = streamer.endRow
-  override def writeFooter() = {
+  override def renderRowStart()             = streamer.startRow
+  override def renderHeaderCell(value: Any) = streamer.cell(value) // TODO ods headerStyle
+  override def renderCell(value: Any)       = streamer.cell(value)
+  override def renderRowEnd()               = streamer.endRow
+  override def renderFooter() = {
     streamer.endTable
     streamer.endWorksheet
     streamer.endWorkbook
   }
 }
 
-class XlsXmlOutput(writer: io.Writer, labels: Seq[String], worksheetName: String = "data") extends FlatTableOutput(labels) {
+class XlsXmlResultRenderer(writer: io.Writer, worksheetName: String = "data") extends TableResultRenderer {
   import org.wabase.spreadsheet.xlsxml._
   val headerStyle = Style("header", null, Font.BOLD)
   val streamer = new XlsXmlStreamer(writer)
-  override def writeHeader() = {
+  override def renderHeader() = {
     streamer.startWorkbook(Seq(headerStyle))
     streamer.startWorksheet(worksheetName)
     streamer.startTable
-    super.writeHeader()
   }
-  override def writeRowStart()        = streamer.startRow
-  override def writeCell(value: Any)  =
-    if (row == 0) streamer.cell(value, headerStyle)
-    else          streamer.cell(value)
-  override def writeRowEnd()          = streamer.endRow
-  override def writeFooter() = {
+  override def renderRowStart()             = streamer.startRow
+  override def renderHeaderCell(value: Any) = streamer.cell(value, headerStyle)
+  override def renderCell(value: Any)       = streamer.cell(value)
+  override def renderRowEnd()               = streamer.endRow
+  override def renderFooter() = {
     streamer.endTable
     streamer.endWorksheet
     streamer.endWorkbook
