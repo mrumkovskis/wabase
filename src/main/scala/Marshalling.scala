@@ -187,13 +187,13 @@ trait QuereaseResultMarshalling { this:
     JsonResultRenderer(_, isCollection, viewName, qe.nameToViewDef)
   def createCsvEncoderFactory(viewName: String): EncoderFactory =
     os => new FlatTableResultRenderer(new CsvResultRenderer(new OutputStreamWriter(os, "UTF-8")),
-      Option(viewName).map(qe.viewNameToLabels).orNull, viewName, qe.nameToViewDef)
+      viewName, qe.nameToViewDef)
   def createOdsEncoderFactory(viewName: String): EncoderFactory =
     os => new FlatTableResultRenderer(new OdsResultRenderer(new ZipOutputStream(os)),
-      Option(viewName).map(qe.viewNameToLabels).orNull, viewName, qe.nameToViewDef)
+      viewName, qe.nameToViewDef)
   def createXlsXmlEncoderFactory(viewName: String): EncoderFactory =
     os => new FlatTableResultRenderer(new XlsXmlResultRenderer(new OutputStreamWriter(os, "UTF-8")),
-      Option(viewName).map(qe.viewNameToLabels).orNull, viewName, qe.nameToViewDef)
+      viewName, qe.nameToViewDef)
 
   def toEntityQuereaseSerializedResultMarshaller(viewName: String): ToEntityMarshaller[QuereaseSerializedResult] =
     Marshaller { implicit ec => sr =>

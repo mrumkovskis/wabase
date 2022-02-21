@@ -14,6 +14,8 @@ import org.wabase.ResultEncoder.{ByteChunks, ChunkType, TextChunks}
 
 import scala.collection.immutable.Seq
 
+import AppMetadata.AugmentedAppFieldDef
+
 object ResultEncoder {
   type EncoderFactory = OutputStream => ResultEncoder
   trait ChunkType
@@ -270,18 +272,26 @@ object JsonResultRenderer {
 
 class FlatTableResultRenderer(
   renderer: TableResultRenderer,
-  labels: Seq[String],
   viewName: String,
   nameToViewDef: Map[String, MojozViewDef],
+  labels: Seq[String] = null,
   hasHeaders: Boolean = true,
 ) extends ResultRenderer(false, viewName, nameToViewDef, hasHeaders) {
   import renderer._
+  private lazy val nameToLabel: Map[String, String] =
+    if (viewName != null)
+      nameToViewDef.getOrElse(viewName, sys.error(s"View $viewName not found - can not render result"))
+        .fields.map { f =>
+          Option(f.alias).getOrElse(f.name) -> Option(f.label).orElse(Option(f.alias)).getOrElse(f.name)
+        }.toMap
+    else Map.empty
+  protected def label(name: String): String = nameToLabel.getOrElse(name, name)
   override protected def renderHeaderData(): Unit =
     if (level <= 1) {
       val labels =
-        if  (this.labels != null && this.labels.nonEmpty)
+        if  (this.labels != null)
              this.labels
-        else contextStack.head.names.filter(shouldRender)
+        else contextStack.head.names.filter(shouldRender).map(label)
       if (labels.nonEmpty) {
         renderRowStart()
         labels foreach { label =>

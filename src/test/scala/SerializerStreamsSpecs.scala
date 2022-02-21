@@ -356,7 +356,7 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
         labels    = null,
         viewName  = viewName,
         nameToViewDef = qe.nameToViewDef,
-      ),
+      ) { override def label(name: String) = name },
       bufferSizeHint = bufferSizeHint,
     )
     test(null) shouldBe List(
@@ -444,7 +444,8 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
       ),
       outputStream => new FlatTableResultRenderer(
         renderer = new CsvResultRenderer(new OutputStreamWriter(outputStream, "UTF-8")),
-        labels = null, viewName, qe.nameToViewDef, hasHeaders = includeHeaders),
+        viewName, qe.nameToViewDef, hasHeaders = includeHeaders
+      ) { override def label(name: String) = name },
       bufferSizeHint = bufferSizeHint,
     )
     val expected = List(
@@ -454,6 +455,37 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
     ).mkString("", "\n", "\n")
     test("person_accounts_details", false) shouldBe expected
     test("person_accounts_details", true)  shouldBe expected
+  }
+
+  it should "serialize tresql to cbor and transform to csv with labels - with or without headers" in {
+    implicit val qe = querease
+    def test(
+      viewName: String,
+      includeHeaders: Boolean,
+      bufferSizeHint: Int = 256,
+    ) = serializeAndTransform(
+      TresqlResultSerializer.source(
+        () => Query(qe.queryStringAndParams(qe.viewDef(viewName), Map.empty)._1),
+        includeHeaders = includeHeaders,
+      ),
+      outputStream => new FlatTableResultRenderer(
+        renderer = new CsvResultRenderer(new OutputStreamWriter(outputStream, "UTF-8")),
+        viewName, qe.nameToViewDef, hasHeaders = includeHeaders
+      ),
+      bufferSizeHint = bufferSizeHint,
+    )
+    val expected = List(
+      "Id,Name,Surname,Sex,Birthdate,Main account",
+      "1,John,Doe,M,1969-01-01,",
+      "2,Jane,,F,1996-02-02,",
+    ).mkString("", "\n", "\n")
+    test("person", false) shouldBe expected
+    test("person", true)  shouldBe expected
+    test("person_with_expression", true)  shouldBe List(
+      "Id,Name,Surname",
+      "1,John,Doe",
+      "2,Jane,",
+    ).mkString("", "\n", "\n")
   }
 
   it should "invoke all table result renderer methods properly" in {
@@ -483,7 +515,7 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
       ),
       outputStream => new FlatTableResultRenderer(
         renderer = new TestTableRenderer(new OutputStreamWriter(outputStream, "UTF-8")),
-        labels = null, viewName, qe.nameToViewDef, hasHeaders = includeHeaders),
+        viewName, qe.nameToViewDef, hasHeaders = includeHeaders),
       bufferSizeHint = bufferSizeHint,
     )
     test("person_accounts_details")  shouldBe List(
@@ -596,7 +628,7 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
     implicit val qe = querease
     def createCsvResultRenderer(os: OutputStream) =
       new FlatTableResultRenderer(new CsvResultRenderer(new OutputStreamWriter(os, "UTF-8")),
-        labels = null, viewName = null, qe.nameToViewDef)
+        viewName = null, qe.nameToViewDef)
     def createJsonResultRenderer(os: OutputStream) =
       JsonResultRenderer(os, isCollection = true, viewName = null, qe.nameToViewDef)
     def test(dtos: Seq[Dto], rendererFactory: OutputStream => ResultRenderer, bufferSizeHint: Int = 256) =

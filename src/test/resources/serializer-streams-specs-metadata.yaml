@@ -26,7 +26,7 @@ fields:
 - surname
 - sex
 - birthdate
-- main_account = account a[a.id = (person p[p.id = :id] {main_account_id})] {number} -> = account[number = _]{id}
+- main_account = main_account_id
 - accounts * :
     table: account
     fields:
@@ -44,6 +44,15 @@ fields:
 - surname
 - sex
 - birthdate
+
+
+name: person_with_expression
+table: person
+fields:
+- id
+- name
+- expression =
+- surname
 
 
 name: person_accounts_details
