@@ -30,6 +30,7 @@ import akka.util.ByteString
 import io.bullet.borer.{Json, Writer}
 import org.mojoz.querease.{ValidationException, ValidationResult}
 
+import java.lang.reflect.InvocationTargetException
 import xml.Utility.escape
 
 
@@ -530,6 +531,9 @@ object AppServiceBase {
 
     def businessExceptionHandler(logger: com.typesafe.scalalogging.Logger) = ExceptionHandler {
       case e: BusinessException =>
+        logger.trace(e.getMessage, e)
+        complete(HttpResponse(InternalServerError, entity = e.getMessage))
+      case e: InvocationTargetException if e.getCause != null && e.getCause.isInstanceOf[BusinessException] =>
         logger.trace(e.getMessage, e)
         complete(HttpResponse(InternalServerError, entity = e.getMessage))
     }
