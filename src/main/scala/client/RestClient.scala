@@ -98,8 +98,12 @@ trait RestClient extends Loggable{
                  cookieStorage: CookieMap = getCookieStorage, timeout: FiniteDuration = requestTimeout)
                      (implicit unmarshaller: FromResponseUnmarshaller[R]): Future[R] = {
     val plainUri = Uri(requestPath(path))
-    lazy val queryStringWithParams = plainUri.rawQueryString.map(_ + "&").getOrElse("") + Query(params.map { case (k, v) => (k, (Option(v).map(_.toString).getOrElse(""))) }.toMap)
-    val requestUri = if (params.nonEmpty) plainUri.withRawQueryString(queryStringWithParams) else plainUri
+    lazy val query = Query(params.toList.flatMap{
+      case (k, null) => List(k -> "")
+      case (k, list: Seq[_]) => list.map(li => k -> li.toString)
+      case (k, v) => List(k -> v.toString)
+    }:_*)
+    val requestUri = if (params.nonEmpty) plainUri.withQuery(query) else plainUri
     for{
       response <- doRequest(HttpRequest(uri = requestUri, headers = headers), cookieStorage, timeout)
       responseEntity <- Unmarshal(decodeResponse(response)).to[R]
