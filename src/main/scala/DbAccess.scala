@@ -205,7 +205,8 @@ class PostgreSqlTresqlResources(qe: AppQuerease, db: String = null) extends Tres
   override def resourcesTemplate: ResourcesTemplate =
     super.resourcesTemplate.copy(
       metadata = if (db == qe.tresqlMetadata.db) qe.tresqlMetadata else qe.tresqlMetadata.extraDbToMetadata(db),
-      dialect  = AppPostgreSqlDialect orElse dialects.ANSISQLDialect orElse dialects.VariableNameDialect,
+      dialect  = AppPostgreSqlDialect orElse dialects.PostgresqlDialect
+        orElse dialects.ANSISQLDialect orElse dialects.VariableNameDialect,
       idExpr   = _ => "nextval(\"seq\")",
     )
 
@@ -223,7 +224,6 @@ class PostgreSqlTresqlResources(qe: AppQuerease, db: String = null) extends Tres
           if (g.size == 2) s"when ${g(0).sql} then ${g(1).sql}"
           else s"else ${g(0).sql}"
         }.mkString(s"case ${f.params(0).sql} ", " ", " end")
-      case c: QueryBuilder#ColExpr if c.alias != null => Option(c.col).map(_.sql).getOrElse("null") + " as " + c.alias
       case i: QueryBuilder#InsertExpr =>
         //pg insert as select needs column cast if bind variables are from 'from' clause select
         val b = i.builder
