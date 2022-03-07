@@ -238,12 +238,13 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
       else {
         val ctxCopy = ctx.copy(result = new AppListResult[Dto] {
           private [this] var closed = false
-          def closeConn(c: Connection) =
-            try c.rollback catch {
+          def closeConn(c: Connection) = {
+            if (c != null) try c.rollback catch {
               case NonFatal(e) => logger.error("Cannot rollback connection", e)
             } finally if (!c.isClosed) try c.close catch {
               case NonFatal(e) => logger.error("Error closing connection", e)
             }
+          }
 
           private lazy val connection = ConnectionPools(poolName).getConnection
           override lazy val resources = {
