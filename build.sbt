@@ -162,6 +162,6 @@ Test            / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-h", 
 
 IntegrationTest / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-h", "it-report")
 
-Test            / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-oDS")
+Test            / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-oDSF")
 
-IntegrationTest / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-oDS")
+IntegrationTest / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-oDSF")
