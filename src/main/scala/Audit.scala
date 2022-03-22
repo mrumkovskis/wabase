@@ -169,7 +169,9 @@ object Audit {
        case _: CreateContext[_] => // IGNORE
        case ViewContext(view, id, inParams, user, state, result) =>
          logView(id, view, user, inParams, state,
-           result
+           Option(result)
+             .flatten
+             .filter(_ != null)
              .filter(_.isInstanceOf[qe.DWI@unchecked])
              .map(_.asInstanceOf[qe.DWI])
              .map(v => mapFromObj(v))
