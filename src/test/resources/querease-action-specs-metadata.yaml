@@ -93,7 +93,7 @@ table: person
 fields:
 - id
 - name
-- surname
+# surname
 - sex
 - birthdate
 

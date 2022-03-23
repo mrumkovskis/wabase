@@ -241,7 +241,11 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       def getFieldApi(key: String) = getStringSeq(key, f.extras) match {
         case api =>
           val ops = api.flatMap(_.trim.split(",").toList).map(_.trim).filter(_ != "").toSet
-          def op(key: String) = ops contains key
+          def op(opkey: String) = (ops contains opkey) || api.isEmpty && (opkey match {
+            case Readonly => f.options != null &&  (f.options contains "!")
+            case NoInsert => f.options != null && !(f.options contains "+")
+            case NoUpdate => f.options != null && !(f.options contains "=")
+          })
           val unknownFieldApiMethods = ops -- fieldApiKnownOps
           if (unknownFieldApiMethods.nonEmpty)
             sys.error(
@@ -289,7 +293,12 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       if (unknownKeys != null)
         sys.error(
           s"Unknown or misplaced properties for viewDef field ${viewDef.name}.${f.name}: ${unknownKeys.mkString(", ")}")
-      val persistenceOptions = Option(f.options) getOrElse ""
+      val persistenceOptions = Option(f.options).getOrElse((fieldDb.insertable, fieldDb.updatable) match {
+        case (false, false) => "!"
+        case (false, true)  => "="
+        case (true,  false) => "+"
+        case (true,  true)  => null
+      })
       import f._
       MojozFieldDef(table, tableAlias, name, alias, persistenceOptions, isOverride, isCollection,
         isExpression, expression, f.saveTo, resolver, nullable,
@@ -338,7 +347,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
     def createRelevanceField(name: String, expression: String): FieldDef =
       (new MojozFieldDef(name, Type("boolean", None, None, None, false)))
-        .copy(options = "", isExpression = true, expression = expression)
+        .copy(options = null, isExpression = true, expression = expression)
 
     val appView = MojozViewDef(name, db, table, tableAlias, joins, filter,
       viewDef.groupBy, viewDef.having, orderBy, extends_,
@@ -361,13 +370,14 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
   protected def transformAppViewDefs(viewDefs: Map[String, ViewDef]): Map[String, ViewDef] =
     Option(viewDefs)
-      .map(resolveAuth)
+      // .map(resolveAuth)
       .map(resolveDbAccessKeys)
       .orNull
 
   /* Sets field options to horizontal auth statements if such are defined for child view, so that during ort auth
    * for child views are applied.
    */
+  @deprecated("Results of this method are not used and this method will be removed", "6.0")
   protected def resolveAuth(viewDefs: Map[String, ViewDef]): Map[String, ViewDef] = viewDefs.map { case (name, viewDef) =>
     name -> viewDef.copy(fields = viewDef.fields.map { field =>
       viewDefs.get(field.type_.name)

@@ -74,6 +74,16 @@ class QuereaseEnvException(val env: Map[String, Any], cause: Exception) extends 
 abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata with Loggable {
 
   import AppMetadata._
+
+  override protected def persistenceFilters(
+    view: ViewDef,
+  ): OrtMetadata.Filters = {
+    OrtMetadata.Filters(
+      insert = Option(view.auth.forInsert).filter(_.nonEmpty).map(_.map(a => s"($a)").mkString(" & ")),
+      update = Option(view.auth.forUpdate).filter(_.nonEmpty).map(_.map(a => s"($a)").mkString(" & ")),
+      delete = Option(view.auth.forDelete).filter(_.nonEmpty).map(_.map(a => s"($a)").mkString(" & ")),
+    )
+  }
   override def get[B <: DTO](id: Long, extraFilter: String = null, extraParams: Map[String, Any] = null)(
       implicit mf: Manifest[B], resources: Resources): Option[B] = {
     val v = viewDef[B]
@@ -113,28 +123,6 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
         .filterNot(_.isEmpty).orNull
     super.countAll_(viewDef, params, extraFilterAndAuth, extraParams)
   }
-  override protected def insert[B <: DTO](
-      tables: Seq[String],
-      pojo: B,
-      filter: String = null,
-      propMap: Map[String, Any])(implicit resources: Resources): Long = {
-    val v = viewDef(ManifestFactory.classType(pojo.getClass))
-    val filterAndAuth =
-      Option((Option(filter).toSeq ++ v.auth.forInsert).map(a => s"($a)").mkString(" & "))
-        .filterNot(_.isEmpty).orNull
-    super.insert(tables, pojo, filterAndAuth, propMap)
-  }
-  override protected def update[B <: DTO](
-      tables: Seq[String],
-      pojo: B,
-      filter: String,
-      propMap: Map[String, Any])(implicit resources: Resources): Unit = {
-    val v = viewDef(ManifestFactory.classType(pojo.getClass))
-    val filterAndAuth =
-      Option((Option(filter).toSeq ++ v.auth.forUpdate).map(a => s"($a)").mkString(" & "))
-        .filterNot(_.isEmpty).orNull
-    super.update(tables, pojo, filterAndAuth, propMap)
-  }
 
   // TODO after decoupling QereaseIo from Querease this method should be removed
   def saveMap(view: ViewDef,
@@ -152,15 +140,6 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       .filter(_ => classOf[DtoWithId] isAssignableFrom viewNameToClassMap(viewName))
       .map(_ => Map("id" -> instance.get("id").orNull).filter(_._2 != null))
       .getOrElse(Map.empty)
-
-  override def delete[B <: DTO](instance: B, filter: String = null, params: Map[String, Any] = null)(
-    implicit resources: Resources) = {
-    val v = viewDef(ManifestFactory.classType(instance.getClass))
-    val filterAndAuth =
-      Option((Option(filter).toSeq ++ v.auth.forDelete).map(a => s"($a)").mkString(" & "))
-        .filterNot(_.isEmpty).orNull
-    super.delete(instance, filterAndAuth, params)
-  }
 
   // TODO after decoupling QereaseIo from Querease this method should be removed
   def deleteById(view: ViewDef, id: Any, filter: String = null, params: Map[String, Any] = null)(
