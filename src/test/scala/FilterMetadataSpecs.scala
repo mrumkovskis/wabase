@@ -4,11 +4,12 @@ import akka.actor.ActorSystem
 import org.mojoz.metadata.Type
 import org.mojoz.querease.FilterType._
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
+import org.scalatest.matchers.should.Matchers
 import org.tresql._
 import org.wabase.AppBase.{FilterLabel, FilterParameter}
 
 
-class FilterMetadataSpecs extends FlatSpec with QuereaseBaseSpecs {
+class FilterMetadataSpecs extends FlatSpec with Matchers with TestQuereaseInitializer {
 
   implicit protected var tresqlResources: Resources = _
   implicit val system = ActorSystem("serializer-streams-specs")

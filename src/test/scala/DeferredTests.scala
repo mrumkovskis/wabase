@@ -13,6 +13,7 @@ import akka.http.scaladsl.testkit.{ScalatestRouteTest, WSProbe}
 import akka.stream.scaladsl.Source
 import akka.util.ByteString
 import org.scalatest.flatspec.AnyFlatSpec
+import org.scalatest.matchers.should.Matchers
 import org.wabase.AppMetadata.DbAccessKey
 import org.wabase.AppServiceBase.AppExceptionHandler._
 
@@ -22,7 +23,7 @@ import scala.concurrent.duration.Duration
 import scala.language.implicitConversions
 import scala.util.Try
 
-class DeferredTests extends AnyFlatSpec with QuereaseBaseSpecs with ScalatestRouteTest {
+class DeferredTests extends AnyFlatSpec with Matchers with TestQuereaseInitializer with ScalatestRouteTest {
 
   class DeferredTestException(message: String) extends Exception(message)
 

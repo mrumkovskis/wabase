@@ -2,6 +2,7 @@ package org.wabase
 
 import org.mojoz.querease.{ValidationException, ValidationResult}
 import org.scalatest.flatspec.{AsyncFlatSpec, AsyncFlatSpecLike}
+import org.scalatest.matchers.should.Matchers
 import org.tresql.{Query, Resources}
 import org.wabase.QuereaseActionsDtos.Person
 
@@ -87,7 +88,7 @@ object QuereaseActionsDtos {
   )
 }
 
-class QuereaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with AsyncFlatSpecLike {
+class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseInitializer with AsyncFlatSpecLike {
 
   import AppMetadata._
 

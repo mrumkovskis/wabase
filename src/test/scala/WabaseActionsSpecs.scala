@@ -4,6 +4,7 @@ import akka.actor.ActorSystem
 import akka.stream.scaladsl.Source
 import org.mojoz.querease.{ValidationException, ValidationResult}
 import org.scalatest.flatspec.{AsyncFlatSpec, AsyncFlatSpecLike}
+import org.scalatest.matchers.should.Matchers
 import org.tresql.{MissingBindVariableException, ThreadLocalResources}
 import org.wabase.QuereaseActionsDtos.PersonWithHealthDataHealth
 
@@ -35,7 +36,7 @@ object WabaseActionDtos {
   )
 }
 
-class WabaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with AsyncFlatSpecLike {
+class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseInitializer with AsyncFlatSpecLike {
 
   override def dbNamePrefix: String = "wabase_db"
 

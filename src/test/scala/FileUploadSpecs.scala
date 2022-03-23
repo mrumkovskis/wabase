@@ -20,7 +20,7 @@ import scala.concurrent.duration
 import scala.concurrent.duration.{Duration, FiniteDuration}
 import scala.reflect.ClassTag
 
-class FileUploadSpecs extends AnyFlatSpec with QuereaseBaseSpecs with ScalatestRouteTest {
+class FileUploadSpecs extends AnyFlatSpec with TestQuereaseInitializer with ScalatestRouteTest {
 
   var streamerConfQe: QuereaseProvider with AppFileStreamerConfig = _
 

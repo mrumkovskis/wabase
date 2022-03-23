@@ -5,7 +5,6 @@ import org.mojoz.metadata.in.YamlMd
 import org.mojoz.metadata.out.SqlGenerator
 import org.mojoz.querease.TresqlMetadata
 import org.scalatest.{BeforeAndAfterAll, Suite}
-import org.scalatest.matchers.should.Matchers
 import org.tresql.dialects.HSQLDialect
 import org.tresql.{LogTopic, Logging, QueryBuilder, Resources}
 
@@ -19,7 +18,7 @@ class TestQuerease(metadataFile: String) extends AppQuerease {
   override lazy val viewNameToClassMap = Map[String, Class[_ <: Dto]]()
 }
 
-trait QuereaseBaseSpecs extends Matchers with BeforeAndAfterAll with Loggable { this: Suite =>
+trait TestQuereaseInitializer extends BeforeAndAfterAll with Loggable { this: Suite =>
 
   protected var tresqlThreadLocalResources: TresqlResources = _
   protected var querease: AppQuerease = _
