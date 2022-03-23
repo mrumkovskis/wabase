@@ -101,10 +101,6 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val FieldApi = "field api" // avoid name clash with "api"
     val FieldDb = "field db"
 
-    val None_ = "none"
-
-    val NoGet = "no get"
-    val NoSave = "no save"
     val Readonly = "readonly"
     val NoInsert = "no insert"
     val NoUpdate = "no update"
@@ -119,7 +115,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val WabaseFieldExtrasKey = AppMetadata.WabaseFieldExtrasKey
     def apply() = Set(
       Domain, Hidden, Sortable, Visible, Required,
-      NoGet, NoSave, Readonly, NoInsert, NoUpdate,
+      Readonly, NoInsert, NoUpdate,
       FieldApi, FieldDb, Initial, QuereaseFieldExtrasKey, WabaseFieldExtrasKey)
   }
 
@@ -236,13 +232,12 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
           case lc => lc
         } getOrElse (fieldLabelFromName(f), null)
 
-      val noGet = getBooleanExtra(f, NoGet)
-      val readonly = getBooleanExtra(f, Readonly) || getBooleanExtra(f, NoSave)
+      val readonly = getBooleanExtra(f, Readonly)
       val noInsert = getBooleanExtra(f, NoInsert)
       val noUpdate = getBooleanExtra(f, NoUpdate)
 
-      val fieldApiKnownOps = // TODO rename, refine?
-        Set(None_, NoGet, NoSave, Readonly, NoInsert, NoUpdate)
+      val fieldApiKnownOps =
+        Set(Readonly, NoInsert, NoUpdate)
       def getFieldApi(key: String) = getStringSeq(key, f.extras) match {
         case api =>
           val ops = api.flatMap(_.trim.split(",").toList).map(_.trim).filter(_ != "").toSet
@@ -251,12 +246,10 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
           if (unknownFieldApiMethods.nonEmpty)
             sys.error(
               s"Unknown field api method(s), viewDef: ${viewDef.name}, method(s): ${unknownFieldApiMethods.mkString(", ")}")
-          val noOps = ops.isEmpty && api.nonEmpty || op(None_)
-          val ro = readonly || op(Readonly) || op(NoSave)
+          val ro = readonly || op(Readonly)
           FieldOps(
-            !noOps && !op(NoGet) && !(f.isExpression && f.expression == null && key == FieldDb),
-            !noOps && !ro && !noInsert && !op(NoInsert),
-            !noOps && !ro && !noUpdate && !op(NoUpdate))
+            insertable = !ro && !noInsert && !op(NoInsert),
+            updatable  = !ro && !noUpdate && !op(NoUpdate))
       }
 
       val fieldApi = getFieldApi(FieldApi)
@@ -296,8 +289,6 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       if (unknownKeys != null)
         sys.error(
           s"Unknown or misplaced properties for viewDef field ${viewDef.name}.${f.name}: ${unknownKeys.mkString(", ")}")
-      val isExpression = if (fieldDb.gettable) f.isExpression else true
-      val expression = if (fieldDb.gettable) f.expression else null
       val persistenceOptions = Option(f.options) getOrElse ""
       import f._
       MojozFieldDef(table, tableAlias, name, alias, persistenceOptions, isOverride, isCollection,
@@ -651,7 +642,6 @@ object AppMetadata {
   ) extends AppViewDefExtras
 
   case class FieldOps(
-    gettable: Boolean,
     insertable: Boolean,
     updatable: Boolean)
 
@@ -665,8 +655,8 @@ object AppMetadata {
   }
 
   private [wabase] case class AppFieldDef(
-    api: FieldOps = FieldOps(true, false, false),
-    db: FieldOps = FieldOps(true, false, false),
+    api: FieldOps = FieldOps(insertable =  false, updatable = false),
+    db:  FieldOps = FieldOps(insertable =  false, updatable = false),
     label: String = null,
     required: Boolean = false,
     sortable: Boolean = false,
