@@ -16,7 +16,7 @@ class FilterMetadataSpecs extends FlatSpec with QuereaseBaseSpecs {
   var app: TestApp = _
 
   override def beforeAll(): Unit = {
-    querease = new QuereaseBase("/filter-metadata-specs-metadata.yaml") {
+    querease = new TestQuerease("/filter-metadata-specs-metadata.yaml") {
       override lazy val viewNameToClassMap = QuereaseActionsDtos.viewNameToClass
     }
     app = new TestApp {

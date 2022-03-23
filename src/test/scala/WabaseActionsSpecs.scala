@@ -42,7 +42,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Async
   var app: AppBase[TestUsr] = _
 
   override def beforeAll(): Unit = {
-    querease = new QuereaseBase("/querease-action-specs-metadata.yaml") {
+    querease = new TestQuerease("/querease-action-specs-metadata.yaml") {
       override lazy val viewNameToClassMap = QuereaseActionsDtos.viewNameToClass ++ WabaseActionDtos.viewNameToClass
     }
     super.beforeAll()
@@ -325,7 +325,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Async
     doAction("get", "purchase",
       Map("purchase_time" -> "2021-12-04 15:15:23.0", "customer" -> "Mr. Gunza"), removeIdsFlag = false)
       .map {
-        case OptionResult(Some(purch: QuereaseBase#DWI)) =>
+        case OptionResult(Some(purch: TestQuerease#DWI)) =>
           app.delete("purchase", purch.id) should be(1)
         case x => fail(s"Unexpected result: $x")
       }

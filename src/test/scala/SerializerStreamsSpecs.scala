@@ -22,7 +22,7 @@ class SerializerStreamsSpecs extends FlatSpec with QuereaseBaseSpecs {
   import SerializerStreamsSpecsDtos._
 
   override def beforeAll(): Unit = {
-    querease = new QuereaseBase("/serializer-streams-specs-metadata.yaml") {
+    querease = new TestQuerease("/serializer-streams-specs-metadata.yaml") {
       override lazy val viewNameToClassMap = viewNameToClass
     }
     super.beforeAll()

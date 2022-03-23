@@ -36,7 +36,7 @@ class DeferredTests extends AnyFlatSpec with QuereaseBaseSpecs with ScalatestRou
   implicit def userToString(user: TestUsr) = user.id.toString
 
   override def beforeAll(): Unit = {
-    querease = new QuereaseBase("/deferred-metadata.yaml")
+    querease = new TestQuerease("/deferred-metadata.yaml")
     super.beforeAll()
 
     val db = new DbAccess with Loggable {

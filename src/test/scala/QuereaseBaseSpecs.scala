@@ -12,7 +12,7 @@ import org.tresql.{LogTopic, Logging, QueryBuilder, Resources}
 import java.text.SimpleDateFormat
 import java.util.Date
 
-class QuereaseBase(metadataFile: String) extends AppQuerease {
+class TestQuerease(metadataFile: String) extends AppQuerease {
   override type DTO = org.wabase.Dto
   override type DWI = org.wabase.DtoWithId
   override lazy val yamlMetadata = YamlMd.fromResource(metadataFile)

@@ -19,10 +19,7 @@ class PostgreSqlConstraintMessageSpec extends FlatSpec with Matchers {
   behavior of "PostgreSqlConstraintMessage"
 
   object ConstraintTestApp extends AppBase[TestUsr] with NoAudit[TestUsr] with PostgresDbAccess with PostgreSqlConstraintMessage with NoAuthorization[TestUsr] with NoValidation {
-    trait TestQuerease extends AppQuerease {
-      override lazy val yamlMetadata = YamlMd.fromResource("/constraint-message-spec.yaml")
-    }
-    object TestQuerease extends TestQuerease
+    object TestQuerease extends TestQuerease("/constraint-message-spec.yaml")
 
     override type QE = TestQuerease
     override protected def initQuerease: QE = TestQuerease

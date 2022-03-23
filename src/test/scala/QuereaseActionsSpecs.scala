@@ -94,7 +94,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with QuereaseBaseSpecs with Asy
   implicit protected var tresqlResources: Resources = _
 
   override def beforeAll(): Unit = {
-    querease = new QuereaseBase("/querease-action-specs-metadata.yaml") {
+    querease = new TestQuerease("/querease-action-specs-metadata.yaml") {
       override lazy val viewNameToClassMap = QuereaseActionsDtos.viewNameToClass
     }
     super.beforeAll()

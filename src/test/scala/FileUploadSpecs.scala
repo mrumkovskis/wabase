@@ -27,7 +27,7 @@ class FileUploadSpecs extends AnyFlatSpec with QuereaseBaseSpecs with ScalatestR
   var service: TestAppService = _
 
   override def beforeAll(): Unit = {
-    querease = new QuereaseBase("/filestreamer-specs-table-metadata.yaml")
+    querease = new TestQuerease("/filestreamer-specs-table-metadata.yaml")
     super.beforeAll()
 
     val db = new DbAccess with Loggable {
