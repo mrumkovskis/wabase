@@ -16,12 +16,13 @@ class TestQuerease(metadataFile: String) extends AppQuerease {
   override type DWI = org.wabase.DtoWithId
   override lazy val yamlMetadata = YamlMd.fromResource(metadataFile)
   override lazy val viewNameToClassMap = Map[String, Class[_ <: Dto]]()
+  def persistenceMetadata(viewName: String) = nameToPersistenceMetadata(viewName)
 }
 
 trait TestQuereaseInitializer extends BeforeAndAfterAll with Loggable { this: Suite =>
 
   protected var tresqlThreadLocalResources: TresqlResources = _
-  protected var querease: AppQuerease = _
+  protected var querease: TestQuerease = _
 
   protected def dbNamePrefix: String = getClass.getName
 

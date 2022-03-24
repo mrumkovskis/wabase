@@ -1,0 +1,16 @@
+table: person
+columns:
+- id
+- name                 ! 51
+- surname                52
+
+
+name: person
+table: person p
+auth insert:  :surname != 'Readonly'
+auth update: p.surname != 'Readonly'
+auth delete: p.surname  = 'Readonly'
+fields:
+- id
+- name
+- surname
