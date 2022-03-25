@@ -231,6 +231,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
           case (null, c) => (fieldLabelFromName(f), c)
           case lc => lc
         } getOrElse (fieldLabelFromName(f), null)
+      val fieldName = Option(f.alias).getOrElse(f.name)
 
       val readonly = getBooleanExtra(f, Readonly)
       val noInsert = getBooleanExtra(f, NoInsert)
@@ -270,7 +271,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       val hiddenOpt = getBooleanExtraOpt(f, Hidden)
       val visibleOpt = getBooleanExtraOpt(f, Visible)
       if (hiddenOpt.isDefined && visibleOpt.isDefined && hiddenOpt == visibleOpt)
-        sys.error(s"Conflicting values of visible and hidden, viewDef field: ${viewDef.name}.${f.name}")
+        sys.error(s"Conflicting values of visible and hidden, viewDef field: ${viewDef.name}.${fieldName}")
       val visible = hiddenOpt.map(! _).getOrElse(visibleOpt getOrElse true)
 
       val knownExtras =
@@ -292,7 +293,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
           .filterNot(_.isEmpty).orNull
       if (unknownKeys != null)
         sys.error(
-          s"Unknown or misplaced properties for viewDef field ${viewDef.name}.${f.name}: ${unknownKeys.mkString(", ")}")
+          s"Unknown or misplaced properties for viewDef field ${viewDef.name}.${fieldName}: ${unknownKeys.mkString(", ")}")
       val persistenceOptions = Option(f.options).getOrElse((fieldDb.insertable, fieldDb.updatable) match {
         case (false, false) => "!"
         case (false, true)  => "="
