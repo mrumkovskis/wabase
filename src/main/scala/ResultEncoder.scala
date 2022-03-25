@@ -61,7 +61,7 @@ abstract class ResultRenderer(
   }
   protected def shouldRender(name: String): Boolean = {
     val context = contextStack.head
-    context.viewDef == null || context.viewDef.fields.exists(f => Option(f.alias).getOrElse(f.name) == name)
+    context.viewDef == null || context.viewDef.fields.exists(f => Option(f.alias).getOrElse(f.name) == name && !f.api.excluded)
   }
   protected def getViewDef(viewName: String) =
     if (viewName != null)

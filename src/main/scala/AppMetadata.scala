@@ -101,6 +101,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val FieldApi = "field api" // avoid name clash with "api"
     val FieldDb = "field db"
 
+    val Excluded = "excluded"
     val Readonly = "readonly"
     val NoInsert = "no insert"
     val NoUpdate = "no update"
@@ -237,28 +238,33 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       val noInsert = getBooleanExtra(f, NoInsert)
       val noUpdate = getBooleanExtra(f, NoUpdate)
 
-      val fieldApiKnownOps =
-        Set(Readonly, NoInsert, NoUpdate)
-      def getFieldApi(key: String) = getStringSeq(key, f.extras) match {
+      val fieldApiKnownOps = Set(Readonly, NoInsert, NoUpdate, Excluded)
+      val fieldDbKnownOps  = Set(Readonly, NoInsert, NoUpdate)
+      def getFieldApi(key: String, knownOps: Set[String]) = getStringSeq(key, f.extras) match {
         case api =>
           val ops = api.flatMap(_.trim.split(",").toList).map(_.trim).filter(_ != "").toSet
           def op(opkey: String) = (ops contains opkey) || api.isEmpty && (opkey match {
+            case Excluded => false
             case Readonly => f.options != null &&  (f.options contains "!")
             case NoInsert => f.options != null && !(f.options contains "+")
             case NoUpdate => f.options != null && !(f.options contains "=")
           })
-          val unknownFieldApiMethods = ops -- fieldApiKnownOps
-          if (unknownFieldApiMethods.nonEmpty)
+          val unknownOps = ops -- knownOps
+          if (unknownOps.nonEmpty)
             sys.error(
-              s"Unknown field api method(s), viewDef: ${viewDef.name}, method(s): ${unknownFieldApiMethods.mkString(", ")}")
+              s"Unknown $key value(s), viewDef field ${viewDef.name}.${fieldName}, value(s): ${unknownOps.mkString(", ")}")
           val ro = readonly || op(Readonly)
-          FieldOps(
-            insertable = !ro && !noInsert && !op(NoInsert),
-            updatable  = !ro && !noUpdate && !op(NoUpdate))
+          FieldApiOps(
+            insertable = !ro && !noInsert && !op(Excluded) && !op(NoInsert),
+            updatable  = !ro && !noUpdate && !op(Excluded) && !op(NoUpdate),
+            excluded   = op(Excluded),
+          )
       }
 
-      val fieldApi = getFieldApi(FieldApi)
-      val fieldDb = getFieldApi(FieldDb)
+      val fieldApi = getFieldApi(FieldApi, fieldApiKnownOps)
+      val fieldDb  = getFieldApi(FieldDb,  fieldDbKnownOps) match {
+        case api => FieldDbOps(insertable = api.insertable, updatable = api.updatable)
+      }
 
       val required = getBooleanExtra(f, Required)
 
@@ -652,13 +658,24 @@ object AppMetadata {
     actionToDbAccessKeys: Map[String, Seq[DbAccessKey]] = Map.empty,
   ) extends AppViewDefExtras
 
-  case class FieldOps(
+  case class FieldApiOps(
     insertable: Boolean,
-    updatable: Boolean)
+    updatable: Boolean,
+    excluded: Boolean,
+  ) {
+    val readonly = !insertable && !updatable || excluded
+  }
+
+  case class FieldDbOps(
+    insertable: Boolean,
+    updatable: Boolean,
+  ) {
+    val readonly = !insertable && !updatable
+  }
 
   trait AppFieldDefExtras {
-    val api: FieldOps
-    val db: FieldOps
+    val api: FieldApiOps
+    val db: FieldDbOps
     val label: String
     val required: Boolean
     val sortable: Boolean
@@ -666,12 +683,12 @@ object AppMetadata {
   }
 
   private [wabase] case class AppFieldDef(
-    api: FieldOps = FieldOps(insertable =  false, updatable = false),
-    db:  FieldOps = FieldOps(insertable =  false, updatable = false),
+    api: FieldApiOps  = FieldApiOps(insertable = false, updatable = false, excluded = true),
+    db:  FieldDbOps   = FieldDbOps (insertable = false, updatable = false),
     label: String = null,
     required: Boolean = false,
     sortable: Boolean = false,
-    visible: Boolean = false,
+    visible:  Boolean = false,
   ) extends AppFieldDefExtras
 
   val WabaseViewExtrasKey = "wabase-view-extras"

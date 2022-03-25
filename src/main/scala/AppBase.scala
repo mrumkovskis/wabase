@@ -654,7 +654,7 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
     import qe.{ FieldRefRegexp_ => FieldRefRegexp }
     JsObject(Map(
       "name" -> JsString(viewDef.name),
-      "fields" -> JsArray(viewDef.fields.map(f => JsObject(Map(
+      "fields" -> JsArray(viewDef.fields.filterNot(_.api.excluded).map(f => JsObject(Map(
         "name" -> JsString(Option(f.alias) getOrElse f.name),
         "type" -> JsString(f.type_.name),
         "isCollection" -> JsBoolean(f.isCollection),
