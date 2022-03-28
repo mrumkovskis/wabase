@@ -128,12 +128,12 @@ trait DbAccess { this: Loggable =>
       val res = a
       if (forceNewConnection || poolChanges) {
         tresqlResources.conn.commit()
-        tresqlResources.extraResources.foreach { case (_, r) => r.conn.commit() }
+        tresqlResources.extraResources.foreach { case (_, r) => if (r.conn != null) r.conn.commit() }
       }
       res
     } catch {
       case ex: Exception =>
-        def rollbackConn(c: Connection) = try c.rollback() catch {
+        def rollbackConn(c: Connection) = try if (c != null) c.rollback() catch {
           case NonFatal(e) => logger.warn(s"Error rolling back connection $c", e)
         }
         if (forceNewConnection || poolChanges) {
