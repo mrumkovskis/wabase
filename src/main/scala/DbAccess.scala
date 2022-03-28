@@ -63,6 +63,7 @@ trait DbAccess { this: Loggable =>
     val oldConn = tresqlResources.conn
     val oldPool = currentPool.get()
     val oldTimeout = tresqlResources.queryTimeout
+    val oldExtraResources = tresqlResources.extraResources
     val poolChanges = oldPool != pool
     if (poolChanges) {
       logger.debug(s"""Using connection pool "$pool"""")
@@ -76,6 +77,7 @@ trait DbAccess { this: Loggable =>
         clearEnv(true)
         tresqlResources.conn = oldConn
         tresqlResources.queryTimeout = oldTimeout
+        tresqlResources.extraResources = oldExtraResources
         currentPool.set(oldPool)
       }
     }
@@ -115,6 +117,7 @@ trait DbAccess { this: Loggable =>
     val oldConn = tresqlResources.conn
     val oldPool = currentPool.get()
     val oldTimeout = tresqlResources.queryTimeout
+    val oldExtraResources = tresqlResources.extraResources
     val poolChanges = oldPool != pool
     if (forceNewConnection || poolChanges) {
       logger.debug(s"""Using connection pool "$pool"""")
@@ -123,14 +126,19 @@ trait DbAccess { this: Loggable =>
     }
     try {
       val res = a
-      if (forceNewConnection || poolChanges) tresqlResources.conn.commit()
+      if (forceNewConnection || poolChanges) {
+        tresqlResources.conn.commit()
+        tresqlResources.extraResources.foreach { case (_, r) => r.conn.commit() }
+      }
       res
     } catch {
       case ex: Exception =>
-        if (forceNewConnection || poolChanges){
-          try tresqlResources.conn.rollback catch {
-            case e: Exception => e.printStackTrace
-          }
+        def rollbackConn(c: Connection) = try c.rollback() catch {
+          case NonFatal(e) => logger.warn(s"Error rolling back connection $c", e)
+        }
+        if (forceNewConnection || poolChanges) {
+          rollbackConn(tresqlResources.conn)
+          tresqlResources.extraResources.foreach { case (_, r) => rollbackConn(r.conn) }
         }
         throw ex
     } finally {
@@ -138,6 +146,7 @@ trait DbAccess { this: Loggable =>
         clearEnv()
         tresqlResources.conn = oldConn
         tresqlResources.queryTimeout = oldTimeout
+        tresqlResources.extraResources = oldExtraResources
         currentPool.set(oldPool)
       }
     }
