@@ -58,6 +58,9 @@ fields:
 
 name:   sys_user_with_ro_roles
 table:  sys_user u
+save-to:
+- person
+- sys_user
 joins:
 - u / person p_
 fields:
@@ -68,5 +71,28 @@ fields:
 
 name:     sys_user_with_roles
 extends:  sys_user_with_ro_roles
+save-to:
+- person
+- sys_user
 fields:
-- roles [+] * sys_user_role_choice
+- roles [+-] * sys_user_role_choice
+
+
+name:     sys_user_with_roles_save_on_insert
+extends:  sys_user_with_ro_roles
+save-to:
+- person
+- sys_user
+fields:
+- roles [+] * sys_user_role_choice:
+    - no update: true   # to be renamed or refactored!
+
+
+name:     sys_user_with_roles_save_on_update
+extends:  sys_user_with_ro_roles
+save-to:
+- person
+- sys_user
+fields:
+- roles [+-] * sys_user_role_choice:
+    - no insert: true   # to be renamed or refactored!

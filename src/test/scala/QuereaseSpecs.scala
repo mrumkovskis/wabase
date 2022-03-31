@@ -26,7 +26,9 @@ object QuereaseSpecsDtos {
     var roles: List[sys_user_role_choice] = null
   }
 
-  class sys_user_with_roles extends sys_user_with_ro_roles
+  class sys_user_with_roles                extends sys_user_with_ro_roles
+  class sys_user_with_roles_save_on_insert extends sys_user_with_ro_roles
+  class sys_user_with_roles_save_on_update extends sys_user_with_ro_roles
 
   val viewNameToClass = Map[String, Class[_ <: Dto]](
     "person" -> classOf[Person],
@@ -57,13 +59,14 @@ class QuereaseSpecs extends AsyncFlatSpec with Matchers with TestQuereaseInitial
     import org.tresql.OrtMetadata._
     querease.persistenceMetadata("person") shouldBe View(
       List(SaveTo("person",Set(),List())),
-      null,
       Some(Filters(
         Some( "(:surname != 'Readonly')"),
         Some("(p.surname != 'Readonly')"),
         Some("(p.surname  = 'Readonly')"),
       )),
       "p",
+      true,
+      true,
       List(
         Property("id",TresqlValue(":id",true,true)),
         Property("name",TresqlValue(":name",true,true)),
@@ -72,36 +75,50 @@ class QuereaseSpecs extends AsyncFlatSpec with Matchers with TestQuereaseInitial
       null
     )
     querease.persistenceMetadata("sys_user_with_ro_roles") shouldBe View(
-      List(SaveTo("sys_user",Set(),List())),
-      null,
+      List(
+        SaveTo("person",Set(),List()),
+        SaveTo("sys_user",Set("person_id", "id"),List())
+      ),
       Some(Filters(None,None,None)),
       "u",
+      true,
+      true,
       List(
         Property("id",TresqlValue(":id",true,true)),
+        Property("name",TresqlValue(":name",true,true)),
       ),
       null
     )
     querease.persistenceMetadata("sys_user_with_roles") shouldBe View(
-      List(SaveTo("sys_user",Set(),List())),
-      null,
+      List(
+        SaveTo("person",Set(),List()),
+        SaveTo("sys_user",Set("person_id", "id"),List())
+      ),
       Some(Filters(None,None,None)),
       "u",
+      true,
+      true,
       List(
         Property("id",TresqlValue(":id",true,true)),
-        Property("roles",ViewValue(View(
-          List(SaveTo("sys_user_role",Set(),List())),
-          SaveOptions(true,false,false),
-          Some(Filters(None,None,None)),
-          "ur",
-          List(
-            Property("id",TresqlValue(":id",true,true)),
-            Property("sys_role_id",TresqlValue(
-              """(checked_resolve(:sys_role, array(sys_role r[name = :sys_role]{r.id}@(2)),""" +
-              """ 'Failed to identify value of "sys_role" (from sys_user_role_choice) - '""" +
-              """ || coalesce(:sys_role, 'null')))""",true,true)),
+        Property("name",TresqlValue(":name",true,true)),
+        Property("roles",ViewValue(
+          View(
+            List(SaveTo("sys_user_role",Set(),List())),
+            Some(Filters(None,None,None)),
+            "ur",
+            true,
+            true,
+            List(
+              Property("id",TresqlValue(":id",true,true)),
+              Property("sys_role_id",TresqlValue(
+                """(checked_resolve(:sys_role, array(sys_role r[name = :sys_role]{r.id}@(2)),""" +
+                """ 'Failed to identify value of "sys_role" (from sys_user_role_choice) - '""" +
+                """ || coalesce(:sys_role, 'null')))""",true,true)),
+            ),
+            null
           ),
-          null
-        )))
+          SaveOptions(true,false,true),
+        ))
       ),
       null
     )
@@ -152,5 +169,73 @@ class QuereaseSpecs extends AsyncFlatSpec with Matchers with TestQuereaseInitial
 
     querease.delete(p) shouldBe 1
     querease.get[Person](id) shouldBe None
+  }
+
+  it should "respect field options" in {
+    val all_roles = List("admin", "demo")
+    all_roles.foreach { role =>
+      Query(s"+sys_role {id, name} [#sys_role, '$role']")
+    }
+
+    val role_a = new sys_user_role_choice
+    role_a.sys_role = "admin"
+
+    val role_d = new sys_user_role_choice
+    role_d.sys_role = "demo"
+
+    // read-only children - never save
+    val u_ror    = new sys_user_with_ro_roles
+    u_ror.name   = "user_ror"
+    u_ror.roles  = List(role_a, role_d)
+    val u_ror_id = querease.save(u_ror)
+    u_ror.id     = u_ror_id
+    querease.get[sys_user_with_ro_roles](u_ror_id).get.name  shouldBe "user_ror"
+    querease.get[sys_user_with_ro_roles](u_ror_id).get.roles shouldBe Nil
+    querease.save(u_ror)
+    querease.get[sys_user_with_ro_roles](u_ror_id).get.roles shouldBe Nil
+
+    // read-write children - always save
+    val u_rwr    = new sys_user_with_roles
+    u_rwr.name   = "user_rwr"
+    u_rwr.roles  = List(role_a, role_d)
+    val u_rwr_id = querease.save(u_rwr)
+    u_rwr.id     = u_rwr_id
+    querease.get[sys_user_with_roles](u_rwr_id).get.name  shouldBe "user_rwr"
+    querease.get[sys_user_with_roles](u_rwr_id).get.roles.map(_.sys_role) shouldBe all_roles
+    u_rwr.roles  = List(role_a)
+    querease.save(u_rwr)
+    querease.get[sys_user_with_roles](u_rwr_id).get.roles.map(_.sys_role) shouldBe List("admin")
+    u_rwr.roles  = List(role_a, role_d)
+    querease.save(u_rwr)
+    querease.get[sys_user_with_roles](u_rwr_id).get.roles.map(_.sys_role) shouldBe all_roles
+
+    // save on insert only
+    val u_sir    = new sys_user_with_roles_save_on_insert
+    u_sir.name   = "user_sir"
+    u_sir.roles  = List(role_a, role_d)
+    val u_sir_id = querease.save(u_sir)
+    u_sir.id     = u_sir_id
+    querease.get[sys_user_with_roles_save_on_insert](u_sir_id).get.name  shouldBe "user_sir"
+    querease.get[sys_user_with_roles_save_on_insert](u_sir_id).get.roles.map(_.sys_role) shouldBe all_roles
+    u_sir.roles  = List(role_a)
+    querease.save(u_sir)
+    querease.get[sys_user_with_roles_save_on_insert](u_sir_id).get.roles.map(_.sys_role) shouldBe all_roles
+
+    // save on update only
+    val u_sur    = new sys_user_with_roles_save_on_update
+    u_sur.name   = "user_sur"
+    u_sur.roles  = List(role_a, role_d)
+    val u_sur_id = querease.save(u_sur)
+    u_sur.id     = u_sur_id
+    querease.get[sys_user_with_roles_save_on_update](u_sur_id).get.name  shouldBe "user_sur"
+    querease.get[sys_user_with_roles_save_on_update](u_sur_id).get.roles.map(_.sys_role) shouldBe Nil
+    querease.save(u_sur)
+    querease.get[sys_user_with_roles_save_on_update](u_sur_id).get.roles.map(_.sys_role) shouldBe all_roles
+    u_sur.roles  = List(role_a)
+    querease.save(u_sur)
+    querease.get[sys_user_with_roles_save_on_update](u_sur_id).get.roles.map(_.sys_role) shouldBe List("admin")
+    u_sur.roles  = List(role_a, role_d)
+    querease.save(u_sur)
+    querease.get[sys_user_with_roles_save_on_update](u_sur_id).get.roles.map(_.sys_role) shouldBe all_roles
   }
 }
