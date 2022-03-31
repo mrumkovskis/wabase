@@ -20,15 +20,18 @@ object QuereaseSpecsDtos {
     var sys_role: String = null
   }
 
-  class sys_user_with_roles extends DtoWithId {
+  class sys_user_with_ro_roles extends DtoWithId {
     var id: java.lang.Long = null
     var name: String = null
     var roles: List[sys_user_role_choice] = null
   }
 
+  class sys_user_with_roles extends sys_user_with_ro_roles
+
   val viewNameToClass = Map[String, Class[_ <: Dto]](
     "person" -> classOf[Person],
     "sys_user_role_choice" -> classOf[sys_user_role_choice],
+    "sys_user_with_ro_roles" -> classOf[sys_user_with_ro_roles],
     "sys_user_with_roles" -> classOf[sys_user_with_roles],
   )
 }
@@ -65,6 +68,16 @@ class QuereaseSpecs extends AsyncFlatSpec with Matchers with TestQuereaseInitial
         Property("id",TresqlValue(":id",true,true)),
         Property("name",TresqlValue(":name",true,true)),
         Property("surname",TresqlValue(":surname",true,true)),
+      ),
+      null
+    )
+    querease.persistenceMetadata("sys_user_with_ro_roles") shouldBe View(
+      List(SaveTo("sys_user",Set(),List())),
+      null,
+      Some(Filters(None,None,None)),
+      "u",
+      List(
+        Property("id",TresqlValue(":id",true,true)),
       ),
       null
     )

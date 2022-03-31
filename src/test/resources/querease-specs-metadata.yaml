@@ -56,11 +56,17 @@ fields:
 - sys_role = ^sys_role_choice.name ->
 
 
-name:   sys_user_with_roles
+name:   sys_user_with_ro_roles
 table:  sys_user u
 joins:
 - u / person p_
 fields:
 - id
 - p_.name
+- roles [!] * sys_user_role_choice
+
+
+name:     sys_user_with_roles
+extends:  sys_user_with_ro_roles
+fields:
 - roles [+] * sys_user_role_choice
