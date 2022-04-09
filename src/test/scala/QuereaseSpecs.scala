@@ -131,7 +131,7 @@ class QuereaseSpecs extends AsyncFlatSpec with Matchers with TestQuereaseInitial
 
     intercept[org.mojoz.querease.NotFoundException] {
       querease.save(p)
-    }.getMessage shouldBe "Record not inserted into table(s): person p"
+    }.getMessage shouldBe "Record not inserted into table(s): person"
 
     p.surname = "Surname"
     val id = querease.save(p)
@@ -160,7 +160,7 @@ class QuereaseSpecs extends AsyncFlatSpec with Matchers with TestQuereaseInitial
 
     intercept[org.mojoz.querease.NotFoundException] {
       querease.save(p)
-    }.getMessage shouldBe "Record not updated in table(s): person p"
+    }.getMessage shouldBe "Record not updated in table(s): person"
 
     p = querease.get[Person](id).get
     p.id shouldBe id
