@@ -28,14 +28,6 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
         .nameToViewDef
     toAppViewDefs(mojozViewDefs)
   }
-  override protected def isFieldForInsert(field: FieldDef): Boolean =
-    if  (field.type_.isComplexType)
-         field.db.insertable
-    else super.isFieldForInsert(field)
-  override protected def isFieldForUpdate(field: FieldDef): Boolean =
-    if  (field.type_.isComplexType)
-         field.db.updatable
-    else super.isFieldForUpdate(field)
   def toAppViewDefs(mojozViewDefs: Map[String, ViewDef]) = transformAppViewDefs {
     val inlineViewDefNames =
       mojozViewDefs.values.flatMap { viewDef =>
@@ -107,7 +99,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
   object KnownFieldExtras {
     val FieldApi = "field api" // avoid name clash with "api"
-    val FieldDb = "field db"
+    val FieldDb = "field db"   // TODO remove - handled by options since querease 6.1
 
     val Excluded = "excluded"
     val Readonly = "readonly"
@@ -251,11 +243,12 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       def getFieldApi(key: String, knownOps: Set[String]) = getStringSeq(key, f.extras) match {
         case api =>
           val ops = api.flatMap(_.trim.split(",").toList).map(_.trim).filter(_ != "").toSet
+          val opt = fieldOptionsSelf(f)
           def op(opkey: String) = (ops contains opkey) || api.isEmpty && (opkey match {
             case Excluded => false
-            case Readonly => f.options != null &&  (f.options contains "!")
-            case NoInsert => f.options != null && !(f.options contains "+") && !f.type_.isComplexType
-            case NoUpdate => f.options != null && !(f.options contains "=") && !f.type_.isComplexType
+            case Readonly => opt != null &&  (opt contains "!")
+            case NoInsert => opt != null && !(opt contains "+")
+            case NoUpdate => opt != null && !(opt contains "=")
           })
           val unknownOps = ops -- knownOps
           if (unknownOps.nonEmpty)
@@ -311,17 +304,26 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
         sys.error(
           s"Unknown or misplaced properties for viewDef field ${viewDef.name}.${fieldName}: ${unknownKeys.mkString(", ")}")
       val persistenceOptions =
-        if (fieldDb.readonly)
-          "!"
-        else if (f.type_.isComplexType)
-          f.options
-        else
-          (fieldDb.insertable, fieldDb.updatable) match {
-            case (false, false) => "!"
-            case (false, true)  => "="
-            case (true,  false) => "+"
-            case (true,  true)  => null
-          }
+        Option(
+          if (fieldDb.readonly)
+            "!"
+          else if (f.type_.isComplexType)
+            (fieldDb.insertable, fieldDb.updatable) match {
+              case (false, false) => "!"
+              case (false, true)  => "=/" + Option(fieldOptionsRef(f)).getOrElse("")
+              case (true, false)  => "+/" + Option(fieldOptionsRef(f)).getOrElse("")
+              case (true, true)   => fieldOptionsRef(f)
+            }
+          else
+            (fieldDb.insertable, fieldDb.updatable) match {
+              case (false, false) => "!"
+              case (false, true)  => "="
+              case (true,  false) => "+"
+              case (true,  true)  => null
+            }
+        ).map(o => s"[$o]")
+         .orNull
+
       import f._
       MojozFieldDef(table, tableAlias, name, alias, persistenceOptions, isOverride, isCollection,
         isExpression, expression, f.saveTo, resolver, nullable,
