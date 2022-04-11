@@ -41,6 +41,7 @@ trait TestQuereaseInitializer extends BeforeAndAfterAll with Loggable { this: Su
         case LogTopic.params => "params"
         case LogTopic.sql    => "sql --"
         case LogTopic.tresql => "tresql"
+        case LogTopic.ort => "ort"
         case LogTopic.sql_with_params => null
       }
       if (topicName != null) logger.debug(/*Timestamp(new Date()) + */s"  [$topicName]  $msg")
