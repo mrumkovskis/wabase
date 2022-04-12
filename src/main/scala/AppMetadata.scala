@@ -312,7 +312,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
               case (false, false) => "!"
               case (false, true)  => "=/" + Option(fieldOptionsRef(f)).getOrElse("")
               case (true, false)  => "+/" + Option(fieldOptionsRef(f)).getOrElse("")
-              case (true, true)   => fieldOptionsRef(f)
+              case (true, true)   => Option(fieldOptionsRef(f)).map("/" + _).orNull
             }
           else
             (fieldDb.insertable, fieldDb.updatable) match {

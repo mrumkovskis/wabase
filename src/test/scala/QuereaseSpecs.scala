@@ -20,6 +20,19 @@ object QuereaseSpecsDtos {
     var sys_role: String = null
   }
 
+  class sys_user_role_ref_only_save extends DtoWithId {
+    var id: java.lang.Long = null
+    var user: sys_user_role_ref_only_save_user = null
+    var role: sys_user_role_ref_only_save_role = null
+  }
+  class sys_user_role_ref_only_save_user extends DtoWithId {
+    var id: java.lang.Long = null
+    var person_id: java.lang.Long = null
+  }
+  class sys_user_role_ref_only_save_role extends Dto {
+    var name: String = null
+  }
+
   class sys_user_with_ro_roles extends DtoWithId {
     var id: java.lang.Long = null
     var name: String = null
@@ -32,8 +45,12 @@ object QuereaseSpecsDtos {
   class sys_user_with_roles_save_on_insert_legacy extends sys_user_with_ro_roles
   class sys_user_with_roles_save_on_update_legacy extends sys_user_with_ro_roles
 
+
   val viewNameToClass = Map[String, Class[_ <: Dto]](
     "person" -> classOf[Person],
+    "sys_user_role_ref_only_save"      -> classOf[sys_user_role_ref_only_save],
+    "sys_user_role_ref_only_save_role" -> classOf[sys_user_role_ref_only_save_role],
+    "sys_user_role_ref_only_save_user" -> classOf[sys_user_role_ref_only_save_user],
     "sys_user_role_choice" -> classOf[sys_user_role_choice],
     "sys_user_with_ro_roles" -> classOf[sys_user_with_ro_roles],
     "sys_user_with_roles" -> classOf[sys_user_with_roles],
@@ -268,5 +285,39 @@ class QuereaseSpecs extends AsyncFlatSpec with Matchers with TestQuereaseInitial
     u_lgu.roles  = List(role_a, role_d)
     querease.save(u_lgu)
     querease.get[sys_user_with_roles_save_on_update_legacy](u_lgu_id).get.roles.map(_.sys_role) shouldBe all_roles
+
+    // save refs only, save ref to user only on insert
+    var refs_1  = new sys_user_role_ref_only_save
+    refs_1.user = new sys_user_role_ref_only_save_user
+    refs_1.role = new sys_user_role_ref_only_save_role
+
+    refs_1.user.id    = -1
+    refs_1.role.name  = role_a.sys_role
+    intercept[org.tresql.TresqlException] {
+      querease.save(refs_1)
+    }.getMessage should include ("""Failed to identify value of "user"""")
+
+    refs_1.user.id    = Query("sys_user u/person p[p.name = 'user_rwr'] {u.id}").unique[Long]
+    refs_1.id = querease.save(refs_1)
+
+    refs_1 = querease.get[sys_user_role_ref_only_save](refs_1.id).get
+    refs_1.user.id        shouldBe Query("sys_user u/person p[p.name = 'user_rwr'] {u.id}").unique[Long]
+    refs_1.user.person_id shouldBe Query("sys_user u/person p[p.name = 'user_rwr'] {u.person_id}").unique[Long]
+    refs_1.role.name      shouldBe role_a.sys_role
+
+    refs_1.user.id        = -1
+    refs_1.user.person_id = -1
+    refs_1.role.name      = role_d.sys_role
+    querease.save(refs_1)
+
+    refs_1 = querease.get[sys_user_role_ref_only_save](refs_1.id).get
+    refs_1.user.id        shouldBe Query("sys_user u/person p[p.name = 'user_rwr'] {u.id}").unique[Long]
+    refs_1.user.person_id shouldBe Query("sys_user u/person p[p.name = 'user_rwr'] {u.person_id}").unique[Long]
+    refs_1.role.name      shouldBe role_d.sys_role
+
+    refs_1.role.name      = "missing-r"
+    intercept[org.tresql.TresqlException] {
+      querease.save(refs_1)
+    }.getCause.getMessage shouldBe """Failed to identify value of "role" (from sys_user_role_ref_only_save) - missing-r"""
   }
 }

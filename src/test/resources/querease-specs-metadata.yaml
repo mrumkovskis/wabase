@@ -96,6 +96,21 @@ fields:
 - roles [=/+-] * sys_user_role_choice
 
 
+name:    sys_user_role_ref_only_save
+table:   sys_user_role
+fields:
+- id
+- user [+/!] :  # save sys_user_id on insert only, but do not save sys_user
+    table:  sys_user
+    fields:
+    - id
+    - person_id
+- role [/!] :   # save sys_role_id on insert and update, but do not save sys_role
+    table:  sys_role
+    fields:
+    - name
+
+
 name:     sys_user_with_roles_save_on_insert_legacy
 extends:  sys_user_with_ro_roles
 save-to:
