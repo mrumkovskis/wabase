@@ -10,15 +10,17 @@ abstract class DataBaseSpecs[User] extends FlatSpec with Matchers with CoreClien
   val ApplicationStateCookiePrefix = "current_"
   def defaultListParams: Map[String, Any] = Map("limit" -> 1)
   private var defaultListParamsForClass: Map[Class[_ <: Dto], Map[String, Any]] = Map()
+  def listTestParamsForClass(clzz: Class[_ <: Dto]): Map[String, Any] =
+    defaultListParamsForClass.getOrElse(clzz, Map.empty)
 
-  def listTest(clzz: Class[_ <: Dto], params: Map[String, Any]): Unit = defaultListParamsForClass += clzz -> params
+  def listTestParams(clzz: Class[_ <: Dto], params: Map[String, Any]): Unit = defaultListParamsForClass += clzz -> params
   def listTest(clzz: Class[_ <: Dto], name: String, params: Map[String, Any]): Unit = createListTest(clzz, name, params)
 
   def views = qe.collectViews{ case v => v }.toSeq.sortBy(_.name)
 
   views.filter(_.apiMethodToRole.contains("list")).foreach{view =>
     val viewClass = qe.viewNameToClassMap(view.name)
-    createListTest(viewClass, null, defaultListParamsForClass.getOrElse(viewClass, Map.empty))
+    createListTest(viewClass, null, Option(listTestParamsForClass(viewClass)).getOrElse(Map.empty))
   }
 
   override def beforeAll() = {
@@ -40,7 +42,7 @@ abstract class DataBaseSpecs[User] extends FlatSpec with Matchers with CoreClien
     login()
     val (cookies, filteredParams) = params.partition(_._1.startsWith(ApplicationStateCookiePrefix))
     getCookieStorage.setCookies(cookies)
-    list(viewClass, filteredParams ++ defaultListParams)
+    list(viewClass, defaultListParams ++ filteredParams)
     clearCookies
   }
 
@@ -48,7 +50,7 @@ abstract class DataBaseSpecs[User] extends FlatSpec with Matchers with CoreClien
     login()
     val (cookies, filteredParams) = params.partition(_._1.startsWith(ApplicationStateCookiePrefix))
     getCookieStorage.setCookies(cookies)
-    count(viewClass, filteredParams ++ defaultListParams)
+    count(viewClass, defaultListParams ++ filteredParams)
     clearCookies
   }
 }
