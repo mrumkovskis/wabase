@@ -108,8 +108,7 @@ abstract class ResultRenderer(
       val name = nextName(context)
       val fieldDef =
         if (context.viewDef != null)
-          // TODO performance!
-          context.viewDef.fields.find(f => Option(f.alias).getOrElse(f.name) == name).orNull
+          context.viewDef.fieldOpt(name).orNull
         else null
       val isCollection = fieldDef == null || fieldDef.isCollection
       val shouldRender_ = context.shouldRender && !context.namesToHide.contains(name)
