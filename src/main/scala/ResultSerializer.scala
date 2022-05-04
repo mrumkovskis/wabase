@@ -252,7 +252,8 @@ object BorerDatetimeDecoders {
   implicit val javaSqlTimestampDecoder: Decoder[Timestamp] = Decoder { reader =>
     import reader._
     dataItem() match {
-      case DI.String => sql.Timestamp.valueOf(readString())
+      case DI.Chars |
+           DI.String => sql.Timestamp.valueOf(readString())
       case _ if tryReadTag(Tag.DateTimeString)  =>
         new sql.Timestamp(Format.jsIsoDateTime.parse(readString()).getTime)
       case _ if tryReadTag(Tag.EpochDateTime)   => new Timestamp((readDouble() * 1000).toLong)
@@ -262,7 +263,8 @@ object BorerDatetimeDecoders {
   implicit val javaSqlDateDecoder: Decoder[sql.Date] = Decoder { reader =>
     import reader._
     dataItem() match {
-      case DI.String => sql.Date.valueOf(readString())
+      case DI.Chars |
+           DI.String => sql.Date.valueOf(readString())
       case _ if tryReadTag(Tag.DateTimeString)  =>
         new sql.Date(Format.jsIsoDateTime.parse(readString()).getTime)
       case _ if tryReadTag(Tag.EpochDateTime)   => new sql.Date(readLong() * 1000)

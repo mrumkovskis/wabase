@@ -1,0 +1,34 @@
+name:   decoder_test
+table:
+fields:
+- id
+- string            string
+- date              date
+- date_time         dateTime
+- int               int
+- bigint            integer
+- double            double
+- decimal           decimal
+- boolean           boolean
+- bytes             bytes
+- child             decoder_test_child
+- long_seq        * long
+- string_seq      * string
+- date_seq        * date
+- datetime_seq    * dateTime
+- int_seq         * int
+- bigint_seq      * integer
+- double_seq      * double
+- decimal_seq     * decimal
+- boolean_seq     * boolean
+- bytes_seq       * bytes
+- children        * decoder_test_child
+
+
+name:   decoder_test_child
+table:
+fields:
+- id
+- name              string
+- date              date
+- date_time         dateTime

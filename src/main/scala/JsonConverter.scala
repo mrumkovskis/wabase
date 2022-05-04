@@ -1,6 +1,7 @@
 package org.wabase
 
 import Format._
+import akka.util.ByteString
 import scala.collection.immutable.TreeMap
 import scala.language.postfixOps
 import spray.json._
@@ -44,6 +45,7 @@ trait JsonConverter { self: AppQuerease =>
     case d: jDate => JsString(xsdDate(d))
     case jv: JsValue => jv
     case null => JsNull
+    case b: Array[Byte] => JsString(ByteString.fromArrayUnsafe(b).encodeBase64.utf8String)
     case x => JsString(String.valueOf(x))
   }
   implicit object DtoJsonFormat extends RootJsonFormat[DTO] {

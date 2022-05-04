@@ -23,7 +23,7 @@ import akka.util.ByteString
 import io.bullet.borer.compat.akka.ByteStringProvider
 import org.tresql.{Resources, Result, RowLike}
 
-import scala.collection.immutable.{Seq => iSeq}
+import scala.collection.immutable.{HashMap, Seq => iSeq}
 import scala.language.implicitConversions
 import scala.language.reflectiveCalls
 import scala.util.Try
@@ -31,7 +31,7 @@ import scala.util.Try
 trait Marshalling extends DtoMarshalling
   with BasicJsonMarshalling
   with BasicMarshalling
-  with QuereaseResultMarshalling { this: AppServiceBase[_] with Execution => }
+  with QuereaseMarshalling { this: AppServiceBase[_] with Execution => }
 
 trait BasicJsonMarshalling extends akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport with BasicMarshalling {
   this: JsonConverterProvider =>
@@ -45,8 +45,8 @@ trait BasicJsonMarshalling extends akka.http.scaladsl.marshallers.sprayjson.Spra
   implicit def mapFutureMarshaller: ToEntityMarshaller[Future[Map[String, Any]]] =
     combinedWithEC(ec => mapF => mapF.map(_.toJson)(ec))
 
-  implicit def mapUnmarshaller(implicit jsonUnmarshaller: FromEntityUnmarshaller[JsValue]): FromEntityUnmarshaller[Map[String, Any]] =
-    jsonUnmarshaller.map(_.convertTo[Map[String, Any]])
+  // implicit def mapUnmarshaller(implicit jsonUnmarshaller: FromEntityUnmarshaller[JsValue]): FromEntityUnmarshaller[Map[String, Any]] =
+  //   jsonUnmarshaller.map(_.convertTo[Map[String, Any]])
 
   implicit def jsObjectUnmarshaller(implicit jsonUnmarshaller: FromEntityUnmarshaller[JsValue]) = jsonUnmarshaller.map(_.asJsObject)
 }
@@ -138,6 +138,14 @@ trait DtoMarshalling extends Loggable { this: AppServiceBase[_] with Execution =
   implicit val dtoMarshaller: ToEntityMarshaller[app.Dto] = Marshaller.withFixedContentType(`application/json`) {
     dto => HttpEntity.Strict(`application/json`, ByteString(dto.toMap.toJson.compactPrint))
   }
+}
+
+trait QuereaseMarshalling extends QuereaseResultMarshalling { this: AppServiceBase[_] with Execution =>
+  val cborOrJsonDecoder = new CborOrJsonDecoder(app.qe.typeDefs, app.qe.nameToViewDef)
+  def toMapUnmarshallerForView(viewName: String): FromEntityUnmarshaller[Map[String, Any]] =
+    Unmarshaller.byteStringUnmarshaller map { bytes =>
+      cborOrJsonDecoder.decodeToMap(bytes, viewName)(HashMap[String, Any]())
+    }
 }
 
 trait QuereaseResultMarshalling { this:

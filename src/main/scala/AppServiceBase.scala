@@ -117,24 +117,26 @@ trait AppServiceBase[User]
   def updateAction(viewName: String, id: Long)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     extractUri { requestUri =>
       parameterMultiMap { params =>
-        entity(as[JsValue]) { data =>
-          try {
-            if (isQuereaseActionDefined(viewName, "save")) {
+        try {
+          if (isQuereaseActionDefined(viewName, "save")) {
+            implicit val um = toMapUnmarshallerForView(viewName)
+            entity(as[Map[String, Any]]) { entityAsMap =>
               complete {
-                val entityAsMap = data.asInstanceOf[JsObject].convertTo[Map[String, Any]]
                 app.doWabaseAction(Action.Save, viewName, entityAsMap ++ filterPars(params) + ("id" -> id)).map {
                   case r @ app.WabaseResult(_, _: IdResult) =>
                     r.copy(result = RedirectResult(requestUri.path.toString))
                   case x => x
                 }
               }
-            } else {
+            }
+          } else {
+            entity(as[JsValue]) { data =>
               app.save(viewName, data.asInstanceOf[JsObject], filterPars(params))
               redirect(Uri(path = requestUri.path), StatusCodes.SeeOther)
             }
-          } catch {
-            case _: org.mojoz.querease.NotFoundException => complete(StatusCodes.NotFound)
           }
+        } catch {
+          case _: org.mojoz.querease.NotFoundException => complete(StatusCodes.NotFound)
         }
       }
     }
@@ -181,24 +183,26 @@ trait AppServiceBase[User]
   def insertAction(viewName: String)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     extractUri { requestUri =>
       parameterMultiMap { params =>
-        entity(as[JsValue]) { data =>
-          try {
-            if (isQuereaseActionDefined(viewName, "save")) {
+        try {
+          if (isQuereaseActionDefined(viewName, "save")) {
+            implicit val um = toMapUnmarshallerForView(viewName)
+            entity(as[Map[String, Any]]) { entityAsMap =>
               complete {
-                val entityAsMap = data.asInstanceOf[JsObject].convertTo[Map[String, Any]]
                 app.doWabaseAction(Action.Save, viewName, entityAsMap ++ filterPars(params)).map {
                   case r @ app.WabaseResult(_, IdResult(id)) =>
                     r.copy(result = RedirectResult((requestUri.path / id.toString).toString))
                   case x => x
                 }
               }
-            } else {
+            }
+          } else {
+            entity(as[JsValue]) { data =>
               val id = app.save(viewName, data.asInstanceOf[JsObject], filterPars(params))
               redirect(Uri(path = requestUri.path / id.toString), StatusCodes.SeeOther)
             }
-          } catch {
-            case _: org.mojoz.querease.NotFoundException => complete(StatusCodes.NotFound)
           }
+        } catch {
+          case _: org.mojoz.querease.NotFoundException => complete(StatusCodes.NotFound)
         }
       }
     }
