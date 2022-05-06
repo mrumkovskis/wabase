@@ -83,6 +83,27 @@ trait DbAccess { this: Loggable =>
     }
   }
 
+  def withConn[A](
+    template: Resources = tresqlResources.resourcesTemplate,
+    poolName: PoolName = DEFAULT_CP,
+    extraDb:  Seq[DbAccessKey] = Nil,
+  )(f: Resources => A): A =
+    DbAccess.withConn(template, poolName, extraDb)(f)
+
+  def withRollbackConn[A](
+    template: Resources = tresqlResources.resourcesTemplate,
+    poolName: PoolName = DEFAULT_CP,
+    extraDb:  Seq[DbAccessKey] = Nil,
+  )(f: Resources => A): A =
+    DbAccess.withRollbackConn(template, poolName, extraDb)(f)
+
+  def transaction[A](
+    template: Resources = tresqlResources.resourcesTemplate,
+    poolName: PoolName = DEFAULT_CP,
+    extraDb:  Seq[DbAccessKey] = Nil,
+  )(f: Resources => A): A =
+    DbAccess.transaction(template, poolName, extraDb)(f)
+
   val transaction: Transaction = new Transaction
 
   // TODO do not call nested transaction with extraDb parameter set to avoid connection leaks
@@ -276,14 +297,15 @@ object DbAccess extends Loggable {
     try dbConn.commit() catch {
       case NonFatal(ex) => logger.warn(s"Failed to commit db connection $dbConn", ex)
     }
-    try if (!dbConn.isClosed) dbConn.close catch {
-      case NonFatal(ex) => logger.warn(s"Failed to close db connection $dbConn", ex)
-    }
+    closeConnection(dbConn)
   }
   def rollbackAndCloseConnection(dbConn: Connection): Unit = {
     try dbConn.rollback catch {
       case NonFatal(ex) => logger.warn(s"Failed to rollback db transaction $dbConn", ex)
     }
+    closeConnection(dbConn)
+  }
+  def closeConnection(dbConn: Connection): Unit = {
     try if (!dbConn.isClosed) dbConn.close catch {
       case NonFatal(ex) => logger.warn(s"Failed to close db connection $dbConn", ex)
     }
@@ -314,6 +336,38 @@ object DbAccess extends Loggable {
   def closeResources(res: Resources, err: Option[Throwable]): Unit = {
     if (err.isEmpty) closeConns(commitAndCloseConnection)(res)
     else closeConns(rollbackAndCloseConnection)(res)
+  }
+  def withConn[A](
+    template: Resources,
+    poolName: PoolName = DEFAULT_CP,
+    extraDb:  Seq[DbAccessKey] = Nil,
+  )(f: Resources => A): A = {
+    val res = initResources(template)(poolName, extraDb)
+    try f(res) finally closeConns(closeConnection)(res)
+  }
+  def withRollbackConn[A](
+    template: Resources,
+    poolName: PoolName = DEFAULT_CP,
+    extraDb:  Seq[DbAccessKey] = Nil,
+  )(f: Resources => A): A = {
+    val res = initResources(template)(poolName, extraDb)
+    try f(res) finally closeConns(rollbackAndCloseConnection)(res)
+  }
+  def transaction[A](
+    template: Resources,
+    poolName: PoolName = DEFAULT_CP,
+    extraDb:  Seq[DbAccessKey] = Nil,
+  )(f: Resources => A): A = {
+    val res = initResources(template)(poolName, extraDb)
+    try {
+      val result = f(res)
+      closeConns(commitAndCloseConnection)(res)
+      result
+    } catch {
+      case util.control.NonFatal(ex) =>
+        closeConns(rollbackAndCloseConnection)(res)
+        throw ex
+    }
   }
 }
 
