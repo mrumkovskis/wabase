@@ -58,8 +58,8 @@ package object wabase extends Loggable {
   case class QueryTimeout(timeoutSeconds: Int)
 
   /** Default query timeout based on "jdbc.query-timeout" configuration setting */
-  val DefaultQueryTimeout: Option[QueryTimeout] =
-    if (config.hasPath("jdbc.query-timeout"))
+  val DefaultQueryTimeout: Option[QueryTimeout] = // FIXME DefaultQueryTimeout must not be optional
+    if (config.hasPath("jdbc.query-timeout"))     // FIXME do not test for config.hasPath - provide reference.conf instead
       Some(QueryTimeout(Duration(config.getString("jdbc.query-timeout")).toSeconds.toInt))
     else
       None
