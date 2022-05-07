@@ -14,14 +14,31 @@ class JsonDecoderSpecs extends FlatSpec with Matchers {
   import qe._
   val decoder = new CborOrJsonDecoder(qe.typeDefs, qe.nameToViewDef)
   def jsonRoundtrip(dto: qe.DTO) =
-    decoder.decodeToMap(
+    decodeToMap(
       ByteString(dto.toMap.toJson.prettyPrint),
       classToViewName(dto.getClass),
-    )(TreeMap[String, Any]())
+    )
+  def decodeToMap(bytes: ByteString, viewName: String) =
+    decoder.decodeToMap(bytes, viewName)(qe.viewNameToMapZero)
   def encodeBytes(bytes: Array[Byte]) = ByteString.fromArrayUnsafe(bytes).encodeBase64.utf8String
   def comparable(map: Map[String, Any]): Map[String, Any] = // scalatest does not compare bytes - convert to string
     map.updated("bytes",     Option(map("bytes")).map(_.asInstanceOf[Array[Byte]]).map(encodeBytes).orNull)
        .updated("bytes_seq", Option(map("bytes_seq")).map(_.asInstanceOf[List[Array[Byte]]].map(encodeBytes)).orNull)
+
+  it should "decode json to map ignoring unknown and adding missing keys" in {
+    val obj = new decoder_test_child
+    val viewName = classToViewName(obj.getClass)
+    obj.toMap shouldBe decodeToMap(ByteString("{}"), viewName)
+    obj.toMap shouldBe decodeToMap(ByteString("""{"x_str": "x", "x_obj": {}}"""), viewName)
+    val jsonized = """{
+      "id": null,
+      "name": null,
+      "date": null,
+      "date_time": null
+    }""".replaceAll("\n    ", "\n")
+    obj.toMap.toJson.prettyPrint shouldBe jsonized
+    decodeToMap(ByteString("{}"), viewName).toJson.prettyPrint shouldBe jsonized
+  }
 
   it should "decode json to map" in {
 
@@ -57,6 +74,7 @@ class JsonDecoderSpecs extends FlatSpec with Matchers {
 
     // child view
     obj.child = new decoder_test_child
+    obj.child.id = 333
     obj.child.name = "CHILD-1"
     obj.child.date = java.sql.Date.valueOf("2021-11-08")
     obj.child.date_time = java.sql.Timestamp.valueOf("2021-12-26 23:57:14.0")
@@ -83,7 +101,7 @@ class JsonDecoderSpecs extends FlatSpec with Matchers {
     obj.bytes_seq = List("Rūķ".getBytes("UTF-8"), "īši".getBytes("UTF-8"))
     comparable(obj.toMap) shouldBe comparable(jsonRoundtrip(obj))
 
-    obj.toMap.toJson.prettyPrint shouldBe """{
+    val jsonized = """{
       "id": 9223372036854775807,
       "string": "Rūķīši-X-123",
       "date": "2021-12-21",
@@ -95,6 +113,7 @@ class JsonDecoderSpecs extends FlatSpec with Matchers {
       "boolean": true,
       "bytes": "UsWrxLfEq8WhaQ==",
       "child": {
+        "id": 333,
         "name": "CHILD-1",
         "date": "2021-11-08",
         "date_time": "2021-12-26 23:57:14"
@@ -110,15 +129,19 @@ class JsonDecoderSpecs extends FlatSpec with Matchers {
       "boolean_seq": [false, true, true],
       "bytes_seq": ["UsWrxLc=", "xKvFoWk="],
       "children": [{
+        "id": null,
         "name": "CHILD-2",
         "date": null,
         "date_time": null
       }, {
+        "id": null,
         "name": "CHILD-3",
         "date": null,
         "date_time": null
       }]
     }""".replaceAll("\n    ", "\n")
+    obj.toMap.toJson.prettyPrint          shouldBe jsonized
+    jsonRoundtrip(obj).toJson.prettyPrint shouldBe jsonized
 
     // nulls for bytes, seqs
     obj.bytes = null
@@ -164,6 +187,7 @@ object JsonDecoderSpecs {
   }
 
   class decoder_test_child extends Dto {
+    var id: java.lang.Long = null
     var name: String = null
     var date: java.sql.Date = null
     var date_time: java.sql.Timestamp = null
@@ -171,6 +195,7 @@ object JsonDecoderSpecs {
 
   val viewNameToClass = Map[String, Class[_ <: Dto]](
     "decoder_test" -> classOf[decoder_test],
+    "decoder_test_child" -> classOf[decoder_test_child],
   )
   val classToViewName: Map[Class[_ <: Dto], String] =
     viewNameToClass.map(_.swap)

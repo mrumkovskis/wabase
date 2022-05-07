@@ -144,7 +144,7 @@ trait QuereaseMarshalling extends QuereaseResultMarshalling { this: AppServiceBa
   val cborOrJsonDecoder = new CborOrJsonDecoder(app.qe.typeDefs, app.qe.nameToViewDef)
   def toMapUnmarshallerForView(viewName: String): FromEntityUnmarshaller[Map[String, Any]] =
     Unmarshaller.byteStringUnmarshaller map { bytes =>
-      cborOrJsonDecoder.decodeToMap(bytes, viewName)(HashMap[String, Any]())
+      cborOrJsonDecoder.decodeToMap(bytes, viewName)(app.qe.viewNameToMapZero)
     }
 }
 

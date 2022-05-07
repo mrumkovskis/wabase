@@ -42,7 +42,10 @@ class CborOrJsonDecoder(typeDefs: Seq[TypeDef], nameToViewDef: Map[String, Mojoz
 
   protected def toSeq[T](array: Array[T]): Seq[T] = array.toList
 
-  def toMapDecoder[M <: Map[String, Any] : ClassTag](viewName: String, empty: M): Decoder[M] = Decoder { r =>
+  def toMapDecoder[M <: Map[String, Any] : ClassTag](
+    viewName: String,
+    viewNameToMapZero: String => M,
+  ): Decoder[M] = Decoder { r =>
     val view = nameToViewDef(viewName)
     def updated(map: Map[String, Any]): Map[String, Any] = {
       val key = r.readString()
@@ -52,7 +55,7 @@ class CborOrJsonDecoder(typeDefs: Seq[TypeDef], nameToViewDef: Map[String, Mojoz
             if (r.dataItem() == DI.Null)
               map.updated(key, r.readNull())
             else if (field.type_.isComplexType) {
-              implicit val decoder = toMapDecoder(field.type_.name, empty)
+              implicit val decoder = toMapDecoder(field.type_.name, viewNameToMapZero)
               map.updated(key, if (field.isCollection) toSeq(r[Array[M]]) else r[M])
             } else {
               implicit val decoder = simpleValueDecoder(field.type_)
@@ -72,13 +75,13 @@ class CborOrJsonDecoder(typeDefs: Seq[TypeDef], nameToViewDef: Map[String, Mojoz
         if (remaining > 0) rec(remaining - 1, updated(map)) else map.asInstanceOf[M]
       }
       val size = r.readMapHeader()
-      if (size <= Int.MaxValue) rec(size.toInt, empty)
+      if (size <= Int.MaxValue) rec(size.toInt, viewNameToMapZero(viewName))
       else r.overflow(s"Cannot deserialize Map with size $size (> Int.MaxValue)")
     } else if (r.hasMapStart) {
       r.readMapStart()
       @tailrec def rec(map: Map[String, Any]): M =
         if (r.tryReadBreak()) map.asInstanceOf[M] else rec(updated(map))
-      rec(empty)
+      rec(viewNameToMapZero(viewName))
     } else r.unexpectedDataItem(expected = "Map")
   }
 
@@ -86,7 +89,7 @@ class CborOrJsonDecoder(typeDefs: Seq[TypeDef], nameToViewDef: Map[String, Mojoz
     data:       ByteString,
     viewName:   String,
     decodeFrom: Target = Json,
-  )(empty: M): M = {
+  )(viewNameToMapZero: String => M): M = {
     val reader =
       decodeFrom match {
         case _: Cbor.type => Cbor.reader(data)
@@ -94,7 +97,7 @@ class CborOrJsonDecoder(typeDefs: Seq[TypeDef], nameToViewDef: Map[String, Mojoz
           maxNumberAbsExponent = 308, // to accept up to Double.MaxValue
         ))
       }
-    implicit val decoder = toMapDecoder(viewName, empty)
+    implicit val decoder = toMapDecoder(viewName, viewNameToMapZero)
     reader[M]
   }
 }
