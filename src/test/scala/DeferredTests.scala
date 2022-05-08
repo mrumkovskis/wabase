@@ -156,6 +156,7 @@ class DeferredTests extends AnyFlatSpec with Matchers with TestQuereaseInitializ
 
   "The deferred directive" should "work" in {
     implicit val user = TestUsr(1)
+    @annotation.nowarn("cat=deprecation") // OK to test deprecated method wsNotificationsAction(userIdString)
     val route = service.wsNotificationsAction(user.id.toString) ~
       service.deferred(user) { path("deferred-req" / LongNumber) { id =>
         complete {
@@ -221,6 +222,7 @@ class DeferredTests extends AnyFlatSpec with Matchers with TestQuereaseInitializ
 
   "The enableDeferred directive" should "work" in {
     implicit val user = TestUsr(2)
+    @annotation.nowarn("cat=deprecation") // OK to test deprecated method wsNotificationsAction(userIdString)
     val route = handleExceptions(service.appExceptionHandler) {
       service.wsNotificationsAction(user.id.toString) ~ pathPrefix("data") {
         service.enableDeferred(user) {
