@@ -193,6 +193,8 @@ trait QuereaseResultMarshalling { this:
 
   def createJsonEncoderFactory(viewName: String, isCollection: Boolean): EncoderFactory =
     JsonResultRenderer(_, isCollection, viewName, qe.nameToViewDef)
+  def createCborEncoderFactory(viewName: String, isCollection: Boolean): EncoderFactory =
+    CborResultRenderer(_, isCollection, viewName, qe.nameToViewDef)
   def createCsvEncoderFactory(viewName: String): EncoderFactory =
     os => new FlatTableResultRenderer(new CsvResultRenderer(new OutputStreamWriter(os, "UTF-8")),
       viewName, qe.nameToViewDef)
@@ -208,6 +210,7 @@ trait QuereaseResultMarshalling { this:
       implicit val formats_marshaller: ToEntityMarshaller[SerializedResult] =
         Marshaller.oneOf(
           toEntitySerializedResultMarshaller(`application/json`,                createJsonEncoderFactory(viewName, sr.isCollection)),
+          toEntitySerializedResultMarshaller(`application/cbor`,                createCborEncoderFactory(viewName, sr.isCollection)),
           toEntitySerializedResultMarshaller(ContentTypes.`text/csv(UTF-8)`,    createCsvEncoderFactory(viewName)),
           toEntitySerializedResultMarshaller(`application/vnd.oasis.opendocument.spreadsheet`,
                                                                                 createOdsEncoderFactory(viewName)),
