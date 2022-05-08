@@ -40,7 +40,7 @@ trait BasicJsonMarshalling extends akka.http.scaladsl.marshallers.sprayjson.Spra
 
   implicit val mapMarshaller: ToEntityMarshaller[Map[String, Any]] = Marshaller.combined(_.toJson)
 
-  implicit val mapListMarshaller: ToEntityMarshaller[List[Map[String, Any]]] = Marshaller.combined(_.toJson)
+  implicit val listOfMapsMarshaller: ToEntityMarshaller[List[Map[String, Any]]] = Marshaller.combined(_.toJson)
 
   implicit def mapFutureMarshaller: ToEntityMarshaller[Future[Map[String, Any]]] =
     combinedWithEC(ec => mapF => mapF.map(_.toJson)(ec))
