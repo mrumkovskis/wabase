@@ -64,6 +64,9 @@ trait AppQuereaseIo extends org.mojoz.querease.ScalaDtoQuereaseIo with JsonConve
   def fill[B <: DTO: Manifest](jsObject: JsObject): B = {
     implicitly[Manifest[B]].runtimeClass.getConstructor().newInstance().asInstanceOf[B {type QE = AppQuerease}].fill(jsObject)(this)
   }
+  def fill[B <: DTO: Manifest](values: Map[String, Any]): B = {
+    implicitly[Manifest[B]].runtimeClass.getConstructor().newInstance().asInstanceOf[B {type QE = AppQuerease}].fill(values)(this)
+  }
 }
 
 class QuereaseEnvException(val env: Map[String, Any], cause: Exception) extends Exception(cause) {
@@ -646,10 +649,10 @@ trait Dto extends org.mojoz.querease.Dto { self =>
     isSavableFieldAppExtra(field, view, saveToMulti, saveToTableNames)
 
   protected def throwUnsupportedConversion(
-      v: JsValue, targetType: Manifest[_], fieldName: String, cause: Throwable = null): Unit = {
+      value: Any, targetType: Manifest[_], fieldName: String, cause: Throwable = null): Unit = {
     throw new UnprocessableEntityException(
       "Illegal value or unsupported type conversion from %s to %s - failed to populate %s", cause,
-       v.getClass.getName, targetType.toString, s"${getClass.getName}.$fieldName")
+       value.getClass.getName, targetType.toString, s"${getClass.getName}.$fieldName")
   }
 
   // TODO Drop or extract string parsing for number and boolean fields! Then rename parseJsValue() to exclude 'parse'!
@@ -748,11 +751,44 @@ trait Dto extends org.mojoz.querease.Dto { self =>
   }
 
   //creating dto from JsObject
-  def fill(js: JsObject, emptyStringsToNull: Boolean = true)(implicit qe: QE): this.type = {
+  def fill(js: JsObject)(implicit qe: QE): this.type = fill(js, emptyStringsToNull = true)(qe)
+  def fill(js: JsObject, emptyStringsToNull: Boolean)(implicit qe: QE): this.type = {
     js.fields foreach { case (name, value) =>
       setters.get(name).map { case (met, _) =>
         met.invoke(this, parseJsValue(name, emptyStringsToNull)(qe)(value).asInstanceOf[Object])
       }.getOrElse(updateDynamic(name)(JsonToAny(value)))
+    }
+    this
+  }
+
+  //creating dto from Map[String, Any]
+  def fill(values: Map[String, Any])(implicit qe: QE): this.type = fill(values, emptyStringsToNull = true)(qe)
+  def fill(values: Map[String, Any], emptyStringsToNull: Boolean)(implicit qe: QE): this.type = {
+    values foreach { case (name, value) =>
+      setters.get(name).map { case (met, (typ, parType)) =>
+        val converted = value match {
+          case s: String if emptyStringsToNull && s.trim == "" => null
+          case m: Map[String@unchecked, _] =>
+            typ.runtimeClass.getConstructor().newInstance().asInstanceOf[QDto].fill(m, emptyStringsToNull)
+          case s: Seq[_] =>
+            val c = typ.runtimeClass
+            val isList = c.isAssignableFrom(classOf[List[_]])
+            val isVector = c.isAssignableFrom(classOf[Vector[_]])
+            if (classOf[Seq[_]].isAssignableFrom(c) && (isList || isVector) &&
+              parType != null && classOf[Dto].isAssignableFrom(parType.runtimeClass)) {
+              val chClass = parType.runtimeClass
+              val res =
+                s.map(o => chClass.getConstructor().newInstance().asInstanceOf[QDto]
+                  .fill(o.asInstanceOf[Map[String, Any]], emptyStringsToNull))
+              if (isList) res.toList else res
+            } else s
+          case x => x
+        }
+        try met.invoke(this, converted.asInstanceOf[Object]) catch {
+          case util.control.NonFatal(ex) =>
+            throwUnsupportedConversion(value, typ, name)
+        }
+      }.getOrElse(updateDynamic(name)(value))
     }
     this
   }

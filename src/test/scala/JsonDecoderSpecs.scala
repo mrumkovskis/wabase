@@ -25,7 +25,7 @@ class JsonDecoderSpecs extends FlatSpec with Matchers {
     map.updated("bytes",     Option(map("bytes")).map(_.asInstanceOf[Array[Byte]]).map(encodeBytes).orNull)
        .updated("bytes_seq", Option(map("bytes_seq")).map(_.asInstanceOf[List[Array[Byte]]].map(encodeBytes)).orNull)
 
-  it should "decode json to map ignoring unknown and adding missing keys" in {
+  it should "decode json to compatible map ignoring unknown and adding missing keys" in {
     val obj = new decoder_test_child
     val viewName = classToViewName(obj.getClass)
     obj.toMap shouldBe decodeToMap(ByteString("{}"), viewName)
@@ -40,7 +40,7 @@ class JsonDecoderSpecs extends FlatSpec with Matchers {
     decodeToMap(ByteString("{}"), viewName).toJson.prettyPrint shouldBe jsonized
   }
 
-  it should "decode json to map" in {
+  it should "decode json to compatible map" in {
 
     // empty
     val obj = new decoder_test
@@ -142,6 +142,13 @@ class JsonDecoderSpecs extends FlatSpec with Matchers {
     }""".replaceAll("\n    ", "\n")
     obj.toMap.toJson.prettyPrint          shouldBe jsonized
     jsonRoundtrip(obj).toJson.prettyPrint shouldBe jsonized
+
+    // compatibility
+    val cpy = new decoder_test
+    obj.fill(obj.toMap) shouldBe      obj
+    cpy.fill(obj.toMap) should not be obj
+    obj.toMap.toJson.prettyPrint          shouldBe jsonized
+    cpy.toMap.toJson.prettyPrint          shouldBe jsonized
 
     // nulls for bytes, seqs
     obj.bytes = null
