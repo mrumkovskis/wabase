@@ -9,6 +9,7 @@ import org.wabase.BorerDatetimeDecoders._
 
 import java.lang.{Double => JDouble, Long => JLong}
 import scala.annotation.tailrec
+import scala.collection.immutable.{Map, Seq}
 import scala.language.postfixOps
 import scala.reflect.ClassTag
 
@@ -89,19 +90,33 @@ class CborOrJsonDecoder(typeDefs: Seq[TypeDef], nameToViewDef: Map[String, Mojoz
       throw new UnprocessableEntityException(s"Failed to read to map for $viewName: ${ex.getMessage}", ex)
   }}
 
+  protected def reader(data: ByteString, decodeFrom: Target) = decodeFrom match {
+    case _: Cbor.type => Cbor.reader(data)
+    case _: Json.type => Json.reader(data, Json.DecodingConfig.default.copy(
+      maxNumberAbsExponent = 308, // to accept up to Double.MaxValue
+    ))
+  }
+
   def decodeToMap[M <: Map[String, Any] : ClassTag](
     data:       ByteString,
     viewName:   String,
     decodeFrom: Target = Json,
   )(viewNameToMapZero: String => M): M = {
-    val reader =
-      decodeFrom match {
-        case _: Cbor.type => Cbor.reader(data)
-        case _: Json.type => Json.reader(data, Json.DecodingConfig.default.copy(
-          maxNumberAbsExponent = 308, // to accept up to Double.MaxValue
-        ))
-      }
     implicit val decoder = toMapDecoder(viewName, viewNameToMapZero)
-    reader[M]
+    reader(data, decodeFrom)[M]
+  }
+
+  def decodeToSeqOfMaps[M <: Map[String, Any] : ClassTag](
+    data:       ByteString,
+    viewName:   String,
+    decodeFrom: Target = Json,
+  )(viewNameToMapZero: String => M): Seq[M] = {
+    implicit val decoder = toMapDecoder(viewName, viewNameToMapZero)
+    try {
+      toSeq(reader(data, decodeFrom)[Array[M]])
+    } catch {
+      case util.control.NonFatal(ex) =>
+        throw new UnprocessableEntityException(s"Failed to read array for $viewName: ${ex.getMessage}", ex)
+    }
   }
 }

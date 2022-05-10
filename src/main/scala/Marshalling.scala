@@ -120,31 +120,58 @@ trait BasicMarshalling {
   )
 }
 
-trait DtoMarshalling extends Loggable { this: AppServiceBase[_] with Execution =>
-
-  import jsonConverter._
+trait DtoMarshalling { this: AppServiceBase[_] with Execution =>
   import app.qe
+  implicit def dtoUnmarshaller[T <: app.Dto](implicit m: Manifest[T]): FromEntityUnmarshaller[T] =
+    toMapUnmarshallerForView(app.qe.viewDef[T].name).map {
+      m.runtimeClass.getConstructor().newInstance().asInstanceOf[T].fill
+    }
 
-  implicit def dtoUnmarshaller[T <: app.Dto](implicit jsonUnmarshaller: FromEntityUnmarshaller[JsValue], m: Manifest[T]): FromEntityUnmarshaller[T] =
-    jsonUnmarshaller.map(js => m.runtimeClass.getConstructor().newInstance().asInstanceOf[T].fill(js.asJsObject()))
+  implicit def dtoSeqUnmarshaller[T <: app.Dto](implicit m: Manifest[T]): FromEntityUnmarshaller[Seq[T]] =
+    toSeqOfMapsUnmarshallerForView(app.qe.viewDef[T].name).map { _.map {
+      m.runtimeClass.getConstructor().newInstance().asInstanceOf[T].fill
+    }}
 
-  implicit def dtoListUnmarshaller[T <: app.Dto](implicit jsonUnmarshaller: FromEntityUnmarshaller[JsValue], m: Manifest[T]): FromEntityUnmarshaller[List[T]] =
-    jsonUnmarshaller.map(responseJson =>
-      responseJson.convertTo[List[Any]].map { csJs =>
-        m.runtimeClass.getConstructor().newInstance().asInstanceOf[T].fill(csJs.asInstanceOf[Map[String, Any]].toJson.asJsObject())
-      }
-    )
-
-  implicit val dtoMarshaller: ToEntityMarshaller[app.Dto] = Marshaller.withFixedContentType(`application/json`) {
-    dto => HttpEntity.Strict(`application/json`, ByteString(dto.toMap.toJson.compactPrint))
-  }
+  implicit val dtoForViewMarshaller: ToEntityMarshaller[(app.Dto, String)] =
+    Marshaller.combined { case (dto, viewName) => (dto.toMap, viewName) }
+  implicit def dtoMarshaller[T <: app.Dto](implicit m: Manifest[T]): ToEntityMarshaller[app.Dto] =
+    Marshaller.combined { dto => (dto, app.qe.viewName[T]) }
+  implicit val dtoSeqForViewMarshaller: ToEntityMarshaller[(Seq[app.Dto], String)] =
+    Marshaller.combined { case (seqOfDto, viewName) => (seqOfDto.map(_.toMap), viewName) }
+  implicit def dtoSeqMarshaller[T <: app.Dto](implicit m: Manifest[T]): ToEntityMarshaller[Seq[app.Dto]] =
+    Marshaller.combined { dtoSeq => (dtoSeq, app.qe.viewName[T]) }
 }
 
 trait QuereaseMarshalling extends QuereaseResultMarshalling { this: AppServiceBase[_] with Execution =>
+  import app.qe
+  implicit val mapForViewMarshaller: ToEntityMarshaller[(Map[String, Any], String)] = {
+    def marsh(viewName: String)(implicit ec: ExecutionContext): ToEntityMarshaller[Map[String, Any]] =
+      Marshaller.combined { map: Map[String, Any] =>
+        // TODO transcode directly
+        app.serializeResult(app.SerializationBufferSize, app.viewSerializationBufferMaxFileSize(viewName),
+          DtoDataSerializer.source(() => Seq(map).iterator), isCollection = false)
+      } (GenericMarshallers.futureMarshaller(toEntityQuereaseSerializedResultMarshaller(viewName)))
+    Marshaller { ec => mapAndView => marsh(mapAndView._2)(ec)(mapAndView._1) }
+  }
+
+  implicit val seqOfMapsForViewMarshaller: ToEntityMarshaller[(Seq[Map[String, Any]], String)] = {
+    def marsh(viewName: String)(implicit ec: ExecutionContext): ToEntityMarshaller[Seq[Map[String, Any]]] =
+      Marshaller.combined { seqOfMaps: Seq[Map[String, Any]] =>
+        // TODO transcode directly
+        app.serializeResult(app.SerializationBufferSize, app.viewSerializationBufferMaxFileSize(viewName),
+          DtoDataSerializer.source(() => seqOfMaps.iterator), isCollection = true)
+      } (GenericMarshallers.futureMarshaller(toEntityQuereaseSerializedResultMarshaller(viewName)))
+    Marshaller { ec => seqOfMapsAndView => marsh(seqOfMapsAndView._2)(ec)(seqOfMapsAndView._1) }
+  }
+
   val cborOrJsonDecoder = new CborOrJsonDecoder(app.qe.typeDefs, app.qe.nameToViewDef)
   def toMapUnmarshallerForView(viewName: String): FromEntityUnmarshaller[Map[String, Any]] =
     Unmarshaller.byteStringUnmarshaller map { bytes =>
       cborOrJsonDecoder.decodeToMap(bytes, viewName)(app.qe.viewNameToMapZero)
+    }
+  def toSeqOfMapsUnmarshallerForView(viewName: String): FromEntityUnmarshaller[Seq[Map[String, Any]]] =
+    Unmarshaller.byteStringUnmarshaller map { bytes =>
+      cborOrJsonDecoder.decodeToSeqOfMaps(bytes, viewName)(app.qe.viewNameToMapZero)
     }
 }
 
