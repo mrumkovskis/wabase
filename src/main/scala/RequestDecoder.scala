@@ -45,7 +45,7 @@ class CborOrJsonDecoder(typeDefs: Seq[TypeDef], nameToViewDef: Map[String, Mojoz
   def toMapDecoder[M <: Map[String, Any] : ClassTag](
     viewName: String,
     viewNameToMapZero: String => M,
-  ): Decoder[M] = Decoder { r =>
+  ): Decoder[M] = Decoder { r => try {
     val view = nameToViewDef(viewName)
     def updated(map: Map[String, Any]): Map[String, Any] = {
       val key = r.readString()
@@ -63,7 +63,8 @@ class CborOrJsonDecoder(typeDefs: Seq[TypeDef], nameToViewDef: Map[String, Mojoz
             }
           } catch {
             case util.control.NonFatal(ex) =>
-              throw new RuntimeException(s"Failed to load field ${field.name} of type ${field.type_.name}", ex)
+              throw new UnprocessableEntityException(
+                s"Failed to read ${field.name} of type ${field.type_.name}: ${ex.getMessage}", ex)
           }
         case None =>
           r.skipElement() // no such field in this view - skip
@@ -83,7 +84,10 @@ class CborOrJsonDecoder(typeDefs: Seq[TypeDef], nameToViewDef: Map[String, Mojoz
         if (r.tryReadBreak()) map.asInstanceOf[M] else rec(updated(map))
       rec(viewNameToMapZero(viewName))
     } else r.unexpectedDataItem(expected = "Map")
-  }
+  } catch {
+    case util.control.NonFatal(ex) =>
+      throw new UnprocessableEntityException(s"Failed to read to map for $viewName: ${ex.getMessage}", ex)
+  }}
 
   def decodeToMap[M <: Map[String, Any] : ClassTag](
     data:       ByteString,
