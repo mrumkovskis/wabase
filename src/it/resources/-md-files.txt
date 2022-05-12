@@ -1,3 +1,2 @@
-tables/deferred-request.yaml
 tables/validation.yaml
 tables/file.yaml
