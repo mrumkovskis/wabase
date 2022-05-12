@@ -174,8 +174,8 @@ object DbConstraintMessage {
     try f catch {
       case e: java.sql.SQLException => getFriendlyConstraintErrorMessage(e, viewDef)
       case e: org.tresql.ChildSaveException => e.getCause match {
-        case ee: java.sql.SQLException => onSqlException(ee, e, e.tableName)
-        case NonFatal(ee) => checkForRuntimeException(ee, e, e.tableName)
+        case ee: java.sql.SQLException => onSqlException(ee, e, e.name)
+        case NonFatal(ee) => checkForRuntimeException(ee, e, e.name)
       }
       case NonFatal(e) => checkForRuntimeException(e)
     }
