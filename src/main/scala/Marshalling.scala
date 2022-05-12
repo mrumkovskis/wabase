@@ -28,10 +28,12 @@ import scala.language.implicitConversions
 import scala.language.reflectiveCalls
 import scala.util.Try
 
-trait Marshalling extends DtoMarshalling
-  with BasicJsonMarshalling
+trait Marshalling extends
+       BasicJsonMarshalling
   with BasicMarshalling
-  with QuereaseMarshalling { this: AppServiceBase[_] with Execution => }
+  with QuereaseMarshalling
+  with DtoMarshalling
+  { this: AppServiceBase[_] with Execution => }
 
 trait BasicJsonMarshalling extends akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport with BasicMarshalling {
   this: JsonConverterProvider =>
@@ -120,7 +122,7 @@ trait BasicMarshalling {
   )
 }
 
-trait DtoMarshalling { this: AppServiceBase[_] with Execution =>
+trait DtoMarshalling extends QuereaseMarshalling { this: AppServiceBase[_] with Execution =>
   import app.qe
   implicit def dtoUnmarshaller[T <: app.Dto](implicit m: Manifest[T]): FromEntityUnmarshaller[T] =
     toMapUnmarshallerForView(app.qe.viewDef[T].name).map {
@@ -134,12 +136,14 @@ trait DtoMarshalling { this: AppServiceBase[_] with Execution =>
 
   implicit val dtoForViewMarshaller: ToEntityMarshaller[(app.Dto, String)] =
     Marshaller.combined { case (dto, viewName) => (dto.toMap, viewName) }
-  implicit def dtoMarshaller[T <: app.Dto](implicit m: Manifest[T]): ToEntityMarshaller[app.Dto] =
-    Marshaller.combined { dto => (dto, app.qe.viewName[T]) }
+  implicit val dtoMarshaller: ToEntityMarshaller[app.Dto] =
+    Marshaller.combined { dto: app.Dto => (dto, app.qe.classToViewNameMap.get(dto.getClass).orNull) }
   implicit val dtoSeqForViewMarshaller: ToEntityMarshaller[(Seq[app.Dto], String)] =
     Marshaller.combined { case (seqOfDto, viewName) => (seqOfDto.map(_.toMap), viewName) }
-  implicit def dtoSeqMarshaller[T <: app.Dto](implicit m: Manifest[T]): ToEntityMarshaller[Seq[app.Dto]] =
-    Marshaller.combined { dtoSeq => (dtoSeq, app.qe.viewName[T]) }
+  implicit val dtoSeqMarshaller: ToEntityMarshaller[Seq[app.Dto]] =
+    Marshaller.combined { dtoSeq =>
+      (dtoSeq, dtoSeq.find(_ != null).map(_.getClass).flatMap(app.qe.classToViewNameMap.get).orNull)
+    }
 }
 
 trait QuereaseMarshalling extends QuereaseResultMarshalling { this: AppServiceBase[_] with Execution =>

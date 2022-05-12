@@ -99,7 +99,7 @@ trait TestQuereaseInitializer extends BeforeAndAfterAll with Loggable { this: Su
             )
           }.toMap
           res
-        case x => sys.error(s"No main database found - null name: $x")
+        case x => null // No main database found
       }
   }
 

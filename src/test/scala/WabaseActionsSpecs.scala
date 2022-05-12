@@ -53,7 +53,6 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     app = new TestApp with NoValidation {
       override val DefaultCp: PoolName = PoolName("wabase_db")
       override def dbAccessDelegate = db
-      override type QE = AppQuerease
       override protected def initQuerease: QE = querease
     }
   }
