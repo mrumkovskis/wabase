@@ -24,7 +24,7 @@ trait ServerNotifications extends EventStreamMarshalling with WebSocketDirective
     Props(classOf[ServerNotifications.EventSubscriberWatcher], this))
 
   protected val serverEventsSource =
-    Source.actorRef[Any](PartialFunction.empty, PartialFunction.empty, 16, OverflowStrategy.dropNew)
+    Source.actorRef[Any](PartialFunction.empty, PartialFunction.empty, 16, OverflowStrategy.dropTail)
 
   protected val wsNotificationGraph = {
     Flow.fromSinkAndSourceCoupledMat(

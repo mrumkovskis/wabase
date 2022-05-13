@@ -147,7 +147,7 @@ trait DeferredControl
   protected def startDeferredGraph(name: String, workerCount: Int) = {
     logger.info(s"Starting deferred request processor${
       if (name != null) s" ($name)" else ""}, worker count - ($workerCount)")
-    Source.actorRef[DeferredContext](PartialFunction.empty, PartialFunction.empty, 8, OverflowStrategy.dropNew)
+    Source.actorRef[DeferredContext](PartialFunction.empty, PartialFunction.empty, 8, OverflowStrategy.dropTail)
       .to(deferredSink(name, workerCount))
       .mapMaterializedValue(
         EventBus.subscribe(_, if (name == null) DeferredRequestArrived else
