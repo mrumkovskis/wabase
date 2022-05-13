@@ -98,7 +98,8 @@ trait RowWriters { this: QuereaseProvider =>
 
     def csvValue(v: Any): String = Option(v).map{
       case m: Map[String @unchecked, Any @unchecked] => ""
-      case l: Traversable[Any] => ""
+      case i: Iterable[Any] => ""
+      case l: Traversable[Any] @annotation.nowarn => "": @annotation.nowarn
       case n: java.lang.Number => String.valueOf(n)
       case t: Timestamp => xlsxDateTime(t)
       case d: jDate => xsdDate(d)
