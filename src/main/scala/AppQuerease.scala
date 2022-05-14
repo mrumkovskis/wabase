@@ -26,7 +26,7 @@ sealed trait QuereaseCloseableResult extends QuereaseResult
 case class TresqlResult(result: Result[RowLike]) extends QuereaseCloseableResult
 case class TresqlSingleRowResult(row: RowLike) extends QuereaseCloseableResult
 case class MapResult(result: Map[String, Any]) extends QuereaseResult
-case class ListResult(result: List[Any]) extends QuereaseResult
+case class ListResult(result: List[AppQuerease#DTO]) extends QuereaseResult
 // TODO after decoupling QereaseIo from Querease this class should be refactored to PojoResult[X]
 case class PojoResult(result: AppQuerease#DTO) extends QuereaseResult
 // TODO after decoupling QereaseIo from Querease this class should be refactored to IteratorResult[X]
@@ -454,7 +454,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case null => NoResult // reflection call on function with Unit (void) return type returns null
       case m: Map[String, Any]@unchecked => MapResult(m)
       case m: java.util.Map[String, Any]@unchecked => MapResult(m.asScala.toMap)
-      case l: List[Any] => ListResult(l)
+      case l: List[DTO@unchecked] => ListResult(l)
       case r: Result[_] => TresqlResult(r)
       case l: Long => NumberResult(l)
       case s: String => CodeResult(s)

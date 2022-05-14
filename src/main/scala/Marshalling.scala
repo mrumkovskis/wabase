@@ -5,7 +5,6 @@ import akka.http.scaladsl._
 import model._
 import MediaTypes._
 import marshalling._
-import spray.json.JsValue
 
 import java.io.OutputStreamWriter
 import java.net.URLEncoder
@@ -13,8 +12,6 @@ import java.text.Normalizer
 import java.util.zip.ZipOutputStream
 import scala.collection.immutable.Seq
 import scala.concurrent.{ExecutionContext, Future}
-import spray.json._
-import DefaultJsonProtocol._
 import akka.http.scaladsl.model.headers.{ContentDispositionType, ContentDispositionTypes}
 import akka.http.scaladsl.model.headers.{Location, RawHeader}
 import akka.http.scaladsl.unmarshalling.{FromEntityUnmarshaller, FromResponseUnmarshaller, Unmarshaller}
@@ -38,6 +35,8 @@ trait Marshalling extends
 trait BasicJsonMarshalling extends akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport with BasicMarshalling {
   this: JsonConverterProvider =>
 
+  import spray.json._
+  import DefaultJsonProtocol._
   import jsonConverter._
 
   implicit val mapMarshaller: ToEntityMarshaller[Map[String, Any]] = Marshaller.combined(_.toJson)
@@ -180,29 +179,25 @@ trait QuereaseMarshalling extends QuereaseResultMarshalling { this: AppServiceBa
 }
 
 trait QuereaseResultMarshalling { this:
-    BasicJsonMarshalling    with
-    DtoMarshalling          with
     Execution               with
     AppServiceBase[_] =>
 
   import app.qe
-  import app.qe.ListJsonFormat
-  import app.qe.QuereaseIdResultJsonFormat
   import ResultEncoder.EncoderFactory
-  implicit val toEntityQuereaseMapResultMarshaller:         ToEntityMarshaller  [MapResult]      =
-    Marshaller.combined(_.result)
-  implicit val toEntityQuereasePojoResultMarshaller:        ToEntityMarshaller  [PojoResult]     =
-    Marshaller.combined(_.result.toMap)
-  implicit val toEntityQuereaseListResultMarshaller:        ToEntityMarshaller  [ListResult]     =
-    Marshaller.combined(_.result.toJson)
-  implicit val toResponseQuereaseOptionResultMarshaller:    ToResponseMarshaller[OptionResult]   =
-    Marshaller.combined(_.result.map(_.toMap))
+  implicit def toEntityQuereaseMapResultMarshaller (viewName: String):  ToEntityMarshaller[MapResult]  =
+    Marshaller.combined((mr:  MapResult) => (mr.result, viewName))
+  implicit def toEntityQuereasePojoResultMarshaller(viewName: String):  ToEntityMarshaller[PojoResult] =
+    Marshaller.combined((pr: PojoResult) => (pr.result.toMap, viewName))
+  implicit def toEntityQuereaseListResultMarshaller(viewName: String):  ToEntityMarshaller[ListResult] =
+    Marshaller.combined((lr: ListResult) => (lr.result.map(_.toMap), viewName))
+  implicit def toResponseQuereaseOptionResultMarshaller(viewName: String):  ToResponseMarshaller[OptionResult] =
+    Marshaller.combined(_.result.map(dto => (dto.toMap, viewName)))
   implicit val toEntityQuereaseNumberResultMarshaller:      ToEntityMarshaller  [NumberResult]   =
     Marshaller.combined(id => s"$id")
   implicit val toEntityQuereaseCodeResultMarshaller:        ToEntityMarshaller  [CodeResult]     =
     Marshaller.combined(_.code)
   implicit val toEntityQuereaseIdResultMarshaller:          ToEntityMarshaller  [IdResult]       =
-    Marshaller.combined(_.toJson)
+    Marshaller.combined(_.toString)
   implicit val toResponseQuereaseRedirectResultMarshaller:  ToResponseMarshaller[RedirectResult] =
     Marshaller.combined(rr => (StatusCodes.SeeOther, Seq(Location(rr.uri))))
   implicit val toEntityQuereaseNoResultMarshaller:          ToEntityMarshaller  [NoResult.type]  =
@@ -251,24 +246,29 @@ trait QuereaseResultMarshalling { this:
     }
 
   import org.wabase.{QuereaseSerializedResult => QuereaseSerRes}
+  import org.wabase.{QuereaseDeleteResult     => QuereaseDelRes}
+  import org.wabase.{TresqlSingleRowResult    => TresqlSingleRr}
   implicit def toResponseWabaseResultMarshaller(implicit ec: ExecutionContext): ToResponseMarshaller[app.WabaseResult] =
     Marshaller { implicit ec => wr => wr.result match {
-      case tq: TresqlResult   => sys.error("TresqlResult must be serialized before marshalling.")//(toResponseQuereaseTresqlResultMarshaller:   ToResponseMarshaller[TresqlResult]  )(tq)
-      case rr: TresqlSingleRowResult => sys.error("TresqlSingleRowResult must be serialized before marshalling.")
-      case mp: MapResult      => (toEntityQuereaseMapResultMarshaller:        ToResponseMarshaller[MapResult]     )(mp)
-      case pj: PojoResult     => (toEntityQuereasePojoResultMarshaller:       ToResponseMarshaller[PojoResult]    )(pj)
-      case ls: ListResult     => (toEntityQuereaseListResultMarshaller:       ToResponseMarshaller[ListResult]    )(ls)
-      case it: IteratorResult => sys.error("IteratorResult must be serialized before marshalling.")//(toEntityQuereaseIteratorResultMarshaller:   ToResponseMarshaller[IteratorResult])(it)
-      case op: OptionResult   => (toResponseQuereaseOptionResultMarshaller:   ToResponseMarshaller[OptionResult]  )(op)
+      case sr: QuereaseSerRes =>
+        (toEntityQuereaseSerializedResultMarshaller (wr.ctx.viewName):        ToResponseMarshaller[QuereaseSerRes])(sr)
+      case op: OptionResult   =>
+        (toResponseQuereaseOptionResultMarshaller   (wr.ctx.viewName):        ToResponseMarshaller[OptionResult]  )(op)
+      case mp: MapResult      =>
+        (toEntityQuereaseMapResultMarshaller        (wr.ctx.viewName):        ToResponseMarshaller[MapResult]     )(mp)
+      case pj: PojoResult     =>
+        (toEntityQuereasePojoResultMarshaller       (wr.ctx.viewName):        ToResponseMarshaller[PojoResult]    )(pj)
+      case ls: ListResult     =>
+        (toEntityQuereaseListResultMarshaller       (wr.ctx.viewName):        ToResponseMarshaller[ListResult]    )(ls)
       case nr: NumberResult   => (toEntityQuereaseNumberResultMarshaller:     ToResponseMarshaller[NumberResult]  )(nr)
       case cd: CodeResult     => (toEntityQuereaseCodeResultMarshaller:       ToResponseMarshaller[CodeResult]    )(cd)
       case id: IdResult       => (toEntityQuereaseIdResultMarshaller:         ToResponseMarshaller[IdResult]      )(id)
       case rd: RedirectResult => (toResponseQuereaseRedirectResultMarshaller: ToResponseMarshaller[RedirectResult])(rd)
       case no: NoResult.type  => (toEntityQuereaseNoResultMarshaller:         ToResponseMarshaller[NoResult.type] )(no)
-      case sr: QuereaseSerRes => (toEntityQuereaseSerializedResultMarshaller(
-        wr.ctx.viewName): ToResponseMarshaller[QuereaseSerRes])(sr)
-      case dr: QuereaseDeleteResult =>
-        (toEntityQuereaseDeleteResultMarshaller: ToResponseMarshaller[QuereaseDeleteResult])(dr)
+      case dr: QuereaseDelRes => (toEntityQuereaseDeleteResultMarshaller:     ToResponseMarshaller[QuereaseDelRes])(dr)
+      case tq: TresqlResult   => sys.error("TresqlResult must be serialized before marshalling.")
+      case rr: TresqlSingleRr => sys.error("TresqlSingleRowResult must be serialized before marshalling.")
+      case it: IteratorResult => sys.error("IteratorResult must be serialized before marshalling.")
       case r: QuereaseResultWithCleanup =>
         sys.error(s"QuereaseResult marshaller for class ${r.getClass.getName} not implemented")
     }}

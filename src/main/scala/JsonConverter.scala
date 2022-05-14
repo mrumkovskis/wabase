@@ -90,9 +90,4 @@ trait JsonConverter { self: AppQuerease =>
       w(value).asInstanceOf[JsArray]
     }
   }
-  /* created for IdResult marshalling - to get access to w(value: Any) */
-  implicit object QuereaseIdResultJsonFormat extends JsonFormat[IdResult] {
-    def read(value: JsValue) = ???
-    def write(value: IdResult) = w(value.id)
-  }
 }
