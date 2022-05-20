@@ -63,6 +63,7 @@ trait AppServiceBase[User]
   def createPath = path("create" / Segment) & get
   def viewWithoutIdPath = path(Segment ~ (PathEnd | Slash))
   def getByIdPath = viewWithIdPath & get
+  @deprecated("Use key without field name. This method is not used and will be removed", "6.0")
   def getByNamePath = viewWithNamePath & get
   def deletePath = viewWithIdPath & delete
   def updatePath = viewWithIdPath & put
@@ -79,6 +80,7 @@ trait AppServiceBase[User]
       }
     }
 
+  @deprecated("Use key without field name. This method is not used and will be removed", "6.0")
   def getByNameAction(viewName: String, name: String, value: String)(
     implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
@@ -230,7 +232,6 @@ trait AppServiceBase[User]
   def crudAction(implicit user: User) = applicationState { implicit state =>
     extractTimeout { implicit timeout =>
       getByIdPath { getByIdAction } ~
-        getByNamePath { getByNameAction } ~
         countPath  { countAction  } ~
         createPath { createAction } ~
         deletePath { deleteAction } ~
