@@ -7,7 +7,7 @@ import io.bullet.borer.{Cbor, Decoder, Json, Target, DataItem => DI}
 import org.mojoz.metadata.{MojozViewDef, Type, TypeDef}
 import org.wabase.BorerDatetimeDecoders._
 
-import java.lang.{Double => JDouble, Long => JLong}
+import java.lang.{Boolean => JBoolean, Double => JDouble, Long => JLong}
 import scala.annotation.tailrec
 import scala.collection.immutable.{Map, Seq}
 import scala.language.postfixOps
@@ -119,4 +119,23 @@ class CborOrJsonDecoder(typeDefs: Seq[TypeDef], nameToViewDef: Map[String, Mojoz
         throw new UnprocessableEntityException(s"Failed to read array for $viewName: ${ex.getMessage}", ex)
     }
   }
+}
+
+/** Decodes strings to booleans and numbers */
+class CborOrJsonLenientDecoder(typeDefs: Seq[TypeDef], nameToViewDef: Map[String, MojozViewDef])
+  extends CborOrJsonDecoder(typeDefs, nameToViewDef) {
+  private val lenientBigIntDecoder: Decoder[BigInt] =
+    Decoder(r => if (r.hasString) BigInt(r.readString()) else r[BigInt])
+  private val lenientBigDecimalDecoder: Decoder[BigDecimal] =
+    Decoder(r => if (r.hasString) BigDecimal(r.readString()) else r[BigDecimal])
+  override def simpleValueDecoder(type_ : Type): Decoder[Any] =
+    (typeNameToScalaTypeName.get(type_.name).orNull match {
+      case "java.lang.Long"     => Decoder.StringNumbers.longDecoder.asInstanceOf[Decoder[JLong]]
+      case "java.lang.Integer"  => Decoder.StringNumbers.intDecoder.asInstanceOf[Decoder[Integer]]
+      case "java.lang.Double"   => Decoder.StringNumbers.doubleDecoder.asInstanceOf[Decoder[JDouble]]
+      case "java.lang.Boolean"  => Decoder.StringBooleans.booleanDecoder.asInstanceOf[Decoder[JBoolean]]
+      case "BigInt"             => lenientBigIntDecoder
+      case "BigDecimal"         => lenientBigDecimalDecoder
+      case _                    => super.simpleValueDecoder(type_)
+    }).asInstanceOf[Decoder[Any]]
 }

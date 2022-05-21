@@ -12,13 +12,14 @@ class JsonDecoderSpecs extends FlatSpec with Matchers {
   import JsonDecoderSpecs._
   implicit val qe = new TestQuerease("/json-decoder-specs-metadata.yaml") with JsonConverter
   import qe._
-  val decoder = new CborOrJsonDecoder(qe.typeDefs, qe.nameToViewDef)
+  val strictDecoder = new CborOrJsonDecoder(qe.typeDefs, qe.nameToViewDef)
+  val lenientDecoder = new CborOrJsonLenientDecoder(qe.typeDefs, qe.nameToViewDef)
   def jsonRoundtrip(dto: qe.DTO) =
     decodeToMap(
       ByteString(dto.toMap.toJson.prettyPrint),
       classToViewName(dto.getClass),
     )
-  def decodeToMap(bytes: ByteString, viewName: String) =
+  def decodeToMap(bytes: ByteString, viewName: String, decoder: CborOrJsonDecoder = strictDecoder) =
     decoder.decodeToMap(bytes, viewName)(qe.viewNameToMapZero)
   def encodeBytes(bytes: Array[Byte]) = ByteString.fromArrayUnsafe(bytes).encodeBase64.utf8String
   def comparable(map: Map[String, Any]): Map[String, Any] = // scalatest does not compare bytes - convert to string
@@ -142,6 +143,61 @@ class JsonDecoderSpecs extends FlatSpec with Matchers {
     }""".replaceAll("\n    ", "\n")
     obj.toMap.toJson.prettyPrint          shouldBe jsonized
     jsonRoundtrip(obj).toJson.prettyPrint shouldBe jsonized
+
+    val asStringsJsonized = """{
+      "id": "9223372036854775807",
+      "string": "Rūķīši-X-123",
+      "date": "2021-12-21",
+      "date_time": "2021-12-26 23:57:14",
+      "int": "2147483647",
+      "bigint": "9223372036854775808",
+      "double": "1.7976931348623157E+308",
+      "decimal": "92233720368547758.07",
+      "boolean": "true",
+      "bytes": "UsWrxLfEq8WhaQ==",
+      "child": {
+        "id": "333",
+        "name": "CHILD-1",
+        "date": "2021-11-08",
+        "date_time": "2021-12-26 23:57:14"
+      },
+      "long_seq": ["0", "1"],
+      "string_seq": ["AB", "CD"],
+      "date_seq": ["2021-11-28", "2021-11-29"],
+      "datetime_seq": ["2021-12-26 23:57:14", "2021-12-26 23:57:15"],
+      "int_seq": ["1", "2", "3"],
+      "bigint_seq": ["-9223372036854775809", "9223372036854775808"],
+      "double_seq": ["-1.7976931348623157E+308", "1.7976931348623157E+308"],
+      "decimal_seq": ["-92233720368547758.08", "92233720368547758.07"],
+      "boolean_seq": ["false", "true", "true"],
+      "bytes_seq": ["UsWrxLc=", "xKvFoWk="],
+      "children": [{
+        "id": null,
+        "name": "CHILD-2",
+        "date": null,
+        "date_time": null
+      }, {
+        "id": null,
+        "name": "CHILD-3",
+        "date": null,
+        "date_time": null
+      }]
+    }""".replaceAll("\n    ", "\n")
+
+    // strict decoder
+    val strictExcMsg =
+      intercept[org.wabase.UnprocessableEntityException] {
+        decodeToMap(ByteString(asStringsJsonized), "decoder_test")
+      }.getMessage
+    strictExcMsg should include ("decoder_test")
+    strictExcMsg should include ("Failed to read id of type long")
+    strictExcMsg should include ("Expected Long but got")
+
+    // lenient decoder
+    decodeToMap(
+      ByteString(asStringsJsonized),
+      "decoder_test",
+      lenientDecoder).toJson.prettyPrint  shouldBe jsonized
 
     // compatibility
     val cpy = new decoder_test
