@@ -193,7 +193,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   object FieldDefExtrasUtils {
     def fieldNameToLabel(n: String) =
       n.replace("_", " ").capitalize
-    def fieldLabelFromName(f: FieldDef) = Option(f.alias).orElse(Option(f.name)).map(fieldNameToLabel).get
+    def fieldLabelFromName(f: FieldDef) = fieldNameToLabel(f.fieldName)
     def getExtraOpt(f: FieldDef, key: String) =
       Option(f.extras).flatMap(_ get key).map {
         case s: String => s
@@ -232,7 +232,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
           case (null, c) => (fieldLabelFromName(f), c)
           case lc => lc
         } getOrElse (fieldLabelFromName(f), null)
-      val fieldName = Option(f.alias).getOrElse(f.name)
+      val fieldName = f.fieldName
 
       val readonly = getBooleanExtra(f, Readonly)
       val noInsert = getBooleanExtra(f, NoInsert)

@@ -61,7 +61,7 @@ abstract class ResultRenderer(
   }
   protected def shouldRender(name: String): Boolean = {
     val context = contextStack.head
-    context.viewDef == null || context.viewDef.fields.exists(f => Option(f.alias).getOrElse(f.name) == name && !f.api.excluded)
+    context.viewDef == null || context.viewDef.fieldOpt(name).exists(!_.api.excluded)
   }
   protected def getViewDef(viewName: String) =
     if (viewName != null)
@@ -69,7 +69,7 @@ abstract class ResultRenderer(
     else null
   protected def impliedNames(viewDef: MojozViewDef): List[String] = {
     if  (hasHeaders || viewDef == null) Nil
-    else viewDef.fields.map(f => Option(f.alias).getOrElse(f.name)).toList
+    else viewDef.fields.map(_.fieldName).toList
   }
   protected def nextName(context: Context) = {
     if (context.names.nonEmpty) {
@@ -281,7 +281,7 @@ class FlatTableResultRenderer(
     if (viewName != null)
       nameToViewDef.getOrElse(viewName, sys.error(s"View $viewName not found - can not render result"))
         .fields.map { f =>
-          Option(f.alias).getOrElse(f.name) -> Option(f.label).orElse(Option(f.alias)).getOrElse(f.name)
+          f.fieldName -> Option(f.label).getOrElse(f.fieldName)
         }.toMap
     else Map.empty
   protected def label(name: String): String = nameToLabel.getOrElse(name, name)
@@ -301,8 +301,8 @@ class FlatTableResultRenderer(
     }
   override protected def shouldRender(name: String): Boolean = {
     val context = contextStack.head
-    context.viewDef == null || context.viewDef.fields.exists { f =>
-      Option(f.alias).getOrElse(f.name) == name && !f.type_.isComplexType && !f.isCollection
+    context.viewDef == null || context.viewDef.fieldOpt(name).exists { f =>
+      !f.type_.isComplexType && !f.isCollection
     }
   }
   override protected def renderHeader():  Unit = renderer.renderHeader()

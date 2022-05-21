@@ -571,7 +571,7 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
         // overwrite incoming values of non-updatable fields with old values from db
         // TODO for lookups and children?
         viewDef.fields.filter(f => !qe.authFieldNames.contains(f.name)).filterNot(_.api.updatable) foreach { f =>
-          val getterName = Option(f.alias) getOrElse f.name
+          val getterName = f.fieldName
           val getter = clazz.getMethod(getterName)
           val setter = clazz.getMethod(getterName + "_$eq", getter.getReturnType)
           setter.invoke(instance, getter.invoke(old))
@@ -655,7 +655,7 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
     JsObject(Map(
       "name" -> JsString(viewDef.name),
       "fields" -> JsArray(viewDef.fields.filterNot(_.api.excluded).map(f => JsObject(Map(
-        "name" -> JsString(Option(f.alias) getOrElse f.name),
+        "name" -> JsString(f.fieldName),
         "type" -> JsString(f.type_.name),
         "isCollection" -> JsBoolean(f.isCollection),
         "isComplexType" -> JsBoolean(f.type_.isComplexType),
@@ -1020,7 +1020,7 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
     // TODO ensure field ordering
     val errorMessages = viewDef.fields
       .map(fld =>
-        validationErrorMessage(viewName, fld, instance.getOrElse(Option(fld.alias).getOrElse(fld.name), null))(state.locale))
+        validationErrorMessage(viewName, fld, instance.getOrElse(fld.fieldName, null))(state.locale))
       .filter(_.isDefined)
       .map(_.get)
       .filter(_ != null)
@@ -1028,7 +1028,7 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
       throw new BusinessException(errorMessages.mkString("\n"))
 
     // TODO merge all errorMessages?
-    val complexFields = viewDef.fields.filter(_.type_.isComplexType).map(fld => Option(fld.alias).getOrElse(fld.name) -> fld.type_.name)
+    val complexFields = viewDef.fields.filter(_.type_.isComplexType).map(fld => fld.fieldName -> fld.type_.name)
     complexFields.foreach { case (fieldName, typeName) =>
       instance.getOrElse(fieldName, null) match {
         case m: Map[String, Any] @unchecked => validateFields(typeName, m)

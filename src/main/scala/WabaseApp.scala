@@ -237,7 +237,7 @@ trait WabaseApp[User] {
       if (old == null) Nil
       else viewDef.fields.filter(f => !qe.authFieldNames.contains(f.name)).filterNot(_.api.updatable)
     if (fieldsToCopy.nonEmpty) {
-      val fieldsToCopyNames = fieldsToCopy.map(f => Option(f.alias) getOrElse f.name).toSet
+      val fieldsToCopyNames = fieldsToCopy.map(_.fieldName).toSet
       instance ++ old.filter { case (k, v) => fieldsToCopyNames.contains(k) }
     } else
       instance
@@ -275,7 +275,7 @@ trait WabaseApp[User] {
   protected def checkOrderBy(viewDef: ViewDef, orderBy: String): Unit = {
     if (orderBy != null) {
       val sortableFields =
-        viewDef.fields.filter(_.sortable).map(n => Option(n.alias).getOrElse(n.name)).toSet
+        viewDef.fields.filter(_.sortable).map(_.fieldName).toSet
       val sortCols = orderBy.replace("~", "").split("[\\s\\,]+").toList
       val notSortable = sortCols.filterNot(sortableFields.contains)
       if (notSortable.nonEmpty)
