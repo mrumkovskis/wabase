@@ -3,6 +3,7 @@ package org.wabase
 import org.mojoz.querease.QuereaseExpressions.DefaultParser
 import org.tresql._
 import org.mojoz.querease.{NotFoundException, Querease, QuereaseExpressions, ValidationException, ValidationResult}
+import org.mojoz.metadata.Type
 import org.tresql.parsing.{Exp, Fun, Join, Obj, Variable, With, Query => PQuery}
 import org.wabase.AppMetadata.Action.{VariableTransform, VariableTransforms}
 
@@ -78,6 +79,30 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
 
   import AppMetadata._
 
+  private lazy val typeNameToScalaTypeName =
+    typeDefs
+      .map(td => td.name -> td.targetNames.get("scala").orNull)
+      .filter(_._2 != null)
+      .toMap
+  def convertToType(type_ : Type, value: Any): Any = {
+    value match {
+      case s: String =>
+        (typeNameToScalaTypeName.get(type_.name).orNull match {
+          case "String"             => s
+          case "java.lang.Long"     => s.toLong
+          case "java.lang.Integer"  => s.toInt
+          case "java.sql.Date"      => new java.sql.Date(Format.parseDate(s).getTime)
+          case "java.sql.Timestamp" => new java.sql.Timestamp(Format.parseDateTime(s).getTime)
+          case "BigInt"             => BigInt(s)
+          case "BigDecimal"         => BigDecimal(s)
+          case "java.lang.Double"   => s.toDouble
+          case "java.lang.Boolean"  => s.toBoolean
+          case _ /* "Array[Byte]" */=> s
+        })
+      case x => x
+    }
+  }
+
   override protected def persistenceFilters(
     view: ViewDef,
   ): OrtMetadata.Filters = {
@@ -87,13 +112,17 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       delete = Option(view.auth.forDelete).filter(_.nonEmpty).map(_.map(a => s"($a)").mkString(" & ")),
     )
   }
-  override def get[B <: DTO](id: Long, extraFilter: String = null, extraParams: Map[String, Any] = null)(
-      implicit mf: Manifest[B], resources: Resources): Option[B] = {
+  override def get[B <: DTO](
+    keyValues:   Seq[Any],
+    keyColNames: Seq[String],
+    extraFilter: String,
+    extraParams: Map[String, Any],
+  )(implicit mf: Manifest[B], resources: Resources): Option[B] = {
     val v = viewDef[B]
     val extraFilterAndAuth =
       Option((Option(extraFilter).toSeq ++ v.auth.forGet).map(a => s"($a)").mkString(" & "))
         .filterNot(_.isEmpty).orNull
-    super.get(id, extraFilterAndAuth, extraParams)
+    super.get(keyValues, keyColNames, extraFilterAndAuth, extraParams)
   }
   override def result[B <: DTO: Manifest](params: Map[String, Any],
       offset: Int = 0, limit: Int = 0, orderBy: String = null,
@@ -127,38 +156,12 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     super.countAll_(viewDef, params, extraFilterAndAuth, extraParams)
   }
 
-  // TODO after decoupling QereaseIo from Querease this method should be removed
-  def saveMap(view: ViewDef,
-              data: Map[String, Any],
-              params: Map[String, Any],
-              forceInsert: Boolean = false,
-              filter: String = null)(implicit resources: Resources): Long = {
-    val mf = ManifestFactory.classType(viewNameToClassMap(view.name)).asInstanceOf[Manifest[DTO]]
-    val dto = fill(data.toJson.asJsObject)(mf)
-    save(dto, null, forceInsert, filter, data ++ params)
-  }
   def extractKeyMap(viewName: String, instance: Map[String, Any]): Map[String, Any] =
     // TODO extractKeyMap - support any key (i.e. not only "id"). Move to querease?
     Option(instance)
       .filter(_ => classOf[DtoWithId] isAssignableFrom viewNameToClassMap(viewName))
       .map(_ => Map("id" -> instance.get("id").orNull).filter(_._2 != null))
       .getOrElse(Map.empty)
-
-  // TODO after decoupling QereaseIo from Querease this method should be removed
-  def deleteById(view: ViewDef, id: Any, filter: String = null, params: Map[String, Any] = null)(
-    implicit resources: Resources): Int = {
-    val filterAndAuth =
-      Option((Option(filter).toSeq ++ view.auth.forDelete).map(a => s"($a)").mkString(" & "))
-        .filterNot(_.isEmpty).orNull
-    val result = ORT.delete(
-      view.table + Option(view.tableAlias).map(" " + _).getOrElse(""),
-      id,
-      filterAndAuth,
-      params) match { case r: DeleteResult => r.count.get }
-    if (result == 0)
-      throw new NotFoundException(s"Record not deleted in table ${view.table}")
-    else result
-  }
 
   private def tryOp[T](op: => T, env: Map[String, Any]) = try op catch {
     case e: Exception => throw new QuereaseEnvException(env, e)
@@ -231,6 +234,22 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
         .map(_.steps)
         .getOrElse(List(Action.Return(None, Nil, Action.ViewCall(actionName, view))))
     doSteps(steps, ctx, Future.successful(data))
+  }
+
+  protected def toSaveableMap(map: Map[String, Any], view: ViewDef): Map[String, Any] = {
+    viewNameToMapZero(view.name) ++ map ++
+      view.fields
+        .filter(_.type_.isComplexType)
+        .map(f => f.fieldName -> (map.getOrElse(f.fieldName, null) match {
+          case null => null
+          case Nil  => Nil
+          case seq: Seq[_] => seq map {
+            case m: Map[String, Any]@unchecked => toSaveableMap(m, viewDef(f.type_.name))
+            case x => x
+          }
+          case m: Map[String, Any]@unchecked => toSaveableMap(m, viewDef(f.type_.name))
+          case x => x
+        }))
   }
 
   protected def doSteps(steps: List[Action.Step],
@@ -405,11 +424,16 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     val callData = data ++ env
     val v = viewDef(if (view.startsWith(":")) singleValue[String](view, callData) else view)
     implicit val mf = ManifestFactory.classType(viewNameToClassMap(v.name)).asInstanceOf[Manifest[DTO]]
-    def long(name: String) = tryOp(callData.get(name).map {
-      case x: Long => x
-      case x: Number => x.longValue
-      case x: String => x.toLong
-      case x => x.toString.toLong
+    def keyValuesAndColNames(props: Map[String, Any]) = tryOp({
+      val keyFields = viewNameToKeyFields(view)
+      val keyColNames = keyFields.map(_.name)
+      val keyFieldNames = viewNameToKeyFieldNames(view)
+      val keyValues = tryOp(
+        keyFieldNames.map(n => props.getOrElse(n, sys.error(s"Mapping not found for key field $n of view $view")))
+          .zip(keyFields).map { case (v, f) => convertToType(f.type_, v) },
+        props
+      )
+      (keyValues, keyColNames)
     }, callData)
     def int(name: String) = tryOp(callData.get(name).map {
       case x: Int => x
@@ -422,16 +446,17 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       Future.successful {
         method match {
           case Get =>
-            OptionResult(long("id").flatMap(get(_, null, data)(mf, res)))
+            val (keyValues, keyColNames) = keyValuesAndColNames(callData)
+            OptionResult(get(keyValues, keyColNames, null, data)(mf, res))
           case Action.List =>
             IteratorResult(result(callData, int(OffsetKey).getOrElse(0), int(LimitKey).getOrElse(0),
               string(OrderKey).orNull)(mf, res))
           case Save =>
-            IdResult(saveMap(v, callData, env, false, null))
+            val forceInsert = false // FIXME
+            IdResult(save(v, toSaveableMap(callData, v), null, forceInsert, null, env))
           case Delete =>
-            NumberResult(long("id")
-              .map { deleteById(v, _, null, env) }
-              .getOrElse(sys.error(s"id not found in data")))
+            keyValuesAndColNames(data) // check mappings for key exist
+            NumberResult(delete(v, data, null, env))
           case Create =>
             PojoResult(create(callData)(mf, res))
           case Count =>

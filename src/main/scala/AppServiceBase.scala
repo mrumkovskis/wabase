@@ -74,7 +74,7 @@ trait AppServiceBase[User]
   def getByIdAction(viewName: String, id: Long)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
       if (isQuereaseActionDefined(viewName, "get")) {
-        complete(app.doWabaseAction(Action.Get, viewName, filterPars(params) + ("id" -> id)))
+        complete(app.doWabaseAction(Action.Get, viewName, Seq(id), filterPars(params)))
       } else {
         complete(app.get(viewName, id, filterPars(params)))
       }
@@ -85,7 +85,7 @@ trait AppServiceBase[User]
     implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
       if (isQuereaseActionDefined(viewName, "get")) {
-        complete(app.doWabaseAction(Action.Get, viewName, filterPars(params) + (name -> value)))
+        complete(app.doWabaseAction(Action.Get, viewName, Seq(value), filterPars(params) + (name -> value)))
       } else {
         complete(app.get(viewName, -1, filterPars(params) + (name -> value)))
       }
@@ -94,7 +94,7 @@ trait AppServiceBase[User]
   def createAction(viewName: String)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
       if (isQuereaseActionDefined(viewName, "create")) {
-        complete(app.doWabaseAction(Action.Create, viewName, filterPars(params)))
+        complete(app.doWabaseAction(Action.Create, viewName, Nil, filterPars(params)))
       } else {
         complete(app.create(viewName, filterPars(params)))
       }
@@ -104,7 +104,7 @@ trait AppServiceBase[User]
     parameterMultiMap { params =>
       if (isQuereaseActionDefined(viewName, "delete")) {
         complete {
-          app.doWabaseAction(Action.Delete, viewName, filterPars(params) + ("id" -> id))
+          app.doWabaseAction(Action.Delete, viewName, Seq(id), filterPars(params))
         }
       } else complete {
         try {
@@ -124,7 +124,7 @@ trait AppServiceBase[User]
             implicit val um = toMapUnmarshallerForView(viewName)
             entity(as[Map[String, Any]]) { entityAsMap =>
               complete {
-                app.doWabaseAction(Action.Save, viewName, entityAsMap ++ filterPars(params) + ("id" -> id)).map {
+                app.doWabaseAction(Action.Save, viewName, Seq(id), entityAsMap ++ filterPars(params)).map {
                   case r @ app.WabaseResult(_, _: IdResult) =>
                     r.copy(result = RedirectResult(requestUri.path.toString))
                   case x => x
@@ -148,8 +148,7 @@ trait AppServiceBase[User]
       val impliedIdForGetOpt = app.impliedIdForGetOverList(viewName)
       if (impliedIdForGetOpt.isDefined)
         if (isQuereaseActionDefined(viewName, "get")) {
-          val keyMap = impliedIdForGetOpt.map(id => Map("id" -> id)) getOrElse Map.empty
-          complete(app.doWabaseAction(Action.Get, viewName, keyMap ++ filterPars(params)))
+          complete(app.doWabaseAction(Action.Get, viewName, impliedIdForGetOpt.toSeq, filterPars(params)))
         } else {
           complete(app.get(viewName, impliedIdForGetOpt.get, filterPars(params)))
         }
@@ -164,6 +163,7 @@ trait AppServiceBase[User]
         app.doWabaseAction(
           Action.List,
           viewName,
+          Nil,
           filterPars(params) ++
             params.filter { case (k, v) =>
               k == "offset" ||
@@ -190,7 +190,7 @@ trait AppServiceBase[User]
             implicit val um = toMapUnmarshallerForView(viewName)
             entity(as[Map[String, Any]]) { entityAsMap =>
               complete {
-                app.doWabaseAction(Action.Save, viewName, entityAsMap ++ filterPars(params)).map {
+                app.doWabaseAction(Action.Save, viewName, Nil, entityAsMap ++ filterPars(params)).map {
                   case r @ app.WabaseResult(_, IdResult(id)) =>
                     r.copy(result = RedirectResult((requestUri.path / id.toString).toString))
                   case x => x
@@ -212,7 +212,7 @@ trait AppServiceBase[User]
   def countAction(viewName: String)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
       if (isQuereaseActionDefined(viewName, "count")) {
-        complete(app.doWabaseAction(Action.Count, viewName, filterPars(params)))
+        complete(app.doWabaseAction(Action.Count, viewName, Nil, filterPars(params)))
       } else {
         complete(app.count(viewName, filterPars(params)).toString)
       }

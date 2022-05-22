@@ -39,6 +39,7 @@ trait WabaseApp[User] {
   case class ActionContext(
     actionName: String,
     viewName:   String,
+    key:        Seq[Any],
     values:     Map[String, Any],
     oldValue:   Map[String, Any] = null, // for save and delete
   )(implicit
@@ -54,6 +55,7 @@ trait WabaseApp[User] {
   def doWabaseAction(
     actionName: String,
     viewName:   String,
+    key:        Seq[Any],
     values:     Map[String, Any] = Map(),
   )(implicit
     user:     User,
@@ -62,7 +64,7 @@ trait WabaseApp[User] {
     ec:       ExecutionContext,
     as:       ActorSystem
   ): Future[WabaseResult] = {
-    doWabaseAction(ActionContext(actionName, viewName, values))
+    doWabaseAction(ActionContext(actionName, viewName, key, values))
   }
 
   def doWabaseAction(context: ActionContext): Future[WabaseResult] =
@@ -217,10 +219,29 @@ trait WabaseApp[User] {
       .map(QuereaseSerializedResult(_, isCollection))
   }
 
+  protected def prepareKey(context: ActionContext): Map[String, Any] = {
+    import context._
+    val keyFields = qe.viewNameToKeyFields(viewName)
+    if (key.length > 0) {
+      if (key.length != keyFields.length)
+        throw new BusinessException(
+          s"Unexpected key length for $actionName of $viewName - expecting ${keyFields.length}, got ${key.length}")
+      else
+        keyFields.zip(key).map { case (f, v) => f.fieldName -> qe.convertToType(f.type_, v) }.toMap
+    } else Map.empty
+  }
+
   protected def beforeWabaseAction(context: ActionContext): ActionContext = {
     import context._
     checkApi(viewName, actionName, user)
-    val trusted = state ++ values ++ current_user_param(user)
+    val preparedKey = prepareKey(context)
+    // FIXME insert, update by key, key update
+    val key_params =
+      if (context.actionName == Action.Save)
+        preparedKey ++ Map("_old_key" -> preparedKey)
+      else
+        preparedKey
+    val trusted = state ++ values ++ key_params ++ current_user_param(user)
     context.copy(values = trusted)
   }
 
