@@ -607,14 +607,16 @@ object AppMetadata {
   val AuthEmpty = AuthFilters(Nil, Nil, Nil, Nil, Nil)
 
   object Action {
-    val Get = "get"
-    val List = "list"
-    val Save = "save"
+    val Get    = "get"
+    val List   = "list"
+    val Save   = "save"
+    val Insert = "insert"
+    val Update = "update"
     val Delete = "delete"
     val Create = "create"
-    val Count = "count"
+    val Count  = "count"
     def apply() =
-      Set(Get, List, Save, Delete, Create, Count)
+      Set(Get, List, Save, Insert, Update, Delete, Create, Count)
 
     val ValidationsKey = "validations"
     val OffsetKey = "offset"

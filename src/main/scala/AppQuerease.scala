@@ -413,6 +413,8 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       resources.withParams(bindVars)))
   }
 
+  def onSaveDoInsertOrUpdateKey(viewName: String) = s"on view $viewName save"
+
   protected def doViewCall(method: String,
                            view: String,
                            data: Map[String, Any],
@@ -452,7 +454,13 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
             IteratorResult(result(callData, int(OffsetKey).getOrElse(0), int(LimitKey).getOrElse(0),
               string(OrderKey).orNull)(mf, res))
           case Save =>
-            val forceInsert = false // FIXME
+            val forceInsert = callData.getOrElse(onSaveDoInsertOrUpdateKey(view), null) == Insert
+            IdResult(save(v, toSaveableMap(callData, v), null, forceInsert, null, env))
+          case Insert =>
+            val forceInsert = true
+            IdResult(save(v, toSaveableMap(callData, v), null, forceInsert, null, env))
+          case Update =>
+            val forceInsert = false
             IdResult(save(v, toSaveableMap(callData, v), null, forceInsert, null, env))
           case Delete =>
             keyValuesAndColNames(data) // check mappings for key exist

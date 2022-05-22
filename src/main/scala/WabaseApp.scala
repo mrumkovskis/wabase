@@ -140,7 +140,7 @@ trait WabaseApp[User] {
         val saveableContext = richContext.copy(values = saveable)
         validateFields(viewName, saveable)
         validate(viewName, saveable)(state.locale)
-        qe.QuereaseAction(viewName, actionName, saveable, Map.empty)(initViewResources, closeResources)
+        qe.QuereaseAction(viewName, Action.Save, saveable, Map.empty)(initViewResources, closeResources)
           .map(WabaseResult(saveableContext, _))
           .recover { case ex => friendlyConstraintErrorMessage(viewDef, throw ex)(state.locale) }
       }
@@ -190,6 +190,8 @@ trait WabaseApp[User] {
     actionName match {
       case Action.List    => list
       case Action.Save    => save
+      case Action.Insert  => save
+      case Action.Update  => save
       case Action.Delete  => delete
       case x              => simpleAction
     }
@@ -235,13 +237,16 @@ trait WabaseApp[User] {
     import context._
     checkApi(viewName, actionName, user)
     val preparedKey = prepareKey(context)
-    // FIXME insert, update by key, key update
     val key_params =
-      if (context.actionName == Action.Save)
-        preparedKey ++ Map("_old_key" -> preparedKey)
-      else
-        preparedKey
-    val trusted = state ++ values ++ key_params ++ current_user_param(user)
+      if  (context.actionName == Action.Update)
+           Map("_old_key" -> preparedKey)
+      else preparedKey
+    val onSaveParams =
+      if  (context.actionName == Action.Insert ||
+           context.actionName == Action.Update
+          ) Map(qe.onSaveDoInsertOrUpdateKey(context.viewName) -> context.actionName)
+      else  Map.empty
+    val trusted = state ++ values ++ key_params ++ onSaveParams ++ current_user_param(user)
     context.copy(values = trusted)
   }
 

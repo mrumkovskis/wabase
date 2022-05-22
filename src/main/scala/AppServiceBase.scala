@@ -124,7 +124,7 @@ trait AppServiceBase[User]
             implicit val um = toMapUnmarshallerForView(viewName)
             entity(as[Map[String, Any]]) { entityAsMap =>
               complete {
-                app.doWabaseAction(Action.Save, viewName, Seq(id), entityAsMap ++ filterPars(params)).map {
+                app.doWabaseAction(Action.Update, viewName, Seq(id), entityAsMap ++ filterPars(params)).map {
                   case r @ app.WabaseResult(_, _: IdResult) =>
                     r.copy(result = RedirectResult(requestUri.path.toString))
                   case x => x
@@ -190,7 +190,7 @@ trait AppServiceBase[User]
             implicit val um = toMapUnmarshallerForView(viewName)
             entity(as[Map[String, Any]]) { entityAsMap =>
               complete {
-                app.doWabaseAction(Action.Save, viewName, Nil, entityAsMap ++ filterPars(params)).map {
+                app.doWabaseAction(Action.Insert, viewName, Nil, entityAsMap ++ filterPars(params)).map {
                   case r @ app.WabaseResult(_, IdResult(id)) =>
                     r.copy(result = RedirectResult((requestUri.path / id.toString).toString))
                   case x => x
