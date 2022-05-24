@@ -82,13 +82,14 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   object KnownViewExtras {
     val Api = "api"
     val Auth = "auth"
+    val Key   = "key"
     val Limit = "limit"
     val Validations = "validations"
     val ConnectionPool = "cp"
     val QuereaseViewExtrasKey = QuereaseMetadata.QuereaseViewExtrasKey
     val WabaseViewExtrasKey = AppMetadata.WabaseViewExtrasKey
     def apply() =
-      Set(Api, Auth, Limit, Validations, ConnectionPool, QuereaseViewExtrasKey, WabaseViewExtrasKey) ++
+      Set(Api, Auth, Key, Limit, Validations, ConnectionPool, QuereaseViewExtrasKey, WabaseViewExtrasKey) ++
         Action()
   }
 
