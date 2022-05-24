@@ -59,10 +59,13 @@ trait AppServiceBase[User]
 
   def crudPath = pathPrefix("data")
   def viewWithIdPath = path(Segment / LongNumber)
+  def viewWithCodePath = path(Segment / Segment)
+  @deprecated("Use key without field name. This method is not used and will be removed", "6.0")
   def viewWithNamePath = path(Segment / Segment / Segment)
   def createPath = path("create" / Segment) & get
   def viewWithoutIdPath = path(Segment ~ (PathEnd | Slash))
   def getByIdPath = viewWithIdPath & get
+  def getByCodePath = viewWithCodePath & get
   @deprecated("Use key without field name. This method is not used and will be removed", "6.0")
   def getByNamePath = viewWithNamePath & get
   def deletePath = viewWithIdPath & delete
@@ -77,6 +80,17 @@ trait AppServiceBase[User]
         complete(app.doWabaseAction(Action.Get, viewName, Seq(id), filterPars(params)))
       } else {
         complete(app.get(viewName, id, filterPars(params)))
+      }
+    }
+
+  def getByCodeAction(viewName: String, value: String)(
+    implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
+    parameterMultiMap { params =>
+      if (isQuereaseActionDefined(viewName, "get")) {
+        complete(app.doWabaseAction(Action.Get, viewName, Seq(value), filterPars(params)))
+      } else {
+        val keyFieldNames = app.qe.viewNameToKeyFieldNames.getOrElse(viewName, Nil)
+        complete(app.get(viewName, -1, filterPars(params) ++ keyFieldNames.zip(Seq(value)).toMap))
       }
     }
 
@@ -231,13 +245,14 @@ trait AppServiceBase[User]
 
   def crudAction(implicit user: User) = applicationState { implicit state =>
     extractTimeout { implicit timeout =>
-      getByIdPath { getByIdAction } ~
-        countPath  { countAction  } ~
-        createPath { createAction } ~
-        deletePath { deleteAction } ~
-        updatePath { updateAction } ~
-        listOrGetPath { listOrGetAction } ~
-        insertPath { insertAction }
+      getByIdPath   { getByIdAction   } ~
+      countPath     { countAction     } ~
+      createPath    { createAction    } ~
+      deletePath    { deleteAction    } ~
+      updatePath    { updateAction    } ~
+      listOrGetPath { listOrGetAction } ~
+      getByCodePath { getByCodeAction } ~
+      insertPath    { insertAction    }
     }
   }
 
