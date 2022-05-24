@@ -3,6 +3,7 @@ package org.wabase
 import org.mojoz.querease.QuereaseExpressions.DefaultParser
 import org.tresql._
 import org.mojoz.querease.{NotFoundException, Querease, QuereaseExpressions, ValidationException, ValidationResult}
+import org.mojoz.querease.SaveMethod
 import org.mojoz.metadata.Type
 import org.tresql.parsing.{Exp, Fun, Join, Obj, Variable, With, Query => PQuery}
 import org.wabase.AppMetadata.Action.{VariableTransform, VariableTransforms}
@@ -454,14 +455,16 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
             IteratorResult(result(callData, int(OffsetKey).getOrElse(0), int(LimitKey).getOrElse(0),
               string(OrderKey).orNull)(mf, res))
           case Save =>
-            val forceInsert = callData.getOrElse(onSaveDoInsertOrUpdateKey, null) == Insert
-            IdResult(save(v, toSaveableMap(callData, v), null, forceInsert, null, env))
+            val saveMethod = callData.getOrElse(onSaveDoInsertOrUpdateKey, null) match {
+              case Insert => SaveMethod.Insert
+              case Update => SaveMethod.Update
+              case _      => SaveMethod.Save
+            }
+            IdResult(save(v, toSaveableMap(callData, v), null, saveMethod, null, env))
           case Insert =>
-            val forceInsert = true
-            IdResult(save(v, toSaveableMap(callData, v), null, forceInsert, null, env))
+            IdResult(save(v, toSaveableMap(callData, v), null, SaveMethod.Insert, null, env))
           case Update =>
-            val forceInsert = false
-            IdResult(save(v, toSaveableMap(callData, v), null, forceInsert, null, env))
+            IdResult(save(v, toSaveableMap(callData, v), null, SaveMethod.Update, null, env))
           case Delete =>
             keyValuesAndColNames(data) // check mappings for key exist
             NumberResult(delete(v, data, null, env))
