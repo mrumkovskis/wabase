@@ -244,7 +244,7 @@ trait WabaseApp[User] {
     val onSaveParams =
       if  (context.actionName == Action.Insert ||
            context.actionName == Action.Update
-          ) Map(qe.onSaveDoInsertOrUpdateKey(context.viewName) -> context.actionName)
+          ) Map(qe.onSaveDoInsertOrUpdateKey -> context.actionName)
       else  Map.empty
     val trusted = state ++ values ++ key_params ++ onSaveParams ++ current_user_param(user)
     context.copy(values = trusted)
