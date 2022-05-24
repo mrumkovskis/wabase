@@ -192,6 +192,7 @@ trait WabaseApp[User] {
       case Action.Save    => save
       case Action.Insert  => save
       case Action.Update  => save
+      case Action.Upsert  => save
       case Action.Delete  => delete
       case x              => simpleAction
     }
@@ -241,11 +242,12 @@ trait WabaseApp[User] {
       if  (context.actionName == Action.Update)
            Map("_old_key" -> preparedKey)
       else preparedKey
-    val onSaveParams =
-      if  (context.actionName == Action.Insert ||
-           context.actionName == Action.Update
-          ) Map(qe.onSaveDoInsertOrUpdateKey -> context.actionName)
-      else  Map.empty
+    val onSaveParams = context.actionName match {
+      case Action.Save | Action.Insert | Action.Update | Action.Upsert =>
+        Map(qe.onSaveDoActionNameKey -> context.actionName)
+      case _  =>
+        Map.empty
+    }
     val trusted = state ++ values ++ key_params ++ onSaveParams ++ current_user_param(user)
     context.copy(values = trusted)
   }

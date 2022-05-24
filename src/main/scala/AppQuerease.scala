@@ -414,7 +414,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       resources.withParams(bindVars)))
   }
 
-  private[wabase] val onSaveDoInsertOrUpdateKey = s"on save do"
+  private[wabase] val onSaveDoActionNameKey = s"on save do"
 
   protected def doViewCall(method: String,
                            view: String,
@@ -455,16 +455,19 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
             IteratorResult(result(callData, int(OffsetKey).getOrElse(0), int(LimitKey).getOrElse(0),
               string(OrderKey).orNull)(mf, res))
           case Save =>
-            val saveMethod = callData.getOrElse(onSaveDoInsertOrUpdateKey, null) match {
+            val saveMethod = callData.getOrElse(onSaveDoActionNameKey, null) match {
               case Insert => SaveMethod.Insert
               case Update => SaveMethod.Update
+              case Upsert => SaveMethod.Upsert
               case _      => SaveMethod.Save
             }
-            IdResult(save(v, toSaveableMap(callData, v), null, saveMethod, null, env))
+            IdResult(save(v, toSaveableMap(callData, v), null, saveMethod,        null, env))
           case Insert =>
             IdResult(save(v, toSaveableMap(callData, v), null, SaveMethod.Insert, null, env))
           case Update =>
             IdResult(save(v, toSaveableMap(callData, v), null, SaveMethod.Update, null, env))
+          case Upsert =>
+            IdResult(save(v, toSaveableMap(callData, v), null, SaveMethod.Upsert, null, env))
           case Delete =>
             keyValuesAndColNames(data) // check mappings for key exist
             NumberResult(delete(v, data, null, env))
