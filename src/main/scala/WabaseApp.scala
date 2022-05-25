@@ -222,8 +222,7 @@ trait WabaseApp[User] {
       .map(QuereaseSerializedResult(_, isCollection))
   }
 
-  protected def prepareKey(context: ActionContext): Map[String, Any] = {
-    import context._
+  def prepareKey(viewName: String, key: Seq[Any], actionName: String): Map[String, Any] = {
     val keyFields = qe.viewNameToKeyFields(viewName)
     if (key.length > 0) {
       if (key.length != keyFields.length)
@@ -237,7 +236,7 @@ trait WabaseApp[User] {
   protected def beforeWabaseAction(context: ActionContext): ActionContext = {
     import context._
     checkApi(viewName, actionName, user)
-    val preparedKey = prepareKey(context)
+    val preparedKey = prepareKey(viewName, key, actionName)
     val key_params =
       if  (context.actionName == Action.Update)
            Map("_old_key" -> preparedKey)

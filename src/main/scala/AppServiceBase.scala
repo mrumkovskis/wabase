@@ -59,13 +59,13 @@ trait AppServiceBase[User]
 
   def crudPath = pathPrefix("data")
   def viewWithIdPath = path(Segment / LongNumber)
-  def viewWithCodePath = path(Segment / Segment)
+  def viewWithKeyPath = path(Segment / Segments)
   @deprecated("Use key without field name. This method is not used and will be removed", "6.0")
   def viewWithNamePath = path(Segment / Segment / Segment)
   def createPath = path("create" / Segment) & get
   def viewWithoutIdPath = path(Segment ~ (PathEnd | Slash))
   def getByIdPath = viewWithIdPath & get
-  def getByCodePath = viewWithCodePath & get
+  def getByKeyPath = viewWithKeyPath & get
   @deprecated("Use key without field name. This method is not used and will be removed", "6.0")
   def getByNamePath = viewWithNamePath & get
   def deletePath = viewWithIdPath & delete
@@ -83,14 +83,14 @@ trait AppServiceBase[User]
       }
     }
 
-  def getByCodeAction(viewName: String, value: String)(
+  def getByKeyAction(viewName: String, values: Seq[String])(
     implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
       if (isQuereaseActionDefined(viewName, "get")) {
-        complete(app.doWabaseAction(Action.Get, viewName, Seq(value), filterPars(params)))
+        complete(app.doWabaseAction(Action.Get, viewName, values, filterPars(params)))
       } else {
-        val keyFieldNames = app.qe.viewNameToKeyFieldNames.getOrElse(viewName, Nil)
-        complete(app.get(viewName, -1, filterPars(params) ++ keyFieldNames.zip(Seq(value)).toMap))
+        val preparedKey = app.prepareKey(viewName, values, "get")
+        complete(app.get(viewName, -1, filterPars(params) ++ preparedKey))
       }
     }
 
@@ -251,7 +251,7 @@ trait AppServiceBase[User]
       deletePath    { deleteAction    } ~
       updatePath    { updateAction    } ~
       listOrGetPath { listOrGetAction } ~
-      getByCodePath { getByCodeAction } ~
+      getByKeyPath  { getByKeyAction  } ~
       insertPath    { insertAction    }
     }
   }
