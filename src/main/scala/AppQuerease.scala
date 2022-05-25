@@ -237,22 +237,6 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     doSteps(steps, ctx, Future.successful(data))
   }
 
-  protected def toSaveableMap(map: Map[String, Any], view: ViewDef): Map[String, Any] = {
-    viewNameToMapZero(view.name) ++ map ++
-      view.fields
-        .filter(_.type_.isComplexType)
-        .map(f => f.fieldName -> (map.getOrElse(f.fieldName, null) match {
-          case null => null
-          case Nil  => Nil
-          case seq: Seq[_] => seq map {
-            case m: Map[String, Any]@unchecked => toSaveableMap(m, viewDef(f.type_.name))
-            case x => x
-          }
-          case m: Map[String, Any]@unchecked => toSaveableMap(m, viewDef(f.type_.name))
-          case x => x
-        }))
-  }
-
   protected def doSteps(steps: List[Action.Step],
                         context: ActionContext,
                         curData: Future[Map[String, Any]])(
@@ -461,13 +445,13 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
               case Upsert => SaveMethod.Upsert
               case _      => SaveMethod.Save
             }
-            IdResult(save(v, toSaveableMap(callData, v), null, saveMethod,        null, env))
+            IdResult(save(v, callData, null, saveMethod,        null, env))
           case Insert =>
-            IdResult(save(v, toSaveableMap(callData, v), null, SaveMethod.Insert, null, env))
+            IdResult(save(v, callData, null, SaveMethod.Insert, null, env))
           case Update =>
-            IdResult(save(v, toSaveableMap(callData, v), null, SaveMethod.Update, null, env))
+            IdResult(save(v, callData, null, SaveMethod.Update, null, env))
           case Upsert =>
-            IdResult(save(v, toSaveableMap(callData, v), null, SaveMethod.Upsert, null, env))
+            IdResult(save(v, callData, null, SaveMethod.Upsert, null, env))
           case Delete =>
             keyValuesAndColNames(data) // check mappings for key exist
             NumberResult(delete(v, data, null, env))
