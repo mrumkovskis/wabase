@@ -239,7 +239,7 @@ trait WabaseApp[User] {
     val keyAsMap = prepareKey(viewName, keyValues, actionName)
     val key_params =
       if  (context.actionName == Action.Update)
-           Map("_old_key" -> keyAsMap)
+           Map(qe.oldKeyParamName -> keyAsMap)
       else keyAsMap
     val onSaveParams = context.actionName match {
       case Action.Save | Action.Insert | Action.Update | Action.Upsert =>
