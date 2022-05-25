@@ -83,14 +83,14 @@ trait AppServiceBase[User]
       }
     }
 
-  def getByKeyAction(viewName: String, values: Seq[String])(
+  def getByKeyAction(viewName: String, keyValues: Seq[String])(
     implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
       if (isQuereaseActionDefined(viewName, "get")) {
-        complete(app.doWabaseAction(Action.Get, viewName, values, filterPars(params)))
+        complete(app.doWabaseAction(Action.Get, viewName, keyValues, filterPars(params)))
       } else {
-        val preparedKey = app.prepareKey(viewName, values, "get")
-        complete(app.get(viewName, -1, filterPars(params) ++ preparedKey))
+        val keyAsMap = app.prepareKey(viewName, keyValues, "get")
+        complete(app.get(viewName, -1, filterPars(params) ++ keyAsMap))
       }
     }
 

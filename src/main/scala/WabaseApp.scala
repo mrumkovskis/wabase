@@ -39,7 +39,7 @@ trait WabaseApp[User] {
   case class ActionContext(
     actionName: String,
     viewName:   String,
-    key:        Seq[Any],
+    keyValues:  Seq[Any],
     values:     Map[String, Any],
     oldValue:   Map[String, Any] = null, // for save and delete
   )(implicit
@@ -55,7 +55,7 @@ trait WabaseApp[User] {
   def doWabaseAction(
     actionName: String,
     viewName:   String,
-    key:        Seq[Any],
+    keyValues:  Seq[Any],
     values:     Map[String, Any] = Map(),
   )(implicit
     user:     User,
@@ -64,7 +64,7 @@ trait WabaseApp[User] {
     ec:       ExecutionContext,
     as:       ActorSystem
   ): Future[WabaseResult] = {
-    doWabaseAction(ActionContext(actionName, viewName, key, values))
+    doWabaseAction(ActionContext(actionName, viewName, keyValues, values))
   }
 
   def doWabaseAction(context: ActionContext): Future[WabaseResult] =
@@ -222,25 +222,25 @@ trait WabaseApp[User] {
       .map(QuereaseSerializedResult(_, isCollection))
   }
 
-  def prepareKey(viewName: String, key: Seq[Any], actionName: String): Map[String, Any] = {
+  def prepareKey(viewName: String, keyValues: Seq[Any], actionName: String): Map[String, Any] = {
     val keyFields = qe.viewNameToKeyFields(viewName)
-    if (key.length > 0) {
-      if (key.length != keyFields.length)
+    if (keyValues.length > 0) {
+      if (keyValues.length != keyFields.length)
         throw new BusinessException(
-          s"Unexpected key length for $actionName of $viewName - expecting ${keyFields.length}, got ${key.length}")
+          s"Unexpected key length for $actionName of $viewName - expecting ${keyFields.length}, got ${keyValues.length}")
       else
-        keyFields.zip(key).map { case (f, v) => f.fieldName -> qe.convertToType(f.type_, v) }.toMap
+        keyFields.zip(keyValues).map { case (f, v) => f.fieldName -> qe.convertToType(f.type_, v) }.toMap
     } else Map.empty
   }
 
   protected def beforeWabaseAction(context: ActionContext): ActionContext = {
     import context._
     checkApi(viewName, actionName, user)
-    val preparedKey = prepareKey(viewName, key, actionName)
+    val keyAsMap = prepareKey(viewName, keyValues, actionName)
     val key_params =
       if  (context.actionName == Action.Update)
-           Map("_old_key" -> preparedKey)
-      else preparedKey
+           Map("_old_key" -> keyAsMap)
+      else keyAsMap
     val onSaveParams = context.actionName match {
       case Action.Save | Action.Insert | Action.Update | Action.Upsert =>
         Map(qe.onSaveDoActionNameKey -> context.actionName)
