@@ -127,11 +127,11 @@ trait WabaseApp[User] {
   def save(context: ActionContext): ActionHandlerResult = {
     import context._
     val viewDef = qe.viewDef(viewName)
-    val keyMap = qe.extractKeyMap(viewName, values)
+    val keyAsMap = prepareKey(viewName, keyValues, actionName)
     val oldValueResult =
-      Option(keyMap)
+      Option(keyAsMap)
         .filter(_.nonEmpty)
-        .map(_ => qe.QuereaseAction(viewName, Action.Get, values, Map.empty)(initViewResources, closeResources))
+        .map(_ => qe.QuereaseAction(viewName, Action.Get, values ++ keyAsMap, Map.empty)(initViewResources, closeResources))
         .getOrElse(qe.QuereaseAction.value(OptionResult(None)))
     oldValueResult.flatMap { qr =>
       def insertOrUpdate(oldValue: Map[String, Any]) = {
@@ -150,7 +150,7 @@ trait WabaseApp[User] {
         case TresqlSingleRowResult(row) =>
           insertOrUpdate(oldValue = row.toMap)
         case OptionResult(oldOpt) =>
-          if (keyMap.nonEmpty && oldOpt.isEmpty)
+          if (keyAsMap.nonEmpty && oldOpt.isEmpty)
             throw new BusinessException(translate("Record not found, cannot edit")(state.locale))
           insertOrUpdate(oldValue = oldOpt.map(_.toMap).orNull)
         case PojoResult(oldValue) =>

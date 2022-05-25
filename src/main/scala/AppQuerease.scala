@@ -157,13 +157,6 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     super.countAll_(viewDef, params, extraFilterAndAuth, extraParams)
   }
 
-  def extractKeyMap(viewName: String, instance: Map[String, Any]): Map[String, Any] =
-    // TODO extractKeyMap - support any key (i.e. not only "id"). Move to querease?
-    Option(instance)
-      .filter(_ => classOf[DtoWithId] isAssignableFrom viewNameToClassMap(viewName))
-      .map(_ => Map("id" -> instance.get("id").orNull).filter(_._2 != null))
-      .getOrElse(Map.empty)
-
   private def tryOp[T](op: => T, env: Map[String, Any]) = try op catch {
     case e: Exception => throw new QuereaseEnvException(env, e)
   }
