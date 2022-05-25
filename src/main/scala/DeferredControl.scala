@@ -658,7 +658,7 @@ object DeferredControl extends Loggable with AppConfig {
                         HttpEntity.Default(
                           // This will always be MediaType.Binary, if 2nd param is true
                           // application/octet-stream as a fallback
-                          MediaType.custom(Option(fi.content_type).filter(_ != null).filter(_ != "")
+                          MediaType.custom(Option(fi.content_type).filter(_ != "null").filter(_ != "")
                             .getOrElse("application/octet-stream"), true)
                             .asInstanceOf[MediaType.Binary],
                           fi.size,
