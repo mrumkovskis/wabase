@@ -66,9 +66,9 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
 
   protected def doAction[T](action: String,
                             view: String,
-                            params: Map[String, Any],
+                            values: Map[String, Any],
                             removeIdsFlag: Boolean = true) = {
-    app.doWabaseAction(action, view, Nil, params)
+    app.doWabaseAction(action, view, Nil, Map.empty, values)
       .map(_.result)
       .flatMap {
         case sr: QuereaseSerializedResult =>

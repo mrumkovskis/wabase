@@ -40,6 +40,7 @@ trait WabaseApp[User] {
     actionName: String,
     viewName:   String,
     keyValues:  Seq[Any],
+    params:     Map[String, Any],
     values:     Map[String, Any],
     oldValue:   Map[String, Any] = null, // for save and delete
   )(implicit
@@ -48,7 +49,9 @@ trait WabaseApp[User] {
     val timeout:  QueryTimeout,
     val ec:       ExecutionContext,
     val as:       ActorSystem
-  )
+  ) {
+    lazy val env: Map[String, Any] = state ++ params ++ current_user_param(user)
+  }
 
   case class WabaseResult(ctx: ActionContext, result: QuereaseResult)
 
@@ -56,6 +59,7 @@ trait WabaseApp[User] {
     actionName: String,
     viewName:   String,
     keyValues:  Seq[Any],
+    params:     Map[String, Any],
     values:     Map[String, Any] = Map(),
   )(implicit
     user:     User,
@@ -64,7 +68,7 @@ trait WabaseApp[User] {
     ec:       ExecutionContext,
     as:       ActorSystem
   ): Future[WabaseResult] = {
-    doWabaseAction(ActionContext(actionName, viewName, keyValues, values))
+    doWabaseAction(ActionContext(actionName, viewName, keyValues, params, values))
   }
 
   def doWabaseAction(context: ActionContext): Future[WabaseResult] =
@@ -100,7 +104,7 @@ trait WabaseApp[User] {
 
   def simpleAction(context: ActionContext): ActionHandlerResult = {
     import context._
-    qe.QuereaseAction(viewName, actionName, values, Map())(initViewResources, closeResources)
+    qe.QuereaseAction(viewName, actionName, values, env)(initViewResources, closeResources)
       .map(WabaseResult(context, _))
   }
 
@@ -131,7 +135,7 @@ trait WabaseApp[User] {
     val oldValueResult =
       Option(keyAsMap)
         .filter(_.nonEmpty)
-        .map(_ => qe.QuereaseAction(viewName, Action.Get, values ++ keyAsMap, Map.empty)(initViewResources, closeResources))
+        .map(_ => qe.QuereaseAction(viewName, Action.Get, values ++ keyAsMap, env)(initViewResources, closeResources))
         .getOrElse(qe.QuereaseAction.value(OptionResult(None)))
     oldValueResult.flatMap { qr =>
       def insertOrUpdate(oldValue: Map[String, Any]) = {
@@ -140,7 +144,7 @@ trait WabaseApp[User] {
         val saveableContext = richContext.copy(values = saveable)
         validateFields(viewName, saveable)
         validate(viewName, saveable)(state.locale)
-        qe.QuereaseAction(viewName, Action.Save, saveable, Map.empty)(initViewResources, closeResources)
+        qe.QuereaseAction(viewName, Action.Save, saveable, env)(initViewResources, closeResources)
           .map(WabaseResult(saveableContext, _))
           .recover { case ex => friendlyConstraintErrorMessage(viewDef, throw ex)(state.locale) }
       }
@@ -162,10 +166,10 @@ trait WabaseApp[User] {
 
   def delete(context: ActionContext): ActionHandlerResult = {
     import context._
-    qe.QuereaseAction(viewName, Action.Get, values, Map.empty)(initViewResources, closeResources).flatMap { qr =>
+    qe.QuereaseAction(viewName, Action.Get, values, env)(initViewResources, closeResources).flatMap { qr =>
       def delete(oldValue: Map[String, Any]) = {
         val richContext = context.copy(oldValue = oldValue)
-        qe.QuereaseAction(viewName, actionName, values, Map.empty)(initViewResources, closeResources)
+        qe.QuereaseAction(viewName, actionName, values, env)(initViewResources, closeResources)
           .map(WabaseResult(richContext, _))
           .recover { case ex => friendlyConstraintErrorMessage(throw ex)(state.locale) }
       }
@@ -247,8 +251,7 @@ trait WabaseApp[User] {
       case _  =>
         Map.empty
     }
-    val trusted = state ++ values ++ key_params ++ onSaveParams ++ current_user_param(user)
-    context.copy(values = trusted)
+    context.copy(values = values ++ key_params ++ onSaveParams)
   }
 
   protected def afterWabaseAction(context: ActionContext, result: QuereaseResult): Unit = {
