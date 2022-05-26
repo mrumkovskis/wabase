@@ -28,7 +28,25 @@ object WabaseActionDtos {
     var purchases: List[Purchase] = Nil
   }
 
+  class env_test_1 extends DtoWithId {
+    var id: jLong = null
+    var name: String = null
+    var sex: String = null
+    var birthdate: java.sql.Date = null
+  }
+
+  class env_test_2 extends env_test_1 {
+    var surname: String = null
+  }
+
+  class env_test_3 extends env_test_1 {
+    var surname: String = null
+  }
+
   val viewNameToClass = Map[String, Class[_ <: Dto]](
+    "env_test_1" -> classOf[env_test_1],
+    "env_test_2" -> classOf[env_test_2],
+    "env_test_3" -> classOf[env_test_3],
     "purchase" -> classOf[PurchaseWithId],
     "person_health_and_shop" -> classOf[PersonWithHealthAndShop],
     "person_health_and_shop_health" -> classOf[PersonWithHealthDataHealth],
@@ -67,8 +85,9 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
   protected def doAction[T](action: String,
                             view: String,
                             values: Map[String, Any],
+                            env: Map[String, Any] = Map.empty,
                             removeIdsFlag: Boolean = true) = {
-    app.doWabaseAction(action, view, Nil, Map.empty, values)
+    app.doWabaseAction(action, view, Nil, env, values)
       .map(_.result)
       .flatMap {
         case sr: QuereaseSerializedResult =>
@@ -329,5 +348,60 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
           app.delete("purchase", purch.id) should be(1)
         case x => fail(s"Unexpected result: $x")
       }
+  }
+
+  it should "manage env properly" in {
+    val person = Map(
+      "birthdate" -> "1988-09-20",
+    )
+    val poorEnv = Map(
+      "current_person_name"    -> "EnvTestName",
+      "current_person_surname" -> "EnvTestSurname",
+    )
+    val updateDisabledEnv = poorEnv ++ Map("update_enabled" -> false)
+    val updateOkEnv       = poorEnv ++ Map("update_enabled" -> true)
+
+    for {
+      t1 <-
+        recoverToExceptionIf[MissingBindVariableException](
+          doAction("insert", "env_test_2", person, poorEnv)
+        ).map(_.getMessage shouldBe "Missing bind variable: update_enabled")
+      t2 <-
+        recoverToExceptionIf[org.mojoz.querease.NotFoundException](
+          doAction("insert", "env_test_2", person, updateDisabledEnv)
+        ).map(_.getMessage shouldBe "Record not updated in table(s): person")
+      t3 <-
+        doAction("insert", "env_test_2", person, updateOkEnv).flatMap { r =>
+          val id = r match { case IdResult(id) => id case _ => -1 }
+          implicit val qe = querease
+          import WabaseActionDtos._
+          doAction("get", "env_test_2", Map("id" -> id)).map {
+            case OptionResult(Some(obj: env_test_2)) => obj.toMap shouldBe Map(
+              "id" -> id,
+              "name" -> "EnvTestName",
+              "surname" -> "EnvTestSurname",
+              "sex" -> "M",
+              "birthdate" -> new java.sql.Date(Format.parseDate("1988-09-20").getTime),
+            )
+          }
+        }
+      t4 <-
+        doAction("insert", "env_test_3", person, updateOkEnv).flatMap { r =>
+          val id = r match { case IdResult(id) => id case _ => -1 }
+          implicit val qe = querease
+          import WabaseActionDtos._
+          doAction("get", "env_test_3", Map("id" -> id)).map {
+            case OptionResult(Some(obj: env_test_3)) => obj.toMap shouldBe Map(
+              "id" -> id,
+              "name" -> "EnvTestName",
+              "surname" -> "EnvTestSurname",
+              "sex" -> "M",
+              "birthdate" -> new java.sql.Date(Format.parseDate("1988-09-20").getTime),
+            )
+          }
+        }
+    } yield  {
+      t4
+    }
   }
 }

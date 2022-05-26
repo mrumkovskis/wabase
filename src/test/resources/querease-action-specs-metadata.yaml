@@ -286,3 +286,43 @@ fields:
 get:
 - unique_opt |shop_db:purchase[purchase_time = :purchase_time & customer = :customer]
     {item, amount}
+
+
+name:     env_test_1
+api:      save
+table:    person
+fields:
+- id
+- name
+- sex
+- birthdate
+save:
+- name = :current_person_name
+- sex  = 'M'
+- save env_test_1
+
+
+name:         env_test_2
+api:          get, save
+auth update:  :update_enabled = true
+extends:      env_test_1
+fields:
+- surname
+save:
+- save env_test_1
+- setenv get env_test_1
+- surname = :current_person_surname
+- update env_test_2
+
+
+name:         env_test_3
+api:          get, save
+auth update:  :current_person_surname = 'EnvTestSurname'
+extends:      env_test_1
+fields:
+- surname
+save:
+- save env_test_1
+- setenv get env_test_1
+- surname = :current_person_surname
+- update env_test_3
