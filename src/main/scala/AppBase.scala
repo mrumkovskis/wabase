@@ -570,7 +570,7 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
       if (old != null)
         // overwrite incoming values of non-updatable fields with old values from db
         // TODO for lookups and children?
-        viewDef.fields.filter(f => !qe.authFieldNames.contains(f.name)).filterNot(_.api.updatable) foreach { f =>
+        viewDef.fields.filterNot(_.api.updatable) foreach { f =>
           val getterName = f.fieldName
           val getter = clazz.getMethod(getterName)
           val setter = clazz.getMethod(getterName + "_$eq", getter.getReturnType)

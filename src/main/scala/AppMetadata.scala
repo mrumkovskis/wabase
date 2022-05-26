@@ -52,8 +52,6 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
   lazy val classToViewNameMap: Map[Class[_], String] = viewNameToClassMap.map(_.swap)
 
-  val authFieldNames = Set("is_update_relevant", "is_delete_relevant")
-
   val knownApiMethods = Set("create", "count", "get", "list", "save", "delete")
   def splitToLabelAndComments(s: String): (String, String) = {
     def clear(s: String) = Option(s).filter(_ != "").orNull
@@ -371,27 +369,11 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       sys.error(
         s"Unknown properties for viewDef ${viewDef.name}: ${unknownKeys.mkString(", ")}")
 
-    def createRelevanceField(name: String, expression: String): FieldDef =
-      (new MojozFieldDef(name, Type("boolean", None, None, None, false)))
-        .copy(options = null, isExpression = true, expression = expression)
 
-    val appView = MojozViewDef(name, db, table, tableAlias, joins, filter,
+    MojozViewDef(name, db, table, tableAlias, joins, filter,
       viewDef.groupBy, viewDef.having, orderBy, extends_,
       comments, appFields, viewDef.saveTo, extras)
       .updateWabaseExtras(_ => AppViewDef(limit, cp, auth, apiMap, actions, Map.empty))
-    def hasAuthFilter(viewDef: ViewDef): Boolean = viewDef.auth match {
-      case AuthFilters(g, l, i, u, d) =>
-        !(g.isEmpty && l.isEmpty && i.isEmpty && u.isEmpty && d.isEmpty)
-    }
-    if (hasAuthFilter(appView)) {
-      appView.copy(fields = appView.fields ++
-        (if (appView.auth.forUpdate.isEmpty) Nil
-        else createRelevanceField("is_update_relevant",
-          appView.auth.forUpdate.map(a => s"($a)").mkString(" & ")) :: Nil) ++ //do not use List(..) because it conflicts with KnownAuthOps.List
-        (if (appView.auth.forDelete.isEmpty) Nil
-        else createRelevanceField("is_delete_relevant",
-          appView.auth.forDelete.map(a => s"($a)").mkString(" & ")) :: Nil)) //do not use List(..) because it conflicts with KnownAuthOps.List
-    } else appView
   }
 
   protected def transformAppViewDefs(viewDefs: Map[String, ViewDef]): Map[String, ViewDef] =

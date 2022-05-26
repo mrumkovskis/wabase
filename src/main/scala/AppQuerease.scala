@@ -612,13 +612,7 @@ trait Dto extends org.mojoz.querease.Dto { self =>
   import AppMetadata._
 
   private val auth = scala.collection.mutable.Map[String, Any]()
-  override protected def setExtras(dbName: String, r: RowLike)(implicit qe: QE): AnyRef = {
-    r(dbName) match {
-      case result: Result[_] => updateDynamic(dbName)(result.toListOfMaps)
-      case x => updateDynamic(dbName)(x)
-    }
-    dbName //return key name for auth data
-  }
+
   override def toMapWithOrdering(fieldOrdering: Ordering[String])(implicit qe: QE): Map[String, Any] =
     super.toMapWithOrdering(fieldOrdering) ++ (if (auth.isEmpty) Map() else Map("auth" -> auth.toMap))
 
@@ -772,7 +766,7 @@ trait Dto extends org.mojoz.querease.Dto { self =>
     js.fields foreach { case (name, value) =>
       setters.get(name).map { case (met, _) =>
         met.invoke(this, parseJsValue(name, emptyStringsToNull)(qe)(value).asInstanceOf[Object])
-      }.getOrElse(updateDynamic(name)(JsonToAny(value)))
+      }
     }
     this
   }
@@ -804,20 +798,9 @@ trait Dto extends org.mojoz.querease.Dto { self =>
           case util.control.NonFatal(ex) =>
             throwUnsupportedConversion(value, typ, name)
         }
-      }.getOrElse(updateDynamic(name)(value))
+      }
     }
     this
-  }
-
-  def updateDynamic(field: String)(value: Any)(implicit qe: QE): Unit = {
-    if (qe.authFieldNames contains field)
-      setAuthField(field, value.asInstanceOf[Boolean])
-    //ignore any other field
-  }
-
-  def setAuthField(field: String, value: Boolean)(implicit qe: QE): Unit = {
-    if (qe.authFieldNames contains field) auth(field) = value
-    else sys.error(s"Unsupported auth field: $field")
   }
 }
 

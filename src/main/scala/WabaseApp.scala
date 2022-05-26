@@ -265,7 +265,7 @@ trait WabaseApp[User] {
     // FIXME for lookups and children?
     val fieldsToCopy =
       if (old == null) Nil
-      else viewDef.fields.filter(f => !qe.authFieldNames.contains(f.name)).filterNot(_.api.updatable)
+      else viewDef.fields.filterNot(_.api.updatable)
     if (fieldsToCopy.nonEmpty) {
       val fieldsToCopyNames = fieldsToCopy.map(_.fieldName).toSet
       instance ++ old.filter { case (k, v) => fieldsToCopyNames.contains(k) }
