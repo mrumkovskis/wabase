@@ -427,7 +427,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
         method match {
           case Get =>
             val (keyValues, keyColNames) = keyValuesAndColNames(callData)
-            OptionResult(get(keyValues, keyColNames, null, data)(mf, res))
+            OptionResult(get(keyValues, keyColNames, null, callData)(mf, res))
           case Action.List =>
             IteratorResult(result(callData, int(OffsetKey).getOrElse(0), int(LimitKey).getOrElse(0),
               string(OrderKey).orNull)(mf, res))
