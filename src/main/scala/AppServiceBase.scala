@@ -74,9 +74,11 @@ trait AppServiceBase[User]
   def listOrGetPath = viewWithoutIdPath & get
   def countPath = path("count" / Segment) & get
 
+  private def useActions(viewName: String, actionName: String) =
+    !app.useLegacyFlow(viewName, actionName)
   def getByIdAction(viewName: String, id: Long)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
-      if (isQuereaseActionDefined(viewName, "get")) {
+      if (useActions(viewName, Action.Get)) {
         complete(app.doWabaseAction(Action.Get, viewName, Seq(id), filterPars(params)))
       } else {
         complete(app.get(viewName, id, filterPars(params)))
@@ -86,7 +88,7 @@ trait AppServiceBase[User]
   def getByKeyAction(viewName: String, keyValues: Seq[String])(
     implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
-      if (isQuereaseActionDefined(viewName, "get")) {
+      if (useActions(viewName, Action.Get)) {
         complete(app.doWabaseAction(Action.Get, viewName, keyValues, filterPars(params)))
       } else {
         val keyAsMap = app.prepareKey(viewName, keyValues, "get")
@@ -98,7 +100,7 @@ trait AppServiceBase[User]
   def getByNameAction(viewName: String, name: String, value: String)(
     implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
-      if (isQuereaseActionDefined(viewName, "get")) {
+      if (useActions(viewName, Action.Get)) {
         complete(app.doWabaseAction(Action.Get, viewName, Seq(value), filterPars(params) + (name -> value)))
       } else {
         complete(app.get(viewName, -1, filterPars(params) + (name -> value)))
@@ -107,7 +109,7 @@ trait AppServiceBase[User]
 
   def createAction(viewName: String)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
-      if (isQuereaseActionDefined(viewName, "create")) {
+      if (useActions(viewName, Action.Create)) {
         complete(app.doWabaseAction(Action.Create, viewName, Nil, filterPars(params)))
       } else {
         complete(app.create(viewName, filterPars(params)))
@@ -116,7 +118,7 @@ trait AppServiceBase[User]
 
   def deleteAction(viewName: String, id: Long)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
-      if (isQuereaseActionDefined(viewName, "delete")) {
+      if (useActions(viewName, Action.Delete)) {
         complete {
           app.doWabaseAction(Action.Delete, viewName, Seq(id), filterPars(params))
         }
@@ -134,7 +136,7 @@ trait AppServiceBase[User]
     extractUri { requestUri =>
       parameterMultiMap { params =>
         try {
-          if (isQuereaseActionDefined(viewName, "save")) {
+          if (useActions(viewName, Action.Save)) {
             implicit val um = toMapUnmarshallerForView(viewName)
             entity(as[Map[String, Any]]) { entityAsMap =>
               complete {
@@ -161,7 +163,7 @@ trait AppServiceBase[User]
     parameterMultiMap { params =>
       val impliedIdForGetOpt = app.impliedIdForGetOverList(viewName)
       if (impliedIdForGetOpt.isDefined)
-        if (isQuereaseActionDefined(viewName, "get")) {
+        if (useActions(viewName, Action.Get)) {
           complete(app.doWabaseAction(Action.Get, viewName, impliedIdForGetOpt.toSeq, filterPars(params)))
         } else {
           complete(app.get(viewName, impliedIdForGetOpt.get, filterPars(params)))
@@ -172,7 +174,7 @@ trait AppServiceBase[User]
 
   protected def listAction(viewName: String, params: Map[String, List[String]])(
     implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
-    if (isQuereaseActionDefined(viewName, "list")) {
+    if (useActions(viewName, Action.List)) {
       complete {
         app.doWabaseAction(
           Action.List,
@@ -200,7 +202,7 @@ trait AppServiceBase[User]
     extractUri { requestUri =>
       parameterMultiMap { params =>
         try {
-          if (isQuereaseActionDefined(viewName, "save")) {
+          if (useActions(viewName, Action.Save)) {
             implicit val um = toMapUnmarshallerForView(viewName)
             entity(as[Map[String, Any]]) { entityAsMap =>
               complete {
@@ -225,7 +227,7 @@ trait AppServiceBase[User]
 
   def countAction(viewName: String)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
-      if (isQuereaseActionDefined(viewName, "count")) {
+      if (useActions(viewName, Action.Count)) {
         complete(app.doWabaseAction(Action.Count, viewName, Nil, filterPars(params)))
       } else {
         complete(app.count(viewName, filterPars(params)).toString)
@@ -317,8 +319,6 @@ trait AppServiceBase[User]
   }
   override protected def initJsonConverter = app.qe
   override def dbAccess = app.dbAccess
-  private def isQuereaseActionDefined(viewName: String, actionName: String) =
-    app.qe.viewDefOption(viewName).flatMap(_.actions.get(actionName)).isDefined
 
   protected def fileStreamerConfigs: Seq[AppFileStreamerConfig] = {
     Option(this)

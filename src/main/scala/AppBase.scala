@@ -51,6 +51,27 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
 
   import qe.{viewDef, viewDefOption, classToViewNameMap, viewNameToClassMap}
 
+  protected def isQuereaseActionDefined(viewName: String, actionName: String) =
+    qe.viewDefOption(viewName).flatMap(_.actions.get(actionName)).isDefined
+  protected def hasLegacyHandlers(viewName: String, actionName: String): Boolean = {
+    val handler = actionName match {
+      case Action.Get    => View
+      case Action.List   => BList
+      case Action.Save   => Save
+      case Action.Delete => Remove
+      case Action.Create => Create
+      case Action.Count  => BList
+      case _             => null
+    }
+    handler != null &&
+      viewNameToClassMap.get(viewName).map(handler.isCustomized).getOrElse(false)
+  }
+  /** Override for legacy projects if necessary,
+    * isQuereaseActionDefined() and hasLegacyHandlers() may be helpful
+    */
+  def useLegacyFlow(viewName: String, actionName: String): Boolean = false
+    // !isQuereaseActionDefined(viewName, actionName) && hasLegacyHandlers(viewName, actionName)
+
   implicit def rowLikeToDto[B <: Dto](r: RowLike, m: Manifest[B]): B = qe.rowLikeToDto(r, m)
 
   implicit def toAppListResult[T <: Dto: Manifest](list: Seq[T]) = new AppListResult[T] {
@@ -399,6 +420,10 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
       val on = action("on", clazz, defaultAction)
       val after = action("after", clazz)
       before andThen on andThen after
+    }
+    def isCustomized(clazz: Class[_]): Boolean = {
+      def has(act: String): Boolean = action(act, clazz, null) != null
+      has("before") || has("on") || has("after")
     }
     private def action(act: String, clazz: Class[_], defaultAction: T => T = identity,
       boundaryClass: Class[_] = classOf[org.wabase.Dto]): T => T =
