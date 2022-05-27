@@ -19,7 +19,7 @@ import akka.util.ByteString
 import io.bullet.borer.compat.akka.ByteStringProvider
 import org.tresql.{Resources, Result, RowLike}
 
-import scala.collection.immutable.{Seq => iSeq}
+import scala.collection.immutable.Seq
 import scala.language.implicitConversions
 import scala.language.reflectiveCalls
 import scala.util.Try
@@ -79,7 +79,7 @@ trait BasicMarshalling {
   implicit val ContentTypeUnmarshaller: FromEntityUnmarshaller[ContentType] = Unmarshaller{implicit ec => entity => Future.successful(entity.contentType)}
   implicit val StatusCodeUnmarshaller: FromResponseUnmarshaller[StatusCode] = Unmarshaller{implicit ec => response => Future.successful(response.status)}
   implicit val SourceUnmarshaller: FromEntityUnmarshaller[Source[ByteString, Any]] = Unmarshaller{implicit ec => entity => Future.successful(entity.dataBytes)}
-  implicit val HeadersUnmarshaller: FromResponseUnmarshaller[iSeq[HttpHeader]] = Unmarshaller{implicit ec => resp => Future.successful(resp.headers)}
+  implicit val HeadersUnmarshaller: FromResponseUnmarshaller[Seq[HttpHeader]] = Unmarshaller{implicit ec => resp => Future.successful(resp.headers)}
   implicit val UnitUnmarshaller: FromResponseUnmarshaller[Unit] = Unmarshaller.withMaterializer{implicit ec => implicit mat => resp => Future.successful(resp.entity.discardBytes())}
 
   case class GeneratedFile(name: String, contentType: ContentType, content: Array[Byte], contentDispositionType: ContentDispositionType = ContentDispositionTypes.attachment)
