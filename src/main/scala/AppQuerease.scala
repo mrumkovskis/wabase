@@ -402,14 +402,19 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     import Action._
     import CoreTypes._
     val callData = data ++ env
-    val v = viewDef(if (view.startsWith(":")) singleValue[String](view, callData) else view)
+    val v = viewDef(
+      if (view startsWith ":") singleValue[String](view, callData)
+      else if (view == "this") context.map(_.name) getOrElse view
+      else                     view
+    )
+    val viewName = v.name
     implicit val mf = ManifestFactory.classType(viewNameToClassMap(v.name)).asInstanceOf[Manifest[DTO]]
     def keyValuesAndColNames(props: Map[String, Any]) = tryOp({
-      val keyFields = viewNameToKeyFields(view)
+      val keyFields = viewNameToKeyFields(viewName)
       val keyColNames = keyFields.map(_.name)
-      val keyFieldNames = viewNameToKeyFieldNames(view)
+      val keyFieldNames = viewNameToKeyFieldNames(viewName)
       val keyValues = tryOp(
-        keyFieldNames.map(n => props.getOrElse(n, sys.error(s"Mapping not found for key field $n of view $view")))
+        keyFieldNames.map(n => props.getOrElse(n, sys.error(s"Mapping not found for key field $n of view $viewName")))
           .zip(keyFields).map { case (v, f) => convertToType(f.type_, v) },
         props
       )
@@ -422,7 +427,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case x => x.toString.toInt
     }, callData)
     def string(name: String) = callData.get(name) map String.valueOf
-    if (context.exists(_.name == view)) {
+    if (context.exists(_.name == viewName)) {
       Future.successful {
         method match {
           case Get =>
@@ -457,7 +462,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
         }
       }
     } else {
-      doAction(view, method, data, env)
+      doAction(viewName, method, data, env)
     }
   }
 

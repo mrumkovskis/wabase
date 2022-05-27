@@ -437,8 +437,8 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
                   (f.type_.name, action)
               } ++
               collectFromAction {
-                case Evaluation(_, _, ViewCall(m, vn)) if !vn.startsWith(":") => (vn, m)
-                case Return(_, _, ViewCall(m, vn)) if !vn.startsWith(":") => (vn, m)
+                case Evaluation(_, _, ViewCall(m, vn)) if !vn.startsWith(":") && vn != "this" => (vn, m)
+                case Return    (_, _, ViewCall(m, vn)) if !vn.startsWith(":") && vn != "this" => (vn, m)
               }
 
           val new_processed = processed + (v.name -> action)

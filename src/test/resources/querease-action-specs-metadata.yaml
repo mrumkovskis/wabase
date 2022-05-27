@@ -83,9 +83,9 @@ save:
 - setenv org.wabase.QuereaseActionTestManager.personSaveDtoBizMethod
 - setenv org.wabase.QuereaseActionTestManager.personSaveBizMethod
 - setenv org.wabase.QuereaseActionTestManager.personSaveJavaMapBizMethod
-- save person
+- save this
 - org.wabase.QuereaseActionTestManager.sendNotifications
-- get person
+- get this
 
 
 name: person_simple
@@ -128,7 +128,7 @@ save:
   - balance(# s) { account[number = :originator] {balance} }, ((balance{s}) = null | (balance{s}) >= :amount),
       "Insufficient funds for account '" || :originator || "'"
 - time = now()
-- save payment
+- save this
 - =account[number = :originator] { balance, last_modified } [balance - :amount, :time]
 - =account[number = :beneficiary] { balance, last_modified } [balance + :amount, :time]
 - :id
@@ -146,8 +146,8 @@ filter:
 - name %~~%
 - surname %~~%
 list:
-- c: count person_list  # named step supports also colon notation
-- d: list person_list    # named step supports also colon notation
+- c: count this   # named step supports also colon notation
+- d: list  this   # named step supports also colon notation
 - return (count = :c) + (data = :d)
 
 
@@ -176,7 +176,7 @@ fields:
 save:
 - validations check_person:
   - (person[name = :name]{count(1)}) > 0, "Person '" || :name || "' must be registered"
-- save person_health
+- save this
 - redirect |med_db:{'person_health', :name, :manipulation_date}, {'x' param}
 
 
@@ -266,10 +266,10 @@ save:
 - validations has_funds:
     - funds(# s) { account[person_id = (person[name = :customer]{id})] {max(balance)} },
         (funds{s}) >= :amount, "Insufficient funds, available (" || (funds{s}) || ")"
-- save purchase
+- save this
 get:
 - null{:purchase_time, :customer}    # ensure bind variable existence (must prefix columns with null table due to yaml parser)
-- unique_opt list purchase
+- unique_opt list this
 delete:
 - -shop_db:purchase [purchase_time = :purchase_time & customer = :customer]
 
@@ -300,7 +300,7 @@ fields:
 save:
 - name = :current_person_name
 - sex  = 'M'
-- save env_test_1
+- save this
 
 
 name:         env_test_2
@@ -314,7 +314,7 @@ save:
 - save env_test_1
 - setenv get env_test_1
 - surname = :current_person_surname
-- update env_test_2
+- update this
 
 
 name:         env_test_3
@@ -328,4 +328,4 @@ save:
 - save env_test_1
 - setenv get env_test_1
 - surname = :current_person_surname
-- update env_test_3
+- update this
