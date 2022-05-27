@@ -10,7 +10,6 @@ import java.io.OutputStreamWriter
 import java.net.URLEncoder
 import java.text.Normalizer
 import java.util.zip.ZipOutputStream
-import scala.collection.immutable.Seq
 import scala.concurrent.{ExecutionContext, Future}
 import akka.http.scaladsl.model.headers.{ContentDispositionType, ContentDispositionTypes}
 import akka.http.scaladsl.model.headers.{Location, RawHeader}
@@ -20,7 +19,7 @@ import akka.util.ByteString
 import io.bullet.borer.compat.akka.ByteStringProvider
 import org.tresql.{Resources, Result, RowLike}
 
-import scala.collection.immutable.{HashMap, Seq => iSeq}
+import scala.collection.immutable.{Seq => iSeq}
 import scala.language.implicitConversions
 import scala.language.reflectiveCalls
 import scala.util.Try
@@ -201,7 +200,7 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
     Marshaller.withFixedContentType(ContentTypes.`text/plain(UTF-8)`) { sr =>
       val ent =
         if (sr.content == null) HttpEntity.Empty
-        else HttpEntity.Strict(ContentTypes.`text/plain(UTF-8)`, ByteString(sr.content, "utf-8"))
+        else HttpEntity.Strict(ContentTypes.`text/plain(UTF-8)`, ByteString(sr.content))
       HttpResponse(status = sr.code, entity = ent)
     }
   implicit val toEntityQuereaseNoResultMarshaller:          ToEntityMarshaller  [NoResult.type]  =
