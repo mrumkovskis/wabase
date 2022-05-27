@@ -30,7 +30,7 @@ trait Marshalling extends
   with BasicMarshalling
   with QuereaseMarshalling
   with DtoMarshalling
-  { this: AppServiceBase[_] with Execution => }
+  { this: AppProvider[_] with JsonConverterProvider with Execution => }
 
 trait BasicJsonMarshalling extends akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport with BasicMarshalling {
   this: JsonConverterProvider =>
@@ -121,7 +121,7 @@ trait BasicMarshalling {
   )
 }
 
-trait DtoMarshalling extends QuereaseMarshalling { this: AppServiceBase[_] with Execution =>
+trait DtoMarshalling extends QuereaseMarshalling { this: AppProvider[_] with Execution =>
   import app.qe
   implicit def dtoUnmarshaller[T <: app.Dto](implicit m: Manifest[T]): FromEntityUnmarshaller[T] =
     toMapUnmarshallerForView(app.qe.viewDef[T].name).map {
@@ -145,7 +145,7 @@ trait DtoMarshalling extends QuereaseMarshalling { this: AppServiceBase[_] with 
     }
 }
 
-trait QuereaseMarshalling extends QuereaseResultMarshalling { this: AppServiceBase[_] with Execution =>
+trait QuereaseMarshalling extends QuereaseResultMarshalling { this: AppProvider[_] with Execution =>
   import app.qe
   implicit val mapForViewMarshaller: ToEntityMarshaller[(Map[String, Any], String)] = {
     def marsh(viewName: String)(implicit ec: ExecutionContext): ToEntityMarshaller[Map[String, Any]] =
@@ -178,10 +178,7 @@ trait QuereaseMarshalling extends QuereaseResultMarshalling { this: AppServiceBa
     }
 }
 
-trait QuereaseResultMarshalling { this:
-    Execution               with
-    AppServiceBase[_] =>
-
+trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with QuereaseMarshalling =>
   import app.qe
   import ResultEncoder.EncoderFactory
   implicit def toEntityQuereaseMapResultMarshaller (viewName: String):  ToEntityMarshaller[MapResult]  =
