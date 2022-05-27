@@ -40,6 +40,7 @@ case class CodeResult(code: String) extends QuereaseResult
 case class IdResult(id: Any) extends QuereaseResult
 case class QuereaseDeleteResult(count: Int) extends QuereaseResult
 case class RedirectResult(uri: String, key: Seq[Any] = Nil, params: Map[String, Any] = Map()) extends QuereaseResult
+case class StatusResult(code: Int, content: String) extends QuereaseResult
 case object NoResult extends QuereaseResult
 case class QuereaseResultWithCleanup(result: QuereaseCloseableResult, cleanup: Option[Throwable] => Unit)
   extends QuereaseResult {
@@ -257,6 +258,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case CodeResult(code) => code
       case id: IdResult => id
       case rd: RedirectResult => rd
+      case sr: StatusResult => sr
       case NoResult => NoResult
       case x => sys.error(s"${x.getClass.getName} not expected here!")
     }
@@ -567,6 +569,11 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
           if (paramsTresql == null) Map[String, Any]()
           else doTresql(paramsTresql, data ++ env, context).result.unique.toMap
         Future.successful(RedirectResult(String.valueOf(uriAndKeys.head), uriAndKeys.tail, params))
+      case Status(code, bodyTresql) =>
+        Future.successful(StatusResult(code,
+          if (bodyTresql != null) doTresql(bodyTresql, data ++ env, context).result.unique[String]
+          else null
+        ))
       case JobCall(job) =>
         doJobCall(job, data, env)
       case VariableTransforms(vts) =>

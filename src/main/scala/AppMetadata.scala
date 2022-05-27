@@ -474,6 +474,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val returnRegex = """return\s+(.+)""".r //dot matches new line as well
     val uniqueOpRegex = """unique_opt\s+(.+)""".r
     val redirectOpRegex = """redirect\s+(.+)""".r
+    val statusOpRegex = """status\s+(\w+)(?:\s+(.+))?""".r
     val jobCallRegex = """(?U)job\s+(:?\w+)""".r
     import ViewDefExtrasUtils._
     val steps = stepData.map { step =>
@@ -505,6 +506,10 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
               case Arr(List(pathAndKeys, params)) => Action.Redirect(pathAndKeys.tresql, params.tresql)
               case _ => Action.Redirect(tresqls, null)
             }
+          } else if (statusOpRegex.pattern.matcher(st).matches()) {
+            val statusOpRegex(status, bodyTresql) = st
+            require(status == "ok", s"Status must be 'ok', instead '$status' encountered.")
+            Action.Status(200, bodyTresql)
           } else {
             Action.Tresql(st)
           }
@@ -622,6 +627,7 @@ object AppMetadata {
     case class UniqueOpt(innerOp: Op) extends Op
     case class Invocation(className: String, function: String) extends Op
     case class Redirect(pathAndKeyTresql: String, paramsTresql: String) extends Op
+    case class Status(code: Int, bodyTresql: String) extends Op
     case class VariableTransforms(transforms: List[VariableTransform]) extends Op
     case class JobCall(name: String) extends Op
 

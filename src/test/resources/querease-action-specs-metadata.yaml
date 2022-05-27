@@ -329,3 +329,14 @@ save:
 - setenv get env_test_1
 - surname = :current_person_surname
 - update this
+
+
+name:   status_test_1
+table:
+api:    get, save, insert
+fields:
+- status =
+get:
+- status ok
+save:
+- status ok :status
