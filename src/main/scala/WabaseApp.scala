@@ -184,6 +184,15 @@ trait WabaseApp[User] {
           delete(oldValue = oldOpt.map(_.toMap).orNull)
         case PojoResult(oldValue) =>
           delete(oldValue = oldValue.toMap)
+        case qrwc: QuereaseResultWithCleanup =>
+          qrwc.flatMap {
+            case TresqlSingleRowResult(row) => MapResult(row.toMap)
+            case x => sys.error(s"Unexpected querease result class: ${x.getClass.getName}")
+          } match {
+            case MapResult(map) =>
+              delete(oldValue = map)
+            case x => sys.error(s"Unexpected querease result class: ${x.getClass.getName}")
+          }
         case x => sys.error(s"Unexpected querease result class: ${x.getClass.getName}")
       }
     }

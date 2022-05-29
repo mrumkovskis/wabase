@@ -344,8 +344,8 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     doAction("get", "purchase",
       Map("purchase_time" -> "2021-12-04 15:15:23.0", "customer" -> "Mr. Gunza"), removeIdsFlag = false)
       .map {
-        case OptionResult(Some(purch: TestQuerease#DWI)) =>
-          app.delete("purchase", purch.id) should be(1)
+        case purch: Map[String@unchecked, _] =>
+          app.delete("purchase", purch("id").toString.toLong) should be(1)
         case x => fail(s"Unexpected result: $x")
       }
   }

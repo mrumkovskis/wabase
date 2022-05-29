@@ -149,6 +149,15 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       override def close = result.close
       override def view: ViewDef = viewDef[B]
     }
+  override def rowsResult(viewDef: ViewDef, params: Map[String, Any],
+      offset: Int, limit: Int, orderBy: String, extraFilter: String)(
+        implicit resources: Resources): Result[RowLike] = {
+    val extraFilterAndAuth =
+      Option((Option(extraFilter).toSeq ++ viewDef.auth.forList).map(a => s"($a)").mkString(" & "))
+        .filterNot(_.isEmpty).orNull
+    super.rowsResult(viewDef, params, offset, limit, orderBy, extraFilterAndAuth)
+  }
+
 
   override protected def countAll_(viewDef: ViewDef, params: Map[String, Any],
       extraFilter: String = null, extraParams: Map[String, Any] = Map())(implicit resources: Resources): Int = {
@@ -436,8 +445,8 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
             val (keyValues, keyColNames) = keyValuesAndColNames(callData)
             OptionResult(get(keyValues, keyColNames, null, callData)(mf, res))
           case Action.List =>
-            IteratorResult(result(callData, int(OffsetKey).getOrElse(0), int(LimitKey).getOrElse(0),
-              string(OrderKey).orNull)(mf, res))
+            TresqlResult(rowsResult(v, callData, int(OffsetKey).getOrElse(0), int(LimitKey).getOrElse(0),
+              string(OrderKey).orNull, null))
           case Save =>
             val saveMethod = callData.getOrElse(onSaveDoActionNameKey, null) match {
               case Insert => SaveMethod.Insert

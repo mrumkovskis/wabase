@@ -336,8 +336,8 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
       .flatMap(_ => saveData("person_health_priv", vaccines_priv))
       .flatMap { _ =>
         querease.doAction("person_with_health_data", "list", Map("names" -> List("Mario", "Gunzagi")), Map()).map {
-          case IteratorResult(res) =>
-            res.map(_.toMap(querease)).toList should be (
+          case TresqlResult(res) =>
+            res.toListOfMaps.map(m => (new PersonWithHealthData).fill(m)(querease).toMap(querease)).toList should be (
               List(
                 Map("name" -> "Gunzagi", "sex" -> "M", "birthdate" -> java.sql.Date.valueOf("1999-06-23"),
                   "health" ->
