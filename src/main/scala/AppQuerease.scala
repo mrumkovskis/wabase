@@ -189,10 +189,10 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     def apply(viewName: String,
               actionName: String,
               data: Map[String, Any],
-              env: Map[String, Any])(initResources: String => String => Resources, // viewName, actionName
+              env: Map[String, Any])(initResources: () => Resources,
                                      closeResources: (Resources, Option[Throwable]) => Unit): QuereaseAction[QuereaseResult] = {
       implicit ec: ExecutionContext => {
-        implicit val res = initResources(viewName)(actionName)
+        implicit val res = initResources()
         try {
           doAction(viewName, actionName, data, env).map {
             case TresqlResult(r: DMLResult) =>

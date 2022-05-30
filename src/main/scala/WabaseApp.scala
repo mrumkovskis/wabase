@@ -104,7 +104,7 @@ trait WabaseApp[User] {
 
   def simpleAction(context: ActionContext): ActionHandlerResult = {
     import context._
-    qe.QuereaseAction(viewName, actionName, values, env)(initViewResources, closeResources)
+    qe.QuereaseAction(viewName, actionName, values, env)(resourceFactory(context), closeResources)
       .map(WabaseResult(context, _))
   }
 
@@ -135,7 +135,8 @@ trait WabaseApp[User] {
     val oldValueResult =
       Option(keyAsMap)
         .filter(_.nonEmpty)
-        .map(_ => qe.QuereaseAction(viewName, Action.Get, values ++ keyAsMap, env)(initViewResources, closeResources))
+        .map(_ => qe.QuereaseAction(
+          viewName, Action.Get, values ++ keyAsMap, env)(resourceFactory(context), closeResources))
         .getOrElse(qe.QuereaseAction.value(OptionResult(None)))
     oldValueResult.flatMap { qr =>
       def insertOrUpdate(oldValue: Map[String, Any]) = {
@@ -144,7 +145,7 @@ trait WabaseApp[User] {
         val saveableContext = richContext.copy(values = saveable)
         validateFields(viewName, saveable)
         validate(viewName, saveable)(state.locale)
-        qe.QuereaseAction(viewName, Action.Save, saveable, env)(initViewResources, closeResources)
+        qe.QuereaseAction(viewName, Action.Save, saveable, env)(resourceFactory(context), closeResources)
           .map(WabaseResult(saveableContext, _))
           .recover { case ex => friendlyConstraintErrorMessage(viewDef, throw ex)(state.locale) }
       }
@@ -166,10 +167,10 @@ trait WabaseApp[User] {
 
   def delete(context: ActionContext): ActionHandlerResult = {
     import context._
-    qe.QuereaseAction(viewName, Action.Get, values, env)(initViewResources, closeResources).flatMap { qr =>
+    qe.QuereaseAction(viewName, Action.Get, values, env)(resourceFactory(context), closeResources).flatMap { qr =>
       def delete(oldValue: Map[String, Any]) = {
         val richContext = context.copy(oldValue = oldValue)
-        qe.QuereaseAction(viewName, actionName, values, env)(initViewResources, closeResources)
+        qe.QuereaseAction(viewName, actionName, values, env)(resourceFactory(context), closeResources)
           .map(WabaseResult(richContext, _))
           .recover { case ex => friendlyConstraintErrorMessage(throw ex)(state.locale) }
       }
@@ -211,11 +212,12 @@ trait WabaseApp[User] {
     }
   }
 
-  protected def initViewResources(viewName: String)(actionName: String): Resources = {
+  def resourceFactory(context: ActionContext): () => Resources = {
+    import context.{actionName, viewName}
     val vdo = viewDefOption(viewName)
     val poolName = vdo.flatMap(v => Option(v.cp)).map(PoolName) getOrElse DefaultCp
     val extraDbs = extraDb(vdo.map(_.actionToDbAccessKeys(actionName).toList).getOrElse(Nil))
-    initResources(tresqlResources.resourcesTemplate)(poolName, extraDbs)
+    () => initResources(tresqlResources.resourcesTemplate)(poolName, extraDbs)
   }
 
   /** Runs {{{src}}} via {{{FileBufferedFlow}}} of {{{bufferSize}}} with {{{maxFileSize}}} to {{{CheckCompletedSink}}} */
