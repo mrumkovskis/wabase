@@ -564,21 +564,28 @@ object TresqlResultSerializer {
     new TresqlColsIterator(row.columns.map(_.name).toVector.iterator, includeHeaders)
   private def valuesIterator(row: RowLike, includeHeaders: Boolean) =
     new TresqlColsIterator(row.values.iterator, includeHeaders)
-  def source(
+  def rowSource(
     createResult:   () => RowLike,
     includeHeaders: Boolean = true,
     bufferSizeHint: Int     = 1024,
     createEncoder:  EncoderFactory = BorerNestedArraysEncoder(_),
   ): Source[ByteString, NotUsed] = {
-    def createEncodable() = createResult() match {
-      case result: Result[_] =>
-        new TresqlRowsIterator(result,  includeHeaders)
-      case row: RowLike =>
-        if  (includeHeaders)
-             Seq(headerIterator(row, includeHeaders),
-                 valuesIterator(row, includeHeaders)).iterator
-        else Seq(valuesIterator(row, includeHeaders)).iterator
+    def createEncodable() = {
+      val row = createResult()
+      if  (includeHeaders)
+           Seq(headerIterator(row, includeHeaders),
+               valuesIterator(row, includeHeaders)).iterator
+      else Seq(valuesIterator(row, includeHeaders)).iterator
     }
+    ResultSerializer.source(createEncodable, createEncoder(_), bufferSizeHint)
+  }
+  def source(
+    createResult:   () => Result[_],
+    includeHeaders: Boolean = true,
+    bufferSizeHint: Int     = 1024,
+    createEncoder:  EncoderFactory = BorerNestedArraysEncoder(_),
+  ): Source[ByteString, NotUsed] = {
+    def createEncodable() = new TresqlRowsIterator(createResult(),  includeHeaders)
     ResultSerializer.source(createEncodable, createEncoder(_), bufferSizeHint)
   }
 }

@@ -91,7 +91,7 @@ trait WabaseApp[User] {
             case TresqlResult(tr) =>
               (TresqlResultSerializer.source(() => tr), true)
             case TresqlSingleRowResult(row) =>
-              (TresqlResultSerializer.source(() => row), false)
+              (TresqlResultSerializer.rowSource(() => row), false)
             case IteratorResult(ir) =>
               (DtoDataSerializer.source(() => ir), true)
           }

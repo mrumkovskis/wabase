@@ -290,7 +290,11 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
   implicit def toResponseTresqlResultMarshaller(implicit res: Resources): ToEntityMarshaller[RowLike] =
     Marshaller { _ => tresqlResult =>
       val sr = app.serializeResult(app.SerializationBufferSize, app.SerializationBufferMaxFileSize,
-        TresqlResultSerializer.source(() => tresqlResult), tresqlResult.isInstanceOf[Result[_]],
+        tresqlResult match {
+          case result: Result[_] => TresqlResultSerializer.source(() => result)
+          case row:    RowLike   => TresqlResultSerializer.rowSource(() => row)
+        },
+        tresqlResult.isInstanceOf[Result[_]],
         app.dbAccess.closeResources(res, _))
       GenericMarshallers
         .futureMarshaller(toEntityQuereaseSerializedResultMarshaller(null))(sr)
