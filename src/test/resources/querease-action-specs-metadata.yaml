@@ -247,7 +247,7 @@ order:
 
 
 name: purchase
-api: save, get, list, delete
+api: save, get, list, count, delete
 db: shop_db
 table: purchase
 fields:

@@ -350,6 +350,11 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       }
   }
 
+  it should "count" in {
+    doAction("count", "purchase", Map.empty)
+      .map(_ shouldBe NumberResult(1))
+  }
+
   it should "manage env properly" in {
     val person = Map(
       "birthdate" -> "1988-09-20",

@@ -189,7 +189,7 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
   implicit def toResponseQuereaseOptionResultMarshaller(viewName: String):  ToResponseMarshaller[OptionResult] =
     Marshaller.combined(_.result.map(dto => (dto.toMap, viewName)))
   implicit val toEntityQuereaseNumberResultMarshaller:      ToEntityMarshaller  [NumberResult]   =
-    Marshaller.combined(id => s"$id")
+    Marshaller.combined("" + _.id)
   implicit val toEntityQuereaseCodeResultMarshaller:        ToEntityMarshaller  [CodeResult]     =
     Marshaller.combined(_.code)
   implicit val toEntityQuereaseIdResultMarshaller:          ToEntityMarshaller  [IdResult]       =
