@@ -201,7 +201,13 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
                 case _: InsertResult | _: UpdateResult => IdResult(r.id)
                 case _: DeleteResult => QuereaseDeleteResult(r.count.getOrElse(0))
               }
-            case r: QuereaseCloseableResult => QuereaseResultWithCleanup(r, closeResources(res, _))
+            case r: QuereaseCloseableResult => QuereaseResultWithCleanup(
+              r,
+              r match {
+                case srr: TresqlSingleRowResult   =>  mbe => try srr.row.close finally closeResources(res, mbe)
+                case _                            =>  closeResources(res, _)
+              }
+            )
             case r: QuereaseResult =>
               closeResources(res, None)
               r
