@@ -81,11 +81,6 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
 
   import AppMetadata._
 
-  private lazy val typeNameToScalaTypeName =
-    typeDefs
-      .map(td => td.name -> td.targetNames.get("scala").orNull)
-      .filter(_._2 != null)
-      .toMap
   def convertToType(type_ : Type, value: Any): Any = {
     value match {
       case s: String =>
@@ -95,8 +90,8 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
           case "java.lang.Integer"  => s.toInt
           case "java.sql.Date"      => new java.sql.Date(Format.parseDate(s).getTime)
           case "java.sql.Timestamp" => new java.sql.Timestamp(Format.parseDateTime(s).getTime)
-          case "BigInt"             => BigInt(s)
-          case "BigDecimal"         => BigDecimal(s)
+          case "scala.math.BigInt"     => BigInt(s)
+          case "scala.math.BigDecimal" => BigDecimal(s)
           case "java.lang.Double"   => s.toDouble
           case "java.lang.Boolean"  => s.toBoolean
           case _ /* "Array[Byte]" */=> s

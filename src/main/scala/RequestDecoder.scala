@@ -26,8 +26,8 @@ class CborOrJsonDecoder(typeDefs: Seq[TypeDef], nameToViewDef: Map[String, Mojoz
       case "java.lang.Integer"  => Decoder.forBoxedInt
       case "java.sql.Date"      => javaSqlDateDecoder
       case "java.sql.Timestamp" => javaSqlTimestampDecoder
-      case "BigInt"             => Decoder.forBigInt
-      case "BigDecimal"         => Decoder.forBigDecimal
+      case "scala.math.BigInt"     => Decoder.forBigInt
+      case "scala.math.BigDecimal" => Decoder.forBigDecimal
       case "java.lang.Double"   => Decoder.forBoxedDouble
       case "java.lang.Boolean"  => Decoder.forBoxedBoolean
       case "Array[Byte]"        => Decoder { r =>
@@ -134,8 +134,8 @@ class CborOrJsonLenientDecoder(typeDefs: Seq[TypeDef], nameToViewDef: Map[String
       case "java.lang.Integer"  => Decoder.StringNumbers.intDecoder.asInstanceOf[Decoder[Integer]]
       case "java.lang.Double"   => Decoder.StringNumbers.doubleDecoder.asInstanceOf[Decoder[JDouble]]
       case "java.lang.Boolean"  => Decoder.StringBooleans.booleanDecoder.asInstanceOf[Decoder[JBoolean]]
-      case "BigInt"             => lenientBigIntDecoder
-      case "BigDecimal"         => lenientBigDecimalDecoder
+      case "scala.math.BigInt"     => lenientBigIntDecoder
+      case "scala.math.BigDecimal" => lenientBigDecimalDecoder
       case _                    => super.simpleValueDecoder(type_)
     }).asInstanceOf[Decoder[Any]]
 }
