@@ -128,18 +128,37 @@ trait WabaseApp[User] {
     simpleAction(context.copy(values = trusted))
   }
 
+  protected def getOldValue(context: ActionContext): qe.QuereaseAction[Map[String, Any]] = {
+    import context._
+    def throwUnexpectedResultClass(qr: QuereaseResult) =
+      sys.error(s"Unexpected result class getting old-value for '$actionName' of $viewName: ${qr.getClass.getName}")
+    qe.QuereaseAction(viewName, Action.Get, values, env)(resourceFactory(context), closeResources).map {
+      case OptionResult(None)         =>  null
+      case MapResult(oldMap)          =>  oldMap
+      case srr: TresqlSingleRowResult =>  srr.map(qe.toCompatibleMap(_, qe.viewDef(viewName)))
+      case OptionResult(Some(old))    =>  old.toMap
+      case PojoResult(old)            =>  old.toMap
+      case qrwc: QuereaseResultWithCleanup =>
+        qrwc.map {
+          case srr: TresqlSingleRowResult  => srr.map(qe.toCompatibleMap(_, qe.viewDef(viewName)))
+          case x                           => throwUnexpectedResultClass(x)
+        }
+      case x                          => throwUnexpectedResultClass(x)
+    }
+  }
+
   def save(context: ActionContext): ActionHandlerResult = {
     import context._
     val viewDef = qe.viewDef(viewName)
     val keyAsMap = prepareKey(viewName, keyValues, actionName)
-    val oldValueResult =
-      Option(keyAsMap)
-        .filter(_.nonEmpty)
-        .map(_ => qe.QuereaseAction(
-          viewName, Action.Get, values ++ keyAsMap, env)(resourceFactory(context), closeResources))
-        .getOrElse(qe.QuereaseAction.value(OptionResult(None)))
-    oldValueResult.flatMap { qr =>
-      def insertOrUpdate(oldValue: Map[String, Any]) = {
+    Option(keyAsMap)
+      .filter(_.nonEmpty)
+      .map(_ => getOldValue(context.copy(values = values ++ keyAsMap)))
+      .getOrElse(qe.QuereaseAction.value(null: Map[String, Any]))
+      .flatMap { oldValue =>
+        if (oldValue == null && keyAsMap.nonEmpty && (actionName == Action.Save || actionName == Action.Update))
+          throw new BusinessException(
+            translate("Record not found, cannot %1$s view %2$s", actionName, viewName)(state.locale))
         val richContext = context.copy(oldValue = oldValue)
         val saveable = applyReadonlyValues(viewDef, oldValue, values)
         val saveableContext = richContext.copy(values = saveable)
@@ -149,53 +168,18 @@ trait WabaseApp[User] {
           .map(WabaseResult(saveableContext, _))
           .recover { case ex => friendlyConstraintErrorMessage(viewDef, throw ex)(state.locale) }
       }
-      qr match {
-        case MapResult(oldValue) =>
-          insertOrUpdate(oldValue = oldValue)
-        case TresqlSingleRowResult(row) =>
-          insertOrUpdate(oldValue = row.toMap)
-        case OptionResult(oldOpt) =>
-          if (keyAsMap.nonEmpty && oldOpt.isEmpty)
-            throw new BusinessException(translate("Record not found, cannot edit")(state.locale))
-          insertOrUpdate(oldValue = oldOpt.map(_.toMap).orNull)
-        case PojoResult(oldValue) =>
-          insertOrUpdate(oldValue = oldValue.toMap)
-        case x => sys.error(s"Unexpected querease result class: ${x.getClass.getName}")
-      }
-    }
   }
 
   def delete(context: ActionContext): ActionHandlerResult = {
     import context._
-    qe.QuereaseAction(viewName, Action.Get, values, env)(resourceFactory(context), closeResources).flatMap { qr =>
-      def delete(oldValue: Map[String, Any]) = {
-        val richContext = context.copy(oldValue = oldValue)
-        qe.QuereaseAction(viewName, actionName, values, env)(resourceFactory(context), closeResources)
-          .map(WabaseResult(richContext, _))
-          .recover { case ex => friendlyConstraintErrorMessage(throw ex)(state.locale) }
-      }
-      qr match {
-        case MapResult(oldValue) =>
-          delete(oldValue = oldValue)
-        case TresqlSingleRowResult(row) =>
-          delete(oldValue = row.toMap)
-        case OptionResult(None) => throw new NotFoundException(
-          s"Record not found, cannot delete. View name: $viewName, values: $values")
-        case OptionResult(oldOpt) =>
-          delete(oldValue = oldOpt.map(_.toMap).orNull)
-        case PojoResult(oldValue) =>
-          delete(oldValue = oldValue.toMap)
-        case qrwc: QuereaseResultWithCleanup =>
-          qrwc.flatMap {
-            case TresqlSingleRowResult(row) => MapResult(row.toMap)
-            case x => sys.error(s"Unexpected querease result class: ${x.getClass.getName}")
-          } match {
-            case MapResult(map) =>
-              delete(oldValue = map)
-            case x => sys.error(s"Unexpected querease result class: ${x.getClass.getName}")
-          }
-        case x => sys.error(s"Unexpected querease result class: ${x.getClass.getName}")
-      }
+    getOldValue(context).flatMap { oldValue =>
+      if (oldValue == null)
+        throw new BusinessException(
+          translate("Record not found, cannot delete from view %1$s", viewName)(state.locale))
+      val richContext = context.copy(oldValue = oldValue)
+      qe.QuereaseAction(viewName, actionName, values, env)(resourceFactory(richContext), closeResources)
+        .map(WabaseResult(richContext, _))
+        .recover { case ex => friendlyConstraintErrorMessage(throw ex)(state.locale) }
     }
   }
 

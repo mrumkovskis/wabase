@@ -26,7 +26,10 @@ trait QuereaseProvider {
 sealed trait QuereaseResult
 sealed trait QuereaseCloseableResult extends QuereaseResult
 case class TresqlResult(result: Result[RowLike]) extends QuereaseCloseableResult
-case class TresqlSingleRowResult(row: RowLike) extends QuereaseCloseableResult
+case class TresqlSingleRowResult(row: RowLike) extends QuereaseCloseableResult {
+  /** map, close row (i.e. result), return mapped */
+  def map[T](f: RowLike => T): T = try f(row) finally row.close()
+}
 case class MapResult(result: Map[String, Any]) extends QuereaseResult
 case class ListResult(result: List[AppQuerease#DTO]) extends QuereaseResult
 // TODO after decoupling QereaseIo from Querease this class should be refactored to PojoResult[X]
@@ -44,7 +47,7 @@ case class StatusResult(code: Int, content: String, params: Map[String, String] 
 case object NoResult extends QuereaseResult
 case class QuereaseResultWithCleanup(result: QuereaseCloseableResult, cleanup: Option[Throwable] => Unit)
   extends QuereaseResult {
-  def flatMap(f: QuereaseCloseableResult => QuereaseResult): QuereaseResult = {
+  def map[T](f: QuereaseCloseableResult => T): T = {
     Try(f(result)).map { r =>
       cleanup(None)
       r
@@ -268,12 +271,12 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
           case rows => rows
         }
       }
-      case TresqlSingleRowResult(row) =>
+      case srr: TresqlSingleRowResult =>
         oldStep match {
           case Evaluation(_, _, ViewCall(_, viewName)) if !(viewName startsWith ":") =>
-            toCompatibleMap(row, v(viewName))
+            srr.map(toCompatibleMap(_, v(viewName)))
           case _ =>
-            row.toMap
+            srr.map(_.toMap)
         }
       case MapResult(mr) => mr
       case PojoResult(pr) => pr.toMap(this)
