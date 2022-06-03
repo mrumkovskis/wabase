@@ -198,10 +198,18 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
     Marshaller.combined(rr => (StatusCodes.SeeOther, Seq(Location(rr.uri))))
   implicit val toResponseQuereaseStatusResultMarshaller:    ToResponseMarshaller[StatusResult] =
     Marshaller.withFixedContentType(ContentTypes.`text/plain(UTF-8)`) { sr =>
-      val ent =
-        if (sr.content == null) HttpEntity.Empty
-        else HttpEntity.Strict(ContentTypes.`text/plain(UTF-8)`, ByteString(sr.content))
-      HttpResponse(status = sr.code, entity = ent)
+      val status: StatusCode = sr.code
+      if (status.isRedirection()) {
+        import akka.http.scaladsl.model.Uri._
+        require(sr.content != null, s"Error marshalling redirect status result - no uri.")
+        val uri = sr.content.withQuery(Query(sr.params))
+        HttpResponse(status, headers = Seq(Location(uri)))
+      } else {
+        val ent =
+          if (sr.content == null) HttpEntity.Empty
+          else HttpEntity.Strict(ContentTypes.`text/plain(UTF-8)`, ByteString(sr.content))
+        HttpResponse(status, entity = ent)
+      }
     }
   implicit val toEntityQuereaseNoResultMarshaller:          ToEntityMarshaller  [NoResult.type]  =
     Marshaller.combined(_ => "")

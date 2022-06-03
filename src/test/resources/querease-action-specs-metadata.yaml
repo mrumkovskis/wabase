@@ -333,10 +333,12 @@ save:
 
 name:   status_test_1
 table:
-api:    get, save, insert
+api:    get, save, list
 fields:
 - status =
 get:
 - status ok
 save:
 - status ok :status
+list:
+- status { 303, '/path', :status p1, 'x' p2 }

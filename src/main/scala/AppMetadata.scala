@@ -474,7 +474,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val returnRegex = """return\s+(.+)""".r //dot matches new line as well
     val uniqueOpRegex = """unique_opt\s+(.+)""".r
     val redirectOpRegex = """redirect\s+(.+)""".r
-    val statusOpRegex = """status\s+(\w+)(?:\s+(.+))?""".r
+    val statusOpRegex = """status(?:\s+(\w+))?(?:\s+(.+))?""".r
     val jobCallRegex = """(?U)job\s+(:?\w+)""".r
     import ViewDefExtrasUtils._
     val steps = stepData.map { step =>
@@ -508,8 +508,12 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
             }
           } else if (statusOpRegex.pattern.matcher(st).matches()) {
             val statusOpRegex(status, bodyTresql) = st
-            require(status == "ok", s"Status must be 'ok', instead '$status' encountered.")
-            Action.Status(200, bodyTresql)
+            val code = Option(status).collect {
+              case "ok" => 200
+              case x => throw new IllegalArgumentException(s"Status must be 'ok' or omitted, instead '$x' encountered.")
+            }
+            require(code.nonEmpty || bodyTresql != null, s"Empty status operation!")
+            Action.Status(code, bodyTresql)
           } else {
             Action.Tresql(st)
           }
@@ -627,7 +631,7 @@ object AppMetadata {
     case class UniqueOpt(innerOp: Op) extends Op
     case class Invocation(className: String, function: String) extends Op
     case class Redirect(pathAndKeyTresql: String, paramsTresql: String) extends Op
-    case class Status(code: Int, bodyTresql: String) extends Op
+    case class Status(code: Option[Int], bodyTresql: String) extends Op
     case class VariableTransforms(transforms: List[VariableTransform]) extends Op
     case class JobCall(name: String) extends Op
 
