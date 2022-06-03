@@ -109,17 +109,17 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       delete = Option(view.auth.forDelete).filter(_.nonEmpty).map(_.map(a => s"($a)").mkString(" & ")),
     )
   }
-  override def get[B <: DTO](
+  override def get(
+    viewDef:     ViewDef,
     keyValues:   Seq[Any],
     keyColNames: Seq[String],
     extraFilter: String,
     extraParams: Map[String, Any],
-  )(implicit mf: Manifest[B], resources: Resources): Option[B] = {
-    val v = viewDef[B]
+  )(implicit resources: Resources): Option[RowLike] = {
     val extraFilterAndAuth =
-      Option((Option(extraFilter).toSeq ++ v.auth.forGet).map(a => s"($a)").mkString(" & "))
+      Option((Option(extraFilter).toSeq ++ viewDef.auth.forGet).map(a => s"($a)").mkString(" & "))
         .filterNot(_.isEmpty).orNull
-    super.get(keyValues, keyColNames, extraFilterAndAuth, extraParams)
+    super.get(viewDef, keyValues, keyColNames, extraFilterAndAuth, extraParams)
   }
   override def result[B <: DTO: Manifest](params: Map[String, Any],
       offset: Int = 0, limit: Int = 0, orderBy: String = null,
@@ -247,18 +247,34 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       implicit resources: Resources, ec: ExecutionContext): Future[QuereaseResult] = {
     import Action._
 
-    def dataForNewStep(res: QuereaseResult) = res match {
+    def v(view: String) = viewDef(
+      if (view == "this") context.view.map(_.name) getOrElse view
+      else                view
+    )
+
+    def dataForNewStep(oldStep: Step, res: QuereaseResult) = res match {
       case TresqlResult(tr) => tr match {
         case dml: DMLResult =>
           dml.id.map(IdResult(_)) orElse dml.count getOrElse 0
         case SingleValueResult(v) => v
         case ar: ArrayResult[_] => ar.values.toList
-        case r: Result[_] => r.toListOfMaps match {
+        case r: Result[_] => (oldStep match {
+          case Evaluation(_, _, ViewCall(_, viewName)) if !(viewName startsWith ":") =>
+            toCompatibleSeqOfMaps(r, v(viewName))
+          case _  =>
+            r.toListOfMaps
+        }) match {
           case row :: Nil if row.size == 1 => row.head._2 // unwrap if result is one row, one column
           case rows => rows
         }
       }
-      case TresqlSingleRowResult(row) => row.toMap
+      case TresqlSingleRowResult(row) =>
+        oldStep match {
+          case Evaluation(_, _, ViewCall(_, viewName)) if !(viewName startsWith ":") =>
+            toCompatibleMap(row, v(viewName))
+          case _ =>
+            row.toMap
+        }
       case MapResult(mr) => mr
       case PojoResult(pr) => pr.toMap(this)
       case ListResult(lr) => lr
@@ -310,10 +326,10 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
         doStep(s, curData) flatMap { stepRes =>
           s match {
             case e: Evaluation =>
-              doSteps(tail, context, curData.map(updateCurRes(_, e.name, dataForNewStep(stepRes))))
+              doSteps(tail, context, curData.map(updateCurRes(_, e.name, dataForNewStep(s, stepRes))))
             case se: SetEnv =>
               val newData =
-                dataForNewStep(stepRes) match {
+                dataForNewStep(s, stepRes) match {
                   case m: Map[String, Any]@unchecked => Future.successful(m)
                   case x =>
                     //in the case of primitive value return step must have name
@@ -444,7 +460,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
         method match {
           case Get =>
             val (keyValues, keyColNames) = keyValuesAndColNames(callData)
-            OptionResult(get(keyValues, keyColNames, null, callData)(mf, res))
+            get(v, keyValues, keyColNames, null, callData).map(TresqlSingleRowResult) getOrElse OptionResult(None)
           case Action.List =>
             TresqlResult(rowsResult(v, callData, int(OffsetKey).getOrElse(0), int(LimitKey).getOrElse(0),
               string(OrderKey).orNull, null))

@@ -160,6 +160,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
 
   it should "return person" in {
     val p = new Person
+    val view = querease.viewDef[Person]
     p.name = "Kalis"
     p.surname = "Calis"
     p.sex = "M"
@@ -170,7 +171,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
     pa.last_modified = java.sql.Timestamp.valueOf("2021-06-17 17:16:00")
     p.accounts = List(pa)
     querease.doAction("person", "save", p.toMap(querease), Map()).map {
-      case OptionResult(Some(pers)) => removeIds(pers.toMap(querease)) should be {
+      case TresqlSingleRowResult(row) => removeIds(querease.toCompatibleMap(row, view)) should be {
         Map("name" -> "Mr. Kalis", "surname" -> "Calis", "sex" -> "M",
           "birthdate" -> java.sql.Date.valueOf("1980-12-14"), "main_account" -> null, "accounts" ->
             List(Map("number" -> "AAA", "balance" -> 0.00,
@@ -187,7 +188,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
       pa.last_modified = java.sql.Timestamp.valueOf("2021-06-19 00:15:00")
       p.accounts = List(pa)
       querease.doAction("person", "save", p.toMap(querease), Map()).map {
-        case OptionResult(Some(pers)) => removeIds(pers.toMap(querease)) should be {
+      case TresqlSingleRowResult(row) => removeIds(querease.toCompatibleMap(row, view)) should be {
           Map("main_account" -> null, "name" -> "Ms. Zina", "surname" -> "Mina", "sex" -> "F",
             "birthdate" -> java.sql.Date.valueOf("1982-12-14"), "accounts" ->
               List(Map("number" -> "BBB", "balance" -> 0.00,

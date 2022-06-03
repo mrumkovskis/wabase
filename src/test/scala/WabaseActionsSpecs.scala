@@ -1,13 +1,16 @@
 package org.wabase
 
 import akka.actor.ActorSystem
-import akka.stream.scaladsl.Source
+import akka.http.scaladsl.marshalling.Marshal
+import akka.http.scaladsl.model.MessageEntity
+import akka.http.scaladsl.unmarshalling.Unmarshal
 import org.mojoz.querease.{ValidationException, ValidationResult}
 import org.scalatest.flatspec.{AsyncFlatSpec, AsyncFlatSpecLike}
 import org.scalatest.matchers.should.Matchers
 import org.tresql.{MissingBindVariableException, ThreadLocalResources}
 import org.wabase.QuereaseActionsDtos.PersonWithHealthDataHealth
 
+import scala.collection.immutable.Seq
 import scala.concurrent.Future
 
 object WabaseActionDtos {
@@ -59,6 +62,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
   override def dbNamePrefix: String = "wabase_db"
 
   var app: AppBase[TestUsr] = _
+  var marshallers: AppProvider[TestUsr] with QuereaseMarshalling = _
 
   override def beforeAll(): Unit = {
     querease = new TestQuerease("/querease-action-specs-metadata.yaml") {
@@ -73,6 +77,12 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       override def dbAccessDelegate = db
       override protected def initQuerease: QE = querease
     }
+    val myApp = app
+    marshallers =
+      new ExecutionImpl()(ActorSystem("actions-spec-system")) with AppProvider[TestUsr] with QuereaseMarshalling {
+        override type App = AppBase[TestUsr]
+        override protected def initApp: App = myApp
+      }
   }
 
   import spray.json._
@@ -91,17 +101,14 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       .map(_.result)
       .flatMap {
         case sr: QuereaseSerializedResult =>
-          val serializerSource = sr.result match {
-            case CompleteResult(result) => Source.single(result)
-            case IncompleteResultSource(result) => result
+          implicit val marshaller     = marshallers.toEntityQuereaseSerializedResultMarshaller(view)
+          implicit val unmarshaller_1 = marshallers.toMapUnmarshallerForView(view)
+          implicit val unmarshaller_2 = marshallers.toSeqOfMapsUnmarshallerForView(view)
+          Marshal(sr).to[MessageEntity].flatMap { entity =>
+            if  (sr.isCollection)
+                 Unmarshal(entity).to[Seq[Map[String, Any]]]
+            else Unmarshal(entity).to[Map[String, Any]]
           }
-          serializerSource
-            .via(BorerNestedArraysTransformer.flow(JsonResultRenderer(_, sr.isCollection, view, app.qe.nameToViewDef)))
-            .runFold("")(_ + _.decodeString("UTF-8"))
-            .map { strRes =>
-              if (sr.isCollection) strRes.parseJson.convertTo[List[Any]](app.qe.ListJsonFormat)
-              else strRes.parseJson.convertTo[Map[String, Any]](app.qe.MapJsonFormat)
-            }
             .map(r => if (removeIdsFlag) removeIds(r) else r)
         case r => Future.successful(r)
       }
@@ -330,7 +337,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     doAction("get", "purchase_get",
       Map("purchase_time" -> "2021-12-04 15:15:23.0", "customer" -> "Mr. Gunza"))
       .map {
-        _ should be (Map("amount" -> 60, "item" -> "joystick"))
+        _ should be (Map("customer" -> null, "purchase_time" -> null, "item" -> "joystick", "amount" -> 60.0))
       }
   }
 
@@ -379,9 +386,8 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         doAction("insert", "env_test_2", person, updateOkEnv).flatMap { r =>
           val id = r match { case IdResult(id) => id case _ => -1 }
           implicit val qe = querease
-          import WabaseActionDtos._
-          doAction("get", "env_test_2", Map("id" -> id)).map {
-            case OptionResult(Some(obj: env_test_2)) => obj.toMap shouldBe Map(
+          doAction("get", "env_test_2", Map("id" -> id), removeIdsFlag = false).map {
+            case map: Map[_, _] => map shouldBe Map(
               "id" -> id,
               "name" -> "EnvTestName",
               "surname" -> "EnvTestSurname",
@@ -394,9 +400,8 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         doAction("insert", "env_test_3", person, updateOkEnv).flatMap { r =>
           val id = r match { case IdResult(id) => id case _ => -1 }
           implicit val qe = querease
-          import WabaseActionDtos._
-          doAction("get", "env_test_3", Map("id" -> id)).map {
-            case OptionResult(Some(obj: env_test_3)) => obj.toMap shouldBe Map(
+          doAction("get", "env_test_3", Map("id" -> id), removeIdsFlag = false).map {
+            case map: Map[_, _] => map shouldBe Map(
               "id" -> id,
               "name" -> "EnvTestName",
               "surname" -> "EnvTestSurname",

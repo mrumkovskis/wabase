@@ -52,9 +52,11 @@ object YamlUtils {
     import org.snakeyaml.engine.v2.api.LoadSettings
     import org.snakeyaml.engine.v2.api.Load
     import scala.jdk.CollectionConverters._
-    def toScalaType(v: Any): Any = v match {
-      case m: java.util.Map[_, _] => m.asScala.map { case (k, v) => (k, toScalaType(v)) }.toMap
-      case a: java.util.ArrayList[_] => a.asScala.map(toScalaType).toList
+    def toScalaType(k: String, v: Any): Any = v match {
+      case m: java.util.Map[_, _] => m.asScala.map { case (k, v) => (k, toScalaType("" + k, v)) }.toMap
+      case a: java.util.ArrayList[_] => a.asScala.map(toScalaType(null, _)).toList
+      case d: String if k != null && k.endsWith("date") => java.sql.Date.valueOf(d)
+      case t: String if k != null && k.endsWith("time") => java.sql.Timestamp.valueOf(t)
       case x => x
     }
     def stripMargin(s: String) =
@@ -65,6 +67,6 @@ object YamlUtils {
       .setLabel("test data")
       .setAllowDuplicateKeys(false)
       .build()
-    toScalaType(new Load(loaderSettings).loadFromString(stripMargin(yamlStr)))
+    toScalaType(null, new Load(loaderSettings).loadFromString(stripMargin(yamlStr)))
   }
 }
