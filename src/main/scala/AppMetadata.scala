@@ -1,6 +1,5 @@
 package org.wabase
 
-import org.mojoz.metadata._
 import org.mojoz.metadata.{ViewDef => MojozViewDef}
 import org.mojoz.metadata.{FieldDef => MojozFieldDef}
 import org.mojoz.metadata.in._

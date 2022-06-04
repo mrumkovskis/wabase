@@ -2,7 +2,7 @@ package org.wabase
 
 import org.mojoz.querease.QuereaseExpressions.DefaultParser
 import org.tresql._
-import org.mojoz.querease.{NotFoundException, Querease, QuereaseExpressions, ValidationException, ValidationResult}
+import org.mojoz.querease.{Querease, QuereaseExpressions, ValidationException, ValidationResult}
 import org.mojoz.querease.SaveMethod
 import org.mojoz.metadata.Type
 import org.tresql.parsing.{Exp, Fun, Join, Obj, Variable, With, Query => PQuery}
@@ -282,7 +282,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case PojoResult(pr) => pr.toMap(this)
       case ListResult(lr) => lr
       case IteratorResult(ir) => ir.map(_.toMap(this)).toList
-      case OptionResult(or) => or.map(_.toMap(this)).getOrElse(null)
+      case OptionResult(or) => or.map(_.toMap(this)).orNull
       case NumberResult(nr) => nr
       case CodeResult(code) => code
       case id: IdResult => id
