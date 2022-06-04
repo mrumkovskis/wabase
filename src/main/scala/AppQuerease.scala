@@ -42,7 +42,6 @@ case class NumberResult(id: Long) extends QuereaseResult
 case class CodeResult(code: String) extends QuereaseResult
 case class IdResult(id: Any) extends QuereaseResult
 case class QuereaseDeleteResult(count: Int) extends QuereaseResult
-case class RedirectResult(uri: String, key: Seq[Any] = Nil, params: Map[String, Any] = Map()) extends QuereaseResult
 case class StatusResult(code: Int, content: String, params: Map[String, String] = Map()) extends QuereaseResult
 case object NoResult extends QuereaseResult
 case class QuereaseResultWithCleanup(result: QuereaseCloseableResult, cleanup: Option[Throwable] => Unit)
@@ -286,7 +285,6 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case NumberResult(nr) => nr
       case CodeResult(code) => code
       case id: IdResult => id
-      case rd: RedirectResult => rd
       case sr: StatusResult => sr
       case NoResult => NoResult
       case x => sys.error(s"${x.getClass.getName} not expected here!")
@@ -592,12 +590,6 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
         doActionOp(innerOp, data, env, context) map createGetResult
       case Invocation(className, function) =>
         doInvocation(className, function, data ++ env)
-      case Redirect(pathAndKeyTresql, paramsTresql) =>
-        val uriAndKeys = doTresql(pathAndKeyTresql, data ++ env, context).result.unique.values
-        val params =
-          if (paramsTresql == null) Map[String, Any]()
-          else doTresql(paramsTresql, data ++ env, context).result.unique.toMap
-        Future.successful(RedirectResult(String.valueOf(uriAndKeys.head), uriAndKeys.tail, params))
       case Status(maybeCode, bodyTresql) =>
           Option(bodyTresql).map { bt =>
             doActionOp(UniqueOpt(Tresql(bt)), data, env, context).map {

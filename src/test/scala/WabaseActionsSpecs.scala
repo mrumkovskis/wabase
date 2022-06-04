@@ -172,7 +172,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     recoverToExceptionIf[ValidationException](
       doAction("save", "person", person).flatMap { _ =>
         doAction("save", "person_health", vaccine).flatMap { r =>
-          r shouldBe RedirectResult("person_health", Seq("Mr. Gunza", "2021-06-05"), Map("param" -> "x"))
+          r shouldBe StatusResult(303, "person_health", Map("name" -> "Mr. Gunza", "manipulation_date" -> "2021-06-05"))
           doAction("save", "purchase", purchase)
         }
       }
@@ -242,7 +242,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     )
     doAction("save", "person", person).flatMap { _ =>
       doAction("save", "person_health", vaccine).flatMap { r =>
-        r shouldBe RedirectResult("person_health", Seq("Mr. Mario", "2021-08-15"), Map("param" -> "x"))
+        r shouldBe StatusResult(303, "person_health", Map("name" -> "Mr. Mario", "manipulation_date" -> "2021-08-15"))
         doAction("save", "payment", payment).flatMap { _ =>
           doAction("save", "purchase", purchase)
         }

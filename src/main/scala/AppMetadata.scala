@@ -501,11 +501,8 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
             val uniqueOpRegex(inner) = st
             Action.UniqueOpt(parseOp(inner))
           } else if (redirectOpRegex.pattern.matcher(st).matches()) {
-            val redirectOpRegex(tresqls) = st
-            parser.parseExp(tresqls) match {
-              case Arr(List(pathAndKeys, params)) => Action.Redirect(pathAndKeys.tresql, params.tresql)
-              case _ => Action.Redirect(tresqls, null)
-            }
+            val redirectOpRegex(tresql) = st
+            Action.Status(Option(303), tresql)
           } else if (statusOpRegex.pattern.matcher(st).matches()) {
             val statusOpRegex(status, bodyTresql) = st
             val code = Option(status).collect {
@@ -630,7 +627,6 @@ object AppMetadata {
     case class ViewCall(method: String, view: String) extends Op
     case class UniqueOpt(innerOp: Op) extends Op
     case class Invocation(className: String, function: String) extends Op
-    case class Redirect(pathAndKeyTresql: String, paramsTresql: String) extends Op
     case class Status(code: Option[Int], bodyTresql: String) extends Op
     case class VariableTransforms(transforms: List[VariableTransform]) extends Op
     case class JobCall(name: String) extends Op

@@ -194,8 +194,6 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
     Marshaller.combined(_.code)
   implicit val toEntityQuereaseIdResultMarshaller:          ToEntityMarshaller  [IdResult]       =
     Marshaller.combined(_.toString)
-  implicit val toResponseQuereaseRedirectResultMarshaller:  ToResponseMarshaller[RedirectResult] =
-    Marshaller.combined(rr => (StatusCodes.SeeOther, Seq(Location(rr.uri))))
   implicit val toResponseQuereaseStatusResultMarshaller:    ToResponseMarshaller[StatusResult] =
     Marshaller.withFixedContentType(ContentTypes.`text/plain(UTF-8)`) { sr =>
       val status: StatusCode = sr.code
@@ -274,7 +272,6 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
       case nr: NumberResult   => (toEntityQuereaseNumberResultMarshaller:     ToResponseMarshaller[NumberResult]  )(nr)
       case cd: CodeResult     => (toEntityQuereaseCodeResultMarshaller:       ToResponseMarshaller[CodeResult]    )(cd)
       case id: IdResult       => (toEntityQuereaseIdResultMarshaller:         ToResponseMarshaller[IdResult]      )(id)
-      case rd: RedirectResult => (toResponseQuereaseRedirectResultMarshaller: ToResponseMarshaller[RedirectResult])(rd)
       case sr: StatusResult   => (toResponseQuereaseStatusResultMarshaller:   ToResponseMarshaller[StatusResult]  )(sr)
       case no: NoResult.type  => (toEntityQuereaseNoResultMarshaller:         ToResponseMarshaller[NoResult.type] )(no)
       case dr: QuereaseDelRes => (toEntityQuereaseDeleteResultMarshaller:     ToResponseMarshaller[QuereaseDelRes])(dr)

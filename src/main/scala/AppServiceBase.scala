@@ -142,7 +142,7 @@ trait AppServiceBase[User]
               complete {
                 app.doWabaseAction(Action.Update, viewName, Seq(id), filterPars(params), entityAsMap).map {
                   case r @ app.WabaseResult(_, _: IdResult) =>
-                    r.copy(result = RedirectResult(requestUri.path.toString))
+                    r.copy(result = StatusResult(StatusCodes.SeeOther.intValue, requestUri.path.toString))
                   case x => x
                 }
               }
@@ -208,7 +208,7 @@ trait AppServiceBase[User]
               complete {
                 app.doWabaseAction(Action.Insert, viewName, Nil, filterPars(params), entityAsMap).map {
                   case r @ app.WabaseResult(_, IdResult(id)) =>
-                    r.copy(result = RedirectResult((requestUri.path / id.toString).toString))
+                    r.copy(result = StatusResult(StatusCodes.SeeOther.intValue, (requestUri.path / id.toString).toString))
                   case x => x
                 }
               }
