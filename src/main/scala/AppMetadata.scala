@@ -7,7 +7,7 @@ import org.mojoz.metadata.io.MdConventions
 import org.mojoz.metadata.out.SqlGenerator.SimpleConstraintNamingRules
 import org.mojoz.querease._
 import org.tresql.QueryParser
-import org.tresql.parsing.{Arr, Col, Cols, Const}
+import org.tresql.parsing.{Col, Cols, Const}
 import org.wabase.AppMetadata.Action.VariableTransform
 
 import scala.collection.immutable.Seq
