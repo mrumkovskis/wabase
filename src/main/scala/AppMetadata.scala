@@ -474,6 +474,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val uniqueOpRegex = """unique_opt\s+(.+)""".r
     val redirectOpRegex = """redirect\s+(.+)""".r
     val statusOpRegex = """status(?:\s+(\w+))?(?:\s+(.+))?""".r
+    val commitOpRegex = """commit""".r
     val jobCallRegex = """(?U)job\s+(:?\w+)""".r
     import ViewDefExtrasUtils._
     val steps = stepData.map { step =>
@@ -520,6 +521,8 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
             }
             require(code.nonEmpty || bodyTresql != null, s"Empty status operation!")
             Action.Status(code, bodyTresql, statusParameterIdx(bodyTresql))
+          } else if (commitOpRegex.pattern.matcher(st).matches()) {
+            Action.Commit
           } else {
             Action.Tresql(st)
           }
@@ -639,6 +642,7 @@ object AppMetadata {
     case class Status(code: Option[Int], bodyTresql: String, parameterIndex: Int) extends Op
     case class VariableTransforms(transforms: List[VariableTransform]) extends Op
     case class JobCall(name: String) extends Op
+    case object Commit extends Op
 
     case class Evaluation(name: Option[String], varTrans: List[VariableTransform], op: Op) extends Step
     case class SetEnv(name: Option[String], varTrans: List[VariableTransform], value: Op) extends Step

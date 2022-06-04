@@ -266,6 +266,7 @@ save:
 - validations has_funds:
     - funds(# s) { account[person_id = (person[name = :customer]{id})] {max(balance)} },
         (funds{s}) >= :amount, "Insufficient funds, available (" || (funds{s}) || ")"
+- commit
 - save this
 get:
 - null{:purchase_time, :customer}    # ensure bind variable existence (must prefix columns with null table due to yaml parser)

@@ -11,6 +11,7 @@ import org.wabase.AppMetadata.Action.{VariableTransform, VariableTransforms}
 import scala.reflect.ManifestFactory
 import spray.json._
 
+import java.sql.Connection
 import scala.collection.immutable.ListMap
 import scala.concurrent.{ExecutionContext, Future}
 import scala.jdk.CollectionConverters._
@@ -611,6 +612,11 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
             }
           }
           .getOrElse(Future.successful(StatusResult(maybeCode.get, null)))
+      case Action.Commit =>
+        def commit(c: Connection) = Option(c).foreach(_.commit())
+        commit(res.conn)
+        res.extraResources.foreach { case (_, r) => commit(r.conn) }
+        Future.successful(NoResult)
       case Action.JobCall(job) =>
         doJobCall(job, data, env)
       case VariableTransforms(vts) =>
