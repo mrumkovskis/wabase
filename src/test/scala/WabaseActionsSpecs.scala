@@ -10,7 +10,7 @@ import org.scalatest.matchers.should.Matchers
 import org.tresql.{MissingBindVariableException, ThreadLocalResources}
 import org.wabase.QuereaseActionsDtos.PersonWithHealthDataHealth
 
-import scala.collection.immutable.Seq
+import scala.collection.immutable.{ListMap, Seq}
 import scala.concurrent.Future
 
 object WabaseActionDtos {
@@ -172,7 +172,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     recoverToExceptionIf[ValidationException](
       doAction("save", "person", person).flatMap { _ =>
         doAction("save", "person_health", vaccine).flatMap { r =>
-          r shouldBe StatusResult(303, "person_health", Map("name" -> "Mr. Gunza", "manipulation_date" -> "2021-06-05"))
+          r shouldBe StatusResult(303, "person_health", List("Mr. Gunza", "2021-06-05"), ListMap("par1" -> "val1", "par2" -> "val2"))
           doAction("save", "purchase", purchase)
         }
       }
@@ -242,7 +242,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     )
     doAction("save", "person", person).flatMap { _ =>
       doAction("save", "person_health", vaccine).flatMap { r =>
-        r shouldBe StatusResult(303, "person_health", Map("name" -> "Mr. Mario", "manipulation_date" -> "2021-08-15"))
+        r shouldBe StatusResult(303, "person_health", List("Mr. Mario", "2021-08-15"), ListMap("par1" -> "val1", "par2" -> "val2"))
         doAction("save", "payment", payment).flatMap { _ =>
           doAction("save", "purchase", purchase)
         }
@@ -427,11 +427,11 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         }
       t3 <-
         doAction("count", "status_test_1", Map("status" -> "ok")).map {
-          _ shouldBe StatusResult(200, null, Map())
+          _ shouldBe StatusResult(200, null)
         }
       t4 <-
         doAction("list", "status_test_1", Map("status" -> "redirect")).map {
-          _ shouldBe StatusResult(303, "/path", Map("p1" -> "redirect", "p2" -> "x"))
+          _ shouldBe StatusResult(303, "/data", List("path", "redirect"), ListMap())
         }
     } yield {
       t4

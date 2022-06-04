@@ -199,13 +199,14 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
       val status: StatusCode = sr.code
       if (status.isRedirection()) {
         import akka.http.scaladsl.model.Uri._
-        require(sr.content != null, s"Error marshalling redirect status result - no uri.")
-        val uri = sr.content.withQuery(Query(sr.params))
-        HttpResponse(status, headers = Seq(Location(uri)))
+        require(sr.value != null, s"Error marshalling redirect status result - no uri.")
+        val uri: Uri = sr.value
+        val path = sr.key.foldLeft(uri.path){ (p, k) => p / k }
+        HttpResponse(status, headers = Seq(Location(uri.withPath(path).withQuery(Query(sr.params)))))
       } else {
         val ent =
-          if (sr.content == null) HttpEntity.Empty
-          else HttpEntity.Strict(ContentTypes.`text/plain(UTF-8)`, ByteString(sr.content))
+          if (sr.value == null) HttpEntity.Empty
+          else HttpEntity.Strict(ContentTypes.`text/plain(UTF-8)`, ByteString(sr.value))
         HttpResponse(status, entity = ent)
       }
     }

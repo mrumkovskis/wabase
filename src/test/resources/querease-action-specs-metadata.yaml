@@ -177,7 +177,7 @@ save:
 - validations check_person:
   - (person[name = :name]{count(1)}) > 0, "Person '" || :name || "' must be registered"
 - save this
-- redirect |med_db:{'person_health', :name name, :manipulation_date manipulation_date}
+- redirect |med_db:{'person_health', :name, :manipulation_date, '?', 'val1' par1, 'val2' par2 }
 
 
 name: person_health_priv
@@ -343,4 +343,4 @@ save:
 count:
 - status ok {:status}[false]  # should return 200 with no message in response
 list:
-- status { 303, '/path', :status p1, 'x' p2 }
+- status { 303, '/data', 'path', :status }

@@ -8,7 +8,7 @@ import org.mojoz.metadata.io.MdConventions
 import org.mojoz.metadata.out.SqlGenerator.SimpleConstraintNamingRules
 import org.mojoz.querease._
 import org.tresql.QueryParser
-import org.tresql.parsing.Arr
+import org.tresql.parsing.{Arr, Col, Cols, Const}
 import org.wabase.AppMetadata.Action.VariableTransform
 
 import scala.collection.immutable.Seq
@@ -488,6 +488,16 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       }
       def parseStep(name: Option[String], statement: String): Action.Step = {
         def parseOp(st: String): Action.Op = {
+          def statusParameterIdx(exp: String) = if (exp == null) -1 else {
+            val p = parser
+            p.traverser[Int](idx => {
+              case Cols(_, cols) =>
+                cols indexWhere {
+                  case Col(Const("?"), null) => true
+                  case _ => false
+                }
+            })(-1)(p.parseExp(exp))
+          }
           if (viewCallRegex.pattern.matcher(st).matches) {
             val viewCallRegex(method, view) = st
             Action.ViewCall(method, view)
@@ -502,7 +512,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
             Action.UniqueOpt(parseOp(inner))
           } else if (redirectOpRegex.pattern.matcher(st).matches()) {
             val redirectOpRegex(tresql) = st
-            Action.Status(Option(303), tresql)
+            Action.Status(Option(303), tresql, statusParameterIdx(tresql))
           } else if (statusOpRegex.pattern.matcher(st).matches()) {
             val statusOpRegex(status, bodyTresql) = st
             val code = Option(status).collect {
@@ -510,7 +520,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
               case x => throw new IllegalArgumentException(s"Status must be 'ok' or omitted, instead '$x' encountered.")
             }
             require(code.nonEmpty || bodyTresql != null, s"Empty status operation!")
-            Action.Status(code, bodyTresql)
+            Action.Status(code, bodyTresql, statusParameterIdx(bodyTresql))
           } else {
             Action.Tresql(st)
           }
@@ -627,7 +637,7 @@ object AppMetadata {
     case class ViewCall(method: String, view: String) extends Op
     case class UniqueOpt(innerOp: Op) extends Op
     case class Invocation(className: String, function: String) extends Op
-    case class Status(code: Option[Int], bodyTresql: String) extends Op
+    case class Status(code: Option[Int], bodyTresql: String, parameterIndex: Int) extends Op
     case class VariableTransforms(transforms: List[VariableTransform]) extends Op
     case class JobCall(name: String) extends Op
 

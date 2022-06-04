@@ -11,6 +11,7 @@ import org.wabase.AppMetadata.Action.{VariableTransform, VariableTransforms}
 import scala.reflect.ManifestFactory
 import spray.json._
 
+import scala.collection.immutable.ListMap
 import scala.concurrent.{ExecutionContext, Future}
 import scala.jdk.CollectionConverters._
 import scala.util.{Failure, Try}
@@ -42,7 +43,7 @@ case class NumberResult(id: Long) extends QuereaseResult
 case class CodeResult(code: String) extends QuereaseResult
 case class IdResult(id: Any) extends QuereaseResult
 case class QuereaseDeleteResult(count: Int) extends QuereaseResult
-case class StatusResult(code: Int, content: String, params: Map[String, String] = Map()) extends QuereaseResult
+case class StatusResult(code: Int, value: String, key: Seq[String] = Nil, params: ListMap[String, String] = ListMap()) extends QuereaseResult
 case object NoResult extends QuereaseResult
 case class QuereaseResultWithCleanup(result: QuereaseCloseableResult, cleanup: Option[Throwable] => Unit)
   extends QuereaseResult {
@@ -567,13 +568,12 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
                            env: Map[String, Any],
                            context: Option[ViewDef])(implicit res: Resources,
                                                      ec: ExecutionContext): Future[QuereaseResult] = {
-    import Action._
     op match {
-      case Tresql(tresql) =>
+      case Action.Tresql(tresql) =>
         Future.successful(doTresql(tresql, data ++ env, context))
-      case ViewCall(method, view) =>
+      case Action.ViewCall(method, view) =>
         doViewCall(method, view, data, env, context)
-      case UniqueOpt(innerOp) =>
+      case Action.UniqueOpt(innerOp) =>
         def createGetResult(res: QuereaseResult): QuereaseResult = res match {
           case TresqlResult(r) if !r.isInstanceOf[DMLResult] =>
             r.uniqueOption map TresqlSingleRowResult getOrElse OptionResult(None)
@@ -587,19 +587,23 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
           case r => r
         }
         doActionOp(innerOp, data, env, context) map createGetResult
-      case Invocation(className, function) =>
+      case Action.Invocation(className, function) =>
         doInvocation(className, function, data ++ env)
-      case Status(maybeCode, bodyTresql) =>
+      case Action.Status(maybeCode, bodyTresql, parameterIndex) =>
           Option(bodyTresql).map { bt =>
-            doActionOp(UniqueOpt(Tresql(bt)), data, env, context).map {
+            doActionOp(Action.UniqueOpt(Action.Tresql(bt)), data, env, context).map {
               case srr: TresqlSingleRowResult => srr.map { row =>
                 val (code, idx) = maybeCode.map(_ -> 0).getOrElse(row.int(0) -> 1)
-                val (content, params) = (row.string(idx),
-                  ((idx + 1) until row.columnCount).foldLeft(Map[String, String]()) { (res, i) =>
-                    res + (row.column(i).name -> row.string(i))
+                val colCount = row.columnCount
+                val pi = if (parameterIndex == -1) colCount else parameterIndex
+                val (value, (key, params)) = (row.string(idx),
+                  ((idx + 1) until colCount).foldLeft(List[String]() -> ListMap[String, String]()) {
+                    case ((k, p), i) if i < pi  => (row.string(i) :: k, p)
+                    case ((k, p), i) if i > pi  => (k, p + (row.column(i).name -> row.string(i)))
+                    case (r, _)                 => r // i == pi - parameter separator - '?'
                   }
                 )
-                StatusResult(code, content, params)
+                StatusResult(code, value, key.reverse, params)
               }
               case _ =>
                 require(maybeCode.nonEmpty, s"Tresql: '$bt' returned now rows. In this case status code cannot be empty.")
@@ -607,7 +611,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
             }
           }
           .getOrElse(Future.successful(StatusResult(maybeCode.get, null)))
-      case JobCall(job) =>
+      case Action.JobCall(job) =>
         doJobCall(job, data, env)
       case VariableTransforms(vts) =>
         Future.successful(doVarsTransforms(vts, Map[String, Any](), data ++ env))
