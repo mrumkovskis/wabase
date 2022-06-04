@@ -189,8 +189,8 @@ trait RestClient extends Loggable{
 }
 
 object RestClient extends Loggable{
-  val defaultRequestTimeout = durationConfig("app.rest-client.request-timeout", 5 seconds)
-  val defaultAwaitTimeout = durationConfig("app.rest-client.await-timeout", defaultRequestTimeout + (2 seconds))
+  val defaultRequestTimeout = toFiniteDuration(config.getDuration("app.rest-client.request-timeout"))
+  val defaultAwaitTimeout   = toFiniteDuration(config.getDuration("app.rest-client.await-timeout"))
   object WsClosed
   case class WsFailed(cause: Throwable)
 }

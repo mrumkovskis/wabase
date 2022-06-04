@@ -49,6 +49,7 @@ package object wabase extends Loggable {
   type SimpleExceptionHandler = AppServiceBase.AppExceptionHandler.SimpleExceptionHandler
   type Statistics = ServerStatistics.Statistics
 
+  @deprecated("use reference.conf and toFiniteDuration(config.getDuration(path))", "6.0")
   def durationConfig(path: String, defaultDuration: FiniteDuration) =
     Option(path).filter(config.hasPath).map(config.getDuration).map(toFiniteDuration).getOrElse(defaultDuration)
 
@@ -59,14 +60,10 @@ package object wabase extends Loggable {
 
   /** Default query timeout based on "jdbc.query-timeout" configuration setting */
   val DefaultQueryTimeout: Option[QueryTimeout] = // FIXME DefaultQueryTimeout must not be optional
-    if (config.hasPath("jdbc.query-timeout"))     // FIXME do not test for config.hasPath - provide reference.conf instead
-      Some(QueryTimeout(Duration(config.getString("jdbc.query-timeout")).toSeconds.toInt))
-    else
-      None
+    Some(QueryTimeout(config.getDuration("jdbc.query-timeout").toSeconds.toInt))
 
   val MaxResultSize: Option[Int] =
-    if (config.hasPath("tresql.max-result-size")) Some(config.getInt("tresql.max-result-size"))
-    else None
+    Some(config.getInt("tresql.max-result-size")).filter(_ > 0)
 
   //db connection pool configuration
   def createConnectionPool(config: Config): HikariDataSource = {
@@ -83,7 +80,7 @@ package object wabase extends Loggable {
   }
 
   case class PoolName(connectionPoolName: String)
-  val DEFAULT_CP = PoolName(if (config.hasPath("jdbc.default")) config.getString("jdbc.default") else "main")
+  val DEFAULT_CP = PoolName(config.getString("jdbc.default"))
   if (!config.hasPath(s"jdbc.cp.${DEFAULT_CP.connectionPoolName}"))
     logger.warn(s"""Default connection pool configuration missing (key jdbc.cp.${DEFAULT_CP.connectionPoolName}), or jdbc.default not set to correct key (default value = "main"). \nThere will be errors if You rely on JDBC connections""")
 

@@ -335,35 +335,31 @@ object DeferredControl extends Loggable with AppConfig {
   val DEFERRED_DEL   = "DEL"
   val DeferredExists = "EXISTS"
 
-  lazy val defaultTimeout = Duration(Try(appConfig.getString("deferred-requests.default-timeout")).toOption.getOrElse("180s"))
-  lazy val deferredWorkerCount = Try(appConfig.getInt("deferred-requests.worker-count")).toOption.getOrElse(2)
-  lazy val deferredUris = Try(appConfig.getString("deferred-requests.requests").split("[\\s,]+").filter(_ != "").toSet).toOption.getOrElse(Set())
-  lazy val deferredTimeouts = deferredUris.map(_ -> defaultTimeout).toMap ++
-    Try(appConfig.getConfig("deferred-requests.timeouts")
-      .entrySet.asScala.map(e => e.getKey -> Duration(e.getValue.unwrapped.toString)).toMap
-    ).toOption.getOrElse(Map())
-  lazy val deferredCleanupInterval = Duration(Try(appConfig.getString("deferred-requests.cleanup-job-interval")).toOption.getOrElse("1800s"))
-  lazy val deferredModules: Map[String, Int] =
-    if (appConfig.hasPath("deferred-requests.modules")) {
-      Try {
-        val mc = appConfig.getConfig("deferred-requests.modules")
-        mc.entrySet().asScala
-          .map(_.getKey)
-          .filter(_.endsWith(".worker-count"))
-          .map { m => m.split('.').head -> mc.getInt(m) }
-          .toMap
-      }.recover {
-        case NonFatal(e) =>
-          logger.error("Error reading defered modules conf", e)
-          Map[String, Int]()
-      }.get
-    } else Map[String, Int]()
+  lazy val defaultTimeout      = toFiniteDuration(appConfig.getDuration("deferred-requests.default-timeout"))
+  lazy val deferredWorkerCount = appConfig.getInt("deferred-requests.worker-count")
+  lazy val deferredUris        = appConfig.getString("deferred-requests.requests").split("[\\s,]+").filter(_ != "").toSet
+  lazy val deferredTimeouts =
+    deferredUris.map(_ -> defaultTimeout).toMap ++ {
+      val tc = appConfig.getConfig("deferred-requests.timeouts")
+      tc.entrySet.asScala.map(e => e.getKey -> toFiniteDuration(tc.getDuration(e.getKey))).toMap
+    }
+  lazy val deferredCleanupInterval =
+    toFiniteDuration(appConfig.getDuration("deferred-requests.cleanup-job-interval"))
+  lazy val deferredModules: Map[String, Int] = {
+    val mc = appConfig.getConfig("deferred-requests.modules")
+    mc.entrySet().asScala
+      .map(_.getKey)
+      .filter(_.endsWith(".worker-count"))
+      .map { m => m.split('.').head -> mc.getInt(m) }
+      .toMap
+  }
 
   logger.info(s"defaultTimeout: $defaultTimeout")
   logger.info(s"deferredWorkerCount: $deferredWorkerCount")
   logger.info(s"deferredUris: $deferredUris")
   logger.info(s"deferredTimeouts: $deferredTimeouts")
   logger.info(s"deferredCleanupInterval: $deferredCleanupInterval")
+  logger.info(s"deferredModules: $deferredModules")
 
   case class DeferredModuleRequestArrived(module: String) extends ServerNotifications.Addressee
 
@@ -461,24 +457,9 @@ object DeferredControl extends Loggable with AppConfig {
     implicit private lazy val Cp = DEFAULT_CP
     implicit private lazy val extraDb: Seq[DbAccessKey] = Nil
 
-    override lazy val rootPath =
-      Try(conf.getString("deferred-requests.files.path").replaceAll("/+$", "")).recover {
-        case _: Exception =>
-          logger.warn("'app.deferred-requests.files.path' setting indicating directory where to" +
-          "store deferred results not found. Using <app.files.path>/deferred-results directory.")
-          Try(conf.getString("files.path").replaceAll("/+$", ""))
-            .map(_ + "/deferred-results")
-            .getOrElse {
-              logger.error("Neither 'app.deferred-requests.files.path' nor 'app.files.path' configuration setting " +
-                "not found indicating directory for deferred results. Stopping server...")
-              System.exit(-1)
-              ""
-            }
-      }.get
-    override lazy val file_info_table =
-      Try(conf.getString("deferred-requests.file-info-table")).getOrElse("deferred_file_info")
-    override lazy val file_body_info_table =
-      Try(conf.getString("deferred-requests.file-body-info-table")).getOrElse("deferred_file_body_info")
+    override lazy val rootPath              = conf.getString("deferred-requests.files.path").replaceAll("/+$", "")
+    override lazy val file_info_table       = conf.getString("deferred-requests.file-info-table")
+    override lazy val file_body_info_table  = conf.getString("deferred-requests.file-body-info-table")
 
     import DeferredControl.HttpMessageSerialization._
     def registerDeferredRequest(ctx: DeferredContext): DeferredContext = transaction {

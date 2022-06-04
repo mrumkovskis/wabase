@@ -346,7 +346,7 @@ trait AppFileServiceBase[User] {
     path("upload" / Segment).flatMap { filename => provide(Some(filename))}
   def uploadMultiplePath = path("upload-multiple")
   def downloadPath = path("download" / LongNumber / Segment) & get
-  def uploadSizeLimit =  Some("app.upload.size-limit").filter(config.hasPath).map(config.getBytes).map(_.toLong).getOrElse((10 * 1024 * 1024).toLong)
+  def uploadSizeLimit =  config.getBytes("app.upload.size-limit").toLong
 
   //make visible implicit querease for fileInfo methods
   private implicit val qe = DefaultAppQuerease

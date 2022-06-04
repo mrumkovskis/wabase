@@ -87,9 +87,7 @@ trait Authentication[User] extends SecurityDirectives with SessionInfoRemover wi
   lazy val HttpChallengeRealm = "APP"
   lazy val AppDefaultChallenge = HttpChallenge("Any", HttpChallengeRealm)
 
-  val sessionTimeOut = Try(scala.concurrent.duration.Duration(config.getString("session.timeout"))
-    .toMillis).getOrElse(60L * 1000)
-
+  val sessionTimeOut = config.getDuration("session.timeout").toMillis
   val httpOnlyCookies = true
   val secureCookies = false
 

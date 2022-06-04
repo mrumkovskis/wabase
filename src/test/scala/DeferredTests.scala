@@ -19,7 +19,7 @@ import org.wabase.AppServiceBase.AppExceptionHandler._
 
 import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.Future
-import scala.concurrent.duration.Duration
+import scala.concurrent.duration.{FiniteDuration, SECONDS}
 import scala.language.implicitConversions
 import scala.util.Try
 
@@ -80,9 +80,9 @@ class DeferredTests extends AnyFlatSpec with Matchers with TestQuereaseInitializ
     service = new TestAppService(system) {
       override def initApp: App = appl
       override def initFileStreamer = appl
-      override lazy val defaultTimeout = Duration("60s")
+      override lazy val defaultTimeout = FiniteDuration(60, SECONDS)
       override lazy val deferredUris = Set("long-req")
-      override lazy val deferredTimeouts = Map("long-req" -> Duration("300s"))
+      override lazy val deferredTimeouts = Map("long-req" -> FiniteDuration(300, SECONDS))
       override lazy val deferredWorkerCount = 3
 
       override def listOrGetAction(viewName: String)(

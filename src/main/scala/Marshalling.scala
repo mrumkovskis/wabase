@@ -308,18 +308,11 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
 }
 
 object MarshallingConfig extends AppBase.AppConfig with Loggable {
-  lazy val dbDataFileMaxSize: Long =
-    if (appConfig.hasPath("db-data-file-max-size"))
-      appConfig.getBytes("db-data-file-max-size")
-    else 1024 * 1024 * 8L
-
+  lazy val dbDataFileMaxSize: Long = appConfig.getBytes("db-data-file-max-size")
   import scala.jdk.CollectionConverters._
   lazy val customDataFileMaxSizes: Map[String, Long] = {
-    val vals = Try {
-      appConfig.getConfig("db-data-file-max-sizes")
-        .entrySet.asScala.map(e => e.getKey -> e.getValue.atKey("x").getBytes("x").toLong)
-        .toMap
-    }.toOption.getOrElse(Map())
+    val sc   = appConfig.getConfig("db-data-file-max-sizes")
+    val vals = sc.entrySet.asScala.map(e => e.getKey -> sc.getBytes(e.getKey).toLong).toMap
     logger.debug(s"Custom db data max file sizes: $vals")
     vals
   }

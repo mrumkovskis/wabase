@@ -317,11 +317,7 @@ trait WabaseApp[User] {
 
 object WabaseAppConfig extends AppBase.AppConfig {
   val DefaultCp: PoolName = DEFAULT_CP
-  val SerializationBufferSize: Int =
-    if (appConfig.hasPath("serialization-buffer-size"))
-      appConfig.getInt("serialization-buffer-size")
-    else 1024 * 32
-
+  val SerializationBufferSize: Int = appConfig.getBytes("serialization-buffer-size").toInt
   val SerializationBufferMaxFileSize: Long = MarshallingConfig.dbDataFileMaxSize
   val SerializationBufferMaxFileSizes: Map[String, Long] = MarshallingConfig.customDataFileMaxSizes
 }
