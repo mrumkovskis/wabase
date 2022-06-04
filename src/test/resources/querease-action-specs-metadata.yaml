@@ -333,12 +333,14 @@ save:
 
 name:   status_test_1
 table:
-api:    get, save, list
+api:    get, save, list, count
 fields:
 - status =
 get:
 - status ok
 save:
 - status ok :status
+count:
+- status ok {:status}[false]  # should return 200 with no message in response
 list:
 - status { 303, '/path', :status p1, 'x' p2 }

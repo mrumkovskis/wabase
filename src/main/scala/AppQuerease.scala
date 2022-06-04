@@ -599,21 +599,23 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
           else doTresql(paramsTresql, data ++ env, context).result.unique.toMap
         Future.successful(RedirectResult(String.valueOf(uriAndKeys.head), uriAndKeys.tail, params))
       case Status(maybeCode, bodyTresql) =>
-        Future.successful {
-          if (bodyTresql != null) {
-            val row = doTresql(bodyTresql, data ++ env, context).result.unique
-            try {
-              val (code, idx) = maybeCode.map(_ -> 0).getOrElse(row.int(0) -> 1)
-              val (content, params) = (row.string(idx),
-                ((idx + 1) until row.columnCount).foldLeft(Map[String, String]()) { (res, i) =>
-                  res + (row.column(i).name -> row.string(i))
-                }
-              )
-              StatusResult(code, content, params)
-            } finally row.close
+          Option(bodyTresql).map { bt =>
+            doActionOp(UniqueOpt(Tresql(bt)), data, env, context).map {
+              case srr: TresqlSingleRowResult => srr.map { row =>
+                val (code, idx) = maybeCode.map(_ -> 0).getOrElse(row.int(0) -> 1)
+                val (content, params) = (row.string(idx),
+                  ((idx + 1) until row.columnCount).foldLeft(Map[String, String]()) { (res, i) =>
+                    res + (row.column(i).name -> row.string(i))
+                  }
+                )
+                StatusResult(code, content, params)
+              }
+              case _ =>
+                require(maybeCode.nonEmpty, s"Tresql: '$bt' returned now rows. In this case status code cannot be empty.")
+                StatusResult(maybeCode.get, null)
+            }
           }
-          else StatusResult(maybeCode.get, null)
-        }
+          .getOrElse(Future.successful(StatusResult(maybeCode.get, null)))
       case JobCall(job) =>
         doJobCall(job, data, env)
       case VariableTransforms(vts) =>
