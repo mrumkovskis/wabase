@@ -261,7 +261,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
         case SingleValueResult(v) => v
         case ar: ArrayResult[_] => ar.values.toList
         case r: Result[_] => (oldStep match {
-          case Evaluation(_, _, ViewCall(_, viewName)) if !(viewName startsWith ":") =>
+          case Evaluation(_, _, ViewCall(_, viewName)) =>
             toCompatibleSeqOfMaps(r, v(viewName))
           case _  =>
             r.toListOfMaps
@@ -272,7 +272,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       }
       case srr: TresqlSingleRowResult =>
         oldStep match {
-          case Evaluation(_, _, ViewCall(_, viewName)) if !(viewName startsWith ":") =>
+          case Evaluation(_, _, ViewCall(_, viewName)) =>
             srr.map(toCompatibleMap(_, v(viewName)))
           case _ =>
             srr.map(_.toMap)
@@ -432,9 +432,8 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     import CoreTypes._
     val callData = data ++ env
     val v = viewDef(
-      if (view startsWith ":") singleValue[String](view, callData)
-      else if (view == "this") context.map(_.name) getOrElse view
-      else                     view
+      if (view == "this") context.map(_.name) getOrElse view
+      else                view
     )
     val viewName = v.name
     implicit val mf = ManifestFactory.classType(viewNameToClassMap(v.name)).asInstanceOf[Manifest[DTO]]
