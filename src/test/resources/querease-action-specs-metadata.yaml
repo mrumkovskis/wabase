@@ -371,3 +371,5 @@ save:
   - status { 303 }
 get:
   - redirect { 'data/path/' || :id }
+list:
+  - status { 303, 'data/path', :id, '?', 'par1' val1 }
