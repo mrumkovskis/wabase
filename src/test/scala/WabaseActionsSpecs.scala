@@ -459,11 +459,11 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         }
       t11 <-
         doAction("list", "status_test_3", Map("id" -> 3)).map {
-          _ shouldBe StatusResult(303, "data/path", List("3"), ListMap("val1" -> "par1"))
+          _ shouldBe StatusResult(303, "data/path", List("3"), ListMap("par1" -> "val-of-par1"))
         }
       t12 <-
         doAction("count", "status_test_3", Map("id" -> 4)).map {
-          _ shouldBe StatusResult(303, null, List("4"), ListMap("val1" -> "5"))
+          _ shouldBe StatusResult(303, null, List("4"), ListMap("par1" -> "5"))
         }
       t13 <-
         doAction("save", "status_test_4", Map("id" -> null)).map {
@@ -478,7 +478,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
           _ shouldBe StatusResult(303, null, List(), ListMap())
         }
     } yield {
-      t1
+      t15
     }
   }
 }

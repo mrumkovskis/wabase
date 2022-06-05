@@ -372,9 +372,9 @@ save:
 get:
   - redirect { 'data/path/' || :id }
 list:
-  - status { 303, 'data/path', :id, '?', 'par1' val1 }
+  - status { 303, 'data/path', :id, '?', 'val-of-par1' par1 }
 count:
-  - redirect { null, :id, '?', (:id + 1) val1 }
+  - redirect { null, :id, '?', (:id + 1) par1 }
 
 
 name:   status_test_4
