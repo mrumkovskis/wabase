@@ -449,6 +449,10 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         doAction("list", "status_test_2", Map()).map {
           _ shouldBe StatusResult(303, "data/path", Nil, ListMap())
         }
+      t9 <-
+        doAction("save", "status_test_3", Map()).map {
+          _ shouldBe StatusResult(303, "303", List(), ListMap())
+        }
     } yield {
       t1
     }

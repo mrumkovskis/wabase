@@ -594,8 +594,8 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
           Option(bodyTresql).map { bt =>
             doActionOp(Action.UniqueOpt(Action.Tresql(bt)), data, env, context).map {
               case srr: TresqlSingleRowResult => srr.map { row =>
-                val (code, idx) = maybeCode.map(_ -> 0).getOrElse(row.int(0) -> 1)
                 val colCount = row.columnCount
+                val (code, idx) = maybeCode.map(_ -> 0).getOrElse(row.int(0) -> Math.min(1, colCount - 1))
                 val pi = if (parameterIndex == -1) colCount else parameterIndex
                 val (value, (key, params)) = (row.string(idx),
                   ((idx + 1) until colCount).foldLeft(List[String]() -> ListMap[String, String]()) {

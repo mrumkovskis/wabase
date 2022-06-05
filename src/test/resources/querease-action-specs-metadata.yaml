@@ -360,3 +360,12 @@ count:
   - redirect { 'data/path' }
 list:
   - redirect { 'data/path', '?' }
+
+
+name:   status_test_3
+table:
+api:    get, save, list, count
+fields:
+  - id
+save:
+  - status { 303 }
