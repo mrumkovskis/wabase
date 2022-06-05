@@ -165,5 +165,9 @@ class MarshallingSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     res = response(StatusResult(303, "person_health", List("Mr. Gunza", "2021-06-05"), ListMap("par1" -> "val1", "par2" -> "val2")))
     res.status shouldEqual StatusCodes.SeeOther
     res.header[Location] shouldEqual Some(Location("person_health/Mr.%20Gunza/2021-06-05?par1=val1&par2=val2"))
+
+    res = response(StatusResult(303, "data/path/2", List(), ListMap()))
+    res.status shouldEqual StatusCodes.SeeOther
+    res.header[Location] shouldEqual Some(Location("data/path/2"))
   }
 }

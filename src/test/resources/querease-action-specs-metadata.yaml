@@ -369,3 +369,5 @@ fields:
   - id
 save:
   - status { 303 }
+get:
+  - redirect { 'data/path/' || :id }
