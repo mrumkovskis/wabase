@@ -2,11 +2,13 @@ package org.wabase
 
 import akka.http.scaladsl.marshalling.Marshal
 import akka.http.scaladsl.model._
+import akka.http.scaladsl.model.headers.Location
 import akka.http.scaladsl.testkit.ScalatestRouteTest
 import akka.http.scaladsl.unmarshalling.Unmarshal
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
+import scala.collection.immutable.ListMap
 import scala.concurrent.duration._
 import scala.concurrent.{Await, Future}
 
@@ -130,5 +132,38 @@ class MarshallingSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     entity = Await.result(entityFuture, 1.second)
     entity.contentType shouldEqual ContentTypes.`text/plain(UTF-8)`
     Await.result(entity.toStrict(1.second), 1.second).data.decodeString("UTF-8") shouldEqual "42"
+  }
+
+  it should "marshal status result" in {
+    val svc = service
+    import svc.toResponseQuereaseStatusResultMarshaller
+    def response(sr: StatusResult) = Await.result(Marshal(sr).to[HttpResponse], 1.second)
+
+    var res: HttpResponse = null
+    res = response(StatusResult(200, null))
+    res.status shouldEqual StatusCodes.OK
+
+    res = response(StatusResult(200, "ok"))
+    Await.result(res.entity.toStrict(1.second).map(_.data.decodeString("UTF-8")), 1.second) shouldEqual "ok"
+
+    res = response(StatusResult(303, "data/path", Nil, ListMap()))
+    res.status shouldEqual StatusCodes.SeeOther
+    res.header[Location] shouldEqual Some(Location("data/path"))
+
+    res = response(StatusResult(303, "data/path", List("1"), ListMap()))
+    res.status shouldEqual StatusCodes.SeeOther
+    res.header[Location] shouldEqual Some(Location("data/path/1"))
+
+    res = response(StatusResult(303, "data/path", Nil, ListMap("id" -> "1")))
+    res.status shouldEqual StatusCodes.SeeOther
+    res.header[Location] shouldEqual Some(Location("data/path?id=1"))
+
+    res = response(StatusResult(303, "/data", List("path", "redirect"), ListMap()))
+    res.status shouldEqual StatusCodes.SeeOther
+    res.header[Location] shouldEqual Some(Location("/data/path/redirect"))
+
+    res = response(StatusResult(303, "person_health", List("Mr. Gunza", "2021-06-05"), ListMap("par1" -> "val1", "par2" -> "val2")))
+    res.status shouldEqual StatusCodes.SeeOther
+    res.header[Location] shouldEqual Some(Location("person_health/Mr.%20Gunza/2021-06-05?par1=val1&par2=val2"))
   }
 }

@@ -345,3 +345,18 @@ count:
 - status ok {:status}[false]  # should return 200 with no message in response
 list:
 - status { 303, '/data', 'path', :status }
+
+
+name:   status_test_2
+table:
+api:    get, save, list, count
+fields:
+  - id
+get:
+  - redirect { 'data/path', :id }
+save:
+  - redirect { 'data/path', '?', :id id }
+count:
+  - redirect { 'data/path' }
+list:
+  - redirect { 'data/path', '?' }
