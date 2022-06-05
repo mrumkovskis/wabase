@@ -34,9 +34,9 @@ trait WabaseApp[User] {
     SerializationBufferMaxFileSizes.getOrElse(viewName, SerializationBufferMaxFileSize)
 
   type ActionHandlerResult = qe.QuereaseAction[WabaseResult]
-  type ActionHandler       = ActionContext => ActionHandlerResult
+  type ActionHandler       = AppActionContext => ActionHandlerResult
 
-  case class ActionContext(
+  case class AppActionContext(
     actionName: String,
     viewName:   String,
     keyValues:  Seq[Any],
@@ -53,7 +53,7 @@ trait WabaseApp[User] {
     lazy val env: Map[String, Any] = state ++ params ++ current_user_param(user)
   }
 
-  case class WabaseResult(ctx: ActionContext, result: QuereaseResult)
+  case class WabaseResult(ctx: AppActionContext, result: QuereaseResult)
 
   def doWabaseAction(
     actionName: String,
@@ -68,15 +68,15 @@ trait WabaseApp[User] {
     ec:       ExecutionContext,
     as:       ActorSystem
   ): Future[WabaseResult] = {
-    doWabaseAction(ActionContext(actionName, viewName, keyValues, params, values))
+    doWabaseAction(AppActionContext(actionName, viewName, keyValues, params, values))
   }
 
-  def doWabaseAction(context: ActionContext): Future[WabaseResult] =
+  def doWabaseAction(context: AppActionContext): Future[WabaseResult] =
     doWabaseAction(getActionHandler(context), context)
 
   def doWabaseAction(
     action:   ActionHandler,
-    context:  ActionContext,
+    context:  AppActionContext,
   ): Future[WabaseResult] = {
     val actionContext = beforeWabaseAction(context)
     import context.ec
@@ -102,13 +102,13 @@ trait WabaseApp[User] {
       }
   }
 
-  def simpleAction(context: ActionContext): ActionHandlerResult = {
+  def simpleAction(context: AppActionContext): ActionHandlerResult = {
     import context._
     qe.QuereaseAction(viewName, actionName, values, env)(resourceFactory(context), closeResources)
       .map(WabaseResult(context, _))
   }
 
-  def list(context: ActionContext): ActionHandlerResult = {
+  def list(context: AppActionContext): ActionHandlerResult = {
     import context._
     val offset  = values.get(OffsetKey).map(_.toString.toInt) getOrElse 0
     val limit   = values.get(LimitKey ).map(_.toString.toInt) getOrElse 0
@@ -128,7 +128,7 @@ trait WabaseApp[User] {
     simpleAction(context.copy(values = trusted))
   }
 
-  protected def getOldValue(context: ActionContext): qe.QuereaseAction[Map[String, Any]] = {
+  protected def getOldValue(context: AppActionContext): qe.QuereaseAction[Map[String, Any]] = {
     import context._
     def throwUnexpectedResultClass(qr: QuereaseResult) =
       sys.error(s"Unexpected result class getting old-value for '$actionName' of $viewName: ${qr.getClass.getName}")
@@ -147,7 +147,7 @@ trait WabaseApp[User] {
     }
   }
 
-  def save(context: ActionContext): ActionHandlerResult = {
+  def save(context: AppActionContext): ActionHandlerResult = {
     import context._
     val viewDef = qe.viewDef(viewName)
     val keyAsMap = prepareKey(viewName, keyValues, actionName)
@@ -170,7 +170,7 @@ trait WabaseApp[User] {
       }
   }
 
-  def delete(context: ActionContext): ActionHandlerResult = {
+  def delete(context: AppActionContext): ActionHandlerResult = {
     import context._
     getOldValue(context).flatMap { oldValue =>
       if (oldValue == null)
@@ -183,7 +183,7 @@ trait WabaseApp[User] {
     }
   }
 
-  protected def getActionHandler(context: ActionContext): ActionHandler = {
+  protected def getActionHandler(context: AppActionContext): ActionHandler = {
     import context._
     actionName match {
       case Action.List    => list
@@ -196,7 +196,7 @@ trait WabaseApp[User] {
     }
   }
 
-  def resourceFactory(context: ActionContext): () => Resources = {
+  def resourceFactory(context: AppActionContext): () => Resources = {
     import context.{actionName, viewName}
     val vdo = viewDefOption(viewName)
     val poolName = vdo.flatMap(v => Option(v.cp)).map(PoolName) getOrElse DefaultCp
@@ -232,7 +232,7 @@ trait WabaseApp[User] {
     } else Map.empty
   }
 
-  protected def beforeWabaseAction(context: ActionContext): ActionContext = {
+  protected def beforeWabaseAction(context: AppActionContext): AppActionContext = {
     import context._
     checkApi(viewName, actionName, user)
     val keyAsMap = prepareKey(viewName, keyValues, actionName)
@@ -249,7 +249,7 @@ trait WabaseApp[User] {
     context.copy(values = values ++ key_params ++ onSaveParams)
   }
 
-  protected def afterWabaseAction(context: ActionContext, result: QuereaseResult): Unit = {
+  protected def afterWabaseAction(context: AppActionContext, result: QuereaseResult): Unit = {
     audit(context, result)
   }
 

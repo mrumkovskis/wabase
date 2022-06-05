@@ -60,7 +60,7 @@ class MarshallingSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     import svc.{dtoUnmarshaller, toResponseWabaseResultMarshaller}
     var httpResponse: HttpResponse = null
     def ctx(viewName: String) =
-      svc.app.ActionContext(null, null, null, null, null)(null, null, null, null, null)
+      svc.app.AppActionContext(null, null, null, null, null)(null, null, null, null, null)
         .copy(viewName = viewName)(null, null, null, null, null)
     def wRes(viewName: String, quereaseResult: QuereaseResult) =
       svc.app.WabaseResult(ctx(viewName), quereaseResult)
