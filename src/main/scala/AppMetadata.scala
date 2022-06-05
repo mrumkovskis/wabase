@@ -216,6 +216,19 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
   }
 
+  protected def isSortableField(viewDef: ViewDef, f: FieldDef) = {
+    FieldDefExtrasUtils.getBooleanExtraOpt(f, KnownFieldExtras.Sortable) getOrElse {
+      if (f.isExpression || f.isCollection || viewDef.table == null) false
+      else f.table == viewDef.table && {
+        val td = tableMetadata.tableDef(f.table, viewDef.db)
+        td .pk.exists(_.cols(0) == f.name) ||
+        td .uk.exists(_.cols(0) == f.name) ||
+        td.idx.exists(_.cols(0) == f.name)
+      }
+      // TODO follow inner joins?
+    }
+  }
+
   protected def toAppViewDef(vd: ViewDef, isInline: Boolean): ViewDef = {
     import KnownAuthOps._
     import KnownViewExtras._
@@ -269,12 +282,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
       val required = getBooleanExtra(f, Required)
 
-      val sortable =
-        getBooleanExtraOpt(f, Sortable) getOrElse {
-          if (f.isExpression || f.isCollection || viewDef.table == null) false
-          else tableMetadata.tableDef(viewDef.table, viewDef.db).idx.exists(_.cols(0) == f.name)
-        }
-
+      val sortable = isSortableField(viewDef, f)
       val hiddenOpt = getBooleanExtraOpt(f, Hidden)
       val visibleOpt = getBooleanExtraOpt(f, Visible)
       if (hiddenOpt.isDefined && visibleOpt.isDefined && hiddenOpt == visibleOpt)
