@@ -373,3 +373,5 @@ get:
   - redirect { 'data/path/' || :id }
 list:
   - status { 303, 'data/path', :id, '?', 'par1' val1 }
+count:
+  - redirect { null, :id, '?', (:id + 1) val1 }

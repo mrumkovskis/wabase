@@ -169,5 +169,7 @@ class MarshallingSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     res = response(StatusResult(303, "data/path/2", List(), ListMap()))
     res.status shouldEqual StatusCodes.SeeOther
     res.header[Location] shouldEqual Some(Location("data/path/2"))
+
+    intercept[IllegalArgumentException](response(StatusResult(303, null, List("4"), ListMap("val1" -> "5"))))
   }
 }
