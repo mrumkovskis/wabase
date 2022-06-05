@@ -375,3 +375,16 @@ list:
   - status { 303, 'data/path', :id, '?', 'par1' val1 }
 count:
   - redirect { null, :id, '?', (:id + 1) val1 }
+
+
+name:   status_test_4
+table:
+api:    get, save, list, count
+fields:
+  - id
+save:
+  - redirect { 'data/path', :id }
+get:
+  - redirect { 'data/path', '?', :id id }
+list:
+  - redirect { 'data/path/' || :id }
