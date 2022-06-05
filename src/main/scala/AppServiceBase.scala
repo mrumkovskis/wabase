@@ -574,6 +574,12 @@ object AppServiceBase {
         complete(HttpResponse(BadRequest, entity = bindVariableExceptionResponseMessage(e)))
     }
 
+    def quereaseEnvExceptionHandler(logger: com.typesafe.scalalogging.Logger) = ExceptionHandler {
+      case e: QuereaseEnvException =>
+        logger.debug(e.getMessage, e)
+        complete(HttpResponse(BadRequest, entity = e.getMessage))
+    }
+
     def viewNotFoundExceptionHandler = ExceptionHandler {
       case e: org.mojoz.querease.ViewNotFoundException => complete(HttpResponse(NotFound, entity = e.getMessage))
     }
@@ -646,6 +652,7 @@ object AppServiceBase {
         unprocessableEntityExceptionHandler(this.logger)
           .withFallback(businessExceptionHandler(this.logger))
           .withFallback(bindVariableExceptionHandler(this.logger, this.bindVariableExceptionResponseMessage))
+          .withFallback(quereaseEnvExceptionHandler(this.logger))
           .withFallback(viewNotFoundExceptionHandler)
     }
 
@@ -663,6 +670,7 @@ object AppServiceBase {
           .withFallback(validationExceptionHandler(this.logger))
           .withFallback(entityStreamSizeExceptionHandler(this))
           .withFallback(bindVariableExceptionHandler(this.logger, this.bindVariableExceptionResponseMessage))
+          .withFallback(quereaseEnvExceptionHandler(this.logger))
           .withFallback(PostgresTimeoutExceptionHandler(this))
           .withFallback(TresqExceptionHandler(this))
           .withFallback(viewNotFoundExceptionHandler)
