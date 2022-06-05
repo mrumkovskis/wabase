@@ -41,7 +41,7 @@ trait DefaultValidationEngine extends ValidationEngine with Loggable {
     customFunctionsAndArgs
       .map { case (f, args) => s"$f = function($args) { return CustomFunctions.$f($args); };" }
       .mkString("\n")
-  def get(viewName: String, instance: Map[String, Any]) = {
+  def getEngine(viewName: String, instance: Map[String, Any]) = {
     val engine = scriptEngineFactory getEngineByName "JavaScript"
     val instancePropsToVars =
       instance
@@ -66,7 +66,7 @@ trait DefaultValidationEngine extends ValidationEngine with Loggable {
   override def validate(viewName: String, instance: Map[String, Any])(implicit locale: Locale): Unit = {
     val validationList = validations(viewName)
     if (validationList.nonEmpty) {
-      val engine = get(viewName, instance)
+      val engine = getEngine(viewName, instance)
 
       def errorMsg(msg: String) =
         //try to evaluate message as javascript
