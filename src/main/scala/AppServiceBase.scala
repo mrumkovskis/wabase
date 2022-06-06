@@ -584,6 +584,11 @@ object AppServiceBase {
       case e: org.mojoz.querease.ViewNotFoundException => complete(HttpResponse(NotFound, entity = e.getMessage))
     }
 
+    def rowNotFoundExceptionHandler = ExceptionHandler ({
+      case e: org.mojoz.querease.NotFoundException =>
+        complete(NotFound)
+    })
+
     def validationExceptionHandler(logger: com.typesafe.scalalogging.Logger) = ExceptionHandler {
       case e: ValidationException =>
         logger.trace(e.getMessage, e)
@@ -654,6 +659,7 @@ object AppServiceBase {
           .withFallback(bindVariableExceptionHandler(this.logger, this.bindVariableExceptionResponseMessage))
           .withFallback(quereaseEnvExceptionHandler(this.logger))
           .withFallback(viewNotFoundExceptionHandler)
+          .withFallback(rowNotFoundExceptionHandler)
     }
 
     trait DefaultAppExceptionHandler[User] extends SimpleExceptionHandler with PostgresTimeoutExceptionHandler[User] {
@@ -674,6 +680,7 @@ object AppServiceBase {
           .withFallback(PostgresTimeoutExceptionHandler(this))
           .withFallback(TresqExceptionHandler(this))
           .withFallback(viewNotFoundExceptionHandler)
+          .withFallback(rowNotFoundExceptionHandler)
     }
   }
 
