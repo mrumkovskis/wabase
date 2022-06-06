@@ -92,7 +92,8 @@ package object wabase extends Loggable {
 
     def apply(pool: PoolName) = {
       cps.getOrElse(pool, {
-        logger.warn(s"""Unable to find connection pool "${pool.connectionPoolName}". Using default pool "$DEFAULT_CP"""")
+        require(pool == null || pool.connectionPoolName == null,
+          s"""Unable to find connection pool "${pool.connectionPoolName}"""")
         cps(DEFAULT_CP)
       })
     }
