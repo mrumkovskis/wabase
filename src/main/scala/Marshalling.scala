@@ -195,7 +195,7 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
   implicit val toEntityQuereaseIdResultMarshaller:          ToEntityMarshaller  [IdResult]       =
     Marshaller.combined(_.toString)
   implicit val toResponseQuereaseStatusResultMarshaller:    ToResponseMarshaller[StatusResult] =
-    Marshaller.withFixedContentType(ContentTypes.`text/plain(UTF-8)`) { sr =>
+    Marshaller.opaque { sr =>
       val status: StatusCode = sr.code
       if (status.isRedirection()) {
         import akka.http.scaladsl.model.Uri._
