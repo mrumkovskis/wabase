@@ -152,6 +152,15 @@ object BorerDatetimeEncoders {
       w writeString value.toString
     }
   }
+  implicit val javaSqlTimeEncoder: Encoder[sql.Time] = Encoder { (w, value) =>
+    if (w.writingCbor) {
+      val seconds = value.getTime.toDouble / 1000 // TODO nanos?
+      w writeTag    Tag.EpochDateTime
+      w writeDouble seconds
+    } else {
+      w writeString value.toString
+    }
+  }
 }
 
 class BorerValueEncoder(w: Writer) {
@@ -182,6 +191,7 @@ class BorerValueEncoder(w: Writer) {
     case value: Array[Byte] => w ~ value
     case value: Timestamp   => w ~ value
     case value: sql.Date    => w ~ value
+    case value: sql.Time    => w ~ value
     case x                  => w writeString x.toString
   }
   def writeValue(value: Any):  Unit = valueEncoder(value)
@@ -269,6 +279,17 @@ object BorerDatetimeDecoders {
         new sql.Date(Format.jsIsoDateTime.parse(readString()).getTime)
       case _ if tryReadTag(Tag.EpochDateTime)   => new sql.Date(readLong() * 1000)
       case _                                    => unexpectedDataItem(expected = "Date")
+    }
+  }
+  implicit val javaSqlTimeDecoder: Decoder[sql.Time] = Decoder { reader =>
+    import reader._
+    dataItem() match {
+      case DI.Chars |
+           DI.String => sql.Time.valueOf(readString())
+      case _ if tryReadTag(Tag.DateTimeString)  =>
+        new sql.Time(Format.jsIsoDateTime.parse(readString()).getTime)
+      case _ if tryReadTag(Tag.EpochDateTime)   => new sql.Time((readDouble() * 1000).toLong)
+      case _                                    => unexpectedDataItem(expected = "Time")
     }
   }
 }

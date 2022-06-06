@@ -93,6 +93,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
           case "java.lang.Long"     => s.toLong
           case "java.lang.Integer"  => s.toInt
           case "java.sql.Date"      => new java.sql.Date(Format.parseDate(s).getTime)
+          case "java.sql.Time"      => java.sql.Time.valueOf(s)
           case "java.sql.Timestamp" => new java.sql.Timestamp(Format.parseDateTime(s).getTime)
           case "scala.math.BigInt"     => BigInt(s)
           case "scala.math.BigDecimal" => BigDecimal(s)

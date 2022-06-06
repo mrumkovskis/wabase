@@ -6,6 +6,8 @@ import scala.collection.immutable.TreeMap
 import scala.language.postfixOps
 import spray.json._
 
+import java.sql
+
 object JsonToAny {
   def apply(value: JsValue): Any = {
     value match {
@@ -41,6 +43,7 @@ trait JsonConverter { self: AppQuerease =>
     case n: BigInt => JsNumber(n)
     case n: java.lang.Number => JsNumber(String.valueOf(n))
     case b: Boolean => JsBoolean(b)
+    case t: sql.Time => JsString(t.toString)
     case t: Timestamp => JsString(humanDateTime(t))
     case d: jDate => JsString(xsdDate(d))
     case jv: JsValue => jv

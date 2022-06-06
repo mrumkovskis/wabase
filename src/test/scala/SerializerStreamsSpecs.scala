@@ -194,6 +194,10 @@ class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseIni
     ) shouldBe """[1,"John",[["X64",1001.01,"2021-12-21 00:55:55.0"]],"M"],[2,"Jane",[],"F"]"""
 
     serializeTresqlResult(
+      s"person {id, name, |account[id < 2] {number, balance, cast(last_modified, 'time')}, sex}", Json
+    ) shouldBe """[1,"John",[["X64",1001.01,"00:55:55"]],"M"],[2,"Jane",[],"F"]"""
+
+    serializeTresqlResult(
       "person {name, |account {number, balance}}", Json
     ) shouldBe """["John",[["X64",1001.01],["X94",2002.02]]],["Jane",[]]"""
 
@@ -591,6 +595,8 @@ class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseIni
     })                                  shouldBe  "Rūķīši"
     test(java.sql.Date.valueOf("1969-01-01")) shouldBe (classOf[java.sql.Date], java.sql.Date.valueOf("1969-01-01"))
     test(java.sql.Date.valueOf("1971-01-01")) shouldBe (classOf[java.sql.Date], java.sql.Date.valueOf("1971-01-01"))
+    test(java.sql.Time.valueOf("12:34:55")) shouldBe
+      (classOf[java.sql.Timestamp], java.sql.Timestamp.valueOf("1970-01-01 12:34:55"))
     test(java.sql.Timestamp.valueOf("1969-01-01 00:00:00.0")) shouldBe
       (classOf[java.sql.Timestamp], java.sql.Timestamp.valueOf("1969-01-01 00:00:00.0"))
     test(java.sql.Timestamp.valueOf("1969-01-01 00:00:00.001")) shouldBe
