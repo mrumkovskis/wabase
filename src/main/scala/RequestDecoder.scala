@@ -27,6 +27,9 @@ class CborOrJsonDecoder(typeDefs: Seq[TypeDef], nameToViewDef: Map[String, Mojoz
       case "java.sql.Date"      => javaSqlDateDecoder
       case "java.sql.Time"      => javaSqlTimeDecoder
       case "java.sql.Timestamp" => javaSqlTimestampDecoder
+      case "java.time.LocalDate"      => localDateDecoder
+      case "java.time.LocalTime"      => localTimeDecoder
+      case "java.time.LocalDateTime"  => localDateTimeDecoder
       case "scala.math.BigInt"     => Decoder.forBigInt
       case "scala.math.BigDecimal" => Decoder.forBigDecimal
       case "java.lang.Double"   => Decoder.forBoxedDouble

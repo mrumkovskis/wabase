@@ -1,0 +1,32 @@
+type:       l_date
+xsd name:   date
+json name:  string
+scala name: java.time.LocalDate
+jdbc:
+- DATE
+yaml:
+- l_date
+sql:
+- date
+
+type:       l_time
+xsd name:   time
+json name:  string
+scala name: java.time.LocalTime
+jdbc:
+- TIME
+yaml:
+- l_time
+sql:
+- time
+
+type:       l_dateTime
+xsd name:   dateTime
+json name:  string
+scala name: java.time.LocalDateTime
+jdbc:
+- TIMESTAMP
+yaml:
+- l_dateTime
+sql:
+- timestamp

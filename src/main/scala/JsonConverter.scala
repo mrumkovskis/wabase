@@ -7,6 +7,7 @@ import scala.language.postfixOps
 import spray.json._
 
 import java.sql
+import java.time.{LocalDate, LocalTime, LocalDateTime}
 
 object JsonToAny {
   def apply(value: JsValue): Any = {
@@ -44,8 +45,11 @@ trait JsonConverter { self: AppQuerease =>
     case n: java.lang.Number => JsNumber(String.valueOf(n))
     case b: Boolean => JsBoolean(b)
     case t: sql.Time => JsString(t.toString)
+    case t: LocalTime => JsString(sql.Time.valueOf(t).toString)
     case t: Timestamp => JsString(humanDateTime(t))
+    case t: LocalDateTime => JsString(humanDateTime(sql.Timestamp.valueOf(t)))
     case d: jDate => JsString(xsdDate(d))
+    case d: LocalDate => JsString(xsdDate(sql.Date.valueOf(d)))
     case jv: JsValue => jv
     case null => JsNull
     case b: Array[Byte] => JsString(ByteString.fromArrayUnsafe(b).encodeBase64.utf8String)

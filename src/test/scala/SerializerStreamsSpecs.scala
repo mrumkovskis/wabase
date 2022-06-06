@@ -603,6 +603,16 @@ class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseIni
       (classOf[java.sql.Timestamp], java.sql.Timestamp.valueOf("1969-01-01 00:00:00.001"))
     test(java.sql.Timestamp.valueOf("1971-01-01 00:00:00.001")) shouldBe
       (classOf[java.sql.Timestamp], java.sql.Timestamp.valueOf("1971-01-01 00:00:00.001"))
+    test(java.sql.Date.valueOf("1969-01-01").toLocalDate) shouldBe (classOf[java.sql.Date], java.sql.Date.valueOf("1969-01-01"))
+    test(java.sql.Date.valueOf("1971-01-01").toLocalDate) shouldBe (classOf[java.sql.Date], java.sql.Date.valueOf("1971-01-01"))
+    test(java.sql.Time.valueOf("12:34:55").toLocalTime) shouldBe
+      (classOf[java.sql.Timestamp], java.sql.Timestamp.valueOf("1970-01-01 12:34:55"))
+    test(java.sql.Timestamp.valueOf("1969-01-01 00:00:00.0").toLocalDateTime) shouldBe
+      (classOf[java.sql.Timestamp], java.sql.Timestamp.valueOf("1969-01-01 00:00:00.0"))
+    test(java.sql.Timestamp.valueOf("1969-01-01 00:00:00.001").toLocalDateTime) shouldBe
+      (classOf[java.sql.Timestamp], java.sql.Timestamp.valueOf("1969-01-01 00:00:00.001"))
+    test(java.sql.Timestamp.valueOf("1971-01-01 00:00:00.001").toLocalDateTime) shouldBe
+      (classOf[java.sql.Timestamp], java.sql.Timestamp.valueOf("1971-01-01 00:00:00.001"))
   }
 
   it should "chunk strings according to buffer size when serializing to cbor" in {

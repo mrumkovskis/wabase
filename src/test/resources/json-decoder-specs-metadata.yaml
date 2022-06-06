@@ -6,6 +6,9 @@ fields:
 - date              date
 - time              time
 - date_time         dateTime
+- l_date            l_date
+- l_time            l_time
+- l_date_time       l_dateTime
 - int               int
 - bigint            integer
 - double            double

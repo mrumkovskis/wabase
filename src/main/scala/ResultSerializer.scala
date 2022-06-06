@@ -9,6 +9,7 @@ import akka.util.{ByteString, ByteStringBuilder}
 import java.io.{InputStream, OutputStream}
 import java.lang.{Boolean => JBoolean, Byte => JByte, Double => JDouble, Float => JFloat, Long => JLong, Short => JShort}
 import java.math.{BigDecimal => JBigDecimal, BigInteger => JBigInteger}
+import java.time.{LocalDate, LocalTime, LocalDateTime}
 
 import ResultEncoder._
 
@@ -161,6 +162,12 @@ object BorerDatetimeEncoders {
       w writeString value.toString
     }
   }
+  implicit val localDateEncoder: Encoder[LocalDate] =
+    Encoder { (w, value) => w ~ sql.Date.valueOf(value) }
+  implicit val localTimeEncoder: Encoder[LocalTime] =
+    Encoder { (w, value) => w ~ sql.Time.valueOf(value) }
+  implicit val localDateTimeEncoder: Encoder[LocalDateTime] =
+    Encoder { (w, value) => w ~ sql.Timestamp.valueOf(value) }
 }
 
 class BorerValueEncoder(w: Writer) {
@@ -192,6 +199,9 @@ class BorerValueEncoder(w: Writer) {
     case value: Timestamp   => w ~ value
     case value: sql.Date    => w ~ value
     case value: sql.Time    => w ~ value
+    case value: LocalDate   => w ~ value
+    case value: LocalTime   => w ~ value
+    case value: LocalDateTime => w ~ value
     case x                  => w writeString x.toString
   }
   def writeValue(value: Any):  Unit = valueEncoder(value)
@@ -292,6 +302,12 @@ object BorerDatetimeDecoders {
       case _                                    => unexpectedDataItem(expected = "Time")
     }
   }
+  implicit val localDateDecoder: Decoder[LocalDate] =
+    Decoder { r => r[sql.Date].toLocalDate() }
+  implicit val localTimeDecoder: Decoder[LocalTime] =
+    Decoder { r => r[sql.Time].toLocalTime() }
+  implicit val localDateTimeDecoder: Decoder[LocalDateTime] =
+    Decoder { r => r[sql.Timestamp].toLocalDateTime() }
 }
 
 class BorerNestedArraysTransformer(reader: Reader, handler: ResultEncoder) {

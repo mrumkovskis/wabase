@@ -52,6 +52,9 @@ class JsonDecoderSpecs extends FlatSpec with Matchers {
     obj.date = java.sql.Date.valueOf("2021-12-21")
     obj.time = java.sql.Time.valueOf("23:44:55")
     obj.date_time = java.sql.Timestamp.valueOf("2021-12-26 23:57:14.0")
+    obj.l_date = obj.date.toLocalDate
+    obj.l_time = obj.time.toLocalTime
+    obj.l_date_time = obj.date_time.toLocalDateTime
 
     // negatives
     obj.id = Long.MinValue
@@ -109,6 +112,9 @@ class JsonDecoderSpecs extends FlatSpec with Matchers {
       "date": "2021-12-21",
       "time": "23:44:55",
       "date_time": "2021-12-26 23:57:14",
+      "l_date": "2021-12-21",
+      "l_time": "23:44:55",
+      "l_date_time": "2021-12-26 23:57:14",
       "int": 2147483647,
       "bigint": 9223372036854775808,
       "double": 1.7976931348623157E+308,
@@ -152,6 +158,9 @@ class JsonDecoderSpecs extends FlatSpec with Matchers {
       "date": "2021-12-21",
       "time": "23:44:55",
       "date_time": "2021-12-26 23:57:14",
+      "l_date": "2021-12-21",
+      "l_time": "23:44:55",
+      "l_date_time": "2021-12-26 23:57:14",
       "int": "2147483647",
       "bigint": "9223372036854775808",
       "double": "1.7976931348623157E+308",
@@ -233,6 +242,9 @@ object JsonDecoderSpecs {
     var date: java.sql.Date = null
     var time: java.sql.Time = null
     var date_time: java.sql.Timestamp = null
+    var l_date: java.time.LocalDate = null
+    var l_time: java.time.LocalTime = null
+    var l_date_time: java.time.LocalDateTime = null
     var int: java.lang.Integer = null
     var bigint: BigInt = null
     var double: java.lang.Double = null
