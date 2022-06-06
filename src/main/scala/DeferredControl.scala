@@ -453,7 +453,7 @@ object DeferredControl extends Loggable with AppConfig {
     import stats._
     import exec._
 
-    implicit private lazy val queryTimeout: QueryTimeout = DefaultQueryTimeout.getOrElse(QueryTimeout(10))
+    implicit private lazy val queryTimeout: QueryTimeout = DefaultQueryTimeout
     implicit private lazy val Cp = DEFAULT_CP
     implicit private lazy val extraDb: Seq[DbAccessKey] = Nil
 

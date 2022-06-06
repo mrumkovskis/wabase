@@ -59,8 +59,8 @@ package object wabase extends Loggable {
   case class QueryTimeout(timeoutSeconds: Int)
 
   /** Default query timeout based on "jdbc.query-timeout" configuration setting */
-  val DefaultQueryTimeout: Option[QueryTimeout] = // FIXME DefaultQueryTimeout must not be optional
-    Some(QueryTimeout(config.getDuration("jdbc.query-timeout").toSeconds.toInt))
+  val DefaultQueryTimeout: QueryTimeout =
+    QueryTimeout(config.getDuration("jdbc.query-timeout").toSeconds.toInt)
 
   val MaxResultSize: Option[Int] =
     Some(config.getInt("tresql.max-result-size")).filter(_ > 0)

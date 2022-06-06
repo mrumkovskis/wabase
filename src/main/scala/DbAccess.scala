@@ -18,7 +18,7 @@ trait DbAccessProvider {
 trait DbAccess { this: Loggable =>
   implicit def tresqlResources: ThreadLocalResources
 
-  protected def defaultQueryTimeout: QueryTimeout = DefaultQueryTimeout.getOrElse(QueryTimeout(5))
+  protected def defaultQueryTimeout: QueryTimeout = DefaultQueryTimeout
 
   private def setenv(pool: DataSource, timeout: QueryTimeout, extraDb: Seq[DbAccessKey]): Unit = {
     tresqlResources.initFromTemplate

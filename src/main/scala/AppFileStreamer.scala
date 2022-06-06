@@ -124,7 +124,7 @@ trait AppFileStreamer[User] extends AppFileStreamerConfig with Loggable { this: 
   private implicit lazy val conpool: PoolName = fileStreamerConnectionPool
   private implicit lazy val extraDb: Seq[DbAccessKey] = Nil
 
-  implicit private lazy val queryTimeout: QueryTimeout = DefaultQueryTimeout.getOrElse(QueryTimeout(10))
+  implicit private lazy val queryTimeout: QueryTimeout = DefaultQueryTimeout
 
   lazy val rootPath = appConfig.getString("files.path").replaceAll("/+$", "")
   lazy val file_info_table = "file_info"

@@ -17,7 +17,7 @@ class AppFileCleanup(dbAccess: DbAccess, fileStreamers: AppFileStreamerConfig*) 
   protected lazy val refsToIgnore: Set[(String, String)] = Set.empty
   implicit lazy val connectionPool: PoolName = DEFAULT_CP
   implicit lazy val extraDb: Seq[DbAccessKey] = Nil
-  implicit lazy val queryTimeout: QueryTimeout = DefaultQueryTimeout.getOrElse(QueryTimeout(10))
+  implicit lazy val queryTimeout: QueryTimeout = DefaultQueryTimeout
 
   /*
   1. delete all records from file_info, if id not referenced in linked tables (info about linked tables from metadata)

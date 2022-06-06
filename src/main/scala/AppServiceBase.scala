@@ -522,13 +522,13 @@ object AppServiceBase {
 
   trait QueryTimeoutExtractor {
     def maxQueryTimeout: QueryTimeout = QueryTimeout(5)
-    lazy val queryTimeout: QueryTimeout = DefaultQueryTimeout
+    lazy val queryTimeout: QueryTimeout = Option(DefaultQueryTimeout)
       .orElse(Some(maxQueryTimeout))
       .filter(_.timeoutSeconds <= maxQueryTimeout.timeoutSeconds)
       .getOrElse {
         LoggerFactory.getLogger("JdbcTimeoutLogger")
           .error(s"Illegal configuration for jdbc.query-timeout setting = $DefaultQueryTimeout. " +
-            s"Must be less or equals than $maxQueryTimeout.")
+            s"Must be less than or equal to $maxQueryTimeout.")
         maxQueryTimeout
       }
 
