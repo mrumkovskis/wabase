@@ -596,7 +596,7 @@ class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseIni
     test(java.sql.Date.valueOf("1969-01-01")) shouldBe (classOf[java.sql.Date], java.sql.Date.valueOf("1969-01-01"))
     test(java.sql.Date.valueOf("1971-01-01")) shouldBe (classOf[java.sql.Date], java.sql.Date.valueOf("1971-01-01"))
     test(java.sql.Time.valueOf("12:34:55")) shouldBe
-      (classOf[java.sql.Timestamp], java.sql.Timestamp.valueOf("1970-01-01 12:34:55"))
+      (classOf[java.sql.Time], java.sql.Time.valueOf("12:34:55"))
     test(java.sql.Timestamp.valueOf("1969-01-01 00:00:00.0")) shouldBe
       (classOf[java.sql.Timestamp], java.sql.Timestamp.valueOf("1969-01-01 00:00:00.0"))
     test(java.sql.Timestamp.valueOf("1969-01-01 00:00:00.001")) shouldBe
@@ -606,7 +606,7 @@ class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseIni
     test(java.sql.Date.valueOf("1969-01-01").toLocalDate) shouldBe (classOf[java.sql.Date], java.sql.Date.valueOf("1969-01-01"))
     test(java.sql.Date.valueOf("1971-01-01").toLocalDate) shouldBe (classOf[java.sql.Date], java.sql.Date.valueOf("1971-01-01"))
     test(java.sql.Time.valueOf("12:34:55").toLocalTime) shouldBe
-      (classOf[java.sql.Timestamp], java.sql.Timestamp.valueOf("1970-01-01 12:34:55"))
+      (classOf[java.sql.Time], java.sql.Time.valueOf("12:34:55"))
     test(java.sql.Timestamp.valueOf("1969-01-01 00:00:00.0").toLocalDateTime) shouldBe
       (classOf[java.sql.Timestamp], java.sql.Timestamp.valueOf("1969-01-01 00:00:00.0"))
     test(java.sql.Timestamp.valueOf("1969-01-01 00:00:00.001").toLocalDateTime) shouldBe
