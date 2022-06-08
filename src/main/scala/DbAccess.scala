@@ -29,7 +29,7 @@ trait DbAccess { this: Loggable =>
         ( db
         , tresqlResources
             .extraResources(db)
-            .withConn(ConnectionPools(PoolName(if (cp == null) db else cp)).getConnection)
+            .withConn(dataSource(PoolName(if (cp == null) db else cp)).getConnection)
         )
       }.toMap
   }
@@ -67,7 +67,7 @@ trait DbAccess { this: Loggable =>
     val poolChanges = oldPool != pool
     if (poolChanges) {
       logger.debug(s"""Using connection pool "$pool"""")
-      setenv(ConnectionPools(pool), timeout, extraDb)
+      setenv(dataSource(pool), timeout, extraDb)
       currentPool.set(pool)
     }
     try {
@@ -142,7 +142,7 @@ trait DbAccess { this: Loggable =>
     val poolChanges = oldPool != pool
     if (forceNewConnection || poolChanges) {
       logger.debug(s"""Using connection pool "$pool"""")
-      setenv(ConnectionPools(pool), timeout, extraDb)
+      setenv(dataSource(pool), timeout, extraDb)
       currentPool.set(pool)
     }
     try {
@@ -171,6 +171,10 @@ trait DbAccess { this: Loggable =>
         currentPool.set(oldPool)
       }
     }
+  }
+
+  def dataSource(pool: PoolName): DataSource = {
+    ConnectionPools(pool)
   }
 }
 
@@ -315,14 +319,22 @@ object DbAccess extends Loggable {
       .extraResources.collect { case (_, r) if r.conn != null => r.conn }.toList) foreach connCloser
   }
   def initResources(initialResources: Resources)(poolName: PoolName, extraDb: Seq[DbAccessKey]): Resources = {
-    val dbConn = ConnectionPools(poolName).getConnection
+    val dsFactory = () => ConnectionPools(poolName)
+    val dsExtraFactories = extraDb.map { case DbAccessKey(db, cp) =>
+      (db, () => ConnectionPools(PoolName(if (cp == null) db else cp)))
+    }.toMap
+    initConns(initialResources)(dsFactory, dsExtraFactories)
+  }
+  def initConns(initialResources: Resources)(dsFactory: () => DataSource,
+                                             dsExtraFactories: Map[String, () => DataSource]): Resources = {
+    val dbConn = dsFactory().getConnection
     var extraConns = List[Connection]()
     try {
       val initRes = initialResources.withConn(dbConn)
-      if (extraDb.isEmpty) initRes
-      else extraDb.foldLeft(initRes) { case (res, DbAccessKey(db, cp)) =>
+      if (dsExtraFactories.isEmpty) initRes
+      else dsExtraFactories.foldLeft(initRes) { case (res, (db, fac)) =>
         if (res.extraResources.contains(db)) {
-          val extraConn = ConnectionPools(PoolName(if (cp == null) db else cp)).getConnection
+          val extraConn = fac().getConnection
           extraConns ::= extraConn
           res.withUpdatedExtra(db)(_.withConn(extraConns.head))
         } else res

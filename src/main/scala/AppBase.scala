@@ -267,7 +267,7 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
             }
           }
 
-          private lazy val connection = ConnectionPools(poolName).getConnection
+          private lazy val connection = dataSource(poolName).getConnection
           override lazy val resources = {
             val res =
               tresqlResources
@@ -278,7 +278,7 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
             else extraDbs.foldLeft(res) { case (res, DbAccessKey(db, cp)) =>
               if (res.extraResources.contains(db)) {
                 extraConns ::=
-                  (try ConnectionPools(PoolName(if (cp == null) db else cp)).getConnection catch {
+                  (try dataSource(PoolName(if (cp == null) db else cp)).getConnection catch {
                     case NonFatal(e) =>
                       //close opened connections to avoid connection leak
                       (connection :: extraConns) foreach closeConn

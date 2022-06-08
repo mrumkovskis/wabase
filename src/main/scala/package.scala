@@ -2,6 +2,8 @@ package org
 
 import java.util.concurrent.TimeUnit.MILLISECONDS
 import com.zaxxer.hikari.{HikariConfig, HikariDataSource}
+
+import javax.sql.DataSource
 import scala.concurrent.duration.{Duration, FiniteDuration}
 import scala.jdk.CollectionConverters._
 
@@ -85,16 +87,26 @@ package object wabase extends Loggable {
     logger.warn(s"""Default connection pool configuration missing (key jdbc.cp.${DEFAULT_CP.connectionPoolName}), or jdbc.default not set to correct key (default value = "main"). \nThere will be errors if You rely on JDBC connections""")
 
   object ConnectionPools {
-    private lazy val cps: Map[PoolName, HikariDataSource] = {
+    private lazy val cps = {
       val c = config.getConfig("jdbc.cp")
-      c.root().asScala.keys.map(v => (PoolName(v), createConnectionPool(c.getConfig(v)))).toMap
+      val s: Seq[(PoolName, DataSource)] =
+        c.root().asScala.keys.map(v => (PoolName(v), createConnectionPool(c.getConfig(v)))).toSeq
+      scala.collection.concurrent.TrieMap(s: _*)
     }
 
-    def apply(pool: PoolName) = {
+    def apply(pool: PoolName): DataSource = {
       cps.getOrElse(pool, {
         require(pool == null || pool.connectionPoolName == null,
           s"""Unable to find connection pool "${pool.connectionPoolName}"""")
         cps(DEFAULT_CP)
+      })
+    }
+
+    def apply(pool: PoolName, factoryFun: () => DataSource): DataSource = {
+      cps.getOrElse(pool, {
+        val ds = factoryFun()
+        cps.put(pool, ds)
+        ds
       })
     }
   }
