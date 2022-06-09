@@ -558,7 +558,7 @@ object AppServiceBase {
         complete(HttpResponse(InternalServerError, entity = e.getMessage))
       case e: InvocationTargetException if e.getCause != null && e.getCause.isInstanceOf[BusinessException] =>
         logger.trace(e.getMessage, e)
-        complete(HttpResponse(InternalServerError, entity = e.getMessage))
+        complete(HttpResponse(InternalServerError, entity = e.getCause.getMessage))
     }
 
     def unprocessableEntityExceptionHandler(logger: com.typesafe.scalalogging.Logger) = ExceptionHandler {
