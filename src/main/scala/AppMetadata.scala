@@ -475,6 +475,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   protected def parseAction(objectName: String, stepData: Seq[Any]): Action = {
     // matches - 'validations validation_name [db:cp]'
     val validationRegex = new Regex(s"(?U)${Action.ValidationsKey}(?:\\s+(\\w+))?(?:\\s+\\[(?:\\s*(\\w+)?\\s*(?::\\s*(\\w+)\\s*)?)\\])?")
+    val namedStepRegex = """(?U)(?:(\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*)\s*=\s*)?(.+)""".r
     val viewCallRegex = new Regex(Action().mkString("(?U)(", "|", """)\s+(:?\w+)"""))
     val invocationRegex = """(?U)\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*(\.\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*)+""".r
     val setEnvRegex = """setenv\s+(.+)""".r //dot matches new line as well
@@ -486,14 +487,6 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val jobCallRegex = """(?U)job\s+(:?\w+)""".r
     import ViewDefExtrasUtils._
     val steps = stepData.map { step =>
-      def parseNamedStep(str: String) = {
-        def isIdent(str: String) = str.nonEmpty &&
-          Character.isJavaIdentifierStart(str.charAt(0)) && str.drop(1).forall(Character.isJavaIdentifierPart)
-        val idx = str.indexOf('=')
-        if (idx != -1 && isIdent(str.substring(0, idx).trim))
-          Some(str.substring(0, idx).trim) -> str.substring(idx + 1).trim
-        else None -> str
-      }
       def parseStep(name: Option[String], statement: String): Action.Step = {
         def parseOp(st: String): Action.Op = {
           def statusParameterIdx(exp: String) = if (exp == null) -1 else {
@@ -569,8 +562,8 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       }
       step match {
         case s: String =>
-          val (name, st) = parseNamedStep(s)
-          parseStep(name, st)
+          val namedStepRegex(name, st) = s
+          parseStep(Option(name), st)
         case jm: java.util.Map[String, Any]@unchecked if jm.size() == 1 =>
           val m = jm.asScala.toMap
           val (name, value) = m.head
