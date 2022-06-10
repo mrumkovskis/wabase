@@ -328,7 +328,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
       Map("current_person" -> "Gunzagi", "vaccine" -> "AstraZeneca", "manipulation_date" -> java.sql.Date.valueOf("2021-06-05")),
     )
     def saveData(view: String, data: List[Map[String, Any]])(implicit res: Resources) =
-      data.foldLeft(Future.successful[QuereaseResult](NumberResult(0))) { (r, d) =>
+      data.foldLeft(Future.successful[QuereaseResult](LongResult(0))) { (r, d) =>
         r.flatMap(_ => querease.doAction(view, "save", d, Map())(res, implicitly[ExecutionContext]))
       }
 
@@ -378,5 +378,13 @@ class QuereaseActionTestManager extends Loggable {
 
   def sendNotifications(data: Map[String, Any]): Unit = {
     logger.info("Person data change notifications sender called")
+  }
+
+  def concatStrings(data: Map[String, Any]): String = {
+    data.getOrElse("s1", "").toString + " " + data.getOrElse("s2", "").toString
+  }
+
+  def addNumbers(data: Map[String, Any]): java.lang.Number = {
+    BigDecimal(data("n1").toString) + BigDecimal(data("n2").toString)
   }
 }

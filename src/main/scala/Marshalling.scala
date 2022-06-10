@@ -188,13 +188,15 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
     Marshaller.combined((lr: ListResult) => (lr.result.map(_.toMap), viewName))
   implicit def toResponseQuereaseOptionResultMarshaller(viewName: String):  ToResponseMarshaller[OptionResult] =
     Marshaller.combined(_.result.map(dto => (dto.toMap, viewName)))
-  implicit val toEntityQuereaseNumberResultMarshaller:      ToEntityMarshaller  [NumberResult]   =
-    Marshaller.combined("" + _.id)
-  implicit val toEntityQuereaseCodeResultMarshaller:        ToEntityMarshaller  [CodeResult]     =
-    Marshaller.combined(_.code)
-  implicit val toEntityQuereaseIdResultMarshaller:          ToEntityMarshaller  [IdResult]       =
+  implicit val toEntityQuereaseLongResultMarshaller:      ToEntityMarshaller  [LongResult]   =
+    Marshaller.combined("" + _.value)
+  implicit val toEntityQuereaseStringResultMarshaller:    ToEntityMarshaller  [StringResult]     =
+    Marshaller.combined(_.value)
+  implicit val toEntityQuereaseNumberResultMarshaller:    ToEntityMarshaller  [NumberResult]     =
+    Marshaller.combined(_.value.toString)
+  implicit val toEntityQuereaseIdResultMarshaller:        ToEntityMarshaller  [IdResult]       =
     Marshaller.combined(_.toString)
-  implicit val toResponseQuereaseStatusResultMarshaller:    ToResponseMarshaller[StatusResult] =
+  implicit val toResponseQuereaseStatusResultMarshaller:  ToResponseMarshaller[StatusResult] =
     Marshaller.opaque { sr =>
       val status: StatusCode = sr.code
       if (status.isRedirection()) {
@@ -271,8 +273,9 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
         (toEntityQuereasePojoResultMarshaller       (wr.ctx.viewName):        ToResponseMarshaller[PojoResult]    )(pj)
       case ls: ListResult     =>
         (toEntityQuereaseListResultMarshaller       (wr.ctx.viewName):        ToResponseMarshaller[ListResult]    )(ls)
+      case nr: LongResult     => (toEntityQuereaseLongResultMarshaller:       ToResponseMarshaller[LongResult]    )(nr)
+      case sr: StringResult   => (toEntityQuereaseStringResultMarshaller:     ToResponseMarshaller[StringResult]  )(sr)
       case nr: NumberResult   => (toEntityQuereaseNumberResultMarshaller:     ToResponseMarshaller[NumberResult]  )(nr)
-      case cd: CodeResult     => (toEntityQuereaseCodeResultMarshaller:       ToResponseMarshaller[CodeResult]    )(cd)
       case id: IdResult       => (toEntityQuereaseIdResultMarshaller:         ToResponseMarshaller[IdResult]      )(id)
       case sr: StatusResult   => (toResponseQuereaseStatusResultMarshaller:   ToResponseMarshaller[StatusResult]  )(sr)
       case no: NoResult.type  => (toEntityQuereaseNoResultMarshaller:         ToResponseMarshaller[NoResult.type] )(no)

@@ -359,7 +359,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
 
   it should "count" in {
     doAction("count", "purchase", Map.empty)
-      .map(_ shouldBe NumberResult(1))
+      .map(_ shouldBe LongResult(1))
   }
 
   it should "manage env properly" in {
@@ -479,6 +479,19 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         }
     } yield {
       t15
+    }
+  }
+
+  it should "do invocations" in {
+    for {
+      t1 <- doAction("get", "invocation_test_1", Map()).map {
+        _ shouldBe StatusResult(200, "val1 val2", List(), ListMap())
+      }
+      t2 <- doAction("save", "invocation_test_1", Map()).map {
+        _ shouldBe MapResult(Map("nr" -> 2.5))
+      }
+    } yield {
+      t2
     }
   }
 }

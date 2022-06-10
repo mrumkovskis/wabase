@@ -476,7 +476,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     // matches - 'validations validation_name [db:cp]'
     val validationRegex = new Regex(s"(?U)${Action.ValidationsKey}(?:\\s+(\\w+))?(?:\\s+\\[(?:\\s*(\\w+)?\\s*(?::\\s*(\\w+)\\s*)?)\\])?")
     val viewCallRegex = new Regex(Action().mkString("(?U)(", "|", """)\s+(:?\w+)"""))
-    val invocationRegex = """(?U)(\w|\$)+\.(\w|\$)+(\.(\w|\$)+)*""".r
+    val invocationRegex = """(?U)\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*(\.\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*)+""".r
     val setEnvRegex = """setenv\s+(.+)""".r //dot matches new line as well
     val returnRegex = """return\s+(.+)""".r //dot matches new line as well
     val uniqueOpRegex = """unique_opt\s+(.+)""".r
@@ -488,7 +488,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val steps = stepData.map { step =>
       def parseNamedStep(str: String) = {
         def isIdent(str: String) = str.nonEmpty &&
-          Character.isJavaIdentifierStart(str.charAt(1)) && str.drop(1).forall(Character.isJavaIdentifierPart)
+          Character.isJavaIdentifierStart(str.charAt(0)) && str.drop(1).forall(Character.isJavaIdentifierPart)
         val idx = str.indexOf('=')
         if (idx != -1 && isIdent(str.substring(0, idx).trim))
           Some(str.substring(0, idx).trim) -> str.substring(idx + 1).trim

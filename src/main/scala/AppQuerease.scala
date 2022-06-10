@@ -40,8 +40,9 @@ case class PojoResult(result: AppQuerease#DTO) extends QuereaseResult
 case class IteratorResult(result: AppQuerease#QuereaseIteratorResult[AppQuerease#DTO]) extends QuereaseCloseableResult
 // TODO after decoupling QereaseIo from Querease this class should be refactored to OptionResult[X]
 case class OptionResult(result: Option[AppQuerease#DTO]) extends QuereaseResult
-case class NumberResult(id: Long) extends QuereaseResult
-case class CodeResult(code: String) extends QuereaseResult
+case class LongResult(value: Long) extends QuereaseResult
+case class StringResult(value: String) extends QuereaseResult
+case class NumberResult(value: java.lang.Number) extends QuereaseResult
 case class IdResult(id: Any) extends QuereaseResult
 case class QuereaseDeleteResult(count: Int) extends QuereaseResult
 case class StatusResult(code: Int, value: String, key: Seq[String] = Nil, params: ListMap[String, String] = ListMap()) extends QuereaseResult
@@ -288,8 +289,9 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case ListResult(lr) => lr
       case IteratorResult(ir) => ir.map(_.toMap(this)).toList
       case OptionResult(or) => or.map(_.toMap(this)).orNull
+      case LongResult(nr) => nr
       case NumberResult(nr) => nr
-      case CodeResult(code) => code
+      case StringResult(str) => str
       case id: IdResult => id
       case sr: StatusResult => sr
       case NoResult => NoResult
@@ -486,11 +488,11 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
             IdResult(save(v, callData, null, SaveMethod.Upsert, null, env))
           case Delete =>
             keyValuesAndColNames(data) // check mappings for key exist
-            NumberResult(delete(v, data, null, env))
+            LongResult(delete(v, data, null, env))
           case Create =>
             PojoResult(create(callData)(mf, res))
           case Count =>
-            NumberResult(countAll(callData))
+            LongResult(countAll(callData))
           case x =>
             sys.error(s"Unknown view action $x")
         }
@@ -511,8 +513,9 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case m: java.util.Map[String, Any]@unchecked => MapResult(m.asScala.toMap)
       case l: List[DTO@unchecked] => ListResult(l)
       case r: Result[_] => TresqlResult(r)
-      case l: Long => NumberResult(l)
-      case s: String => CodeResult(s)
+      case l: Long => LongResult(l)
+      case s: String => StringResult(s)
+      case n: java.lang.Number => NumberResult(n)
       case r: QuereaseIteratorResult[DTO]@unchecked => IteratorResult(r)
       case d: DTO@unchecked => PojoResult(d)
       case o: Option[DTO]@unchecked => OptionResult(o)

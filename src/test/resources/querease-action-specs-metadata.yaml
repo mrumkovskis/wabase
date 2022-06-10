@@ -388,3 +388,23 @@ get:
   - redirect { 'data/path', '?', :id id }
 list:
   - redirect { 'data/path/' || :id }
+
+
+name: invocation_test_1
+table:
+api: get, save, list, count
+fields:
+- s1
+- s2
+- n1
+- n2
+get:
+- s1 = 'val1'
+- s2 = 'val2'
+- s3 = org.wabase.QuereaseActionTestManager.concatStrings
+- status ok { :s3 }
+save:
+- n1 = 1
+- n2 = 1.5
+- n3 = org.wabase.QuereaseActionTestManager.addNumbers
+- return (nr = :n3)
