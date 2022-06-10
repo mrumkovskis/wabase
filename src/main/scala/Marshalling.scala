@@ -196,14 +196,18 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
     Marshaller.combined(_.value.toString)
   implicit val toEntityQuereaseIdResultMarshaller:        ToEntityMarshaller  [IdResult]       =
     Marshaller.combined(_.toString)
-  implicit val toResponseQuereaseStatusResultMarshaller:  ToResponseMarshaller[StatusResult] =
+  implicit val toResponseQuereaseStatusResultMarshaller:  ToResponseMarshaller[StatusResult] = {
+    val uriRegex = """(?U)(https?://[^/]+)?(?:(?:$)|(.+))?""".r
     Marshaller.opaque { sr =>
       val status: StatusCode = sr.code
       if (status.isRedirection()) {
-        import akka.http.scaladsl.model.Uri._
         require(sr.value != null, s"Error marshalling redirect status result - no uri.")
-        val uri: Uri = sr.value
-        val path = sr.key.foldLeft(uri.path){ (p, k) => p / String.valueOf(k) }
+        import akka.http.scaladsl.model.Uri._
+        val uriRegex(uriStart, uriPath) = sr.value
+        val path = sr.key.foldLeft(Option(uriPath).map(Path(_)).getOrElse(Path.Empty)){ (p, k) =>
+          p / String.valueOf(k)
+        }
+        val uri: Uri = Option(uriStart).map(_.withPath(path)).getOrElse(Uri.Empty.withPath(path))
         val nonNullParams = sr.params.map { case (k, v) => (k, if (v == null) "" else v) }
         HttpResponse(status, headers = Seq(Location(uri.withPath(path).withQuery(Query(nonNullParams)))))
       } else {
@@ -213,6 +217,7 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
         HttpResponse(status, entity = ent)
       }
     }
+  }
   implicit val toEntityQuereaseNoResultMarshaller:          ToEntityMarshaller  [NoResult.type]  =
     Marshaller.combined(_ => "")
   implicit val toEntityQuereaseDeleteResultMarshaller:      ToEntityMarshaller[QuereaseDeleteResult] =

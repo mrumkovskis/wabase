@@ -146,6 +146,14 @@ class MarshallingSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     res = response(StatusResult(200, "ok"))
     Await.result(res.entity.toStrict(1.second).map(_.data.decodeString("UTF-8")), 1.second) shouldEqual "ok"
 
+    res = response(StatusResult(303, "/", Nil, ListMap()))
+    res.status shouldEqual StatusCodes.SeeOther
+    res.header[Location] shouldEqual Some(Location("/"))
+
+    res = response(StatusResult(303, "", List("s1", "1"), ListMap())) // NOTE: if keys are specified uri must not end with slash !
+    res.status shouldEqual StatusCodes.SeeOther
+    res.header[Location] shouldEqual Some(Location("/s1/1"))
+
     res = response(StatusResult(303, "data/path", Nil, ListMap()))
     res.status shouldEqual StatusCodes.SeeOther
     res.header[Location] shouldEqual Some(Location("data/path"))
@@ -179,5 +187,25 @@ class MarshallingSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     res = response(StatusResult(303, "data/path", List(), ListMap("id" -> null)))
     res.status shouldEqual StatusCodes.SeeOther
     res.header[Location] shouldEqual Some(Location("data/path?id="))
+
+    res = response(StatusResult(303, "data/ēūīāšģķļžčņ", List("ēūīāšģķļžč/ņ"), ListMap("ē/ūīāšģķļžčņ" -> "ēūīāš/ģķļžčņ")))
+    res.status shouldEqual StatusCodes.SeeOther
+    res.header[Location] shouldEqual Some(Location("data/%C4%93%C5%AB%C4%AB%C4%81%C5%A1%C4%A3%C4%B7%C4%BC%C5%BE%C4%8D%C5%86/%C4%93%C5%AB%C4%AB%C4%81%C5%A1%C4%A3%C4%B7%C4%BC%C5%BE%C4%8D%2F%C5%86?%C4%93/%C5%AB%C4%AB%C4%81%C5%A1%C4%A3%C4%B7%C4%BC%C5%BE%C4%8D%C5%86=%C4%93%C5%AB%C4%AB%C4%81%C5%A1/%C4%A3%C4%B7%C4%BC%C5%BE%C4%8D%C5%86"))
+
+    res = response(StatusResult(303, "http://foo.org", List(), ListMap()))
+    res.status shouldEqual StatusCodes.SeeOther
+    res.header[Location] shouldEqual Some(Location("http://foo.org"))
+
+    res = response(StatusResult(303, "https://foo.org:8080/", List(), ListMap()))
+    res.status shouldEqual StatusCodes.SeeOther
+    res.header[Location] shouldEqual Some(Location("https://foo.org:8080/"))
+
+    res = response(StatusResult(303, "http://foo.org", List("s1", "s2"), ListMap()))
+    res.status shouldEqual StatusCodes.SeeOther
+    res.header[Location] shouldEqual Some(Location("http://foo.org/s1/s2"))
+
+    res = response(StatusResult(303, "http://foo.org/data", List("sā1", "sī2"), ListMap()))
+    res.status shouldEqual StatusCodes.SeeOther
+    res.header[Location] shouldEqual Some(Location("http://foo.org/data/s%C4%811/s%C4%AB2"))
   }
 }
