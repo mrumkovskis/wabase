@@ -11,11 +11,10 @@ import org.wabase.AppMetadata.Action.{LimitKey, OffsetKey, OrderKey}
 import java.util.Locale
 import scala.concurrent.{ExecutionContext, Future}
 import scala.language.{existentials, implicitConversions}
-import scala.util.Success
+import scala.util.{Failure, Success}
 
 trait WabaseApp[User] {
   this:  AppBase[User]
-    with Audit[User]
     with DbAccess
     with Authorization[User]
     with DbConstraintMessage
@@ -80,7 +79,10 @@ trait WabaseApp[User] {
     import context.ec
     import context.as
     action(actionContext)
-      .andThen { case Success(WabaseResult(ctx, res)) => afterWabaseAction(ctx, res) }
+      .andThen {
+        case Success(WabaseResult(ctx, res)) => afterWabaseAction(ctx, res)
+        case Failure(error) => afterWabaseAction(context, error)
+      }
       .run
       .flatMap {
         case WabaseResult(ac, QuereaseResultWithCleanup(result, cleanup)) =>
@@ -247,9 +249,8 @@ trait WabaseApp[User] {
     context.copy(values = values ++ key_params ++ onSaveParams)
   }
 
-  protected def afterWabaseAction(context: AppActionContext, result: QuereaseResult): Unit = {
-    audit(context, result)
-  }
+  protected def afterWabaseAction(context: AppActionContext, result: QuereaseResult): Unit = {}
+  protected def afterWabaseAction(context: AppActionContext, error: Throwable): Unit = {}
 
   protected def applyReadonlyValues(
     viewDef: ViewDef, old: Map[String, Any], instance: Map[String, Any]
