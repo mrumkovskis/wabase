@@ -15,7 +15,7 @@ class ValidationEngineTestDto extends Dto {
 
 object TestValidationEngine extends org.wabase.TestApp {
   private val threadLocalValidations = new ThreadLocal[List[Validation]]
-  override def validations(viewName: String) = threadLocalValidations.get
+  override def validations(viewName: String, actionName: String) = threadLocalValidations.get
   def validations(instance: org.wabase.Dto) =  {
     val v = new Validation
     val test = instance.asInstanceOf[ValidationEngineTestDto]

@@ -60,14 +60,14 @@ trait DefaultValidationEngine extends ValidationEngine with Loggable {
   val validationsQuery =
     "validation[context ~~ :context] {id, context, expression, message}#(context, id)"
 
-  protected def validations(viewName: String): List[Validation] = {
+  protected def validations(viewName: String, actionName: String): List[Validation] = {
     val res = initResources(tresqlResources)(DEFAULT_CP, Nil)
     try Query(validationsQuery, Map("context" -> viewName))(res).map(r => new Validation().fill(r)).toList
     finally closeResources(res, None)
   }
   override def validate(viewName: String, actionName: String, instance: Map[String, Any])(
     implicit locale: Locale): Unit = {
-    val validationList = validations(viewName)
+    val validationList = validations(viewName, actionName)
     if (validationList.nonEmpty) {
       val engine = getEngine(viewName, instance)
 
