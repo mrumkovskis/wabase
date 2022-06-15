@@ -1,9 +1,10 @@
 package org.wabase
 
 import java.util.Locale
-
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers
+import org.tresql.Resources
+import org.wabase.AppMetadata.Action
 
 class ValidationEngineTestDto extends Dto {
   var expression: String = null
@@ -25,7 +26,7 @@ object TestValidationEngine extends org.wabase.TestApp {
   }
   def validate(instance: org.wabase.Dto)(implicit locale: Locale): Unit = {
     threadLocalValidations.set(validations(instance))
-    validate("fake-view", instance.toMap(qe))
+    validate("fake-view", Action.Save, instance.toMap(qe))
   }
 }
 

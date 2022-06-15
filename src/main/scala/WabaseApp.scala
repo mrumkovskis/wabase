@@ -9,6 +9,7 @@ import org.tresql.{Resources, RowLike}
 import org.wabase.AppMetadata.{Action, AugmentedAppFieldDef, AugmentedAppViewDef}
 import org.wabase.AppMetadata.Action.{LimitKey, OffsetKey, OrderKey}
 
+import java.util.Locale
 import scala.collection.immutable.Map
 import scala.concurrent.{ExecutionContext, Future}
 import scala.language.{existentials, implicitConversions}
@@ -19,7 +20,6 @@ trait WabaseApp[User] {
     with Audit[User]
     with DbAccess
     with Authorization[User]
-    with ValidationEngine
     with DbConstraintMessage
     =>
 
@@ -163,7 +163,7 @@ trait WabaseApp[User] {
         val saveable = applyReadonlyValues(viewDef, oldValue, values)
         val saveableContext = richContext.copy(values = saveable)
         validateFields(viewName, saveable)
-        validate(viewName, saveable)(state.locale)
+        customValidations(saveableContext)(state.locale)
         qe.QuereaseAction(viewName, Action.Save, saveable, env)(resourceFactory(context), closeResources)
           .map(WabaseResult(saveableContext, _))
           .recover { case ex => friendlyConstraintErrorMessage(viewDef, throw ex)(state.locale) }
@@ -313,6 +313,7 @@ trait WabaseApp[User] {
         throw new BusinessException(s"Not sortable: ${viewDef.name} by " + notSortable.mkString(", "), null)
     }
   }
+  protected def customValidations(ctx: AppActionContext)(implicit locale: Locale): Unit = {}
 }
 
 object WabaseAppConfig extends AppBase.AppConfig {

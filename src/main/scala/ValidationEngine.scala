@@ -1,20 +1,20 @@
 package org.wabase
 
 import java.util.Locale
-
 import javax.script.ScriptEngineManager
-import org.tresql.Query
+import org.tresql.{Query, Resources}
 import spray.json._
 
 import scala.util.control.NonFatal
 
 trait ValidationEngine {
-  def validate(viewName: String, instance: Map[String, Any])(implicit locale: Locale): Unit
+  def validate(viewName: String, actionName: String, instance: Map[String, Any])(implicit locale: Locale): Unit
 }
 
 /** Default validation engine, executes validation javascript stored in "validation" table */
 trait DefaultValidationEngine extends ValidationEngine with Loggable {
-  this: QuereaseProvider with DbAccess =>
+  this: QuereaseProvider
+    with DbAccess =>
 
   import ValidationEngine._
   import qe.{viewDef, classToViewNameMap, MapJsonFormat}
@@ -31,7 +31,7 @@ trait DefaultValidationEngine extends ValidationEngine with Loggable {
     ('a' to ('a'.toInt + m.getParameterTypes.size - 1).toChar)
        .mkString(", ")
    /** Custom functions available to validation scripts,
-     * defaults to [[org.wabase.ValidationEngine.CustomValidationFunctions$]] */
+     * defaults to [[org.wabase.ValidationEngine.CustomValidationFunctions]] */
   def customFunctions: AnyRef = CustomValidationFunctions
   lazy val customFunctionsAndArgs =
     customFunctions.getClass.getDeclaredMethods
@@ -60,10 +60,13 @@ trait DefaultValidationEngine extends ValidationEngine with Loggable {
   val validationsQuery =
     "validation[context ~~ :context] {id, context, expression, message}#(context, id)"
 
-  def validations(viewName: String): List[Validation] = {
-    Query(validationsQuery, Map("context" -> viewName))(tresqlResources).map(r => new Validation().fill(r)).toList
+  protected def validations(viewName: String): List[Validation] = {
+    val res = initResources(tresqlResources)(DEFAULT_CP, Nil)
+    try Query(validationsQuery, Map("context" -> viewName))(res).map(r => new Validation().fill(r)).toList
+    finally closeResources(res, None)
   }
-  override def validate(viewName: String, instance: Map[String, Any])(implicit locale: Locale): Unit = {
+  override def validate(viewName: String, actionName: String, instance: Map[String, Any])(
+    implicit locale: Locale): Unit = {
     val validationList = validations(viewName)
     if (validationList.nonEmpty) {
       val engine = getEngine(viewName, instance)
@@ -102,7 +105,7 @@ trait DefaultValidationEngine extends ValidationEngine with Loggable {
 }
 
 trait NoValidation extends ValidationEngine {
-  override def validate(viewName: String, instance: Map[String, Any])(implicit locale: Locale): Unit = {}
+  override def validate(viewName: String, actionName: String, instance: Map[String, Any])(implicit locale: Locale): Unit = {}
 }
 
 object ValidationEngine {

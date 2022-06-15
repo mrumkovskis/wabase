@@ -18,6 +18,7 @@ import scala.util.Try
 import org.tresql.{Resources, RowLike}
 import AppMetadata._
 import ValidationEngine.CustomValidationFunctions.is_valid_email
+import akka.actor.ActorSystem
 
 import java.sql.Connection
 import scala.util.control.NonFatal
@@ -36,7 +37,7 @@ object AppBase {
 case class ApplicationState(state: Map[String, Any], locale: Locale = Locale.getDefault)
 
 import AppBase._
-trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider with DbAccessProvider with I18n with RowWriters {
+trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereaseProvider with DbAccessProvider with I18n with RowWriters {
   this: DbAccess
     with Authorization[User]
     with ValidationEngine
@@ -323,7 +324,6 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
         ctxCopy.completePromise.future.failed.foreach{ _ =>
           if (ctxCopy.result != null) ctxCopy.result.close()
         }(scala.concurrent.ExecutionContext.global)
-
         ctxCopy
       }
   }
@@ -582,9 +582,18 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
         .filter(_ != null)
       val old = {
         implicit val extraDbs = extraDb(viewDef.actionToDbAccessKeys(Action.Get))
+        implicit val ec = scala.concurrent.ExecutionContext.global
+        implicit val as: ActorSystem = null
         dbUse {
           validateFields(instance)
-          validate(viewName, qe.toMap(instance))(state.locale)
+          val ctx = AppActionContext(
+            actionName = Action.Save,
+            viewName = viewName,
+            keyValues = Nil,
+            params = params,
+            values = qe.toMap(instance)
+          )
+          customValidations(ctx)(state.locale)
           idOpt.flatMap { id =>
             rest(ViewContext[DtoWithId](viewName, id, params, user, state)).result
           }.orNull
@@ -1066,5 +1075,18 @@ trait AppBase[User] extends WabaseApp[User] with Loggable with QuereaseProvider 
 
   def validateFields(instance: Dto)(implicit state: ApplicationState): Unit = {
     validateFields(classToViewNameMap(instance.getClass), qe.toMap(instance))
+  }
+}
+
+trait WabaseAppCompat[User] extends WabaseApp[User] {
+  this:  AppBase[User]
+    with DbAccess
+    with Audit[User]
+    with Authorization[User]
+    with ValidationEngine
+    with DbConstraintMessage =>
+
+  override protected def customValidations(ctx: AppActionContext)(implicit locale: Locale): Unit = {
+    validate(ctx.viewName, ctx.actionName, ctx.env)
   }
 }
