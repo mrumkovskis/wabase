@@ -9,7 +9,7 @@ import org.tresql._
 import spray.json._
 import com.typesafe.config.Config
 
-import scala.concurrent.{ExecutionContextExecutor, Promise}
+import scala.concurrent.Promise
 import scala.language.existentials
 import scala.language.implicitConversions
 import scala.collection.immutable.TreeMap

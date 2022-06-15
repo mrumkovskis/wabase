@@ -2,7 +2,7 @@ package org.wabase
 
 import java.util.Locale
 import javax.script.ScriptEngineManager
-import org.tresql.{Query, Resources}
+import org.tresql.Query
 import spray.json._
 
 import scala.util.control.NonFatal

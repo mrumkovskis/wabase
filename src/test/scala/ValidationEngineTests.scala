@@ -3,7 +3,6 @@ package org.wabase
 import java.util.Locale
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers
-import org.tresql.Resources
 import org.wabase.AppMetadata.Action
 
 class ValidationEngineTestDto extends Dto {

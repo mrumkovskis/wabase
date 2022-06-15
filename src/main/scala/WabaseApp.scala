@@ -4,13 +4,11 @@ import akka.actor.ActorSystem
 import akka.stream.Materializer
 import akka.stream.scaladsl.Source
 import akka.util.ByteString
-import org.mojoz.querease.NotFoundException
-import org.tresql.{Resources, RowLike}
+import org.tresql.Resources
 import org.wabase.AppMetadata.{Action, AugmentedAppFieldDef, AugmentedAppViewDef}
 import org.wabase.AppMetadata.Action.{LimitKey, OffsetKey, OrderKey}
 
 import java.util.Locale
-import scala.collection.immutable.Map
 import scala.concurrent.{ExecutionContext, Future}
 import scala.language.{existentials, implicitConversions}
 import scala.util.Success
