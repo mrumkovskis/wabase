@@ -25,10 +25,10 @@ class PostgreSqlConstraintMessageSpec extends FlatSpec with Matchers {
     override protected def initQuerease: QE = TestQuerease
   }
 
-  def error(code: String, message: String) = new SQLException(message, code)
-  def childError(table: String, code: String, message: String) = new ChildSaveException(table, error(code, message))
+  def childSaveException(table: String, code: String, message: String) =
+    new ChildSaveException(table, new SQLException(message, code))
   def getMessage(code: String, message: String, locale: String, viewName: String = "view1"): String =
-    getMessageFromException(error(code, message), locale, viewName)
+    getMessageFromException(new SQLException(message, code), locale, viewName)
 
   def getMessageFromException(e: Exception, locale: String, viewName: String = "view1"): String = {
     try{
@@ -58,7 +58,7 @@ class PostgreSqlConstraintMessageSpec extends FlatSpec with Matchers {
 
   it should "handle not-null constraint message in child" in {
     val err = "ERROR: null value in column \"some_field\" violates not-null constraint"
-    val childErr = childError("child_table", "23502", err)
+    val childErr = childSaveException("child_table", "23502", err)
 
     getMessageFromException(childErr, "en", "view_with_childs") should be("Field \"Field name in child\" must not be empty")
     getMessageFromException(childErr, "lv", "view_with_childs") should be("Lauks \"Field name in child\" ir obligāts.")
