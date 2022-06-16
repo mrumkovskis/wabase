@@ -1089,10 +1089,7 @@ trait WabaseAppCompat[User] extends WabaseApp[User] {
   override protected def customValidations(ctx: AppActionContext)(implicit locale: Locale): Unit = {
     validate(ctx.viewName, ctx.actionName, ctx.env)
   }
-  override protected def afterWabaseAction(context: AppActionContext, result: QuereaseResult): Unit = {
+  override protected def afterWabaseAction(context: AppActionContext, result: Try[QuereaseResult]): Unit = {
     audit(context, result)
-  }
-  override protected def afterWabaseAction(context: AppActionContext, error: Throwable): Unit = {
-    audit(context, error)
   }
 }

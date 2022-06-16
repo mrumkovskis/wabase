@@ -15,8 +15,7 @@ import org.wabase.MapUtils._
 /** Audit and all subimplementations use {{{qe.DTO}}} and {{{qe.DWI}}} */
 trait Audit[User] { this: AppBase[User] =>
   def audit[C <: RequestContext[_]](originalContext: C)(action: => C): C
-  def audit(context: AppActionContext, result: QuereaseResult): Unit
-  def audit(context: AppActionContext, err: Throwable): Unit
+  def audit(context: AppActionContext, result: Try[QuereaseResult]): Unit
   def auditSave(id: jLong, viewName: String, instance: Map[String, Any], error: String)(implicit user: User, state: ApplicationState): Unit
   def auditLogin(user: User, loginInfo: qe.DTO): Unit
 }
@@ -24,8 +23,7 @@ trait Audit[User] { this: AppBase[User] =>
 object Audit {
  trait NoAudit[User] extends Audit[User] { this: AppBase[User] =>
    def audit[C <: RequestContext[_]](originalContext: C)(action: => C): C = action
-   def audit(context: AppActionContext, result: QuereaseResult): Unit = {}
-   def audit(context: AppActionContext, err: Throwable): Unit = {}
+   def audit(context: AppActionContext, result: Try[QuereaseResult]): Unit = {}
    def auditSave(id: jLong, viewName: String, instance: Map[String, Any], error: String)(implicit user: User, state: ApplicationState): Unit = {}
    def auditLogin(user: User, loginInfo: qe.DTO): Unit = {}
  }
