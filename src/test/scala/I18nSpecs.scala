@@ -6,6 +6,10 @@ import org.scalatest.matchers.should.Matchers
 
 class I18nSpecs extends FlatSpec with Matchers {
   import org.wabase.TestApp._
+  val en = new java.util.Locale("en")
+
+  translate("""Field "%1$s" is not valid e-mail address""", "epasts")(en) shouldBe """Field "epasts" is not valid e-mail address"""
+
   implicit val locale = new java.util.Locale("lv")
   translate("""Field "%1$s" is not valid e-mail address""", "epasts") should be ("""Lauka "epasts" vērtība neatbilst e-pasta adreses formātam""")
   translate("to") should be ("līdz")

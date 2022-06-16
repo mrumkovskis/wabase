@@ -1,6 +1,6 @@
 package org.wabase
 
-import java.util.{Locale, PropertyResourceBundle, ResourceBundle}
+import java.util.{Collections, Locale, PropertyResourceBundle, ResourceBundle}
 import scala.jdk.CollectionConverters._
 import scala.util.Try
 
@@ -18,6 +18,8 @@ trait I18n {
 
   private lazy val loaderControl =
     new ResourceBundle.Control {
+      override def getFormats(baseName: String): java.util.List[String] =
+        ResourceBundle.Control.FORMAT_PROPERTIES
       override def newBundle(baseName: String,
                              locale: Locale,
                              format: String,
@@ -28,31 +30,41 @@ trait I18n {
         if (ResourceBundle.Control.FORMAT_PROPERTIES.contains(format)) {
           import java.io._
           import java.net._
-          val bundleName: String = toBundleName(baseName, locale)
-          val resourceName: String = toResourceName(bundleName, "properties")
-          val stream = if (reload) {
-            val url: URL = loader.getResource(resourceName)
-            if (url != null) {
-              val connection: URLConnection = url.openConnection()
-              if (connection != null) {
-                // Disable caches to get fresh data for
-                // reloading.
-                connection.setUseCaches(false)
-                connection.getInputStream()
+          def getInputStream(baseName: String) = {
+            val bundleName: String = toBundleName(baseName, locale)
+            val resourceName: String = toResourceName(bundleName, "properties")
+            if (reload) {
+              val url: URL = loader.getResource(resourceName)
+              if (url != null) {
+                val connection: URLConnection = url.openConnection()
+                if (connection != null) {
+                  // Disable caches to get fresh data for
+                  // reloading.
+                  connection.setUseCaches(false)
+                  connection.getInputStream()
+                } else null
               } else null
-            } else null
-          } else {
-            loader.getResourceAsStream(resourceName)
+            } else {
+              loader.getResourceAsStream(resourceName)
+            }
           }
+          @annotation.tailrec
+          def resourceNameChain(baseName: String, chain: List[String] = Nil): List[String] = {
+            val fallbackName = i18nResourceDependencies.getOrElse(baseName, I18nWabaseResourceName)
+            if  (baseName == fallbackName)
+                 baseName :: chain
+            else resourceNameChain(fallbackName, baseName :: chain)
+          }
+          val streams =
+            resourceNameChain(baseName)
+            .map(getInputStream)
+            .filter(_ != null)
+          val stream =
+            if  (streams.isEmpty) null
+            else new java.io.SequenceInputStream(Collections.enumeration(streams.asJava))
           if (stream != null) {
             val br = new BufferedReader(new InputStreamReader(stream, "UTF-8"))
-            val bundle: ResourceBundle =
-              if (baseName == I18nWabaseResourceName) new PropertyResourceBundle(br) else {
-                new PropertyResourceBundle(br) {
-                  val parentBundle = i18nResourceDependencies.getOrElse(baseName, I18nWabaseResourceName)
-                  setParent(I18n.this.bundle(parentBundle)(locale))
-                }
-              }
+            val bundle: ResourceBundle = new PropertyResourceBundle(br)
             br.close()
             bundle
           } else null
