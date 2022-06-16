@@ -107,4 +107,11 @@ class PostgreSqlConstraintMessageSpec extends FlatSpec with Matchers {
     getMessage("23514", errCt, "en") should be("Contraint violation error message")
     getMessage("23514", errCt, "lv") should be("Contraint violation error message")
   }
+
+  it should "pass bad pattern in custom message as-is" in {
+    // test bad pattern from constraint-translation.yaml
+    val errBp = "ERROR:  new row for relation \"ws_user\" violates check constraint \"bad_pattern_test\""
+    getMessage("23514", errBp, "en") should be("Bad formatting pattern test, for example, too many placeholders - %s and %s")
+    getMessage("23514", errBp, "lv") should be("Bad formatting pattern test, for example, too many placeholders - %s and %s")
+  }
 }

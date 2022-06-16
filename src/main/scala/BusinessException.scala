@@ -1,7 +1,7 @@
 package org.wabase
 
 class BusinessException(message: String, cause: Throwable, params: Any*)
-  extends RuntimeException(Option(message).map(_.format(params: _*)).orNull, cause) {
+  extends RuntimeException(Option(message).map(m => util.Try(m.format(params: _*)).getOrElse(m)).orNull, cause) {
   def getParams() = this.params
   def messageTemplate = this.message
   def this(message: String) = this(message, null, Nil: _*)

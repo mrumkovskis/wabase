@@ -18,3 +18,6 @@ uk_persona_personas_kods_ct:
 
 department_check_ct:
   - Contraint violation error message
+
+bad_pattern_test:
+  - Bad formatting pattern test, for example, too many placeholders - %s and %s
