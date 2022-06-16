@@ -4,7 +4,7 @@ import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers
 
 
-class I18nResourceChainTest extends FlatSpec with Matchers {
+class I18nSpecs extends FlatSpec with Matchers {
   import org.wabase.TestApp._
   implicit val locale = new java.util.Locale("lv")
   translate("""Field "%1$s" is not valid e-mail address""", "epasts") should be ("""Lauka "epasts" vērtība neatbilst e-pasta adreses formātam""")
