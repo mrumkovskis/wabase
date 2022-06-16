@@ -571,6 +571,31 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     MapResult(transRes)
   }
 
+  protected def doForeach(op: Action.Foreach,
+                          data: Map[String, Any],
+                          env: Map[String, Any],
+                          context: Option[ViewDef])(implicit res: Resources,
+                                                    ec: ExecutionContext): Future[QuereaseResult] = {
+    doActionOp(op.initOp, data, env, context).map {
+      case TresqlResult(tr) => tr match {
+        case SingleValueResult(sr) => sr match {
+          case s: Seq[Map[String, _]]@unchecked => s
+          case m: Map[String@unchecked, _] => List(m)
+          case x => sys.error(s"Not iterable result for foreach operation: $x")
+        }
+        case r: Result[_] => r.map(_.toMap)
+      }
+      case r: TresqlSingleRowResult => List(r.map(_.toMap))
+      case x => sys.error(s"Not iterable result for foreach operation: $x")
+    }
+    .flatMap { mapIterator =>
+      Future.traverse(mapIterator.toSeq) { itData =>
+        doSteps(op.action.steps, ActionContext("foreach", env, context), Future.successful(itData))
+      }
+      .map(_ => NoResult) // TODO may be find a way to coalesce Seq[QuereaseResult] into single QuereaseResult
+    }
+  }
+
   protected def doActionOp(op: Action.Op,
                            data: Map[String, Any],
                            env: Map[String, Any],
@@ -624,6 +649,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
         commit(res.conn)
         res.extraResources.foreach { case (_, r) => commit(r.conn) }
         Future.successful(NoResult)
+      case foreach: Action.Foreach => doForeach(foreach, data, env, context)
       case Action.JobCall(job) =>
         doJobCall(job, data, env)
       case VariableTransforms(vts) =>

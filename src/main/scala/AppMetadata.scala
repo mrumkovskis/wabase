@@ -484,50 +484,51 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val redirectOpRegex = """redirect\s+(.+)""".r
     val statusOpRegex = """status(?:\s+(\w+))?(?:\s+(.+))?""".r
     val commitOpRegex = """commit""".r
+    val foreachOpRegex = """foreach\s+(.+)""".r
     val jobCallRegex = """(?U)job\s+(:?\w+)""".r
     import ViewDefExtrasUtils._
     val steps = stepData.map { step =>
-      def parseStep(name: Option[String], statement: String): Action.Step = {
-        def parseOp(st: String): Action.Op = {
-          def statusParameterIdx(exp: String) = if (exp == null) -1 else {
-            val p = parser
-            p.traverser[Int](idx => {
-              case Cols(_, cols) =>
-                cols indexWhere {
-                  case Col(Const("?"), null) => true
-                  case _ => false
-                }
-            })(-1)(p.parseExp(exp))
-          }
-          if (viewCallRegex.pattern.matcher(st).matches) {
-            val viewCallRegex(method, view) = st
-            Action.ViewCall(method, view)
-          } else if (invocationRegex.pattern.matcher(st).matches) {
-            val idx = st.lastIndexOf('.')
-            Action.Invocation(st.substring(0, idx), st.substring(idx + 1))
-          } else if (jobCallRegex.pattern.matcher(st).matches()) {
-            val jobCallRegex(jobName) = st
-            Action.JobCall(jobName)
-          } else if (uniqueOpRegex.pattern.matcher(st).matches()) {
-            val uniqueOpRegex(inner) = st
-            Action.UniqueOpt(parseOp(inner))
-          } else if (redirectOpRegex.pattern.matcher(st).matches()) {
-            val redirectOpRegex(tresql) = st
-            Action.Status(Option(303), tresql, statusParameterIdx(tresql))
-          } else if (statusOpRegex.pattern.matcher(st).matches()) {
-            val statusOpRegex(status, bodyTresql) = st
-            val code = Option(status).collect {
-              case "ok" => 200
-              case x => throw new IllegalArgumentException(s"Status must be 'ok' or omitted, instead '$x' encountered.")
-            }
-            require(code.nonEmpty || bodyTresql != null, s"Empty status operation!")
-            Action.Status(code, bodyTresql, statusParameterIdx(bodyTresql))
-          } else if (commitOpRegex.pattern.matcher(st).matches()) {
-            Action.Commit
-          } else {
-            Action.Tresql(st)
-          }
+      def parseOp(st: String): Action.Op = {
+        def statusParameterIdx(exp: String) = if (exp == null) -1 else {
+          val p = parser
+          p.traverser[Int](idx => {
+            case Cols(_, cols) =>
+              cols indexWhere {
+                case Col(Const("?"), null) => true
+                case _ => false
+              }
+          })(-1)(p.parseExp(exp))
         }
+        if (viewCallRegex.pattern.matcher(st).matches) {
+          val viewCallRegex(method, view) = st
+          Action.ViewCall(method, view)
+        } else if (invocationRegex.pattern.matcher(st).matches) {
+          val idx = st.lastIndexOf('.')
+          Action.Invocation(st.substring(0, idx), st.substring(idx + 1))
+        } else if (jobCallRegex.pattern.matcher(st).matches()) {
+          val jobCallRegex(jobName) = st
+          Action.JobCall(jobName)
+        } else if (uniqueOpRegex.pattern.matcher(st).matches()) {
+          val uniqueOpRegex(inner) = st
+          Action.UniqueOpt(parseOp(inner))
+        } else if (redirectOpRegex.pattern.matcher(st).matches()) {
+          val redirectOpRegex(tresql) = st
+          Action.Status(Option(303), tresql, statusParameterIdx(tresql))
+        } else if (statusOpRegex.pattern.matcher(st).matches()) {
+          val statusOpRegex(status, bodyTresql) = st
+          val code = Option(status).collect {
+            case "ok" => 200
+            case x => throw new IllegalArgumentException(s"Status must be 'ok' or omitted, instead '$x' encountered.")
+          }
+          require(code.nonEmpty || bodyTresql != null, s"Empty status operation!")
+          Action.Status(code, bodyTresql, statusParameterIdx(bodyTresql))
+        } else if (commitOpRegex.pattern.matcher(st).matches()) {
+          Action.Commit
+        } else {
+          Action.Tresql(st)
+        }
+      }
+      def parseStringStep(name: Option[String], statement: String): Action.Step = {
         def parseSt(st: String, varTrs: List[VariableTransform]) = {
           def setEnvOrRetStep(createStep: Action.Op => Action.Step, stepRegex: Regex): Action.Step = {
             val stepRegex(opStr) = st
@@ -560,27 +561,44 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
           parseSt(statement, Nil)
         }
       }
-      step match {
-        case s: String =>
-          val namedStepRegex(name, st) = s
-          parseStep(Option(name), st)
-        case jm: java.util.Map[String, Any]@unchecked if jm.size() == 1 =>
-          val m = jm.asScala.toMap
-          val (name, value) = m.head
-          if (validationRegex.pattern.matcher(name).matches()) {
-            val validationRegex(vn, db, cp) = name
-            val validations = getSeq(name, m).map(_.toString)
-            Action.Validations(
-              Option(vn),
-              validations,
-              if (db == null && cp == null) None else Option(DbAccessKey(db, cp))
-            )
-          } else {
-            parseStep(Option(name), value.toString)
-          }
-        case x =>
-          sys.error(s"'$objectName' parsing error, invalid value: $x")
+      def parseStep(anyStep: Any): Action.Step = {
+        anyStep match {
+          case s: String =>
+            val namedStepRegex(name, st) = s
+            parseStringStep(Option(name), st)
+          case jm: java.util.Map[String, Any]@unchecked if jm.size() == 1 =>
+            val m = jm.asScala.toMap
+            val (name, value) = m.head
+            if (validationRegex.pattern.matcher(name).matches()) {
+              val validationRegex(vn, db, cp) = name
+              val validations = getSeq(name, m).map(_.toString)
+              Action.Validations(
+                Option(vn),
+                validations,
+                if (db == null && cp == null) None else Option(DbAccessKey(db, cp))
+              )
+            } else {
+              value match {
+                case jm: java.util.Map[String@unchecked, _] =>
+                  // may be foreach step
+                  parseStep(jm) match {
+                    case e: Action.Evaluation => e.copy(name = Option(name))
+                    case x => sys.error(s"Invalid step '$name' value here: $x")
+                  }
+                case al: java.util.ArrayList[_] if name != null && foreachOpRegex.pattern.matcher(name).matches() =>
+                  // foreach op
+                  val foreachOpRegex(initOpSt) = name
+                  Action.Evaluation(None, Nil,
+                    Action.Foreach(parseOp(initOpSt), parseAction(objectName,
+                      al.asScala.toSeq.asInstanceOf[Seq[Any]]/* cast for scala 2.12.x */)))
+                case x => parseStringStep(Option(name), x.toString)
+              }
+            }
+          case x =>
+            sys.error(s"'$objectName' parsing error, invalid value: $x")
+        }
       }
+      parseStep(step)
     }.toList
     Action(steps)
   }
@@ -642,6 +660,7 @@ object AppMetadata {
     case class Invocation(className: String, function: String) extends Op
     case class Status(code: Option[Int], bodyTresql: String, parameterIndex: Int) extends Op
     case class VariableTransforms(transforms: List[VariableTransform]) extends Op
+    case class Foreach(initOp: Op, action: Action) extends Op
     case class JobCall(name: String) extends Op
     case object Commit extends Op
 
