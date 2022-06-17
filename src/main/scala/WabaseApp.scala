@@ -146,6 +146,8 @@ trait WabaseApp[User] {
       case x                          => throwUnexpectedResultClass(x)
     }
   }
+  protected def throwOldValueNotFound(message: String, locale: Locale): Nothing =
+    throw new org.mojoz.querease.NotFoundException(translate(message)(locale))
 
   def save(context: AppActionContext): ActionHandlerResult = {
     import context._
@@ -157,8 +159,7 @@ trait WabaseApp[User] {
       .getOrElse(qe.QuereaseAction.value(null: Map[String, Any]))
       .flatMap { oldValue =>
         if (oldValue == null && keyAsMap.nonEmpty && (actionName == Action.Save || actionName == Action.Update))
-          throw new BusinessException(
-            translate("Record not found, cannot edit")(state.locale))
+          throwOldValueNotFound("Record not found, cannot edit", state.locale)
         val richContext = context.copy(oldValue = oldValue)
         val saveable = applyReadonlyValues(viewDef, oldValue, values)
         val saveableContext = richContext.copy(values = saveable)
@@ -174,8 +175,7 @@ trait WabaseApp[User] {
     import context._
     getOldValue(context).flatMap { oldValue =>
       if (oldValue == null)
-        throw new BusinessException(
-          translate("Record not found, cannot delete")(state.locale))
+        throwOldValueNotFound("Record not found, cannot delete", state.locale)
       val richContext = context.copy(oldValue = oldValue)
       qe.QuereaseAction(viewName, actionName, values, env)(resourceFactory(richContext), closeResources)
         .map(WabaseResult(richContext, _))
