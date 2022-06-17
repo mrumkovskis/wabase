@@ -102,7 +102,7 @@ object DbConstraintMessage {
   }
 
   def postgreSqlConstraintGenericMessage(violation: ConstraintViolationInfo, details: String)(implicit locale: Locale): String = {
-    translate(violation.genericMessage, details)
+    violation.genericMessage
   }
 
   def getFriendlyConstraintErrorMessage(e: SQLException, viewDef: AppMetadata#ViewDef)(implicit locale: Locale): Nothing =
@@ -127,7 +127,7 @@ object DbConstraintMessage {
         .orNull
     if (name == null) throw e
     logger.info(dbMsg)
-    val customMessage =
+    val (customMessage, details) = {
       if (violation == Nn){
         import AppMetadata._
         def viewLabel = for{
@@ -145,16 +145,18 @@ object DbConstraintMessage {
           if label != null
         } yield label
 
-        viewLabel.orElse(tableLabel).map(s => postgreSqlConstraintGenericMessage(violation, s))
+        viewLabel.orElse(tableLabel).map(s => (postgreSqlConstraintGenericMessage(violation, s), s))
       } else {
         if (violation == FkIns)
-          getConstraintTranslation(name, "insert")
-        else getConstraintTranslation(name)
+          getConstraintTranslation(name, "insert").map((_, name))
+        else getConstraintTranslation(name).map((_, name))
       }
+    } .map { case (msg, details) => (Some(msg), details) }
+      .getOrElse(None, name)
 
     val friendlyMessage =
-      customMessage getOrElse postgreSqlConstraintGenericMessage(violation, name)
-    throw new BusinessException(friendlyMessage, e)
+      translate(customMessage getOrElse postgreSqlConstraintGenericMessage(violation, details), details)
+    throw new BusinessException(friendlyMessage, e, details)
   }
   override def friendlyConstraintErrorMessage[T](viewDef: AppMetadata#ViewDef, f: => T)(implicit locale: Locale): T = {
     def onSqlException(e: java.sql.SQLException, originalException: Throwable, tableName: String): T = {

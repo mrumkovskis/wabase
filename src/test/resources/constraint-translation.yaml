@@ -21,3 +21,6 @@ department_check_ct:
 
 bad_pattern_test:
   - Bad formatting pattern test, for example, too many placeholders - %s and %s
+
+custom_message_translation_test:
+  - Custom message to be translated

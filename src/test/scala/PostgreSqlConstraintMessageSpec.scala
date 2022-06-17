@@ -23,6 +23,7 @@ class PostgreSqlConstraintMessageSpec extends FlatSpec with Matchers {
 
     override type QE = TestQuerease
     override protected def initQuerease: QE = TestQuerease
+    override val I18nResourceName = "test"
   }
 
   def childSaveException(table: String, code: String, message: String) =
@@ -113,5 +114,11 @@ class PostgreSqlConstraintMessageSpec extends FlatSpec with Matchers {
     val errBp = "ERROR:  new row for relation \"ws_user\" violates check constraint \"bad_pattern_test\""
     getMessage("23514", errBp, "en") should be("Bad formatting pattern test, for example, too many placeholders - %s and %s")
     getMessage("23514", errBp, "lv") should be("Bad formatting pattern test, for example, too many placeholders - %s and %s")
+  }
+
+  it should "translate custom message" in {
+    val errBp = "ERROR:  new row for relation \"ws_user\" violates check constraint \"custom_message_translation_test\""
+    getMessage("23514", errBp, "en") should be("Custom message to be translated")
+    getMessage("23514", errBp, "lv") should be("Ziņojums ir pārtulkots (custom_message_translation_test)")
   }
 }
