@@ -494,4 +494,20 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       t2
     }
   }
+
+  it should "evaluate if" in {
+    for {
+      t1 <- doAction("save", "if_test_1", Map("value" -> "yes")).map {
+        _ shouldBe Map("code" -> "if_test_1", "parent" -> null, "value" -> "yes_value")
+      }
+      t2 <- doAction("save", "if_test_1", Map("value" -> "no")).map {
+        _ shouldBe Map("code" -> "if_test_1", "parent" -> null, "value" -> "no_value")
+      }
+      t2 <- doAction("save", "if_test_1", Map("value" -> "x")).map {
+        _ shouldBe Map("code" -> "if_test_1", "parent" -> null, "value" -> "no_value")
+      }
+    } yield {
+      t2
+    }
+  }
 }

@@ -43,6 +43,11 @@ columns:
 - item                ! 256
 - amount              ! decimal 10 2
 
+table: if_foreach
+columns:
+- code                ! 20
+- parent                20
+- value                 64
 
 name: person
 api: save, get
@@ -408,3 +413,22 @@ save:
 - n2 = 1.5
 - n3 = org.wabase.QuereaseActionTestManager.addNumbers
 - return (nr = :n3)
+
+
+name: if_test_1
+table: if_foreach
+api: save
+fields:
+- code
+- parent
+- value
+save:
+- code = 'if_test_1'
+- first:
+    if {:value = 'yes'} :
+      - value = :value || '_value'
+      - +if_foreach{code = :code, value = :value}
+- if {:value = 'no'} :
+    - value = :value || '_value'
+    - =if_foreach[code = :code]{value = :value}
+- unique_opt if_foreach[code = :code]{code, value}

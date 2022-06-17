@@ -571,28 +571,49 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     MapResult(transRes)
   }
 
+  protected def doIf(op: Action.If,
+                     data: Map[String, Any],
+                     env: Map[String, Any],
+                     context: Option[ViewDef])(implicit res: Resources,
+                                               ec: ExecutionContext): Future[QuereaseResult] = {
+    doActionOp(op.cond, data, env, context).map {
+      case TresqlResult(tr) => tr.unique[Boolean]
+      case r: TresqlSingleRowResult => r.map(_.boolean(0))
+      case x => sys.error(s"Conditional operator must be whether TresqlResult or TresqlSingleRowResult. " +
+        s"Instead found: $x")
+    }.flatMap { cond =>
+      if (cond) doSteps(op.action.steps, ActionContext("if", env, context), Future.successful(data))
+      else Future.successful(NoResult)
+    }
+  }
+
   protected def doForeach(op: Action.Foreach,
                           data: Map[String, Any],
                           env: Map[String, Any],
                           context: Option[ViewDef])(implicit res: Resources,
                                                     ec: ExecutionContext): Future[QuereaseResult] = {
+    def addParentData(map: Map[String, Any]) = {
+      var key = "__parent"
+      while (map.contains(key)) key += "_" + key
+      map + (key -> data)
+    }
     doActionOp(op.initOp, data, env, context).map {
       case TresqlResult(tr) => tr match {
         case SingleValueResult(sr) => sr match {
-          case s: Seq[Map[String, _]]@unchecked => s
-          case m: Map[String@unchecked, _] => List(m)
+          case s: Seq[Map[String, _]]@unchecked => s map addParentData
+          case m: Map[String@unchecked, _] => List(m) map addParentData
           case x => sys.error(s"Not iterable result for foreach operation: $x")
         }
-        case r: Result[_] => r.map(_.toMap)
+        case r: Result[_] => r.map(_.toMap) map addParentData
       }
-      case r: TresqlSingleRowResult => List(r.map(_.toMap))
+      case r: TresqlSingleRowResult => List(r.map(_.toMap)) map addParentData
       case x => sys.error(s"Not iterable result for foreach operation: $x")
     }
     .flatMap { mapIterator =>
       Future.traverse(mapIterator.toSeq) { itData =>
         doSteps(op.action.steps, ActionContext("foreach", env, context), Future.successful(itData))
       }
-      .map(_ => NoResult) // TODO may be find a way to coalesce Seq[QuereaseResult] into single QuereaseResult
+      .map(_ => NoResult)
     }
   }
 
@@ -649,6 +670,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
         commit(res.conn)
         res.extraResources.foreach { case (_, r) => commit(r.conn) }
         Future.successful(NoResult)
+      case cond: Action.If => doIf(cond, data, env, context)
       case foreach: Action.Foreach => doForeach(foreach, data, env, context)
       case Action.JobCall(job) =>
         doJobCall(job, data, env)

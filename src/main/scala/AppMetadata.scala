@@ -484,6 +484,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val redirectOpRegex = """redirect\s+(.+)""".r
     val statusOpRegex = """status(?:\s+(\w+))?(?:\s+(.+))?""".r
     val commitOpRegex = """commit""".r
+    val ifOpRegex = """if\s+(.+)""".r
     val foreachOpRegex = """foreach\s+(.+)""".r
     val jobCallRegex = """(?U)job\s+(:?\w+)""".r
     import ViewDefExtrasUtils._
@@ -580,17 +581,23 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
             } else {
               value match {
                 case jm: java.util.Map[String@unchecked, _] =>
-                  // may be foreach step
+                  // may be 'if' or 'foreach' step
                   parseStep(jm) match {
                     case e: Action.Evaluation => e.copy(name = Option(name))
                     case x => sys.error(s"Invalid step '$name' value here: $x")
                   }
-                case al: java.util.ArrayList[_] if name != null && foreachOpRegex.pattern.matcher(name).matches() =>
-                  // foreach op
-                  val foreachOpRegex(initOpSt) = name
-                  Action.Evaluation(None, Nil,
-                    Action.Foreach(parseOp(initOpSt), parseAction(objectName,
-                      al.asScala.toSeq.asInstanceOf[Seq[Any]]/* cast for scala 2.12.x */)))
+                case al: java.util.ArrayList[_] if name != null =>
+                  // 'if' or 'foreach' step
+                  val op =
+                    if (ifOpRegex.pattern.matcher(name).matches()) {
+                      val ifOpRegex(condOpSt) = name
+                      Action.If(parseOp(condOpSt), parseAction(objectName, al.asScala.toList))
+                    } else if (foreachOpRegex.pattern.matcher(name).matches()) {
+                      val foreachOpRegex(initOpSt) = name
+                      Action.Foreach(parseOp(initOpSt), parseAction(objectName, al.asScala.toList))
+                    } else sys.error(s"'$objectName' parsing error, invalid value: '$name'. " +
+                      s"Only 'if' of 'foreach' operations allowed.")
+                  Action.Evaluation(None, Nil, op)
                 case x => parseStringStep(Option(name), x.toString)
               }
             }
@@ -661,6 +668,7 @@ object AppMetadata {
     case class Status(code: Option[Int], bodyTresql: String, parameterIndex: Int) extends Op
     case class VariableTransforms(transforms: List[VariableTransform]) extends Op
     case class Foreach(initOp: Op, action: Action) extends Op
+    case class If(cond: Op, action: Action) extends Op
     case class JobCall(name: String) extends Op
     case object Commit extends Op
 
