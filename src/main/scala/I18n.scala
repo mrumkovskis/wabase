@@ -31,22 +31,28 @@ trait I18n {
           import java.io._
           import java.net._
           def getInputStream(baseName: String) = {
-            val bundleName: String = toBundleName(baseName, locale)
-            val resourceName: String = toResourceName(bundleName, "properties")
-            if (reload) {
-              val url: URL = loader.getResource(resourceName)
-              if (url != null) {
-                val connection: URLConnection = url.openConnection()
-                if (connection != null) {
-                  // Disable caches to get fresh data for
-                  // reloading.
-                  connection.setUseCaches(false)
-                  connection.getInputStream()
+            def getStream(locale: Locale) = {
+              val bundleName: String = toBundleName(baseName, locale)
+              val resourceName: String = toResourceName(bundleName, "properties")
+              if (reload) {
+                val url: URL = loader.getResource(resourceName)
+                if (url != null) {
+                  val connection: URLConnection = url.openConnection()
+                  if (connection != null) {
+                    // Disable caches to get fresh data for
+                    // reloading.
+                    connection.setUseCaches(false)
+                    connection.getInputStream()
+                  } else null
                 } else null
-              } else null
-            } else {
-              loader.getResourceAsStream(resourceName)
+              } else {
+                loader.getResourceAsStream(resourceName)
+              }
             }
+            val stream = getStream(locale)
+            if  (stream == null && baseName == I18nWabaseResourceName)
+                 getStream(Locale.ENGLISH) // default to en for wabase built-in messages
+            else stream
           }
           @annotation.tailrec
           def resourceNameChain(baseName: String, chain: List[String] = Nil): List[String] = {
