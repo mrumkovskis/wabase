@@ -143,13 +143,14 @@ class ResultCompletionSink(cleanupFun: Option[Throwable] => Unit = null)(implici
       private var byteString: ByteString = _
       private def setFlowError(e: Throwable) = this.flowError = e
 
+      private def cleanup(): Unit = Option(cleanupFun).foreach(_(Option(flowError)))
+
       override def preStart() = {
         //generate initial demand since this is sink
         pull(in)
       }
-      override def postStop() = {
-        Option(cleanupFun).foreach(_(Option(flowError)))
-      }
+      override def postStop() = cleanup()
+
       setHandler(in, new InHandler {
         override def onPush() = {
           val bs = grab(in)
@@ -161,8 +162,11 @@ class ResultCompletionSink(cleanupFun: Option[Throwable] => Unit = null)(implici
             setHandler(in, streamingHandler(byteString ++ bs))
           }
         }
-        override def onUpstreamFinish() =
+        override def onUpstreamFinish() = {
+          // call cleanup fun also here to ensure that immediate next operations can have cleaned up state.
+          cleanup()
           result.success(CompleteResult(if (byteString == null) ByteString.empty else byteString))
+        }
         override def onUpstreamFailure(ex: Throwable) = {
           flowError = ex
           result.failure(ex)
@@ -200,7 +204,11 @@ class ResultCompletionSink(cleanupFun: Option[Throwable] => Unit = null)(implici
         override def onPush() = {
           pushCallback.invoke(grab(in))
         }
-        override def onUpstreamFinish() = sourceCompleted.success(())
+        override def onUpstreamFinish() = {
+          // call cleanup fun also here to ensure that immediate next operations can have cleaned up state.
+          cleanup()
+          sourceCompleted.success(())
+        }
         override def onUpstreamFailure(ex: Throwable) = {
           flowError = ex
           sourceCompleted.failure(ex)

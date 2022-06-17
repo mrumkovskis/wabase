@@ -298,13 +298,13 @@ class PostgreSqlTresqlResources(qe: AppQuerease, db: String = null) extends Tres
 
 object DbAccess extends Loggable {
   def commitAndCloseConnection(dbConn: Connection): Unit = {
-    try dbConn.commit() catch {
+    try if (!dbConn.isClosed) dbConn.commit() catch {
       case NonFatal(ex) => logger.warn(s"Failed to commit db connection $dbConn", ex)
     }
     closeConnection(dbConn)
   }
   def rollbackAndCloseConnection(dbConn: Connection): Unit = {
-    try dbConn.rollback catch {
+    try if (!dbConn.isClosed) dbConn.rollback catch {
       case NonFatal(ex) => logger.warn(s"Failed to rollback db transaction $dbConn", ex)
     }
     closeConnection(dbConn)
