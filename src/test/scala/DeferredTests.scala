@@ -312,7 +312,7 @@ class DeferredTests extends AnyFlatSpec with Matchers with TestQuereaseInitializ
     }
 
     if (exeCount != 6) {
-      println(s"Executed requests: $executedRequests\nResults: $results")
+      logger.debug(s"Executed requests: $executedRequests\nResults: $results")
     }
     exeCount shouldEqual 6
     okCount shouldEqual 4

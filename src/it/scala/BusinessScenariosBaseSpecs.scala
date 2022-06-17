@@ -169,6 +169,46 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
     RequestInfo(parsedHeaders, requestBytes, requestMap, requestString, requestFormData)
   }
 
+  def logScenarioRequestInfo(
+    scenario: File, testCase: File, context: Map[String, String], map: Map[String, Any],
+    path: String, method: String, params: Map[String, Any], requestInfo: RequestInfo,
+    mergeResponse: Boolean, expectedResponse: Any, error: String,
+    tresqlRow: String, tresqlList: String, tresqlTransaction: String,
+  ): Unit = {
+    import requestInfo._
+    logger.debug(Seq(
+      "=========================",
+      "scenario:           " + scenario.getName,
+      "testCase:           " + testCase,
+      "rawTestCaseData:    " + map,
+      "path:               " + path,
+      "method:             " + method,
+      "params:             " + params,
+      "headers:            " + headers,
+      "requestMap:         " + requestMap,
+      "requestString:      " + requestString,
+      "mergeResponse:      " + mergeResponse,
+      "expectedResponse:   " + expectedResponse,
+      "error:              " + error,
+      "context:            " + context,
+      "tresql_row:         " + tresqlRow,
+      "tresql_list:        " + tresqlList,
+      "tresql_transaction: " + tresqlTransaction,
+      "=========================",
+    ).mkString("\n", "\n", ""))
+  }
+
+  def logScenarioResponseInfo(debugResponse: Boolean, response: Any): Unit = {
+    logger.debug(Seq(
+      "=========================",
+      if (debugResponse)
+        "response:           " + response
+      else
+        "[some response]",
+      "=========================",
+    ).mkString("\n", "\n", ""))
+  }
+
   def checkTestCase(scenario: File, testCase: File, context: Map[String, String], map: Map[String, Any]) = {
     val path = map.s("path")
     val method = map.s("method", "GET")
@@ -188,24 +228,12 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
     val tresqlRow = map.s("tresql_row", null)
     val tresqlList = map.s("tresql_list", null)
     val tresqlTransaction = map.s("tresql_transaction", null)
-    println("=========================")
-    println("scenario: "+scenario.getName)
-    println("testCase: "+testCase)
-    println("rawTestCaseData: "+map)
-    println("path: "+path)
-    println("method: "+method)
-    println("params: "+params)
-    println("headers: "+headers)
-    println("requestMap: "+requestMap)
-    println("requestString: "+requestString)
-    println("mergeResponse: "+mergeResponse)
-    println("expectedResponse: "+expectedResponse)
-    println("error: "+error)
-    println("context: "+context)
-    println("tresql_row: "+tresqlRow)
-    println("tresql_list: "+tresqlList)
-    println("tresql_transaction: "+tresqlTransaction)
-    println("=========================")
+    logScenarioRequestInfo(
+      scenario, testCase, context, map,
+      path, method, params, requestInfo,
+      mergeResponse, expectedResponse, error,
+      tresqlRow, tresqlList, tresqlTransaction,
+    )
 
     def doRequest = (method, requestMap, requestString, requestBytes, requestFormData) match {
       case ("GET",   null, null,   null, null) => httpGetAwait [String](path, params, headers)
@@ -248,12 +276,8 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
         message
       }
 
-    println("=========================")
-    if (debugResponse)
-      println("response: "+response)
-    else
-      println("[some response]")
-    println("=========================")
+    logScenarioResponseInfo(debugResponse, response)
+
     if(expectedResponse != null) assertResponse(response, expectedResponse, "[ROOT]")
     else Map.empty[String, String]
   }
