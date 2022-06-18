@@ -43,10 +43,10 @@ columns:
 - item                ! 256
 - amount              ! decimal 10 2
 
-table: if_foreach
+table: if_and_foreach_test
 columns:
-- code                ! 20
-- parent                20
+- code                ! 40
+- parent                40
 - value                 64
 
 name: person
@@ -416,7 +416,7 @@ save:
 
 
 name: if_test_1
-table: if_foreach
+table: if_and_foreach_test
 api: save
 fields:
 - code
@@ -424,11 +424,28 @@ fields:
 - value
 save:
 - code = 'if_test_1'
-- first:
+- first:                            # optionally 'if' operator result can be assigned to variable
     if {:value = 'yes'} :
       - value = :value || '_value'
-      - +if_foreach{code = :code, value = :value}
+      - +if_and_foreach_test{code = :code, value = :value}
 - if {:value = 'no'} :
     - value = :value || '_value'
-    - =if_foreach[code = :code]{value = :value}
-- unique_opt if_foreach[code = :code]{code, value}
+    - =if_and_foreach_test[code = :code]{value = :value}
+- unique_opt if_and_foreach_test[code = :code]{code, value}
+
+
+name: foreach_test_1
+table: if_and_foreach_test ift
+api: get, save
+key: code
+fields:
+- code
+- parent
+- value
+- children[!] * [:1(code) = parent]foreach_test_1
+save:
+- insert this
+- foreach :children :
+    - parent = :'..'.code
+    - insert this
+- get this

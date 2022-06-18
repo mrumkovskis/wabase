@@ -444,7 +444,6 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       else                view
     )
     val viewName = v.name
-    implicit val mf = ManifestFactory.classType(viewNameToClassMap(v.name)).asInstanceOf[Manifest[DTO]]
     def keyValuesAndColNames(props: Map[String, Any]) = tryOp({
       val keyFields = viewNameToKeyFields(viewName)
       val keyColNames = keyFields.map(_.name)
@@ -490,9 +489,10 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
             keyValuesAndColNames(data) // check mappings for key exist
             LongResult(delete(v, data, null, env))
           case Create =>
+            implicit val mf = ManifestFactory.classType(viewNameToClassMap(v.name)).asInstanceOf[Manifest[DTO]]
             PojoResult(create(callData)(mf, res))
           case Count =>
-            LongResult(countAll(callData))
+            LongResult(countAll_(v, callData))
           case x =>
             sys.error(s"Unknown view action $x")
         }
@@ -593,8 +593,8 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
                           context: Option[ViewDef])(implicit res: Resources,
                                                     ec: ExecutionContext): Future[QuereaseResult] = {
     def addParentData(map: Map[String, Any]) = {
-      var key = "__parent"
-      while (map.contains(key)) key += "_" + key
+      var key = ".."
+//      while (map.contains(key)) key += "_" + key // hopefully no .. key is in data map
       map + (key -> data)
     }
     doActionOp(op.initOp, data, env, context).map {

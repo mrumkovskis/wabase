@@ -510,4 +510,26 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       t2
     }
   }
+
+  it should "evaluate foreach" in {
+    for {
+      t1 <- doAction("save", "foreach_test_1",
+        Map("code" -> "foreach_test_1", "value" -> "top",
+          "children" -> List(
+            Map("code" -> "foreach_test_1.ch_1", "value" -> "child1"),
+            Map("code" -> "foreach_test_1.ch_2", "value" -> "child2"),
+          )
+        )
+      ).map {
+        _ shouldBe Map("code" -> "foreach_test_1", "parent" -> null, "value" -> "top", "children" ->
+          List(
+            Map("code" -> "foreach_test_1.ch_1", "parent" -> "foreach_test_1", "value" -> "child1", "children" -> List()),
+            Map("code" -> "foreach_test_1.ch_2", "parent" -> "foreach_test_1", "value" -> "child2", "children" -> List())
+          )
+        )
+      }
+    } yield {
+      t1
+    }
+  }
 }
