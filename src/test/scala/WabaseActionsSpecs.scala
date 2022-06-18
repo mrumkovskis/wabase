@@ -506,8 +506,14 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       t2 <- doAction("save", "if_test_1", Map("value" -> "x")).map {
         _ shouldBe Map("code" -> "if_test_1", "parent" -> null, "value" -> "no_value")
       }
+      t3 <- doAction("get", "if_test_2", Map("value" -> true)).map {
+        _ shouldBe StatusResult(200, "yes", List(), ListMap())
+      }
+      t4 <- doAction("get", "if_test_2", Map("value" -> false)).map {
+        _ shouldBe StatusResult(200, "not defined", List(), ListMap())
+      }
     } yield {
-      t2
+      t4
     }
   }
 
@@ -528,8 +534,31 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
           )
         )
       }
+      t2 <- doAction("save", "foreach_test_2",
+        Map("code" -> "foreach_test_2", "value" -> "old",
+          "children" -> List(
+            Map("code" -> "foreach_test_2.ch_1", "value" -> "new child"),
+          )
+        )
+      ).map {
+        _ shouldBe Map("code" -> "foreach_test_2", "parent" -> null, "value" -> "old", "children" -> List())
+      }
+      t3 <- doAction("save", "foreach_test_2",
+        Map("code" -> "foreach_test_2.1", "value" -> "new",
+          "children" -> List(
+            Map("code" -> "foreach_test_2.1.ch_1", "value" -> "old child"),
+            Map("code" -> "foreach_test_2.1.ch_2", "value" -> "new child"),
+          )
+        )
+      ).map {
+        _ shouldBe Map("code" -> "foreach_test_2.1", "parent" -> null, "value" -> "new", "children" ->
+          List(
+            Map("code" -> "foreach_test_2.1.ch_2", "parent" -> "foreach_test_2.1", "value" -> "new child", "children" -> List())
+          )
+        )
+      }
     } yield {
-      t1
+      t3
     }
   }
 }

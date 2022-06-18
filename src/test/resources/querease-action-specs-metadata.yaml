@@ -424,14 +424,25 @@ fields:
 - value
 save:
 - code = 'if_test_1'
-- first:                            # optionally 'if' operator result can be assigned to variable
-    if {:value = 'yes'} :
-      - value = :value || '_value'
-      - +if_and_foreach_test{code = :code, value = :value}
+- if {:value = 'yes'} :
+    - value = :value || '_value'
+    - +if_and_foreach_test{code = :code, value = :value}
 - if {:value = 'no'} :
     - value = :value || '_value'
     - =if_and_foreach_test[code = :code]{value = :value}
 - unique_opt if_and_foreach_test[code = :code]{code, value}
+
+
+name: if_test_2
+table:
+api: get
+fields:
+- value
+get:
+- res:
+    if :value :
+      - null{'yes'} # somehow cannot use simply {'yes'} because yaml parser parses it as a Map - {yes=null} not simple value ?
+- status ok { if_defined_or_else(:res, :res, 'not defined') }
 
 
 name: foreach_test_1
@@ -448,4 +459,17 @@ save:
 - foreach :children :
     - parent = :'..'.code
     - insert this
+- get this
+
+
+name: foreach_test_2
+extends: foreach_test_1
+api: get, save
+save:
+- insert this
+- if { :value = 'new' } :
+    - foreach :children :
+       - if { :value = 'new child' } :
+           - parent = :'..'.code
+           - insert this
 - get this
