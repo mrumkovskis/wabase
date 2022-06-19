@@ -292,11 +292,16 @@ object BorerDatetimeDecoders {
       case _                                    => unexpectedDataItem(expected = "Date")
     }
   }
+  private val hh_mm_regex = """^\d\d?:\d\d?$""".r
+  def toSqlTime(timeString: String) =
+    if  (hh_mm_regex.pattern.matcher(timeString).matches)
+         sql.Time.valueOf(s"$timeString:00")
+    else sql.Time.valueOf(timeString)
   implicit val javaSqlTimeDecoder: Decoder[sql.Time] = Decoder { reader =>
     import reader._
     dataItem() match {
       case DI.Chars |
-           DI.String => sql.Time.valueOf(readString())
+           DI.String => toSqlTime(readString())
       case _ if tryReadTag(Tag.DateTimeString)  =>
         new sql.Time(Format.jsIsoDateTime.parse(readString()).getTime)
       case _ if tryReadTag(BorerDatetimeEncoders.TimeTag)

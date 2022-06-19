@@ -5,6 +5,7 @@ import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers
 import spray.json._
 
+import java.sql
 import scala.collection.immutable.TreeMap
 
 
@@ -39,6 +40,18 @@ class JsonDecoderSpecs extends FlatSpec with Matchers {
     }""".replaceAll("\n    ", "\n")
     obj.toMap.toJson.prettyPrint shouldBe jsonized
     decodeToMap(ByteString("{}"), viewName).toJson.prettyPrint shouldBe jsonized
+  }
+
+  it should "decode time even if seconds are missing" in {
+    val obj = new decoder_test
+    val viewName = classToViewName(obj.getClass)
+    val incoming = """{
+      "time": "12:15",
+      "l_time": "2:0"
+    }""".replaceAll("\n    ", "\n")
+    val decoded = decodeToMap(ByteString(incoming), viewName)
+    decoded("time") shouldBe sql.Time.valueOf("12:15:00")
+    decoded("l_time") shouldBe sql.Time.valueOf("02:00:00").toLocalTime
   }
 
   it should "decode json to compatible map" in {
