@@ -508,8 +508,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
             keyValuesAndColNames(data) // check mappings for key exist
             LongResult(delete(v, data, null, env))
           case Create =>
-            implicit val mf = ManifestFactory.classType(viewNameToClassMap(v.name)).asInstanceOf[Manifest[DTO]]
-            PojoResult(create(callData)(mf, res))
+            TresqlSingleRowResult(create(v, callData)(res))
           case Count =>
             LongResult(countAll_(v, callData))
           case x =>
