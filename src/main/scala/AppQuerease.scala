@@ -233,7 +233,15 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     def view: ViewDef
   }
 
-  case class ActionContext(name: String, env: Map[String, Any], view: Option[ViewDef])
+  case class ActionContext(
+    viewName: String,
+    actionName: String,
+    env: Map[String, Any],
+    view: Option[ViewDef],
+    stepName: String = null,
+  ) {
+    val name = s"$viewName.$actionName" + Option(stepName).map(s => s".$s").getOrElse("")
+  }
   def doAction(view: String,
                actionName: String,
                data: Map[String, Any],
@@ -241,10 +249,15 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       implicit resources: Resources, ec: ExecutionContext): Future[QuereaseResult] = {
     val vd = viewDef(view)
 
-    val ctx = ActionContext(s"$view.$actionName", env, Some(vd))
+    val ctx = ActionContext(view, actionName, env, Some(vd))
     logger.debug(s"Doing action '${ctx.name}'.\n Env: $env")
     val steps =
       vd.actions.get(actionName)
+        .orElse(actionName match {
+          case Action.Insert | Action.Update | Action.Upsert =>
+            vd.actions.get(Action.Save)
+          case _ => None
+        })
         .map(_.steps)
         .getOrElse(List(Action.Return(None, Nil, Action.ViewCall(actionName, view))))
     doSteps(steps, ctx, Future.successful(data))
@@ -312,11 +325,11 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
         logger.debug(s"Doing action '${context.name}' step '$step'.\nData: $stepData")
         step match {
           case Evaluation(_, vts, op) =>
-            doActionOp(op, doVarsTransforms(vts, stepData, stepData).result, context.env, context.view)
+            doActionOp(op, doVarsTransforms(vts, stepData, stepData).result, context.env, context)
           case SetEnv(_, vts, op) =>
-            doActionOp(op, doVarsTransforms(vts, stepData, stepData).result, context.env, context.view)
+            doActionOp(op, doVarsTransforms(vts, stepData, stepData).result, context.env, context)
           case Return(_, vts, op) =>
-            doActionOp(op, doVarsTransforms(vts, stepData, stepData).result, context.env, context.view)
+            doActionOp(op, doVarsTransforms(vts, stepData, stepData).result, context.env, context)
           case Validations(_, validations, db) =>
             context.view.map { vd =>
               Future(doValidationStep(validations, db, stepData ++ context.env, vd))
@@ -368,9 +381,13 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     }
   }
 
-  protected def doTresql(tresql: String,
-                         bindVars: Map[String, Any],
-                         context: Option[ViewDef])(implicit resources: Resources): TresqlResult = {
+  protected def doTresql(
+    tresql: String,
+    bindVars: Map[String, Any],
+    context: ActionContext,
+  )(implicit
+    resources: Resources,
+  ): TresqlResult = {
     def maybeExpandWithBindVarsCursors(tresql: String, env: Map[String, Any]): String = {
       import CoreTypes._
       if (tresql.indexOf(Action.BindVarCursorsFunctionName) == -1) tresql
@@ -400,7 +417,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
               }
               val (vd, bv) =
                 if (fn == Action.BindVarCursorsFunctionName) {
-                  context.getOrElse(sys.error(s"view context missing for tresql: $tresql")) ->
+                  context.view.getOrElse(sys.error(s"view context missing for tresql: $tresql")) ->
                     calcBindVars(varPars)
                 } else {
                   varPars.headOption
@@ -428,19 +445,21 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       resources.withParams(bindVars)))
   }
 
-  private[wabase] val onSaveDoActionNameKey = s"on save do"
-
-  protected def doViewCall(method: String,
-                           view: String,
-                           data: Map[String, Any],
-                           env: Map[String, Any],
-                           context: Option[ViewDef])(implicit res: Resources,
-                                                     ec: ExecutionContext): Future[QuereaseResult] = {
+  protected def doViewCall(
+    method: String,
+    view: String,
+    data: Map[String, Any],
+    env: Map[String, Any],
+    context: ActionContext,
+  )(implicit
+    res: Resources,
+    ec: ExecutionContext,
+  ): Future[QuereaseResult] = {
     import Action._
     import CoreTypes._
     val callData = data ++ env
     val v = viewDef(
-      if (view == "this") context.map(_.name) getOrElse view
+      if (view == "this") context.view.map(_.name) getOrElse view
       else                view
     )
     val viewName = v.name
@@ -462,7 +481,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case x => x.toString.toInt
     }, callData)
     def string(name: String) = callData.get(name) map String.valueOf
-    if (context.exists(_.name == viewName)) {
+    if (context.view.exists(_.name == viewName)) {
       Future.successful {
         method match {
           case Get =>
@@ -472,7 +491,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
             TresqlResult(rowsResult(v, callData, int(OffsetKey).getOrElse(0), int(LimitKey).getOrElse(0),
               string(OrderKey).orNull, null))
           case Save =>
-            val saveMethod = callData.getOrElse(onSaveDoActionNameKey, null) match {
+            val saveMethod = context.actionName match {
               case Insert => SaveMethod.Insert
               case Update => SaveMethod.Update
               case Upsert => SaveMethod.Upsert
@@ -551,7 +570,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     val job = null: Job
     // TODO get job from metadata
     //getJob(if (jobName.startsWith(":")) stringValue(jobName, data, env) else jobName)
-    val ctx = ActionContext(job.name, env, None)
+    val ctx = ActionContext(null, job.name, env, None)
     job.condition
       .collect { case cond if Query(cond, data ++ env).unique[Boolean] =>
         doSteps(job.action.steps, ctx, Future.successful(data))
@@ -571,27 +590,35 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     MapResult(transRes)
   }
 
-  protected def doIf(op: Action.If,
-                     data: Map[String, Any],
-                     env: Map[String, Any],
-                     context: Option[ViewDef])(implicit res: Resources,
-                                               ec: ExecutionContext): Future[QuereaseResult] = {
+  protected def doIf(
+    op: Action.If,
+    data: Map[String, Any],
+    env: Map[String, Any],
+    context: ActionContext,
+  )(implicit
+    res: Resources,
+    ec: ExecutionContext,
+  ): Future[QuereaseResult] = {
     doActionOp(op.cond, data, env, context).map {
       case TresqlResult(tr) => tr.unique[Boolean]
       case r: TresqlSingleRowResult => r.map(_.boolean(0))
       case x => sys.error(s"Conditional operator must be whether TresqlResult or TresqlSingleRowResult. " +
         s"Instead found: $x")
     }.flatMap { cond =>
-      if (cond) doSteps(op.action.steps, ActionContext("if", env, context), Future.successful(data))
+      if (cond) doSteps(op.action.steps, context.copy(stepName = "if"), Future.successful(data))
       else Future.successful(NoResult)
     }
   }
 
-  protected def doForeach(op: Action.Foreach,
-                          data: Map[String, Any],
-                          env: Map[String, Any],
-                          context: Option[ViewDef])(implicit res: Resources,
-                                                    ec: ExecutionContext): Future[QuereaseResult] = {
+  protected def doForeach(
+    op: Action.Foreach,
+    data: Map[String, Any],
+    env: Map[String, Any],
+    context: ActionContext,
+  )(implicit
+    res: Resources,
+    ec: ExecutionContext,
+  ): Future[QuereaseResult] = {
     def addParentData(map: Map[String, Any]) = {
       var key = ".."
 //      while (map.contains(key)) key += "_" + key // hopefully no .. key is in data map
@@ -611,17 +638,21 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     }
     .flatMap { mapIterator =>
       Future.traverse(mapIterator.toSeq) { itData =>
-        doSteps(op.action.steps, ActionContext("foreach", env, context), Future.successful(itData))
+        doSteps(op.action.steps, context.copy(stepName = "foreach"), Future.successful(itData))
       }
       .map(_ => NoResult)
     }
   }
 
-  protected def doActionOp(op: Action.Op,
-                           data: Map[String, Any],
-                           env: Map[String, Any],
-                           context: Option[ViewDef])(implicit res: Resources,
-                                                     ec: ExecutionContext): Future[QuereaseResult] = {
+  protected def doActionOp(
+    op: Action.Op,
+    data: Map[String, Any],
+    env: Map[String, Any],
+    context: ActionContext,
+  )(implicit
+    res: Resources,
+    ec: ExecutionContext,
+  ): Future[QuereaseResult] = {
     op match {
       case Action.Tresql(tresql) =>
         Future.successful(doTresql(tresql, data ++ env, context))

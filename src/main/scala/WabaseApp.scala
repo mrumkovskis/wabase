@@ -165,7 +165,7 @@ trait WabaseApp[User] {
         val saveableContext = richContext.copy(values = saveable)
         validateFields(viewName, saveable)
         customValidations(saveableContext)(state.locale)
-        qe.QuereaseAction(viewName, Action.Save, saveable, env)(resourceFactory(context), closeResources)
+        qe.QuereaseAction(viewName, context.actionName, saveable, env)(resourceFactory(context), closeResources)
           .map(WabaseResult(saveableContext, _))
           .recover { case ex => friendlyConstraintErrorMessage(viewDef, throw ex)(state.locale) }
       }
@@ -240,13 +240,7 @@ trait WabaseApp[User] {
       if  (context.actionName == Action.Update)
            Map(qe.oldKeyParamName -> keyAsMap)
       else keyAsMap
-    val onSaveParams = context.actionName match {
-      case Action.Save | Action.Insert | Action.Update | Action.Upsert =>
-        Map(qe.onSaveDoActionNameKey -> context.actionName)
-      case _  =>
-        Map.empty
-    }
-    context.copy(values = values ++ key_params ++ onSaveParams)
+    context.copy(values = values ++ key_params)
   }
 
   protected def afterWabaseAction(context: AppActionContext, result: Try[QuereaseResult]): Unit = {}
