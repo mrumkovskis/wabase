@@ -228,7 +228,13 @@ trait WabaseApp[User] {
         throw new BusinessException(
           s"Unexpected key length for $actionName of $viewName - expecting ${keyFields.length}, got ${keyValues.length}")
       else
-        keyFields.zip(keyValues).map { case (f, v) => f.fieldName -> qe.convertToType(f.type_, v) }.toMap
+        keyFields.zip(keyValues).map { case (f, v) =>
+          try f.fieldName -> qe.convertToType(f.type_, v)
+          catch {
+            case util.control.NonFatal(ex) => throw new BusinessException(
+              s"Failed to convert value for key field ${f.name} to type ${f.type_.name}", ex)
+          }
+        }.toMap
     } else Map.empty
   }
 

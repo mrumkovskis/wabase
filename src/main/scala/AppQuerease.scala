@@ -469,7 +469,13 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       val keyFieldNames = viewNameToKeyFieldNames(viewName)
       val keyValues = tryOp(
         keyFieldNames.map(n => props.getOrElse(n, sys.error(s"Mapping not found for key field $n of view $viewName")))
-          .zip(keyFields).map { case (v, f) => convertToType(f.type_, v) },
+          .zip(keyFields).map { case (v, f) =>
+            try convertToType(f.type_, v)
+            catch {
+              case util.control.NonFatal(ex) => throw new BusinessException(
+                s"Failed to convert value for key field ${f.name} to type ${f.type_.name}", ex)
+            }
+          },
         props
       )
       (keyValues, keyColNames)
