@@ -495,6 +495,19 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     }
   }
 
+  it should "execute actions" in {
+    for {
+      t1 <- doAction("insert", "insert_update_test_1", Map("id" -> 42)).map {
+        _ shouldBe Map("value" -> "INS")
+      }
+      t2 <- doAction("update", "insert_update_test_1", Map("id" -> 42)).map {
+        _ shouldBe Map("value" -> "UPD")
+      }
+    } yield {
+      t2
+    }
+  }
+
   it should "evaluate if" in {
     for {
       t1 <- doAction("save", "if_test_1", Map("value" -> "yes")).map {

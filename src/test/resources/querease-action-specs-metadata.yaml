@@ -49,6 +49,11 @@ columns:
 - parent                40
 - value                 64
 
+table: simple_table
+columns:
+- id
+- value                 64
+
 name: person
 api: save, get
 table: person
@@ -472,4 +477,20 @@ save:
        - if { :value = 'new child' } :
            - parent = :'..'.code
            - insert this
+- get this
+
+
+name:   insert_update_test_1
+table:  simple_table
+api:    get, save
+fields:
+- id
+- value
+insert:
+- value = 'INS'
+- insert this
+- get this
+update:
+- value = 'UPD'
+- update this
 - get this
