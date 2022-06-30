@@ -26,11 +26,13 @@ import akka.http.scaladsl.model.MediaTypes.`application/json`
 
 import java.util.Locale
 import akka.http.scaladsl.server.util.Tuple
+import akka.http.scaladsl.unmarshalling.FromRequestUnmarshaller
 import akka.util.ByteString
 import io.bullet.borer.{Json, Writer}
 import org.mojoz.querease.{ValidationException, ValidationResult}
 
 import java.lang.reflect.InvocationTargetException
+import scala.util.{Failure, Success}
 import xml.Utility.escape
 
 
@@ -73,6 +75,16 @@ trait AppServiceBase[User]
   def insertPath = viewWithoutIdPath & post
   def listOrGetPath = viewWithoutIdPath & get
   def countPath = path("count" / Segment) & get
+
+  def entityOrException[T](um: FromRequestUnmarshaller[T]): Directive1[T] =
+    extractRequestContext.flatMap[Tuple1[T]] { ctx =>
+      // import ctx.executionContext
+      import ctx.materializer
+      onComplete(um(ctx.request)) flatMap {
+        case Success(value) => provide(value)
+        case Failure(x)     => throw x
+      }
+    }
 
   private def useActions(viewName: String, actionName: String) =
     !app.useLegacyFlow(viewName, actionName)
@@ -138,7 +150,7 @@ trait AppServiceBase[User]
         try {
           if (useActions(viewName, Action.Save)) {
             implicit val um = toMapUnmarshallerForView(viewName)
-            entity(as[Map[String, Any]]) { entityAsMap =>
+            entityOrException(as[Map[String, Any]]) { entityAsMap =>
               complete {
                 app.doWabaseAction(Action.Update, viewName, Seq(id), filterPars(params), entityAsMap).map {
                   case r @ app.WabaseResult(_, _: IdResult) =>
@@ -148,7 +160,7 @@ trait AppServiceBase[User]
               }
             }
           } else {
-            entity(as[JsValue]) { data =>
+            entityOrException(as[JsValue]) { data =>
               app.save(viewName, data.asInstanceOf[JsObject], filterPars(params))
               redirect(Uri(path = requestUri.path), StatusCodes.SeeOther)
             }
@@ -204,7 +216,7 @@ trait AppServiceBase[User]
         try {
           if (useActions(viewName, Action.Save)) {
             implicit val um = toMapUnmarshallerForView(viewName)
-            entity(as[Map[String, Any]]) { entityAsMap =>
+            entityOrException(as[Map[String, Any]]) { entityAsMap =>
               complete {
                 app.doWabaseAction(Action.Insert, viewName, Nil, filterPars(params), entityAsMap).map {
                   case r @ app.WabaseResult(_, IdResult(id)) =>
@@ -214,7 +226,7 @@ trait AppServiceBase[User]
               }
             }
           } else {
-            entity(as[JsValue]) { data =>
+            entityOrException(as[JsValue]) { data =>
               val id = app.save(viewName, data.asInstanceOf[JsObject], filterPars(params))
               redirect(Uri(path = requestUri.path / id.toString), StatusCodes.SeeOther)
             }
