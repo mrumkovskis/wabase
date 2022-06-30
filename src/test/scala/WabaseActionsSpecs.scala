@@ -570,8 +570,23 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
           )
         )
       }
+      t4 <- doAction("update", "foreach_test_1",
+        Map("code" -> "foreach_test_1", "value" -> "top_upd",
+          "children" -> List(
+            Map("code" -> "foreach_test_1.ch_1", "value" -> "child1_upd"),
+            Map("code" -> "foreach_test_1.ch_2", "value" -> "child2_upd"),
+          )
+        )
+      ).map {
+        _ shouldBe Map("code" -> "foreach_test_1", "parent" -> null, "value" -> "top_upd", "children" ->
+          List(
+            Map("code" -> "foreach_test_1.ch_1", "parent" -> "foreach_test_1", "value" -> "child1_upd", "children" -> List()),
+            Map("code" -> "foreach_test_1.ch_2", "parent" -> "foreach_test_1", "value" -> "child2_upd", "children" -> List())
+          )
+        )
+      }
     } yield {
-      t3
+      t4
     }
   }
 }

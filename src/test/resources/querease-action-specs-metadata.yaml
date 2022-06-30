@@ -465,7 +465,12 @@ save:
     - parent = :'..'.code
     - insert this
 - get this
-
+update:
+- update this
+- foreach :children :
+    - parent = :'..'.code
+    - update this
+- get this
 
 name: foreach_test_2
 extends: foreach_test_1
