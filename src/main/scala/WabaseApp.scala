@@ -222,7 +222,7 @@ trait WabaseApp[User] {
   }
 
   def prepareKey(viewName: String, keyValues: Seq[Any], actionName: String): Map[String, Any] = {
-    val keyFields = qe.viewNameToKeyFields(viewName)
+    val keyFields = qe.viewNameToKeyFields(viewName).filterNot(_.api.excluded)
     if (keyValues.length > 0) {
       if (keyValues.length != keyFields.length)
         throw new BusinessException(
