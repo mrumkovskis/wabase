@@ -1,12 +1,13 @@
 package org.wabase
 
 import akka.actor.ActorSystem
-import akka.http.scaladsl.model.HttpRequest
+import akka.http.scaladsl.model.{HttpRequest, StatusCodes}
 import akka.http.scaladsl.model.headers.HttpOrigin
 import akka.http.scaladsl.testkit.ScalatestRouteTest
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers
 import akka.http.scaladsl.server.Directives._
+import akka.http.scaladsl.server.Route
 
 class RouteTests extends FlatSpec with Matchers with ScalatestRouteTest{
   class RouteTestsAppService(system: ActorSystem) extends TestAppService(system) {
@@ -121,6 +122,16 @@ class RouteTests extends FlatSpec with Matchers with ScalatestRouteTest{
     Get("/data/view/") ~> route ~> check(handled shouldBe true)
 
   }
+
+  it should "fail properly" in {
+    implicit val exceptionHandler = service.appExceptionHandler
+    implicit val user: TestUsr = null
+    val route = Route.seal((service.crudPath) {
+      service.crudAction
+    })
+    Post("/data/view", "{bad json}") ~> route ~> check(status shouldEqual StatusCodes.UnprocessableEntity)
+  }
+
   it should "pass csrf defence" in {
     //sameorigin check
     val route = service.checkSameOrigin {
