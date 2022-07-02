@@ -47,7 +47,7 @@ lazy val wabase = (project in file("."))
   scalaVersion := scalaV,
   crossScalaVersions := Seq(
     scalaV,
-    "2.12.15",
+    "2.12.16",
   ),
   scalacOptions ++= Seq("-unchecked", "-deprecation", "-feature",
     "-Xmacro-settings:metadataFactoryClass=org.mojoz.querease.TresqlMetadataFactory" +
