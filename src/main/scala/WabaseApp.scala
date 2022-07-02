@@ -279,17 +279,16 @@ trait WabaseApp[User] {
   protected def noApiException(viewName: String, method: String, user: User): Exception =
     new BusinessException(s"$viewName.$method is not a part of this API")
   protected def checkApi[F](viewName: String, method: String, user: User): Unit = {
-    val checkApiMethod = method match { // TODO add insert, update to api methods?
-      case Action.Insert |
-           Action.Update => Action.Save
-      case x => x
-    }
     (for {
       view <- viewDefOption(viewName)
-      role <- view.apiMethodToRole.get(checkApiMethod)
+      role <- view.apiMethodToRole.get(method).orElse(method match {
+        case Action.Insert |
+             Action.Update => view.apiMethodToRole.get(Action.Save)
+        case x => None
+      })
       if hasRole(user, role)
     } yield true).getOrElse(
-      throw noApiException(viewName, checkApiMethod, user)
+      throw noApiException(viewName, method, user)
     )
   }
   protected def checkLimit(viewDef: ViewDef, limit: Int): Unit = {

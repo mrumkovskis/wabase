@@ -51,7 +51,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
   lazy val classToViewNameMap: Map[Class[_], String] = viewNameToClassMap.map(_.swap)
 
-  val knownApiMethods = Set("create", "count", "get", "list", "save", "delete")
+  val knownApiMethods = Set("create", "count", "get", "list", "insert", "update", "save", "delete")
   def splitToLabelAndComments(s: String): (String, String) = {
     def clear(s: String) = Option(s).filter(_ != "").orNull
     def unescape(s: String) = s.replace("--", "-")
