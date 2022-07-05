@@ -58,8 +58,8 @@ trait DbAccess { this: Loggable =>
   private val currentPool = new ThreadLocal[PoolName]
   // TODO do not call nested dbUse with extraDb parameter set to avoid connection leaks
   def dbUse[A](a: => A)(implicit timeout: QueryTimeout = defaultQueryTimeout,
-                        pool: PoolName,
-                        extraDb: Seq[DbAccessKey]): A = {
+                        pool: PoolName = DEFAULT_CP,
+                        extraDb: Seq[DbAccessKey] = Nil): A = {
     val oldConn = tresqlResources.conn
     val oldPool = currentPool.get()
     val oldTimeout = tresqlResources.queryTimeout
@@ -109,12 +109,12 @@ trait DbAccess { this: Loggable =>
   // TODO do not call nested transaction with extraDb parameter set to avoid connection leaks
   class Transaction {
     def apply[A](a: => A)(implicit timeout: QueryTimeout = defaultQueryTimeout,
-                          pool: PoolName,
-                          extraDb: Seq[DbAccessKey]): A =
+                          pool: PoolName = DEFAULT_CP,
+                          extraDb: Seq[DbAccessKey] = Nil): A =
       transactionInternal(forceNewConnection = false, a)
     def foreach(f: Unit => Unit)(implicit timeout: QueryTimeout = defaultQueryTimeout,
-                                 pool: PoolName,
-                                 extraDb: Seq[DbAccessKey]): Unit =
+                                 pool: PoolName = DEFAULT_CP,
+                                 extraDb: Seq[DbAccessKey] = Nil): Unit =
       transactionInternal(forceNewConnection = false, f(()))
   }
 
@@ -123,12 +123,12 @@ trait DbAccess { this: Loggable =>
   // TODO do not call nested transactionNew with extraDb parameter set to avoid connection leaks
   class TransactionNew {
     def apply[A](a: => A)(implicit timeout: QueryTimeout = defaultQueryTimeout,
-                          pool: PoolName,
-                          extraDb: Seq[DbAccessKey]): A =
+                          pool: PoolName = DEFAULT_CP,
+                          extraDb: Seq[DbAccessKey] = Nil): A =
       transactionInternal(forceNewConnection = true, a)
     def foreach(f: Unit => Unit)(implicit timeout: QueryTimeout = defaultQueryTimeout,
-                                 pool: PoolName,
-                                 extraDb: Seq[DbAccessKey]): Unit =
+                                 pool: PoolName = DEFAULT_CP,
+                                 extraDb: Seq[DbAccessKey] = Nil): Unit =
       transactionInternal(forceNewConnection = true, f(()))
   }
 
@@ -390,8 +390,8 @@ trait DbAccessDelegate extends DbAccess { this: Loggable =>
   implicit val tresqlResources: ThreadLocalResources = dbAccessDelegate.tresqlResources
 
   override def dbUse[A](a: => A)(implicit timeout: QueryTimeout = defaultQueryTimeout,
-                                 pool: PoolName,
-                                 extraDb: Seq[DbAccessKey]): A = {
+                                 pool: PoolName = DEFAULT_CP,
+                                 extraDb: Seq[DbAccessKey] = Nil): A = {
     dbAccessDelegate.dbUse(a)
   }
 
@@ -399,12 +399,12 @@ trait DbAccessDelegate extends DbAccess { this: Loggable =>
 
   class TransactionDelegate(tr: DbAccess#Transaction) extends Transaction {
     override def apply[A](a: => A)(implicit timeout: QueryTimeout = defaultQueryTimeout,
-                                   pool: PoolName,
-                                   extraDb: Seq[DbAccessKey]): A =
+                                   pool: PoolName = DEFAULT_CP,
+                                   extraDb: Seq[DbAccessKey] = Nil): A =
       tr(a)
     override def foreach(f: Unit => Unit)(implicit timeout: QueryTimeout = defaultQueryTimeout,
-                                          pool: PoolName,
-                                          extraDb: Seq[DbAccessKey]): Unit =
+                                          pool: PoolName = DEFAULT_CP,
+                                          extraDb: Seq[DbAccessKey] = Nil): Unit =
       tr.foreach(f)
   }
 
@@ -412,12 +412,12 @@ trait DbAccessDelegate extends DbAccess { this: Loggable =>
 
   class TransactionNewDelegate(tr: DbAccess#TransactionNew) extends TransactionNew {
     override def apply[A](a: => A)(implicit timeout: QueryTimeout = defaultQueryTimeout,
-                                   pool: PoolName,
-                                   extraDb: Seq[DbAccessKey]): A =
+                                   pool: PoolName = DEFAULT_CP,
+                                   extraDb: Seq[DbAccessKey] = Nil): A =
       tr(a)
     override def foreach(f: Unit => Unit)(implicit timeout: QueryTimeout = defaultQueryTimeout,
-                                          pool: PoolName,
-                                          extraDb: Seq[DbAccessKey]): Unit =
+                                          pool: PoolName = DEFAULT_CP,
+                                          extraDb: Seq[DbAccessKey] = Nil): Unit =
       tr.foreach(f)
   }
 }
