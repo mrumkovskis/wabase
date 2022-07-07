@@ -81,7 +81,9 @@ package object wabase extends Loggable {
     new HikariDataSource(hikariConfig)
   }
 
-  case class PoolName(connectionPoolName: String)
+  case class PoolName(connectionPoolName: String) {
+    require(connectionPoolName != null, "connectionPoolName must not be null")
+  }
   val DEFAULT_CP = PoolName(config.getString("jdbc.default"))
   if (!config.hasPath(s"jdbc.cp.${DEFAULT_CP.connectionPoolName}"))
     logger.warn(s"""Default connection pool configuration missing (key jdbc.cp.${DEFAULT_CP.connectionPoolName}), or jdbc.default not set to correct key (default value = "main"). \nThere will be errors if You rely on JDBC connections""")
@@ -93,7 +95,11 @@ package object wabase extends Loggable {
         c.root().asScala.keys.map(v => (PoolName(v), createConnectionPool(c.getConfig(v)))).toSeq
       scala.collection.concurrent.TrieMap(s: _*)
     }
+    def key(poolName: String): PoolName =
+      if (poolName != null) PoolName(poolName) else DEFAULT_CP
 
+    def apply(poolName: String): DataSource =
+      apply(key(poolName))
     def apply(pool: PoolName): DataSource = {
       cps.getOrElse(pool, {
         require(pool == null || pool.connectionPoolName == null,

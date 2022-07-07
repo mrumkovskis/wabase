@@ -279,7 +279,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
             else extraDbs.foldLeft(res) { case (res, DbAccessKey(db, cp)) =>
               if (res.extraResources.contains(db)) {
                 extraConns ::=
-                  (try dataSource(PoolName(if (cp == null) db else cp)).getConnection catch {
+                  (try dataSource(ConnectionPools.key(if (cp == null) db else cp)).getConnection catch {
                     case NonFatal(e) =>
                       //close opened connections to avoid connection leak
                       (connection :: extraConns) foreach closeConn
@@ -449,7 +449,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
 
   def get(viewName: String, id: Long, params: Map[String, Any] = Map())(
     implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout,
-      poolName: PoolName = PoolName(viewDef(viewName).cp)) =
+      poolName: PoolName = ConnectionPools.key(viewDef(viewName).cp)) =
     createViewResult(getRaw(viewName, id, params))
 
   def createRaw(viewName: String, params: Map[String, Any] = Map.empty)(
@@ -467,7 +467,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
 
   def create(viewName: String, params: Map[String, Any] = Map.empty)(
     implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout,
-      poolName: PoolName = PoolName(viewDef(viewName).cp)) =
+      poolName: PoolName = ConnectionPools.key(viewDef(viewName).cp)) =
     createCreateResult(createRaw(viewName, params))
 
   def listRaw(
@@ -503,14 +503,14 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
       implicit user: User,
       state: ApplicationState,
       timeoutSeconds: QueryTimeout,
-      poolName: PoolName = PoolName(viewDef(viewName).cp)) =
+      poolName: PoolName = ConnectionPools.key(viewDef(viewName).cp)) =
     createListResult(listRaw(viewName, params, offset, limit, orderBy, doCount))
 
   def count(viewName: String, params: Map[String, Any])(
     implicit user: User,
     state: ApplicationState,
     timeoutSeconds: QueryTimeout,
-    poolName: PoolName = PoolName(viewDef(viewName).cp)
+    poolName: PoolName = ConnectionPools.key(viewDef(viewName).cp)
   ) = {
     checkApi(viewName, "list", user)
     val result = listInternal(viewName, params, doCount = true)
@@ -549,14 +549,14 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
 
   def save(viewName: String, obj: JsObject, params: Map[String, Any] = Map(), emptyStringsToNull: Boolean = true)(
     implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout,
-      poolName: PoolName = PoolName(viewDef(viewName).cp)) = {
+      poolName: PoolName = ConnectionPools.key(viewDef(viewName).cp)) = {
     val instance = qe.fill[Dto](obj)(Manifest.classType(viewNameToClassMap(viewName)))
     saveInternal(viewName, instance, params, emptyStringsToNull)
   }
 
   def saveDto(instance: Dto, params: Map[String, Any] = Map(), emptyStringsToNull: Boolean = true, extraPropsToSave: Map[String, Any] = Map())(
     implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout,
-      poolName: PoolName = PoolName(viewDef(classToViewNameMap(instance.getClass)).cp)) = {
+      poolName: PoolName = ConnectionPools.key(viewDef(classToViewNameMap(instance.getClass)).cp)) = {
     saveInternal(classToViewNameMap(instance.getClass), instance, params, emptyStringsToNull, extraPropsToSave)
   }
 
@@ -631,7 +631,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
 
   def delete(viewName: String, id: Long, params: Map[String, Any] = Map())(
     implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout,
-      poolName: PoolName = PoolName(viewDef(viewName).cp)) =
+      poolName: PoolName = ConnectionPools.key(viewDef(viewName).cp)) =
   {
       checkApi(viewName, "delete", user)
       val promise = Promise[Unit]()

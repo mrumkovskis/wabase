@@ -29,7 +29,7 @@ trait DbAccess { this: Loggable =>
         ( db
         , tresqlResources
             .extraResources(db)
-            .withConn(dataSource(PoolName(if (cp == null) db else cp)).getConnection)
+            .withConn(dataSource(ConnectionPools.key(if (cp == null) db else cp)).getConnection)
         )
       }.toMap
   }
@@ -60,13 +60,14 @@ trait DbAccess { this: Loggable =>
   def dbUse[A](a: => A)(implicit timeout: QueryTimeout = defaultQueryTimeout,
                         pool: PoolName = DEFAULT_CP,
                         extraDb: Seq[DbAccessKey] = Nil): A = {
+    require(pool != null, "Connection pool must not be null")
     val oldConn = tresqlResources.conn
     val oldPool = currentPool.get()
     val oldTimeout = tresqlResources.queryTimeout
     val oldExtraResources = tresqlResources.extraResources
     val poolChanges = oldPool != pool
     if (poolChanges) {
-      logger.debug(s"""Using connection pool "$pool"""")
+      logger.debug(s"""Using connection pool "${pool.connectionPoolName}"""")
       setenv(dataSource(pool), timeout, extraDb)
       currentPool.set(pool)
     }
@@ -135,13 +136,14 @@ trait DbAccess { this: Loggable =>
   protected def transactionInternal[A](forceNewConnection: Boolean, a: => A)(implicit timeout: QueryTimeout,
                                                                              pool: PoolName,
                                                                              extraDb: Seq[DbAccessKey]): A = {
+    require(pool != null, "Connection pool must not be null")
     val oldConn = tresqlResources.conn
     val oldPool = currentPool.get()
     val oldTimeout = tresqlResources.queryTimeout
     val oldExtraResources = tresqlResources.extraResources
     val poolChanges = oldPool != pool
     if (forceNewConnection || poolChanges) {
-      logger.debug(s"""Using connection pool "$pool"""")
+      logger.debug(s"""Using connection pool "${pool.connectionPoolName}"""")
       setenv(dataSource(pool), timeout, extraDb)
       currentPool.set(pool)
     }
@@ -321,7 +323,7 @@ object DbAccess extends Loggable {
   def initResources(initialResources: Resources)(poolName: PoolName, extraDb: Seq[DbAccessKey]): Resources = {
     val dsFactory = () => ConnectionPools(poolName)
     val dsExtraFactories = extraDb.map { case DbAccessKey(db, cp) =>
-      (db, () => ConnectionPools(PoolName(if (cp == null) db else cp)))
+      (db, () => ConnectionPools(if (cp == null) db else cp))
     }.toMap
     initConns(initialResources)(dsFactory, dsExtraFactories)
   }
