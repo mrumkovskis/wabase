@@ -1091,7 +1091,7 @@ trait WabaseAppCompat[User] extends WabaseApp[User] {
     with DbConstraintMessage =>
 
   override protected def customValidations(ctx: AppActionContext)(implicit locale: Locale): Unit = {
-    validate(ctx.viewName, ctx.actionName, ctx.env)
+    validate(ctx.viewName, ctx.actionName, ctx.values ++ ctx.env)
   }
   override protected def afterWabaseAction(context: AppActionContext, result: Try[QuereaseResult]): Unit = {
     audit(context, result)
