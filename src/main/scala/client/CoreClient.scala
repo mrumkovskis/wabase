@@ -119,7 +119,9 @@ object CoreClient{
 
     def queueResults(receivedMessages: Map[String, JsObject], subscribers: Map[String, ActorRef]): Receive = {
       case TextMessage.Strict(text) => try{
-        val newMap = text.parseJson.asJsObject.fields.map {
+        val newMap = text.parseJson.asJsObject.fields
+          .filter { _._1 != "version" }
+          .map {
             case (k, v) => (k, v.asJsObject)
           }.filter(_._2.fields("status") match {
             case JsString(status) if completeStatuses(status) => true
