@@ -45,8 +45,8 @@ trait BasicJsonMarshalling extends akka.http.scaladsl.marshallers.sprayjson.Spra
   implicit def futureMapMarshaller: ToEntityMarshaller[Future[Map[String, Any]]] =
     combinedWithEC(ec => mapF => mapF.map(_.toJson)(ec))
 
-  // implicit def mapUnmarshaller(implicit jsonUnmarshaller: FromEntityUnmarshaller[JsValue]): FromEntityUnmarshaller[Map[String, Any]] =
-  //   jsonUnmarshaller.map(_.convertTo[Map[String, Any]])
+  def mapUnmarshaller(implicit jsonUnmarshaller: FromEntityUnmarshaller[JsValue]): FromEntityUnmarshaller[Map[String, Any]] =
+    jsonUnmarshaller.map(_.convertTo[Map[String, Any]])
 
   implicit def jsObjectUnmarshaller(implicit jsonUnmarshaller: FromEntityUnmarshaller[JsValue]) = jsonUnmarshaller.map(_.asJsObject)
 }
