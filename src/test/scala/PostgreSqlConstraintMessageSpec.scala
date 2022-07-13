@@ -31,15 +31,35 @@ class PostgreSqlConstraintMessageSpec extends FlatSpec with Matchers {
   def getMessage(code: String, message: String, locale: String, viewName: String = "view1"): String =
     getMessageFromException(new SQLException(message, code), locale, viewName)
 
+  def getFriendlyException(e: Exception, locale: String, viewName: String = "view1"): String = {
+    val viewDef = ConstraintTestApp.qe.viewDefOption(viewName).orNull
+    ConstraintTestApp.friendlyConstraintErrorMessage(viewDef, {
+      throw e
+    })(new java.util.Locale(locale))
+  }
+
   def getMessageFromException(e: Exception, locale: String, viewName: String = "view1"): String = {
-    try{
-      val viewDef = ConstraintTestApp.qe.viewDef(viewName)
-      ConstraintTestApp.friendlyConstraintErrorMessage(viewDef, {
-        throw e
-      })(new java.util.Locale(locale))
-    }catch{
+    try getFriendlyException(e, locale, viewName) catch {
       case e: BusinessException => e.getMessage
     }
+  }
+
+  it should "pass unknown exceptions" in {
+    val e1 = new RuntimeException("x")
+    intercept[RuntimeException] {
+      getFriendlyException(e1, "en", null)
+    } shouldBe e1
+    val e2 = new SQLException("x", "x")
+    intercept[SQLException] {
+      getFriendlyException(e2, "en", null)
+    } shouldBe e2
+    val e3 = new RuntimeException("x", new SQLException("y", "z"))
+    intercept[RuntimeException] {
+      getFriendlyException(e3, "en", null)
+    } shouldBe e3
+    intercept[RuntimeException] {
+      getFriendlyException(e3, "en", "view_with_childs")
+    } shouldBe e3
   }
 
   it should "handle not-null constraint message" in {
@@ -63,6 +83,19 @@ class PostgreSqlConstraintMessageSpec extends FlatSpec with Matchers {
 
     getMessageFromException(childErr, "en", "view_with_childs") should be("Field \"Field name in child\" must not be empty")
     getMessageFromException(childErr, "lv", "view_with_childs") should be("Lauks \"Field name in child\" ir obligāts.")
+  }
+
+  it should "handle nested SQLException" in {
+    val err = "ERROR: null value in column \"some_field\" violates not-null constraint"
+    val childErr =
+      new RuntimeException("Wrapper2",
+        new RuntimeException("Wrapper1", childSaveException("child_table", "23502", err)))
+
+    getMessageFromException(childErr, "en", "view_with_childs") should be("Field \"Field name in child\" must not be empty")
+    getMessageFromException(childErr, "lv", "view_with_childs") should be("Lauks \"Field name in child\" ir obligāts.")
+    intercept[BusinessException] {
+      getFriendlyException(childErr, "en", "view_with_childs")
+    }.getCause shouldBe childErr
   }
 
   it should "handle fk error on delete" in {
