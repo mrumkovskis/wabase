@@ -229,7 +229,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     def value[A](a: => A): QuereaseAction[A] = (_: ExecutionContext) => Future.successful(a)
   }
 
-  trait QuereaseIteratorResult[+B <: DTO] extends Iterator[B] with AutoCloseable {
+  trait QuereaseIteratorResult[+B] extends Iterator[B] with AutoCloseable {
     def view: ViewDef
   }
 

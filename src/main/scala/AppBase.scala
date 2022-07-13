@@ -83,7 +83,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
     override protected def nextInternal = iter.next()
   }
 
-  trait AppListResult[+T <: Dto] extends qe.QuereaseIteratorResult[T] { self =>
+  trait AppListResult[+T] extends qe.QuereaseIteratorResult[T] { self =>
     def view: ViewDef
     def resources: Resources
     /** this is to be overriden in subclasses instead of {{{hasNext}}} */
