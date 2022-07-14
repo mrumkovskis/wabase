@@ -82,7 +82,7 @@ package object wabase extends Loggable {
   }
 
   case class PoolName(connectionPoolName: String) {
-    require(connectionPoolName != null, "connectionPoolName must not be null")
+    require(connectionPoolName != null, "connectionPoolName must not be null - try ConnectionPools.key instead")
   }
   val DEFAULT_CP = PoolName(config.getString("jdbc.default"))
   if (!config.hasPath(s"jdbc.cp.${DEFAULT_CP.connectionPoolName}"))
