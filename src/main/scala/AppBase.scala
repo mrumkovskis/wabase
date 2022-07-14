@@ -12,6 +12,7 @@ import com.typesafe.config.Config
 import scala.concurrent.Promise
 import scala.language.existentials
 import scala.language.implicitConversions
+import scala.collection.immutable.ListMap
 import scala.collection.immutable.TreeMap
 import scala.reflect.ManifestFactory
 import scala.util.Try
@@ -686,14 +687,14 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
 
   def metadata(viewDef: ViewDef)(implicit user: User, state: ApplicationState): JsObject = {
     import qe.{ FieldRefRegexp_ => FieldRefRegexp }
-    JsObject(Map(
+    JsObject(ListMap(
       "name" -> JsString(viewDef.name),
       "key"  -> JsArray(
         Option(qe.viewNameToKeyFields(viewDef.name)).getOrElse(Nil)
         .filterNot(_.api.excluded)
         .map(_.fieldName)
         .map(JsString(_)).toVector),
-      "fields" -> JsArray(viewDef.fields.filterNot(_.api.excluded).map(f => JsObject(Map(
+      "fields" -> JsArray(viewDef.fields.filterNot(_.api.excluded).map(f => JsObject(ListMap(
         "name" -> JsString(f.fieldName),
         "type" -> JsString(f.type_.name),
         "isCollection" -> JsBoolean(f.isCollection),
@@ -730,13 +731,12 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
             .getOrElse("string")
         ))
         ++
-        List(
+        ListMap(
           "length" -> f.type_.length,
           "totalDigits" -> f.type_.totalDigits,
           "fractionDigits" -> f.type_.fractionDigits)
         .filter(_._2.isDefined)
         .map(x => x._1 -> JsNumber(x._2.get))
-        .toMap
         ++
         extraMetadata(f)
       )): _*)) ++
@@ -778,8 +778,8 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
 
   def filterMetadata(view: ViewDef)(implicit user: User, state: ApplicationState): Map[String, JsValue] =
     Option(view.name).filter(viewNameToFilterMetadata.contains(_)).map(viewName => //bi reports isn't presented in viewNameToFilterMetadata
-      Map(
-        "filter" -> JsArray(viewNameToFilterMetadata(viewName).map(f => JsObject(Map(
+      ListMap(
+        "filter" -> JsArray(viewNameToFilterMetadata(viewName).map(f => JsObject(ListMap(
           "name" -> JsString(f.name),
           "type" -> JsString(f.type_.name),
           "nullable" -> JsBoolean(f.nullable),
@@ -801,13 +801,12 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
             )
           )
           ++
-          List(
+          ListMap(
             "length" -> f.type_.length,
             "totalDigits" -> f.type_.totalDigits,
             "fractionDigits" -> f.type_.fractionDigits)
           .filter(_._2.isDefined)
           .map(x => x._1 -> JsNumber(x._2.get))
-          .toMap
           ++
           extraMetadata(f)
         )): _*)
