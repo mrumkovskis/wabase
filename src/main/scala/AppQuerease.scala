@@ -567,6 +567,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     }.getOrElse(sys.error(s"Method $function not found in class $className"))
   }
 
+  /* [jobs]
   protected def doJobCall(jobName: String,
                           data: Map[String, Any],
                           env: Map[String, Any])(implicit
@@ -582,6 +583,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       }
       .getOrElse(Future.successful(NoResult))
   }
+  [jobs] */
 
   protected def doVarsTransforms(transforms: List[VariableTransform],
                                  seed: Map[String, Any],
@@ -708,8 +710,10 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
         Future.successful(NoResult)
       case cond: Action.If => doIf(cond, data, env, context)
       case foreach: Action.Foreach => doForeach(foreach, data, env, context)
+      /* [jobs]
       case Action.JobCall(job) =>
         doJobCall(job, data, env)
+      [jobs] */
       case VariableTransforms(vts) =>
         Future.successful(doVarsTransforms(vts, Map[String, Any](), data ++ env))
     }

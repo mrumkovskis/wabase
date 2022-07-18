@@ -486,7 +486,9 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val commitOpRegex = """commit""".r
     val ifOpRegex = """if\s+(.+)""".r
     val foreachOpRegex = """foreach\s+(.+)""".r
+    /* [jobs]
     val jobCallRegex = """(?U)job\s+(:?\w+)""".r
+    [jobs] */
     import ViewDefExtrasUtils._
     val steps = stepData.map { step =>
       def parseOp(st: String): Action.Op = {
@@ -506,9 +508,11 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
         } else if (invocationRegex.pattern.matcher(st).matches) {
           val idx = st.lastIndexOf('.')
           Action.Invocation(st.substring(0, idx), st.substring(idx + 1))
+        /* [jobs]
         } else if (jobCallRegex.pattern.matcher(st).matches()) {
           val jobCallRegex(jobName) = st
           Action.JobCall(jobName)
+        [jobs] */
         } else if (uniqueOpRegex.pattern.matcher(st).matches()) {
           val uniqueOpRegex(inner) = st
           Action.UniqueOpt(parseOp(inner))
@@ -610,6 +614,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     Action(steps)
   }
 
+  /* [jobs]
   protected def parseJob(job: Map[String, Any]): Job = {
     val name = job.get("name").map(String.valueOf)
       .getOrElse(sys.error(s"Error parsing job, missing 'name' attribute"))
@@ -618,6 +623,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val action = parseAction(name, ViewDefExtrasUtils.getSeq("action", job))
     Job(name, schedule, condition, action)
   }
+  [jobs] */
 }
 
 
@@ -669,7 +675,9 @@ object AppMetadata {
     case class VariableTransforms(transforms: List[VariableTransform]) extends Op
     case class Foreach(initOp: Op, action: Action) extends Op
     case class If(cond: Op, action: Action) extends Op
+    /* [jobs]
     case class JobCall(name: String) extends Op
+    [jobs] */
     case object Commit extends Op
 
     case class Evaluation(name: Option[String], varTrans: List[VariableTransform], op: Op) extends Step
@@ -686,10 +694,12 @@ object AppMetadata {
     cp: String,
   )
 
+  /* [jobs]
   case class Job(name: String,
                  schedule: Option[String],
                  condition: Option[String],
                  action: Action)
+  [jobs] */
 
   trait AppViewDefExtras {
     val limit: Int
