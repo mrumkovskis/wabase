@@ -311,10 +311,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case x => sys.error(s"${x.getClass.getName} not expected here!")
     }
     def updateCurRes(cr: Map[String, Any], key: Option[String], res: Any) = res match {
-      case IdResult(id) => cr
-        .get("id")
-        .filter(i => i != null && i != id)
-        .flatMap(_ => key)
+      case IdResult(id) => key
         .map(k => cr + (k -> Map("id" -> id)))
         .getOrElse(cr + ("id" -> id))
       case NoResult => cr
