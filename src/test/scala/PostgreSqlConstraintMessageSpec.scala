@@ -67,6 +67,10 @@ class PostgreSqlConstraintMessageSpec extends FlatSpec with Matchers {
     getMessage("23502", err, "en") should be("Field \"dokumenta_tips_id\" must not be empty")
     getMessage("23502", err, "lv") should be("Lauks \"dokumenta_tips_id\" ir obligāts.")
 
+    val err2 = "ERROR: null value in column \"dokumenta_tips_id\" of relation \"some_table\" violates not-null constraint"
+    getMessage("23502", err2, "en") should be("Field \"dokumenta_tips_id\" must not be empty")
+    getMessage("23502", err2, "lv") should be("Lauks \"dokumenta_tips_id\" ir obligāts.")
+
     val someFieldErr = "ERROR: null value in column \"some_field\" violates not-null constraint"
     // find column in view fields
     getMessage("23502", someFieldErr, "en", "view1" ) should be("Field \"Field name in viewDef\" must not be empty")

@@ -36,7 +36,7 @@ object DbConstraintMessage {
   }
   val Nn = ConstraintViolationInfo(
     "23502",
-    "null value in column $$ violates not-null constraint",
+    "null value in column $$( of relation $)? violates not-null constraint",
     "Field must not be empty",
     """Field "%s" must not be empty""")
   val FkDel = ConstraintViolationInfo(
