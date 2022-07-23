@@ -39,6 +39,27 @@ class RouteTests extends FlatSpec with Matchers with ScalatestRouteTest{
     Get("/data/view/1") ~> route ~> check(handled shouldBe true)
   }
 
+  it should "handle get by key" in {
+    val route = (service.crudPath & service.getByKeyPath) { (viewName, keyValues) =>
+      complete("OK")
+    }
+
+    Get("/") ~> route ~> check(handled shouldBe false)
+    Get("/r") ~> route ~> check(handled shouldBe false)
+    Get("/data") ~> route ~> check(handled shouldBe false)
+    Get("/data/") ~> route ~> check(handled shouldBe false)
+    Get("/data/view") ~> route ~> check(handled shouldBe false)
+
+    Get("/data/view/") ~> route ~> check(handled shouldBe true)
+    Get("/data/view/1") ~> route ~> check(handled shouldBe true)
+    Get("/data/view/a") ~> route ~> check(handled shouldBe true)
+    Get("/data/view/a/b/c") ~> route ~> check(handled shouldBe true)
+
+    Post("/data/view/a") ~> route ~> check(handled shouldBe false)
+    Put("/data/view/a") ~> route ~> check(handled shouldBe false)
+    Delete("/data/view/a") ~> route ~> check(handled shouldBe false)
+  }
+
   it should "handle delete" in {
     val route = (service.crudPath & service.deletePath) { (path, id) =>
       complete("OK")
