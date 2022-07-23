@@ -384,7 +384,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         ).map(_.getMessage shouldBe "Record not updated in table(s): person")
       t3 <-
         doAction("insert", "env_test_2", person, updateOkEnv).flatMap { r =>
-          val id = r match { case IdResult(id) => id case _ => -1 }
+          val id = r match { case kr: KeyResult => kr.ir.id case _ => -1 }
           implicit val qe = querease
           doAction("get", "env_test_2", Map("id" -> id), removeIdsFlag = false).map {
             case map: Map[_, _] => map shouldBe Map(
@@ -398,7 +398,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         }
       t4 <-
         doAction("insert", "env_test_3", person, updateOkEnv).flatMap { r =>
-          val id = r match { case IdResult(id) => id case _ => -1 }
+          val id = r match { case kr: KeyResult => kr.ir.id case _ => -1 }
           implicit val qe = querease
           doAction("get", "env_test_3", Map("id" -> id), removeIdsFlag = false).map {
             case map: Map[_, _] => map shouldBe Map(

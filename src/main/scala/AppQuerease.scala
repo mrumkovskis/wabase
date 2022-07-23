@@ -44,6 +44,7 @@ case class LongResult(value: Long) extends QuereaseResult
 case class StringResult(value: String) extends QuereaseResult
 case class NumberResult(value: java.lang.Number) extends QuereaseResult
 case class IdResult(id: Any) extends QuereaseResult
+case class KeyResult(ir: IdResult, key: Seq[Any]) extends QuereaseResult
 case class QuereaseDeleteResult(count: Int) extends QuereaseResult
 case class StatusResult(code: Int, value: String, key: Seq[String] = Nil, params: ListMap[String, String] = ListMap()) extends QuereaseResult
 case object NoResult extends QuereaseResult
@@ -175,6 +176,24 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     case e: Exception => throw new QuereaseEnvException(env, e)
   }
 
+  protected def keyValuesAndColNames(viewName: String, data: Map[String, Any]) = tryOp({
+    val keyFields = viewNameToKeyFields(viewName)
+    val keyColNames = keyFields.map(_.name)
+    val keyFieldNames = viewNameToKeyFieldNames(viewName)
+    val keyValues = tryOp(
+      keyFieldNames.map(n => data.getOrElse(n, sys.error(s"Mapping not found for key field $n of view $viewName")))
+        .zip(keyFields).map { case (v, f) =>
+          try convertToType(f.type_, v)
+          catch {
+            case util.control.NonFatal(ex) => throw new BusinessException(
+              s"Failed to convert value for key field ${f.name} to type ${f.type_.name}", ex)
+          }
+        },
+      data
+    )
+    (keyValues, keyColNames)
+  }, data)
+
   /********************************
    ******** Querease actions ******
   *********************************/
@@ -202,7 +221,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
             case TresqlResult(r: DMLResult) =>
               closeResources(res, None)
               r match {
-                case _: InsertResult | _: UpdateResult => IdResult(r.id)
+                case _: InsertResult | _: UpdateResult => KeyResult(IdResult(r.id), Seq(r.id)) // FIXME key!
                 case _: DeleteResult => QuereaseDeleteResult(r.count.getOrElse(0))
               }
             case r: QuereaseCloseableResult => QuereaseResultWithCleanup(
@@ -306,6 +325,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case NumberResult(nr) => nr
       case StringResult(str) => str
       case id: IdResult => id
+      case kr: KeyResult => kr.ir
       case sr: StatusResult => sr
       case NoResult => NoResult
       case x => sys.error(s"${x.getClass.getName} not expected here!")
@@ -340,7 +360,17 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
 
     steps match {
       case Nil => curData map MapResult
-      case s :: Nil => doStep(s, curData)
+      case s :: Nil =>
+        doStep(s, curData) flatMap {
+          case ir: IdResult =>
+            def keyValues(data: Map[String, Any]) =
+              keyValuesAndColNames(
+                context.viewName,
+                data ++ Option("id" -> ir.id).filter(_._1 != null).toMap
+              )._1
+            curData.map(data => KeyResult(ir, keyValues(data)))
+          case x => Future.successful(x)
+        }
       case s :: tail =>
         doStep(s, curData) flatMap { stepRes =>
           s match {
@@ -460,23 +490,6 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       else                view
     )
     val viewName = v.name
-    def keyValuesAndColNames(props: Map[String, Any]) = tryOp({
-      val keyFields = viewNameToKeyFields(viewName)
-      val keyColNames = keyFields.map(_.name)
-      val keyFieldNames = viewNameToKeyFieldNames(viewName)
-      val keyValues = tryOp(
-        keyFieldNames.map(n => props.getOrElse(n, sys.error(s"Mapping not found for key field $n of view $viewName")))
-          .zip(keyFields).map { case (v, f) =>
-            try convertToType(f.type_, v)
-            catch {
-              case util.control.NonFatal(ex) => throw new BusinessException(
-                s"Failed to convert value for key field ${f.name} to type ${f.type_.name}", ex)
-            }
-          },
-        props
-      )
-      (keyValues, keyColNames)
-    }, callData)
     def int(name: String) = tryOp(callData.get(name).map {
       case x: Int => x
       case x: Number => x.intValue
@@ -488,7 +501,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       Future.successful {
         method match {
           case Get =>
-            val (keyValues, keyColNames) = keyValuesAndColNames(callData)
+            val (keyValues, keyColNames) = keyValuesAndColNames(viewName, callData)
             get(v, keyValues, keyColNames, null, callData).map(TresqlSingleRowResult) getOrElse OptionResult(None)
           case Action.List =>
             TresqlResult(rowsResult(v, callData, int(OffsetKey).getOrElse(0), int(LimitKey).getOrElse(0),
@@ -508,7 +521,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
           case Upsert =>
             IdResult(save(v, callData, null, SaveMethod.Upsert, null, env))
           case Delete =>
-            keyValuesAndColNames(data) // check mappings for key exist
+            keyValuesAndColNames(viewName, data) // check mappings for key exist
             LongResult(delete(v, data, null, env))
           case Create =>
             TresqlSingleRowResult(create(v, callData)(res))
