@@ -708,7 +708,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
                 StatusResult(code, value, key.reverse, params)
               }
               case _ =>
-                require(maybeCode.nonEmpty, s"Tresql: '$bt' returned now rows. In this case status code cannot be empty.")
+                require(maybeCode.nonEmpty, s"Tresql: '$bt' returned no rows. In this case status code cannot be empty.")
                 StatusResult(maybeCode.get, null)
             }
           }
