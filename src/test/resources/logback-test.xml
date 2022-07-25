@@ -20,5 +20,6 @@
         <!--<appender-ref ref="FILE" />-->
     </root>
 
+    <logger name="com.zaxxer.hikari" level="warn"/>
     <logger name="akka.stream.scaladsl.RestartWithBackoffSource" level="error"/>
 </configuration>
