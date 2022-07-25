@@ -1,0 +1,20 @@
+table:  person
+columns:
+- id
+- name      32
+- surname   32
+uk:
+- name, surname
+
+
+name:   by_id_view_1
+api:    get list count create save delete
+table:  person
+fields:
+- id
+- name
+- surname
+filter:
+- name ~%
+order:
+- id

@@ -63,7 +63,7 @@ trait TestQuereaseInitializer extends BeforeAndAfterAll with Loggable { this: Su
           st.close
         }
       val st = db_conn.createStatement
-      st.execute("create sequence seq")
+      st.execute("create sequence seq start with 1")
       st.close
       logger.debug("Database created successfully.")
       (db, db_conn)
