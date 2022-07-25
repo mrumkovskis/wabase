@@ -79,7 +79,8 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     }
     val myApp = app
     marshallers =
-      new ExecutionImpl()(ActorSystem("actions-spec-system")) with AppProvider[TestUsr] with QuereaseMarshalling {
+      new ExecutionImpl()(ActorSystem("actions-spec-system"))
+          with AppProvider[TestUsr] with QuereaseMarshalling with OptionMarshalling {
         override type App = AppBase[TestUsr]
         override protected def initApp: App = myApp
       }

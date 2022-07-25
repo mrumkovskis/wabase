@@ -1,10 +1,9 @@
 package org.wabase
 
+import akka.http.scaladsl.marshalling._
+import akka.http.scaladsl.model._
+import akka.http.scaladsl.model.MediaTypes._
 import akka.http.scaladsl.util.FastFuture
-import akka.http.scaladsl._
-import model._
-import MediaTypes._
-import marshalling._
 
 import java.io.OutputStreamWriter
 import java.net.URLEncoder
@@ -22,7 +21,6 @@ import org.tresql.{Resources, Result, RowLike}
 import scala.collection.immutable.Seq
 import scala.language.implicitConversions
 import scala.language.reflectiveCalls
-import scala.util.Try
 
 trait Marshalling extends
        BasicJsonMarshalling
@@ -51,21 +49,22 @@ trait BasicJsonMarshalling extends akka.http.scaladsl.marshallers.sprayjson.Spra
   implicit def jsObjectUnmarshaller(implicit jsonUnmarshaller: FromEntityUnmarshaller[JsValue]) = jsonUnmarshaller.map(_.asJsObject)
 }
 
-trait BasicMarshalling {
+trait OptionMarshalling {
+  implicit def fromResponseOptionUnmarshaller[T](implicit unm: FromResponseUnmarshaller[T]): FromResponseUnmarshaller[Option[T]] =
+    Unmarshaller.withMaterializer{implicit ec => implicit mat => entity =>
+      if (entity.status == StatusCodes.NotFound || entity.status == StatusCodes.NoContent) Future.successful(None) else unm(entity).map(r => Option(r))
+    }
+  implicit def toResponseOptionMarshaller[A](implicit m: ToResponseMarshaller[A]): ToResponseMarshaller[Option[A]] = Marshaller { implicit ec => {
+    case Some(value) => m(value)
+    case None => FastFuture.successful(Marshalling.Opaque(() => HttpResponse(StatusCodes.NotFound)) :: Nil)
+  }}
+}
+
+trait BasicMarshalling extends OptionMarshalling {
 
   // why this is not the method in Marshaller, like it has composeWithEC and wrapWithEC ???
   def combinedWithEC[A, B, C](marshal: ExecutionContext => A => B)(implicit m2: Marshaller[B, C]): Marshaller[A, C] =
     Marshaller[A, C] { ec => a => m2.composeWithEC(marshal).apply(a)(ec) }
-
-  implicit def optionUnmarshaller[T](implicit unm: FromResponseUnmarshaller[T]): FromResponseUnmarshaller[Option[T]] =
-    Unmarshaller.withMaterializer{implicit ec => implicit mat => entity =>
-      if (entity.status == StatusCodes.NotFound || entity.status == StatusCodes.NoContent) Future.successful(None) else unm(entity).map(r => Option(r))
-    }
-
-  implicit def optionMarshaller[A](implicit m: ToResponseMarshaller[A]): ToResponseMarshaller[Option[A]] = Marshaller { implicit ec => {
-    case Some(value) => m(value)
-    case None => FastFuture.successful(Marshalling.Opaque(() => HttpResponse(StatusCodes.NotFound)) :: Nil)
-  }}
 
   implicit def TupleUnmarshaller[A, B, P](implicit ma: Unmarshaller[P, A], mb: Unmarshaller[P, B]): Unmarshaller[P, (A, B)] =
     Unmarshaller.withMaterializer { implicit ec => implicit mat => resp =>
@@ -120,7 +119,7 @@ trait BasicMarshalling {
   )
 }
 
-trait DtoMarshalling extends QuereaseMarshalling { this: AppProvider[_] with Execution =>
+trait DtoMarshalling extends QuereaseMarshalling { this: AppProvider[_] with Execution with OptionMarshalling =>
   import app.qe
   implicit def dtoUnmarshaller[T <: app.Dto](implicit m: Manifest[T]): FromEntityUnmarshaller[T] =
     toMapUnmarshallerForView(app.qe.viewDef[T].name).map {
@@ -144,7 +143,7 @@ trait DtoMarshalling extends QuereaseMarshalling { this: AppProvider[_] with Exe
     }
 }
 
-trait QuereaseMarshalling extends QuereaseResultMarshalling { this: AppProvider[_] with Execution =>
+trait QuereaseMarshalling extends QuereaseResultMarshalling { this: AppProvider[_] with Execution with OptionMarshalling =>
   import app.qe
   implicit val mapForViewMarshaller: ToEntityMarshaller[(Map[String, Any], String)] = {
     def marsh(viewName: String)(implicit ec: ExecutionContext): ToEntityMarshaller[Map[String, Any]] =
@@ -177,7 +176,7 @@ trait QuereaseMarshalling extends QuereaseResultMarshalling { this: AppProvider[
     }
 }
 
-trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with QuereaseMarshalling =>
+trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with QuereaseMarshalling with OptionMarshalling =>
   import app.qe
   import ResultEncoder.EncoderFactory
   implicit def toEntityQuereaseMapResultMarshaller (viewName: String):  ToEntityMarshaller[MapResult]  =
