@@ -194,9 +194,17 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     (keyValues, keyColNames)
   }, data)
 
+  protected def keyResult(viewName: String, ir: IdResult, data: Map[String, Any]) = {
+    val keyValues = keyValuesAndColNames(
+      viewName,
+      data ++ Option("id" -> ir.id).filter(_._1 != null).toMap
+    )._1
+    KeyResult(ir, keyValues)
+  }
+
   /********************************
    ******** Querease actions ******
-  *********************************/
+   ********************************/
   trait QuereaseAction[A] {
     def run(implicit ec: ExecutionContext): Future[A]
     def map[B](f: A => B)(implicit ec: ExecutionContext): QuereaseAction[B] =
@@ -221,7 +229,9 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
             case TresqlResult(r: DMLResult) =>
               closeResources(res, None)
               r match {
-                case _: InsertResult | _: UpdateResult => KeyResult(IdResult(r.id), Seq(r.id)) // FIXME key!
+                case _: InsertResult | _: UpdateResult =>
+                  // FIXME querease action DMLResult - use last (not first) step data here!
+                  keyResult(viewName, IdResult(r.id), data ++ env)
                 case _: DeleteResult => QuereaseDeleteResult(r.count.getOrElse(0))
               }
             case r: QuereaseCloseableResult => QuereaseResultWithCleanup(
@@ -363,12 +373,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case s :: Nil =>
         doStep(s, curData) flatMap {
           case ir: IdResult =>
-            def keyValues(data: Map[String, Any]) =
-              keyValuesAndColNames(
-                context.viewName,
-                data ++ Option("id" -> ir.id).filter(_._1 != null).toMap
-              )._1
-            curData.map(data => KeyResult(ir, keyValues(data)))
+            curData.map(keyResult(context.viewName, ir, _))
           case x => Future.successful(x)
         }
       case s :: tail =>
