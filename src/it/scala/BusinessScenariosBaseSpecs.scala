@@ -225,6 +225,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
       case mm: Map[String@unchecked, _] => mm.map { case (key, value) => (key, tresqlTransformDate(value))}
       case s: Seq[_] => s map tresqlTransformDate
       case t: java.sql.Timestamp => t.toString.substring(0, 19)
+      case d: java.sql.Date => d.toString
       case d: java.util.Date => Format.humanDateTime(d)
       case x => x
     }
