@@ -271,6 +271,13 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
   ) {
     val name = s"$viewName.$actionName" + Option(stepName).map(s => s".$s").getOrElse("")
   }
+  private[wabase] def quereaseActionOpt(view: ViewDef, actionName: String) =
+    view.actions.get(actionName)
+      .orElse(actionName match {
+        case Action.Insert | Action.Update | Action.Upsert =>
+          view.actions.get(Action.Save)
+        case _ => None
+      })
   def doAction(view: String,
                actionName: String,
                data: Map[String, Any],
@@ -281,12 +288,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     val ctx = ActionContext(view, actionName, env, Some(vd))
     logger.debug(s"Doing action '${ctx.name}'.\n Env: $env")
     val steps =
-      vd.actions.get(actionName)
-        .orElse(actionName match {
-          case Action.Insert | Action.Update | Action.Upsert =>
-            vd.actions.get(Action.Save)
-          case _ => None
-        })
+      quereaseActionOpt(vd, actionName)
         .map(_.steps)
         .getOrElse(List(Action.Return(None, Nil, Action.ViewCall(actionName, view))))
     doSteps(steps, ctx, Future.successful(data))

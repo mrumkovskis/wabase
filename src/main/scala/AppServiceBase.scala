@@ -148,7 +148,7 @@ trait AppServiceBase[User]
     extractUri { requestUri =>
       parameterMultiMap { params =>
         try {
-          if (useActions(viewName, Action.Save)) {
+          if (useActions(viewName, Action.Update)) {
             implicit val um = toMapUnmarshallerForView(viewName)
             entityOrException(as[Map[String, Any]]) { entityAsMap =>
               complete {
@@ -214,7 +214,7 @@ trait AppServiceBase[User]
     extractUri { requestUri =>
       parameterMultiMap { params =>
         try {
-          if (useActions(viewName, Action.Save)) {
+          if (useActions(viewName, Action.Insert)) {
             implicit val um = toMapUnmarshallerForView(viewName)
             entityOrException(as[Map[String, Any]]) { entityAsMap =>
               complete {
