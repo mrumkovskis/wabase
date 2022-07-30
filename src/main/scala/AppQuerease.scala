@@ -43,7 +43,10 @@ case class OptionResult(result: Option[AppQuerease#DTO]) extends QuereaseResult
 case class LongResult(value: Long) extends QuereaseResult
 case class StringResult(value: String) extends QuereaseResult
 case class NumberResult(value: java.lang.Number) extends QuereaseResult
-case class IdResult(id: Any) extends QuereaseResult
+case class IdResult(id: Any, name: String) extends QuereaseResult {
+  def toMap: Map[String, Any] =
+    if (id == null || id == 0L) Map.empty else Map((if (name == null) "id" else name) -> id)
+}
 case class KeyResult(ir: IdResult, key: Seq[Any]) extends QuereaseResult
 case class QuereaseDeleteResult(count: Int) extends QuereaseResult
 case class StatusResult(code: Int, value: String, key: Seq[String] = Nil, params: ListMap[String, String] = ListMap()) extends QuereaseResult
@@ -176,6 +179,32 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     case e: Exception => throw new QuereaseEnvException(env, e)
   }
 
+  /* For action IdResult.name - field or column name */
+  lazy val viewNameToIdName: Map[String, String] =
+    nameToViewDef.map { case (name, viewDef) => (name, idName(viewDef)) }.filter(_._2 != null).toMap
+  protected def idName(view: ViewDef): String = {
+    def tableTo(v: ViewDef) =
+      if (v.saveTo != null && v.saveTo.nonEmpty)
+        v.saveTo.head
+      else if (v.saveTo == Nil)
+        null
+      else if (v.table != null)
+        v.table
+      else
+        null
+    tableMetadata.tableDefOption(tableTo(view), view.db).flatMap { t =>
+      t.pk
+        .map(_.cols)
+        .filter(_.size == 1)
+        .map(_.head)
+        .flatMap { pk =>
+          view.fields.find { f => f.table == t.name && f.name == pk }
+            .map(_.fieldName)
+            .orElse(t.pk.map(_.cols.head))
+        }
+    }.orNull
+  }
+
   protected def keyValuesAndColNames(viewName: String, data: Map[String, Any]) = tryOp({
     val keyFields = viewNameToKeyFields(viewName)
     val keyColNames = keyFields.map(_.name)
@@ -195,11 +224,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
   }, data)
 
   protected def keyResult(viewName: String, ir: IdResult, data: Map[String, Any]) = {
-    val keyValues = keyValuesAndColNames(
-      viewName,
-      data ++ Option("id" -> ir.id).filter(_._1 != null).toMap
-    )._1
-    KeyResult(ir, keyValues)
+    KeyResult(ir, keyValuesAndColNames(viewName, data ++ ir.toMap)._1)
   }
 
   /********************************
@@ -230,8 +255,9 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
               closeResources(res, None)
               r match {
                 case _: InsertResult | _: UpdateResult =>
+                  val idName = viewNameToIdName.getOrElse(viewName, null)
                   // FIXME querease action DMLResult - use last (not first) step data here!
-                  keyResult(viewName, IdResult(r.id), data ++ env)
+                  keyResult(viewName, IdResult(r.id, idName), data ++ env)
                 case _: DeleteResult => QuereaseDeleteResult(r.count.getOrElse(0))
               }
             case r: QuereaseCloseableResult => QuereaseResultWithCleanup(
@@ -308,7 +334,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     def dataForNewStep(oldStep: Step, res: QuereaseResult) = res match {
       case TresqlResult(tr) => tr match {
         case dml: DMLResult =>
-          dml.id.map(IdResult(_)) orElse dml.count getOrElse 0
+          dml.id.map(IdResult(_, null)) orElse dml.count getOrElse 0
         case SingleValueResult(v) => v
         case ar: ArrayResult[_] => ar.values.toList
         case r: Result[_] => (oldStep match {
@@ -343,9 +369,9 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case x => sys.error(s"${x.getClass.getName} not expected here!")
     }
     def updateCurRes(cr: Map[String, Any], key: Option[String], res: Any) = res match {
-      case IdResult(id) => key
-        .map(k => cr + (k -> Map("id" -> id)))
-        .getOrElse(cr + ("id" -> id))
+      case ir: IdResult => key
+        .map(k => cr + (k -> ir.toMap))
+        .getOrElse(cr ++ ir.toMap)
       case NoResult => cr
       case r => key.map(k => cr + (k -> r)).getOrElse(cr)
     }
@@ -497,6 +523,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       else                view
     )
     val viewName = v.name
+    lazy val idName = viewNameToIdName(viewName)
     def int(name: String) = tryOp(callData.get(name).map {
       case x: Int => x
       case x: Number => x.intValue
@@ -520,13 +547,13 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
               case Upsert => SaveMethod.Upsert
               case _      => SaveMethod.Save
             }
-            IdResult(save(v, callData, null, saveMethod,        null, env))
+            IdResult(save(v, callData, null, saveMethod,        null, env), idName)
           case Insert =>
-            IdResult(save(v, callData, null, SaveMethod.Insert, null, env))
+            IdResult(save(v, callData, null, SaveMethod.Insert, null, env), idName)
           case Update =>
-            IdResult(save(v, callData, null, SaveMethod.Update, null, env))
+            IdResult(save(v, callData, null, SaveMethod.Update, null, env), idName)
           case Upsert =>
-            IdResult(save(v, callData, null, SaveMethod.Upsert, null, env))
+            IdResult(save(v, callData, null, SaveMethod.Upsert, null, env), idName)
           case Delete =>
             keyValuesAndColNames(viewName, data) // check mappings for key exist
             LongResult(delete(v, data, null, env))
