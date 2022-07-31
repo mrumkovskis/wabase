@@ -225,6 +225,28 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     hasPerson("Bear")   shouldBe true
   }
 
+  it should "manage key magically" in {
+    hasPerson("MagicIns") shouldBe false
+    hasPerson("MagicUpd") shouldBe false
+    hasPerson("NotMagic") shouldBe false
+    Post("/data/by_magic_key_view_1", """{"name": "NotMagic"}""") ~> route ~> check {
+      status shouldEqual StatusCodes.SeeOther
+      val location = header[Location].get.uri.path.toString
+      location shouldBe "/data/by_magic_key_view_1/MagicIns"
+    }
+    hasPerson("MagicIns") shouldBe true
+    hasPerson("MagicUpd") shouldBe false
+    hasPerson("NotMagic") shouldBe false
+    Put(s"/data/by_magic_key_view_1/MagicIns", s"""{"name": "NotMagic"}""") ~> route ~> check {
+      status shouldEqual StatusCodes.SeeOther
+      val location = header[Location].get.uri.path.toString
+      location shouldBe "/data/by_magic_key_view_1/MagicUpd"
+    }
+    hasPerson("MagicIns") shouldBe false
+    hasPerson("MagicUpd") shouldBe true
+    hasPerson("NotMagic") shouldBe false
+  }
+
   it should "not update readonly key" in {
     hasPerson("RoName") shouldBe false
     hasPerson("RwName") shouldBe false

@@ -44,3 +44,18 @@ key:    name
 fields:
 - name          [!]
 - surname
+
+
+name:   by_magic_key_view_1
+api:    get list count create save delete
+table:  person
+key:    name
+fields:
+- name
+- surname
+insert:
+- name = 'MagicIns'
+- save this
+update:
+- name = 'MagicUpd'
+- save this
