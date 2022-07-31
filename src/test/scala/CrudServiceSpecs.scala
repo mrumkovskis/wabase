@@ -46,11 +46,14 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
   }
   //----------------------------------------------------------//
 
-  def createPerson(name: String): Long = {
+  def createPerson(name: String, surname: String = null): Long = {
     val db = dbAccess
     import db._
+    val values = Seq(name, surname)
+      .map { case null => "null" case x => s"'$x'" }
+      .mkString(", ")
     transaction {
-      Query(s"+person {id, name} [#person, '$name']") match {
+      Query(s"+person {id, name, surname} [#person, $values]") match {
         case r: DMLResult => r.id.get.toString.toLong
         case _ => -1
       }
@@ -72,6 +75,18 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       status shouldEqual StatusCodes.OK
       header[`Content-Type`].get.contentType shouldBe ContentTypes.`application/json`
       entityAs[String] shouldBe s"""{"id":$id,"name":"John","surname":null}"""
+    }
+  }
+
+  it should "get by key" in {
+    Get(s"/data/by_key_view_1/Jar/Key") ~> route ~> check {
+      status shouldEqual StatusCodes.NotFound
+    }
+    val id = createPerson("Jar", "Key")
+    Get(s"/data/by_key_view_1/Jar/Key") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
+      header[`Content-Type`].get.contentType shouldBe ContentTypes.`application/json`
+      entityAs[String] shouldBe s"""{"name":"Jar","surname":"Key"}"""
     }
   }
 
@@ -126,9 +141,14 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       header[`Content-Type`].get.contentType shouldBe ContentTypes.`application/json`
       entityAs[String] shouldBe """{"id":null,"name":null,"surname":null}"""
     }
+    Get("/data/create/by_key_view_1") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
+      header[`Content-Type`].get.contentType shouldBe ContentTypes.`application/json`
+      entityAs[String] shouldBe """{"name":null,"surname":null}"""
+    }
   }
 
-  it should "insert" in {
+  it should "insert by id" in {
     hasPerson("Sia") shouldBe false
     Post("/data/by_id_view_1", """{"name": "Sia"}""") ~> route ~> check {
       status shouldEqual StatusCodes.SeeOther
@@ -137,6 +157,23 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       (location.substring(location.lastIndexOf("/") + 1).toLong > 0) shouldBe true
     }
     hasPerson("Sia") shouldBe true
+  }
+
+  it should "insert by key" in {
+    hasPerson("Jane") shouldBe false
+    Post("/data/by_key_view_1", """{"name": "Jane"}""") ~> route ~> check {
+      status shouldEqual StatusCodes.SeeOther
+      val location = header[Location].get.uri.path.toString
+      location shouldBe "/data/by_key_view_1/Jane/null"
+    }
+    hasPerson("Jane") shouldBe true
+    hasPerson("Bruce") shouldBe false
+    Post("/data/by_key_view_1", """{"name": "Bruce", "surname": "Fur"}""") ~> route ~> check {
+      status shouldEqual StatusCodes.SeeOther
+      val location = header[Location].get.uri.path.toString
+      location shouldBe "/data/by_key_view_1/Bruce/Fur"
+    }
+    hasPerson("Bruce") shouldBe true
   }
 
   it should "update by id" in {

@@ -220,7 +220,7 @@ trait AppServiceBase[User]
               complete {
                 app.doWabaseAction(Action.Insert, viewName, Nil, filterPars(params), entityAsMap).map {
                   case r @ app.WabaseResult(_, KeyResult(_, key)) =>
-                    val pathWithKey = key.foldLeft(requestUri.path)((path, step) => path ?/ step.toString)
+                    val pathWithKey = key.foldLeft(requestUri.path)((path, step) => path ?/ ("" +step))
                     r.copy(result = StatusResult(StatusCodes.SeeOther.intValue, pathWithKey.toString))
                   case x => x
                 }

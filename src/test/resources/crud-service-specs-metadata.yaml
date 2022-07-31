@@ -18,3 +18,11 @@ filter:
 - name ~%
 order:
 - id
+
+
+name:   by_key_view_1
+api:    get list count create save delete
+table:  person
+fields:
+- name
+- surname
