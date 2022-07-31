@@ -219,7 +219,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     Put(s"/data/by_key_view_1/Winnie/Pooh", s"""{"name": "Bear", "surname": "Pooh"}""") ~> route ~> check {
       status shouldEqual StatusCodes.SeeOther
       val location = header[Location].get.uri.path.toString
-      // FIXME location shouldBe "/data/by_key_view_1/Bear/Pooh"   
+      location shouldBe "/data/by_key_view_1/Bear/Pooh"
     }
     hasPerson("Winnie") shouldBe false
     hasPerson("Bear")   shouldBe true

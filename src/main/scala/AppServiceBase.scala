@@ -180,8 +180,13 @@ trait AppServiceBase[User]
           entityOrException(as[Map[String, Any]]) { entityAsMap =>
             complete {
               app.doWabaseAction(Action.Update, viewName, keyValues, filterPars(params), entityAsMap).map {
-                case r @ app.WabaseResult(_, _: KeyResult) =>
-                  r.copy(result = StatusResult(StatusCodes.SeeOther.intValue, requestUri.path.toString))
+                case r @ app.WabaseResult(_, KeyResult(_, key)) =>
+                  var viewPath = requestUri.path.reverse
+                  for (i <- 0 until keyValues.size + 1)
+                    viewPath = viewPath.tail
+                  viewPath = viewPath.reverse
+                  val pathWithKey = key.foldLeft(viewPath)((path, step) => path ?/ ("" + step))
+                  r.copy(result = StatusResult(StatusCodes.SeeOther.intValue, pathWithKey.toString))
                 case x => x
               }
             }
@@ -241,7 +246,7 @@ trait AppServiceBase[User]
               complete {
                 app.doWabaseAction(Action.Insert, viewName, Nil, filterPars(params), entityAsMap).map {
                   case r @ app.WabaseResult(_, KeyResult(_, key)) =>
-                    val pathWithKey = key.foldLeft(requestUri.path)((path, step) => path ?/ ("" +step))
+                    val pathWithKey = key.foldLeft(requestUri.path)((path, step) => path ?/ ("" + step))
                     r.copy(result = StatusResult(StatusCodes.SeeOther.intValue, pathWithKey.toString))
                   case x => x
                 }
