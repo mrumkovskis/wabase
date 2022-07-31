@@ -294,6 +294,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     env: Map[String, Any],
     view: Option[ViewDef],
     stepName: String = null,
+    contextStack: List[ActionContext] = Nil,
   ) {
     val name = s"$viewName.$actionName" + Option(stepName).map(s => s".$s").getOrElse("")
   }
@@ -304,14 +305,16 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
           view.actions.get(Action.Save)
         case _ => None
       })
-  def doAction(view: String,
-               actionName: String,
-               data: Map[String, Any],
-               env: Map[String, Any])(
-      implicit resources: Resources, ec: ExecutionContext): Future[QuereaseResult] = {
+  def doAction(
+    view: String,
+    actionName: String,
+    data: Map[String, Any],
+    env: Map[String, Any],
+    contextStack: List[ActionContext] = Nil,
+  )(implicit resources: Resources, ec: ExecutionContext): Future[QuereaseResult] = {
     val vd = viewDef(view)
 
-    val ctx = ActionContext(view, actionName, env, Some(vd))
+    val ctx = ActionContext(view, actionName, env, Some(vd), null, contextStack)
     logger.debug(s"Doing action '${ctx.name}'.\n Env: $env")
     val steps =
       quereaseActionOpt(vd, actionName)
@@ -566,7 +569,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
         }
       }
     } else {
-      doAction(viewName, method, data, env)
+      doAction(viewName, method, data, env, context :: context.contextStack)
     }
   }
 
