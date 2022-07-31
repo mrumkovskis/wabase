@@ -59,3 +59,18 @@ insert:
 update:
 - name = 'MagicUpd'
 - save this
+
+
+name:   by_magic_key_view_2
+api:    get list count create save delete
+table:  person
+key:    name
+fields:
+- name
+- surname
+insert:
+- name = 'MagicIns'
+- +person {id=#person, name = :name, surname = :surname}
+update:
+- name = 'MagicUpd'
+- =person [name = 'MagicIns'] {name = :name, surname = :surname}

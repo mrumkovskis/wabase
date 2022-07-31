@@ -59,6 +59,11 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       }
     }
   }
+  def deletePerson(name: String): Unit = {
+    val db = dbAccess
+    import db._
+    transaction { Query(s"-person[name = '$name']") }
+  }
   def hasPerson(name: String): Boolean = {
     val db = dbAccess
     import db._
@@ -241,6 +246,27 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       status shouldEqual StatusCodes.SeeOther
       val location = header[Location].get.uri.path.toString
       location shouldBe "/data/by_magic_key_view_1/MagicUpd"
+    }
+    hasPerson("MagicIns") shouldBe false
+    hasPerson("MagicUpd") shouldBe true
+    hasPerson("NotMagic") shouldBe false
+    deletePerson("MagicUpd")
+    //
+    hasPerson("MagicIns") shouldBe false
+    hasPerson("MagicUpd") shouldBe false
+    hasPerson("NotMagic") shouldBe false
+    Post("/data/by_magic_key_view_2", """{"name": "NotMagic"}""") ~> route ~> check {
+      status shouldEqual StatusCodes.SeeOther
+      val location = header[Location].get.uri.path.toString
+      location shouldBe "/data/by_magic_key_view_2/MagicIns"
+    }
+    hasPerson("MagicIns") shouldBe true
+    hasPerson("MagicUpd") shouldBe false
+    hasPerson("NotMagic") shouldBe false
+    Put(s"/data/by_magic_key_view_2/MagicIns", s"""{"name": "NotMagic"}""") ~> route ~> check {
+      status shouldEqual StatusCodes.SeeOther
+      val location = header[Location].get.uri.path.toString
+      location shouldBe "/data/by_magic_key_view_2/MagicUpd"
     }
     hasPerson("MagicIns") shouldBe false
     hasPerson("MagicUpd") shouldBe true

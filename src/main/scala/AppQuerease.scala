@@ -251,15 +251,6 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
         implicit val res = initResources()
         try {
           doAction(viewName, actionName, data, env).map {
-            case TresqlResult(r: DMLResult) =>
-              closeResources(res, None)
-              r match {
-                case _: InsertResult | _: UpdateResult =>
-                  val idName = viewNameToIdName.getOrElse(viewName, null)
-                  // FIXME querease action DMLResult - use last (not first) step data here!
-                  keyResult(viewName, IdResult(r.id, idName), data ++ env)
-                case _: DeleteResult => QuereaseDeleteResult(r.count.getOrElse(0))
-              }
             case r: QuereaseCloseableResult => QuereaseResultWithCleanup(
               r,
               r match {
@@ -405,6 +396,14 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
         doStep(s, curData) flatMap {
           case ir: IdResult =>
             curData.map(keyResult(context.viewName, ir, _))
+          case TresqlResult(r: DMLResult) if context.stepName == null && context.contextStack.isEmpty =>
+            r match {
+              case _: InsertResult | _: UpdateResult =>
+                val idName = viewNameToIdName.getOrElse(context.viewName, null)
+                curData.map(keyResult(context.viewName, IdResult(r.id, idName), _))
+              case _: DeleteResult =>
+                Future.successful(QuereaseDeleteResult(r.count.getOrElse(0)))
+            }
           case x => Future.successful(x)
         }
       case s :: tail =>
