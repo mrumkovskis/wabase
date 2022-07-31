@@ -152,7 +152,13 @@ trait WabaseApp[User] {
   def save(context: AppActionContext): ActionHandlerResult = {
     import context._
     val viewDef = qe.viewDef(viewName)
-    val keyAsMap = prepareKey(viewName, keyValues, actionName)
+    val keyAsMap =
+      if  (actionName == Action.Update)
+           values(qe.oldKeyParamName) match {
+             case keyAsMap: Map[String, Any] @unchecked => keyAsMap
+             case x => sys.error("Unexpected old key type, expecting Map")
+           }
+      else prepareKey(viewName, keyValues, actionName)
     Option(keyAsMap)
       .filter(_.nonEmpty)
       .map(_ => getOldValue(context.copy(values = values ++ keyAsMap)))

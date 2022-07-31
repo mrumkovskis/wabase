@@ -64,6 +64,11 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     import db._
     dbUse(Query(s"person[name = '$name'] {count(*)}").unique[Int]) == 1
   }
+  def hasPerson(name: String, surname: String = null): Boolean = {
+    val db = dbAccess
+    import db._
+    dbUse(Query(s"person[name = '$name' & surname = '$surname'] {count(*)}").unique[Int]) == 1
+  }
   //----------------------------------------------------------//
 
   it should "get by id" in {
@@ -192,6 +197,34 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     hasPerson("Pete")  shouldBe true
   }
 
+  it should "update by key" in {
+    hasPerson("KeyName") shouldBe false
+    val id = createPerson("KeyName", "OldSurname")
+    hasPerson("KeyName", "OldSurname") shouldBe true
+    Put(s"/data/by_key_view_2/KeyName", s"""{"name": "KeyName", "surname": "NewSurname"}""") ~> route ~> check {
+      status shouldEqual StatusCodes.SeeOther
+      val location = header[Location].get.uri.path.toString
+      location shouldBe "/data/by_key_view_2/KeyName"
+    }
+    hasPerson("KeyName", "OldSurname") shouldBe false
+    hasPerson("KeyName", "NewSurname") shouldBe true
+  }
+
+  it should "update key" in {
+    hasPerson("Winnie") shouldBe false
+    hasPerson("Bear")   shouldBe false
+    val id = createPerson("Winnie", "Pooh")
+    hasPerson("Winnie") shouldBe true
+    hasPerson("Bear")   shouldBe false
+    Put(s"/data/by_key_view_1/Winnie/Pooh", s"""{"name": "Bear", "surname": "Pooh"}""") ~> route ~> check {
+      status shouldEqual StatusCodes.SeeOther
+      val location = header[Location].get.uri.path.toString
+      // FIXME location shouldBe "/data/by_key_view_1/Bear/Pooh"   
+    }
+    hasPerson("Winnie") shouldBe false
+    hasPerson("Bear")   shouldBe true
+  }
+
   it should "delete by id" in {
     hasPerson("Scott") shouldBe false
     val id = createPerson("Scott")
@@ -200,5 +233,15 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       status shouldEqual StatusCodes.OK
     }
     hasPerson("Scott") shouldBe false
+  }
+
+  it should "delete by key" in {
+    hasPerson("Deleme") shouldBe false
+    createPerson("Deleme")
+    hasPerson("Deleme") shouldBe true
+    Delete(s"/data/by_key_view_2/Deleme") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
+    }
+    hasPerson("Deleme") shouldBe false
   }
 }

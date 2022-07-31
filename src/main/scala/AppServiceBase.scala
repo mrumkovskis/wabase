@@ -71,7 +71,9 @@ trait AppServiceBase[User]
   @deprecated("Use key without field name. This method will be removed", "6.0")
   def getByNamePath = viewWithNamePath & get
   def deletePath = viewWithIdPath & delete
+  def deleteByKeyPath = viewWithKeyPath & delete
   def updatePath = viewWithIdPath & put
+  def updateByKeyPath = viewWithKeyPath & put
   def insertPath = viewWithoutIdPath & post
   def listOrGetPath = viewWithoutIdPath & get
   def countPath = path("count" / Segment) & get
@@ -129,40 +131,59 @@ trait AppServiceBase[User]
     }
 
   def deleteAction(viewName: String, id: Long)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
-    parameterMultiMap { params =>
-      if (useActions(viewName, Action.Delete)) {
+    if (useActions(viewName, Action.Delete))
+      deleteByKeyAction(viewName, Seq(id))
+    else
+      parameterMultiMap { params =>
         complete {
-          app.doWabaseAction(Action.Delete, viewName, Seq(id), filterPars(params))
+          try {
+            app.delete(viewName, id, filterPars(params))
+            StatusCodes.NoContent
+          } catch {
+            case _: org.mojoz.querease.NotFoundException => StatusCodes.NotFound
+          }
         }
-      } else complete {
-        try {
-          app.delete(viewName, id, filterPars(params))
-          StatusCodes.NoContent
-        } catch {
-          case _: org.mojoz.querease.NotFoundException => StatusCodes.NotFound
-        }
+      }
+
+  def deleteByKeyAction(viewName: String, keyValues: Seq[Any])(
+    implicit user: User, state: ApplicationState, timeout: QueryTimeout): Route =
+    parameterMultiMap { params =>
+      complete {
+        app.doWabaseAction(Action.Delete, viewName, keyValues, filterPars(params))
       }
     }
 
-  def updateAction(viewName: String, id: Long)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
-    extractUri { requestUri =>
-      parameterMultiMap { params =>
-        try {
-          if (useActions(viewName, Action.Update)) {
-            implicit val um = toMapUnmarshallerForView(viewName)
-            entityOrException(as[Map[String, Any]]) { entityAsMap =>
-              complete {
-                app.doWabaseAction(Action.Update, viewName, Seq(id), filterPars(params), entityAsMap).map {
-                  case r @ app.WabaseResult(_, _: KeyResult) =>
-                    r.copy(result = StatusResult(StatusCodes.SeeOther.intValue, requestUri.path.toString))
-                  case x => x
-                }
-              }
-            }
-          } else {
+  def updateAction(viewName: String, id: Long)(
+    implicit user: User, state: ApplicationState, timeout: QueryTimeout): Route =
+    if (useActions(viewName, Action.Update))
+      updateByKeyAction(viewName, Seq(id))
+    else
+      extractUri { requestUri =>
+        parameterMultiMap { params =>
+          try {
             entityOrException(as[JsValue]) { data =>
               app.save(viewName, data.asInstanceOf[JsObject], filterPars(params))
               redirect(Uri(path = requestUri.path), StatusCodes.SeeOther)
+            }
+          } catch {
+            case _: org.mojoz.querease.NotFoundException => complete(StatusCodes.NotFound)
+          }
+        }
+      }
+
+  def updateByKeyAction(viewName: String, keyValues: Seq[Any])(
+    implicit user: User, state: ApplicationState, timeout: QueryTimeout): Route =
+    extractUri { requestUri =>
+      parameterMultiMap { params =>
+        try {
+          implicit val um = toMapUnmarshallerForView(viewName)
+          entityOrException(as[Map[String, Any]]) { entityAsMap =>
+            complete {
+              app.doWabaseAction(Action.Update, viewName, keyValues, filterPars(params), entityAsMap).map {
+                case r @ app.WabaseResult(_, _: KeyResult) =>
+                  r.copy(result = StatusResult(StatusCodes.SeeOther.intValue, requestUri.path.toString))
+                case x => x
+              }
             }
           }
         } catch {
@@ -260,14 +281,16 @@ trait AppServiceBase[User]
 
   def crudAction(implicit user: User) = applicationState { implicit state =>
     extractTimeout { implicit timeout =>
-      getByIdPath   { getByIdAction   } ~
-      countPath     { countAction     } ~
-      createPath    { createAction    } ~
-      deletePath    { deleteAction    } ~
-      updatePath    { updateAction    } ~
-      listOrGetPath { listOrGetAction } ~
-      getByKeyPath  { getByKeyAction  } ~
-      insertPath    { insertAction    }
+      getByIdPath     { getByIdAction     } ~
+      countPath       { countAction       } ~
+      createPath      { createAction      } ~
+      deletePath      { deleteAction      } ~
+      deleteByKeyPath { deleteByKeyAction } ~
+      updatePath      { updateAction      } ~
+      updateByKeyPath { updateByKeyAction } ~
+      listOrGetPath   { listOrGetAction   } ~
+      getByKeyPath    { getByKeyAction    } ~
+      insertPath      { insertAction      }
     }
   }
 
