@@ -225,6 +225,21 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     hasPerson("Bear")   shouldBe true
   }
 
+  it should "not update readonly key" in {
+    hasPerson("RoName") shouldBe false
+    hasPerson("RwName") shouldBe false
+    val id = createPerson("RoName")
+    hasPerson("RoName") shouldBe true
+    hasPerson("RwName") shouldBe false
+    Put(s"/data/by_readonly_key_view_1/RoName", s"""{"name": "RwName", "surname": null}""") ~> route ~> check {
+      status shouldEqual StatusCodes.SeeOther
+      val location = header[Location].get.uri.path.toString
+      location shouldBe "/data/by_readonly_key_view_1/RoName"
+    }
+    hasPerson("RoName") shouldBe true
+    hasPerson("RwName") shouldBe false
+  }
+
   it should "delete by id" in {
     hasPerson("Scott") shouldBe false
     val id = createPerson("Scott")
