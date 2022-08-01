@@ -597,11 +597,11 @@ object AppServiceBase {
     def businessExceptionHandler(logger: com.typesafe.scalalogging.Logger) = ExceptionHandler {
       case e: BusinessException =>
         logger.trace(e.getMessage, e)
-        complete(HttpResponse(InternalServerError, entity = e.getMessage))
+        complete(HttpResponse(BadRequest, entity = e.getMessage))
       case e: InvocationTargetException if e.getCause != null && e.getCause.isInstanceOf[BusinessException] =>
         logger.trace(e.getMessage, e)
         val msg = Option(e.getCause.getMessage).getOrElse("")
-        complete(HttpResponse(InternalServerError, entity = msg))
+        complete(HttpResponse(BadRequest, entity = msg))
     }
 
     def unprocessableEntityExceptionHandler(logger: com.typesafe.scalalogging.Logger) = ExceptionHandler {

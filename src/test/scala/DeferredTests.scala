@@ -250,7 +250,7 @@ class DeferredTests extends AnyFlatSpec with Matchers with TestQuereaseInitializ
     }
     Get("/data/fault") ~> route ~> check {
       handled shouldBe true
-      status shouldBe StatusCodes.InternalServerError
+      status shouldBe StatusCodes.BadRequest
       responseAs[String] shouldEqual "fault"
     }
     Get("/data/action") ~> RawHeader("X-Deferred", "10s") ~> route ~> check {
