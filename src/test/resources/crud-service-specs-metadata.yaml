@@ -109,3 +109,10 @@ insert:
 update:
 - name = 'MagicUpd'
 - =person [name = 'MagicIns'] {name = :name, surname = :surname}
+
+
+name:   no_api_view
+table:  person
+fields:
+- id
+- name

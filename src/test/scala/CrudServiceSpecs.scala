@@ -13,9 +13,13 @@ class CrudTestService(system: ActorSystem, testApp: TestApp) extends TestAppServ
   override def initApp          = testApp
   override def initFileStreamer = testApp
   implicit val user: TestUsr    = null
+  implicit val exceptionHandler = appExceptionHandler
+  implicit val rejectionHandler = RejectionHandler.default
   val route =
-    crudPath {
-      crudAction
+    Route.seal {
+      crudPath {
+        crudAction
+      }
     }
 }
 
@@ -341,6 +345,38 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       status shouldEqual StatusCodes.SeeOther
       val location = header[Location].get.uri.path.toString
       location shouldBe "/data/by_key_view_1/RediOther/SurnmUpd"
+    }
+  }
+
+  // exception handling --------------------------------------//
+  it should "respect api" in {
+    Get("/data/no_api_view/0") ~> route ~> check {
+      status shouldEqual StatusCodes.BadRequest
+      responseAs[String] shouldBe "no_api_view.get is not a part of this API"
+    }
+    Get("/data/no_api_view") ~> route ~> check {
+      status shouldEqual StatusCodes.BadRequest
+      responseAs[String] shouldBe "no_api_view.list is not a part of this API"
+    }
+    Get("/data/count/no_api_view") ~> route ~> check {
+      status shouldEqual StatusCodes.BadRequest
+      responseAs[String] shouldBe "no_api_view.count is not a part of this API"
+    }
+    Get("/data/create/no_api_view") ~> route ~> check {
+      status shouldEqual StatusCodes.BadRequest
+      responseAs[String] shouldBe "no_api_view.create is not a part of this API"
+    }
+    Post("/data/no_api_view", "{}") ~> route ~> check {
+      status shouldEqual StatusCodes.BadRequest
+      responseAs[String] shouldBe "no_api_view.insert is not a part of this API"
+    }
+    Put("/data/no_api_view/0", "{}") ~> route ~> check {
+      status shouldEqual StatusCodes.BadRequest
+      responseAs[String] shouldBe "no_api_view.update is not a part of this API"
+    }
+    Delete("/data/no_api_view/0") ~> route ~> check {
+      status shouldEqual StatusCodes.BadRequest
+      responseAs[String] shouldBe "no_api_view.delete is not a part of this API"
     }
   }
 }
