@@ -37,6 +37,41 @@ fields:
 - surname
 
 
+name:   by_key_view_3
+api:    get list count create save delete
+table:  person
+key:    name
+fields:
+- name
+- surname
+save:
+- save by_key_view_2
+
+
+name:   by_key_redirect_view_1
+api:    get list count create save delete
+table:  person
+key:    name
+fields:
+- name
+- surname
+save:
+- save this
+- redirect this
+
+
+name:   by_key_redirect_view_2
+api:    get list count create save delete
+table:  person
+key:    name
+fields:
+- name
+- surname
+save:
+- save this
+- redirect by_key_view_1
+
+
 name:   by_readonly_key_view_1
 api:    get list count create save delete
 table:  person

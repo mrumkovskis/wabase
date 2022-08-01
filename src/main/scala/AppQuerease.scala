@@ -47,7 +47,7 @@ case class IdResult(id: Any, name: String) extends QuereaseResult {
   def toMap: Map[String, Any] =
     if (id == null || id == 0L) Map.empty else Map((if (name == null) "id" else name) -> id)
 }
-case class KeyResult(ir: IdResult, key: Seq[Any]) extends QuereaseResult
+case class KeyResult(ir: IdResult, viewName: String, key: Seq[Any]) extends QuereaseResult
 case class QuereaseDeleteResult(count: Int) extends QuereaseResult
 case class StatusResult(code: Int, value: String, key: Seq[String] = Nil, params: ListMap[String, String] = ListMap()) extends QuereaseResult
 case object NoResult extends QuereaseResult
@@ -223,8 +223,8 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     (keyValues, keyColNames)
   }, data)
 
-  protected def keyResult(viewName: String, ir: IdResult, data: Map[String, Any]) = {
-    KeyResult(ir, keyValuesAndColNames(viewName, data ++ ir.toMap)._1)
+  protected def keyResult(ir: IdResult, viewName: String, data: Map[String, Any]) = {
+    KeyResult(ir, viewName, keyValuesAndColNames(viewName, data ++ ir.toMap)._1)
   }
 
   /********************************
@@ -395,12 +395,18 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case s :: Nil =>
         doStep(s, curData) flatMap {
           case ir: IdResult =>
-            curData.map(keyResult(context.viewName, ir, _))
+            curData.map(keyResult(ir, context.viewName, _))
+          case kr: KeyResult =>
+            s match {
+              // FIXME enable simple redirect from If
+              case Evaluation(_, _, RedirectToKey(_)) => Future.successful(kr)
+              case _ => curData.map(keyResult(kr.ir, context.viewName, _)) // FIXME apply kr.toMap
+            }
           case TresqlResult(r: DMLResult) if context.stepName == null && context.contextStack.isEmpty =>
             r match {
               case _: InsertResult | _: UpdateResult =>
                 val idName = viewNameToIdName.getOrElse(context.viewName, null)
-                curData.map(keyResult(context.viewName, IdResult(r.id, idName), _))
+                curData.map(keyResult(IdResult(r.id, idName), context.viewName, _))
               case _: DeleteResult =>
                 Future.successful(QuereaseDeleteResult(r.count.getOrElse(0)))
             }
@@ -727,6 +733,12 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
         doActionOp(innerOp, data, env, context) map createGetResult
       case Action.Invocation(className, function) =>
         doInvocation(className, function, data ++ env)
+      case Action.RedirectToKey(name) =>
+        val viewName = if (name == "this") context.viewName else name
+        val idName = viewNameToIdName.getOrElse(viewName, null)
+        val dataWithEnv = data ++ env
+        val id = dataWithEnv.getOrElse(idName, null)
+        Future.successful(keyResult(IdResult(id, idName), viewName, dataWithEnv))
       case Action.Status(maybeCode, bodyTresql, parameterIndex) =>
           Option(bodyTresql).map { bt =>
             doActionOp(Action.UniqueOpt(Action.Tresql(bt)), data, env, context).map {

@@ -481,6 +481,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val setEnvRegex = """setenv\s+(.+)""".r //dot matches new line as well
     val returnRegex = """return\s+(.+)""".r //dot matches new line as well
     val uniqueOpRegex = """unique_opt\s+(.+)""".r
+    val redirectToKeyOpRegex = """redirect\s+([_\p{IsLatin}][_\p{IsLatin}0-9]*)""".r
     val redirectOpRegex = """redirect\s+(.+)""".r
     val statusOpRegex = """status(?:\s+(\w+))?(?:\s+(.+))?""".r
     val commitOpRegex = """commit""".r
@@ -516,6 +517,9 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
         } else if (uniqueOpRegex.pattern.matcher(st).matches()) {
           val uniqueOpRegex(inner) = st
           Action.UniqueOpt(parseOp(inner))
+        } else if (redirectToKeyOpRegex.pattern.matcher(st).matches()) {
+          val redirectToKeyOpRegex(name) = st
+          Action.RedirectToKey(name)
         } else if (redirectOpRegex.pattern.matcher(st).matches()) {
           val redirectOpRegex(tresql) = st
           Action.Status(Option(303), tresql, statusParameterIdx(tresql))
@@ -669,6 +673,7 @@ object AppMetadata {
 
     case class Tresql(tresql: String) extends Op
     case class ViewCall(method: String, view: String) extends Op
+    case class RedirectToKey(name: String) extends Op
     case class UniqueOpt(innerOp: Op) extends Op
     case class Invocation(className: String, function: String) extends Op
     case class Status(code: Option[Int], bodyTresql: String, parameterIndex: Int) extends Op

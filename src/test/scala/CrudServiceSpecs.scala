@@ -213,6 +213,12 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     }
     hasPerson("KeyName", "OldSurname") shouldBe false
     hasPerson("KeyName", "NewSurname") shouldBe true
+    // do not redirect to helper view
+    Put(s"/data/by_key_view_3/KeyName", s"""{"name": "KeyName", "surname": "NewSurname"}""") ~> route ~> check {
+      status shouldEqual StatusCodes.SeeOther
+      val location = header[Location].get.uri.path.toString
+      location shouldBe "/data/by_key_view_3/KeyName"
+    }
   }
 
   it should "update key" in {
@@ -306,5 +312,35 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       status shouldEqual StatusCodes.OK
     }
     hasPerson("Deleme") shouldBe false
+  }
+
+  it should "redirect by key explicitly" in {
+    hasPerson("RediName") shouldBe false
+    // on insert redirect to this explicitly
+    Post("/data/by_key_redirect_view_1", """{"name": "RediName"}""") ~> route ~> check {
+      status shouldEqual StatusCodes.SeeOther
+      val location = header[Location].get.uri.path.toString
+      location shouldBe "/data/by_key_redirect_view_1/RediName"
+    }
+    // on update redirect to this explicitly
+    Put(s"/data/by_key_redirect_view_1/RediName", s"""{"name": "RediNameUpd"}""") ~> route ~> check {
+      status shouldEqual StatusCodes.SeeOther
+      val location = header[Location].get.uri.path.toString
+      location shouldBe "/data/by_key_redirect_view_1/RediNameUpd"
+    }
+    hasPerson("RediOther") shouldBe false
+    // on insert redirect to another view explicitly
+    Post("/data/by_key_redirect_view_2", """{"name": "RediOther", "surname": "Surnm"}""") ~> route ~> check {
+      status shouldEqual StatusCodes.SeeOther
+      val location = header[Location].get.uri.path.toString
+      location shouldBe "/data/by_key_view_1/RediOther/Surnm"
+    }
+    // on update redirect to another view explicitly
+    Put(s"/data/by_key_redirect_view_2/RediOther",
+        s"""{"name": "RediOther", "surname": "SurnmUpd"}""") ~> route ~> check {
+      status shouldEqual StatusCodes.SeeOther
+      val location = header[Location].get.uri.path.toString
+      location shouldBe "/data/by_key_view_1/RediOther/SurnmUpd"
+    }
   }
 }
