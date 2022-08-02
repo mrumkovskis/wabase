@@ -289,11 +289,6 @@ trait AppServiceBase[User]
       .flatMap(_.headOption)
       .map(_.parseJson.convertTo[Map[String, Any]])
       .getOrElse(decodeParams(params))
-  def parsStringOpt(params: Map[String, List[String]]) = // TODO escape or retrieve all as string
-    Option(params).filterNot(_.isEmpty).map { params => (for {
-      keyValues <- params
-      value <- keyValues._2
-    } yield s"${keyValues._1}=$value").mkString("&") }
 
   def crudAction(implicit user: User) = applicationState { implicit state =>
     extractTimeout { implicit timeout =>
