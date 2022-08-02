@@ -21,10 +21,8 @@ object Format {
     s.length match {
       case 10 =>
         Format.xsdDate.parse(s)
-      case 24 =>
-        Format.xsdDate.parse(Format.xsdDate(Format.jsIsoDateTime.parse(s)))
-      case 19 =>
-        Format.xsdDate.parse(Format.xsdDate(Format.humanDateTime.parse(s)))
+      case 16 | 19 | 21 | 22 | 23 | 24 =>
+        Format.xsdDate.parse(Format.xsdDate(Format.parseDateTime(s)))
       case _ =>
         throw new BusinessException(s"Unsupported date format - $s")
     }
@@ -34,13 +32,25 @@ object Format {
       case 24 =>
         Format.jsIsoDateTime.parse(s)
       case 21 | 22 | 23 =>
-        Format.humanDateTimeWithMillis.parse(s)
+        s.charAt(10) match {
+          case ' ' => Format.humanDateTimeWithMillis.parse(s)
+          case 'T' => Format.xlsxDateTime.parse(s)
+          case  _  => Format.uriDateTimeWithMillis.parse(s)
+        }
       case 19 =>
-        Format.humanDateTime.parse(s)
+        s.charAt(10) match {
+          case ' ' => Format.humanDateTime.parse(s)
+          case 'T' => Format.timerDate.parse(s)
+          case  _  => Format.uriDateTime.parse(s)
+        }
+      case 16 =>
+        s.charAt(10) match {
+          case ' ' => Format.humanDateTimeMin.parse(s)
+          case 'T' => Format.timerDateHTML5.parse(s)
+          case  _  => Format.uriDateTimeMin.parse(s)
+        }
       case 10 =>
         Format.xsdDate.parse(s)
-      case 16 =>
-        Format.timerDateHTML5.parse(s)
       case _ =>
         throw new BusinessException(s"Unsupported timestamp format - $s")
     }
@@ -52,8 +62,12 @@ object Format {
   val xsdDate                 = new ThreadLocalDateFormat("yyyy-MM-dd")
   val couchDate               = new ThreadLocalDateFormat("yyyy.MM.dd_HH:mm:ss")
   val humanDateTime           = new ThreadLocalDateFormat("yyyy-MM-dd HH:mm:ss")
+  val uriDateTime             = new ThreadLocalDateFormat("yyyy-MM-dd_HH:mm:ss")
   val timestamp               = new ThreadLocalDateFormat("yyyy.MM.dd HH:mm:ss.SSS")
   val humanDateTimeWithMillis = new ThreadLocalDateFormat("yyyy-MM-dd HH:mm:ss.SSS")
+  val uriDateTimeWithMillis   = new ThreadLocalDateFormat("yyyy-MM-dd_HH:mm:ss.SSS")
+  val humanDateTimeMin        = new ThreadLocalDateFormat("yyyy-MM-dd HH:mm")
+  val uriDateTimeMin          = new ThreadLocalDateFormat("yyyy-MM-dd_HH:mm")
   val timerDateHTML5          = new ThreadLocalDateFormat("yyyy-MM-dd'T'HH:mm")
   val timerDate               = new ThreadLocalDateFormat("yyyy-MM-dd'T'HH:mm:ss")
   val xlsxDateTime            = new ThreadLocalDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS")

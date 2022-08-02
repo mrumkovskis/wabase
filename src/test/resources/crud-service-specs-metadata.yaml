@@ -4,6 +4,8 @@ columns:
 - name      32
 - surname   32
 - birthdate date
+- date_time   dateTime
+- l_date_time l_dateTime
 uk:
 - name, surname
 
@@ -118,6 +120,24 @@ table:  person
 key:    birthdate
 fields:
 - birthdate     [+]
+- name
+
+
+name:   by_datetime_key_view
+api:    get list count create save delete
+table:  person
+key:    date_time
+fields:
+- date_time     [+]
+- name
+
+
+name:   by_local_datetime_key_view
+api:    get list count create save delete
+table:  person
+key:    l_date_time
+fields:
+- l_date_time   [+]
 - name
 
 

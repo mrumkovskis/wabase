@@ -185,7 +185,12 @@ trait AppServiceBase[User]
                   for (i <- 0 until keyValues.size)
                     viewPath = viewPath.tail.tail
                   viewPath = viewPath.tail.tail.reverse / viewName
-                  val pathWithKey = key.foldLeft(viewPath)((path, step) => path ?/ ("" + step))
+                  val pathWithKey = key.foldLeft(viewPath)((path, step) => path ?/ (step match {
+                    // TODO extract, move and share this code!
+                    case t: java.sql.Timestamp      => t.toLocalDateTime.toString.replace('T', '_')
+                    case t: java.time.LocalDateTime => t.toString.replace('T', '_')
+                    case _ => "" + step
+                  }))
                   r.copy(result = StatusResult(StatusCodes.SeeOther.intValue, pathWithKey.toString))
                 case x => x
               }
@@ -247,7 +252,12 @@ trait AppServiceBase[User]
                 app.doWabaseAction(Action.Insert, viewName, Nil, filterPars(params), entityAsMap).map {
                   case r @ app.WabaseResult(_, KeyResult(_, viewName, key)) =>
                     val viewPath = requestUri.path.reverse.tail.tail.reverse / viewName
-                    val pathWithKey = key.foldLeft(viewPath)((path, step) => path ?/ ("" + step))
+                    val pathWithKey = key.foldLeft(viewPath)((path, step) => path ?/ (step match {
+                      // TODO extract, move and share this code!
+                      case t: java.sql.Timestamp      => t.toLocalDateTime.toString.replace('T', '_')
+                      case t: java.time.LocalDateTime => t.toString.replace('T', '_')
+                      case _ => "" + step
+                    }))
                     r.copy(result = StatusResult(StatusCodes.SeeOther.intValue, pathWithKey.toString))
                   case x => x
                 }

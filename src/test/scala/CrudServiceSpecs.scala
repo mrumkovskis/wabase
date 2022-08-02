@@ -375,6 +375,123 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     hasPerson("DateUpd") shouldBe false
   }
 
+  it should "support datetime value as key" in {
+    // sql timestamp
+    hasPerson("DtTmIns") shouldBe false
+    hasPerson("DtTmUpd") shouldBe false
+    Post("/data/by_datetime_key_view",
+        """{"name": "DtTmIns", "date_time": "2022-08-02 05:45:00"}""") ~> route ~> check {
+      status shouldEqual StatusCodes.SeeOther
+      val location = header[Location].get.uri.path.toString
+      location shouldBe "/data/by_datetime_key_view/2022-08-02_05:45"
+    }
+    hasPerson("DtTmIns") shouldBe true
+    Get("/data/by_datetime_key_view/2022-08-02_05:45:00.0") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
+      header[`Content-Type`].get.contentType shouldBe ContentTypes.`application/json`
+      entityAs[String] shouldBe s"""{"date_time":"2022-08-02 05:45:00.0","name":"DtTmIns"}"""
+    }
+    Get("/data/by_datetime_key_view/2022-08-02_05:45:33") ~> route ~> check {
+      status shouldEqual StatusCodes.NotFound
+    }
+    Get("/data/by_datetime_key_view/2022-08-02_05:45") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
+    }
+    Get("/data/by_datetime_key_view/2022-08-02_05:45:00") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
+    }
+    Get("/data/by_datetime_key_view/2022-08-02_05:45:00.0") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
+    }
+    Get("/data/by_datetime_key_view/2022-08-02T05:45:00") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
+    }
+    Get("/data/by_datetime_key_view/2022-08-02T05:45:00.0") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
+    }
+    Get("/data/by_datetime_key_view/2022-08-02%2005:45:00") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
+    }
+    Put("/data/by_datetime_key_view/2022-08-02_05:45:00", s"""{"name": "DtTmUpd"}""") ~> route ~> check {
+      status shouldEqual StatusCodes.SeeOther
+      val location = header[Location].get.uri.path.toString
+      location shouldBe "/data/by_datetime_key_view/2022-08-02_05:45"
+    }
+    hasPerson("DtTmUpd") shouldBe true
+    Delete("/data/by_datetime_key_view/2022-08-02_05:45:00.0") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
+    }
+    hasPerson("DtTmIns") shouldBe false
+    hasPerson("DtTmUpd") shouldBe false
+    Post("/data/by_datetime_key_view",
+        """{"name": "DtTmIns", "date_time": "2022-08-02 05:45:01.234"}""") ~> route ~> check {
+      status shouldEqual StatusCodes.SeeOther
+      val location = header[Location].get.uri.path.toString
+      location shouldBe "/data/by_datetime_key_view/2022-08-02_05:45:01.234"
+    }
+    hasPerson("DtTmIns") shouldBe true
+    Delete("/data/by_datetime_key_view/2022-08-02_05:45:01.234") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
+    }
+    hasPerson("DtTmIns") shouldBe false
+    // local datetime
+    Post("/data/by_local_datetime_key_view",
+        """{"name": "DtTmIns", "l_date_time": "2022-08-02 05:45:00"}""") ~> route ~> check {
+      status shouldEqual StatusCodes.SeeOther
+      val location = header[Location].get.uri.path.toString
+      location shouldBe "/data/by_local_datetime_key_view/2022-08-02_05:45"
+    }
+    hasPerson("DtTmIns") shouldBe true
+    Get("/data/by_local_datetime_key_view/2022-08-02_05:45:00.0") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
+      header[`Content-Type`].get.contentType shouldBe ContentTypes.`application/json`
+      entityAs[String] shouldBe s"""{"l_date_time":"2022-08-02 05:45:00.0","name":"DtTmIns"}"""
+    }
+    Get("/data/by_local_datetime_key_view/2022-08-02_05:45:33") ~> route ~> check {
+      status shouldEqual StatusCodes.NotFound
+    }
+    Get("/data/by_local_datetime_key_view/2022-08-02_05:45") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
+    }
+    Get("/data/by_local_datetime_key_view/2022-08-02_05:45:00") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
+    }
+    Get("/data/by_local_datetime_key_view/2022-08-02_05:45:00.0") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
+    }
+    Get("/data/by_local_datetime_key_view/2022-08-02T05:45:00") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
+    }
+    Get("/data/by_local_datetime_key_view/2022-08-02T05:45:00.0") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
+    }
+    Get("/data/by_local_datetime_key_view/2022-08-02%2005:45:00") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
+    }
+    Put("/data/by_local_datetime_key_view/2022-08-02_05:45:00", s"""{"name": "DtTmUpd"}""") ~> route ~> check {
+      status shouldEqual StatusCodes.SeeOther
+      val location = header[Location].get.uri.path.toString
+      location shouldBe "/data/by_local_datetime_key_view/2022-08-02_05:45"
+    }
+    hasPerson("DtTmUpd") shouldBe true
+    Delete("/data/by_local_datetime_key_view/2022-08-02_05:45:00.0") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
+    }
+    hasPerson("DtTmIns") shouldBe false
+    hasPerson("DtTmUpd") shouldBe false
+    Post("/data/by_local_datetime_key_view",
+        """{"name": "DtTmIns", "l_date_time": "2022-08-02 05:45:01.234"}""") ~> route ~> check {
+      status shouldEqual StatusCodes.SeeOther
+      val location = header[Location].get.uri.path.toString
+      location shouldBe "/data/by_local_datetime_key_view/2022-08-02_05:45:01.234"
+    }
+    hasPerson("DtTmIns") shouldBe true
+    Delete("/data/by_local_datetime_key_view/2022-08-02_05:45:01.234") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
+    }
+    hasPerson("DtTmIns") shouldBe false
+  }
+
   // exception handling --------------------------------------//
   it should "respect api" in {
     Get("/data/no_api_view/0") ~> route ~> check {

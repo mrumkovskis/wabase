@@ -17,7 +17,34 @@ class FormatTest extends FlatSpec with Matchers {
   cal.set(Calendar.MILLISECOND, 1)
 
   cal.getTimeInMillis should be (Format.parseDateTime("2011-12-12 12:12:59.001").getTime)
+  cal.getTimeInMillis should be (Format.parseDateTime("2011-12-12_12:12:59.001").getTime)
+  cal.getTimeInMillis should be (Format.parseDateTime("2011-12-12T12:12:59.001").getTime)
   cal.getTimeInMillis should be (Format.parseDateTime("2011-12-12 12:12:59.01").getTime)
+  cal.getTimeInMillis should be (Format.parseDateTime("2011-12-12_12:12:59.01").getTime)
+  cal.getTimeInMillis should be (Format.parseDateTime("2011-12-12T12:12:59.01").getTime)
   cal.getTimeInMillis should be (Format.parseDateTime("2011-12-12 12:12:59.1").getTime)
+  cal.getTimeInMillis should be (Format.parseDateTime("2011-12-12_12:12:59.1").getTime)
+  cal.getTimeInMillis should be (Format.parseDateTime("2011-12-12T12:12:59.1").getTime)
 
+  cal.set(Calendar.MILLISECOND, 0)
+  cal.getTimeInMillis shouldBe Format.parseDateTime("2011-12-12 12:12:59").getTime
+  cal.getTimeInMillis shouldBe Format.parseDateTime("2011-12-12_12:12:59").getTime
+  cal.getTimeInMillis shouldBe Format.parseDateTime("2011-12-12T12:12:59").getTime
+
+  cal.set(Calendar.SECOND, 0)
+  cal.getTimeInMillis shouldBe Format.parseDateTime("2011-12-12 12:12").getTime
+  cal.getTimeInMillis shouldBe Format.parseDateTime("2011-12-12_12:12").getTime
+  cal.getTimeInMillis shouldBe Format.parseDateTime("2011-12-12T12:12").getTime
+
+  cal.set(Calendar.MINUTE, 0)
+  cal.set(Calendar.HOUR_OF_DAY, 0)
+  cal.getTimeInMillis shouldBe Format.parseDate("2011-12-12 00:00:00.0").getTime
+  cal.getTimeInMillis shouldBe Format.parseDate("2011-12-12_00:00:00.0").getTime
+  cal.getTimeInMillis shouldBe Format.parseDate("2011-12-12T00:00:00.0").getTime
+  cal.getTimeInMillis shouldBe Format.parseDate("2011-12-12 00:00:00").getTime
+  cal.getTimeInMillis shouldBe Format.parseDate("2011-12-12_00:00:00").getTime
+  cal.getTimeInMillis shouldBe Format.parseDate("2011-12-12T00:00:00").getTime
+  cal.getTimeInMillis shouldBe Format.parseDate("2011-12-12 00:00").getTime
+  cal.getTimeInMillis shouldBe Format.parseDate("2011-12-12_00:00").getTime
+  cal.getTimeInMillis shouldBe Format.parseDate("2011-12-12T00:00").getTime
 }
