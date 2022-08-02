@@ -3,6 +3,7 @@ columns:
 - id
 - name      32
 - surname   32
+- birthdate date
 uk:
 - name, surname
 
@@ -109,6 +110,15 @@ insert:
 update:
 - name = 'MagicUpd'
 - =person [name = 'MagicIns'] {name = :name, surname = :surname}
+
+
+name:   by_date_key_view
+api:    get list count create save delete
+table:  person
+key:    birthdate
+fields:
+- birthdate     [+]
+- name
 
 
 name:   no_api_view

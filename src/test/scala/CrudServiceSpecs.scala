@@ -348,6 +348,33 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     }
   }
 
+  it should "support date value as key" in {
+    hasPerson("DateIns") shouldBe false
+    hasPerson("DateUpd") shouldBe false
+    Post("/data/by_date_key_view", """{"name": "DateIns", "birthdate": "2022-08-02"}""") ~> route ~> check {
+      status shouldEqual StatusCodes.SeeOther
+      val location = header[Location].get.uri.path.toString
+      location shouldBe "/data/by_date_key_view/2022-08-02"
+    }
+    hasPerson("DateIns") shouldBe true
+    Get("/data/by_date_key_view/2022-08-02") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
+      header[`Content-Type`].get.contentType shouldBe ContentTypes.`application/json`
+      entityAs[String] shouldBe s"""{"birthdate":"2022-08-02","name":"DateIns"}"""
+    }
+    Put("/data/by_date_key_view/2022-08-02", s"""{"name": "DateUpd"}""") ~> route ~> check {
+      status shouldEqual StatusCodes.SeeOther
+      val location = header[Location].get.uri.path.toString
+      location shouldBe "/data/by_date_key_view/2022-08-02"
+    }
+    hasPerson("DateUpd") shouldBe true
+    Delete("/data/by_date_key_view/2022-08-02") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
+    }
+    hasPerson("DateIns") shouldBe false
+    hasPerson("DateUpd") shouldBe false
+  }
+
   // exception handling --------------------------------------//
   it should "respect api" in {
     Get("/data/no_api_view/0") ~> route ~> check {
