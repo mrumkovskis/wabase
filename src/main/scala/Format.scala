@@ -18,31 +18,31 @@ object Format {
   }
 
   def parseDate(s: String) =
-    s match {
-      case t if t.length == 24 =>
-        Format.xsdDate.parse(Format.xsdDate(Format.jsIsoDateTime.parse(t)))
-      case t if t.length == 19 =>
-        Format.xsdDate.parse(Format.xsdDate(Format.humanDateTime.parse(t)))
-      case d if d.length == 10 =>
-        Format.xsdDate.parse(d)
-      case x =>
-        throw new BusinessException(s"Unsupported date format - $x")
+    s.length match {
+      case 10 =>
+        Format.xsdDate.parse(s)
+      case 24 =>
+        Format.xsdDate.parse(Format.xsdDate(Format.jsIsoDateTime.parse(s)))
+      case 19 =>
+        Format.xsdDate.parse(Format.xsdDate(Format.humanDateTime.parse(s)))
+      case _ =>
+        throw new BusinessException(s"Unsupported date format - $s")
     }
 
   def parseDateTime(s: String) =
-    s match {
-      case t if t.length == 24 =>
-        Format.jsIsoDateTime.parse(t)
-      case t if 21 <= t.length & t.length <= 23 =>
-        Format.humanDateTimeWithMillis.parse(t)
-      case t if t.length == 19 =>
-        Format.humanDateTime.parse(t)
-      case d if d.length == 10 =>
-        Format.xsdDate.parse(d)
-      case dt if dt.length == 16 =>
-        Format.timerDateHTML5.parse(dt)
-      case x =>
-        throw new BusinessException(s"Unsupported timestamp format - $x")
+    s.length match {
+      case 24 =>
+        Format.jsIsoDateTime.parse(s)
+      case 21 | 22 | 23 =>
+        Format.humanDateTimeWithMillis.parse(s)
+      case 19 =>
+        Format.humanDateTime.parse(s)
+      case 10 =>
+        Format.xsdDate.parse(s)
+      case 16 =>
+        Format.timerDateHTML5.parse(s)
+      case _ =>
+        throw new BusinessException(s"Unsupported timestamp format - $s")
     }
 
   val time                    = new ThreadLocalDateFormat("HH:mm")
