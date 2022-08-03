@@ -61,7 +61,7 @@ trait AppServiceBase[User]
 
   def crudPath = pathPrefix("data")
   def viewWithIdPath = path(Segment / LongNumber)
-  def viewWithKeyPath = path(Segment / Segments)
+  def viewWithKeyPath = path(Segment / Segments) | path(Segment ~ PathEnd) & provide(Nil: List[String])
   @deprecated("Use key without field name. This method will be removed", "6.0")
   def viewWithNamePath = path(Segment / Segment / Segment)
   def createPath = path("create" / Segment) & get
@@ -207,7 +207,7 @@ trait AppServiceBase[User]
       val impliedIdForGetOpt = app.impliedIdForGetOverList(viewName)
       if (impliedIdForGetOpt.isDefined)
         if (useActions(viewName, Action.Get)) {
-          complete(app.doWabaseAction(Action.Get, viewName, impliedIdForGetOpt.toSeq, filterPars(params)))
+          complete(app.doWabaseAction(Action.Get, viewName, Nil, filterPars(params)))
         } else {
           complete(app.get(viewName, impliedIdForGetOpt.get, filterPars(params)))
         }

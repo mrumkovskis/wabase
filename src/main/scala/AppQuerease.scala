@@ -205,10 +205,10 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     }.orNull
   }
 
-  protected def keyValuesAndColNames(viewName: String, data: Map[String, Any]) = tryOp({
-    val keyFields = viewNameToKeyFields(viewName)
-    val keyColNames = keyFields.map(_.name)
-    val keyFieldNames = viewNameToKeyFieldNames(viewName)
+  protected def getKeyValues(
+      viewName: String, data: Map[String, Any], forApi: Boolean = false) = tryOp({
+    val keyFields     = if (forApi) viewNameToApiKeyFields(viewName)     else viewNameToKeyFields(viewName)
+    val keyFieldNames = if (forApi) viewNameToApiKeyFieldNames(viewName) else viewNameToKeyFieldNames(viewName)
     val keyValues = tryOp(
       keyFieldNames.map(n => data.getOrElse(n, sys.error(s"Mapping not found for key field $n of view $viewName")))
         .zip(keyFields).map { case (v, f) =>
@@ -220,11 +220,11 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
         },
       data
     )
-    (keyValues, keyColNames)
+    keyValues
   }, data)
 
   protected def keyResult(ir: IdResult, viewName: String, data: Map[String, Any]) = {
-    KeyResult(ir, viewName, keyValuesAndColNames(viewName, data ++ ir.toMap)._1)
+    KeyResult(ir, viewName, getKeyValues(viewName, data ++ ir.toMap, forApi = true))
   }
 
   /********************************
@@ -543,7 +543,8 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       Future.successful {
         method match {
           case Get =>
-            val (keyValues, keyColNames) = keyValuesAndColNames(viewName, callData)
+            val keyValues   = getKeyValues(viewName, callData)
+            val keyColNames = viewNameToKeyColNames(viewName)
             get(v, keyValues, keyColNames, null, callData).map(TresqlSingleRowResult) getOrElse OptionResult(None)
           case Action.List =>
             TresqlResult(rowsResult(v, callData, int(OffsetKey).getOrElse(0), int(LimitKey).getOrElse(0),
@@ -563,7 +564,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
           case Upsert =>
             IdResult(save(v, callData, null, SaveMethod.Upsert, null, env), idName)
           case Delete =>
-            keyValuesAndColNames(viewName, data) // check mappings for key exist
+            getKeyValues(viewName, data) // check mappings for key exist
             LongResult(delete(v, data, null, env))
           case Create =>
             TresqlSingleRowResult(create(v, callData)(res))

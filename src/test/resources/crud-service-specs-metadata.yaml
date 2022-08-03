@@ -51,6 +51,51 @@ save:
 - save by_key_view_2
 
 
+name:   by_hidden_key_view_1
+api:    get list count create save delete
+key:    name, surname
+table:  person
+fields:
+- name:
+  - field api: excluded
+- surname
+save:
+- name = 'Hidden-1'
+- save this
+get:
+- name = 'Hidden-1'
+- get this
+delete:
+- name = 'Hidden-1'
+- delete this
+
+
+name:   by_hidden_key_view_2
+api:    get count create save delete
+key:    name
+table:  person
+fields:
+- name:
+  - field api: excluded
+  - initial: "'Name'"
+- surname:
+  - initial: "'Surname'"
+filter:
+- name
+save:
+- name = 'Hidden-2'
+- save this
+get:
+- name = 'Hidden-2'
+- get this
+count:
+- name = 'Hidden-2'
+- count this
+delete:
+- name = 'Hidden-2'
+- delete this
+
+
 name:   by_key_redirect_view_1
 api:    get list count create save delete
 table:  person

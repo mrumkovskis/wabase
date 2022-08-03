@@ -48,8 +48,8 @@ class RouteTests extends FlatSpec with Matchers with ScalatestRouteTest{
     Get("/r") ~> route ~> check(handled shouldBe false)
     Get("/data") ~> route ~> check(handled shouldBe false)
     Get("/data/") ~> route ~> check(handled shouldBe false)
-    Get("/data/view") ~> route ~> check(handled shouldBe false)
 
+    Get("/data/view") ~> route ~> check(handled shouldBe true)
     Get("/data/view/") ~> route ~> check(handled shouldBe true)
     Get("/data/view/1") ~> route ~> check(handled shouldBe true)
     Get("/data/view/a") ~> route ~> check(handled shouldBe true)

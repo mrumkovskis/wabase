@@ -348,6 +348,68 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     }
   }
 
+  it should "support hidden key" in {
+    // half key hidden
+    hasPerson("Hidden-1") shouldBe false
+    Post("/data/by_hidden_key_view_1", """{"surname": "MeHidden"}""") ~> route ~> check {
+      status shouldEqual StatusCodes.SeeOther
+      val location = header[Location].get.uri.path.toString
+      location shouldBe "/data/by_hidden_key_view_1/MeHidden"
+    }
+    hasPerson("Hidden-1") shouldBe true
+    Put("/data/by_hidden_key_view_1/MeHidden", """{"surname": "MeHiddenUpd"}""") ~> route ~> check {
+      status shouldEqual StatusCodes.SeeOther
+      val location = header[Location].get.uri.path.toString
+      location shouldBe "/data/by_hidden_key_view_1/MeHiddenUpd"
+    }
+    Get("/data/by_hidden_key_view_1/MeHiddenUpd") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
+      header[`Content-Type`].get.contentType shouldBe ContentTypes.`application/json`
+      entityAs[String] shouldBe """{"surname":"MeHiddenUpd"}"""
+    }
+    Delete("/data/by_hidden_key_view_1/MeHiddenUpd") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
+    }
+    hasPerson("Hidden-1") shouldBe false
+
+    // whole key hidden
+    Get("/data/create/by_hidden_key_view_2") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
+      header[`Content-Type`].get.contentType shouldBe ContentTypes.`application/json`
+      entityAs[String] shouldBe """{"surname":"Surname"}"""
+    }
+    hasPerson("Hidden-2") shouldBe false
+    Get("/data/count/by_hidden_key_view_2") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
+      entityAs[String].toInt shouldBe 0
+    }
+    Post("/data/by_hidden_key_view_2", """{"surname": "MeHidden"}""") ~> route ~> check {
+      status shouldEqual StatusCodes.SeeOther
+      val location = header[Location].get.uri.path.toString
+      location shouldBe "/data/by_hidden_key_view_2"
+    }
+    hasPerson("Hidden-2", "MeHidden") shouldBe true
+    Get("/data/count/by_hidden_key_view_2") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
+      entityAs[String].toInt shouldBe 1
+    }
+    Put("/data/by_hidden_key_view_2", """{"surname": "MeHiddenUpd"}""") ~> route ~> check {
+      status shouldEqual StatusCodes.SeeOther
+      val location = header[Location].get.uri.path.toString
+      location shouldBe "/data/by_hidden_key_view_2"
+    }
+    hasPerson("Hidden-2", "MeHiddenUpd") shouldBe true
+    Get("/data/by_hidden_key_view_2") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
+      header[`Content-Type`].get.contentType shouldBe ContentTypes.`application/json`
+      entityAs[String] shouldBe """{"surname":"MeHiddenUpd"}"""
+    }
+    Delete("/data/by_hidden_key_view_2") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
+    }
+    hasPerson("Hidden-2") shouldBe false
+  }
+
   it should "support date value as key" in {
     hasPerson("DateIns") shouldBe false
     hasPerson("DateUpd") shouldBe false
