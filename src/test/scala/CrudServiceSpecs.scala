@@ -3,8 +3,10 @@ package org.wabase
 import akka.actor.ActorSystem
 import akka.http.scaladsl.model.headers.{Location, `Content-Type`}
 import akka.http.scaladsl.model.{ContentTypes, StatusCodes}
+import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.{RejectionHandler, Route}
 import akka.http.scaladsl.testkit.ScalatestRouteTest
+import spray.json._
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import org.tresql.{DMLResult, Query, ThreadLocalResources, dialects}
@@ -17,6 +19,9 @@ class CrudTestService(system: ActorSystem, testApp: TestApp) extends TestAppServ
   implicit val rejectionHandler = RejectionHandler.default
   val route =
     Route.seal {
+      apiPath {
+        apiAction
+      } ~
       crudPath {
         crudAction
       }
@@ -570,6 +575,19 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       status shouldEqual StatusCodes.OK
     }
     hasPerson("DtTmIns") shouldBe false
+  }
+
+  // api -----------------------------------------------------//
+  it should "serve api metadata" in {
+    val qe = querease
+    import qe._
+    Get("/api") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
+      val apiMap =  responseAs[String].parseJson.convertTo[Map[String, Any]]
+      apiMap("by_id_view_1") shouldBe Seq("count", "create", "delete", "get", "save", "list")
+      apiMap("by_hidden_key_view_2") shouldBe Seq("count", "create", "delete", "get", "save")
+      apiMap.get("no_api_view") shouldBe None
+    }
   }
 
   // exception handling --------------------------------------//
