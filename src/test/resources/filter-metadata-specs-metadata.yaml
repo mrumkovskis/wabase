@@ -56,3 +56,14 @@ fields:
 filter:
 - sex!
 - ma_.last_modified < :modified_before_time
+
+
+name:   filter_metadata_test_exclude_excluded
+api:    list
+table:  person
+fields:
+- name:
+  - field api: excluded
+- birthdate            ! date
+filter:
+- name

@@ -902,6 +902,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
       allVariables
         .distinct // FIXME aggregate v.opt!
         .filterNot(current_user_param_names contains _.variable)
+        .filterNot(v => view.fieldOpt(v.variable).map(_.api.excluded) getOrElse false)
         .map { v =>
           val colQName = parameterNameToCol.getOrElse(v.variable, "")
           val filterType = parameterNameToFilterType.get(v.variable).orNull

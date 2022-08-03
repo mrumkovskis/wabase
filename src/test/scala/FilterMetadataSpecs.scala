@@ -169,5 +169,7 @@ class FilterMetadataSpecs extends FlatSpec with Matchers with TestQuereaseInitia
         filterType  = ComparisonFilter("ma_.last_modified","<","modified_before_time",""),
       ),
     )
+
+    app.filterParameters(querease.viewDef("filter_metadata_test_exclude_excluded")) shouldBe List()
   }
 }
