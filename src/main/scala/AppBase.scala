@@ -595,8 +595,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
             actionName = Action.Save,
             viewName = viewName,
             keyValues = Nil,
-            params = params,
-            values = qe.toMap(instance)
+            values = qe.toMap(instance) ++ params
           )
           customValidations(ctx)(state.locale)
           idOpt.flatMap { id =>

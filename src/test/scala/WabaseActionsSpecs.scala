@@ -88,7 +88,6 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
 
   import spray.json._
   private implicit val user = TestUsr(100)
-  private implicit val state = ApplicationState(Map())
   private implicit val timeout = QueryTimeout(10)
   private implicit val defaultCp = PoolName(dbNamePrefix)
   private implicit val as = ActorSystem("wabase-action-specs")
@@ -98,7 +97,8 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
                             values: Map[String, Any],
                             env: Map[String, Any] = Map.empty,
                             removeIdsFlag: Boolean = true) = {
-    app.doWabaseAction(action, view, Nil, env, values)
+    implicit val state = ApplicationState(env)
+    app.doWabaseAction(action, view, Nil, Map.empty, values)
       .map(_.result)
       .flatMap {
         case sr: QuereaseSerializedResult =>
@@ -114,6 +114,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         case r => Future.successful(r)
       }
   }
+  private implicit val state = ApplicationState(Map())
 
   behavior of "purchase"
 

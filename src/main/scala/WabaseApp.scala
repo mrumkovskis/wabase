@@ -37,7 +37,6 @@ trait WabaseApp[User] {
     actionName: String,
     viewName:   String,
     keyValues:  Seq[Any],
-    params:     Map[String, Any],
     values:     Map[String, Any],
     oldValue:   Map[String, Any] = null, // for save and delete
   )(implicit
@@ -47,7 +46,7 @@ trait WabaseApp[User] {
     val ec:       ExecutionContext,
     val as:       ActorSystem
   ) {
-    lazy val env: Map[String, Any] = state ++ params ++ current_user_param(user)
+    lazy val env: Map[String, Any] = state ++ current_user_param(user)
   }
 
   case class WabaseResult(ctx: AppActionContext, result: QuereaseResult)
@@ -65,7 +64,7 @@ trait WabaseApp[User] {
     ec:       ExecutionContext,
     as:       ActorSystem
   ): Future[WabaseResult] = {
-    doWabaseAction(AppActionContext(actionName, viewName, keyValues, params, values))
+    doWabaseAction(AppActionContext(actionName, viewName, keyValues, values ++ params))
   }
 
   def doWabaseAction(context: AppActionContext): Future[WabaseResult] =

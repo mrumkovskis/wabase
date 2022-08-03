@@ -393,6 +393,10 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       status shouldEqual StatusCodes.OK
       entityAs[String].toInt shouldBe 1
     }
+    Get("/data/count/by_hidden_key_view_2?name=IgnoreMe") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
+      entityAs[String].toInt shouldBe 1
+    }
     Put("/data/by_hidden_key_view_2", """{"surname": "MeHiddenUpd"}""") ~> route ~> check {
       status shouldEqual StatusCodes.SeeOther
       val location = header[Location].get.uri.path.toString
