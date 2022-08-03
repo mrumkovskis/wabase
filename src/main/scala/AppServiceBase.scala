@@ -184,7 +184,7 @@ trait AppServiceBase[User]
                   var viewPath = requestUri.path.reverse
                   for (i <- 0 until keyValues.size)
                     viewPath = viewPath.tail.tail
-                  viewPath = viewPath.tail.tail.reverse / viewName
+                  viewPath = viewPath.tail.tail.reverse ?/ viewName
                   val pathWithKey = key.foldLeft(viewPath)((path, step) => path ?/ (step match {
                     // TODO extract, move and share this code!
                     case t: java.sql.Timestamp      => t.toLocalDateTime.toString.replace('T', '_')
@@ -251,7 +251,7 @@ trait AppServiceBase[User]
               complete {
                 app.doWabaseAction(Action.Insert, viewName, Nil, filterPars(params), entityAsMap).map {
                   case r @ app.WabaseResult(_, KeyResult(_, viewName, key)) =>
-                    val viewPath = requestUri.path.reverse.tail.tail.reverse / viewName
+                    val viewPath = requestUri.path.reverse.tail.tail.reverse ?/ viewName
                     val pathWithKey = key.foldLeft(viewPath)((path, step) => path ?/ (step match {
                       // TODO extract, move and share this code!
                       case t: java.sql.Timestamp      => t.toLocalDateTime.toString.replace('T', '_')

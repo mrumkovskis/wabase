@@ -389,6 +389,14 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       location shouldBe "/data/by_hidden_key_view_2"
     }
     hasPerson("Hidden-2", "MeHidden") shouldBe true
+    deletePerson("Hidden-2")
+    hasPerson("Hidden-2", "MeHidden") shouldBe false
+    Post("/data/by_hidden_key_view_2/", """{"surname": "MeHidden"}""") ~> route ~> check {
+      status shouldEqual StatusCodes.SeeOther
+      val location = header[Location].get.uri.path.toString
+      location shouldBe "/data/by_hidden_key_view_2"
+    }
+    hasPerson("Hidden-2", "MeHidden") shouldBe true
     Get("/data/count/by_hidden_key_view_2") ~> route ~> check {
       status shouldEqual StatusCodes.OK
       entityAs[String].toInt shouldBe 1
@@ -397,6 +405,12 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       status shouldEqual StatusCodes.OK
       entityAs[String].toInt shouldBe 1
     }
+    Put("/data/by_hidden_key_view_2/", """{"surname": "MeHiddenUpd0"}""") ~> route ~> check {
+      status shouldEqual StatusCodes.SeeOther
+      val location = header[Location].get.uri.path.toString
+      location shouldBe "/data/by_hidden_key_view_2"
+    }
+    hasPerson("Hidden-2", "MeHiddenUpd0") shouldBe true
     Put("/data/by_hidden_key_view_2", """{"surname": "MeHiddenUpd"}""") ~> route ~> check {
       status shouldEqual StatusCodes.SeeOther
       val location = header[Location].get.uri.path.toString
