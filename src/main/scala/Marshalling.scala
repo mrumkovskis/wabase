@@ -199,6 +199,32 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
     Marshaller.combined(_.toString)
   implicit val toEntityQuereaseKeyResultMarshaller:       ToEntityMarshaller  [KeyResult]      =
     Marshaller.combined(_.toString)
+  def keyToUriStrings(key: Seq[Any]): Seq[String] = key.map {
+    case t: java.sql.Timestamp      => t.toLocalDateTime.toString.replace('T', '_')
+    case t: java.time.LocalDateTime => t.toString.replace('T', '_')
+    case x => s"$x"
+  }
+  def uriWithKeyInPath(uri: Uri, key: Seq[Any]): Uri =
+    if (key != null && key.nonEmpty)
+      uri.withPath(keyToUriStrings(key).foldLeft(uri.path){ (p, k) => p / s"$k" })
+    else uri
+  def uriWithKeyInQuery(uri: Uri, key: Seq[Any]): Uri = {
+    def encode(s: String) =
+      URLEncoder.encode(s"$s", "UTF-8")
+        .replace("+", "%20")
+        .replace("%3A", ":") // allowed, do not be ugly with timestamps
+    if (key != null && key.nonEmpty) {
+      val keyPathRawQuery = keyToUriStrings(key).map(encode).mkString("/", "/", "")
+      uri.withRawQueryString(
+        uri.rawQueryString.map(q => s"$keyPathRawQuery?$q") getOrElse keyPathRawQuery)
+    } else uri
+  }
+  /** Override to change key representation in redirect uri,
+    * see uriWithKeyInPath(uri, key) and uriWithKeyInQuery(uri, key).
+    * Default is uriWithKeyInQuery.
+    */
+  def uriWithKey(uri: Uri, key: Seq[Any]) =
+    uriWithKeyInQuery(uri, key)
   implicit val toResponseQuereaseStatusResultMarshaller:  ToResponseMarshaller[StatusResult] = {
     val uriRegex = """(?U)(https?://[^/]+)?(?:(?:$)|(.+))?""".r
     Marshaller.opaque { sr =>
@@ -207,12 +233,13 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
         require(sr.value != null, s"Error marshalling redirect status result - no uri.")
         import akka.http.scaladsl.model.Uri._
         val uriRegex(uriStart, uriPath) = sr.value
-        val path = sr.key.foldLeft(Option(uriPath).map(Path(_)).getOrElse(Path.Empty)){ (p, k) =>
-          p / String.valueOf(k)
-        }
-        val uri: Uri = Option(uriStart).map(_.withPath(path)).getOrElse(Uri.Empty.withPath(path))
+        val path = Option(uriPath).map(Path(_)).getOrElse(Path.Empty)
         val nonNullParams = sr.params.map { case (k, v) => (k, if (v == null) "" else v) }
-        HttpResponse(status, headers = Seq(Location(uri.withPath(path).withQuery(Query(nonNullParams)))))
+        val uri: Uri =
+          Option(uriStart).map(Uri(_)).getOrElse(Uri.Empty)
+            .withPath(path)
+            .withQuery(Query(nonNullParams))
+        HttpResponse(status, headers = Seq(Location(uriWithKey(uri, sr.key.toVector))))
       } else {
         val ent =
           if (sr.value == null) HttpEntity.Empty

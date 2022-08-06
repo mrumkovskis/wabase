@@ -24,6 +24,7 @@ import Authentication.SessionUserExtractor
 import DeferredControl._
 import akka.http.scaladsl.model.MediaTypes.`application/json`
 
+import java.net.URLEncoder
 import java.util.Locale
 import akka.http.scaladsl.server.util.Tuple
 import akka.http.scaladsl.unmarshalling.FromRequestUnmarshaller
@@ -185,13 +186,8 @@ trait AppServiceBase[User]
                   for (i <- 0 until keyValues.size)
                     viewPath = viewPath.tail.tail
                   viewPath = viewPath.tail.tail.reverse ?/ viewName
-                  val pathWithKey = key.foldLeft(viewPath)((path, step) => path ?/ (step match {
-                    // TODO extract, move and share this code!
-                    case t: java.sql.Timestamp      => t.toLocalDateTime.toString.replace('T', '_')
-                    case t: java.time.LocalDateTime => t.toString.replace('T', '_')
-                    case _ => "" + step
-                  }))
-                  r.copy(result = StatusResult(StatusCodes.SeeOther.intValue, pathWithKey.toString))
+                  r.copy(result = StatusResult(
+                    StatusCodes.SeeOther.intValue, viewPath.toString, key))
                 case x => x
               }
             }
@@ -252,13 +248,8 @@ trait AppServiceBase[User]
                 app.doWabaseAction(Action.Insert, viewName, Nil, filterPars(params), entityAsMap).map {
                   case r @ app.WabaseResult(_, KeyResult(_, viewName, key)) =>
                     val viewPath = requestUri.path.reverse.tail.tail.reverse ?/ viewName
-                    val pathWithKey = key.foldLeft(viewPath)((path, step) => path ?/ (step match {
-                      // TODO extract, move and share this code!
-                      case t: java.sql.Timestamp      => t.toLocalDateTime.toString.replace('T', '_')
-                      case t: java.time.LocalDateTime => t.toString.replace('T', '_')
-                      case _ => "" + step
-                    }))
-                    r.copy(result = StatusResult(StatusCodes.SeeOther.intValue, pathWithKey.toString))
+                    r.copy(result = StatusResult(
+                      StatusCodes.SeeOther.intValue, viewPath.toString, key))
                   case x => x
                 }
               }
@@ -290,7 +281,7 @@ trait AppServiceBase[User]
       .map(_.parseJson.convertTo[Map[String, Any]])
       .getOrElse(decodeParams(params))
 
-  def crudAction(implicit user: User) = applicationState { implicit state =>
+  def crudActionOnKeyInPath(implicit user: User) = applicationState { implicit state =>
     extractTimeout { implicit timeout =>
       getByIdPath     { getByIdAction     } ~
       countPath       { countAction       } ~
@@ -302,6 +293,37 @@ trait AppServiceBase[User]
       listOrGetPath   { listOrGetAction   } ~
       getByKeyPath    { getByKeyAction    } ~
       insertPath      { insertAction      }
+    }
+  }
+
+  def crudAction(implicit user: User) =
+    mapRequestContext(keyFromQueryToPath) {
+      crudActionOnKeyInPath
+    }
+
+  def keyFromQueryToPath(context: RequestContext): RequestContext = {
+    def decode(s: String) = java.net.URLDecoder.decode(s, "UTF-8")
+    context.request.uri.rawQueryString match {
+      case Some(rawQ) if rawQ startsWith "/" =>
+        val (p, q) = rawQ.indexOf('?') match {
+          case -1 => (rawQ, null)
+          case i  => (rawQ.substring(0, i), rawQ.substring(i + 1))
+        }
+        @annotation.tailrec
+        def toPath(path: Uri.Path, p: String): Uri.Path = p.indexOf('/', 1) match {
+          case -1 => path / decode(p.substring(1))
+          case i  => toPath(path / decode(p.substring(1, i)), p.substring(i))
+        }
+        val unmatchedPath = toPath(context.unmatchedPath, p)
+        val uriWithPath   = context.request.uri.withPath(toPath(context.request.uri.path, p))
+        val uri =
+          if (q == null)
+               uriWithPath.withQuery(Uri.Query.Empty)
+          else uriWithPath.withRawQueryString(q)
+        context
+          .withUnmatchedPath(unmatchedPath)
+          .withRequest(context.request.withUri(uri))
+      case _ => context
     }
   }
 
