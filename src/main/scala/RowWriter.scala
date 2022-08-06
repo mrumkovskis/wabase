@@ -221,5 +221,6 @@ object RowSource {
     src
       .via(FileBufferedFlow.create(bufferSize, maxFileSize))
       .runWith(new ResultCompletionSink(cleanupFun))
+      .map(_.head)
   }
 }

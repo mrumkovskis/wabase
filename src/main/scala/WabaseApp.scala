@@ -39,6 +39,8 @@ trait WabaseApp[User] {
     keyValues:  Seq[Any],
     values:     Map[String, Any],
     oldValue:   Map[String, Any] = null, // for save and delete
+    includeResponseSource: Boolean = false,
+    responseSource: Source[ByteString, _] = null,
   )(implicit
     val user:     User,
     val state:    ApplicationState,
@@ -95,8 +97,17 @@ trait WabaseApp[User] {
               (DtoDataSerializer.source(() => ir), true)
           }
           serializeResult(SerializationBufferSize, viewSerializationBufferMaxFileSize(ac.viewName),
-            resultSource, isCollection, cleanup)
-            .map(WabaseResult(ac, _))
+            resultSource, cleanup, if (context.includeResponseSource) 2 else 1)
+            .map { srs =>
+              import context._
+              val qsr = QuereaseSerializedResult(srs.head, isCollection)
+              val ac =
+                if (context.includeResponseSource) srs.tail.head match {
+                  case CompleteResult(bs) => context.copy(responseSource = Source.single(bs))
+                  case IncompleteResultSource(s) => context.copy(responseSource = s)
+                } else context
+                WabaseResult(ac, qsr)
+            }
         case wr => Future.successful(wr)
       }
   }
@@ -214,16 +225,15 @@ trait WabaseApp[User] {
     bufferSize: Int,
     maxFileSize: Long,
     result: Source[ByteString, _],
-    isCollection: Boolean,
     cleanupFun: Option[Throwable] => Unit = null,
+    resultCount: Int = 1,
   )(implicit
     ec: ExecutionContext,
     mat: Materializer,
-  ): Future[QuereaseSerializedResult] = {
+  ): Future[Seq[SerializedResult]] = {
     result
       .via(FileBufferedFlow.create(bufferSize, maxFileSize))
-      .runWith(new ResultCompletionSink(cleanupFun))
-      .map(QuereaseSerializedResult(_, isCollection))
+      .runWith(new ResultCompletionSink(cleanupFun, resultCount))
   }
 
   def prepareKey(viewName: String, keyValues: Seq[Any], actionName: String): Map[String, Any] = {

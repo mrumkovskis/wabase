@@ -18,7 +18,19 @@ class ResultCompletionSinkTest extends AsyncFlatSpec {
     0 to n map(b => ByteString(b.toByte)) reduce(_ ++ _)
 
   private def incompleteTest(n: Int) =
-    validateIncomplete(List(src(n).runWith(new ResultCompletionSink).map(_ -> res(n))))
+    validateIncomplete(List(src(n).runWith(new ResultCompletionSink).map(_.head -> res(n))))
+
+  private def incompleteMultipleTest(n: Int, c: Int) = {
+    val r = res(n)
+    src(n).runWith(new ResultCompletionSink(resultCount = c)).map(_.map(_ -> r))
+      .flatMap { s =>
+        Future.sequence(s.map(t => Future(validateIncomplete(List(Future.successful(t))))))
+      }
+      .flatMap { s =>
+        Future.sequence(s)
+      }
+      .map (_ => assert(true))
+  }
 
   private def validateIncomplete(res: List[Future[(SerializedResult, ByteString)]]) =
     Future.foldLeft {
@@ -32,14 +44,14 @@ class ResultCompletionSinkTest extends AsyncFlatSpec {
 
   it should "return CompleteResult" in {
     val n = 0
-    src(n).runWith(new ResultCompletionSink)
+    src(n).runWith(new ResultCompletionSink).map(_.head)
       .map {
         case CompleteResult(v) => assert(v == res(n))
-        case IncompleteResultSource(s) => assert(false)
+        case IncompleteResultSource(_) => assert(false)
       }
   }
   it should "return empty CompleteResult on empty source" in {
-    Source.empty[ByteString].runWith(new ResultCompletionSink)
+    Source.empty[ByteString].runWith(new ResultCompletionSink).map(_.head)
       .map {
         case CompleteResult(v) => assert(v == ByteString.empty)
         case IncompleteResultSource(_) => assert(false)
@@ -51,6 +63,11 @@ class ResultCompletionSinkTest extends AsyncFlatSpec {
   it should "return IncompleteResultSource of 3 bytes" in {
     incompleteTest(2)
   }
+
+  it should "return multiple IncompleteResult" in {
+    incompleteMultipleTest(10, 3)
+  }
+
   it should "return CompleteResult from RowSource" in {
     val n = 4
     RowSource.value(n + 2, 0, src(n)).map {

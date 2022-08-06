@@ -128,22 +128,29 @@ case class CompleteResult(result: ByteString) extends SerializedResult
 case class IncompleteResultSource[Mat](result: Source[ByteString, Mat]) extends SerializedResult
 
 /**
-  * Sink materializes to {{{CompleteResult}}} if one and only one element passes from upstream before it is finished.
-  * Otherwise produces {{{IncompleteResultSource}}}. Running of {{{IncompleteResultSource}}} source will consume
-  * this {{{CheckCompletedSink}}} upstream.
-  * */
-class ResultCompletionSink(cleanupFun: Option[Throwable] => Unit = null)(implicit ec: scala.concurrent.ExecutionContext)
-  extends GraphStageWithMaterializedValue[SinkShape[ByteString], Future[SerializedResult]] {
+ * Sink materializes to {{{CompleteResult}}} if one and only one element passes from upstream before it is finished.
+ * Otherwise produces {{{IncompleteResultSource}}}. Running of {{{IncompleteResultSource}}} source will consume
+ * this {{{CheckCompletedSink}}} upstream.
+ *
+ * @param cleanupFun    cleanupFun is invoked on onUpstreamFinish() and postStop() method calls.
+ * @param resultCount   indicates how many copies of SerializedResult sink should materialize. This is useful for
+ *                      IncompleteResultSource result: Source[ByteString, _] so that they can be consumed for various
+ *                      purposes. Value must be greater than zero.
+ * */
+class ResultCompletionSink(cleanupFun: Option[Throwable] => Unit = null, resultCount: Int = 1)(implicit ec: scala.concurrent.ExecutionContext)
+  extends GraphStageWithMaterializedValue[SinkShape[ByteString], Future[Seq[SerializedResult]]] {
+  require(resultCount > 0, s"Result count must be greater than zero. ($resultCount < 0)")
   val in = Inlet[ByteString]("in")
   override val shape = SinkShape(in)
   override def createLogicAndMaterializedValue(attrs: Attributes) = {
-    val result = Promise[SerializedResult]()
+    val result = Promise[Seq[SerializedResult]]()
     new GraphStageLogic(shape) {
-      private var flowError: Throwable = _
+      private var upstreamError: Throwable = _
+      private var downStreamError: Throwable = _ // can happen on IncompleteResultSource downstream failure
       private var byteString: ByteString = _
-      private def setFlowError(e: Throwable) = this.flowError = e
+      private def setDownstreamError(e: Throwable) = this.downStreamError = e
 
-      private def cleanup(): Unit = Option(cleanupFun).foreach(_(Option(flowError)))
+      private def cleanup(): Unit = Option(cleanupFun).foreach(_(Option(upstreamError) orElse Option(downStreamError)))
 
       override def preStart() = {
         //generate initial demand since this is sink
@@ -165,53 +172,73 @@ class ResultCompletionSink(cleanupFun: Option[Throwable] => Unit = null)(implici
         override def onUpstreamFinish() = {
           // call cleanup fun also here to ensure that immediate next operations can have cleaned up state.
           cleanup()
-          result.success(CompleteResult(if (byteString == null) ByteString.empty else byteString))
+          result.success(List.fill(resultCount)(CompleteResult(if (byteString == null) ByteString.empty else byteString)))
         }
         override def onUpstreamFailure(ex: Throwable) = {
-          flowError = ex
+          upstreamError = ex
           result.failure(ex)
         }
       })
       def streamingHandler(init: ByteString) = new InHandler {
-        val sourceCompleted = Promise[Unit]()
-        var pushCallback: AsyncCallback[ByteString] = _
-        val source = Source.fromGraph(new GraphStage[SourceShape[ByteString]] {
-          val out = Outlet[ByteString]("out")
-          //generate demand during materialized source run, callback is used because demand is comes from another graph
-          private val pullCallback: AsyncCallback[Unit] = getAsyncCallback[Unit](_ => pull(in))
-          //callback for chunker sink to set downstream error
-          private val downstreamErrorCallback = getAsyncCallback(setFlowError)
-          override val shape = SourceShape(out)
-          override def createLogic(attrs: Attributes) = new GraphStageLogic(shape) {
-            override def preStart() = {
-              emit(out, init)
-              pushCallback = getAsyncCallback[ByteString]{ elem => push(out, elem) }
-              sourceCompleted.future.onComplete {
-                case Success(_) => getAsyncCallback[Unit](_ => completeStage()).invoke(())
-                case Failure(ex) => getAsyncCallback[Unit](_ => failStage(ex)).invoke(())
-              }
+        object Sources {
+          val sources: Vector[SourceState] = (0 until resultCount map (new SourceState(_))).toVector
+          val demandCallback = getAsyncCallback[Int] { idx =>
+            sources(idx).demand = true
+            if (sources.forall(_.demand)) {
+              pull(in)
+              sources.foreach(_.demand = false)
             }
-            setHandler(out, new OutHandler {
-              override def onPull() = pullCallback.invoke(())
-              override def onDownstreamFinish(cause: Throwable): Unit = {
-                downstreamErrorCallback.invoke(cause)
-                super.onDownstreamFinish(cause)
+          }
+          val downstreamErrorCallback = getAsyncCallback(setDownstreamError)
+          def push(elem: ByteString) = sources.foreach(_.pushCallback.invoke(elem))
+          def upstreamFinish() = sources.foreach(_.sourceCompleted.success(()))
+          def upstreamFailure(err: Throwable) = sources.foreach(_.sourceCompleted.failure(err))
+
+          class SourceState(idx: Int) {
+            val sourceCompleted = Promise[Unit]()
+            var demand = false
+            @volatile var pushCallback: AsyncCallback[ByteString] = _
+
+            val source = Source.fromGraph(new GraphStage[SourceShape[ByteString]] {
+              val out = Outlet[ByteString]("out")
+              override val shape = SourceShape(out)
+
+              override def createLogic(attrs: Attributes) = new GraphStageLogic(shape) {
+                override def preStart() = {
+                  emit(out, init)
+                  pushCallback = getAsyncCallback[ByteString] { elem => push(out, elem) }
+                  sourceCompleted.future.onComplete {
+                    case Success(_) => getAsyncCallback[Unit](_ => completeStage()).invoke(())
+                    case Failure(ex) => getAsyncCallback[Unit](_ => failStage(ex)).invoke(())
+                  }
+                }
+
+                setHandler(out, new OutHandler {
+                  override def onPull() = Sources.demandCallback.invoke(idx)
+
+                  override def onDownstreamFinish(cause: Throwable): Unit = {
+                    Sources.downstreamErrorCallback.invoke(cause)
+                    super.onDownstreamFinish(cause)
+                  }
+                })
               }
             })
           }
-        })
-        result.success(IncompleteResultSource(source))
+        }
+
+        result.success(Sources.sources.map(s => IncompleteResultSource(s.source)))
+
         override def onPush() = {
-          pushCallback.invoke(grab(in))
+          Sources.push(grab(in))
         }
         override def onUpstreamFinish() = {
           // call cleanup fun also here to ensure that immediate next operations can have cleaned up state.
           cleanup()
-          sourceCompleted.success(())
+          Sources.upstreamFinish()
         }
         override def onUpstreamFailure(ex: Throwable) = {
-          flowError = ex
-          sourceCompleted.failure(ex)
+          upstreamError = ex
+          Sources.upstreamFailure(ex)
         }
       }
     } -> result.future
