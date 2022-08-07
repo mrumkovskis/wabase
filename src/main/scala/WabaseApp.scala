@@ -39,8 +39,7 @@ trait WabaseApp[User] {
     keyValues:  Seq[Any],
     values:     Map[String, Any],
     oldValue:   Map[String, Any] = null, // for save and delete
-    includeResponseSource: Boolean = false,
-    responseSource: Source[ByteString, _] = null,
+    serializedResult: Source[ByteString, _] = null,
   )(implicit
     val user:     User,
     val state:    ApplicationState,
@@ -52,6 +51,9 @@ trait WabaseApp[User] {
   }
 
   case class WabaseResult(ctx: AppActionContext, result: QuereaseResult)
+
+  /** Override to request serialized result source in AppActionContext, e.g., for auditing */
+  protected def shouldAddResultToContext(context: AppActionContext): Boolean = false
 
   def doWabaseAction(
     actionName: String,
@@ -101,15 +103,16 @@ trait WabaseApp[User] {
             case IteratorResult(ir) =>
               (DtoDataSerializer.source(() => ir), true)
           }
+          val addResultToContext = shouldAddResultToContext(context)
           serializeResult(SerializationBufferSize, viewSerializationBufferMaxFileSize(ac.viewName),
-            resultSource, cleanup, if (context.includeResponseSource) 2 else 1)
+            resultSource, cleanup, if (addResultToContext) 2 else 1)
             .map { srs =>
               import context._
               val qsr = QuereaseSerializedResult(srs.head, isCollection)
               val ac =
-                if (context.includeResponseSource) srs.tail.head match {
-                  case CompleteResult(bs) => context.copy(responseSource = Source.single(bs))
-                  case IncompleteResultSource(s) => context.copy(responseSource = s)
+                if (addResultToContext) srs.tail.head match {
+                  case CompleteResult(bs)        => context.copy(serializedResult = Source.single(bs))
+                  case IncompleteResultSource(s) => context.copy(serializedResult = s)
                 } else context
                 WabaseResult(ac, qsr)
             }

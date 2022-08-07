@@ -1,5 +1,6 @@
 package org.wabase
 
+import akka.NotUsed
 import akka.http.scaladsl.marshalling._
 import akka.http.scaladsl.model._
 import akka.http.scaladsl.model.MediaTypes._
@@ -13,7 +14,7 @@ import scala.concurrent.{ExecutionContext, Future}
 import akka.http.scaladsl.model.headers.{ContentDispositionType, ContentDispositionTypes}
 import akka.http.scaladsl.model.headers.{Location, RawHeader}
 import akka.http.scaladsl.unmarshalling.{FromEntityUnmarshaller, FromResponseUnmarshaller, Unmarshaller}
-import akka.stream.scaladsl.Source
+import akka.stream.scaladsl.{Flow, Source}
 import akka.util.ByteString
 import io.bullet.borer.compat.akka.ByteStringProvider
 import org.tresql.{Resources, Result, RowLike}
@@ -280,6 +281,17 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
   def createXlsXmlEncoderFactory(viewName: String): EncoderFactory =
     os => new FlatTableResultRenderer(new XlsXmlResultRenderer(new OutputStreamWriter(os, "UTF-8")),
       viewName, qe.nameToViewDef)
+
+  def serializedResultToJsonFlow(viewName: String, isCollection: Boolean): Flow[ByteString, ByteString, NotUsed] =
+    BorerNestedArraysTransformer.flow(createJsonEncoderFactory(viewName, isCollection))
+  def serializedResultToCborFlow(viewName: String, isCollection: Boolean): Flow[ByteString, ByteString, NotUsed] =
+    BorerNestedArraysTransformer.flow(createCborEncoderFactory(viewName, isCollection))
+  def serializedResultToCsvFlow(viewName: String): Flow[ByteString, ByteString, NotUsed] =
+    BorerNestedArraysTransformer.flow(createCsvEncoderFactory(viewName))
+  def serializedResultToOdsFlow(viewName: String): Flow[ByteString, ByteString, NotUsed] =
+    BorerNestedArraysTransformer.flow(createOdsEncoderFactory(viewName))
+  def serializedResultToXlsXmlFlow(viewName: String): Flow[ByteString, ByteString, NotUsed] =
+    BorerNestedArraysTransformer.flow(createXlsXmlEncoderFactory(viewName))
 
   def toEntityQuereaseSerializedResultMarshaller(viewName: String): ToEntityMarshaller[QuereaseSerializedResult] =
     Marshaller { implicit ec => sr =>
