@@ -690,6 +690,18 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       status shouldEqual StatusCodes.BadRequest
       responseAs[String] shouldBe "no_api_view.delete is not a part of this API"
     }
+    Post("/data/non_existing_view", "{bad json}") ~> route ~> check {
+      status shouldEqual StatusCodes.BadRequest
+      responseAs[String] should include ("non_existing_view.insert is not a part of this API")
+    }
+    Put("/data/non_existing_view/0", "{bad json}") ~> route ~> check {
+      status shouldEqual StatusCodes.BadRequest
+      responseAs[String] should include ("non_existing_view.update is not a part of this API")
+    }
+    Put("/data/non_existing_view?/0", "{bad json}") ~> route ~> check {
+      status shouldEqual StatusCodes.BadRequest
+      responseAs[String] should include ("non_existing_view.update is not a part of this API")
+    }
   }
 
   it should "fail properly on bad json" in {

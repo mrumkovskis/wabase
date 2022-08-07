@@ -176,11 +176,13 @@ trait AppServiceBase[User]
     implicit user: User, state: ApplicationState, timeout: QueryTimeout): Route =
     extractUri { requestUri =>
       parameterMultiMap { params =>
+        app.checkApi(viewName, Action.Update, user)
         try {
           implicit val um = toMapUnmarshallerForView(viewName)
           entityOrException(as[Map[String, Any]]) { entityAsMap =>
             complete {
-              app.doWabaseAction(Action.Update, viewName, keyValues, filterPars(params), entityAsMap)
+              app.doWabaseAction(Action.Update, viewName, keyValues, filterPars(params), entityAsMap,
+                doApiCheck = false /* api checked above */)
             }
           }
         } catch {
@@ -233,10 +235,12 @@ trait AppServiceBase[User]
       parameterMultiMap { params =>
         try {
           if (useActions(viewName, Action.Insert)) {
+            app.checkApi(viewName, Action.Insert, user)
             implicit val um = toMapUnmarshallerForView(viewName)
             entityOrException(as[Map[String, Any]]) { entityAsMap =>
               complete {
-                app.doWabaseAction(Action.Insert, viewName, Nil, filterPars(params), entityAsMap)
+                app.doWabaseAction(Action.Insert, viewName, Nil, filterPars(params), entityAsMap,
+                  doApiCheck = false /* api checked above */)
               }
             }
           } else {

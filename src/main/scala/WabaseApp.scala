@@ -59,6 +59,7 @@ trait WabaseApp[User] {
     keyValues:  Seq[Any],
     params:     Map[String, Any],
     values:     Map[String, Any] = Map(),
+    doApiCheck: Boolean = true,
   )(implicit
     user:     User,
     state:    ApplicationState,
@@ -66,17 +67,21 @@ trait WabaseApp[User] {
     ec:       ExecutionContext,
     as:       ActorSystem
   ): Future[WabaseResult] = {
-    doWabaseAction(AppActionContext(actionName, viewName, keyValues, values ++ params))
+    doWabaseAction(AppActionContext(actionName, viewName, keyValues, values ++ params), doApiCheck)
   }
 
-  def doWabaseAction(context: AppActionContext): Future[WabaseResult] =
-    doWabaseAction(getActionHandler(context), context)
+  def doWabaseAction(
+    context:    AppActionContext,
+    doApiCheck: Boolean,
+  ): Future[WabaseResult] =
+    doWabaseAction(getActionHandler(context), context, doApiCheck)
 
   def doWabaseAction(
-    action:   ActionHandler,
-    context:  AppActionContext,
+    action:     ActionHandler,
+    context:    AppActionContext,
+    doApiCheck: Boolean,
   ): Future[WabaseResult] = {
-    val actionContext = beforeWabaseAction(context)
+    val actionContext = beforeWabaseAction(context, doApiCheck)
     import context.ec
     import context.as
     action(actionContext)
@@ -253,9 +258,13 @@ trait WabaseApp[User] {
     } else Map.empty
   }
 
-  protected def beforeWabaseAction(context: AppActionContext): AppActionContext = {
+  protected def beforeWabaseAction(
+    context:    AppActionContext,
+    doApiCheck: Boolean,
+  ): AppActionContext = {
     import context._
-    checkApi(viewName, actionName, user)
+    if (doApiCheck)
+      checkApi(viewName, actionName, user)
     val keyAsMap = prepareKey(viewName, keyValues, actionName)
     val key_params =
       if  (context.actionName == Action.Update)
@@ -293,7 +302,7 @@ trait WabaseApp[User] {
   }
   protected def noApiException(viewName: String, method: String, user: User): Exception =
     new BusinessException(s"$viewName.$method is not a part of this API")
-  protected def checkApi[F](viewName: String, method: String, user: User): Unit = {
+  def checkApi[F](viewName: String, method: String, user: User): Unit = {
     (for {
       view <- viewDefOption(viewName)
       role <- view.apiMethodToRole.get(method).orElse(method match {
