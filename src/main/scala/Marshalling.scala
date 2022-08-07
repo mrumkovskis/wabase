@@ -197,8 +197,10 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
     Marshaller.combined(_.value.toString)
   implicit val toEntityQuereaseIdResultMarshaller:        ToEntityMarshaller  [IdResult]       =
     Marshaller.combined(_.toString)
-  implicit val toEntityQuereaseKeyResultMarshaller:       ToEntityMarshaller  [KeyResult]      =
-    Marshaller.combined(_.toString)
+  implicit def toResponseQuereaseKeyResultMarshaller:     ToResponseMarshaller[KeyResult]      =
+    Marshaller.combined((kr: KeyResult) =>
+      StatusResult(StatusCodes.SeeOther.intValue, s"/data/${kr.viewName}", kr.key)
+    )
   def keyToUriStrings(key: Seq[Any]): Seq[String] = key.map {
     case t: java.sql.Timestamp      => t.toLocalDateTime.toString.replace('T', '_')
     case t: java.time.LocalDateTime => t.toString.replace('T', '_')
@@ -312,7 +314,7 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
       case sr: StringResult   => (toEntityQuereaseStringResultMarshaller:     ToResponseMarshaller[StringResult]  )(sr)
       case nr: NumberResult   => (toEntityQuereaseNumberResultMarshaller:     ToResponseMarshaller[NumberResult]  )(nr)
       case id: IdResult       => (toEntityQuereaseIdResultMarshaller:         ToResponseMarshaller[IdResult]      )(id)
-      case kr: KeyResult      => (toEntityQuereaseKeyResultMarshaller:        ToResponseMarshaller[KeyResult]     )(kr)
+      case kr: KeyResult      => (toResponseQuereaseKeyResultMarshaller:      ToResponseMarshaller[KeyResult]     )(kr)
       case sr: StatusResult   => (toResponseQuereaseStatusResultMarshaller:   ToResponseMarshaller[StatusResult]  )(sr)
       case no: NoResult.type  => (toEntityQuereaseNoResultMarshaller:         ToResponseMarshaller[NoResult.type] )(no)
       case dr: QuereaseDelRes => (toEntityQuereaseDeleteResultMarshaller:     ToResponseMarshaller[QuereaseDelRes])(dr)

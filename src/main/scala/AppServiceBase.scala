@@ -180,16 +180,7 @@ trait AppServiceBase[User]
           implicit val um = toMapUnmarshallerForView(viewName)
           entityOrException(as[Map[String, Any]]) { entityAsMap =>
             complete {
-              app.doWabaseAction(Action.Update, viewName, keyValues, filterPars(params), entityAsMap).map {
-                case r @ app.WabaseResult(_, KeyResult(_, viewName, key)) =>
-                  var viewPath = requestUri.path.reverse
-                  for (i <- 0 until keyValues.size)
-                    viewPath = viewPath.tail.tail
-                  viewPath = viewPath.tail.tail.reverse ?/ viewName
-                  r.copy(result = StatusResult(
-                    StatusCodes.SeeOther.intValue, viewPath.toString, key))
-                case x => x
-              }
+              app.doWabaseAction(Action.Update, viewName, keyValues, filterPars(params), entityAsMap)
             }
           }
         } catch {
@@ -245,13 +236,7 @@ trait AppServiceBase[User]
             implicit val um = toMapUnmarshallerForView(viewName)
             entityOrException(as[Map[String, Any]]) { entityAsMap =>
               complete {
-                app.doWabaseAction(Action.Insert, viewName, Nil, filterPars(params), entityAsMap).map {
-                  case r @ app.WabaseResult(_, KeyResult(_, viewName, key)) =>
-                    val viewPath = requestUri.path.reverse.tail.tail.reverse ?/ viewName
-                    r.copy(result = StatusResult(
-                      StatusCodes.SeeOther.intValue, viewPath.toString, key))
-                  case x => x
-                }
+                app.doWabaseAction(Action.Insert, viewName, Nil, filterPars(params), entityAsMap)
               }
             }
           } else {
