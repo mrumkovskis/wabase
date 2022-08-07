@@ -223,6 +223,9 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     val id = createPerson("Peter")
     hasPerson("Peter") shouldBe true
     hasPerson("Pete")  shouldBe false
+    Put(s"/data/by_id_view_1/${id + 420}", s"""{"id": $id,"name": "Pete"}""") ~> route ~> check {
+      status shouldEqual StatusCodes.NotFound
+    }
     Put(s"/data/by_id_view_1/$id", s"""{"id": $id,"name": "Pete"}""") ~> route ~> check {
       status shouldEqual StatusCodes.SeeOther
       val location = header[Location].get.uri.toString
@@ -243,6 +246,9 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     hasPerson("KeyName") shouldBe false
     val id = createPerson("KeyName", "OldSurname")
     hasPerson("KeyName", "OldSurname") shouldBe true
+    Put(s"/data/by_key_view_2/MissingKeyName", s"""{"name": "KeyName", "surname": "NewSurname"}""") ~> route ~> check {
+      status shouldEqual StatusCodes.NotFound
+    }
     Put(s"/data/by_key_view_2/KeyName", s"""{"name": "KeyName", "surname": "NewSurname"}""") ~> route ~> check {
       status shouldEqual StatusCodes.SeeOther
       val location = header[Location].get.uri.toString
@@ -363,6 +369,9 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       status shouldEqual StatusCodes.OK
     }
     hasPerson("Scott") shouldBe false
+    Delete(s"/data/by_id_view_1/$id") ~> route ~> check {
+      status shouldEqual StatusCodes.NotFound
+    }
   }
 
   it should "delete by key" in {
@@ -373,6 +382,9 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       status shouldEqual StatusCodes.OK
     }
     hasPerson("Deleme") shouldBe false
+    Delete(s"/data/by_key_view_2?/Deleme") ~> route ~> check {
+      status shouldEqual StatusCodes.NotFound
+    }
   }
 
   it should "redirect by key explicitly" in {

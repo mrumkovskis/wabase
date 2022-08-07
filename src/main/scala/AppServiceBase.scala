@@ -137,12 +137,8 @@ trait AppServiceBase[User]
     else
       parameterMultiMap { params =>
         complete {
-          try {
-            app.delete(viewName, id, filterPars(params))
-            StatusCodes.NoContent
-          } catch {
-            case _: org.mojoz.querease.NotFoundException => StatusCodes.NotFound
-          }
+          app.delete(viewName, id, filterPars(params))
+          StatusCodes.NoContent
         }
       }
 
@@ -161,13 +157,9 @@ trait AppServiceBase[User]
     else
       extractUri { requestUri =>
         parameterMultiMap { params =>
-          try {
-            entityOrException(as[JsValue]) { data =>
-              app.save(viewName, data.asInstanceOf[JsObject], filterPars(params))
-              redirect(Uri(path = requestUri.path), StatusCodes.SeeOther)
-            }
-          } catch {
-            case _: org.mojoz.querease.NotFoundException => complete(StatusCodes.NotFound)
+          entityOrException(as[JsValue]) { data =>
+            app.save(viewName, data.asInstanceOf[JsObject], filterPars(params))
+            redirect(Uri(path = requestUri.path), StatusCodes.SeeOther)
           }
         }
       }
@@ -177,16 +169,12 @@ trait AppServiceBase[User]
     extractUri { requestUri =>
       parameterMultiMap { params =>
         app.checkApi(viewName, Action.Update, user)
-        try {
-          implicit val um = toMapUnmarshallerForView(viewName)
-          entityOrException(as[Map[String, Any]]) { entityAsMap =>
-            complete {
-              app.doWabaseAction(Action.Update, viewName, keyValues, filterPars(params), entityAsMap,
-                doApiCheck = false /* api checked above */)
-            }
+        implicit val um = toMapUnmarshallerForView(viewName)
+        entityOrException(as[Map[String, Any]]) { entityAsMap =>
+          complete {
+            app.doWabaseAction(Action.Update, viewName, keyValues, filterPars(params), entityAsMap,
+              doApiCheck = false /* api checked above */)
           }
-        } catch {
-          case _: org.mojoz.querease.NotFoundException => complete(StatusCodes.NotFound)
         }
       }
     }
@@ -233,24 +221,20 @@ trait AppServiceBase[User]
   def insertAction(viewName: String)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     extractUri { requestUri =>
       parameterMultiMap { params =>
-        try {
-          if (useActions(viewName, Action.Insert)) {
-            app.checkApi(viewName, Action.Insert, user)
-            implicit val um = toMapUnmarshallerForView(viewName)
-            entityOrException(as[Map[String, Any]]) { entityAsMap =>
-              complete {
-                app.doWabaseAction(Action.Insert, viewName, Nil, filterPars(params), entityAsMap,
-                  doApiCheck = false /* api checked above */)
-              }
-            }
-          } else {
-            entityOrException(as[JsValue]) { data =>
-              val id = app.save(viewName, data.asInstanceOf[JsObject], filterPars(params))
-              redirect(Uri(path = requestUri.path / id.toString), StatusCodes.SeeOther)
+        if (useActions(viewName, Action.Insert)) {
+          app.checkApi(viewName, Action.Insert, user)
+          implicit val um = toMapUnmarshallerForView(viewName)
+          entityOrException(as[Map[String, Any]]) { entityAsMap =>
+            complete {
+              app.doWabaseAction(Action.Insert, viewName, Nil, filterPars(params), entityAsMap,
+                doApiCheck = false /* api checked above */)
             }
           }
-        } catch {
-          case _: org.mojoz.querease.NotFoundException => complete(StatusCodes.NotFound)
+        } else {
+          entityOrException(as[JsValue]) { data =>
+            val id = app.save(viewName, data.asInstanceOf[JsObject], filterPars(params))
+            redirect(Uri(path = requestUri.path / id.toString), StatusCodes.SeeOther)
+          }
         }
       }
     }
