@@ -159,9 +159,18 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
   }
 
   it should "count" in {
+    Get("/data/count:by_id_view_1") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
+      header[`Content-Type`].get.contentType shouldBe ContentTypes.`text/plain(UTF-8)`
+    }
     Get("/data/count/by_id_view_1") ~> route ~> check {
       status shouldEqual StatusCodes.OK
       header[`Content-Type`].get.contentType shouldBe ContentTypes.`text/plain(UTF-8)`
+    }
+    Get("/data/count:by_id_view_1?name=A") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
+      header[`Content-Type`].get.contentType shouldBe ContentTypes.`text/plain(UTF-8)`
+      entityAs[String].toInt shouldBe 0
     }
     Get("/data/count/by_id_view_1?name=A") ~> route ~> check {
       status shouldEqual StatusCodes.OK
@@ -169,6 +178,11 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       entityAs[String].toInt shouldBe 0
     }
     val id1 = createPerson("Anna")
+    Get("/data/count:by_id_view_1?name=A") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
+      header[`Content-Type`].get.contentType shouldBe ContentTypes.`text/plain(UTF-8)`
+      entityAs[String].toInt shouldBe 1
+    }
     Get("/data/count/by_id_view_1?name=A") ~> route ~> check {
       status shouldEqual StatusCodes.OK
       header[`Content-Type`].get.contentType shouldBe ContentTypes.`text/plain(UTF-8)`
@@ -177,10 +191,20 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
   }
 
   it should "create" in {
+    Get("/data/create:by_id_view_1") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
+      header[`Content-Type`].get.contentType shouldBe ContentTypes.`application/json`
+      entityAs[String] shouldBe """{"id":null,"name":null,"surname":null}"""
+    }
     Get("/data/create/by_id_view_1") ~> route ~> check {
       status shouldEqual StatusCodes.OK
       header[`Content-Type`].get.contentType shouldBe ContentTypes.`application/json`
       entityAs[String] shouldBe """{"id":null,"name":null,"surname":null}"""
+    }
+    Get("/data/create:by_key_view_1") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
+      header[`Content-Type`].get.contentType shouldBe ContentTypes.`application/json`
+      entityAs[String] shouldBe """{"name":null,"surname":null}"""
     }
     Get("/data/create/by_key_view_1") ~> route ~> check {
       status shouldEqual StatusCodes.OK
@@ -726,7 +750,6 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
   // alternative uris ----------------------------------------//
   it should "support key in query string" in {
     def keyToPath(s: String): String = {
-      val req = HttpRequest(uri = s)
       class RequestContext_(req: HttpRequest, u_path: Uri.Path) extends RequestContext {
         override val request = req
         override val unmatchedPath = u_path
@@ -755,6 +778,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
         override def mapUnmatchedPath(f: Uri.Path => Uri.Path): RequestContext = ???
         override def withAcceptAll: RequestContext = ???
       }
+      val req = HttpRequest(uri = s)
       val context = new RequestContext_(req, req.uri.path)
       val transformedContext = service.keyFromQueryToPath(context)
       transformedContext.request.uri.path shouldBe transformedContext.unmatchedPath

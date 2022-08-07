@@ -65,7 +65,7 @@ trait AppServiceBase[User]
   def viewWithKeyPath = path(Segment / Segments) | path(Segment ~ PathEnd) & provide(Nil: List[String])
   @deprecated("Use key without field name. This method will be removed", "6.0")
   def viewWithNamePath = path(Segment / Segment / Segment)
-  def createPath = path("create" / Segment) & get
+  def createPath = (path("create" / Segment) | pathPrefix("create:") & rawPathPrefix(Segment)) & get
   def viewWithoutIdPath = path(Segment ~ (PathEnd | Slash))
   def getByIdPath = viewWithIdPath & get
   def getByKeyPath = viewWithKeyPath & get
@@ -77,7 +77,7 @@ trait AppServiceBase[User]
   def updateByKeyPath = viewWithKeyPath & put
   def insertPath = viewWithoutIdPath & post
   def listOrGetPath = viewWithoutIdPath & get
-  def countPath = path("count" / Segment) & get
+  def countPath = (path("count" / Segment) | pathPrefix("count:") & rawPathPrefix(Segment)) & get
 
   def entityOrException[T](um: FromRequestUnmarshaller[T]): Directive1[T] =
     extractRequestContext.flatMap[Tuple1[T]] { ctx =>
@@ -274,6 +274,7 @@ trait AppServiceBase[User]
       crudActionOnKeyInPath
     }
 
+  /** Enables alternative URI where row key is in special query string */
   def keyFromQueryToPath(context: RequestContext): RequestContext = {
     def decode(s: String) = java.net.URLDecoder.decode(s, "UTF-8")
     context.request.uri.rawQueryString match {
