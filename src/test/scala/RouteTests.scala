@@ -150,7 +150,7 @@ class RouteTests extends FlatSpec with Matchers with ScalatestRouteTest{
     val route = Route.seal((service.crudPath) {
       service.crudAction
     })
-    Post("/data/view", "{bad json}") ~> route ~> check(status shouldEqual StatusCodes.UnprocessableEntity)
+    Post("/data/view", "{bad json}") ~> route ~> check(status shouldEqual StatusCodes.BadRequest)
   }
 
   it should "pass csrf defence" in {

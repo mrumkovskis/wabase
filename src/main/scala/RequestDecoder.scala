@@ -68,7 +68,7 @@ class CborOrJsonDecoder(typeDefs: Seq[TypeDef], nameToViewDef: Map[String, Mojoz
             }
           } catch {
             case util.control.NonFatal(ex) =>
-              throw new UnprocessableEntityException(
+              throw new BusinessException(
                 s"Failed to read ${field.name} of type ${field.type_.name}: ${ex.getMessage}", ex)
           }
         case None =>
@@ -91,7 +91,7 @@ class CborOrJsonDecoder(typeDefs: Seq[TypeDef], nameToViewDef: Map[String, Mojoz
     } else r.unexpectedDataItem(expected = "Map")
   } catch {
     case util.control.NonFatal(ex) =>
-      throw new UnprocessableEntityException(s"Failed to read to map for $viewName: ${ex.getMessage}", ex)
+      throw new BusinessException(s"Failed to read to map for $viewName: ${ex.getMessage}", ex)
   }}
 
   protected def reader(data: ByteString, decodeFrom: Target) = decodeFrom match {
@@ -120,7 +120,7 @@ class CborOrJsonDecoder(typeDefs: Seq[TypeDef], nameToViewDef: Map[String, Mojoz
       toSeq(reader(data, decodeFrom)[Array[M]])
     } catch {
       case util.control.NonFatal(ex) =>
-        throw new UnprocessableEntityException(s"Failed to read array for $viewName: ${ex.getMessage}", ex)
+        throw new BusinessException(s"Failed to read array for $viewName: ${ex.getMessage}", ex)
     }
   }
 }

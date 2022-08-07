@@ -692,6 +692,14 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     }
   }
 
+  it should "fail properly on bad json" in {
+    Post("/data/by_id_view_1", "{bad json}") ~> route ~> check {
+      status shouldEqual StatusCodes.BadRequest
+      responseAs[String] should include ("""Expected '"' but got 'b' (input position 1)""")
+    }
+  }
+
+  // alternative uris ----------------------------------------//
   it should "support key in query string" in {
     def keyToPath(s: String): String = {
       val req = HttpRequest(uri = s)

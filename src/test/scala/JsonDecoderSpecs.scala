@@ -211,7 +211,7 @@ class JsonDecoderSpecs extends FlatSpec with Matchers {
 
     // strict decoder
     val strictExcMsg =
-      intercept[org.wabase.UnprocessableEntityException] {
+      intercept[org.wabase.BusinessException] {
         decodeToMap(ByteString(asStringsJsonized), "decoder_test")
       }.getMessage
     strictExcMsg should include ("decoder_test")
