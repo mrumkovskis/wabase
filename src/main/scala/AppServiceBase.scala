@@ -270,7 +270,11 @@ trait AppServiceBase[User]
   }
 
   def crudAction(implicit user: User) =
-    mapRequestContext(keyFromQueryToPath) {
+    pathPrefixTest(Segment ~ PathEnd) { _ =>
+      mapRequestContext(keyFromQueryToPath) {
+        crudActionOnKeyInPath
+      }
+    } ~ pathPrefixTest(!(Segment ~ PathEnd)) {
       crudActionOnKeyInPath
     }
 
