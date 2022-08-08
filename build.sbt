@@ -20,7 +20,7 @@ lazy val dependencies = {
     "commons-codec"               % "commons-codec"                     % "1.15",
     "org.postgresql"              % "postgresql"                        % "42.4.0",
     "com.lambdaworks"             % "scrypt"                            % "1.4.0",
-    "org.tresql"                 %% "tresql"                            % "11.1.1-SNAPSHOT",
+    "org.tresql"                 %% "tresql"                            % "11.1.1",
     "io.bullet"                  %% "borer-core"                        % borerV,
     "io.bullet"                  %% "borer-compat-akka"                 % borerV,
   )
