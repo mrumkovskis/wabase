@@ -133,6 +133,15 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       header[`Content-Type`].get.contentType shouldBe ContentTypes.`application/json`
       entityAs[String] shouldBe s"""{"name":"Jar","surname":"Key"}"""
     }
+    Get(s"/data/by_key_view_1?/Wu/null") ~> route ~> check {
+      status shouldEqual StatusCodes.NotFound
+    }
+    createPerson("Wu")
+    Get(s"/data/by_key_view_1?/Wu/null") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
+      header[`Content-Type`].get.contentType shouldBe ContentTypes.`application/json`
+      entityAs[String] shouldBe s"""{"name":"Wu","surname":null}"""
+    }
   }
 
   it should "list" in {

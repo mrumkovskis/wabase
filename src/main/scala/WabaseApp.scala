@@ -244,6 +244,11 @@ trait WabaseApp[User] {
       .runWith(new ResultCompletionSink(cleanupFun, resultCount))
   }
 
+  /** Converts key value from uri representation to appropriate type.
+    * Default implementation also converts "null" to null.
+    */
+  def prepareKeyValue(field: qe.FieldDef, value: Any): Any =
+    if (value == "null") null else qe.convertToType(field.type_, value)
   def prepareKey(viewName: String, keyValues: Seq[Any], actionName: String): Map[String, Any] = {
     val keyFields = qe.viewNameToKeyFields(viewName).filterNot(_.api.excluded)
     if (keyValues.length > 0) {
@@ -252,7 +257,7 @@ trait WabaseApp[User] {
           s"Unexpected key length for $actionName of $viewName - expecting ${keyFields.length}, got ${keyValues.length}")
       else
         keyFields.zip(keyValues).map { case (f, v) =>
-          try f.fieldName -> qe.convertToType(f.type_, v)
+          try f.fieldName -> prepareKeyValue(f, v)
           catch {
             case util.control.NonFatal(ex) => throw new BusinessException(
               s"Failed to convert value for key field ${f.name} to type ${f.type_.name}", ex)
