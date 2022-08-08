@@ -23,10 +23,14 @@ class CrudTestService(system: ActorSystem, testApp: TestApp) extends TestAppServ
   implicit val user: TestUsr    = null
   implicit val exceptionHandler = appExceptionHandler
   implicit val rejectionHandler = RejectionHandler.default
+  implicit val state            = ApplicationState(Map.empty)
   val route =
     Route.seal {
       apiPath {
         apiAction
+      } ~
+      metadataPath {
+        metadataAction
       } ~
       crudPath {
         crudAction
@@ -693,6 +697,23 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       apiMap("by_id_view_1") shouldBe Seq("count", "create", "delete", "get", "save", "list")
       apiMap("by_hidden_key_view_2") shouldBe Seq("count", "create", "delete", "get", "save")
       apiMap.get("no_api_view") shouldBe None
+    }
+  }
+
+  // metadata ------------------------------------------------//
+  it should "serve metadata" in {
+    // TODO test full metadata and various aspects
+    val qe = querease
+    import qe._
+    Get("/metadata/by_key_view_1") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
+      val mdMap =  responseAs[String].parseJson.convertTo[Map[String, Any]]
+      mdMap("key") shouldBe Seq("name", "surname")
+    }
+    Get("/metadata/by_hidden_key_view_1") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
+      val mdMap =  responseAs[String].parseJson.convertTo[Map[String, Any]]
+      mdMap("key") shouldBe Seq("surname")
     }
   }
 
