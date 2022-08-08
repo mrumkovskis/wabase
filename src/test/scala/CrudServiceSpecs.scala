@@ -768,6 +768,12 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     }
   }
 
+  it should "fail properly on unhandled path" in {
+    Get("/unhandled") ~> route ~> check {
+      status shouldEqual StatusCodes.NotFound
+    }
+  }
+
   // alternative uris ----------------------------------------//
   it should "support key in query string" in {
     def keyToPath(s: String): String = {
