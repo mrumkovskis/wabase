@@ -130,16 +130,16 @@ case class IncompleteResultSource[Mat](result: Source[ByteString, Mat]) extends 
 /**
  * Sink materializes to {{{CompleteResult}}} if one and only one element passes from upstream before it is finished.
  * Otherwise produces {{{IncompleteResultSource}}}. Running of {{{IncompleteResultSource}}} source will consume
- * this {{{CheckCompletedSink}}} upstream.
+ * this {{{ResultCompletionSink}}} upstream.
  *
  * @param cleanupFun    cleanupFun is invoked on onUpstreamFinish() and postStop() method calls.
  * @param resultCount   indicates how many copies of SerializedResult sink should materialize. This is useful for
- *                      IncompleteResultSource result: Source[ByteString, _] so that they can be consumed for various
+ *                      IncompleteResultSource's result: Source[ByteString, _] so that they can be consumed for various
  *                      purposes. Value must be greater than zero.
  * */
 class ResultCompletionSink(cleanupFun: Option[Throwable] => Unit = null, resultCount: Int = 1)(implicit ec: scala.concurrent.ExecutionContext)
   extends GraphStageWithMaterializedValue[SinkShape[ByteString], Future[Seq[SerializedResult]]] {
-  require(resultCount > 0, s"Result count must be greater than zero. ($resultCount < 0)")
+  require(resultCount > 0, s"Result count must be greater than zero. ($resultCount < 1)")
   val in = Inlet[ByteString]("in")
   override val shape = SinkShape(in)
   override def createLogicAndMaterializedValue(attrs: Attributes) = {
