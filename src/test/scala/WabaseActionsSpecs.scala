@@ -4,14 +4,16 @@ import akka.actor.ActorSystem
 import akka.http.scaladsl.marshalling.Marshal
 import akka.http.scaladsl.model.MessageEntity
 import akka.http.scaladsl.unmarshalling.Unmarshal
+import akka.util.ByteString
 import org.mojoz.querease.{ValidationException, ValidationResult}
 import org.scalatest.flatspec.{AsyncFlatSpec, AsyncFlatSpecLike}
 import org.scalatest.matchers.should.Matchers
-import org.tresql.{MissingBindVariableException, ThreadLocalResources}
+import org.tresql.{MissingBindVariableException, Query, ThreadLocalResources}
 import org.wabase.QuereaseActionsDtos.PersonWithHealthDataHealth
 
 import scala.collection.immutable.{ListMap, Seq}
 import scala.concurrent.Future
+import scala.util.Try
 
 object WabaseActionDtos {
   class Purchase extends Dto {
@@ -62,7 +64,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
   override def dbNamePrefix: String = "wabase_db"
 
   var app: AppBase[TestUsr] = _
-  var marshallers: AppProvider[TestUsr] with QuereaseMarshalling = _
+  var marshallers: AppProvider[TestUsr] with QuereaseMarshalling with Execution = _
 
   override def beforeAll(): Unit = {
     querease = new TestQuerease("/querease-action-specs-metadata.yaml") {
@@ -76,11 +78,28 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       override val DefaultCp: PoolName = PoolName("wabase_db")
       override def dbAccessDelegate = db
       override protected def initQuerease: QE = querease
+      override protected def shouldAddResultToContext(context: AppActionContext): Boolean =
+        Set("result_audit_test") contains context.viewName
+
+      override protected def afterWabaseAction(context: AppActionContext, result: Try[QuereaseResult]): Unit =
+        if (context.viewName == "result_audit_test") {
+          val res = context.serializedResult
+          implicit val as = marshallers.system
+          res
+            .via(marshallers.serializedResultToJsonFlow(context.viewName, false))
+            .runFold(ByteString.empty){_ ++ _}
+            .map { bytes =>
+              val id = context.values("id").toString.toLong + 1
+              db.transaction(template = tresqlResources.resourcesTemplate, poolName = DefaultCp) { r =>
+                Query("+simple_table {id = ?, value = ?}", id, bytes.decodeString("UTF-8"))(r)
+              }
+            }(scala.concurrent.ExecutionContext.global) // do not use AsyncFlatSpec context so that no blocking occurs
+        }
     }
     val myApp = app
     marshallers =
       new ExecutionImpl()(ActorSystem("actions-spec-system"))
-          with AppProvider[TestUsr] with QuereaseMarshalling with OptionMarshalling {
+        with Execution with AppProvider[TestUsr] with QuereaseMarshalling with OptionMarshalling {
         override type App = AppBase[TestUsr]
         override protected def initApp: App = myApp
       }
@@ -590,5 +609,18 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     } yield {
       t4
     }
+  }
+
+  it should "process result source after wabase result" in {
+    val id = 55
+    doAction("get", "result_audit_test", Map("id" -> id))
+      .map { _ =>
+        Thread.sleep(200) // wait until hopefully afterWabaseAction method is completed
+        app.dbAccess.withConn(template = app.dbAccess.tresqlResources.resourcesTemplate, poolName = app.DefaultCp) { implicit r =>
+          val res = Query("simple_table [id = ?] {value}", id + 1).unique[String]
+          marshallers.cborOrJsonDecoder
+            .decodeToMap(ByteString(res), "result_audit_test")(app.qe.viewNameToMapZero) shouldBe Map("id" -> 55, "value" -> "data")
+        }
+      }
   }
 }

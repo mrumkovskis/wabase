@@ -499,3 +499,14 @@ update:
 - value = 'UPD'
 - update this
 - get this
+
+
+name: result_audit_test
+table: simple_table
+api:   get
+fields:
+- id
+- value
+get:
+- +simple_table{ id = :id, value = 'data' }
+- get this

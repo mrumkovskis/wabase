@@ -90,10 +90,6 @@ trait WabaseApp[User] {
     import context.ec
     import context.as
     action(actionContext)
-      .andThen {
-        case Success(WabaseResult(ctx, res)) => afterWabaseAction(ctx, Success(res))
-        case Failure(error) => afterWabaseAction(context, Failure[QuereaseResult](error))
-      }
       .run
       .flatMap {
         case WabaseResult(ac, QuereaseResultWithCleanup(result, cleanup)) =>
@@ -117,9 +113,13 @@ trait WabaseApp[User] {
                   case CompleteResult(bs)        => context.copy(serializedResult = Source.single(bs))
                   case IncompleteResultSource(s) => context.copy(serializedResult = s)
                 } else context
-                WabaseResult(ac, qsr)
+              WabaseResult(ac, qsr)
             }
         case wr => Future.successful(wr)
+      }
+      .andThen {
+        case Success(WabaseResult(ctx, res)) => afterWabaseAction(ctx, Success(res))
+        case Failure(error) => afterWabaseAction(context, Failure[QuereaseResult](error))
       }
   }
 
