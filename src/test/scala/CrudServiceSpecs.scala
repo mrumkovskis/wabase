@@ -4,7 +4,7 @@ import akka.actor.ActorSystem
 import akka.event.LoggingAdapter
 import akka.http.scaladsl.marshalling.ToResponseMarshallable
 import akka.http.scaladsl.model.headers.{Location, `Content-Type`}
-import akka.http.scaladsl.model.{ContentTypes, HttpRequest, StatusCodes, Uri}
+import akka.http.scaladsl.model.{ContentTypes, HttpRequest, MediaTypes, StatusCodes, Uri}
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.{Rejection, RejectionHandler, RequestContext, Route, RouteResult}
 import akka.http.scaladsl.settings.{ParserSettings, RoutingSettings}
@@ -694,6 +694,48 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       status shouldEqual StatusCodes.OK
     }
     hasPerson("DtTmIns") shouldBe false
+  }
+
+  // alternative supported response formats ------------------//
+  it should "support csv, ods, excel" in {
+    Get("/data/by_id_view_1?name=Z") ~> addHeader("Accept", "text/csv") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
+      header[`Content-Type`].get.contentType shouldBe ContentTypes.`text/csv(UTF-8)`
+      entityAs[String] shouldBe "" // TODO are we sure?
+    }
+    val id1 = createPerson("Zoe")
+    val id2 = createPerson("Zorg")
+    Get("/data/by_id_view_1?name=Z") ~> addHeader("Accept", "text/csv") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
+      header[`Content-Type`].get.contentType shouldBe ContentTypes.`text/csv(UTF-8)`
+      entityAs[String] shouldBe List(
+        s"""Id,Name,Surname""",
+        s"""$id1,Zoe,""",
+        s"""$id2,Zorg,""",
+      ).mkString("", "\n", "\n")
+    }
+    Get("/data/by_id_view_1?name=Z") ~> addHeader(
+        "Accept", "application/vnd.oasis.opendocument.spreadsheet") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
+      header[`Content-Type`].get.contentType.mediaType.shouldBe(
+        MediaTypes.`application/vnd.oasis.opendocument.spreadsheet`
+      )
+      // TODO unzip, test ods, maybe elsewhere
+    }
+    Get("/data/by_id_view_1?name=Z") ~> addHeader(
+        "Accept", "application/vnd.ms-excel") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
+      header[`Content-Type`].get.contentType.mediaType shouldBe MediaTypes.`application/vnd.ms-excel`
+      val excelXml = entityAs[String]
+      excelXml should startWith (List(
+        """<?xml version="1.0" encoding="UTF-8"?>""",
+        """<?mso-application progid="Excel.Sheet"?>""",
+        """<Workbook xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"""",
+      ).mkString("\n"))
+      excelXml should include ("Zoe")
+      excelXml should include ("Zorg")
+      excelXml should endWith ("</Workbook>\r\n")
+    }
   }
 
   // api -----------------------------------------------------//

@@ -349,14 +349,14 @@ class CsvResultRenderer(writer: io.Writer) extends TableResultRenderer {
     if (!isAtRowStart)
       writer.write(",")
     writer.write(csvValue(value))
-    writer.flush
     isAtRowStart = false
   }
   override def renderRowEnd() = {
     writer.write("\n")
-    writer.flush
     isAtRowStart = true
   }
+  override def renderFooter() =
+    writer.flush
 }
 
 class OdsResultRenderer(zos: ZipOutputStream, worksheetName: String = "data") extends TableResultRenderer {
@@ -395,5 +395,6 @@ class XlsXmlResultRenderer(writer: io.Writer, worksheetName: String = "data") ex
     streamer.endTable
     streamer.endWorksheet
     streamer.endWorkbook
+    writer.flush
   }
 }
