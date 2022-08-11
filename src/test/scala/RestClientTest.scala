@@ -43,7 +43,7 @@ class RestClientTest  extends FlatSpec with Matchers with ScalatestRouteTest wit
       intercept[ClientException] {
         fastClient.httpGetAwait[String]("timeout")
       }.getMessage
-    errorMessage should include ("Request to 'http://localhost:8080/timeout' failed")
+    errorMessage should include ("Request GET 'http://localhost:8080/timeout' failed")
     errorMessage should include ("The stream has not been completed in 2 seconds")
   }
 

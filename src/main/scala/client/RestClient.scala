@@ -168,7 +168,10 @@ trait RestClient extends Loggable{
   protected def requestFailed(
       message: String, cause: Throwable,
       status: StatusCode = null, content: String = null, request: HttpRequest = null): Nothing = {
-    val verboseMessage = if (request != null) s"Request to '${request.uri}' failed: $message" else message
+    val verboseMessage =
+      if (request != null)
+        s"Request ${Option(request.method).map(_.value).orNull} '${request.uri}' failed: $message"
+      else message
     val causeStatus = cause match {
       case ce: ClientException => ce.status
       case _ => status
