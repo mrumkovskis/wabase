@@ -96,6 +96,24 @@ delete:
 - delete this
 
 
+name:   by_hidden_key_view_3
+api:    get count create save delete
+key:    name, surname
+table:  person
+fields:
+- name:
+  - field api: excluded
+- surname
+- d = birthdate
+save:
+- name = 'Hidden-3'
+- upsert this
+- redirect this
+get:
+- name = 'Hidden-3'
+- get this
+
+
 name:   by_key_redirect_view_1
 api:    get list count create save delete
 table:  person
