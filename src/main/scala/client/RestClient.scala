@@ -103,7 +103,20 @@ trait RestClient extends Loggable{
       case (k, list: Seq[_]) => list.map(li => k -> li.toString)
       case (k, v) => List(k -> v.toString)
     }:_*)
-    val requestUri = if (params.nonEmpty) plainUri.withQuery(query) else plainUri
+    val requestUri =
+      if (params.nonEmpty) {
+        plainUri.rawQueryString match {
+          case Some(rawQ) =>
+            val delim =
+              if  (rawQ.startsWith("/") && rawQ.indexOf("?") < 0)
+                   "?" // support for key in query string
+              else "&" // add params to existing query
+            plainUri.withRawQueryString(
+              s"$rawQ$delim${Uri.Empty.withQuery(query).rawQueryString.get}")
+          case None =>
+            plainUri.withQuery(query)
+        }
+      } else plainUri
     for{
       response <- doRequest(HttpRequest(uri = requestUri, headers = headers), cookieStorage, timeout)
       responseEntity <- Unmarshal(decodeResponse(response)).to[R]

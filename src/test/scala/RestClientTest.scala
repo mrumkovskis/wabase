@@ -26,6 +26,7 @@ class RestClientTest  extends FlatSpec with Matchers with ScalatestRouteTest wit
   val route: Route = {
     path("ok") {complete{"HELLO"}} ~
     path("timeout") {complete{Thread.sleep(5000);"HELLO"}} ~
+    path("uri-echo") { extractUri { uri => complete(uri.toString) } } ~
     path("counter" / LongNumber) {num => complete{Thread.sleep(200);s"RESULT $num"}}
   }
 
@@ -57,5 +58,25 @@ class RestClientTest  extends FlatSpec with Matchers with ScalatestRouteTest wit
     }
     val res = Await.result(Future.foldLeft(results)(0){ case (c, _) => c + 1 }, 1 minute)
     res should be (100)
+  }
+
+  it should "allow query in path, append params" in {
+    def echo(path: String, params: Map[String, Any] = Map.empty) =
+      Option(Await.result(client.httpGet[String](path, params), 1 second)).map(echoed =>
+        echoed.substring(echoed.indexOf(client.port.toString) + client.port.toString.length + 1)
+      ).get
+    val q1 = Map("q" -> 1)
+    echo("uri-echo")                    shouldBe "uri-echo"
+    echo("uri-echo", q1)                shouldBe "uri-echo?q=1"
+    echo("uri-echo?q")                  shouldBe "uri-echo?q"
+    echo("uri-echo?q", q1)              shouldBe "uri-echo?q&q=1"
+    echo("uri-echo?/key1/key2")         shouldBe "uri-echo?/key1/key2"
+    echo("uri-echo?/key1/key2", q1)     shouldBe "uri-echo?/key1/key2?q=1"
+    echo("uri-echo?/key1/key2?q=0")     shouldBe "uri-echo?/key1/key2?q=0"
+    echo("uri-echo?/key1/key2?q=0", q1) shouldBe "uri-echo?/key1/key2?q=0&q=1"
+    echo("uri-echo?/spec%2Fkey1/spec%3Dkey2%3F")          shouldBe "uri-echo?/spec%2Fkey1/spec%3Dkey2%3F"
+    echo("uri-echo?/spec%2Fkey1/spec%3Dkey2%3F", q1)      shouldBe "uri-echo?/spec%2Fkey1/spec%3Dkey2%3F?q=1"
+    echo("uri-echo?/spec%2Fkey1/spec%3Dkey2%3F?q=0")      shouldBe "uri-echo?/spec%2Fkey1/spec%3Dkey2%3F?q=0"
+    echo("uri-echo?/spec%2Fkey1/spec%3Dkey2%3F?q=0", q1)  shouldBe "uri-echo?/spec%2Fkey1/spec%3Dkey2%3F?q=0&q=1"
   }
 }
