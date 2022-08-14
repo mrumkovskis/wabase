@@ -122,6 +122,12 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       delete = Option(view.auth.forDelete).filter(_.nonEmpty).map(_.map(a => s"($a)").mkString(" & ")),
     )
   }
+
+  private def extraFilterAndAuthString(extraFilter: String, auth: Seq[String]): String =
+    Option(Option(extraFilter).filter(_ != "").toSeq ++ auth)
+      .filter(_.nonEmpty).map(_.map(a => s"($a)").mkString(" & "))
+      .orNull
+
   override def get(
     viewDef:     ViewDef,
     keyValues:   Seq[Any],
@@ -130,8 +136,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     extraParams: Map[String, Any],
   )(implicit resources: Resources): Option[RowLike] = {
     val extraFilterAndAuth =
-      Option((Option(extraFilter).toSeq ++ viewDef.auth.forGet).map(a => s"($a)").mkString(" & "))
-        .filterNot(_.isEmpty).orNull
+      extraFilterAndAuthString(extraFilter, viewDef.auth.forGet)
     super.get(viewDef, keyValues, keyColNames, extraFilterAndAuth, extraParams)
   }
   override def result[B <: DTO: Manifest](params: Map[String, Any],
@@ -140,8 +145,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       implicit resources: Resources): QuereaseIteratorResult[B] = {
     val v = viewDef[B]
     val extraFilterAndAuth =
-      Option((Option(extraFilter).toSeq ++ v.auth.forList).map(a => s"($a)").mkString(" & "))
-        .filterNot(_.isEmpty).orNull
+      extraFilterAndAuthString(extraFilter, v.auth.forList)
     // TODO call super and move rows below to Querease later
     val (q, p) = queryStringAndParams(viewDef[B], params,
       offset, limit, orderBy, extraFilterAndAuth, extraParams)
@@ -161,8 +165,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       offset: Int, limit: Int, orderBy: String, extraFilter: String)(
         implicit resources: Resources): Result[RowLike] = {
     val extraFilterAndAuth =
-      Option((Option(extraFilter).toSeq ++ viewDef.auth.forList).map(a => s"($a)").mkString(" & "))
-        .filterNot(_.isEmpty).orNull
+      extraFilterAndAuthString(extraFilter, viewDef.auth.forList)
     super.rowsResult(viewDef, params, offset, limit, orderBy, extraFilterAndAuth)
   }
 
@@ -170,8 +173,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
   override protected def countAll_(viewDef: ViewDef, params: Map[String, Any],
       extraFilter: String = null, extraParams: Map[String, Any] = Map())(implicit resources: Resources): Int = {
     val extraFilterAndAuth =
-      Option((Option(extraFilter).toSeq ++ viewDef.auth.forList).map(a => s"($a)").mkString(" & "))
-        .filterNot(_.isEmpty).orNull
+      extraFilterAndAuthString(extraFilter, viewDef.auth.forList)
     super.countAll_(viewDef, params, extraFilterAndAuth, extraParams)
   }
 

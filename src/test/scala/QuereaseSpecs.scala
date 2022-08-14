@@ -186,6 +186,12 @@ class QuereaseSpecs extends AsyncFlatSpec with Matchers with TestQuereaseInitial
     p.name shouldBe "Name"
     p.surname shouldBe "Readonly"
 
+    // allow empty extra filter
+    p = querease.get[Person](id, "").get
+    p.id shouldBe id
+    p.name shouldBe "Name"
+    p.surname shouldBe "Readonly"
+
     querease.delete(p) shouldBe 1
     querease.get[Person](id) shouldBe None
   }
