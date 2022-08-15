@@ -595,7 +595,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     Get("/data/by_datetime_key_view/2022-08-02_05:45:00.0") ~> route ~> check {
       status shouldEqual StatusCodes.OK
       header[`Content-Type`].get.contentType shouldBe ContentTypes.`application/json`
-      entityAs[String] shouldBe s"""{"date_time":"2022-08-02 05:45:00.0","name":"DtTmIns"}"""
+      entityAs[String] shouldBe s"""{"date_time":"2022-08-02 05:45:00","name":"DtTmIns"}"""
     }
     Get("/data/by_datetime_key_view/2022-08-02_05:45:33") ~> route ~> check {
       status shouldEqual StatusCodes.NotFound
@@ -660,7 +660,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     Get("/data/by_local_datetime_key_view/2022-08-02_05:45:00.0") ~> route ~> check {
       status shouldEqual StatusCodes.OK
       header[`Content-Type`].get.contentType shouldBe ContentTypes.`application/json`
-      entityAs[String] shouldBe s"""{"l_date_time":"2022-08-02 05:45:00.0","name":"DtTmIns"}"""
+      entityAs[String] shouldBe s"""{"l_date_time":"2022-08-02 05:45:00","name":"DtTmIns"}"""
     }
     Get("/data/by_local_datetime_key_view/2022-08-02_05:45:33") ~> route ~> check {
       status shouldEqual StatusCodes.NotFound

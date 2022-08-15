@@ -186,12 +186,17 @@ class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseIni
        """[2,null,2002.02,"2021-12-26 23:58:15.151"]],""",
        """["1001.01","2002.02"]]""",
     ).mkString
+    dto1.last_modified = java.sql.Timestamp.valueOf("2021-12-26 23:57:00.0")
+    test(List(dto1, dto2), includeHeaders = false) shouldBe List(
+      """[null,"42",1001.01,"2021-12-26 23:57:00"]""",
+      """[2,null,2002.02,"2021-12-26 23:58:15.151"]""",
+    ).mkString(",")
   }
 
   it should "serialize hierarchical tresql result as arrays to json" in {
     serializeTresqlResult(
       s"person {id, name, |account[id < 2] {number, balance, last_modified}, sex}", Json
-    ) shouldBe """[1,"John",[["X64",1001.01,"2021-12-21 00:55:55.0"]],"M"],[2,"Jane",[],"F"]"""
+    ) shouldBe """[1,"John",[["X64",1001.01,"2021-12-21 00:55:55"]],"M"],[2,"Jane",[],"F"]"""
 
     serializeTresqlResult(
       s"person {id, name, |account[id < 2] {number, balance, cast(last_modified, 'time')}, sex}", Json
@@ -208,7 +213,7 @@ class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseIni
       s"person {id, name, |account[id < 2] {number, balance, last_modified}, sex}", Json, includeHeaders = true
     ) shouldBe List(
       """["id","name",null,"sex"]""",
-      """[1,"John",[["number","balance","last_modified"],["X64",1001.01,"2021-12-21 00:55:55.0"]],"M"]""",
+      """[1,"John",[["number","balance","last_modified"],["X64",1001.01,"2021-12-21 00:55:55"]],"M"]""",
       """[2,"Jane",[],"F"]""",
     ).mkString(",")
 
@@ -427,8 +432,8 @@ class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseIni
     )
     val expected = List(
       """{"id":1,"name":"John","surname":"Doe","main_account":null,"accounts":[""" +
-        """{"id":1,"number":"X64","balance":1001.01,"last_modified":"2021-12-21 00:55:55.0"},""" +
-        """{"id":2,"number":"X94","balance":2002.02,"last_modified":"2021-12-21 01:59:30.0"}]}""",
+        """{"id":1,"number":"X64","balance":1001.01,"last_modified":"2021-12-21 00:55:55"},""" +
+        """{"id":2,"number":"X94","balance":2002.02,"last_modified":"2021-12-21 01:59:30"}]}""",
       """{"id":2,"name":"Jane","surname":null,"main_account":null,"accounts":[]}""",
     ).mkString("[", ",", "]")
     test("person_accounts_details", false) shouldBe expected

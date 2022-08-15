@@ -140,8 +140,11 @@ object BorerDatetimeEncoders {
       val seconds = value.getTime.toDouble / 1000 // TODO nanos?
       w writeTag    Tag.EpochDateTime
       w writeDouble seconds
-    } else {
-      w writeString value.toString
+    } else value.toString match {
+      case s if s endsWith ".0" =>
+        w writeString s.substring(0, 19)
+      case s =>
+        w writeString s
     }
   }
   implicit val javaSqlDateEncoder: Encoder[sql.Date] = Encoder { (w, value) =>

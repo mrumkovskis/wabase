@@ -86,8 +86,8 @@ class MarshallingSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     child.name = "CHILD-1"
     child.date = java.sql.Date.valueOf("2021-11-08")
     child.date_time = java.sql.Timestamp.valueOf("2021-12-26 23:57:14.0")
-    val fullJson     = """{"id":333,"name":"CHILD-1","date":"2021-11-08","date_time":"2021-12-26 23:57:14.0"}"""
-    val filteredJson = """{"id":333,"date":"2021-11-08","date_time":"2021-12-26 23:57:14.0"}"""
+    val fullJson     = """{"id":333,"name":"CHILD-1","date":"2021-11-08","date_time":"2021-12-26 23:57:14"}"""
+    val filteredJson = """{"id":333,"date":"2021-11-08","date_time":"2021-12-26 23:57:14"}"""
 
     httpResponse = marshal(wRes("decoder_test_child", PojoResult(chilD)))
     httpResponse.entity.contentType shouldEqual ContentTypes.`application/json`
