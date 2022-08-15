@@ -209,6 +209,18 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
     ).mkString("\n", "\n", ""))
   }
 
+  def transformToStringValues(m: Any): Any = m match {
+    case mm: Map[String@unchecked, _] => mm.map { case (key, value) => (key, transformToStringValues(value)) }
+    case s: Seq[_] => s map transformToStringValues
+    case t: java.sql.Timestamp => t.toString match {
+      case s if s endsWith ".0" => s.substring(0, 19)
+      case s => s
+    }
+    case d: java.sql.Date => d.toString
+    case d: java.util.Date => Format.humanDateTime(d)
+    case x => x
+  }
+
   def checkTestCase(scenario: File, testCase: File, context: Map[String, String], map: Map[String, Any]) = {
     val path = map.s("path")
     val method = map.s("method", "GET")
@@ -251,20 +263,11 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
       case r => sys.error("Unsupported request type: "+r)
     }
 
-    def tresqlTransformDate(m: Any):Any = m match {
-      case mm: Map[String@unchecked, _] => mm.map { case (key, value) => (key, tresqlTransformDate(value))}
-      case s: Seq[_] => s map tresqlTransformDate
-      case t: java.sql.Timestamp => t.toString.substring(0, 19)
-      case d: java.sql.Date => d.toString
-      case d: java.util.Date => Format.humanDateTime(d)
-      case x => x
-    }
-
     val response =
       if (tresqlRow != null)
-        tresqlTransformDate(dbUse(Query(tresqlRow, context).toListOfMaps.headOption.getOrElse(Map())))
+        transformToStringValues(dbUse(Query(tresqlRow, context).toListOfMaps.headOption.getOrElse(Map())))
       else if (tresqlList != null)
-        tresqlTransformDate(dbUse(Query(tresqlList, context).toListOfMaps))
+        transformToStringValues(dbUse(Query(tresqlList, context).toListOfMaps))
       else if (tresqlTransaction != null) {
         transaction(Query(tresqlTransaction, context))
         Map("result" -> "ok")
