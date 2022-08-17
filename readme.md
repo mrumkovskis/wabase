@@ -17,4 +17,4 @@ wabase is web application based on [akka.io](http://akka.io/) web server providi
 * Framework for I18n support.
 
 ## use in your sbt project
-add to your build.sbt file - libraryDependencies += "org.wabase" %% "wabase" % "6.0.1"
+add to your build.sbt file - libraryDependencies += "org.wabase" %% "wabase" % "6.0.2"
