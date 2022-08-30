@@ -175,7 +175,7 @@ trait WabaseApp[User] {
     val viewDef = qe.viewDef(viewName)
     val keyAsMap =
       if  (actionName == Action.Update)
-           values(qe.oldKeyParamName) match {
+           values.getOrElse(qe.oldKeyParamName, Map.empty: Map[String, Any]) match {
              case keyAsMap: Map[String, Any] @unchecked => keyAsMap
              case x => sys.error("Unexpected old key type, expecting Map")
            }
@@ -278,7 +278,7 @@ trait WabaseApp[User] {
       checkApi(viewName, actionName, user)
     val keyAsMap = prepareKey(viewName, keyValues, actionName)
     val key_params =
-      if  (context.actionName == Action.Update)
+      if  (context.actionName == Action.Update && keyAsMap != null && keyAsMap.nonEmpty)
            Map(qe.oldKeyParamName -> keyAsMap)
       else keyAsMap
     context.copy(values = values ++ key_params)
