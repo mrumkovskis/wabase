@@ -381,6 +381,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
             doActionOp(op, doVarsTransforms(vts, stepData, stepData).result, context.env, context)
           case Return(_, vts, op) =>
             doActionOp(op, doVarsTransforms(vts, stepData, stepData).result, context.env, context)
+          case RemoveVar(name) => Future.successful(stepData - name.get) map MapResult
           case Validations(_, validations, db) =>
             context.view.map { vd =>
               Future(doValidationStep(validations, db, stepData ++ context.env, vd))
@@ -428,7 +429,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
                     se.name.map(n => Future.successful(Map(n -> x))).getOrElse(curData)
                 }
               doSteps(tail, context, newData)
-            case _: Return => Future.successful(stepRes)
+            case _: Return | _: RemoveVar => Future.successful(stepRes)
             case _ => doSteps(tail, context, curData)
           }
         }

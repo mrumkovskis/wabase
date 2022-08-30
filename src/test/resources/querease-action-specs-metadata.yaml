@@ -510,3 +510,15 @@ fields:
 get:
 - +simple_table{ id = :id, value = 'data' }
 - get this
+
+
+name: remove_var_test
+table:
+api: insert, update
+fields:
+- var1
+- var2
+insert:
+- var2 -=   # removes variable from environment
+update:
+- var1 -=   # removes variable from environment

@@ -623,4 +623,15 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         }
       }
   }
+
+  it should "remove field from data set" in {
+    for {
+      t1 <- doAction("insert", "remove_var_test", Map("var1" -> "data1", "var2" -> "data2"))
+        .map { _ shouldBe MapResult (Map ("var1" -> "data1")) }
+      t2 <- doAction("update", "remove_var_test", Map("var1" -> "data1", "var2" -> "data2"))
+        .map { _ shouldBe MapResult(Map("var2" -> "data2", "old key" -> Map())) }
+    } yield {
+      t2
+    }
+  }
 }

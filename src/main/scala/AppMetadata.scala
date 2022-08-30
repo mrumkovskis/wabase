@@ -483,6 +483,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     // matches - 'validations validation_name [db:cp]'
     val validationRegex = new Regex(s"(?U)${Action.ValidationsKey}(?:\\s+(\\w+))?(?:\\s+\\[(?:\\s*(\\w+)?\\s*(?::\\s*(\\w+)\\s*)?)\\])?")
     val namedStepRegex = """(?U)(?:(\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*)\s*=\s*)?(.+)""".r
+    val removeVarStepRegex = """(?U)(?:(\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*)\s*-=\s*)""".r
     val viewCallRegex = new Regex(Action().mkString("(?U)(", "|", """)\s+(:?\w+)"""))
     val invocationRegex = """(?U)\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*(\.\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*)+""".r
     val setEnvRegex = """setenv\s+(.+)""".r //dot matches new line as well
@@ -579,6 +580,9 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       }
       def parseStep(anyStep: Any): Action.Step = {
         anyStep match {
+          case s: String if removeVarStepRegex.pattern.matcher(s).matches() =>
+            val removeVarStepRegex(name) = s
+            Action.RemoveVar(Some(name))
           case s: String =>
             val namedStepRegex(name, st) = s
             parseStringStep(Option(name), st)
@@ -696,6 +700,7 @@ object AppMetadata {
     case class SetEnv(name: Option[String], varTrans: List[VariableTransform], value: Op) extends Step
     case class Return(name: Option[String], varTrans: List[VariableTransform], value: Op) extends Step
     case class Validations(name: Option[String], validations: Seq[String], db: Option[DbAccessKey]) extends Step
+    case class RemoveVar(name: Option[String]) extends Step
   }
 
   case class Action(steps: List[Action.Step])
