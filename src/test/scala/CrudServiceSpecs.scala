@@ -142,6 +142,15 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       header[`Content-Type`].get.contentType shouldBe ContentTypes.`application/json`
       entityAs[String] shouldBe s"""{"name":"Wu","surname":null}"""
     }
+    // ensure string keys are not used as numbers and leading zeros are not lost
+    hasPerson("01110") shouldBe false
+    createPerson("01110")
+    hasPerson("01110") shouldBe true
+    Get(s"/data/by_key_view_2?/01110") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
+      header[`Content-Type`].get.contentType shouldBe ContentTypes.`application/json`
+      entityAs[String] shouldBe s"""{"name":"01110","surname":null}"""
+    }
   }
 
   it should "list" in {
@@ -304,6 +313,16 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       val location = header[Location].get.uri.toString
       location shouldBe "/data/by_key_view_3?/KeyName2"
     }
+    // ensure string keys are not used as numbers and leading zeros are not lost
+    hasPerson("02220") shouldBe false
+    createPerson("02220", "OldSurname")
+    hasPerson("02220", "OldSurname") shouldBe true
+    Put(s"/data/by_key_view_2/02220", s"""{"name": "02221", "surname": "NewSurname"}""") ~> route ~> check {
+      status shouldEqual StatusCodes.SeeOther
+      val location = header[Location].get.uri.toString
+      location shouldBe "/data/by_key_view_2?/02221"
+    }
+    hasPerson("02221", "NewSurname") shouldBe true
   }
 
   it should "update key" in {
@@ -422,6 +441,14 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     Delete(s"/data/by_key_view_2?/Deleme") ~> route ~> check {
       status shouldEqual StatusCodes.NotFound
     }
+    // ensure string keys are not used as numbers and leading zeros are not lost
+    hasPerson("03330") shouldBe false
+    val id = createPerson("03330")
+    hasPerson("03330") shouldBe true
+    Delete(s"/data/by_key_view_2?/03330") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
+    }
+    hasPerson("03330") shouldBe false
   }
 
   it should "redirect by key explicitly" in {

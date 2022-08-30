@@ -61,18 +61,22 @@ trait AppServiceBase[User]
   def apiPath = path("api" ~ Slash.?) & get
 
   def crudPath = pathPrefix("data")
+  // @deprecated("Use viewWithKeyPath. This method will be removed", "6.0.3")
   def viewWithIdPath = path(Segment / LongNumber)
   def viewWithKeyPath = path(Segment / Segments) | path(Segment ~ PathEnd) & provide(Nil: List[String])
   @deprecated("Use key without field name. This method will be removed", "6.0")
   def viewWithNamePath = path(Segment / Segment / Segment)
   def createPath = (path("create" / Segment) | pathPrefix("create:") & rawPathPrefix(Segment)) & get
   def viewWithoutIdPath = path(Segment ~ (PathEnd | Slash))
+  // @deprecated("Use getByKeyPath. This method will be removed", "6.0.3")
   def getByIdPath = viewWithIdPath & get
   def getByKeyPath = viewWithKeyPath & get
   @deprecated("Use key without field name. This method will be removed", "6.0")
   def getByNamePath = viewWithNamePath & get
+  // @deprecated("Use deleteByKeyPath. This method will be removed", "6.0.3")
   def deletePath = viewWithIdPath & delete
   def deleteByKeyPath = viewWithKeyPath & delete
+  // @deprecated("Use updateByKeyPath. This method will be removed", "6.0.3")
   def updatePath = viewWithIdPath & put
   def updateByKeyPath = viewWithKeyPath & put
   def insertPath = viewWithoutIdPath & post
@@ -89,12 +93,20 @@ trait AppServiceBase[User]
       }
     }
 
+  private def extractStringId: Directive1[String] =
+    extractMatchedPath flatMap { path =>
+      provide(path.reverse.head.toString)
+    }
   private def useActions(viewName: String, actionName: String) =
     !app.useLegacyFlow(viewName, actionName)
+
+  // @deprecated("Use getByKeyAction. This method will be removed", "6.0.3")
   def getByIdAction(viewName: String, id: Long)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
       if (useActions(viewName, Action.Get)) {
-        complete(app.doWabaseAction(Action.Get, viewName, Seq(id), filterPars(params)))
+        extractStringId { idString =>
+          complete(app.doWabaseAction(Action.Get, viewName, Seq(idString), filterPars(params)))
+        }
       } else {
         complete(app.get(viewName, id, filterPars(params)))
       }
@@ -131,9 +143,12 @@ trait AppServiceBase[User]
       }
     }
 
+  // @deprecated("Use deleteByKeyAction. This method will be removed", "6.0.3")
   def deleteAction(viewName: String, id: Long)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     if (useActions(viewName, Action.Delete))
-      deleteByKeyAction(viewName, Seq(id))
+      extractStringId { idString =>
+        deleteByKeyAction(viewName, Seq(idString))
+      }
     else
       parameterMultiMap { params =>
         complete {
@@ -150,10 +165,13 @@ trait AppServiceBase[User]
       }
     }
 
+  // @deprecated("Use updateByKeyAction. This method will be removed", "6.0.3")
   def updateAction(viewName: String, id: Long)(
     implicit user: User, state: ApplicationState, timeout: QueryTimeout): Route =
     if (useActions(viewName, Action.Update))
-      updateByKeyAction(viewName, Seq(id))
+      extractStringId { idString =>
+        updateByKeyAction(viewName, Seq(idString))
+      }
     else
       extractUri { requestUri =>
         parameterMultiMap { params =>
@@ -254,6 +272,8 @@ trait AppServiceBase[User]
       .map(_.parseJson.convertTo[Map[String, Any]])
       .getOrElse(decodeParams(params))
 
+  // OK to use deprecated getByIdPath, deletePath, updatePath here
+  @annotation.nowarn("cat=deprecation")
   def crudActionOnKeyInPath(implicit user: User) = applicationState { implicit state =>
     extractTimeout { implicit timeout =>
       getByIdPath     { getByIdAction     } ~
