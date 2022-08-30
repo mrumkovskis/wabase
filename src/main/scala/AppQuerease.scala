@@ -422,14 +422,20 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
               doSteps(tail, context, curData.map(updateCurRes(_, e.name, dataForNewStep(s, stepRes))))
             case se: SetEnv =>
               val newData =
-                dataForNewStep(s, stepRes) match {
+                dataForNewStep(se, stepRes) match {
                   case m: Map[String, Any]@unchecked => Future.successful(m)
                   case x =>
                     //in the case of primitive value return step must have name
                     se.name.map(n => Future.successful(Map(n -> x))).getOrElse(curData)
                 }
               doSteps(tail, context, newData)
-            case _: Return | _: RemoveVar => Future.successful(stepRes)
+            case rv: RemoveVar =>
+              val newData = dataForNewStep(rv, stepRes) match {
+                case m: Map[String, Any]@unchecked => Future.successful(m)
+                case x => sys.error(s"Remove var step cannot produce anyting but Map, instead got $x")
+              }
+              doSteps(tail, context, newData)
+            case _: Return => Future.successful(stepRes)
             case _ => doSteps(tail, context, curData)
           }
         }

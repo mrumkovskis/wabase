@@ -521,4 +521,5 @@ fields:
 insert:
 - var2 -=   # removes variable from environment
 update:
+- x    -=   # not existing var
 - var1 -=   # removes variable from environment
