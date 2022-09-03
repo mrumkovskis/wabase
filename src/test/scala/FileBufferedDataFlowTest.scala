@@ -44,15 +44,16 @@ class FileBufferedDataFlowTest extends AsyncFlatSpec {
       .map { b =>
         val r = size / fileSize
         if (r < 0.25 || (r > 0.50 && r < 0.75)) {
-          Thread.sleep(Random.nextInt(100))
+          Thread.sleep(Random.nextInt(30))
         }
         b
       }.async
       .via(buffer).async
       .map { b =>
         val r = size / fileSize
-        if ((r > 0.25 && r < 0.5) || r > 0.75)
-          Thread.sleep(Random.nextInt(100))
+        if ((r > 0.25 && r < 0.5) || r > 0.75) {
+          Thread.sleep(Random.nextInt(30))
+        }
         b
       }.async
       .runWith(AppFileStreamer.sha256sink.async)
