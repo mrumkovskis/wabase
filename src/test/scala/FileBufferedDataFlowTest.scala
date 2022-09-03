@@ -12,7 +12,7 @@ class FileBufferedDataFlowTest extends AsyncFlatSpec {
   import scala.language.postfixOps
   def testBufferedFlow(n: Int, bufferSize: Int, maxFileSize: Long, outBufSize: Int = 1024 * 8) = {
     val buffer = FileBufferedFlow.create(bufferSize, maxFileSize, outBufSize)
-    Source.fromIterator(() => 0 to n iterator).map{ b => ByteString(b.toByte) }.async.via(buffer)
+    Source.fromIterator(() => 0 to n iterator).map{ b => ByteString(b.toByte) }.async.via(buffer).async
   }
 
   import StreamsEnv._
@@ -29,21 +29,34 @@ class FileBufferedDataFlowTest extends AsyncFlatSpec {
   it should "buffer bytes flow with variable downstream timeout" in {
     source.map {x => Thread.sleep(Random.nextInt(101)); x} runReduce { _ ++ _ } map { b => assert(pattern == b) }
   }
-  it should "buffer bytes from file with variable downstream timeout" in {
+  it should "buffer bytes from flow with variable upstream/downstream timeout" in {
     val fileSize = 1000000
-    val bufferSize = 1024 * 4
+    val bufferSize = 1024
     val maxFileSize = 1024 * 1024
-    val outBufSize = 1024 * 4
+    val outBufSize = 1024 * 2
     val source = Source.fromIterator(() => 0 to fileSize iterator).map { b => ByteString(b.toByte) }
     val buffer = FileBufferedFlow.create(bufferSize, maxFileSize, outBufSize)
-    val file = File.createTempFile("buffer_test_file", ".data")
-    source.runWith(FileIO.toPath(file.toPath))
-      .flatMap(_ => FileIO.fromPath(file.toPath).async
-        .via(buffer)
-        .map { b => Thread.sleep(Random.nextInt(11)); b }
-        .runWith(AppFileStreamer.sha256sink))
-      .zip(source.runWith(AppFileStreamer.sha256sink))
+    var counter = 0
+    var size = 0d
+    source
+      .aggregateWithBoundary(() => ByteString.empty)((abs, bs) => (abs ++ bs, abs.size + bs.size > 512), identity, None)
+      .map { b => counter += 1; size += b.size; b }
+      .map { b =>
+        val r = size / fileSize
+        if (r < 0.25 || (r > 0.50 && r < 0.75)) {
+          Thread.sleep(Random.nextInt(100))
+        }
+        b
+      }.async
+      .via(buffer).async
+      .map { b =>
+        val r = size / fileSize
+        if ((r > 0.25 && r < 0.5) || r > 0.75)
+          Thread.sleep(Random.nextInt(100))
+        b
+      }.async
+      .runWith(AppFileStreamer.sha256sink.async)
+      .zip(source.runWith(AppFileStreamer.sha256sink.async))
       .map { case (hash1, hash2) => assert(hash1 == hash2) }
-      .andThen { case _ => file.delete }
   }
 }

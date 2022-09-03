@@ -86,13 +86,21 @@ class FileBufferedFlow private (bufferSize: Int, maxFileSize: Long, outBufferSiz
         }
         if (readPos < writePos) {
           outBytes.clear
+          val diff = writePos - readPos
+          if (diff < outBytes.capacity()) {
+            outBytes.limit(diff.toInt)
+          }
           val r = channel.read(outBytes, readPos)
           push(out, byteStringFromBuffer(outBytes))
           readPos += r
-        } else if (inBytes.nonEmpty) {
-          push(out, inBytes.result())
-          inBytes.clear()
-        } else if (isClosed(in)) completeStage()
+        } else {
+          readPos = 0
+          writePos = 0
+          if (inBytes.nonEmpty) {
+            push(out, inBytes.result())
+            inBytes.clear()
+          } else if (isClosed(in)) completeStage()
+        }
       }
 
       override def onUpstreamFinish(): Unit = {
