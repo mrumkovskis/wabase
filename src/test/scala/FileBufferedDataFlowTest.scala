@@ -21,13 +21,13 @@ class FileBufferedDataFlowTest extends AsyncFlatSpec {
   val pattern = ByteString(0 to size map (_.toByte) toArray)
   val source = testBufferedFlow(size, 10, 100, 10)
   it should "buffer bytes flow with fixed downstream timeout" in {
-    source.map {x => Thread.sleep(10); x} runReduce { _ ++ _ } map { b => assert(pattern == b) }
+    source.map {x => Thread.sleep(10); x}.async runReduce { _ ++ _ } map { b => assert(pattern == b) }
   }
   it should "buffer bytes flow with no downstream timeout" in {
     source.runReduce { _ ++ _ } map { b => assert(pattern == b) }
   }
   it should "buffer bytes flow with variable downstream timeout" in {
-    source.map {x => Thread.sleep(Random.nextInt(101)); x} runReduce { _ ++ _ } map { b => assert(pattern == b) }
+    source.map {x => Thread.sleep(Random.nextInt(101)); x}.async runReduce { _ ++ _ } map { b => assert(pattern == b) }
   }
   it should "buffer bytes from flow with variable upstream/downstream timeout" in {
     val fileSize = 1000000
@@ -46,7 +46,7 @@ class FileBufferedDataFlowTest extends AsyncFlatSpec {
           Thread.sleep(Random.nextInt(30))
         }
         b
-      }
+      }.async
       .via(buffer).async
       .map { b =>
         val r = size / fileSize
