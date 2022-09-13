@@ -1,7 +1,7 @@
 val scalaV = "2.13.8"
 
 val akkaV     = "2.6.20"
-val akkaHttpV = "10.2.9"
+val akkaHttpV = "10.2.10"
 
 val borerV = "1.7.2"
 
