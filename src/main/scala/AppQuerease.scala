@@ -361,14 +361,13 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case id: IdResult => id
       case kr: KeyResult => kr.ir
       case sr: StatusResult => sr
-      case NoResult => NoResult
+      case NoResult => null
       case x => sys.error(s"${x.getClass.getName} not expected here!")
     }
     def updateCurRes(cr: Map[String, Any], key: Option[String], res: Any) = res match {
       case ir: IdResult => key
-        .map(k => cr + (k -> ir.toMap))
-        .getOrElse(cr ++ ir.toMap)
-      case NoResult => cr
+        .map(k => cr + (k -> ir.id))
+        .getOrElse(cr ++ ir.toMap)  // id result always updates current result
       case r => key.map(k => cr + (k -> r)).getOrElse(cr)
     }
     def doStep(step: Step, stepDataF: Future[Map[String, Any]]): Future[QuereaseResult] = {

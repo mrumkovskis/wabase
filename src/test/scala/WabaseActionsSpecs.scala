@@ -544,7 +544,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         _ shouldBe StatusResult(200, "yes", List(), ListMap())
       }
       t4 <- doAction("get", "if_test_2", Map("value" -> false)).map {
-        _ shouldBe StatusResult(200, "not defined", List(), ListMap())
+        _ shouldBe StatusResult(200, null, List(), ListMap())
       }
     } yield {
       t4
