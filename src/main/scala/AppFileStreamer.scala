@@ -6,6 +6,7 @@ import java.nio.channels.FileChannel
 import java.nio.file.Files
 import java.security.MessageDigest
 import akka.http.scaladsl.model.EntityStreamSizeException
+import com.typesafe.config.Config
 
 import scala.collection.immutable.TreeMap
 import scala.concurrent.{ExecutionContext, ExecutionContextExecutor, Future}
@@ -121,14 +122,52 @@ trait AppFileStreamer[User] extends AppFileStreamerConfig with Loggable { this: 
   
   protected def fileStreamerConnectionPool: PoolName = DEFAULT_CP
 
-  private implicit lazy val conpool: PoolName = fileStreamerConnectionPool
-  private implicit lazy val extraDb: Seq[DbAccessKey] = Nil
-
-  implicit private lazy val queryTimeout: QueryTimeout = DefaultQueryTimeout
-
   lazy val rootPath = appConfig.getString("files.path").replaceAll("/+$", "")
   lazy val file_info_table = "file_info"
   lazy val file_body_info_table = "file_body_info"
+
+  protected lazy val fileStreamer: FileStreamer =
+    new FileStreamer(this, fileStreamerConnectionPool)
+
+  import AppFileStreamer._
+
+  def createTempFile =
+    fileStreamer.createTempFile
+  def fileSink(
+    filename: String,
+    contentType: String,
+  )(implicit
+    user: User,
+    executor: ExecutionContextExecutor,
+    materializer: Materializer,
+  ): Sink[ByteString, Future[FileInfo]] = {
+    fileStreamer.fileSink(filename, contentType)
+  }
+  def getFileInfo(id: Long, sha256: String)(implicit user: User): Option[FileInfoHelper] =
+    fileStreamer.getFileInfo(id, sha256)
+  def copy(source: String, dest: String, mkdirs: Boolean = false): Unit =
+    fileStreamer.copy(source, dest, mkdirs)
+}
+
+class FileStreamer(
+  fsCfg:  AppFileStreamerConfig with AppConfig with DbAccessProvider,
+  fsPoolName: PoolName = DEFAULT_CP,
+) extends AppFileStreamerConfig with AppConfig with DbAccessProvider with Loggable {
+
+  override lazy val appConfig: Config             = fsCfg.appConfig
+  override def dbAccess: DbAccess                 = fsCfg.dbAccess
+
+  override lazy val rootPath: String              = fsCfg.rootPath
+  override lazy val file_info_table: String       = fsCfg.file_info_table
+  override lazy val file_body_info_table: String  = fsCfg.file_body_info_table
+  override val shaColName: String                 = fsCfg.shaColName
+
+  protected def fileStreamerConnectionPool: PoolName = fsPoolName
+
+  private implicit lazy val conpool: PoolName = fileStreamerConnectionPool
+  private implicit lazy val extraDb: Seq[DbAccessKey] = Nil
+
+  private implicit lazy val queryTimeout: QueryTimeout = DefaultQueryTimeout
 
   import AppFileStreamer._
 
@@ -148,7 +187,13 @@ trait AppFileStreamer[User] extends AppFileStreamerConfig with Loggable { this: 
     File.createTempFile("tmp", null, tempPath)
   }
 
-  def fileSink(filename: String, contentType: String)(implicit user: User, executor: ExecutionContextExecutor, materializer: Materializer): Sink[ByteString, Future[FileInfo]] = {
+  def fileSink(
+    filename: String,
+    contentType: String,
+  )(implicit
+    executor: ExecutionContextExecutor,
+    materializer: Materializer,
+  ): Sink[ByteString, Future[FileInfo]] = {
     val tempFile = createTempFile
     val toFile = FileIO.toPath(tempFile.toPath)
 
@@ -245,7 +290,7 @@ trait AppFileStreamer[User] extends AppFileStreamerConfig with Loggable { this: 
       .mapMaterializedValue(_.flatMap(moveAndCheckFile))
   }
 
-  def getFileInfo(id: Long, sha256: String)(implicit user: User): Option[FileInfoHelper] = dbUse {
+  def getFileInfo(id: Long, sha256: String): Option[FileInfoHelper] = dbUse {
     Query(fileInfoSelect, Map("id" -> id, "sha_256" -> sha256))
       .map(new FileInfoHelper(_)).toList.headOption
       .map { fi => fi.copy(
