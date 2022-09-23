@@ -244,13 +244,18 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       (_: ExecutionContext) => QuereaseAction.this.run.recover(pf)
   }
   object QuereaseAction {
-    def apply(viewName: String,
-              actionName: String,
-              data: Map[String, Any],
-              env: Map[String, Any])(initResources: () => Resources,
-                                     closeResources: (Resources, Option[Throwable]) => Unit): QuereaseAction[QuereaseResult] = {
+    def apply(
+      viewName: String,
+      actionName: String,
+      data: Map[String, Any],
+      env: Map[String, Any],
+    )(initResources: () => Resources,
+      closeResources: (Resources, Option[Throwable]) => Unit,
+      fileStreamer: FileStreamer,
+    ): QuereaseAction[QuereaseResult] = {
       implicit ec: ExecutionContext => {
         implicit val res = initResources()
+        implicit val fs  = fileStreamer
         try {
           doAction(viewName, actionName, data, env).map {
             case r: QuereaseCloseableResult => QuereaseResultWithCleanup(
@@ -304,7 +309,11 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     data: Map[String, Any],
     env: Map[String, Any],
     contextStack: List[ActionContext] = Nil,
-  )(implicit resources: Resources, ec: ExecutionContext): Future[QuereaseResult] = {
+  )(implicit
+    resources: Resources,
+    ec: ExecutionContext,
+    fs: FileStreamer,
+  ): Future[QuereaseResult] = {
     val vd = viewDef(view)
 
     val ctx = ActionContext(view, actionName, env, Some(vd), null, contextStack)
@@ -316,10 +325,15 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     doSteps(steps, ctx, Future.successful(data))
   }
 
-  protected def doSteps(steps: List[Action.Step],
-                        context: ActionContext,
-                        curData: Future[Map[String, Any]])(
-      implicit resources: Resources, ec: ExecutionContext): Future[QuereaseResult] = {
+  protected def doSteps(
+    steps: List[Action.Step],
+    context: ActionContext,
+    curData: Future[Map[String, Any]],
+  )(implicit
+    resources: Resources,
+    ec: ExecutionContext,
+    fs: FileStreamer,
+  ): Future[QuereaseResult] = {
     import Action._
 
     def v(view: String) = viewDef(
@@ -530,6 +544,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
   )(implicit
     res: Resources,
     ec: ExecutionContext,
+    fs: FileStreamer,
   ): Future[QuereaseResult] = {
     import Action._
     import CoreTypes._
@@ -666,6 +681,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
   )(implicit
     res: Resources,
     ec: ExecutionContext,
+    fs: FileStreamer,
   ): Future[QuereaseResult] = {
     doActionOp(op.cond, data, env, context).map {
       case TresqlResult(tr) => tr.unique[Boolean]
@@ -686,6 +702,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
   )(implicit
     res: Resources,
     ec: ExecutionContext,
+    fs: FileStreamer,
   ): Future[QuereaseResult] = {
     def addParentData(map: Map[String, Any]) = {
       var key = ".."
@@ -720,6 +737,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
   )(implicit
     res: Resources,
     ec: ExecutionContext,
+    fs: FileStreamer,
   ): Future[QuereaseResult] = {
     op match {
       case Action.Tresql(tresql) =>

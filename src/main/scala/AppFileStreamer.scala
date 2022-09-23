@@ -126,7 +126,7 @@ trait AppFileStreamer[User] extends AppFileStreamerConfig with Loggable { this: 
   lazy val file_info_table = "file_info"
   lazy val file_body_info_table = "file_body_info"
 
-  protected lazy val fileStreamer: FileStreamer =
+  lazy val fileStreamer: FileStreamer =
     new FileStreamer(this, fileStreamerConnectionPool)
 
   import AppFileStreamer._

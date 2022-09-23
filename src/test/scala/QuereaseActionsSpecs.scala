@@ -93,6 +93,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
   import AppMetadata._
 
   implicit protected var tresqlResources: Resources = _
+  implicit val fs: FileStreamer = null
 
   override def beforeAll(): Unit = {
     querease = new TestQuerease("/querease-action-specs-metadata.yaml") {
@@ -329,7 +330,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
     )
     def saveData(view: String, data: List[Map[String, Any]])(implicit res: Resources) =
       data.foldLeft(Future.successful[QuereaseResult](LongResult(0))) { (r, d) =>
-        r.flatMap(_ => querease.doAction(view, "save", d, Map())(res, implicitly[ExecutionContext]))
+        r.flatMap(_ => querease.doAction(view, "save", d, Map())(res, implicitly[ExecutionContext], fs))
       }
 
     saveData("person_simple", persons)

@@ -117,6 +117,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
                             env: Map[String, Any] = Map.empty,
                             removeIdsFlag: Boolean = true) = {
     implicit val state = ApplicationState(env)
+    implicit val fileStreamer: AppFileStreamer[TestUsr] = null
     app.doWabaseAction(action, view, Nil, Map.empty, values)
       .map(_.result)
       .flatMap {

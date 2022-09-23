@@ -56,6 +56,11 @@ trait AppServiceBase[User]
   import app.qe.metadataConventions
   import app.qe.MapJsonFormat
 
+  private implicit lazy val fs: AppFileStreamer[User] = this match {
+    case fsb: AppFileServiceBase[User@unchecked] => fsb.fileStreamer
+    case _ => null
+  }
+
   //custom directives
   def metadataPath = path("metadata" / Segment ~ Slash.?) & get
   def apiPath = path("api" ~ Slash.?) & get

@@ -46,9 +46,11 @@ trait WabaseApp[User] {
     val state:    ApplicationState,
     val timeout:  QueryTimeout,
     val ec:       ExecutionContext,
-    val as:       ActorSystem
+    val as:       ActorSystem,
+    val appFs:    AppFileStreamer[User],
   ) {
     lazy val env: Map[String, Any] = state ++ Map("params" -> params) ++ current_user_param(user)
+    val fileStreamer = if (appFs == null) null else appFs.fileStreamer
   }
 
   case class WabaseResult(ctx: AppActionContext, result: QuereaseResult)
@@ -68,7 +70,8 @@ trait WabaseApp[User] {
     state:    ApplicationState,
     timeout:  QueryTimeout,
     ec:       ExecutionContext,
-    as:       ActorSystem
+    as:       ActorSystem,
+    appFs:    AppFileStreamer[User],
   ): Future[WabaseResult] = {
     doWabaseAction(
       AppActionContext(actionName, viewName, keyValues, params, values ++ params),
@@ -125,7 +128,9 @@ trait WabaseApp[User] {
 
   def simpleAction(context: AppActionContext): ActionHandlerResult = {
     import context._
-    qe.QuereaseAction(viewName, actionName, values, env)(resourceFactory(context), closeResources)
+    qe.QuereaseAction(
+      viewName, actionName, values, env
+    )(resourceFactory(context), closeResources, fileStreamer)
       .map(WabaseResult(context, _))
   }
 
@@ -153,7 +158,9 @@ trait WabaseApp[User] {
     import context._
     def throwUnexpectedResultClass(qr: QuereaseResult) =
       sys.error(s"Unexpected result class getting old-value for '$actionName' of $viewName: ${qr.getClass.getName}")
-    qe.QuereaseAction(viewName, Action.Get, values, env)(resourceFactory(context), closeResources).map {
+    qe.QuereaseAction(
+      viewName, Action.Get, values, env
+    )(resourceFactory(context), closeResources, fileStreamer).map {
       case OptionResult(None)         =>  null
       case MapResult(oldMap)          =>  oldMap
       case srr: TresqlSingleRowResult =>  srr.map(qe.toCompatibleMap(_, qe.viewDef(viewName)))
@@ -192,7 +199,9 @@ trait WabaseApp[User] {
         val saveableContext = richContext.copy(values = saveable)
         validateFields(viewName, saveable)
         customValidations(saveableContext)(state.locale)
-        qe.QuereaseAction(viewName, context.actionName, saveable, env)(resourceFactory(context), closeResources)
+        qe.QuereaseAction(
+          viewName, context.actionName, saveable, env
+        )(resourceFactory(context), closeResources, fileStreamer)
           .map(WabaseResult(saveableContext, _))
           .recover { case ex => friendlyConstraintErrorMessage(viewDef, throw ex)(state.locale) }
       }
@@ -204,7 +213,9 @@ trait WabaseApp[User] {
       if (oldValue == null)
         throwOldValueNotFound("Record not found, cannot delete", state.locale)
       val richContext = context.copy(oldValue = oldValue)
-      qe.QuereaseAction(viewName, actionName, values, env)(resourceFactory(richContext), closeResources)
+      qe.QuereaseAction(
+        viewName, actionName, values, env
+      )(resourceFactory(richContext), closeResources, fileStreamer)
         .map(WabaseResult(richContext, _))
         .recover { case ex => friendlyConstraintErrorMessage(throw ex)(state.locale) }
     }

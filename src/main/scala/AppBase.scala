@@ -589,6 +589,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
         implicit val extraDbs = extraDb(viewDef.actionToDbAccessKeys(Action.Get))
         implicit val ec = scala.concurrent.ExecutionContext.global
         implicit val as: ActorSystem = null
+        implicit val fs: AppFileStreamer[User] = null
         dbUse {
           validateFields(instance)
           val ctx = AppActionContext(
