@@ -7,14 +7,15 @@ import io.bullet.borer.{Cbor, Json}
 import io.bullet.borer.compat.akka.ByteStringByteAccess
 
 import java.io
-import java.io.OutputStream
+import java.io.{OutputStream, OutputStreamWriter}
 import java.util.zip.ZipOutputStream
 import org.mojoz.metadata.MojozViewDef
 import org.wabase.ResultEncoder.{ByteChunks, ChunkType, TextChunks}
 
-import scala.collection.immutable.Seq
-
+import scala.collection.immutable.{ListMap, Seq}
 import AppMetadata.AugmentedAppFieldDef
+import akka.http.scaladsl.model.{ContentType, ContentTypes}
+import org.wabase.ResultRenderers.EncoderFactoryCreator
 
 object ResultEncoder {
   type EncoderFactory = OutputStream => ResultEncoder
@@ -397,4 +398,44 @@ class XlsXmlResultRenderer(writer: io.Writer, worksheetName: String = "data") ex
     streamer.endWorkbook
     writer.flush
   }
+}
+
+class ResultRenderers {
+  def renderers: ListMap[ContentType, EncoderFactoryCreator] = ResultRenderers.renderers
+}
+
+object ResultRenderers {
+  type EncoderFactoryCreator = Map[String, MojozViewDef] => (String, Boolean) => EncoderFactory
+
+  import akka.http.scaladsl.model.MediaTypes._
+  val renderers: ListMap[ContentType, EncoderFactoryCreator] =
+    ListMap(
+      (`application/json`,                                createJsonEncoderFactory),
+      (`application/cbor`,                                createCborEncoderFactory),
+      (ContentTypes.`text/csv(UTF-8)`,                    createCsvEncoderFactory),
+      (`application/vnd.oasis.opendocument.spreadsheet`,  createOdsEncoderFactory),
+      (`application/vnd.ms-excel`,                        createXlsXmlEncoderFactory),
+    )
+  def createJsonEncoderFactory(nameToViewDef: Map[String, MojozViewDef])(
+    viewName: String, isCollection: Boolean): EncoderFactory =
+    JsonResultRenderer(_, isCollection, viewName, nameToViewDef)
+
+  def createCborEncoderFactory(nameToViewDef: Map[String, MojozViewDef])(
+    viewName: String, isCollection: Boolean): EncoderFactory =
+    CborResultRenderer(_, isCollection, viewName, nameToViewDef)
+
+  def createCsvEncoderFactory(nameToViewDef: Map[String, MojozViewDef])(
+    viewName: String, isCollection: Boolean): EncoderFactory =
+    os => new FlatTableResultRenderer(new CsvResultRenderer(new OutputStreamWriter(os, "UTF-8")),
+      viewName, nameToViewDef)
+
+  def createOdsEncoderFactory(nameToViewDef: Map[String, MojozViewDef])(
+    viewName: String, isCollection: Boolean): EncoderFactory =
+    os => new FlatTableResultRenderer(new OdsResultRenderer(new ZipOutputStream(os)),
+      viewName, nameToViewDef)
+
+  def createXlsXmlEncoderFactory(nameToViewDef: Map[String, MojozViewDef])(
+    viewName: String, isCollection: Boolean): EncoderFactory =
+    os => new FlatTableResultRenderer(new XlsXmlResultRenderer(new OutputStreamWriter(os, "UTF-8")),
+      viewName, nameToViewDef)
 }

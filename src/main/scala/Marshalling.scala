@@ -267,43 +267,27 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
         HttpEntity.Chunked.fromData(contentType, src.via(BorerNestedArraysTransformer.flow(createEncoder)))
     }
   }
-
-  def createJsonEncoderFactory(viewName: String, isCollection: Boolean): EncoderFactory =
-    JsonResultRenderer(_, isCollection, viewName, qe.nameToViewDef)
-  def createCborEncoderFactory(viewName: String, isCollection: Boolean): EncoderFactory =
-    CborResultRenderer(_, isCollection, viewName, qe.nameToViewDef)
-  def createCsvEncoderFactory(viewName: String): EncoderFactory =
-    os => new FlatTableResultRenderer(new CsvResultRenderer(new OutputStreamWriter(os, "UTF-8")),
-      viewName, qe.nameToViewDef)
-  def createOdsEncoderFactory(viewName: String): EncoderFactory =
-    os => new FlatTableResultRenderer(new OdsResultRenderer(new ZipOutputStream(os)),
-      viewName, qe.nameToViewDef)
-  def createXlsXmlEncoderFactory(viewName: String): EncoderFactory =
-    os => new FlatTableResultRenderer(new XlsXmlResultRenderer(new OutputStreamWriter(os, "UTF-8")),
-      viewName, qe.nameToViewDef)
-
+  
   def serializedResultToJsonFlow(viewName: String, isCollection: Boolean): Flow[ByteString, ByteString, NotUsed] =
-    BorerNestedArraysTransformer.flow(createJsonEncoderFactory(viewName, isCollection))
+    BorerNestedArraysTransformer.flow(ResultRenderers.createJsonEncoderFactory(qe.nameToViewDef)(viewName, isCollection))
   def serializedResultToCborFlow(viewName: String, isCollection: Boolean): Flow[ByteString, ByteString, NotUsed] =
-    BorerNestedArraysTransformer.flow(createCborEncoderFactory(viewName, isCollection))
+    BorerNestedArraysTransformer.flow(ResultRenderers.createCborEncoderFactory(qe.nameToViewDef)(viewName, isCollection))
   def serializedResultToCsvFlow(viewName: String): Flow[ByteString, ByteString, NotUsed] =
-    BorerNestedArraysTransformer.flow(createCsvEncoderFactory(viewName))
+    BorerNestedArraysTransformer.flow(ResultRenderers.createCsvEncoderFactory(qe.nameToViewDef)(viewName, true))
   def serializedResultToOdsFlow(viewName: String): Flow[ByteString, ByteString, NotUsed] =
-    BorerNestedArraysTransformer.flow(createOdsEncoderFactory(viewName))
+    BorerNestedArraysTransformer.flow(ResultRenderers.createOdsEncoderFactory(qe.nameToViewDef)(viewName, true))
   def serializedResultToXlsXmlFlow(viewName: String): Flow[ByteString, ByteString, NotUsed] =
-    BorerNestedArraysTransformer.flow(createXlsXmlEncoderFactory(viewName))
+    BorerNestedArraysTransformer.flow(ResultRenderers.createXlsXmlEncoderFactory(qe.nameToViewDef)(viewName, true))
 
   def toEntityQuereaseSerializedResultMarshaller(viewName: String): ToEntityMarshaller[QuereaseSerializedResult] =
     Marshaller { implicit ec => sr =>
-      implicit val formats_marshaller: ToEntityMarshaller[SerializedResult] =
-        Marshaller.oneOf(
-          toEntitySerializedResultMarshaller(`application/json`,                createJsonEncoderFactory(viewName, sr.isCollection)),
-          toEntitySerializedResultMarshaller(`application/cbor`,                createCborEncoderFactory(viewName, sr.isCollection)),
-          toEntitySerializedResultMarshaller(ContentTypes.`text/csv(UTF-8)`,    createCsvEncoderFactory(viewName)),
-          toEntitySerializedResultMarshaller(`application/vnd.oasis.opendocument.spreadsheet`,
-                                                                                createOdsEncoderFactory(viewName)),
-          toEntitySerializedResultMarshaller(`application/vnd.ms-excel`,        createXlsXmlEncoderFactory(viewName)),
-        )
+      implicit val formats_marshaller: ToEntityMarshaller[SerializedResult] = {
+        val marshallers = qe.resultRenderers.renderers.map {
+          case (contentType, encCreator) =>
+            toEntitySerializedResultMarshaller(contentType, encCreator(qe.nameToViewDef)(viewName, sr.isCollection))
+        }.toSeq
+        Marshaller.oneOf(marshallers: _*)
+      }
       formats_marshaller(sr.result)
     }
 

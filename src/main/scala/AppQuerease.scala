@@ -113,6 +113,8 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     }
   }
 
+  val resultRenderers: ResultRenderers = new ResultRenderers
+
   override protected def persistenceFilters(
     view: ViewDef,
   ): OrtMetadata.Filters = {
