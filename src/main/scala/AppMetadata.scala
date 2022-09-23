@@ -495,6 +495,8 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val commitOpRegex = """commit""".r
     val ifOpRegex = """if\s+(.+)""".r
     val foreachOpRegex = """foreach\s+(.+)""".r
+    val fileOpRegex = """file\s+(.+)""".r
+    val toFileOpRegex = """to file\s+(.+)""".r
     /* [jobs]
     val jobCallRegex = """(?U)job\s+(:?\w+)""".r
     [jobs] */
@@ -691,6 +693,8 @@ object AppMetadata {
     case class VariableTransforms(transforms: List[VariableTransform]) extends Op
     case class Foreach(initOp: Op, action: Action) extends Op
     case class If(cond: Op, action: Action) extends Op
+    case class File(idOp: Op) extends Op
+    case class ToFile(contentOp: Op, nameOp: Op, contentType: Op) extends Op
     /* [jobs]
     case class JobCall(name: String) extends Op
     [jobs] */
