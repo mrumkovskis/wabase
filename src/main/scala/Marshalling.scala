@@ -267,17 +267,6 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
         HttpEntity.Chunked.fromData(contentType, src.via(BorerNestedArraysTransformer.flow(createEncoder)))
     }
   }
-  
-  def serializedResultToJsonFlow(viewName: String, isCollection: Boolean): Flow[ByteString, ByteString, NotUsed] =
-    BorerNestedArraysTransformer.flow(ResultRenderers.createJsonEncoderFactory(qe.nameToViewDef)(viewName, isCollection))
-  def serializedResultToCborFlow(viewName: String, isCollection: Boolean): Flow[ByteString, ByteString, NotUsed] =
-    BorerNestedArraysTransformer.flow(ResultRenderers.createCborEncoderFactory(qe.nameToViewDef)(viewName, isCollection))
-  def serializedResultToCsvFlow(viewName: String): Flow[ByteString, ByteString, NotUsed] =
-    BorerNestedArraysTransformer.flow(ResultRenderers.createCsvEncoderFactory(qe.nameToViewDef)(viewName, true))
-  def serializedResultToOdsFlow(viewName: String): Flow[ByteString, ByteString, NotUsed] =
-    BorerNestedArraysTransformer.flow(ResultRenderers.createOdsEncoderFactory(qe.nameToViewDef)(viewName, true))
-  def serializedResultToXlsXmlFlow(viewName: String): Flow[ByteString, ByteString, NotUsed] =
-    BorerNestedArraysTransformer.flow(ResultRenderers.createXlsXmlEncoderFactory(qe.nameToViewDef)(viewName, true))
 
   def toEntityQuereaseSerializedResultMarshaller(viewName: String): ToEntityMarshaller[QuereaseSerializedResult] =
     Marshaller { implicit ec => sr =>
@@ -344,6 +333,17 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
       GenericMarshallers
         .futureMarshaller(toEntityQuereaseSerializedResultMarshaller(null))(sr)
     }
+
+  def serializedResultToJsonFlow(viewName: String, isCollection: Boolean): Flow[ByteString, ByteString, NotUsed] =
+    BorerNestedArraysTransformer.flow(ResultRenderers.createJsonEncoderFactory(qe.nameToViewDef)(viewName, isCollection))
+  def serializedResultToCborFlow(viewName: String, isCollection: Boolean): Flow[ByteString, ByteString, NotUsed] =
+    BorerNestedArraysTransformer.flow(ResultRenderers.createCborEncoderFactory(qe.nameToViewDef)(viewName, isCollection))
+  def serializedResultToCsvFlow(viewName: String): Flow[ByteString, ByteString, NotUsed] =
+    BorerNestedArraysTransformer.flow(ResultRenderers.createCsvEncoderFactory(qe.nameToViewDef)(viewName, true))
+  def serializedResultToOdsFlow(viewName: String): Flow[ByteString, ByteString, NotUsed] =
+    BorerNestedArraysTransformer.flow(ResultRenderers.createOdsEncoderFactory(qe.nameToViewDef)(viewName, true))
+  def serializedResultToXlsXmlFlow(viewName: String): Flow[ByteString, ByteString, NotUsed] =
+    BorerNestedArraysTransformer.flow(ResultRenderers.createXlsXmlEncoderFactory(qe.nameToViewDef)(viewName, true))
 }
 
 object MarshallingConfig extends AppBase.AppConfig with Loggable {
