@@ -500,6 +500,8 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     /* [jobs]
     val jobCallRegex = """(?U)job\s+(:?\w+)""".r
     [jobs] */
+    def isViewCall(st: String) = viewCallRegex.pattern.matcher(st).matches
+    def isInvocation(st: String) = invocationRegex.pattern.matcher(st).matches
     import ViewDefExtrasUtils._
     val steps = stepData.map { step =>
       def parseOp(st: String): Action.Op = {
@@ -513,10 +515,10 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
               }
           })(-1)(p.parseExp(exp))
         }
-        if (viewCallRegex.pattern.matcher(st).matches) {
+        if (isViewCall(st)) {
           val viewCallRegex(method, view) = st
           Action.ViewCall(method, view)
-        } else if (invocationRegex.pattern.matcher(st).matches) {
+        } else if (isInvocation(st)) {
           val idx = st.lastIndexOf('.')
           Action.Invocation(st.substring(0, idx), st.substring(idx + 1))
         /* [jobs]
@@ -541,6 +543,30 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
           }
           require(code.nonEmpty || bodyTresql != null, s"Empty status operation!")
           Action.Status(code, bodyTresql, statusParameterIdx(bodyTresql))
+        } else if (fileOpRegex.pattern.matcher(st).matches()) {
+          val fileOpRegex(idShaTresql) = st
+          Action.File(idShaTresql)
+        } else if (toFileOpRegex.pattern.matcher(st).matches()) {
+          val toFileOpRegex(ops) = st
+          val idx = ops.indexOf(",")
+          if (idx == -1) { // no name tresql and content type
+            Action.ToFile(parseOp(ops), null, null)
+          } else {
+            def parseToFile(s: String) = parser.parseExp(s) match {
+              case org.tresql.parsing.Arr(List(a)) => (a.tresql, null, null)
+              case org.tresql.parsing.Arr(List(a, b)) => (a.tresql, b.tresql, null)
+              case org.tresql.parsing.Arr(List(a, b, c)) => (a.tresql, b.tresql, c.tresql)
+              case _ => (s, null, null)
+            }
+            val op = ops.substring(0, idx)
+            if (isViewCall(op) || isInvocation(op)) {
+              val (fileName, contentType, _) = parseToFile(ops.substring(idx + 1))
+              Action.ToFile(parseOp(op), fileName, contentType)
+            } else {
+              val (tresql, fileName, contentType) = parseToFile(op)
+              Action.ToFile(Action.Tresql(tresql), fileName, contentType)
+            }
+          }
         } else if (commitOpRegex.pattern.matcher(st).matches()) {
           Action.Commit
         } else {
@@ -693,8 +719,8 @@ object AppMetadata {
     case class VariableTransforms(transforms: List[VariableTransform]) extends Op
     case class Foreach(initOp: Op, action: Action) extends Op
     case class If(cond: Op, action: Action) extends Op
-    case class File(idOp: Op) extends Op
-    case class ToFile(contentOp: Op, nameOp: Op, contentType: Op) extends Op
+    case class File(idShaTresql: String) extends Op
+    case class ToFile(contentOp: Op, nameTresql: String, contentTypeTresql: String) extends Op
     /* [jobs]
     case class JobCall(name: String) extends Op
     [jobs] */

@@ -104,7 +104,7 @@ object AppFileStreamer {
       .mapMaterializedValue(_.map(hash))
   }
 
-  def sizeAndSha256sink(implicit executor: ExecutionContextExecutor): Sink[ByteString, Future[(Long, String)]] =
+  def sizeAndSha256sink(implicit executor: ExecutionContext): Sink[ByteString, Future[(Long, String)]] =
     Flow
       .fromFunction[ByteString, ByteString](identity)
       .alsoToMat(Sink.fold(0L){ (l, b) => l + b.length })(Keep.right)
@@ -191,7 +191,7 @@ class FileStreamer(
     filename: String,
     contentType: String,
   )(implicit
-    executor: ExecutionContextExecutor,
+    executor: ExecutionContext,
     materializer: Materializer,
   ): Sink[ByteString, Future[FileInfo]] = {
     val tempFile = createTempFile

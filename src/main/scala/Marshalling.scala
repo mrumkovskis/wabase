@@ -255,6 +255,16 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
     Marshaller.combined(_ => "")
   implicit val toEntityQuereaseDeleteResultMarshaller:      ToEntityMarshaller[QuereaseDeleteResult] =
     Marshaller.combined(_.count.toString)
+  implicit val toResponseFileResultMarshaller:                ToResponseMarshaller[FileResult] = Marshaller.combined {
+    fr => fr.fileStreamer.getFileInfo(fr.fileInfo.id, fr.fileInfo.sha_256).map { fi =>
+      val ct = ContentType.parse(fi.content_type).toOption.getOrElse(sys.error(s"Invalid content type: '${fi.content_type}'"))
+      HttpResponse(
+        status = StatusCodes.OK,
+        entity = HttpEntity.Default(ct, fi.size, fi.source)
+      )
+    }.getOrElse(HttpResponse(status = StatusCodes.NotFound))
+  }
+
 
   def toEntitySerializedResultMarshaller(
     contentType: ContentType,
@@ -303,9 +313,11 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
       case sr: StatusResult   => (toResponseQuereaseStatusResultMarshaller:   ToResponseMarshaller[StatusResult]  )(sr)
       case no: NoResult.type  => (toEntityQuereaseNoResultMarshaller:         ToResponseMarshaller[NoResult.type] )(no)
       case dr: QuereaseDelRes => (toEntityQuereaseDeleteResultMarshaller:     ToResponseMarshaller[QuereaseDelRes])(dr)
+      case fr: FileResult     => (toResponseFileResultMarshaller:             ToResponseMarshaller[FileResult]    )(fr)
       case tq: TresqlResult   => sys.error("TresqlResult must be serialized before marshalling.")
       case rr: TresqlSingleRr => sys.error("TresqlSingleRowResult must be serialized before marshalling.")
       case it: IteratorResult => sys.error("IteratorResult must be serialized before marshalling.")
+      case fr: FileInfoResult => sys.error("File info result marshalling not supported")
       case r: QuereaseResultWithCleanup =>
         sys.error(s"QuereaseResult marshaller for class ${r.getClass.getName} not implemented")
     }}

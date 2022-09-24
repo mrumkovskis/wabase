@@ -523,3 +523,32 @@ insert:
 update:
 - x    -=   # not existing var
 - var1 -=   # removes variable from environment
+
+
+name: to_file_test1
+table: person
+api: list
+fields:
+- name
+- surname
+- sex
+order:
+- surname
+list:
+- to file get this
+- to file get this, 'persons'
+- to file get this, 'persons', 'application/json'
+
+
+name: to_file_test2
+table: person
+api: list
+fields:
+- name
+- surname
+- sex
+order:
+- surname
+list:
+- file = to file get this, 'persons'
+- file {:file.id, :file.sha_256}      # to get file both id and sha must be specified
