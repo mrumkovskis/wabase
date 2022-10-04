@@ -1,3 +1,18 @@
+table:   file_info
+columns:
+  - id
+  - filename      ! 240
+  - upload_time   !
+  - content_type  ! 100
+  - sha_256       ! file_body_info.sha_256
+
+table:   file_body_info
+columns:
+  - sha_256 ! 64
+  - size    ! long
+  - path    ! 240
+pk: sha_256
+
 table: person
 columns:
 - id
@@ -535,9 +550,9 @@ fields:
 order:
 - surname
 list:
-- to file get this
-- to file get this, 'persons'
-- to file get this, 'persons', 'application/json'
+- to file list this
+- to file list this, 'persons'
+- to file list this, 'persons', 'application/json'
 
 
 name: to_file_test2
@@ -550,5 +565,5 @@ fields:
 order:
 - surname
 list:
-- file = to file get this, 'persons'
+- file = to file list this, 'persons'
 - file {:file.id, :file.sha_256}      # to get file both id and sha must be specified

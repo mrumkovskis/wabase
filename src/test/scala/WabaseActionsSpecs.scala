@@ -11,6 +11,9 @@ import org.scalatest.matchers.should.Matchers
 import org.tresql.{MissingBindVariableException, Query, ThreadLocalResources}
 import org.wabase.QuereaseActionsDtos.PersonWithHealthDataHealth
 
+import java.io.File
+import java.nio.file.Files
+import java.util.UUID
 import scala.collection.immutable.{ListMap, Seq}
 import scala.concurrent.Future
 import scala.util.Try
@@ -63,7 +66,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
 
   override def dbNamePrefix: String = "wabase_db"
 
-  var app: AppBase[TestUsr] = _
+  var app: TestApp = _
   var marshallers: AppProvider[TestUsr] with QuereaseMarshalling with Execution = _
 
   override def beforeAll(): Unit = {
@@ -76,6 +79,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     }
     app = new TestApp with NoValidation {
       override val DefaultCp: PoolName = PoolName("wabase_db")
+      override protected val fileStreamerConnectionPool: PoolName = DefaultCp
       override def dbAccessDelegate = db
       override protected def initQuerease: QE = querease
       override protected def shouldAddResultToContext(context: AppActionContext): Boolean =
@@ -95,6 +99,9 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
               }
             }(scala.concurrent.ExecutionContext.global) // do not use AsyncFlatSpec context so that no blocking occurs
         }
+
+      override lazy val rootPath =
+        new File(System.getProperty("java.io.tmpdir"), "wabase-actions-specs/" + UUID.randomUUID().toString).getPath
     }
     val myApp = app
     marshallers =
@@ -103,6 +110,17 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         override type App = AppBase[TestUsr]
         override protected def initApp: App = myApp
       }
+  }
+
+  override def afterAll(): Unit = {
+    val p = new File(app.rootPath).toPath
+    if (p.toFile.exists())
+      Files
+        .walk(p)
+        .sorted(java.util.Comparator.reverseOrder())
+        .map[java.io.File](_.toFile)
+        .forEach(_.delete)
+    super.afterAll()
   }
 
   import spray.json._
@@ -117,7 +135,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
                             env: Map[String, Any] = Map.empty,
                             removeIdsFlag: Boolean = true) = {
     implicit val state = ApplicationState(env)
-    implicit val fileStreamer: AppFileStreamer[TestUsr] = null
+    implicit val fileStreamer: AppFileStreamer[TestUsr] = app
     app.doWabaseAction(action, view, Nil, Map.empty, values)
       .map(_.result)
       .flatMap {
@@ -631,6 +649,23 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         .map { _ shouldBe MapResult (Map ("var1" -> "data1")) }
       t2 <- doAction("update", "remove_var_test", Map("var1" -> "data1", "var2" -> "data2"))
         .map { _ shouldBe MapResult(Map("var2" -> "data2")) }
+    } yield {
+      t2
+    }
+  }
+
+  it should "do file operations" in {
+    for {
+      t1 <- doAction("list", "to_file_test1", Map())
+        .mapTo[FileInfoResult]
+        .map(_.fileInfo)
+        .map(fi => (fi.filename, fi.size))
+        .map { _ shouldBe ("persons" -> 213) }
+      t2 <- doAction("list", "to_file_test2", Map())
+        .mapTo[FileResult]
+        .map(fr => fr.fileStreamer.getFileInfo(fr.fileInfo.id, fr.fileInfo.sha_256).get)
+        .flatMap(fi => fi.source.runWith(AppFileStreamer.sha256sink).map(_ -> fi.sha_256))
+        .map { case (hash1, hash2) => hash1 shouldBe hash2 }
     } yield {
       t2
     }
