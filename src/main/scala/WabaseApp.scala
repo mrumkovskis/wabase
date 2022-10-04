@@ -254,8 +254,8 @@ trait WabaseApp[User] {
     mat: Materializer,
   ): Future[Seq[SerializedResult]] = {
     result
-      .via(FileBufferedFlow.create(bufferSize, maxFileSize))
-      .runWith(new ResultCompletionSink(cleanupFun, resultCount))
+      .via(FileBufferedFlow.create(bufferSize, maxFileSize)(cleanupFun))
+      .runWith(new ResultCompletionSink(resultCount))
   }
 
   /** Converts key value from uri representation to appropriate type.

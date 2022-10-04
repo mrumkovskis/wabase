@@ -11,7 +11,7 @@ import scala.util.Random
 class FileBufferedDataFlowTest extends AsyncFlatSpec {
   import scala.language.postfixOps
   def testBufferedFlow(n: Int, bufferSize: Int, maxFileSize: Long, outBufSize: Int = 1024 * 8) = {
-    val buffer = FileBufferedFlow.create(bufferSize, maxFileSize, outBufSize)
+    val buffer = FileBufferedFlow.create(bufferSize, maxFileSize, outBufSize)()
     Source.fromIterator(() => 0 to n iterator).map{ b => ByteString(b.toByte) }.via(buffer).async
   }
 
@@ -35,7 +35,7 @@ class FileBufferedDataFlowTest extends AsyncFlatSpec {
     val maxFileSize = 1024 * 1024
     val outBufSize = 1024 * 2
     val source = Source.fromIterator(() => 0 to fileSize iterator).map { b => ByteString(b.toByte) }
-    val buffer = FileBufferedFlow.create(bufferSize, maxFileSize, outBufSize)
+    val buffer = FileBufferedFlow.create(bufferSize, maxFileSize, outBufSize)()
     @volatile var size = 0d
     source
       .aggregateWithBoundary(() => ByteString.empty)((abs, bs) => (abs ++ bs, abs.size + bs.size > 512), identity, None)

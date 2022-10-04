@@ -219,8 +219,8 @@ object RowSource {
             cleanupFun: Option[Throwable] => Unit = null)(implicit ec: ExecutionContext,
                                                           mat: Materializer): Future[SerializedResult] = {
     src
-      .via(FileBufferedFlow.create(bufferSize, maxFileSize))
-      .runWith(new ResultCompletionSink(cleanupFun))
+      .via(FileBufferedFlow.create(bufferSize, maxFileSize)(cleanupFun))
+      .runWith(new ResultCompletionSink())
       .map(_.head)
   }
 }

@@ -18,14 +18,18 @@ case class InsufficientStorageException(msg: String) extends Exception(msg)
   * bet consumed asynchronously.
   * */
 object FileBufferedFlow {
-  def create(bufferSize: Int, maxFileSize: Long, outBufferSize: Int = 1024 * 8): Graph[FlowShape[ByteString, ByteString], NotUsed] =
-    Flow.fromGraph(new FileBufferedFlow(bufferSize, maxFileSize, outBufferSize)).async
+  def create(bufferSize: Int, maxFileSize: Long, outBufferSize: Int = 1024 * 8)(
+    upstreamCleanupFun: Option[Throwable] => Unit = null): Graph[FlowShape[ByteString, ByteString], NotUsed] =
+    Flow.fromGraph(new FileBufferedFlow(bufferSize, maxFileSize, outBufferSize)(upstreamCleanupFun)).async
 }
 /** Creates flow with non blocking pulling from upstream regardless of downstream demand.
   * Pulled data are stored in buffer of {{{bufferSize}}}. If buffer is full and there is no downstream demand
   * data are stored in file. If file size exceeds {{{maxFileSize}}} {{{InsufficientStorageException}}} is thrown.
+  * {{{upstreamCleanupFun}}} parameter is function to be called on upstream finish or failure to release resources
+  * related to upstream.
   * */
-class FileBufferedFlow private (bufferSize: Int, maxFileSize: Long, outBufferSize: Int)
+class FileBufferedFlow private (bufferSize: Int, maxFileSize: Long, outBufferSize: Int)(
+  upstreamCleanupFun: Option[Throwable] => Unit)
   extends GraphStage[FlowShape[ByteString, ByteString]] {
   private val in = Inlet[ByteString]("in")
   private val out = Outlet[ByteString]("out")
@@ -38,6 +42,14 @@ class FileBufferedFlow private (bufferSize: Int, maxFileSize: Long, outBufferSiz
     private var writePos = 0L
     private var readPos = 0L
     private var outBytes: ByteBuffer = _
+    private var cleanupCalled = false
+    private var upstreamError: Throwable = null
+    private var downStreamError: Throwable = null
+
+    private def upstreamCleanup() = if (!cleanupCalled) {
+      Option(upstreamCleanupFun).foreach(_(Option(upstreamError) orElse Option(downStreamError)))
+      cleanupCalled = true
+    }
 
     override def preStart(): Unit = {
       //generate initial demand
@@ -110,7 +122,20 @@ class FileBufferedFlow private (bufferSize: Int, maxFileSize: Long, outBufferSiz
             push(out, inBytes.result())
             inBytes.clear()
           }
+        upstreamCleanup()
         log.debug("Upstream finished")
+      }
+
+      override def onUpstreamFailure(ex: Throwable): Unit = {
+        upstreamError = ex
+        upstreamCleanup()
+        super.onUpstreamFailure(ex)
+      }
+
+      override def onDownstreamFinish(cause: Throwable): Unit = {
+        downStreamError = cause
+        upstreamCleanup()
+        super.onDownstreamFinish(cause)
       }
     })
 
@@ -123,6 +148,7 @@ class FileBufferedFlow private (bufferSize: Int, maxFileSize: Long, outBufferSiz
         }
         inBytes.clear()
       }
+      upstreamCleanup()
     }
   }
 }
@@ -145,7 +171,7 @@ case class IncompleteResultSource[Mat](result: Source[ByteString, Mat]) extends 
  *                      IncompleteResultSource's result: Source[ByteString, _] so that they can be consumed for various
  *                      purposes. Value must be greater than zero.
  * */
-class ResultCompletionSink(cleanupFun: Option[Throwable] => Unit = null, resultCount: Int = 1)(implicit ec: scala.concurrent.ExecutionContext)
+class ResultCompletionSink(resultCount: Int = 1)(implicit ec: scala.concurrent.ExecutionContext)
   extends GraphStageWithMaterializedValue[SinkShape[ByteString], Future[Seq[SerializedResult]]] {
   require(resultCount > 0, s"Result count must be greater than zero. ($resultCount < 1)")
   val in = Inlet[ByteString]("in")
@@ -153,18 +179,12 @@ class ResultCompletionSink(cleanupFun: Option[Throwable] => Unit = null, resultC
   override def createLogicAndMaterializedValue(attrs: Attributes) = {
     val result = Promise[Seq[SerializedResult]]()
     new GraphStageLogic(shape) {
-      private var upstreamError: Throwable = _
-      private var downStreamError: Throwable = _ // can happen on IncompleteResultSource downstream failure
       private var byteString: ByteString = _
-      private def setDownstreamError(e: Throwable) = this.downStreamError = e
-
-      private def cleanup(): Unit = Option(cleanupFun).foreach(_(Option(upstreamError) orElse Option(downStreamError)))
 
       override def preStart() = {
         //generate initial demand since this is sink
         pull(in)
       }
-      override def postStop() = cleanup()
 
       setHandler(in, new InHandler {
         override def onPush() = {
@@ -179,11 +199,9 @@ class ResultCompletionSink(cleanupFun: Option[Throwable] => Unit = null, resultC
         }
         override def onUpstreamFinish() = {
           // call cleanup fun also here to ensure that immediate next operations can have cleaned up state.
-          cleanup()
           result.success(List.fill(resultCount)(CompleteResult(if (byteString == null) ByteString.empty else byteString)))
         }
         override def onUpstreamFailure(ex: Throwable) = {
-          upstreamError = ex
           result.failure(ex)
         }
       })
@@ -197,7 +215,6 @@ class ResultCompletionSink(cleanupFun: Option[Throwable] => Unit = null, resultC
               sources.foreach(_.demand = false)
             }
           }
-          val downstreamErrorCallback = getAsyncCallback(setDownstreamError)
           def push(elem: ByteString) = sources.foreach(_.pushCallback.invoke(elem))
           def upstreamFinish() = sources.foreach(_.sourceCompleted.success(()))
           def upstreamFailure(err: Throwable) = sources.foreach(_.sourceCompleted.failure(err))
@@ -223,11 +240,6 @@ class ResultCompletionSink(cleanupFun: Option[Throwable] => Unit = null, resultC
 
                 setHandler(out, new OutHandler {
                   override def onPull() = Sources.demandCallback.invoke(idx)
-
-                  override def onDownstreamFinish(cause: Throwable): Unit = {
-                    Sources.downstreamErrorCallback.invoke(cause)
-                    super.onDownstreamFinish(cause)
-                  }
                 })
               }
             })
@@ -241,11 +253,9 @@ class ResultCompletionSink(cleanupFun: Option[Throwable] => Unit = null, resultC
         }
         override def onUpstreamFinish() = {
           // call cleanup fun also here to ensure that immediate next operations can have cleaned up state.
-          cleanup()
           Sources.upstreamFinish()
         }
         override def onUpstreamFailure(ex: Throwable) = {
-          upstreamError = ex
           Sources.upstreamFailure(ex)
         }
       }
