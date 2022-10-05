@@ -655,6 +655,11 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
   }
 
   it should "do file operations" in {
+    def checkFile(fileRes: FileResult) =
+      fileRes.fileStreamer.getFileInfo(fileRes.fileInfo.id, fileRes.fileInfo.sha_256)
+        .map(fi => fi.source.runWith(AppFileStreamer.sha256sink).map(_ -> fi.sha_256))
+        .map { _.map { case (hash1, hash2) => hash1 shouldBe hash2 } }
+        .get
     for {
       t1 <- doAction("list", "to_file_test1", Map())
         .mapTo[FileInfoResult]
@@ -663,11 +668,12 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         .map { _ shouldBe ("persons" -> 213) }
       t2 <- doAction("list", "to_file_test2", Map())
         .mapTo[FileResult]
-        .map(fr => fr.fileStreamer.getFileInfo(fr.fileInfo.id, fr.fileInfo.sha_256).get)
-        .flatMap(fi => fi.source.runWith(AppFileStreamer.sha256sink).map(_ -> fi.sha_256))
-        .map { case (hash1, hash2) => hash1 shouldBe hash2 }
+        .flatMap(checkFile)
+      t3 <- doAction("list", "to_file_test3", Map())
+        .mapTo[FileResult]
+        .flatMap(checkFile)
     } yield {
-      t2
+      t3
     }
   }
 }

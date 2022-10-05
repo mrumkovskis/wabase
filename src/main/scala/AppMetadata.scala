@@ -563,7 +563,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
               val (fileName, contentType, _) = parseToFile(ops.substring(idx + 1))
               Action.ToFile(parseOp(op), fileName, contentType)
             } else {
-              val (tresql, fileName, contentType) = parseToFile(op)
+              val (tresql, fileName, contentType) = parseToFile(ops)
               Action.ToFile(Action.Tresql(tresql), fileName, contentType)
             }
           }

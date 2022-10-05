@@ -567,3 +567,12 @@ order:
 list:
 - file = to file list this, 'persons'
 - file {:file.id, :file.sha_256}      # to get file both id and sha must be specified
+
+
+name: to_file_test3
+table:
+api: list
+db: shop_db
+list:
+  - file = to file |shop_db:purchase{customer, item}#(1,2), 'purchases'
+  - file {:file.id, :file.sha_256}      # to get file both id and sha must be specified
