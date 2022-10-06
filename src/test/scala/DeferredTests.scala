@@ -46,21 +46,12 @@ class DeferredTests extends AnyFlatSpec with Matchers with TestQuereaseInitializ
       //save conn if later test execution happens in another thread
       private val conn = tresqlResources.conn
 
-      override def dbUse[A](a: => A)(implicit timeout: QueryTimeout, pool: PoolName, extraDb: Seq[DbAccessKey]): A = {
-        //set thread local connection
-        tresqlResources.conn = conn
-        try a finally conn.rollback
-      }
-      override protected def transactionInternal[A](forceNewConnection: Boolean, a: => A)(implicit timeout: QueryTimeout,
-                                                                                          pool: PoolName,
-                                                                                          extraDb: Seq[DbAccessKey]): A = {
-        //set thread local connection
-        tresqlResources.conn = conn
-        try a finally conn.commit
-      }
-
       override def initResources = template => (_, _) => template.withConn(conn)
       override def closeResources = (res, err) => err.map(_ => res.conn.rollback()).getOrElse(res.conn.commit())
+      override def transaction[A](template: Resources, poolName: PoolName, extraDb: Seq[DbAccessKey])(f: Resources => A): A = {
+        val res = initResources(template)(poolName, extraDb)
+        try f(res) finally res.conn.commit()
+      }
       override def withRollbackConn[A](template: Resources, poolName: PoolName, extraDb: Seq[AppMetadata.DbAccessKey])(
         f: Resources => A): A = {
         val res = initResources(template)(poolName, extraDb)
