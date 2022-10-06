@@ -421,7 +421,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       def dbAccessKeys(v: ViewDef, action: String, processed: Set[(String, String)]): Map[(String, String), Seq[DbAccessKey]] = {
         if (processed(v.name -> action)) Map()
         else {
-          def collectFromAction[A](pf: PartialFunction[Step, A]): Seq[A] = {
+          def collectFromViewAction[A](pf: PartialFunction[Step, A]): Seq[A] = {
             v.actions
               .get(action)
               .map(_.steps)
@@ -431,16 +431,32 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
           val viewDbKeys = {
             def dbs(tresql: String) = {
-              val p = new QueryParser(null, null)
-              p.traverser(p.dbExtractor)(Nil)(p.parseExp(tresql)).map(DbAccessKey(_, null))
+              if (tresql == null) Nil
+              else {
+                val p = new QueryParser(null, null)
+                p.traverser(p.dbExtractor)(Nil)(p.parseExp(tresql)).map(DbAccessKey(_, null))
+              }
+            }
+            def dbsFromOp(op: Op): List[DbAccessKey] = op match {
+              case Tresql(tresql) => dbs(tresql)
+              case UniqueOpt(innerOp) => dbsFromOp(innerOp)
+              case Status(_, bodyTresql, _) => dbs(bodyTresql)
+              case If(cond, act) => dbsFromOp(cond) ::: act.steps.collect(dbsFromStep).flatten
+              case Foreach(initOp, act) => dbsFromOp(initOp) ::: act.steps.collect(dbsFromStep).flatten
+              case File(idShaTresql) => dbs(idShaTresql)
+              case ToFile(contentOp, nameTresql, contentTypeTresql) =>
+                dbsFromOp(contentOp) ::: dbs(nameTresql) ::: dbs(contentTypeTresql)
+              case _ => Nil
+            }
+            def dbsFromStep: PartialFunction[Step, List[DbAccessKey]] = {
+              case Evaluation(_, _, op) => dbsFromOp(op)
+              case Return(_, _, op) => dbsFromOp(op)
+              case SetEnv(_, _, op) => dbsFromOp(op)
+              case Validations(_, _, dbkey) => dbkey.toList
+              case _ => Nil
             }
             val actionDbs =
-              collectFromAction {
-                case Evaluation(_, _, Tresql(tresql)) => dbs(tresql)
-                case Return(_, _, Tresql(tresql)) => dbs(tresql)
-                case Validations(_, _, dbkey)  => dbkey.toList
-                case _ => Nil
-              } .flatten
+              collectFromViewAction(dbsFromStep).flatten
             (if (v.db != null || v.cp != null) Seq(DbAccessKey(v.db, v.cp)) else Nil) ++ actionDbs
           }
 
@@ -450,9 +466,10 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
                 case f if f.type_.isComplexType =>
                   (f.type_.name, action)
               } ++
-              collectFromAction {
+              collectFromViewAction {
                 case Evaluation(_, _, ViewCall(m, vn)) if !vn.startsWith(":") && vn != "this" => (vn, m)
                 case Return    (_, _, ViewCall(m, vn)) if !vn.startsWith(":") && vn != "this" => (vn, m)
+                case SetEnv    (_, _, ViewCall(m, vn)) if !vn.startsWith(":") && vn != "this" => (vn, m)
               }
 
           val new_processed = processed + (v.name -> action)
