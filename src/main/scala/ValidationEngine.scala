@@ -61,9 +61,9 @@ trait DefaultValidationEngine extends ValidationEngine with Loggable {
     "validation[context ~~ :context] {id, context, expression, message}#(context, id)"
 
   protected def validations(viewName: String, actionName: String): List[Validation] = {
-    val res = initResources(tresqlResources)(DEFAULT_CP, Nil)
-    try Query(validationsQuery, Map("context" -> viewName))(res).map(r => new Validation().fill(r)).toList
-    finally closeResources(res, None)
+    withRollbackConn(tresqlResources.resourcesTemplate, DEFAULT_CP) { res =>
+      Query(validationsQuery, Map("context" -> viewName))(res).map(r => new Validation().fill(r)).toList
+    }
   }
   override def validate(viewName: String, actionName: String, instance: Map[String, Any])(
     implicit locale: Locale): Unit = {

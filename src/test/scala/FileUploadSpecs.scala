@@ -12,7 +12,7 @@ import akka.http.scaladsl.unmarshalling.FromResponseUnmarshaller
 import akka.stream.scaladsl.Source
 import akka.util.ByteString
 import org.scalatest.flatspec.AnyFlatSpec
-import org.wabase.AppMetadata.DbAccessKey
+import org.tresql.Resources
 import spray.json.{JsObject, JsString}
 import org.wabase.client.CoreClient
 
@@ -34,19 +34,12 @@ class FileUploadSpecs extends AnyFlatSpec with TestQuereaseInitializer with Scal
       override val tresqlResources  = FileUploadSpecs.this.tresqlThreadLocalResources
       //save conn if later test execution happens in another thread
       private val conn = tresqlResources.conn
-
-      override def dbUse[A](a: => A)(implicit timeout: QueryTimeout, pool: PoolName, extraDb: Seq[DbAccessKey]): A = {
-        //set thread local connection
-        tresqlResources.conn = conn
-        try a finally tresqlResources.conn.rollback
-      }
-
-      override protected def transactionInternal[A](forceNewConnection: Boolean, a: => A)(implicit timeout: QueryTimeout,
-                                                                                          pool: PoolName,
-                                                                                          extraDb: Seq[DbAccessKey]): A = {
-        //set thread local connection
-        tresqlResources.conn = conn
-        try a finally tresqlResources.conn.commit
+      override def initResources = template => (_, _) => template.withConn(conn)
+      override def closeResources = (res, err) => err.map(_ => res.conn.rollback()).getOrElse(res.conn.commit())
+      override def withRollbackConn[A](template: Resources, poolName: PoolName, extraDb: Seq[AppMetadata.DbAccessKey])(
+        f: Resources => A): A = {
+        val res = initResources(template)(poolName, extraDb)
+        try f(res) finally res.conn.rollback()
       }
     }
 

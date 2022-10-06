@@ -14,6 +14,7 @@ import akka.stream.scaladsl.Source
 import akka.util.ByteString
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
+import org.tresql.Resources
 import org.wabase.AppMetadata.DbAccessKey
 import org.wabase.AppServiceBase.AppExceptionHandler._
 
@@ -56,6 +57,14 @@ class DeferredTests extends AnyFlatSpec with Matchers with TestQuereaseInitializ
         //set thread local connection
         tresqlResources.conn = conn
         try a finally conn.commit
+      }
+
+      override def initResources = template => (_, _) => template.withConn(conn)
+      override def closeResources = (res, err) => err.map(_ => res.conn.rollback()).getOrElse(res.conn.commit())
+      override def withRollbackConn[A](template: Resources, poolName: PoolName, extraDb: Seq[AppMetadata.DbAccessKey])(
+        f: Resources => A): A = {
+        val res = initResources(template)(poolName, extraDb)
+        try f(res) finally res.conn.rollback()
       }
     }
 

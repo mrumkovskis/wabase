@@ -391,6 +391,20 @@ trait DbAccessDelegate extends DbAccess { this: Loggable =>
 
   implicit val tresqlResources: ThreadLocalResources = dbAccessDelegate.tresqlResources
 
+  override def commitAndCloseConnection: Connection => Unit = dbAccessDelegate.commitAndCloseConnection
+  override def rollbackAndCloseConnection: Connection => Unit = dbAccessDelegate.rollbackAndCloseConnection
+  override def closeConns: (Connection => Unit) => Resources => Unit = dbAccessDelegate.closeConns
+  override def initResources: Resources => (PoolName, Seq[DbAccessKey]) => Resources = dbAccessDelegate.initResources
+  override def closeResources: (Resources, Option[Throwable]) => Unit = dbAccessDelegate.closeResources
+  override def extraDb(keys: Seq[DbAccessKey]): Seq[DbAccessKey] = dbAccessDelegate.extraDb(keys)
+
+  override def withConn[A](template: Resources, poolName: PoolName, extraDb: Seq[DbAccessKey])(f: Resources => A): A =
+    dbAccessDelegate.withConn(template, poolName, extraDb)(f)
+  override def withRollbackConn[A](template: Resources, poolName: PoolName, extraDb: Seq[DbAccessKey])(f: Resources => A): A =
+    dbAccessDelegate.withRollbackConn(template, poolName, extraDb)(f)
+  override def transaction[A](template: Resources, poolName: PoolName, extraDb: Seq[DbAccessKey])(f: Resources => A): A =
+    dbAccessDelegate.transaction(template, poolName, extraDb)(f)
+
   override def dbUse[A](a: => A)(implicit timeout: QueryTimeout = defaultQueryTimeout,
                                  pool: PoolName = DEFAULT_CP,
                                  extraDb: Seq[DbAccessKey] = Nil): A = {
