@@ -10,8 +10,6 @@ import scala.language.reflectiveCalls
 
 class AppFileCleanup(dbAccess: DbAccess, fileStreamers: AppFileStreamerConfig*) extends Loggable { this: QuereaseProvider =>
 
-  import dbAccess._
-
   lazy val minAgeMillis: Long = 1000L * 60 * 60 * 24
   protected lazy val ageCheckSql: String = "now() - interval '1 days'"
   protected lazy val refsToIgnore: Set[(String, String)] = Set.empty
@@ -65,7 +63,10 @@ class AppFileCleanup(dbAccess: DbAccess, fileStreamers: AppFileStreamerConfig*) 
   protected def cleanupFileInfo = {
     fileStreamers foreach { fs =>
       logDeleteResult(fs.file_info_table + " records deleted:",
-        transaction(Query(fileInfoCleanupStatement(fs.file_info_table))))
+        dbAccess.transaction(dbAccess.tresqlResources.resourcesTemplate, connectionPool) { implicit res =>
+          Query(fileInfoCleanupStatement(fs.file_info_table))
+        }
+      )
     }
   }
 
@@ -74,9 +75,10 @@ class AppFileCleanup(dbAccess: DbAccess, fileStreamers: AppFileStreamerConfig*) 
     fileStreamers  foreach { fs =>
       import fs.{file_info_table, file_body_info_table}
       logDeleteResult(s"$file_body_info_table records deleted: ",
-        transaction(Query(
-          s"$file_body_info_table fbi - [!exists($file_info_table fi[fi.${fs.shaColName} = fbi.${fs.shaColName}]{1})]")
-        )
+        dbAccess.transaction(dbAccess.tresqlResources.resourcesTemplate, connectionPool) { implicit res =>
+          Query(
+            s"$file_body_info_table fbi - [!exists($file_info_table fi[fi.${fs.shaColName} = fbi.${fs.shaColName}]{1})]")
+        }
       )
     }
   }
@@ -88,7 +90,10 @@ class AppFileCleanup(dbAccess: DbAccess, fileStreamers: AppFileStreamerConfig*) 
   }
 
   protected def prepCompareTable: Unit =
-    logDeleteResult("files_on_disk cleaned up: ", transaction(Query("files_on_disk-[]")))
+    logDeleteResult("files_on_disk cleaned up: ",
+      dbAccess.transaction(dbAccess.tresqlResources.resourcesTemplate, connectionPool) {
+        implicit res => Query("files_on_disk-[]")}
+    )
 
   protected def fillCompareTable(batchSize: Int = 500): Unit = {
     // file system list all files applicable for deletion
@@ -107,15 +112,15 @@ class AppFileCleanup(dbAccess: DbAccess, fileStreamers: AppFileStreamerConfig*) 
           })
 
       // insert files into files_on_disk
-      def prepareStatement = tresqlResources.conn.prepareStatement("INSERT INTO files_on_disk(path) VALUES (?)")
-      transaction {
+      dbAccess.transaction(dbAccess.tresqlResources.resourcesTemplate, connectionPool) { implicit res =>
+        def prepareStatement = res.conn.prepareStatement("INSERT INTO files_on_disk(path) VALUES (?)")
         val lastBatch =
           files.foldLeft((prepareStatement, 0)) { case ((stmt, count), file) =>
             stmt.setString(1, file)
             stmt.addBatch()
             if(count >= batchSize) {
               stmt.executeBatch()
-              tresqlResources.conn.commit()
+              res.conn.commit()
               (prepareStatement, 0)
             } else (stmt, count + 1)
           }
@@ -123,7 +128,9 @@ class AppFileCleanup(dbAccess: DbAccess, fileStreamers: AppFileStreamerConfig*) 
           lastBatch._1.executeBatch()
       }
       //filesUploaded as count query also for "warming up" DB (something like sql "analyze file_body_info"); independent of logger.debug scope
-      val filesUploaded = dbUse(Query("files_on_disk{count(1)}").unique[Long])
+      val filesUploaded = dbAccess.withRollbackConn(dbAccess.tresqlResources.resourcesTemplate, connectionPool) { implicit res =>
+        Query("files_on_disk{count(1)}").unique[Long]
+      }
       logger.debug(s"Number of records inserted into files_on_disk for $rootPath: $filesUploaded")
     }
   }
@@ -138,7 +145,7 @@ class AppFileCleanup(dbAccess: DbAccess, fileStreamers: AppFileStreamerConfig*) 
     val pathsParams = fileStreamers.zipWithIndex.map {
       case (fs, idx) => s"path_$idx" -> fs.rootPath
     }.toMap
-    dbUse {
+    dbAccess.withRollbackConn(dbAccess.tresqlResources.resourcesTemplate, connectionPool) { implicit res =>
       val filesMoved = Query(query, pathsParams).list[String]
         .map(new File(_))
         .foldLeft(0){case (counter, fullPathFile) =>
