@@ -1,4 +1,4 @@
-val scalaV = "2.13.8"
+val scalaV = "2.13.10"
 
 val akkaV     = "2.6.20"
 val akkaHttpV = "10.2.10"
@@ -15,7 +15,7 @@ lazy val dependencies = {
     "com.typesafe.scala-logging" %% "scala-logging"                     % "3.9.5",
     "com.zaxxer"                  % "HikariCP"                          % "4.0.3",
     "ch.qos.logback"              % "logback-classic"                   % "1.2.11",
-    "org.mojoz"                  %% "querease"                          % "6.1.3",
+    "org.mojoz"                  %% "querease"                          % "6.1.4",
     "commons-validator"           % "commons-validator"                 % "1.7",
     "commons-codec"               % "commons-codec"                     % "1.15",
     "org.postgresql"              % "postgresql"                        % "42.5.0",
@@ -27,7 +27,7 @@ lazy val dependencies = {
 }
 
 lazy val testDependencies = Seq(
-    "org.scalatest"              %% "scalatest"                         % "3.2.13" % "it,test",
+    "org.scalatest"              %% "scalatest"                         % "3.2.14"  % "it,test",
     "com.typesafe.akka"          %% "akka-http-testkit"                 % akkaHttpV % "it,test",
     "com.typesafe.akka"          %% "akka-testkit"                      % akkaV   % "it,test",
     "com.typesafe.akka"          %% "akka-stream-testkit"               % akkaV   % "it,test",

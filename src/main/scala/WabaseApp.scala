@@ -189,7 +189,7 @@ trait WabaseApp[User] {
       else prepareKey(viewName, keyValues, actionName)
     Option(keyAsMap)
       .filter(_.nonEmpty)
-      .map(_ => getOldValue(context.copy(values = values ++ keyAsMap)))
+      .map(_ => getOldValue(context.copy(values = keyAsMap)))
       .getOrElse(qe.QuereaseAction.value(null: Map[String, Any]))
       .flatMap { oldValue =>
         if (oldValue == null && keyAsMap.nonEmpty && (actionName == Action.Save || actionName == Action.Update))

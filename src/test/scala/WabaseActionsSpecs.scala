@@ -51,10 +51,13 @@ object WabaseActionDtos {
     var surname: String = null
   }
 
+  class env_test_4 extends env_test_1
+
   val viewNameToClass = Map[String, Class[_ <: Dto]](
     "env_test_1" -> classOf[env_test_1],
     "env_test_2" -> classOf[env_test_2],
     "env_test_3" -> classOf[env_test_3],
+    "env_test_4" -> classOf[env_test_4],
     "purchase" -> classOf[PurchaseWithId],
     "person_health_and_shop" -> classOf[PersonWithHealthAndShop],
     "person_health_and_shop_health" -> classOf[PersonWithHealthDataHealth],
@@ -133,10 +136,12 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
                             view: String,
                             values: Map[String, Any],
                             env: Map[String, Any] = Map.empty,
-                            removeIdsFlag: Boolean = true) = {
+                            removeIdsFlag: Boolean = true,
+                            keyValues: Seq[Any] = Nil,
+                          ) = {
     implicit val state = ApplicationState(env)
     implicit val fileStreamer: AppFileStreamer[TestUsr] = app
-    app.doWabaseAction(action, view, Nil, Map.empty, values)
+    app.doWabaseAction(action, view, keyValues, Map.empty, values)
       .map(_.result)
       .flatMap {
         case sr: QuereaseSerializedResult =>
@@ -450,8 +455,24 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
             )
           }
         }
+      t5 <-
+        doAction("insert", "env_test_4", person ++ Map("sex" -> "M"), updateOkEnv).flatMap { r =>
+          val id = r match { case kr: KeyResult => kr.ir.id case _ => -1 }
+          implicit val qe = querease
+          doAction("update", "env_test_4", person ++ Map("id" -> id, "sex" -> "F"),
+                    updateOkEnv, removeIdsFlag = false, keyValues = Seq(id)).flatMap { r =>
+            doAction("get", "env_test_4", Map("id" -> id), removeIdsFlag = false).map {
+              case map: Map[_, _] => map shouldBe Map(
+                "id" -> id,
+                "name" -> "Mika",
+                "sex" -> "F",
+                "birthdate" -> new java.sql.Date(Format.parseDate("1988-09-20").getTime),
+              )
+            }
+          }
+        }
     } yield  {
-      t4
+      t5
     }
   }
 
@@ -665,7 +686,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         .mapTo[FileInfoResult]
         .map(_.fileInfo)
         .map(fi => (fi.filename, fi.size))
-        .map { _ shouldBe ("persons" -> 213) }
+        .map { _ shouldBe ("persons" -> 254) }
       t2 <- doAction("list", "to_file_test2", Map())
         .mapTo[FileResult]
         .flatMap(checkFile)
