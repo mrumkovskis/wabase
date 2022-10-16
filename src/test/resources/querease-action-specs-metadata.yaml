@@ -342,6 +342,17 @@ save:
 - update this
 
 
+name:         env_test_4
+api:          get, save
+auth get:     true
+extends:      env_test_1
+save:
+- name = 'Mika'
+- save this
+filter:
+- sex
+
+
 name:   status_test_1
 table:
 api:    get, save, list, count
