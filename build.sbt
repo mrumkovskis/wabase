@@ -3,6 +3,14 @@ val scalaV = "2.13.6"
 val akkaHttpV = "10.2.4"
 val akkaV = "2.6.15"
 
+javacOptions ++= Seq("-source", "1.8", "-target", "1.8", "-Xlint")
+initialize := {
+  val _ = initialize.value
+  val javaVersion = sys.props("java.specification.version")
+  if (javaVersion != "1.8")
+    sys.error("Java 1.8 is required for this project. Found " + javaVersion + " instead")
+}
+
 lazy val dependencies = {
   Seq(
     "com.typesafe.akka"          %% "akka-actor"                        % akkaV,
