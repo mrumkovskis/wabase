@@ -562,8 +562,8 @@ order:
 - surname
 list:
 - to file list this
-- to file list this, 'persons'
-- to file list this, 'persons', 'application/json'
+- to file (list this) 'persons'
+- to file (list this) 'persons' 'application/json'
 
 
 name: to_file_test2
@@ -576,7 +576,7 @@ fields:
 order:
 - surname
 list:
-- file = to file list this, 'persons'
+- file = to file (list this) 'persons'
 - file {:file.id, :file.sha_256}      # to get file both id and sha must be specified
 
 
@@ -584,5 +584,5 @@ name: to_file_test3
 table:
 api: list
 list:
-  - file = to file |shop_db:purchase{customer, item}#(1,2), 'purchases'
+  - file = to file |shop_db:purchase{customer, item}#(1,2) 'purchases'
   - file {:file.id, :file.sha_256}      # to get file both id and sha must be specified

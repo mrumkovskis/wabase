@@ -7,7 +7,7 @@ import org.mojoz.metadata.io.MdConventions
 import org.mojoz.metadata.out.SqlGenerator.SimpleConstraintNamingRules
 import org.mojoz.querease._
 import org.tresql.QueryParser
-import org.tresql.parsing.{Col, Cols, Const}
+import org.tresql.parsing.{Col, Cols, Const, QueryParsers}
 import org.wabase.AppMetadata.Action.VariableTransform
 
 import scala.collection.immutable.Seq
@@ -467,9 +467,9 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
                   (f.type_.name, action)
               } ++
               collectFromViewAction {
-                case Evaluation(_, _, ViewCall(m, vn)) if !vn.startsWith(":") && vn != "this" => (vn, m)
-                case Return    (_, _, ViewCall(m, vn)) if !vn.startsWith(":") && vn != "this" => (vn, m)
-                case SetEnv    (_, _, ViewCall(m, vn)) if !vn.startsWith(":") && vn != "this" => (vn, m)
+                case Evaluation(_, _, ViewCall(m, vn, _)) if !vn.startsWith(":") && vn != "this" => (vn, m)
+                case Return    (_, _, ViewCall(m, vn, _)) if !vn.startsWith(":") && vn != "this" => (vn, m)
+                case SetEnv    (_, _, ViewCall(m, vn, _)) if !vn.startsWith(":") && vn != "this" => (vn, m)
               }
 
           val new_processed = processed + (v.name -> action)
@@ -532,21 +532,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
               }
           })(-1)(p.parseExp(exp))
         }
-        if (isViewCall(st)) {
-          val viewCallRegex(method, view) = st
-          Action.ViewCall(method, view)
-        } else if (isInvocation(st)) {
-          val idx = st.lastIndexOf('.')
-          Action.Invocation(st.substring(0, idx), st.substring(idx + 1))
-        /* [jobs]
-        } else if (jobCallRegex.pattern.matcher(st).matches()) {
-          val jobCallRegex(jobName) = st
-          Action.JobCall(jobName)
-        [jobs] */
-        } else if (uniqueOpRegex.pattern.matcher(st).matches()) {
-          val uniqueOpRegex(inner) = st
-          Action.UniqueOpt(parseOp(inner))
-        } else if (redirectToKeyOpRegex.pattern.matcher(st).matches()) {
+        if (redirectToKeyOpRegex.pattern.matcher(st).matches()) {
           val redirectToKeyOpRegex(name) = st
           Action.RedirectToKey(name)
         } else if (redirectOpRegex.pattern.matcher(st).matches()) {
@@ -560,34 +546,10 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
           }
           require(code.nonEmpty || bodyTresql != null, s"Empty status operation!")
           Action.Status(code, bodyTresql, statusParameterIdx(bodyTresql))
-        } else if (fileOpRegex.pattern.matcher(st).matches()) {
-          val fileOpRegex(idShaTresql) = st
-          Action.File(idShaTresql)
-        } else if (toFileOpRegex.pattern.matcher(st).matches()) {
-          val toFileOpRegex(ops) = st
-          val idx = ops.indexOf(",")
-          if (idx == -1) { // no name tresql and content type
-            Action.ToFile(parseOp(ops), null, null)
-          } else {
-            def parseToFile(s: String) = parser.parseExp(s) match {
-              case org.tresql.parsing.Arr(List(a)) => (a.tresql, null, null)
-              case org.tresql.parsing.Arr(List(a, b)) => (a.tresql, b.tresql, null)
-              case org.tresql.parsing.Arr(List(a, b, c)) => (a.tresql, b.tresql, c.tresql)
-              case _ => (s, null, null)
-            }
-            val op = ops.substring(0, idx)
-            if (isViewCall(op) || isInvocation(op)) {
-              val (fileName, contentType, _) = parseToFile(ops.substring(idx + 1))
-              Action.ToFile(parseOp(op), fileName, contentType)
-            } else {
-              val (tresql, fileName, contentType) = parseToFile(ops)
-              Action.ToFile(Action.Tresql(tresql), fileName, contentType)
-            }
-          }
         } else if (commitOpRegex.pattern.matcher(st).matches()) {
           Action.Commit
         } else {
-          Action.Tresql(st)
+          dataFlowParser.parseOperation(st)
         }
       }
       def parseStringStep(name: Option[String], statement: String): Action.Step = {
@@ -674,6 +636,8 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     Action(steps)
   }
 
+  protected val dataFlowParser: AppMetadataDataFlowParser = AppMetadataDataFlowParser
+
   /* [jobs]
   protected def parseJob(job: Map[String, Any]): Job = {
     val name = job.get("name").map(String.valueOf)
@@ -686,6 +650,47 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   [jobs] */
 }
 
+trait AppMetadataDataFlowParser extends QueryParsers {
+  import AppMetadata.Action._
+  import AppMetadata.Action
+
+  val ActionRegex = new Regex(Action().mkString("(?U)(", "|", """)"""))
+  val InvocationRegex = """(?U)\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*(\.\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*)+""".r
+
+  def parseOperation(op: String): Op =
+    phrase(operation)(new scala.util.parsing.input.CharSequenceReader(op)) match {
+      case Success(r, _) => r
+      case x => sys.error(x.toString)
+    }
+
+  def tresqlOp: Parser[Tresql] = expr ^^ { e => Tresql(e.tresql) }
+  def viewOp: Parser[ViewCall] = ActionRegex ~ "(?U)\\w+".r ~ opt(operation) ^^ {
+    case action ~ view ~ op => ViewCall(action, view, op.orNull)
+  }
+  def uniqueOptOp: Parser[UniqueOpt] = "unique_opt" ~> operation ^^ UniqueOpt
+  def invocationOp: Parser[Invocation] = InvocationRegex ^^ {
+    case res =>
+      val idx = res.lastIndexOf('.')
+      Action.Invocation(res.substring(0, idx), res.substring(idx + 1))
+  }
+  def fileOp: Parser[File] = "file" ~> expr ^^ { e => File(e.tresql) }
+  def toFileOp: Parser[ToFile] = "to file" ~> operation ~ opt(expr) ~ opt(expr) ^^ {
+    case op ~ fileName ~ contentType =>
+      ToFile(op, fileName.map(_.tresql).orNull, contentType.map(_.tresql).orNull)
+  }
+  def httpOp: Parser[Http] = "http" ~> opt("get" | "post" | "put" | "delete") ~ expr ~
+    opt(expr ~ operation) ^^ {
+    case method ~ uri ~ Some(headers ~ op) =>
+      Http(method.getOrElse("get"), uri.tresql, headers.tresql, op)
+    case method ~ uri ~ None =>
+      Http(method.getOrElse("get"), uri.tresql, null, null)
+  }
+  def bracesOp: Parser[Op] = "(" ~> operation <~ ")"
+  def operation: Parser[Op] = viewOp | uniqueOptOp | invocationOp | httpOp | fileOp | toFileOp |
+    bracesOp | tresqlOp
+}
+
+object AppMetadataDataFlowParser extends AppMetadataDataFlowParser
 
 object AppMetadata {
 
@@ -728,7 +733,7 @@ object AppMetadata {
     case class VariableTransform(form: String, to: Option[String])
 
     case class Tresql(tresql: String) extends Op
-    case class ViewCall(method: String, view: String) extends Op
+    case class ViewCall(method: String, view: String, data: Op) extends Op
     case class RedirectToKey(name: String) extends Op
     case class UniqueOpt(innerOp: Op) extends Op
     case class Invocation(className: String, function: String) extends Op
@@ -738,6 +743,7 @@ object AppMetadata {
     case class If(cond: Op, action: Action) extends Op
     case class File(idShaTresql: String) extends Op
     case class ToFile(contentOp: Op, nameTresql: String, contentTypeTresql: String) extends Op
+    case class Http(method: String, uriTresql: String, headerTresql: String, body: Op) extends Op
     /* [jobs]
     case class JobCall(name: String) extends Op
     [jobs] */

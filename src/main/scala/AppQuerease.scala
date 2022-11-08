@@ -333,7 +333,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     val steps =
       quereaseActionOpt(vd, actionName)
         .map(_.steps)
-        .getOrElse(List(Action.Return(None, Nil, Action.ViewCall(actionName, view))))
+        .getOrElse(List(Action.Return(None, Nil, Action.ViewCall(actionName, view, null))))
     doSteps(steps, ctx, Future.successful(data))
   }
 
@@ -361,7 +361,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
         case SingleValueResult(v) => v
         case ar: ArrayResult[_] => ar.values.toList
         case r: Result[_] => (oldStep match {
-          case Evaluation(_, _, ViewCall(_, viewName)) =>
+          case Evaluation(_, _, ViewCall(_, viewName, _)) =>
             toCompatibleSeqOfMaps(r, v(viewName))
           case _  =>
             r.toListOfMaps
@@ -372,7 +372,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       }
       case srr: TresqlSingleRowResult =>
         oldStep match {
-          case Evaluation(_, _, ViewCall(_, viewName)) =>
+          case Evaluation(_, _, ViewCall(_, viewName, _)) =>
             srr.map(toCompatibleMap(_, v(viewName)))
           case _ =>
             srr.map(_.toMap)
@@ -791,7 +791,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case TresqlResult(tr) =>
         val src = TresqlResultSerializer.source(() => tr)
         op.contentOp match {
-          case Action.ViewCall(_, view) =>
+          case Action.ViewCall(_, view, _) =>
             val vn = if (view == "this") context.viewName else view
             fi(src, renderer(vn, true))
           case _ =>
@@ -800,7 +800,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case TresqlSingleRowResult(row) =>
         val src = TresqlResultSerializer.rowSource(() => row)
         op.contentOp match {
-          case Action.ViewCall(_, view) =>
+          case Action.ViewCall(_, view, _) =>
             val vn = if (view == "this") context.viewName else view
             fi(src, renderer(vn, false))
           case _ =>
@@ -824,7 +824,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     op match {
       case Action.Tresql(tresql) =>
         Future.successful(doTresql(tresql, data ++ env, context))
-      case Action.ViewCall(method, view) =>
+      case Action.ViewCall(method, view, _) =>
         doViewCall(method, view, data, env, context)
       case Action.UniqueOpt(innerOp) =>
         def createGetResult(res: QuereaseResult): QuereaseResult = res match {
