@@ -502,24 +502,17 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val validationRegex = new Regex(s"(?U)${Action.ValidationsKey}(?:\\s+(\\w+))?(?:\\s+\\[(?:\\s*(\\w+)?\\s*(?::\\s*(\\w+)\\s*)?)\\])?")
     val namedStepRegex = """(?U)(?:(\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*)\s*=\s*)?(.+)""".r
     val removeVarStepRegex = """(?U)(?:(\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*)\s*-=\s*)""".r
-    val viewCallRegex = new Regex(Action().mkString("(?U)(", "|", """)\s+(:?\w+)"""))
-    val invocationRegex = """(?U)\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*(\.\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*)+""".r
     val setEnvRegex = """setenv\s+(.+)""".r //dot matches new line as well
     val returnRegex = """return\s+(.+)""".r //dot matches new line as well
-    val uniqueOpRegex = """unique_opt\s+(.+)""".r
     val redirectToKeyOpRegex = """redirect\s+([_\p{IsLatin}][_\p{IsLatin}0-9]*)""".r
     val redirectOpRegex = """redirect\s+(.+)""".r
     val statusOpRegex = """status(?:\s+(\w+))?(?:\s+(.+))?""".r
     val commitOpRegex = """commit""".r
     val ifOpRegex = """if\s+(.+)""".r
     val foreachOpRegex = """foreach\s+(.+)""".r
-    val fileOpRegex = """file\s+(.+)""".r
-    val toFileOpRegex = """to file\s+(.+)""".r
     /* [jobs]
     val jobCallRegex = """(?U)job\s+(:?\w+)""".r
     [jobs] */
-    def isViewCall(st: String) = viewCallRegex.pattern.matcher(st).matches
-    def isInvocation(st: String) = invocationRegex.pattern.matcher(st).matches
     import ViewDefExtrasUtils._
     val steps = stepData.map { step =>
       def parseOp(st: String): Action.Op = {
