@@ -5,6 +5,14 @@ val akkaHttpV = "10.2.10"
 
 val borerV = "1.7.2"
 
+javacOptions ++= Seq("-source", "1.8", "-target", "1.8", "-Xlint")
+initialize := {
+  val _ = initialize.value
+  val javaVersion = sys.props("java.specification.version")
+  if (javaVersion != "1.8")
+    sys.error("Java 1.8 is required for this project. Found " + javaVersion + " instead")
+}
+
 lazy val dependencies = {
   Seq(
     "com.typesafe.akka"          %% "akka-actor"                        % akkaV,
@@ -15,12 +23,13 @@ lazy val dependencies = {
     "com.typesafe.scala-logging" %% "scala-logging"                     % "3.9.5",
     "com.zaxxer"                  % "HikariCP"                          % "4.0.3",
     "ch.qos.logback"              % "logback-classic"                   % "1.2.11",
-    "org.mojoz"                  %% "querease"                          % "6.1.4",
+    "org.mojoz"                  %% "mojoz"                             % "4.2.0",
+    "org.mojoz"                  %% "querease"                          % "6.2.0",
     "commons-validator"           % "commons-validator"                 % "1.7",
     "commons-codec"               % "commons-codec"                     % "1.15",
     "org.postgresql"              % "postgresql"                        % "42.5.0",
     "com.lambdaworks"             % "scrypt"                            % "1.4.0",
-    "org.tresql"                 %% "tresql"                            % "11.1.3",
+    "org.tresql"                 %% "tresql"                            % "11.2.1",
     "io.bullet"                  %% "borer-core"                        % borerV,
     "io.bullet"                  %% "borer-compat-akka"                 % borerV,
   )
@@ -31,7 +40,7 @@ lazy val testDependencies = Seq(
     "com.typesafe.akka"          %% "akka-http-testkit"                 % akkaHttpV % "it,test",
     "com.typesafe.akka"          %% "akka-testkit"                      % akkaV   % "it,test",
     "com.typesafe.akka"          %% "akka-stream-testkit"               % akkaV   % "it,test",
-    "org.hsqldb"                  % "hsqldb"                            % "2.5.1" %    "test",
+   ("org.hsqldb"                  % "hsqldb"                            % "2.7.1"   %    "test").classifier("jdk8"),
     "com.vladsch.flexmark"        % "flexmark-all"                      % "0.62.2" % "it,test",
 )
 

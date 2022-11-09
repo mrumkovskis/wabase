@@ -48,6 +48,10 @@ trait TestQuereaseInitializer extends BeforeAndAfterAll with Loggable { this: Su
     }
 
     DbDrivers.loadDrivers
+    System.setProperty(
+      "hsqldb.method_class_names",
+      "test.HsqldbCustomFunctions.*"// allow access to our custom java functions
+    )
 
     def init_db(db: String): (String, Connection) = {
       val url = s"jdbc:hsqldb:mem:$dbNamePrefix${ if(db != null) "_" + db else ""}"
@@ -77,6 +81,7 @@ trait TestQuereaseInitializer extends BeforeAndAfterAll with Loggable { this: Su
             dialect = HSQLDialect orElse {
               case c: QueryBuilder#CastExpr => c.typ match {
                 case "bigint" | "long" | "int" => s"convert(${c.exp.sql}, BIGINT)"
+                case "date" => s"convert(${c.exp.sql}, DATE)"
                 case _ => c.exp.sql
               }
             },
