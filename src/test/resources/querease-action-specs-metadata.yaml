@@ -187,7 +187,7 @@ save:
 - validations check_person:
   - (person[name = :name]{count(1)}) > 0, "Person '" || :name || "' must be registered"
 - save this
-- redirect |med_db:{'person_health', :name, :manipulation_date, '?', 'val1' par1, 'val2' par2 }
+- redirect |med_db:{'person_health', :name, :manipulation_date::date, '?', 'val1' par1, 'val2' par2 }
 
 
 name: person_health_priv

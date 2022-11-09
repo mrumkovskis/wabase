@@ -40,7 +40,7 @@ lazy val testDependencies = Seq(
     "com.typesafe.akka"          %% "akka-http-testkit"                 % akkaHttpV % "it,test",
     "com.typesafe.akka"          %% "akka-testkit"                      % akkaV   % "it,test",
     "com.typesafe.akka"          %% "akka-stream-testkit"               % akkaV   % "it,test",
-    "org.hsqldb"                  % "hsqldb"                            % "2.5.1" %    "test",
+   ("org.hsqldb"                  % "hsqldb"                            % "2.7.1"   %    "test").classifier("jdk8"),
     "com.vladsch.flexmark"        % "flexmark-all"                      % "0.62.2" % "it,test",
 )
 
