@@ -8,7 +8,7 @@ import org.tresql._
 import org.mojoz.querease.{Querease, QuereaseExpressions, ValidationException, ValidationResult}
 import org.mojoz.querease.SaveMethod
 import org.mojoz.metadata.Type
-import org.tresql.parsing.{Exp, Fun, Join, Obj, Variable, With, Query => PQuery}
+import org.tresql.ast.{Exp, Fun, Join, Obj, Variable, With, Query => PQuery}
 import org.wabase.AppFileStreamer.FileInfo
 import org.wabase.AppMetadata.Action.{VariableTransform, VariableTransforms}
 import org.wabase.ResultEncoder.EncoderFactory

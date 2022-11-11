@@ -86,10 +86,11 @@ class QuereaseSpecs extends AsyncFlatSpec with Matchers with TestQuereaseInitial
       "p",
       true,
       true,
+      false,
       List(
-        Property("id",TresqlValue(":id",true,true)),
-        Property("name",TresqlValue(":name",true,true)),
-        Property("surname",TresqlValue(":surname",true,true)),
+        Property("id",TresqlValue(":id",true,true,false)),
+        Property("name",TresqlValue(":name",true,true,false)),
+        Property("surname",TresqlValue(":surname",true,true,false)),
       ),
       null
     )
@@ -102,9 +103,10 @@ class QuereaseSpecs extends AsyncFlatSpec with Matchers with TestQuereaseInitial
       "u",
       true,
       true,
+      false,
       List(
-        Property("id",TresqlValue(":id",true,true)),
-        Property("name",TresqlValue(":name",true,true)),
+        Property("id",TresqlValue(":id",true,true,false)),
+        Property("name",TresqlValue(":name",true,true,false)),
       ),
       null
     )
@@ -117,9 +119,10 @@ class QuereaseSpecs extends AsyncFlatSpec with Matchers with TestQuereaseInitial
       "u",
       true,
       true,
+      false,
       List(
-        Property("id",TresqlValue(":id",true,true)),
-        Property("name",TresqlValue(":name",true,true)),
+        Property("id",TresqlValue(":id",true,true,false)),
+        Property("name",TresqlValue(":name",true,true,false)),
         Property("roles",ViewValue(
           View(
             List(SaveTo("sys_user_role",Set(),List())),
@@ -127,12 +130,13 @@ class QuereaseSpecs extends AsyncFlatSpec with Matchers with TestQuereaseInitial
             "ur",
             true,
             true,
+            false,
             List(
-              Property("id",TresqlValue(":id",true,true)),
+              Property("id",TresqlValue(":id",true,true,false)),
               Property("sys_role_id",TresqlValue(
                 """(checked_resolve(:sys_role, array(sys_role r[name = :sys_role]{r.id}@(2)),""" +
                 """ 'Failed to identify value of "sys_role" (from sys_user_role_choice) - '""" +
-                """ || coalesce(:sys_role, 'null')))""",true,true)),
+                """ || coalesce(:sys_role, 'null')))""",true,true,false)),
             ),
             null
           ),

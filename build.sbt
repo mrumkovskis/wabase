@@ -21,15 +21,16 @@ lazy val dependencies = {
     "com.typesafe.akka"          %% "akka-slf4j"                        % akkaV,
     "com.typesafe.akka"          %% "akka-stream"                       % akkaV,
     "com.typesafe.scala-logging" %% "scala-logging"                     % "3.9.5",
+    "com.typesafe"               %% "ssl-config-core"                   % "0.6.1",
     "com.zaxxer"                  % "HikariCP"                          % "4.0.3",
     "ch.qos.logback"              % "logback-classic"                   % "1.2.11",
-    "org.mojoz"                  %% "mojoz"                             % "4.2.0",
-    "org.mojoz"                  %% "querease"                          % "6.2.0",
+    "org.mojoz"                  %% "mojoz"                             % "5.0.0-SNAPSHOT",
+    "org.mojoz"                  %% "querease"                          % "7.0.0-SNAPSHOT",
     "commons-validator"           % "commons-validator"                 % "1.7",
     "commons-codec"               % "commons-codec"                     % "1.15",
     "org.postgresql"              % "postgresql"                        % "42.5.0",
     "com.lambdaworks"             % "scrypt"                            % "1.4.0",
-    "org.tresql"                 %% "tresql"                            % "11.2.1",
+    "org.tresql"                 %% "tresql"                            % "12.0.0-SNAPSHOT",
     "io.bullet"                  %% "borer-core"                        % borerV,
     "io.bullet"                  %% "borer-compat-akka"                 % borerV,
   )
@@ -47,7 +48,20 @@ lazy val testDependencies = Seq(
 ThisBuild / versionScheme          := Some("semver-spec")
 ThisBuild / versionPolicyIntention := Compatibility.BinaryCompatible
 
+lazy val macros = (project in file("macros"))
+  .configs(IntegrationTest)
+  .settings(Defaults.itSettings : _*)
+  .disablePlugins(RevolverPlugin)
+  .settings(
+    scalaVersion := scalaV,
+    crossScalaVersions := Seq(
+      scalaV,
+      "2.12.17",
+    )
+  )
+
 lazy val wabase = (project in file("."))
+  .dependsOn(macros)
   .configs(IntegrationTest extend(Test))
   .settings(Defaults.itSettings : _*)
   .settings(
@@ -58,9 +72,7 @@ lazy val wabase = (project in file("."))
     scalaV,
     "2.12.17",
   ),
-  scalacOptions ++= Seq("-unchecked", "-deprecation", "-feature",
-    "-Xmacro-settings:metadataFactoryClass=org.mojoz.querease.TresqlMetadataFactory" +
-      ", tableMetadataFile=" + (baseDirectory.value / "tresql-table-metadata.yaml").getAbsolutePath),
+  scalacOptions ++= Seq("-unchecked", "-deprecation", "-feature"),
   resolvers += "snapshots" at "https://oss.sonatype.org/content/repositories/snapshots",
   libraryDependencies ++= dependencies ++ testDependencies,
   apiMappings ++= (Compile / fullClasspath map { fcp =>

@@ -2,7 +2,6 @@ package org.wabase
 
 import java.sql.SQLException
 
-import org.mojoz.metadata.ViewDef.ViewDefBase
 import org.mojoz.metadata.in.YamlMd
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers

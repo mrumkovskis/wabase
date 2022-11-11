@@ -7,7 +7,8 @@ import org.mojoz.metadata.io.MdConventions
 import org.mojoz.metadata.out.SqlGenerator.SimpleConstraintNamingRules
 import org.mojoz.querease._
 import org.tresql.QueryParser
-import org.tresql.parsing.{Col, Cols, Const, QueryParsers}
+import org.tresql.ast.{Col, Cols, StringConst}
+import org.tresql.parsing.QueryParsers
 import org.wabase.AppMetadata.Action.VariableTransform
 
 import scala.collection.immutable.Seq
@@ -527,7 +528,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
           p.traverser[Int](idx => {
             case Cols(_, cols) =>
               cols indexWhere {
-                case Col(Const("?"), null) => true
+                case Col(StringConst("?"), null) => true
                 case _ => false
               }
           })(-1)(p.parseExp(exp))
