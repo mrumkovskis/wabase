@@ -52,6 +52,7 @@ trait TestQuereaseInitializer extends BeforeAndAfterAll with Loggable { this: Su
       "hsqldb.method_class_names",
       "test.HsqldbCustomFunctions.*"// allow access to our custom java functions
     )
+    Thread.sleep(50) // allow property to be set for sure (fix unstable hsqldb tests)
 
     def init_db(db: String): (String, Connection) = {
       val url = s"jdbc:hsqldb:mem:$dbNamePrefix${ if(db != null) "_" + db else ""}"
