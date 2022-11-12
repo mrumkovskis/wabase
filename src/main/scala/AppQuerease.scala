@@ -32,6 +32,9 @@ trait QuereaseProvider {
   protected def initQuerease: QE
 }
 
+sealed trait StatusValue
+case class RedirectStatus(value: TresqlUri.Uri) extends StatusValue
+case class StringStatus(value: String) extends StatusValue
 sealed trait QuereaseResult
 sealed trait QuereaseCloseableResult extends QuereaseResult
 case class TresqlResult(result: Result[RowLike]) extends QuereaseCloseableResult
@@ -56,7 +59,7 @@ case class IdResult(id: Any, name: String) extends QuereaseResult {
 }
 case class KeyResult(ir: IdResult, viewName: String, key: Seq[Any]) extends QuereaseResult
 case class QuereaseDeleteResult(count: Int) extends QuereaseResult
-case class StatusResult(code: Int, value: String, key: Seq[Any] = Nil, params: ListMap[String, String] = ListMap()) extends QuereaseResult
+case class StatusResult(code: Int, value: StatusValue) extends QuereaseResult
 case class FileInfoResult(fileInfo: FileInfo) extends QuereaseResult
 case class FileResult(fileInfo: FileInfo, fileStreamer: FileStreamer) extends QuereaseResult
 case class HttpResult(response: HttpResponse) extends QuereaseResult
@@ -124,6 +127,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
   }
 
   val resultRenderers: ResultRenderers = new ResultRenderers
+  val tresqlUri: TresqlUri = new TresqlUri()
   def doHttpRequest(req: HttpRequest)(implicit as: ActorSystem): Future[HttpResponse] = {
     akka.http.scaladsl.Http().singleRequest(req)
   }
@@ -875,15 +879,12 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
               case srr: TresqlSingleRowResult => srr.map { row =>
                 val colCount = row.columnCount
                 val (code, idx) = maybeCode.map(_ -> 0).getOrElse(row.int(0) -> Math.min(1, colCount - 1))
-                val pi = if (parameterIndex == -1) colCount else parameterIndex
-                val (value, (key, params)) = (row.string(idx),
-                  ((idx + 1) until colCount).foldLeft(List[String]() -> ListMap[String, String]()) {
-                    case ((k, p), i) if i < pi  => (row.string(i) :: k, p)
-                    case ((k, p), i) if i > pi  => (k, p + (row.column(i).name -> row.string(i)))
-                    case (r, _)                 => r // i == pi - parameter separator - '?'
-                  }
-                )
-                StatusResult(code, value, key.reverse, params)
+                import akka.http.scaladsl.model.StatusCode._
+                val statusValue =
+                  if (code.isRedirection()) RedirectStatus(tresqlUri.uriValue(row, idx, parameterIndex))
+                  else if (colCount > idx) StringStatus(row.string(idx))
+                  else null
+                StatusResult(code, statusValue)
               }
               case _ =>
                 require(maybeCode.nonEmpty, s"Tresql: '$bt' returned no rows. In this case status code cannot be empty.")

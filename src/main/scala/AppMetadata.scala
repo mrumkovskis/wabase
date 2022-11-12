@@ -7,7 +7,7 @@ import org.mojoz.metadata.io.MdConventions
 import org.mojoz.metadata.out.SqlGenerator.SimpleConstraintNamingRules
 import org.mojoz.querease._
 import org.tresql.{CacheBase, QueryParser, SimpleCacheBase}
-import org.tresql.ast.{Col, Cols, StringConst}
+import org.tresql.ast.{Col, Cols, Exp, StringConst}
 import org.tresql.parsing.QueryParsers
 import org.wabase.AppMetadata.Action.VariableTransform
 
@@ -517,14 +517,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val steps = stepData.map { step =>
       def parseOp(st: String): Action.Op = {
         def statusParameterIdx(exp: String) = if (exp == null) -1 else {
-          val p = parser
-          p.traverser[Int](idx => {
-            case Cols(_, cols) =>
-              cols indexWhere {
-                case Col(StringConst("?"), null) => true
-                case _ => false
-              }
-          })(-1)(p.parseExp(exp))
+          tresqlUri.queryStringColIdx(parser.parseExp(exp))(parser)
         }
         if (redirectToKeyOpRegex.pattern.matcher(st).matches()) {
           val redirectToKeyOpRegex(name) = st
@@ -630,7 +623,8 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     Action(steps)
   }
 
-  protected val dataFlowParser: AppMetadataDataFlowParser = new CachedAppMetadataDataFlowParser(4096)
+  protected val dataFlowParser: AppMetadataDataFlowParser =
+    new CachedAppMetadataDataFlowParser(4096, tresqlUri)
 
   /* [jobs]
   protected def parseJob(job: Map[String, Any]): Job = {
@@ -644,7 +638,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   [jobs] */
 }
 
-trait AppMetadataDataFlowParser extends QueryParsers {
+trait AppMetadataDataFlowParser extends QueryParsers { self =>
   import AppMetadata.Action._
   import AppMetadata.Action
 
@@ -652,6 +646,7 @@ trait AppMetadataDataFlowParser extends QueryParsers {
   val InvocationRegex = """(?U)\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*(\.\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*)+""".r
 
   protected def cache: CacheBase[Op] = null
+  protected def tresqlUri: TresqlUri
 
   def parseOperation(op: String): Op = {
     def parseOp = phrase(operation)(new scala.util.parsing.input.CharSequenceReader(op)) match {
@@ -682,19 +677,23 @@ trait AppMetadataDataFlowParser extends QueryParsers {
     case op ~ fileName ~ contentType =>
       ToFile(op, fileName.map(_.tresql).orNull, contentType.map(_.tresql).orNull)
   }
-  def httpOp: Parser[Http] = "http" ~> opt("get" | "post" | "put" | "delete") ~ expr ~
-    opt(expr ~ operation) ^^ {
-    case method ~ uri ~ Some(headers ~ op) =>
-      Http(method.getOrElse("get"), uri.tresql, headers.tresql, op)
-    case method ~ uri ~ None =>
-      Http(method.getOrElse("get"), uri.tresql, null, null)
+  def httpOp: Parser[Http] = {
+    def tu(uri: Exp) = TresqlUri.Tresql(uri.tresql, tresqlUri.queryStringColIdx(uri)(self))
+    "http" ~> opt("get" | "post" | "put" | "delete") ~ expr ~
+      opt(expr ~ operation) ^^ {
+      case method ~ uri ~ Some(headers ~ op) =>
+        Http(method.getOrElse("get"), tu(uri), headers.tresql, op)
+      case method ~ uri ~ None =>
+        Http(method.getOrElse("get"), tu(uri), null, null)
+    }
   }
   def bracesOp: Parser[Op] = "(" ~> operation <~ ")"
   def operation: Parser[Op] = viewOp | uniqueOptOp | invocationOp | httpOp | fileOp | toFileOp |
     bracesOp | tresqlOp
 }
 
-class CachedAppMetadataDataFlowParser(maxCacheSize: Int) extends AppMetadataDataFlowParser {
+class CachedAppMetadataDataFlowParser(maxCacheSize: Int, override val tresqlUri: TresqlUri)
+  extends AppMetadataDataFlowParser {
   import AppMetadata.Action.Op
   override protected val cache: CacheBase[Op] = new SimpleCacheBase[Op](maxCacheSize)
 }
@@ -750,7 +749,7 @@ object AppMetadata {
     case class If(cond: Op, action: Action) extends Op
     case class File(idShaTresql: String) extends Op
     case class ToFile(contentOp: Op, nameTresql: String = null, contentTypeTresql: String = null) extends Op
-    case class Http(method: String, uriTresql: String, headerTresql: String = null, body: Op = null) extends Op
+    case class Http(method: String, uriTresql: TresqlUri.Tresql, headerTresql: String = null, body: Op = null) extends Op
     /* [jobs]
     case class JobCall(name: String) extends Op
     [jobs] */

@@ -200,54 +200,20 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
     Marshaller.combined(_.toString)
   implicit def toResponseQuereaseKeyResultMarshaller:     ToResponseMarshaller[KeyResult]      =
     Marshaller.combined((kr: KeyResult) =>
-      StatusResult(StatusCodes.SeeOther.intValue, s"/data/${kr.viewName}", kr.key)
+      StatusResult(StatusCodes.SeeOther.intValue, RedirectStatus(TresqlUri.Uri(s"/data/${kr.viewName}", kr.key)))
     )
-  def keyToUriStrings(key: Seq[Any]): Seq[String] = key.map {
-    case t: java.sql.Timestamp      => t.toLocalDateTime.toString.replace('T', '_')
-    case t: java.time.LocalDateTime => t.toString.replace('T', '_')
-    case x => s"$x"
-  }
-  def uriWithKeyInPath(uri: Uri, key: Seq[Any]): Uri =
-    if (key != null && key.nonEmpty)
-      uri.withPath(keyToUriStrings(key).foldLeft(uri.path){ (p, k) => p / s"$k" })
-    else uri
-  def uriWithKeyInQuery(uri: Uri, key: Seq[Any]): Uri = {
-    def encode(s: String) =
-      URLEncoder.encode(s"$s", "UTF-8")
-        .replace("+", "%20")
-        .replace("%3A", ":") // allowed, do not be ugly with timestamps
-    if (key != null && key.nonEmpty) {
-      val keyPathRawQuery = keyToUriStrings(key).map(encode).mkString("/", "/", "")
-      uri.withRawQueryString(
-        uri.rawQueryString.map(q => s"$keyPathRawQuery?$q") getOrElse keyPathRawQuery)
-    } else uri
-  }
-  /** Override to change key representation in redirect uri,
-    * see uriWithKeyInPath(uri, key) and uriWithKeyInQuery(uri, key).
-    * Default is uriWithKeyInQuery.
-    */
-  def uriWithKey(uri: Uri, key: Seq[Any]) =
-    uriWithKeyInQuery(uri, key)
   implicit val toResponseQuereaseStatusResultMarshaller:  ToResponseMarshaller[StatusResult] = {
-    val uriRegex = """(?U)(https?://[^/]+)?(?:(?:$)|(.+))?""".r
     Marshaller.opaque { sr =>
       val status: StatusCode = sr.code
-      if (status.isRedirection()) {
-        require(sr.value != null, s"Error marshalling redirect status result - no uri.")
-        import akka.http.scaladsl.model.Uri._
-        val uriRegex(uriStart, uriPath) = sr.value
-        val path = Option(uriPath).map(Path(_)).getOrElse(Path.Empty)
-        val nonNullParams = sr.params.map { case (k, v) => (k, if (v == null) "" else v) }
-        val uri: Uri =
-          Option(uriStart).map(Uri(_)).getOrElse(Uri.Empty)
-            .withPath(path)
-            .withQuery(Query(nonNullParams))
-        HttpResponse(status, headers = Seq(Location(uriWithKey(uri, sr.key.toVector))))
-      } else {
-        val ent =
-          if (sr.value == null) HttpEntity.Empty
-          else HttpEntity.Strict(ContentTypes.`text/plain(UTF-8)`, ByteString(sr.value))
-        HttpResponse(status, entity = ent)
+      sr.value match {
+        case RedirectStatus(value) =>
+          require(value != null, s"Error marshalling redirect status result - no uri.")
+          val uri: Uri = app.qe.tresqlUri.uri(value)
+          HttpResponse(status, headers = Seq(Location(app.qe.tresqlUri.uriWithKey(uri, value.key.toVector))))
+        case StringStatus(value) =>
+          HttpResponse(status, entity = HttpEntity.Strict(ContentTypes.`text/plain(UTF-8)`, ByteString(value)))
+        case null =>
+          HttpResponse(status, entity = HttpEntity.Empty)
       }
     }
   }

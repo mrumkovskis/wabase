@@ -217,7 +217,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     recoverToExceptionIf[ValidationException](
       doAction("save", "person", person).flatMap { _ =>
         doAction("save", "person_health", vaccine).flatMap { r =>
-          r shouldBe StatusResult(303, "person_health", List("Mr. Gunza", "2021-06-05"), ListMap("par1" -> "val1", "par2" -> "val2"))
+          r shouldBe StatusResult(303, RedirectStatus(TresqlUri.Uri("person_health", List("Mr. Gunza", "2021-06-05"), ListMap("par1" -> "val1", "par2" -> "val2"))))
           doAction("save", "purchase", purchase)
         }
       }
@@ -287,7 +287,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     )
     doAction("save", "person", person).flatMap { _ =>
       doAction("save", "person_health", vaccine).flatMap { r =>
-        r shouldBe StatusResult(303, "person_health", List("Mr. Mario", "2021-08-15"), ListMap("par1" -> "val1", "par2" -> "val2"))
+        r shouldBe StatusResult(303, RedirectStatus(TresqlUri.Uri("person_health", List("Mr. Mario", "2021-08-15"), ListMap("par1" -> "val1", "par2" -> "val2"))))
         doAction("save", "payment", payment).flatMap { _ =>
           doAction("save", "purchase", purchase)
         }
@@ -484,7 +484,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         }
       t2 <-
         doAction("save", "status_test_1", Map("status" -> "ok")).map {
-          _ shouldBe StatusResult(200, "ok")
+          _ shouldBe StatusResult(200, StringStatus("ok"))
         }
       t3 <-
         doAction("count", "status_test_1", Map("status" -> "ok")).map {
@@ -492,51 +492,51 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         }
       t4 <-
         doAction("list", "status_test_1", Map("status" -> "redirect")).map {
-          _ shouldBe StatusResult(303, "/data", List("path", "redirect"), ListMap())
+          _ shouldBe StatusResult(303, RedirectStatus(TresqlUri.Uri("/data", List("path", "redirect"), ListMap())))
         }
       t5 <-
         doAction("get", "status_test_2", Map("id" -> 1)).map {
-          _ shouldBe StatusResult(303, "data/path", List("1"), ListMap())
+          _ shouldBe StatusResult(303, RedirectStatus(TresqlUri.Uri("data/path", List("1"), ListMap())))
         }
       t6 <-
         doAction("save", "status_test_2", Map("id" -> 1)).map {
-          _ shouldBe StatusResult(303, "data/path", Nil, ListMap("id" -> "1"))
+          _ shouldBe StatusResult(303, RedirectStatus(TresqlUri.Uri("data/path", Nil, ListMap("id" -> "1"))))
         }
       t7 <-
         doAction("count", "status_test_2", Map()).map {
-          _ shouldBe StatusResult(303, "data/path", Nil, ListMap())
+          _ shouldBe StatusResult(303, RedirectStatus(TresqlUri.Uri("data/path", Nil, ListMap())))
         }
       t8 <-
         doAction("list", "status_test_2", Map()).map {
-          _ shouldBe StatusResult(303, "data/path", Nil, ListMap())
+          _ shouldBe StatusResult(303, RedirectStatus(TresqlUri.Uri("data/path", Nil, ListMap())))
         }
       t9 <-
         doAction("save", "status_test_3", Map()).map {
-          _ shouldBe StatusResult(303, "303", List(), ListMap())
+          _ shouldBe StatusResult(303, RedirectStatus(TresqlUri.Uri("303", List(), ListMap())))
         }
       t10 <-
         doAction("get", "status_test_3", Map("id" -> 2)).map {
-          _ shouldBe StatusResult(303, "data/path/2", List(), ListMap())
+          _ shouldBe StatusResult(303, RedirectStatus(TresqlUri.Uri("data/path/2", List(), ListMap())))
         }
       t11 <-
         doAction("list", "status_test_3", Map("id" -> 3)).map {
-          _ shouldBe StatusResult(303, "data/path", List("3"), ListMap("par1" -> "val-of-par1"))
+          _ shouldBe StatusResult(303, RedirectStatus(TresqlUri.Uri("data/path", List("3"), ListMap("par1" -> "val-of-par1"))))
         }
       t12 <-
         doAction("count", "status_test_3", Map("id" -> 4)).map {
-          _ shouldBe StatusResult(303, null, List("4"), ListMap("par1" -> "5"))
+          _ shouldBe StatusResult(303, RedirectStatus(TresqlUri.Uri(null, List("4"), ListMap("par1" -> "5"))))
         }
       t13 <-
         doAction("save", "status_test_4", Map("id" -> null)).map {
-          _ shouldBe StatusResult(303, "data/path", List(null), ListMap())
+          _ shouldBe StatusResult(303, RedirectStatus(TresqlUri.Uri("data/path", List(null), ListMap())))
         }
       t14 <-
         doAction("get", "status_test_4", Map("id" -> null)).map {
-          _ shouldBe StatusResult(303, "data/path", List(), ListMap("id" -> null))
+          _ shouldBe StatusResult(303, RedirectStatus(TresqlUri.Uri("data/path", List(), ListMap("id" -> null))))
         }
       t15 <-
         doAction("list", "status_test_4", Map("id" -> null)).map {
-          _ shouldBe StatusResult(303, null, List(), ListMap())
+          _ shouldBe StatusResult(303, RedirectStatus(TresqlUri.Uri(null, List(), ListMap())))
         }
     } yield {
       t15
@@ -546,7 +546,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
   it should "do invocations" in {
     for {
       t1 <- doAction("get", "invocation_test_1", Map()).map {
-        _ shouldBe StatusResult(200, "val1 val2", List(), ListMap())
+        _ shouldBe StatusResult(200, StringStatus("val1 val2"))
       }
       t2 <- doAction("save", "invocation_test_1", Map()).map {
         _ shouldBe MapResult(Map("nr" -> 2.5))
@@ -581,10 +581,10 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         _ shouldBe Map("code" -> "if_test_1", "parent" -> null, "value" -> "no_value")
       }
       t3 <- doAction("get", "if_test_2", Map("value" -> true)).map {
-        _ shouldBe StatusResult(200, "yes", List(), ListMap())
+        _ shouldBe StatusResult(200, StringStatus("yes"))
       }
       t4 <- doAction("get", "if_test_2", Map("value" -> false)).map {
-        _ shouldBe StatusResult(200, null, List(), ListMap())
+        _ shouldBe StatusResult(200, StringStatus(null))
       }
     } yield {
       t4
