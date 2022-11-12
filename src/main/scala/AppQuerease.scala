@@ -1,6 +1,7 @@
 package org.wabase
 
 import akka.actor.ActorSystem
+import akka.http.scaladsl.model.{HttpMethods, HttpRequest, HttpResponse}
 import akka.stream.scaladsl.Source
 import akka.util.ByteString
 import org.mojoz.querease.QuereaseExpressions.DefaultParser
@@ -58,6 +59,7 @@ case class QuereaseDeleteResult(count: Int) extends QuereaseResult
 case class StatusResult(code: Int, value: String, key: Seq[Any] = Nil, params: ListMap[String, String] = ListMap()) extends QuereaseResult
 case class FileInfoResult(fileInfo: FileInfo) extends QuereaseResult
 case class FileResult(fileInfo: FileInfo, fileStreamer: FileStreamer) extends QuereaseResult
+case class HttpResult(response: HttpResponse) extends QuereaseResult
 case object NoResult extends QuereaseResult
 case class QuereaseResultWithCleanup(result: QuereaseCloseableResult, cleanup: Option[Throwable] => Unit)
   extends QuereaseResult {
@@ -122,6 +124,9 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
   }
 
   val resultRenderers: ResultRenderers = new ResultRenderers
+  def doHttpRequest(req: HttpRequest)(implicit as: ActorSystem): Future[HttpResponse] = {
+    akka.http.scaladsl.Http().singleRequest(req)
+  }
 
   override protected def persistenceFilters(
     view: ViewDef,
@@ -809,6 +814,21 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
         }
       case x => sys.error(s"Currently unable to save result to file: $x")
     }.map(FileInfoResult)
+  }
+
+  protected def doHttpAction(
+    op: Action.Http,
+    data: Map[String, Any],
+    env: Map[String, Any],
+    context: ActionContext,
+  )(implicit
+    res: Resources,
+    ec: ExecutionContext,
+    as: ActorSystem): Future[HttpResult] = {
+    val opData = data ++ env
+    val httpMeth = HttpMethods.getForKeyCaseInsensitive(op.method).get
+    //val uri = Query(op.uriTresql, opData).unique[St]
+    null
   }
 
   protected def doActionOp(

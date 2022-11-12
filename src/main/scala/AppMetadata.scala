@@ -6,7 +6,7 @@ import org.mojoz.metadata.in._
 import org.mojoz.metadata.io.MdConventions
 import org.mojoz.metadata.out.SqlGenerator.SimpleConstraintNamingRules
 import org.mojoz.querease._
-import org.tresql.QueryParser
+import org.tresql.{CacheBase, QueryParser, SimpleCacheBase}
 import org.tresql.ast.{Col, Cols, StringConst}
 import org.tresql.parsing.QueryParsers
 import org.wabase.AppMetadata.Action.VariableTransform
@@ -630,7 +630,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     Action(steps)
   }
 
-  protected val dataFlowParser: AppMetadataDataFlowParser = AppMetadataDataFlowParser
+  protected val dataFlowParser: AppMetadataDataFlowParser = new CachedAppMetadataDataFlowParser(4096)
 
   /* [jobs]
   protected def parseJob(job: Map[String, Any]): Job = {
@@ -651,11 +651,21 @@ trait AppMetadataDataFlowParser extends QueryParsers {
   val ActionRegex = new Regex(Action().mkString("(?U)(", "|", """)"""))
   val InvocationRegex = """(?U)\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*(\.\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*)+""".r
 
-  def parseOperation(op: String): Op =
-    phrase(operation)(new scala.util.parsing.input.CharSequenceReader(op)) match {
+  protected def cache: CacheBase[Op] = null
+
+  def parseOperation(op: String): Op = {
+    def parseOp = phrase(operation)(new scala.util.parsing.input.CharSequenceReader(op)) match {
       case Success(r, _) => r
       case x => sys.error(x.toString)
     }
+    if (cache != null) {
+      cache.get(op).getOrElse {
+        val pop = parseOp
+        cache.put(op, pop)
+        pop
+      }
+    } else parseOp
+  }
 
   def tresqlOp: Parser[Tresql] = expr ^^ { e => Tresql(e.tresql) }
   def viewOp: Parser[ViewCall] = ActionRegex ~ "(?U)\\w+".r ~ opt(operation) ^^ {
@@ -684,7 +694,10 @@ trait AppMetadataDataFlowParser extends QueryParsers {
     bracesOp | tresqlOp
 }
 
-object AppMetadataDataFlowParser extends AppMetadataDataFlowParser
+class CachedAppMetadataDataFlowParser(maxCacheSize: Int) extends AppMetadataDataFlowParser {
+  import AppMetadata.Action.Op
+  override protected val cache: CacheBase[Op] = new SimpleCacheBase[Op](maxCacheSize)
+}
 
 object AppMetadata {
 
@@ -727,7 +740,7 @@ object AppMetadata {
     case class VariableTransform(form: String, to: Option[String])
 
     case class Tresql(tresql: String) extends Op
-    case class ViewCall(method: String, view: String, data: Op) extends Op
+    case class ViewCall(method: String, view: String, data: Op = null) extends Op
     case class RedirectToKey(name: String) extends Op
     case class UniqueOpt(innerOp: Op) extends Op
     case class Invocation(className: String, function: String) extends Op
@@ -736,8 +749,8 @@ object AppMetadata {
     case class Foreach(initOp: Op, action: Action) extends Op
     case class If(cond: Op, action: Action) extends Op
     case class File(idShaTresql: String) extends Op
-    case class ToFile(contentOp: Op, nameTresql: String, contentTypeTresql: String) extends Op
-    case class Http(method: String, uriTresql: String, headerTresql: String, body: Op) extends Op
+    case class ToFile(contentOp: Op, nameTresql: String = null, contentTypeTresql: String = null) extends Op
+    case class Http(method: String, uriTresql: String, headerTresql: String = null, body: Op = null) extends Op
     /* [jobs]
     case class JobCall(name: String) extends Op
     [jobs] */
