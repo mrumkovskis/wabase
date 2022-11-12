@@ -8,6 +8,7 @@ import org.tresql._
 import org.mojoz.querease.{Querease, QuereaseExpressions, ValidationException, ValidationResult}
 import org.mojoz.querease.SaveMethod
 import org.mojoz.metadata.Type
+import org.mojoz.metadata.{FieldDef, ViewDef}
 import org.tresql.ast.{Exp, Fun, Join, Obj, Variable, With, Query => PQuery}
 import org.wabase.AppFileStreamer.FileInfo
 import org.wabase.AppMetadata.Action.{VariableTransform, VariableTransforms}
@@ -940,8 +941,8 @@ trait Dto extends org.mojoz.querease.Dto { self =>
       (if (auth.isEmpty) "" else ", auth: " + auth.toString)
   }
   private def isSavableFieldAppExtra(
-                                         field: AppQuerease#FieldDef,
-                                         view: AppQuerease#ViewDef,
+                                         field: FieldDef,
+                                         view: ViewDef,
                                          saveToMulti: Boolean,
                                          saveToTableNames: Seq[String]) = {
     def isForInsert = // TODO isForInsert
@@ -962,19 +963,19 @@ trait Dto extends org.mojoz.querease.Dto { self =>
   }
 
   override protected def isSavableField(
-      field: AppQuerease#FieldDef,
-      view: AppQuerease#ViewDef,
+      field: FieldDef,
+      view: ViewDef,
       saveToMulti: Boolean,
       saveToTableNames: Seq[String]) =
     isSavableFieldAppExtra(field, view, saveToMulti, saveToTableNames) &&
       super.isSavableField(field, view, saveToMulti, saveToTableNames)
 
   override protected def isSavableChildField(
-      field: AppQuerease#FieldDef,
-      view: AppQuerease#ViewDef,
+      field: FieldDef,
+      view: ViewDef,
       saveToMulti: Boolean,
       saveToTableNames: Seq[String],
-      childView: AppQuerease#ViewDef): Boolean =
+      childView: ViewDef): Boolean =
     isSavableFieldAppExtra(field, view, saveToMulti, saveToTableNames)
 
   protected def throwUnsupportedConversion(

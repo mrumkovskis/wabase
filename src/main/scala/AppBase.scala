@@ -2,6 +2,7 @@ package org.wabase
 
 import java.util.Locale
 import org.mojoz.metadata.Type
+import org.mojoz.metadata.{FieldDef, ViewDef}
 import org.mojoz.querease.NotFoundException
 import org.mojoz.querease.FilterType
 import org.mojoz.querease.FilterType._
@@ -49,7 +50,6 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
 
   type Dto = qe.DTO
   type DtoWithId = qe.DWI
-  type ViewDef = qe.ViewDef
 
   import qe.{viewDef, viewDefOption, classToViewNameMap, viewNameToClassMap}
 
@@ -748,7 +748,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
       filterMetadata(viewDef) ++
       extraMetadata(viewDef))
   }
-  def extraMetadata(fieldDef: qe.FieldDef)(implicit user: User): Map[String, JsValue] = Map.empty
+  def extraMetadata(fieldDef: FieldDef)(implicit user: User): Map[String, JsValue] = Map.empty
   def extraMetadata(viewDef: ViewDef)(implicit user: User): Map[String, JsValue] = Map.empty
   def extraMetadata(filter: FilterParameter)(implicit user: User): Map[String, JsValue] = Map.empty
 
@@ -1008,9 +1008,9 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
       .filter(v => v.apiMethodToRole.contains("get") && !v.apiMethodToRole.contains("list"))
       .map(_ => 0)
 
-  def fieldRequiredErrorMessage(viewName: String, field: qe.FieldDef)(implicit locale: Locale): String =
+  def fieldRequiredErrorMessage(viewName: String, field: FieldDef)(implicit locale: Locale): String =
     translate("""Field %1$s is mandatory.""", field.label)
-  def isFieldRequiredViolated(viewName: String, field: qe.FieldDef, value: Any): Boolean =
+  def isFieldRequiredViolated(viewName: String, field: FieldDef, value: Any): Boolean =
     field.required &&
     (value match {
       case null => true
@@ -1018,36 +1018,36 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
       case _ => false
     })
 
-  def fieldValueTooLongErrorMessage(viewName: String, field: qe.FieldDef, value: Any)(implicit locale: Locale): String =
+  def fieldValueTooLongErrorMessage(viewName: String, field: FieldDef, value: Any)(implicit locale: Locale): String =
     translate("""Field "%1$s" value length %2$s exceeds maximum limit %3$s.""",
       field.label, value.toString.length.toString, field.type_.length.get.toString)
-  def isFieldValueMaxLengthViolated(viewName: String, field: qe.FieldDef, value: Any): Boolean =
+  def isFieldValueMaxLengthViolated(viewName: String, field: FieldDef, value: Any): Boolean =
     value != null &&
     field.type_.name == "string" &&
     field.type_.length.isDefined &&
     value.toString.length > field.type_.length.get
 
-  def fieldValueNotInEnumErrorMessage(viewName: String, field: qe.FieldDef, value: Any)(implicit locale: Locale): String =
+  def fieldValueNotInEnumErrorMessage(viewName: String, field: FieldDef, value: Any)(implicit locale: Locale): String =
     translate("""Field "$%1$s" value must be from available value list.""", field.label)
-  def isFieldValueEnumViolated(viewName: String, field: qe.FieldDef, value: Any): Boolean =
+  def isFieldValueEnumViolated(viewName: String, field: FieldDef, value: Any): Boolean =
     value != null &&
     field.enum_ != null &&
     field.enum_.size > 0 &&
     !field.enum_.contains(value.toString)
 
-  def badEmailAddressErrorMessage(viewName: String, field: qe.FieldDef, value: Any)(implicit locale: Locale): String =
+  def badEmailAddressErrorMessage(viewName: String, field: FieldDef, value: Any)(implicit locale: Locale): String =
     translate("""Field "%1$s" is not valid e-mail address""", field.label)
-  def isEmailAddressField(viewName: String, field: qe.FieldDef): Boolean =
+  def isEmailAddressField(viewName: String, field: FieldDef): Boolean =
     field.type_.name == "email"  ||
     field.type_.name == "epasts" ||
     field.type_.name == "string" && (field.name == "email" || field.name == "epasts")
-  def isEmailAddressTemplateViolated(viewName: String, field: qe.FieldDef, value: Any): Boolean =
+  def isEmailAddressTemplateViolated(viewName: String, field: FieldDef, value: Any): Boolean =
     value != null &&
     value != "" &&
     isEmailAddressField(viewName, field) &&
     !is_valid_email(value.toString)
 
-  def validationErrorMessage(viewName: String, field: qe.FieldDef, value: Any)(implicit locale: Locale): Option[String] = {
+  def validationErrorMessage(viewName: String, field: FieldDef, value: Any)(implicit locale: Locale): Option[String] = {
     if (isFieldRequiredViolated(viewName, field, value))
       Option(fieldRequiredErrorMessage(viewName, field))
     else if (isFieldValueMaxLengthViolated(viewName, field, value))

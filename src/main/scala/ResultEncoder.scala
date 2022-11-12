@@ -9,7 +9,7 @@ import io.bullet.borer.compat.akka.ByteStringByteAccess
 import java.io
 import java.io.{OutputStream, OutputStreamWriter}
 import java.util.zip.ZipOutputStream
-import org.mojoz.metadata.MojozViewDef
+import org.mojoz.metadata.ViewDef
 import org.wabase.ResultEncoder.{ByteChunks, ChunkType, TextChunks}
 
 import scala.collection.immutable.{ListMap, Seq}
@@ -39,7 +39,7 @@ trait ResultEncoder {
 abstract class ResultRenderer(
   isCollection: Boolean,
   viewName: String,
-  nameToViewDef: Map[String, MojozViewDef],
+  nameToViewDef: Map[String, ViewDef],
   hasHeaders: Boolean,
 ) extends ResultEncoder {
   import ResultRenderer.Context
@@ -68,7 +68,7 @@ abstract class ResultRenderer(
     if (viewName != null)
       nameToViewDef.getOrElse(viewName, sys.error(s"View $viewName not found - can not render result"))
     else null
-  protected def impliedNames(viewDef: MojozViewDef): List[String] = {
+  protected def impliedNames(viewDef: ViewDef): List[String] = {
     if  (hasHeaders || viewDef == null) Nil
     else viewDef.fields.map(_.fieldName).toList
   }
@@ -194,7 +194,7 @@ abstract class ResultRenderer(
 object ResultRenderer {
   class Context(
     val isForRows:    Boolean,
-    val viewDef:      MojozViewDef,
+    val viewDef:      ViewDef,
     val allNames:     List[String]  = Nil,
     val isCollection: Boolean       = true,
     val shouldRender: Boolean       = true,
@@ -211,7 +211,7 @@ class CborOrJsonResultRenderer(
   w: borer.Writer,
   isCollection: Boolean,
   viewName: String,
-  nameToViewDef: Map[String, MojozViewDef],
+  nameToViewDef: Map[String, ViewDef],
   hasHeaders: Boolean = true,
 ) extends ResultRenderer(isCollection, viewName, nameToViewDef, hasHeaders) {
   val valueEncoder = new BorerValueEncoder(w)
@@ -261,19 +261,19 @@ class CborOrJsonResultRenderer(
 }
 
 object CborResultRenderer {
-  def apply(outputStream: OutputStream, isCollection: Boolean, viewName: String, nameToViewDef: Map[String, MojozViewDef]) =
+  def apply(outputStream: OutputStream, isCollection: Boolean, viewName: String, nameToViewDef: Map[String, ViewDef]) =
     new CborOrJsonResultRenderer(BorerNestedArraysEncoder.createWriter(outputStream, Cbor), isCollection, viewName, nameToViewDef)
 }
 
 object JsonResultRenderer {
-  def apply(outputStream: OutputStream, isCollection: Boolean, viewName: String, nameToViewDef: Map[String, MojozViewDef]) =
+  def apply(outputStream: OutputStream, isCollection: Boolean, viewName: String, nameToViewDef: Map[String, ViewDef]) =
     new CborOrJsonResultRenderer(BorerNestedArraysEncoder.createWriter(outputStream, Json), isCollection, viewName, nameToViewDef)
 }
 
 class FlatTableResultRenderer(
   renderer: TableResultRenderer,
   viewName: String,
-  nameToViewDef: Map[String, MojozViewDef],
+  nameToViewDef: Map[String, ViewDef],
   labels: Seq[String] = null,
   hasHeaders: Boolean = true,
 ) extends ResultRenderer(false, viewName, nameToViewDef, hasHeaders) {
@@ -405,7 +405,7 @@ class ResultRenderers {
 }
 
 object ResultRenderers {
-  type EncoderFactoryCreator = Map[String, MojozViewDef] => (String, Boolean) => EncoderFactory
+  type EncoderFactoryCreator = Map[String, ViewDef] => (String, Boolean) => EncoderFactory
 
   import akka.http.scaladsl.model.MediaTypes._
   val renderers: ListMap[ContentType, EncoderFactoryCreator] =
@@ -416,25 +416,25 @@ object ResultRenderers {
       (`application/vnd.oasis.opendocument.spreadsheet`,  createOdsEncoderFactory),
       (`application/vnd.ms-excel`,                        createXlsXmlEncoderFactory),
     )
-  def createJsonEncoderFactory(nameToViewDef: Map[String, MojozViewDef])(
+  def createJsonEncoderFactory(nameToViewDef: Map[String, ViewDef])(
     viewName: String, isCollection: Boolean): EncoderFactory =
     JsonResultRenderer(_, isCollection, viewName, nameToViewDef)
 
-  def createCborEncoderFactory(nameToViewDef: Map[String, MojozViewDef])(
+  def createCborEncoderFactory(nameToViewDef: Map[String, ViewDef])(
     viewName: String, isCollection: Boolean): EncoderFactory =
     CborResultRenderer(_, isCollection, viewName, nameToViewDef)
 
-  def createCsvEncoderFactory(nameToViewDef: Map[String, MojozViewDef])(
+  def createCsvEncoderFactory(nameToViewDef: Map[String, ViewDef])(
     viewName: String, isCollection: Boolean): EncoderFactory =
     os => new FlatTableResultRenderer(new CsvResultRenderer(new OutputStreamWriter(os, "UTF-8")),
       viewName, nameToViewDef)
 
-  def createOdsEncoderFactory(nameToViewDef: Map[String, MojozViewDef])(
+  def createOdsEncoderFactory(nameToViewDef: Map[String, ViewDef])(
     viewName: String, isCollection: Boolean): EncoderFactory =
     os => new FlatTableResultRenderer(new OdsResultRenderer(new ZipOutputStream(os)),
       viewName, nameToViewDef)
 
-  def createXlsXmlEncoderFactory(nameToViewDef: Map[String, MojozViewDef])(
+  def createXlsXmlEncoderFactory(nameToViewDef: Map[String, ViewDef])(
     viewName: String, isCollection: Boolean): EncoderFactory =
     os => new FlatTableResultRenderer(new XlsXmlResultRenderer(new OutputStreamWriter(os, "UTF-8")),
       viewName, nameToViewDef)

@@ -2,11 +2,11 @@ package org.wabase
 
 import java.sql.SQLException
 
+import org.mojoz.metadata.ViewDef
 import org.mojoz.metadata.in.YamlMd
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers
 import org.tresql.ChildSaveException
-import org.wabase.DefaultAppQuerease.ViewDef
 
 import scala.collection.immutable.{Map, Seq}
 

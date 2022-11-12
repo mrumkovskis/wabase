@@ -4,7 +4,7 @@ import akka.util.ByteString
 import io.bullet.borer.compat.akka.ByteStringProvider
 import io.bullet.borer.encodings.BaseEncoding
 import io.bullet.borer.{Cbor, Decoder, Json, Target, DataItem => DI}
-import org.mojoz.metadata.{MojozViewDef, Type, TypeDef}
+import org.mojoz.metadata.{ViewDef, Type, TypeDef}
 import org.wabase.BorerDatetimeDecoders._
 
 import java.lang.{Boolean => JBoolean, Double => JDouble, Long => JLong}
@@ -13,7 +13,7 @@ import scala.collection.immutable.{Map, Seq}
 import scala.language.postfixOps
 import scala.reflect.ClassTag
 
-class CborOrJsonDecoder(typeDefs: Seq[TypeDef], nameToViewDef: Map[String, MojozViewDef]) {
+class CborOrJsonDecoder(typeDefs: Seq[TypeDef], nameToViewDef: Map[String, ViewDef]) {
   lazy val typeNameToScalaTypeName =
     typeDefs
       .map(td => td.name -> td.targetNames.get("scala").orNull)
@@ -126,7 +126,7 @@ class CborOrJsonDecoder(typeDefs: Seq[TypeDef], nameToViewDef: Map[String, Mojoz
 }
 
 /** Decodes strings to booleans and numbers */
-class CborOrJsonLenientDecoder(typeDefs: Seq[TypeDef], nameToViewDef: Map[String, MojozViewDef])
+class CborOrJsonLenientDecoder(typeDefs: Seq[TypeDef], nameToViewDef: Map[String, ViewDef])
   extends CborOrJsonDecoder(typeDefs, nameToViewDef) {
   private val lenientBigIntDecoder: Decoder[BigInt] =
     Decoder(r => if (r.hasString) BigInt(r.readString()) else r[BigInt])

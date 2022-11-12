@@ -4,6 +4,7 @@ import akka.actor.ActorSystem
 import akka.stream.Materializer
 import akka.stream.scaladsl.Source
 import akka.util.ByteString
+import org.mojoz.metadata.{FieldDef, ViewDef}
 import org.tresql.Resources
 import org.wabase.AppMetadata.{Action, AugmentedAppFieldDef, AugmentedAppViewDef}
 import org.wabase.AppMetadata.Action.{LimitKey, OffsetKey, OrderKey}
@@ -261,7 +262,7 @@ trait WabaseApp[User] {
   /** Converts key value from uri representation to appropriate type.
     * Default implementation also converts "null" to null.
     */
-  def prepareKeyValue(field: qe.FieldDef, value: Any): Any =
+  def prepareKeyValue(field: FieldDef, value: Any): Any =
     if (value == "null") null else qe.convertToType(field.type_, value)
   def prepareKey(viewName: String, keyValues: Seq[Any], actionName: String): Map[String, Any] = {
     val keyFields = qe.viewNameToKeyFields(viewName).filterNot(_.api.excluded)

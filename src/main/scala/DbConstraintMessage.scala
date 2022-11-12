@@ -3,6 +3,7 @@ package org.wabase
 import java.util.Locale
 import java.sql.SQLException
 import java.lang.RuntimeException
+import org.mojoz.metadata.ViewDef
 import org.tresql.ChildSaveException
 import org.snakeyaml.engine.v2.api.LoadSettings
 import org.snakeyaml.engine.v2.api.Load
@@ -13,12 +14,12 @@ import scala.util.control.NonFatal
 
 trait DbConstraintMessage {
   def friendlyConstraintErrorMessage[T](f: => T)(implicit locale: Locale): T = friendlyConstraintErrorMessage(null, f)
-  def friendlyConstraintErrorMessage[T](viewDef: AppMetadata#ViewDef , f: => T)(implicit locale: Locale): T
+  def friendlyConstraintErrorMessage[T](viewDef: ViewDef, f: => T)(implicit locale: Locale): T
 }
 
 object DbConstraintMessage {
  trait NoCustomConstraintMessage extends DbConstraintMessage {
-  override def friendlyConstraintErrorMessage[T](viewDef: AppMetadata#ViewDef , f: => T)(implicit locale: Locale): T = f
+  override def friendlyConstraintErrorMessage[T](viewDef: ViewDef, f: => T)(implicit locale: Locale): T = f
  }
  trait PostgreSqlConstraintMessage extends DbConstraintMessage with QuereaseProvider { this: I18n with Loggable  =>
   case class ConstraintViolationInfo(
@@ -106,11 +107,11 @@ object DbConstraintMessage {
   }
 
   def raiseFriendlyConstraintErrorMessage(
-    exception: Throwable, sqlCause: SQLException, viewDef: AppMetadata#ViewDef)(implicit locale: Locale): Nothing =
+    exception: Throwable, sqlCause: SQLException, viewDef: ViewDef)(implicit locale: Locale): Nothing =
     raiseFriendlyConstraintErrorMessage(exception, sqlCause, viewDef, Option(viewDef).map(_.table).orNull)
 
   def raiseFriendlyConstraintErrorMessage(
-    exception: Throwable, sqlCause: SQLException, viewDef: AppMetadata#ViewDef, tableName: String)(implicit locale: Locale): Nothing = {
+    exception: Throwable, sqlCause: SQLException, viewDef: ViewDef, tableName: String)(implicit locale: Locale): Nothing = {
     val dbMsg = Option(sqlCause.getMessage) getOrElse ""
 
     val violation = sqlCause.getSQLState match {
@@ -161,7 +162,7 @@ object DbConstraintMessage {
     throw new BusinessException(friendlyMessage, exception, details)
   }
 
-  override def friendlyConstraintErrorMessage[T](viewDef: AppMetadata#ViewDef, f: => T)(implicit locale: Locale): T = {
+  override def friendlyConstraintErrorMessage[T](viewDef: ViewDef, f: => T)(implicit locale: Locale): T = {
     def getSqlCauseAndContext(e: Throwable, ce: ChildSaveException): (SQLException, ChildSaveException) = {
       e.getCause match {
         case ee: SQLException                   => (ee, ce)

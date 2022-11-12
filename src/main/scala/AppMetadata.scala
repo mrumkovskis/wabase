@@ -1,7 +1,7 @@
 package org.wabase
 
-import org.mojoz.metadata.{ViewDef => MojozViewDef}
-import org.mojoz.metadata.{FieldDef => MojozFieldDef}
+import org.mojoz.metadata.ViewDef
+import org.mojoz.metadata.FieldDef
 import org.mojoz.metadata.in._
 import org.mojoz.metadata.io.MdConventions
 import org.mojoz.metadata.out.SqlGenerator.SimpleConstraintNamingRules
@@ -339,7 +339,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
          .orNull
 
       import f._
-      MojozFieldDef(table, tableAlias, name, alias, persistenceOptions, isOverride, isCollection,
+      FieldDef(table, tableAlias, name, alias, persistenceOptions, isOverride, isCollection,
         isExpression, expression, f.saveTo, resolver, nullable,
         type_, enum_, joinToParent, orderBy,
         comments, extras)
@@ -385,7 +385,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
         s"Unknown properties for viewDef ${viewDef.name}: ${unknownKeys.mkString(", ")}")
 
 
-    MojozViewDef(name, db, table, tableAlias, joins, filter,
+    ViewDef(name, db, table, tableAlias, joins, filter,
       viewDef.groupBy, viewDef.having, orderBy, extends_,
       comments, appFields, viewDef.saveTo, extras)
       .updateWabaseExtras(_ => AppViewDef(limit, cp, auth, apiMap, actions, Map.empty))
@@ -825,7 +825,9 @@ object AppMetadata {
 
   val WabaseViewExtrasKey = "wabase-view-extras"
   val WabaseFieldExtrasKey = "wabase-field-extras"
-  implicit class AugmentedAppViewDef(viewDef: AppMetadata#ViewDef) extends QuereaseMetadata.AugmentedQuereaseViewDef(viewDef) with AppViewDefExtras {
+  implicit class AugmentedAppViewDef(viewDef: ViewDef)
+         extends QuereaseMetadata.AugmentedQuereaseViewDef(viewDef)
+            with AppViewDefExtras {
     private val defaultExtras = AppViewDef()
     private val appExtras = extras(WabaseViewExtrasKey, defaultExtras)
     override val limit = appExtras.limit
@@ -834,13 +836,15 @@ object AppMetadata {
     override val apiMethodToRole = appExtras.apiMethodToRole
     override val actions = appExtras.actions
     override val actionToDbAccessKeys = appExtras.actionToDbAccessKeys
-    def updateWabaseExtras(updater: AppViewDef => AppViewDef): AppMetadata#ViewDef =
+    def updateWabaseExtras(updater: AppViewDef => AppViewDef): ViewDef =
       updateExtras(WabaseViewExtrasKey, updater, defaultExtras)
 
     override protected def updateExtrasMap(extras: Map[String, Any]) = viewDef.copy(extras = extras)
     override protected def extrasMap = viewDef.extras
   }
-  implicit class AugmentedAppFieldDef(fieldDef: AppMetadata#FieldDef) extends QuereaseMetadata.AugmentedQuereaseFieldDef(fieldDef) with AppFieldDefExtras {
+  implicit class AugmentedAppFieldDef(fieldDef: FieldDef)
+         extends QuereaseMetadata.AugmentedQuereaseFieldDef(fieldDef)
+            with AppFieldDefExtras {
     private val defaultExtras = AppFieldDef()
     val appExtras = extras(WabaseFieldExtrasKey, defaultExtras)
     override val api = appExtras.api
@@ -849,7 +853,7 @@ object AppMetadata {
     override val required = appExtras.required
     override val sortable = appExtras.sortable
     override val visible = appExtras.visible
-    def updateWabaseExtras(updater: AppFieldDef => AppFieldDef): AppMetadata#FieldDef =
+    def updateWabaseExtras(updater: AppFieldDef => AppFieldDef): FieldDef =
       updateExtras(WabaseFieldExtrasKey, updater, defaultExtras)
 
     override protected def updateExtrasMap(extras: Map[String, Any]): Any = fieldDef.copy(extras = extras)
