@@ -8,7 +8,7 @@ import akka.http.scaladsl.unmarshalling.Unmarshal
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
-import scala.collection.immutable.{ListMap, Seq}
+import scala.collection.immutable.ListMap
 import scala.concurrent.duration._
 import scala.concurrent.{Await, Future}
 
@@ -46,7 +46,7 @@ class MarshallingSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
         override protected def initQuerease: QE = new TestQuerease("/json-decoder-specs-metadata.yaml") {
           override lazy val viewNameToClassMap = JsonDecoderSpecs.viewNameToClass
           override val tresqlUri: TresqlUri = new TresqlUri {
-            override def uriWithKey(uri: Uri, key: Seq[Any]) = uriWithKeyInPath(uri, key)
+            override def uriWithKey(uri: Uri, key: Seq[Any]): Uri = uriWithKeyInPath(uri, key)
           }
         }
         override def dbAccessDelegate: DbAccess = db

@@ -64,7 +64,7 @@ class TresqlUri {
     * see uriWithKeyInPath(uri, key) and uriWithKeyInQuery(uri, key).
     * Default is uriWithKeyInQuery.
     */
-  def uriWithKey(uri: Uri, key: Seq[Any]) =
+  def uriWithKey(uri: Uri, key: Seq[Any]): Uri =
     uriWithKeyInQuery(uri, key)
 
   def uri(value: TresqlUri.Uri): Uri = {
