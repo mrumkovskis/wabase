@@ -836,7 +836,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     val uri = {
       val trUri = tresqlUri.
         uriValue(Query(op.uriTresql.uriTresql, opData).unique, 0, op.uriTresql.queryStringColIdx)
-      tresqlUri.uriWithKey(tresqlUri.uri(trUri), trUri.key)
+      tresqlUri.uri(trUri)
     }
     val headers = {
       val parsedValues = Query(op.headerTresql, opData).list[String, String].map {

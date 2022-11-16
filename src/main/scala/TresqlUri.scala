@@ -73,8 +73,10 @@ class TresqlUri {
     val uriRegex(uriStart, uriPath) = value.value
     val path = Option(uriPath).map(Path(_)).getOrElse(Path.Empty)
     val nonNullParams = value.params.map { case (k, v) => (k, if (v == null) "" else v) }
-    Option(uriStart).map(Uri(_)).getOrElse(Uri.Empty)
-      .withPath(path)
-      .withQuery(Query(nonNullParams))
+    val uriWithoutKey =
+      Option(uriStart).map(Uri(_)).getOrElse(Uri.Empty)
+        .withPath(path)
+        .withQuery(Query(nonNullParams))
+    uriWithKey(uriWithoutKey, value.key.toVector)
   }
 }

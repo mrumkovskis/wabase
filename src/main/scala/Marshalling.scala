@@ -208,8 +208,7 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
       sr.value match {
         case RedirectStatus(value) =>
           require(value != null, s"Error marshalling redirect status result - no uri.")
-          val uri: Uri = app.qe.tresqlUri.uri(value)
-          HttpResponse(status, headers = Seq(Location(app.qe.tresqlUri.uriWithKey(uri, value.key.toVector))))
+          HttpResponse(status, headers = Seq(Location(app.qe.tresqlUri.uri(value))))
         case StringStatus(value) =>
           HttpResponse(status, entity = HttpEntity.Strict(ContentTypes.`text/plain(UTF-8)`, ByteString(value)))
         case null =>
