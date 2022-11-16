@@ -1,7 +1,8 @@
 package org.wabase
 
 import akka.actor.ActorSystem
-import akka.http.scaladsl.model.{HttpMethods, HttpRequest, HttpResponse}
+import akka.http.scaladsl.model.HttpHeader.ParsingResult.{Error, Ok}
+import akka.http.scaladsl.model.{HttpHeader, HttpMethods, HttpRequest, HttpResponse}
 import akka.stream.scaladsl.Source
 import akka.util.ByteString
 import org.mojoz.querease.QuereaseExpressions.DefaultParser
@@ -828,10 +829,25 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
   )(implicit
     res: Resources,
     ec: ExecutionContext,
-    as: ActorSystem): Future[HttpResult] = {
+    as: ActorSystem,
+    fs: FileStreamer): Future[HttpResult] = {
     val opData = data ++ env
     val httpMeth = HttpMethods.getForKeyCaseInsensitive(op.method).get
-    //val uri = Query(op.uriTresql, opData).unique[St]
+    val uri = {
+      val trUri = tresqlUri.
+        uriValue(Query(op.uriTresql.uriTresql, opData).unique, 0, op.uriTresql.queryStringColIdx)
+      tresqlUri.uriWithKey(tresqlUri.uri(trUri), trUri.key)
+    }
+    val headers = {
+      val parsedValues = Query(op.headerTresql, opData).list[String, String].map {
+        case (name, value) => HttpHeader.parse(name, value)
+      }
+      val (ok, errs) = parsedValues.partition(_.isInstanceOf[Ok])
+      require(errs.isEmpty, s"Error(s) parsing http headers:\n${
+        errs.map(e => e.asInstanceOf[Error].error.formatPretty).mkString("\n")}")
+      ok.map(_.asInstanceOf[Ok].header)
+    }
+    val bodyVal = if (op.body == null) null else doActionOp(op.body, data, env, context)
     null
   }
 
