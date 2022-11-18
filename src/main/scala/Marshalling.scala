@@ -220,13 +220,9 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
     Marshaller.combined(_ => "")
   implicit val toEntityQuereaseDeleteResultMarshaller:      ToEntityMarshaller[QuereaseDeleteResult] =
     Marshaller.combined(_.count.toString)
-  implicit val toResponseFileResultMarshaller:                ToResponseMarshaller[FileResult] = Marshaller.combined {
-    fr => fr.fileStreamer.getFileInfo(fr.fileInfo.id, fr.fileInfo.sha_256).map { fi =>
-      val ct = ContentType.parse(fi.content_type).toOption.getOrElse(sys.error(s"Invalid content type: '${fi.content_type}'"))
-      HttpResponse(
-        status = StatusCodes.OK,
-        entity = HttpEntity.Default(ct, fi.size, fi.source)
-      )
+  implicit val toResponseFileResultMarshaller:              ToResponseMarshaller[FileResult] = Marshaller.combined {
+    fr => app.qe.fileHttpEntity(fr).map { ent =>
+      HttpResponse(status = StatusCodes.OK, entity = ent)
     }.getOrElse(HttpResponse(status = StatusCodes.NotFound))
   }
 
