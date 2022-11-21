@@ -281,6 +281,7 @@ object BorerDatetimeDecoders {
       case _ if tryReadTag(Tag.DateTimeString)  =>
         new sql.Timestamp(Format.jsIsoDateTime.parse(readString()).getTime)
       case _ if tryReadTag(Tag.EpochDateTime)   => new Timestamp((readDouble() * 1000).toLong)
+      case DI.Double                            => new Timestamp((readDouble() * 1000).toLong)
       case _                                    => unexpectedDataItem(expected = "Timestamp")
     }
   }
@@ -292,6 +293,7 @@ object BorerDatetimeDecoders {
       case _ if tryReadTag(Tag.DateTimeString)  =>
         new sql.Date(Format.jsIsoDateTime.parse(readString()).getTime)
       case _ if tryReadTag(Tag.EpochDateTime)   => new sql.Date(readLong() * 1000)
+      case DI.Int | DI.Long                     => new sql.Date(readLong() * 1000)
       case _                                    => unexpectedDataItem(expected = "Date")
     }
   }
@@ -310,6 +312,7 @@ object BorerDatetimeDecoders {
       case _ if tryReadTag(BorerDatetimeEncoders.TimeTag)
                                                 => new sql.Time((readDouble() * 1000).toLong)
       case _ if tryReadTag(Tag.EpochDateTime)   => new sql.Time((readDouble() * 1000).toLong)
+      case DI.Double                            => new sql.Time((readDouble() * 1000).toLong)
       case _                                    => unexpectedDataItem(expected = "Time")
     }
   }

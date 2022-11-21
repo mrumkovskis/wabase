@@ -15,6 +15,7 @@ class JsonDecoderSpecs extends FlatSpec with Matchers {
   import qe._
   val strictDecoder = new CborOrJsonDecoder(qe.typeDefs, qe.nameToViewDef)
   val lenientDecoder = new CborOrJsonLenientDecoder(qe.typeDefs, qe.nameToViewDef)
+  val anyValsDecoder = new CborOrJsonAnyValueDecoder()
   def jsonRoundtrip(dto: qe.DTO) =
     decodeToMap(
       ByteString(dto.toMap.toJson.prettyPrint),
@@ -22,6 +23,9 @@ class JsonDecoderSpecs extends FlatSpec with Matchers {
     )
   def decodeToMap(bytes: ByteString, viewName: String, decoder: CborOrJsonDecoder = strictDecoder) =
     decoder.decodeToMap(bytes, viewName)(qe.viewNameToMapZero)
+  def decodeToMap(bytes: ByteString, viewName: String, decoder: CborOrJsonAnyValueDecoder) =
+    qe.viewNameToMapZero(viewName) ++ // to sort properly for string compare
+      decoder.decodeToMap(bytes)
   def encodeBytes(bytes: Array[Byte]) = ByteString.fromArrayUnsafe(bytes).encodeBase64.utf8String
   def comparable(map: Map[String, Any]): Map[String, Any] = // scalatest does not compare bytes - convert to string
     map.updated("bytes",     Option(map("bytes")).map(_.asInstanceOf[Array[Byte]]).map(encodeBytes).orNull)
@@ -223,6 +227,16 @@ class JsonDecoderSpecs extends FlatSpec with Matchers {
       ByteString(asStringsJsonized),
       "decoder_test",
       lenientDecoder).toJson.prettyPrint  shouldBe jsonized
+
+    // any values decoder
+    decodeToMap(
+      ByteString(jsonized),
+      "decoder_test",
+      anyValsDecoder).toJson.prettyPrint  shouldBe jsonized
+    decodeToMap(
+      ByteString(asStringsJsonized),
+      "decoder_test",
+      anyValsDecoder).toJson.prettyPrint  shouldBe asStringsJsonized
 
     // compatibility
     val cpy = new decoder_test
