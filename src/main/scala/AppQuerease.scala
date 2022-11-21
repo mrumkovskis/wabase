@@ -3,6 +3,7 @@ package org.wabase
 import akka.actor.ActorSystem
 import akka.http.scaladsl.model.HttpHeader.ParsingResult.{Error, Ok}
 import akka.http.scaladsl.model.{ContentType, HttpEntity, HttpHeader, HttpMethods, HttpRequest, HttpResponse, MediaTypes, UniversalEntity}
+import akka.stream.Materializer
 import akka.stream.scaladsl.Source
 import akka.util.ByteString
 import org.mojoz.querease.QuereaseExpressions.DefaultParser
@@ -128,27 +129,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
 
   val resultRenderers: ResultRenderers = new ResultRenderers
   val tresqlUri: TresqlUri = new TresqlUri()
-  protected def doHttpRequest(reqF: Future[HttpRequest])(implicit as: ActorSystem): Future[HttpResponse] = {
-    reqF.flatMap(req => akka.http.scaladsl.Http().singleRequest(req))(as.dispatcher)
-  }
-
-  private def renderedSource(serializedSource: Source[ByteString, _],
-                             viewName: String,
-                             isCollection: Boolean,
-                             contentType: ContentType): Source[ByteString, _] = {
-    val renderer =
-      resultRenderers.renderers.get(contentType)
-        .map(_ (nameToViewDef)(viewName, isCollection))
-        .getOrElse(sys.error(s"Renderer not found for content type: $contentType"))
-    serializedSource.via(BorerNestedArraysTransformer.flow(renderer))
-  }
-  def fileHttpEntity(fileResult: FileResult): Option[UniversalEntity] = {
-    import fileResult._
-    fileStreamer.getFileInfo(fileInfo.id, fileInfo.sha_256).map { fi =>
-      val ct = ContentType.parse(fi.content_type).toOption.getOrElse(sys.error(s"Invalid content type: '${fi.content_type}'"))
-      HttpEntity(ct, fi.size, fi.source)
-    }
-  }
+  lazy val cborOrJsonDecoder = new CborOrJsonDecoder(typeDefs, nameToViewDef)
 
   override protected def persistenceFilters(
     view: ViewDef,
@@ -526,6 +507,13 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       if (tresql.indexOf(Action.BindVarCursorsFunctionName) == -1) tresql
       else {
         def bindVarsCursorsCreator(bindVars: Map[String, Any]): parser.Transformer = {
+          def singleValue[T: Converter : Manifest](tresql: String, data: Map[String, Any]): T = {
+            Query(tresql, data) match {
+              case SingleValueResult(value) => value.asInstanceOf[T]
+              case r: Result[_] => r.unique[T]
+            }
+          }
+
           parser.transformer {
             case q @ PQuery(List(
             Obj(_, _, Join(_,
@@ -581,6 +569,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
   protected def doViewCall(
     method: String,
     view: String,
+    viewOp: Action.Op,
     data: Map[String, Any],
     env: Map[String, Any],
     context: ActionContext,
@@ -592,22 +581,46 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
   ): Future[QuereaseResult] = {
     import Action._
     import CoreTypes._
-    val callData = data ++ env
     val v = viewDef(
       if (view == "this") context.view.map(_.name) getOrElse view
       else                view
     )
     val viewName = v.name
-    lazy val idName = viewNameToIdName(viewName)
-    def int(name: String) = tryOp(callData.get(name).map {
-      case x: Int => x
-      case x: Number => x.intValue
-      case x: String => x.toInt
-      case x => x.toString.toInt
-    }, callData)
-    def string(name: String) = callData.get(name) map String.valueOf
     if (context.view.exists(_.name == viewName)) {
-      Future.successful {
+      val callDataF =
+        if (viewOp == null) Future.successful(data ++ env)
+        else {
+          doActionOp(viewOp, data, env, context).flatMap {
+            case TresqlResult(tr) => tr match {
+              case SingleValueResult(v) =>
+                v match {
+                  case m: Map[String@unchecked, _] => Future.successful(m)
+                  case x => sys.error(s"Value for view op must be of type Map[String, Any], found: $x")
+                }
+              case r: Result[_] => Future.successful(r.unique.toMap)
+            }
+            case r: TresqlSingleRowResult => Future.successful(r.map(_.toMap))
+            case fr: FileResult =>
+              fileHttpEntity(fr).map(mapFromHttpEntity(_, viewName))
+                .getOrElse(sys.error(s"File not found: ${fr.fileInfo}"))
+            case HttpResult(res) => mapFromHttpEntity(res.entity, viewName)
+            case MapResult(res) => Future.successful(res)
+            case x => sys.error(s"Invalid view op result. Currently unable to create Map[String, _] from $x")
+          }.map(_ ++ env)
+        }
+
+      callDataF.map { callData =>
+        lazy val idName = viewNameToIdName(viewName)
+
+        def int(name: String) = tryOp(callData.get(name).map {
+          case x: Int => x
+          case x: Number => x.intValue
+          case x: String => x.toInt
+          case x => x.toString.toInt
+        }, callData)
+
+        def string(name: String) = callData.get(name) map String.valueOf
+
         method match {
           case Get =>
             val keyValues   = getKeyValues(viewName, callData)
@@ -873,8 +886,8 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     op match {
       case Action.Tresql(tresql) =>
         Future.successful(doTresql(tresql, data ++ env, context))
-      case Action.ViewCall(method, view, _) =>
-        doViewCall(method, view, data, env, context)
+      case Action.ViewCall(method, view, viewOp) =>
+        doViewCall(method, view, viewOp, data, env, context)
       case Action.UniqueOpt(innerOp) =>
         def createGetResult(res: QuereaseResult): QuereaseResult = res match {
           case TresqlResult(r) if !r.isInstanceOf[DMLResult] =>
@@ -925,6 +938,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case foreach: Action.Foreach => doForeach(foreach, data, env, context)
       case file: Action.File => doFileAction(file, data, env, context)
       case toFile: Action.ToFile => doToFileAction(toFile, data, env, context)
+      case http: Action.Http => doHttpAction(http, data, env, context)
       /* [jobs]
       case Action.JobCall(job) =>
         doJobCall(job, data, env)
@@ -948,7 +962,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
    ): Future[(Source[ByteString, _], ContentType, Option[Long])] = {
     val ct: ContentType = if (contentType == null) MediaTypes.`application/json` else contentType
     doActionOp(op, data, env, context).map {
-      case TresqlResult(tr) =>
+      case TresqlResult(tr) => // TODO add SingleValueResult support
         val src = TresqlResultSerializer.source(() => tr)
         (op match {
           case Action.ViewCall(_, view, _) =>
@@ -975,13 +989,33 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     }
   }
 
-  // used for example in view, job operations when name is referenced by bind variable
-  private def singleValue[T: Converter: Manifest](tresql: String, data: Map[String, Any])(
-      implicit res: Resources): T = {
-    Query(tresql, data) match {
-      case SingleValueResult(value) => value.asInstanceOf[T]
-      case r: Result[_] => r.unique[T]
+  protected def doHttpRequest(reqF: Future[HttpRequest])(implicit as: ActorSystem): Future[HttpResponse] = {
+    reqF.flatMap(req => akka.http.scaladsl.Http().singleRequest(req))(as.dispatcher)
+  }
+
+  private def renderedSource(serializedSource: Source[ByteString, _],
+                             viewName: String,
+                             isCollection: Boolean,
+                             contentType: ContentType): Source[ByteString, _] = {
+    val renderer =
+      resultRenderers.renderers.get(contentType)
+        .map(_ (nameToViewDef)(viewName, isCollection))
+        .getOrElse(sys.error(s"Renderer not found for content type: $contentType"))
+    serializedSource.via(BorerNestedArraysTransformer.flow(renderer))
+  }
+
+  def fileHttpEntity(fileResult: FileResult): Option[UniversalEntity] = {
+    import fileResult._
+    fileStreamer.getFileInfo(fileInfo.id, fileInfo.sha_256).map { fi =>
+      val ct = ContentType.parse(fi.content_type).toOption.getOrElse(sys.error(s"Invalid content type: '${fi.content_type}'"))
+      HttpEntity(ct, fi.size, fi.source)
     }
+  }
+
+  private def mapFromHttpEntity(ent: HttpEntity, viewName: String)(implicit as: ActorSystem) = {
+    import scala.concurrent.duration._
+    implicit val ec = as.dispatcher
+    ent.toStrict(1.second).map(se => cborOrJsonDecoder.decodeToMap(se.data, viewName)(viewNameToMapZero))
   }
 
   abstract class AppQuereaseDefaultParser extends DefaultParser {

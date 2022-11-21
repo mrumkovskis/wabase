@@ -658,7 +658,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         Thread.sleep(200) // wait until hopefully afterWabaseAction method is completed
         app.dbAccess.withConn(template = app.dbAccess.tresqlResources.resourcesTemplate, poolName = app.DefaultCp) { implicit r =>
           val res = Query("simple_table [id = ?] {value}", id + 1).unique[String]
-          marshallers.cborOrJsonDecoder
+          app.qe.cborOrJsonDecoder
             .decodeToMap(ByteString(res), "result_audit_test")(app.qe.viewNameToMapZero) shouldBe Map("id" -> 55, "value" -> "data")
         }
       }

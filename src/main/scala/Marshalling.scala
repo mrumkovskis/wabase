@@ -168,14 +168,13 @@ trait QuereaseMarshalling extends QuereaseResultMarshalling { this: AppProvider[
     Marshaller { ec => seqOfMapsAndView => marsh(seqOfMapsAndView._2)(ec)(seqOfMapsAndView._1) }
   }
 
-  val cborOrJsonDecoder = new CborOrJsonDecoder(app.qe.typeDefs, app.qe.nameToViewDef)
   def toMapUnmarshallerForView(viewName: String): FromEntityUnmarshaller[Map[String, Any]] =
     Unmarshaller.byteStringUnmarshaller map { bytes =>
-      cborOrJsonDecoder.decodeToMap(bytes, viewName)(app.qe.viewNameToMapZero)
+      app.qe.cborOrJsonDecoder.decodeToMap(bytes, viewName)(app.qe.viewNameToMapZero)
     }
   def toSeqOfMapsUnmarshallerForView(viewName: String): FromEntityUnmarshaller[Seq[Map[String, Any]]] =
     Unmarshaller.byteStringUnmarshaller map { bytes =>
-      cborOrJsonDecoder.decodeToSeqOfMaps(bytes, viewName)(app.qe.viewNameToMapZero)
+      app.qe.cborOrJsonDecoder.decodeToSeqOfMaps(bytes, viewName)(app.qe.viewNameToMapZero)
     }
 }
 
@@ -225,6 +224,8 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
       HttpResponse(status = StatusCodes.OK, entity = ent)
     }.getOrElse(HttpResponse(status = StatusCodes.NotFound))
   }
+  implicit val toResponseHttpResultMarshaller:              ToResponseMarshaller[HttpResult] =
+    Marshaller.combined(_.response)
 
 
   def toEntitySerializedResultMarshaller(
@@ -275,6 +276,7 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
       case no: NoResult.type  => (toEntityQuereaseNoResultMarshaller:         ToResponseMarshaller[NoResult.type] )(no)
       case dr: QuereaseDelRes => (toEntityQuereaseDeleteResultMarshaller:     ToResponseMarshaller[QuereaseDelRes])(dr)
       case fr: FileResult     => (toResponseFileResultMarshaller:             ToResponseMarshaller[FileResult]    )(fr)
+      case hr: HttpResult     => (toResponseHttpResultMarshaller:             ToResponseMarshaller[HttpResult]    )(hr)
       case tq: TresqlResult   => sys.error("TresqlResult must be serialized before marshalling.")
       case rr: TresqlSingleRr => sys.error("TresqlSingleRowResult must be serialized before marshalling.")
       case it: IteratorResult => sys.error("IteratorResult must be serialized before marshalling.")
