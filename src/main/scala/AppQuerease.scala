@@ -587,6 +587,13 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     )
     val viewName = v.name
     if (context.view.exists(_.name == viewName)) {
+      def conformToView(conformTo: Option[OpResultType], viewAction: String) =
+        conformTo.map(_.viewName).getOrElse {
+          viewAction match {
+            case Action.Save | Action.Upsert | Action.Insert | Action.Update => viewName
+            case _ => null
+          }
+        }
       val callDataF =
         if (viewOp == null) Future.successful(data ++ env)
         else {
@@ -1015,7 +1022,10 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
   private def mapFromHttpEntity(ent: HttpEntity, viewName: String)(implicit as: ActorSystem) = {
     import scala.concurrent.duration._
     implicit val ec = as.dispatcher
-    ent.toStrict(1.second).map(se => cborOrJsonDecoder.decodeToMap(se.data, viewName)(viewNameToMapZero))
+    def decodeToMap(bs: ByteString) =
+      if (viewName == null) new CborOrJsonAnyValueDecoder().decodeToMap(bs)
+      else cborOrJsonDecoder.decodeToMap(bs, viewName)(viewNameToMapZero)
+    ent.toStrict(1.second).map(se => decodeToMap(se.data))
   }
 
   abstract class AppQuereaseDefaultParser extends DefaultParser {

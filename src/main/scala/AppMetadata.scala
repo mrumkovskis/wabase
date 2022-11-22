@@ -444,9 +444,11 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
               case Status(_, bodyTresql, _) => dbs(bodyTresql)
               case If(cond, act) => dbsFromOp(cond) ::: act.steps.collect(dbsFromStep).flatten
               case Foreach(initOp, act) => dbsFromOp(initOp) ::: act.steps.collect(dbsFromStep).flatten
-              case File(idShaTresql) => dbs(idShaTresql)
+              case File(idShaTresql, _) => dbs(idShaTresql)
               case ToFile(contentOp, nameTresql, contentTypeTresql) =>
                 dbsFromOp(contentOp) ::: dbs(nameTresql) ::: dbs(contentTypeTresql)
+              case Http(_, uriTresql, headerTresql, body, _) =>
+                dbs(uriTresql.uriTresql) ::: dbs(headerTresql) ::: dbsFromOp(body)
               case _ => Nil
             }
             def dbsFromStep: PartialFunction[Step, List[DbAccessKey]] = {
@@ -644,6 +646,7 @@ trait AppMetadataDataFlowParser extends QueryParsers { self =>
 
   val ActionRegex = new Regex(Action().mkString("(?U)(", "|", """)"""))
   val InvocationRegex = """(?U)\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*(\.\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*)+""".r
+  val ViewNameRegex = "(?U)\\w+".r
 
   protected def cache: CacheBase[Op] = null
   protected def tresqlUri: TresqlUri
@@ -663,7 +666,7 @@ trait AppMetadataDataFlowParser extends QueryParsers { self =>
   }
 
   def tresqlOp: Parser[Tresql] = expr ^^ { e => Tresql(e.tresql) }
-  def viewOp: Parser[ViewCall] = ActionRegex ~ "(?U)\\w+".r ~ opt(operation) ^^ {
+  def viewOp: Parser[ViewCall] = ActionRegex ~ ViewNameRegex ~ opt(operation) ^^ {
     case action ~ view ~ op => ViewCall(action, view, op.orNull)
   }
   def uniqueOptOp: Parser[UniqueOpt] = "unique_opt" ~> operation ^^ UniqueOpt
@@ -672,24 +675,41 @@ trait AppMetadataDataFlowParser extends QueryParsers { self =>
       val idx = res.lastIndexOf('.')
       Action.Invocation(res.substring(0, idx), res.substring(idx + 1))
   }
-  def fileOp: Parser[File] = "file" ~> expr ^^ { e => File(e.tresql) }
+  def fileOp: Parser[File] = opt(opResultType) ~ ("file" ~> expr) ^^ {
+    case conformTo ~ e => File(e.tresql, conformTo)
+  }
   def toFileOp: Parser[ToFile] = "to file" ~> operation ~ opt(expr) ~ opt(expr) ^^ {
     case op ~ fileName ~ contentType =>
       ToFile(op, fileName.map(_.tresql).orNull, contentType.map(_.tresql).orNull)
   }
   def httpOp: Parser[Http] = {
     def tu(uri: Exp) = TresqlUri.Tresql(uri.tresql, tresqlUri.queryStringColIdx(uri)(self))
-    "http" ~> opt("get" | "post" | "put" | "delete") ~ expr ~
-      opt(expr ~ operation) ^^ {
-      case method ~ uri ~ Some(headers ~ op) =>
-        Http(method.getOrElse("get"), tu(uri), headers.tresql, op)
-      case method ~ uri ~ None =>
-        Http(method.getOrElse("get"), tu(uri), null, null)
+    def http_without_type:  Parser[Http] =
+      "http" ~> opt("get" | "post" | "put" | "delete") ~ expr ~ opt(expr ~ operation) ^^ {
+        case method ~ uri ~ Some(headers ~ op) =>
+          Http(method.getOrElse("get"), tu(uri), headers.tresql, op)
+        case method ~ uri ~ None =>
+          Http(method.getOrElse("get"), tu(uri), null, null)
+      }
+    opt(opResultType) ~ http_without_type ^^ {
+      case conformTo ~ http => http.copy(conformTo = conformTo)
     }
   }
   def bracesOp: Parser[Op] = "(" ~> operation <~ ")"
   def operation: Parser[Op] = viewOp | uniqueOptOp | invocationOp | httpOp | fileOp | toFileOp |
     bracesOp | tresqlOp
+
+  private def opResultType: Parser[OpResultType] = {
+    sealed trait ResType
+    case object NoType extends ResType
+    case class ViewType(vn: String) extends ResType
+    def noType: Parser[ResType] = "map" ^^^ NoType
+    def viewType: Parser[ResType] = opt("`") ~> ViewNameRegex <~ opt("`") ^^ ViewType
+
+    "as" ~> (noType | (opt("`") ~> viewType <~ opt("`"))) ~ opt("*") ^^ {
+      case ct ~ coll => OpResultType(ct match { case NoType => null case ViewType(vn) => vn }, coll.nonEmpty)
+    }
+  }
 }
 
 class CachedAppMetadataDataFlowParser(maxCacheSize: Int, override val tresqlUri: TresqlUri)
@@ -737,6 +757,7 @@ object AppMetadata {
     }
 
     case class VariableTransform(form: String, to: Option[String])
+    case class OpResultType(viewName: String = null, isCollection: Boolean = false)
 
     case class Tresql(tresql: String) extends Op
     case class ViewCall(method: String, view: String, data: Op = null) extends Op
@@ -747,9 +768,13 @@ object AppMetadata {
     case class VariableTransforms(transforms: List[VariableTransform]) extends Op
     case class Foreach(initOp: Op, action: Action) extends Op
     case class If(cond: Op, action: Action) extends Op
-    case class File(idShaTresql: String) extends Op
+    case class File(idShaTresql: String, conformTo: Option[OpResultType] = None) extends Op
     case class ToFile(contentOp: Op, nameTresql: String = null, contentTypeTresql: String = null) extends Op
-    case class Http(method: String, uriTresql: TresqlUri.Tresql, headerTresql: String = null, body: Op = null) extends Op
+    case class Http(method: String,
+                    uriTresql: TresqlUri.Tresql,
+                    headerTresql: String = null,
+                    body: Op = null,
+                    conformTo: Option[OpResultType] = None) extends Op
     /* [jobs]
     case class JobCall(name: String) extends Op
     [jobs] */
