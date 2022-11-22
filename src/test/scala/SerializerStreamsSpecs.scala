@@ -82,8 +82,8 @@ class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseIni
 
   def serializeDtoResult(dtos: Seq[Dto], format: Target, includeHeaders: Boolean = false, wrap: Boolean = false) = {
     implicit val qe = querease
-    val source = DtoDataSerializer.source(() =>
-      dtos.iterator, includeHeaders, createEncoder = BorerNestedArraysEncoder(_, format, wrap))
+    val source = DataSerializer.source(() =>
+      dtos.iterator.map(_.toMap), includeHeaders, createEncoder = BorerNestedArraysEncoder(_, format, wrap))
     Await.result(source.runWith(foldToStringSink(format)), 1.second)
   }
 
@@ -290,7 +290,7 @@ class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseIni
     implicit val qe = querease
     def test(dtos: Seq[Dto], isCollection: Boolean, viewName: String = null, bufferSizeHint: Int = 256) =
       serializeAndTransform(
-        DtoDataSerializer.source(() => dtos.iterator, bufferSizeHint = bufferSizeHint),
+        DataSerializer.source(() => dtos.iterator.map(_.toMap), bufferSizeHint = bufferSizeHint),
         outputStream => JsonResultRenderer(outputStream, isCollection, viewName, qe.nameToViewDef),
         bufferSizeHint = bufferSizeHint,
       )
@@ -655,7 +655,7 @@ class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseIni
       JsonResultRenderer(os, isCollection = true, viewName = null, qe.nameToViewDef)
     def test(dtos: Seq[Dto], rendererFactory: OutputStream => ResultRenderer, bufferSizeHint: Int = 256) =
       serializeAndTransform(
-        DtoDataSerializer.source(() => dtos.iterator, bufferSizeHint = bufferSizeHint),
+        DataSerializer.source(() => dtos.iterator.map(_.toMap), bufferSizeHint = bufferSizeHint),
         rendererFactory,
         bufferSizeHint = bufferSizeHint,
       )

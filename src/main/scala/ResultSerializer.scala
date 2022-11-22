@@ -530,13 +530,13 @@ object BorerNestedArraysTransformer {
   }
 }
 
-object DtoDataSerializer {
-  /** Dto iterator wrapper for data serialization (without field names) */
+object DataSerializer {
+  /** Iterator wrapper for data serialization (without field names) */
   private class DtoDataIterator(
     items:  Iterator[_],
     asRows: Boolean,
     includeHeaders: Boolean,
-  )(implicit val qe: AppQuerease) extends Iterator[Any] with AutoCloseable {
+  ) extends Iterator[Any] with AutoCloseable {
     private  var isBeforeFirst = true
     private  var headering = false
     private  var nextItem: Any = null
@@ -544,10 +544,6 @@ object DtoDataSerializer {
     override def next() = {
       if (!headering)
         nextItem = items.next()
-      nextItem match {
-        case child: Dto => nextItem = child.toMap
-        case _ =>
-      }
       headering = asRows && isBeforeFirst && includeHeaders && nextItem.isInstanceOf[Map[_, _]]
       isBeforeFirst = false
       nextItem match {
@@ -573,8 +569,6 @@ object DtoDataSerializer {
     includeHeaders: Boolean = true,
     bufferSizeHint: Int     = 1024,
     createEncoder:  EncoderFactory = BorerNestedArraysEncoder(_),
-  )(implicit
-    qe: AppQuerease,
   ): Source[ByteString, NotUsed] = {
     ResultSerializer.source(
       () => new DtoDataIterator(createResult(), asRows = true, includeHeaders),

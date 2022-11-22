@@ -104,7 +104,7 @@ trait WabaseApp[User] {
             case TresqlSingleRowResult(row) =>
               (TresqlResultSerializer.rowSource(() => row), false)
             case IteratorResult(ir) =>
-              (DtoDataSerializer.source(() => ir), true)
+              (DataSerializer.source(() => ir.map(_.toMap)), true)
           }
           val addResultToContext = shouldAddResultToContext(context)
           serializeResult(SerializationBufferSize, viewSerializationBufferMaxFileSize(ac.viewName),

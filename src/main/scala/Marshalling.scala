@@ -151,7 +151,7 @@ trait QuereaseMarshalling extends QuereaseResultMarshalling { this: AppProvider[
       Marshaller.combined { map: Map[String, Any] =>
         // TODO transcode directly
         app.serializeResult(app.SerializationBufferSize, app.viewSerializationBufferMaxFileSize(viewName),
-          DtoDataSerializer.source(() => Seq(map).iterator)).map(_.head)
+          DataSerializer.source(() => Seq(map).iterator)).map(_.head)
           .map(QuereaseSerializedResult(_, isCollection = false))
       } (GenericMarshallers.futureMarshaller(toEntityQuereaseSerializedResultMarshaller(viewName)))
     Marshaller { ec => mapAndView => marsh(mapAndView._2)(ec)(mapAndView._1) }
@@ -162,7 +162,7 @@ trait QuereaseMarshalling extends QuereaseResultMarshalling { this: AppProvider[
       Marshaller.combined { seqOfMaps: Seq[Map[String, Any]] =>
         // TODO transcode directly
         app.serializeResult(app.SerializationBufferSize, app.viewSerializationBufferMaxFileSize(viewName),
-          DtoDataSerializer.source(() => seqOfMaps.iterator)).map(_.head)
+          DataSerializer.source(() => seqOfMaps.iterator)).map(_.head)
           .map(QuereaseSerializedResult(_, isCollection = true))
       } (GenericMarshallers.futureMarshaller(toEntityQuereaseSerializedResultMarshaller(viewName)))
     Marshaller { ec => seqOfMapsAndView => marsh(seqOfMapsAndView._2)(ec)(seqOfMapsAndView._1) }
@@ -289,7 +289,7 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
     def marsh(viewName: String)(implicit ec: ExecutionContext): ToResponseMarshaller[qe.QuereaseIteratorResult[app.Dto]] =
       Marshaller.combined { qir: qe.QuereaseIteratorResult[app.Dto] =>
         app.serializeResult(app.SerializationBufferSize, app.viewSerializationBufferMaxFileSize(viewName),
-          DtoDataSerializer.source(() => qir)).map(_.head)
+          DataSerializer.source(() => qir.map(_.toMap))).map(_.head)
           .map(QuereaseSerializedResult(_, isCollection = true))
       } (GenericMarshallers.futureMarshaller(toEntityQuereaseSerializedResultMarshaller(viewName)))
 
