@@ -990,10 +990,10 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     implicit val ec = as.dispatcher
 
     def decodeToMap(bs: ByteString) =
-      if (viewName == null) new CborOrJsonAnyValueDecoder().decodeToMap(bs)
+      if (viewName == null) new CborOrJsonAnyValueDecoder().decode(bs)
       else cborOrJsonDecoder.decodeToMap(bs, viewName)(viewNameToMapZero)
     def decodeToSeqOfMaps(bs: ByteString) =
-      if (viewName == null) new CborOrJsonAnyValueDecoder().decodeToSeqOfMaps(bs)
+      if (viewName == null) new CborOrJsonAnyValueDecoder().decode(bs)
       else cborOrJsonDecoder.decodeToSeqOfMaps(bs, viewName)(viewNameToMapZero)
 
     ent.toStrict(1.second).map { se =>
@@ -1036,7 +1036,9 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case kr: KeyResult => kr.ir
       case sr: StatusResult => sr
       case fi: FileInfoResult => fi.fileInfo.toMap
-      case fr: FileResult => fr.fileInfo.toMap
+      case fr: FileResult => fileHttpEntity(fr).map(objFromHttpEntity(_, null, false))
+        .getOrElse(sys.error(s"File not found: ${fr.fileInfo}"))
+      case HttpResult(r) => objFromHttpEntity(r.entity, null, false)
       case NoResult => null
       case CompatibleResult(r, ct) => r match {
         case TresqlResult(r: Result[_]) =>
