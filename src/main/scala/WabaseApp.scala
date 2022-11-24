@@ -97,28 +97,38 @@ trait WabaseApp[User] {
       .run
       .flatMap {
         case WabaseResult(ac, QuereaseResultWithCleanup(result, cleanup)) =>
-          //do serialization phase if result is based on open database cursor
-          val (resultSource, isCollection) = result match {
+          sealed trait Res
+          case class SourceRes(src: Source[ByteString, _], viewName: String, isCollection: Boolean) extends Res
+          case class StrictRes(result: QuereaseResult) extends Res
+          def res(r: QuereaseResult, v: String): Res = r match {
             case TresqlResult(tr) =>
-              (TresqlResultSerializer.source(() => tr), true)
+              SourceRes(TresqlResultSerializer.source(() => tr), v, true)
             case TresqlSingleRowResult(row) =>
-              (TresqlResultSerializer.rowSource(() => row), false)
+              SourceRes(TresqlResultSerializer.rowSource(() => row), v, false)
             case IteratorResult(ir) =>
-              (DataSerializer.source(() => ir.map(_.toMap)), true)
+              SourceRes(DataSerializer.source(() => ir.map(_.toMap)), v, true)
+            case CompatibleResult(dr: QuereaseCloseableResult, ct) => res(dr, ct.viewName)
+            case x => StrictRes(x)
           }
-          val addResultToContext = shouldAddResultToContext(context)
-          serializeResult(SerializationBufferSize, viewSerializationBufferMaxFileSize(ac.viewName),
-            resultSource, cleanup, if (addResultToContext) 2 else 1)
-            .map { srs =>
-              import context._
-              val qsr = QuereaseSerializedResult(srs.head, isCollection)
-              val ac =
-                if (addResultToContext) srs.tail.head match {
-                  case CompleteResult(bs)        => context.copy(serializedResult = Source.single(bs))
-                  case IncompleteResultSource(s) => context.copy(serializedResult = s)
-                } else context
-              WabaseResult(ac, qsr)
-            }
+          res(result, null) match {
+            case SourceRes(resultSource, viewName, isCollection) =>
+              val addResultToContext = shouldAddResultToContext(context)
+              serializeResult(SerializationBufferSize, viewSerializationBufferMaxFileSize(ac.viewName),
+                resultSource, cleanup, if (addResultToContext) 2 else 1)
+                .map { srs =>
+                  val qsr = QuereaseSerializedResult(srs.head, isCollection, viewName)
+                  import context._
+                  val ac =
+                    if (addResultToContext) srs.tail.head match {
+                      case CompleteResult(bs) => context.copy(serializedResult = Source.single(bs))
+                      case IncompleteResultSource(s) => context.copy(serializedResult = s)
+                    } else context
+                  WabaseResult(ac, qsr)
+                }
+            case StrictRes(strictRes) =>
+              cleanup(None)
+              Future.successful(WabaseResult(ac, strictRes))
+          }
         case wr => Future.successful(wr)
       }
       .andThen {
@@ -159,21 +169,19 @@ trait WabaseApp[User] {
     import context._
     def throwUnexpectedResultClass(qr: QuereaseResult) =
       sys.error(s"Unexpected result class getting old-value for '$actionName' of $viewName: ${qr.getClass.getName}")
-    qe.QuereaseAction(
-      viewName, Action.Get, values, env
-    )(resourceFactory(context), closeResources, fileStreamer).map {
-      case OptionResult(None)         =>  null
-      case MapResult(oldMap)          =>  oldMap
-      case srr: TresqlSingleRowResult =>  srr.map(qe.toCompatibleMap(_, qe.viewDef(viewName)))
-      case OptionResult(Some(old))    =>  old.toMap
-      case PojoResult(old)            =>  old.toMap
-      case qrwc: QuereaseResultWithCleanup =>
-        qrwc.map {
-          case srr: TresqlSingleRowResult  => srr.map(qe.toCompatibleMap(_, qe.viewDef(viewName)))
-          case x                           => throwUnexpectedResultClass(x)
-        }
-      case x                          => throwUnexpectedResultClass(x)
+    def oldVal(ov: QuereaseResult): Map[String, Any] = ov match {
+      case OptionResult(None) => null
+      case MapResult(oldMap) => oldMap
+      case srr: TresqlSingleRowResult => srr.map(qe.toCompatibleMap(_, qe.viewDef(viewName)))
+      case OptionResult(Some(old)) => old.toMap
+      case PojoResult(old) => old.toMap
+      case CompatibleResult(r, _) => oldVal(r)
+      case qrwc: QuereaseResultWithCleanup => qrwc map oldVal
+      case x => throwUnexpectedResultClass(x)
+
     }
+    qe.QuereaseAction(viewName, Action.Get, values, env)(
+      resourceFactory(context), closeResources, fileStreamer).map(oldVal)
   }
   protected def throwOldValueNotFound(message: String, locale: Locale): Nothing =
     throw new org.mojoz.querease.NotFoundException(translate(message)(locale))

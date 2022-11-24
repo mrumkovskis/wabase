@@ -152,7 +152,7 @@ trait QuereaseMarshalling extends QuereaseResultMarshalling { this: AppProvider[
         // TODO transcode directly
         app.serializeResult(app.SerializationBufferSize, app.viewSerializationBufferMaxFileSize(viewName),
           DataSerializer.source(() => Seq(map).iterator)).map(_.head)
-          .map(QuereaseSerializedResult(_, isCollection = false))
+          .map(QuereaseSerializedResult(_, isCollection = false, viewName))
       } (GenericMarshallers.futureMarshaller(toEntityQuereaseSerializedResultMarshaller(viewName)))
     Marshaller { ec => mapAndView => marsh(mapAndView._2)(ec)(mapAndView._1) }
   }
@@ -163,7 +163,7 @@ trait QuereaseMarshalling extends QuereaseResultMarshalling { this: AppProvider[
         // TODO transcode directly
         app.serializeResult(app.SerializationBufferSize, app.viewSerializationBufferMaxFileSize(viewName),
           DataSerializer.source(() => seqOfMaps.iterator)).map(_.head)
-          .map(QuereaseSerializedResult(_, isCollection = true))
+          .map(QuereaseSerializedResult(_, isCollection = true, viewName))
       } (GenericMarshallers.futureMarshaller(toEntityQuereaseSerializedResultMarshaller(viewName)))
     Marshaller { ec => seqOfMapsAndView => marsh(seqOfMapsAndView._2)(ec)(seqOfMapsAndView._1) }
   }
@@ -240,6 +240,13 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
     }
   }
 
+  def toResponseCompatibleResultMarshaller(wr: app.WabaseResult): ToResponseMarshaller[CompatibleResult] = {
+    // TODO use conformTo field to filter rendered structure
+    Marshaller { implicit ec => cr =>
+      (toResponseWabaseResultMarshaller: ToResponseMarshaller[app.WabaseResult])(wr.copy(result = cr.result))
+    }
+  }
+
   def toEntityQuereaseSerializedResultMarshaller(viewName: String): ToEntityMarshaller[QuereaseSerializedResult] =
     Marshaller { implicit ec => sr =>
       implicit val formats_marshaller: ToEntityMarshaller[SerializedResult] = {
@@ -277,6 +284,7 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
       case dr: QuereaseDelRes => (toEntityQuereaseDeleteResultMarshaller:     ToResponseMarshaller[QuereaseDelRes])(dr)
       case fr: FileResult     => (toResponseFileResultMarshaller:             ToResponseMarshaller[FileResult]    )(fr)
       case hr: HttpResult     => (toResponseHttpResultMarshaller:             ToResponseMarshaller[HttpResult]    )(hr)
+      case cr: CompatibleResult => (toResponseCompatibleResultMarshaller(wr): ToResponseMarshaller[CompatibleResult])(cr)
       case tq: TresqlResult   => sys.error("TresqlResult must be serialized before marshalling.")
       case rr: TresqlSingleRr => sys.error("TresqlSingleRowResult must be serialized before marshalling.")
       case it: IteratorResult => sys.error("IteratorResult must be serialized before marshalling.")
@@ -290,7 +298,7 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
       Marshaller.combined { qir: qe.QuereaseIteratorResult[app.Dto] =>
         app.serializeResult(app.SerializationBufferSize, app.viewSerializationBufferMaxFileSize(viewName),
           DataSerializer.source(() => qir.map(_.toMap))).map(_.head)
-          .map(QuereaseSerializedResult(_, isCollection = true))
+          .map(QuereaseSerializedResult(_, isCollection = true, viewName))
       } (GenericMarshallers.futureMarshaller(toEntityQuereaseSerializedResultMarshaller(viewName)))
 
     Marshaller { ec => res => marsh(res.view.name)(ec)(res) }
@@ -304,7 +312,7 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
           case row:    RowLike   => TresqlResultSerializer.rowSource(() => row)
         }, app.dbAccess.closeResources(res, _))
         .map(_.head)
-        .map(QuereaseSerializedResult(_, tresqlResult.isInstanceOf[Result[_]]))
+        .map(QuereaseSerializedResult(_, tresqlResult.isInstanceOf[Result[_]], null))
       GenericMarshallers
         .futureMarshaller(toEntityQuereaseSerializedResultMarshaller(null))(sr)
     }

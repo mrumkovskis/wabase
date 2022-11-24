@@ -163,7 +163,6 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
 
   it should "return person" in {
     val p = new Person
-    val view = querease.viewDef[Person]
     p.name = "Kalis"
     p.surname = "Calis"
     p.sex = "M"
@@ -174,7 +173,8 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
     pa.last_modified = java.sql.Timestamp.valueOf("2021-06-17 17:16:00")
     p.accounts = List(pa)
     querease.doAction("person", "save", p.toMap(querease), Map()).map {
-      case srr: TresqlSingleRowResult => removeIds(srr.map(querease.toCompatibleMap(_, view))) should be {
+      case CompatibleResult(r: TresqlSingleRowResult, ct) =>
+        removeIds(r.map(querease.toCompatibleMap(_, querease.viewDef(ct.viewName)))) should be {
         Map("name" -> "Mr. Kalis", "surname" -> "Calis", "sex" -> "M",
           "birthdate" -> java.sql.Date.valueOf("1980-12-14"), "main_account" -> null, "accounts" ->
             List(Map("number" -> "AAA", "balance" -> 0.00,
@@ -191,7 +191,8 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
       pa.last_modified = java.sql.Timestamp.valueOf("2021-06-19 00:15:00")
       p.accounts = List(pa)
       querease.doAction("person", "save", p.toMap(querease), Map()).map {
-        case srr: TresqlSingleRowResult => removeIds(srr.map(querease.toCompatibleMap(_, view))) should be {
+        case CompatibleResult(r: TresqlSingleRowResult, ct) =>
+          removeIds(r.map(querease.toCompatibleMap(_, querease.viewDef(ct.viewName)))) should be {
           Map("main_account" -> null, "name" -> "Ms. Zina", "surname" -> "Mina", "sex" -> "F",
             "birthdate" -> java.sql.Date.valueOf("1982-12-14"), "accounts" ->
               List(Map("number" -> "BBB", "balance" -> 0.00,
@@ -340,7 +341,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
       .flatMap(_ => saveData("person_health_priv", vaccines_priv))
       .flatMap { _ =>
         querease.doAction("person_with_health_data", "list", Map("names" -> List("Mario", "Gunzagi")), Map()).map {
-          case TresqlResult(res) =>
+          case CompatibleResult(TresqlResult(res), _) =>
             res.toListOfMaps.map(m => (new PersonWithHealthData).fill(m)(querease).toMap(querease)).toList should be (
               List(
                 Map("name" -> "Gunzagi", "sex" -> "M", "birthdate" -> java.sql.Date.valueOf("1999-06-23"),

@@ -3,7 +3,6 @@ package org.wabase
 import akka.actor.ActorSystem
 import akka.http.scaladsl.model.HttpHeader.ParsingResult.{Error, Ok}
 import akka.http.scaladsl.model.{ContentType, HttpEntity, HttpHeader, HttpMethods, HttpRequest, HttpResponse, MediaTypes, UniversalEntity}
-import akka.stream.Materializer
 import akka.stream.scaladsl.Source
 import akka.util.ByteString
 import org.mojoz.querease.QuereaseExpressions.DefaultParser
@@ -14,6 +13,7 @@ import org.mojoz.metadata.Type
 import org.mojoz.metadata.{FieldDef, ViewDef}
 import org.tresql.ast.{Exp, Fun, Join, Obj, Variable, With, Query => PQuery}
 import org.wabase.AppFileStreamer.FileInfo
+import org.wabase.AppMetadata.Action
 import org.wabase.AppMetadata.Action.{VariableTransform, VariableTransforms}
 
 import scala.reflect.ManifestFactory
@@ -38,19 +38,22 @@ case class RedirectStatus(value: TresqlUri.Uri) extends StatusValue
 case class StringStatus(value: String) extends StatusValue
 sealed trait QuereaseResult
 sealed trait QuereaseCloseableResult extends QuereaseResult
-case class TresqlResult(result: Result[RowLike]) extends QuereaseCloseableResult
-case class TresqlSingleRowResult(row: RowLike) extends QuereaseCloseableResult {
+/** Data result can conform to view structure */
+sealed trait DataResult extends QuereaseResult
+case class TresqlResult(result: Result[RowLike]) extends QuereaseCloseableResult with DataResult
+case class TresqlSingleRowResult(row: RowLike) extends QuereaseCloseableResult with DataResult {
   /** map, close row (i.e. result), return mapped */
   def map[T](f: RowLike => T): T = try f(row) finally row.close()
 }
-case class MapResult(result: Map[String, Any]) extends QuereaseResult
-case class ListResult(result: List[AppQuerease#DTO]) extends QuereaseResult
+case class MapResult(result: Map[String, Any]) extends DataResult
+case class ListResult(result: List[AppQuerease#DTO]) extends DataResult
 // TODO after decoupling QereaseIo from Querease this class should be refactored to PojoResult[X]
-case class PojoResult(result: AppQuerease#DTO) extends QuereaseResult
+case class PojoResult(result: AppQuerease#DTO) extends DataResult
 // TODO after decoupling QereaseIo from Querease this class should be refactored to IteratorResult[X]
-case class IteratorResult(result: AppQuerease#QuereaseIteratorResult[AppQuerease#DTO]) extends QuereaseCloseableResult
+case class IteratorResult(result: AppQuerease#QuereaseIteratorResult[AppQuerease#DTO])
+  extends QuereaseCloseableResult with DataResult
 // TODO after decoupling QereaseIo from Querease this class should be refactored to OptionResult[X]
-case class OptionResult(result: Option[AppQuerease#DTO]) extends QuereaseResult
+case class OptionResult(result: Option[AppQuerease#DTO]) extends DataResult
 case class LongResult(value: Long) extends QuereaseResult
 case class StringResult(value: String) extends QuereaseResult
 case class NumberResult(value: java.lang.Number) extends QuereaseResult
@@ -62,8 +65,8 @@ case class KeyResult(ir: IdResult, viewName: String, key: Seq[Any]) extends Quer
 case class QuereaseDeleteResult(count: Int) extends QuereaseResult
 case class StatusResult(code: Int, value: StatusValue) extends QuereaseResult
 case class FileInfoResult(fileInfo: FileInfo) extends QuereaseResult
-case class FileResult(fileInfo: FileInfo, fileStreamer: FileStreamer) extends QuereaseResult
-case class HttpResult(response: HttpResponse) extends QuereaseResult
+case class FileResult(fileInfo: FileInfo, fileStreamer: FileStreamer) extends DataResult
+case class HttpResult(response: HttpResponse) extends DataResult
 case object NoResult extends QuereaseResult
 case class QuereaseResultWithCleanup(result: QuereaseCloseableResult, cleanup: Option[Throwable] => Unit)
   extends QuereaseResult {
@@ -78,7 +81,10 @@ case class QuereaseResultWithCleanup(result: QuereaseCloseableResult, cleanup: O
     }.get
   }
 }
-case class QuereaseSerializedResult(result: SerializedResult, isCollection: Boolean) extends QuereaseResult
+case class QuereaseSerializedResult(result: SerializedResult, isCollection: Boolean,
+                                    conformToView: String) extends QuereaseResult
+case class CompatibleResult(result: DataResult, conformTo: Action.OpResultType)
+  extends DataResult with QuereaseCloseableResult
 
 trait AppQuereaseIo extends org.mojoz.querease.ScalaDtoQuereaseIo with JsonConverter { self: AppQuerease =>
 
@@ -358,54 +364,12 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
   ): Future[QuereaseResult] = {
     import Action._
 
-    def v(view: String) = viewDef(
-      if (view == "this") context.view.map(_.name) getOrElse view
-      else                view
-    )
-
-    def dataForNewStep(oldStep: Step, res: QuereaseResult) = res match {
-      case TresqlResult(tr) => tr match {
-        case dml: DMLResult =>
-          dml.id.map(IdResult(_, null)) orElse dml.count getOrElse 0
-        case SingleValueResult(v) => v
-        case ar: ArrayResult[_] => ar.values.toList
-        case r: Result[_] => (oldStep match {
-          case Evaluation(_, _, ViewCall(_, viewName, _)) =>
-            toCompatibleSeqOfMaps(r, v(viewName))
-          case _  =>
-            r.toListOfMaps
-        }) match {
-          case row :: Nil if row.size == 1 => row.head._2 // unwrap if result is one row, one column
-          case rows => rows
-        }
-      }
-      case srr: TresqlSingleRowResult =>
-        oldStep match {
-          case Evaluation(_, _, ViewCall(_, viewName, _)) =>
-            srr.map(toCompatibleMap(_, v(viewName)))
-          case _ =>
-            srr.map(_.toMap)
-        }
-      case MapResult(mr) => mr
-      case PojoResult(pr) => pr.toMap(this)
-      case ListResult(lr) => lr
-      case IteratorResult(ir) => ir.map(_.toMap(this)).toList
-      case OptionResult(or) => or.map(_.toMap(this)).orNull
-      case LongResult(nr) => nr
-      case NumberResult(nr) => nr
-      case StringResult(str) => str
-      case id: IdResult => id
-      case kr: KeyResult => kr.ir
-      case sr: StatusResult => sr
-      case fi: FileInfoResult => fi.fileInfo.toMap
-      case fr: FileResult => fr.fileInfo.toMap
-      case NoResult => null
-      case x => sys.error(s"${x.getClass.getName} not expected here!")
-    }
-    def updateCurRes(cr: Map[String, Any], key: Option[String], res: Any) = res match {
-      case ir: IdResult => key
-        .map(k => cr + (k -> ir.id))
-        .getOrElse(cr ++ ir.toMap)  // id result always updates current result
+    def updateCurRes(cr: Map[String, Any], key: Option[String], resF: Future[_]) = resF map {
+      case ir: IdResult =>
+        key
+          .map(k => cr + (k -> ir.id))
+          .getOrElse(cr ++ ir.toMap)
+        // id result always updates current result
       case r => key.map(k => cr + (k -> r)).getOrElse(cr)
     }
     def doStep(step: Step, stepDataF: Future[Map[String, Any]]): Future[QuereaseResult] = {
@@ -456,10 +420,11 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
         doStep(s, curData) flatMap { stepRes =>
           s match {
             case e: Evaluation =>
-              doSteps(tail, context, curData.map(updateCurRes(_, e.name, dataForNewStep(s, stepRes))))
+              doSteps(tail, context, curData
+                .flatMap(updateCurRes(_, e.name, dataForNextStep(stepRes, context, true))))
             case se: SetEnv =>
               val newData =
-                dataForNewStep(se, stepRes) match {
+                dataForNextStep(stepRes, context, true) flatMap {
                   case m: Map[String, Any]@unchecked => Future.successful(m)
                   case x =>
                     //in the case of primitive value return step must have name
@@ -467,7 +432,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
                 }
               doSteps(tail, context, newData)
             case rv: RemoveVar =>
-              val newData = dataForNewStep(rv, stepRes) match {
+              val newData = dataForNextStep(stepRes, context, true) flatMap {
                 case m: Map[String, Any]@unchecked => Future.successful(m)
                 case x => sys.error(s"Remove var step cannot produce anyting but Map, instead got $x")
               }
@@ -587,33 +552,14 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     )
     val viewName = v.name
     if (context.view.exists(_.name == viewName)) {
-      def conformToView(conformTo: Option[OpResultType], viewAction: String) =
-        conformTo.map(_.viewName).getOrElse {
-          viewAction match {
-            case Action.Save | Action.Upsert | Action.Insert | Action.Update => viewName
-            case _ => null
-          }
-        }
       val callDataF =
         if (viewOp == null) Future.successful(data ++ env)
         else {
-          doActionOp(viewOp, data, env, context).flatMap {
-            case TresqlResult(tr) => tr match {
-              case SingleValueResult(v) =>
-                v match {
-                  case m: Map[String@unchecked, _] => Future.successful(m)
-                  case x => sys.error(s"Value for view op must be of type Map[String, Any], found: $x")
-                }
-              case r: Result[_] => Future.successful(r.unique.toMap)
+          doActionOp(viewOp, data, env, context).flatMap(dataForNextStep(_, context, false))
+            .map {
+              case r: Map[String@unchecked, _] => r ++ env
+              case x => sys.error(s"Invalid view op result. Currently unable to create Map[String, _] from $x")
             }
-            case r: TresqlSingleRowResult => Future.successful(r.map(_.toMap))
-            case fr: FileResult =>
-              fileHttpEntity(fr).map(mapFromHttpEntity(_, viewName))
-                .getOrElse(sys.error(s"File not found: ${fr.fileInfo}"))
-            case HttpResult(res) => mapFromHttpEntity(res.entity, viewName)
-            case MapResult(res) => Future.successful(res)
-            case x => sys.error(s"Invalid view op result. Currently unable to create Map[String, _] from $x")
-          }.map(_ ++ env)
         }
 
       callDataF.map { callData =>
@@ -628,7 +574,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
 
         def string(name: String) = callData.get(name) map String.valueOf
 
-        method match {
+        (method match {
           case Get =>
             val keyValues   = getKeyValues(viewName, callData)
             val keyColNames = viewNameToKeyColNames(viewName)
@@ -659,6 +605,10 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
             LongResult(countAll_(v, callData))
           case x =>
             sys.error(s"Unknown view action $x")
+        }) match {
+          case r: TresqlSingleRowResult => CompatibleResult(r, Action.OpResultType(viewName, false))
+          case r: DataResult => CompatibleResult(r, Action.OpResultType(viewName, true))
+          case r => r
         }
       }
     } else {
@@ -666,23 +616,37 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     }
   }
 
-  protected def doInvocation(className: String,
-                             function: String,
+  protected def doInvocation(op: Action.Invocation,
                              data: Map[String, Any])(
                             implicit res: Resources,
                             ec: ExecutionContext): Future[QuereaseResult] = {
+    import op._
+    def comp_q_result(r: Any) = {
+      def createCompatibleResult(result: QuereaseResult, conformTo: Action.OpResultType) = result match {
+        case c: CompatibleResult =>
+          require(c.conformTo == conformTo, s"Incompatible results ${c.conformTo} != $conformTo")
+          c
+        case r: DataResult => CompatibleResult(r, conformTo)
+        case x => throw new IllegalArgumentException(s"Result argument must be of type DataResult, instead encountered: $x")
+      }
+      val qr = qresult(r)
+      conformTo.map(createCompatibleResult(qr, _)).getOrElse(qr)
+    }
     def qresult(r: Any) = r match {
       case null => NoResult // reflection call on function with Unit (void) return type returns null
       case m: Map[String, Any]@unchecked => MapResult(m)
       case m: java.util.Map[String, Any]@unchecked => MapResult(m.asScala.toMap)
       case l: List[DTO@unchecked] => ListResult(l)
       case r: Result[_] => TresqlResult(r)
+      case r: RowLike => TresqlSingleRowResult(r)
       case l: Long => LongResult(l)
       case s: String => StringResult(s)
       case n: java.lang.Number => NumberResult(n)
       case r: QuereaseIteratorResult[DTO]@unchecked => IteratorResult(r)
       case d: DTO@unchecked => PojoResult(d)
       case o: Option[DTO]@unchecked => OptionResult(o)
+      case h: HttpResponse => HttpResult(h)
+      case q: QuereaseResult => q
       case x => sys.error(s"Unrecognized result type: ${x.getClass}, value: $x from function $className.$function")
     }
     def param(parType: Class[_]) = {
@@ -770,23 +734,27 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     as: ActorSystem,
     fs: FileStreamer,
   ): Future[QuereaseResult] = {
-    def addParentData(map: Map[String, Any]) = {
-      var key = ".."
-//      while (map.contains(key)) key += "_" + key // hopefully no .. key is in data map
-      map + (key -> data)
-    }
-    doActionOp(op.initOp, data, env, context).map {
-      case TresqlResult(tr) => tr match {
-        case SingleValueResult(sr) => sr match {
-          case s: Seq[Map[String, _]]@unchecked => s map addParentData
-          case m: Map[String@unchecked, _] => List(m) map addParentData
-          case x => sys.error(s"Not iterable result for foreach operation: $x")
-        }
-        case r: Result[_] => r.map(_.toMap) map addParentData
+    def iterator(res: QuereaseResult): TraversableOnce[Map[String, Any]] = {
+      def addParentData(map: Map[String, Any]) = {
+        var key = ".."
+        //      while (map.contains(key)) key += "_" + key // hopefully no .. key is in data map
+        map + (key -> data)
       }
-      case r: TresqlSingleRowResult => List(r.map(_.toMap)) map addParentData
-      case x => sys.error(s"Not iterable result for foreach operation: $x")
+      res match {
+        case TresqlResult(tr) => tr match {
+          case SingleValueResult(sr) => sr match {
+            case s: Seq[Map[String, _]]@unchecked => s map addParentData
+            case m: Map[String@unchecked, _] => List(m) map addParentData
+            case x => sys.error(s"Not iterable result for foreach operation: $x")
+          }
+          case r: Result[_] => r.map(_.toMap) map addParentData
+        }
+        case r: TresqlSingleRowResult => List(r.map(_.toMap)) map addParentData
+        case CompatibleResult(r, ct) => iterator(r) // TODO Execute to compatible map
+        case x => sys.error(s"Not iterable result for foreach operation: $x")
+      }
     }
+    doActionOp(op.initOp, data, env, context).map(iterator)
     .flatMap { mapIterator =>
       Future.traverse(mapIterator.toSeq) { itData =>
         doSteps(op.action.steps, context.copy(stepName = "foreach"), Future.successful(itData))
@@ -803,9 +771,10 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
   )(implicit
     res: Resources,
     ec: ExecutionContext,
-    fs: FileStreamer): Future[FileResult] = {
+    fs: FileStreamer): Future[DataResult] = {
     val (id, sha) = Query(op.idShaTresql)(res.withParams(data ++ env)).unique[Long, String]
-    Future.successful(FileResult(fs.getFileInfo(id, sha).map(_.file_info).orNull, fs))
+    val r = FileResult(fs.getFileInfo(id, sha).map(_.file_info).orNull, fs)
+    Future.successful { op.conformTo.map(CompatibleResult(r, _)).getOrElse(r) }
   }
 
   protected def doToFileAction(
@@ -844,7 +813,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     res: Resources,
     ec: ExecutionContext,
     as: ActorSystem,
-    fs: FileStreamer): Future[HttpResult] = {
+    fs: FileStreamer): Future[DataResult] = {
     val opData = data ++ env
     val httpMeth = HttpMethods.getForKeyCaseInsensitive(op.method).get
     val uri = {
@@ -876,7 +845,9 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
           reqWithoutBody.withEntity(clo.map(HttpEntity(ct, _, src)).getOrElse(HttpEntity(ct, src)))
       }
     }
-    doHttpRequest(reqF).map(HttpResult)
+    doHttpRequest(reqF)
+      .map(HttpResult)
+      .map { r => op.conformTo.map(CompatibleResult(r, _)).getOrElse(r) }
   }
 
   protected def doActionOp(
@@ -896,7 +867,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case Action.ViewCall(method, view, viewOp) =>
         doViewCall(method, view, viewOp, data, env, context)
       case Action.UniqueOpt(innerOp) =>
-        def createGetResult(res: QuereaseResult): QuereaseResult = res match {
+        def createGetResult(res: QuereaseResult): DataResult = res match {
           case TresqlResult(r) if !r.isInstanceOf[DMLResult] =>
             r.uniqueOption map TresqlSingleRowResult getOrElse OptionResult(None)
           case IteratorResult(r) =>
@@ -906,11 +877,12 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
                 if (r.hasNext) sys.error("More than one row for unique result") else OptionResult(Option(v))
               case false => OptionResult(None)
             } finally r.close
-          case r => r
+          case c: CompatibleResult => c.copy(result = createGetResult(c.result))
+          case r => sys.error(s"unique opt can only process DataResult type, instead encountered: $r")
         }
         doActionOp(innerOp, data, env, context) map createGetResult
-      case Action.Invocation(className, function) =>
-        doInvocation(className, function, data ++ env)
+      case inv: Action.Invocation =>
+        doInvocation(inv, data ++ env)
       case Action.RedirectToKey(name) =>
         val viewName = if (name == "this") context.viewName else name
         val idName = viewNameToIdName.getOrElse(viewName, null)
@@ -968,32 +940,25 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
      fs: FileStreamer,
    ): Future[(Source[ByteString, _], ContentType, Option[Long])] = {
     val ct: ContentType = if (contentType == null) MediaTypes.`application/json` else contentType
-    doActionOp(op, data, env, context).map {
+
+    def renderedResult(res: QuereaseResult, vn: String, isColl: Option[Boolean]):
+      (Source[ByteString, _], ContentType, Option[Long]) = res match {
       case TresqlResult(tr) => // TODO add SingleValueResult support
-        val src = TresqlResultSerializer.source(() => tr)
-        (op match {
-          case Action.ViewCall(_, view, _) =>
-            val vn = if (view == "this") context.viewName else view
-            renderedSource(src, vn, true, ct)
-          case _ =>
-            renderedSource(src, null, true, ct)
-        }, contentType, None)
+        (renderedSource(TresqlResultSerializer.source(() => tr), vn, isColl.getOrElse(true), ct),
+          contentType, None)
       case TresqlSingleRowResult(row) =>
-        val src = TresqlResultSerializer.rowSource(() => row)
-        (op match {
-          case Action.ViewCall(_, view, _) =>
-            val vn = if (view == "this") context.viewName else view
-            renderedSource(src, vn, false, ct)
-          case _ =>
-            renderedSource(src, null, false, ct)
-        }, contentType, None)
+        (renderedSource(TresqlResultSerializer.rowSource(() => row), vn, isColl.getOrElse(false), ct),
+          contentType, None)
       case fileResult: FileResult =>
         fileHttpEntity(fileResult)
           .map(e => (e.dataBytes, e.contentType, e.contentLengthOption))
           .getOrElse(sys.error(s"File not found: ${fileResult.fileInfo}"))
       case HttpResult(res) => (res.entity.dataBytes, res.entity.contentType, res.entity.contentLengthOption)
+      case CompatibleResult(r, Action.OpResultType(vn, isColl)) => renderedResult(r, vn, Option(isColl))
       case x => sys.error(s"Currently unable to create rendered source from result: $x")
     }
+
+    doActionOp(op, data, env, context).map(renderedResult(_, null, None))
   }
 
   protected def doHttpRequest(reqF: Future[HttpRequest])(implicit as: ActorSystem): Future[HttpResponse] = {
@@ -1019,13 +984,75 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     }
   }
 
-  private def mapFromHttpEntity(ent: HttpEntity, viewName: String)(implicit as: ActorSystem) = {
+  private def objFromHttpEntity(ent: HttpEntity, viewName: String, isCollection: Boolean)(implicit
+                                                                                          as: ActorSystem) = {
     import scala.concurrent.duration._
     implicit val ec = as.dispatcher
+
     def decodeToMap(bs: ByteString) =
       if (viewName == null) new CborOrJsonAnyValueDecoder().decodeToMap(bs)
       else cborOrJsonDecoder.decodeToMap(bs, viewName)(viewNameToMapZero)
-    ent.toStrict(1.second).map(se => decodeToMap(se.data))
+    def decodeToSeqOfMaps(bs: ByteString) =
+      if (viewName == null) new CborOrJsonAnyValueDecoder().decodeToSeqOfMaps(bs)
+      else cborOrJsonDecoder.decodeToSeqOfMaps(bs, viewName)(viewNameToMapZero)
+
+    ent.toStrict(1.second).map { se =>
+      if (isCollection) decodeToSeqOfMaps(se.data) else decodeToMap(se.data)
+    }
+  }
+
+  private def dataForNextStep(res: QuereaseResult, context: ActionContext,
+                              unwrapSingleValue: Boolean)(implicit as: ActorSystem): Future[_] = {
+    def v(view: String) = viewDef(
+      if (view == "this") context.view.map(_.name) getOrElse view
+      else view
+    )
+
+    def mayBeUnwrapSingleVal(l: Seq[Map[String, Any]]) = l match {
+      case row :: Nil if row.size == 1 => row.head._2
+      case rows => rows
+    }
+
+    (res match {
+      case TresqlResult(tr) => tr match {
+        case dml: DMLResult =>
+          dml.id.map(IdResult(_, null)) orElse dml.count getOrElse 0
+        case SingleValueResult(v) => v
+        case ar: ArrayResult[_] => ar.values.toList
+        case r: Result[_] =>
+          val l = r.toListOfMaps
+          if (unwrapSingleValue) mayBeUnwrapSingleVal(l) else l
+      }
+      case srr: TresqlSingleRowResult => srr.map(_.toMap)
+      case MapResult(mr) => mr
+      case PojoResult(pr) => pr.toMap(this)
+      case ListResult(lr) => lr
+      case IteratorResult(ir) => ir.map(_.toMap(this)).toList
+      case OptionResult(or) => or.map(_.toMap(this)).orNull
+      case LongResult(nr) => nr
+      case NumberResult(nr) => nr
+      case StringResult(str) => str
+      case id: IdResult => id
+      case kr: KeyResult => kr.ir
+      case sr: StatusResult => sr
+      case fi: FileInfoResult => fi.fileInfo.toMap
+      case fr: FileResult => fr.fileInfo.toMap
+      case NoResult => null
+      case CompatibleResult(r, ct) => r match {
+        case TresqlResult(r: Result[_]) =>
+          val l = toCompatibleSeqOfMaps(r, v(ct.viewName))
+          if (unwrapSingleValue) mayBeUnwrapSingleVal(l) else l
+        case r: TresqlSingleRowResult => r.map(toCompatibleMap(_, v(ct.viewName)))
+        case fr: FileResult => fileHttpEntity(fr).map(objFromHttpEntity(_, ct.viewName, ct.isCollection))
+          .getOrElse(sys.error(s"File not found: ${fr.fileInfo}"))
+        case HttpResult(r) => objFromHttpEntity(r.entity, ct.viewName, ct.isCollection)
+        case r => dataForNextStep(r, context, unwrapSingleValue)
+      }
+      case x => sys.error(s"${x.getClass.getName} not expected here!")
+    }) match {
+      case f: Future[_] => f
+      case x => Future.successful(x)
+    }
   }
 
   abstract class AppQuereaseDefaultParser extends DefaultParser {

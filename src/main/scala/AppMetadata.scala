@@ -670,10 +670,10 @@ trait AppMetadataDataFlowParser extends QueryParsers { self =>
     case action ~ view ~ op => ViewCall(action, view, op.orNull)
   }
   def uniqueOptOp: Parser[UniqueOpt] = "unique_opt" ~> operation ^^ UniqueOpt
-  def invocationOp: Parser[Invocation] = InvocationRegex ^^ {
-    case res =>
+  def invocationOp: Parser[Invocation] = opt(opResultType) ~ InvocationRegex ^^ {
+    case rt ~ res =>
       val idx = res.lastIndexOf('.')
-      Action.Invocation(res.substring(0, idx), res.substring(idx + 1))
+      Action.Invocation(res.substring(0, idx), res.substring(idx + 1), rt)
   }
   def fileOp: Parser[File] = opt(opResultType) ~ ("file" ~> expr) ^^ {
     case conformTo ~ e => File(e.tresql, conformTo)
@@ -763,7 +763,7 @@ object AppMetadata {
     case class ViewCall(method: String, view: String, data: Op = null) extends Op
     case class RedirectToKey(name: String) extends Op
     case class UniqueOpt(innerOp: Op) extends Op
-    case class Invocation(className: String, function: String) extends Op
+    case class Invocation(className: String, function: String, conformTo: Option[OpResultType] = None) extends Op
     case class Status(code: Option[Int], bodyTresql: String, parameterIndex: Int) extends Op
     case class VariableTransforms(transforms: List[VariableTransform]) extends Op
     case class Foreach(initOp: Op, action: Action) extends Op
