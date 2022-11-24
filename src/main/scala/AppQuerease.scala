@@ -283,20 +283,12 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
             implicit val fs = fileStreamer
             try {
               doAction(viewName, actionName, data, env).map {
-                case r: QuereaseCloseableResult => QuereaseResultWithCleanup(
-                  r,
-                  r match {
-                    case srr: TresqlSingleRowResult => mbe => try srr.row.close finally closeResources(res, mbe)
-                    case _ => closeResources(res, _)
-                  }
-                )
-                case r: QuereaseResult =>
-                  closeResources(res, None)
-                  r
+                case r: QuereaseCloseableResult => QuereaseResultWithCleanup(r, closeResources(res, _))
+                case r: QuereaseResult => closeResources(res, None); r
               }
-                .andThen {
-                  case Failure(NonFatal(exception)) => closeResources(res, Option(exception))
-                }
+              .andThen {
+                case Failure(NonFatal(exception)) => closeResources(res, Option(exception))
+              }
             } catch { // catch exception also here in the case doAction is not executed into separate thread
               case NonFatal(e) =>
                 closeResources(res, Option(e))

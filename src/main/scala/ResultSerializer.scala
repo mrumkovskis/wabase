@@ -595,7 +595,7 @@ object TresqlResultSerializer {
       isBeforeFirst = false
       if  (headering)
            headerIterator(rows, includeHeaders)
-      else valuesIterator(rows, includeHeaders)
+      else valuesIterator(rows, includeHeaders, false)
     }
     override def close(): Unit = rows.close()
   }
@@ -608,8 +608,12 @@ object TresqlResultSerializer {
   }
   private def headerIterator(row: RowLike, includeHeaders: Boolean) =
     new TresqlColsIterator(row.columns.map(_.name).toVector.iterator, includeHeaders)
-  private def valuesIterator(row: RowLike, includeHeaders: Boolean) =
-    new TresqlColsIterator(row.values.iterator, includeHeaders)
+  private def valuesIterator(row: RowLike, includeHeaders: Boolean, closeAfterUse: Boolean) = {
+    val it = row.values.iterator
+    if (closeAfterUse) row.close()
+    new TresqlColsIterator(it, includeHeaders)
+  }
+
   def rowSource(
     createResult:   () => RowLike,
     includeHeaders: Boolean = true,
@@ -620,8 +624,8 @@ object TresqlResultSerializer {
       val row = createResult()
       if  (includeHeaders)
            Seq(headerIterator(row, includeHeaders),
-               valuesIterator(row, includeHeaders)).iterator
-      else Seq(valuesIterator(row, includeHeaders)).iterator
+               valuesIterator(row, includeHeaders, true)).iterator
+      else Seq(valuesIterator(row, includeHeaders, true)).iterator
     }
     ResultSerializer.source(createEncodable, createEncoder(_), bufferSizeHint)
   }
