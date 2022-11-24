@@ -237,6 +237,15 @@ class CborOrJsonAnyValueDecoder() {
     ))
   }
 
+  def decode[M <: Map[String, Any] : ClassTag](
+    data:       ByteString,
+    decodeFrom: Target = Json,
+    mapZero:    () => M = () => Map.empty[String, Any],
+  ): Any = {
+    implicit val decoder = anyValueDecoder(mapZero)
+    reader(data, decodeFrom)[Any]
+  }
+
   def decodeToMap[M <: Map[String, Any] : ClassTag](
     data:       ByteString,
     decodeFrom: Target = Json,
