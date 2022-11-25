@@ -7,7 +7,7 @@ import org.mojoz.metadata.io.MdConventions
 import org.mojoz.metadata.out.SqlGenerator.SimpleConstraintNamingRules
 import org.mojoz.querease._
 import org.tresql.{CacheBase, QueryParser, SimpleCacheBase}
-import org.tresql.ast.{Col, Cols, Exp, StringConst}
+import org.tresql.ast.Exp
 import org.tresql.parsing.QueryParsers
 import org.wabase.AppMetadata.Action.VariableTransform
 
@@ -418,82 +418,71 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   protected def resolveDbAccessKeys(viewDefs: Map[String, ViewDef]): Map[String, ViewDef] =
     viewDefs.transform { case (viewName, viewDef) =>
       import Action._
-      // result is Map of: (viewName, actionName) -> Seq[DbAccessKey]
-      def dbAccessKeys(v: ViewDef, action: String, processed: Set[(String, String)]): Map[(String, String), Seq[DbAccessKey]] = {
-        if (processed(v.name -> action)) Map()
-        else {
-          def collectFromViewAction[A](pf: PartialFunction[Step, A]): Seq[A] = {
-            v.actions
-              .get(action)
-              .map(_.steps)
-              .map(_.collect(pf))
-              .getOrElse(Nil)
-          }
 
-          val viewDbKeys = {
-            def dbs(tresql: String) = {
-              if (tresql == null) Nil
-              else {
-                val p = new QueryParser(null, null)
-                p.traverser(p.dbExtractor)(Nil)(p.parseExp(tresql)).map(DbAccessKey(_, null))
-              }
+      case class State(thisView: String, dbKeys: Seq[DbAccessKey], processed: Set[(String, String)])
+
+      def updStateDbs(s: State, dbk: Seq[DbAccessKey]) = s.copy(dbKeys = s.dbKeys ++ dbk)
+      def processView(method: String, viewName: String, state: State): State = {
+        if (state.processed(method -> viewName)) state else {
+          def updStateProcessed(s: State, v: String, pr: (String, String)) =
+            s.copy(thisView = v, processed = s.processed + pr)
+          def viewDb(vn: String, processed: Set[String]): Seq[DbAccessKey] = {
+            if (processed(vn)) Nil else {
+              val vd = viewDefs(vn)
+              val dbs = if (vd.db != null || vd.cp != null) Seq(DbAccessKey(vd.db, vd.cp)) else Nil
+              vd.fields
+                .collect { case f if f.type_.isComplexType => f.type_.name }
+                .foldLeft(dbs -> Set(vn)) {
+                  case ((res, pr), cName) => (res ++ viewDb(cName, pr)) -> (pr + cName)
+                }._1
             }
-            def dbsFromOp(op: Op): List[DbAccessKey] = op match {
-              case Tresql(tresql) => dbs(tresql)
-              case UniqueOpt(innerOp) => dbsFromOp(innerOp)
-              case Status(_, bodyTresql, _) => dbs(bodyTresql)
-              case If(cond, act) => dbsFromOp(cond) ::: act.steps.collect(dbsFromStep).flatten
-              case Foreach(initOp, act) => dbsFromOp(initOp) ::: act.steps.collect(dbsFromStep).flatten
-              case File(idShaTresql, _) => dbs(idShaTresql)
-              case ToFile(contentOp, nameTresql, contentTypeTresql) =>
-                dbsFromOp(contentOp) ::: dbs(nameTresql) ::: dbs(contentTypeTresql)
-              case Http(_, uriTresql, headerTresql, body, _) =>
-                dbs(uriTresql.uriTresql) ::: dbs(headerTresql) ::: dbsFromOp(body)
-              case _ => Nil
-            }
-            def dbsFromStep: PartialFunction[Step, List[DbAccessKey]] = {
-              case Evaluation(_, _, op) => dbsFromOp(op)
-              case Return(_, _, op) => dbsFromOp(op)
-              case SetEnv(_, _, op) => dbsFromOp(op)
-              case Validations(_, _, dbkey) => dbkey.toList
-              case _ => Nil
-            }
-            val actionDbs =
-              collectFromViewAction(dbsFromStep).flatten
-            (if (v.db != null || v.cp != null) Seq(DbAccessKey(v.db, v.cp)) else Nil) ++ actionDbs
           }
-
-          val children =
-            v.fields
-              .collect {
-                case f if f.type_.isComplexType =>
-                  (f.type_.name, action)
-              } ++
-              collectFromViewAction {
-                case Evaluation(_, _, ViewCall(m, vn, _)) if vn != "this" => (vn, m)
-                case Return    (_, _, ViewCall(m, vn, _)) if vn != "this" => (vn, m)
-                case SetEnv    (_, _, ViewCall(m, vn, _)) if vn != "this" => (vn, m)
-              }
-
-          val new_processed = processed + (v.name -> action)
-
-          children.distinct.foldLeft(Map[(String, String), Seq[DbAccessKey]]((v.name, action) -> viewDbKeys)) {
-            case (res, (child_name, act)) =>
-              res ++ dbAccessKeys(viewDefs(child_name), act, new_processed)
-          }
+          val s1 = updStateProcessed(updStateDbs(state, viewDb(viewName, Set())), viewName, method -> viewName)
+          val vd = viewDefs(viewName)
+          vd.actions.get(method).map { a =>
+            traverseAction(a)(stepDbKeys)(s1)
+          }.getOrElse(s1)
         }
       }
 
+      lazy val opDbKeys: OpTraverser[State] = opTraverser(stepDbKeys) { state =>
+        def dbs(tresql: String) = {
+          if (tresql == null) Nil
+          else {
+            val p = new QueryParser(null, null)
+            p.traverser(p.dbExtractor)(Nil)(p.parseExp(tresql)).map(DbAccessKey(_, null))
+          }
+        }
+        {
+          case Tresql(tresql) => updStateDbs(state, dbs(tresql))
+          case Status(_, bodyTresql, _) => updStateDbs(state, dbs(bodyTresql))
+          case If(cond, act) => traverseAction(act)(stepDbKeys)(opDbKeys(state)(cond))
+          case Foreach(initOp, act) => traverseAction(act)(stepDbKeys)(opDbKeys(state)(initOp))
+          case File(idShaTresql, _) => updStateDbs(state, dbs(idShaTresql))
+          case ToFile(contentOp, nameTresql, contentTypeTresql) =>
+            updStateDbs(updStateDbs(opDbKeys(state)(contentOp), dbs(nameTresql)), dbs(contentTypeTresql))
+          case Http(_, uriTresql, headerTresql, body, _) =>
+            opDbKeys(updStateDbs(updStateDbs(state, dbs(uriTresql.uriTresql)), dbs(headerTresql)))(body)
+          case ViewCall(method, view, data) =>
+            val vn = if (view == "this") state.thisView else view
+            processView(method, vn, opDbKeys(state)(data))
+        }
+      }
+
+      lazy val stepDbKeys: StepTraverser[State] = stepTraverser(opDbKeys) (state => {
+        case Validations(_, _, dbkey) => state.copy(dbKeys = state.dbKeys ++ dbkey.toList)
+      })
+
       val actionToDbAccessKeys = Action().map { case action =>
-        val viewAndActionKeys = dbAccessKeys(viewDef, action, Set()).flatMap(_._2).toList.distinct
+        val dbkeys = processView(action, viewName, State(null, Nil, Set())).dbKeys.toList.distinct
         // validate db access keys so that one db corresponds only to one connection pool
-        viewAndActionKeys.groupBy(_.db).foreach { case (db, gr) =>
+        dbkeys.groupBy(_.db).foreach { case (db, gr) =>
           if (gr.size > 1) {
             val pools = gr.map(_.cp)
             sys.error(s"Multiple connection pools - ($pools) for db $db in view $viewName")
           }
         }
-        (action, viewAndActionKeys)
+        (action, dbkeys)
       }.toMap
 
       viewDef.updateWabaseExtras(_.copy(actionToDbAccessKeys = actionToDbAccessKeys))
@@ -785,6 +774,40 @@ object AppMetadata {
     case class Return(name: Option[String], varTrans: List[VariableTransform], value: Op) extends Step
     case class Validations(name: Option[String], validations: Seq[String], db: Option[DbAccessKey]) extends Step
     case class RemoveVar(name: Option[String]) extends Step
+
+    type OpTraverser[T] = T => PartialFunction[Op, T]
+    type StepTraverser[T] = T => PartialFunction[Step, T]
+
+    def opTraverser[T](stepTrav: => StepTraverser[T])(fun: OpTraverser[T]): OpTraverser[T] = {
+      def traverser(state: T) = fun(state) orElse traverse(state)
+
+      def traverse(state: T): PartialFunction[Op, T] = {
+        case _: Tresql | _: RedirectToKey | _: Invocation | _: Status |
+             _: VariableTransforms | _: File | Commit | null => state
+        case o: ViewCall => traverser(state)(o.data)
+        case UniqueOpt(o) => traverser(state)(o)
+        case Foreach(o, a) => traverseAction(a)(stepTrav)(traverser(state)(o))
+        case If(o, a) => traverseAction(a)(stepTrav)(traverser(state)(o))
+        case o: ToFile => traverser(state)(o.contentOp)
+        case o: Http => traverser(state)(o.body)
+      }
+
+      traverser
+    }
+
+    def stepTraverser[T](opTrav: => OpTraverser[T])(fun: StepTraverser[T]): StepTraverser[T] = {
+      def traverser(state: T) = fun(state) orElse traverse(state)
+      def traverse(state: T): PartialFunction[Step, T] = {
+        case _: Validations | _: RemoveVar => state
+        case s: Evaluation => opTrav(state)(s.op)
+        case s: SetEnv => opTrav(state)(s.value)
+        case s: Return => opTrav(state)(s.value)
+      }
+      traverser
+    }
+
+    def traverseAction[T](action: Action)(stepTraverser: StepTraverser[T]): T => T =
+      action.steps.foldLeft(_) { stepTraverser(_)(_) }
   }
 
   case class Action(steps: List[Action.Step])
