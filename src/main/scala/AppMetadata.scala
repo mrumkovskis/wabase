@@ -6,7 +6,7 @@ import org.mojoz.metadata.in._
 import org.mojoz.metadata.io.MdConventions
 import org.mojoz.metadata.out.SqlGenerator.SimpleConstraintNamingRules
 import org.mojoz.querease._
-import org.tresql.{CacheBase, QueryParser, SimpleCacheBase}
+import org.tresql.{CacheBase, SimpleCacheBase}
 import org.tresql.ast.Exp
 import org.tresql.parsing.QueryParsers
 import org.wabase.AppMetadata.Action.VariableTransform
@@ -449,7 +449,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
         def dbs(tresql: String) = {
           if (tresql == null) Nil
           else {
-            val p = new QueryParser(null, null)
+            val p = parser
             p.traverser(p.dbExtractor)(Nil)(p.parseExp(tresql)).map(DbAccessKey(_, null))
           }
         }
@@ -629,6 +629,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   [jobs] */
 }
 
+// TODO add macros from resources so that saved parser cache can be used later in runtime
 trait AppMetadataDataFlowParser extends QueryParsers { self =>
   import AppMetadata.Action._
   import AppMetadata.Action
@@ -780,7 +781,6 @@ object AppMetadata {
 
     def opTraverser[T](stepTrav: => StepTraverser[T])(fun: OpTraverser[T]): OpTraverser[T] = {
       def traverser(state: T) = fun(state) orElse traverse(state)
-
       def traverse(state: T): PartialFunction[Op, T] = {
         case _: Tresql | _: RedirectToKey | _: Invocation | _: Status |
              _: VariableTransforms | _: File | Commit | null => state
@@ -791,7 +791,6 @@ object AppMetadata {
         case o: ToFile => traverser(state)(o.contentOp)
         case o: Http => traverser(state)(o.body)
       }
-
       traverser
     }
 
