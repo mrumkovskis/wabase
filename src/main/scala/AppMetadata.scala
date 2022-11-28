@@ -779,8 +779,8 @@ object AppMetadata {
     type OpTraverser[T] = T => PartialFunction[Op, T]
     type StepTraverser[T] = T => PartialFunction[Step, T]
 
-    def opTraverser[T](stepTrav: => StepTraverser[T])(fun: OpTraverser[T]): OpTraverser[T] = {
-      def traverser(state: T) = fun(state) orElse traverse(state)
+    def opTraverser[T](stepTrav: => StepTraverser[T])(extractor: OpTraverser[T]): OpTraverser[T] = {
+      def traverser(state: T) = extractor(state) orElse traverse(state)
       def traverse(state: T): PartialFunction[Op, T] = {
         case _: Tresql | _: RedirectToKey | _: Invocation | _: Status |
              _: VariableTransforms | _: File | Commit | null => state
@@ -794,8 +794,8 @@ object AppMetadata {
       traverser
     }
 
-    def stepTraverser[T](opTrav: => OpTraverser[T])(fun: StepTraverser[T]): StepTraverser[T] = {
-      def traverser(state: T) = fun(state) orElse traverse(state)
+    def stepTraverser[T](opTrav: => OpTraverser[T])(extractor: StepTraverser[T]): StepTraverser[T] = {
+      def traverser(state: T) = extractor(state) orElse traverse(state)
       def traverse(state: T): PartialFunction[Step, T] = {
         case _: Validations | _: RemoveVar => state
         case s: Evaluation => opTrav(state)(s.op)
