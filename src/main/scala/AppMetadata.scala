@@ -7,7 +7,7 @@ import org.mojoz.metadata.io.MdConventions
 import org.mojoz.metadata.out.SqlGenerator.SimpleConstraintNamingRules
 import org.mojoz.querease._
 import org.tresql.{CacheBase, SimpleCacheBase}
-import org.tresql.ast.Exp
+import org.tresql.ast.{Exp, Variable}
 import org.tresql.parsing.QueryParsers
 import org.wabase.AppMetadata.Action.VariableTransform
 
@@ -415,66 +415,65 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     })
   }
 
+  protected def extractViewVariables(viewDefs: Map[String, ViewDef])(action: String, viewName: String): Seq[Variable] = {
+    import Action._
+    import TresqlExtraction._
+    val varExtractor = parser.variableExtractor(Nil)
+
+    lazy val opTresqlTrav: OpTresqlTraverser[(Seq[Variable], Set[String])] =
+      opTresqlTraverser(opTresqlTrav, stepTresqlTrav)(_ => PartialFunction.empty)
+
+    lazy val stepTresqlTrav: StepTresqlTraverser[(Seq[Variable], Set[String])] =
+      stepTresqlTraverser(opTresqlTrav) { state =>
+        def trav = opTresqlTrav(state)
+        def us(st: Step, s: State[(Seq[Variable], Set[String])]) = { st.name
+          .map(n => s.copy(value = s.value._1 -> (s.value._2 + n)))
+          .getOrElse(s)
+        }
+        {
+          case s: Evaluation => us(s, trav(s.op))
+          case s: SetEnv => us(s, trav(s.value))
+          case s: Return => us(s, trav(s.value))
+        }
+      }
+
+    val state = State[(Seq[Variable], Set[String])](action, viewName, viewDefs, parser,
+      tresqlExtractor = vars => {
+        case e if varExtractor.isDefinedAt(e) =>
+          val actionDefinedVars = vars._2
+          (vars._1 ++ varExtractor(e).filterNot(v => actionDefinedVars(v.variable))) -> actionDefinedVars
+      },
+      viewExtractor = vars => vd => vars, // TODO extract variables from view, move AppBase.filterParams function here?
+      processed = Set(), value = (Nil, Set())
+    )
+    processView(stepTresqlTrav)(state).value._1.distinct
+  }
+
   protected def resolveDbAccessKeys(viewDefs: Map[String, ViewDef]): Map[String, ViewDef] =
     viewDefs.transform { case (viewName, viewDef) =>
       import Action._
-
-      case class State(thisView: String, dbKeys: Seq[DbAccessKey], processed: Set[(String, String)])
-
-      def updStateDbs(s: State, dbk: Seq[DbAccessKey]) = s.copy(dbKeys = s.dbKeys ++ dbk)
-      def processView(method: String, viewName: String, state: State): State = {
-        if (state.processed(method -> viewName)) state else {
-          def updStateProcessed(s: State, v: String, pr: (String, String)) =
-            s.copy(thisView = v, processed = s.processed + pr)
-          def viewDb(vn: String, processed: Set[String]): Seq[DbAccessKey] = {
-            if (processed(vn)) Nil else {
-              val vd = viewDefs(vn)
-              val dbs = if (vd.db != null || vd.cp != null) Seq(DbAccessKey(vd.db, vd.cp)) else Nil
-              vd.fields
-                .collect { case f if f.type_.isComplexType => f.type_.name }
-                .foldLeft(dbs -> Set(vn)) {
-                  case ((res, pr), cName) => (res ++ viewDb(cName, pr)) -> (pr + cName)
-                }._1
-            }
-          }
-          val s1 = updStateProcessed(updStateDbs(state, viewDb(viewName, Set())), viewName, method -> viewName)
-          val vd = viewDefs(viewName)
-          vd.actions.get(method).map { a =>
-            traverseAction(a)(stepDbKeys)(s1)
-          }.getOrElse(s1)
-        }
-      }
-
-      lazy val opDbKeys: OpTraverser[State] = opTraverser(stepDbKeys) { state =>
-        def dbs(tresql: String) = {
-          if (tresql == null) Nil
-          else {
-            val p = parser
-            p.traverser(p.dbExtractor)(Nil)(p.parseExp(tresql)).map(DbAccessKey(_, null))
-          }
-        }
-        {
-          case Tresql(tresql) => updStateDbs(state, dbs(tresql))
-          case Status(_, bodyTresql, _) => updStateDbs(state, dbs(bodyTresql))
-          case If(cond, act) => traverseAction(act)(stepDbKeys)(opDbKeys(state)(cond))
-          case Foreach(initOp, act) => traverseAction(act)(stepDbKeys)(opDbKeys(state)(initOp))
-          case File(idShaTresql, _) => updStateDbs(state, dbs(idShaTresql))
-          case ToFile(contentOp, nameTresql, contentTypeTresql) =>
-            updStateDbs(updStateDbs(opDbKeys(state)(contentOp), dbs(nameTresql)), dbs(contentTypeTresql))
-          case Http(_, uriTresql, headerTresql, body, _) =>
-            opDbKeys(updStateDbs(updStateDbs(state, dbs(uriTresql.uriTresql)), dbs(headerTresql)))(body)
-          case ViewCall(method, view, data) =>
-            val vn = if (view == "this") state.thisView else view
-            processView(method, vn, opDbKeys(state)(data))
-        }
-      }
-
-      lazy val stepDbKeys: StepTraverser[State] = stepTraverser(opDbKeys) (state => {
-        case Validations(_, _, dbkey) => state.copy(dbKeys = state.dbKeys ++ dbkey.toList)
-      })
-
+      import TresqlExtraction._
       val actionToDbAccessKeys = Action().map { case action =>
-        val dbkeys = processView(action, viewName, State(null, Nil, Set())).dbKeys.toList.distinct
+        val dbExtractor = parser.dbExtractor(Nil)
+
+        lazy val opTresqlTrav: OpTresqlTraverser[Seq[DbAccessKey]] =
+          opTresqlTraverser(opTresqlTrav, stepTresqlTrav)(_ => PartialFunction.empty)
+
+        lazy val stepTresqlTrav: StepTresqlTraverser[Seq[DbAccessKey]] =
+          stepTresqlTraverser(opTresqlTrav) { state =>
+            { case Validations(_, _, dbkey) => state.copy(value = state.value ++ dbkey.toList) }
+          }
+
+        val state = State[Seq[DbAccessKey]](action, viewName, viewDefs, parser,
+          tresqlExtractor = dbKeys => {
+            case e if dbExtractor.isDefinedAt(e) => dbKeys ++ dbExtractor(e).map(DbAccessKey(_, null))
+          },
+          viewExtractor = dbkeys => vd =>
+            dbkeys ++ (if (vd.db != null || vd.cp != null) Seq(DbAccessKey(vd.db, vd.cp)) else Nil),
+          processed = Set(), value = Nil
+        )
+
+        val dbkeys = processView(stepTresqlTrav)(state).value.distinct
         // validate db access keys so that one db corresponds only to one connection pool
         dbkeys.groupBy(_.db).foreach { case (db, gr) =>
           if (gr.size > 1) {
@@ -484,13 +483,14 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
         }
         (action, dbkeys)
       }.toMap
-
       viewDef.updateWabaseExtras(_.copy(actionToDbAccessKeys = actionToDbAccessKeys))
     }
 
   protected def parseAction(objectName: String, stepData: Seq[Any]): Action = {
     // matches - 'validations validation_name [db:cp]'
     val validationRegex = new Regex(s"(?U)${Action.ValidationsKey}(?:\\s+(\\w+))?(?:\\s+\\[(?:\\s*(\\w+)?\\s*(?::\\s*(\\w+)\\s*)?)\\])?")
+    val dbUseRegex = new Regex(s"${Action.DbUseKey}")
+    val transactionRegex = new Regex(s"${Action.TransactionKey}")
     val namedStepRegex = """(?U)(?:(\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*)\s*=\s*)?(.+)""".r
     val removeVarStepRegex = """(?U)(?:(\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*)\s*-=\s*)""".r
     val setEnvRegex = """setenv\s+(.+)""".r //dot matches new line as well
@@ -734,6 +734,8 @@ object AppMetadata {
       Set(Get, List, Save, Insert, Update, Upsert, Delete, Create, Count)
 
     val ValidationsKey = "validations"
+    val DbUseKey = "db use"
+    val TransactionKey = "transaction"
     val OffsetKey = "offset"
     val LimitKey  = "limit"
     val OrderKey  = "sort"
@@ -779,34 +781,120 @@ object AppMetadata {
     type OpTraverser[T] = T => PartialFunction[Op, T]
     type StepTraverser[T] = T => PartialFunction[Step, T]
 
-    def opTraverser[T](stepTrav: => StepTraverser[T])(extractor: OpTraverser[T]): OpTraverser[T] = {
-      def traverser(state: T) = extractor(state) orElse traverse(state)
+    def opTraverser[T](opTrav: => OpTraverser[T], stepTrav: => StepTraverser[T])(
+        extractor: OpTraverser[T]): OpTraverser[T] = {
       def traverse(state: T): PartialFunction[Op, T] = {
         case _: Tresql | _: RedirectToKey | _: Invocation | _: Status |
              _: VariableTransforms | _: File | Commit | null => state
-        case o: ViewCall => traverser(state)(o.data)
-        case UniqueOpt(o) => traverser(state)(o)
-        case Foreach(o, a) => traverseAction(a)(stepTrav)(traverser(state)(o))
-        case If(o, a) => traverseAction(a)(stepTrav)(traverser(state)(o))
-        case o: ToFile => traverser(state)(o.contentOp)
-        case o: Http => traverser(state)(o.body)
+        case o: ViewCall => opTrav(state)(o.data)
+        case UniqueOpt(o) => opTrav(state)(o)
+        case Foreach(o, a) => traverseAction(a)(stepTrav)(opTrav(state)(o))
+        case If(o, a) => traverseAction(a)(stepTrav)(opTrav(state)(o))
+        case o: ToFile => opTrav(state)(o.contentOp)
+        case o: Http => opTrav(state)(o.body)
       }
-      traverser
+      state => extractor(state) orElse traverse(state)
     }
 
     def stepTraverser[T](opTrav: => OpTraverser[T])(extractor: StepTraverser[T]): StepTraverser[T] = {
-      def traverser(state: T) = extractor(state) orElse traverse(state)
       def traverse(state: T): PartialFunction[Step, T] = {
         case _: Validations | _: RemoveVar => state
         case s: Evaluation => opTrav(state)(s.op)
         case s: SetEnv => opTrav(state)(s.value)
         case s: Return => opTrav(state)(s.value)
       }
-      traverser
+      state => extractor(state) orElse traverse(state)
     }
 
     def traverseAction[T](action: Action)(stepTraverser: StepTraverser[T]): T => T =
       action.steps.foldLeft(_) { stepTraverser(_)(_) }
+
+    object TresqlExtraction {
+      type ViewExtractor[T] = T => ViewDef => T
+      type TresqlExtractor[T] = T => PartialFunction[Exp, T]
+      type StepTresqlTraverser[T] = StepTraverser[State[T]]
+      type OpTresqlTraverser[T] = OpTraverser[State[T]]
+
+      case class State[T](action: String, viewName: String, viewDefs: Map[String, ViewDef],
+                          parser: QueryParsers, tresqlExtractor: TresqlExtractor[T],
+                          viewExtractor: ViewExtractor[T],
+                          processed: Set[(String, String)], value: T)
+
+
+      def processView[T](stepTresqlTrav: => StepTresqlTraverser[T])(s: State[T]): State[T] = {
+        if (s.processed(s.action -> s.viewName)) s else {
+          def process(vn: String, initVal: T, processed: Set[String]): T = {
+            if (processed(vn)) initVal else {
+              val vd = s.viewDefs(vn)
+              val newVal = s.viewExtractor(initVal)(vd)
+              vd.fields
+                .collect { case f if f.type_.isComplexType => f.type_.name }
+                .foldLeft(newVal -> Set(vn)) {
+                  case ((res, pr), fName) => process(fName, res, pr) -> (pr + fName)
+                }._1
+            }
+          }
+
+          val newVal = process(s.viewName, s.value, Set())
+          val s1 = s.copy(value = newVal, processed = s.processed + (s.action -> s.viewName))
+          val vd = s1.viewDefs(s.viewName)
+          vd.actions.get(s1.action).map { a =>
+            traverseAction(a)(stepTresqlTrav)(s1)
+          }.getOrElse(s1)
+        }
+      }
+
+      private def newValFromTresql[T](parser: QueryParsers,
+                                      extr: TresqlExtractor[T])(oldVal: T)(tresql: String) =
+        if (tresql == null) oldVal
+        else parser.traverser(extr)(oldVal)(parser.parseExp(tresql))
+
+      def opTresqlTraverser[T](opTresqlTrav: => OpTresqlTraverser[T],
+        stepTresqlTrav: => StepTresqlTraverser[T])(extractor: OpTresqlTraverser[T]):
+          OpTresqlTraverser[T] = {
+        def traverse(state: State[T]): PartialFunction[Op, State[T]]= {
+          val nv: T => String => T = newValFromTresql[T](state.parser, state.tresqlExtractor)
+          def opTrTr = opTresqlTrav(state)
+          def us(s: State[T], v: T) = {
+            s.copy(value = v)
+          }
+          {
+            case Tresql(tresql) => us(state, nv(state.value)(tresql))
+            case Status(_, bodyTresql, _) => us(state, nv(state.value)(bodyTresql))
+            case If(cond, act) => traverseAction(act)(stepTresqlTrav)(opTrTr(cond))
+            case Foreach(initOp, act) => traverseAction(act)(stepTresqlTrav)(opTrTr(initOp))
+            case File(idShaTresql, _) => us(state, nv(state.value)(idShaTresql))
+            case ToFile(contentOp, nameTresql, contentTypeTresql) =>
+              val s1 = opTrTr(contentOp)
+              val s2 = us(s1, nv(s1.value)(nameTresql))
+              us(s2, nv(s2.value)(contentTypeTresql))
+            case Http(_, uriTresql, headerTresql, body, _) =>
+              val s1 = us(state, nv(state.value)(uriTresql.uriTresql))
+              val s2 = us(s1, nv(s1.value)(headerTresql))
+              opTresqlTrav(s2)(body)
+            case ViewCall(method, view, data) =>
+              val vn = if (view == "this") state.viewName else view
+              val ns = opTrTr(data)
+              processView(stepTresqlTrav)(ns.copy(action = method, viewName = vn))
+          }
+        }
+        opTraverser(opTresqlTrav, stepTresqlTrav) { state => extractor(state) orElse traverse(state) }
+      }
+
+      def stepTresqlTraverser[T](opTresqlTrav: => OpTresqlTraverser[T])(
+        extractor: StepTresqlTraverser[T]): StepTresqlTraverser[T] = {
+        def traverse(state: State[T]): PartialFunction[Step, State[T]] = {
+          {
+            case Validations(_, validations, _) =>
+              val nv = validations.foldLeft(state.value) { (v, s) =>
+                newValFromTresql[T](state.parser, state.tresqlExtractor)(v)(s)
+              }
+              state.copy(value = nv)
+          }
+        }
+        stepTraverser(opTresqlTrav)(state => extractor(state) orElse traverse(state))
+      }
+    }
   }
 
   case class Action(steps: List[Action.Step])
