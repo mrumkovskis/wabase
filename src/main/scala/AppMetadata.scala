@@ -91,6 +91,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val Limit = "limit"
     val Validations = "validations"
     val ConnectionPool = "cp"
+    val NoDb = "no db"
     val QuereaseViewExtrasKey = QuereaseMetadata.QuereaseViewExtrasKey
     val WabaseViewExtrasKey = AppMetadata.WabaseViewExtrasKey
     def apply() =
@@ -161,6 +162,16 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
         case x => sys.error(
           s"Expecting string value, viewDef, key: ${viewDef.name}, $name")
       }
+    def getBooleanExtraOpt(name: String, extras: Map[String, Any]) =
+      Option(extras).flatMap(_ get name).map {
+        case b: Boolean => b
+        case s: String if s == name => true
+        case x => sys.error(
+          s"Expecting boolean value or no value, viewDef field, key: ${viewDef.name}.$name")
+      }
+    def getBooleanExtra(name: String, extras: Map[String, Any]) =
+      getBooleanExtraOpt(name, extras) getOrElse false
+
     def toAuth(viewDef: ViewDef, authPrefix: String) = {
       import KnownAuthOps._
       viewDef.extras.keySet
@@ -364,6 +375,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
     val limit = getIntExtra(Limit, viewDef.extras) getOrElse 100
     val cp = getStringExtra(ConnectionPool, viewDef.extras).orNull
+    val nodb = getBooleanExtra(NoDb, viewDef.extras)
 
     val actions = Action().foldLeft(Map[String, Action]()) { (res, actionName) =>
       val a = parseAction(s"${viewDef.name}.$actionName", getSeq(actionName, viewDef.extras))
@@ -388,7 +400,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     ViewDef(name, db, table, tableAlias, joins, filter,
       viewDef.groupBy, viewDef.having, orderBy, extends_,
       comments, appFields, viewDef.saveTo, extras)
-      .updateWabaseExtras(_ => AppViewDef(limit, cp, auth, apiMap, actions, Map.empty))
+      .updateWabaseExtras(_ => AppViewDef(limit, cp, nodb, auth, apiMap, actions, Map.empty))
   }
 
   protected def transformAppViewDefs(viewDefs: Map[String, ViewDef]): Map[String, ViewDef] =
@@ -585,13 +597,13 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
             } else {
               value match {
                 case jm: java.util.Map[String@unchecked, _] =>
-                  // may be 'if' or 'foreach' step
+                  // may be 'if', 'foreach', 'db ...' step
                   parseStep(jm) match {
                     case e: Action.Evaluation => e.copy(name = Option(name))
                     case x => sys.error(s"Invalid step '$name' value here: $x")
                   }
                 case al: java.util.ArrayList[_] if name != null =>
-                  // 'if' or 'foreach' step
+                  // 'if', 'foreach', 'db ...' step
                   val op =
                     if (ifOpRegex.pattern.matcher(name).matches()) {
                       val ifOpRegex(condOpSt) = name
@@ -599,8 +611,12 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
                     } else if (foreachOpRegex.pattern.matcher(name).matches()) {
                       val foreachOpRegex(initOpSt) = name
                       Action.Foreach(parseOp(initOpSt), parseAction(objectName, al.asScala.toList))
+                    } else if (dbUseRegex.pattern.matcher(name).matches()) {
+                      Action.Dbuse(parseAction(objectName, al.asScala.toList))
+                    } else if (transactionRegex.pattern.matcher(name).matches()) {
+                      Action.Transaction(parseAction(objectName, al.asScala.toList))
                     } else sys.error(s"'$objectName' parsing error, invalid value: '$name'. " +
-                      s"Only 'if' of 'foreach' operations allowed.")
+                      s"Only 'if', 'foreach', 'db use', 'transaction' operations allowed.")
                   Action.Evaluation(None, Nil, op)
                 case x => parseStringStep(Option(name), x.toString)
               }
@@ -767,6 +783,8 @@ object AppMetadata {
                     headerTresql: String = null,
                     body: Op = null,
                     conformTo: Option[OpResultType] = None) extends Op
+    case class Dbuse(action: Action) extends Op
+    case class Transaction(action: Action) extends Op
     /* [jobs]
     case class JobCall(name: String) extends Op
     [jobs] */
@@ -915,6 +933,7 @@ object AppMetadata {
   trait AppViewDefExtras {
     val limit: Int
     val cp: String
+    val noDb: Boolean
     val auth: AuthFilters
     val apiMethodToRole: Map[String, String]
     val actions: Map[String, Action]
@@ -924,6 +943,7 @@ object AppMetadata {
   private [wabase] case class AppViewDef(
     limit: Int = 1000,
     cp: String = null,
+    noDb: Boolean = false,
     auth: AuthFilters = AuthFilters(Nil, Nil, Nil, Nil, Nil),
     apiMethodToRole: Map[String, String] = Map(),
     actions: Map[String, Action] = Map(),
@@ -972,6 +992,7 @@ object AppMetadata {
     private val appExtras = extras(WabaseViewExtrasKey, defaultExtras)
     override val limit = appExtras.limit
     override val cp = appExtras.cp
+    override val noDb = appExtras.noDb
     override val auth = appExtras.auth
     override val apiMethodToRole = appExtras.apiMethodToRole
     override val actions = appExtras.actions
