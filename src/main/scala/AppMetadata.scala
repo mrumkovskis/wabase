@@ -95,7 +95,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val QuereaseViewExtrasKey = QuereaseMetadata.QuereaseViewExtrasKey
     val WabaseViewExtrasKey = AppMetadata.WabaseViewExtrasKey
     def apply() =
-      Set(Api, Auth, Key, Limit, Validations, ConnectionPool, QuereaseViewExtrasKey, WabaseViewExtrasKey) ++
+      Set(Api, Auth, Key, Limit, Validations, ConnectionPool, NoDb, QuereaseViewExtrasKey, WabaseViewExtrasKey) ++
         Action()
   }
 
@@ -167,7 +167,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
         case b: Boolean => b
         case s: String if s == name => true
         case x => sys.error(
-          s"Expecting boolean value or no value, viewDef field, key: ${viewDef.name}.$name")
+          s"Expecting boolean value or no value, viewDef, key: ${viewDef.name}.$name")
       }
     def getBooleanExtra(name: String, extras: Map[String, Any]) =
       getBooleanExtraOpt(name, extras) getOrElse false
@@ -810,6 +810,8 @@ object AppMetadata {
         case If(o, a) => traverseAction(a)(stepTrav)(opTrav(state)(o))
         case o: ToFile => opTrav(state)(o.contentOp)
         case o: Http => opTrav(state)(o.body)
+        case Dbuse(a) => traverseAction(a)(stepTrav)(state)
+        case Transaction(a) => traverseAction(a)(stepTrav)(state)
       }
       state => extractor(state) orElse traverse(state)
     }
@@ -879,8 +881,6 @@ object AppMetadata {
           {
             case Tresql(tresql) => us(state, nv(state.value)(tresql))
             case Status(_, bodyTresql, _) => us(state, nv(state.value)(bodyTresql))
-            case If(cond, act) => traverseAction(act)(stepTresqlTrav)(opTrTr(cond))
-            case Foreach(initOp, act) => traverseAction(act)(stepTresqlTrav)(opTrTr(initOp))
             case File(idShaTresql, _) => us(state, nv(state.value)(idShaTresql))
             case ToFile(contentOp, nameTresql, contentTypeTresql) =>
               val s1 = opTrTr(contentOp)
