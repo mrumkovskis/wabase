@@ -814,7 +814,18 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       tresqlUri.uri(trUri)
     }
     val (optContentType, headers) = { // content type is used for request body if present
-      val parsedValues = Query(op.headerTresql, opData).list[String, String].map {
+      val parsedValues = (Query(op.headerTresql, opData) match {
+        case SingleValueResult(r) => r match { // unwrap header values from list of maps
+          case i: Iterable[_] => i.map {
+            case m: Map[_, _] if m.size > 1 =>
+              val h = m.toList
+              h.head.toString() -> h.tail.head.toString()
+            case x => sys.error(s"Cannot retrieve http header from structure: [$x], two element Map[_, _] is required")
+          }.toList
+          case x => sys.error(s"Cannot retrieve http headers from structure: [$x], Iterable[Map[_, _]] is required")
+        }
+        case r: Result[_] => r.list[String, String]
+      }).map {
         case (name, value) => HttpHeader.parse(name, value)
       }
       val (ok, errs) = parsedValues.partition(_.isInstanceOf[Ok])
@@ -935,9 +946,17 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
 
     def renderedResult(res: QuereaseResult, vn: String, isColl: Option[Boolean]):
       (Source[ByteString, _], ContentType, Option[Long]) = res match {
-      case TresqlResult(tr) => // TODO add SingleValueResult support
-        (renderedSource(TresqlResultSerializer.source(() => tr), vn, isColl.getOrElse(true), ct),
-          contentType, None)
+      case TresqlResult(tr) => tr match {
+        case SingleValueResult(r: Iterable[_]) =>
+          (renderedSource(DataSerializer.source(() => r.iterator), vn, isColl.getOrElse(true), ct),
+            contentType, None)
+        case SingleValueResult(r) =>
+          (renderedSource(DataSerializer.source(() => Iterator(r)), vn, isColl.getOrElse(false), ct),
+            contentType, None)
+        case r =>
+          (renderedSource(TresqlResultSerializer.source(() => r), vn, isColl.getOrElse(true), ct),
+            contentType, None)
+      }
       case TresqlSingleRowResult(row) =>
         (renderedSource(TresqlResultSerializer.rowSource(() => row), vn, isColl.getOrElse(false), ct),
           contentType, None)

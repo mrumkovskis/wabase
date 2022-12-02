@@ -2,7 +2,7 @@ package org.wabase
 
 import akka.http.scaladsl.model.Uri
 import akka.http.scaladsl.model.Uri.{Path, Query}
-import org.tresql.RowLike
+import org.tresql.{RowLike, SingleValueResult}
 import org.tresql.ast.{Col, Cols, Exp, StringConst}
 import org.tresql.parsing.QueryParsers
 
@@ -23,12 +23,24 @@ class TresqlUri {
     })(-1)(tresqlUriExp)
 
   def uriValue(row: RowLike, startIdx: Int, queryStringColIdx: Int): TresqlUri.Uri = {
-    val colCount = row.columnCount
+    val (names, vals) = (row match {
+      case SingleValueResult(u: String) => Map((null, u))
+      case SingleValueResult(u: Map[_, _]) => u
+      case SingleValueResult(u: Iterable[_]) if u.size == 1 =>
+        u.head match {
+          case m: Map[_, _] => m
+          case x => sys.error(s"Unable to retrieve uri value from [$x]")
+        }
+      case SingleValueResult(x) => sys.error(s"Unable to retrieve uri value from [$x]")
+      case r => r.toMap
+    }).toIndexedSeq.unzip
+    val colCount = vals.size
+    def sv(v: Any) = if (v == null) null else v.toString
     val pi = if (queryStringColIdx == -1) colCount else queryStringColIdx
-    val (value, (key, params)) = (row.string(startIdx),
+    val (value, (key, params)) = (sv(vals(startIdx)),
       ((startIdx + 1) until colCount).foldLeft(List[String]() -> ListMap[String, String]()) {
-        case ((k, p), i) if i < pi => (row.string(i) :: k, p)
-        case ((k, p), i) if i > pi => (k, p + (row.column(i).name -> row.string(i)))
+        case ((k, p), i) if i < pi => (sv(vals(i)) :: k, p)
+        case ((k, p), i) if i > pi => (k, p + (names(i).toString -> sv(vals(i))))
         case (r, _) => r // i == pi - parameter separator - '?'
       }
     )
