@@ -33,6 +33,10 @@ trait QuereaseProvider {
   protected def initQuerease: QE
 }
 
+case class ResourcesFactory(initResources: () => Resources,
+                            closeResources: (Resources, Boolean, Option[Throwable]) => Unit,
+                            implicit val resources: Resources)
+
 sealed trait StatusValue
 case class RedirectStatus(value: TresqlUri.Uri) extends StatusValue
 case class StringStatus(value: String) extends StatusValue
@@ -85,6 +89,8 @@ case class QuereaseSerializedResult(result: SerializedResult, isCollection: Bool
                                     conformToView: String) extends QuereaseResult
 case class CompatibleResult(result: DataResult, conformTo: Action.OpResultType)
   extends DataResult with QuereaseCloseableResult
+case class DbResult(result: QuereaseResult, cleanup: Option[Throwable] => Unit)
+  extends QuereaseResult
 
 trait AppQuereaseIo extends org.mojoz.querease.ScalaDtoQuereaseIo with JsonConverter { self: AppQuerease =>
 
@@ -273,26 +279,38 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       actionName: String,
       data: Map[String, Any],
       env: Map[String, Any],
-    )(initResources: () => Resources,
-      closeResources: (Resources, Option[Throwable]) => Unit,
+    )(resourcesFactory: ResourcesFactory,
       fileStreamer: FileStreamer,
     ): QuereaseAction[QuereaseResult] = {
         new QuereaseAction[QuereaseResult] {
           def run(implicit ec: ExecutionContext, as: ActorSystem) = {
-            implicit val res = initResources()
+            val vd = viewDef(viewName)
+            implicit val resFac =
+              if (vd.noDb) resourcesFactory
+              else resourcesFactory.copy(resources = resourcesFactory.initResources())
             implicit val fs = fileStreamer
+            import resFac._
+            def processResult(res: QuereaseResult, cleanup: Option[Throwable] => Unit): QuereaseResult = res match {
+              case DbResult(result, cl) =>
+                // close outer resources
+                cleanup(None)
+                processResult(result, cl)
+              case r: QuereaseCloseableResult => QuereaseResultWithCleanup(r, cleanup)
+              case r: QuereaseResult =>
+                cleanup(None)
+                r
+            }
+
             try {
               doAction(viewName, actionName, data, env).map {
-                case r: QuereaseCloseableResult => QuereaseResultWithCleanup(r, closeResources(res, _))
-                case r: QuereaseResult => closeResources(res, None); r
-              }
-              .andThen {
-                case Failure(NonFatal(exception)) => closeResources(res, Option(exception))
+                processResult(_, closeResources(resources, false, _))
+              }.andThen {
+                case Failure(NonFatal(exception)) => closeResources(resources, true, Option(exception))
               }
             } catch { // catch exception also here in the case doAction is not executed into separate thread
-              case NonFatal(e) =>
-                closeResources(res, Option(e))
-                throw e
+                case NonFatal(e) =>
+                  closeResources(resources, true, Option(e))
+                  throw e
             }
           }
         }
@@ -328,7 +346,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     env: Map[String, Any],
     contextStack: List[ActionContext] = Nil,
   )(implicit
-    resources: Resources,
+    resourcesFactory: ResourcesFactory,
     ec: ExecutionContext,
     as: ActorSystem,
     fs: FileStreamer,
@@ -349,7 +367,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     context: ActionContext,
     curData: Future[Map[String, Any]],
   )(implicit
-    resources: Resources,
+    resourcesFactory: ResourcesFactory,
     ec: ExecutionContext,
     as: ActorSystem,
     fs: FileStreamer,
@@ -365,6 +383,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case r => key.map(k => cr + (k -> r)).getOrElse(cr)
     }
     def doStep(step: Step, stepDataF: Future[Map[String, Any]]): Future[QuereaseResult] = {
+      import resourcesFactory._
       stepDataF flatMap { stepData =>
         logger.debug(s"Doing action '${context.name}' step '$step'.\nData: $stepData")
         step match {
@@ -531,13 +550,14 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     env: Map[String, Any],
     context: ActionContext,
   )(implicit
-    res: Resources,
+    resFac: ResourcesFactory,
     ec: ExecutionContext,
     as: ActorSystem,
     fs: FileStreamer,
   ): Future[QuereaseResult] = {
     import Action._
     import CoreTypes._
+    import resFac._
     val v = viewDef(
       if (view == "this") context.view.map(_.name) getOrElse view
       else                view
@@ -592,7 +612,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
             getKeyValues(viewName, data) // check mappings for key exist
             LongResult(delete(v, data, null, env))
           case Create =>
-            TresqlSingleRowResult(create(v, callData)(res))
+            TresqlSingleRowResult(create(v, callData))
           case Count =>
             LongResult(countAll_(v, callData))
           case x =>
@@ -699,7 +719,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     env: Map[String, Any],
     context: ActionContext,
   )(implicit
-    res: Resources,
+    resFac: ResourcesFactory,
     ec: ExecutionContext,
     as: ActorSystem,
     fs: FileStreamer,
@@ -721,7 +741,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     env: Map[String, Any],
     context: ActionContext,
   )(implicit
-    res: Resources,
+    resFac: ResourcesFactory,
     ec: ExecutionContext,
     as: ActorSystem,
     fs: FileStreamer,
@@ -755,7 +775,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     }
   }
 
-  protected def doFileAction(
+  protected def doFile(
     op: Action.File,
     data: Map[String, Any],
     env: Map[String, Any],
@@ -769,19 +789,20 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     Future.successful { op.conformTo.map(CompatibleResult(r, _)).getOrElse(r) }
   }
 
-  protected def doToFileAction(
+  protected def doToFile(
     op: Action.ToFile,
     data: Map[String, Any],
     env: Map[String, Any],
     context: ActionContext,
   )(implicit
-    res: Resources,
+    resFac: ResourcesFactory,
     ec: ExecutionContext,
     as: ActorSystem,
     fs: FileStreamer): Future[FileInfoResult] = {
     import akka.http.scaladsl.model.{MediaTypes, ContentType}
+    import resFac._
     val bindVars = data ++ env
-    def getVal(tr: String) = Query(tr)(res.withParams(bindVars)).unique[String]
+    def getVal(tr: String) = Query(tr)(resources.withParams(bindVars)).unique[String]
     val fn = if (op.nameTresql != null) getVal(op.nameTresql) else "file"
     val contentType =
       if (op.contentTypeTresql != null) {
@@ -796,16 +817,17 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     }.map(FileInfoResult)
   }
 
-  protected def doHttpAction(
+  protected def doHttp(
     op: Action.Http,
     data: Map[String, Any],
     env: Map[String, Any],
     context: ActionContext,
   )(implicit
-    res: Resources,
+    resFac: ResourcesFactory,
     ec: ExecutionContext,
     as: ActorSystem,
     fs: FileStreamer): Future[DataResult] = {
+    import resFac._
     val opData = data ++ env
     val httpMeth = HttpMethods.getForKeyCaseInsensitive(op.method).get
     val uri = {
@@ -853,17 +875,39 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       .map { r => op.conformTo.map(CompatibleResult(r, _)).getOrElse(r) }
   }
 
+  protected def doDb(
+    op: Action.DbOp,
+    data: Map[String, Any],
+    env: Map[String, Any],
+    context: ActionContext,
+  )(implicit
+    resFac: ResourcesFactory,
+    ec: ExecutionContext,
+    as: ActorSystem,
+    fs: FileStreamer): Future[DbResult] = {
+    val newRes = resFac.initResources()
+    val closeRes = resFac.closeResources(newRes, op.doRollback, _)
+    val newResFact = resFac.copy(resources = newRes)
+    doSteps(op.action.steps, context.copy(stepName = "db"), Future.successful(data))(newResFact, ec, as, fs).map {
+      case DbResult(r, cl) => DbResult(r, cl.andThen(_ => closeRes(None)))
+      case r => DbResult(r, closeRes)
+    }.andThen {
+      case Failure(NonFatal(ex)) => closeRes(Option(ex))
+    }
+  }
+
   protected def doActionOp(
     op: Action.Op,
     data: Map[String, Any],
     env: Map[String, Any],
     context: ActionContext,
   )(implicit
-    res: Resources,
+    resFac: ResourcesFactory,
     ec: ExecutionContext,
     as: ActorSystem,
     fs: FileStreamer,
   ): Future[QuereaseResult] = {
+    import resFac._
     op match {
       case Action.Tresql(tresql) =>
         Future.successful(doTresql(tresql, data ++ env, context))
@@ -913,14 +957,15 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
           .getOrElse(Future.successful(StatusResult(maybeCode.get, null)))
       case Action.Commit =>
         def commit(c: Connection) = Option(c).foreach(_.commit())
-        commit(res.conn)
-        res.extraResources.foreach { case (_, r) => commit(r.conn) }
+        commit(resources.conn)
+        resources.extraResources.foreach { case (_, r) => commit(r.conn) }
         Future.successful(NoResult)
       case cond: Action.If => doIf(cond, data, env, context)
       case foreach: Action.Foreach => doForeach(foreach, data, env, context)
-      case file: Action.File => doFileAction(file, data, env, context)
-      case toFile: Action.ToFile => doToFileAction(toFile, data, env, context)
-      case http: Action.Http => doHttpAction(http, data, env, context)
+      case file: Action.File => doFile(file, data, env, context)
+      case toFile: Action.ToFile => doToFile(toFile, data, env, context)
+      case http: Action.Http => doHttp(http, data, env, context)
+      case db: Action.DbOp => doDb(db, data, env, context)
       /* [jobs]
       case Action.JobCall(job) =>
         doJobCall(job, data, env)
@@ -937,7 +982,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     env: Map[String, Any],
     context: ActionContext,
    )(implicit
-     res: Resources,
+     resFac: ResourcesFactory,
      ec: ExecutionContext,
      as: ActorSystem,
      fs: FileStreamer,
@@ -1061,6 +1106,9 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
         case HttpResult(r) => objFromHttpEntity(r.entity, ct.viewName, ct.isCollection)
         case r => dataForNextStep(r, context, unwrapSingleValue)
       }
+      case DbResult(dbr, cl) => dataForNextStep(dbr, context, unwrapSingleValue).andThen {
+        case r => cl(r.failed.toOption) // close db resources
+      } (as.dispatcher)
       case x => sys.error(s"${x.getClass.getName} not expected here!")
     }) match {
       case f: Future[_] => f

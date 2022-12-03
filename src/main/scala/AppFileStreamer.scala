@@ -271,7 +271,7 @@ class FileStreamer(
           }
         case someFi => Future.successful(someFi)
       } map(_.get) andThen {
-        case x => db.closeResources(res, x.failed.toOption)
+        case x => db.closeResources(res, x.isFailure, x.failed.toOption)
       }
     }
 

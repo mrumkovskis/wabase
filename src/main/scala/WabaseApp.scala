@@ -139,9 +139,8 @@ trait WabaseApp[User] {
 
   def simpleAction(context: AppActionContext): ActionHandlerResult = {
     import context._
-    qe.QuereaseAction(
-      viewName, actionName, values, env
-    )(resourceFactory(context), closeResources, fileStreamer)
+    val rf = ResourcesFactory(resourceFactory(context), closeResources, tresqlResources.resourcesTemplate)
+    qe.QuereaseAction(viewName, actionName, values, env)(rf, fileStreamer)
       .map(WabaseResult(context, _))
   }
 
@@ -180,8 +179,8 @@ trait WabaseApp[User] {
       case x => throwUnexpectedResultClass(x)
 
     }
-    qe.QuereaseAction(viewName, Action.Get, values, env)(
-      resourceFactory(context), closeResources, fileStreamer).map(oldVal)
+    val rf = ResourcesFactory(resourceFactory(context), closeResources, tresqlResources.resourcesTemplate)
+    qe.QuereaseAction(viewName, Action.Get, values, env)(rf, fileStreamer).map(oldVal)
   }
   protected def throwOldValueNotFound(message: String, locale: Locale): Nothing =
     throw new org.mojoz.querease.NotFoundException(translate(message)(locale))
@@ -208,9 +207,8 @@ trait WabaseApp[User] {
         val saveableContext = richContext.copy(values = saveable)
         validateFields(viewName, saveable)
         customValidations(saveableContext)(state.locale)
-        qe.QuereaseAction(
-          viewName, context.actionName, saveable, env
-        )(resourceFactory(context), closeResources, fileStreamer)
+        val rf = ResourcesFactory(resourceFactory(context), closeResources, tresqlResources.resourcesTemplate)
+        qe.QuereaseAction(viewName, context.actionName, saveable, env)(rf, fileStreamer)
           .map(WabaseResult(saveableContext, _))
           .recover { case ex => friendlyConstraintErrorMessage(viewDef, throw ex)(state.locale) }
       }
@@ -222,9 +220,8 @@ trait WabaseApp[User] {
       if (oldValue == null)
         throwOldValueNotFound("Record not found, cannot delete", state.locale)
       val richContext = context.copy(oldValue = oldValue)
-      qe.QuereaseAction(
-        viewName, actionName, values, env
-      )(resourceFactory(richContext), closeResources, fileStreamer)
+      val rf = ResourcesFactory(resourceFactory(richContext), closeResources, tresqlResources.resourcesTemplate)
+      qe.QuereaseAction(viewName, actionName, values, env)(rf, fileStreamer)
         .map(WabaseResult(richContext, _))
         .recover { case ex => friendlyConstraintErrorMessage(throw ex)(state.locale) }
     }

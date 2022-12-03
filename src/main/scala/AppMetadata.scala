@@ -612,9 +612,9 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
                       val foreachOpRegex(initOpSt) = name
                       Action.Foreach(parseOp(initOpSt), parseAction(objectName, al.asScala.toList))
                     } else if (dbUseRegex.pattern.matcher(name).matches()) {
-                      Action.Dbuse(parseAction(objectName, al.asScala.toList))
+                      Action.DbOp(parseAction(objectName, al.asScala.toList), true)
                     } else if (transactionRegex.pattern.matcher(name).matches()) {
-                      Action.Transaction(parseAction(objectName, al.asScala.toList))
+                      Action.DbOp(parseAction(objectName, al.asScala.toList), false)
                     } else sys.error(s"'$objectName' parsing error, invalid value: '$name'. " +
                       s"Only 'if', 'foreach', 'db use', 'transaction' operations allowed.")
                   Action.Evaluation(None, Nil, op)
@@ -783,8 +783,7 @@ object AppMetadata {
                     headerTresql: String = null,
                     body: Op = null,
                     conformTo: Option[OpResultType] = None) extends Op
-    case class Dbuse(action: Action) extends Op
-    case class Transaction(action: Action) extends Op
+    case class DbOp(action: Action, doRollback: Boolean) extends Op
     /* [jobs]
     case class JobCall(name: String) extends Op
     [jobs] */
@@ -810,8 +809,7 @@ object AppMetadata {
         case If(o, a) => traverseAction(a)(stepTrav)(opTrav(state)(o))
         case o: ToFile => opTrav(state)(o.contentOp)
         case o: Http => opTrav(state)(o.body)
-        case Dbuse(a) => traverseAction(a)(stepTrav)(state)
-        case Transaction(a) => traverseAction(a)(stepTrav)(state)
+        case DbOp(a, _) => traverseAction(a)(stepTrav)(state)
       }
       state => extractor(state) orElse traverse(state)
     }

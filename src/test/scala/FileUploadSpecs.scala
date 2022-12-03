@@ -35,7 +35,7 @@ class FileUploadSpecs extends AnyFlatSpec with TestQuereaseInitializer with Scal
       //save conn if later test execution happens in another thread
       private val conn = tresqlResources.conn
       override def initResources = template => (_, _) => template.withConn(conn)
-      override def closeResources = (res, err) => err.map(_ => res.conn.rollback()).getOrElse(res.conn.commit())
+      override def closeResources = (res, roll ,err) => err.map(_ => res.conn.rollback()).getOrElse(res.conn.commit())
       override def withRollbackConn[A](template: Resources, poolName: PoolName, extraDb: Seq[AppMetadata.DbAccessKey])(
         f: Resources => A): A = {
         val res = initResources(template)(poolName, extraDb)

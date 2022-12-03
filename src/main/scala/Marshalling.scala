@@ -289,6 +289,7 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
       case rr: TresqlSingleRr => sys.error("TresqlSingleRowResult must be serialized before marshalling.")
       case it: IteratorResult => sys.error("IteratorResult must be serialized before marshalling.")
       case fr: FileInfoResult => sys.error("File info result marshalling not supported")
+      case db: DbResult       => sys.error("Db result cannot be marshalled directly, unwrap inner result and try marshalling.")
       case r: QuereaseResultWithCleanup =>
         sys.error(s"QuereaseResult marshaller for class ${r.getClass.getName} not implemented")
     }}
@@ -310,7 +311,7 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
         tresqlResult match {
           case result: Result[_] => TresqlResultSerializer.source(() => result)
           case row:    RowLike   => TresqlResultSerializer.rowSource(() => row)
-        }, app.dbAccess.closeResources(res, _))
+        }, app.dbAccess.closeResources(res, false, _))
         .map(_.head)
         .map(QuereaseSerializedResult(_, tresqlResult.isInstanceOf[Result[_]], null))
       GenericMarshallers
