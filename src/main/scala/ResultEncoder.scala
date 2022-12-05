@@ -3,7 +3,7 @@ package org.wabase
 import akka.util.ByteString
 import org.wabase.Format.{xlsxDateTime, xsdDate}
 import io.bullet.borer
-import io.bullet.borer.{Cbor, Json}
+import io.bullet.borer.{Cbor, Json, Writer, Encoder}
 import io.bullet.borer.compat.akka.ByteStringByteAccess
 
 import java.io
@@ -22,6 +22,32 @@ object ResultEncoder {
   trait ChunkType
   object TextChunks extends ChunkType
   object ByteChunks extends ChunkType
+
+  type JsValueWriter = Writer => PartialFunction[Any, Writer]
+  /**
+    * Encodes scala structure representing json value.
+    * Primitive types: String, Number, Boolean, null
+    * Complex types: Iterable[_], Map[String, _]
+    * */
+  implicit def jsValEncoder(implicit jsValWr: JsValueWriter): Encoder[Any] =
+    (w: Writer, v: Any) => jsValWr(w)(v)
+
+  object JsonWriter {
+    implicit lazy val jsValueWriter: JsValueWriter = extendableJsValueWriter(jsValueWriter)(_ => PartialFunction.empty)
+    def extendableJsValueWriter(jsValWriter: => JsValueWriter)(customWriter: JsValueWriter): JsValueWriter = w => {
+      val defaultWriter: JsValueWriter =
+        w => {
+          case v: String => w.writeString(v)
+          case v: Number => w.writeNumberString(v.toString)
+          case v: Boolean => w.writeBoolean(v)
+          case null => w.writeNull()
+          case v: Map[Any, Any]@unchecked => w.writeMap(v)(jsValEncoder(jsValWriter), jsValEncoder(jsValWriter))
+          case v: Iterable[Any]@unchecked => w.writeIterator(v.iterator)(jsValEncoder(jsValWriter))
+          case v => w.writeString(v.toString)
+        }
+      customWriter(w) orElse defaultWriter(w)
+    }
+  }
 }
 
 import ResultEncoder._
