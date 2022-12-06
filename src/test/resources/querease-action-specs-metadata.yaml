@@ -586,3 +586,13 @@ api: list
 list:
   - file = to file |shop_db:purchase{customer, item}#(1,2) 'purchases'
   - file {:file.id, :file.sha_256}      # to get file both id and sha must be specified
+
+
+name: conf_test
+table:
+api: list, get
+get:
+- uri = conf string conf.test.uri
+- status ok { :uri || 'about' }
+list:
+- conf conf.test

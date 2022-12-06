@@ -770,7 +770,8 @@ object AppMetadata {
     object ConfTypes {
       def types: Set[ConfType] = Set(NumberConf, StringConf, BooleanConf)
       def parse(name: String): ConfType = types.find(_.name == name).getOrElse {
-        throw new IllegalArgumentException(s"Wrong name: '$name', supported names: '${
+        if (name == null) null
+        else throw new IllegalArgumentException(s"Wrong name: '$name', supported names: '${
           types.map(_.name).mkString(", ")}'")
       }
     }
@@ -825,7 +826,7 @@ object AppMetadata {
         extractor: OpTraverser[T]): OpTraverser[T] = {
       def traverse(state: T): PartialFunction[Op, T] = {
         case _: Tresql | _: RedirectToKey | _: Invocation | _: Status |
-             _: VariableTransforms | _: File | Commit | null => state
+             _: VariableTransforms | _: File | _: Conf | Commit | null => state
         case o: ViewCall => opTrav(state)(o.data)
         case UniqueOpt(o) => opTrav(state)(o)
         case Foreach(o, a) => traverseAction(a)(stepTrav)(opTrav(state)(o))

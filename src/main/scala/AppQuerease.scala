@@ -1135,6 +1135,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case DbResult(dbr, cl) => dataForNextStep(dbr, context, unwrapSingleValue).andThen {
         case r => cl(r.failed.toOption) // close db resources
       } (as.dispatcher)
+      case ConfResult(_, r) => r
       case x => sys.error(s"${x.getClass.getName} not expected here!")
     }) match {
       case f: Future[_] => f

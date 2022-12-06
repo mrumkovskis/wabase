@@ -365,6 +365,17 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
         }
       }
   }
+
+  it should "process config" in {
+    querease.doAction("conf_test", "get", Map(), Map()).map {
+      case r => r should be (StatusResult(200, StringStatus("http://wabase.org/about")))
+    }.flatMap { _ =>
+      querease.doAction("conf_test", "list", Map(), Map()).map {
+        case r => r should be(
+          ConfResult("conf.test", Map("uri" -> "http://wabase.org/", "list" -> List(1, 2, 3))))
+      }
+    }
+  }
 }
 
 class QuereaseActionTestManager extends Loggable {
