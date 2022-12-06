@@ -33,8 +33,7 @@ object ResultEncoder {
     * Primitive types: {{{String, Number, Boolean, null}}}
     * Complex types: {{{Iterable[_], Map[String, _]}}}
     * */
-  implicit def jsValEncoder(implicit jsEncoderPF: JsValueEncoderPF): Encoder[Any] =
-    (w: Writer, v: Any) => jsEncoderPF(w)(v)
+  implicit def jsValEncoder(implicit jsEncoderPF: JsValueEncoderPF): Encoder[Any] = jsEncoderPF(_)(_)
 
   def encodeJsValue[T: Encoder](value: T): Array[Byte] = Json.encode(value).toByteArray
 
