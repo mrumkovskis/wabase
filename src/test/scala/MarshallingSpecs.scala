@@ -51,6 +51,9 @@ class MarshallingSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
         }
         override def dbAccessDelegate: DbAccess = db
       }
+      override val jsonValueEncoder = w => {
+        case d: java.sql.Date => w.writeString(d.toString.replaceAll("-", "."))
+      }
     }
   }
 
@@ -313,5 +316,45 @@ class MarshallingSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     res = response(StatusResult(303, RedirectStatus(TresqlUri.Uri("http://foo.org/data", List("sā1", "sī2"), ListMap()))))
     res.status shouldEqual StatusCodes.SeeOther
     res.header[Location] shouldEqual Some(Location("http://foo.org/data/s%C4%811/s%C4%AB2"))
+  }
+
+  it should "marshal conf result to json" in {
+    val svc = service2
+    import svc.toEntityConfResultMarshaller
+    def response(cr: ConfResult) = Await.result(
+      Marshal(cr).to[HttpEntity]
+        .flatMap(_.toStrict(1.second))
+        .map(_.data)
+        .map (new CborOrJsonAnyValueDecoder().decode(_)),
+      1.second)
+
+    def checkSelf(param: String, value: Any) =
+      response(ConfResult(param, value)) shouldEqual value
+    def check(param: String, value: Any, res: Any) =
+      response(ConfResult(param, value)) shouldEqual res
+    checkSelf("int", 1)
+    checkSelf("number", 3.14)
+    checkSelf("string", "string value")
+    checkSelf("boolean", true)
+    checkSelf("array", List("a", "b", "c"))
+    check("config", Map(
+      "s" -> "string",
+      "b" -> true,
+      "n" -> BigDecimal(1.34), "null" -> null,
+      "a" -> List(1, null, "s", false, Map(
+        "s" -> "string",
+        "b" -> true,
+        "n" -> 1.4,
+        "date" -> java.sql.Date.valueOf("2000-01-01")))),
+      Map(
+        "s" -> "string",
+        "b" -> true,
+        "n" -> BigDecimal(1.34), "null" -> null,
+        "a" -> List(1, null, "s", false, Map(
+          "s" -> "string",
+          "b" -> true,
+          "n" -> 1.4,
+          "date" -> "2000.01.01")))
+    )
   }
 }

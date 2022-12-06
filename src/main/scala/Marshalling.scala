@@ -230,11 +230,11 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
   /** Override this to override default scala value (like String, Number, Boolean, null, Iterable, Map) json encoding.
     * Default implementation is {{{Writer => PartialFunction.empty}}}
     * */
-  val jsonValueWriter: ResultEncoder.JsValueWriter = _ => PartialFunction.empty
+  val jsonValueEncoder: ResultEncoder.JsValueEncoderPF = _ => PartialFunction.empty
   implicit val toEntityConfResultMarshaller:                ToEntityMarshaller[ConfResult] =
     Marshaller.combined { cr =>
       import ResultEncoder._
-      implicit lazy val jsValWriter: JsValueWriter = JsonWriter.extendableJsValueWriter(jsValWriter)(jsonValueWriter)
+      implicit lazy val enc: JsValueEncoderPF = JsonEncoder.extendableJsValueEncoderPF(enc)(jsonValueEncoder)
       HttpEntity.Strict(`application/json`, ByteString(encodeJsValue(cr.result)))
     }
 

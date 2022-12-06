@@ -23,32 +23,47 @@ object ResultEncoder {
   object TextChunks extends ChunkType
   object ByteChunks extends ChunkType
 
-  type JsValueWriter = Writer => PartialFunction[Any, Writer]
+  /** Implement this type to create extendable json encoder from scala value.
+    * See [[JsonEncoder.extendableJsValueEncoderPF]]
+    */
+  type JsValueEncoderPF = Writer => PartialFunction[Any, Writer]
   /**
-    * Encodes scala structure representing json value.
-    * Primitive types: String, Number, Boolean, null
-    * Complex types: Iterable[_], Map[String, _]
+    * Creates [[ io.bullet.borer.Encoder[Any] ]] encoder from [[JsValueEncoderPF]]
+    * Designed to encode scala structure representing json value.
+    * Primitive types: {{{String, Number, Boolean, null}}}
+    * Complex types: {{{Iterable[_], Map[String, _]}}}
     * */
-  implicit def jsValEncoder(implicit jsValWr: JsValueWriter): Encoder[Any] =
-    (w: Writer, v: Any) => jsValWr(w)(v)
+  implicit def jsValEncoder(implicit jsEncoderPF: JsValueEncoderPF): Encoder[Any] =
+    (w: Writer, v: Any) => jsEncoderPF(w)(v)
 
   def encodeJsValue[T: Encoder](value: T): Array[Byte] = Json.encode(value).toByteArray
 
-  object JsonWriter {
-    implicit lazy val jsValueWriter: JsValueWriter = extendableJsValueWriter(jsValueWriter)(_ => PartialFunction.empty)
-    def extendableJsValueWriter(jsValWriter: => JsValueWriter)(customWriter: JsValueWriter): JsValueWriter = w => {
-      val defaultWriter: JsValueWriter =
-        w => {
-          case v: String => w.writeString(v)
-          case v: Number => w.writeNumberString(v.toString)
-          case v: Boolean => w.writeBoolean(v)
-          case null => w.writeNull()
-          case v: Map[Any, Any]@unchecked => w.writeMap(v)(jsValEncoder(jsValWriter), jsValEncoder(jsValWriter))
-          case v: Iterable[Any]@unchecked => w.writeIterator(v.iterator)(jsValEncoder(jsValWriter))
-          case v => w.writeString(v.toString)
-        }
-      customWriter(w) orElse defaultWriter(w)
-    }
+  object JsonEncoder {
+    /**
+      * Default scala value json encoder as a partial function.
+      * */
+    implicit lazy val jsValueEncoderPF: JsValueEncoderPF =
+      extendableJsValueEncoderPF(jsValueEncoderPF)(_ => PartialFunction.empty)
+    /**
+      * Method creates json value encoder as partial function, see [[jsValueEncoderPF]].
+      * Default implemention encodes scala values - {{{String, Number, Boolean, null, Map[String, Any], Iterable[Any]}}}.
+      * @param encoder        value returned by this method, used for recursive calls for nested structures.
+      * @param customEncoder  custom value encoder. Can be used to encode non standard values like
+      *                       [[java.sql.Date]] etc.
+      * */
+    def extendableJsValueEncoderPF(encoder: => JsValueEncoderPF)(customEncoder: JsValueEncoderPF): JsValueEncoderPF =
+      w => {
+        val defaultEncoder: JsValueEncoderPF = w => {
+            case v: String => w.writeString(v)
+            case v: Number => w.writeNumberString(v.toString)
+            case v: Boolean => w.writeBoolean(v)
+            case null => w.writeNull()
+            case v: Map[Any, Any]@unchecked => w.writeMap(v)(jsValEncoder(encoder), jsValEncoder(encoder))
+            case v: Iterable[Any]@unchecked => w.writeIterator(v.iterator)(jsValEncoder(encoder))
+            case v => w.writeString(v.toString)
+          }
+        customEncoder(w) orElse defaultEncoder(w)
+      }
   }
 }
 
