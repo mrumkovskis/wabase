@@ -91,6 +91,7 @@ case class CompatibleResult(result: DataResult, conformTo: Action.OpResultType)
   extends DataResult with QuereaseCloseableResult
 case class DbResult(result: QuereaseResult, cleanup: Option[Throwable] => Unit)
   extends QuereaseResult
+case class ConfResult(param: String, result: Any) extends QuereaseResult
 
 trait AppQuereaseIo extends org.mojoz.querease.ScalaDtoQuereaseIo with JsonConverter { self: AppQuerease =>
 
@@ -876,7 +877,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
   }
 
   protected def doDb(
-    op: Action.DbOp,
+    op: Action.Db,
     data: Map[String, Any],
     env: Map[String, Any],
     context: ActionContext,
@@ -894,6 +895,30 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     }.andThen {
       case Failure(NonFatal(ex)) => closeRes(Option(ex))
     }
+  }
+
+  protected def doConf(
+    op: Action.Conf,
+    data: Map[String, Any],
+    env: Map[String, Any],
+    context: ActionContext
+  )(implicit
+    resFac: ResourcesFactory,
+    ec: ExecutionContext,
+    as: ActorSystem,
+    fs: FileStreamer): Future[ConfResult] = {
+    def value = op.paramType match {
+      case Action.NumberConf => config.getNumber(op.param)
+      case Action.StringConf => config.getString(op.param)
+      case Action.BooleanConf => config.getBoolean(op.param)
+      case _ => config.getValue(op.param).unwrapped()
+    }
+    def scalaType(value: Any): Any = value match {
+      case m: java.util.Map[_, _] => m.asScala.map { case (k, v) => String.valueOf(k) -> scalaType(v) }.toMap
+      case l: java.util.List[_] => l.asScala.map(scalaType).toList
+      case v => v
+    }
+    Future.successful(ConfResult(op.param, scalaType(value)))
   }
 
   protected def doActionOp(
@@ -965,7 +990,8 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case file: Action.File => doFile(file, data, env, context)
       case toFile: Action.ToFile => doToFile(toFile, data, env, context)
       case http: Action.Http => doHttp(http, data, env, context)
-      case db: Action.DbOp => doDb(db, data, env, context)
+      case db: Action.Db => doDb(db, data, env, context)
+      case c: Action.Conf => doConf(c, data, env, context)
       /* [jobs]
       case Action.JobCall(job) =>
         doJobCall(job, data, env)

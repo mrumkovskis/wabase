@@ -3,7 +3,7 @@ package org.wabase
 import akka.util.ByteString
 import org.wabase.Format.{xlsxDateTime, xsdDate}
 import io.bullet.borer
-import io.bullet.borer.{Cbor, Json, Writer, Encoder}
+import io.bullet.borer.{Cbor, Encoder, Json, Writer, Target}
 import io.bullet.borer.compat.akka.ByteStringByteAccess
 
 import java.io
@@ -31,6 +31,8 @@ object ResultEncoder {
     * */
   implicit def jsValEncoder(implicit jsValWr: JsValueWriter): Encoder[Any] =
     (w: Writer, v: Any) => jsValWr(w)(v)
+
+  def encodeJsValue[T: Encoder](value: T): Array[Byte] = Json.encode(value).toByteArray
 
   object JsonWriter {
     implicit lazy val jsValueWriter: JsValueWriter = extendableJsValueWriter(jsValueWriter)(_ => PartialFunction.empty)

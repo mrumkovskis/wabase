@@ -227,6 +227,16 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
   implicit val toResponseHttpResultMarshaller:              ToResponseMarshaller[HttpResult] =
     Marshaller.combined(_.response)
 
+  /** Override this to override default scala value (like String, Number, Boolean, null, Iterable, Map) json encoding.
+    * Default implementation is {{{Writer => PartialFunction.empty}}}
+    * */
+  val jsonValueWriter: ResultEncoder.JsValueWriter = _ => PartialFunction.empty
+  implicit val toEntityConfResultMarshaller:                ToEntityMarshaller[ConfResult] =
+    Marshaller.combined { cr =>
+      import ResultEncoder._
+      implicit lazy val jsValWriter: JsValueWriter = JsonWriter.extendableJsValueWriter(jsValWriter)(jsonValueWriter)
+      HttpEntity.Strict(`application/json`, ByteString(encodeJsValue(cr.result)))
+    }
 
   def toEntitySerializedResultMarshaller(
     contentType: ContentType,
@@ -285,6 +295,7 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
       case fr: FileResult     => (toResponseFileResultMarshaller:             ToResponseMarshaller[FileResult]    )(fr)
       case hr: HttpResult     => (toResponseHttpResultMarshaller:             ToResponseMarshaller[HttpResult]    )(hr)
       case cr: CompatibleResult => (toResponseCompatibleResultMarshaller(wr): ToResponseMarshaller[CompatibleResult])(cr)
+      case cr: ConfResult     => (toEntityConfResultMarshaller:               ToResponseMarshaller[ConfResult]    )(cr)
       case tq: TresqlResult   => sys.error("TresqlResult must be serialized before marshalling.")
       case rr: TresqlSingleRr => sys.error("TresqlSingleRowResult must be serialized before marshalling.")
       case it: IteratorResult => sys.error("IteratorResult must be serialized before marshalling.")

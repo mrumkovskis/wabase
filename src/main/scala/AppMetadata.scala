@@ -499,11 +499,11 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     }
 
   protected def parseAction(objectName: String, stepData: Seq[Any]): Action = {
+    val namedStepRegex = """(?U)(?:(\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*)\s*=\s*)?(.+)""".r
     // matches - 'validations validation_name [db:cp]'
     val validationRegex = new Regex(s"(?U)${Action.ValidationsKey}(?:\\s+(\\w+))?(?:\\s+\\[(?:\\s*(\\w+)?\\s*(?::\\s*(\\w+)\\s*)?)\\])?")
     val dbUseRegex = new Regex(s"${Action.DbUseKey}")
     val transactionRegex = new Regex(s"${Action.TransactionKey}")
-    val namedStepRegex = """(?U)(?:(\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*)\s*=\s*)?(.+)""".r
     val removeVarStepRegex = """(?U)(?:(\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*)\s*-=\s*)""".r
     val setEnvRegex = """setenv\s+(.+)""".r //dot matches new line as well
     val returnRegex = """return\s+(.+)""".r //dot matches new line as well
@@ -513,6 +513,11 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val commitOpRegex = """commit""".r
     val ifOpRegex = """if\s+(.+)""".r
     val foreachOpRegex = """foreach\s+(.+)""".r
+    val confRegex = {
+      val confPropRegex = """\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*(?:\.\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*+)*"""
+      val typeNames = Action.ConfTypes.types.map(_.name).mkString("|")
+      new Regex(s"(?U)conf(?:\\s+($typeNames))?\\s+($confPropRegex)")
+    }
     /* [jobs]
     val jobCallRegex = """(?U)job\s+(:?\w+)""".r
     [jobs] */
@@ -536,6 +541,9 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
           }
           require(code.nonEmpty || bodyTresql != null, s"Empty status operation!")
           Action.Status(code, bodyTresql, statusParameterIdx(bodyTresql))
+        } else if (confRegex.pattern.matcher(st).matches()) {
+          val confRegex(t, n) = st
+          Action.Conf(n, Action.ConfTypes.parse(t))
         } else if (commitOpRegex.pattern.matcher(st).matches()) {
           Action.Commit
         } else {
@@ -612,9 +620,9 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
                       val foreachOpRegex(initOpSt) = name
                       Action.Foreach(parseOp(initOpSt), parseAction(objectName, al.asScala.toList))
                     } else if (dbUseRegex.pattern.matcher(name).matches()) {
-                      Action.DbOp(parseAction(objectName, al.asScala.toList), true)
+                      Action.Db(parseAction(objectName, al.asScala.toList), true)
                     } else if (transactionRegex.pattern.matcher(name).matches()) {
-                      Action.DbOp(parseAction(objectName, al.asScala.toList), false)
+                      Action.Db(parseAction(objectName, al.asScala.toList), false)
                     } else sys.error(s"'$objectName' parsing error, invalid value: '$name'. " +
                       s"Only 'if', 'foreach', 'db use', 'transaction' operations allowed.")
                   Action.Evaluation(None, Nil, op)
@@ -759,6 +767,19 @@ object AppMetadata {
     val BindVarCursorsFunctionName = "build_cursors"
     val BindVarCursorsForViewFunctionName = "build_cursors_for_view"
 
+    object ConfTypes {
+      def types: Set[ConfType] = Set(NumberConf, StringConf, BooleanConf)
+      def parse(name: String): ConfType = types.find(_.name == name).getOrElse {
+        throw new IllegalArgumentException(s"Wrong name: '$name', supported names: '${
+          types.map(_.name).mkString(", ")}'")
+      }
+    }
+    sealed trait ConfType { def name: String }
+    case object NumberConf extends ConfType { def name = "number" }
+    case object StringConf extends ConfType { def name = "string" }
+    case object BooleanConf extends ConfType { def name = "boolean" }
+
+
     sealed trait Op
     sealed trait Step {
       def name: Option[String]
@@ -783,7 +804,9 @@ object AppMetadata {
                     headerTresql: String = null,
                     body: Op = null,
                     conformTo: Option[OpResultType] = None) extends Op
-    case class DbOp(action: Action, doRollback: Boolean) extends Op
+    case class Db(action: Action, doRollback: Boolean) extends Op
+    case class Conf(param: String, paramType: ConfType = null) extends Op
+
     /* [jobs]
     case class JobCall(name: String) extends Op
     [jobs] */
@@ -809,7 +832,7 @@ object AppMetadata {
         case If(o, a) => traverseAction(a)(stepTrav)(opTrav(state)(o))
         case o: ToFile => opTrav(state)(o.contentOp)
         case o: Http => opTrav(state)(o.body)
-        case DbOp(a, _) => traverseAction(a)(stepTrav)(state)
+        case Db(a, _) => traverseAction(a)(stepTrav)(state)
       }
       state => extractor(state) orElse traverse(state)
     }
