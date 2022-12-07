@@ -271,7 +271,7 @@ trait WabaseApp[User] {
     if (value == "null") null else qe.convertToType(field.type_, value)
   def prepareKey(viewName: String, keyValues: Seq[Any], actionName: String): Map[String, Any] = {
     val keyFields = qe.viewNameToKeyFields(viewName).filterNot(_.api.excluded)
-    if (keyValues.length > 0) {
+    if (keyValues.nonEmpty) {
       if (keyValues.length != keyFields.length)
         throw new BusinessException(
           s"Unexpected key length for $actionName of $viewName - expecting ${keyFields.length}, got ${keyValues.length}")
