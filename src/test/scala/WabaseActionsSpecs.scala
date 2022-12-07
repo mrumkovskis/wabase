@@ -2,7 +2,8 @@ package org.wabase
 
 import akka.actor.ActorSystem
 import akka.http.scaladsl.marshalling.Marshal
-import akka.http.scaladsl.model.MessageEntity
+import akka.http.scaladsl.model.{HttpRequest, HttpResponse, MessageEntity}
+import akka.http.scaladsl.server.Route
 import akka.http.scaladsl.unmarshalling.Unmarshal
 import akka.util.ByteString
 import org.mojoz.querease.{ValidationException, ValidationResult}
@@ -16,6 +17,7 @@ import java.nio.file.Files
 import java.util.UUID
 import scala.collection.immutable.{ListMap, Seq}
 import scala.concurrent.Future
+import scala.concurrent.duration.DurationInt
 import scala.util.Try
 
 object WabaseActionDtos {
@@ -69,12 +71,22 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
 
   override def dbNamePrefix: String = "wabase_db"
 
+  class WabaseActionsService(as: ActorSystem) extends TestAppServiceNoDeferred(as) {
+    val route = crudAction(user)
+  }
+
   var app: TestApp = _
   var marshallers: AppProvider[TestUsr] with QuereaseMarshalling with Execution = _
+  var service: WabaseActionsService = _
 
   override def beforeAll(): Unit = {
     querease = new TestQuerease("/querease-action-specs-metadata.yaml") {
       override lazy val viewNameToClassMap = QuereaseActionsDtos.viewNameToClass ++ WabaseActionDtos.viewNameToClass
+
+      override def doHttpRequest(reqF: Future[HttpRequest])(implicit as: ActorSystem): Future[HttpResponse] =
+        reqF.flatMap { req =>
+          Route.toFunction(service.route)(as)(req)
+        }
     }
     super.beforeAll()
     val db = new DbAccess with Loggable {
@@ -113,6 +125,10 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         override type App = AppBase[TestUsr]
         override protected def initApp: App = myApp
       }
+
+    service = new WabaseActionsService(as) {
+      override def initApp = myApp
+    }
   }
 
   override def afterAll(): Unit = {
@@ -157,6 +173,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         case r => Future.successful(r)
       }
   }
+
   private implicit val state = ApplicationState(Map())
 
   behavior of "purchase"
@@ -695,6 +712,33 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         .flatMap(checkFile)
     } yield {
       t3
+    }
+  }
+
+  it should "do http operations" in {
+    def unmarshalResponse(resp: HttpResponse): Future[Any] = {
+      resp.entity.toStrict(1.second)
+        .map(_.data)
+        .map { d =>
+          Try(new CborOrJsonAnyValueDecoder().decode(d))
+            .toOption
+            .getOrElse(d.decodeString("UTF-8"))
+        }
+    }
+
+    for {
+      t1 <- doAction("get", "http_test_1", Map())
+        .mapTo[HttpResult]
+        .flatMap(res => unmarshalResponse(res.response))
+        .map { _ shouldBe "val1 val2" }
+      t2 <- doAction("list", "http_test_2", Map())
+        .map { _ shouldBe StatusResult(200, StringStatus("val1 val2")) }
+      t3 <- doAction("save", "http_test_2", Map())
+        .map {
+          _ shouldBe StatusResult(200, StringStatus("person_health?/Mr.%20Mario/2022-04-11?par1=val1&par2=val2"))
+        }
+    } yield {
+      t1
     }
   }
 }

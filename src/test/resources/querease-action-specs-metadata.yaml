@@ -428,7 +428,7 @@ list:
 
 name: invocation_test_1
 table:
-api: get, save, list, count
+api: get, save, count
 fields:
 - s1
 - s2
@@ -596,3 +596,21 @@ get:
 - status ok { :uri || 'about' }
 list:
 - conf conf.test
+
+
+name: http_test_1
+table:
+api: get
+get:
+- http ('/invocation_test_1')
+
+
+name: http_test_2
+table:
+api: list, save
+list:
+- res = http ('/invocation_test_1')
+- status ok :res
+save:
+- res = http post ('/person_health') unique_opt { 'Mr. Mario' name, 'Moderna' 'vaccine', '2022-04-11' 'manipulation_date' }
+- status ok :res

@@ -15,12 +15,14 @@ object TresqlUri {
 }
 
 class TresqlUri {
-  def queryStringColIdx(tresqlUriExp: Exp)(parser: QueryParsers): Int =
-    parser.traverser[Int](_ => {
-      case Cols(_, cols) => cols indexWhere {
-        _ == Col(StringConst("?"), null)
-      }
-    })(-1)(tresqlUriExp)
+  def queryStringColIdx(tresqlUriExp: Exp)(parser: QueryParsers): Int = {
+    if (tresqlUriExp == null) -1 else
+      parser.traverser[Int](_ => {
+        case Cols(_, cols) => cols indexWhere {
+          _ == Col(StringConst("?"), null)
+        }
+      })(-1)(tresqlUriExp)
+  }
 
   def uriValue(row: RowLike, startIdx: Int, queryStringColIdx: Int): TresqlUri.Uri = {
     val (names, vals) = (row match {

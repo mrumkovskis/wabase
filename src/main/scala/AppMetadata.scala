@@ -638,7 +638,8 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     Action(steps)
   }
 
-  protected val dataFlowParser: AppMetadataDataFlowParser =
+  // lazy val so that tresqlUri is initialized when dataFlowParser is referenced
+  protected lazy val dataFlowParser: AppMetadataDataFlowParser =
     new CachedAppMetadataDataFlowParser(4096, tresqlUri)
 
   /* [jobs]
@@ -698,18 +699,22 @@ trait AppMetadataDataFlowParser extends QueryParsers { self =>
   }
   def httpOp: Parser[Http] = {
     def tu(uri: Exp) = TresqlUri.Tresql(uri.tresql, tresqlUri.queryStringColIdx(uri)(self))
-    def http_without_type:  Parser[Http] =
-      "http" ~> opt("get" | "post" | "put" | "delete") ~ expr ~ opt(expr ~ operation) ^^ {
-        case method ~ uri ~ Some(headers ~ op) =>
-          Http(method.getOrElse("get"), tu(uri), headers.tresql, op)
-        case method ~ uri ~ None =>
-          Http(method.getOrElse("get"), tu(uri), null, null)
+    def http_get_delete: Parser[Http] =
+      "http" ~> opt("get" | "delete") ~ bracesTresql ~ opt(expr) ^^ {
+        case method ~ uri ~ headers =>
+          Http(method.getOrElse("get"), tu(uri), headers.map(_.tresql).orNull, null)
       }
-    opt(opResultType) ~ http_without_type ^^ {
+    def http_post_put: Parser[Http] =
+      "http" ~> ("post" | "put") ~ bracesTresql ~ operation ^^ {
+        case method ~ uri ~ op =>
+          Http(method, tu(uri), null, op )
+      }
+    opt(opResultType) ~ (http_get_delete | http_post_put) ^^ {
       case conformTo ~ http => http.copy(conformTo = conformTo)
     }
   }
   def bracesOp: Parser[Op] = "(" ~> operation <~ ")"
+  def bracesTresql: Parser[Exp] = "(" ~> expr <~ ")"
   def operation: Parser[Op] = viewOp | uniqueOptOp | invocationOp | httpOp | fileOp | toFileOp |
     bracesOp | tresqlOp
 

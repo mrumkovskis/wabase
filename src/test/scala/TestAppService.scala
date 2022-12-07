@@ -47,6 +47,25 @@ class TestAppService(system: ActorSystem) extends ExecutionImpl()(system)
   override protected def initDeferredStorage: DeferredStorage = new DbDeferredStorage(appConfig, this, dbAccess, this)
 }
 
+class TestAppServiceNoDeferred(system: ActorSystem) extends ExecutionImpl()(system)
+  with AppServiceBase[TestUsr]
+  with AppFileServiceBase[TestUsr]
+  with AppConfig
+  with AppVersion
+  with Authentication[TestUsr]
+  with ConstantQueryTimeout
+  with NoServerStatistics
+  with Loggable
+  with CSRFDefence {
+  override type App = TestApp
+  override def initApp: App = TestApp
+  override def initFileStreamer: TestApp = TestApp
+  override def encodeSession(session: Authentication.Session[TestUsr]): String = ???
+  override def decodeSession(session: String) = ???
+  override def signInUser = ???
+  override def appVersion: String = "TEST"
+}
+
 object YamlUtils {
   def parseYamlData(yamlStr: String): Any = {
     import org.snakeyaml.engine.v2.api.LoadSettings

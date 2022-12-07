@@ -2,7 +2,7 @@ package org.wabase
 
 import akka.actor.ActorSystem
 import akka.http.scaladsl.model.HttpHeader.ParsingResult.{Error, Ok}
-import akka.http.scaladsl.model.{ContentType, HttpEntity, HttpHeader, HttpMethods, HttpRequest, HttpResponse, MediaTypes, UniversalEntity}
+import akka.http.scaladsl.model.{ContentType, ContentTypes, HttpEntity, HttpHeader, HttpMethods, HttpRequest, HttpResponse, MediaTypes, UniversalEntity}
 import akka.stream.scaladsl.Source
 import akka.util.ByteString
 import org.mojoz.querease.QuereaseExpressions.DefaultParser
@@ -836,7 +836,8 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
         uriValue(Query(op.uriTresql.uriTresql, opData).unique, 0, op.uriTresql.queryStringColIdx)
       tresqlUri.uri(trUri)
     }
-    val (optContentType, headers) = { // content type is used for request body if present
+    val (optContentType, headers) = if (op.headerTresql == null) (Some(null) -> Nil) else {
+      // content type is used for request body if present
       val parsedValues = (Query(op.headerTresql, opData) match {
         case SingleValueResult(r) => r match { // unwrap header values from list of maps
           case i: Iterable[_] => i.map {
@@ -1079,7 +1080,9 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       else cborOrJsonDecoder.decodeToSeqOfMaps(bs, viewName)(viewNameToMapZero)
 
     ent.toStrict(1.second).map { se =>
-      if (isCollection) decodeToSeqOfMaps(se.data) else decodeToMap(se.data)
+      if (ent.contentType == ContentTypes.`application/json`)
+        if (isCollection) decodeToSeqOfMaps(se.data) else decodeToMap(se.data)
+      else se.data.decodeString("UTF-8")
     }
   }
 
@@ -1116,11 +1119,18 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case StringResult(str) => str
       case id: IdResult => id
       case kr: KeyResult => kr.ir
-      case sr: StatusResult => sr
+      case StatusResult(code, value) => Map("code" -> code, "value" ->
+        (value match {
+          case StringStatus(v) => v
+          case RedirectStatus(value) => tresqlUri.uri(value).toString()
+        }))
       case fi: FileInfoResult => fi.fileInfo.toMap
       case fr: FileResult => fileHttpEntity(fr).map(objFromHttpEntity(_, null, false))
         .getOrElse(sys.error(s"File not found: ${fr.fileInfo}"))
-      case HttpResult(r) => objFromHttpEntity(r.entity, null, false)
+      case HttpResult(r) =>
+        if (r.status.isRedirection())
+          r.headers.find(_.is("location")).map(_.value()).getOrElse("")
+        else objFromHttpEntity(r.entity, null, false)
       case NoResult => null
       case CompatibleResult(r, ct) => r match {
         case TresqlResult(r: Result[_]) =>
