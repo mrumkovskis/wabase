@@ -705,16 +705,16 @@ trait AppMetadataDataFlowParser extends QueryParsers { self =>
           Http(method.getOrElse("get"), tu(uri), headers.map(_.tresql).orNull, null)
       }
     def http_post_put: Parser[Http] =
-      "http" ~> ("post" | "put") ~ bracesTresql ~ operation ^^ {
-        case method ~ uri ~ op =>
-          Http(method, tu(uri), null, op )
+      "http" ~> ("post" | "put") ~ bracesTresql ~ operation ~ opt(expr) ^^ {
+        case method ~ uri ~ op ~ headers =>
+          Http(method, tu(uri), headers.map(_.tresql).orNull, op )
       }
-    opt(opResultType) ~ (http_get_delete | http_post_put) ^^ {
+    opt(opResultType) ~ (http_post_put | http_get_delete) ^^ {
       case conformTo ~ http => http.copy(conformTo = conformTo)
     }
   }
   def bracesOp: Parser[Op] = "(" ~> operation <~ ")"
-  def bracesTresql: Parser[Exp] = "(" ~> expr <~ ")"
+  def bracesTresql: Parser[Exp] = ("(" ~> expr <~ ")") | expr
   def operation: Parser[Op] = viewOp | uniqueOptOp | invocationOp | httpOp | fileOp | toFileOp |
     bracesOp | tresqlOp
 

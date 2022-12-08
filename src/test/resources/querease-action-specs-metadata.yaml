@@ -602,15 +602,15 @@ name: http_test_1
 table:
 api: get
 get:
-- http ('/invocation_test_1')
+- http '/invocation_test_1'
 
 
 name: http_test_2
 table:
 api: list, save
 list:
-- res = http ('/invocation_test_1')
+- res = http '/invocation_test_1'
 - status ok :res
 save:
-- res = http post ('/person_health') unique_opt { 'Mr. Mario' name, 'Moderna' 'vaccine', '2022-04-11' 'manipulation_date' }
+- res = http post '/person_health' unique_opt { 'Mr. Mario' name, 'Moderna' 'vaccine', '2022-04-11' 'manipulation_date' }
 - status ok :res
