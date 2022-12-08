@@ -607,10 +607,26 @@ get:
 
 name: http_test_2
 table:
-api: list, save
+key: name
+api: get, list, save
+fields:
+- id
+- name
+- manipulation_date
+- vaccine
+get:
+- unique_opt {:name name, :manipulation_date::date manipulation_date, :vaccine vaccine, :id::long id}
 list:
 - res = http '/invocation_test_1'
 - status ok :res
-save:
-- res = http post '/person_health' unique_opt { 'Mr. Mario' name, 'Moderna' 'vaccine', '2022-04-11' 'manipulation_date' }
+insert:
+  # http post ends with empty array explicitly indicating no headers
+- res = http post '/person_health'
+          unique_opt { 'Mr. Mario' name, 'Moderna' 'vaccine', '2022-04-11' 'manipulation_date' }
+          []
 - status ok :res
+update:
+- health_id = unique_opt |med_db:person_health[name = :name]{id}
+- http put { '/person_health/' || :health_id.id }
+    http get
+      {'/http_test_2/' || :name, '?', :manipulation_date manipulation_date, :vaccine vaccine, :health_id.id id }

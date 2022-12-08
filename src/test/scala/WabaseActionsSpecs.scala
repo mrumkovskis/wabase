@@ -717,7 +717,9 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
 
   it should "do http operations" in {
     def unmarshalResponse(resp: HttpResponse): Future[Any] = {
-      resp.entity.toStrict(1.second)
+      if (resp.status.isRedirection()) Future.successful {
+        resp.headers.find(_.is("location")).map(_.value()).getOrElse("")
+      } else resp.entity.toStrict(1.second)
         .map(_.data)
         .map { d =>
           Try(new CborOrJsonAnyValueDecoder().decode(d))
@@ -733,10 +735,15 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         .map { _ shouldBe "val1 val2" }
       t2 <- doAction("list", "http_test_2", Map())
         .map { _ shouldBe StatusResult(200, StringStatus("val1 val2")) }
-      t3 <- doAction("save", "http_test_2", Map())
+      t3 <- doAction("insert", "http_test_2", Map())
         .map {
           _ shouldBe StatusResult(200, StringStatus("person_health?/Mr.%20Mario/2022-04-11?par1=val1&par2=val2"))
         }
+      t4 <- doAction("update", "http_test_2", Map("name" -> "Mr. Gunza",
+        "manipulation_date" -> "2022-09-10", "vaccine" -> "Pfizer"))
+        .mapTo[HttpResult]
+        .flatMap(res => unmarshalResponse(res.response))
+        .map { _ shouldBe "person_health?/Mr.%20Gunza/2022-09-10?par1=val1&par2=val2" }
     } yield {
       t1
     }
