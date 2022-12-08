@@ -287,7 +287,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
           def run(implicit ec: ExecutionContext, as: ActorSystem) = {
             val vd = viewDef(viewName)
             implicit val resFac =
-              if (vd.noDb) resourcesFactory
+              if (vd.explicitDb) resourcesFactory
               else resourcesFactory.copy(resources = resourcesFactory.initResources())
             implicit val fs = fileStreamer
             import resFac._

@@ -91,11 +91,11 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val Limit = "limit"
     val Validations = "validations"
     val ConnectionPool = "cp"
-    val NoDb = "no db"
+    val ExplicitDb = "explicit db"
     val QuereaseViewExtrasKey = QuereaseMetadata.QuereaseViewExtrasKey
     val WabaseViewExtrasKey = AppMetadata.WabaseViewExtrasKey
     def apply() =
-      Set(Api, Auth, Key, Limit, Validations, ConnectionPool, NoDb, QuereaseViewExtrasKey, WabaseViewExtrasKey) ++
+      Set(Api, Auth, Key, Limit, Validations, ConnectionPool, ExplicitDb, QuereaseViewExtrasKey, WabaseViewExtrasKey) ++
         Action()
   }
 
@@ -375,7 +375,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
     val limit = getIntExtra(Limit, viewDef.extras) getOrElse 100
     val cp = getStringExtra(ConnectionPool, viewDef.extras).orNull
-    val nodb = getBooleanExtra(NoDb, viewDef.extras)
+    val explicitDb = getBooleanExtra(ExplicitDb, viewDef.extras)
 
     val actions = Action().foldLeft(Map[String, Action]()) { (res, actionName) =>
       val a = parseAction(s"${viewDef.name}.$actionName", getSeq(actionName, viewDef.extras))
@@ -400,7 +400,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     ViewDef(name, db, table, tableAlias, joins, filter,
       viewDef.groupBy, viewDef.having, orderBy, extends_,
       comments, appFields, viewDef.saveTo, extras)
-      .updateWabaseExtras(_ => AppViewDef(limit, cp, nodb, auth, apiMap, actions, Map.empty))
+      .updateWabaseExtras(_ => AppViewDef(limit, cp, explicitDb, auth, apiMap, actions, Map.empty))
   }
 
   protected def transformAppViewDefs(viewDefs: Map[String, ViewDef]): Map[String, ViewDef] =
@@ -960,7 +960,7 @@ object AppMetadata {
   trait AppViewDefExtras {
     val limit: Int
     val cp: String
-    val noDb: Boolean
+    val explicitDb: Boolean
     val auth: AuthFilters
     val apiMethodToRole: Map[String, String]
     val actions: Map[String, Action]
@@ -970,7 +970,7 @@ object AppMetadata {
   private [wabase] case class AppViewDef(
     limit: Int = 1000,
     cp: String = null,
-    noDb: Boolean = false,
+    explicitDb: Boolean = false,
     auth: AuthFilters = AuthFilters(Nil, Nil, Nil, Nil, Nil),
     apiMethodToRole: Map[String, String] = Map(),
     actions: Map[String, Action] = Map(),
@@ -1019,7 +1019,7 @@ object AppMetadata {
     private val appExtras = extras(WabaseViewExtrasKey, defaultExtras)
     override val limit = appExtras.limit
     override val cp = appExtras.cp
-    override val noDb = appExtras.noDb
+    override val explicitDb = appExtras.explicitDb
     override val auth = appExtras.auth
     override val apiMethodToRole = appExtras.apiMethodToRole
     override val actions = appExtras.actions
