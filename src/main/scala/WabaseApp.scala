@@ -164,6 +164,11 @@ trait WabaseApp[User] {
     simpleAction(context.copy(values = trusted))
   }
 
+  protected def maybeGetOldValue(context: AppActionContext): qe.QuereaseAction[Map[String, Any]] = {
+    qe.QuereaseAction.value(context.values)
+  }
+
+  /** In subclass can place this method call in {{{maybeGetOldValue}}} method */
   protected def getOldValue(context: AppActionContext): qe.QuereaseAction[Map[String, Any]] = {
     import context._
     def throwUnexpectedResultClass(qr: QuereaseResult) =
@@ -197,11 +202,9 @@ trait WabaseApp[User] {
       else prepareKey(viewName, keyValues, actionName)
     Option(keyAsMap)
       .filter(_.nonEmpty)
-      .map(_ => getOldValue(context.copy(values = keyAsMap)))
+      .map(_ => maybeGetOldValue(context.copy(values = keyAsMap)))
       .getOrElse(qe.QuereaseAction.value(null: Map[String, Any]))
       .flatMap { oldValue =>
-        if (oldValue == null && keyAsMap.nonEmpty && (actionName == Action.Save || actionName == Action.Update))
-          throwOldValueNotFound("Record not found, cannot edit", state.locale)
         val richContext = context.copy(oldValue = oldValue)
         val saveable = applyReadonlyValues(viewDef, oldValue, values)
         val saveableContext = richContext.copy(values = saveable)
@@ -216,9 +219,7 @@ trait WabaseApp[User] {
 
   def delete(context: AppActionContext): ActionHandlerResult = {
     import context._
-    getOldValue(context).flatMap { oldValue =>
-      if (oldValue == null)
-        throwOldValueNotFound("Record not found, cannot delete", state.locale)
+    maybeGetOldValue(context).flatMap { oldValue =>
       val richContext = context.copy(oldValue = oldValue)
       val rf = ResourcesFactory(resourceFactory(richContext), closeResources, tresqlResources.resourcesTemplate)
       qe.QuereaseAction(viewName, actionName, values, env)(rf, fileStreamer)

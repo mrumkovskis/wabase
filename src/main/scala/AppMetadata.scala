@@ -285,9 +285,11 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
             sys.error(
               s"Unknown $key value(s), viewDef field ${viewDef.name}.${fieldName}, value(s): ${unknownOps.mkString(", ")}")
           val ro = readonly || op(Readonly)
+          val isPk = viewDef.table != null &&
+            tableMetadata.tableDefOption(viewDef).flatMap(_.pk).map(_.cols).contains(Seq(fieldName))
           FieldApiOps(
             insertable = !ro && !noInsert && !op(Excluded) && !op(NoInsert),
-            updatable  = !ro && !noUpdate && !op(Excluded) && !op(NoUpdate),
+            updatable  = !ro && !noUpdate && !op(Excluded) && !op(NoUpdate) && !isPk,
             excluded   = op(Excluded),
           )
       }

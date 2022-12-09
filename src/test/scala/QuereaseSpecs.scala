@@ -88,7 +88,7 @@ class QuereaseSpecs extends AsyncFlatSpec with Matchers with TestQuereaseInitial
       true,
       false,
       List(
-        Property("id",TresqlValue(":id",true,true,false)),
+        Property("id",TresqlValue(":id",true,false,false)),
         Property("name",TresqlValue(":name",true,true,false)),
         Property("surname",TresqlValue(":surname",true,true,false)),
       ),
@@ -105,7 +105,7 @@ class QuereaseSpecs extends AsyncFlatSpec with Matchers with TestQuereaseInitial
       true,
       false,
       List(
-        Property("id",TresqlValue(":id",true,true,false)),
+        Property("id",TresqlValue(":id",true,false,false)),
         Property("name",TresqlValue(":name",true,true,false)),
       ),
       null
@@ -121,7 +121,7 @@ class QuereaseSpecs extends AsyncFlatSpec with Matchers with TestQuereaseInitial
       true,
       false,
       List(
-        Property("id",TresqlValue(":id",true,true,false)),
+        Property("id",TresqlValue(":id",true,false,false)),
         Property("name",TresqlValue(":name",true,true,false)),
         Property("roles",ViewValue(
           View(
@@ -132,7 +132,7 @@ class QuereaseSpecs extends AsyncFlatSpec with Matchers with TestQuereaseInitial
             true,
             false,
             List(
-              Property("id",TresqlValue(":id",true,true,false)),
+              Property("id",TresqlValue(":id",true,false,false)),
               Property("sys_role_id",TresqlValue(
                 """(checked_resolve(:sys_role, array(sys_role r[name = :sys_role]{r.id}@(2)),""" +
                 """ 'Failed to identify value of "sys_role" (from sys_user_role_choice) - '""" +
