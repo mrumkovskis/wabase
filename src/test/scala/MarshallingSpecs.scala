@@ -1,6 +1,6 @@
 package org.wabase
 
-import akka.http.scaladsl.marshalling.Marshal
+import akka.http.scaladsl.marshalling.{Marshal, ToResponseMarshaller}
 import akka.http.scaladsl.model._
 import akka.http.scaladsl.model.headers.Location
 import akka.http.scaladsl.testkit.ScalatestRouteTest
@@ -77,17 +77,17 @@ class MarshallingSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
   it should "marshal wabase result according to view" in {
     val svc = service
     import svc.app.qe
-    import svc.{dtoUnmarshaller, toResponseWabaseResultMarshaller}
+    import svc.{dtoUnmarshaller, toResponseWabaseResultMarshaller, mapForViewMarshaller, seqOfMapsForViewMarshaller}
     var httpResponse: HttpResponse = null
     def ctx(viewName: String) =
       svc.app.AppActionContext(null, null, null, null, null)(null, null, null, null, null, null)
         .copy(viewName = viewName)(null, null, null, null, null, null)
     def wRes(viewName: String, quereaseResult: QuereaseResult) =
       svc.app.WabaseResult(ctx(viewName), quereaseResult)
-    def toBodyString(marshallable: svc.app.WabaseResult): String =
+    def toBodyString[A: ToResponseMarshaller](marshallable: A): String =
       Await.result(Await.result(Marshal(marshallable).to[HttpResponse], 1.second)
         .entity.toStrict(1.second), 1.second).data.utf8String
-    def marshal(marshallable: svc.app.WabaseResult) =
+    def marshal[A: ToResponseMarshaller](marshallable: A) =
       Await.result(Marshal(marshallable).to[HttpResponse], 1.second)
 
     var childCopy: JsonDecoderSpecs.decoder_test_child = null
@@ -101,7 +101,7 @@ class MarshallingSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     val fullJson     = """{"id":333,"name":"CHILD-1","date":"2021-11-08","date_time":"2021-12-26 23:57:14"}"""
     val filteredJson = """{"id":333,"date":"2021-11-08","date_time":"2021-12-26 23:57:14"}"""
 
-    httpResponse = marshal(wRes("decoder_test_child", PojoResult(chilD)))
+    httpResponse = marshal((chilD.toMap, "decoder_test_child"))
     httpResponse.entity.contentType shouldEqual ContentTypes.`application/json`
 
     childCopy = Await.result(Unmarshal(httpResponse.entity).to[JsonDecoderSpecs.decoder_test_child], 1.second)
@@ -116,7 +116,7 @@ class MarshallingSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     otherCopy.date      shouldBe child.date
     otherCopy.date_time shouldBe child.date_time
 
-    httpResponse = marshal(wRes("decoder_test", PojoResult(child.asInstanceOf[AppQuerease#DTO])))
+    httpResponse = marshal((child.asInstanceOf[AppQuerease#DTO].toMap, "decoder_test"))
 
     childCopy = Await.result(Unmarshal(httpResponse.entity).to[JsonDecoderSpecs.decoder_test_child], 1.second)
     childCopy.id        shouldBe child.id
@@ -124,19 +124,16 @@ class MarshallingSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     childCopy.date      shouldBe child.date
     childCopy.date_time shouldBe child.date_time
 
-    toBodyString(wRes("decoder_test_child", OptionResult(Option(chilD))))       shouldBe fullJson
+    toBodyString((chilD.toMap, "decoder_test_child"))       shouldBe fullJson
     toBodyString(wRes("decoder_test_child", MapResult(chilD.toMap)))            shouldBe fullJson
-    toBodyString(wRes("decoder_test_child", PojoResult(chilD)))                 shouldBe fullJson
-    toBodyString(wRes("decoder_test_child", ListResult(Nil)))                   shouldBe "[]"
-    toBodyString(wRes("decoder_test_child", ListResult(List(chilD))))           shouldBe s"[$fullJson]"
-    toBodyString(wRes("decoder_test_child", ListResult(List(chilD, chilD))))    shouldBe s"[$fullJson,$fullJson]"
+    toBodyString((Nil, "decoder_test_child"))                   shouldBe "[]"
+    toBodyString((List(chilD.toMap), "decoder_test_child"))           shouldBe s"[$fullJson]"
+    toBodyString((List(chilD, chilD).map(_.toMap), "decoder_test_child"))    shouldBe s"[$fullJson,$fullJson]"
 
-    toBodyString(wRes("decoder_test", OptionResult(Option(chilD))))     shouldBe filteredJson
     toBodyString(wRes("decoder_test", MapResult(chilD.toMap)))          shouldBe filteredJson
-    toBodyString(wRes("decoder_test", PojoResult(chilD)))               shouldBe filteredJson
-    toBodyString(wRes("decoder_test", ListResult(Nil)))                 shouldBe "[]"
-    toBodyString(wRes("decoder_test", ListResult(List(chilD))))         shouldBe s"[$filteredJson]"
-    toBodyString(wRes("decoder_test", ListResult(List(chilD, chilD))))  shouldBe s"[$filteredJson,$filteredJson]"
+    toBodyString((Nil, "decoder_test"))                 shouldBe "[]"
+    toBodyString((List(chilD.toMap), "decoder_test"))         shouldBe s"[$filteredJson]"
+    toBodyString((List(chilD, chilD).map(_.toMap), "decoder_test"))  shouldBe s"[$filteredJson,$filteredJson]"
   }
 
   it should "marshal number result" in {

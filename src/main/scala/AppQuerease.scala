@@ -2,7 +2,7 @@ package org.wabase
 
 import akka.actor.ActorSystem
 import akka.http.scaladsl.model.HttpHeader.ParsingResult.{Error, Ok}
-import akka.http.scaladsl.model.{ContentType, ContentTypes, HttpEntity, HttpHeader, HttpMethods, HttpRequest, HttpResponse, MediaTypes, UniversalEntity}
+import akka.http.scaladsl.model.{ContentType, ContentTypes, HttpEntity, HttpHeader, HttpMethods, HttpRequest, HttpResponse, MediaTypes, StatusCodes, UniversalEntity}
 import akka.stream.scaladsl.Source
 import akka.util.ByteString
 import org.mojoz.querease.QuereaseExpressions.DefaultParser
@@ -50,14 +50,8 @@ case class TresqlSingleRowResult(row: RowLike) extends QuereaseCloseableResult w
   def map[T](f: RowLike => T): T = try f(row) finally row.close()
 }
 case class MapResult(result: Map[String, Any]) extends DataResult
-case class ListResult(result: List[AppQuerease#DTO]) extends DataResult
-// TODO after decoupling QereaseIo from Querease this class should be refactored to PojoResult[X]
-case class PojoResult(result: AppQuerease#DTO) extends DataResult
-// TODO after decoupling QereaseIo from Querease this class should be refactored to IteratorResult[X]
-case class IteratorResult(result: AppQuerease#QuereaseIteratorResult[AppQuerease#DTO])
+case class IteratorResult(result: Iterator[Map[String, Any]] with AutoCloseable)
   extends QuereaseCloseableResult with DataResult
-// TODO after decoupling QereaseIo from Querease this class should be refactored to OptionResult[X]
-case class OptionResult(result: Option[AppQuerease#DTO]) extends DataResult
 case class LongResult(value: Long) extends QuereaseResult
 case class StringResult(value: String) extends QuereaseResult
 case class NumberResult(value: java.lang.Number) extends QuereaseResult
@@ -67,7 +61,7 @@ case class IdResult(id: Any, name: String) extends QuereaseResult {
 }
 case class KeyResult(ir: IdResult, viewName: String, key: Seq[Any]) extends QuereaseResult
 case class QuereaseDeleteResult(count: Int) extends QuereaseResult
-case class StatusResult(code: Int, value: StatusValue) extends QuereaseResult
+case class StatusResult(code: Int, value: StatusValue) extends DataResult
 case class FileInfoResult(fileInfo: FileInfo) extends QuereaseResult
 case class FileResult(fileInfo: FileInfo, fileStreamer: FileStreamer) extends DataResult
 case class HttpResult(response: HttpResponse) extends DataResult
@@ -591,7 +585,8 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
           case Get =>
             val keyValues   = getKeyValues(viewName, callData)
             val keyColNames = viewNameToKeyColNames(viewName)
-            get(v, keyValues, keyColNames, null, callData).map(TresqlSingleRowResult) getOrElse OptionResult(None)
+            get(v, keyValues, keyColNames, null, callData)
+              .map(TresqlSingleRowResult) getOrElse notFound
           case Action.List =>
             TresqlResult(rowsResult(v, callData, int(OffsetKey).getOrElse(0), int(LimitKey).getOrElse(0),
               string(OrderKey).orNull, null))
@@ -649,15 +644,26 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case null => NoResult // reflection call on function with Unit (void) return type returns null
       case m: Map[String, Any]@unchecked => MapResult(m)
       case m: java.util.Map[String, Any]@unchecked => MapResult(m.asScala.toMap)
-      case l: List[DTO@unchecked] => ListResult(l)
+      case l: List[DTO@unchecked] => IteratorResult(new Iterator[Map[String, Any]] with AutoCloseable {
+        val it = l.iterator
+        override def hasNext: Boolean = it.hasNext
+        override def next(): Map[String, Any] = it.next().toMap(AppQuerease.this)
+        override def close(): Unit = {}
+      }
+
+      )
       case r: Result[_] => TresqlResult(r)
       case r: RowLike => TresqlSingleRowResult(r)
       case l: Long => LongResult(l)
       case s: String => StringResult(s)
       case n: java.lang.Number => NumberResult(n)
-      case r: QuereaseIteratorResult[DTO]@unchecked => IteratorResult(r)
-      case d: DTO@unchecked => PojoResult(d)
-      case o: Option[DTO]@unchecked => OptionResult(o)
+      case r: QuereaseIteratorResult[DTO]@unchecked => IteratorResult(new Iterator[Map[String, Any]] with AutoCloseable {
+        override def hasNext: Boolean = r.hasNext
+        override def next(): Map[String, Any] = r.next().toMap(AppQuerease.this)
+        override def close(): Unit = r.close()
+      })
+      case d: DTO@unchecked => MapResult(d.toMap(this))
+      case o: Option[DTO]@unchecked => o.map(d => MapResult(d.toMap(this))).getOrElse(notFound)
       case h: HttpResponse => HttpResult(h)
       case q: QuereaseResult => q
       case x => sys.error(s"Unrecognized result type: ${x.getClass}, value: $x from function $className.$function")
@@ -942,13 +948,13 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case Action.UniqueOpt(innerOp) =>
         def createGetResult(res: QuereaseResult): DataResult = res match {
           case TresqlResult(r) if !r.isInstanceOf[DMLResult] =>
-            r.uniqueOption map TresqlSingleRowResult getOrElse OptionResult(None)
+            r.uniqueOption map TresqlSingleRowResult getOrElse notFound
           case IteratorResult(r) =>
             try r.hasNext match {
               case true =>
                 val v = r.next()
-                if (r.hasNext) sys.error("More than one row for unique result") else OptionResult(Option(v))
-              case false => OptionResult(None)
+                if (r.hasNext) sys.error("More than one row for unique result") else MapResult(v)
+              case false => notFound
             } finally r.close
           case c: CompatibleResult => c.copy(result = createGetResult(c.result))
           case r => sys.error(s"unique opt can only process DataResult type, instead encountered: $r")
@@ -1110,10 +1116,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       }
       case srr: TresqlSingleRowResult => srr.map(_.toMap)
       case MapResult(mr) => mr
-      case PojoResult(pr) => pr.toMap(this)
-      case ListResult(lr) => lr
-      case IteratorResult(ir) => ir.map(_.toMap(this)).toList
-      case OptionResult(or) => or.map(_.toMap(this)).orNull
+      case IteratorResult(ir) => ir.toList
       case LongResult(nr) => nr
       case NumberResult(nr) => nr
       case StringResult(str) => str
@@ -1152,6 +1155,8 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case x => Future.successful(x)
     }
   }
+
+  private def notFound = StatusResult(StatusCodes.NotFound.intValue, StringStatus("not found"))
 
   // TODO add macros from resources so that saved parser cache can be used later in runtime
   abstract class AppQuereaseDefaultParser extends DefaultParser {

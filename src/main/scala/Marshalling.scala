@@ -183,12 +183,6 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
   import ResultEncoder.EncoderFactory
   implicit def toEntityQuereaseMapResultMarshaller (viewName: String):  ToEntityMarshaller[MapResult]  =
     Marshaller.combined((mr:  MapResult) => (mr.result, viewName))
-  implicit def toEntityQuereasePojoResultMarshaller(viewName: String):  ToEntityMarshaller[PojoResult] =
-    Marshaller.combined((pr: PojoResult) => (pr.result.toMap, viewName))
-  implicit def toEntityQuereaseListResultMarshaller(viewName: String):  ToEntityMarshaller[ListResult] =
-    Marshaller.combined((lr: ListResult) => (lr.result.map(_.toMap), viewName))
-  implicit def toResponseQuereaseOptionResultMarshaller(viewName: String):  ToResponseMarshaller[OptionResult] =
-    Marshaller.combined(_.result.map(dto => (dto.toMap, viewName)))
   implicit val toEntityQuereaseLongResultMarshaller:      ToEntityMarshaller  [LongResult]   =
     Marshaller.combined("" + _.value)
   implicit val toEntityQuereaseStringResultMarshaller:    ToEntityMarshaller  [StringResult]     =
@@ -276,14 +270,8 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
     Marshaller { implicit ec => wr => wr.result match {
       case sr: QuereaseSerRes =>
         (toEntityQuereaseSerializedResultMarshaller (wr.ctx.viewName):        ToResponseMarshaller[QuereaseSerRes])(sr)
-      case op: OptionResult   =>
-        (toResponseQuereaseOptionResultMarshaller   (wr.ctx.viewName):        ToResponseMarshaller[OptionResult]  )(op)
       case mp: MapResult      =>
         (toEntityQuereaseMapResultMarshaller        (wr.ctx.viewName):        ToResponseMarshaller[MapResult]     )(mp)
-      case pj: PojoResult     =>
-        (toEntityQuereasePojoResultMarshaller       (wr.ctx.viewName):        ToResponseMarshaller[PojoResult]    )(pj)
-      case ls: ListResult     =>
-        (toEntityQuereaseListResultMarshaller       (wr.ctx.viewName):        ToResponseMarshaller[ListResult]    )(ls)
       case nr: LongResult     => (toEntityQuereaseLongResultMarshaller:       ToResponseMarshaller[LongResult]    )(nr)
       case sr: StringResult   => (toEntityQuereaseStringResultMarshaller:     ToResponseMarshaller[StringResult]  )(sr)
       case nr: NumberResult   => (toEntityQuereaseNumberResultMarshaller:     ToResponseMarshaller[NumberResult]  )(nr)

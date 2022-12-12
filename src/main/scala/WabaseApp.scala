@@ -1,6 +1,7 @@
 package org.wabase
 
 import akka.actor.ActorSystem
+import akka.http.scaladsl.model.StatusCodes
 import akka.stream.Materializer
 import akka.stream.scaladsl.Source
 import akka.util.ByteString
@@ -174,11 +175,9 @@ trait WabaseApp[User] {
     def throwUnexpectedResultClass(qr: QuereaseResult) =
       sys.error(s"Unexpected result class getting old-value for '$actionName' of $viewName: ${qr.getClass.getName}")
     def oldVal(ov: QuereaseResult): Map[String, Any] = ov match {
-      case OptionResult(None) => null
+      case StatusResult(StatusCodes.NotFound.intValue, _) => null
       case MapResult(oldMap) => oldMap
       case srr: TresqlSingleRowResult => srr.map(qe.toCompatibleMap(_, qe.viewDef(viewName)))
-      case OptionResult(Some(old)) => old.toMap
-      case PojoResult(old) => old.toMap
       case CompatibleResult(r, _) => oldVal(r)
       case qrwc: QuereaseResultWithCleanup => qrwc map oldVal
       case x => throwUnexpectedResultClass(x)
