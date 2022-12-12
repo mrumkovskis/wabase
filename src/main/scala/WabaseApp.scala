@@ -107,7 +107,7 @@ trait WabaseApp[User] {
             case TresqlSingleRowResult(row) =>
               SourceRes(TresqlResultSerializer.rowSource(() => row), v, false)
             case IteratorResult(ir) =>
-              SourceRes(DataSerializer.source(() => ir.map(_.toMap)), v, true)
+              SourceRes(DataSerializer.source(() => ir), v, true)
             case CompatibleResult(dr: QuereaseCloseableResult, ct) => res(dr, ct.viewName)
             case x => StrictRes(x)
           }
