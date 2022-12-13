@@ -156,7 +156,7 @@ trait RestClient extends Loggable{
       case (Success(response), _) =>
         cookieStorage.setCookiesFromHeaders(response.headers)
         (response.status.intValue, response.header[Location]) match {
-          case (200 | 201 | 204, _) => Future.successful(response)
+          case (200 | 201 | 204 | 206, _) => Future.successful(response)
           case (301 | 302 | 303, Some(Location(uri))) =>
             response.discardEntityBytes()
             if (maxRedirects > 0)
