@@ -2,7 +2,7 @@ package org.wabase
 
 import akka.actor.ActorSystem
 import akka.http.scaladsl.marshalling.Marshal
-import akka.http.scaladsl.model.{HttpRequest, HttpResponse, MessageEntity}
+import akka.http.scaladsl.model.{HttpRequest, HttpResponse, MessageEntity, StatusCodes}
 import akka.http.scaladsl.server.Route
 import akka.http.scaladsl.unmarshalling.Unmarshal
 import akka.util.ByteString
@@ -715,6 +715,19 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     }
   }
 
+  it should "do db use, transaction operations" in {
+    for {
+      t1 <- doAction("insert", "owner", Map("name" -> "Pedro", "address" -> "Morocco"))
+        .flatMap {
+          case KeyResult(_, _, key) => doAction("get", "owner", Map(), keyValues = key)
+        }.map { _ shouldBe Map("name" -> "Pedro", "address" -> "Morocco") }
+      t2 <- recoverToExceptionIf[NullPointerException](doAction("list", "owner", Map()))
+        .map(_.getMessage shouldBe "Connection not found in environment." )
+    } yield {
+      t1
+    }
+  }
+
   it should "do http operations" in {
     def unmarshalResponse(resp: HttpResponse): Future[Any] = {
       if (resp.status.isRedirection()) Future.successful {
@@ -744,6 +757,14 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         .mapTo[HttpResult]
         .flatMap(res => unmarshalResponse(res.response))
         .map { _ shouldBe "person_health?/Mr.%20Gunza/2022-09-10?par1=val1&par2=val2" }
+      t5 <- doAction("insert", "forest", Map("nr" -> "OF1", "owner" -> "Pedro",
+        "area" -> 1000, "trees" -> "oaks"))
+        .map { case KeyResult(_, _, key) => key shouldBe List("OF1") }
+      t6 <- doAction("update", "http_forest", Map("area" -> 20.5), keyValues = List("OF1"))
+        .mapTo[HttpResult]
+        .map { _.response.status shouldBe StatusCodes.SeeOther }
+      t7 <- doAction("get", "forest", Map(), keyValues = List("OF1"))
+        .map { _ shouldBe Map("nr" -> "OF1", "owner" -> "Pedro", "area" -> 20.5, "trees" -> "oaks") }
     } yield {
       t1
     }

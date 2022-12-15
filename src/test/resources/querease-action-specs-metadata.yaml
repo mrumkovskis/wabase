@@ -22,6 +22,20 @@ columns:
 - birthdate            ! date
 - main_account.id        account.id
 
+table: owner
+columns:
+- id
+- name                 ! 100
+- address              ! 100
+
+table: forest
+columns:
+- id
+- owner.id             !
+- nr                   !
+- area                 ! decimal 10 2
+- trees                  64
+
 table: person_health
 db: med_db
 columns:
@@ -630,3 +644,50 @@ update:
 - http put { '/person_health/' || :health_id.id }
     http get
       {'/http_test_2/' || :name, '?', :manipulation_date manipulation_date, :vaccine vaccine, :health_id.id id }
+
+
+name: owner
+table: owner
+key: name
+api: get, save, list
+fields:
+- name
+- address
+explicit db: true
+get:
+- res:
+    db use:
+      - get this
+- :res
+save:
+- transaction:
+  - save this
+
+
+name: forest
+table: forest
+key: nr
+api: get, save, list
+fields:
+- nr
+- owner = owner.name -> = owner[name = _] {id}
+- area
+- trees
+save:
+- save this as forest http { '/http_forest', '?', :nr nr, :owner owner, :area area, :trees trees }
+
+
+name: http_forest
+api: get, update
+key: nr
+table:
+fields:
+- nr [!]  # not updatable to ensure that appears in http url
+- owner
+- area decimal 10 2
+- trees
+get:
+- unique_opt { :nr nr, :owner owner, :area::decimal area, :trees trees }
+update:
+- forest = http { '/forest', :nr }
+- :forest + :_ -> http put {'/forest/', :nr } get http_forest

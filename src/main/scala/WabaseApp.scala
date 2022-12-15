@@ -6,7 +6,7 @@ import akka.stream.Materializer
 import akka.stream.scaladsl.Source
 import akka.util.ByteString
 import org.mojoz.metadata.{FieldDef, ViewDef}
-import org.tresql.Resources
+import org.tresql.{Resources, SingleValueResult}
 import org.wabase.AppMetadata.{Action, AugmentedAppFieldDef, AugmentedAppViewDef}
 import org.wabase.AppMetadata.Action.{LimitKey, OffsetKey, OrderKey}
 
@@ -101,15 +101,26 @@ trait WabaseApp[User] {
           sealed trait Res
           case class SourceRes(src: Source[ByteString, _], viewName: String, isCollection: Boolean) extends Res
           case class StrictRes(result: QuereaseResult) extends Res
-          def res(r: QuereaseResult, v: String): Res = r match {
-            case TresqlResult(tr) =>
-              SourceRes(TresqlResultSerializer.source(() => tr), v, true)
-            case TresqlSingleRowResult(row) =>
-              SourceRes(TresqlResultSerializer.rowSource(() => row), v, false)
-            case IteratorResult(ir) =>
-              SourceRes(DataSerializer.source(() => ir), v, true)
-            case CompatibleResult(dr: QuereaseCloseableResult, ct) => res(dr, ct.viewName)
-            case x => StrictRes(x)
+          def res(r: QuereaseResult, v: String): Res = {
+            def single_res(sr: SingleValueResult[_]) = sr.value match {
+              case m: Map[String@unchecked, _] => SourceRes(DataSerializer.source(() => Seq(m).iterator), v, false)
+              case s: Seq[Map[String, _]@unchecked] => SourceRes(DataSerializer.source(() => s.iterator), v, true)
+              case x => StrictRes(StringResult(String.valueOf(x)))
+            }
+            r match {
+              case TresqlResult(tr) => tr match {
+                case r: SingleValueResult[_] => single_res(r)
+                case _ => SourceRes(TresqlResultSerializer.source(() => tr), v, true)
+              }
+              case TresqlSingleRowResult(row) => row match {
+                case r: SingleValueResult[_] => single_res(r)
+                case _ => SourceRes(TresqlResultSerializer.rowSource(() => row), v, false)
+              }
+              case IteratorResult(ir) =>
+                SourceRes(DataSerializer.source(() => ir), v, true)
+              case CompatibleResult(dr: QuereaseCloseableResult, ct) => res(dr, ct.viewName)
+              case x => StrictRes(x)
+            }
           }
           res(result, null) match {
             case SourceRes(resultSource, viewName, isCollection) =>

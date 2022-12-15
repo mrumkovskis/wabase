@@ -20,7 +20,7 @@ import scala.reflect.ManifestFactory
 import spray.json._
 
 import java.sql.Connection
-import scala.collection.immutable.ListMap
+import scala.collection.immutable.{ListMap, Seq}
 import scala.concurrent.{ExecutionContext, Future}
 import scala.jdk.CollectionConverters._
 import scala.util.{Failure, Try}
@@ -50,8 +50,7 @@ case class TresqlSingleRowResult(row: RowLike) extends QuereaseCloseableResult w
   def map[T](f: RowLike => T): T = try f(row) finally row.close()
 }
 case class MapResult(result: Map[String, Any]) extends DataResult
-case class IteratorResult(result: Iterator[Map[String, Any]] with AutoCloseable)
-  extends QuereaseCloseableResult with DataResult
+case class IteratorResult(result: Iterator[Map[String, Any]]) extends QuereaseCloseableResult with DataResult
 case class LongResult(value: Long) extends QuereaseResult
 case class StringResult(value: String) extends QuereaseResult
 case class NumberResult(value: java.lang.Number) extends QuereaseResult
@@ -349,7 +348,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     val vd = viewDef(view)
 
     val ctx = ActionContext(view, actionName, env, Some(vd), null, contextStack)
-    logger.debug(s"Doing action '${ctx.name}'.\n Env: $env")
+    logger.debug(s"Doing action '${ctx.name}'.\n Env: $env\nCtx stack: [${contextStack.map(_.name).mkString(", ")}]")
     val steps =
       quereaseActionOpt(vd, actionName)
         .map(_.steps)
@@ -534,8 +533,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       }
     }
 
-    TresqlResult(Query(maybeExpandWithBindVarsCursors(tresql, bindVars))(
-      resources.withParams(bindVars)))
+    TresqlResult(Query(maybeExpandWithBindVarsCursors(tresql, bindVars))(resources.withParams(bindVars)))
   }
 
   protected def doViewCall(
@@ -559,7 +557,14 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       else                view
     )
     val viewName = v.name
-    if (context.view.exists(_.name == viewName)) {
+    // execute querease call if context view name and method corresponds to this view name and method
+    def isThisMethod(ctxMethod: String, thisMethod: String) = {
+      ctxMethod ==
+        thisMethod ||
+        (Set(Action.Insert, Action.Update, Action.Upsert).contains(ctxMethod) && Action.Save == thisMethod) ||
+        !v.actions.contains(thisMethod)
+    }
+    if (context.view.exists(_.name == viewName) && isThisMethod(context.actionName, method)) {
       val callDataF =
         if (viewOp == null) Future.successful(data ++ env)
         else {
@@ -645,24 +650,13 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case null => NoResult // reflection call on function with Unit (void) return type returns null
       case m: Map[String, Any]@unchecked => MapResult(m)
       case m: java.util.Map[String, Any]@unchecked => MapResult(m.asScala.toMap)
-      case l: List[DTO@unchecked] => IteratorResult(new Iterator[Map[String, Any]] with AutoCloseable {
-        val it = l.iterator
-        override def hasNext: Boolean = it.hasNext
-        override def next(): Map[String, Any] = it.next().toMap(AppQuerease.this)
-        override def close(): Unit = {}
-      }
-
-      )
+      case l: List[DTO@unchecked] => IteratorResult(l.map(_.toMap(this)).iterator)
       case r: Result[_] => TresqlResult(r)
       case r: RowLike => TresqlSingleRowResult(r)
       case l: Long => LongResult(l)
       case s: String => StringResult(s)
       case n: java.lang.Number => NumberResult(n)
-      case r: QuereaseIteratorResult[DTO]@unchecked => IteratorResult(new Iterator[Map[String, Any]] with AutoCloseable {
-        override def hasNext: Boolean = r.hasNext
-        override def next(): Map[String, Any] = r.next().toMap(AppQuerease.this)
-        override def close(): Unit = r.close()
-      })
+      case r: QuereaseIteratorResult[DTO]@unchecked => IteratorResult(r.map(_.toMap(this)))
       case d: DTO@unchecked => MapResult(d.toMap(this))
       case o: Option[DTO]@unchecked => o.map(d => MapResult(d.toMap(this))).getOrElse(notFound)
       case h: HttpResponse => HttpResult(h)
@@ -713,12 +707,73 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
                                  seed: Map[String, Any],
                                  data: Map[String, Any]): MapResult = {
     val transRes = transforms.foldLeft(seed) { (sd, vt) =>
-      data(vt.form) match {
+      if (vt.form == "_") sd ++ data //indicates all call data map
+      else data(vt.form) match {
         case m: Map[String, _]@unchecked => sd ++ m
         case x => sd + (vt.to.getOrElse(vt.form) -> x)
       }
     }
     MapResult(transRes)
+  }
+
+  protected def doUniqueOpt(
+    op: Action.UniqueOpt,
+    data: Map[String, Any],
+    env: Map[String, Any],
+    context: ActionContext,
+  )(implicit
+    resFac: ResourcesFactory,
+    ec: ExecutionContext,
+    as: ActorSystem,
+    fs: FileStreamer): Future[QuereaseResult] = {
+    def createGetResult(res: QuereaseResult): DataResult = res match {
+      case TresqlResult(r) if !r.isInstanceOf[DMLResult] =>
+        r.uniqueOption map TresqlSingleRowResult getOrElse notFound
+      case IteratorResult(r) =>
+        try r.hasNext match {
+          case true =>
+            val v = r.next()
+            if (r.hasNext) sys.error("More than one row for unique result") else MapResult(v)
+          case false => notFound
+        } finally r match {
+          case c: AutoCloseable => c.close()
+          case _ =>
+        }
+      case c: CompatibleResult => c.copy(result = createGetResult(c.result))
+      case r => sys.error(s"unique opt can only process DataResult type, instead encountered: $r")
+    }
+    doActionOp(op.innerOp, data, env, context) map createGetResult
+  }
+
+  protected def doStatus(
+   op: Action.Status,
+   data: Map[String, Any],
+   env: Map[String, Any],
+   context: ActionContext,
+  )(implicit
+   resFac: ResourcesFactory,
+   ec: ExecutionContext,
+   as: ActorSystem,
+   fs: FileStreamer): Future[QuereaseResult] = {
+    val Action.Status(maybeCode, bodyTresql, parameterIndex) = op
+    Option(bodyTresql).map { bt =>
+      doActionOp(Action.UniqueOpt(Action.Tresql(bt)), data, env, context).map {
+        case srr: TresqlSingleRowResult => srr.map { row =>
+          val colCount = row.columnCount
+          val (code, idx) = maybeCode.map(_ -> 0).getOrElse(row.int(0) -> Math.min(1, colCount - 1))
+          import akka.http.scaladsl.model.StatusCode._
+          val statusValue =
+            if (code.isRedirection()) RedirectStatus(tresqlUri.uriValue(row, idx, parameterIndex))
+            else if (colCount > idx) StringStatus(row.string(idx))
+            else null
+          StatusResult(code, statusValue)
+        }
+        case _ =>
+          require(maybeCode.nonEmpty, s"Tresql: '$bt' returned no rows. In this case status code cannot be empty.")
+          StatusResult(maybeCode.get, null)
+      }
+    }
+    .getOrElse(Future.successful(StatusResult(maybeCode.get, null)))
   }
 
   protected def doIf(
@@ -735,8 +790,8 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     doActionOp(op.cond, data, env, context).map {
       case TresqlResult(tr) => tr.unique[Boolean]
       case r: TresqlSingleRowResult => r.map(_.boolean(0))
-      case x => sys.error(s"Conditional operator must be whether TresqlResult or TresqlSingleRowResult. " +
-        s"Instead found: $x")
+      case x => sys.error(s"Conditional operator must be whether TresqlResult or TresqlSingleRowResult or" +
+        s"StringResult(true|false). Instead found: $x")
     }.flatMap { cond =>
       if (cond) doSteps(op.action.steps, context.copy(stepName = "if"), Future.successful(data))
       else Future.successful(NoResult)
@@ -942,52 +997,17 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
   ): Future[QuereaseResult] = {
     import resFac._
     op match {
-      case Action.Tresql(tresql) =>
-        Future.successful(doTresql(tresql, data ++ env, context))
-      case Action.ViewCall(method, view, viewOp) =>
-        doViewCall(method, view, viewOp, data, env, context)
-      case Action.UniqueOpt(innerOp) =>
-        def createGetResult(res: QuereaseResult): DataResult = res match {
-          case TresqlResult(r) if !r.isInstanceOf[DMLResult] =>
-            r.uniqueOption map TresqlSingleRowResult getOrElse notFound
-          case IteratorResult(r) =>
-            try r.hasNext match {
-              case true =>
-                val v = r.next()
-                if (r.hasNext) sys.error("More than one row for unique result") else MapResult(v)
-              case false => notFound
-            } finally r.close
-          case c: CompatibleResult => c.copy(result = createGetResult(c.result))
-          case r => sys.error(s"unique opt can only process DataResult type, instead encountered: $r")
-        }
-        doActionOp(innerOp, data, env, context) map createGetResult
-      case inv: Action.Invocation =>
-        doInvocation(inv, data ++ env)
+      case Action.Tresql(tresql) => Future.successful(doTresql(tresql, data ++ env, context))
+      case Action.ViewCall(method, view, viewOp) => doViewCall(method, view, viewOp, data, env, context)
+      case op: Action.UniqueOpt => doUniqueOpt(op, data, env, context)
+      case inv: Action.Invocation => doInvocation(inv, data ++ env)
       case Action.RedirectToKey(name) =>
         val viewName = if (name == "this") context.viewName else name
         val idName = viewNameToIdName.getOrElse(viewName, null)
         val dataWithEnv = data ++ env
         val id = dataWithEnv.getOrElse(idName, null)
         Future.successful(keyResult(IdResult(id, idName), viewName, dataWithEnv))
-      case Action.Status(maybeCode, bodyTresql, parameterIndex) =>
-          Option(bodyTresql).map { bt =>
-            doActionOp(Action.UniqueOpt(Action.Tresql(bt)), data, env, context).map {
-              case srr: TresqlSingleRowResult => srr.map { row =>
-                val colCount = row.columnCount
-                val (code, idx) = maybeCode.map(_ -> 0).getOrElse(row.int(0) -> Math.min(1, colCount - 1))
-                import akka.http.scaladsl.model.StatusCode._
-                val statusValue =
-                  if (code.isRedirection()) RedirectStatus(tresqlUri.uriValue(row, idx, parameterIndex))
-                  else if (colCount > idx) StringStatus(row.string(idx))
-                  else null
-                StatusResult(code, statusValue)
-              }
-              case _ =>
-                require(maybeCode.nonEmpty, s"Tresql: '$bt' returned no rows. In this case status code cannot be empty.")
-                StatusResult(maybeCode.get, null)
-            }
-          }
-          .getOrElse(Future.successful(StatusResult(maybeCode.get, null)))
+      case st: Action.Status => doStatus(st, data, env, context)
       case Action.Commit =>
         def commit(c: Connection) = Option(c).foreach(_.commit())
         commit(resources.conn)

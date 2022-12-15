@@ -148,7 +148,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
     recoverToExceptionIf[ValidationException] {
       querease.doAction("person", "save", p.toMap(querease), Map())
     }.map(_.details should be(List(ValidationResult(Nil,
-      List("Wrong balance for accounts 'AAA(10 != 0.00)'")
+      List("Wrong balance for accounts 'AAA(10.00 != 0.00)'")
     )))).flatMap { _ =>
       val pa1 = new PersonAccounts
       pa1.number = "BBB"
@@ -157,7 +157,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
       recoverToExceptionIf[ValidationException] {
         querease.doAction("person", "save", p.toMap(querease), Map())
       }.map(_.details should be(List(ValidationResult(Nil,
-        List("Wrong balance for accounts 'AAA(10 != 0.00),BBB(2 != 0.00)'")
+        List("Wrong balance for accounts 'AAA(10.00 != 0.00),BBB(2.00 != 0.00)'")
       ))))
     }
   }

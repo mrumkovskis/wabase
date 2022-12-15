@@ -82,6 +82,7 @@ trait TestQuereaseInitializer extends BeforeAndAfterAll with Loggable { this: Su
             dialect = HSQLDialect orElse {
               case c: QueryBuilder#CastExpr => c.typ match {
                 case "bigint" | "long" | "int" => s"convert(${c.exp.sql}, BIGINT)"
+                case "decimal" => s"convert(${c.exp.sql}, NUMERIC(10,2))"
                 case "date" => s"convert(${c.exp.sql}, DATE)"
                 case _ => c.exp.sql
               }
