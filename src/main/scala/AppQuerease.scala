@@ -375,6 +375,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
           .map(k => cr + (k -> ir.id))
           .getOrElse(cr ++ ir.toMap)
         // id result always updates current result
+      case NoResult => key.filter(cr.contains).map(k => cr + (k -> null)).getOrElse(cr)
       case r => key.map(k => cr + (k -> r)).getOrElse(cr)
     }
     def doStep(step: Step, stepDataF: Future[Map[String, Any]]): Future[QuereaseResult] = {
@@ -1134,7 +1135,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
         if (r.status.isRedirection())
           r.headers.find(_.is("location")).map(_.value()).getOrElse("")
         else objFromHttpEntity(r.entity, null, false)
-      case NoResult => null
+      case NoResult => NoResult
       case CompatibleResult(r, ct) => r match {
         case TresqlResult(r: Result[_]) =>
           val l = toCompatibleSeqOfMaps(r, v(ct.viewName))
