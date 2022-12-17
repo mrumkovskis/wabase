@@ -480,7 +480,7 @@ save:
 
 name: if_test_2
 table:
-api: get
+api: get, list
 fields:
 - value
 get:
@@ -488,6 +488,9 @@ get:
     if :value :
       - null{'yes'} # somehow cannot use simply {'yes'} because yaml parser parses it as a Map - {yes=null} not simple value ?
 - status ok { if_defined_or_else(:res, :res, 'not defined') }
+list:
+- res = 'init'
+- get this
 
 
 name: foreach_test_1
