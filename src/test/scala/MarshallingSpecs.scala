@@ -48,11 +48,11 @@ class MarshallingSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
           override val tresqlUri: TresqlUri = new TresqlUri {
             override def uriWithKey(uri: Uri, key: Seq[Any]): Uri = uriWithKeyInPath(uri, key)
           }
+          override val jsonValueEncoder = w => {
+            case d: java.sql.Date => w.writeString(d.toString.replaceAll("-", "."))
+          }
         }
         override def dbAccessDelegate: DbAccess = db
-      }
-      override val jsonValueEncoder = w => {
-        case d: java.sql.Date => w.writeString(d.toString.replaceAll("-", "."))
       }
     }
   }

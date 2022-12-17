@@ -775,4 +775,25 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       t1
     }
   }
+
+  it should "do json codec operation" in {
+    def enc(v: Any) = {
+      import ResultEncoder._
+      import JsonEncoder._
+      new String(encodeJsValue(v), "UTF-8")
+    }
+    for {
+      t1 <- doAction("get", "json_codec_1", Map("value" ->
+        enc(Map("trees" -> "pine", "area" -> 23.5, "notes" -> null))))
+        .map { _ shouldBe MapResult(Map("trees" -> "pine", "area" -> 23.5, "notes" -> null)) }
+      t2 <- doAction("insert", "json_codec_1", Map("value" ->
+        enc(Map("trees" -> "pine", "area" -> 23.5, "owner" -> "Pedro", "nr" -> "OF2"))))
+        .mapTo[HttpResult]
+        .map { _.response.status shouldBe StatusCodes.SeeOther }
+      t3 <- doAction("get", "forest", Map(), keyValues = List("OF2"))
+        .map { _ shouldBe Map("trees" -> "pine", "area" -> 23.5, "owner" -> "Pedro", "nr" -> "OF2") }
+    } yield {
+      t1
+    }
+  }
 }

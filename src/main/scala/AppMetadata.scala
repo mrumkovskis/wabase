@@ -715,10 +715,13 @@ trait AppMetadataDataFlowParser extends QueryParsers { self =>
       case conformTo ~ http => http.copy(conformTo = conformTo)
     }
   }
+  def jsonCodecOp: Parser[JsonCodec] = """(from|to)""".r ~ "json" ~ operation ^^ {
+    case mode ~ _ ~ op => JsonCodec(mode == "to", op)
+  }
   def bracesOp: Parser[Op] = "(" ~> operation <~ ")"
   def bracesTresql: Parser[Exp] = ("(" ~> expr <~ ")") | expr
   def operation: Parser[Op] = viewOp | uniqueOptOp | invocationOp | httpOp | fileOp | toFileOp |
-    bracesOp | tresqlOp
+    jsonCodecOp | bracesOp | tresqlOp
 
   private def opResultType: Parser[OpResultType] = {
     sealed trait ResType
@@ -814,6 +817,7 @@ object AppMetadata {
                     conformTo: Option[OpResultType] = None) extends Op
     case class Db(action: Action, doRollback: Boolean) extends Op
     case class Conf(param: String, paramType: ConfType = null) extends Op
+    case class JsonCodec(encode: Boolean, op: Op) extends Op
 
     /* [jobs]
     case class JobCall(name: String) extends Op
@@ -841,6 +845,7 @@ object AppMetadata {
         case o: ToFile => opTrav(state)(o.contentOp)
         case o: Http => opTrav(state)(o.body)
         case Db(a, _) => traverseAction(a)(stepTrav)(state)
+        case JsonCodec(_, o) => opTrav(state)(o)
       }
       state => extractor(state) orElse traverse(state)
     }

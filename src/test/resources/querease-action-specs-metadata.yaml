@@ -694,3 +694,22 @@ get:
 update:
 - forest = http { '/forest', :nr }
 - :forest + :_ -> http put {'/forest/', :nr } get http_forest
+
+
+name: json_codec_1
+api: get, insert
+table:
+fields:
+- nr
+- owner
+- trees
+- area
+- notes
+filter:
+- :value
+get:
+- from json :value
+insert:
+- forest = from json :value
+- http post '/forest' to json
+    unique_opt { :forest.nr nr, :forest.owner owner, :forest.trees trees, :forest.area::decimal area }

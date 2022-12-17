@@ -136,6 +136,11 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
   val resultRenderers: ResultRenderers = new ResultRenderers
   val tresqlUri: TresqlUri = new TresqlUri()
   lazy val cborOrJsonDecoder = new CborOrJsonDecoder(typeDefs, nameToViewDef)
+  /** Override this to override default scala value (like String, Number, Boolean, null, Iterable, Map) json encoding.
+    * Default implementation is {{{Writer => PartialFunction.empty}}}
+    * */
+  val jsonValueEncoder: ResultEncoder.JsValueEncoderPF = _ => PartialFunction.empty
+
 
   override protected def persistenceFilters(
     view: ViewDef,
@@ -984,6 +989,35 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     Future.successful(ConfResult(op.param, scalaType(value)))
   }
 
+  protected def doJsonCodec(
+    op: Action.JsonCodec,
+    data: Map[String, Any],
+    env: Map[String, Any],
+    context: ActionContext
+  )(implicit
+    resFac: ResourcesFactory,
+    ec: ExecutionContext,
+    as: ActorSystem,
+    fs: FileStreamer): Future[QuereaseResult] = {
+    doActionOp(op.op, data, env, context)
+      .flatMap(dataForNextStep(_, context, true))
+      .map { res =>
+        if (op.encode) {
+          import ResultEncoder._
+          implicit lazy val enc: JsValueEncoderPF = JsonEncoder.extendableJsValueEncoderPF(enc)(jsonValueEncoder)
+          StringResult(new String(encodeJsValue(res), "UTF-8"))
+        } else {
+          new CborOrJsonAnyValueDecoder().decode(ByteString(String.valueOf(res))) match {
+            case m: Map[String@unchecked, _] => MapResult(m)
+            case s: Seq[Map[String, _]@unchecked] => IteratorResult(s.iterator)
+            case n: java.lang.Number => NumberResult(n)
+            case null => NoResult
+            case x => StringResult(String.valueOf(x))
+          }
+        }
+      }
+  }
+
   protected def doActionOp(
     op: Action.Op,
     data: Map[String, Any],
@@ -1020,6 +1054,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case http: Action.Http => doHttp(http, data, env, context)
       case db: Action.Db => doDb(db, data, env, context)
       case c: Action.Conf => doConf(c, data, env, context)
+      case j: Action.JsonCodec => doJsonCodec(j, data, env, context)
       /* [jobs]
       case Action.JobCall(job) =>
         doJobCall(job, data, env)
@@ -1045,6 +1080,9 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
 
     def renderedResult(res: QuereaseResult, vn: String, isColl: Option[Boolean]):
       (Source[ByteString, _], ContentType, Option[Long]) = res match {
+      case StringResult(s) =>
+        val data = ByteString(s)
+        (Source.single(data), ct, Option(data.size))
       case TresqlResult(tr) => tr match {
         case SingleValueResult(r: Iterable[_]) =>
           (renderedSource(DataSerializer.source(() => r.iterator), vn, isColl.getOrElse(true), ct),
