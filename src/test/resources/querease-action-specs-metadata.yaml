@@ -487,7 +487,7 @@ get:
 - res:
     if :value :
       - null{'yes'} # somehow cannot use simply {'yes'} because yaml parser parses it as a Map - {yes=null} not simple value ?
-- status ok { if_defined_or_else(:res, :res, 'not defined') }
+- status ok :res
 list:
 - res = 'init'
 - get this
