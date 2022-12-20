@@ -819,7 +819,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     as: ActorSystem,
     fs: FileStreamer,
   ): Future[QuereaseResult] = {
-    def iterator(res: QuereaseResult): TraversableOnce[Map[String, Any]] = {
+    def iterator(res: QuereaseResult): Iterator[Map[String, Any]] = {
       def addParentData(map: Map[String, Any]) = {
         var key = ".."
         //      while (map.contains(key)) key += "_" + key // hopefully no .. key is in data map
@@ -828,13 +828,13 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       res match {
         case TresqlResult(tr) => tr match {
           case SingleValueResult(sr) => sr match {
-            case s: Seq[Map[String, _]]@unchecked => s map addParentData
-            case m: Map[String@unchecked, _] => List(m) map addParentData
+            case s: Seq[Map[String, _]@unchecked] => (s map addParentData).iterator
+            case m: Map[String@unchecked, _] => (List(m) map addParentData).iterator
             case x => sys.error(s"Not iterable result for foreach operation: $x")
           }
           case r: Result[_] => r.map(_.toMap) map addParentData
         }
-        case r: TresqlSingleRowResult => List(r.map(_.toMap)) map addParentData
+        case r: TresqlSingleRowResult => (List(r.map(_.toMap)) map addParentData).iterator
         case CompatibleResult(r, ct) => iterator(r) // TODO Execute to compatible map
         case x => sys.error(s"Not iterable result for foreach operation: $x")
       }
