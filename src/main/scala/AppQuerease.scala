@@ -426,7 +426,12 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
                 Future.successful(QuereaseDeleteResult(r.count.getOrElse(0)))
             }
           case x => Future.successful(x)
-        }
+        } flatMap { res => s match {
+          case Evaluation(n@Some(_), _, _) => curData
+            .flatMap(updateCurRes(_, n, dataForNextStep(res, context, false)))
+            .map(MapResult)
+          case _ => Future.successful(res)
+        }}
       case s :: tail =>
         doStep(s, curData) flatMap { stepRes =>
           s match {

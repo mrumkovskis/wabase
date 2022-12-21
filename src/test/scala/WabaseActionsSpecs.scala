@@ -796,4 +796,14 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       t1
     }
   }
+
+  it should "last step assignment returns call data" in {
+    for {
+      t1 <- doAction("get", "last_step_assignment_test",
+        Map("param" -> "value", "nr" -> "#1"))
+        .map { _ shouldBe MapResult(Map("param" -> "value", "nr" -> "#1", "value" -> "value")) }
+    } yield {
+      t1
+    }
+  }
 }

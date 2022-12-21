@@ -713,3 +713,15 @@ insert:
 - forest = from json :value
 - http post '/forest' to json
     unique_opt { :forest.nr nr, :forest.owner owner, :forest.trees trees, :forest.area::decimal area }
+
+
+name: last_step_assignment_test
+api: get
+table:
+fields:
+- nr
+- value
+get:
+- value = :param
+filter:
+- :param
