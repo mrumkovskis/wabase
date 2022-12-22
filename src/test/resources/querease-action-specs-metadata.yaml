@@ -36,6 +36,14 @@ columns:
 - area                 ! decimal 10 2
 - trees                  64
 
+table: tree
+columns:
+- id
+- forest.id            !
+- plant_date           ! date
+- height                 decimal 10 2
+- diameter               decimal 10 2
+
 table: person_health
 db: med_db
 columns:
@@ -725,3 +733,44 @@ get:
 - value = :param
 filter:
 - :param
+
+
+name: tree
+table: tree
+api: list, save
+fields:
+- id
+- forest = forest.nr -> = forest[nr = _] {id}
+- plant_date
+- height
+- diameter
+filter:
+- forest_id = (forest[nr = :nr?] {id})
+
+
+name: forest_with_trees
+extends: forest
+fields:
+- tree_list * :
+    table:
+    fields:
+    - id
+    - plant_date  date
+    - height      decimal 10 2
+    - diameter    decimal 10 2
+
+
+name: owner_with_forest_with_trees
+extends: owner
+api: get
+fields:
+- forests * forest_with_trees
+get:
+- res:      # assign db data to variable so that during http request db connection is closed
+    db use:
+    - get this
+- setenv :res
+- forests:
+    foreach :forests :
+    - tree_list = as tree * http { '/tree', '?', :nr nr }
+    - "'..'-="  # remove super data for easier assertion

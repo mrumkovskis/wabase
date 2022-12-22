@@ -8,7 +8,7 @@ import akka.http.scaladsl.unmarshalling.Unmarshal
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
-import scala.collection.immutable.ListMap
+import scala.collection.immutable.{Seq, ListMap}
 import scala.concurrent.duration._
 import scala.concurrent.{Await, Future}
 

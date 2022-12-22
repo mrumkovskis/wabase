@@ -506,7 +506,11 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val validationRegex = new Regex(s"(?U)${Action.ValidationsKey}(?:\\s+(\\w+))?(?:\\s+\\[(?:\\s*(\\w+)?\\s*(?::\\s*(\\w+)\\s*)?)\\])?")
     val dbUseRegex = new Regex(s"${Action.DbUseKey}")
     val transactionRegex = new Regex(s"${Action.TransactionKey}")
-    val removeVarStepRegex = """(?U)(?:(\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*)\s*-=\s*)""".r
+    val removeVarStepRegex = {
+      val ident = """\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*"""
+      val str_lit = """"[^"]*+"|'[^']*+'"""
+      s"""(?U)(?:(?:($ident)|($str_lit))\\s*-=\\s*)""".r
+    }
     val setEnvRegex = """setenv\s+(.+)""".r //dot matches new line as well
     val returnRegex = """return\s+(.+)""".r //dot matches new line as well
     val redirectToKeyOpRegex = """redirect\s+([_\p{IsLatin}][_\p{IsLatin}0-9]*)""".r
@@ -588,7 +592,8 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       def parseStep(anyStep: Any): Action.Step = {
         anyStep match {
           case s: String if removeVarStepRegex.pattern.matcher(s).matches() =>
-            val removeVarStepRegex(name) = s
+            val removeVarStepRegex(ident, str_lit) = s
+            val name = if (ident != null) ident else str_lit.substring(1, str_lit.length - 1)
             Action.RemoveVar(Some(name))
           case s: String =>
             val namedStepRegex(name, st) = s
@@ -700,7 +705,7 @@ trait AppMetadataDataFlowParser extends QueryParsers { self =>
       ToFile(op, fileName.map(_.tresql).orNull, contentType.map(_.tresql).orNull)
   }
   def httpOp: Parser[Http] = {
-    def tu(uri: Exp) = TresqlUri.Tresql(uri.tresql, tresqlUri.queryStringColIdx(uri)(self))
+    def tu(uri: Exp) = tresqlUri.parse(uri)(self)
     def http_get_delete: Parser[Http] =
       "http" ~> opt("get" | "delete") ~ bracesTresql ~ opt(expr) ^^ {
         case method ~ uri ~ headers =>
@@ -811,7 +816,7 @@ object AppMetadata {
     case class File(idShaTresql: String, conformTo: Option[OpResultType] = None) extends Op
     case class ToFile(contentOp: Op, nameTresql: String = null, contentTypeTresql: String = null) extends Op
     case class Http(method: String,
-                    uriTresql: TresqlUri.Tresql,
+                    uriTresql: TresqlUri.TrUri,
                     headerTresql: String = null,
                     body: Op = null,
                     conformTo: Option[OpResultType] = None) extends Op
@@ -921,7 +926,11 @@ object AppMetadata {
               val s2 = us(s1, nv(s1.value)(nameTresql))
               us(s2, nv(s2.value)(contentTypeTresql))
             case Http(_, uriTresql, headerTresql, body, _) =>
-              val s1 = us(state, nv(state.value)(uriTresql.uriTresql))
+              def tresqlUriTresql(trUri: TresqlUri.TrUri): String = trUri match {
+                case p: TresqlUri.PrimitiveTresql => p.origin
+                case t: TresqlUri.Tresql => t.uriTresql
+              }
+              val s1 = us(state, nv(state.value)(tresqlUriTresql(uriTresql)))
               val s2 = us(s1, nv(s1.value)(headerTresql))
               opTresqlTrav(s2)(body)
             case ViewCall(method, view, data) =>

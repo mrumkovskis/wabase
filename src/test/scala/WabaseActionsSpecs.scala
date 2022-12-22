@@ -174,6 +174,18 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       }
   }
 
+  protected def unmarshalResponse(resp: HttpResponse): Future[Any] = {
+    if (resp.status.isRedirection()) Future.successful {
+      resp.headers.find(_.is("location")).map(_.value()).getOrElse("")
+    } else resp.entity.toStrict(1.second)
+      .map(_.data)
+      .map { d =>
+        Try(new CborOrJsonAnyValueDecoder().decode(d))
+          .toOption
+          .getOrElse(d.decodeString("UTF-8"))
+      }
+  }
+
   private implicit val state = ApplicationState(Map())
 
   behavior of "purchase"
@@ -735,18 +747,6 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
   }
 
   it should "do http operations" in {
-    def unmarshalResponse(resp: HttpResponse): Future[Any] = {
-      if (resp.status.isRedirection()) Future.successful {
-        resp.headers.find(_.is("location")).map(_.value()).getOrElse("")
-      } else resp.entity.toStrict(1.second)
-        .map(_.data)
-        .map { d =>
-          Try(new CborOrJsonAnyValueDecoder().decode(d))
-            .toOption
-            .getOrElse(d.decodeString("UTF-8"))
-        }
-    }
-
     for {
       t1 <- doAction("get", "http_test_1", Map())
         .mapTo[HttpResult]
@@ -804,6 +804,46 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         .map { _ shouldBe MapResult(Map("param" -> "value", "nr" -> "#1", "value" -> "value")) }
     } yield {
       t1
+    }
+  }
+
+  it should "fill data in loop with http requests" in {
+    for {
+      t1 <- doAction("insert", "tree",
+        Map(
+          "forest" -> "OF1",
+          "plant_date" -> java.sql.Date.valueOf("2000-01-01"),
+          "height" -> 5.3,
+          "diameter" -> 1
+        ))
+      t2 <- doAction("get", "owner_with_forest_with_trees", Map("name" -> "Pedro"))
+        .mapTo[MapResult]
+        .map {
+          _.result shouldBe ( YamlUtils.parseYamlData(
+            """
+               name: Pedro
+               address: Morocco
+               forests:
+               - nr: OF1
+                 owner: Pedro
+                 area: 20.50
+                 trees: oaks
+                 tree_list:
+                 - id: 20
+                   forest: OF1
+                   plant_date: 2000-01-01
+                   height: 5.3
+                   diameter: 1.0
+               - nr: OF2
+                 owner: Pedro
+                 area: 23.50
+                 trees: pine
+                 tree_list: []
+            """
+          ))
+        }
+    } yield {
+      t2
     }
   }
 }

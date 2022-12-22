@@ -818,7 +818,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     ec: ExecutionContext,
     as: ActorSystem,
     fs: FileStreamer,
-  ): Future[QuereaseResult] = {
+  ): Future[IteratorResult] = {
     def iterator(res: QuereaseResult): Iterator[Map[String, Any]] = {
       def addParentData(map: Map[String, Any]) = {
         var key = ".."
@@ -843,9 +843,12 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     .flatMap { mapIterator =>
       Future.traverse(mapIterator.toSeq) { itData =>
         doSteps(op.action.steps, context.copy(stepName = "foreach"), Future.successful(itData))
+          .flatMap {
+            case MapResult(r) => Future.successful(r)
+            case _ => Future.successful(itData)
+          }
       }
-      .map(_ => NoResult)
-    }
+    }.map(it => IteratorResult(it.iterator))
   }
 
   protected def doFile(
@@ -904,8 +907,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     val opData = data ++ env
     val httpMeth = HttpMethods.getForKeyCaseInsensitive(op.method).get
     val uri = {
-      val trUri = tresqlUri.
-        uriValue(Query(op.uriTresql.uriTresql, opData).unique, 0, op.uriTresql.queryStringColIdx)
+      val trUri = tresqlUri.tresqlUriValue(op.uriTresql)(Query, opData, implicitly[Resources])
       tresqlUri.uri(trUri)
     }
     val (optContentType, headers) = if (op.headerTresql == null) (Some(null) -> Nil) else {
