@@ -3,7 +3,7 @@ package org.wabase
 import akka.http.scaladsl.model.Uri
 import akka.http.scaladsl.model.Uri.{Path, Query}
 import org.tresql.{Resources, RowLike, SingleValueResult, Query => TresqlQuery}
-import org.tresql.ast.{Col, Cols, Const, Exp, Null, Obj, StringConst, Variable}
+import org.tresql.ast.{Col, Cols, Const, Exp, Null, Obj, StringConst, Variable, Query => PQuery}
 import org.tresql.parsing.QueryParsers
 
 import java.net.URLEncoder
@@ -30,42 +30,40 @@ class TresqlUri {
   }
 
   def parse(exp: Exp)(parser: QueryParsers): TresqlUri.TrUri = {
-    lazy val traverser = parser.traverser[(TresqlUri.TrUri, Int, Int)] { tru =>
-      def calcPv(e: Exp, a: String) = {
-        val (pt, idx, paramIdx) = tru
+    lazy val traverser: parser.Traverser[(TresqlUri.TrUri, Int, Int, String)] = parser.traverser { tru =>
+      def calcPv(e: Exp) = {
+        val (pt, idx, paramIdx, a) = tru
         val ptru =
           if (pt == null) TresqlUri.PrimitiveTresql(null, Nil, ListMap(), exp.tresql)
           else pt.asInstanceOf[TresqlUri.PrimitiveTresql]
         val nptru = {
-          if (idx == -1) ptru.copy(hostInitPath = e.tresql)
+          if (idx <= 0) ptru.copy(hostInitPath = e.tresql)
           else if (idx < paramIdx) ptru.copy(path = ptru.path ++ Seq(e.tresql))
           else ptru.copy(params = ptru.params + (a -> e.tresql))
         }
-        (nptru, idx + 1, paramIdx)
+        (nptru, idx, paramIdx, a)
       }
       {
-        case o: Obj if tru._1 == null && o.obj == Null && o.join == null =>
-          (TresqlUri.PrimitiveTresql(null, Nil, ListMap(), exp.tresql), tru._2, tru._3)
-        case _: Obj =>
-          (TresqlUri.Tresql(exp.tresql, tru._3), tru._2, tru._3)
-        case Col(StringConst("?"), _) => (tru._1, tru._2 + 1, tru._2 + 1)
-        case Col(c: Const, a) if tru._1 == null || tru._1.isInstanceOf[TresqlUri.PrimitiveTresql] =>
-          calcPv(c, a)
-        case Col(v: Variable, a) if tru._1 == null || tru._1.isInstanceOf[TresqlUri.PrimitiveTresql] =>
-          calcPv(v, a)
-        case c: Const if tru._1 == null || tru._1.isInstanceOf[TresqlUri.PrimitiveTresql] =>
-          calcPv(c, null)
-        case _: Col =>
+        case Col(StringConst("?"), _) if tru._2 < tru._3 => (tru._1, tru._2 + 1, tru._2 + 1, tru._4)
+        case Col(c, a) => traverser((tru._1, tru._2 + 1, tru._3, a))(c)
+        case c: Const if tru._1 == null || tru._1.isInstanceOf[TresqlUri.PrimitiveTresql] => calcPv(c)
+        case v: Variable if tru._1 == null || tru._1.isInstanceOf[TresqlUri.PrimitiveTresql] => calcPv(v)
+        case q: PQuery => traverser(q.tables.foldLeft(tru) { (r, o) => traverser(r)(o) })(q.cols)
+        case cs: Cols => cs.cols.foldLeft(tru) { (r, c) => traverser(r)(c) }
+        case o: Obj if tru._1 == null && o.obj == Null && o.join == null => tru
+        case _ =>
           val ntru =
-            if (tru._1.isInstanceOf[TresqlUri.PrimitiveTresql]) TresqlUri.Tresql(exp.tresql, tru._3)
+            if (tru._1 == null || tru._1.isInstanceOf[TresqlUri.PrimitiveTresql])
+              TresqlUri.Tresql(exp.tresql, tru._3)
             else tru._1
-          (ntru, tru._2 + 1, tru._3)
+          (ntru, tru._2, tru._3, tru._4)
       }
     }
-    traverser((null, -1, Integer.MAX_VALUE))(exp) match {
-      case (p: TresqlUri.PrimitiveTresql, _, _) => p
-      case (t: TresqlUri.Tresql, _, idx) =>
+    traverser((null, -1, Integer.MAX_VALUE, null))(exp) match {
+      case (p: TresqlUri.PrimitiveTresql, _, _, _) => p
+      case (t: TresqlUri.Tresql, _, idx, _) =>
         t.copy(queryStringColIdx = if (idx == Integer.MAX_VALUE) -1 else idx)
+      case (null, _, _, _) => TresqlUri.Tresql(exp.tresql, -1)
     }
   }
 
