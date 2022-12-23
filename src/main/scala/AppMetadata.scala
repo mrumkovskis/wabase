@@ -619,20 +619,21 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
                   }
                 case al: java.util.ArrayList[_] if name != null =>
                   // 'if', 'foreach', 'db ...' step
+                  val namedStepRegex(varName, opStr) = name
                   val op =
-                    if (ifOpRegex.pattern.matcher(name).matches()) {
-                      val ifOpRegex(condOpSt) = name
+                    if (ifOpRegex.pattern.matcher(opStr).matches()) {
+                      val ifOpRegex(condOpSt) = opStr
                       Action.If(parseOp(condOpSt), parseAction(objectName, al.asScala.toList))
-                    } else if (foreachOpRegex.pattern.matcher(name).matches()) {
-                      val foreachOpRegex(initOpSt) = name
+                    } else if (foreachOpRegex.pattern.matcher(opStr).matches()) {
+                      val foreachOpRegex(initOpSt) = opStr
                       Action.Foreach(parseOp(initOpSt), parseAction(objectName, al.asScala.toList))
-                    } else if (dbUseRegex.pattern.matcher(name).matches()) {
+                    } else if (dbUseRegex.pattern.matcher(opStr).matches()) {
                       Action.Db(parseAction(objectName, al.asScala.toList), true)
-                    } else if (transactionRegex.pattern.matcher(name).matches()) {
+                    } else if (transactionRegex.pattern.matcher(opStr).matches()) {
                       Action.Db(parseAction(objectName, al.asScala.toList), false)
-                    } else sys.error(s"'$objectName' parsing error, invalid value: '$name'. " +
+                    } else sys.error(s"'$objectName' parsing error, invalid value: '$opStr'. " +
                       s"Only 'if', 'foreach', 'db use', 'transaction' operations allowed.")
-                  Action.Evaluation(None, Nil, op)
+                  Action.Evaluation(Option(varName), Nil, op)
                 case x => parseStringStep(Option(name), x.toString)
               }
             }

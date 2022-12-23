@@ -492,9 +492,8 @@ api: get, list
 fields:
 - value
 get:
-- res:
-    if :value :
-      - null{'yes'} # somehow cannot use simply {'yes'} because yaml parser parses it as a Map - {yes=null} not simple value ?
+- res = if :value :
+  - null{'yes'} # somehow cannot use simply {'yes'} because yaml parser parses it as a Map - {yes=null} not simple value ?
 - status ok :res
 list:
 - res = 'init'
@@ -666,9 +665,8 @@ fields:
 - address
 explicit db: true
 get:
-- res:
-    db use:
-      - get this
+- res = db use:
+  - get this
 - :res
 save:
 - transaction:
@@ -766,11 +764,9 @@ api: get
 fields:
 - forests * forest_with_trees
 get:
-- res:      # assign db data to variable so that during http request db connection is closed
-    db use:
-    - get this
+- res = db use:     # assign db data to variable so that during http request db connection is closed
+  - get this
 - setenv :res
-- forests:
-    foreach :forests :
-    - tree_list = as tree * http { '/tree', '?', :nr nr }
-    - "'..'-="  # remove super data for easier assertion
+- forests = foreach :forests :
+  - tree_list = as tree * http { '/tree', '?', :nr nr }
+  - "'..'-="  # remove super data for easier assertion
