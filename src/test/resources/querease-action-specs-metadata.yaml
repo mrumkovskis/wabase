@@ -770,3 +770,14 @@ get:
 - forests = foreach :forests :
   - tree_list = as tree * http { '/tree', '?', :nr nr }
   - "'..'-="  # remove super data for easier assertion
+
+
+name: not_found_test
+table:
+api: get
+fields:
+- name
+- address
+get:
+- val = get owner
+- unique_opt null[if_defined(:val.name?, true) | false]{ :val.name? name, :val.address? address, :val.code? code }
