@@ -518,6 +518,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val statusOpRegex = """status(?:\s+(\w+))?(?:\s+(.+))?""".r
     val commitOpRegex = """commit""".r
     val ifOpRegex = """if\s+(.+)""".r
+    val elseOpRegex = """else""".r
     val foreachOpRegex = """foreach\s+(.+)""".r
     val confRegex = {
       val confPropRegex = """\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*(?:\.\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*+)*"""
@@ -624,6 +625,8 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
                     if (ifOpRegex.pattern.matcher(opStr).matches()) {
                       val ifOpRegex(condOpSt) = opStr
                       Action.If(parseOp(condOpSt), parseAction(objectName, al.asScala.toList))
+                    } else if (elseOpRegex.pattern.matcher(opStr).matches()) {
+                      Action.Else(parseAction(objectName, al.asScala.toList))
                     } else if (foreachOpRegex.pattern.matcher(opStr).matches()) {
                       val foreachOpRegex(initOpSt) = opStr
                       Action.Foreach(parseOp(initOpSt), parseAction(objectName, al.asScala.toList))
@@ -643,7 +646,25 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       }
       parseStep(step)
     }.toList
-    Action(steps)
+    //coalesce else op into if
+    Action((steps.foldLeft((null: Action.Step) -> List[Action.Step]()) { case ((p, r), s) => p match {
+      case ifEv@Action.Evaluation(_, _, ifOp: Action.If) => s match {
+        case elseEv@Action.Evaluation(_, _, elseOp: Action.Else) =>
+          (elseEv, ifEv.copy(op = ifOp.copy(elseAct = elseOp.action)) :: r)
+        case nifEv@Action.Evaluation(_, _, _: Action.If) => (nifEv, p :: r)
+        case _ => (s, s :: p :: r)
+      }
+      case _ => s match {
+        case Action.Evaluation(_, _, _: Action.Else) =>
+          sys.error(s"else statement must follow if statement, instead found '$p'")
+        case ifEv@Action.Evaluation(_, _, _: Action.If) => (ifEv, r)
+        case _ => (s, s :: r)
+      }
+    }
+    } match {
+      case (ifEv@Action.Evaluation(_, _, _: Action.If), r) => ifEv :: r
+      case (_, r) => r
+    }).reverse)
   }
 
   // lazy val so that tresqlUri is initialized when dataFlowParser is referenced
@@ -813,7 +834,7 @@ object AppMetadata {
     case class Status(code: Option[Int], bodyTresql: String, parameterIndex: Int) extends Op
     case class VariableTransforms(transforms: List[VariableTransform]) extends Op
     case class Foreach(initOp: Op, action: Action) extends Op
-    case class If(cond: Op, action: Action) extends Op
+    case class If(cond: Op, action: Action, elseAct: Action = null) extends Op
     case class File(idShaTresql: String, conformTo: Option[OpResultType] = None) extends Op
     case class ToFile(contentOp: Op, nameTresql: String = null, contentTypeTresql: String = null) extends Op
     case class Http(method: String,
@@ -824,6 +845,8 @@ object AppMetadata {
     case class Db(action: Action, doRollback: Boolean) extends Op
     case class Conf(param: String, paramType: ConfType = null) extends Op
     case class JsonCodec(encode: Boolean, op: Op) extends Op
+    /** This operation exists only in parsing stage for if operation */
+    case class Else(action: Action) extends Op
 
     /* [jobs]
     case class JobCall(name: String) extends Op
@@ -847,7 +870,9 @@ object AppMetadata {
         case o: ViewCall => opTrav(state)(o.data)
         case UniqueOpt(o) => opTrav(state)(o)
         case Foreach(o, a) => traverseAction(a)(stepTrav)(opTrav(state)(o))
-        case If(o, a) => traverseAction(a)(stepTrav)(opTrav(state)(o))
+        case If(o, a, e) =>
+          val r = traverseAction(a)(stepTrav)(opTrav(state)(o))
+          if (e == null) r else traverseAction(e)(stepTrav)(r)
         case o: ToFile => opTrav(state)(o.contentOp)
         case o: Http => opTrav(state)(o.body)
         case Db(a, _) => traverseAction(a)(stepTrav)(state)

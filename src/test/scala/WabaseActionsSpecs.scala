@@ -855,6 +855,12 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         .map {
           _ shouldBe Map("name" -> "Pedro", "address" -> "Morocco")
         }
+      t3 <- doAction("get", "not_found_test_2", Map("name" -> "Zizo"))
+        .map { _ shouldBe StatusResult(404, StringStatus("not found")) }
+      t4 <- doAction("get", "not_found_test_2", Map("name" -> "Pedro"))
+        .map {
+          _ shouldBe Map("name" -> "Pedro", "address" -> "Morocco")
+        }
     } yield {
       t1
     }

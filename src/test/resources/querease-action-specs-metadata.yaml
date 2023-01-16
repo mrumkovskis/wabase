@@ -781,3 +781,17 @@ fields:
 get:
 - val = get owner
 - unique_opt null[if_defined(:val.name?, true) | false]{ :val.name? name, :val.address? address, :val.code? code }
+
+
+name: not_found_test_2
+table:
+api: get
+fields:
+  - name
+  - address
+get:
+- val = get owner
+- if if_defined_or_else(:val.name, true, false) :
+  - :val
+- else:
+  - status {404, 'not found'}

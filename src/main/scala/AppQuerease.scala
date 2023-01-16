@@ -803,7 +803,10 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case x => sys.error(s"Conditional operator must be whether TresqlResult or TresqlSingleRowResult or" +
         s"StringResult(true|false). Instead found: $x")
     }.flatMap { cond =>
-      if (cond) doSteps(op.action.steps, context.copy(stepName = "if"), Future.successful(data))
+      if (cond)
+        doSteps(op.action.steps, context.copy(stepName = "if"), Future.successful(data))
+      else if (op.elseAct != null)
+        doSteps(op.elseAct.steps, context.copy(stepName = "else"), Future.successful(data))
       else Future.successful(NoResult)
     }
   }
@@ -1068,6 +1071,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       [jobs] */
       case VariableTransforms(vts) =>
         Future.successful(doVarsTransforms(vts, Map[String, Any](), data ++ env))
+      case _: Action.Else => sys.error(s"Integrity error. Else operation cannot be here, must be coalesced into if operation")
     }
   }
 
