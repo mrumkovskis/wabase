@@ -647,24 +647,21 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       parseStep(step)
     }.toList
     //coalesce else op into if
-    Action((steps.foldLeft((null: Action.Step) -> List[Action.Step]()) { case ((p, r), s) => p match {
-      case ifEv@Action.Evaluation(_, _, ifOp: Action.If) => s match {
-        case elseEv@Action.Evaluation(_, _, elseOp: Action.Else) =>
-          (elseEv, ifEv.copy(op = ifOp.copy(elseAct = elseOp.action)) :: r)
-        case nifEv@Action.Evaluation(_, _, _: Action.If) => (nifEv, p :: r)
-        case _ => (s, s :: p :: r)
-      }
-      case _ => s match {
-        case Action.Evaluation(_, _, _: Action.Else) =>
-          sys.error(s"else statement must follow if statement, instead found '$p'")
-        case ifEv@Action.Evaluation(_, _, _: Action.If) => (ifEv, r)
-        case _ => (s, s :: r)
-      }
-    }
-    } match {
-      case (ifEv@Action.Evaluation(_, _, _: Action.If), r) => ifEv :: r
-      case (_, r) => r
-    }).reverse)
+    val coalescedSteps = if (steps.isEmpty) Nil else
+      (steps.tail.foldLeft(steps.head -> List[Action.Step]()) { case ((p, r), s) =>
+        s match {
+          case Action.Evaluation(_, _, elseOp: Action.Else) => p match {
+            case ifEv@Action.Evaluation(_, _, ifOp: Action.If) =>
+              (null, ifEv.copy(op = ifOp.copy(elseAct = elseOp.action)) :: r)
+            case _ => sys.error(s"else statement must follow if statement, instead found '$p'")
+          }
+          case _ => (s, if (p != null) p :: r else r)
+        }
+      } match {
+        case (null, r) => r
+        case (x, r) => x :: r
+      }).reverse
+    Action(coalescedSteps)
   }
 
   // lazy val so that tresqlUri is initialized when dataFlowParser is referenced
