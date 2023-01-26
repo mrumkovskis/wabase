@@ -506,6 +506,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val validationRegex = new Regex(s"(?U)${Action.ValidationsKey}(?:\\s+(\\w+))?(?:\\s+\\[(?:\\s*(\\w+)?\\s*(?::\\s*(\\w+)\\s*)?)\\])?")
     val dbUseRegex = new Regex(s"${Action.DbUseKey}")
     val transactionRegex = new Regex(s"${Action.TransactionKey}")
+    val httpHeaderRegex = """extract header\s+(.*)""".r
     val removeVarStepRegex = {
       val ident = """\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*"""
       val str_lit = """"[^"]*+"|'[^']*+'"""
@@ -551,6 +552,9 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
         } else if (confRegex.pattern.matcher(st).matches()) {
           val confRegex(t, n) = st
           Action.Conf(n, Action.ConfTypes.parse(t))
+        } else if (httpHeaderRegex.pattern.matcher(st).matches()) {
+          val httpHeaderRegex(h) = st
+          Action.HttpHeader(h)
         } else if (commitOpRegex.pattern.matcher(st).matches()) {
           Action.Commit
         } else {
@@ -839,6 +843,7 @@ object AppMetadata {
                     headerTresql: String = null,
                     body: Op = null,
                     conformTo: Option[OpResultType] = None) extends Op
+    case class HttpHeader(name: String) extends Op
     case class Db(action: Action, doRollback: Boolean) extends Op
     case class Conf(param: String, paramType: ConfType = null) extends Op
     case class JsonCodec(encode: Boolean, op: Op) extends Op
@@ -863,7 +868,7 @@ object AppMetadata {
         extractor: OpTraverser[T]): OpTraverser[T] = {
       def traverse(state: T): PartialFunction[Op, T] = {
         case _: Tresql | _: RedirectToKey | _: Invocation | _: Status |
-             _: VariableTransforms | _: File | _: Conf | Commit | null => state
+             _: VariableTransforms | _: File | _: Conf | _: HttpHeader | Commit | null => state
         case o: ViewCall => opTrav(state)(o.data)
         case UniqueOpt(o) => opTrav(state)(o)
         case Foreach(o, a) => traverseAction(a)(stepTrav)(opTrav(state)(o))

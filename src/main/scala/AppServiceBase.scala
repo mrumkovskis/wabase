@@ -109,8 +109,10 @@ trait AppServiceBase[User]
   def getByIdAction(viewName: String, id: Long)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
       if (useActions(viewName, Action.Get)) {
-        extractStringId { idString =>
-          complete(app.doWabaseAction(Action.Get, viewName, Seq(idString), filterPars(params)))
+        extractRequest { implicit req =>
+          extractStringId { idString =>
+            complete(app.doWabaseAction(Action.Get, viewName, Seq(idString), filterPars(params)))
+          }
         }
       } else {
         complete(app.get(viewName, id, filterPars(params)))
@@ -121,7 +123,9 @@ trait AppServiceBase[User]
     implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
       if (useActions(viewName, Action.Get)) {
-        complete(app.doWabaseAction(Action.Get, viewName, keyValues, filterPars(params)))
+        extractRequest { implicit req =>
+          complete(app.doWabaseAction(Action.Get, viewName, keyValues, filterPars(params)))
+        }
       } else {
         val keyAsMap = app.prepareKey(viewName, keyValues, "get")
         complete(app.get(viewName, -1, filterPars(params) ++ keyAsMap))
@@ -133,7 +137,9 @@ trait AppServiceBase[User]
     implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
       if (useActions(viewName, Action.Get)) {
-        complete(app.doWabaseAction(Action.Get, viewName, Seq(value), filterPars(params) + (name -> value)))
+        extractRequest { implicit req =>
+          complete(app.doWabaseAction(Action.Get, viewName, Seq(value), filterPars(params) + (name -> value)))
+        }
       } else {
         complete(app.get(viewName, -1, filterPars(params) + (name -> value)))
       }
@@ -142,7 +148,9 @@ trait AppServiceBase[User]
   def createAction(viewName: String)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
       if (useActions(viewName, Action.Create)) {
-        complete(app.doWabaseAction(Action.Create, viewName, Nil, filterPars(params)))
+        extractRequest { implicit req =>
+          complete(app.doWabaseAction(Action.Create, viewName, Nil, filterPars(params)))
+        }
       } else {
         complete(app.create(viewName, filterPars(params)))
       }
@@ -165,8 +173,10 @@ trait AppServiceBase[User]
   def deleteByKeyAction(viewName: String, keyValues: Seq[Any])(
     implicit user: User, state: ApplicationState, timeout: QueryTimeout): Route =
     parameterMultiMap { params =>
-      complete {
-        app.doWabaseAction(Action.Delete, viewName, keyValues, filterPars(params))
+      extractRequest { implicit req =>
+        complete {
+          app.doWabaseAction(Action.Delete, viewName, keyValues, filterPars(params))
+        }
       }
     }
 
@@ -194,9 +204,11 @@ trait AppServiceBase[User]
         app.checkApi(viewName, Action.Update, user)
         implicit val um = toMapUnmarshallerForView(viewName)
         entityOrException(as[Map[String, Any]]) { entityAsMap =>
-          complete {
-            app.doWabaseAction(Action.Update, viewName, keyValues, filterPars(params), entityAsMap,
-              doApiCheck = false /* api checked above */)
+          extractRequest { implicit req =>
+            complete {
+              app.doWabaseAction(Action.Update, viewName, keyValues, filterPars(params), entityAsMap,
+                doApiCheck = false /* api checked above */)
+            }
           }
         }
       }
@@ -207,7 +219,9 @@ trait AppServiceBase[User]
       val impliedIdForGetOpt = app.impliedIdForGetOverList(viewName)
       if (impliedIdForGetOpt.isDefined)
         if (useActions(viewName, Action.Get)) {
-          complete(app.doWabaseAction(Action.Get, viewName, Nil, filterPars(params)))
+          extractRequest { implicit req =>
+            complete(app.doWabaseAction(Action.Get, viewName, Nil, filterPars(params)))
+          }
         } else {
           complete(app.get(viewName, impliedIdForGetOpt.get, filterPars(params)))
         }
@@ -218,18 +232,20 @@ trait AppServiceBase[User]
   protected def listAction(viewName: String, params: Map[String, List[String]])(
     implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     if (useActions(viewName, Action.List)) {
-      complete {
-        app.doWabaseAction(
-          Action.List,
-          viewName,
-          Nil,
-          filterPars(params) ++
-            params.filter { case (k, v) =>
-              k == "offset" ||
-              k == "limit"  ||
-              k == "sort"
-            }.map { case (k, v) => (k, v.headOption.orNull) },
-        )
+      extractRequest { implicit req =>
+        complete {
+          app.doWabaseAction(
+            Action.List,
+            viewName,
+            Nil,
+            filterPars(params) ++
+              params.filter { case (k, v) =>
+                k == "offset" ||
+                  k == "limit" ||
+                  k == "sort"
+              }.map { case (k, v) => (k, v.headOption.orNull) },
+          )
+        }
       }
     }
     else complete {
@@ -248,9 +264,11 @@ trait AppServiceBase[User]
           app.checkApi(viewName, Action.Insert, user)
           implicit val um = toMapUnmarshallerForView(viewName)
           entityOrException(as[Map[String, Any]]) { entityAsMap =>
-            complete {
-              app.doWabaseAction(Action.Insert, viewName, Nil, filterPars(params), entityAsMap,
-                doApiCheck = false /* api checked above */)
+            extractRequest { implicit req =>
+              complete {
+                app.doWabaseAction(Action.Insert, viewName, Nil, filterPars(params), entityAsMap,
+                  doApiCheck = false /* api checked above */)
+              }
             }
           }
         } else {
@@ -265,7 +283,9 @@ trait AppServiceBase[User]
   def countAction(viewName: String)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
       if (useActions(viewName, Action.Count)) {
-        complete(app.doWabaseAction(Action.Count, viewName, Nil, filterPars(params)))
+        extractRequest { implicit req =>
+          complete(app.doWabaseAction(Action.Count, viewName, Nil, filterPars(params)))
+        }
       } else {
         complete(app.count(viewName, filterPars(params)).toString)
       }

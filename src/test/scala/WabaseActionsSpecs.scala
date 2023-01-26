@@ -157,6 +157,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
                           ) = {
     implicit val state = ApplicationState(env)
     implicit val fileStreamer: AppFileStreamer[TestUsr] = app
+    implicit val req: HttpRequest = null
     app.doWabaseAction(action, view, keyValues, Map.empty, values)
       .map(_.result)
       .flatMap {
@@ -861,6 +862,15 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         .map {
           _ shouldBe Map("name" -> "Pedro", "address" -> "Morocco")
         }
+    } yield {
+      t1
+    }
+  }
+
+  it should "extract http headers" in {
+    for {
+      t1 <- doAction("list", "extract_http_header_test", Map())
+        .map { _ shouldBe MapResult(Map("h1_h2" -> "header1_value header2_value", "h3" -> null)) }
     } yield {
       t1
     }

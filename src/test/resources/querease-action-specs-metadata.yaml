@@ -795,3 +795,20 @@ get:
   - :val
 - else:
   - status {404, 'not found'}
+
+
+name: extract_http_header_test
+table:
+api: get, list
+key: id
+fields:
+- id
+get:
+- h1 = extract header Test-Header1
+- h2 = extract header Test-Header2
+- status ok { :h1 || ' ' || :h2 }
+list:
+- h3 = extract header Test-Header3
+- h1_h2 = http get { '/extract_http_header_test', '1' }
+    ({ 'Test-Header1', 'header1_value'} + { 'Test-Header2', 'header2_value'}) # headers
+- return :h1_h2 + (h3 = :h3)

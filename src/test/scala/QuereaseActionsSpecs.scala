@@ -1,6 +1,7 @@
 package org.wabase
 
 import akka.actor.ActorSystem
+import akka.http.scaladsl.model.HttpRequest
 import org.mojoz.querease.{ValidationException, ValidationResult}
 import org.scalatest.flatspec.{AsyncFlatSpec, AsyncFlatSpecLike}
 import org.scalatest.matchers.should.Matchers
@@ -96,6 +97,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
   implicit protected var tresqlResourcesFactory: ResourcesFactory = _
   implicit val fs: FileStreamer = null
   implicit val as: ActorSystem = ActorSystem("querease-action-specs")
+  implicit val req: HttpRequest = null
 
   override def beforeAll(): Unit = {
     querease = new TestQuerease("/querease-action-specs-metadata.yaml") {
@@ -339,7 +341,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
     def saveData(view: String, data: List[Map[String, Any]])(implicit res: Resources) =
       data.foldLeft(Future.successful[QuereaseResult](LongResult(0))) { (r, d) =>
         r.flatMap(_ => querease.doAction(view, "save", d, Map())(
-          tresqlResourcesFactory, implicitly[ExecutionContext], as, fs))
+          tresqlResourcesFactory, implicitly[ExecutionContext], as, fs, req))
       }
 
     saveData("person_simple", persons)

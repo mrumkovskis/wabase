@@ -1,7 +1,7 @@
 package org.wabase
 
 import akka.actor.ActorSystem
-import akka.http.scaladsl.model.StatusCodes
+import akka.http.scaladsl.model.{HttpRequest, StatusCodes}
 import akka.stream.Materializer
 import akka.stream.scaladsl.Source
 import akka.util.ByteString
@@ -50,6 +50,7 @@ trait WabaseApp[User] {
     val ec:       ExecutionContext,
     val as:       ActorSystem,
     val appFs:    AppFileStreamer[User],
+    val req:      HttpRequest,
   ) {
     lazy val env: Map[String, Any] = state ++ Map("params" -> params) ++ current_user_param(user)
     val fileStreamer = if (appFs == null) null else appFs.fileStreamer
@@ -74,6 +75,7 @@ trait WabaseApp[User] {
     ec:       ExecutionContext,
     as:       ActorSystem,
     appFs:    AppFileStreamer[User],
+    req:      HttpRequest,
   ): Future[WabaseResult] = {
     doWabaseAction(
       AppActionContext(actionName, viewName, keyValues, params, values ++ params),
@@ -152,7 +154,7 @@ trait WabaseApp[User] {
   def simpleAction(context: AppActionContext): ActionHandlerResult = {
     import context._
     val rf = ResourcesFactory(resourceFactory(context), closeResources, tresqlResources.resourcesTemplate)
-    qe.QuereaseAction(viewName, actionName, values, env)(rf, fileStreamer)
+    qe.QuereaseAction(viewName, actionName, values, env)(rf, fileStreamer, req)
       .map(WabaseResult(context, _))
   }
 
@@ -195,7 +197,7 @@ trait WabaseApp[User] {
 
     }
     val rf = ResourcesFactory(resourceFactory(context), closeResources, tresqlResources.resourcesTemplate)
-    qe.QuereaseAction(viewName, Action.Get, values, env)(rf, fileStreamer).map(oldVal)
+    qe.QuereaseAction(viewName, Action.Get, values, env)(rf, fileStreamer, req).map(oldVal)
   }
   protected def throwOldValueNotFound(message: String, locale: Locale): Nothing =
     throw new org.mojoz.querease.NotFoundException(translate(message)(locale))
@@ -221,7 +223,7 @@ trait WabaseApp[User] {
         validateFields(viewName, saveable)
         customValidations(saveableContext)(state.locale)
         val rf = ResourcesFactory(resourceFactory(context), closeResources, tresqlResources.resourcesTemplate)
-        qe.QuereaseAction(viewName, context.actionName, saveable, env)(rf, fileStreamer)
+        qe.QuereaseAction(viewName, context.actionName, saveable, env)(rf, fileStreamer, req)
           .map(WabaseResult(saveableContext, _))
           .recover { case ex => friendlyConstraintErrorMessage(viewDef, throw ex)(state.locale) }
       }
@@ -232,7 +234,7 @@ trait WabaseApp[User] {
     maybeGetOldValue(context).flatMap { oldValue =>
       val richContext = context.copy(oldValue = oldValue)
       val rf = ResourcesFactory(resourceFactory(richContext), closeResources, tresqlResources.resourcesTemplate)
-      qe.QuereaseAction(viewName, actionName, values, env)(rf, fileStreamer)
+      qe.QuereaseAction(viewName, actionName, values, env)(rf, fileStreamer, req)
         .map(WabaseResult(richContext, _))
         .recover { case ex => friendlyConstraintErrorMessage(throw ex)(state.locale) }
     }

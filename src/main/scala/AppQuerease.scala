@@ -280,6 +280,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       env: Map[String, Any],
     )(resourcesFactory: ResourcesFactory,
       fileStreamer: FileStreamer,
+      req: HttpRequest,
     ): QuereaseAction[QuereaseResult] = {
         new QuereaseAction[QuereaseResult] {
           def run(implicit ec: ExecutionContext, as: ActorSystem) = {
@@ -288,6 +289,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
               if (vd.explicitDb) resourcesFactory
               else resourcesFactory.copy(resources = resourcesFactory.initResources())
             implicit val fs = fileStreamer
+            implicit val httpReq = req
             import resFac._
             def processResult(res: QuereaseResult, cleanup: Option[Throwable] => Unit): QuereaseResult = res match {
               case DbResult(result, cl) =>
@@ -349,6 +351,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     ec: ExecutionContext,
     as: ActorSystem,
     fs: FileStreamer,
+    req: HttpRequest,
   ): Future[QuereaseResult] = {
     val vd = viewDef(view)
 
@@ -370,6 +373,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     ec: ExecutionContext,
     as: ActorSystem,
     fs: FileStreamer,
+    req: HttpRequest,
   ): Future[QuereaseResult] = {
     import Action._
 
@@ -464,14 +468,14 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
                                  dbkey: Option[DbAccessKey],
                                  params: Map[String, Any],
                                  view: ViewDef)(implicit res: Resources): Unit = {
-    validationsQueryString(view, params, validations) map { vs =>
+    validationsQueryString(view, params, validations) foreach { vs =>
       Query(dbkey.flatMap(k => Option(k.db)).map("|" + _ + ":").mkString("", "", vs), params)
         .map(_.s("msg"))
         .filter(_ != null).filter(_ != "")
         .toList match {
         case messages if messages.nonEmpty =>
           throw new ValidationException(messages.mkString("\n"), List(ValidationResult(Nil, messages)))
-        case _ => ()
+        case _ =>
       }
     }
   }
@@ -558,6 +562,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     ec: ExecutionContext,
     as: ActorSystem,
     fs: FileStreamer,
+    req: HttpRequest,
   ): Future[QuereaseResult] = {
     import Action._
     import CoreTypes._
@@ -735,7 +740,9 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     resFac: ResourcesFactory,
     ec: ExecutionContext,
     as: ActorSystem,
-    fs: FileStreamer): Future[QuereaseResult] = {
+    fs: FileStreamer,
+    req: HttpRequest,
+  ): Future[QuereaseResult] = {
     def createGetResult(res: QuereaseResult): DataResult = res match {
       case TresqlResult(r) if !r.isInstanceOf[DMLResult] =>
         r.uniqueOption map TresqlSingleRowResult getOrElse notFound
@@ -764,7 +771,9 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
    resFac: ResourcesFactory,
    ec: ExecutionContext,
    as: ActorSystem,
-   fs: FileStreamer): Future[QuereaseResult] = {
+   fs: FileStreamer,
+   req: HttpRequest,
+  ): Future[QuereaseResult] = {
     val Action.Status(maybeCode, bodyTresql, parameterIndex) = op
     Option(bodyTresql).map { bt =>
       doActionOp(Action.UniqueOpt(Action.Tresql(bt)), data, env, context).map {
@@ -796,6 +805,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     ec: ExecutionContext,
     as: ActorSystem,
     fs: FileStreamer,
+    req: HttpRequest,
   ): Future[QuereaseResult] = {
     doActionOp(op.cond, data, env, context).map {
       case TresqlResult(tr) => tr.unique[Boolean]
@@ -821,6 +831,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     ec: ExecutionContext,
     as: ActorSystem,
     fs: FileStreamer,
+    req: HttpRequest,
   ): Future[IteratorResult] = {
     def iterator(res: QuereaseResult): Iterator[Map[String, Any]] = {
       def addParentData(map: Map[String, Any]) = {
@@ -877,7 +888,9 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     resFac: ResourcesFactory,
     ec: ExecutionContext,
     as: ActorSystem,
-    fs: FileStreamer): Future[FileInfoResult] = {
+    fs: FileStreamer,
+    req: HttpRequest,
+  ): Future[FileInfoResult] = {
     import akka.http.scaladsl.model.{MediaTypes, ContentType}
     import resFac._
     val bindVars = data ++ env
@@ -905,7 +918,9 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     resFac: ResourcesFactory,
     ec: ExecutionContext,
     as: ActorSystem,
-    fs: FileStreamer): Future[DataResult] = {
+    fs: FileStreamer,
+    req: HttpRequest,
+  ): Future[DataResult] = {
     import resFac._
     val opData = data ++ env
     val httpMeth = HttpMethods.getForKeyCaseInsensitive(op.method).get
@@ -954,6 +969,24 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       .map { r => op.conformTo.map(CompatibleResult(r, _)).getOrElse(r) }
   }
 
+  protected def doExtractHeader(
+    op: Action.HttpHeader,
+    data: Map[String, Any],
+    env: Map[String, Any],
+    context: ActionContext,
+  )(implicit
+    resFac: ResourcesFactory,
+    ec: ExecutionContext,
+    as: ActorSystem,
+    fs: FileStreamer,
+    req: HttpRequest,
+  ): Future[QuereaseResult] = {
+    val headerVal = Option(req).map(_.headers).flatMap(_.collectFirst {
+      case h if h.is(op.name.toLowerCase) => StringResult(h.value())
+    }).getOrElse(NoResult)
+    Future.successful(headerVal)
+  }
+
   protected def doDb(
     op: Action.Db,
     data: Map[String, Any],
@@ -963,11 +996,13 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     resFac: ResourcesFactory,
     ec: ExecutionContext,
     as: ActorSystem,
-    fs: FileStreamer): Future[DbResult] = {
+    fs: FileStreamer,
+    req: HttpRequest,
+  ): Future[DbResult] = {
     val newRes = resFac.initResources()
     val closeRes = resFac.closeResources(newRes, op.doRollback, _)
     val newResFact = resFac.copy(resources = newRes)
-    doSteps(op.action.steps, context.copy(stepName = "db"), Future.successful(data))(newResFact, ec, as, fs).map {
+    doSteps(op.action.steps, context.copy(stepName = "db"), Future.successful(data))(newResFact, ec, as, fs, req).map {
       case DbResult(r, cl) => DbResult(r, cl.andThen(_ => closeRes(None)))
       case r => DbResult(r, closeRes)
     }.andThen {
@@ -1008,7 +1043,9 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     resFac: ResourcesFactory,
     ec: ExecutionContext,
     as: ActorSystem,
-    fs: FileStreamer): Future[QuereaseResult] = {
+    fs: FileStreamer,
+    req: HttpRequest,
+  ): Future[QuereaseResult] = {
     doActionOp(op.op, data, env, context)
       .flatMap(dataForNextStep(_, context, true))
       .map { res =>
@@ -1038,6 +1075,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     ec: ExecutionContext,
     as: ActorSystem,
     fs: FileStreamer,
+    req: HttpRequest,
   ): Future[QuereaseResult] = {
     import resFac._
     op match {
@@ -1062,6 +1100,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case file: Action.File => doFile(file, data, env, context)
       case toFile: Action.ToFile => doToFile(toFile, data, env, context)
       case http: Action.Http => doHttp(http, data, env, context)
+      case eh: Action.HttpHeader => doExtractHeader(eh, data, env, context)
       case db: Action.Db => doDb(db, data, env, context)
       case c: Action.Conf => doConf(c, data, env, context)
       case j: Action.JsonCodec => doJsonCodec(j, data, env, context)
@@ -1086,6 +1125,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
      ec: ExecutionContext,
      as: ActorSystem,
      fs: FileStreamer,
+     req: HttpRequest,
    ): Future[(Source[ByteString, _], ContentType, Option[Long])] = {
     val ct: ContentType = if (contentType == null) MediaTypes.`application/json` else contentType
 
