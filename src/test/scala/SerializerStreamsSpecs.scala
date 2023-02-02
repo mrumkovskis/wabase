@@ -256,9 +256,9 @@ class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseIni
       ),
       outputStream => new FlatTableResultRenderer(
         renderer  = new CsvResultRenderer(new OutputStreamWriter(outputStream, "UTF-8")),
+        null,
+        null,
         labels    = if (withLabels) cols.replace("birthdate", "birth date").split(", ").toList else null,
-        viewName  = null,
-        nameToViewDef = null,
         hasHeaders = includeHeaders,
       ),
       bufferSizeHint = bufferSizeHint,
@@ -291,7 +291,8 @@ class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseIni
     def test(dtos: Seq[Dto], isCollection: Boolean, viewName: String = null, bufferSizeHint: Int = 256) =
       serializeAndTransform(
         DataSerializer.source(() => dtos.iterator.map(_.toMap), bufferSizeHint = bufferSizeHint),
-        outputStream => JsonResultRenderer(outputStream, isCollection, viewName, qe.nameToViewDef),
+        outputStream => JsonResultRenderer(outputStream, isCollection,
+          if (viewName == null) null else new ResultRenderer.ViewFieldFilter(viewName, qe.nameToViewDef)),
         bufferSizeHint = bufferSizeHint,
       )
     val (person, person_a) = createPersonDtos
@@ -363,9 +364,9 @@ class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseIni
       ),
       outputStream => new FlatTableResultRenderer(
         renderer  = new CsvResultRenderer(new OutputStreamWriter(outputStream, "UTF-8")),
+        if (viewName == null) null else new ResultRenderer.ViewFieldFilter(viewName, qe.nameToViewDef),
+        if (viewName == null) null else qe.nameToViewDef(viewName),
         labels    = null,
-        viewName  = viewName,
-        nameToViewDef = qe.nameToViewDef,
       ) { override def label(name: String) = name },
       bufferSizeHint = bufferSizeHint,
     )
@@ -395,7 +396,8 @@ class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseIni
       TresqlResultSerializer.source(
         () => Query("person {id, name, surname, sex, birthdate, |account {number, balance} accounts}"),
       ),
-      outputStream => JsonResultRenderer(outputStream, isCollection = true, viewName, qe.nameToViewDef),
+      outputStream => JsonResultRenderer(outputStream, isCollection = true,
+        if (viewName == null) null else new ResultRenderer.ViewFieldFilter(viewName, qe.nameToViewDef)),
       bufferSizeHint = bufferSizeHint,
     )
     test(null) shouldBe List(
@@ -427,7 +429,7 @@ class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseIni
       ),
       outputStream => new CborOrJsonResultRenderer(
           BorerNestedArraysEncoder.createWriter(outputStream, Json),
-          isCollection = true, viewName, qe.nameToViewDef, hasHeaders = includeHeaders),
+          isCollection = true, new ResultRenderer.ViewFieldFilter(viewName, qe.nameToViewDef), hasHeaders = includeHeaders),
       bufferSizeHint = bufferSizeHint,
     )
     val expected = List(
@@ -454,7 +456,8 @@ class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseIni
       ),
       outputStream => new FlatTableResultRenderer(
         renderer = new CsvResultRenderer(new OutputStreamWriter(outputStream, "UTF-8")),
-        viewName, qe.nameToViewDef, hasHeaders = includeHeaders
+        new ResultRenderer.ViewFieldFilter(viewName, qe.nameToViewDef),
+        qe.nameToViewDef(viewName), hasHeaders = includeHeaders
       ) { override def label(name: String) = name },
       bufferSizeHint = bufferSizeHint,
     )
@@ -480,7 +483,8 @@ class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseIni
       ),
       outputStream => new FlatTableResultRenderer(
         renderer = new CsvResultRenderer(new OutputStreamWriter(outputStream, "UTF-8")),
-        viewName, qe.nameToViewDef, hasHeaders = includeHeaders
+        new ResultRenderer.ViewFieldFilter(viewName, qe.nameToViewDef),
+        qe.nameToViewDef(viewName), hasHeaders = includeHeaders
       ),
       bufferSizeHint = bufferSizeHint,
     )
@@ -525,7 +529,8 @@ class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseIni
       ),
       outputStream => new FlatTableResultRenderer(
         renderer = new TestTableRenderer(new OutputStreamWriter(outputStream, "UTF-8")),
-        viewName, qe.nameToViewDef, hasHeaders = includeHeaders),
+        new ResultRenderer.ViewFieldFilter(viewName, qe.nameToViewDef),
+        qe.nameToViewDef(viewName), hasHeaders = includeHeaders),
       bufferSizeHint = bufferSizeHint,
     )
     test("person_accounts_details")  shouldBe List(
@@ -541,7 +546,7 @@ class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseIni
     import scala.language.existentials
     def test(value: Any, bufferSizeHint: Int = 256) = {
       var deserialized: Any = null
-      val handler = new ResultRenderer(isCollection = false, viewName = null, nameToViewDef = null, hasHeaders = false) {
+      val handler = new ResultRenderer(isCollection = false, null, hasHeaders = false) {
         override def renderValue(value: Any): Unit = {}
         override def writeValue(value: Any): Unit = { deserialized = value }
       }
@@ -650,9 +655,9 @@ class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseIni
     implicit val qe = querease
     def createCsvResultRenderer(os: OutputStream) =
       new FlatTableResultRenderer(new CsvResultRenderer(new OutputStreamWriter(os, "UTF-8")),
-        viewName = null, qe.nameToViewDef)
+        null)
     def createJsonResultRenderer(os: OutputStream) =
-      JsonResultRenderer(os, isCollection = true, viewName = null, qe.nameToViewDef)
+      JsonResultRenderer(os, isCollection = true, null)
     def test(dtos: Seq[Dto], rendererFactory: OutputStream => ResultRenderer, bufferSizeHint: Int = 256) =
       serializeAndTransform(
         DataSerializer.source(() => dtos.iterator.map(_.toMap), bufferSizeHint = bufferSizeHint),

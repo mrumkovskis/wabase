@@ -78,9 +78,12 @@ case class QuereaseResultWithCleanup(result: QuereaseCloseableResult, cleanup: O
     }.get
   }
 }
-case class QuereaseSerializedResult(result: SerializedResult, isCollection: Boolean,
-                                    conformToView: String) extends QuereaseResult
-case class CompatibleResult(result: DataResult, conformTo: Action.OpResultType)
+case class QuereaseSerializedResult(result: SerializedResult,
+                                    resultFilter: ResultRenderer.ResultFilter,
+                                    isCollection: Boolean) extends QuereaseResult
+case class CompatibleResult(result: DataResult,
+                            resultFilter: ResultRenderer.ResultFilter = null,
+                            isCollection: Boolean = false)
   extends DataResult with QuereaseCloseableResult
 case class DbResult(result: QuereaseResult, cleanup: Option[Throwable] => Unit)
   extends QuereaseResult
@@ -635,8 +638,8 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
           case x =>
             sys.error(s"Unknown view action $x")
         }) match {
-          case r: TresqlSingleRowResult => CompatibleResult(r, Action.OpResultType(viewName, false))
-          case r: DataResult => CompatibleResult(r, Action.OpResultType(viewName, true))
+          case r: TresqlSingleRowResult => comp_res(r, Action.OpResultType(viewName, false))
+          case r: DataResult => comp_res(r, Action.OpResultType(viewName, true))
           case r => r
         }
       }
@@ -653,9 +656,10 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     def comp_q_result(r: Any) = {
       def createCompatibleResult(result: QuereaseResult, conformTo: Action.OpResultType) = result match {
         case c: CompatibleResult =>
-          require(c.conformTo == conformTo, s"Incompatible results ${c.conformTo} != $conformTo")
-          c
-        case r: DataResult => CompatibleResult(r, conformTo)
+          require(c.isCollection == conformTo.isCollection, s"Incompatible results $c != $conformTo")
+          val c1 = comp_res(c.result, conformTo)
+          c.copy(resultFilter = new ResultRenderer.IntersectionFilter(c1.resultFilter, c.resultFilter))
+        case r: DataResult => comp_res(r, conformTo)
         case x => throw new IllegalArgumentException(s"Result argument must be of type DataResult, instead encountered: $x")
       }
       val qr = qresult(r)
@@ -695,8 +699,8 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       else if (parCount == 1) method.invoke(obj, param(parTypes(0)))
       else if (parCount == 2) method.invoke(obj, param(parTypes(0)), res)
     }.map {
-      case f: Future[_] => f map qresult
-      case x => Future.successful(qresult(x))
+      case f: Future[_] => f map comp_q_result
+      case x => Future.successful(comp_q_result(x))
     }.getOrElse(sys.error(s"Method $function not found in class $className"))
   }
 
@@ -849,7 +853,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
           case r: Result[_] => r.map(_.toMap) map addParentData
         }
         case r: TresqlSingleRowResult => (List(r.map(_.toMap)) map addParentData).iterator
-        case CompatibleResult(r, ct) => iterator(r) // TODO Execute to compatible map
+        case CompatibleResult(r, _, _) => iterator(r) // TODO Execute to compatible map
         case x => sys.error(s"Not iterable result for foreach operation: $x")
       }
     }
@@ -876,7 +880,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     fs: FileStreamer): Future[DataResult] = {
     val (id, sha) = Query(op.idShaTresql)(res.withParams(data ++ env)).unique[Long, String]
     val r = FileResult(fs.getFileInfo(id, sha).map(_.file_info).orNull, fs)
-    Future.successful { op.conformTo.map(CompatibleResult(r, _)).getOrElse(r) }
+    Future.successful { op.conformTo.map(comp_res(r, _)).getOrElse(r) }
   }
 
   protected def doToFile(
@@ -966,7 +970,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     }
     doHttpRequest(reqF)
       .map(HttpResult)
-      .map { r => op.conformTo.map(CompatibleResult(r, _)).getOrElse(r) }
+      .map { r => op.conformTo.map(comp_res(r, _)).getOrElse(r) }
   }
 
   protected def doExtractHeader(
@@ -1129,32 +1133,34 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
    ): Future[(Source[ByteString, _], ContentType, Option[Long])] = {
     val ct: ContentType = if (contentType == null) MediaTypes.`application/json` else contentType
 
-    def renderedResult(res: QuereaseResult, vn: String, isColl: Option[Boolean]):
-      (Source[ByteString, _], ContentType, Option[Long]) = res match {
-      case StringResult(s) =>
-        val data = ByteString(s)
-        (Source.single(data), ct, Option(data.size))
-      case TresqlResult(tr) => tr match {
-        case SingleValueResult(r: Iterable[_]) =>
-          (renderedSource(DataSerializer.source(() => r.iterator), vn, isColl.getOrElse(true), ct),
+    def renderedResult(res: QuereaseResult, resFil: ResultRenderer.ResultFilter, isColl: Option[Boolean]):
+      (Source[ByteString, _], ContentType, Option[Long]) = {
+      res match {
+        case StringResult(s) =>
+          val data = ByteString(s)
+          (Source.single(data), ct, Option(data.size))
+        case TresqlResult(tr) => tr match {
+          case SingleValueResult(r: Iterable[_]) =>
+            (renderedSource(DataSerializer.source(() => r.iterator), resFil, isColl.getOrElse(true), ct),
+              contentType, None)
+          case SingleValueResult(r) =>
+            (renderedSource(DataSerializer.source(() => Iterator(r)), resFil, isColl.getOrElse(false), ct),
+              contentType, None)
+          case r =>
+            (renderedSource(TresqlResultSerializer.source(() => r), resFil, isColl.getOrElse(true), ct),
+              contentType, None)
+        }
+        case TresqlSingleRowResult(row) =>
+          (renderedSource(TresqlResultSerializer.rowSource(() => row), resFil, isColl.getOrElse(false), ct),
             contentType, None)
-        case SingleValueResult(r) =>
-          (renderedSource(DataSerializer.source(() => Iterator(r)), vn, isColl.getOrElse(false), ct),
-            contentType, None)
-        case r =>
-          (renderedSource(TresqlResultSerializer.source(() => r), vn, isColl.getOrElse(true), ct),
-            contentType, None)
+        case fileResult: FileResult =>
+          fileHttpEntity(fileResult)
+            .map(e => (e.dataBytes, e.contentType, e.contentLengthOption))
+            .getOrElse(sys.error(s"File not found: ${fileResult.fileInfo}"))
+        case HttpResult(res) => (res.entity.dataBytes, res.entity.contentType, res.entity.contentLengthOption)
+        case CompatibleResult(r, fil, isCollection) => renderedResult(r, fil, Option(isCollection))
+        case x => sys.error(s"Currently unable to create rendered source from result: $x")
       }
-      case TresqlSingleRowResult(row) =>
-        (renderedSource(TresqlResultSerializer.rowSource(() => row), vn, isColl.getOrElse(false), ct),
-          contentType, None)
-      case fileResult: FileResult =>
-        fileHttpEntity(fileResult)
-          .map(e => (e.dataBytes, e.contentType, e.contentLengthOption))
-          .getOrElse(sys.error(s"File not found: ${fileResult.fileInfo}"))
-      case HttpResult(res) => (res.entity.dataBytes, res.entity.contentType, res.entity.contentLengthOption)
-      case CompatibleResult(r, Action.OpResultType(vn, isColl)) => renderedResult(r, vn, Option(isColl))
-      case x => sys.error(s"Currently unable to create rendered source from result: $x")
     }
 
     doActionOp(op, data, env, context).map(renderedResult(_, null, None))
@@ -1165,12 +1171,13 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
   }
 
   private def renderedSource(serializedSource: Source[ByteString, _],
-                             viewName: String,
+                             resFilter: ResultRenderer.ResultFilter,
                              isCollection: Boolean,
                              contentType: ContentType): Source[ByteString, _] = {
+    val viewDef = if (resFilter == null) null else nameToViewDef(resFilter.name)
     val renderer =
       resultRenderers.renderers.get(contentType)
-        .map(_ (nameToViewDef)(viewName, isCollection))
+        .map(_ (isCollection, resFilter, viewDef))
         .getOrElse(sys.error(s"Renderer not found for content type: $contentType"))
     serializedSource.via(BorerNestedArraysTransformer.flow(renderer))
   }
@@ -1245,14 +1252,14 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
           r.headers.find(_.is("location")).map(_.value()).getOrElse("")
         else objFromHttpEntity(r.entity, null, false)
       case NoResult => NoResult
-      case CompatibleResult(r, ct) => r match {
+      case CompatibleResult(r, filter, isCollection) => r match {
         case TresqlResult(r: Result[_]) =>
-          val l = toCompatibleSeqOfMaps(r, v(ct.viewName))
+          val l = toCompatibleSeqOfMaps(r, v(filter.name)) // FIXME assumes that filter name matches view name, refactor!
           if (unwrapSingleValue) mayBeUnwrapSingleVal(l) else l
-        case r: TresqlSingleRowResult => r.map(toCompatibleMap(_, v(ct.viewName)))
-        case fr: FileResult => fileHttpEntity(fr).map(objFromHttpEntity(_, ct.viewName, ct.isCollection))
+        case r: TresqlSingleRowResult => r.map(toCompatibleMap(_, v(filter.name))) // FIXME assumes that filter name matches view name
+        case fr: FileResult => fileHttpEntity(fr).map(objFromHttpEntity(_, filter.name, isCollection)) // FIXME assumes that filter matches view name
           .getOrElse(sys.error(s"File not found: ${fr.fileInfo}"))
-        case HttpResult(r) => objFromHttpEntity(r.entity, ct.viewName, ct.isCollection)
+        case HttpResult(r) => objFromHttpEntity(r.entity, filter.name, isCollection) // FIXME assumes that filter name matches view name
         case r => dataForNextStep(r, context, unwrapSingleValue)
       }
       case DbResult(dbr, cl) => dataForNextStep(dbr, context, unwrapSingleValue).andThen {
@@ -1265,6 +1272,10 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case x => Future.successful(x)
     }
   }
+
+  private def comp_res(res: DataResult, conformTo: Action.OpResultType) =
+    CompatibleResult(res,
+      new ResultRenderer.ViewFieldFilter(conformTo.viewName, nameToViewDef), conformTo.isCollection)
 
   private def notFound = StatusResult(StatusCodes.NotFound.intValue, StringStatus("not found"))
 

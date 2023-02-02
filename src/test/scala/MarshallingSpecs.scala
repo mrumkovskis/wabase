@@ -101,7 +101,7 @@ class MarshallingSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     val fullJson     = """{"id":333,"name":"CHILD-1","date":"2021-11-08","date_time":"2021-12-26 23:57:14"}"""
     val filteredJson = """{"id":333,"date":"2021-11-08","date_time":"2021-12-26 23:57:14"}"""
 
-    httpResponse = marshal((chilD.toMap, "decoder_test_child"))
+    httpResponse = marshal((chilD.toMap, "decoder_test_child", null))
     httpResponse.entity.contentType shouldEqual ContentTypes.`application/json`
 
     childCopy = Await.result(Unmarshal(httpResponse.entity).to[JsonDecoderSpecs.decoder_test_child], 1.second)
@@ -116,7 +116,7 @@ class MarshallingSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     otherCopy.date      shouldBe child.date
     otherCopy.date_time shouldBe child.date_time
 
-    httpResponse = marshal((child.asInstanceOf[AppQuerease#DTO].toMap, "decoder_test"))
+    httpResponse = marshal((child.asInstanceOf[AppQuerease#DTO].toMap, "decoder_test", null))
 
     childCopy = Await.result(Unmarshal(httpResponse.entity).to[JsonDecoderSpecs.decoder_test_child], 1.second)
     childCopy.id        shouldBe child.id
@@ -124,16 +124,16 @@ class MarshallingSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     childCopy.date      shouldBe child.date
     childCopy.date_time shouldBe child.date_time
 
-    toBodyString((chilD.toMap, "decoder_test_child"))       shouldBe fullJson
+    toBodyString((chilD.toMap, "decoder_test_child", null))       shouldBe fullJson
     toBodyString(wRes("decoder_test_child", MapResult(chilD.toMap)))            shouldBe fullJson
-    toBodyString((Nil, "decoder_test_child"))                   shouldBe "[]"
-    toBodyString((List(chilD.toMap), "decoder_test_child"))           shouldBe s"[$fullJson]"
-    toBodyString((List(chilD, chilD).map(_.toMap), "decoder_test_child"))    shouldBe s"[$fullJson,$fullJson]"
+    toBodyString((Nil, "decoder_test_child", null))                   shouldBe "[]"
+    toBodyString((List(chilD.toMap), "decoder_test_child", null))           shouldBe s"[$fullJson]"
+    toBodyString((List(chilD, chilD).map(_.toMap), "decoder_test_child", null))    shouldBe s"[$fullJson,$fullJson]"
 
     toBodyString(wRes("decoder_test", MapResult(chilD.toMap)))          shouldBe filteredJson
-    toBodyString((Nil, "decoder_test"))                 shouldBe "[]"
-    toBodyString((List(chilD.toMap), "decoder_test"))         shouldBe s"[$filteredJson]"
-    toBodyString((List(chilD, chilD).map(_.toMap), "decoder_test"))  shouldBe s"[$filteredJson,$filteredJson]"
+    toBodyString((Nil, "decoder_test", null))                 shouldBe "[]"
+    toBodyString((List(chilD.toMap), "decoder_test", null))         shouldBe s"[$filteredJson]"
+    toBodyString((List(chilD, chilD).map(_.toMap), "decoder_test", null))  shouldBe s"[$filteredJson,$filteredJson]"
   }
 
   it should "marshal number result" in {

@@ -41,6 +41,7 @@ trait WabaseApp[User] {
     keyValues:  Seq[Any],
     params:     Map[String, Any],
     values:     Map[String, Any],
+    resultFilter: ResultRenderer.ResultFilter = null,
     oldValue:   Map[String, Any] = null, // for save and delete
     serializedResult: Source[ByteString, _] = null,
   )(implicit
@@ -54,6 +55,8 @@ trait WabaseApp[User] {
   ) {
     lazy val env: Map[String, Any] = state ++ Map("params" -> params) ++ current_user_param(user)
     val fileStreamer = if (appFs == null) null else appFs.fileStreamer
+    def withResultFilter(resFil: ResultRenderer.ResultFilter): AppActionContext =
+      copy(resultFilter = resFil)
   }
 
   case class WabaseResult(ctx: AppActionContext, result: QuereaseResult)
@@ -67,6 +70,7 @@ trait WabaseApp[User] {
     keyValues:  Seq[Any],
     params:     Map[String, Any],
     values:     Map[String, Any] = Map(),
+    resultFilter: ResultRenderer.ResultFilter = null,
     doApiCheck: Boolean = true,
   )(implicit
     user:     User,
@@ -78,7 +82,7 @@ trait WabaseApp[User] {
     req:      HttpRequest,
   ): Future[WabaseResult] = {
     doWabaseAction(
-      AppActionContext(actionName, viewName, keyValues, params, values ++ params),
+      AppActionContext(actionName, viewName, keyValues, params, values ++ params, resultFilter),
       doApiCheck)
   }
 
@@ -101,36 +105,38 @@ trait WabaseApp[User] {
       .flatMap {
         case WabaseResult(ac, QuereaseResultWithCleanup(result, cleanup)) =>
           sealed trait Res
-          case class SourceRes(src: Source[ByteString, _], viewName: String, isCollection: Boolean) extends Res
+          case class SourceRes(src: Source[ByteString, _],
+                               filter: ResultRenderer.ResultFilter,
+                               isCollection: Boolean) extends Res
           case class StrictRes(result: QuereaseResult) extends Res
-          def res(r: QuereaseResult, v: String): Res = {
+          def res(r: QuereaseResult, filter: ResultRenderer.ResultFilter): Res = {
             def single_res(sr: SingleValueResult[_]) = sr.value match {
-              case m: Map[String@unchecked, _] => SourceRes(DataSerializer.source(() => Seq(m).iterator), v, false)
-              case s: Seq[Map[String, _]@unchecked] => SourceRes(DataSerializer.source(() => s.iterator), v, true)
+              case m: Map[String@unchecked, _] => SourceRes(DataSerializer.source(() => Seq(m).iterator), filter, false)
+              case s: Seq[Map[String, _]@unchecked] => SourceRes(DataSerializer.source(() => s.iterator), filter, true)
               case x => StrictRes(StringResult(String.valueOf(x)))
             }
             r match {
               case TresqlResult(tr) => tr match {
                 case r: SingleValueResult[_] => single_res(r)
-                case _ => SourceRes(TresqlResultSerializer.source(() => tr), v, true)
+                case _ => SourceRes(TresqlResultSerializer.source(() => tr), filter, true)
               }
               case TresqlSingleRowResult(row) => row match {
                 case r: SingleValueResult[_] => single_res(r)
-                case _ => SourceRes(TresqlResultSerializer.rowSource(() => row), v, false)
+                case _ => SourceRes(TresqlResultSerializer.rowSource(() => row), filter, false)
               }
               case IteratorResult(ir) =>
-                SourceRes(DataSerializer.source(() => ir), v, true)
-              case CompatibleResult(dr: QuereaseCloseableResult, ct) => res(dr, ct.viewName)
+                SourceRes(DataSerializer.source(() => ir), filter, true)
+              case CompatibleResult(dr: QuereaseCloseableResult, filter, _) => res(dr, filter)
               case x => StrictRes(x)
             }
           }
           res(result, null) match {
-            case SourceRes(resultSource, viewName, isCollection) =>
+            case SourceRes(resultSource, filter, isCollection) =>
               val addResultToContext = shouldAddResultToContext(context)
               serializeResult(SerializationBufferSize, viewSerializationBufferMaxFileSize(ac.viewName),
                 resultSource, cleanup, if (addResultToContext) 2 else 1)
                 .map { srs =>
-                  val qsr = QuereaseSerializedResult(srs.head, isCollection, viewName)
+                  val qsr = QuereaseSerializedResult(srs.head, filter, isCollection)
                   import context._
                   val ac =
                     if (addResultToContext) srs.tail.head match {
@@ -191,7 +197,7 @@ trait WabaseApp[User] {
       case StatusResult(StatusCodes.NotFound.intValue, _) => null
       case MapResult(oldMap) => oldMap
       case srr: TresqlSingleRowResult => srr.map(qe.toCompatibleMap(_, qe.viewDef(viewName)))
-      case CompatibleResult(r, _) => oldVal(r)
+      case CompatibleResult(r, _, _) => oldVal(r)
       case qrwc: QuereaseResultWithCleanup => qrwc map oldVal
       case x => throwUnexpectedResultClass(x)
 

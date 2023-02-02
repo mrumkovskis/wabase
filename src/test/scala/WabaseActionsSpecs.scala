@@ -105,7 +105,8 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
           val res = context.serializedResult
           implicit val as = marshallers.system
           res
-            .via(marshallers.serializedResultToJsonFlow(context.viewName, false))
+            .via(marshallers.serializedResultToJsonFlow(false,
+              new ResultRenderer.ViewFieldFilter(context.viewName, qe.nameToViewDef)))
             .runFold(ByteString.empty){_ ++ _}
             .map { bytes =>
               val id = context.values("id").toString.toLong + 1
@@ -162,7 +163,8 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       .map(_.result)
       .flatMap {
         case sr: QuereaseSerializedResult =>
-          implicit val marshaller     = marshallers.toEntityQuereaseSerializedResultMarshaller(view)
+          implicit val marshaller     = marshallers.toEntityQuereaseSerializedResultMarshaller(view,
+            new ResultRenderer.ViewFieldFilter(view, app.qe.nameToViewDef))
           implicit val unmarshaller_1 = marshallers.toMapUnmarshallerForView(view)
           implicit val unmarshaller_2 = marshallers.toSeqOfMapsUnmarshallerForView(view)
           Marshal(sr).to[MessageEntity].flatMap { entity =>

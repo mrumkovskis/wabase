@@ -80,8 +80,7 @@ trait ResultEncoder {
 
 abstract class ResultRenderer(
   isCollection: Boolean,
-  viewName: String,
-  nameToViewDef: Map[String, ViewDef],
+  resultFilter: ResultRenderer.ResultFilter,
   hasHeaders: Boolean,
 ) extends ResultEncoder {
   import ResultRenderer.Context
@@ -104,15 +103,15 @@ abstract class ResultRenderer(
   }
   protected def shouldRender(name: String): Boolean = {
     val context = contextStack.head
-    context.viewDef == null || context.viewDef.fieldOpt(name).exists(!_.api.excluded)
+    context.resultFilter == null || context.resultFilter.shouldRender(name)
   }
-  protected def getViewDef(viewName: String) =
-    if (viewName != null)
-      nameToViewDef.getOrElse(viewName, sys.error(s"View $viewName not found - can not render result"))
+  protected def childFilter(resFilter: ResultRenderer.ResultFilter, fieldName: String) =
+    if (resFilter != null)
+      resFilter.childFilter(fieldName)
     else null
-  protected def impliedNames(viewDef: ViewDef): List[String] = {
-    if  (hasHeaders || viewDef == null) Nil
-    else viewDef.fields.map(_.fieldName).toList
+  protected def impliedNames(resFilter: ResultRenderer.ResultFilter): List[String] = {
+    if  (hasHeaders || resFilter == null) Nil
+    else resFilter.unfilteredNames
   }
   protected def nextName(context: Context) = {
     if (context.names.nonEmpty) {
@@ -122,9 +121,8 @@ abstract class ResultRenderer(
     } else null
   }
   override def writeStartOfInput(): Unit = {
-    val viewDef = getViewDef(viewName)
-    val allNames = impliedNames(viewDef)
-    contextStack = new Context(isForRows = true, viewDef, allNames, isCollection = isCollection) :: contextStack
+    val allNames = impliedNames(resultFilter)
+    contextStack = new Context(isForRows = true, resultFilter, allNames, isCollection = isCollection) :: contextStack
     renderHeader()
     if (!hasHeaders) {
       renderHeaderData()
@@ -137,7 +135,7 @@ abstract class ResultRenderer(
       val isHeaderRow = context.index == 0 && hasHeaders
       val shouldRender_ = context.shouldRender && !isHeaderRow
       contextStack = new Context(
-        isForRows = false, context.viewDef, context.names, shouldRender = shouldRender_) :: contextStack
+        isForRows = false, context.resultFilter, context.names, shouldRender = shouldRender_) :: contextStack
       if (isHeaderRow) {
         contextStack.head.readingNames = true
       } else {
@@ -149,23 +147,20 @@ abstract class ResultRenderer(
       }
     } else {
       val name = nextName(context)
-      val fieldDef =
-        if (context.viewDef != null)
-          context.viewDef.fieldOpt(name).orNull
-        else null
-      val isCollection = fieldDef == null || fieldDef.isCollection
+      val resFilter = context.resultFilter
+      val isCollection = resFilter == null || resFilter.isCollection(name)
       val shouldRender_ = context.shouldRender && !context.namesToHide.contains(name)
-      val viewDef =
-        if (shouldRender_ && fieldDef != null && fieldDef.type_.isComplexType)
-          getViewDef(fieldDef.type_.name)
+      val childFilter =
+        if (shouldRender_ && resFilter != null && resFilter.isComplexType(name))
+          resFilter.childFilter(name)
         else null
-      val allNames = impliedNames(viewDef)
+      val allNames = impliedNames(childFilter)
       if (shouldRender_) {
         renderKey(name)
         if (isCollection)
           renderArrayStart()
       }
-      contextStack = new Context(isForRows = true, viewDef, allNames, isCollection, shouldRender_) :: contextStack
+      contextStack = new Context(isForRows = true, childFilter, allNames, isCollection, shouldRender_) :: contextStack
     }
   }
   override def writeValue(value: Any): Unit = {
@@ -236,7 +231,7 @@ abstract class ResultRenderer(
 object ResultRenderer {
   class Context(
     val isForRows:    Boolean,
-    val viewDef:      ViewDef,
+    val resultFilter: ResultRenderer.ResultFilter,
     val allNames:     List[String]  = Nil,
     val isCollection: Boolean       = true,
     val shouldRender: Boolean       = true,
@@ -247,15 +242,47 @@ object ResultRenderer {
     var names:        List[String]  = allNames
     var namesToHide:  Set[String]   = Set.empty
   }
+
+  trait ResultFilter {
+    def name: String
+    def shouldRender(field: String): Boolean
+    def isCollection(field: String): Boolean
+    def isComplexType(field: String): Boolean
+    def childFilter(field: String): ResultFilter
+    def unfilteredNames: List[String]
+  }
+
+  class ViewFieldFilter(viewName: String, nameToViewDef: Map[String, ViewDef]) extends ResultFilter {
+    private val viewDef =
+      nameToViewDef.getOrElse(viewName, sys.error(s"View $viewName not found - can not render result"))
+    override def name = viewName
+    override def shouldRender(field: String) = viewDef.fieldOpt(field).exists(!_.api.excluded)
+    override def isCollection(field: String) = viewDef.fieldOpt(field).exists(_.isCollection)
+    override def isComplexType(field: String) = viewDef.fieldOpt(field).exists(_.type_.isComplexType)
+    override def childFilter(field: String) = viewDef.fieldOpt(field)
+      .map(_.type_.name)
+      .map(new ViewFieldFilter(_, nameToViewDef))
+      .orNull
+    override def unfilteredNames = viewDef.fields.map(_.fieldName).toList
+  }
+
+  class IntersectionFilter(filter1: ResultFilter, filter2: ResultFilter) extends ResultFilter {
+    override def name = filter1.name
+    override def shouldRender(field: String) = filter1.shouldRender(field) && filter2.shouldRender(field)
+    override def isCollection(field: String) = filter1.isCollection(field) && filter2.isCollection(field)
+    override def isComplexType(field: String) = filter1.isComplexType(field) && filter2.isComplexType(field)
+    override def childFilter(field: String) =
+      new IntersectionFilter(filter1.childFilter(field), filter2.childFilter(field))
+    override def unfilteredNames = filter1.unfilteredNames
+  }
 }
 
 class CborOrJsonResultRenderer(
   w: borer.Writer,
   isCollection: Boolean,
-  viewName: String,
-  nameToViewDef: Map[String, ViewDef],
+  resultFilter: ResultRenderer.ResultFilter,
   hasHeaders: Boolean = true,
-) extends ResultRenderer(isCollection, viewName, nameToViewDef, hasHeaders) {
+) extends ResultRenderer(isCollection, resultFilter, hasHeaders) {
   val valueEncoder = new BorerValueEncoder(w)
   override protected def renderHeader()             = if (isCollection && level <= 1) renderArrayStart()
   override protected def renderFooter()             = if (isCollection) renderBreak()
@@ -303,29 +330,28 @@ class CborOrJsonResultRenderer(
 }
 
 object CborResultRenderer {
-  def apply(outputStream: OutputStream, isCollection: Boolean, viewName: String, nameToViewDef: Map[String, ViewDef]) =
-    new CborOrJsonResultRenderer(BorerNestedArraysEncoder.createWriter(outputStream, Cbor), isCollection, viewName, nameToViewDef)
+  def apply(outputStream: OutputStream, isCollection: Boolean, resultFilter: ResultRenderer.ResultFilter) =
+    new CborOrJsonResultRenderer(BorerNestedArraysEncoder.createWriter(outputStream, Cbor), isCollection, resultFilter)
 }
 
 object JsonResultRenderer {
-  def apply(outputStream: OutputStream, isCollection: Boolean, viewName: String, nameToViewDef: Map[String, ViewDef]) =
-    new CborOrJsonResultRenderer(BorerNestedArraysEncoder.createWriter(outputStream, Json), isCollection, viewName, nameToViewDef)
+  def apply(outputStream: OutputStream, isCollection: Boolean, resultFilter: ResultRenderer.ResultFilter) =
+    new CborOrJsonResultRenderer(BorerNestedArraysEncoder.createWriter(outputStream, Json), isCollection, resultFilter)
 }
 
 class FlatTableResultRenderer(
   renderer: TableResultRenderer,
-  viewName: String,
-  nameToViewDef: Map[String, ViewDef],
+  resultFilter: ResultRenderer.ResultFilter,
+  viewDef: ViewDef = null,
   labels: Seq[String] = null,
   hasHeaders: Boolean = true,
-) extends ResultRenderer(false, viewName, nameToViewDef, hasHeaders) {
+) extends ResultRenderer(false, resultFilter, hasHeaders) {
   import renderer._
   private lazy val nameToLabel: Map[String, String] =
-    if (viewName != null)
-      nameToViewDef.getOrElse(viewName, sys.error(s"View $viewName not found - can not render result"))
-        .fields.map { f =>
-          f.fieldName -> Option(f.label).getOrElse(f.fieldName)
-        }.toMap
+    if (viewDef != null)
+      viewDef.fields.map { f =>
+        f.fieldName -> Option(f.label).getOrElse(f.fieldName)
+      }.toMap
     else Map.empty
   protected def label(name: String): String = nameToLabel.getOrElse(name, name)
   override protected def renderHeaderData(): Unit =
@@ -344,9 +370,8 @@ class FlatTableResultRenderer(
     }
   override protected def shouldRender(name: String): Boolean = {
     val context = contextStack.head
-    context.viewDef == null || context.viewDef.fieldOpt(name).exists { f =>
-      !f.type_.isComplexType && !f.isCollection
-    }
+    val rf = context.resultFilter
+    rf == null || (rf.shouldRender(name) && !rf.isCollection(name) && !rf.isComplexType(name))
   }
   override protected def renderHeader():  Unit = renderer.renderHeader()
   override protected def renderKey(key: Any): Unit = {}
@@ -362,7 +387,7 @@ class FlatTableResultRenderer(
     if (level == 1 && contextStack.head.shouldRender) {
       renderRowStart()
     }
-    if (level == 2 && viewName == null)
+    if (level == 2 && resultFilter == null)
       renderCell("") // placeholder for nested when structure unknown
   }
 }
@@ -447,37 +472,37 @@ class ResultRenderers {
 }
 
 object ResultRenderers {
-  type EncoderFactoryCreator = Map[String, ViewDef] => (String, Boolean) => EncoderFactory
+  type EncoderFactoryCreator = (Boolean, ResultRenderer.ResultFilter, ViewDef) => EncoderFactory
 
   import akka.http.scaladsl.model.MediaTypes._
   val renderers: ListMap[ContentType, EncoderFactoryCreator] =
     ListMap(
       (`application/json`,                                createJsonEncoderFactory),
       (`application/cbor`,                                createCborEncoderFactory),
-      (ContentTypes.`text/csv(UTF-8)`,                    createCsvEncoderFactory),
+      (ContentTypes.`text/csv(UTF-8)`,                           createCsvEncoderFactory),
       (`application/vnd.oasis.opendocument.spreadsheet`,  createOdsEncoderFactory),
       (`application/vnd.ms-excel`,                        createXlsXmlEncoderFactory),
     )
-  def createJsonEncoderFactory(nameToViewDef: Map[String, ViewDef])(
-    viewName: String, isCollection: Boolean): EncoderFactory =
-    JsonResultRenderer(_, isCollection, viewName, nameToViewDef)
+  def createJsonEncoderFactory(isCollection: Boolean, resultFilter: ResultRenderer.ResultFilter,
+                               viewDef: ViewDef): EncoderFactory =
+    JsonResultRenderer(_, isCollection, resultFilter)
 
-  def createCborEncoderFactory(nameToViewDef: Map[String, ViewDef])(
-    viewName: String, isCollection: Boolean): EncoderFactory =
-    CborResultRenderer(_, isCollection, viewName, nameToViewDef)
+  def createCborEncoderFactory(isCollection: Boolean, resultFilter: ResultRenderer.ResultFilter,
+                               viewDef: ViewDef): EncoderFactory =
+    CborResultRenderer(_, isCollection, resultFilter)
 
-  def createCsvEncoderFactory(nameToViewDef: Map[String, ViewDef])(
-    viewName: String, isCollection: Boolean): EncoderFactory =
+  def createCsvEncoderFactory(isCollection: Boolean, resultFilter: ResultRenderer.ResultFilter,
+                              viewDef: ViewDef): EncoderFactory =
     os => new FlatTableResultRenderer(new CsvResultRenderer(new OutputStreamWriter(os, "UTF-8")),
-      viewName, nameToViewDef)
+      resultFilter, viewDef)
 
-  def createOdsEncoderFactory(nameToViewDef: Map[String, ViewDef])(
-    viewName: String, isCollection: Boolean): EncoderFactory =
+  def createOdsEncoderFactory(isCollection: Boolean, resultFilter: ResultRenderer.ResultFilter,
+                              viewDef: ViewDef): EncoderFactory =
     os => new FlatTableResultRenderer(new OdsResultRenderer(new ZipOutputStream(os)),
-      viewName, nameToViewDef)
+      resultFilter, viewDef)
 
-  def createXlsXmlEncoderFactory(nameToViewDef: Map[String, ViewDef])(
-    viewName: String, isCollection: Boolean): EncoderFactory =
+  def createXlsXmlEncoderFactory(isCollection: Boolean, resultFilter: ResultRenderer.ResultFilter,
+                                 viewDef: ViewDef): EncoderFactory =
     os => new FlatTableResultRenderer(new XlsXmlResultRenderer(new OutputStreamWriter(os, "UTF-8")),
-      viewName, nameToViewDef)
+      resultFilter, viewDef)
 }
