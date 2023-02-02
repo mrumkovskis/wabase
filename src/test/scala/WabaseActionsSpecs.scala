@@ -872,7 +872,11 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
   it should "extract http headers" in {
     for {
       t1 <- doAction("list", "extract_http_header_test", Map())
-        .map { _ shouldBe MapResult(Map("h1_h2" -> "header1_value header2_value", "h3" -> null)) }
+        .map { _ shouldBe MapResult(Map(
+          "h1_h2" -> "header1_value header2_value",
+          "h_var" -> "header1_value header2_value",
+          "h3" -> null))
+        }
     } yield {
       t1
     }

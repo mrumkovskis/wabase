@@ -811,4 +811,6 @@ list:
 - h3 = extract header Test-Header3
 - h1_h2 = http get { '/extract_http_header_test', '1' }
     ({ 'Test-Header1', 'header1_value'} + { 'Test-Header2', 'header2_value'}) # headers
-- return :h1_h2 + (h3 = :h3)
+- h = { 'Test-Header1', 'header1_value'} + { 'Test-Header2', 'header2_value'} # headers as variable to avoid db usage in http op
+- h_var = http get { '/extract_http_header_test', '1' } :h
+- return :h1_h2 + :h_var + (h3 = :h3)
