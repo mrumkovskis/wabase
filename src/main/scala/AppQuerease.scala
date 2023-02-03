@@ -939,7 +939,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
           case i: Iterable[_] => i.map {
             case m: Map[_, _] if m.size > 1 =>
               val h = m.toList
-              h.head._2.toString -> h.tail.head._2.toString
+              h.head._2.toString -> h.tail.head._2.toString // extract values - 1st value header name, 2nd - header value
             case x => sys.error(s"Cannot retrieve http header from structure: [$x], two element Map[_, _] is required")
           }.toList
           case x => sys.error(s"Cannot retrieve http headers from structure: [$x], Iterable[Map[_, _]] is required")
