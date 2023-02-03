@@ -45,7 +45,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
     if scenario.listFiles.exists(_.isFile)
   } yield scenario
 
-  def assertResponse(response: Any, expectedResponse: Any, path: String): Map[String, String] = {
+  def assertResponse(response: Any, expectedResponse: Any, path: String, fullCompare: Boolean): Map[String, String] = {
     def err(message: String) = sys.error(path + ": " + message)
 
     (response, expectedResponse) match {
@@ -54,12 +54,16 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
       case (_, Nil) => err("Element should not be here") // TODO test this
       case (elements: Seq[_], list: List[_]) =>
         if (elements.size != list.size) err(s"List size ${elements.size} should be equal to ${list.size}")
-        elements.zip(list).zipWithIndex.flatMap(e => assertResponse(e._1._1, e._1._2, path + "/" + e._2)).toMap
-      case (elements: Map[String, Any]@unchecked, map: Map[String, Any]@unchecked) =>
-        map.flatMap { case (key, expectedValue) =>
-          elements.get(key) match {
+        elements.zip(list).zipWithIndex.flatMap(e => assertResponse(e._1._1, e._1._2, path + "/" + e._2, fullCompare)).toMap
+      case (responseMap: Map[String, Any]@unchecked, expectedMap: Map[String, Any]@unchecked) =>
+        if (fullCompare)
+          responseMap.keys.find(key => !expectedMap.contains(key)).foreach { unexpectedKey =>
+            err(s"Object should not contain key: $unexpectedKey")
+          }
+        expectedMap.flatMap { case (key, expectedValue) =>
+          responseMap.get(key) match {
             case None => err(s"Object should contain key: $key")
-            case Some(value) => assertResponse(value, expectedValue, path + "/" + key)
+            case Some(value) => assertResponse(value, expectedValue, path + "/" + key, fullCompare)
           }
         }
       case (a, s: String) if s.trim.startsWith("->") => Map(s.trim.substring(2).trim -> String.valueOf(a))
@@ -227,6 +231,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
     val params = map.m("params")
     val requestInfo = extractRequestInfo(cleanupTemplate(map), method)
     import requestInfo._
+    val fullCompare   = map.b("full_compare")
     val mergeResponse = map.b("merge_response")
     val debugResponse = map.get("debug_response")
       .map { case false => false case _ => true }.getOrElse(true)
@@ -282,7 +287,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
 
     logScenarioResponseInfo(debugResponse, response)
 
-    if(expectedResponse != null) assertResponse(response, expectedResponse, "[ROOT]")
+    if(expectedResponse != null) assertResponse(response, expectedResponse, "[ROOT]", fullCompare)
     else Map.empty[String, String]
   }
 
