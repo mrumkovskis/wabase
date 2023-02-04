@@ -410,4 +410,19 @@ class QuereaseActionTestManager extends Loggable {
   def addNumbers(data: Map[String, Any]): java.lang.Number = {
     BigDecimal(data("n1").toString) + BigDecimal(data("n2").toString)
   }
+
+  def ambiguousMethod(data: Map[String, Any]) = {}
+  def ambiguousMethod(data: java.util.Map[String, Any]) = {}
+  def unitMethod(): Unit = {}
+  def unitFutureMethod(): Unit = Future.successful(())
+  def httpReqMethod(req: HttpRequest, data: Map[String, Any]) =
+    if (req == null) s"${data.size}" else s"${req.uri.toString} = ${data.size}"
+}
+
+class QuereaseActionTestManagerObj {
+  def unitMethod(): Unit = {}
+}
+
+object QuereaseActionTestManagerObj {
+  def unitMethod(): Unit = new QuereaseActionTestManagerObj().unitMethod()
 }

@@ -650,8 +650,12 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
 
   protected def doInvocation(op: Action.Invocation,
                              data: Map[String, Any])(
-                            implicit res: Resources,
-                            ec: ExecutionContext): Future[QuereaseResult] = {
+    implicit res: Resources,
+    ec: ExecutionContext,
+    as: ActorSystem,
+    fs: FileStreamer,
+    req: HttpRequest,
+  ): Future[QuereaseResult] = {
     import op._
     def comp_q_result(r: Any) = {
       def createCompatibleResult(result: QuereaseResult, conformTo: Action.OpResultType) = result match {
@@ -666,7 +670,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       conformTo.map(createCompatibleResult(qr, _)).getOrElse(qr)
     }
     def qresult(r: Any) = r match {
-      case null => NoResult // reflection call on function with Unit (void) return type returns null
+      case null | () => NoResult // reflection call on function with Unit (void) return type returns null
       case m: Map[String, Any]@unchecked => MapResult(m)
       case m: java.util.Map[String, Any]@unchecked => MapResult(m.asScala.toMap)
       case l: List[DTO@unchecked] => IteratorResult(l.map(_.toMap(this)).iterator)
@@ -682,26 +686,39 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case q: QuereaseResult => q
       case x => sys.error(s"Unrecognized result type: ${x.getClass}, value: $x from function $className.$function")
     }
-    def param(parType: Class[_]) = {
-      if (classOf[Dto].isAssignableFrom(parType))
-        fill(data.toJson.asJsObject)(Manifest.classType(parType)) // specify manifest explicitly so it is not Nothing
-      else if (parType.isAssignableFrom(classOf[java.util.Map[_, _]]))
-        data.asJava
-      else data
-    }
 
-    val clazz = Class.forName(className)
-    clazz.getMethods.find(_.getName == function).map { method =>
-      val parTypes = method.getParameterTypes
-      val parCount = parTypes.length
-      val obj = clazz.getDeclaredConstructor().newInstance()
-      if (parCount == 0) method.invoke(obj)
-      else if (parCount == 1) method.invoke(obj, param(parTypes(0)))
-      else if (parCount == 2) method.invoke(obj, param(parTypes(0)), res)
-    }.map {
+    import scala.language.existentials
+    val (clazz, obj) = Try {
+      val c = Class.forName(className + "$")
+      (c, c.getField("MODULE$").get(null))
+    }.recover {
+      case _: ClassNotFoundException =>
+        val c = Class.forName(className)
+        (c, c.getDeclaredConstructor().newInstance())
+    }.get
+    val result =
+      clazz.getMethods.filter(_.getName == function) match {
+        case Array(method) =>
+          def param(parType: Class[_]) = {
+            if (classOf[Dto].isAssignableFrom(parType))
+              fill(data.toJson.asJsObject)(Manifest.classType(parType)) // specify manifest explicitly so it is not Nothing
+            else if (parType.isAssignableFrom(classOf[java.util.Map[_, _]])) data.asJava
+            else if (parType.isAssignableFrom(classOf[Resources])) res
+            else if (parType.isAssignableFrom(classOf[ExecutionContext])) ec
+            else if (parType.isAssignableFrom(classOf[ActorSystem])) as
+            else if (parType.isAssignableFrom(classOf[FileStreamer])) fs
+            else if (parType.isAssignableFrom(classOf[HttpRequest])) req
+            else data
+          }
+          val parTypes = method.getParameterTypes
+          method.invoke(obj, parTypes map param: _*)
+        case Array() => sys.error(s"Method $function not found in class $className")
+        case m => sys.error(s"Multiple methods '$function' found: (${m.toList}) in class $className")
+      }
+    result match {
       case f: Future[_] => f map comp_q_result
       case x => Future.successful(comp_q_result(x))
-    }.getOrElse(sys.error(s"Method $function not found in class $className"))
+    }
   }
 
   /* [jobs]
