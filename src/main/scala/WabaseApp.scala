@@ -53,7 +53,7 @@ trait WabaseApp[User] {
     val appFs:    AppFileStreamer[User],
     val req:      HttpRequest,
   ) {
-    lazy val env: Map[String, Any] = state ++ Map("params" -> params) ++ current_user_param(user)
+    lazy val env: Map[String, Any] = state ++ current_user_param(user)
     val fileStreamer = if (appFs == null) null else appFs.fileStreamer
     def withResultFilter(resFil: ResultRenderer.ResultFilter): AppActionContext =
       copy(resultFilter = resFil)
