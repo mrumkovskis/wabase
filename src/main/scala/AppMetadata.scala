@@ -4,7 +4,7 @@ import org.mojoz.metadata.ViewDef
 import org.mojoz.metadata.FieldDef
 import org.mojoz.metadata.in._
 import org.mojoz.metadata.io.MdConventions
-import org.mojoz.metadata.out.SqlGenerator.SimpleConstraintNamingRules
+import org.mojoz.metadata.out.DdlGenerator.SimpleConstraintNamingRules
 import org.mojoz.querease._
 import org.tresql.{CacheBase, SimpleCacheBase}
 import org.tresql.ast.{Exp, Variable}

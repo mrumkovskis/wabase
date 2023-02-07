@@ -226,11 +226,11 @@ class PostgreSqlTresqlResources(qe: AppQuerease, db: String = null) extends Tres
   protected lazy val typeDefs = qe.typeDefs
   protected lazy val YamlToPgTypeMap =
     typeDefs.map(t => t.name -> t.name).toMap ++
-      typeDefs.filter(_.sqlWrite contains "sql")
-        .map(t => t.name -> t.sqlWrite.get("sql")
+      typeDefs.filter(_.ddlWrite contains "sql")
+        .map(t => t.name -> t.ddlWrite.get("sql")
           .map(_.map(_.targetNamePattern).min).getOrElse(t.name)).toMap ++
-      typeDefs.filter(_.sqlWrite contains "postgresql")
-        .map(t => t.name -> t.sqlWrite.get("postgresql")
+      typeDefs.filter(_.ddlWrite contains "postgresql")
+        .map(t => t.name -> t.ddlWrite.get("postgresql")
           .map(_.map(_.targetNamePattern).min).getOrElse(t.name)).toMap
 
   /*

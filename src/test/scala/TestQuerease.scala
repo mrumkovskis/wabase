@@ -2,7 +2,7 @@ package org.wabase
 
 import java.sql.{Connection, DriverManager}
 import org.mojoz.metadata.in.YamlMd
-import org.mojoz.metadata.out.SqlGenerator
+import org.mojoz.metadata.out.DdlGenerator
 import org.mojoz.querease.TresqlMetadata
 import org.scalatest.{BeforeAndAfterAll, Suite}
 import org.tresql.dialects.HSQLDialect
@@ -58,7 +58,7 @@ trait TestQuereaseInitializer extends BeforeAndAfterAll with Loggable { this: Su
       val url = s"jdbc:hsqldb:mem:$dbNamePrefix${ if(db != null) "_" + db else ""}"
       val db_conn = DriverManager.getConnection(url)
       logger.debug(s"Creating database $url ...\n")
-      SqlGenerator.hsqldb().schema(querease.tableMetadata.dbToTableDefs(db))
+      DdlGenerator.hsqldb().schema(querease.tableMetadata.dbToTableDefs(db))
         .split(";\\s+").map(_ + ";")
         .++(customStatements)
         .foreach { sql =>
