@@ -14,9 +14,9 @@ import spray.json._
 import scala.collection.immutable.Seq
 import scala.language.reflectiveCalls
 import scala.util.{Random, Try}
-import org.wabase.client.{ClientException, CoreClient}
+import org.wabase.client.{ClientException, WabaseHttpClient}
 
-abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends FlatSpec with Matchers with CoreClient with BeforeAndAfterAll with TemplateUtil {
+abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends FlatSpec with Matchers with WabaseHttpClient with BeforeAndAfterAll with TemplateUtil {
 
   import jsonConverter.MapJsonFormat
   val db = new DbAccess with Loggable {

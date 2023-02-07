@@ -19,7 +19,7 @@ import akka.pattern.ask
 
 import scala.concurrent.duration.FiniteDuration
 
-trait CoreClient extends RestClient with JsonConverterProvider with BasicJsonMarshalling {
+trait WabaseHttpClient extends RestClient with JsonConverterProvider with BasicJsonMarshalling {
 
   implicit lazy val qe: AppQuerease = initQuerease
   /** Override this method in subclass. Method usage instead of direct
@@ -29,7 +29,7 @@ trait CoreClient extends RestClient with JsonConverterProvider with BasicJsonMar
 
   import qe.classToViewNameMap
   import org.wabase.{Dto, DtoWithId}
-  import CoreClient._
+  import WabaseHttpClient._
   import jsonConverter.MapJsonFormat
 
   private val originUri = Uri(config.getString("app.host"))
@@ -109,7 +109,7 @@ trait CoreClient extends RestClient with JsonConverterProvider with BasicJsonMar
   override protected def initJsonConverter: JsonConverter = qe
 }
 
-object CoreClient{
+object WabaseHttpClient{
   import RestClient.{WsClosed, WsFailed}
   case class GetDeferred(hash: String)
 

@@ -14,7 +14,7 @@ import akka.util.ByteString
 import org.scalatest.flatspec.AnyFlatSpec
 import org.tresql.Resources
 import spray.json.{JsObject, JsString}
-import org.wabase.client.CoreClient
+import org.wabase.client.WabaseHttpClient
 
 import scala.concurrent.duration
 import scala.concurrent.duration.{Duration, FiniteDuration}
@@ -94,7 +94,7 @@ class FileUploadSpecs extends AnyFlatSpec with TestQuereaseInitializer with Scal
 
   it should "work (Multipart)" in {
     val contentSent = "FILE CONTENT UTF-8 (зимние rūķīši) " * 10000
-    val multipartForm = CoreClient.fileUploadForm(HttpEntity(ContentTypes.`text/plain(UTF-8)`, ByteString(contentSent)), "Test.txt")
+    val multipartForm = WabaseHttpClient.fileUploadForm(HttpEntity(ContentTypes.`text/plain(UTF-8)`, ByteString(contentSent)), "Test.txt")
 
     val route = service.uploadPath { _ => service.uploadAction(None)(usr, ApplicationState(Map()))}
     Post(uploadPath, multipartForm) ~> route ~> check {
@@ -106,7 +106,7 @@ class FileUploadSpecs extends AnyFlatSpec with TestQuereaseInitializer with Scal
 
   it should "reject file that is too large (Body)" in {
     val content = "1" * (service.uploadSizeLimit.toInt + 1)
-    val multipartForm = CoreClient.fileUploadForm(HttpEntity(ContentTypes.`text/plain(UTF-8)`, ByteString(content)), "Test.txt")
+    val multipartForm = WabaseHttpClient.fileUploadForm(HttpEntity(ContentTypes.`text/plain(UTF-8)`, ByteString(content)), "Test.txt")
 
     val route = handleExceptions(service.appExceptionHandler) {
       service.uploadPath { _ => service.uploadAction(None)(usr, ApplicationState(Map()))}

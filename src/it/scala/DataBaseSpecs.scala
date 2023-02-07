@@ -3,9 +3,9 @@ package org.wabase
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers
-import org.wabase.client.CoreClient
+import org.wabase.client.WabaseHttpClient
 
-abstract class DataBaseSpecs[User] extends FlatSpec with Matchers with CoreClient with BeforeAndAfterAll with TemplateUtil {
+abstract class DataBaseSpecs[User] extends FlatSpec with Matchers with WabaseHttpClient with BeforeAndAfterAll with TemplateUtil {
   import AppMetadata._
   val ApplicationStateCookiePrefix = "current_"
   def defaultListParams: Map[String, Any] = Map("limit" -> 1)
