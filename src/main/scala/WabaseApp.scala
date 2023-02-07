@@ -311,8 +311,13 @@ trait WabaseApp[User] {
         .getOrElse(orderBy)
     } else orderBy
   }
+  private val ident = "[_\\p{IsLatin}][_\\p{IsLatin}0-9]*"
+  private val qualifiedIdent = s"$ident(\\.$ident)*"
+  private val validViewNameRegex = s"^$qualifiedIdent$$".r
   protected def noApiException(viewName: String, method: String, user: User): Exception =
-    new BusinessException(s"$viewName.$method is not a part of this API")
+    if (validViewNameRegex.pattern.matcher(viewName).matches())
+         new BusinessException(s"$viewName.$method is not a part of this API")
+    else new BusinessException(s"Strange name.$method is not a part of this API")
   def checkApi[F](viewName: String, method: String, user: User): Unit = {
     (for {
       view <- viewDefOption(viewName)
