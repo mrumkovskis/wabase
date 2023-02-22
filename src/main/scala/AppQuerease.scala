@@ -7,7 +7,7 @@ import akka.stream.scaladsl.Source
 import akka.util.ByteString
 import org.mojoz.querease.QuereaseExpressions.DefaultParser
 import org.tresql._
-import org.mojoz.querease.{Querease, QuereaseExpressions, ValidationException, ValidationResult}
+import org.mojoz.querease.{DtoSetter, Querease, QuereaseExpressions, ValidationException, ValidationResult}
 import org.mojoz.querease.SaveMethod
 import org.mojoz.metadata.Type
 import org.mojoz.metadata.{FieldDef, ViewDef}
@@ -1377,7 +1377,7 @@ trait Dto extends org.mojoz.querease.Dto { self =>
       childView: ViewDef): Boolean =
     isSavableFieldAppExtra(field, view, saveToMulti, saveToTableNames)
 
-  protected def throwUnsupportedConversion(
+  override protected def throwUnsupportedConversion(
       value: Any, targetType: Manifest[_], fieldName: String, cause: Throwable = null): Unit = {
     throw new UnprocessableEntityException(
       "Illegal value or unsupported type conversion from %s to %s - failed to populate %s", cause,
@@ -1387,7 +1387,12 @@ trait Dto extends org.mojoz.querease.Dto { self =>
   // TODO Drop or extract string parsing for number and boolean fields! Then rename parseJsValue() to exclude 'parse'!
   protected def parseJsValue(fieldName: String, emptyStringsToNull: Boolean)(implicit qe: QE): PartialFunction[JsValue, Any] = {
     import scala.language.existentials
-    val (typ, parType) = setters(fieldName)._2
+    val (typ, parType) = setters(fieldName) match {
+      case DtoSetter(_, met, mOpt, mSeq, mDto, mOth) =>
+        (if (mSeq != null) mSeq else if (mDto != null) mDto else mOth,
+         if (mSeq == null) null else if (mDto != null) mDto else mOth,
+        )
+    }
     val parseFunc: PartialFunction[JsValue, Any] = {
       case v: JsString =>
         val converted = try {
@@ -1483,40 +1488,11 @@ trait Dto extends org.mojoz.querease.Dto { self =>
   def fill(js: JsObject)(implicit qe: QE): this.type = fill(js, emptyStringsToNull = true)(qe)
   def fill(js: JsObject, emptyStringsToNull: Boolean)(implicit qe: QE): this.type = {
     js.fields foreach { case (name, value) =>
-      setters.get(name).map { case (met, _) =>
-        met.invoke(this, parseJsValue(name, emptyStringsToNull)(qe)(value).asInstanceOf[Object])
-      }
-    }
-    this
-  }
-
-  //creating dto from Map[String, Any]
-  def fill(values: Map[String, Any])(implicit qe: QE): this.type = fill(values, emptyStringsToNull = true)(qe)
-  def fill(values: Map[String, Any], emptyStringsToNull: Boolean)(implicit qe: QE): this.type = {
-    values foreach { case (name, value) =>
-      setters.get(name).map { case (met, (typ, parType)) =>
-        val converted = value match {
-          case s: String if emptyStringsToNull && s.trim == "" => null
-          case m: Map[String@unchecked, _] =>
-            typ.runtimeClass.getConstructor().newInstance().asInstanceOf[QDto].fill(m, emptyStringsToNull)
-          case s: Seq[_] =>
-            val c = typ.runtimeClass
-            val isList = c.isAssignableFrom(classOf[List[_]])
-            val isVector = c.isAssignableFrom(classOf[Vector[_]])
-            if (classOf[Seq[_]].isAssignableFrom(c) && (isList || isVector) &&
-              parType != null && classOf[Dto].isAssignableFrom(parType.runtimeClass)) {
-              val chClass = parType.runtimeClass
-              val res =
-                s.map(o => chClass.getConstructor().newInstance().asInstanceOf[QDto]
-                  .fill(o.asInstanceOf[Map[String, Any]], emptyStringsToNull))
-              if (isList) res.toList else res
-            } else s
-          case x => x
-        }
-        try met.invoke(this, converted.asInstanceOf[Object]) catch {
-          case util.control.NonFatal(ex) =>
-            throwUnsupportedConversion(value, typ, name)
-        }
+      setters.get(name).map { case s =>
+        val converted = parseJsValue(name, emptyStringsToNull)(qe)(value).asInstanceOf[Object]
+        if  (s.mfOpt == null)
+             s.method.invoke(this, converted)
+        else s.method invoke(this, Some(converted))
       }
     }
     this
