@@ -11,10 +11,10 @@ import org.tresql.{LogTopic, Logging, QueryBuilder, Resources}
 import java.text.SimpleDateFormat
 import java.util.Date
 
-class TestQuerease(metadataFile: String) extends AppQuerease {
+class TestQuerease(val metadataFile: String, mdFilter: YamlMd => Boolean = _ => true) extends AppQuerease {
   override type DTO = org.wabase.Dto
   override type DWI = org.wabase.DtoWithId
-  override lazy val yamlMetadata = YamlMd.fromResource(metadataFile)
+  override lazy val yamlMetadata = YamlMd.fromResource(metadataFile).filter(mdFilter)
   override lazy val viewNameToClassMap = Map[String, Class[_ <: Dto]]()
   def persistenceMetadata(viewName: String) = nameToPersistenceMetadata(viewName)
 }

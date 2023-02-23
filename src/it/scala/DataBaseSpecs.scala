@@ -18,7 +18,7 @@ abstract class DataBaseSpecs[User] extends FlatSpec with Matchers with WabaseHtt
 
   def views = qe.collectViews{ case v => v }.toSeq.sortBy(_.name)
 
-  views.filter(_.apiMethodToRole.contains("list")).foreach{view =>
+  views.filter(_.apiMethodToRoles.contains("list")).foreach { view =>
     val viewClass = qe.viewNameToClassMap(view.name)
     createListTest(viewClass, null, Option(listTestParamsForClass(viewClass)).getOrElse(Map.empty))
   }

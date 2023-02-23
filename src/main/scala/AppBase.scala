@@ -13,8 +13,7 @@ import com.typesafe.config.Config
 import scala.concurrent.Promise
 import scala.language.existentials
 import scala.language.implicitConversions
-import scala.collection.immutable.ListMap
-import scala.collection.immutable.TreeMap
+import scala.collection.immutable.{ListMap, Set, TreeMap}
 import scala.reflect.ManifestFactory
 import scala.util.Try
 import org.tresql.{Resources, RowLike}
@@ -858,7 +857,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
     def fieldNameToLabel(n: String) =
       n.replace("_", " ").capitalize
     val v = view
-    if (v.apiMethodToRole != null && v.apiMethodToRole.nonEmpty && (v.table != null || v.joins != null && v.joins.size > 0)) {
+    if (v.apiMethodToRoles != null && v.apiMethodToRoles.nonEmpty && (v.table != null || v.joins != null && v.joins.size > 0)) {
       val filters =
         Option(v.filter).getOrElse(Nil) flatMap { f =>
           qe.analyzeFilter(f, v, v.tableAlias)
@@ -962,7 +961,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
     // TODO duplicate code, just filter differs
     val q = new collection.mutable.Queue[ViewDef]
     val names = collection.mutable.Set[String]()
-    q ++= qe.collectViews { case v if v.apiMethodToRole != null && v.apiMethodToRole.nonEmpty => v }
+    q ++= qe.collectViews { case v if v.apiMethodToRoles != null && v.apiMethodToRoles.nonEmpty => v }
     while (q.nonEmpty) {
       val v = q.dequeue()
       names += v.name
@@ -989,25 +988,28 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
   def current_user_param(user: User): Map[String,Any] = Map.empty
 
   def filterByHasRole(someRoles: Set[String], user: User): Set[String] =
-    someRoles.filter(hasRole(user, _))
+    someRoles.filter(role => hasRole(user, Set(role)))
 
   def api(implicit user: User) = {
     val views = qe.collectViews{ case v => v}.toSeq.sortBy(_.name)
     val allApiRelatedRoles =
-      views.map(_.apiMethodToRole).filter(_ != null).flatMap(_.values).filter(_ != null).toSet
-    val roles = filterByHasRole(allApiRelatedRoles, user)
+      views.map(_.apiMethodToRoles).filter(_ != null)
+        .flatMap(_.values).filter(_ != null)
+        .flatMap(identity).filter(_ != null)
+        .toSet
+    val relevantRoles = filterByHasRole(allApiRelatedRoles, user)
     JsObject(TreeMap[String, JsValue]() ++
       views
-        .map(v => v.name -> v.apiMethodToRole)
-        .filter(_._2 != null)
-        .map(v => v.copy(_2 = v._2.filter(roles contains _._2)))
+        .filter(_.apiMethodToRoles != null)
+        .map(v => v -> v.apiMethodToRoles.filter { case (method, roles) => roles.exists(relevantRoles.contains) })
         .filter(_._2.nonEmpty)
-        .map(v => v.copy(_2 = JsArray(v._2.keys.toSeq.map(JsString(_)): _*))))
+        .map { case (v, methodsToRoles) => v.name -> JsArray(methodsToRoles.keys.toSeq.map(JsString(_)): _*) }
+    )
   }
 
   def impliedIdForGetOverList[F](viewName: String): Option[Long] =
     viewDefOption(viewName)
-      .filter(v => v.apiMethodToRole.contains("get") && !v.apiMethodToRole.contains("list"))
+      .filter(v => v.apiMethodToRoles.contains("get") && !v.apiMethodToRoles.contains("list"))
       .map(_ => 0)
 
   def fieldRequiredErrorMessage(viewName: String, field: FieldDef)(implicit locale: Locale): String =

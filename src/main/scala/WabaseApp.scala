@@ -352,12 +352,12 @@ trait WabaseApp[User] {
   def checkApi[F](viewName: String, method: String, user: User): Unit = {
     (for {
       view <- viewDefOption(viewName)
-      role <- view.apiMethodToRole.get(method).orElse(method match {
+      roles <- view.apiMethodToRoles.get(method).orElse(method match {
         case Action.Insert |
-             Action.Update => view.apiMethodToRole.get(Action.Save)
+             Action.Update => view.apiMethodToRoles.get(Action.Save)
         case x => None
       })
-      if hasRole(user, role)
+      if hasRole(user, roles)
     } yield true).getOrElse(
       throw noApiException(viewName, method, user)
     )

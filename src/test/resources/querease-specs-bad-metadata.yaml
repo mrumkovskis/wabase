@@ -1,0 +1,8 @@
+name:   api_error_test_1
+table:
+api:    get, get # bad api - duplicate method
+
+
+name:   api_error_test_2
+table:
+api:    get, MANAGER # bad - no methods for manager

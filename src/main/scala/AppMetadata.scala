@@ -11,7 +11,7 @@ import org.tresql.ast.{Exp, Variable}
 import org.tresql.parsing.QueryParsers
 import org.wabase.AppMetadata.Action.VariableTransform
 
-import scala.collection.immutable.Seq
+import scala.collection.immutable.{Seq, Set}
 import scala.jdk.CollectionConverters._
 import scala.language.reflectiveCalls
 import scala.util.Try
@@ -361,19 +361,34 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     import viewDef._
     val auth = toAuth(viewDef, Auth)
 
-    val api = getStringSeq(Api, viewDef.extras) match {
-      case Nil => Nil
-      case api => api.flatMap(_.trim.split("[\\s,]+").toList).filter(_ != "")
-    }
-    /*
-    // TODO check role set, check method set, check not two roles in a row!
-    val unknownApiMethods = api.toSet -- knownApiMethods
-    if (unknownApiMethods.size > 0)
-      sys.error(
-        s"Unknown api method(s), viewDef: ${viewDef.name}, method(s): ${unknownApiMethods.mkString(", ")}")
-    */
-    val apiMap = api.foldLeft((Map[String, String](), defaultApiRoleName))((mr, x) =>
-      if (knownApiMethods contains x) (mr._1 + (x -> mr._2), mr._2) else (mr._1, x.toUpperCase))._1
+    def badApiStructure = s"Unexpected API methods and roles structure for view ${viewDef.name}"
+    val api =
+      (getSeq(Api, viewDef.extras).map {
+        case m: java.util.Map[_, _] =>
+          if (m.size == 1) {
+            val entry = m.entrySet.asScala.toList(0)
+            s"${entry.getValue.toString} ${entry.getKey.toString}"
+          } else sys.error(badApiStructure)
+        case x => x.toString
+      }).flatMap { s =>
+       val parts = s.trim.split("[\\s,]+").toList.filter(_ != "")
+       val lastOpt = parts.lastOption
+       if (lastOpt.isEmpty || !lastOpt.exists(knownApiMethods.contains))
+          sys.error(badApiStructure)
+       parts
+      }
+
+    val apiToRoles = api.foldLeft((Map[String, Set[String]](), Set(defaultApiRoleName), true)) {
+      case ((apiToRoles, roles, canReset), x) =>
+        if (knownApiMethods contains x)
+          if (apiToRoles contains x)
+                sys.error(s"Duplicate API method definition: ${viewDef.name}.$x")
+          else (apiToRoles + (x -> roles), roles, true)
+        else if (canReset)
+          (apiToRoles, Set(x.toUpperCase), false)
+        else
+          (apiToRoles, roles + x.toUpperCase, false)
+    }._1
 
     val limit = getIntExtra(Limit, viewDef.extras) getOrElse 100
     val cp = getStringExtra(ConnectionPool, viewDef.extras).orNull
@@ -402,7 +417,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     ViewDef(name, db, table, tableAlias, joins, filter,
       viewDef.groupBy, viewDef.having, orderBy, extends_,
       comments, appFields, viewDef.saveTo, extras)
-      .updateWabaseExtras(_ => AppViewDef(limit, cp, explicitDb, auth, apiMap, actions, Map.empty))
+      .updateWabaseExtras(_ => AppViewDef(limit, cp, explicitDb, auth, apiToRoles, actions, Map.empty))
   }
 
   protected def transformAppViewDefs(viewDefs: Map[String, ViewDef]): Map[String, ViewDef] =
@@ -1006,7 +1021,7 @@ object AppMetadata {
     val cp: String
     val explicitDb: Boolean
     val auth: AuthFilters
-    val apiMethodToRole: Map[String, String]
+    val apiMethodToRoles: Map[String, Set[String]]
     val actions: Map[String, Action]
     val actionToDbAccessKeys: Map[String, Seq[DbAccessKey]]
   }
@@ -1016,7 +1031,7 @@ object AppMetadata {
     cp: String = null,
     explicitDb: Boolean = false,
     auth: AuthFilters = AuthFilters(Nil, Nil, Nil, Nil, Nil),
-    apiMethodToRole: Map[String, String] = Map(),
+    apiMethodToRoles: Map[String, Set[String]] = Map(),
     actions: Map[String, Action] = Map(),
     actionToDbAccessKeys: Map[String, Seq[DbAccessKey]] = Map.empty,
   ) extends AppViewDefExtras
@@ -1065,7 +1080,7 @@ object AppMetadata {
     override val cp = appExtras.cp
     override val explicitDb = appExtras.explicitDb
     override val auth = appExtras.auth
-    override val apiMethodToRole = appExtras.apiMethodToRole
+    override val apiMethodToRoles = appExtras.apiMethodToRoles
     override val actions = appExtras.actions
     override val actionToDbAccessKeys = appExtras.actionToDbAccessKeys
     def updateWabaseExtras(updater: AppViewDef => AppViewDef): ViewDef =

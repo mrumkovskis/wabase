@@ -1,5 +1,6 @@
 package org.wabase
 
+import org.mojoz.metadata.in.YamlMd
 import org.mojoz.querease.{ValidationException, ValidationResult}
 import org.scalatest.flatspec.{AsyncFlatSpec, AsyncFlatSpecLike}
 import org.scalatest.matchers.should.Matchers
@@ -318,5 +319,46 @@ class QuereaseSpecs extends AsyncFlatSpec with Matchers with TestQuereaseInitial
     intercept[org.tresql.TresqlException] {
       querease.save(refs_1)
     }.getCause.getMessage shouldBe """Failed to identify value of "role" (from sys_user_role_ref_only_save) - missing-r"""
+  }
+
+  it should "load api methods and roles" in {
+    querease.viewDef("api_roles_test_1").apiMethodToRoles shouldBe Map(
+      "get"   -> Set("ADMIN"),
+      "list"  -> Set("ADMIN"),
+      "count" -> Set("ADMIN"),
+      "create"-> Set("ADMIN"),
+      "save"  -> Set("ADMIN"),
+      "insert"-> Set("ADMIN"),
+      "update"-> Set("ADMIN"),
+      "delete"-> Set("ADMIN"),
+    )
+    querease.viewDef("api_roles_test_2").apiMethodToRoles shouldBe Map(
+      "count" -> Set("ADMIN"),
+      "get"   -> Set("USER"),
+      "list"  -> Set("USER"),
+      "create"-> Set("MANAGER"),
+      "save"  -> Set("MANAGER"),
+      "delete"-> Set("MANAGER", "BIG_BROTHER"),
+    )
+    querease.viewDef("api_roles_test_3").apiMethodToRoles shouldBe Map(
+      "get"   -> Set("USER"),
+      "list"  -> Set("USER"),
+      "save"  -> Set("MANAGER_1", "MANAGER_2"),
+      "create"-> Set("MANAGER_1", "MANAGER_2"),
+      "delete"-> Set("MANAGER_1", "MANAGER_2"),
+    )
+    querease.viewDef("api_roles_test_4").apiMethodToRoles shouldBe Map(
+      "count" -> Set("ACCOUNTANT"),
+      "get"   -> Set("USER", "MANAGER"),
+      "list"  -> Set("USER", "MANAGER"),
+      "save"  -> Set("MANAGER_1", "MANAGER_2"),
+      "delete"-> Set("MANAGER_1", "MANAGER_2"),
+    )
+    intercept[RuntimeException] {
+      new TestQuerease("/querease-specs-bad-metadata.yaml", _.body contains "api_error_test_1").nameToViewDef
+    }.getMessage shouldBe "Duplicate API method definition: api_error_test_1.get"
+    intercept[RuntimeException] {
+      new TestQuerease("/querease-specs-bad-metadata.yaml", _.body contains "api_error_test_2").nameToViewDef
+    }.getMessage shouldBe "Unexpected API methods and roles structure for view api_error_test_2"
   }
 }

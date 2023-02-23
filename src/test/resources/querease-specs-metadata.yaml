@@ -40,6 +40,30 @@ idx:
 - sys_user_id
 
 
+name:   api_roles_test_1
+table:
+api:    create, count, get, list, insert, update, save, delete
+
+
+name:   api_roles_test_2
+table:
+api:    count, USER get, list, MANAGER create, save, MANAGER, BIG_BROTHER delete
+
+
+name:   api_roles_test_3
+table:
+api:
+- USER get, list, MANAGER_1, MANAGER_2 create, save, delete
+
+
+name:   api_roles_test_4
+table:
+api:
+- count: ACCOUNTANT
+- get, list: USER, MANAGER
+- save, delete: MANAGER_1 MANAGER_2
+
+
 name: sys_role_choice
 table: sys_role r
 fields:

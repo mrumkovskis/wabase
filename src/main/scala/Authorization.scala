@@ -1,5 +1,7 @@
 package org.wabase
 
+import scala.collection.immutable.Set
+
 trait Authorization[User] { this: AppBase[User] =>
   /** performs authorization, on failure throws UnauthorizedException, otherwise returns */
   def check[C <: RequestContext[_]](ctx: C, clazz: Class[_]): Unit
@@ -13,7 +15,7 @@ trait Authorization[User] { this: AppBase[User] =>
     *   .headOption.map(_.has_role.booleanValue) getOrElse false
     * }}}
     */
-  def hasRole(user: User, role: String): Boolean
+  def hasRole(user: User, roles: Set[String]): Boolean
 }
 
 object Authorization {
@@ -23,6 +25,6 @@ object Authorization {
     override def check[C <: RequestContext[_]](ctx: C, clazz: Class[_]): Unit = {}
     override def can[C <: RequestContext[_]](ctx: C, clazz: Class[_]) = true
     override def relevant[C <: RequestContext[_]](ctx: C, clazz: Class[_]) = ctx
-    override def hasRole(user: User, role: String): Boolean = true
+    override def hasRole(user: User, roles: Set[String]): Boolean = true
   }
 }
