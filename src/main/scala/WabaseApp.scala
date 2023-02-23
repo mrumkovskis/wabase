@@ -3,7 +3,7 @@ package org.wabase
 import akka.actor.ActorSystem
 import akka.http.scaladsl.model.{HttpRequest, StatusCodes}
 import akka.stream.Materializer
-import akka.stream.scaladsl.Source
+import akka.stream.scaladsl.{Keep, Source}
 import akka.util.ByteString
 import org.mojoz.metadata.{FieldDef, ViewDef}
 import org.tresql.{Resources, SingleValueResult}
@@ -267,7 +267,9 @@ trait WabaseApp[User] {
     () => initResources(tresqlResources.resourcesTemplate)(poolName, extraDbs)
   }
 
-  /** Runs {{{src}}} via {{{FileBufferedFlow}}} of {{{bufferSize}}} with {{{maxFileSize}}} to {{{CheckCompletedSink}}} */
+  /** Runs {{{src}}} via {{{FileBufferedFlow}}} of {{{bufferSize}}} with {{{maxFileSize}}} to {{{CheckCompletedSink}}}
+    * On FileBufferedFlow upstream finish calss cleanup function.
+    * */
   def serializeResult(
     bufferSize: Int,
     maxFileSize: Long,
@@ -278,9 +280,17 @@ trait WabaseApp[User] {
     ec: ExecutionContext,
     mat: Materializer,
   ): Future[Seq[SerializedResult]] = {
-    result
-      .via(FileBufferedFlow.create(bufferSize, maxFileSize)(cleanupFun))
-      .runWith(new ResultCompletionSink(resultCount))
+    val (cleanupF, resultF) =
+      result
+        .viaMat(FileBufferedFlow.create(bufferSize, maxFileSize))(Keep.right) // keep flow's materialized value
+        .toMat(new ResultCompletionSink(resultCount))(Keep.both)
+        .run()
+    if (cleanupFun != null)
+      cleanupF.onComplete { // materialized future of file buffered flow completes when flow's upstream finishes, then call cleanup fun
+        case Failure(ex) => cleanupFun(Some(ex))
+        case _ => cleanupFun(None)
+      }
+    resultF
   }
 
   /** Converts key value from uri representation to appropriate type.

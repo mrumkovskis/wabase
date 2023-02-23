@@ -1,10 +1,12 @@
 package org.wabase
 
-import akka.stream.scaladsl.Source
+import akka.NotUsed
+import akka.stream.scaladsl.{Keep, Sink, Source}
 import akka.util.ByteString
 import org.scalatest.flatspec.AsyncFlatSpec
 
-import scala.concurrent.Future
+import scala.concurrent.duration.DurationInt
+import scala.concurrent.{Await, Future}
 
 class ResultCompletionSinkTest extends AsyncFlatSpec {
   import scala.language.postfixOps
@@ -66,6 +68,40 @@ class ResultCompletionSinkTest extends AsyncFlatSpec {
 
   it should "return multiple IncompleteResult" in {
     incompleteMultipleTest(10, 3)
+  }
+  it should "complete sink if any or materialized source fail" in {
+    val n = 100
+    src(n).runWith(new ResultCompletionSink(2)).mapTo[Seq[IncompleteResultSource[NotUsed]]].flatMap { r =>
+      Future {
+        r.head.result.runFold(0) { (x, _) =>
+          if (x == 20) sys.error("err")
+          Thread.sleep(10)
+          x + 1
+        }
+      }
+      validateIncomplete(r.tail.map(r => Future.successful(r -> res(n))).toList)
+    }
+  }
+  it should "complete sink if all materialized sources fail" in {
+    val n = 100
+    val (ignoreF, dataF) =
+      src(n).alsoToMat(Sink.ignore)(Keep.right).toMat(new ResultCompletionSink())(Keep.both).run()
+
+    dataF.mapTo[Seq[IncompleteResultSource[NotUsed]]].flatMap { r =>
+      Future {
+        r.head.result.runFold(0) { (x, _) =>
+          if (x == 20) {
+            sys.error("err")
+          }
+          Thread.sleep(10)
+          x + 1
+        }
+      }
+    }
+    Future {
+      Await.result(ignoreF, 5.seconds)
+    }(scala.concurrent.ExecutionContext.global) // somehow must use other execution context to perform future above concurrently ???
+    .map(_ => assert(true))
   }
 
   it should "return CompleteResult from RowSource" in {

@@ -215,11 +215,10 @@ object RowSource {
   /** Runs {{{src}}} via {{{FileBufferedFlow}}} of {{{bufferSize}}} with {{{maxFileSize}}} to {{{CheckCompletedSink}}} */
   def value(bufferSize: Int,
             maxFileSize: Long,
-            src: Source[ByteString, _],
-            cleanupFun: Option[Throwable] => Unit = null)(implicit ec: ExecutionContext,
-                                                          mat: Materializer): Future[SerializedResult] = {
+            src: Source[ByteString, _])(implicit ec: ExecutionContext,
+                                        mat: Materializer): Future[SerializedResult] = {
     src
-      .via(FileBufferedFlow.create(bufferSize, maxFileSize)(cleanupFun))
+      .via(FileBufferedFlow.create(bufferSize, maxFileSize))
       .runWith(new ResultCompletionSink())
       .map(_.head)
   }
