@@ -133,23 +133,3 @@ fields:
     table:  sys_role
     fields:
     - name
-
-
-name:     sys_user_with_roles_save_on_insert_legacy
-extends:  sys_user_with_ro_roles
-save-to:
-- person
-- sys_user
-fields:
-- roles [+] * sys_user_role_choice:
-    - no update: true   # legacy, use options instead
-
-
-name:     sys_user_with_roles_save_on_update_legacy
-extends:  sys_user_with_ro_roles
-save-to:
-- person
-- sys_user
-fields:
-- roles [+-] * sys_user_role_choice:
-    - no insert: true   # legacy, use options instead

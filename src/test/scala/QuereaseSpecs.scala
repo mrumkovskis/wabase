@@ -43,8 +43,6 @@ object QuereaseSpecsDtos {
   class sys_user_with_roles                extends sys_user_with_ro_roles
   class sys_user_with_roles_save_on_insert extends sys_user_with_ro_roles
   class sys_user_with_roles_save_on_update extends sys_user_with_ro_roles
-  class sys_user_with_roles_save_on_insert_legacy extends sys_user_with_ro_roles
-  class sys_user_with_roles_save_on_update_legacy extends sys_user_with_ro_roles
 
 
   val viewNameToClass = Map[String, Class[_ <: Dto]](
@@ -255,35 +253,6 @@ class QuereaseSpecs extends AsyncFlatSpec with Matchers with TestQuereaseInitial
     u_sur.roles  = List(role_a, role_d)
     querease.save(u_sur)
     querease.get[sys_user_with_roles_save_on_update](u_sur_id).get.roles.map(_.sys_role) shouldBe all_roles
-
-    // save on insert only - legacy yaml syntax
-    val u_lgi    = new sys_user_with_roles_save_on_insert_legacy
-    u_lgi.name   = "user_lgi"
-    u_lgi.roles  = List(role_a, role_d)
-    val u_lgi_id = querease.save(u_lgi)
-    u_lgi.id     = u_lgi_id
-    querease.get[sys_user_with_roles_save_on_insert_legacy](u_lgi_id).get.name  shouldBe "user_lgi"
-    querease.get[sys_user_with_roles_save_on_insert_legacy](u_lgi_id).get.roles.map(_.sys_role) shouldBe all_roles
-    u_lgi.roles  = List(role_a)
-    querease.save(u_lgi)
-    querease.get[sys_user_with_roles_save_on_insert_legacy](u_lgi_id).get.roles.map(_.sys_role) shouldBe all_roles
-
-    // save on update only - legacy yaml syntax
-    val u_lgu    = new sys_user_with_roles_save_on_update_legacy
-    u_lgu.name   = "user_lgu"
-    u_lgu.roles  = List(role_a, role_d)
-    val u_lgu_id = querease.save(u_lgu)
-    u_lgu.id     = u_lgu_id
-    querease.get[sys_user_with_roles_save_on_update_legacy](u_lgu_id).get.name  shouldBe "user_lgu"
-    querease.get[sys_user_with_roles_save_on_update_legacy](u_lgu_id).get.roles.map(_.sys_role) shouldBe Nil
-    querease.save(u_lgu)
-    querease.get[sys_user_with_roles_save_on_update_legacy](u_lgu_id).get.roles.map(_.sys_role) shouldBe all_roles
-    u_lgu.roles  = List(role_a)
-    querease.save(u_lgu)
-    querease.get[sys_user_with_roles_save_on_update_legacy](u_lgu_id).get.roles.map(_.sys_role) shouldBe List("admin")
-    u_lgu.roles  = List(role_a, role_d)
-    querease.save(u_lgu)
-    querease.get[sys_user_with_roles_save_on_update_legacy](u_lgu_id).get.roles.map(_.sys_role) shouldBe all_roles
 */
 
     // save refs only, save ref to user only on insert
