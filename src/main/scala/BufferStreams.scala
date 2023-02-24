@@ -224,8 +224,7 @@ class ResultCompletionSink(resultCount: Int = 1)(implicit ec: scala.concurrent.E
               sources.foreach(_.demand = false)
             }
           }
-          def push(elem: ByteString) =
-            sources.foreach(s => if (!s.completionPromise.isCompleted) s.pushCallback.invoke(elem))
+          def push(elem: ByteString) = sources.foreach(s => s.pushCallback.invoke(elem))
           def upstreamFinish() = sources.foreach(_.dataCompleted.success(()))
           def upstreamFailure(err: Throwable) = sources.foreach(_.dataCompleted.failure(err))
 
@@ -242,7 +241,9 @@ class ResultCompletionSink(resultCount: Int = 1)(implicit ec: scala.concurrent.E
               override def createLogic(attrs: Attributes) = new GraphStageLogic(shape) {
                 override def preStart() = {
                   emit(out, init)
-                  pushCallback = getAsyncCallback[ByteString] { elem => push(out, elem) }
+                  pushCallback = getAsyncCallback[ByteString] { elem =>
+                    if (!completionPromise.isCompleted) push(out, elem)
+                  }
                   dataCompleted.future.onComplete {
                     case Success(_) => getAsyncCallback[Unit](_ => completeStage()).invoke(())
                     case Failure(ex) => getAsyncCallback[Unit](_ => failStage(ex)).invoke(())
@@ -250,8 +251,8 @@ class ResultCompletionSink(resultCount: Int = 1)(implicit ec: scala.concurrent.E
                 }
 
                 override def postStop(): Unit = {
-                  Sources.demandCallback.invoke(idx)
                   completionPromise.success(Done)
+                  Sources.demandCallback.invoke(idx)
                 }
 
                 setHandler(out, new OutHandler {
