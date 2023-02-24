@@ -2,7 +2,7 @@ package org.wabase
 
 import akka.actor.ActorSystem
 import akka.stream.Materializer
-import akka.stream.scaladsl.Source
+import akka.stream.scaladsl.{Keep, Source}
 import akka.util.ByteString
 import org.tresql.Resources
 import org.wabase.AppMetadata.{Action, AugmentedAppFieldDef, AugmentedAppViewDef}
@@ -242,9 +242,17 @@ trait WabaseApp[User] {
     ec: ExecutionContext,
     mat: Materializer,
   ): Future[Seq[SerializedResult]] = {
-    result
-      .via(FileBufferedFlow.create(bufferSize, maxFileSize))
-      .runWith(new ResultCompletionSink(cleanupFun, resultCount))
+    val (cleanupF, resultF) =
+      result
+        .viaMat(FileBufferedFlow.create(bufferSize, maxFileSize))(Keep.right) // keep flow's materialized value
+        .toMat(new ResultCompletionSink(resultCount))(Keep.both)
+        .run()
+    if (cleanupFun != null)
+      cleanupF.onComplete { // materialized future of file buffered flow completes when flow's upstream finishes, then call cleanup fun
+        case Failure(ex) => cleanupFun(Some(ex))
+        case _ => cleanupFun(None)
+      }
+    resultF
   }
 
   /** Converts key value from uri representation to appropriate type.

@@ -45,7 +45,7 @@ lazy val testDependencies = Seq(
 )
 
 ThisBuild / versionScheme          := Some("semver-spec")
-ThisBuild / versionPolicyIntention := Compatibility.BinaryCompatible
+ThisBuild / versionPolicyIntention := Compatibility.None
 
 lazy val wabase = (project in file("."))
   .configs(IntegrationTest extend(Test))
