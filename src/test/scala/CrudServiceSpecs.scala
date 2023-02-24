@@ -821,6 +821,10 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       status shouldEqual StatusCodes.BadRequest
       responseAs[String] shouldBe "no_api_view.get is not a part of this API"
     }
+    Get("/data/no.api.view/0") ~> route ~> check {
+      status shouldEqual StatusCodes.BadRequest
+      responseAs[String] shouldBe "no.api.view.get is not a part of this API"
+    }
     Get("/data/no_api_view") ~> route ~> check {
       status shouldEqual StatusCodes.BadRequest
       responseAs[String] shouldBe "no_api_view.list is not a part of this API"
@@ -856,6 +860,13 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     Put("/data/non_existing_view?/0", "{bad json}") ~> route ~> check {
       status shouldEqual StatusCodes.BadRequest
       responseAs[String] should include ("non_existing_view.update is not a part of this API")
+    }
+  }
+
+  it should "not reflect html" in {
+    Get("/data/no%3Cb%3Eapi%3C%2Fb%3Eview/0") ~> route ~> check {
+      status shouldEqual StatusCodes.BadRequest
+      responseAs[String] shouldBe "Strange name.get is not a part of this API"
     }
   }
 
