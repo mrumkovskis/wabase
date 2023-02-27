@@ -669,17 +669,21 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       val qr = qresult(r)
       conformTo.map(createCompatibleResult(qr, _)).getOrElse(qr)
     }
-    def qresult(r: Any) = r match {
+    def qresult(r: Any): QuereaseResult = r match {
       case null | () => NoResult // reflection call on function with Unit (void) return type returns null
-      case m: Map[String, Any]@unchecked => MapResult(m)
-      case m: java.util.Map[String, Any]@unchecked => MapResult(m.asScala.toMap)
-      case l: List[DTO@unchecked] => IteratorResult(l.map(_.toMap(this)).iterator)
       case r: Result[_] => TresqlResult(r)
       case r: RowLike => TresqlSingleRowResult(r)
+      case i: Iterator[_] => IteratorResult(i.map {
+        case m: Map[String, Any]@unchecked => m
+        case m: java.util.Map[String, Any]@unchecked => m.asScala.toMap
+        case d: DTO@unchecked => d.toMap(this)
+      })
+      case m: Map[String, Any]@unchecked => MapResult(m)
+      case l: Seq[_] => qresult(l.iterator)
+      case m: java.util.Map[String, Any]@unchecked => MapResult(m.asScala.toMap)
       case l: Long => LongResult(l)
       case s: String => StringResult(s)
       case n: java.lang.Number => NumberResult(n)
-      case r: QuereaseIteratorResult[DTO]@unchecked => IteratorResult(r.map(_.toMap(this)))
       case d: DTO@unchecked => MapResult(d.toMap(this))
       case o: Option[DTO]@unchecked => o.map(d => MapResult(d.toMap(this))).getOrElse(notFound)
       case h: HttpResponse => HttpResult(h)

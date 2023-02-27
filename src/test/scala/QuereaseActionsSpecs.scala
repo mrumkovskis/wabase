@@ -417,6 +417,22 @@ class QuereaseActionTestManager extends Loggable {
   def unitFutureMethod(): Unit = Future.successful(())
   def httpReqMethod(req: HttpRequest, data: Map[String, Any]) =
     if (req == null) s"${data.size}" else s"${req.uri.toString} = ${data.size}"
+
+  def rowLikeMethod(data: Map[String, Any], res: Resources) = {
+    resultMethod(data, res).toList.head // do not use result's unique method since it returns itself and in querease will match Result not RowLike
+  }
+  def resultMethod(data: Map[String, Any], res: Resources) = {
+    val tresql = data.flatMap { case (k, v) =>
+      v match { case s: String => List(s"'$s' '$k'") case _ => Nil }
+    }.mkString("{ ", ", ", " }")
+    Query(tresql)(res)
+  }
+  def iteratorMethod(data: Map[String, Any]) = {
+    List(data).iterator
+  }
+  def seqMethod(data: Map[String, Any]) = {
+    List(data)
+  }
 }
 
 class QuereaseActionTestManagerObj {

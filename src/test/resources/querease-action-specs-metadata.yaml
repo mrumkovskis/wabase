@@ -167,7 +167,8 @@ fields:
 - originator  = originator.number  -> = account [number = _] { id }
 - beneficiary = beneficiary.number -> = account [number = _] { id }
 - amount
-- date_time -> = :time
+- date_time -> = :time :
+  - initial: now()
 save:
 - validations amount:
   - :amount > 0, 'Wrong amount ' || :amount || '. Amount must be greater than 0'
@@ -450,15 +451,14 @@ list:
 
 name: invocation_test_1
 table:
-api: get, save, count, delete
+api: get, save, count, delete, create
 fields:
 - s1
 - s2
 - n1
 - n2
 get:
-- s1 = 'val1'
-- s2 = 'val2'
+- setenv create this
 - s3 = org.wabase.QuereaseActionTestManager.concatStrings
 - status ok { :s3 }
 save:
@@ -473,6 +473,33 @@ count:
 - org.wabase.QuereaseActionTestManager.unitFutureMethod
 - org.wabase.QuereaseActionTestManagerObj.unitMethod
 - org.wabase.QuereaseActionTestManager.httpReqMethod
+create:
+- s1 = 'val1'
+- s2 = 'val2'
+
+
+
+name: invocation_test_2
+table:
+api: get, list, save, delete
+key: key
+fields:
+- key:
+  - initial: "'key_val'"
+- value:
+   - initial: "'value_val'"
+get:
+- x = create this
+- :x -> org.wabase.QuereaseActionTestManager.rowLikeMethod
+list:
+- x = create this
+- :x -> org.wabase.QuereaseActionTestManager.resultMethod
+insert:
+- x = create this
+- :x -> org.wabase.QuereaseActionTestManager.iteratorMethod
+update:
+- x = create this
+- :x -> org.wabase.QuereaseActionTestManager.seqMethod
 
 
 name: if_test_1
