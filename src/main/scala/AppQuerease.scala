@@ -588,25 +588,27 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       else                view
     )
     val viewName = v.name
-    // execute querease call if context view name and method corresponds to this view name and method
-    def isThisMethod(ctxMethod: String, thisMethod: String) = {
-      ctxMethod ==
-        thisMethod ||
-        (Set(Action.Insert, Action.Update, Action.Upsert).contains(ctxMethod) && Action.Save == thisMethod) ||
-        !v.actions.contains(thisMethod)
-    }
-    if (context.view.exists(_.name == viewName) && isThisMethod(context.actionName, method)) {
-      val callDataF =
-        if (viewOp == null) Future.successful(data ++ env)
-        else {
-          doActionOp(viewOp, data, env, context).flatMap(dataForNextStep(_, context, false))
-            .map {
-              case r: Map[String@unchecked, _] => r ++ env
-              case x => sys.error(s"Invalid view op result. Currently unable to create Map[String, _] from $x")
-            }
+    val callDataF =
+      if (viewOp == null) Future.successful(data ++ env)
+      else {
+        def unwrapSingleRow(d: Any): Map[String, _] = d match {
+          case r: Map[String@unchecked, _] => r ++ env
+          case r: Seq[_] if r.size == 1 => unwrapSingleRow(r.head)
+          case x => sys.error(s"Invalid view op result. Currently unable to create Map[String, _] from $x")
         }
+        doActionOp(viewOp, data, env, context).flatMap(dataForNextStep(_, context, false))
+          .map(unwrapSingleRow)
+      }
+    callDataF.flatMap { callData =>
+      // execute querease call if context view name and method corresponds to this view name and method
+      def isThisMethod(ctxMethod: String, thisMethod: String) = {
+        ctxMethod ==
+          thisMethod ||
+          (Set(Action.Insert, Action.Update, Action.Upsert).contains(ctxMethod) && Action.Save == thisMethod) ||
+          !v.actions.contains(thisMethod)
+      }
 
-      callDataF.map { callData =>
+      if (context.view.exists(_.name == viewName) && isThisMethod(context.actionName, method)) {
         lazy val idName = viewNameToIdName(viewName)
 
         def int(name: String) = tryOp(callData.get(name).map {
@@ -617,47 +619,48 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
         }, callData)
 
         def string(name: String) = callData.get(name) map String.valueOf
-
-        (method match {
-          case Get =>
-            val keyValues   = getKeyValues(viewName, callData)
-            val keyColNames = viewNameToKeyColNames(viewName)
-            get(v, keyValues, keyColNames, null, callData)
-              .map(TresqlSingleRowResult) getOrElse notFound
-          case Action.List =>
-            TresqlResult(rowsResult(v, callData, int(OffsetKey).getOrElse(0), int(LimitKey).getOrElse(0),
-              string(OrderKey).orNull, null))
-          case Save =>
-            val saveMethod = context.actionName match {
-              case Insert => SaveMethod.Insert
-              case Update => SaveMethod.Update
-              case Upsert => SaveMethod.Upsert
-              case _      => SaveMethod.Save
-            }
-            IdResult(save(v, callData, null, saveMethod,        null, env), idName)
-          case Insert =>
-            IdResult(save(v, callData, null, SaveMethod.Insert, null, env), idName)
-          case Update =>
-            IdResult(save(v, callData, null, SaveMethod.Update, null, env), idName)
-          case Upsert =>
-            IdResult(save(v, callData, null, SaveMethod.Upsert, null, env), idName)
-          case Delete =>
-            getKeyValues(viewName, data) // check mappings for key exist
-            LongResult(delete(v, data, null, env))
-          case Create =>
-            TresqlSingleRowResult(create(v, callData))
-          case Count =>
-            LongResult(countAll_(v, callData))
-          case x =>
-            sys.error(s"Unknown view action $x")
-        }) match {
-          case r: TresqlSingleRowResult => comp_res(r, Action.OpResultType(viewName, false))
-          case r: DataResult => comp_res(r, Action.OpResultType(viewName, true))
-          case r => r
-        }
+        val res =
+          (method match {
+            case Get =>
+              val keyValues = getKeyValues(viewName, callData)
+              val keyColNames = viewNameToKeyColNames(viewName)
+              get(v, keyValues, keyColNames, null, callData)
+                .map(TresqlSingleRowResult) getOrElse notFound
+            case Action.List =>
+              TresqlResult(rowsResult(v, callData, int(OffsetKey).getOrElse(0), int(LimitKey).getOrElse(0),
+                string(OrderKey).orNull, null))
+            case Save =>
+              val saveMethod = context.actionName match {
+                case Insert => SaveMethod.Insert
+                case Update => SaveMethod.Update
+                case Upsert => SaveMethod.Upsert
+                case _ => SaveMethod.Save
+              }
+              IdResult(save(v, callData, null, saveMethod, null, env), idName)
+            case Insert =>
+              IdResult(save(v, callData, null, SaveMethod.Insert, null, env), idName)
+            case Update =>
+              IdResult(save(v, callData, null, SaveMethod.Update, null, env), idName)
+            case Upsert =>
+              IdResult(save(v, callData, null, SaveMethod.Upsert, null, env), idName)
+            case Delete =>
+              getKeyValues(viewName, callData) // check mappings for key exist
+              LongResult(delete(v, callData, null, env))
+            case Create =>
+              TresqlSingleRowResult(create(v, callData))
+            case Count =>
+              LongResult(countAll_(v, callData))
+            case x =>
+              sys.error(s"Unknown view action $x")
+          }) match {
+            case r: TresqlSingleRowResult => comp_res(r, Action.OpResultType(viewName, false))
+            case r: DataResult => comp_res(r, Action.OpResultType(viewName, true))
+            case r => r
+          }
+        Future.successful(res)
+      } else {
+        doAction(viewName, method, callData, env, context :: context.contextStack)
       }
-    } else {
-      doAction(viewName, method, data, env, context :: context.contextStack)
     }
   }
 
