@@ -483,7 +483,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     }
 
   protected def parseAction(objectName: String, stepData: Seq[Any]): Action = {
-    val namedStepRegex = """(?U)(?:(\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*)\s*=\s*)?(.+)""".r
+    val namedStepRegex = """(?U)(?:((?:\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*)(?:\.\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*)*)\s*=\s*)?(.+)""".r
     // matches - 'validations validation_name [db:cp]'
     val validationRegex = new Regex(s"(?U)${Action.ValidationsKey}(?:\\s+(\\w+))?(?:\\s+\\[(?:\\s*(\\w+)?\\s*(?::\\s*(\\w+)\\s*)?)\\])?")
     val dbUseRegex = new Regex(s"${Action.DbUseKey}")

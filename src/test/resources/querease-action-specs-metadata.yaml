@@ -478,7 +478,6 @@ create:
 - s2 = 'val2'
 
 
-
 name: invocation_test_2
 table:
 api: get, list, save, delete
@@ -851,3 +850,22 @@ list:
 - h = { 'Test-Header1', 'header1_value'} + { 'Test-Header2', 'header2_value'} # headers as variable to avoid db usage in http op
 - h_var = http get { '/extract_http_header_test', '1' } :h
 - return :h1_h2 + :h_var + (h3 = :h3)
+
+
+name: variable_path_test
+table:
+api: get
+fields:
+- f1
+- f2:
+    table:
+    fields:
+    - c1
+    - c2:
+        table:
+        fields:
+        - gc1
+get:
+- f1 =        if_defined_or_else(:f1, :f1, 'f1 val')
+- f2.c1 =     if_defined_or_else(:f2.c1, :f2.c1, 'c1 val')
+- f2.c2.gc1 = 'gc1 val'

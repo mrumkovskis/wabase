@@ -902,4 +902,20 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       t1
     }
   }
+
+  it should "assign value to variable path" in {
+    for {
+      t1 <- doAction("get", "variable_path_test", Map())
+        .map { _ shouldBe MapResult(
+          Map("f1" -> "f1 val", "f2" -> Map("c1" -> "c1 val", "c2" -> Map("gc1" -> "gc1 val")))
+        )}
+      t2 <- doAction("get", "variable_path_test",
+        Map("f1" -> "c1 par val", "f2" -> Map("c2" -> Map("gc1" -> "x"))))
+        .map { _ shouldBe MapResult(
+          Map("f1" -> "c1 par val", "f2" -> Map("c1" -> "c1 val", "c2" -> Map("gc1" -> "gc1 val")))
+        )}
+    } yield {
+      t1
+    }
+  }
 }

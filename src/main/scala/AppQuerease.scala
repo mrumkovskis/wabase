@@ -380,14 +380,27 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
   ): Future[QuereaseResult] = {
     import Action._
 
-    def updateCurRes(cr: Map[String, Any], key: Option[String], resF: Future[_]) = resF map {
-      case ir: IdResult =>
-        key
-          .map(k => cr + (k -> ir.id))
-          .getOrElse(cr ++ ir.toMap)
+    def updateCurRes(cr: Map[String, Any], key: Option[String], resF: Future[_]) = {
+      def upd(d: Map[String, _], k: String, v: Any) = {
+        def rec(m: Map[String, _], kp: List[String]): Map[String, _] = kp match {
+          case k :: Nil => m + (k -> v)
+          case k :: tail => m.get(k).map {
+            case cm: Map[String@unchecked, _] => m + (k -> rec(cm, tail))
+            case _ => m
+          }.getOrElse(m + (k -> rec(Map[String, Any](), tail)))
+          case Nil => m
+        }
+        rec(d, k.split("\\.").toList)
+      }
+      resF map {
+        case ir: IdResult =>
+          key
+            .map(k => upd(cr, k, ir.id))
+            .getOrElse(cr ++ ir.toMap)
         // id result always updates current result
-      case NoResult => key.map(k => if (cr.contains(k)) cr else cr + (k -> null)).getOrElse(cr)
-      case r => key.map(k => cr + (k -> r)).getOrElse(cr)
+        case NoResult => key.map(k => if (cr.contains(k)) cr else upd(cr, k, null)).getOrElse(cr)
+        case r => key.map(k => upd(cr, k, r)).getOrElse(cr)
+      }
     }
     def doStep(step: Step, stepDataF: Future[Map[String, Any]]): Future[QuereaseResult] = {
       import resourcesFactory._
