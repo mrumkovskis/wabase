@@ -671,9 +671,9 @@ trait AppMetadataDataFlowParser extends QueryParsers { self =>
   import AppMetadata.Action._
   import AppMetadata.Action
 
-  /** View action must be in one regexp with view name so that no match is if space(s) is omitted between action and
-    * view name since spaces are eleminated at the beginning of input before applying parser */
-  val ActionWithViewRegex = new Regex(Action().mkString("(?U)(", "|", """)\s+(\w+)"""))
+  /** View action must be end with whitespace regexp so that no match is if space(s) is omitted between action and
+    * view name since spaces are eliminated at the beginning of input before applying parser */
+  val ActionRegex = new Regex(Action().mkString("(?U)(", "|", """)\s+"""))
   val InvocationRegex = """(?U)\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*(\.\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*)+""".r
   val ViewNameRegex = "(?U)\\w+".r
 
@@ -695,10 +695,9 @@ trait AppMetadataDataFlowParser extends QueryParsers { self =>
   }
 
   def tresqlOp: Parser[Tresql] = expr ^^ { e => Tresql(e.tresql) }
-  def viewOp: Parser[ViewCall] = ActionWithViewRegex ~ opt(operation) ^^ {
-    case action_view ~ op =>
-      val ActionWithViewRegex(a, v) = action_view
-      ViewCall(a, v, op.orNull)
+  def viewOp: Parser[ViewCall] = ActionRegex ~ ViewNameRegex ~ opt(operation) ^^ {
+    case action ~ view ~ op =>
+      ViewCall(action.trim /* trim ending whitespace */, view, op.orNull)
   }
   def uniqueOptOp: Parser[UniqueOpt] = "unique_opt" ~> operation ^^ UniqueOpt
   def invocationOp: Parser[Invocation] = opt(opResultType) ~ InvocationRegex ^^ {
