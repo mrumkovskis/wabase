@@ -378,6 +378,17 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
       }
     }
   }
+
+  it should "use tresql instead of view call - escape syntax" in {
+    querease.doAction("escape_syntax", "insert", Map("key" -> "k", "value" -> "v"), Map())
+      .flatMap { _ =>
+        querease.doAction("escape_syntax", "list", Map(), Map())
+      }
+      .mapTo[TresqlResult]
+      .map {
+        _.result.toListOfMaps shouldBe List(Map("key" -> "k", "value" -> "v"))
+      }
+  }
 }
 
 class QuereaseActionTestManager extends Loggable {

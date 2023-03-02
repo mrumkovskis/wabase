@@ -91,6 +91,14 @@ columns:
 - id
 - value                 64
 
+
+table: get
+columns:
+- key                 ! 40
+- value               ! 256
+pk: key
+
+
 name: person
 api: save, get
 table: person
@@ -869,3 +877,13 @@ get:
 - f1 =        if_defined_or_else(:f1, :f1, 'f1 val')
 - f2.c1 =     if_defined_or_else(:f2.c1, :f2.c1, 'c1 val')
 - f2.c2.gc1 = 'gc1 val'
+
+
+name: escape_syntax
+table: get
+api: insert, update, get, list
+fields:
+- key
+- value
+list:
+- "[]get g {key, value}#(key)"    # query must begin with [] so that it is not parsed as 'get' from view 'g'
