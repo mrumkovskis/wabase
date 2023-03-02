@@ -887,3 +887,5 @@ fields:
 - value
 list:
 - "[]get g {key, value}#(key)"    # query must begin with [] so that it is not parsed as 'get' from view 'g'
+get:
+- gets {key, value}#(key)         # must throw exception during compile time or runtime not parsing time, like view 's' not found
