@@ -11,12 +11,13 @@ import scala.collection.immutable.TreeMap
 
 class JsonDecoderSpecs extends FlatSpec with Matchers {
   import JsonDecoderSpecs._
-  implicit val qe = new TestQuerease("/json-decoder-specs-metadata.yaml") with JsonConverter
-  import qe._
+  implicit val qe = new TestQuerease("/json-decoder-specs-metadata.yaml")
+  implicit val qio = new AppQuereaseIo[Dto](qe)
+  import qio._
   val strictDecoder = new CborOrJsonDecoder(qe.typeDefs, qe.nameToViewDef)
   val lenientDecoder = new CborOrJsonLenientDecoder(qe.typeDefs, qe.nameToViewDef)
   val anyValsDecoder = new CborOrJsonAnyValueDecoder()
-  def jsonRoundtrip(dto: qe.DTO) =
+  def jsonRoundtrip(dto: Dto) =
     decodeToMap(
       ByteString(dto.toMap.toJson.prettyPrint),
       classToViewName(dto.getClass),

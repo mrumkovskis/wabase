@@ -45,7 +45,7 @@ class FileUploadSpecs extends AnyFlatSpec with TestQuereaseInitializer with Scal
 
     val appl = new TestApp {
       override def dbAccessDelegate = db
-      override protected def initQuerease: QE = querease
+      override protected def initQuerease = querease
       override lazy val rootPath =
         new File(System.getProperty("java.io.tmpdir"),"file-upload-specs/" + UUID.randomUUID().toString).getPath
     }

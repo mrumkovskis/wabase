@@ -54,7 +54,7 @@ trait AppServiceBase[User]
   this: QueryTimeoutExtractor with Execution =>
 
   import app.qe.metadataConventions
-  import app.qe.MapJsonFormat
+  import app.qio.MapJsonFormat
 
   private implicit lazy val fs: AppFileStreamer[User] = this match {
     case fsb: AppFileServiceBase[User@unchecked] => fsb.fileStreamer
@@ -409,7 +409,7 @@ trait AppServiceBase[User]
         handleType(d => BigDecimal(d), "bigDecimal")
     } else value
   }
-  override protected def initJsonConverter = app.qe
+  override protected def initJsonConverter = app.qio
   override def dbAccess = app.dbAccess
 
   protected def fileStreamerConfigs: Seq[AppFileStreamerConfig] = {
@@ -689,7 +689,7 @@ object AppServiceBase {
     }
 
     def validationExceptionPathsHandler(logger: com.typesafe.scalalogging.Logger,
-                                        jsonConverter: JsonConverter) = ExceptionHandler {
+                                        jsonConverter: JsonConverter[_]) = ExceptionHandler {
       case e: ValidationException =>
         logger.trace(e.getMessage, e)
         import spray.json.DefaultJsonProtocol.{ jsonFormat2, listFormat, StringJsonFormat }

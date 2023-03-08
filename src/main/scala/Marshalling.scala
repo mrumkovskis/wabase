@@ -18,6 +18,7 @@ import akka.stream.scaladsl.{Flow, Source}
 import akka.util.ByteString
 import io.bullet.borer.compat.akka.ByteStringProvider
 import org.mojoz.metadata.ViewDef
+import org.mojoz.querease.QuereaseIteratorResult
 import org.tresql.{Resources, Result, RowLike}
 
 import scala.collection.immutable.Seq
@@ -123,23 +124,23 @@ trait BasicMarshalling extends OptionMarshalling {
 
 trait DtoMarshalling extends QuereaseMarshalling { this: AppProvider[_] with Execution with OptionMarshalling =>
   import app.qe
-  implicit def dtoUnmarshaller[T <: app.Dto](implicit m: Manifest[T]): FromEntityUnmarshaller[T] =
+  implicit def dtoUnmarshaller[T <: Dto](implicit m: Manifest[T]): FromEntityUnmarshaller[T] =
     toMapUnmarshallerForView(app.qe.viewDef[T].name).map {
       m.runtimeClass.getConstructor().newInstance().asInstanceOf[T].fill
     }
 
-  implicit def dtoSeqUnmarshaller[T <: app.Dto](implicit m: Manifest[T]): FromEntityUnmarshaller[Seq[T]] =
+  implicit def dtoSeqUnmarshaller[T <: Dto](implicit m: Manifest[T]): FromEntityUnmarshaller[Seq[T]] =
     toSeqOfMapsUnmarshallerForView(app.qe.viewDef[T].name).map { _.map {
       m.runtimeClass.getConstructor().newInstance().asInstanceOf[T].fill
     }}
 
-  implicit val dtoForViewMarshaller: ToEntityMarshaller[(app.Dto, String)] =
+  implicit val dtoForViewMarshaller: ToEntityMarshaller[(Dto, String)] =
     Marshaller.combined { case (dto, viewName) => (dto.toMap, viewName, null) }
-  implicit val dtoMarshaller: ToEntityMarshaller[app.Dto] =
-    Marshaller.combined { dto: app.Dto => (dto, app.qe.classToViewNameMap.get(dto.getClass).orNull) }
-  implicit val dtoSeqForViewMarshaller: ToEntityMarshaller[(Seq[app.Dto], String)] =
+  implicit val dtoMarshaller: ToEntityMarshaller[Dto] =
+    Marshaller.combined { dto: Dto => (dto, app.qe.classToViewNameMap.get(dto.getClass).orNull) }
+  implicit val dtoSeqForViewMarshaller: ToEntityMarshaller[(Seq[Dto], String)] =
     Marshaller.combined { case (seqOfDto, viewName) => (seqOfDto.map(_.toMap), viewName, null) }
-  implicit val dtoSeqMarshaller: ToEntityMarshaller[Seq[app.Dto]] =
+  implicit val dtoSeqMarshaller: ToEntityMarshaller[Seq[Dto]] =
     Marshaller.combined { dtoSeq =>
       (dtoSeq, dtoSeq.find(_ != null).map(_.getClass).flatMap(app.qe.classToViewNameMap.get).orNull)
     }
@@ -308,9 +309,9 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
         sys.error(s"QuereaseResult marshaller for class ${r.getClass.getName} not implemented")
     }}
 
-  implicit val toResponseQuereaseIteratorMarshaller: ToResponseMarshaller[qe.QuereaseIteratorResult[app.Dto]] = {
-    def marsh(viewName: String)(implicit ec: ExecutionContext): ToResponseMarshaller[qe.QuereaseIteratorResult[app.Dto]] =
-      Marshaller.combined { qir: qe.QuereaseIteratorResult[app.Dto] =>
+  implicit val toResponseQuereaseIteratorMarshaller: ToResponseMarshaller[QuereaseIteratorResult[Dto]] = {
+    def marsh(viewName: String)(implicit ec: ExecutionContext): ToResponseMarshaller[QuereaseIteratorResult[Dto]] =
+      Marshaller.combined { qir: QuereaseIteratorResult[Dto] =>
         app.serializeResult(app.SerializationBufferSize, app.viewSerializationBufferMaxFileSize(viewName),
           DataSerializer.source(() => qir.map(_.toMap))).map(_.head)
           .map(QuereaseSerializedResult(_, null, isCollection = true))

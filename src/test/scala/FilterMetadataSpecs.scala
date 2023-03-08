@@ -21,7 +21,7 @@ class FilterMetadataSpecs extends FlatSpec with Matchers with TestQuereaseInitia
       override lazy val viewNameToClassMap = QuereaseActionsDtos.viewNameToClass
     }
     app = new TestApp {
-      override protected def initQuerease: QE = querease
+      override protected def initQuerease = querease
     }
     super.beforeAll()
   }

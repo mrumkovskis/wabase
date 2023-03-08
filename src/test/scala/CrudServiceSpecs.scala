@@ -46,6 +46,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
   override def dbNamePrefix: String = "main"
   override def beforeAll(): Unit = {
     querease    = new TestQuerease("/crud-service-specs-metadata.yaml")
+    qio         = new AppQuereaseIo[Dto](querease)
     super.beforeAll()
     dbAccess    = new DbAccess with Loggable {
       override implicit lazy val tresqlResources: ThreadLocalResources = new TresqlResources {
@@ -57,7 +58,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       }
     }
     val testApp = new TestApp with NoValidation {
-      override protected def initQuerease: QE = querease
+      override protected def initQuerease = querease
       override def dbAccessDelegate = CrudServiceSpecs.this.dbAccess
     }
     service     = new CrudTestService(system, testApp)
@@ -787,8 +788,8 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
 
   // api -----------------------------------------------------//
   it should "serve api metadata" in {
-    val qe = querease
-    import qe._
+    val io = qio
+    import io._
     Get("/api") ~> route ~> check {
       status shouldEqual StatusCodes.OK
       val apiMap =  responseAs[String].parseJson.convertTo[Map[String, Any]]
@@ -801,8 +802,8 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
   // metadata ------------------------------------------------//
   it should "serve metadata" in {
     // TODO test full metadata and various aspects
-    val qe = querease
-    import qe._
+    val io = qio
+    import io._
     Get("/metadata/by_key_view_1") ~> route ~> check {
       status shouldEqual StatusCodes.OK
       val mdMap =  responseAs[String].parseJson.convertTo[Map[String, Any]]

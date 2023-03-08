@@ -61,7 +61,7 @@ class DeferredTests extends AnyFlatSpec with Matchers with TestQuereaseInitializ
 
     val appl = new TestApp {
       override def dbAccessDelegate = db
-      override protected def initQuerease: QE = querease
+      override protected def initQuerease = querease
       override lazy val rootPath =
         new File(System.getProperty("java.io.tmpdir"),"deferred-tests/" + UUID.randomUUID().toString).getPath
     }

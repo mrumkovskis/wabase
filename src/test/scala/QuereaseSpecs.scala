@@ -66,6 +66,7 @@ class QuereaseSpecs extends AsyncFlatSpec with Matchers with TestQuereaseInitial
     querease = new TestQuerease("/querease-specs-metadata.yaml") {
       override lazy val viewNameToClassMap = QuereaseSpecsDtos.viewNameToClass
     }
+    qio = new AppQuereaseIo[Dto](querease)
     super.beforeAll()
     tresqlResources = tresqlThreadLocalResources.withConn(tresqlThreadLocalResources.conn)
   }

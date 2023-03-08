@@ -3,9 +3,10 @@ package org.wabase
 import java.util.Locale
 import org.mojoz.metadata.Type
 import org.mojoz.metadata.{FieldDef, ViewDef}
-import org.mojoz.querease.NotFoundException
 import org.mojoz.querease.FilterType
 import org.mojoz.querease.FilterType._
+import org.mojoz.querease.NotFoundException
+import org.mojoz.querease.QuereaseIteratorResult
 import org.tresql._
 import spray.json._
 import com.typesafe.config.Config
@@ -48,9 +49,6 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
 
   override def dbAccess = this
 
-  type Dto = qe.DTO
-  type DtoWithId = qe.DWI
-
   import qe.{viewDef, viewDefOption, classToViewNameMap, viewNameToClassMap}
 
   protected def isQuereaseActionDefined(viewName: String, actionName: String) =
@@ -78,7 +76,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
   def useLegacyFlow(viewName: String, actionName: String): Boolean = false
     // !isQuereaseActionDefined(viewName, actionName) && hasLegacyHandlers(viewName, actionName)
 
-  implicit def rowLikeToDto[B <: Dto](r: RowLike, m: Manifest[B]): B = qe.rowLikeToDto(r, m)
+  implicit def rowLikeToDto[B <: Dto](r: RowLike, m: Manifest[B]): B = qio.rowLikeToDto(r, m)
 
   implicit def toAppListResult[T <: Dto: Manifest](list: Seq[T]) = new AppListResult[T] {
     private val iter = list.iterator
@@ -88,7 +86,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
     override protected def nextInternal = iter.next()
   }
 
-  trait AppListResult[+T] extends qe.QuereaseIteratorResult[T] { self =>
+  trait AppListResult[+T] extends QuereaseIteratorResult[T] { self =>
     def view: ViewDef
     def resources: Resources
     /** this is to be overriden in subclasses instead of {{{hasNext}}} */
@@ -222,14 +220,14 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
     if (id == -1) {
       //get by name
       qe.list[Dto](params, 0, 2)(
-        ManifestFactory.classType(viewNameToClassMap(viewName)), implicitly[Resources]) match {
+        ManifestFactory.classType(viewNameToClassMap(viewName)), implicitly[Resources], qio) match {
         case List(result) => ctx.copy(result = Some(result))
         case Nil => ctx.copy(result = None)
         case _ => throw new BusinessException("Too many rows returned")
       }
     } else
       ctx.copy(result = qe.get(id, null, params)(
-        ManifestFactory.classType(viewNameToClassMap(viewName)), implicitly[Resources]))
+        ManifestFactory.classType(viewNameToClassMap(viewName)), implicitly[Resources], qio))
   }
   implicit object Create extends HExt[CreateContext[Dto]] {
     override def defaultAction(ctx: CreateContext[Dto]): CreateContext[Dto] =
@@ -239,7 +237,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
     import ctx._
     // type annotation to fix strange java.lang.ClassCastException: dto.my_view cannot be cast to scala.runtime.Nothing$
     val result: Dto = qe.create(params)(
-      ManifestFactory.classType(viewNameToClassMap(viewName)), tresqlResources)
+      ManifestFactory.classType(viewNameToClassMap(viewName)), tresqlResources, qio)
     ctx.copy(result = result)
   }
   implicit object BList extends HExt[ListContext[Dto]] {
@@ -261,7 +259,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
       checkOrderBy(viewDef, orderBy)
       if (ctx.doCount)
         ctx.copy(count = qe.countAll(params)(
-          ManifestFactory.classType(viewNameToClassMap(viewName)), tresqlResources))
+          ManifestFactory.classType(viewNameToClassMap(viewName)), tresqlResources, qio))
       else {
         val ctxCopy = ctx.copy(result = new AppListResult[Dto] {
           private [this] var closed = false
@@ -296,7 +294,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
               } else res
             }
           }
-          private lazy val result: qe.CloseableResult[Dto] =
+          private lazy val result: QuereaseIteratorResult[Dto] =
             try qe.result[Dto](
               params,
               offset,
@@ -304,7 +302,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
               stableOrderBy(viewDef, orderBy),
               )(
               ManifestFactory.classType(viewNameToClassMap(viewName).asInstanceOf[Class[Dto]]),
-              resources)
+              resources, qio)
             catch {
               case NonFatal(e) =>
                 closeConns
@@ -354,7 +352,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
         false,
         null,
         params
-      )(tresqlResources)
+      )(tresqlResources, qio)
       ctx.copy(result = obj.id)
   }
   implicit object Remove extends HExt[RemoveContext[DtoWithId]] {
@@ -366,7 +364,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
       val viewDef = qe.viewDef(viewName)
       val result = qe.delete(old,
         null,
-        state ++ ctx.keyMap ++ current_user_param(user))(tresqlResources)
+        state ++ ctx.keyMap ++ current_user_param(user))(tresqlResources, qio)
       ctx.copy(result = result.toString.toLong)
   }
 
@@ -555,7 +553,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
   def save(viewName: String, obj: JsObject, params: Map[String, Any] = Map(), emptyStringsToNull: Boolean = true)(
     implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout,
       poolName: PoolName = ConnectionPools.key(viewDef(viewName).cp)) = {
-    val instance = qe.fill[Dto](obj)(Manifest.classType(viewNameToClassMap(viewName)))
+    val instance = qio.fill[Dto](obj)(Manifest.classType(viewNameToClassMap(viewName)))
     saveInternal(viewName, instance, params, emptyStringsToNull)
   }
 
@@ -598,7 +596,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
             viewName = viewName,
             keyValues = Nil,
             params = params,
-            values = qe.toMap(instance) ++ params
+            values = qio.toMap(instance) ++ params
           )
           customValidations(ctx)(state.locale)
           idOpt.flatMap { id =>
@@ -648,7 +646,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
           transaction {
             implicit val clazz = viewNameToClassMap(viewName).asInstanceOf[Class[DtoWithId]]
             val ctx = createDeleteCtx(RemoveContext[DtoWithId](viewName, id, params, user, promise, state))
-            qe.get[DtoWithId](id, null, ctx.params)(ManifestFactory.classType(clazz), tresqlResources) match {
+            qe.get[DtoWithId](id, null, ctx.params)(ManifestFactory.classType(clazz), tresqlResources, qio) match {
               case None => throw new NotFoundException(s"$viewName not found, id: $id, params: $params")
               case Some(oldValue) => rest(ctx.copy(old = oldValue))
             }
@@ -1087,7 +1085,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
   }
 
   def validateFields(instance: Dto)(implicit state: ApplicationState): Unit = {
-    validateFields(classToViewNameMap(instance.getClass), qe.toMap(instance))
+    validateFields(classToViewNameMap(instance.getClass), qio.toMap(instance))
   }
 }
 

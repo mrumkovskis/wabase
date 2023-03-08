@@ -103,6 +103,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
     querease = new TestQuerease("/querease-action-specs-metadata.yaml") {
       override lazy val viewNameToClassMap = QuereaseActionsDtos.viewNameToClass
     }
+    qio = new AppQuereaseIo[Dto](querease)
     super.beforeAll()
     // get rid from thread local resources
     val tresqlResources = tresqlThreadLocalResources.withConn(tresqlThreadLocalResources.conn)
@@ -341,7 +342,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
     def saveData(view: String, data: List[Map[String, Any]])(implicit res: Resources) =
       data.foldLeft(Future.successful[QuereaseResult](LongResult(0))) { (r, d) =>
         r.flatMap(_ => querease.doAction(view, "save", d, Map())(
-          tresqlResourcesFactory, implicitly[ExecutionContext], as, fs, req))
+          tresqlResourcesFactory, implicitly[ExecutionContext], as, fs, req, qio))
       }
 
     saveData("person_simple", persons)

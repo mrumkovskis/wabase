@@ -12,8 +12,6 @@ import java.text.SimpleDateFormat
 import java.util.Date
 
 class TestQuerease(val metadataFile: String, mdFilter: YamlMd => Boolean = _ => true) extends AppQuerease {
-  override type DTO = org.wabase.Dto
-  override type DWI = org.wabase.DtoWithId
   override lazy val yamlMetadata = YamlMd.fromResource(metadataFile).filter(mdFilter)
   override lazy val viewNameToClassMap = Map[String, Class[_ <: Dto]]()
   def persistenceMetadata(viewName: String) = nameToPersistenceMetadata(viewName)
@@ -23,6 +21,7 @@ trait TestQuereaseInitializer extends BeforeAndAfterAll with Loggable { this: Su
 
   protected var tresqlThreadLocalResources: TresqlResources = _
   protected var querease: TestQuerease = _
+  protected implicit var qio: AppQuereaseIo[Dto] = _
 
   protected def dbNamePrefix: String = getClass.getName
 

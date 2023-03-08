@@ -12,12 +12,11 @@ import scala.util.control.NonFatal
 import org.tresql._
 import org.wabase.MapUtils._
 
-/** Audit and all subimplementations use {{{qe.DTO}}} and {{{qe.DWI}}} */
 trait Audit[User] { this: AppBase[User] =>
   def audit[C <: RequestContext[_]](originalContext: C)(action: => C): C
   def audit(context: AppActionContext, result: Try[QuereaseResult]): Unit
   def auditSave(id: jLong, viewName: String, instance: Map[String, Any], error: String)(implicit user: User, state: ApplicationState): Unit
-  def auditLogin(user: User, loginInfo: qe.DTO): Unit
+  def auditLogin(user: User, loginInfo: Dto): Unit
 }
 
 object Audit {
@@ -25,7 +24,7 @@ object Audit {
    def audit[C <: RequestContext[_]](originalContext: C)(action: => C): C = action
    def audit(context: AppActionContext, result: Try[QuereaseResult]): Unit = {}
    def auditSave(id: jLong, viewName: String, instance: Map[String, Any], error: String)(implicit user: User, state: ApplicationState): Unit = {}
-   def auditLogin(user: User, loginInfo: qe.DTO): Unit = {}
+   def auditLogin(user: User, loginInfo: Dto): Unit = {}
  }
 
 
@@ -106,14 +105,14 @@ object Audit {
      }.toList
    }
 
-   private def mapFromObj(obj: qe.DTO) = Option(obj).map(qe.toMap).map(removeBlacklistedFields).map(_.recursiveMap{
+   private def mapFromObj(obj: Dto) = Option(obj).map(qio.toMap).map(removeBlacklistedFields).map(_.recursiveMap{
      case (_, m: Map[String, Any] @unchecked) => removeBlacklistedFields(m)
    }) getOrElse Map.empty
 
    def keyFields: List[String] = Nil
    def getDiff(oldObj: Map[String, Any], newObj: Map[String, Any]) = jsonizeDiff(diffMaps(oldObj, newObj, keyFields))
 
-   override def auditLogin(user: User, loginInfo: qe.DTO) = {
+   override def auditLogin(user: User, loginInfo: Dto) = {
      audit(AuditData(action = "login", user = user, newData = mapFromObj(loginInfo), time = now))
    }
 
@@ -147,7 +146,7 @@ object Audit {
        newData = map, relevant_id = relevantIds, error = error))
    }
 
-   def logSave(id: Long, view: String, old: qe.DTO, obj: qe.DTO, inParams: Map[String, Any],
+   def logSave(id: Long, view: String, old: Dto, obj: Dto, inParams: Map[String, Any],
                user: User, save: Map[String, Any], extraPropsToSave: Map[String, Any], error: Throwable): Unit = {
      val newData = mapFromObj(obj)
      val oldData = mapFromObj(old)
@@ -158,7 +157,7 @@ object Audit {
          newData = newData, oldData = oldData, diff = diff, relevant_id = relevantIds, error = Option(error).map(_.getMessage).orNull))
    }
 
-   def logRemove(id: Long, view: String, user: User, oldData: qe.DWI, error: Throwable): Unit = {
+   def logRemove(id: Long, view: String, user: User, oldData: DtoWithId, error: Throwable): Unit = {
      val data = mapFromObj(oldData)
      audit(AuditData(action = "remove", entity = view, entity_id = id, user = user, time = now,
        oldData = data, relevant_id = getRelevantIds(view, id, data, error != null, error), error = Option(error).map(_.getMessage).orNull))
@@ -172,8 +171,8 @@ object Audit {
            Option(result)
              .flatten
              .filter(_ != null)
-             .filter(_.isInstanceOf[qe.DWI@unchecked])
-             .map(_.asInstanceOf[qe.DWI])
+             .filter(_.isInstanceOf[DtoWithId])
+             .map(_.asInstanceOf[DtoWithId])
              .map(v => mapFromObj(v))
              .getOrElse(Map.empty[String, Any]))
        case ListContext(view, inParams, offset, limit, orderBy, user, state, _, doCount, _, _, _, _, _) =>
@@ -181,13 +180,13 @@ object Audit {
        case SaveContext(view, old, obj, inParams, user, _, state, extraPropsToSave, result) =>
          if (old != null || error == null) logSave( //do not audit error on insert
            Option(old).
-             filter(_.isInstanceOf[qe.DWI@unchecked])
-             .map(_.asInstanceOf[qe.DWI])
+             filter(_.isInstanceOf[DtoWithId])
+             .map(_.asInstanceOf[DtoWithId])
              .map(_.id.toLong)
              .getOrElse(result),
            view,
-           old.asInstanceOf[qe.DWI],
-           obj.asInstanceOf[qe.DWI],
+           old.asInstanceOf[DtoWithId],
+           obj.asInstanceOf[DtoWithId],
            inParams,
            user,
            state,
@@ -195,7 +194,7 @@ object Audit {
            error
          )
        case RemoveContext(view, id, inParams, user, _, _, result, oldData) =>
-         logRemove(id, view, user, oldData.asInstanceOf[qe.DWI], error)
+         logRemove(id, view, user, oldData.asInstanceOf[DtoWithId], error)
      }
    }
  }

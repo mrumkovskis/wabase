@@ -160,7 +160,7 @@ trait WabaseApp[User] {
   def simpleAction(context: AppActionContext): ActionHandlerResult = {
     import context._
     val rf = ResourcesFactory(resourceFactory(context), closeResources, tresqlResources.resourcesTemplate)
-    qe.QuereaseAction(viewName, actionName, values, env)(rf, fileStreamer, req)
+    qe.QuereaseAction(viewName, actionName, values, env)(rf, fileStreamer, req, qio)
       .map(WabaseResult(context, _))
   }
 
@@ -203,7 +203,7 @@ trait WabaseApp[User] {
 
     }
     val rf = ResourcesFactory(resourceFactory(context), closeResources, tresqlResources.resourcesTemplate)
-    qe.QuereaseAction(viewName, Action.Get, values, env)(rf, fileStreamer, req).map(oldVal)
+    qe.QuereaseAction(viewName, Action.Get, values, env)(rf, fileStreamer, req, qio).map(oldVal)
   }
   protected def throwOldValueNotFound(message: String, locale: Locale): Nothing =
     throw new org.mojoz.querease.NotFoundException(translate(message)(locale))
@@ -229,7 +229,7 @@ trait WabaseApp[User] {
         validateFields(viewName, saveable)
         customValidations(saveableContext)(state.locale)
         val rf = ResourcesFactory(resourceFactory(context), closeResources, tresqlResources.resourcesTemplate)
-        qe.QuereaseAction(viewName, context.actionName, saveable, env)(rf, fileStreamer, req)
+        qe.QuereaseAction(viewName, context.actionName, saveable, env)(rf, fileStreamer, req, qio)
           .map(WabaseResult(saveableContext, _))
           .recover { case ex => friendlyConstraintErrorMessage(viewDef, throw ex)(state.locale) }
       }
@@ -240,7 +240,7 @@ trait WabaseApp[User] {
     maybeGetOldValue(context).flatMap { oldValue =>
       val richContext = context.copy(oldValue = oldValue)
       val rf = ResourcesFactory(resourceFactory(richContext), closeResources, tresqlResources.resourcesTemplate)
-      qe.QuereaseAction(viewName, actionName, values, env)(rf, fileStreamer, req)
+      qe.QuereaseAction(viewName, actionName, values, env)(rf, fileStreamer, req, qio)
         .map(WabaseResult(richContext, _))
         .recover { case ex => friendlyConstraintErrorMessage(throw ex)(state.locale) }
     }

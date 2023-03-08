@@ -17,7 +17,8 @@ trait DefaultValidationEngine extends ValidationEngine with Loggable {
     with DbAccess =>
 
   import ValidationEngine._
-  import qe.{viewDef, classToViewNameMap, MapJsonFormat}
+  import qe.{viewDef, classToViewNameMap}
+  import qio.MapJsonFormat
 
   class Validation extends org.wabase.DtoWithId {
     var id: java.lang.Long = null

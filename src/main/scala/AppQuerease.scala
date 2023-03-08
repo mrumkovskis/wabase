@@ -7,7 +7,7 @@ import akka.stream.scaladsl.Source
 import akka.util.ByteString
 import org.mojoz.querease.QuereaseExpressions.DefaultParser
 import org.tresql._
-import org.mojoz.querease.{DtoSetter, Querease, QuereaseExpressions, ValidationException, ValidationResult}
+import org.mojoz.querease._
 import org.mojoz.querease.SaveMethod
 import org.mojoz.metadata.Type
 import org.mojoz.metadata.{FieldDef, ViewDef}
@@ -27,10 +27,11 @@ import scala.util.{Failure, Try}
 import scala.util.control.NonFatal
 
 trait QuereaseProvider {
-  type QE <: AppQuerease
-  final implicit val qe: QE = initQuerease
+  final implicit val qe: AppQuerease = initQuerease
+  final implicit val qio: AppQuereaseIo[Dto] = initQuereaseIo
   /** Override this method in subclass to initialize {{{qe}}} */
-  protected def initQuerease: QE
+  protected def initQuerease: AppQuerease
+  protected def initQuereaseIo: AppQuereaseIo[Dto] = new AppQuereaseIo[Dto](qe)
 }
 
 case class ResourcesFactory(initResources: () => Resources,
@@ -89,18 +90,14 @@ case class DbResult(result: QuereaseResult, cleanup: Option[Throwable] => Unit)
   extends QuereaseResult
 case class ConfResult(param: String, result: Any) extends QuereaseResult
 
-trait AppQuereaseIo extends org.mojoz.querease.ScalaDtoQuereaseIo with JsonConverter { self: AppQuerease =>
-
-  override type DTO >: Null <: Dto
-  override type DWI >: Null <: DTO with DtoWithId
-
-  private [wabase] val FieldRefRegexp_ = FieldRefRegexp
+class AppQuereaseIo[DTO <: Dto](val qe: QuereaseMetadata with QuereaseResolvers)
+  extends ScalaDtoQuereaseIo[DTO](qe) with JsonConverter[DTO] {
 
   def fill[B <: DTO: Manifest](jsObject: JsObject): B = {
-    implicitly[Manifest[B]].runtimeClass.getConstructor().newInstance().asInstanceOf[B {type QE = AppQuerease}].fill(jsObject)(this)
+    implicitly[Manifest[B]].runtimeClass.getConstructor().newInstance().asInstanceOf[B].fill(jsObject)(qe)
   }
   def fill[B <: DTO: Manifest](values: Map[String, Any]): B = {
-    implicitly[Manifest[B]].runtimeClass.getConstructor().newInstance().asInstanceOf[B {type QE = AppQuerease}].fill(values)(this)
+    implicitly[Manifest[B]].runtimeClass.getConstructor().newInstance().asInstanceOf[B].fill(values)(qe)
   }
 }
 
@@ -109,9 +106,11 @@ class QuereaseEnvException(val env: Map[String, Any], cause: Exception) extends 
     String.valueOf(env)}"
 }
 
-abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata with Loggable {
+class AppQuerease extends Querease with AppMetadata with Loggable {
 
-  import AppMetadata._
+ private [wabase] val FieldRefRegexp_ = FieldRefRegexp
+
+ import AppMetadata._
 
   def convertToType(type_ : Type, value: Any): Any = {
     value match {
@@ -171,36 +170,15 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       extraFilterAndAuthString(extraFilter, viewDef.auth.forGet)
     super.get(viewDef, keyValues, keyColNames, extraFilterAndAuth, extraParams)
   }
-  override def result[B <: DTO: Manifest](params: Map[String, Any],
+  override def result[B <: AnyRef: Manifest](params: Map[String, Any],
       offset: Int = 0, limit: Int = 0, orderBy: String = null,
       extraFilter: String = null, extraParams: Map[String, Any] = Map())(
-      implicit resources: Resources): QuereaseIteratorResult[B] = {
+      implicit resources: Resources, qio: QuereaseIo[B]): QuereaseIteratorResult[B] = {
     val v = viewDef[B]
     val extraFilterAndAuth =
       extraFilterAndAuthString(extraFilter, v.auth.forList)
-    // TODO call super and move rows below to Querease later
-    val (q, p) = queryStringAndParams(viewDef[B], params,
-      offset, limit, orderBy, extraFilterAndAuth, extraParams)
-    result(q, p)
+    super.result(params, offset, limit, orderBy, extraFilterAndAuth, extraParams)
   }
-  // TODO move this method to Querease later
-  override def result[B <: DTO: Manifest](query: String, params: Map[String, Any])(
-    implicit resources: Resources): QuereaseIteratorResult[B] =
-    new QuereaseIteratorResult[B] {
-      private val result = Query(query, params)
-      override def hasNext = result.hasNext
-      override def next() = convertRow[B](result.next())
-      override def close = result.close
-      override def view: ViewDef = viewDef[B]
-    }
-  override def rowsResult(viewDef: ViewDef, params: Map[String, Any],
-      offset: Int, limit: Int, orderBy: String, extraFilter: String)(
-        implicit resources: Resources): Result[RowLike] = {
-    val extraFilterAndAuth =
-      extraFilterAndAuthString(extraFilter, viewDef.auth.forList)
-    super.rowsResult(viewDef, params, offset, limit, orderBy, extraFilterAndAuth)
-  }
-
 
   override protected def countAll_(viewDef: ViewDef, params: Map[String, Any],
       extraFilter: String = null, extraParams: Map[String, Any] = Map())(implicit resources: Resources): Int = {
@@ -284,6 +262,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     )(resourcesFactory: ResourcesFactory,
       fileStreamer: FileStreamer,
       req: HttpRequest,
+      qio: AppQuereaseIo[Dto],
     ): QuereaseAction[QuereaseResult] = {
         new QuereaseAction[QuereaseResult] {
           def run(implicit ec: ExecutionContext, as: ActorSystem) = {
@@ -293,6 +272,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
               else resourcesFactory.copy(resources = resourcesFactory.initResources())
             implicit val fs = fileStreamer
             implicit val httpReq = req
+            implicit val io = qio
             import resFac._
             def processResult(res: QuereaseResult, cleanup: Option[Throwable] => Unit): QuereaseResult = res match {
               case DbResult(result, cl) =>
@@ -320,10 +300,6 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
         }
     }
     def value[A](a: => A): QuereaseAction[A] = (_: ExecutionContext, _: ActorSystem) => Future.successful(a)
-  }
-
-  trait QuereaseIteratorResult[+B] extends Iterator[B] with AutoCloseable {
-    def view: ViewDef
   }
 
   case class ActionContext(
@@ -355,6 +331,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     as: ActorSystem,
     fs: FileStreamer,
     req: HttpRequest,
+    qio: AppQuereaseIo[Dto],
   ): Future[QuereaseResult] = {
     val vd = viewDef(view)
 
@@ -377,6 +354,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     as: ActorSystem,
     fs: FileStreamer,
     req: HttpRequest,
+    qio: AppQuereaseIo[Dto],
   ): Future[QuereaseResult] = {
     import Action._
 
@@ -579,6 +557,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     as: ActorSystem,
     fs: FileStreamer,
     req: HttpRequest,
+    qio: AppQuereaseIo[Dto],
   ): Future[QuereaseResult] = {
     import Action._
     import CoreTypes._
@@ -671,6 +650,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     as: ActorSystem,
     fs: FileStreamer,
     req: HttpRequest,
+    qio: AppQuereaseIo[Dto],
   ): Future[QuereaseResult] = {
     import op._
     def comp_q_result(r: Any) = {
@@ -692,7 +672,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case i: Iterator[_] => IteratorResult(i.map {
         case m: Map[String, Any]@unchecked => m
         case m: java.util.Map[String, Any]@unchecked => m.asScala.toMap
-        case d: DTO@unchecked => d.toMap(this)
+        case d: Dto => d.toMap(this)
       })
       case m: Map[String, Any]@unchecked => MapResult(m)
       case l: Seq[_] => qresult(l.iterator)
@@ -700,8 +680,8 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       case l: Long => LongResult(l)
       case s: String => StringResult(s)
       case n: java.lang.Number => NumberResult(n)
-      case d: DTO@unchecked => MapResult(d.toMap(this))
-      case o: Option[DTO]@unchecked => o.map(d => MapResult(d.toMap(this))).getOrElse(notFound)
+      case d: Dto => MapResult(d.toMap(this))
+      case o: Option[Dto]@unchecked => o.map(d => MapResult(d.toMap(this))).getOrElse(notFound)
       case h: HttpResponse => HttpResult(h)
       case q: QuereaseResult => q
       case x => sys.error(s"Unrecognized result type: ${x.getClass}, value: $x from function $className.$function")
@@ -720,8 +700,9 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
       clazz.getMethods.filter(_.getName == function) match {
         case Array(method) =>
           def param(parType: Class[_]) = {
+            import qio.MapJsonFormat
             if (classOf[Dto].isAssignableFrom(parType))
-              fill(data.toJson.asJsObject)(Manifest.classType(parType)) // specify manifest explicitly so it is not Nothing
+              qio.fill(data.toJson.asJsObject)(Manifest.classType(parType)) // specify manifest explicitly so it is not Nothing
             else if (parType.isAssignableFrom(classOf[java.util.Map[_, _]])) data.asJava
             else if (parType.isAssignableFrom(classOf[Resources])) res
             else if (parType.isAssignableFrom(classOf[ExecutionContext])) ec
@@ -783,6 +764,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     as: ActorSystem,
     fs: FileStreamer,
     req: HttpRequest,
+    qio: AppQuereaseIo[Dto],
   ): Future[QuereaseResult] = {
     def createGetResult(res: QuereaseResult): DataResult = res match {
       case TresqlResult(r) if !r.isInstanceOf[DMLResult] =>
@@ -814,6 +796,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
    as: ActorSystem,
    fs: FileStreamer,
    req: HttpRequest,
+   qio: AppQuereaseIo[Dto],
   ): Future[QuereaseResult] = {
     val Action.Status(maybeCode, bodyTresql, parameterIndex) = op
     Option(bodyTresql).map { bt =>
@@ -847,6 +830,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     as: ActorSystem,
     fs: FileStreamer,
     req: HttpRequest,
+    qio: AppQuereaseIo[Dto],
   ): Future[QuereaseResult] = {
     doActionOp(op.cond, data, env, context).map {
       case TresqlResult(tr) => tr.unique[Boolean]
@@ -873,6 +857,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     as: ActorSystem,
     fs: FileStreamer,
     req: HttpRequest,
+    qio: AppQuereaseIo[Dto],
   ): Future[IteratorResult] = {
     def iterator(res: QuereaseResult): Iterator[Map[String, Any]] = {
       def addParentData(map: Map[String, Any]) = {
@@ -931,6 +916,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     as: ActorSystem,
     fs: FileStreamer,
     req: HttpRequest,
+    qio: AppQuereaseIo[Dto],
   ): Future[FileInfoResult] = {
     import akka.http.scaladsl.model.{MediaTypes, ContentType}
     import resFac._
@@ -961,6 +947,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     as: ActorSystem,
     fs: FileStreamer,
     req: HttpRequest,
+    qio: AppQuereaseIo[Dto],
   ): Future[DataResult] = {
     import resFac._
     val opData = data ++ env
@@ -1039,11 +1026,12 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     as: ActorSystem,
     fs: FileStreamer,
     req: HttpRequest,
+    qio: AppQuereaseIo[Dto],
   ): Future[DbResult] = {
     val newRes = resFac.initResources()
     val closeRes = resFac.closeResources(newRes, op.doRollback, _)
     val newResFact = resFac.copy(resources = newRes)
-    doSteps(op.action.steps, context.copy(stepName = "db"), Future.successful(data))(newResFact, ec, as, fs, req).map {
+    doSteps(op.action.steps, context.copy(stepName = "db"), Future.successful(data))(newResFact, ec, as, fs, req, qio).map {
       case DbResult(r, cl) => DbResult(r, cl.andThen(_ => closeRes(None)))
       case r => DbResult(r, closeRes)
     }.andThen {
@@ -1086,6 +1074,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     as: ActorSystem,
     fs: FileStreamer,
     req: HttpRequest,
+    qio: AppQuereaseIo[Dto],
   ): Future[QuereaseResult] = {
     doActionOp(op.op, data, env, context)
       .flatMap(dataForNextStep(_, context, true))
@@ -1117,6 +1106,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
     as: ActorSystem,
     fs: FileStreamer,
     req: HttpRequest,
+    qio: AppQuereaseIo[Dto],
   ): Future[QuereaseResult] = {
     import resFac._
     op match {
@@ -1167,6 +1157,7 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
      as: ActorSystem,
      fs: FileStreamer,
      req: HttpRequest,
+     qio: AppQuereaseIo[Dto],
    ): Future[(Source[ByteString, _], ContentType, Option[Long])] = {
     val ct: ContentType = if (contentType == null) MediaTypes.`application/json` else contentType
 
@@ -1345,17 +1336,16 @@ abstract class AppQuerease extends Querease with AppQuereaseIo with AppMetadata 
 
 trait Dto extends org.mojoz.querease.Dto { self =>
 
-  override protected type QE = AppQuerease
   override protected type QDto >: Null <: this.type
 
   import AppMetadata._
 
   private val auth = scala.collection.mutable.Map[String, Any]()
 
-  override def toMapWithOrdering(fieldOrdering: Ordering[String])(implicit qe: QE): Map[String, Any] =
+  override def toMapWithOrdering(fieldOrdering: Ordering[String])(implicit qe: QuereaseMetadata): Map[String, Any] =
     super.toMapWithOrdering(fieldOrdering) ++ (if (auth.isEmpty) Map() else Map("auth" -> auth.toMap))
 
-  override protected def toString(fieldNames: Seq[String])(implicit qe: QE): String = {
+  override protected def toString(fieldNames: Seq[String])(implicit qe: QuereaseMetadata): String = {
     super.toString(fieldNames) +
       (if (auth.isEmpty) "" else ", auth: " + auth.toString)
   }
@@ -1412,7 +1402,7 @@ trait Dto extends org.mojoz.querease.Dto { self =>
   }
 
   // TODO Drop or extract string parsing for number and boolean fields! Then rename parseJsValue() to exclude 'parse'!
-  protected def parseJsValue(fieldName: String, emptyStringsToNull: Boolean)(implicit qe: QE): PartialFunction[JsValue, Any] = {
+  protected def parseJsValue(fieldName: String, emptyStringsToNull: Boolean)(implicit qe: QuereaseMetadata): PartialFunction[JsValue, Any] = {
     import scala.language.existentials
     val (typ, parType) = setters(fieldName) match {
       case DtoSetter(_, met, mOpt, mSeq, mDto, mOth) =>
@@ -1512,8 +1502,8 @@ trait Dto extends org.mojoz.querease.Dto { self =>
   }
 
   //creating dto from JsObject
-  def fill(js: JsObject)(implicit qe: QE): this.type = fill(js, emptyStringsToNull = true)(qe)
-  def fill(js: JsObject, emptyStringsToNull: Boolean)(implicit qe: QE): this.type = {
+  def fill(js: JsObject)(implicit qe: QuereaseMetadata): this.type = fill(js, emptyStringsToNull = true)(qe)
+  def fill(js: JsObject, emptyStringsToNull: Boolean)(implicit qe: QuereaseMetadata): this.type = {
     js.fields foreach { case (name, value) =>
       setters.get(name).map { case s =>
         val converted = parseJsValue(name, emptyStringsToNull)(qe)(value).asInstanceOf[Object]
@@ -1528,7 +1518,5 @@ trait Dto extends org.mojoz.querease.Dto { self =>
 
 trait DtoWithId extends Dto with org.mojoz.querease.DtoWithId
 
-object DefaultAppQuerease extends AppQuerease {
-  override type DTO = Dto
-  override type DWI = DtoWithId
-}
+object DefaultAppQuerease extends AppQuerease
+object DefaultAppQuereaseIo extends AppQuereaseIo[Dto](DefaultAppQuerease)

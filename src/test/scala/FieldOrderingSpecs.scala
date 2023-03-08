@@ -15,12 +15,11 @@ class FieldOrderingSpecs extends FlatSpec with Matchers {
       with NoValidation with PostgresDbAccess with PostgreSqlConstraintMessage {
     object TestQuerease extends TestQuerease("/constraint-message-spec.yaml")
 
-    override type QE = TestQuerease
-    override protected def initQuerease: QE = TestQuerease
+    override protected def initQuerease = TestQuerease
   }
 
   it should "preserve field ordering when jsonizing" in {
-    import TestApp.qe.MapJsonFormat
+    import TestApp.qio.MapJsonFormat
     val m = (1 to 5).map(_.toString).map(x => (x, x)).toMap
 
     val m1: Map[String, Any] = new TreeMap()(Ordering.String) ++ m

@@ -88,6 +88,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
           Route.toFunction(service.route)(as)(req)
         }
     }
+    qio = new AppQuereaseIo[Dto](querease)
     super.beforeAll()
     val db = new DbAccess with Loggable {
       override implicit val tresqlResources: ThreadLocalResources = WabaseActionsSpecs.this.tresqlThreadLocalResources
@@ -96,7 +97,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       override val DefaultCp: PoolName = PoolName("wabase_db")
       override protected val fileStreamerConnectionPool: PoolName = DefaultCp
       override def dbAccessDelegate = db
-      override protected def initQuerease: QE = querease
+      override protected def initQuerease = querease
       override protected def shouldAddResultToContext(context: AppActionContext): Boolean =
         Set("result_audit_test") contains context.viewName
 
@@ -201,7 +202,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       "item" -> "sword",
       "amount" -> 100
     )
-    val id = app.save("purchase", purchase.toJson(app.qe.MapJsonFormat).asJsObject)
+    val id = app.save("purchase", purchase.toJson(app.qio.MapJsonFormat).asJsObject)
     app.get("purchase", id).map(_.asInstanceOf[Dto].toMap(app.qe)).map(removeIds) should be {
       Some(Map(
         "customer" -> "Ravus",

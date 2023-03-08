@@ -19,13 +19,12 @@ import akka.pattern.ask
 
 import scala.concurrent.duration.FiniteDuration
 
-trait WabaseHttpClient extends RestClient with JsonConverterProvider with BasicJsonMarshalling {
+trait WabaseHttpClient extends RestClient with JsonConverterProvider with BasicJsonMarshalling with QuereaseProvider {
 
-  implicit lazy val qe: AppQuerease = initQuerease
   /** Override this method in subclass. Method usage instead of direct
   {{{val qe: AppQuerease}}} initialization ensures that this.qe and subclass qe
   have the same instance */
-  protected def initQuerease: AppQuerease = DefaultAppQuerease
+  protected override def initQuerease: AppQuerease = DefaultAppQuerease
 
   import qe.classToViewNameMap
   import org.wabase.{Dto, DtoWithId}
@@ -106,7 +105,7 @@ trait WabaseHttpClient extends RestClient with JsonConverterProvider with BasicJ
       case _ => iSeq()
     }.headOption
 
-  override protected def initJsonConverter: JsonConverter = qe
+  override protected def initJsonConverter: JsonConverter[_] = qio
 }
 
 object WabaseHttpClient{

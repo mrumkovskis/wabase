@@ -1,6 +1,6 @@
 package dto
 
-import org.wabase.TestApp.Dto
+import org.wabase.Dto
 
 object DtoMapping {
   val viewNameToClass = Map[String, Class[_ <: Dto]]()

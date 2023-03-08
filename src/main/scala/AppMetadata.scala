@@ -5,7 +5,7 @@ import org.mojoz.metadata.FieldDef
 import org.mojoz.metadata.in._
 import org.mojoz.metadata.io.MdConventions
 import org.mojoz.metadata.out.DdlGenerator.SimpleConstraintNamingRules
-import org.mojoz.querease._
+import org.mojoz.querease.QuereaseMetadata
 import org.tresql.{CacheBase, SimpleCacheBase}
 import org.tresql.ast.{Exp, Variable}
 import org.tresql.parsing.QueryParsers
@@ -44,10 +44,10 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   def dtoMappingClassName = "dto.DtoMapping"
   def defaultApiRoleName  = "ADMIN"
 
-  lazy val viewNameToClassMap: Map[String, Class[_ <: DTO]] = {
+  lazy val viewNameToClassMap: Map[String, Class[_ <: Dto]] = {
     val objectClass = Class.forName(dtoMappingClassName + "$")
     objectClass.getField("MODULE$").get(objectClass)
-      .asInstanceOf[{ val viewNameToClass: Map[String, Class[_ <: DTO]] }].viewNameToClass
+      .asInstanceOf[{ val viewNameToClass: Map[String, Class[_ <: Dto]] }].viewNameToClass
   }
 
   lazy val classToViewNameMap: Map[Class[_], String] = viewNameToClassMap.map(_.swap)

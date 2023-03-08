@@ -337,7 +337,6 @@ object FileCleanupSpecsHelper {
   implicit val extraDbs: Seq[DbAccessKey] = Nil
   class TestFileStreamer(val attachmentsRootPathTail: String) extends AppFileStreamer[String]
     with AppConfig with QuereaseProvider with DbAccessProvider {
-    override type QE = FileCleanupSpecsQuerease.type
     override protected def initQuerease = FileCleanupSpecsQuerease
     override def dbAccess = db
     override protected def fileStreamerConnectionPool: PoolName = TestCp
@@ -371,7 +370,6 @@ object FileCleanupSpecsHelper {
   }
   class TestFileCleanup(db: DbAccess, fileStreamers: AppFileStreamerConfig*)
       extends AppFileCleanup(db, fileStreamers: _*) with QuereaseProvider {
-    override type QE = FileCleanupSpecsQuerease.type
     override protected def initQuerease = FileCleanupSpecsQuerease
     override implicit lazy val connectionPool = TestCp
     override lazy val ageCheckSql: String = "now() - interval 1 day"

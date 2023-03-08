@@ -23,17 +23,17 @@ object JsonToAny {
 }
 
 trait JsonConverterProvider {
-  final val jsonConverter: JsonConverter = initJsonConverter
+  final val jsonConverter: JsonConverter[_] = initJsonConverter
   /** Override this method in subclass to initialize {{{jsonConverter}}} */
-  protected def initJsonConverter: JsonConverter
+  protected def initJsonConverter: JsonConverter[_]
 }
 
-trait JsonConverter { self: AppQuerease =>
+trait JsonConverter[DTO <: Dto] { self: AppQuereaseIo[DTO] =>
   private[this] def r(value: JsValue): Any = JsonToAny(value)
   private[this] def w(value: Any): JsValue = value match {
     case m: Map[String @unchecked, Any @unchecked] =>
       JsObject(
-        TreeMap()(new self.FieldOrdering(m.keys.zipWithIndex.toMap)) ++
+        TreeMap()(new self.qe.FieldOrdering(m.keys.zipWithIndex.toMap)) ++
           (m.map { case (k, v) => (k, w(v)) }))
     case l: Iterable[Any] => JsArray((l map w) toSeq : _*)
     case d: DTO @unchecked => DtoJsonFormat.write(d)
