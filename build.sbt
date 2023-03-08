@@ -3,7 +3,9 @@ val scalaV = "2.13.10"
 val akkaV     = "2.6.20"
 val akkaHttpV = "10.2.10"
 
-val borerV = "1.7.2"
+val mojozV    = "5.0.0-SNAPSHOT"
+val quereaseV = "7.0.0-SNAPSHOT"
+val tresqlV   = "12.0.0-SNAPSHOT"
 
 javacOptions ++= Seq("-source", "1.8", "-target", "1.8", "-Xlint")
 initialize := {
@@ -12,38 +14,6 @@ initialize := {
   if (javaVersion != "1.8")
     sys.error("Java 1.8 is required for this project. Found " + javaVersion + " instead")
 }
-
-lazy val dependencies = {
-  Seq(
-    "com.typesafe.akka"          %% "akka-actor"                        % akkaV,
-    "com.typesafe.akka"          %% "akka-http-spray-json"              % akkaHttpV,
-    "com.typesafe.akka"          %% "akka-http-xml"                     % akkaHttpV,
-    "com.typesafe.akka"          %% "akka-slf4j"                        % akkaV,
-    "com.typesafe.akka"          %% "akka-stream"                       % akkaV,
-    "com.typesafe.scala-logging" %% "scala-logging"                     % "3.9.5",
-    "com.typesafe"               %% "ssl-config-core"                   % "0.6.1",
-    "com.zaxxer"                  % "HikariCP"                          % "4.0.3",
-    "ch.qos.logback"              % "logback-classic"                   % "1.2.11",
-    "org.mojoz"                  %% "mojoz"                             % "5.0.0-SNAPSHOT",
-    "org.mojoz"                  %% "querease"                          % "7.0.0-SNAPSHOT",
-    "commons-validator"           % "commons-validator"                 % "1.7",
-    "commons-codec"               % "commons-codec"                     % "1.15",
-    "org.postgresql"              % "postgresql"                        % "42.5.4",
-    "com.lambdaworks"             % "scrypt"                            % "1.4.0",
-    "org.tresql"                 %% "tresql"                            % "12.0.0-SNAPSHOT",
-    "io.bullet"                  %% "borer-core"                        % borerV,
-    "io.bullet"                  %% "borer-compat-akka"                 % borerV,
-  )
-}
-
-lazy val testDependencies = Seq(
-    "org.scalatest"              %% "scalatest"                         % "3.2.15"  % "it,test",
-    "com.typesafe.akka"          %% "akka-http-testkit"                 % akkaHttpV % "it,test",
-    "com.typesafe.akka"          %% "akka-testkit"                      % akkaV   % "it,test",
-    "com.typesafe.akka"          %% "akka-stream-testkit"               % akkaV   % "it,test",
-    "org.hsqldb"                  % "hsqldb"                            % "2.7.1"   %    "test" classifier "jdk8",
-    "com.vladsch.flexmark"        % "flexmark-all"                      % "0.62.2" % "it,test",
-)
 
 ThisBuild / versionScheme          := Some("semver-spec")
 ThisBuild / versionPolicyIntention := Compatibility.BinaryCompatible
@@ -55,6 +25,7 @@ lazy val macros = (project in file("macros"))
   .settings(
     scalaVersion := scalaV,
     crossScalaVersions := Seq(
+      // "3.2.2",
       scalaV,
       "2.12.17",
     )
@@ -69,12 +40,51 @@ lazy val wabase = (project in file("."))
   name := "wabase",
   scalaVersion := scalaV,
   crossScalaVersions := Seq(
+    // "3.2.2",
     scalaV,
     "2.12.17",
   ),
   scalacOptions ++= Seq("-unchecked", "-deprecation", "-feature"),
   resolvers += "snapshots" at "https://oss.sonatype.org/content/repositories/snapshots",
-  libraryDependencies ++= dependencies ++ testDependencies,
+  libraryDependencies ++= {
+    val borerV    = scalaVersion.value match {
+      case v if v startsWith "2.12" => "1.7.2"
+      case v if v startsWith "2.13" => "1.8.0"
+      case v if v startsWith "3"    => "1.10.2"
+    }
+    Seq(
+      "com.typesafe.akka"          %% "akka-actor"            % akkaV,
+      "com.typesafe.akka"          %% "akka-http-spray-json"  % akkaHttpV,
+      "com.typesafe.akka"          %% "akka-http-xml"         % akkaHttpV,
+      "com.typesafe.akka"          %% "akka-slf4j"            % akkaV,
+      "com.typesafe.akka"          %% "akka-stream"           % akkaV,
+      "com.typesafe.scala-logging" %% "scala-logging"         % "3.9.5",
+      "com.typesafe"               %% "ssl-config-core"       % "0.6.1",
+      "com.zaxxer"                  % "HikariCP"              % "4.0.3",
+      "ch.qos.logback"              % "logback-classic"       % "1.2.11",
+      "org.mojoz"                  %% "mojoz"                 % mojozV,
+      "org.mojoz"                  %% "querease"              % quereaseV,
+      "commons-validator"           % "commons-validator"     % "1.7",
+      "commons-codec"               % "commons-codec"         % "1.15",
+      "org.postgresql"              % "postgresql"            % "42.5.4",
+      "com.lambdaworks"             % "scrypt"                % "1.4.0",
+      (if (scalaVersion.value startsWith "3") {
+        "org.tresql"               %% "tresql"                % tresqlV  % "provided" cross CrossVersion.for3Use2_13
+       } else {
+        "org.tresql"               %% "tresql"                % tresqlV
+       }
+      ),
+      "io.bullet"                  %% "borer-core"            % borerV,
+      "io.bullet"                  %% "borer-compat-akka"     % borerV,
+    ) ++ Seq( // for test
+      "org.scalatest"              %% "scalatest"             % "3.2.15"  % "it,test",
+      "com.typesafe.akka"          %% "akka-http-testkit"     % akkaHttpV % "it,test",
+      "com.typesafe.akka"          %% "akka-testkit"          % akkaV     % "it,test",
+      "com.typesafe.akka"          %% "akka-stream-testkit"   % akkaV     % "it,test",
+      "org.hsqldb"                  % "hsqldb"                % "2.7.1"   %    "test" classifier "jdk8",
+      "com.vladsch.flexmark"        % "flexmark-all"          % "0.62.2"  % "it,test",
+    )
+  },
   apiMappings ++= (Compile / fullClasspath map { fcp =>
     // fix bad api mappings,
     val mappings: Map[String, String] =
