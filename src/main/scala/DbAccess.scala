@@ -462,7 +462,7 @@ class Macros extends TresqlComparisonMacros {
   override def shouldIgnoreCase(s: String) = true
 }
 
-class TresqlComparisonMacros extends org.mojoz.querease.QuereaseMacros {
+class TresqlComparisonMacros extends org.tresql.Macros {
 
   val hasNonAscii = """[^\p{ASCII}]"""r
   val hasUpper = """\p{javaUpperCase}"""r
