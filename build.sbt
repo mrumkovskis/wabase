@@ -18,21 +18,7 @@ initialize := {
 ThisBuild / versionScheme          := Some("semver-spec")
 ThisBuild / versionPolicyIntention := Compatibility.BinaryCompatible
 
-lazy val macros = (project in file("macros"))
-  .configs(IntegrationTest)
-  .settings(Defaults.itSettings : _*)
-  .disablePlugins(RevolverPlugin)
-  .settings(
-    scalaVersion := scalaV,
-    crossScalaVersions := Seq(
-      // "3.2.2",
-      scalaV,
-      "2.12.17",
-    )
-  )
-
 lazy val wabase = (project in file("."))
-  .dependsOn(macros)
   .configs(IntegrationTest extend(Test))
   .settings(Defaults.itSettings : _*)
   .settings(

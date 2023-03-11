@@ -22,8 +22,6 @@ columns:
   - request_time           !
   - status                 ! 5 (OK, ERR, QUEUE, EXE, DEL)
   - topic                  ! 50
-  - state                    300
-  - params                   2000
   - request_hash           ! 100
   - request                ! bytes
   - response_time
