@@ -6,6 +6,7 @@ import akka.stream.Materializer
 import akka.stream.scaladsl.{Keep, Source}
 import akka.util.ByteString
 import org.mojoz.metadata.{FieldDef, ViewDef}
+import org.mojoz.querease.FieldFilter
 import org.tresql.{Resources, SingleValueResult}
 import org.wabase.AppMetadata.{Action, AugmentedAppFieldDef, AugmentedAppViewDef}
 import org.wabase.AppMetadata.Action.{LimitKey, OffsetKey, OrderKey}
@@ -57,6 +58,18 @@ trait WabaseApp[User] {
     val fileStreamer = if (appFs == null) null else appFs.fileStreamer
     def withResultFilter(resFil: ResultRenderer.ResultFilter): AppActionContext =
       copy(resultFilter = resFil)
+  }
+
+  protected def fieldFilter(context: AppActionContext): FieldFilter = {
+    def fieldFilter(resultFilter: ResultRenderer.ResultFilter): FieldFilter = {
+      logger.info(s"resultFilter.shouldRender(xxx): ${resultFilter.shouldRender("xxx")}")
+      logger.info(s"resultFilter.shouldRender(name): ${resultFilter.shouldRender("name")}")
+      if (resultFilter == null) null else new FieldFilter {
+        override def shouldQuery(field: String) = resultFilter.shouldRender(field)
+        override def childFilter(field: String) = fieldFilter(resultFilter.childFilter(field))
+      }
+    }
+    fieldFilter(context.resultFilter)
   }
 
   case class WabaseResult(ctx: AppActionContext, result: QuereaseResult)
@@ -160,7 +173,7 @@ trait WabaseApp[User] {
   def simpleAction(context: AppActionContext): ActionHandlerResult = {
     import context._
     val rf = ResourcesFactory(resourceFactory(context), closeResources, tresqlResources.resourcesTemplate)
-    qe.QuereaseAction(viewName, actionName, values, env)(rf, fileStreamer, req, qio)
+    qe.QuereaseAction(viewName, actionName, values, env, fieldFilter(context))(rf, fileStreamer, req, qio)
       .map(WabaseResult(context, _))
   }
 
@@ -202,8 +215,9 @@ trait WabaseApp[User] {
       case x => throwUnexpectedResultClass(x)
 
     }
+    val fFilter = fieldFilter(context)
     val rf = ResourcesFactory(resourceFactory(context), closeResources, tresqlResources.resourcesTemplate)
-    qe.QuereaseAction(viewName, Action.Get, values, env)(rf, fileStreamer, req, qio).map(oldVal)
+    qe.QuereaseAction(viewName, Action.Get, values, env, fFilter)(rf, fileStreamer, req, qio).map(oldVal)
   }
   protected def throwOldValueNotFound(message: String, locale: Locale): Nothing =
     throw new org.mojoz.querease.NotFoundException(translate(message)(locale))
@@ -229,7 +243,8 @@ trait WabaseApp[User] {
         validateFields(viewName, saveable)
         customValidations(saveableContext)(state.locale)
         val rf = ResourcesFactory(resourceFactory(context), closeResources, tresqlResources.resourcesTemplate)
-        qe.QuereaseAction(viewName, context.actionName, saveable, env)(rf, fileStreamer, req, qio)
+        val fFilter = fieldFilter(context)
+        qe.QuereaseAction(viewName, context.actionName, saveable, env, fFilter)(rf, fileStreamer, req, qio)
           .map(WabaseResult(saveableContext, _))
           .recover { case ex => friendlyConstraintErrorMessage(viewDef, throw ex)(state.locale) }
       }
@@ -240,7 +255,7 @@ trait WabaseApp[User] {
     maybeGetOldValue(context).flatMap { oldValue =>
       val richContext = context.copy(oldValue = oldValue)
       val rf = ResourcesFactory(resourceFactory(richContext), closeResources, tresqlResources.resourcesTemplate)
-      qe.QuereaseAction(viewName, actionName, values, env)(rf, fileStreamer, req, qio)
+      qe.QuereaseAction(viewName, actionName, values, env, fieldFilter(context))(rf, fileStreamer, req, qio)
         .map(WabaseResult(richContext, _))
         .recover { case ex => friendlyConstraintErrorMessage(throw ex)(state.locale) }
     }
@@ -315,6 +330,33 @@ trait WabaseApp[User] {
     } else Map.empty
   }
 
+
+  protected def addResultFilter(context: AppActionContext): AppActionContext = {
+    if (context.resultFilter != null) context
+    else context.actionName match {
+      case Action.Get | Action.List | Action.Create =>
+        val allowed = context.params.get("cols").map {
+          case null => null
+          case seq: Seq[_] => seq.map(_.toString).toSet
+          case cols => s"$cols".split(",").map(_.trim).toSet
+        }.orNull
+        logger.info(s"Adding result filter. allowed: ${allowed}")
+        if (allowed != null) {
+          class ColsFilter(viewName: String, nameToViewDef: Map[String, ViewDef])
+            extends ResultRenderer.ViewFieldFilter(viewName, nameToViewDef) {
+            override def shouldRender(field: String) =
+              allowed.contains(field) && super.shouldRender(field)
+            override def childFilter(field: String) = viewDef.fieldOpt(field)
+              .map(_.type_.name)
+              .map(new ColsFilter(_, nameToViewDef))
+              .orNull
+          }
+          context.withResultFilter(new ColsFilter(context.viewName, qe.nameToViewDef))
+        } else context
+      case _ => context
+    }
+  }
+
   protected def beforeWabaseAction(
     context:    AppActionContext,
     doApiCheck: Boolean,
@@ -327,7 +369,9 @@ trait WabaseApp[User] {
       if  (context.actionName == Action.Update && keyAsMap != null && keyAsMap.nonEmpty)
            Map(qe.oldKeyParamName -> keyAsMap)
       else keyAsMap
-    context.copy(values = values ++ key_params)
+    addResultFilter(
+      context.copy(values = values ++ key_params)
+    )
   }
 
   protected def afterWabaseAction(context: AppActionContext, result: Try[QuereaseResult]): Unit = {}

@@ -154,13 +154,14 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
                             view: String,
                             values: Map[String, Any],
                             env: Map[String, Any] = Map.empty,
+                            params: Map[String, Any] = Map.empty,
                             removeIdsFlag: Boolean = true,
                             keyValues: Seq[Any] = Nil,
                           ) = {
     implicit val state = ApplicationState(env)
     implicit val fileStreamer: AppFileStreamer[TestUsr] = app
     implicit val req: HttpRequest = null
-    app.doWabaseAction(action, view, keyValues, Map.empty, values)
+    app.doWabaseAction(action, view, keyValues, params, values)
       .map(_.result)
       .flatMap {
         case sr: QuereaseSerializedResult =>
@@ -918,5 +919,76 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     } yield {
       t1
     }
+  }
+
+  it should "apply column filter to optional columns for get" in  {
+    val person = Map(
+      "birthdate" -> new java.sql.Date(Format.parseDate("1988-09-20").getTime),
+      "sex" -> "M",
+      "name" -> "CfGetName",
+      "surname" -> "CfGetSurname"
+    )
+    for {
+      id <-
+        doAction("insert", "cols_filter_test_1", person)
+          .map { case kr: KeyResult => kr.ir.id case _ => -1 }
+      t0 <-
+        doAction("get", "cols_filter_test_1", Map("id" -> id), Map.empty)
+          .map( _ shouldBe person)
+      t1 <-
+        doAction("get", "cols_filter_test_1", Map("id" -> id), Map.empty, Map("cols" -> ""))
+          .map( _ shouldBe (person - "surname" - "birthdate" - "sex"))
+      t2 <-
+        doAction("get", "cols_filter_test_1", Map("id" -> id), Map.empty, Map("cols" -> "name"))
+          .map( _ shouldBe (person - "surname" - "birthdate" - "sex"))
+      t3 <-
+        doAction("get", "cols_filter_test_1", Map("id" -> id), Map.empty, Map("cols" -> "name, sex"))
+          .map( _ shouldBe (person - "surname" - "birthdate"))
+      t4 <-
+        doAction("get", "cols_filter_test_1", Map("id" -> id), Map.empty, Map("cols" -> "name, surname"))
+          .map( _ shouldBe (person - "birthdate" - "sex"))
+      t5 <-
+        doAction("get", "cols_filter_test_1", Map("id" -> id), Map.empty, Map("cols" -> "sex"))
+          .map( _ shouldBe (person - "surname" - "birthdate"))
+      cleanup <-
+        doAction("delete", "cols_filter_test_1", Map("id" -> id))
+    } yield t5
+  }
+
+  it should "apply column filter to optional columns for list" in  {
+    val person = Map(
+      "birthdate" -> new java.sql.Date(Format.parseDate("1988-09-20").getTime),
+      "sex" -> "M",
+      "name" -> "CfGetName",
+      "surname" -> "CfGetSurname"
+    )
+    def listAndFind(id: Any, cols: String) =
+      doAction("list", "cols_filter_test_1", Map.empty, Map.empty, Map("cols" -> cols), removeIdsFlag = false)
+        .map(_.asInstanceOf[Seq[Map[String, Any]]].find(_("id") == id).map(_ - "id").get)
+    for {
+      id <-
+        doAction("insert", "cols_filter_test_1", person)
+          .map { case kr: KeyResult => kr.ir.id case _ => -1 }
+      t0 <-
+        listAndFind(id, null)
+          .map( _ shouldBe person)
+      t1 <-
+        listAndFind(id, "")
+          .map( _ shouldBe (person - "surname" - "birthdate" - "sex"))
+      t2 <-
+        listAndFind(id, "name")
+          .map( _ shouldBe (person - "surname" - "birthdate" - "sex"))
+      t3 <-
+        listAndFind(id, "name, sex")
+          .map( _ shouldBe (person - "surname" - "birthdate"))
+      t4 <-
+        listAndFind(id, "name, surname")
+          .map( _ shouldBe (person - "birthdate" - "sex"))
+      t5 <-
+        listAndFind(id, "sex")
+          .map( _ shouldBe (person - "surname" - "birthdate"))
+      cleanup <-
+        doAction("delete", "cols_filter_test_1", Map("id" -> id))
+    } yield t5
   }
 }

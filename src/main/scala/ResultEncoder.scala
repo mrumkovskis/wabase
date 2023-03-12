@@ -253,7 +253,7 @@ object ResultRenderer {
   }
 
   class ViewFieldFilter(viewName: String, nameToViewDef: Map[String, ViewDef]) extends ResultFilter {
-    private val viewDef =
+    protected val viewDef =
       nameToViewDef.getOrElse(viewName, sys.error(s"View $viewName not found - can not render result"))
     override def name = viewName
     override def shouldRender(field: String) = viewDef.fieldOpt(field).exists(!_.api.excluded)

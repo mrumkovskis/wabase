@@ -399,6 +399,17 @@ filter:
 - sex
 
 
+name:     cols_filter_test_1
+api:      get, list, save, delete
+table:    person
+fields:
+- id
+- birthdate [?]
+- sex       [?]
+- surname   [?]
+- name
+
+
 name:   status_test_1
 table:
 api:    get, save, list, count

@@ -165,19 +165,21 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     keyColNames: Seq[String],
     extraFilter: String,
     extraParams: Map[String, Any],
+    fieldFilter: FieldFilter,
   )(implicit resources: Resources): Option[RowLike] = {
     val extraFilterAndAuth =
       extraFilterAndAuthString(extraFilter, viewDef.auth.forGet)
-    super.get(viewDef, keyValues, keyColNames, extraFilterAndAuth, extraParams)
+    super.get(viewDef, keyValues, keyColNames, extraFilterAndAuth, extraParams, fieldFilter)
   }
   override def result[B <: AnyRef: Manifest](params: Map[String, Any],
       offset: Int = 0, limit: Int = 0, orderBy: String = null,
-      extraFilter: String = null, extraParams: Map[String, Any] = Map())(
+      extraFilter: String = null, extraParams: Map[String, Any] = Map(),
+      fieldFilter: FieldFilter = null)(
       implicit resources: Resources, qio: QuereaseIo[B]): QuereaseIteratorResult[B] = {
     val v = viewDef[B]
     val extraFilterAndAuth =
       extraFilterAndAuthString(extraFilter, v.auth.forList)
-    super.result(params, offset, limit, orderBy, extraFilterAndAuth, extraParams)
+    super.result(params, offset, limit, orderBy, extraFilterAndAuth, extraParams, fieldFilter)
   }
 
   override protected def countAll_(viewDef: ViewDef, params: Map[String, Any],
@@ -259,6 +261,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       actionName: String,
       data: Map[String, Any],
       env: Map[String, Any],
+      fieldFilter: FieldFilter = null,
     )(resourcesFactory: ResourcesFactory,
       fileStreamer: FileStreamer,
       req: HttpRequest,
@@ -286,7 +289,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
             }
 
             try {
-              doAction(viewName, actionName, data, env).map {
+              doAction(viewName, actionName, data, env, fieldFilter).map {
                 processResult(_, closeResources(resources, false, _))
               }.andThen {
                 case Failure(NonFatal(exception)) => closeResources(resources, true, Option(exception))
@@ -307,6 +310,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     actionName: String,
     env: Map[String, Any],
     view: Option[ViewDef],
+    fieldFilter: FieldFilter = null,
     stepName: String = null,
     contextStack: List[ActionContext] = Nil,
   ) {
@@ -324,6 +328,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     actionName: String,
     data: Map[String, Any],
     env: Map[String, Any],
+    fieldFilter: FieldFilter = null,
     contextStack: List[ActionContext] = Nil,
   )(implicit
     resourcesFactory: ResourcesFactory,
@@ -335,7 +340,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   ): Future[QuereaseResult] = {
     val vd = viewDef(view)
 
-    val ctx = ActionContext(view, actionName, env, Some(vd), null, contextStack)
+    val ctx = ActionContext(view, actionName, env, Some(vd), fieldFilter, null, contextStack)
     logger.debug(s"Doing action '${ctx.name}'.\n Env: $env\nCtx stack: [${contextStack.map(_.name).mkString(", ")}]")
     val steps =
       quereaseActionOpt(vd, actionName)
@@ -603,11 +608,12 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
             case Get =>
               val keyValues = getKeyValues(viewName, callData)
               val keyColNames = viewNameToKeyColNames(viewName)
-              get(v, keyValues, keyColNames, null, callData)
+              val fieldFilter: FieldFilter = context.fieldFilter
+              get(v, keyValues, keyColNames, null, callData, fieldFilter)
                 .map(TresqlSingleRowResult) getOrElse notFound
             case Action.List =>
               TresqlResult(rowsResult(v, callData, int(OffsetKey).getOrElse(0), int(LimitKey).getOrElse(0),
-                string(OrderKey).orNull, null))
+                string(OrderKey).orNull, null, context.fieldFilter))
             case Save =>
               val saveMethod = context.actionName match {
                 case Insert => SaveMethod.Insert
@@ -638,7 +644,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           }
         Future.successful(res)
       } else {
-        doAction(viewName, method, callData, env, context :: context.contextStack)
+        doAction(viewName, method, callData, env, context.fieldFilter, context :: context.contextStack)
       }
     }
   }
