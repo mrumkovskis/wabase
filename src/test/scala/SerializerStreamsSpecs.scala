@@ -679,6 +679,41 @@ class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseIni
     test(Seq(dto), createJsonResultRenderer,  2) shouldBe expectedJson
     test(Seq(dto), createJsonResultRenderer, 22) shouldBe expectedJson
   }
+
+  it should "encode value of field of type 'json' as json" in {
+    implicit val qe = querease
+    def test(s: String, bufferSizeHint: Int = 256): String = {
+      val dto = new FieldToJsonTest
+      dto.name  = "John"
+      dto.accounts = s
+      serializeAndTransform(
+        DataSerializer.source(() => Seq(dto.toMap).iterator),
+        os => new CborOrJsonResultRenderer(
+          BorerNestedArraysEncoder.createWriter(os, Json),
+          isCollection = false,
+          new ResultRenderer.ViewFieldFilter("field_to_json_test", qe.nameToViewDef), hasHeaders = true
+        ),
+        bufferSizeHint = bufferSizeHint,
+      )
+    }
+    test(""""x"""")                   shouldBe """{"name":"John","accounts":"x"}"""
+    test("""null""")                  shouldBe """{"name":"John","accounts":null}"""
+    test("""1""")                     shouldBe """{"name":"John","accounts":1}"""
+    test("""[]""")                    shouldBe """{"name":"John","accounts":[]}"""
+    test("""{}""")                    shouldBe """{"name":"John","accounts":{}}"""
+    test("""[{}]""")                  shouldBe """{"name":"John","accounts":[{}]}"""
+    test("""[{},{}]""")               shouldBe """{"name":"John","accounts":[{},{}]}"""
+    test("""["x"]""")                 shouldBe """{"name":"John","accounts":["x"]}"""
+    test("""[1]""")                   shouldBe """{"name":"John","accounts":[1]}"""
+    test("""[1,2,"a",null]""")        shouldBe """{"name":"John","accounts":[1,2,"a",null]}"""
+    test("""{"x":"y"}""")             shouldBe """{"name":"John","accounts":{"x":"y"}}"""
+    test("""{"x":1,"y":2}""")         shouldBe """{"name":"John","accounts":{"x":1,"y":2}}"""
+    test("""[{"x":"y"}]""")           shouldBe """{"name":"John","accounts":[{"x":"y"}]}"""
+    test("""[{"x":{}}]""")            shouldBe """{"name":"John","accounts":[{"x":{}}]}"""
+    test("""[{"x":[]}]""")            shouldBe """{"name":"John","accounts":[{"x":[]}]}"""
+    test("""[{"x":[{}]}]""")          shouldBe """{"name":"John","accounts":[{"x":[{}]}]}"""
+    test("""[{"x":"chunked"}]""", 2)  shouldBe """{"name":"John","accounts":[{"x":"chunked"}]}"""
+  }
 }
 
 object SerializerStreamsSpecsDtos {
@@ -719,6 +754,10 @@ object SerializerStreamsSpecsDtos {
     var name: String = null
     var bytes: Array[Byte] = null
   }
+  class FieldToJsonTest extends Dto {
+    var name: String = null
+    var accounts: String = null
+  }
 
   val viewNameToClass = Map[String, Class[_ <: Dto]](
     "person" -> classOf[Person],
@@ -727,5 +766,6 @@ object SerializerStreamsSpecsDtos {
     "person_with_main_account" -> classOf[PersonWithMainAccount],
     "person_simple" -> classOf[PersonSimple],
     "bytes_test" -> classOf[BytesTest],
+    "field_to_json_test" -> classOf[FieldToJsonTest],
   )
 }

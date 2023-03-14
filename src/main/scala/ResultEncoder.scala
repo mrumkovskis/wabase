@@ -3,19 +3,25 @@ package org.wabase
 import akka.util.ByteString
 import org.wabase.Format.{xlsxDateTime, xsdDate}
 import io.bullet.borer
-import io.bullet.borer.{Cbor, Encoder, Json, Writer, Target}
+import io.bullet.borer.{Cbor, Decoder, Encoder, Json, Tag, Target, Writer, DataItem => DI}
 import io.bullet.borer.compat.akka.ByteStringByteAccess
+import io.bullet.borer.compat.akka.ByteStringProvider
 
 import java.io
 import java.io.{OutputStream, OutputStreamWriter}
+import java.lang.{Boolean => JBoolean, Double => JDouble, Long => JLong}
+import java.math.{BigDecimal => JBigDecimal, BigInteger => JBigInteger}
+import java.time.{LocalDate, LocalDateTime, LocalTime}
 import java.util.zip.ZipOutputStream
-import org.mojoz.metadata.ViewDef
+import org.mojoz.metadata.{Type, ViewDef}
 import org.wabase.ResultEncoder.{ByteChunks, ChunkType, TextChunks}
 
 import scala.collection.immutable.{ListMap, Seq}
 import AppMetadata.AugmentedAppFieldDef
 import akka.http.scaladsl.model.{ContentType, ContentTypes}
 import org.wabase.ResultRenderers.EncoderFactoryCreator
+
+import scala.annotation.tailrec
 
 object ResultEncoder {
   type EncoderFactory = OutputStream => ResultEncoder
@@ -88,6 +94,7 @@ abstract class ResultRenderer(
   protected var chunkType: ChunkType = null
   protected var buffer: ByteString = null
   protected var level = 0
+  protected var unwrapJson = false
   protected def renderHeader(): Unit      = {}
   protected def renderHeaderData(): Unit  = {}
   protected def renderArrayStart(): Unit  = {}
@@ -151,7 +158,7 @@ abstract class ResultRenderer(
       val isCollection = resFilter == null || resFilter.isCollection(name)
       val shouldRender_ = context.shouldRender && !context.namesToHide.contains(name)
       val childFilter =
-        if (shouldRender_ && resFilter != null && resFilter.isComplexType(name))
+        if (shouldRender_ && resFilter != null && resFilter.type_(name).isComplexType)
           resFilter.childFilter(name)
         else null
       val allNames = impliedNames(childFilter)
@@ -172,7 +179,14 @@ abstract class ResultRenderer(
       val shouldRender_ = context.shouldRender && !context.namesToHide.contains(name)
       if (shouldRender_) {
         renderKey(name)
-        renderRawValue(value)
+        if (unwrapJson && context.resultFilter != null && context.resultFilter.type_(name).name == "json") {
+          value match {
+            case null => renderRawValue(null)
+            case jsonString: String =>
+              new ResultRenderer.JsonForwarder(this).forwardJson(ByteString(jsonString))
+            case x => sys.error(s"Unexpected value class for json type: ${x.getClass.getName}")
+          }
+        } else renderRawValue(value)
       }
     } else  {
       renderRawValue(value)
@@ -247,8 +261,8 @@ object ResultRenderer {
     def name: String
     def shouldRender(field: String): Boolean
     def isCollection(field: String): Boolean
-    def isComplexType(field: String): Boolean
-    def childFilter(field: String): ResultFilter
+    def type_       (field: String): Type
+    def childFilter (field: String): ResultFilter
     def unfilteredNames: List[String]
   }
 
@@ -258,8 +272,8 @@ object ResultRenderer {
     override def name = viewName
     override def shouldRender(field: String) = viewDef.fieldOpt(field).exists(!_.api.excluded)
     override def isCollection(field: String) = viewDef.fieldOpt(field).exists(_.isCollection)
-    override def isComplexType(field: String) = viewDef.fieldOpt(field).exists(_.type_.isComplexType)
-    override def childFilter(field: String) = viewDef.fieldOpt(field)
+    override def type_       (field: String) = viewDef.fieldOpt(field).map(_.type_).orNull
+    override def childFilter (field: String) = viewDef.fieldOpt(field)
       .map(_.type_.name)
       .map(new ViewFieldFilter(_, nameToViewDef))
       .orNull
@@ -267,13 +281,99 @@ object ResultRenderer {
   }
 
   class IntersectionFilter(filter1: ResultFilter, filter2: ResultFilter) extends ResultFilter {
-    override def name = filter1.name
+    override def name = s"(${filter1.name}, ${filter2.name})"
     override def shouldRender(field: String) = filter1.shouldRender(field) && filter2.shouldRender(field)
-    override def isCollection(field: String) = filter1.isCollection(field) && filter2.isCollection(field)
-    override def isComplexType(field: String) = filter1.isComplexType(field) && filter2.isComplexType(field)
-    override def childFilter(field: String) =
+    override def isCollection(field: String) = filter2.isCollection(field)
+    override def type_       (field: String) = filter2.type_(field)
+    override def childFilter (field: String) =
       new IntersectionFilter(filter1.childFilter(field), filter2.childFilter(field))
     override def unfilteredNames = filter1.unfilteredNames
+  }
+
+  class JsonForwarder(renderer: ResultRenderer) {
+    val anyValueForwarder: Decoder[Any] = Decoder { r =>
+      import renderer.{renderRawValue => wv, renderArrayStart => wa, renderBreak => wb}
+      import BorerDatetimeDecoders._
+      r.dataItem() match {
+        case DI.Null          => wv(r.readNull())
+        case DI.Undefined     => wv{r.readUndefined(); null}
+        case DI.Boolean       => wv(r[Boolean])
+        case DI.Int           => wv(r[Int])
+        case DI.Long          => wv(r[Long])
+        case DI.OverLong      => wv(r[JBigInteger])
+        case DI.Float16       => wv(r[Float])
+        case DI.Float         => wv(r[Float])
+        case DI.Double        => wv(r[Double])
+        case DI.NumberString  => wv(r[JBigDecimal])
+        case DI.String        => wv(r[String])
+        case DI.Chars         => wv(r[String])
+        case DI.Text          => wv(r[String])
+        case DI.TextStart     => wv(r[String])
+        case DI.Bytes         => wv(r[Array[Byte]])
+        case DI.BytesStart    => wv(r[Array[Byte]])
+        case DI.ArrayHeader   => implicit val d = anyValueForwarder; wa(); r[Array[Any]]; wb()
+        case DI.ArrayStart    => implicit val d = anyValueForwarder; wa(); r[Array[Any]]; wb()
+        case DI.MapHeader     => implicit val d = mapForwarder;      r[Any];
+        case DI.MapStart      => implicit val d = mapForwarder;      r[Any];
+        case DI.Tag           =>
+          if      (r.hasTag(Tag.PositiveBigNum))   wv(r[JBigInteger])
+          else if (r.hasTag(Tag.NegativeBigNum))   wv(r[JBigInteger])
+          else if (r.hasTag(Tag.DecimalFraction))  wv(r[JBigDecimal])
+          else if (r.hasTag(Tag.DateTimeString))   wv(r[LocalDateTime])
+          else if (r.hasTag(Tag.EpochDateTime)) {
+            r.readTag()
+            r.dataItem() match {
+              case DI.Int | DI.Long   => wv(r[LocalDate])
+              case _                  => wv(r[LocalDateTime])
+            }
+          }
+          else if (r.hasTag(BorerDatetimeEncoders.TimeTag)) wv(r[LocalTime])
+          else wv(r[String])
+        case DI.SimpleValue   => wv(r[Int])
+      }
+      null
+    }
+
+    val mapForwarder: Decoder[Any] = Decoder { r =>
+      import renderer.{renderKey, renderMapStart, renderBreak}
+      def forwardKeyValue(): Unit = {
+        renderKey(r.readString())
+        r[Any](anyValueForwarder)
+      }
+      if (r.hasMapHeader) {
+        @tailrec def rec(remaining: Int): Any = {
+          if (remaining > 0) { forwardKeyValue(); rec(remaining - 1) } else null
+        }
+        val size = r.readMapHeader()
+        renderMapStart()
+        if (size <= Int.MaxValue) rec(size.toInt)
+        else r.overflow(s"Cannot deserialize Map with size $size (> Int.MaxValue)")
+        renderBreak()
+      } else if (r.hasMapStart) {
+        @tailrec def rec(): Unit =
+          if (r.tryReadBreak()) ()
+          else { forwardKeyValue(); rec() }
+        r.readMapStart()
+        renderMapStart()
+        rec()
+        renderBreak()
+      } else r.unexpectedDataItem(expected = "Map")
+    }
+
+    protected def reader(data: ByteString, decodeFrom: Target) = decodeFrom match {
+      case _: Cbor.type => Cbor.reader(data)
+      case _: Json.type => Json.reader(data, Json.DecodingConfig.default.copy(
+        maxNumberAbsExponent = 308, // to accept up to Double.MaxValue
+      ))
+    }
+
+    def forwardJson(
+      data:       ByteString,
+      decodeFrom: Target = Json,
+    ): Unit = {
+      implicit val decoder = anyValueForwarder
+      reader(data, decodeFrom)[Any]
+    }
   }
 }
 
@@ -284,6 +384,7 @@ class CborOrJsonResultRenderer(
   hasHeaders: Boolean = true,
 ) extends ResultRenderer(isCollection, resultFilter, hasHeaders) {
   val valueEncoder = new BorerValueEncoder(w)
+  unwrapJson = !w.writingCbor // TODO unwrap json for cbor, too
   override protected def renderHeader()             = if (isCollection && level <= 1) renderArrayStart()
   override protected def renderFooter()             = if (isCollection) renderBreak()
   override protected def renderArrayStart()         = w.writeArrayStart()
@@ -371,7 +472,7 @@ class FlatTableResultRenderer(
   override protected def shouldRender(name: String): Boolean = {
     val context = contextStack.head
     val rf = context.resultFilter
-    rf == null || (rf.shouldRender(name) && !rf.isCollection(name) && !rf.isComplexType(name))
+    rf == null || (rf.shouldRender(name) && !rf.isCollection(name) && !rf.type_(name).isComplexType)
   }
   override protected def renderHeader():  Unit = renderer.renderHeader()
   override protected def renderKey(key: Any): Unit = {}

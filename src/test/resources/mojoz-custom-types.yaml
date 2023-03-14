@@ -1,3 +1,11 @@
+type:       json
+xsd name:   string
+scala name: String
+yaml:
+  - json
+sql:
+  - jsonb
+
 type:       l_date
 xsd name:   date
 json name:  string

@@ -72,3 +72,11 @@ fields:
 - id
 - name
 - bytes   bytes =
+
+
+name: field_to_json_test
+table: person
+fields:
+- id
+- name
+- accounts  json =
