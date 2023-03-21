@@ -305,7 +305,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     def value[A](a: => A): QuereaseAction[A] = (_: ExecutionContext, _: ActorSystem) => Future.successful(a)
   }
 
-  case class ActionContext(
+  private case class ActionContext(
     viewName: String,
     actionName: String,
     env: Map[String, Any],
@@ -323,7 +323,25 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           view.actions.get(Action.Save)
         case _ => None
       })
+
   def doAction(
+    view: String,
+    actionName: String,
+    data: Map[String, Any],
+    env: Map[String, Any],
+    fieldFilter: FieldFilter = null,
+  )(implicit
+    resourcesFactory: ResourcesFactory,
+    ec: ExecutionContext,
+    as: ActorSystem,
+    fs: FileStreamer,
+    req: HttpRequest,
+    qio: AppQuereaseIo[Dto],
+  ): Future[QuereaseResult] = {
+    do_action(view, actionName, data, env, fieldFilter)
+  }
+
+  private def do_action(
     view: String,
     actionName: String,
     data: Map[String, Any],
@@ -644,7 +662,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           }
         Future.successful(res)
       } else {
-        doAction(viewName, method, callData, env, context.fieldFilter, context :: context.contextStack)
+        do_action(viewName, method, callData, env, context.fieldFilter, context :: context.contextStack)
       }
     }
   }
