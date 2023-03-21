@@ -264,7 +264,7 @@ class ResultCompletionSink(resultCount: Int = 1)(implicit ec: scala.concurrent.E
         }
 
         result.success(Sources.sources.map(s => IncompleteResultSource(s.source)))
-        // upon completion of all sources complete stage, this is necessaray in the case all sources are
+        // upon completion of all sources complete stage, this is necessary in the case all sources are
         // finished before result completion sink upstream is consumed
         Future.foldLeft[Done, Done](Sources.sources
           .map(s => s.completionPromise.future))(Done) { (r, _) => r }

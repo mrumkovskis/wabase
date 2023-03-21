@@ -62,8 +62,6 @@ trait WabaseApp[User] {
 
   protected def fieldFilter(context: AppActionContext): FieldFilter = {
     def fieldFilter(resultFilter: ResultRenderer.ResultFilter): FieldFilter = {
-      logger.info(s"resultFilter.shouldRender(xxx): ${resultFilter.shouldRender("xxx")}")
-      logger.info(s"resultFilter.shouldRender(name): ${resultFilter.shouldRender("name")}")
       if (resultFilter == null) null else new FieldFilter {
         override def shouldQuery(field: String) = resultFilter.shouldRender(field)
         override def childFilter(field: String) = fieldFilter(resultFilter.childFilter(field))
