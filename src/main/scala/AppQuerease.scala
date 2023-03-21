@@ -508,7 +508,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       import CoreTypes._
       if (tresql.indexOf(Action.BindVarCursorsFunctionName) == -1) tresql
       else {
-        def bindVarsCursorsCreator(bindVars: Map[String, Any]): parser.Transformer = {
+        val qp = new QueryParser(macros = resources, cache = resources.cache)
+        def bindVarsCursorsCreator(bindVars: Map[String, Any]): qp.Transformer = {
           def singleValue[T: Converter : Manifest](tresql: String, data: Map[String, Any]): T = {
             Query(tresql, data) match {
               case SingleValueResult(value) => value.asInstanceOf[T]
@@ -516,7 +517,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
             }
           }
 
-          parser.transformer {
+          qp.transformer {
             case q @ PQuery(List(
             Obj(_, _, Join(_,
               Fun(fn @
@@ -550,7 +551,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
                       Action.BindVarCursorsForViewFunctionName
                     }: $tresql")) -> calcBindVars(varPars.tail)
                 }
-              parser.parseExp(cursorsFromViewBindVars(bv, vd)) match {
+              qp.parseExp(cursorsFromViewBindVars(bv, vd)) match {
                 case With(tables, _) => With(tables, q)
                 case _ => q
               }
@@ -560,7 +561,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
             }
           }
         }
-        bindVarsCursorsCreator(env)(parser.parseExp(tresql)).tresql
+        bindVarsCursorsCreator(env)(qp.parseExp(tresql)).tresql
       }
     }
 
