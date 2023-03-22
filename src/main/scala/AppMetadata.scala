@@ -1,5 +1,6 @@
 package org.wabase
 
+import io.bullet.borer.Codec
 import org.mojoz.metadata.ViewDef
 import org.mojoz.metadata.FieldDef
 import org.mojoz.metadata.in._
@@ -694,49 +695,49 @@ trait AppMetadataDataFlowParser extends QueryParsers { self =>
     } else parseOp
   }
 
-  def tresqlOp: Parser[Tresql] = expr ^^ { e => Tresql(e.tresql) }
-  def viewOp: Parser[ViewCall] = ActionRegex ~ ViewNameRegex ~ opt(operation) ^^ {
+  def tresqlOp: MemParser[Tresql] = expr ^^ { e => Tresql(e.tresql) } named "tresql-op"
+  def viewOp: MemParser[ViewCall] = ActionRegex ~ ViewNameRegex ~ opt(operation) ^^ {
     case action ~ view ~ op =>
       ViewCall(action.trim /* trim ending whitespace */, view, op.orNull)
-  }
-  def uniqueOptOp: Parser[UniqueOpt] = "unique_opt" ~> operation ^^ UniqueOpt
-  def invocationOp: Parser[Invocation] = opt(opResultType) ~ InvocationRegex ^^ {
+  }  named "view-op"
+  def uniqueOptOp: MemParser[UniqueOpt] = "unique_opt" ~> operation ^^ UniqueOpt  named "unique-opt-op"
+  def invocationOp: MemParser[Invocation] = opt(opResultType) ~ InvocationRegex ^^ {
     case rt ~ res =>
       val idx = res.lastIndexOf('.')
       Action.Invocation(res.substring(0, idx), res.substring(idx + 1), rt)
-  }
-  def fileOp: Parser[File] = opt(opResultType) ~ ("file" ~> expr) ^^ {
+  } named "invocation-op"
+  def fileOp: MemParser[File] = opt(opResultType) ~ ("file" ~> expr) ^^ {
     case conformTo ~ e => File(e.tresql, conformTo)
-  }
-  def toFileOp: Parser[ToFile] = "to file" ~> operation ~ opt(expr) ~ opt(expr) ^^ {
+  } named "file-op"
+  def toFileOp: MemParser[ToFile] = "to file" ~> operation ~ opt(expr) ~ opt(expr) ^^ {
     case op ~ fileName ~ contentType =>
       ToFile(op, fileName.map(_.tresql).orNull, contentType.map(_.tresql).orNull)
-  }
-  def httpOp: Parser[Http] = {
+  } named "to-file-op"
+  def httpOp: MemParser[Http] = {
     def tu(uri: Exp) = tresqlUri.parse(uri)(self)
-    def http_get_delete: Parser[Http] =
+    def http_get_delete: MemParser[Http] =
       "http" ~> opt("get" | "delete") ~ bracesTresql ~ opt(expr) ^^ {
         case method ~ uri ~ headers =>
           Http(method.getOrElse("get"), tu(uri), headers.map(_.tresql).orNull, null)
-      }
-    def http_post_put: Parser[Http] =
+      } named "http-get-delete-op"
+    def http_post_put: MemParser[Http] =
       "http" ~> ("post" | "put") ~ bracesTresql ~ operation ~ opt(expr) ^^ {
         case method ~ uri ~ op ~ headers =>
           Http(method, tu(uri), headers.map(_.tresql).orNull, op )
-      }
+      } named "http-post-put-op"
     opt(opResultType) ~ (http_post_put | http_get_delete) ^^ {
       case conformTo ~ http => http.copy(conformTo = conformTo)
-    }
+    } named "http-op"
   }
-  def jsonCodecOp: Parser[JsonCodec] = """(from|to)""".r ~ "json" ~ operation ^^ {
+  def jsonCodecOp: MemParser[JsonCodec] = """(from|to)""".r ~ "json" ~ operation ^^ {
     case mode ~ _ ~ op => JsonCodec(mode == "to", op)
-  }
-  def bracesOp: Parser[Op] = "(" ~> operation <~ ")"
-  def bracesTresql: Parser[Exp] = ("(" ~> expr <~ ")") | expr
-  def operation: Parser[Op] = viewOp | uniqueOptOp | invocationOp | httpOp | fileOp | toFileOp |
-    jsonCodecOp | bracesOp | tresqlOp
+  } named "json-op"
+  def bracesOp: MemParser[Op] = "(" ~> operation <~ ")" named "braces-op"
+  def bracesTresql: MemParser[Exp] = (("(" ~> expr <~ ")") | expr) named "braces-tresql-op"
+  def operation: MemParser[Op] = (viewOp | uniqueOptOp | invocationOp | httpOp | fileOp | toFileOp |
+    jsonCodecOp | bracesOp | tresqlOp) named "operation"
 
-  private def opResultType: Parser[OpResultType] = {
+  private def opResultType: MemParser[OpResultType] = {
     sealed trait ResType
     case object NoType extends ResType
     case class ViewType(vn: String) extends ResType
@@ -745,7 +746,7 @@ trait AppMetadataDataFlowParser extends QueryParsers { self =>
 
     "as" ~> (noType | (opt("`") ~> viewType <~ opt("`"))) ~ opt("*") ^^ {
       case ct ~ coll => OpResultType(ct match { case NoType => null case ViewType(vn) => vn }, coll.nonEmpty)
-    }
+    } named "op-result-type"
   }
 }
 
@@ -809,7 +810,7 @@ object AppMetadata {
       def name: Option[String]
     }
 
-    case class VariableTransform(form: String, to: Option[String])
+    case class VariableTransform(form: String, to: Option[String] = None)
     case class OpResultType(viewName: String = null, isCollection: Boolean = false)
 
     case class Tresql(tresql: String) extends Op
@@ -817,7 +818,7 @@ object AppMetadata {
     case class RedirectToKey(name: String) extends Op
     case class UniqueOpt(innerOp: Op) extends Op
     case class Invocation(className: String, function: String, conformTo: Option[OpResultType] = None) extends Op
-    case class Status(code: Option[Int], bodyTresql: String, parameterIndex: Int) extends Op
+    case class Status(code: Option[Int], bodyTresql: String = null, parameterIndex: Int = -1) extends Op
     case class VariableTransforms(transforms: List[VariableTransform]) extends Op
     case class Foreach(initOp: Op, action: Action) extends Op
     case class If(cond: Op, action: Action, elseAct: Action = null) extends Op
@@ -969,6 +970,20 @@ object AppMetadata {
         stepTraverser(opTresqlTrav)(state => extractor(state) orElse traverse(state))
       }
     }
+
+    def actionCodec: Codec[Action] = {
+      import io.bullet.borer.derivation.MapBasedCodecs._
+      implicit val dbAccessKeyCodec = deriveCodec[DbAccessKey]
+      implicit val varTransformCodec = deriveCodec[VariableTransform]
+      implicit val opResultTypeCodec = deriveCodec[OpResultType]
+      implicit val trUriCodec = deriveAllCodecs[TresqlUri.TrUri]
+      implicit val confTypeCodec = deriveAllCodecs[ConfType]
+      // for codecs below must specify type explicitly for derive macro to work
+      implicit lazy val opCodec: Codec[Op] = deriveAllCodecs[Op]
+      implicit lazy val stepCodec: Codec[Step] = deriveAllCodecs[Step]
+      implicit lazy val actionCodec: Codec[Action] = deriveCodec[Action]
+      actionCodec
+    }
   }
 
   case class Action(steps: List[Action.Step])
@@ -976,7 +991,7 @@ object AppMetadata {
   /** Database name (as used in mojoz metadata) and corresponding connection pool name */
   case class DbAccessKey(
     db: String,
-    cp: String,
+    cp: String = null,
   )
 
   /* [jobs]

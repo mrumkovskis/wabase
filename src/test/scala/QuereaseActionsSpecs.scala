@@ -120,6 +120,21 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
     }
   }
 
+  it should "correctly encode, decode action data" in {
+    import io.bullet.borer._
+    implicit val actionCodec: Codec[AppMetadata.Action] = AppMetadata.Action.actionCodec
+    val actionData: Map[(String, String), AppMetadata.Action] =
+      querease.nameToViewDef.flatMap { case (vn, vd) =>
+        vd.actions.map { case (n, a) => ((n, vn), a) }.toList
+      }
+    import org.scalatest.Inspectors._
+    forAll(actionData) {
+      case ((an, vn), a) =>
+        val enc_a = Cbor.encode(a).toByteArray
+        ((an, vn), a) shouldBe ((an, vn), Cbor.decode(enc_a).to[AppMetadata.Action].value)
+    }
+  }
+
   behavior of "person save action"
   import QuereaseActionsDtos._
   implicit val ec: scala.concurrent.ExecutionContext = scala.concurrent.ExecutionContext.global

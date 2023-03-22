@@ -61,6 +61,7 @@ lazy val wabase = (project in file("."))
        }
       ),
       "io.bullet"                  %% "borer-core"            % borerV,
+      "io.bullet"                  %% "borer-derivation"      % borerV,
       "io.bullet"                  %% "borer-compat-akka"     % borerV,
     ) ++ Seq( // for test
       "org.scalatest"              %% "scalatest"             % "3.2.15"  % "it,test",
