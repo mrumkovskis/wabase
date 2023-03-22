@@ -1332,7 +1332,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
 
   private def notFound = StatusResult(StatusCodes.NotFound.intValue, StringStatus("not found"))
 
-  // TODO add macros from resources so that saved parser cache can be used later in runtime
+  // TODO add macros from resources
   abstract class AppQuereaseDefaultParser extends DefaultParser {
     private def varsTransform: MemParser[VariableTransform] = {
       def v2s(v: Variable) = (v.variable :: v.members) mkString "."
