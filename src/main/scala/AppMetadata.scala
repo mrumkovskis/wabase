@@ -971,7 +971,7 @@ object AppMetadata {
       }
     }
 
-    def actionCodec: Codec[Action] = {
+    implicit def actionCodec: Codec[Action] = {
       import io.bullet.borer.derivation.MapBasedCodecs._
       implicit val dbAccessKeyCodec = deriveCodec[DbAccessKey]
       implicit val varTransformCodec = deriveCodec[VariableTransform]
