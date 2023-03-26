@@ -41,7 +41,6 @@ lazy val wabase = (project in file("."))
     Seq(
       "com.typesafe.akka"          %% "akka-actor"            % akkaV,
       "com.typesafe.akka"          %% "akka-http-spray-json"  % akkaHttpV,
-      "com.typesafe.akka"          %% "akka-http-xml"         % akkaHttpV,
       "com.typesafe.akka"          %% "akka-slf4j"            % akkaV,
       "com.typesafe.akka"          %% "akka-stream"           % akkaV,
       "com.typesafe.scala-logging" %% "scala-logging"         % "3.9.5",

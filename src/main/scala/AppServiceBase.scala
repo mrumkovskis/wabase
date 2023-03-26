@@ -34,7 +34,6 @@ import org.mojoz.querease.{ValidationException, ValidationResult}
 
 import java.lang.reflect.InvocationTargetException
 import scala.util.{Failure, Success}
-import xml.Utility.escape
 
 
 trait AppProvider[User] {
@@ -378,9 +377,11 @@ trait AppServiceBase[User]
   }
   def decodeMultiParams(params: Map[String, List[String]]) = params map { t => t._1 -> t._2.map(decodeParam(t._1, _)) }
   val namesForInts = Set("limit", "offset")
+  def escapeReflectedXss(msg: String) =
+    msg.replace("<", "[<]")
   def decodeParam(key: String, value: String) = {
     def throwBadType(type_ : String, cause: Exception = null) =
-      throw new BusinessException(escape(
+      throw new BusinessException(escapeReflectedXss(
         s"Failed to decode as $type_: parameter: '$key', value: '$value'" +
           (if (cause == null) "" else " - caused by " + cause.toString)))
     def handleType[T](goodPath: String => T, typeStr:String)= {
