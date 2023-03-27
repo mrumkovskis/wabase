@@ -118,7 +118,7 @@ class ResultSerializer(
     }
     setHandler(out, new OutHandler {
       override def onPull: Unit = {
-        do encodeNext() while (iterators.nonEmpty && buf.length < bufferSizeHint)
+        while ({ encodeNext(); iterators.nonEmpty && buf.length < bufferSizeHint })()
         if (buf.nonEmpty) {
           val chunk = buf.result()
           buf.clear()

@@ -7,7 +7,7 @@ import akka.http.scaladsl.server.AuthenticationFailedRejection._
 import akka.http.scaladsl.model.{HttpRequest, Uri}
 import akka.http.scaladsl.model.headers.{Host, HttpCookie, HttpOrigin, HttpOriginRange, Origin, Referer, SameSite}
 
-trait CSRFDefence { this: AppConfig with Authentication[_] with Loggable =>
+trait CSRFDefence { this: AppConfig with Authentication[_] with Execution with Loggable =>
 
   lazy val CSRFCookieName = "XSRF-TOKEN"
   lazy val CSRFHeaderName = "X-XSRF-TOKEN"

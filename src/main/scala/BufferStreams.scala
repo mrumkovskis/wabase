@@ -242,7 +242,7 @@ class ResultCompletionSink(resultCount: Int = 1)(implicit ec: scala.concurrent.E
                 override def preStart() = {
                   emit(out, init)
                   pushCallback = getAsyncCallback[ByteString] { elem =>
-                    if (!completionPromise.isCompleted) push(out, elem)
+                    if (!completionPromise.isCompleted) this.push(out, elem)
                   }
                   dataCompleted.future.onComplete {
                     case Success(_) => getAsyncCallback[Unit](_ => completeStage()).invoke(())

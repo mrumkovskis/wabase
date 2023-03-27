@@ -107,7 +107,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
     super.beforeAll()
     // get rid from thread local resources
     val tresqlResources = tresqlThreadLocalResources.withConn(tresqlThreadLocalResources.conn)
-    tresqlResourcesFactory = ResourcesFactory(null, null, tresqlResources)
+    tresqlResourcesFactory = ResourcesFactory(null, null)(tresqlResources)
   }
 
   behavior of "metadata"

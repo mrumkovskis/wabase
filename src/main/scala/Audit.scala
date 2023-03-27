@@ -12,7 +12,8 @@ import scala.util.control.NonFatal
 import org.tresql._
 import org.wabase.MapUtils._
 
-trait Audit[User] { this: AppBase[User] =>
+trait Audit[User] {
+  this: AppBase[User] with DbAccess with Authorization[User] with ValidationEngine with DbConstraintMessage =>
   def audit[C <: RequestContext[_]](originalContext: C)(action: => C): C
   def audit(context: AppActionContext, result: Try[QuereaseResult]): Unit
   def auditSave(id: jLong, viewName: String, instance: Map[String, Any], error: String)(implicit user: User, state: ApplicationState): Unit
@@ -20,7 +21,8 @@ trait Audit[User] { this: AppBase[User] =>
 }
 
 object Audit {
- trait NoAudit[User] extends Audit[User] { this: AppBase[User] =>
+ trait NoAudit[User] extends Audit[User] {
+   this: AppBase[User] with DbAccess with Authorization[User] with ValidationEngine with DbConstraintMessage =>
    def audit[C <: RequestContext[_]](originalContext: C)(action: => C): C = action
    def audit(context: AppActionContext, result: Try[QuereaseResult]): Unit = {}
    def auditSave(id: jLong, viewName: String, instance: Map[String, Any], error: String)(implicit user: User, state: ApplicationState): Unit = {}
@@ -28,7 +30,8 @@ object Audit {
  }
 
 
- trait AbstractAudit[User] extends Audit[User]{this: AppBase[User] =>
+ trait AbstractAudit[User] extends Audit[User]{
+   this: AppBase[User] with DbAccess with Authorization[User] with ValidationEngine with DbConstraintMessage =>
    import qe.{viewDefOption, tableMetadata}
    private def now = new Date()
 

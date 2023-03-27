@@ -34,12 +34,14 @@ import scala.util.control.NonFatal
 trait DeferredControl
   extends DeferredCheck with QueryTimeoutExtractor with DeferredStatusPublisher {
   this: Execution
+   with AppServiceBase[_]
    with JsonConverterProvider
    with AppExceptionHandler
    with AppConfig
    with AppStateExtractor
    with SessionInfoRemover
    with Marshalling
+   with QueryTimeoutExtractor
    with Loggable =>
 
   import DeferredControl._
@@ -378,8 +380,6 @@ object DeferredControl extends Loggable with AppConfig {
   case object GetProcessedDeferredCount
   case class ProcessedDeferredCount(count: Long)
 
-  import logger._
-
   class DeferredCleanup(defControl: DeferredControl) extends Actor {
     var processedCount = 0L
     override def preStart() = {
@@ -388,20 +388,20 @@ object DeferredControl extends Loggable with AppConfig {
         deferredCleanupInterval.unit)
       context.system.scheduler.scheduleAtFixedRate(fd, fd, self, RunDeferredCleanup)(
         context.system.dispatcher)
-      info(s"Deferred request cleanup job started with frequency $fd")
+      logger.info(s"Deferred request cleanup job started with frequency $fd")
     }
 
     override def receive = {
       case RunDeferredCleanup =>
         //set status to DEL for timeouted requests
-        info("DeferredCleanup started")
+        logger.info("DeferredCleanup started")
         processedCount += defControl.doCleanup
-        info(s"DeferredCleanup job ended, total processed deferred count: $processedCount")
+        logger.info(s"DeferredCleanup job ended, total processed deferred count: $processedCount")
       case GetProcessedDeferredCount => sender() ! ProcessedDeferredCount(processedCount)
     }
 
     override def postStop() = {
-      info("DeferredCleanup job stopped")
+      logger.info("DeferredCleanup job stopped")
     }
   }
   object `X-Deferred` extends ModeledCustomHeaderCompanion[`X-Deferred`] {

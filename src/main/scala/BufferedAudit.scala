@@ -13,7 +13,7 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path, StandardOpenOption}
 import java.time.format.DateTimeFormatter
 import java.time.{Instant, ZoneOffset}
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContextExecutor, Future}
 import scala.concurrent.duration._
 import scala.util.{Failure, Success}
 
@@ -44,7 +44,7 @@ class BufferedAuditWriter(
     .withZone(ZoneOffset.UTC) // Reader expects ascending filenames. Using UTC to avoid problems with DST.
   private var filename: String = null
   private var channel: FileChannel = _
-  implicit val executionContext = system.dispatcher
+  implicit val executionContext: ExecutionContextExecutor = system.dispatcher
   val (fileCreationQueue, fileCreationNotificationsSource) =
     Source.queue[Notification](bufferSize = 1).preMaterialize() // for notifications only - best to drop superfluous elements
   fileCreationNotificationsSource.runWith(Sink.ignore)          // XXX keep it alive - https://github.com/akka/akka/issues/28926
@@ -102,7 +102,7 @@ class BufferedAuditReader(
   ),
 )(implicit val system: ActorSystem) extends Loggable {
   import writer.{filenamePrefix, rootPath}
-  implicit val executionContext = system.dispatcher
+  implicit val executionContext: ExecutionContextExecutor = system.dispatcher
   private val buffer = ByteBuffer.allocate(256)
   private var file: File = _
   private var channel: FileChannel = _

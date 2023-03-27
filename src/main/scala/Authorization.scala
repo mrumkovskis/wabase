@@ -2,7 +2,8 @@ package org.wabase
 
 import scala.collection.immutable.Set
 
-trait Authorization[User] { this: AppBase[User] =>
+trait Authorization[User] {
+  this: AppBase[User] with Audit[User] with DbAccess with ValidationEngine with DbConstraintMessage =>
   /** performs authorization, on failure throws UnauthorizedException, otherwise returns */
   def check[C <: RequestContext[_]](ctx: C, clazz: Class[_]): Unit
   /** performs authorization, on success returns true otherwise false */
@@ -21,7 +22,8 @@ trait Authorization[User] { this: AppBase[User] =>
 object Authorization {
   class UnauthorizedException(msg: String) extends BusinessException(msg)
 
-  trait NoAuthorization[User] extends Authorization[User] { this: AppBase[User] =>
+  trait NoAuthorization[User] extends Authorization[User] {
+    this: AppBase[User] with Audit[User] with DbAccess with ValidationEngine with DbConstraintMessage =>
     override def check[C <: RequestContext[_]](ctx: C, clazz: Class[_]): Unit = {}
     override def can[C <: RequestContext[_]](ctx: C, clazz: Class[_]) = true
     override def relevant[C <: RequestContext[_]](ctx: C, clazz: Class[_]) = ctx

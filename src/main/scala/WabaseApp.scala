@@ -18,9 +18,12 @@ import scala.util.{Failure, Success, Try}
 
 trait WabaseApp[User] {
   this:  AppBase[User]
+    with Audit[User]
+    with Authorization[User]
     with DbAccess
     with Authorization[User]
     with DbConstraintMessage
+    with ValidationEngine
     =>
 
   import qe.viewDefOption
@@ -163,14 +166,14 @@ trait WabaseApp[User] {
         case wr => Future.successful(wr)
       }
       .andThen {
-        case Success(WabaseResult(ctx, res)) => afterWabaseAction(ctx, Success(res))
-        case Failure(error) => afterWabaseAction(context, Failure[QuereaseResult](error))
+        case Success(WabaseResult(ctx, res)) => this.afterWabaseAction(ctx, Success(res))
+        case Failure(error) => this.afterWabaseAction(context, Failure[QuereaseResult](error))
       }
   }
 
   def simpleAction(context: AppActionContext): ActionHandlerResult = {
     import context._
-    val rf = ResourcesFactory(resourceFactory(context), closeResources, tresqlResources.resourcesTemplate)
+    val rf = ResourcesFactory(resourceFactory(context), closeResources)(tresqlResources.resourcesTemplate)
     qe.QuereaseAction(viewName, actionName, values, env, fieldFilter(context))(rf, fileStreamer, req, qio)
       .map(WabaseResult(context, _))
   }
@@ -214,7 +217,7 @@ trait WabaseApp[User] {
 
     }
     val fFilter = fieldFilter(context)
-    val rf = ResourcesFactory(resourceFactory(context), closeResources, tresqlResources.resourcesTemplate)
+    val rf = ResourcesFactory(resourceFactory(context), closeResources)(tresqlResources.resourcesTemplate)
     qe.QuereaseAction(viewName, Action.Get, values, env, fFilter)(rf, fileStreamer, req, qio).map(oldVal)
   }
   protected def throwOldValueNotFound(message: String, locale: Locale): Nothing =
@@ -239,8 +242,8 @@ trait WabaseApp[User] {
         val saveable = applyReadonlyValues(viewDef, oldValue, values)
         val saveableContext = richContext.copy(values = saveable)
         validateFields(viewName, saveable)
-        customValidations(saveableContext)(state.locale)
-        val rf = ResourcesFactory(resourceFactory(context), closeResources, tresqlResources.resourcesTemplate)
+        this.customValidations(saveableContext)(state.locale)
+        val rf = ResourcesFactory(resourceFactory(context), closeResources)(tresqlResources.resourcesTemplate)
         val fFilter = fieldFilter(context)
         qe.QuereaseAction(viewName, context.actionName, saveable, env, fFilter)(rf, fileStreamer, req, qio)
           .map(WabaseResult(saveableContext, _))
@@ -252,7 +255,7 @@ trait WabaseApp[User] {
     import context._
     maybeGetOldValue(context).flatMap { oldValue =>
       val richContext = context.copy(oldValue = oldValue)
-      val rf = ResourcesFactory(resourceFactory(richContext), closeResources, tresqlResources.resourcesTemplate)
+      val rf = ResourcesFactory(resourceFactory(richContext), closeResources)(tresqlResources.resourcesTemplate)
       qe.QuereaseAction(viewName, actionName, values, env, fieldFilter(context))(rf, fileStreamer, req, qio)
         .map(WabaseResult(richContext, _))
         .recover { case ex => friendlyConstraintErrorMessage(throw ex)(state.locale) }

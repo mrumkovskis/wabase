@@ -63,10 +63,10 @@ class CborOrJsonDecoder(typeDefs: Seq[TypeDef], nameToViewDef: Map[String, ViewD
             if (r.dataItem() == DI.Null)
               map.updated(key, r.readNull())
             else if (field.type_.isComplexType) {
-              implicit val decoder = toMapDecoder(field.type_.name, viewNameToMapZero)
+              implicit val decoder: Decoder[M] = toMapDecoder(field.type_.name, viewNameToMapZero)
               map.updated(key, if (field.isCollection) toSeq(r[Array[M]]) else r[M])
             } else {
-              implicit val decoder = simpleValueDecoder(field.type_)
+              implicit val decoder: Decoder[Any] = simpleValueDecoder(field.type_)
               map.updated(key, if (field.isCollection) toSeq(r[Array[Any]]) else r[Any])
             }
           } catch {
@@ -109,7 +109,7 @@ class CborOrJsonDecoder(typeDefs: Seq[TypeDef], nameToViewDef: Map[String, ViewD
     viewName:   String,
     decodeFrom: Target = Json,
   )(viewNameToMapZero: String => M): M = {
-    implicit val decoder = toMapDecoder(viewName, viewNameToMapZero)
+    implicit val decoder: Decoder[M] = toMapDecoder(viewName, viewNameToMapZero)
     reader(data, decodeFrom)[M]
   }
 
@@ -118,7 +118,7 @@ class CborOrJsonDecoder(typeDefs: Seq[TypeDef], nameToViewDef: Map[String, ViewD
     viewName:   String,
     decodeFrom: Target = Json,
   )(viewNameToMapZero: String => M): Seq[M] = {
-    implicit val decoder = toMapDecoder(viewName, viewNameToMapZero)
+    implicit val decoder: Decoder[M] = toMapDecoder(viewName, viewNameToMapZero)
     try {
       toSeq(reader(data, decodeFrom)[Array[M]])
     } catch {
@@ -174,10 +174,10 @@ class CborOrJsonAnyValueDecoder() {
       case DI.TextStart     => r[String]
       case DI.Bytes         => r[Array[Byte]]
       case DI.BytesStart    => r[Array[Byte]]
-      case DI.ArrayHeader   => implicit val d = anyValueDecoder(mapZero); toSeq(r[Array[Any]])
-      case DI.ArrayStart    => implicit val d = anyValueDecoder(mapZero); toSeq(r[Array[Any]])
-      case DI.MapHeader     => implicit val d = toMapDecoder(mapZero); r[M]
-      case DI.MapStart      => implicit val d = toMapDecoder(mapZero); r[M]
+      case DI.ArrayHeader   => implicit val d: Decoder[Any] = anyValueDecoder(mapZero); toSeq(r[Array[Any]])
+      case DI.ArrayStart    => implicit val d: Decoder[Any] = anyValueDecoder(mapZero); toSeq(r[Array[Any]])
+      case DI.MapHeader     => implicit val d: Decoder[M]   = toMapDecoder(mapZero);    r[M]
+      case DI.MapStart      => implicit val d: Decoder[M]   = toMapDecoder(mapZero);    r[M]
       case DI.Tag           =>
         if      (r.hasTag(Tag.PositiveBigNum))   r[JBigInteger]
         else if (r.hasTag(Tag.NegativeBigNum))   r[JBigInteger]
@@ -205,13 +205,13 @@ class CborOrJsonAnyValueDecoder() {
       val key = r.readString()
       r.dataItem() match {
         case DI.MapStart =>
-          implicit val decoder = toMapDecoder(mapZero)
+          implicit val decoder: Decoder[M] = toMapDecoder(mapZero)
           map.updated(key, r[M])
         case DI.ArrayStart =>
-          implicit val decoder = anyValueDecoder(mapZero)
+          implicit val decoder: Decoder[Any] = anyValueDecoder(mapZero)
           map.updated(key, toSeq(r[Array[Any]]))
         case _ =>
-          implicit val decoder = anyValueDecoder(mapZero)
+          implicit val decoder: Decoder[Any] = anyValueDecoder(mapZero)
           map.updated(key, r[Any])
       }
     }
@@ -242,7 +242,7 @@ class CborOrJsonAnyValueDecoder() {
     decodeFrom: Target = Json,
     mapZero:    () => M = () => Map.empty[String, Any],
   ): Any = {
-    implicit val decoder = anyValueDecoder(mapZero)
+    implicit val decoder: Decoder[Any] = anyValueDecoder(mapZero)
     reader(data, decodeFrom)[Any]
   }
 
@@ -251,7 +251,7 @@ class CborOrJsonAnyValueDecoder() {
     decodeFrom: Target = Json,
     mapZero:    () => M = () => Map.empty[String, Any],
   ): M = {
-    implicit val decoder = toMapDecoder(mapZero)
+    implicit val decoder: Decoder[M] = toMapDecoder(mapZero)
     reader(data, decodeFrom)[M]
   }
 
@@ -260,7 +260,7 @@ class CborOrJsonAnyValueDecoder() {
     decodeFrom: Target = Json,
     mapZero:    () => M = () => Map.empty[String, Any],
   ): Seq[M] = {
-    implicit val decoder = toMapDecoder(mapZero)
+    implicit val decoder: Decoder[M] = toMapDecoder(mapZero)
     toSeq(reader(data, decodeFrom)[Array[M]])
   }
 }

@@ -78,7 +78,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
 
   implicit def rowLikeToDto[B <: Dto](r: RowLike, m: Manifest[B]): B = qio.rowLikeToDto(r, m)
 
-  implicit def toAppListResult[T <: Dto: Manifest](list: Seq[T]) = new AppListResult[T] {
+  implicit def toAppListResult[T <: Dto: Manifest](list: Seq[T]): AppListResult[T] = new AppListResult[T] {
     private val iter = list.iterator
     override def resources = ???
     override def view = qe.viewDef[T]
@@ -115,7 +115,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
       override protected def nextInternal: R = f(self.next())
     }
     def mapRowWithResources[R <: Dto](f: Resources => T => R) = new Wrapper[R] {
-      override protected def nextInternal: R = f(resources)(self.next())
+      override protected def nextInternal: R = f(self.resources)(self.next())
     }
     def andThen(action: => Unit): AppListResult[T] = {
       onCloseAction = onCloseAction andThen (_ => action)
@@ -126,7 +126,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
   }
 
   implicit def appStateToMap(state: ApplicationState): Map[String, Any] = state.state
-  implicit def mapToAppState(state: Map[String, Any]) = ApplicationState(state)
+  implicit def mapToAppState(state: Map[String, Any]): ApplicationState = ApplicationState(state)
 
   sealed trait RequestContext[+T] {
     def user: User
@@ -440,8 +440,8 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
   def getRaw(viewName: String, id: Long, params: Map[String, Any] = Map())(
     implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout, poolName: PoolName) =
   {
-      checkApi(viewName, "get", user)
-    implicit val extraDbs = extraDb(viewDef(viewName).actionToDbAccessKeys(Action.Get))
+    checkApi(viewName, "get", user)
+    implicit val extraDbs = extraDb(AugmentedAppViewDef(viewDef(viewName)).actionToDbAccessKeys(Action.Get))
     dbUse {
         implicit val clazz = viewNameToClassMap(viewName)
         rest(
@@ -459,7 +459,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
     implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout, poolName: PoolName
   ) = {
       checkApi(viewName, "get", user)
-      implicit val extraDbs = extraDb(viewDef(viewName).actionToDbAccessKeys(Action.Create))
+      implicit val extraDbs = extraDb(AugmentedAppViewDef(viewDef(viewName)).actionToDbAccessKeys(Action.Create))
       dbUse {
         implicit val clazz = viewNameToClassMap(viewName)
         rest(
@@ -534,7 +534,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
       poolName: PoolName) = {
 
     implicit val clazz = viewNameToClassMap(viewName)
-    implicit val extraDbs = extraDb(viewDef(viewName).actionToDbAccessKeys(Action.List))
+    implicit val extraDbs = extraDb(AugmentedAppViewDef(viewDef(viewName)).actionToDbAccessKeys(Action.List))
     dbUse {
       val promise = Promise[Unit]()
       try{
@@ -584,7 +584,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
         .map(_.id)
         .filter(_ != null)
       val old = {
-        implicit val extraDbs = extraDb(viewDef.actionToDbAccessKeys(Action.Get))
+        implicit val extraDbs = extraDb(AugmentedAppViewDef(viewDef).actionToDbAccessKeys(Action.Get))
         implicit val ec = scala.concurrent.ExecutionContext.global
         implicit val as: ActorSystem = null
         implicit val fs: AppFileStreamer[User] = null
@@ -617,7 +617,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
         }
       val promise = Promise[Long]()
       try {
-        implicit val extraDbs = extraDb(viewDef.actionToDbAccessKeys(Action.Save))
+        implicit val extraDbs = extraDb(AugmentedAppViewDef(viewDef).actionToDbAccessKeys(Action.Save))
         val res = friendlyConstraintErrorMessage(viewDef, {
           transaction {
             implicit val clazz = instance.getClass
@@ -642,7 +642,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
       val promise = Promise[Unit]()
       try {
         val res = friendlyConstraintErrorMessage {
-          implicit val extraDbs = extraDb(viewDef(viewName).actionToDbAccessKeys(Action.Delete))
+          implicit val extraDbs = extraDb(AugmentedAppViewDef(viewDef(viewName)).actionToDbAccessKeys(Action.Delete))
           transaction {
             implicit val clazz = viewNameToClassMap(viewName).asInstanceOf[Class[DtoWithId]]
             val ctx = createDeleteCtx(RemoveContext[DtoWithId](viewName, id, params, user, promise, state))

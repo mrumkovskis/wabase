@@ -442,7 +442,7 @@ trait AppFileServiceBase[User] {
   def uploadSizeLimit =  config.getBytes("app.upload.size-limit").toLong
 
   //make visible implicit querease for fileInfo methods
-  private implicit val qe = DefaultAppQuerease
+  private implicit val qe: AppQuerease = DefaultAppQuerease
   import AppFileStreamer._
   def validateFileName(fileName: String) = {}
 
@@ -591,7 +591,7 @@ trait AppFileServiceBase[User] {
 
 object AppServiceBase {
 
-  trait AppStateExtractor { this: AppServiceBase[_] =>
+  trait AppStateExtractor { this: AppServiceBase[_] with QueryTimeoutExtractor with Execution =>
     val ApplicationStateCookiePrefix = "current_"
     def applicationState = extract(r => extractState(r.request, ApplicationStateCookiePrefix))
     protected def extractState(req: HttpRequest, prefix: String) = {
@@ -695,13 +695,20 @@ object AppServiceBase {
         logger.trace(e.getMessage, e)
         import spray.json.DefaultJsonProtocol.{ jsonFormat2, listFormat, StringJsonFormat }
         import jsonConverter._
-        implicit val f02 = jsonFormat2(ValidationResult)
+        implicit val f02: RootJsonFormat[ValidationResult] = jsonFormat2(ValidationResult)
         complete(HttpResponse(BadRequest, entity = e.details.toJson.compactPrint))
     }
 
     /** Handles and logs PostgreSQL timeout exceptions */
     trait PostgresTimeoutExceptionHandler[User] extends AppExceptionHandler {
-      this: AppStateExtractor with SessionUserExtractor[User] with ServerStatistics with DeferredCheck with AppI18nService =>
+      this: AppStateExtractor
+       with AppServiceBase[_]
+       with QueryTimeoutExtractor
+       with Execution
+       with SessionUserExtractor[User]
+       with ServerStatistics
+       with DeferredCheck
+       with AppI18nService =>
       override val appExceptionHandler = PostgresTimeoutExceptionHandler(this)
     }
 
@@ -758,6 +765,9 @@ object AppServiceBase {
 
     trait DefaultAppExceptionHandler[User] extends SimpleExceptionHandler with PostgresTimeoutExceptionHandler[User] {
       this: AppStateExtractor
+        with AppServiceBase[_]
+        with QueryTimeoutExtractor
+        with Execution
         with SessionUserExtractor[User]
         with ServerStatistics
         with Loggable
@@ -778,7 +788,7 @@ object AppServiceBase {
     }
   }
 
-  trait AppI18nService { this: AppServiceBase[_] =>
+  trait AppI18nService { this: AppServiceBase[_] with QueryTimeoutExtractor with Execution =>
     val ApplicationLanguageCookiePostfix = "lang"
 
     val i18n: I18n = initI18n

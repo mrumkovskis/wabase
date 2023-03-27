@@ -49,7 +49,9 @@ trait BasicJsonMarshalling extends akka.http.scaladsl.marshallers.sprayjson.Spra
   def mapUnmarshaller(implicit jsonUnmarshaller: FromEntityUnmarshaller[JsValue]): FromEntityUnmarshaller[Map[String, Any]] =
     jsonUnmarshaller.map(_.convertTo[Map[String, Any]])
 
-  implicit def jsObjectUnmarshaller(implicit jsonUnmarshaller: FromEntityUnmarshaller[JsValue]) = jsonUnmarshaller.map(_.asJsObject)
+  implicit def jsObjectUnmarshaller(
+    implicit jsonUnmarshaller: FromEntityUnmarshaller[JsValue]
+  ): Unmarshaller[HttpEntity, JsObject] = jsonUnmarshaller.map(_.asJsObject)
 }
 
 trait OptionMarshalling {
@@ -137,7 +139,7 @@ trait DtoMarshalling extends QuereaseMarshalling { this: AppProvider[_] with Exe
   implicit val dtoForViewMarshaller: ToEntityMarshaller[(Dto, String)] =
     Marshaller.combined { case (dto, viewName) => (dto.toMap, viewName, null) }
   implicit val dtoMarshaller: ToEntityMarshaller[Dto] =
-    Marshaller.combined { dto: Dto => (dto, app.qe.classToViewNameMap.get(dto.getClass).orNull) }
+    Marshaller.combined { (dto: Dto) => (dto, app.qe.classToViewNameMap.get(dto.getClass).orNull) }
   implicit val dtoSeqForViewMarshaller: ToEntityMarshaller[(Seq[Dto], String)] =
     Marshaller.combined { case (seqOfDto, viewName) => (seqOfDto.map(_.toMap), viewName, null) }
   implicit val dtoSeqMarshaller: ToEntityMarshaller[Seq[Dto]] =
@@ -150,7 +152,7 @@ trait QuereaseMarshalling extends QuereaseResultMarshalling { this: AppProvider[
   import app.qe
   implicit val mapForViewMarshaller: ToEntityMarshaller[(Map[String, Any], String, ResultRenderer.ResultFilter)] = {
     def marsh(viewName: String, resFilter: ResultRenderer.ResultFilter)(implicit ec: ExecutionContext): ToEntityMarshaller[Map[String, Any]] =
-      Marshaller.combined { map: Map[String, Any] =>
+      Marshaller.combined { (map: Map[String, Any]) =>
         // TODO transcode directly
         app.serializeResult(app.SerializationBufferSize, app.viewSerializationBufferMaxFileSize(viewName),
           DataSerializer.source(() => Seq(map).iterator)).map(_.head)
@@ -161,7 +163,7 @@ trait QuereaseMarshalling extends QuereaseResultMarshalling { this: AppProvider[
 
   implicit val seqOfMapsForViewMarshaller: ToEntityMarshaller[(Seq[Map[String, Any]], String, ResultRenderer.ResultFilter)] = {
     def marsh(viewName: String, resFilter: ResultRenderer.ResultFilter)(implicit ec: ExecutionContext): ToEntityMarshaller[Seq[Map[String, Any]]] =
-      Marshaller.combined { seqOfMaps: Seq[Map[String, Any]] =>
+      Marshaller.combined { (seqOfMaps: Seq[Map[String, Any]]) =>
         // TODO transcode directly
         app.serializeResult(app.SerializationBufferSize, app.viewSerializationBufferMaxFileSize(viewName),
           DataSerializer.source(() => seqOfMaps.iterator)).map(_.head)
@@ -311,7 +313,7 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
 
   implicit val toResponseQuereaseIteratorMarshaller: ToResponseMarshaller[QuereaseIteratorResult[Dto]] = {
     def marsh(viewName: String)(implicit ec: ExecutionContext): ToResponseMarshaller[QuereaseIteratorResult[Dto]] =
-      Marshaller.combined { qir: QuereaseIteratorResult[Dto] =>
+      Marshaller.combined { (qir: QuereaseIteratorResult[Dto]) =>
         app.serializeResult(app.SerializationBufferSize, app.viewSerializationBufferMaxFileSize(viewName),
           DataSerializer.source(() => qir.map(_.toMap))).map(_.head)
           .map(QuereaseSerializedResult(_, null, isCollection = true))

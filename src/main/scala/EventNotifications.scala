@@ -101,7 +101,12 @@ object ServerNotifications extends Loggable {
 
   /** Publishes app version and deferred events status info */
   trait DefaultInitialEventsPublisher extends InitialEventsPublisher {
-      this: ServerNotifications with AppVersion with DeferredStatusPublisher =>
+    this: ServerNotifications
+     with AppVersion
+     with DeferredStatusPublisher
+     with Execution
+     with JsonConverterProvider
+     with Loggable =>
     def publishInitialEvents(user: String): Unit = {
       publishUserEvent(user, Map("version" -> appVersion).toJson.compactPrint)
       publishUserDeferredStatuses(user)

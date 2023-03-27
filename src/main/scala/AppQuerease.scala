@@ -34,9 +34,10 @@ trait QuereaseProvider {
   protected def initQuereaseIo: AppQuereaseIo[Dto] = new AppQuereaseIo[Dto](qe)
 }
 
-case class ResourcesFactory(initResources: () => Resources,
-                            closeResources: (Resources, Boolean, Option[Throwable]) => Unit,
-                            implicit val resources: Resources)
+case class ResourcesFactory(
+  initResources: () => Resources,
+  closeResources: (Resources, Boolean, Option[Throwable]) => Unit,
+)(implicit val resources: Resources)
 
 sealed trait StatusValue
 case class RedirectStatus(value: TresqlUri.Uri) extends StatusValue
@@ -271,8 +272,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           def run(implicit ec: ExecutionContext, as: ActorSystem) = {
             val vd = viewDef(viewName)
             implicit val resFac =
-              if (vd.explicitDb) resourcesFactory
-              else resourcesFactory.copy(resources = resourcesFactory.initResources())
+              if (AugmentedAppViewDef(vd).explicitDb) resourcesFactory
+              else resourcesFactory.copy()(resources = resourcesFactory.initResources())
             implicit val fs = fileStreamer
             implicit val httpReq = req
             implicit val io = qio
@@ -305,7 +306,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     def value[A](a: => A): QuereaseAction[A] = (_: ExecutionContext, _: ActorSystem) => Future.successful(a)
   }
 
-  private case class ActionContext(
+  case class ActionContext(
     viewName: String,
     actionName: String,
     env: Map[String, Any],
@@ -1055,7 +1056,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   ): Future[DbResult] = {
     val newRes = resFac.initResources()
     val closeRes = resFac.closeResources(newRes, op.doRollback, _)
-    val newResFact = resFac.copy(resources = newRes)
+    val newResFact = resFac.copy()(resources = newRes)
     doSteps(op.action.steps, context.copy(stepName = "db"), Future.successful(data))(newResFact, ec, as, fs, req, qio).map {
       case DbResult(r, cl) => DbResult(r, cl.andThen(_ => closeRes(None)))
       case r => DbResult(r, closeRes)

@@ -111,9 +111,9 @@ object AppFileStreamer {
 }
 
 trait AppFileStreamerConfig {
-  val rootPath: String
-  val file_info_table: String
-  val file_body_info_table: String
+  lazy val rootPath: String             = null
+  lazy val file_info_table: String      = null
+  lazy val file_body_info_table: String = null
   val shaColName: String = "sha_256" // TODO maybe get rid of this parameter and asume name is 'sha_256'
 }
 
@@ -121,9 +121,9 @@ trait AppFileStreamer[User] extends AppFileStreamerConfig with Loggable { this: 
   
   protected def fileStreamerConnectionPool: PoolName = DEFAULT_CP
 
-  lazy val rootPath = appConfig.getString("files.path").replaceAll("/+$", "")
-  lazy val file_info_table = "file_info"
-  lazy val file_body_info_table = "file_body_info"
+  override lazy val rootPath = appConfig.getString("files.path").replaceAll("/+$", "")
+  override lazy val file_info_table      = "file_info"
+  override lazy val file_body_info_table = "file_body_info"
 
   lazy val fileStreamer: FileStreamer =
     new FileStreamer(this, fileStreamerConnectionPool)

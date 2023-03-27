@@ -3,7 +3,7 @@ package client
 
 import akka.actor.{ActorRef, ActorSystem}
 import akka.http.scaladsl.Http
-import akka.http.scaladsl.coding.Coders.{ Gzip, Deflate, NoCoding }
+import akka.http.scaladsl.coding.Coders.{Deflate, Gzip, NoCoding}
 import akka.http.scaladsl.marshalling.{Marshal, Marshaller}
 import akka.http.scaladsl.model.Uri.Query
 import akka.http.scaladsl.model._
@@ -14,7 +14,7 @@ import akka.stream.scaladsl.{Flow, Keep, Sink, Source}
 
 import scala.collection.immutable.{Seq => iSeq}
 import scala.concurrent.duration._
-import scala.concurrent.{Await, Future, Promise}
+import scala.concurrent.{Await, ExecutionContextExecutor, Future, Promise}
 import scala.language.postfixOps
 import scala.util.{Failure, Success}
 
@@ -33,8 +33,8 @@ trait RestClient extends Loggable{
   import RestClient.{WsClosed, WsFailed}
   def actorSystemName = "rest-client"
   def createActorSystem = ActorSystem(actorSystemName)
-  implicit val system = createActorSystem
-  implicit val executionContext = system.dispatcher
+  implicit val system: ActorSystem = createActorSystem
+  implicit val executionContext: ExecutionContextExecutor = system.dispatcher
 
   lazy val port = 8080
   lazy val serverPath = s"http://localhost:$port/"

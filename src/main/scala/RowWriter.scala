@@ -70,7 +70,7 @@ trait RowWriters { this: QuereaseProvider =>
     }
     override def row(r: Row) = {
       streamer.startRow
-      r.values foreach { v: Any => streamer.cell(v) }
+      r.values foreach { (v: Any) => streamer.cell(v) }
       streamer.endRow
     }
     override def footer() = {
@@ -124,7 +124,7 @@ trait RowWriters { this: QuereaseProvider =>
     }
     override def row(r: Row) = {
       streamer.startRow
-      r.values foreach { v: Any => streamer.cell(v) }
+      r.values foreach { (v: Any) => streamer.cell(v) }
       streamer.endRow
     }
     override def footer() = {

@@ -150,27 +150,27 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
         case Some(null) => Seq("")
         case Some(x) => Seq(x)
       }
-    def getIntExtra(name: String, extras: Map[String, Any]) =
-      Option(extras).flatMap(_ get name).map {
+    def getIntExtra(name: String, viewDef: ViewDef) =
+      Option(viewDef.extras).flatMap(_ get name).map {
         case i: Int => i
         case x => sys.error(
           s"Expecting int value, viewDef, key: ${viewDef.name}, $name")
       }
-    def getStringExtra(name: String, extras: Map[String, Any]) =
-      Option(extras).flatMap(_ get name).map {
+    def getStringExtra(name: String, viewDef: ViewDef) =
+      Option(viewDef.extras).flatMap(_ get name).map {
         case s: String => s
         case x => sys.error(
           s"Expecting string value, viewDef, key: ${viewDef.name}, $name")
       }
-    def getBooleanExtraOpt(name: String, extras: Map[String, Any]) =
-      Option(extras).flatMap(_ get name).map {
+    def getBooleanExtraOpt(name: String, viewDef: ViewDef) =
+      Option(viewDef.extras).flatMap(_ get name).map {
         case b: Boolean => b
         case s: String if s == name => true
         case x => sys.error(
           s"Expecting boolean value or no value, viewDef, key: ${viewDef.name}.$name")
       }
-    def getBooleanExtra(name: String, extras: Map[String, Any]) =
-      getBooleanExtraOpt(name, extras) getOrElse false
+    def getBooleanExtra(name: String, viewDef: ViewDef) =
+      getBooleanExtraOpt(name, viewDef) getOrElse false
 
     def toAuth(viewDef: ViewDef, authPrefix: String) = {
       import KnownAuthOps._
@@ -211,7 +211,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     def fieldNameToLabel(n: String) =
       n.replace("_", " ").capitalize
     def fieldLabelFromName(f: FieldDef) = fieldNameToLabel(f.fieldName)
-    def getExtraOpt(f: FieldDef, key: String) =
+    def getExtraOpt(viewDef: ViewDef, f: FieldDef, key: String) =
       Option(f.extras).flatMap(_ get key).map {
         case s: String => s
         case i: Int => i.toString
@@ -223,20 +223,20 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
         case x => sys.error(
           s"Expecting String, AnyVal, BigDecimal value or no value, viewDef field, key: ${viewDef.name}.${f.name}, $key")
       }
-    def getBooleanExtraOpt(f: FieldDef, key: String) =
+    def getBooleanExtraOpt(viewDef: ViewDef, f: FieldDef, key: String) =
       Option(f.extras).flatMap(_ get key).map {
         case b: Boolean => b
         case s: String if s == key => true
         case x => sys.error(
           s"Expecting boolean value or no value, viewDef field, key: ${viewDef.name}.${f.name}, $key")
       }
-    def getBooleanExtra(f: FieldDef, key: String) =
-      getBooleanExtraOpt(f, key) getOrElse false
+    def getBooleanExtra(viewDef: ViewDef, f: FieldDef, key: String) =
+      getBooleanExtraOpt(viewDef, f, key) getOrElse false
 
   }
 
   protected def isSortableField(viewDef: ViewDef, f: FieldDef) = {
-    FieldDefExtrasUtils.getBooleanExtraOpt(f, KnownFieldExtras.Sortable) getOrElse {
+    FieldDefExtrasUtils.getBooleanExtraOpt(viewDef, f, KnownFieldExtras.Sortable) getOrElse {
       if (f.isExpression || f.isCollection || viewDef.table == null) false
       else f.table == viewDef.table && {
         val td = tableMetadata.tableDef(f.table, viewDef.db)
@@ -289,11 +289,11 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
           )
       }
 
-      val required = getBooleanExtra(f, Required)
+      val required = getBooleanExtra(viewDef, f, Required)
 
       val sortable = isSortableField(viewDef, f)
-      val hiddenOpt = getBooleanExtraOpt(f, Hidden)
-      val visibleOpt = getBooleanExtraOpt(f, Visible)
+      val hiddenOpt = getBooleanExtraOpt(viewDef, f, Hidden)
+      val visibleOpt = getBooleanExtraOpt(viewDef, f, Visible)
       if (hiddenOpt.isDefined && visibleOpt.isDefined && hiddenOpt == visibleOpt)
         sys.error(s"Conflicting values of visible and hidden, viewDef field: ${viewDef.name}.${fieldName}")
       val visible = hiddenOpt.map(! _).getOrElse(visibleOpt getOrElse true)
@@ -358,9 +358,9 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
           (apiToRoles, roles + x.toUpperCase, false)
     }._1
 
-    val limit = getIntExtra(Limit, viewDef.extras) getOrElse 100
-    val cp = getStringExtra(ConnectionPool, viewDef.extras).orNull
-    val explicitDb = getBooleanExtra(ExplicitDb, viewDef.extras)
+    val limit = getIntExtra(Limit, viewDef) getOrElse 100
+    val cp = getStringExtra(ConnectionPool, viewDef).orNull
+    val explicitDb = getBooleanExtra(ExplicitDb, viewDef)
 
     val actions = Action().foldLeft(Map[String, Action]()) { (res, actionName) =>
       val a = parseAction(s"${viewDef.name}.$actionName", getSeq(actionName, viewDef.extras))

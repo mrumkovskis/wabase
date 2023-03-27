@@ -1,4 +1,4 @@
-val scalaV = "2.13.10"
+val scalaV    = "2.13.10" // "3.2.2"
 
 val akkaV     = "2.6.20"
 val akkaHttpV = "10.2.10"
@@ -27,7 +27,7 @@ lazy val wabase = (project in file("."))
   scalaVersion := scalaV,
   crossScalaVersions := Seq(
     // "3.2.2",
-    scalaV,
+    "2.13.10",
     "2.12.17",
   ),
   scalacOptions ++= Seq("-unchecked", "-deprecation", "-feature"),
@@ -39,12 +39,12 @@ lazy val wabase = (project in file("."))
       case v if v startsWith "3"    => "1.10.2"
     }
     Seq(
-      "com.typesafe.akka"          %% "akka-actor"            % akkaV,
-      "com.typesafe.akka"          %% "akka-http-spray-json"  % akkaHttpV,
-      "com.typesafe.akka"          %% "akka-slf4j"            % akkaV,
-      "com.typesafe.akka"          %% "akka-stream"           % akkaV,
+      "com.typesafe.akka"          %% "akka-actor"            % akkaV                 cross CrossVersion.for3Use2_13,
+      "com.typesafe.akka"          %% "akka-http-spray-json"  % akkaHttpV             cross CrossVersion.for3Use2_13,
+      "com.typesafe.akka"          %% "akka-slf4j"            % akkaV                 cross CrossVersion.for3Use2_13,
+      "com.typesafe.akka"          %% "akka-stream"           % akkaV                 cross CrossVersion.for3Use2_13,
       "com.typesafe.scala-logging" %% "scala-logging"         % "3.9.5",
-      "com.typesafe"               %% "ssl-config-core"       % "0.6.1",
+      "com.typesafe"               %% "ssl-config-core"       % "0.6.1"               cross CrossVersion.for3Use2_13,
       "com.zaxxer"                  % "HikariCP"              % "4.0.3",
       "ch.qos.logback"              % "logback-classic"       % "1.3.5",
       "org.mojoz"                  %% "mojoz"                 % mojozV,
@@ -64,9 +64,9 @@ lazy val wabase = (project in file("."))
       "io.bullet"                  %% "borer-compat-akka"     % borerV,
     ) ++ Seq( // for test
       "org.scalatest"              %% "scalatest"             % "3.2.15"  % "it,test",
-      "com.typesafe.akka"          %% "akka-http-testkit"     % akkaHttpV % "it,test",
-      "com.typesafe.akka"          %% "akka-testkit"          % akkaV     % "it,test",
-      "com.typesafe.akka"          %% "akka-stream-testkit"   % akkaV     % "it,test",
+      "com.typesafe.akka"          %% "akka-http-testkit"     % akkaHttpV % "it,test" cross CrossVersion.for3Use2_13,
+      "com.typesafe.akka"          %% "akka-testkit"          % akkaV     % "it,test" cross CrossVersion.for3Use2_13,
+      "com.typesafe.akka"          %% "akka-stream-testkit"   % akkaV     % "it,test" cross CrossVersion.for3Use2_13,
       "org.hsqldb"                  % "hsqldb"                % "2.7.1"   %    "test" classifier "jdk8",
       "com.vladsch.flexmark"        % "flexmark-all"          % "0.62.2"  % "it,test",
     )
