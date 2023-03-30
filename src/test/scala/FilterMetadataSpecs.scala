@@ -8,12 +8,14 @@ import org.scalatest.matchers.should.Matchers
 import org.tresql._
 import org.wabase.AppBase.{FilterLabel, FilterParameter}
 
+import scala.concurrent.ExecutionContextExecutor
+
 
 class FilterMetadataSpecs extends FlatSpec with Matchers with TestQuereaseInitializer {
 
   implicit protected var tresqlResources: Resources = _
-  implicit val system = ActorSystem("serializer-streams-specs")
-  implicit val executor = system.dispatcher
+  implicit val system: ActorSystem = ActorSystem("serializer-streams-specs")
+  implicit val executor: ExecutionContextExecutor = system.dispatcher
   var app: TestApp = _
 
   override def beforeAll(): Unit = {

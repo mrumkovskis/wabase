@@ -6,13 +6,13 @@ import akka.http.scaladsl.marshalling.ToResponseMarshallable
 import akka.http.scaladsl.model.headers.{Location, `Content-Type`}
 import akka.http.scaladsl.model.{ContentTypes, HttpRequest, MediaTypes, StatusCodes, Uri}
 import akka.http.scaladsl.server.Directives._
-import akka.http.scaladsl.server.{Rejection, RejectionHandler, RequestContext, Route, RouteResult}
+import akka.http.scaladsl.server.{ExceptionHandler, Rejection, RejectionHandler, RequestContext, Route, RouteResult}
 import akka.http.scaladsl.settings.{ParserSettings, RoutingSettings}
 import akka.http.scaladsl.testkit.ScalatestRouteTest
 import akka.stream.Materializer
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
-import org.tresql.{DMLResult, Query, ThreadLocalResources, dialects}
+import org.tresql.{convInt, DMLResult, Query, ThreadLocalResources, dialects}
 import spray.json._
 
 import scala.concurrent.{ExecutionContextExecutor, Future}
@@ -21,9 +21,9 @@ class CrudTestService(system: ActorSystem, testApp: TestApp) extends TestAppServ
   override def initApp          = testApp
   override def initFileStreamer = testApp
   implicit val user: TestUsr    = null
-  implicit val exceptionHandler = appExceptionHandler
-  implicit val rejectionHandler = RejectionHandler.default
-  implicit val state            = ApplicationState(Map.empty)
+  implicit val exceptionHandler: ExceptionHandler = appExceptionHandler
+  implicit val rejectionHandler: RejectionHandler = RejectionHandler.default
+  implicit val state:            ApplicationState = ApplicationState(Map.empty)
   val route =
     Route.seal {
       apiPath {

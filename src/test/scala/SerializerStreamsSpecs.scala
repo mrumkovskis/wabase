@@ -5,12 +5,13 @@ import akka.stream.scaladsl.{Sink, Source, StreamConverters}
 import akka.util.ByteString
 import org.apache.commons.codec.binary.Hex
 import io.bullet.borer.{Cbor, Json, Target}
+
 import java.io.{ByteArrayInputStream, InputStream, OutputStream, OutputStreamWriter}
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers
 import org.wabase.ResultEncoder.{ChunkType, EncoderFactory}
 
-import scala.concurrent.Await
+import scala.concurrent.{Await, ExecutionContextExecutor}
 import scala.concurrent.duration.DurationInt
 import org.tresql._
 
@@ -18,8 +19,8 @@ import org.tresql._
 class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseInitializer {
 
   implicit protected var tresqlResources: Resources = _
-  implicit val system = ActorSystem("serializer-streams-specs")
-  implicit val executor = system.dispatcher
+  implicit val system: ActorSystem = ActorSystem("serializer-streams-specs")
+  implicit val executor: ExecutionContextExecutor = system.dispatcher
   import SerializerStreamsSpecsDtos._
 
   override def beforeAll(): Unit = {

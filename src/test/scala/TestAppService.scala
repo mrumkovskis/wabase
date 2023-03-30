@@ -13,9 +13,9 @@ object TestDbAccess extends DbAccess with Loggable {
   }
 }
 
-trait TestApp extends AppBase[TestUsr] with NoAudit[TestUsr] with PostgreSqlConstraintMessage with
-  DbAccessDelegate with NoAuthorization[TestUsr] with AppFileStreamer[TestUsr] with AppConfig with
-  DefaultValidationEngine {
+trait TestApp extends AppBase[TestUsr] with NoAudit[TestUsr] with PostgreSqlConstraintMessage
+  with DbAccessDelegate with NoAuthorization[TestUsr] with AppFileStreamer[TestUsr] with AppConfig
+  with DefaultValidationEngine {
   override protected def initQuerease = new TestQuerease("/no-metadata.yaml")
   override def dbAccessDelegate: DbAccess = TestDbAccess
   override val I18nResourceName = "test"

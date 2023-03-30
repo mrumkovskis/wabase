@@ -320,7 +320,7 @@ class FileCleanupSpecs extends FlatSpec with Matchers with BeforeAndAfterEach {
 }
 
 object FileCleanupSpecsHelper {
-  implicit val queryTimeout = QueryTimeout(10)
+  implicit val queryTimeout: QueryTimeout = QueryTimeout(10)
 
   DbDrivers.loadDrivers
   val db: DbAccess = new DbAccess with Loggable {
@@ -333,7 +333,7 @@ object FileCleanupSpecsHelper {
   }
   import db._
 
-  implicit val TestCp = PoolName("file-cleanup-test")
+  implicit val TestCp: PoolName = PoolName("file-cleanup-test")
   implicit val extraDbs: Seq[DbAccessKey] = Nil
   class TestFileStreamer(val attachmentsRootPathTail: String) extends AppFileStreamer[String]
     with AppConfig with QuereaseProvider with DbAccessProvider {

@@ -1,11 +1,12 @@
 package org.wabase
 
+
 import java.io.File
 import java.nio.file.Files
 import java.util.UUID
+import akka.http.scaladsl.model.{ContentTypes, EntityStreamSizeException, HttpEntity, StatusCodes}
 import akka.http.scaladsl.model.HttpEntity.{Chunk, Chunked, Default}
-import akka.http.scaladsl.model._
-import akka.http.scaladsl.server.Directives._
+import akka.http.scaladsl.server.Directives.{complete, handleExceptions}
 import akka.http.scaladsl.server.ExceptionHandler
 import akka.http.scaladsl.testkit.{RouteTestTimeout, ScalatestRouteTest}
 import akka.http.scaladsl.unmarshalling.FromResponseUnmarshaller
@@ -76,8 +77,8 @@ class FileUploadSpecs extends AnyFlatSpec with TestQuereaseInitializer with Scal
   def downloadPath(id: Number, sha: String) = s"download/$id/$sha"
   val usr = TestUsr(1)
 
-  implicit val routeTimeout = RouteTestTimeout(FiniteDuration(5, duration.SECONDS))
-  implicit val responseTimeout = Duration("5s")
+  implicit val routeTimeout: RouteTestTimeout = RouteTestTimeout(FiniteDuration(5, duration.SECONDS))
+  implicit val responseTimeout: Duration = Duration("5s")
 
   "File upload" should "work" in {
     val content = List.fill(10000)(ByteString("FILE CONTENT UTF-8 (зимние rūķīši) "))

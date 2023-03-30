@@ -24,8 +24,8 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
   }
   import db._
 
-  implicit val queryTimeout = QueryTimeout(10)
-  implicit val Cp = DEFAULT_CP
+  implicit val queryTimeout: QueryTimeout = QueryTimeout(10)
+  implicit val Cp: PoolName = DEFAULT_CP
   implicit val extraDb: Seq[DbAccessKey] = Nil
 
   override def beforeAll() = {
@@ -34,7 +34,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
   }
 
   def recursiveListDirectories(f: File): Array[File] = {
-    val these = Option(f.listFiles) getOrElse Array()
+    val these = Option(f.listFiles) getOrElse Array[File]()
     these.filter(_.isDirectory) ++
       these.filter(_.isDirectory).flatMap(recursiveListDirectories)
   }
@@ -130,7 +130,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
                         )
 
   def extractRequestInfo(map: Map[String, Any], method: String): RequestInfo = {
-    val headers = map.m("headers")
+    val headers = map.m("headers", Map.empty)
     val requestBytes = Try(map.s("request-body-file")).toOption.map(readFileBytes).orNull
     val requestParts = Try(map.a("request-parts")).toOption.orNull
     val bodyParts =
@@ -227,24 +227,24 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
 
   def checkTestCase(scenario: File, testCase: File, context: Map[String, String], map: Map[String, Any]) = {
     val path = map.s("path")
-    val method = map.s("method", "GET")
-    val params = map.m("params")
+    val method = map.sd("method", "GET")
+    val params = map.m("params", Map.empty)
     val requestInfo = extractRequestInfo(cleanupTemplate(map), method)
     import requestInfo._
     val fullCompare   = map.b("full_compare")
     val mergeResponse = map.b("merge_response")
     val debugResponse = map.get("debug_response")
       .map { case false => false case _ => true }.getOrElse(true)
-    val error = map.s("error", null)
+    val error = map.sd("error", null)
     val expectedResponse = (map.getOrElse("response", null), requestMap) match{
       case (resp, _) if !mergeResponse => resp
       case (resp, null) => resp
       case (null, req) => req
       case (resp : Map[String, Any] @unchecked, req) => cleanupTemplate(mergeTemplate(req, resp))
     }
-    val tresqlRow = map.s("tresql_row", null)
-    val tresqlList = map.s("tresql_list", null)
-    val tresqlTransaction = map.s("tresql_transaction", null)
+    val tresqlRow = map.sd("tresql_row", null)
+    val tresqlList = map.sd("tresql_list", null)
+    val tresqlTransaction = map.sd("tresql_transaction", null)
     logScenarioRequestInfo(
       scenario, testCase, context, map,
       path, method, params, requestInfo,

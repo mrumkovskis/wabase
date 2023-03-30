@@ -15,8 +15,8 @@ import scala.util.Success
 class BufferedAuditSpecs extends FlatSpec with Matchers with Eventually {
   behavior of "BufferedAudit"
 
-  implicit val system = ActorSystem("buffered-audit-specs")
-  implicit val executor = system.dispatcher
+  implicit val system: ActorSystem = ActorSystem("buffered-audit-specs")
+  implicit val executor: ExecutionContextExecutor = system.dispatcher
 
   private val slash  = System.getProperty("file.separator")
   private val tmpdir = System.getProperty("java.io.tmpdir").stripSuffix(slash)

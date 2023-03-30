@@ -34,8 +34,8 @@ class DeferredTests extends AnyFlatSpec with Matchers with TestQuereaseInitializ
 
   var deferredResultFileRootPath: String = _
 
-  implicit val queryTimeout = QueryTimeout(10)
-  implicit def userToString(user: TestUsr) = user.id.toString
+  implicit val queryTimeout: QueryTimeout = QueryTimeout(10)
+  implicit def userToString(user: TestUsr): String = user.id.toString
 
   override def beforeAll(): Unit = {
     querease = new TestQuerease("/deferred-metadata.yaml")

@@ -1,6 +1,7 @@
 package org.wabase
 
 import akka.util.ByteString
+import org.mojoz.querease.{Querease, QuereaseIo}
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers
 import spray.json._
@@ -11,9 +12,9 @@ import scala.collection.immutable.TreeMap
 
 class JsonDecoderSpecs extends FlatSpec with Matchers {
   import JsonDecoderSpecs._
-  implicit val qe = new TestQuerease("/json-decoder-specs-metadata.yaml")
-  implicit val qio = new AppQuereaseIo[Dto](qe)
-  import qio._
+  implicit val qe: Querease = new TestQuerease("/json-decoder-specs-metadata.yaml")
+  implicit val qio: AppQuereaseIo[Dto] = new AppQuereaseIo[Dto](qe)
+  import qio.MapJsonFormat
   val strictDecoder = new CborOrJsonDecoder(qe.typeDefs, qe.nameToViewDef)
   val lenientDecoder = new CborOrJsonLenientDecoder(qe.typeDefs, qe.nameToViewDef)
   val anyValsDecoder = new CborOrJsonAnyValueDecoder()

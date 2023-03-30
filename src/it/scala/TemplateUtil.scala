@@ -22,22 +22,30 @@ trait TemplateUtil { this: client.WabaseHttpClient =>
   type MapTemplate = Map[String, Any]
   private case object NotDefined
 
-  implicit def conversion[A, B >: AnyRef](map: Map[A, B]) = new {
-    def zipWithMap[C >: AnyRef](second: Map[A, C], nullObject : AnyRef = null): Map[A, (B, C)] =
+  implicit def conversion(map: MapTemplate): Object {
+    def zipWithMap(second: MapTemplate, nullObject: Any): Map[String, (Any, Any)]
+  } = new {
+    def zipWithMap(second: MapTemplate, nullObject: Any): Map[String, (Any, Any)] =
       map.map{
-        case(k, null) => (k, (null, second.getOrElse[C](k, nullObject)))
-        case(k, v) => (k, (v, second.getOrElse[C](k, nullObject)))
+        case(k, null) => (k, (null, second.getOrElse(k, nullObject)))
+        case(k, v) => (k, (v, second.getOrElse(k, nullObject)))
       } ++ second.map{
-        case(k, null) => (k, (map.getOrElse[B](k, nullObject), null))
-        case(k, v) => (k, (map.getOrElse[B](k, nullObject), v))
+        case(k, null) => (k, (map.getOrElse(k, nullObject), null))
+        case(k, v) => (k, (map.getOrElse(k, nullObject), v))
       }
   }
 
-  implicit def mapShortcats(map: Map[String, Any]) = new {
+  implicit def mapShortcats(map: Map[String, Any]): Object {
+    def a(param: String): List[MapTemplate]
+    def s(param: String): String
+    def m(param: String, defaultValue: Map[String, Any]): Map[String, Any]
+    def b(param: String): Boolean
+    def sd(param: String, defaultValue: String): String
+  } = new {
     def a(param: String) = map(param).asInstanceOf[List[MapTemplate]]
     def s(param: String) = map(param).asInstanceOf[String]
-    def s(param: String, defaultValue: String) = map.getOrElse(param, defaultValue).asInstanceOf[String]
-    def m(param: String, defaultValue: Map[String, Any] = Map.empty) = map.getOrElse(param, defaultValue).asInstanceOf[Map[String, Any]]
+    def sd(param: String, defaultValue: String) = map.getOrElse(param, defaultValue).asInstanceOf[String]
+    def m(param: String, defaultValue: Map[String, Any]) = map.getOrElse(param, defaultValue).asInstanceOf[Map[String, Any]]
     def b(param: String) = map.get(param).contains("true") || map.get(param).contains(true)
   }
 

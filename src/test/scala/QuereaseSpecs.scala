@@ -4,7 +4,7 @@ import org.mojoz.metadata.in.YamlMd
 import org.mojoz.querease.{ValidationException, ValidationResult}
 import org.scalatest.flatspec.{AsyncFlatSpec, AsyncFlatSpecLike}
 import org.scalatest.matchers.should.Matchers
-import org.tresql.{Query, Resources}
+import org.tresql.{convLong, Query, Resources}
 import org.wabase.QuereaseSpecsDtos.Person
 
 import scala.concurrent.{ExecutionContext, Future}

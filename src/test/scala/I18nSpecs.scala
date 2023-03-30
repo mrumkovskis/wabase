@@ -21,7 +21,7 @@ class I18nSpecs extends FlatSpec with Matchers {
 
   translate("""Field "%1$s" is not valid e-mail address""", "epasts")(en) shouldBe """Field "epasts" is not valid e-mail address"""
 
-  implicit val locale = new java.util.Locale("lv")
+  implicit val locale: java.util.Locale = new java.util.Locale("lv")
   translate("""Field "%1$s" is not valid e-mail address""", "epasts") should be ("""Lauka "epasts" vērtība neatbilst e-pasta adreses formātam""")
   translate("to") should be ("līdz")
   translate("""Field "%1$s" is not valid e-mail address""", "epasts") should not be ("""Lauka "epasts" vērtība neatbilst e-pasta adreses šablonam""")

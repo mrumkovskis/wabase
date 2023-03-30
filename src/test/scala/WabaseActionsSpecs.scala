@@ -9,7 +9,7 @@ import akka.util.ByteString
 import org.mojoz.querease.{ValidationException, ValidationResult}
 import org.scalatest.flatspec.{AsyncFlatSpec, AsyncFlatSpecLike}
 import org.scalatest.matchers.should.Matchers
-import org.tresql.{MissingBindVariableException, Query, ThreadLocalResources}
+import org.tresql.{convString, MissingBindVariableException, Query, ThreadLocalResources}
 import org.wabase.QuereaseActionsDtos.PersonWithHealthDataHealth
 
 import java.io.File
@@ -145,10 +145,10 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
   }
 
   import spray.json._
-  private implicit val user = TestUsr(100)
-  private implicit val timeout = QueryTimeout(10)
-  private implicit val defaultCp = PoolName(dbNamePrefix)
-  private implicit val as = ActorSystem("wabase-action-specs")
+  private implicit val user: TestUsr = TestUsr(100)
+  private implicit val timeout: QueryTimeout = QueryTimeout(10)
+  private implicit val defaultCp: PoolName = PoolName(dbNamePrefix)
+  private implicit val as: ActorSystem = ActorSystem("wabase-action-specs")
 
   protected def doAction[T](action: String,
                             view: String,
@@ -191,7 +191,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       }
   }
 
-  private implicit val state = ApplicationState(Map())
+  private implicit val state: ApplicationState = ApplicationState(Map())
 
   behavior of "purchase"
 

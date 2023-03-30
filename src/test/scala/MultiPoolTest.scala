@@ -9,7 +9,7 @@ import org.wabase.AppMetadata.DbAccessKey
 class MultiPoolTest extends FlatSpec with Matchers with ScalatestRouteTest with BeforeAndAfterAll {
   behavior of "dbUse() and transaction()"
 
-  implicit val queryTimeout = QueryTimeout(10)
+  implicit val queryTimeout: QueryTimeout = QueryTimeout(10)
 
   val db = new DbAccess with Loggable {
     override implicit val tresqlResources = new TresqlResources {
