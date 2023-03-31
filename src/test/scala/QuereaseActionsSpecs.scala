@@ -120,7 +120,6 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
     }
   }
 
-  /* FIXME re-enable action coder tests
   it should "correctly encode, decode action data" in {
     import io.bullet.borer._
     import AppMetadata.Action.actionCodec
@@ -129,13 +128,14 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
         vd.actions.map { case (n, a) => ((n, vn), a) }.toList
       }
     import org.scalatest.Inspectors._
-    forAll(actionData) {
-      case ((an, vn), a) =>
-        val enc_a = Cbor.encode(a).toByteArray
-        ((an, vn), a) shouldBe ((an, vn), Cbor.decode(enc_a).to[AppMetadata.Action].value)
-    }
+    convertAssertionToFutureAssertion(
+      forAll(actionData) {
+        case ((an, vn), a) =>
+          val enc_a = Cbor.encode(a).toByteArray
+          ((an, vn), a) shouldBe ((an, vn), Cbor.decode(enc_a).to[AppMetadata.Action].value)
+      }
+    )
   }
-  */
 
   behavior of "person save action"
   import QuereaseActionsDtos._
