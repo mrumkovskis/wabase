@@ -26,7 +26,7 @@ lazy val wabase = (project in file("."))
   name := "wabase",
   scalaVersion := scalaV,
   crossScalaVersions := Seq(
-    // "3.2.2",
+    "3.2.2",
     "2.13.10",
     "2.12.17",
   ),

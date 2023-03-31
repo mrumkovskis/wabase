@@ -1366,6 +1366,7 @@ trait Dto extends org.mojoz.querease.Dto { self =>
 
   import AppMetadata._
 
+  /* TODO Dto.auth?
   private val auth = scala.collection.mutable.Map[String, Any]()
 
   override def toMapWithOrdering(fieldOrdering: Ordering[String])(implicit qe: QuereaseMetadata): Map[String, Any] =
@@ -1375,6 +1376,7 @@ trait Dto extends org.mojoz.querease.Dto { self =>
     super.toString(fieldNames) +
       (if (auth.isEmpty) "" else ", auth: " + auth.toString)
   }
+  */
   private def isSavableFieldAppExtra(
     field: FieldDef,
     view: ViewDef,
