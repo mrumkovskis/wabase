@@ -1062,6 +1062,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
     val viewDef = qe.viewDef(viewName)
     // TODO ensure field ordering
     val errorMessages = viewDef.fields
+      .filterNot(_.api.readonly)
       .map(fld =>
         validationErrorMessage(viewName, fld, instance.getOrElse(fld.fieldName, null))(state.locale))
       .filter(_.isDefined)
