@@ -868,7 +868,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
       }
       def tailists[B](l: List[B]): List[List[B]] =
         if (l.isEmpty) Nil else l :: tailists(l.tail)
-      val joinsParser = new org.mojoz.querease.TresqlJoinsParser(qe.tresqlMetadata)
+      import qe.joinsParser
       val (needsBaseTable, parsedJoins) =
         Option(v.joins)
           .map(joins =>

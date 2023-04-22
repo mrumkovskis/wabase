@@ -144,7 +144,6 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     * */
   val jsonValueEncoder: ResultEncoder.JsValueEncoderPF = _ => PartialFunction.empty
 
-
   override protected def persistenceFilters(
     view: ViewDef,
   ): OrtMetadata.Filters = {
@@ -1334,7 +1333,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   private def notFound = StatusResult(StatusCodes.NotFound.intValue, StringStatus("not found"))
 
   // TODO add macros from resources
-  abstract class AppQuereaseDefaultParser extends DefaultParser {
+  abstract class AppQuereaseDefaultParser(cache: Option[Cache]) extends DefaultParser(cache) {
     private def varsTransform: MemParser[VariableTransform] = {
       def v2s(v: Variable) = (v.variable :: v.members) mkString "."
       (variable | ("(" ~> ident ~ "=" ~ variable <~ ")")) ^^ {
@@ -1352,11 +1351,33 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     }
   }
 
-  object AppQuereaseDefaultParser extends AppQuereaseDefaultParser {
-    override val cache = Some(new SimpleCacheBase[Exp](tresqlParserCacheSize))
-  }
+  object AppQuereaseDefaultParser extends AppQuereaseDefaultParser(createParserCache)
+
+  // TODO prepare filterParameters to initialize tresqlJoinsParser caches   
+
+  override protected def serializedCaches: Map[String, Array[Byte]] =
+    (
+      Map("expression-parser-cache.cbor" -> parser.cache.orNull) ++
+      tresqlJoinsParser.dbToCompilerAndCache.map {
+        case (db, (_, cache)) => s"joins-parser-cache-for-$db.cbor" -> cache.orNull
+      }
+    ).map { case (k, v) => k -> serializeCache(v) }
+     .filter(_._2 != null)
+
+  protected def serializeCache(cache: Cache): Array[Byte] =
+    DefaultAppQuerease.CacheIo.encodeParserCache(cache.toMap)
 
   val tresqlParserCacheSize: Int = 4096
+  protected def createParserCache(name: String, size: Int): Option[Cache] = {
+    val cache = new SimpleCache(size)
+    DefaultAppQuerease.CacheIo.decodeParserCache(name)
+      .foreach(cache.load)
+    Some(cache)
+  }
+  override protected def createParserCache: Option[Cache] =
+    createParserCache("expression-parser-cache.cbor", tresqlParserCacheSize)
+  protected def createJoinsParserCache(db: String): Option[Cache] =
+    createParserCache(s"joins-parser-cache-for-$db.cbor", tresqlParserCacheSize)
   override val parser: QuereaseExpressions.Parser = this.AppQuereaseDefaultParser
 }
 
@@ -1546,5 +1567,52 @@ trait Dto extends org.mojoz.querease.Dto { self =>
 
 trait DtoWithId extends Dto with org.mojoz.querease.DtoWithId
 
-object DefaultAppQuerease extends AppQuerease
+object DefaultAppQuerease extends AppQuerease {
+  object CacheIo {
+    /*
+    import io.bullet.borer._
+    import io.bullet.borer.derivation.MapBasedCodecs._
+    import io.bullet.borer.Codec
+    import org.tresql.ast._
+    import org.tresql.metadata.{Par, Procedure, ReturnType}
+    import CompilerAst._
+    implicit      val tableColDefCodec:   Codec[TableColDef]    = deriveCodec    [TableColDef]
+    implicit lazy val exprTypeCodec:      Codec[ExprType]       = deriveCodec    [ExprType]
+    implicit lazy val parCodec:           Codec[Par]            = deriveCodec    [Par]
+    implicit lazy val returnTypeCodec:    Codec[ReturnType]     = deriveAllCodecs[ReturnType]
+    implicit lazy val procedureCodec:     Codec[Procedure]      = deriveCodec    [Procedure]
+    implicit lazy val joinCodec:          Codec[Join]           = deriveCodec    [Join]          // TODO
+    implicit lazy val objCodec:           Codec[Obj]            = deriveCodec    [Obj]           // TODO
+    implicit lazy val tableDefCodec:      Codec[TableDef]       = deriveCodec    [TableDef]      // TODO
+    implicit lazy val identCodec:         Codec[Ident]          = deriveCodec    [Ident]         // TODO
+    implicit lazy val arrCodec:           Codec[Arr]            = deriveCodec    [Arr]           // TODO
+    implicit lazy val colCodec:           Codec[Col]            = deriveCodec    [Col]           // TODO
+    implicit lazy val colsCodec:          Codec[Cols]           = deriveCodec    [Cols]          // TODO
+    implicit lazy val deleteCodec:        Codec[Delete]         = deriveCodec    [Delete]        // TODO
+    implicit lazy val colDefCodec:        Codec[ColDef]         = deriveCodec    [ColDef]        // TODO
+    implicit lazy val insertCodec:        Codec[Insert]         = deriveCodec    [Insert]        // TODO
+    implicit lazy val updateCodec:        Codec[Update]         = deriveCodec    [Update]        // TODO
+    implicit lazy val withTableDefCodec:  Codec[WithTableDef]   = deriveCodec    [WithTableDef]  // TODO
+    implicit lazy val dmlDefBaseCodec:    Codec[DMLDefBase]     = deriveAllCodecs[DMLDefBase]    // TODO
+    implicit lazy val ordColCodec:        Codec[OrdCol]         = deriveCodec    [OrdCol]        // TODO
+    implicit lazy val ordCodec:           Codec[Ord]            = deriveCodec    [Ord]           // TODO
+    implicit lazy val funCodec:           Codec[Fun]            = deriveCodec    [Fun]           // TODO
+    implicit lazy val funDefCodec:        Codec[FunDef]         = deriveCodec    [FunDef]        // TODO
+    implicit lazy val filtersCodec:       Codec[Filters]        = deriveCodec    [Filters]       // TODO
+    implicit lazy val grpCodec:           Codec[Grp]            = deriveCodec    [Grp]           // TODO
+    implicit lazy val queryCodec:         Codec[Query]          = deriveCodec    [Query]         // TODO
+    implicit lazy val binOpCodec:         Codec[BinOp]          = deriveCodec    [BinOp]         // TODO
+    implicit lazy val selectDefBaseCodec: Codec[SelectDefBase]  = deriveAllCodecs[SelectDefBase] // TODO
+    implicit lazy val sqlDefBaseCodec:    Codec[SQLDefBase]     = deriveAllCodecs[SQLDefBase]    // TODO
+    implicit lazy val expCodec:           Codec[Exp]            = deriveAllCodecs[Exp]
+    */
+    def encodeParserCache(cache: Map[String, Exp]): Array[Byte] =
+      null
+      // Cbor.encode(cache).toByteArray
+    def decodeParserCache(name: String): Option[Map[String, Exp]] =
+      None
+      // Option(getClass.getResourceAsStream(name))
+      //   .map(Cbor.decode(_).to[Map[String, Exp]].value)
+  }
+}
 object DefaultAppQuereaseIo extends AppQuereaseIo[Dto](DefaultAppQuerease)

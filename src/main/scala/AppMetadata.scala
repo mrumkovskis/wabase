@@ -6,7 +6,7 @@ import org.mojoz.metadata.FieldDef
 import org.mojoz.metadata.in._
 import org.mojoz.metadata.io.MdConventions
 import org.mojoz.metadata.out.DdlGenerator.SimpleConstraintNamingRules
-import org.mojoz.querease.QuereaseMetadata
+import org.mojoz.querease.{QuereaseMetadata, TresqlJoinsParser}
 import org.tresql.{CacheBase, SimpleCacheBase}
 import org.tresql.ast.{Exp, Variable}
 import org.tresql.parsing.QueryParsers
@@ -22,6 +22,8 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
   import AppMetadata._
 
+  override protected lazy val tresqlJoinsParser =
+    new TresqlJoinsParser(tresqlMetadata, createJoinsParserCache(_))
   override lazy val metadataConventions: AppMdConventions = new DefaultAppMdConventions
   override lazy val nameToViewDef: Map[String, ViewDef] = {
     val mojozViewDefs =
