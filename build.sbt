@@ -51,7 +51,7 @@ lazy val wabase = (project in file("."))
       "org.mojoz"                  %% "querease"              % quereaseV,
       "commons-validator"           % "commons-validator"     % "1.7",
       "commons-codec"               % "commons-codec"         % "1.15",
-      "org.postgresql"              % "postgresql"            % "42.5.4",
+      "org.postgresql"              % "postgresql"            % "42.6.0",
       "com.lambdaworks"             % "scrypt"                % "1.4.0",
       (if (scalaVersion.value startsWith "3") {
         "org.tresql"               %% "tresql"                % tresqlV  % "provided" cross CrossVersion.for3Use2_13
