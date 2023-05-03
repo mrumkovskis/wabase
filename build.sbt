@@ -53,12 +53,7 @@ lazy val wabase = (project in file("."))
       "commons-codec"               % "commons-codec"         % "1.15",
       "org.postgresql"              % "postgresql"            % "42.6.0",
       "com.lambdaworks"             % "scrypt"                % "1.4.0",
-      (if (scalaVersion.value startsWith "3") {
-        "org.tresql"               %% "tresql"                % tresqlV  % "provided" cross CrossVersion.for3Use2_13
-       } else {
-        "org.tresql"               %% "tresql"                % tresqlV
-       }
-      ),
+      "org.tresql"                 %% "tresql"                % tresqlV,
       "io.bullet"                  %% "borer-core"            % borerV,
       "io.bullet"                  %% "borer-derivation"      % borerV,
       "io.bullet"                  %% "borer-compat-akka"     % borerV,
