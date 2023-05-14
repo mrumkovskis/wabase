@@ -36,7 +36,7 @@ lazy val wabase = (project in file("."))
     val borerV    = scalaVersion.value match {
       case v if v startsWith "2.12" => "1.7.2"
       case v if v startsWith "2.13" => "1.8.0"
-      case v if v startsWith "3"    => "1.10.2"
+      case v if v startsWith "3"    => "1.10.3"
     }
     Seq(
       "com.typesafe.akka"          %% "akka-actor"            % akkaV                 cross CrossVersion.for3Use2_13,
