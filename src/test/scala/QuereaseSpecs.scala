@@ -322,6 +322,9 @@ class QuereaseSpecs extends AsyncFlatSpec with Matchers with TestQuereaseInitial
       "save"  -> Set("MANAGER_1", "MANAGER_2"),
       "delete"-> Set("MANAGER_1", "MANAGER_2"),
     )
+    querease.viewDef("api_roles_test_5").apiMethodToRoles shouldBe Map.empty
+    querease.viewDef("api_roles_test_6").apiMethodToRoles shouldBe Map.empty
+    querease.viewDef("api_roles_test_7").apiMethodToRoles shouldBe Map.empty
     intercept[RuntimeException] {
       new TestQuerease("/querease-specs-bad-metadata.yaml", _.body contains "api_error_test_1").nameToViewDef
     }.getMessage shouldBe "Duplicate API method definition: api_error_test_1.get"

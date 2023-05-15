@@ -343,7 +343,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       }).flatMap { s =>
        val parts = s.trim.split("[\\s,]+").toList.filter(_ != "")
        val lastOpt = parts.lastOption
-       if (lastOpt.isEmpty || !lastOpt.exists(knownApiMethods.contains))
+       if (lastOpt.nonEmpty && !lastOpt.exists(knownApiMethods.contains))
           sys.error(badApiStructure)
        parts
       }

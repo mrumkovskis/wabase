@@ -64,6 +64,20 @@ api:
 - save, delete: MANAGER_1 MANAGER_2
 
 
+name:   api_roles_test_5
+table:
+api:    # get, list
+
+
+name:   api_roles_test_6
+table:
+api:
+
+
+name:   api_roles_test_7
+table:
+
+
 name: sys_role_choice
 table: sys_role r
 fields:
