@@ -1,4 +1,4 @@
-val scalaV    = "2.13.10" // "3.3.0-RC5"
+val scalaV    = "2.13.10" // "3.3.0-RC6"
 
 val akkaV     = "2.6.20"
 val akkaHttpV = "10.2.10"
@@ -26,7 +26,7 @@ lazy val wabase = (project in file("."))
   name := "wabase",
   scalaVersion := scalaV,
   crossScalaVersions := Seq(
-    "3.3.0-RC5",
+    "3.3.0-RC6",
     "2.13.10",
     "2.12.17",
   ),
