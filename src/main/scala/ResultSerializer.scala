@@ -9,7 +9,8 @@ import akka.util.{ByteString, ByteStringBuilder}
 import java.io.{InputStream, OutputStream}
 import java.lang.{Boolean => JBoolean, Byte => JByte, Double => JDouble, Float => JFloat, Long => JLong, Short => JShort}
 import java.math.{BigDecimal => JBigDecimal, BigInteger => JBigInteger}
-import java.time.{LocalDate, LocalTime, LocalDateTime}
+import java.time.{Instant, LocalDate, LocalTime, LocalDateTime, OffsetDateTime}
+import java.time.format.DateTimeFormatter
 
 import ResultEncoder._
 
@@ -172,6 +173,10 @@ object BorerDatetimeEncoders {
     Encoder { (w, value) => w ~ sql.Time.valueOf(value) }
   implicit val localDateTimeEncoder: Encoder[LocalDateTime] =
     Encoder { (w, value) => w ~ sql.Timestamp.valueOf(value) }
+  implicit val offsetDateTimeEncoder: Encoder[OffsetDateTime] = Encoder { (w, value) =>
+    // TODO optimize cbor for OffsetDateTime - maybe see https://datatracker.ietf.org/doc/draft-ietf-cbor-time-tag/
+    w writeString value.format(DateTimeFormatter.ISO_OFFSET_DATE)
+  }
 }
 
 class BorerValueEncoder(w: Writer) {
@@ -322,6 +327,16 @@ object BorerDatetimeDecoders {
     Decoder { r => r[sql.Time].toLocalTime() }
   implicit val localDateTimeDecoder: Decoder[LocalDateTime] =
     Decoder { r => r[sql.Timestamp].toLocalDateTime() }
+  implicit val offsetDateTimeDecoder: Decoder[OffsetDateTime] = Decoder { reader =>
+    import reader._
+    dataItem() match {
+      case DI.Chars | DI.String               => OffsetDateTime.parse(readString())
+      case _ if tryReadTag(Tag.DateTimeString)=> OffsetDateTime.parse(readString())
+      case _ if tryReadTag(Tag.EpochDateTime) => OffsetDateTime.from(Instant.ofEpochMilli((readDouble() * 1000).toLong))
+      case DI.Double                          => OffsetDateTime.from(Instant.ofEpochMilli((readDouble() * 1000).toLong))
+      case _                                  => unexpectedDataItem(expected = "OffsetDateTime")
+    }
+  }
 }
 
 class BorerNestedArraysTransformer(reader: Reader, handler: ResultEncoder) {
