@@ -7,11 +7,11 @@ import org.mojoz.metadata.in._
 import org.mojoz.metadata.io.MdConventions
 import org.mojoz.metadata.out.DdlGenerator.SimpleConstraintNamingRules
 import org.mojoz.querease.{QuereaseMetadata, TresqlJoinsParser}
-import org.tresql.{CacheBase, SimpleCacheBase}
+import org.tresql.{Cache, CacheBase, SimpleCache, SimpleCacheBase}
 import org.tresql.ast.{Exp, Variable}
 import org.tresql.parsing.QueryParsers
 import org.wabase.AppMetadata.Action.TresqlExtraction.{OpTresqlTraverser, State, StepTresqlTraverser, opTresqlTraverser, stepTresqlTraverser}
-import org.wabase.AppMetadata.Action.{Validations, VariableTransform, ViewCall, traverseAction}
+import org.wabase.AppMetadata.Action.{QuereaseActionCacheName, Validations, VariableTransform, ViewCall, traverseAction}
 
 import scala.collection.immutable.{Seq, Set}
 import scala.jdk.CollectionConverters._
@@ -24,15 +24,32 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
   import AppMetadata._
 
-  override protected lazy val tresqlJoinsParser =
+  override lazy val joinsParser =
     new TresqlJoinsParser(tresqlMetadata, createJoinsParserCache(_))
   override lazy val metadataConventions: AppMdConventions = new DefaultAppMdConventions
   override lazy val nameToViewDef: Map[String, ViewDef] = {
     val mojozViewDefs =
-      YamlViewDefLoader(tableMetadata, yamlMetadata, tresqlJoinsParser, metadataConventions, Seq("api"))
+      YamlViewDefLoader(tableMetadata, yamlMetadata, joinsParser, metadataConventions, Seq("api"))
         .nameToViewDef
     toAppViewDefs(mojozViewDefs)
   }
+  protected lazy val actionCache: Map[String, Map[String, Action]] = {
+    val res = getClass.getResourceAsStream(s"/$QuereaseActionCacheName")
+    if (res == null) Map() else {
+      import io.bullet.borer._
+      import AppMetadata.Action.actionCodec
+      Cbor.decode(res).to[Map[String, Map[String, Action]]].value
+    }
+  }
+  protected lazy val joinsParserCache: Map[String, Map[String, Exp]] = {
+    val res = getClass.getResourceAsStream(s"/$JoinsCompilerCacheName")
+    if (res == null) Map() else {
+      import io.bullet.borer._
+      import CacheIo.expCodec
+      Cbor.decode(res).to[Map[String, Map[String, Exp]]].value
+    }
+  }
+
   def toAppViewDefs(mojozViewDefs: Map[String, ViewDef]) = transformAppViewDefs {
     val inlineViewDefNames =
       mojozViewDefs.values.flatMap { viewDef =>
@@ -365,11 +382,11 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val limit = getIntExtra(Limit, viewDef) getOrElse 100
     val cp = getStringExtra(ConnectionPool, viewDef).orNull
     val explicitDb = getBooleanExtra(ExplicitDb, viewDef)
-
-    val actions = Action().foldLeft(Map[String, Action]()) { (res, actionName) =>
+    def parseActions = Action().foldLeft(Map[String, Action]()) { (res, actionName) =>
       val a = parseAction(s"${viewDef.name}.$actionName", getSeq(actionName, viewDef.extras))
       if (a.steps.nonEmpty) res + (actionName -> a) else res
     }
+    val actions = actionCache.getOrElse(viewDef.name, parseActions)
 
     val extras =
       Option(viewDef.extras)
@@ -479,6 +496,31 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       s"View action compilation done in ${endTime - startTime} ms, " +
         s"$compiledTresqlCount queries compiled in $compiledActionCount actions in ${viewsToCompile.size} views")
     (compiledQueries.toSet, caches)
+  }
+
+  override protected def serializedCaches: Map[String, Array[Byte]] = {
+    import io.bullet.borer._
+    import AppMetadata.Action.actionCodec
+    val actionData: Map[String, Map[String, Action]] = nameToViewDef.map {
+      case (vn, v) => (vn, v.actions)
+    }
+    val joinData: Map[String, Map[String, Exp]] =
+      joinsParser.asInstanceOf[TresqlJoinsParser].dbToCompilerAndCache.map {
+        case (db, (_, c)) => Option(db).getOrElse("null") -> c.map(_.toMap).getOrElse(Map[String, Exp]())
+      }
+    val serializedActions = Map(QuereaseActionCacheName -> Cbor.encode(actionData).toByteArray)
+
+    import CacheIo.expCodec
+    val serializedJoins = Map(JoinsCompilerCacheName -> Cbor.encode(joinData).toByteArray)
+    super.serializedCaches ++ serializedActions ++ serializedJoins
+  }
+
+  protected def createJoinsParserCache(db: String): Option[Cache] = {
+    joinsParserCache.get(Option(db).getOrElse("null")).map { data =>
+      val cache = new SimpleCache(tresqlParserCacheSize)
+      cache.load(data)
+      cache
+    }
   }
 
   protected def extractViewVariables(viewDefs: Map[String, ViewDef])(action: String, viewName: String): Seq[Variable] = {
@@ -837,6 +879,8 @@ object AppMetadata {
 
   val AuthEmpty = AuthFilters(Nil, Nil, Nil, Nil, Nil)
 
+  val JoinsCompilerCacheName  = "joins-compiler-cache.cbor"
+
   object Action {
     val Get    = "get"
     val List   = "list"
@@ -859,6 +903,8 @@ object AppMetadata {
 
     val BindVarCursorsFunctionName = "build_cursors"
     val BindVarCursorsForViewFunctionName = "build_cursors_for_view"
+
+    val QuereaseActionCacheName = "querease-action-cache.cbor"
 
     object ConfTypes {
       def types: Set[ConfType] = Set(NumberConf, StringConf, BooleanConf)
