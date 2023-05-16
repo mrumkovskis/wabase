@@ -98,6 +98,13 @@ columns:
 - value               ! 256
 pk: key
 
+# for action parsing check
+table: gets
+columns:
+  - key                 ! 40
+  - value               ! 256
+pk: key
+
 
 name: person
 api: save, get

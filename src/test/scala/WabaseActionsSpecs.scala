@@ -87,6 +87,8 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         reqF.flatMap { req =>
           Route.toFunction(service.route)(as)(req)
         }
+
+      override lazy val macrosClass: Class[_] = classOf[Macros]
     }
     qio = new AppQuereaseIo[Dto](querease)
     super.beforeAll()
@@ -193,7 +195,15 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
 
   private implicit val state: ApplicationState = ApplicationState(Map())
 
-  behavior of "purchase"
+  behavior of "metadata"
+
+  it should "compile metadata" in {
+    var msgs: List[String] = Nil
+    app.qe.compileAllQueries(Set(), true, msgs ::= _)
+    msgs.head should include ("View action compilation done")
+  }
+
+  behavior of "actions"
 
   // this is deprecated use wabase action calls
   it should "should purchase without validation" in {

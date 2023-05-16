@@ -10,12 +10,14 @@ import org.mojoz.querease.{QuereaseMetadata, TresqlJoinsParser}
 import org.tresql.{CacheBase, SimpleCacheBase}
 import org.tresql.ast.{Exp, Variable}
 import org.tresql.parsing.QueryParsers
-import org.wabase.AppMetadata.Action.VariableTransform
+import org.wabase.AppMetadata.Action.TresqlExtraction.{OpTresqlTraverser, State, StepTresqlTraverser, opTresqlTraverser, stepTresqlTraverser}
+import org.wabase.AppMetadata.Action.{Validations, VariableTransform, ViewCall, traverseAction}
 
 import scala.collection.immutable.{Seq, Set}
 import scala.jdk.CollectionConverters._
 import scala.language.reflectiveCalls
 import scala.util.Try
+import scala.util.control.NonFatal
 import scala.util.matching.Regex
 
 trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
@@ -412,6 +414,71 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
             tresql(v.auth.forInsert)}, ${tresql(v.auth.forDelete)}, ${tresql(v.auth.forUpdate)}")
         }.getOrElse(field)
     })
+  }
+
+  override def compileAllQueries(previouslyCompiledQueries: Set[String],
+                        showFailedViewQuery: Boolean,
+                        log: => String => Unit,
+                       ): (Set[String], Map[String, Array[Byte]]) = {
+    val startTime = System.currentTimeMillis
+    val (quereaseCompiledQueries, caches) =
+      super.compileAllQueries(previouslyCompiledQueries, showFailedViewQuery, log)
+
+    lazy val opTresqlTrav: OpTresqlTraverser[scala.collection.mutable.Set[String]] =
+      opTresqlTraverser(opTresqlTrav, stepTresqlTrav)(st => {
+        case ViewCall(_, _, data) => opTresqlTrav(st)(data)
+      })
+    lazy val stepTresqlTrav: StepTresqlTraverser[scala.collection.mutable.Set[String]] =
+      stepTresqlTraverser(opTresqlTrav)(st => {
+        case Validations(_, validations, db) =>
+          val v = viewDef(st.viewName)
+          validationsQueryString(v, emptyData(v), validations).flatMap { valStr =>
+            db.flatMap(k => Option(k.db)).map("|" + _ + ":" + valStr)
+              .orElse(Option(valStr))
+              .map { tresql =>
+                st.copy(value = st.tresqlExtractor(st.value)(st.parser.parseExp(tresql)))
+              }
+          }.getOrElse(st)
+      })
+    val viewsToCompile = nameToViewDef.values.toList.sortBy(_.name)
+    log(s"Compiling actions for ${viewsToCompile.size} views")
+    val compiler = new org.tresql.compiling.Compiler {
+      override val metadata = tresqlMetadata
+      override val extraMetadata = tresqlMetadata.extraDbToMetadata
+    }
+    val compiledQueries = scala.collection.mutable.Set(quereaseCompiledQueries.toSeq: _*)
+    var compiledActionCount = 0
+    var compiledTresqlCount = 0
+    viewsToCompile.foreach { v =>
+      v.actions.foreach { case (n, a) =>
+        val st = State[scala.collection.mutable.Set[String]](
+          n, v.name, Map(), parser,
+          tresqlExtractor = cq => {
+            case e =>
+              val tresqlString = e.tresql
+              if(!cq.contains(tresqlString)) {
+                try compiler.compile(e) catch {
+                  case NonFatal(ex) =>
+                    val msg = s"\nFailed to compile viewdef ${v.name} action $n: ${ex.getMessage}" +
+                      (if (showFailedViewQuery) s"\n$tresqlString" else "")
+                    throw new RuntimeException(msg, ex)
+                }
+                compiledTresqlCount += 1
+              }
+              cq += tresqlString
+          },
+          viewExtractor = v => _ => v,
+          processed = Set(), value = compiledQueries
+        )
+        traverseAction(a)(stepTresqlTrav)(st).value
+        compiledActionCount += 1
+      }
+    }
+    val endTime = System.currentTimeMillis
+    log(
+      s"View action compilation done in ${endTime - startTime} ms, " +
+        s"$compiledTresqlCount queries compiled in $compiledActionCount actions in ${viewsToCompile.size} views")
+    (compiledQueries.toSet, caches)
   }
 
   protected def extractViewVariables(viewDefs: Map[String, ViewDef])(action: String, viewName: String): Seq[Variable] = {
