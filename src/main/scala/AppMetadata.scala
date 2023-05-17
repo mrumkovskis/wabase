@@ -35,18 +35,31 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   }
   protected lazy val actionCache: Map[String, Map[String, Action]] = {
     val res = getClass.getResourceAsStream(s"/$QuereaseActionCacheName")
-    if (res == null) Map() else {
+    if (res == null) {
+      logger.debug(s"No querease view action cache resource - '/$QuereaseActionCacheName' found")
+      Map()
+    } else {
       import io.bullet.borer._
       import AppMetadata.Action.actionCodec
-      Cbor.decode(res).to[Map[String, Map[String, Action]]].value
+      val cache =
+        Cbor.decode(res).to[Map[String, Map[String, Action]]].value
+      logger.debug(s"Querease action cache loaded for ${cache.size} views.")
+      cache
     }
   }
   protected lazy val joinsParserCache: Map[String, Map[String, Exp]] = {
     val res = getClass.getResourceAsStream(s"/$JoinsCompilerCacheName")
-    if (res == null) Map() else {
+    if (res == null) {
+      logger.debug(s"No joins compiler cache resource - '/$JoinsCompilerCacheName' found")
+      Map()
+    } else {
       import io.bullet.borer._
       import CacheIo.expCodec
-      Cbor.decode(res).to[Map[String, Map[String, Exp]]].value
+      val cache =
+        Cbor.decode(res).to[Map[String, Map[String, Exp]]].value
+      logger.debug(s"Joins compiler cache loaded for databases: ${
+        cache.map { case (db, c) => s"$db - ${c.size}" }.mkString("(", ", ", ")") }")
+      cache
     }
   }
 
