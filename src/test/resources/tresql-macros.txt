@@ -1,3 +1,1 @@
 include /querease-macros.txt
-
-/*xxx*/
