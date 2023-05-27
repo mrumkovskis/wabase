@@ -1,7 +1,7 @@
 val scalaV    = "2.13.10" // "3.3.0"
 
-val akkaV     = "2.6.20"
-val akkaHttpV = "10.2.10"
+val akkaV     =  "2.6.20" // Ensure Apache-2.0 license
+val akkaHttpV = "10.2.10" // Ensure Apache-2.0 license
 
 val mojozV    = "5.0.0"
 val quereaseV = "7.0.0-SNAPSHOT"
