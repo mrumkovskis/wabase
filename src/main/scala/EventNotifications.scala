@@ -55,7 +55,7 @@ trait ServerNotifications extends EventStreamMarshalling with WebSocketDirective
         .mapMaterializedValue(subscribeToUserEvents(_, userIdString))
     }
     /**
-      * Consider {{{serverSideEventAction}}} instead
+      * Consider [[serverSideEventAction]] instead
       * */
     def wsNotificationsAction(userIdString: String) = {
       handleWebSocketMessages(wsNotificationGraph.mapMaterializedValue(subscribeToUserEvents(_, userIdString)))

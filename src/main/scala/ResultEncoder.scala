@@ -34,7 +34,7 @@ object ResultEncoder {
     */
   type JsValueEncoderPF = Writer => PartialFunction[Any, Writer]
   /**
-    * Creates [[ io.bullet.borer.Encoder[Any] ]] encoder from [[JsValueEncoderPF]]
+    * Creates {{{io.bullet.borer.Encoder[Any]}}} encoder from [[JsValueEncoderPF]]
     * Designed to encode scala structure representing json value.
     * Primitive types: {{{String, Number, Boolean, null}}}
     * Complex types: {{{Iterable[_], Map[String, _]}}}
@@ -50,7 +50,7 @@ object ResultEncoder {
     implicit lazy val jsValueEncoderPF: JsValueEncoderPF =
       extendableJsValueEncoderPF(jsValueEncoderPF)(_ => PartialFunction.empty)
     /**
-      * Method creates json value encoder as partial function, see [[jsValueEncoderPF]].
+      * Creates json value encoder as partial function, see [[jsValueEncoderPF]].
       * Default implemention encodes scala values - {{{String, Number, Boolean, null, Map[String, Any], Iterable[Any]}}}.
       * @param encoder        value returned by this method, used for recursive calls for nested structures.
       * @param customEncoder  custom value encoder. Can be used to encode non standard values like
