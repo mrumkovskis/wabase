@@ -37,16 +37,18 @@ trait TemplateUtil { this: client.WabaseHttpClient =>
 
   implicit def mapShortcats(map: Map[String, Any]): Object {
     def a(param: String): List[MapTemplate]
-    def s(param: String): String
-    def m(param: String, defaultValue: Map[String, Any]): Map[String, Any]
     def b(param: String): Boolean
+    def m(param: String): Map[String, Any]
+    def md(param: String, defaultValue: Map[String, Any]): Map[String, Any]
+    def s(param: String): String
     def sd(param: String, defaultValue: String): String
   } = new {
     def a(param: String) = map(param).asInstanceOf[List[MapTemplate]]
+    def b(param: String) = map.get(param).contains("true") || map.get(param).contains(true)
+    def m(param: String) = map.getOrElse(param, Map.empty).asInstanceOf[Map[String, Any]]
+    def md(param: String, defaultValue: Map[String, Any]) = map.getOrElse(param, defaultValue).asInstanceOf[Map[String, Any]]
     def s(param: String) = map(param).asInstanceOf[String]
     def sd(param: String, defaultValue: String) = map.getOrElse(param, defaultValue).asInstanceOf[String]
-    def m(param: String, defaultValue: Map[String, Any]) = map.getOrElse(param, defaultValue).asInstanceOf[Map[String, Any]]
-    def b(param: String) = map.get(param).contains("true") || map.get(param).contains(true)
   }
 
   def pojoFromTemplate[T <: Dto](viewClass: Class[T], fileName: String) = viewClass.getConstructor().newInstance().fill(readPojoMap(new File(resourcePath + fileName), getTemplatePath).toJson.asJsObject)

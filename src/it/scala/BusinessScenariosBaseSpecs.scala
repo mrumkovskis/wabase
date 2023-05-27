@@ -130,7 +130,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
                         )
 
   def extractRequestInfo(map: Map[String, Any], method: String): RequestInfo = {
-    val headers = map.m("headers", Map.empty)
+    val headers = map.m("headers")
     val requestBytes = Try(map.s("request-body-file")).toOption.map(readFileBytes).orNull
     val requestParts = Try(map.a("request-parts")).toOption.orNull
     val bodyParts =
@@ -162,7 +162,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
     val requestFormData = Option(bodyParts).map(Multipart.FormData(_: _*)).orNull
     val defaultRequestMap: Map[String, Any] =
       if (requestBytes != null || requestParts != null || method == "GET" || method == "DELETE") null else Map.empty
-    val requestMap = Try(map.m("request", defaultValue = defaultRequestMap)).toOption.orNull
+    val requestMap = Try(map.md("request", defaultValue = defaultRequestMap)).toOption.orNull
     val requestString = Try(map.s("request")).toOption.orNull
     val parsedHeaders: Seq[HttpHeader] = headers.map {
       case ("Content-Type", value) => // Content-Type is not accepted as valid RawHeader
@@ -228,7 +228,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
   def checkTestCase(scenario: File, testCase: File, context: Map[String, String], map: Map[String, Any]) = {
     val path = map.s("path")
     val method = map.sd("method", "GET")
-    val params = map.m("params", Map.empty)
+    val params = map.m("params")
     val requestInfo = extractRequestInfo(cleanupTemplate(map), method)
     import requestInfo._
     val fullCompare   = map.b("full_compare")
