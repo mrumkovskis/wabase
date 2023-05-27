@@ -114,7 +114,7 @@ trait AppFileStreamerConfig {
   lazy val rootPath: String             = null
   lazy val file_info_table: String      = null
   lazy val file_body_info_table: String = null
-  val shaColName: String = "sha_256" // TODO maybe get rid of this parameter and asume name is 'sha_256'
+  val shaColName: String = "sha_256"
 }
 
 trait AppFileStreamer[User] extends AppFileStreamerConfig with Loggable { this: AppConfig with DbAccessProvider =>
