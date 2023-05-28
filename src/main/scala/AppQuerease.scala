@@ -27,8 +27,8 @@ import scala.util.{Failure, Try}
 import scala.util.control.NonFatal
 
 trait QuereaseProvider {
-  final implicit val qe: AppQuerease = initQuerease
-  final implicit val qio: AppQuereaseIo[Dto] = initQuereaseIo
+  final implicit lazy val qe: AppQuerease = initQuerease
+  final implicit lazy val qio: AppQuereaseIo[Dto] = initQuereaseIo
   /** Override this method in subclass to initialize {{{qe}}} */
   protected def initQuerease: AppQuerease
   protected def initQuereaseIo: AppQuereaseIo[Dto] = new AppQuereaseIo[Dto](qe)

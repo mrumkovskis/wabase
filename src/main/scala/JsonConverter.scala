@@ -23,7 +23,7 @@ object JsonToAny {
 }
 
 trait JsonConverterProvider {
-  final val jsonConverter: JsonConverter[_] = initJsonConverter
+  final lazy val jsonConverter: JsonConverter[_] = initJsonConverter
   /** Override this method in subclass to initialize {{{jsonConverter}}} */
   protected def initJsonConverter: JsonConverter[_]
 }
