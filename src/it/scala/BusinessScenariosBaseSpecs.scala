@@ -33,6 +33,8 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
     listenToWs(deferredActor)
   }
 
+  private case class JsonResponse(jsonString: String, processed: Any)
+
   def recursiveListDirectories(f: File): Array[File] = {
     val these = Option(f.listFiles) getOrElse Array[File]()
     these.filter(_.isDirectory) ++
@@ -216,6 +218,16 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
     ).mkString("\n", "\n", ""))
   }
 
+  def logScenarioResponseInfoOnFailure(
+    scenario: File, testCase: File, context: Map[String, String], exception: Throwable,
+    debugResponse: Boolean, rawResponse: Any, response: Any,
+  ): Unit = {
+    if (debugResponse) {
+      val fullTestName = s"${scenario.getName}/${testCase.getName}"
+      logger.info(s"\n**** Response causing $fullTestName to fail with '${exception.getMessage}':\n$rawResponse\n****")
+    }
+  }
+
   def transformToStringValues(m: Any): Any = m match {
     case mm: Map[String@unchecked, _] => mm.map { case (key, value) => (key, transformToStringValues(value)) }
     case s: Seq[_] => s map transformToStringValues
@@ -271,7 +283,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
       case r => sys.error("Unsupported request type: "+r)
     }
 
-    val response =
+    val processedResponse =
       if (tresqlRow != null)
         transformToStringValues(dbUse(Query(tresqlRow, context).toListOfMaps.headOption.getOrElse(Map())))
       else if (tresqlList != null)
@@ -281,16 +293,25 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
         Map("result" -> "ok")
       } else if (error == null) {
         val res = doRequest
-        Try(JsonToAny(res.parseJson)).toOption.getOrElse(res)
+        Try(JsonToAny(res.parseJson)).toOption.map(JsonResponse(res, _)).getOrElse(res)
       } else {
         val message = intercept[ClientException](doRequest).getMessage
         message should include (error)
         message
       }
 
+    val (rawResponse, response) = processedResponse match {
+      case JsonResponse(jsonString, processed) => (jsonString, processed)
+      case other => (other, other)
+    }
+
     logScenarioResponseInfo(debugResponse, response)
 
-    if(expectedResponse != null) assertResponse(response, expectedResponse, "[ROOT]", fullCompare)
+    if(expectedResponse != null) try assertResponse(response, expectedResponse, "[ROOT]", fullCompare) catch {
+      case util.control.NonFatal(ex) =>
+        logScenarioResponseInfoOnFailure(scenario, testCase, context, ex, debugResponse, rawResponse, response)
+      throw ex
+    }
     else Map.empty[String, String]
   }
 
