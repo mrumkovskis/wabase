@@ -39,10 +39,13 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
       these.filter(_.isDirectory).flatMap(recursiveListDirectories)
   }
 
+  def shouldTestScenario(scenario: File): Boolean =
+    scenario.listFiles.exists(_.isFile)
+
   val scenarios = for {
     scenarioPath <- scenarioPaths
     scenario <- recursiveListDirectories(new File(resourcePath + scenarioPath))
-    if scenario.listFiles.exists(_.isFile)
+    if shouldTestScenario(scenario)
   } yield scenario
 
   def assertResponse(response: Any, expectedResponse: Any, path: String, fullCompare: Boolean): Map[String, String] = {
