@@ -533,7 +533,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       val cache = new SimpleCache(tresqlParserCacheSize)
       cache.load(data)
       cache
-    }
+    }.orElse(Some(new SimpleCache(tresqlParserCacheSize)))
   }
 
   protected def extractViewVariables(viewDefs: Map[String, ViewDef])(action: String, viewName: String): Seq[Variable] = {
