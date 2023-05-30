@@ -9,7 +9,7 @@ case class TestUsr(id: Long) {
 
 object TestDbAccess extends DbAccess with Loggable {
   override val tresqlResources  = new TresqlResources {
-    override val resourcesTemplate = super.resourcesTemplate.copy(metadata = DefaultAppQuerease.tresqlMetadata)
+    override def initResourcesTemplate = super.initResourcesTemplate.copy(metadata = DefaultAppQuerease.tresqlMetadata)
   }
 }
 

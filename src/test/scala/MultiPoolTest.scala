@@ -13,7 +13,7 @@ class MultiPoolTest extends FlatSpec with Matchers with ScalatestRouteTest with 
 
   val db = new DbAccess with Loggable {
     override implicit val tresqlResources = new TresqlResources {
-      override lazy val resourcesTemplate = super.resourcesTemplate
+      override def initResourcesTemplate = super.initResourcesTemplate
     }
   }
 

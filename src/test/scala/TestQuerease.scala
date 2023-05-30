@@ -75,8 +75,8 @@ trait TestQuereaseInitializer extends BeforeAndAfterAll with Loggable { this: Su
     def create_resources(md: TresqlMetadata, extra: Map[String, Resources]) = {
       new TresqlResources {
         override def logger = TresqlLogger
-        override val resourcesTemplate =
-          super.resourcesTemplate.copy(
+        override def initResourcesTemplate =
+          super.initResourcesTemplate.copy(
             metadata = md,
             dialect = HSQLDialect orElse {
               case c: QueryBuilder#CastExpr => c.typ match {

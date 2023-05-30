@@ -325,7 +325,7 @@ object FileCleanupSpecsHelper {
   DbDrivers.loadDrivers
   val db: DbAccess = new DbAccess with Loggable {
     override implicit lazy val tresqlResources: ThreadLocalResources = new TresqlResources {
-      override lazy val resourcesTemplate = super.resourcesTemplate
+      override def initResourcesTemplate = super.initResourcesTemplate
         .copy(dialect = dialects.HSQLDialect)
         .copy(idExpr = s => "nextval('seq')")
         .copy(metadata = FileCleanupSpecsQuerease.tresqlMetadata)

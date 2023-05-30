@@ -185,9 +185,9 @@ trait PostgresDbAccess extends DbAccess { this: QuereaseProvider with Loggable =
 }
 
 trait TresqlResources extends ThreadLocalResources {
-  override def resourcesTemplate = MaxResultSize.map { maxSize =>
-    super.resourcesTemplate.copy(maxResultSize = maxSize, macros = Macros)
-  }.getOrElse(super.resourcesTemplate.copy(macros = Macros))
+  override def initResourcesTemplate = MaxResultSize.map { maxSize =>
+    super.initResourcesTemplate.copy(maxResultSize = maxSize, macros = Macros)
+  }.getOrElse(super.initResourcesTemplate.copy(macros = Macros))
 
   override def logger: TresqlLogger = TresqlResources.logger
   override def cache: Cache = TresqlResources.cache
@@ -240,8 +240,8 @@ class PostgreSqlTresqlResources(qe: AppQuerease, db: String = null) extends Tres
   */
   protected def yamlToPgTypeMap = YamlToPgTypeMap
 
-  override def resourcesTemplate: ResourcesTemplate =
-    super.resourcesTemplate.copy(
+  override def initResourcesTemplate: ResourcesTemplate =
+    super.initResourcesTemplate.copy(
       metadata = if (db == qe.tresqlMetadata.db) qe.tresqlMetadata else qe.tresqlMetadata.extraDbToMetadata(db),
       dialect  = AppPostgreSqlDialect orElse dialects.PostgresqlDialect
         orElse dialects.ANSISQLDialect orElse dialects.VariableNameDialect,
