@@ -538,7 +538,7 @@ object DeferredControl extends Loggable with AppConfig {
       val old = new java.sql.Timestamp(currentTime - deferredCleanupInterval.toMillis)
       Query("=deferred_request[status in (?, ?) & response_time < ?] {status} [?]",
         DEFERRED_OK, DEFERRED_ERR, old, DEFERRED_DEL)
-      Query("deferred_request - [status = ]", DEFERRED_DEL) match {
+      Query("deferred_request - [status = ?]", DEFERRED_DEL) match {
         case r: DeleteResult => r.count.get
         case _ => 0
       }
