@@ -28,7 +28,7 @@ lazy val wabase = (project in file("."))
   crossScalaVersions := Seq(
     "3.3.0",
     "2.13.10",
-    "2.12.17",
+    "2.12.18",
   ),
   scalacOptions ++= Seq("-unchecked", "-deprecation", "-feature"),
   resolvers += "snapshots" at "https://oss.sonatype.org/content/repositories/snapshots",
