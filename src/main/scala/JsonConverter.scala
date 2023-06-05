@@ -12,8 +12,8 @@ import java.time.{LocalDate, LocalTime, LocalDateTime}
 object JsonToAny {
   def apply(value: JsValue): Any = {
     value match {
-      case JsObject(fields) => fields map { case (k, v) => k -> apply(v) }
-      case JsArray(elements) => elements map apply
+      case JsObject(fields) => fields map (f => f._1 -> apply(f._2)) toMap
+      case JsArray(elements) => (elements map apply) toList
       case JsString(v) => v
       case JsNumber(v) => if (v isWhole) v longValue else v
       case b: JsBoolean => b.value
