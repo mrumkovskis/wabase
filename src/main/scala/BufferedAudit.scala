@@ -131,7 +131,7 @@ class BufferedAuditReader(
         while (ch.read(buffer) >= 0) {}
         buffer.flip
         val parts = StandardCharsets.UTF_8.decode(buffer).toString().split('\t')
-        (parts(0), parts(1).toInt)
+        (parts(0), parts(1).trim.toInt)
       }
     }
   }
@@ -169,7 +169,7 @@ class BufferedAuditReader(
     .run()
   private def saveNextReadPos(path: Path, pos: Int): Unit =
     try {
-      val record = StandardCharsets.UTF_8.encode(s"${path.getFileName}\t$pos")
+      val record = StandardCharsets.UTF_8.encode(s"${path.getFileName}\t$pos\r\n")
       this.synchronized {
         var ch = getChannel
         ch.position(0)
@@ -273,19 +273,23 @@ class BufferedAuditFlow(path: Path, pos: Int, writer: BufferedAuditWriter) exten
       val channel = FileChannel.open(path, StandardOpenOption.READ)
       val buf = ByteBuffer.allocate(bufferSize)
       channel.position(pos)
-      def getChunk =
-        if (channel.read(buf) > 0) {
-          buf.flip()
-          val bs = ByteString(buf)
-          buf.clear()
-          bs
-        } else ByteString.empty
+      def getChunkAndEof: (ByteString, Boolean) = {
+        val r_res = channel.read(buf)
+        val chunk =
+          if (r_res > 0) {
+            buf.flip()
+            val bs = ByteString(buf)
+            buf.clear()
+            bs
+          } else ByteString.empty
+        (chunk, r_res < 0)
+      }
       setHandler(in, new InHandler {
         override def onPush(): Unit = {
           grab(in)
           val isFinal = filename != writer.currentFilename
-          val chunk = getChunk
-          if (chunk.isEmpty) {
+          val (chunk, isEof) = getChunkAndEof
+          if (isEof) {
             if (isFinal)
               completeStage()
             else
@@ -296,8 +300,8 @@ class BufferedAuditFlow(path: Path, pos: Int, writer: BufferedAuditWriter) exten
       setHandler(out, new OutHandler {
         override def onPull(): Unit = {
           val isFinal = filename != writer.currentFilename
-          val chunk = getChunk
-          if (chunk.isEmpty) {
+          val (chunk, isEof) = getChunkAndEof
+          if (isEof) {
             if (isFinal)
               completeStage()
             else if (!hasBeenPulled(in))
