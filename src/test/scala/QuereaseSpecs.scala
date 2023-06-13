@@ -85,7 +85,7 @@ class QuereaseSpecs extends AsyncFlatSpec with Matchers with TestQuereaseInitial
       )),
       "p",
       List(
-        Property("id",TresqlValue(":id"),false,true,false),
+        Property("id",KeyValue("if_defined_or_else(:'old key'.id?, :'old key'.id?, :id)", AutoValue(":id"), Some(AutoValue(":id"))),false,true,false),
         Property("name",TresqlValue(":name"),false,true,true),
         Property("surname",TresqlValue(":surname"),false,true,true),
       ),
@@ -99,7 +99,7 @@ class QuereaseSpecs extends AsyncFlatSpec with Matchers with TestQuereaseInitial
       Some(Filters(None,None,None)),
       "u",
       List(
-        Property("id",TresqlValue(":id"),false,true,false),
+        Property("id",KeyValue("if_defined_or_else(:'old key'.id?, :'old key'.id?, :id)", AutoValue(":id"), Some(AutoValue(":id"))),false,true,false),
         Property("name",TresqlValue(":name"),false,true,true),
       ),
       null
@@ -112,7 +112,7 @@ class QuereaseSpecs extends AsyncFlatSpec with Matchers with TestQuereaseInitial
       Some(Filters(None,None,None)),
       "u",
       List(
-        Property("id",TresqlValue(":id"),false,true,false),
+        Property("id",KeyValue("if_defined_or_else(:'old key'.id?, :'old key'.id?, :id)", AutoValue(":id"), Some(AutoValue(":id"))),false,true,false),
         Property("name",TresqlValue(":name"),false,true,true),
         Property("roles",ViewValue(
           View(
@@ -120,7 +120,7 @@ class QuereaseSpecs extends AsyncFlatSpec with Matchers with TestQuereaseInitial
             Some(Filters(None,None,None)),
             "ur",
             List(
-              Property("id",TresqlValue(":id"),false,true,false),
+              Property("id",KeyValue("if_defined_or_else(:'old key'.id?, :'old key'.id?, :id)", AutoValue(":id"), Some(AutoValue(":id"))),false,true,false),
               Property("sys_role_id",TresqlValue(
                 """(checked_resolve(:sys_role, array(sys_role r[name = :sys_role]{r.id}@(2)),""" +
                 """ 'Failed to identify value of "sys_role" (from sys_user_role_choice) - '""" +
