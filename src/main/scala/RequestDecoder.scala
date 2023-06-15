@@ -30,6 +30,7 @@ class CborOrJsonDecoder(typeDefs: Seq[TypeDef], nameToViewDef: Map[String, ViewD
       case "java.sql.Date"      => javaSqlDateDecoder
       case "java.sql.Time"      => javaSqlTimeDecoder
       case "java.sql.Timestamp" => javaSqlTimestampDecoder
+      case "java.time.Instant"        => javaTimeInstantDecoder
       case "java.time.LocalDate"      => localDateDecoder
       case "java.time.LocalTime"      => localTimeDecoder
       case "java.time.LocalDateTime"  => localDateTimeDecoder

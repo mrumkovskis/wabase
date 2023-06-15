@@ -167,6 +167,10 @@ object BorerDatetimeEncoders {
       w writeString value.toString
     }
   }
+  implicit val javaTimeInstantEncoder: Encoder[Instant] = Encoder { (w, value) =>
+    // TODO optimize cbor for Instant - maybe see https://datatracker.ietf.org/doc/draft-ietf-cbor-time-tag/
+    w writeString value.toString
+  }
   implicit val localDateEncoder: Encoder[LocalDate] =
     Encoder { (w, value) => w ~ sql.Date.valueOf(value) }
   implicit val localTimeEncoder: Encoder[LocalTime] =
@@ -325,6 +329,8 @@ object BorerDatetimeDecoders {
       case _                                    => unexpectedDataItem(expected = "Time")
     }
   }
+  implicit val javaTimeInstantDecoder: Decoder[Instant] =
+    Decoder { r => r[ZonedDateTime].toInstant }
   implicit val localDateDecoder: Decoder[LocalDate] =
     Decoder { r => r[sql.Date].toLocalDate() }
   implicit val localTimeDecoder: Decoder[LocalTime] =
