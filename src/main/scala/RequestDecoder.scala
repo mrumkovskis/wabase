@@ -34,6 +34,7 @@ class CborOrJsonDecoder(typeDefs: Seq[TypeDef], nameToViewDef: Map[String, ViewD
       case "java.time.LocalTime"      => localTimeDecoder
       case "java.time.LocalDateTime"  => localDateTimeDecoder
       case "java.time.OffsetDateTime" => offsetDateTimeDecoder
+      case "java.time.ZonedDateTime"  => zonedDateTimeDecoder
       case "scala.math.BigInt"     => Decoder.forBigInt
       case "scala.math.BigDecimal" => Decoder.forBigDecimal
       case "java.lang.Double"   => Decoder.forBoxedDouble

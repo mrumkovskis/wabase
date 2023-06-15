@@ -9,7 +9,7 @@ import akka.util.{ByteString, ByteStringBuilder}
 import java.io.{InputStream, OutputStream}
 import java.lang.{Boolean => JBoolean, Byte => JByte, Double => JDouble, Float => JFloat, Long => JLong, Short => JShort}
 import java.math.{BigDecimal => JBigDecimal, BigInteger => JBigInteger}
-import java.time.{Instant, LocalDate, LocalTime, LocalDateTime, OffsetDateTime}
+import java.time.{Instant, LocalDate, LocalTime, LocalDateTime, OffsetDateTime, ZonedDateTime}
 import java.time.format.DateTimeFormatter
 
 import ResultEncoder._
@@ -177,6 +177,10 @@ object BorerDatetimeEncoders {
     // TODO optimize cbor for OffsetDateTime - maybe see https://datatracker.ietf.org/doc/draft-ietf-cbor-time-tag/
     w writeString value.format(DateTimeFormatter.ISO_OFFSET_DATE)
   }
+  implicit val zonedDateTimeEncoder: Encoder[ZonedDateTime] = Encoder { (w, value) =>
+    // TODO optimize cbor for ZonedDateTime - maybe see https://datatracker.ietf.org/doc/draft-ietf-cbor-time-tag/
+    w writeString value.toString
+  }
 }
 
 class BorerValueEncoder(w: Writer) {
@@ -335,6 +339,16 @@ object BorerDatetimeDecoders {
       case _ if tryReadTag(Tag.EpochDateTime) => OffsetDateTime.from(Instant.ofEpochMilli((readDouble() * 1000).toLong))
       case DI.Double                          => OffsetDateTime.from(Instant.ofEpochMilli((readDouble() * 1000).toLong))
       case _                                  => unexpectedDataItem(expected = "OffsetDateTime")
+    }
+  }
+  implicit val zonedDateTimeDecoder: Decoder[ZonedDateTime] = Decoder { reader =>
+    import reader._
+    dataItem() match {
+      case DI.Chars | DI.String               => ZonedDateTime.parse(readString())
+      case _ if tryReadTag(Tag.DateTimeString)=> ZonedDateTime.parse(readString())
+      case _ if tryReadTag(Tag.EpochDateTime) => ZonedDateTime.from(Instant.ofEpochMilli((readDouble() * 1000).toLong))
+      case DI.Double                          => ZonedDateTime.from(Instant.ofEpochMilli((readDouble() * 1000).toLong))
+      case _                                  => unexpectedDataItem(expected = "ZonedDateTime")
     }
   }
 }
