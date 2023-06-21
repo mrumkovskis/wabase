@@ -198,7 +198,6 @@ trait AppServiceBase[User]
 
   def updateByKeyAction(viewName: String, keyValues: Seq[Any])(
     implicit user: User, state: ApplicationState, timeout: QueryTimeout): Route =
-    extractUri { requestUri =>
       parameterMultiMap { params =>
         app.checkApi(viewName, Action.Update, user)
         implicit val um = toMapUnmarshallerForView(viewName)
@@ -211,7 +210,6 @@ trait AppServiceBase[User]
           }
         }
       }
-    }
 
   def listOrGetAction(viewName: String)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
