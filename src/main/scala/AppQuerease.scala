@@ -176,7 +176,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       extraFilter: String = null, extraParams: Map[String, Any] = Map(),
       fieldFilter: FieldFilter = null)(
       implicit resources: Resources, qio: QuereaseIo[B]): QuereaseIteratorResult[B] = {
-    val v = viewDef[B]
+    val v = viewDefFromMf[B]
     val extraFilterAndAuth =
       extraFilterAndAuthString(extraFilter, v.auth.forList)
     super.result(params, offset, limit, orderBy, extraFilterAndAuth, extraParams, fieldFilter)

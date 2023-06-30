@@ -81,7 +81,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
   implicit def toAppListResult[T <: Dto: Manifest](list: Seq[T]): AppListResult[T] = new AppListResult[T] {
     private val iter = list.iterator
     override def resources = ???
-    override def view = qe.viewDef[T]
+    override def view = qe.viewDefFromMf[T]
     override protected def hasNextInternal = if (!iter.hasNext) { close; false } else true
     override protected def nextInternal = iter.next()
   }

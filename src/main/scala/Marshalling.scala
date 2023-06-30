@@ -127,12 +127,12 @@ trait BasicMarshalling extends OptionMarshalling {
 trait DtoMarshalling extends QuereaseMarshalling { this: AppProvider[_] with Execution with OptionMarshalling =>
   import app.qe
   implicit def dtoUnmarshaller[T <: Dto](implicit m: Manifest[T]): FromEntityUnmarshaller[T] =
-    toMapUnmarshallerForView(app.qe.viewDef[T].name).map {
+    toMapUnmarshallerForView(app.qe.viewDefFromMf[T].name).map {
       m.runtimeClass.getConstructor().newInstance().asInstanceOf[T].fill
     }
 
   implicit def dtoSeqUnmarshaller[T <: Dto](implicit m: Manifest[T]): FromEntityUnmarshaller[Seq[T]] =
-    toSeqOfMapsUnmarshallerForView(app.qe.viewDef[T].name).map { _.map {
+    toSeqOfMapsUnmarshallerForView(app.qe.viewDefFromMf[T].name).map { _.map {
       m.runtimeClass.getConstructor().newInstance().asInstanceOf[T].fill
     }}
 
