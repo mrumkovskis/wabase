@@ -123,6 +123,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           case "java.sql.Date"      => new java.sql.Date(Format.parseDate(s).getTime)
           case "java.sql.Time"      => BorerDatetimeDecoders.toSqlTime(s)
           case "java.sql.Timestamp" => new java.sql.Timestamp(Format.parseDateTime(s).getTime)
+          case "java.time.Instant"       => java.time.Instant.parse(s) // TODO more formats?
           case "java.time.LocalDate"     => new java.sql.Date(Format.parseDate(s).getTime).toLocalDate
           case "java.time.LocalTime"     => BorerDatetimeDecoders.toSqlTime(s).toLocalTime
           case "java.time.LocalDateTime" => new java.sql.Timestamp(Format.parseDateTime(s).getTime).toLocalDateTime
