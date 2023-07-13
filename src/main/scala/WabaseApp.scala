@@ -364,7 +364,7 @@ trait WabaseApp[User] {
   ): AppActionContext = {
     import context._
     if (doApiCheck)
-      checkApi(viewName, actionName, user)
+      checkApi(viewName, actionName, user, keyValues)
     val keyAsMap = prepareKey(viewName, keyValues, actionName)
     val key_params =
       if  (context.actionName == Action.Update && keyAsMap != null && keyAsMap.nonEmpty)
@@ -409,7 +409,7 @@ trait WabaseApp[User] {
     if (validViewNameRegex.pattern.matcher(viewName).matches())
          new BusinessException(s"$viewName.$method is not a part of this API")
     else new BusinessException(s"Strange name.$method is not a part of this API")
-  def checkApi[F](viewName: String, method: String, user: User): Unit = {
+  def checkApi[F](viewName: String, method: String, user: User, keyValues: Seq[Any]): Unit = {
     (for {
       view <- viewDefOption(viewName)
       roles <- view.apiMethodToRoles.get(method).orElse(method match {

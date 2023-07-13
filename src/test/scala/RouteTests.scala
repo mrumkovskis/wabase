@@ -105,7 +105,7 @@ class RouteTests extends FlatSpec with Matchers with ScalatestRouteTest{
 
 
   it should "handle insert" in {
-    val route = (service.crudPath & service.insertPath) { path =>
+    val route = (service.crudPath & service.insertPath) { (path, keyValues) =>
       complete("OK")
     }
 
@@ -114,8 +114,8 @@ class RouteTests extends FlatSpec with Matchers with ScalatestRouteTest{
     Post("/r") ~> route ~> check(handled shouldBe false)
     Post("/data") ~> route ~> check(handled shouldBe false)
     Post("/data/") ~> route ~> check(handled shouldBe false)
-    Post("/data/view/a") ~> route ~> check(handled shouldBe false)
-    Post("/data/view/1") ~> route ~> check(handled shouldBe false)
+    Post("/data/view/a") ~> route ~> check(handled shouldBe true)
+    Post("/data/view/1") ~> route ~> check(handled shouldBe true)
 
     Get("/data/view") ~> route ~> check(handled shouldBe false)
     Put("/data/view") ~> route ~> check(handled shouldBe false)

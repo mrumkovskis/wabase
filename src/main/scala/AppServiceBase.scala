@@ -83,7 +83,7 @@ trait AppServiceBase[User]
   // @deprecated("Use updateByKeyPath. This method will be removed", "6.0.3")
   def updatePath = viewWithIdPath & put
   def updateByKeyPath = viewWithKeyPath & put
-  def insertPath = viewWithoutIdPath & post
+  def insertPath = viewWithKeyPath & post
   def listOrGetPath = viewWithoutIdPath & get
   def countPath = (path("count" / Segment) | pathPrefix("count:") & rawPathPrefix(Segment)) & get
 
@@ -199,7 +199,7 @@ trait AppServiceBase[User]
   def updateByKeyAction(viewName: String, keyValues: Seq[Any])(
     implicit user: User, state: ApplicationState, timeout: QueryTimeout): Route =
       parameterMultiMap { params =>
-        app.checkApi(viewName, Action.Update, user)
+        app.checkApi(viewName, Action.Update, user, keyValues)
         implicit val um = toMapUnmarshallerForView(viewName)
         entityOrException(as[Map[String, Any]]) { entityAsMap =>
           extractRequest { implicit req =>
@@ -254,23 +254,24 @@ trait AppServiceBase[User]
         params.get("sort").flatMap(_.headOption).orNull)
     }
 
-  def insertAction(viewName: String)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
+  def insertAction(viewName: String, keyValues: Seq[Any])(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     extractUri { requestUri =>
       parameterMultiMap { params =>
         if (useActions(viewName, Action.Insert)) {
-          app.checkApi(viewName, Action.Insert, user)
+          app.checkApi(viewName, Action.Insert, user, keyValues)
           implicit val um = toMapUnmarshallerForView(viewName)
           entityOrException(as[Map[String, Any]]) { entityAsMap =>
             extractRequest { implicit req =>
               complete {
-                app.doWabaseAction(Action.Insert, viewName, Nil, filterPars(params), entityAsMap,
+                app.doWabaseAction(Action.Insert, viewName, keyValues, filterPars(params), entityAsMap,
                   doApiCheck = false /* api checked above */)
               }
             }
           }
         } else {
           entityOrException(as[JsValue]) { data =>
-            val id = app.save(viewName, data.asInstanceOf[JsObject], filterPars(params))
+            val keyAsMap = if (keyValues.nonEmpty) app.prepareKey(viewName, keyValues, "insert") else Map.empty
+            val id = app.save(viewName, data.asInstanceOf[JsObject], filterPars(params) ++ keyAsMap)
             redirect(Uri(path = requestUri.path / id.toString), StatusCodes.SeeOther)
           }
         }

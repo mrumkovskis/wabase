@@ -440,7 +440,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
   def getRaw(viewName: String, id: Long, params: Map[String, Any] = Map())(
     implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout, poolName: PoolName) =
   {
-    checkApi(viewName, "get", user)
+    checkApi(viewName, "get", user, Seq(id))
     implicit val extraDbs = extraDb(AugmentedAppViewDef(viewDef(viewName)).actionToDbAccessKeys(Action.Get))
     dbUse {
         implicit val clazz = viewNameToClassMap(viewName)
@@ -458,7 +458,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
   def createRaw(viewName: String, params: Map[String, Any] = Map.empty)(
     implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout, poolName: PoolName
   ) = {
-      checkApi(viewName, "get", user)
+      checkApi(viewName, "get", user, Nil)
       implicit val extraDbs = extraDb(AugmentedAppViewDef(viewDef(viewName)).actionToDbAccessKeys(Action.Create))
       dbUse {
         implicit val clazz = viewNameToClassMap(viewName)
@@ -485,7 +485,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
       timeoutSeconds: QueryTimeout,
       poolName: PoolName) =
     {
-      checkApi(viewName, "list", user)
+      checkApi(viewName, "list", user, Nil)
       val maxLimitForView = viewDef(viewName).limit
       if (maxLimitForView > 0 && limit > maxLimitForView)
         throw new BusinessException(
@@ -515,7 +515,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
     timeoutSeconds: QueryTimeout,
     poolName: PoolName = ConnectionPools.key(viewDef(viewName).cp)
   ) = {
-    checkApi(viewName, "list", user)
+    checkApi(viewName, "list", user, Nil)
     val result = listInternal(viewName, params, doCount = true)
     createCountResult(result)
   }
@@ -577,7 +577,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
   ) = {
       implicit val clazz = instance.getClass
       val viewDef = qe.viewDef(classToViewNameMap(clazz))
-      checkApi(viewName, "save", user)
+      checkApi(viewName, "save", user, Nil)
       val idOpt = Option(instance)
         .filter(_.isInstanceOf[org.wabase.DtoWithId])
         .map(_.asInstanceOf[DtoWithId])
@@ -638,7 +638,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
     implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout,
       poolName: PoolName = ConnectionPools.key(viewDef(viewName).cp)) =
   {
-      checkApi(viewName, "delete", user)
+      checkApi(viewName, "delete", user, Seq("id"))
       val promise = Promise[Unit]()
       try {
         val res = friendlyConstraintErrorMessage {
