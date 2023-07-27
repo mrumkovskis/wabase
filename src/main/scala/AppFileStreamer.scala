@@ -226,7 +226,7 @@ class FileStreamer(
           "Cannot process file, please contact administrator: " + sha)
 
       implicit val res: Resources = db.initResources(db.tresqlResources.resourcesTemplate)(fileStreamerConnectionPool, Nil)
-      def oldPathOptF = Future {
+      val oldPathOptF = Future {
         Query(s"$file_body_info_table[$shaColName=?]{path}", sha).uniqueOption[String]
       }
       val oldFileInfoF: Future[Option[FileInfo]] = oldPathOptF flatMap {
@@ -262,7 +262,13 @@ class FileStreamer(
           // if we are here, file body is accepted and copied, db has to be updated
           oldFileInfoF.map {
             case Some(_) => Query(s"$file_body_info_table[$shaColName=?]{path} = [?]", sha, tailPath)
-            case _ => Query(s"+$file_body_info_table{$shaColName, size, path} [?, ?, ?]", sha, size, tailPath)
+            case _ => oldPathOptF.map {
+              case Some(_) =>
+                // integrity failure - file body record exists, file on disk does not, update path to new file
+                Query(s"=$file_body_info_table[$shaColName = ?] {path = ?}", sha, tailPath)
+              case _ =>
+                Query(s"+$file_body_info_table{$shaColName, size, path} [?, ?, ?]", sha, size, tailPath)
+            }
           }
           .map(_ => Query(fileInfoInsert, fi.toMap) match { case r: InsertResult => r.id.get })
           .map { id =>
