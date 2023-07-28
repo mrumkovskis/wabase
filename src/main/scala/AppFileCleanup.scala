@@ -5,6 +5,7 @@ import java.nio.file.{Files, StandardCopyOption}
 import org.tresql._
 import org.wabase.AppMetadata.DbAccessKey
 
+import scala.annotation.tailrec
 import scala.util.Try
 import scala.language.reflectiveCalls
 
@@ -13,6 +14,8 @@ class AppFileCleanup(dbAccess: DbAccess, fileStreamers: AppFileStreamerConfig*) 
   lazy val minAgeMillis: Long = 1000L * 60 * 60 * 24
   protected lazy val ageCheckSql: String = "now() - interval '1 days'"
   protected lazy val refsToIgnore: Set[(String, String)] = Set.empty
+  protected lazy val batchSizeOpt: Option[Int] = None
+
   implicit lazy val connectionPool: PoolName = DEFAULT_CP
   implicit lazy val extraDb: Seq[DbAccessKey] = Nil
   implicit lazy val queryTimeout: QueryTimeout = DefaultQueryTimeout
@@ -60,28 +63,17 @@ class AppFileCleanup(dbAccess: DbAccess, fileStreamers: AppFileStreamerConfig*) 
     }
   }
 
-  protected def cleanupFileInfo = {
-    fileStreamers foreach { fs =>
-      logDeleteResult(fs.file_info_table + " records deleted:",
-        dbAccess.transaction(dbAccess.tresqlResources.resourcesTemplate, connectionPool) { implicit res =>
-          Query(fileInfoCleanupStatement(fs.file_info_table))
-        }
-      )
-    }
-  }
+  protected def cleanupFileInfo =
+    fileStreamers foreach { fs => deleteAndLog(
+      fileInfoCleanupStatement(fs),
+      s"${fs.file_info_table} table cleanup - records deleted:",
+    )}
 
-  protected def cleanupFileBodyInfo = {
-    // cleanup file_body_info
-    fileStreamers  foreach { fs =>
-      import fs.{file_info_table, file_body_info_table}
-      logDeleteResult(s"$file_body_info_table records deleted: ",
-        dbAccess.transaction(dbAccess.tresqlResources.resourcesTemplate, connectionPool) { implicit res =>
-          Query(
-            s"$file_body_info_table fbi - [!exists($file_info_table fi[fi.${fs.shaColName} = fbi.${fs.shaColName}]{1})]")
-        }
-      )
-    }
-  }
+  protected def cleanupFileBodyInfo =
+    fileStreamers  foreach { fs => deleteAndLog(
+      fileBodyInfoCleanupStatement(fs),
+      s"${fs.file_body_info_table} table cleanup - records deleted:",
+    )}
 
   protected def cleanupFiles = {
     prepCompareTable
@@ -90,9 +82,9 @@ class AppFileCleanup(dbAccess: DbAccess, fileStreamers: AppFileStreamerConfig*) 
   }
 
   protected def prepCompareTable: Unit =
-    logDeleteResult("files_on_disk cleaned up: ",
-      dbAccess.transaction(dbAccess.tresqlResources.resourcesTemplate, connectionPool) {
-        implicit res => Query("files_on_disk-[]")}
+    deleteAndLog(
+      "files_on_disk-[]",
+      "files_on_disk table cleanup - records deleted:",
     )
 
   protected def fillCompareTable(batchSize: Int = 500): Unit = {
@@ -169,23 +161,52 @@ class AppFileCleanup(dbAccess: DbAccess, fileStreamers: AppFileStreamerConfig*) 
     }
   }
 
-  protected def fileInfoCleanupStatement(file_info_table: String) = {
-    //delete all records from file_info, if id not referenced in linked tables
+  private lazy val batchLimit: String =
+    batchSizeOpt.filter(_ > 0).map(n => s"@($n)").getOrElse("")
+
+  protected def fileBodyInfoCleanupSelectStatement(fs: AppFileStreamerConfig) =
+    s"${fs.file_info_table} fi[fi.${fs.shaColName} = fbi.${fs.shaColName}]{1}"
+
+  protected def fileBodyInfoCleanupStatement(fs: AppFileStreamerConfig) =
+    s"${fs.file_body_info_table} fbi - [!exists(${fileBodyInfoCleanupSelectStatement(fs)}$batchLimit)]"
+
+  protected def fileInfoCleanupSelectStatement(fs: AppFileStreamerConfig) = {
+    // select records from file_info table where id is not referenced in linked tables
     val tableMetadataWithFileInfo = (for {
       tableDef <- qe.tableMetadata.tableDefs
       tableRef <- tableDef.refs
-      if tableRef.refTable == file_info_table
+      if tableRef.refTable == fs.file_info_table
     } yield (tableDef.name, tableRef.cols.head)).toSet -- refsToIgnore
 
-    val joinsAndTables = tableMetadataWithFileInfo.zipWithIndex.map { case ((table, col), idx) => (s"fi [t$idx.$col = fi.id] $table t$idx ?", s"t$idx.$col") }
+    val joinsAndTables = tableMetadataWithFileInfo.zipWithIndex.map {
+      case ((table, col), idx) => (s"fi [t$idx.$col = fi.id] $table t$idx ?", s"t$idx.$col")
+    }
     val selectStatement =
-      s"$file_info_table fi" + joinsAndTables.map("; " + _._1).mkString +
+      s"${fs.file_info_table} fi" + joinsAndTables.map("; " + _._1).mkString +
         s"""[fi.upload_time < sql("$ageCheckSql") """ + joinsAndTables.map(" & " + _._2 + " = null").mkString + "]{fi.id}"
-
-    s"$file_info_table - [id in (" + selectStatement + ")]"
+    selectStatement
   }
 
-  private def logDeleteResult(message: String, result: Result[RowLike]) = result match {
-    case deleteResult: DeleteResult => logger.debug(message + " " + deleteResult.count.getOrElse(0))
+  protected def fileInfoCleanupStatement(fs: AppFileStreamerConfig) =
+    // delete all records from file_info table where id is not referenced in linked tables
+    s"${fs.file_info_table} - [id in (${fileInfoCleanupSelectStatement(fs)}$batchLimit)]"
+
+  protected def deleteAndLog(statement: String, message: String) = {
+    @tailrec
+    def deleteWhileNonEmpty(deletedTotalCount: Int): Int = {
+      val deletedCount =
+        dbAccess.transaction(dbAccess.tresqlResources.resourcesTemplate, connectionPool) { implicit res =>
+          Query(statement)
+        } match {
+          case deleteResult: DeleteResult => deleteResult.count.getOrElse(0)
+          case x => sys.error(s"Unexpected result class: ${x.getClass.getName}. Expecting DeleteResult.")
+        }
+      if (deletedCount == 0)
+        deletedTotalCount
+      else
+        deleteWhileNonEmpty(deletedTotalCount + deletedCount)
+    }
+    val deletedTotalCount = deleteWhileNonEmpty(deletedTotalCount = 0)
+    logger.debug(s"$message $deletedTotalCount")
   }
 }
