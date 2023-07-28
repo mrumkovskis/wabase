@@ -263,8 +263,9 @@ class FileStreamer(
           oldFileInfoF.map {
             case Some(_) => Query(s"$file_body_info_table[$shaColName=?]{path} = [?]", sha, tailPath)
             case _ => oldPathOptF.map {
-              case Some(_) =>
+              case Some(oldPath) =>
                 // integrity failure - file body record exists, file on disk does not, update path to new file
+                logger.warn(s"Integrity error: file not found under path '$oldPath', updating to new path '$tailPath'")
                 Query(s"=$file_body_info_table[$shaColName = ?] {path = ?}", sha, tailPath)
               case _ =>
                 Query(s"+$file_body_info_table{$shaColName, size, path} [?, ?, ?]", sha, size, tailPath)
