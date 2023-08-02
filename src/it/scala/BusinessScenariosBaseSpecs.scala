@@ -86,6 +86,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
     }
   }
 
+  private val placeholderPattern = """.*\{\{(.+)\}\}""".r
   def applyContext(map: Map[String, Any], context: Map[String, String]): (Map[String, String], Map[String, Any]) = {
     var newValues = Map.empty[String, String]
     def mapString(s: String) = {
@@ -98,11 +99,20 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
       val ckPattern = "->\\W*(.*)\\W*<-\\W*(.*)\\W*".r
       val kPattern = "<-\\W*(.*)".r
 
+      val patchedS =
       if (s != null && s.contains("<-")) s.trim match {
         case kcPattern(key, cKey) => patchString(key.trim, cKey.trim)
         case ckPattern(cKey, key) => patchString(key.trim, cKey.trim)
         case kPattern(key) => patchString(key.trim, null)
       } else context.foldLeft(s){case (string, (key, value)) => string.replace(s"{{$key}}", value)} // Mustache like 'Template', for now it's enough
+      patchedS match {
+        case placeholderPattern(placeholderName) =>
+          // TODO for all
+          if (templateFunctions.isDefinedAt(placeholderName, context))
+            patchedS.replace(s"{{$placeholderName}}", templateFunctions(placeholderName, context))
+          else patchedS
+        case _ => patchedS
+      }
     }
     val result = map.map(e => (e._1, e._2 match {
       case l: List[_] => l.map {
