@@ -1,6 +1,7 @@
 package org.wabase
 
 import java.text.SimpleDateFormat
+import java.time.Instant
 import java.util.Date
 import scala.util.control.NonFatal
 
@@ -51,6 +52,16 @@ object Format {
         }
       case 10 =>
         Format.xsdDate.parse(s)
+      case x if x > 10 =>
+        val st = s.charAt(10) match {
+          case ' ' => s"${s.substring(0, 10)}T${s.substring(11)}"
+          case 'T' => s
+          case  _  => s"${s.substring(0, 10)}T${s.substring(11)}"
+        }
+        try Date.from(Instant.parse(st)) catch {
+          case ex: java.time.format.DateTimeParseException =>
+            throw new BusinessException(s"Unsupported timestamp format. ${ex.getMessage}")
+        }
       case _ =>
         throw new BusinessException(s"Unsupported timestamp format - $s")
     }
