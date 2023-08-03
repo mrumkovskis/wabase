@@ -418,7 +418,7 @@ trait AppServiceBase[User]
       .toList ++
       Option(this)
         .flatMap {
-          case dc: DeferredControl => dc.fileStreamerConfig
+          case dc: DeferredControl => dc.deferredFileStreamerConfig
           case _ => None
         }
         .toList

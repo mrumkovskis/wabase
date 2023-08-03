@@ -313,7 +313,7 @@ trait DeferredControl
 
   def onRestartDeferred(): Unit = deferredStorage.onRestart()
 
-  def fileStreamerConfig: Option[AppFileStreamerConfig] = {
+  def deferredFileStreamerConfig: Option[AppFileStreamerConfig] = {
     Option(deferredStorage).collect { case ds: DbDeferredStorage => ds }
   }
 }
