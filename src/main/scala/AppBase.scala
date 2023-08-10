@@ -1030,7 +1030,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
     value.toString.length > field.type_.length.get
 
   def fieldValueNotInEnumErrorMessage(viewName: String, field: FieldDef, value: Any)(implicit locale: Locale): String =
-    translate("""Field "$%1$s" value must be from available value list.""", field.label)
+    translate("""Field "%1$s" value must be from available value list.""", field.label)
   def isFieldValueEnumViolated(viewName: String, field: FieldDef, value: Any): Boolean =
     value != null &&
     field.enum_ != null &&
