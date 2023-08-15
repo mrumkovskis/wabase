@@ -41,8 +41,11 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
       these.filter(_.isDirectory).flatMap(recursiveListDirectories)
   }
 
+  def isTestCaseFile(file: File): Boolean =
+    file.isFile && file.getName.endsWith(".yaml")
+
   def shouldTestScenario(scenario: File): Boolean =
-    scenario.listFiles.exists(_.isFile)
+    scenario.listFiles.exists(isTestCaseFile)
 
   val scenarios = for {
     scenarioPath <- scenarioPaths
@@ -330,7 +333,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
       behavior of scenario.getName
       var context = Map.empty[String, String]
       it should "login" in login()
-      scenario.listFiles.sortBy(_.getName).foreach{testCase =>
+      scenario.listFiles.filter(isTestCaseFile).sortBy(_.getName).foreach{testCase =>
         it should "handle "+testCase.getName in {
           val (newValuesInContext, map) = applyContext(readPojoMap(testCase, getTemplatePath), context)
           context ++= newValuesInContext
