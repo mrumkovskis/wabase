@@ -73,7 +73,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       }.toSet
     mojozViewDefs.map{ case (k, v) => (k, toAppViewDef(v, isInline = inlineViewDefNames.contains(v.name))) }.toMap
   }
-  override def viewName[T <: AnyRef](implicit mf: Manifest[T]): String =
+  override def viewNameFromMf[T <: AnyRef](implicit mf: Manifest[T]): String =
     classToViewNameMap.getOrElse(mf.runtimeClass, mf.runtimeClass.getSimpleName)
 
   def dtoMappingClassName = "dto.DtoMapping"
