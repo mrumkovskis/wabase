@@ -24,7 +24,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
   import AppMetadata._
 
-  override lazy val joinsParser =
+  override lazy val joinsParser: JoinsParser =
     new TresqlJoinsParser(tresqlMetadata, createJoinsParserCache(_))
   override lazy val metadataConventions: AppMdConventions = new DefaultAppMdConventions
   override lazy val nameToViewDef: Map[String, ViewDef] = {
