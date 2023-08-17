@@ -371,7 +371,7 @@ object FileCleanupSpecsHelper {
   class TestFileCleanup(db: DbAccess, fileStreamers: AppFileStreamerConfig*)
       extends AppFileCleanup(db, fileStreamers: _*) with QuereaseProvider {
     override protected def initQuerease = FileCleanupSpecsQuerease
-    override implicit lazy val connectionPool = TestCp
+    override implicit lazy val connectionPool: PoolName = TestCp
     override lazy val ageCheckSql: String = "now() - interval 1 day"
     override protected lazy val batchSizeOpt: Option[Int] = Some(1)
   }

@@ -118,7 +118,7 @@ class ResultSerializer(
       case closeable: AutoCloseable => closeable.close()
     }
     setHandler(out, new OutHandler {
-      override def onPull: Unit = {
+      override def onPull(): Unit = {
         while ({ encodeNext(); iterators.nonEmpty && buf.length < bufferSizeHint })()
         if (buf.nonEmpty) {
           val chunk = buf.result()
@@ -443,7 +443,7 @@ object BorerNestedArraysTransformer {
         encoder.writeStartOfInput()
       }
       setHandler(out, new OutHandler {
-        override def onPull: Unit = {
+        override def onPull(): Unit = {
           while (transformer.transformNext() && buf.length < bufferSizeHint) {}
           if (buf.nonEmpty) {
             val chunk = buf.result()

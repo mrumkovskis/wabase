@@ -152,7 +152,7 @@ object RowSource {
       }
       override def postStop() = src.close()
       setHandler(out, new OutHandler {
-        override def onPull = {
+        override def onPull() = {
           while (buf.isEmpty && src.hasNext) {
             src.row()
             writer.flush()
@@ -186,7 +186,7 @@ object RowSource {
       }
       override def postStop() = src.close()
       setHandler(out, new OutHandler {
-        override def onPull = {
+        override def onPull() = {
           while (buf.isEmpty && src.hasNext) {
             src.row()
             zos.flush()
