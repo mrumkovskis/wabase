@@ -502,8 +502,8 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     }
     val endTime = System.currentTimeMillis
     log(
-      s"View action compilation done in ${endTime - startTime} ms, " +
-        s"$compiledTresqlCount queries compiled in $compiledActionCount actions in ${viewsToCompile.size} views")
+      s"Action compilation done in ${endTime - startTime} ms, " +
+        s"$compiledTresqlCount queries compiled for $compiledActionCount actions")
     (compiledQueries.toSet, caches)
   }
 
