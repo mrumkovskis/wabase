@@ -27,12 +27,8 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   override lazy val joinsParser: JoinsParser =
     new TresqlJoinsParser(tresqlMetadata, createJoinsParserCache(_))
   override lazy val metadataConventions: AppMdConventions = new DefaultAppMdConventions
-  override lazy val nameToViewDef: Map[String, ViewDef] = {
-    val mojozViewDefs =
-      YamlViewDefLoader(tableMetadata, yamlMetadata, joinsParser, metadataConventions, Seq("api"))
-        .nameToViewDef
-    toAppViewDefs(mojozViewDefs)
-  }
+  override lazy val nameToViewDef: Map[String, ViewDef] =
+    toAppViewDefs(viewDefLoader.nameToViewDef)
   protected lazy val actionCache: Map[String, Map[String, Action]] = {
     val res = getClass.getResourceAsStream(s"/$QuereaseActionCacheName")
     if (res == null) {
