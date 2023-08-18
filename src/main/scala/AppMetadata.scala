@@ -446,10 +446,10 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
                         showFailedViewQuery: Boolean,
                         log: => String => Unit,
                        ): (Set[String], Map[String, Array[Byte]]) = {
-    val startTime = System.currentTimeMillis
     val (quereaseCompiledQueries, caches) =
       super.compileAllQueries(previouslyCompiledQueries, showFailedViewQuery, log)
 
+    val startTime = System.currentTimeMillis
     lazy val opTresqlTrav: OpTresqlTraverser[scala.collection.mutable.Set[String]] =
       opTresqlTraverser(opTresqlTrav, stepTresqlTrav)(st => {
         case ViewCall(_, _, data) => opTresqlTrav(st)(data)
