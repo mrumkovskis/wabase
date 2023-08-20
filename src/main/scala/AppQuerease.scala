@@ -1449,6 +1449,18 @@ trait Dto extends org.mojoz.querease.Dto { self =>
           } else if (ManifestFactory.classType(classOf[java.sql.Timestamp]) == typ) {
             val jdate = Format.parseDateTime(v.value)
             new java.sql.Timestamp(jdate.getTime)
+          } else if (ManifestFactory.classType(classOf[java.time.Instant       ]) == typ) {
+            java.time.Instant.parse(v.value)
+          } else if (ManifestFactory.classType(classOf[java.time.LocalDate     ]) == typ) {
+            java.time.LocalDate.parse(v.value)
+          } else if (ManifestFactory.classType(classOf[java.time.LocalTime     ]) == typ) {
+            java.time.LocalTime.parse(v.value)
+          } else if (ManifestFactory.classType(classOf[java.time.LocalDateTime ]) == typ) {
+            java.time.LocalDateTime.parse(v.value)
+          } else if (ManifestFactory.classType(classOf[java.time.OffsetDateTime]) == typ) {
+            java.time.OffsetDateTime.parse(v.value)
+          } else if (ManifestFactory.classType(classOf[java.time.ZonedDateTime ]) == typ) {
+            java.time.ZonedDateTime.parse(v.value)
           } else if (ManifestFactory.classType(classOf[java.lang.Long    ]) == typ || ManifestFactory.Long    == typ) {
             if (v.value.trim == "") null else v.value.toLong
           } else if (ManifestFactory.classType(classOf[java.lang.Integer ]) == typ || ManifestFactory.Int     == typ) {
