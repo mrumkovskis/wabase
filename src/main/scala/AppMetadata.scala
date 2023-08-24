@@ -13,6 +13,8 @@ import org.tresql.parsing.QueryParsers
 import org.wabase.AppMetadata.Action.TresqlExtraction.{OpTresqlTraverser, State, StepTresqlTraverser, opTresqlTraverser, stepTresqlTraverser}
 import org.wabase.AppMetadata.Action.{QuereaseActionCacheName, Validations, VariableTransform, ViewCall, traverseAction}
 
+import java.io.InputStream
+
 import scala.collection.immutable.{Seq, Set}
 import scala.jdk.CollectionConverters._
 import scala.language.reflectiveCalls
@@ -29,35 +31,11 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   override lazy val metadataConventions: AppMdConventions = new DefaultAppMdConventions
   override lazy val nameToViewDef: Map[String, ViewDef] =
     toAppViewDefs(viewDefLoader.nameToViewDef)
-  protected lazy val actionCache: Map[String, Map[String, Action]] = {
-    val res = getClass.getResourceAsStream(s"/$QuereaseActionCacheName")
-    if (res == null) {
-      logger.debug(s"No querease view action cache resource - '/$QuereaseActionCacheName' found")
-      Map()
-    } else {
-      import io.bullet.borer._
-      import AppMetadata.Action.actionCodec
-      val cache =
-        Cbor.decode(res).to[Map[String, Map[String, Action]]].value
-      logger.debug(s"Querease action cache loaded for ${cache.size} views.")
-      cache
-    }
-  }
-  protected lazy val joinsParserCache: Map[String, Map[String, Exp]] = {
-    val res = getClass.getResourceAsStream(s"/$JoinsCompilerCacheName")
-    if (res == null) {
-      logger.debug(s"No joins compiler cache resource - '/$JoinsCompilerCacheName' found")
-      Map()
-    } else {
-      import io.bullet.borer._
-      import CacheIo.expCodec
-      val cache =
-        Cbor.decode(res).to[Map[String, Map[String, Exp]]].value
-      logger.debug(s"Joins compiler cache loaded for databases: ${
-        cache.map { case (db, c) => s"$db - ${c.size}" }.mkString("(", ", ", ")") }")
-      cache
-    }
-  }
+  protected lazy val resourceLoader: String => InputStream = getClass.getResourceAsStream _
+  protected lazy val actionCache: Map[String, Map[String, Action]] =
+    Action.loadActionCache(resourceLoader)
+  protected lazy val joinsParserCache: Map[String, Map[String, Exp]] =
+    loadJoinsParserCache(resourceLoader)
 
   def toAppViewDefs(mojozViewDefs: Map[String, ViewDef]) = transformAppViewDefs {
     val inlineViewDefNames =
@@ -524,13 +502,8 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     super.serializedCaches ++ serializedActions ++ serializedJoins
   }
 
-  protected def createJoinsParserCache(db: String): Option[Cache] = {
-    joinsParserCache.get(Option(db).getOrElse("null")).map { data =>
-      val cache = new SimpleCache(tresqlParserCacheSize)
-      cache.load(data)
-      cache
-    }.orElse(Some(new SimpleCache(tresqlParserCacheSize)))
-  }
+  protected def createJoinsParserCache(db: String): Option[Cache] =
+    joinsParserCacheFactory(joinsParserCache, tresqlParserCacheSize)(db)
 
   protected def extractViewVariables(viewDefs: Map[String, ViewDef])(action: String, viewName: String): Seq[Variable] = {
     import Action._
@@ -876,7 +849,7 @@ class CachedAppMetadataDataFlowParser(maxCacheSize: Int, override val tresqlUri:
   override protected val cache: CacheBase[Op] = new SimpleCacheBase[Op](maxCacheSize)
 }
 
-object AppMetadata {
+object AppMetadata extends Loggable {
 
   case class AuthFilters(
     forGet: Seq[String],
@@ -889,6 +862,29 @@ object AppMetadata {
   val AuthEmpty = AuthFilters(Nil, Nil, Nil, Nil, Nil)
 
   val JoinsCompilerCacheName  = "joins-compiler-cache.cbor"
+  def loadJoinsParserCache(getResourceAsStream: String => InputStream): Map[String, Map[String, Exp]] = {
+    val res = getResourceAsStream(s"/$JoinsCompilerCacheName")
+    if (res == null) {
+      logger.debug(s"No joins compiler cache resource - '/$JoinsCompilerCacheName' found")
+      Map()
+    } else {
+      import io.bullet.borer._
+      import CacheIo.expCodec
+      val cache =
+        Cbor.decode(res).to[Map[String, Map[String, Exp]]].value
+      logger.debug(s"Joins compiler cache loaded for databases: ${
+        cache.map { case (db, c) => s"$db - ${c.size}" }.mkString("(", ", ", ")") }")
+      cache
+    }
+  }
+
+  def joinsParserCacheFactory(joinsParserCache: Map[String, Map[String, Exp]], cacheSize: Int)(db: String): Option[Cache] = {
+    joinsParserCache.get(Option(db).getOrElse("null")).map { data =>
+      val cache = new SimpleCache(cacheSize)
+      cache.load(data)
+      cache
+    }.orElse(Some(new SimpleCache(cacheSize)))
+  }
 
   object Action {
     val Get    = "get"
@@ -914,6 +910,20 @@ object AppMetadata {
     val BindVarCursorsForViewFunctionName = "build_cursors_for_view"
 
     val QuereaseActionCacheName = "querease-action-cache.cbor"
+    def loadActionCache(getResourceAsStream: String => InputStream): Map[String, Map[String, Action]] = {
+      val res = getResourceAsStream(s"/$QuereaseActionCacheName")
+      if (res == null) {
+        logger.debug(s"No querease view action cache resource - '/$QuereaseActionCacheName' found")
+        Map()
+      } else {
+        import io.bullet.borer._
+        import AppMetadata.Action.actionCodec
+        val cache =
+          Cbor.decode(res).to[Map[String, Map[String, Action]]].value
+        logger.debug(s"Querease action cache loaded for ${cache.size} views.")
+        cache
+      }
+    }
 
     object ConfTypes {
       def types: Set[ConfType] = Set(NumberConf, StringConf, BooleanConf)
