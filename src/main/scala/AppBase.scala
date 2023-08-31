@@ -694,7 +694,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
     JsObject(ListMap(
       "name" -> JsString(viewDef.name),
       "key"  -> JsArray(
-        Option(qe.viewNameToKeyFields(viewDef.name)).getOrElse(Nil)
+        qe.viewNameToKeyFields.get(viewDef.name).filter(_ != null).getOrElse(Nil)
         .filterNot(_.api.excluded)
         .map(_.fieldName)
         .map(JsString(_)).toVector),
