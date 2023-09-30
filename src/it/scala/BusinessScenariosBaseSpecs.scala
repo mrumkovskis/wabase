@@ -81,12 +81,9 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
     }
   }
 
-  def templateFunctions: PartialFunction[(String, Map[String, String]), String] = {
-    val randomStringPattern = "randomString\\((\\d*)\\)".r
-
-    {
-      case (randomStringPattern(length), context) => Random.alphanumeric.take(length.toInt).mkString
-    }
+  private val randomStringPattern = "randomString\\((\\d*)\\)".r
+  def templateFunctions: Map[String, String] => PartialFunction[String, String] = context => {
+    case (randomStringPattern(length)) => Random.alphanumeric.take(length.toInt).mkString
   }
 
   private val placeholderPattern = """.*\{\{(.+)\}\}""".r
@@ -94,7 +91,14 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
     var newValues = Map.empty[String, String]
     def mapString(s: String) = {
       def patchString(key: String, cKey: String) = {
-        val value = context.getOrElse(key, templateFunctions(key, context))
+        val value = try {
+          context.getOrElse(key, templateFunctions(context)(key))
+        } catch {
+          case util.control.NonFatal(ex) =>
+            throw new RuntimeException(
+              s"Key '$key' is not found in context and templateFunctions failed. " +
+              s"Keys in context: [${context.keys.toSeq.sorted.mkString(", ")}].", ex)
+        }
         if (cKey != null) newValues += cKey -> value
         value
       }
@@ -111,8 +115,8 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
       patchedS match {
         case placeholderPattern(placeholderName) =>
           // TODO for all
-          if (templateFunctions.isDefinedAt(placeholderName, context))
-            patchedS.replace(s"{{$placeholderName}}", templateFunctions(placeholderName, context))
+          if (templateFunctions(context).isDefinedAt(placeholderName))
+            patchedS.replace(s"{{$placeholderName}}", templateFunctions(context)(placeholderName))
           else patchedS
         case _ => patchedS
       }
