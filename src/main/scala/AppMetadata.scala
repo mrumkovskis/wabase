@@ -1172,11 +1172,11 @@ object AppMetadata extends Loggable {
   }
 
   private [wabase] case class AppFieldDef(
-    api: FieldApiOps  = FieldApiOps(insertable = false, updatable = false, excluded = true),
-    label: String = null,
+    api:  FieldApiOps = FieldApiOps(insertable = false, updatable = false, excluded = false),
+    label:     String = null,
     required: Boolean = false,
     sortable: Boolean = false,
-    visible:  Boolean = false,
+    visible:  Boolean = true,
   ) extends AppFieldDefExtras
 
   val WabaseViewExtrasKey = "wabase-view-extras"
