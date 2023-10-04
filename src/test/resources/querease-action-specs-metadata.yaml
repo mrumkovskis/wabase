@@ -897,6 +897,17 @@ get:
 - f2.c2.gc1 = 'gc1 val'
 
 
+name: template_test1
+table:
+api: get, list
+fields:
+- name
+get:
+- template 'Hello {{name}}!'
+list:
+- template 'Hello {{title}}. {{name}}!' {:name name, 'Ms' title}
+
+
 name: escape_syntax
 table: get
 api: insert, update, get, list

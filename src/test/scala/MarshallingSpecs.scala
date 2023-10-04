@@ -2,13 +2,14 @@ package org.wabase
 
 import akka.http.scaladsl.marshalling.{Marshal, ToResponseMarshaller}
 import akka.http.scaladsl.model._
-import akka.http.scaladsl.model.headers.Location
+import akka.http.scaladsl.model.headers.ContentDispositionTypes.attachment
+import akka.http.scaladsl.model.headers.{Location, `Content-Disposition`}
 import akka.http.scaladsl.testkit.ScalatestRouteTest
 import akka.http.scaladsl.unmarshalling.Unmarshal
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
-import scala.collection.immutable.{Seq, ListMap}
+import scala.collection.immutable.{ListMap, Seq}
 import scala.concurrent.duration._
 import scala.concurrent.{Await, Future}
 
@@ -350,5 +351,17 @@ class MarshallingSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
           "n" -> 1.4,
           "date" -> "2000.01.01")))
     )
+  }
+
+  it should "marshal template result" in {
+    val svc = service
+    import svc.toResponseTemplateResultMarshaller
+    def response(tr: TemplateResult) = Await.result(
+      Marshal(tr).to[HttpResponse], 1.second
+    )
+
+    response(StringTemplateResult("result")).status shouldEqual StatusCodes.OK
+    response(FileTemplateResult("file", "text/plain", "result".getBytes("UTF-8")))
+     .header[`Content-Disposition`] shouldEqual Some(`Content-Disposition`(attachment, Map("filename" -> "file")))
   }
 }

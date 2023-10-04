@@ -65,6 +65,9 @@ case class QuereaseDeleteResult(count: Int) extends QuereaseResult
 case class StatusResult(code: Int, value: StatusValue) extends DataResult
 case class FileInfoResult(fileInfo: FileInfo) extends QuereaseResult
 case class FileResult(fileInfo: FileInfo, fileStreamer: FileStreamer) extends DataResult
+sealed trait TemplateResult extends QuereaseResult
+case class StringTemplateResult(content: String) extends TemplateResult
+case class FileTemplateResult(fileName: String, contentType: String, content: Array[Byte]) extends TemplateResult
 case class HttpResult(response: HttpResponse) extends DataResult
 case object NoResult extends QuereaseResult
 case class QuereaseResultWithCleanup(result: QuereaseCloseableResult, cleanup: Option[Throwable] => Unit)
@@ -144,6 +147,10 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     * Default implementation is {{{Writer => PartialFunction.empty}}}
     * */
   val jsonValueEncoder: ResultEncoder.JsValueEncoderPF = _ => PartialFunction.empty
+  val templateEngine =
+    Class.forName(config.getString("app.template.engine"))
+      .newInstance()
+      .asInstanceOf[WabaseTemplate]
 
   override protected def persistenceFilters(
     view: ViewDef,
@@ -962,6 +969,35 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     }.map(FileInfoResult)
   }
 
+  protected def doTemplate(
+    op: Action.Template,
+    data: Map[String, Any],
+    env: Map[String, Any],
+    context: ActionContext,
+  )(implicit
+    resFac: ResourcesFactory,
+    ec: ExecutionContext,
+    as: ActorSystem,
+    fs: FileStreamer,
+    req: HttpRequest,
+    qio: AppQuereaseIo[Dto],
+  ): Future[TemplateResult] = {
+    import resFac._
+    val bindVars = data ++ env
+    val template = Query(op.templateTresql)(resources.withParams(bindVars)).unique[String]
+    if (op.dataOp == null) {
+      Future.successful(templateEngine(template, List(bindVars)))
+    } else {
+      doActionOp(op.dataOp, data, env, context)
+        .flatMap(dataForNextStep(_, context, false))
+        .map {
+          case m: Map[String@unchecked, _] => templateEngine(template, List(m))
+          case s: Seq[Map[String, _]@unchecked] => templateEngine(template, s)
+          case x => sys.error(s"Expected template data Seq[Map[String, Any]], got: $x")
+        }
+    }
+  }
+
   protected def doHttp(
     op: Action.Http,
     data: Map[String, Any],
@@ -1156,6 +1192,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case foreach: Action.Foreach => doForeach(foreach, data, env, context)
       case file: Action.File => doFile(file, data, env, context)
       case toFile: Action.ToFile => doToFile(toFile, data, env, context)
+      case template: Action.Template => doTemplate(template, data, env, context)
       case http: Action.Http => doHttp(http, data, env, context)
       case eh: Action.HttpHeader => doExtractHeader(eh, data, env, context)
       case db: Action.Db => doDb(db, data, env, context)
@@ -1211,6 +1248,15 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           fileHttpEntity(fileResult)
             .map(e => (e.dataBytes, e.contentType, e.contentLengthOption))
             .getOrElse(sys.error(s"File not found: ${fileResult.fileInfo}"))
+        case templateResult: TemplateResult => templateResult match {
+          case StringTemplateResult(content) =>
+            val data = ByteString(content)
+            (Source.single(data), ContentTypes.`text/plain(UTF-8)`, Option(data.size))
+          case FileTemplateResult(fileName, contentType, content) =>
+            val ct = ContentType.parse(contentType).toOption
+              .getOrElse(sys.error(s"Error parsing template result content type: $contentType"))
+            (Source.single(ByteString(content)), ct, Option(content.size))
+        }
         case HttpResult(res) => (res.entity.dataBytes, res.entity.contentType, res.entity.contentLengthOption)
         case CompatibleResult(r, fil, isCollection) => renderedResult(r, fil, Option(isCollection))
         case x => sys.error(s"Currently unable to create rendered source from result: $x")
@@ -1301,6 +1347,10 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case fi: FileInfoResult => fi.fileInfo.toMap
       case fr: FileResult => fileHttpEntity(fr).map(objFromHttpEntity(_, null, false))
         .getOrElse(sys.error(s"File not found: ${fr.fileInfo}"))
+      case tr: TemplateResult => tr match {
+        case StringTemplateResult(content) => content
+        case FileTemplateResult(_, _, content) => content
+      }
       case HttpResult(r) =>
         if (r.status.isRedirection())
           r.headers.find(_.is("location")).map(_.value()).getOrElse("")

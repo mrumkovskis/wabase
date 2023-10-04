@@ -4,6 +4,7 @@ import akka.NotUsed
 import akka.http.scaladsl.marshalling._
 import akka.http.scaladsl.model._
 import akka.http.scaladsl.model.MediaTypes._
+import akka.http.scaladsl.model.headers.ContentDispositionTypes.attachment
 import akka.http.scaladsl.util.FastFuture
 
 import java.io.OutputStreamWriter
@@ -11,8 +12,7 @@ import java.net.URLEncoder
 import java.text.Normalizer
 import java.util.zip.ZipOutputStream
 import scala.concurrent.{ExecutionContext, Future}
-import akka.http.scaladsl.model.headers.{ContentDispositionType, ContentDispositionTypes}
-import akka.http.scaladsl.model.headers.{Location, RawHeader}
+import akka.http.scaladsl.model.headers.{ContentDispositionType, ContentDispositionTypes, Location, RawHeader, `Content-Disposition`}
 import akka.http.scaladsl.unmarshalling.{FromEntityUnmarshaller, FromResponseUnmarshaller, Unmarshaller}
 import akka.stream.scaladsl.{Flow, Source}
 import akka.util.ByteString
@@ -223,6 +223,23 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
       HttpResponse(status = StatusCodes.OK, entity = ent)
     }.getOrElse(HttpResponse(status = StatusCodes.NotFound))
   }
+  implicit val toResponseTemplateResultMarshaller:          ToResponseMarshaller[TemplateResult] =
+    Marshaller.combined {
+      case StringTemplateResult(content) =>
+        HttpResponse(status = StatusCodes.OK, entity = HttpEntity(content))
+      case FileTemplateResult(fileName, contentType, content) =>
+        ContentType.parse(contentType).fold(
+          err => HttpResponse(
+            status = StatusCodes.InternalServerError,
+            entity = HttpEntity(err.map(_.formatPretty).mkString("\n"))
+          ),
+          ct => HttpResponse(
+            status = StatusCodes.OK,
+            headers = List(`Content-Disposition`(attachment, Map("filename" -> fileName))),
+            entity = HttpEntity(ct, content)
+          )
+        )
+    }
   implicit val toResponseHttpResultMarshaller:              ToResponseMarshaller[HttpResult] =
     Marshaller.combined(_.response)
 
@@ -299,6 +316,7 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
       case no: NoResult.type  => (toEntityQuereaseNoResultMarshaller:         ToResponseMarshaller[NoResult.type] )(no)
       case dr: QuereaseDelRes => (toEntityQuereaseDeleteResultMarshaller:     ToResponseMarshaller[QuereaseDelRes])(dr)
       case fr: FileResult     => (toResponseFileResultMarshaller:             ToResponseMarshaller[FileResult]    )(fr)
+      case tr: TemplateResult => (toResponseTemplateResultMarshaller:         ToResponseMarshaller[TemplateResult])(tr)
       case hr: HttpResult     => (toResponseHttpResultMarshaller:             ToResponseMarshaller[HttpResult]    )(hr)
       case cr: CompatibleResult => (toResponseCompatibleResultMarshaller(wr): ToResponseMarshaller[CompatibleResult])(cr)
       case cr: ConfResult     => (toEntityConfResultMarshaller:               ToResponseMarshaller[ConfResult]    )(cr)

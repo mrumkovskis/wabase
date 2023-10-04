@@ -1001,4 +1001,15 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         doAction("delete", "cols_filter_test_1", Map("id" -> id))
     } yield t5
   }
+
+  it should "render template" in {
+    for {
+      t1 <-
+        doAction("get", "template_test1", Map("name" -> "Dzidzis"))
+          .map(_ shouldBe StringTemplateResult("Hello Dzidzis!"))
+      t2 <-
+        doAction("list", "template_test1", Map("name" -> "Anne"))
+          .map(_ shouldBe StringTemplateResult("Hello Ms. Anne!"))
+    } yield t2
+  }
 }
