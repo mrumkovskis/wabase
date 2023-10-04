@@ -147,10 +147,14 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     * Default implementation is {{{Writer => PartialFunction.empty}}}
     * */
   val jsonValueEncoder: ResultEncoder.JsValueEncoderPF = _ => PartialFunction.empty
-  val templateEngine =
-    Class.forName(config.getString("app.template.engine"))
-      .newInstance()
-      .asInstanceOf[WabaseTemplate]
+  lazy val templateEngine = createTemplateEngine
+
+  protected def createTemplateEngine: WabaseTemplate = {
+    Class.forName(config.getString("app.template.engine")).newInstance() match {
+      case wt: WabaseTemplate => wt
+      case x => sys.error(s"Expected type WabaseTemplate, got: ${x.getClass.getName}")
+    }
+  }
 
   override protected def persistenceFilters(
     view: ViewDef,
