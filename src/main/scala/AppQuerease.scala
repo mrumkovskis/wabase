@@ -990,11 +990,11 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     val bindVars = data ++ env
     val template = Query(op.templateTresql)(resources.withParams(bindVars)).unique[String]
     if (op.dataOp == null) {
-      Future.successful(templateEngine(template, List(bindVars)))
+      templateEngine(template, List(bindVars))
     } else {
       doActionOp(op.dataOp, data, env, context)
         .flatMap(dataForNextStep(_, context, false))
-        .map {
+        .flatMap {
           case m: Map[String@unchecked, _] => templateEngine(template, List(m))
           case s: Seq[Map[String, _]@unchecked] => templateEngine(template, s)
           case x => sys.error(s"Expected template data Seq[Map[String, Any]], got: $x")
