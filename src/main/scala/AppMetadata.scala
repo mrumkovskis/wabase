@@ -809,6 +809,9 @@ trait AppMetadataDataFlowParser extends QueryParsers { self =>
   def templateOp: MemParser[Template] = "template" ~> expr ~ opt(operation) ^^ {
     case templ ~ op => Template(templ.tresql, op.orNull)
   } named "template-op"
+  def emailOp: MemParser[Email] = "email" ~> expr ~ operation ~ operation ~ rep(operation) ^^ {
+    case data ~ subj ~ body ~ att => Email(data.tresql, subj, body, att)
+  } named "email-op"
   def httpOp: MemParser[Http] = {
     def tu(uri: Exp) = tresqlUri.parse(uri)(self)
     def http_get_delete: MemParser[Http] =
@@ -831,7 +834,7 @@ trait AppMetadataDataFlowParser extends QueryParsers { self =>
   def bracesOp: MemParser[Op] = "(" ~> operation <~ ")" named "braces-op"
   def bracesTresql: MemParser[Exp] = (("(" ~> expr <~ ")") | expr) named "braces-tresql-op"
   def operation: MemParser[Op] = (viewOp | uniqueOptOp | invocationOp | httpOp | fileOp | toFileOp |
-    templateOp | jsonCodecOp | bracesOp | tresqlOp) named "operation"
+    templateOp | emailOp | jsonCodecOp | bracesOp | tresqlOp) named "operation"
 
   private def opResultType: MemParser[OpResultType] = {
     sealed trait ResType
@@ -962,6 +965,7 @@ object AppMetadata extends Loggable {
     case class File(idShaTresql: String, conformTo: Option[OpResultType] = None) extends Op
     case class ToFile(contentOp: Op, nameTresql: String = null, contentTypeTresql: String = null) extends Op
     case class Template(templateTresql: String, dataOp: Op = null) extends Op
+    case class Email(emailTresql: String, subject: Op, body: Op, attachmentsOp: List[Op] = Nil) extends Op
     case class Http(method: String,
                     uriTresql: TresqlUri.TrUri,
                     headerTresql: String = null,
@@ -1001,6 +1005,7 @@ object AppMetadata extends Loggable {
           if (e == null) r else traverseAction(e)(stepTrav)(r)
         case o: ToFile => opTrav(state)(o.contentOp)
         case o: Template => opTrav(state)(o.dataOp)
+        case Email(_, s, b, a) => a.foldLeft(opTrav(opTrav(state)(s))(b))(opTrav(_)(_))
         case o: Http => opTrav(state)(o.body)
         case Db(a, _) => traverseAction(a)(stepTrav)(state)
         case JsonCodec(_, o) => opTrav(state)(o)
@@ -1080,6 +1085,12 @@ object AppMetadata extends Loggable {
               us(s2, nv(s2.value)(contentTypeTresql))
             case Template(templateTresql, dataOp) =>
               opTresqlTrav(us(state, nv(state.value)(templateTresql)))(dataOp)
+            case Email(emailTresql, s, b, a) =>
+              a.foldLeft(
+                opTresqlTrav(
+                  opTresqlTrav(us(state, nv(state.value)(emailTresql))
+                )(s))(b)
+              )(opTresqlTrav(_)(_))
             case Http(_, uriTresql, headerTresql, body, _) =>
               def tresqlUriTresql(trUri: TresqlUri.TrUri): String = trUri match {
                 case p: TresqlUri.PrimitiveTresql => p.origin

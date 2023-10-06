@@ -2,6 +2,8 @@ package org.wabase
 
 import akka.actor.ActorSystem
 import akka.http.scaladsl.model.HttpHeader.ParsingResult.{Error, Ok}
+import akka.http.scaladsl.model.headers.ContentDispositionTypes.attachment
+import akka.http.scaladsl.model.headers.`Content-Disposition`
 import akka.http.scaladsl.model.{ContentType, ContentTypes, HttpEntity, HttpHeader, HttpMethods, HttpRequest, HttpResponse, MediaTypes, StatusCodes, UniversalEntity}
 import akka.stream.scaladsl.Source
 import akka.util.ByteString
@@ -147,12 +149,19 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     * Default implementation is {{{Writer => PartialFunction.empty}}}
     * */
   val jsonValueEncoder: ResultEncoder.JsValueEncoderPF = _ => PartialFunction.empty
-  lazy val templateEngine = createTemplateEngine
-
+  lazy val templateEngine: WabaseTemplate = createTemplateEngine
   protected def createTemplateEngine: WabaseTemplate = {
     Class.forName(config.getString("app.template.engine")).newInstance() match {
       case wt: WabaseTemplate => wt
       case x => sys.error(s"Expected type WabaseTemplate, got: ${x.getClass.getName}")
+    }
+  }
+
+  lazy val emailSender: WabaseEmail = createEmailSender
+  protected def createEmailSender: WabaseEmail = {
+    Class.forName(config.getString("app.email.sender")).newInstance() match {
+      case es: WabaseEmail => es
+      case x => sys.error(s"Expected type WabaseEmail, got: ${x.getClass.getName}")
     }
   }
 
@@ -1002,6 +1011,54 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     }
   }
 
+  protected def doEmail(
+    op: Action.Email,
+    data: Map[String, Any],
+    env: Map[String, Any],
+    context: ActionContext,
+  )(implicit
+    resFac: ResourcesFactory,
+    ec: ExecutionContext,
+    as: ActorSystem,
+    fs: FileStreamer,
+    req: HttpRequest,
+    qio: AppQuereaseIo[Dto],
+  ): Future[LongResult] = {
+    def subj_body(bv: Map[String, Any]) = {
+      def stringContent(qr: QuereaseResult) = qr match {
+        case TresqlResult(r) => Future.successful(r.unique[String])
+        case _ => renderedResult(qr, null, null, Option(false))
+          ._1.runReduce(_ ++ _).map(_.decodeString("UTF8"))
+      }
+      Future.traverse(List(op.subject, op.body))(doActionOp(_, bv, env, context).flatMap(stringContent))
+    }
+    def s(v: Any): String = if (v == null) null else String.valueOf(v)
+    import resFac._
+    val bindVars = data ++ env
+    val count = Query(op.emailTresql)(resources.withParams(bindVars))
+      .foldLeft(Future.successful(0)) { (c, row) =>
+        val email = row.toMap
+        val to = s(email.getOrElse("to", sys.error(s"Email to missing")))
+        val cc = s(email.getOrElse("cc", null))
+        val bcc = s(email.getOrElse("bcc", null))
+        val from = s(email.getOrElse("from", null))
+        val opData = bindVars ++ email
+        subj_body(opData).flatMap { sb =>
+          val List(subject, body) = sb
+          Future.traverse(op.attachmentsOp)(doActionOp(_, opData, env, context)
+            .map(
+              renderedResult(_, null, null, Option(false)) match {
+                case (src, fn, ct, _) => EmailAttachment(fn, ct.value, src)
+              }
+            )
+          ).flatMap { att =>
+            emailSender.sendMail(to, cc, bcc, from, subject, body, att, true)
+          }
+        }.flatMap(_ => c.map(_ + 1))
+      }
+    count.map(LongResult(_))
+  }
+
   protected def doHttp(
     op: Action.Http,
     data: Map[String, Any],
@@ -1197,6 +1254,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case file: Action.File => doFile(file, data, env, context)
       case toFile: Action.ToFile => doToFile(toFile, data, env, context)
       case template: Action.Template => doTemplate(template, data, env, context)
+      case email: Action.Email => doEmail(email, data, env, context)
       case http: Action.Http => doHttp(http, data, env, context)
       case eh: Action.HttpHeader => doExtractHeader(eh, data, env, context)
       case db: Action.Db => doDb(db, data, env, context)
@@ -1226,48 +1284,61 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
      req: HttpRequest,
      qio: AppQuereaseIo[Dto],
    ): Future[(Source[ByteString, _], ContentType, Option[Long])] = {
+    doActionOp(op, data, env, context)
+      .map(renderedResult(_, contentType, null, None))
+      .map { case (src, _, ct, l) => (src, ct, l) }
+  }
+
+  private def renderedResult(
+    res: QuereaseResult,
+    contentType: ContentType,
+    resFil: ResultRenderer.ResultFilter,
+    isCollection: Option[Boolean],
+  ): (Source[ByteString, _], String, ContentType, Option[Long]) = {
     val ct: ContentType = if (contentType == null) MediaTypes.`application/json` else contentType
-
-    def renderedResult(res: QuereaseResult, resFil: ResultRenderer.ResultFilter, isColl: Option[Boolean]):
-      (Source[ByteString, _], ContentType, Option[Long]) = {
-      res match {
-        case StringResult(s) =>
-          val data = ByteString(s)
-          (Source.single(data), ct, Option(data.size))
-        case TresqlResult(tr) => tr match {
-          case SingleValueResult(r: Iterable[_]) =>
-            (renderedSource(DataSerializer.source(() => r.iterator), resFil, isColl.getOrElse(true), ct),
-              contentType, None)
-          case SingleValueResult(r) =>
-            (renderedSource(DataSerializer.source(() => Iterator(r)), resFil, isColl.getOrElse(false), ct),
-              contentType, None)
-          case r =>
-            (renderedSource(TresqlResultSerializer.source(() => r), resFil, isColl.getOrElse(true), ct),
-              contentType, None)
-        }
-        case TresqlSingleRowResult(row) =>
-          (renderedSource(TresqlResultSerializer.rowSource(() => row), resFil, isColl.getOrElse(false), ct),
-            contentType, None)
-        case fileResult: FileResult =>
-          fileHttpEntity(fileResult)
-            .map(e => (e.dataBytes, e.contentType, e.contentLengthOption))
-            .getOrElse(sys.error(s"File not found: ${fileResult.fileInfo}"))
-        case templateResult: TemplateResult => templateResult match {
-          case StringTemplateResult(content) =>
-            val data = ByteString(content)
-            (Source.single(data), ContentTypes.`text/plain(UTF-8)`, Option(data.size))
-          case FileTemplateResult(fileName, contentType, content) =>
-            val ct = ContentType.parse(contentType).toOption
-              .getOrElse(sys.error(s"Error parsing template result content type: $contentType"))
-            (Source.single(ByteString(content)), ct, Option(content.size))
-        }
-        case HttpResult(res) => (res.entity.dataBytes, res.entity.contentType, res.entity.contentLengthOption)
-        case CompatibleResult(r, fil, isCollection) => renderedResult(r, fil, Option(isCollection))
-        case x => sys.error(s"Currently unable to create rendered source from result: $x")
+    res match {
+      case StringResult(s) =>
+        val data = ByteString(s)
+        (Source.single(data), null, ct, Option(data.size))
+      case TresqlResult(tr) => tr match {
+        case SingleValueResult(r: Iterable[_]) =>
+          (renderedSource(DataSerializer.source(() => r.iterator), resFil, isCollection.getOrElse(true), ct),
+            null, contentType, None)
+        case SingleValueResult(r) =>
+          (renderedSource(DataSerializer.source(() => Iterator(r)), resFil, isCollection.getOrElse(false), ct),
+            null, contentType, None)
+        case r =>
+          (renderedSource(TresqlResultSerializer.source(() => r), resFil, isCollection.getOrElse(true), ct),
+            null, contentType, None)
       }
+      case TresqlSingleRowResult(row) =>
+        (renderedSource(TresqlResultSerializer.rowSource(() => row), resFil, isCollection.getOrElse(false), ct),
+          null, contentType, None)
+      case fileResult: FileResult =>
+        fileHttpEntity(fileResult)
+          .map(e => (e.dataBytes, fileResult.fileInfo.filename, e.contentType, e.contentLengthOption))
+          .getOrElse(sys.error(s"File not found: ${fileResult.fileInfo}"))
+      case templateResult: TemplateResult => templateResult match {
+        case StringTemplateResult(content) =>
+          val data = ByteString(content)
+          (Source.single(data), null, ContentTypes.`text/plain(UTF-8)`, Option(data.size))
+        case FileTemplateResult(fn, contentType, content) =>
+          val ct = ContentType.parse(contentType).toOption
+            .getOrElse(sys.error(s"Error parsing template result content type: $contentType"))
+          (Source.single(ByteString(content)), fn, ct, Option(content.size))
+      }
+      case HttpResult(res) =>
+        ( res.entity.dataBytes,
+          res.header[`Content-Disposition`]
+            .filter(_.dispositionType == attachment)
+            .flatMap(_.params.get("filename"))
+            .orNull,
+          res.entity.contentType,
+          res.entity.contentLengthOption
+        )
+      case CompatibleResult(r, fil, isCollection) => renderedResult(r, ct, fil, Option(isCollection))
+      case x => sys.error(s"Currently unable to create rendered source from result: $x")
     }
-
-    doActionOp(op, data, env, context).map(renderedResult(_, null, None))
   }
 
   protected def doHttpRequest(reqF: Future[HttpRequest])(implicit as: ActorSystem): Future[HttpResponse] = {
