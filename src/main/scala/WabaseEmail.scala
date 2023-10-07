@@ -2,6 +2,7 @@ package org.wabase
 
 import akka.stream.scaladsl.Source
 import akka.util.ByteString
+import scala.collection.immutable.Seq
 
 import scala.concurrent.Future
 

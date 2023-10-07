@@ -69,6 +69,12 @@ object WabaseActionDtos {
 
 class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseInitializer with AsyncFlatSpecLike {
 
+  class MailBox {
+    var emails: Map[String, Map[String, _]] = Map()
+  }
+
+  val mailBox = new MailBox
+
   override def dbNamePrefix: String = "wabase_db"
 
   class WabaseActionsService(as: ActorSystem) extends TestAppServiceNoDeferred(as) {
@@ -89,6 +95,37 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         }
 
       override lazy val macrosClass: Class[_] = classOf[Macros]
+
+      override def createEmailSender: WabaseEmail = new TestEmailSender
+      class TestEmailSender extends WabaseEmail {
+        def sendMail(
+          to: String,
+          cc: String,
+          bcc: String,
+          from: String,
+          subject: String,
+          body: String,
+          attachments: Seq[EmailAttachment],
+          async: Boolean
+        ): Future[Unit] = {
+          Future.traverse(attachments) { att =>
+            att.content.runFold(ByteString.empty)(_ ++ _)
+              .map(_.decodeString("UTF8"))
+              .map(d => (att.filename, att.content_type, d))
+          }.map { att =>
+            val email = Map(
+              "to" -> to,
+              "cc" -> cc,
+              "bcc" -> bcc,
+              "from" -> from,
+              "subject" -> subject,
+              "body" -> body,
+              "attachments" -> att,
+            )
+            mailBox.emails += (to -> email)
+          }
+        }
+      }
     }
     qio = new AppQuereaseIo[Dto](querease)
     super.beforeAll()
@@ -1011,5 +1048,43 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         doAction("list", "template_test1", Map("name" -> "Anne"))
           .map(_ shouldBe StringTemplateResult("Hello Ms. Anne!"))
     } yield t2
+  }
+
+  it should "send email" in {
+    for {
+      t1 <-
+        doAction("insert", "email_test1", Map())
+          .map { sentCount =>
+            sentCount shouldBe LongResult(2)
+            mailBox.emails shouldBe Map(
+              "a@a.a" -> Map(
+                "body" -> "Content for Hannah.",
+                "subject" -> "Subject for Hannah!",
+                "to" -> "a@a.a",
+                "from" -> null,
+                "bcc" -> null,
+                "cc" -> null,
+                "attachments" -> List(
+                  (null, "text/plain; charset=UTF-8", "attachment from http for Hannah"),
+                  ("file_attachment", "application/json", """[{"attachment":"attachment from file"}]"""),
+                  (null, "text/plain; charset=UTF-8", "Template attachment for Hannah")
+                )
+              ),
+              "b@b.b" -> Map(
+                "body" -> "Content for Baiba.",
+                "subject" -> "Subject for Baiba !",
+                "to" -> "b@b.b",
+                "from" -> null,
+                "bcc" -> null,
+                "cc" -> null,
+                "attachments" -> List(
+                  (null, "text/plain; charset=UTF-8", "attachment from http for Baiba"),
+                  ("file_attachment", "application/json", """[{"attachment":"attachment from file"}]"""),
+                  (null, "text/plain; charset=UTF-8", "Template attachment for Baiba")
+                )
+              )
+            )
+          }
+    } yield t1
   }
 }

@@ -156,7 +156,6 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case x => sys.error(s"Expected type WabaseTemplate, got: ${x.getClass.getName}")
     }
   }
-
   lazy val emailSender: WabaseEmail = createEmailSender
   protected def createEmailSender: WabaseEmail = {
     Class.forName(config.getString("app.email.sender")).newInstance() match {

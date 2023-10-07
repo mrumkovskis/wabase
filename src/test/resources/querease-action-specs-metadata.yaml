@@ -908,6 +908,25 @@ list:
 - template 'Hello {{title}}. {{name}}!' {:name name, 'Ms' title}
 
 
+name: email_test1
+table:
+api: get, insert
+fields:
+- attachment
+get:
+- attachment = { 'attachment from http for ' || trim(:name) }
+- :attachment
+insert:
+- file = to file {'attachment from file' attachment} 'file_attachment'
+- email
+    ({ 'a@a.a' 'to', 'Hannah' name } + { 'b@b.b' 'to', 'Baiba' name })
+    (template 'Subject for {{name}}!')
+    (template 'Content for {{recipient}}.' {trim(:name) recipient})
+    (http { '/email_test1', '?', :name name })
+    (file {:file.id, :file.sha_256})
+    (template 'Template attachment for {{name}}' {trim(:name) name})
+
+
 name: escape_syntax
 table: get
 api: insert, update, get, list
