@@ -18,10 +18,12 @@ import org.wabase.ResultEncoder.{ByteChunks, ChunkType, TextChunks}
 
 import scala.collection.immutable.{ListMap, Seq}
 import AppMetadata.AugmentedAppFieldDef
+import akka.http.scaladsl.model.Uri.Query
 import akka.http.scaladsl.model.{ContentType, ContentTypes}
 import org.wabase.ResultRenderers.EncoderFactoryCreator
 
 import scala.annotation.tailrec
+import scala.collection.mutable.ListBuffer
 
 object ResultEncoder {
   type EncoderFactory = OutputStream => ResultEncoder
@@ -493,6 +495,25 @@ class FlatTableResultRenderer(
   }
 }
 
+class FormUrlEncoder(
+  os: OutputStream,
+  isCollection: Boolean,
+  resultFilter: ResultRenderer.ResultFilter,
+  hasHeaders: Boolean = true
+) extends ResultRenderer(isCollection, resultFilter, hasHeaders) {
+  private[this] val data: ListBuffer[(String, String)] = ListBuffer()
+  private[this] var param: String = null
+
+  override def renderKey(key: Any): Unit = param = String.valueOf(key)
+  override def renderValue(value: Any): Unit = {
+    data += (param -> String.valueOf(value))
+    param = null
+  }
+  override def renderFooter(): Unit = {
+    os.write(Query(data.toSeq: _*).toString.getBytes("UTF8"))
+  }
+}
+
 trait TableResultRenderer {
   def renderHeader()                = {}
   def renderRowStart()              = {}
@@ -583,6 +604,7 @@ object ResultRenderers {
       (ContentTypes.`text/csv(UTF-8)`,                           createCsvEncoderFactory),
       (`application/vnd.oasis.opendocument.spreadsheet`,  createOdsEncoderFactory),
       (`application/vnd.ms-excel`,                        createXlsXmlEncoderFactory),
+      (`application/x-www-form-urlencoded`,               createFormUrlEncodedFactory),
     )
   def createJsonEncoderFactory(isCollection: Boolean, resultFilter: ResultRenderer.ResultFilter,
                                viewDef: ViewDef): EncoderFactory =
@@ -606,4 +628,7 @@ object ResultRenderers {
                                  viewDef: ViewDef): EncoderFactory =
     os => new FlatTableResultRenderer(new XlsXmlResultRenderer(new OutputStreamWriter(os, "UTF-8")),
       resultFilter, viewDef)
+  def createFormUrlEncodedFactory(isCollection: Boolean, resultFilter: ResultRenderer.ResultFilter,
+                                  viewDef: ViewDef): EncoderFactory =
+    new FormUrlEncoder(_, isCollection, resultFilter)
 }

@@ -969,7 +969,13 @@ fields:
   - surname
 get:
   - res =
-      http post {'/form_urlencoded_test'}
+      http post
+        {'/form_urlencoded_test'}
+        { :name name, :surname surname }
+        { 'Content-Type', 'application/x-www-form-urlencoded' }
+  - :res
+insert:
+- status ok { :name || ' ' || :surname }
 
 
 name: escape_syntax

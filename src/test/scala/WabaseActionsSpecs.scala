@@ -1098,4 +1098,12 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
           .map(_ shouldBe StringResult("ok"))
     } yield t2
   }
+
+  it should "decode form url encoded request" in {
+    for {
+      t1 <-
+        doAction("get", "form_urlencoded_test", Map("name" -> "Nicola", "surname" -> "Ola"))
+          .map(_ shouldBe StringResult("Nicola Ola"))
+    } yield t1
+  }
 }

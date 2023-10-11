@@ -110,8 +110,8 @@ trait AppServiceBase[User]
         }
       }
       extractRequestEntity.map(_.contentType).flatMap {
-        case `application/json` => defaultContent
-        case `application/x-www-form-urlencoded` =>
+        case ContentTypes.`application/json` => defaultContent
+        case ContentTypes.`application/x-www-form-urlencoded` =>
           extractRequestContext.flatMap { ctx =>
             import ctx.materializer
             onComplete(PredefinedFromEntityUnmarshallers
