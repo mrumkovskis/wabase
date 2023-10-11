@@ -1087,4 +1087,15 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
           }
     } yield t1
   }
+
+  it should "not decode request" in {
+    for {
+      t1 <-
+        doAction("update", "not_decode_request_insert_test", Map())
+          .map(_ shouldBe StringResult("ok"))
+      t2 <-
+        doAction("insert", "not_decode_request_update_test", Map())
+          .map(_ shouldBe StringResult("ok"))
+    } yield t2
+  }
 }

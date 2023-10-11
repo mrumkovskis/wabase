@@ -22,12 +22,12 @@ import AppMetadata.AugmentedAppViewDef
 import AppServiceBase._
 import Authentication.SessionUserExtractor
 import DeferredControl._
-import akka.http.scaladsl.model.MediaTypes.`application/json`
+import akka.http.scaladsl.model.MediaTypes.{`application/json`, `application/x-www-form-urlencoded`}
 
 import java.net.URLEncoder
 import java.util.Locale
 import akka.http.scaladsl.server.util.Tuple
-import akka.http.scaladsl.unmarshalling.FromRequestUnmarshaller
+import akka.http.scaladsl.unmarshalling.{FromEntityUnmarshaller, FromRequestUnmarshaller, PredefinedFromEntityUnmarshallers}
 import akka.util.ByteString
 import io.bullet.borer.{Json, Writer}
 import org.mojoz.querease.{ValidationException, ValidationResult}
@@ -96,6 +96,34 @@ trait AppServiceBase[User]
         case Failure(x)     => throw x
       }
     }
+
+  def entityAsMapOrException(
+    mapUm: FromEntityUnmarshaller[Map[String, Any]],
+    viewName: String,
+  ): Directive1[Map[String, Any]] = {
+    if (app.qe.viewDef(viewName).decodeRequest) {
+      def defaultContent = extractRequestContext.flatMap { ctx =>
+        import ctx.materializer
+        onComplete(mapUm(ctx.request.entity)) flatMap {
+          case Success(value) => provide(value)
+          case Failure(x) => throw x
+        }
+      }
+      extractRequestEntity.map(_.contentType).flatMap {
+        case `application/json` => defaultContent
+        case `application/x-www-form-urlencoded` =>
+          extractRequestContext.flatMap { ctx =>
+            import ctx.materializer
+            onComplete(PredefinedFromEntityUnmarshallers
+              .defaultUrlEncodedFormDataUnmarshaller(ctx.request.entity)) flatMap {
+              case Success(value) => provide(value.fields.toMap)
+              case Failure(x) => throw x
+            }
+          }
+        case _ => defaultContent
+      }
+    } else provide(Map())
+  }
 
   private def extractStringId: Directive1[String] =
     extractMatchedPath flatMap { path =>
@@ -201,7 +229,7 @@ trait AppServiceBase[User]
       parameterMultiMap { params =>
         app.checkApi(viewName, Action.Update, user, keyValues)
         implicit val um = toMapUnmarshallerForView(viewName)
-        entityOrException(as[Map[String, Any]]) { entityAsMap =>
+        entityAsMapOrException(um, viewName) { entityAsMap =>
           extractRequest { implicit req =>
             complete {
               app.doWabaseAction(Action.Update, viewName, keyValues, filterPars(params), entityAsMap,
@@ -260,7 +288,7 @@ trait AppServiceBase[User]
         if (useActions(viewName, Action.Insert)) {
           app.checkApi(viewName, Action.Insert, user, keyValues)
           implicit val um = toMapUnmarshallerForView(viewName)
-          entityOrException(as[Map[String, Any]]) { entityAsMap =>
+          entityAsMapOrException(um, viewName) { entityAsMap =>
             extractRequest { implicit req =>
               complete {
                 app.doWabaseAction(Action.Insert, viewName, keyValues, filterPars(params), entityAsMap,

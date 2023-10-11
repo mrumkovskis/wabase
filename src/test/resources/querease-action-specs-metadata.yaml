@@ -927,6 +927,51 @@ insert:
     (template 'Template attachment for {{name}}' {trim(:name) name})
 
 
+name: not_decode_request_insert_test
+table:
+decode request: false
+api: insert, update, get
+fields:
+- name
+get:
+- unique_opt { :name name }
+insert:
+- status ok { if_defined_or_else(:name?, 'error', 'ok') }
+update:
+- res =
+    http post { '/not_decode_request_insert_test' }
+      http get {'/not_decode_request_insert_test', '?', 'value' name }
+- :res
+
+
+name: not_decode_request_update_test
+table:
+decode request: false
+api: insert, update, get
+fields:
+  - name
+get:
+  - unique_opt { :name name }
+insert:
+  - res =
+      http put { '/not_decode_request_update_test' }
+        http get {'/not_decode_request_update_test', '?', 'value' name }
+  - :res
+update:
+  - status ok { if_defined_or_else(:name?, 'error', 'ok') }
+
+
+name: form_urlencoded_test
+table:
+api: insert, get
+fields:
+  - name
+  - surname
+get:
+  - res =
+      http post {'/form_urlencoded_test'}
+
+
 name: escape_syntax
 table: get
 api: insert, update, get, list

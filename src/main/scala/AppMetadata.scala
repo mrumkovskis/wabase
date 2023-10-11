@@ -101,10 +101,11 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val Validations = "validations"
     val ConnectionPool = "cp"
     val ExplicitDb = "explicit db"
+    val DecodeRequest = "decode request"
     val QuereaseViewExtrasKey = QuereaseMetadata.QuereaseViewExtrasKey
     val WabaseViewExtrasKey = AppMetadata.WabaseViewExtrasKey
     def apply() =
-      Set(Api, Auth, Key, Limit, Validations, ConnectionPool, ExplicitDb, QuereaseViewExtrasKey, WabaseViewExtrasKey) ++
+      Set(Api, Auth, Key, Limit, Validations, ConnectionPool, ExplicitDb, DecodeRequest, QuereaseViewExtrasKey, WabaseViewExtrasKey) ++
         Action()
   }
 
@@ -369,6 +370,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val limit = getIntExtra(Limit, viewDef) getOrElse 100
     val cp = getStringExtra(ConnectionPool, viewDef).orNull
     val explicitDb = getBooleanExtra(ExplicitDb, viewDef)
+    val decodeRequest = getBooleanExtraOpt(DecodeRequest, viewDef).forall(identity)
     def parseActions = Action().foldLeft(Map[String, Action]()) { (res, actionName) =>
       val a = parseAction(s"${viewDef.name}.$actionName", getSeq(actionName, viewDef.extras))
       if (a.steps.nonEmpty) res + (actionName -> a) else res
@@ -393,7 +395,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     ViewDef(name, db, table, tableAlias, joins, filter,
       viewDef.groupBy, viewDef.having, orderBy, extends_,
       comments, appFields, viewDef.saveTo, extras)
-      .updateWabaseExtras(_ => AppViewDef(limit, cp, explicitDb, auth, apiToRoles, actions, Map.empty))
+      .updateWabaseExtras(_ => AppViewDef(limit, cp, explicitDb, decodeRequest, auth, apiToRoles, actions, Map.empty))
   }
 
   protected def transformAppViewDefs(viewDefs: Map[String, ViewDef]): Map[String, ViewDef] =
@@ -1157,6 +1159,7 @@ object AppMetadata extends Loggable {
     val limit: Int
     val cp: String
     val explicitDb: Boolean
+    val decodeRequest: Boolean
     val auth: AuthFilters
     val apiMethodToRoles: Map[String, Set[String]]
     val actions: Map[String, Action]
@@ -1167,6 +1170,7 @@ object AppMetadata extends Loggable {
     limit: Int = 1000,
     cp: String = null,
     explicitDb: Boolean = false,
+    decodeRequest: Boolean = false,
     auth: AuthFilters = AuthFilters(Nil, Nil, Nil, Nil, Nil),
     apiMethodToRoles: Map[String, Set[String]] = Map(),
     actions: Map[String, Action] = Map(),
@@ -1207,6 +1211,7 @@ object AppMetadata extends Loggable {
     override val limit = appExtras.limit
     override val cp = appExtras.cp
     override val explicitDb = appExtras.explicitDb
+    override val decodeRequest = appExtras.decodeRequest
     override val auth = appExtras.auth
     override val apiMethodToRoles = appExtras.apiMethodToRoles
     override val actions = appExtras.actions
