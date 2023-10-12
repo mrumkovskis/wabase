@@ -820,7 +820,7 @@ trait AppMetadataDataFlowParser extends QueryParsers { self =>
         args match {
           case Nil => Template(templTresql, null, null)
           case l =>
-            val dataOp = findArg("data", 0, l)
+            val dataOp = findArg(Data, 0, l)
             val filename = findArg(Filename, 1, l).map(_.asInstanceOf[Tresql])
             Template(templTresql, dataOp.orNull, filename.map(_.tresql).orNull)
         }
