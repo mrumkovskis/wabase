@@ -69,7 +69,7 @@ case class FileInfoResult(fileInfo: FileInfo) extends QuereaseResult
 case class FileResult(fileInfo: FileInfo, fileStreamer: FileStreamer) extends DataResult
 sealed trait TemplateResult extends QuereaseResult
 case class StringTemplateResult(content: String) extends TemplateResult
-case class FileTemplateResult(fileName: String, contentType: String, content: Array[Byte]) extends TemplateResult
+case class FileTemplateResult(filename: String, contentType: String, content: Array[Byte]) extends TemplateResult
 case class HttpResult(response: HttpResponse) extends DataResult
 case object NoResult extends QuereaseResult
 case class QuereaseResultWithCleanup(result: QuereaseCloseableResult, cleanup: Option[Throwable] => Unit)
@@ -997,17 +997,27 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     import resFac._
     val bindVars = data ++ env
     val template = Query(op.templateTresql)(resources.withParams(bindVars)).unique[String]
-    if (op.dataOp == null) {
-      templateEngine(template, List(bindVars))
-    } else {
-      doActionOp(op.dataOp, data, env, context)
-        .flatMap(dataForNextStep(_, context, false))
-        .flatMap {
-          case m: Map[String@unchecked, _] => templateEngine(template, List(m))
-          case s: Seq[Map[String, _]@unchecked] => templateEngine(template, s)
-          case x => sys.error(s"Expected template data Seq[Map[String, Any]], got: $x")
+    val resF =
+      if (op.dataOp == null) {
+        templateEngine(template, List(bindVars))
+      } else {
+        doActionOp(op.dataOp, data, env, context)
+          .flatMap(dataForNextStep(_, context, false))
+          .flatMap {
+            case m: Map[String@unchecked, _] => templateEngine(template, List(m))
+            case s: Seq[Map[String, _]@unchecked] => templateEngine(template, s)
+            case x => sys.error(s"Expected template data Seq[Map[String, Any]], got: $x")
+          }
+      }
+    Option(op.filenameTresql)
+      .map(Query(_)(resources.withParams(bindVars)).unique[String])
+      .map { filename =>
+        resF.map {
+          case ft: FileTemplateResult => ft.copy(filename = filename)
+          case StringTemplateResult(r) => FileTemplateResult(
+            filename, ContentTypes.`text/plain(UTF-8)`.toString, r.getBytes("UTF8"))
         }
-    }
+      }.getOrElse(resF)
   }
 
   protected def doEmail(

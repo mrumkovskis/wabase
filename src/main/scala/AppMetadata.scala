@@ -808,9 +808,24 @@ trait AppMetadataDataFlowParser extends QueryParsers { self =>
     case op ~ fileName ~ contentType =>
       ToFile(op, fileName.map(_.tresql).orNull, contentType.map(_.tresql).orNull)
   } named "to-file-op"
-  def templateOp: MemParser[Template] = "template" ~> expr ~ opt(operation) ^^ {
-    case templ ~ op => Template(templ.tresql, op.orNull)
-  } named "template-op"
+  def templateOp: MemParser[Template] = {
+    val Data = "data"
+    val Filename = "filename"
+    val args = Set(Data, Filename)
+    def findArg(name: String, idx: Int, l: List[(String, Op)]) =
+      l.find(_._1 == name).orElse(l.lift(idx).filter(_._1 == null)).map(_._2)
+    "template" ~> expr ~ namedOps(args) ^^ {
+      case templ ~ args =>
+        val templTresql = templ.tresql
+        args match {
+          case Nil => Template(templTresql, null, null)
+          case l =>
+            val dataOp = findArg("data", 0, l)
+            val filename = findArg(Filename, 1, l).map(_.asInstanceOf[Tresql])
+            Template(templTresql, dataOp.orNull, filename.map(_.tresql).orNull)
+        }
+    } named "template-op"
+  }
   def emailOp: MemParser[Email] = "email" ~> expr ~ operation ~ operation ~ rep(operation) ^^ {
     case data ~ subj ~ body ~ att => Email(data.tresql, subj, body, att)
   } named "email-op"
@@ -835,6 +850,16 @@ trait AppMetadataDataFlowParser extends QueryParsers { self =>
   } named "json-op"
   def bracesOp: MemParser[Op] = "(" ~> operation <~ ")" named "braces-op"
   def bracesTresql: MemParser[Exp] = (("(" ~> expr <~ ")") | expr) named "braces-tresql-op"
+  def namedOps(allowedNames: Set[String]): MemParser[List[(String, Op)]] = {
+    val namedOp: MemParser[(String, Op)] =
+      opt(ident <~ "=") ~ operation ^? ( {
+        case Some(name) ~ op if allowedNames(name) => (name, op)
+        case _ ~ op => (null, op)
+      }, {
+        case n ~ _ => s"Illegal argument name - $n, allowed arguments - $allowedNames"
+      }) named "named-op"
+    rep(namedOp)
+  } named "named-ops"
   def operation: MemParser[Op] = (viewOp | uniqueOptOp | invocationOp | httpOp | fileOp | toFileOp |
     templateOp | emailOp | jsonCodecOp | bracesOp | tresqlOp) named "operation"
 
@@ -966,7 +991,7 @@ object AppMetadata extends Loggable {
     case class If(cond: Op, action: Action, elseAct: Action = null) extends Op
     case class File(idShaTresql: String, conformTo: Option[OpResultType] = None) extends Op
     case class ToFile(contentOp: Op, nameTresql: String = null, contentTypeTresql: String = null) extends Op
-    case class Template(templateTresql: String, dataOp: Op = null) extends Op
+    case class Template(templateTresql: String, dataOp: Op = null, filenameTresql: String = null) extends Op
     case class Email(emailTresql: String, subject: Op, body: Op, attachmentsOp: List[Op] = Nil) extends Op
     case class Http(method: String,
                     uriTresql: TresqlUri.TrUri,
@@ -1085,8 +1110,9 @@ object AppMetadata extends Loggable {
               val s1 = opTrTr(contentOp)
               val s2 = us(s1, nv(s1.value)(nameTresql))
               us(s2, nv(s2.value)(contentTypeTresql))
-            case Template(templateTresql, dataOp) =>
-              opTresqlTrav(us(state, nv(state.value)(templateTresql)))(dataOp)
+            case Template(templateTresql, dataOp, filenameTresql) =>
+              val s = opTresqlTrav(us(state, nv(state.value)(templateTresql)))(dataOp)
+              us(s, nv(s.value)(filenameTresql))
             case Email(emailTresql, s, b, a) =>
               a.foldLeft(
                 opTresqlTrav(

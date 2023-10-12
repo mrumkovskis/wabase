@@ -899,13 +899,19 @@ get:
 
 name: template_test1
 table:
-api: get, list
+api: get, list, insert, update, delete
 fields:
 - name
 get:
 - template 'Hello {{name}}!'
 list:
 - template 'Hello {{title}}. {{name}}!' {:name name, 'Ms' title}
+insert:
+- template 'Hello {{name}}!' filename='file name'
+update:
+- template 'Hello {{name}} in {{action}}!' filename='file name' data={:name name, 'update' action}
+delete:
+- template 'Hello {{name}} in {{action}}!' data={:name name, 'delete' action}
 
 
 name: email_test1
@@ -924,7 +930,7 @@ insert:
     (template 'Content for {{recipient}}.' {trim(:name) recipient})
     (http { '/email_test1', '?', :name name })
     (file {:file.id, :file.sha_256})
-    (template 'Template attachment for {{name}}' {trim(:name) name})
+    (template 'Template attachment for {{name}}' {trim(:name) name} 'attachment name')
 
 
 name: not_decode_request_insert_test

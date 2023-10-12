@@ -1047,7 +1047,26 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       t2 <-
         doAction("list", "template_test1", Map("name" -> "Anne"))
           .map(_ shouldBe StringTemplateResult("Hello Ms. Anne!"))
-    } yield t2
+      t3 <-
+        doAction("insert", "template_test1", Map("name" -> "Boris"))
+          .map { r =>
+            r shouldBe a [FileTemplateResult]
+            val fa = r.asInstanceOf[FileTemplateResult]
+            fa.filename shouldBe "file name"
+            new String(fa.content) shouldBe "Hello Boris!"
+          }
+      t4 <-
+        doAction("update", "template_test1", Map("name" -> "Joe"))
+          .map { r =>
+            r shouldBe a[FileTemplateResult]
+            val fa = r.asInstanceOf[FileTemplateResult]
+            fa.filename shouldBe "file name"
+            new String(fa.content) shouldBe "Hello Joe in update!"
+          }
+      t5 <-
+        doAction("delete", "template_test1", Map("name" -> "Migel"))
+          .map(_ shouldBe StringTemplateResult("Hello Migel in delete!"))
+    } yield t5
   }
 
   it should "send email" in {
@@ -1067,7 +1086,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
                 "attachments" -> List(
                   (null, "text/plain; charset=UTF-8", "attachment from http for Hannah"),
                   ("file_attachment", "application/json", """[{"attachment":"attachment from file"}]"""),
-                  (null, "text/plain; charset=UTF-8", "Template attachment for Hannah")
+                  ("attachment name", "text/plain; charset=UTF-8", "Template attachment for Hannah")
                 )
               ),
               "b@b.b" -> Map(
@@ -1080,7 +1099,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
                 "attachments" -> List(
                   (null, "text/plain; charset=UTF-8", "attachment from http for Baiba"),
                   ("file_attachment", "application/json", """[{"attachment":"attachment from file"}]"""),
-                  (null, "text/plain; charset=UTF-8", "Template attachment for Baiba")
+                  ("attachment name", "text/plain; charset=UTF-8", "Template attachment for Baiba")
                 )
               )
             )
