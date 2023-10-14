@@ -326,12 +326,14 @@ object Authentication {
     lazy val BasicChallenge = HttpChallenges.basic(HttpChallengeRealm)
     lazy val CustomChallenge = HttpChallenge("BasicOrOther", HttpChallengeRealm)
 
-    override def signInUser = {
+    override def signInUser: AuthenticationDirective[User] = {
       def r(c: Cause, ch: HttpChallenge) = reject(AuthenticationFailedRejection(c, ch)): Directive1[User]
-      extractCredentials.flatMap { _.collect {
+      //define separate method before calling flatMap because of scala 3.3.1 compilation error
+      def cr: Directive1[Option[User]] = extractCredentials.flatMap { _.collect {
           case BasicHttpCredentials(username, password) => onSuccess(authenticateUser(username, password))
         }.getOrElse(provide(Some(null).asInstanceOf[Option[User]])) //indicates missing credentials
-      }.flatMap {
+      }
+      cr.flatMap {
         case Some(user) if user != null => provide(user)
         case x =>
           val cause = x.map(_ => CredentialsMissing).getOrElse(CredentialsRejected)
