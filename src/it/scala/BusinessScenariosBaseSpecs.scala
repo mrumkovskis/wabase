@@ -257,7 +257,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
     case x => x
   }
 
-  def checkTestCase(scenario: File, testCase: File, context: Map[String, String], map: Map[String, Any]) = {
+  def checkTestCase(scenario: File, testCase: File, context: Map[String, String], map: Map[String, Any], retriesLeft: Int): Map[String, String] = {
     val path = map.s("path")
     val method = map.sd("method", "GET")
     val params = map.m("params")
@@ -330,6 +330,30 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
       throw ex
     }
     else Map.empty[String, String]
+  }
+
+  def checkTestCase(scenario: File, testCase: File, context: Map[String, String], map: Map[String, Any]): Map[String, String] = {
+    val retries = map.get("retries").map(_.toString.toInt).getOrElse(0)
+    var result: Map[String, String] = Map.empty
+    import scala.util.control.Breaks._
+    breakable {
+      for (retriesLeft <- (0 to retries).reverse) {
+        map.get("sleep").map(_.toString).map { time =>
+          logger.info(s"Sleeping $time")
+          val duration = scala.concurrent.duration.Duration(time)
+          Thread.sleep(duration.toMillis)
+          logger.info(s"Awake!")
+        }
+        try {
+          result = checkTestCase(scenario, testCase, context, map, retriesLeft)
+          break()
+        } catch {
+          case util.control.NonFatal(ex) if retriesLeft > 0 =>
+            logger.info(s"Retrying, retries left: $retriesLeft (because failed with ${ex.getMessage})")
+        }
+      }
+    }
+    result
   }
 
   def ckeckAllTestCases =
