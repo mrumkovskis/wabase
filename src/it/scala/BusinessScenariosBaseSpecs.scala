@@ -200,28 +200,30 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
     path: String, method: String, params: Map[String, Any], requestInfo: RequestInfo,
     mergeResponse: Boolean, expectedResponse: Any, error: String,
     tresqlRow: String, tresqlList: String, tresqlTransaction: String,
-  ): Unit = {
+  ): Unit = logger.whenDebugEnabled {
     import requestInfo._
     logger.debug(Seq(
       "=========================",
       "scenario:           " + scenario.getName,
       "test case:          " + testCase,
-      "raw test case data: " + Option(map).getOrElse(""),
       "path:               " + path,
       "method:             " + method,
-      "params:             " + Option(params).filter(_.nonEmpty).getOrElse(""),
-      "headers:            " + Option(headers).filter(_.nonEmpty).getOrElse(""),
+      "params:             " + Option(params).filter(_.nonEmpty),
+      "headers:            " + Option(headers).filter(_.nonEmpty)
+                                 .map(_.map(_.toString).toSeq.sorted.mkString(", ")).getOrElse(""),
       "request json        " + Option(requestMap).map(_.toJson.compactPrint).getOrElse(""),
       "request string:     " + Option(requestString).getOrElse(""),
       "expected response:  " + Option(expectedResponse).getOrElse(""),
       "expected error:     " + Option(error).getOrElse(""),
       "merge response:     " + mergeResponse,
-      "context:            " + Option(context).filter(_.nonEmpty).getOrElse(""),
       "tresql row:         " + Option(tresqlRow).getOrElse(""),
       "tresql list:        " + Option(tresqlList).getOrElse(""),
       "tresql transaction: " + Option(tresqlTransaction).getOrElse(""),
+      "raw test case data: " + Option(map).getOrElse(""),
+      "context:            " + Option(context).filter(_.nonEmpty)
+                                 .map(_.map { case (k, v) => s"$k=$v" }.toSeq.sorted.mkString(", ")).getOrElse(""),
       "=========================",
-    ) .filter(_.length > "tresql transaction: ".length)
+    ) .filter(_.length > "raw test case data: ".length)
       .mkString("\n", "\n", ""))
   }
 
