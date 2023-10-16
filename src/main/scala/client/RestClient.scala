@@ -112,7 +112,7 @@ trait RestClient extends Loggable{
                    "?" // support for key in query string
               else "&" // add params to existing query
             plainUri.withRawQueryString(
-              s"$rawQ$delim${Uri.Empty.withQuery(query).rawQueryString.get}")
+              s"${rawQ}${delim}${Uri.Empty.withQuery(query).rawQueryString.get}")
           case None =>
             plainUri.withQuery(query)
         }
@@ -168,7 +168,7 @@ trait RestClient extends Loggable{
           case _ =>
             Unmarshal(decodeResponse(response).entity).to[String].recover {
               case util.control.NonFatal(e) =>
-                logger.error("Failed to unmarshal response for unexpected status ${response.status.intValue}", e)
+                logger.error(s"Failed to unmarshal response for unexpected status ${response.status.intValue}", e)
                 ""
             }.flatMap { content =>
               val exceptionMessage = response.status.value + "\n" + response.status.defaultMessage + "\n" + content
