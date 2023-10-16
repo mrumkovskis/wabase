@@ -144,12 +144,12 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
   }
 
   case class RequestInfo(
-                          headers: Seq[HttpHeader],
-                          requestBytes: Array[Byte],
-                          requestMap: Map[String, Any],
-                          requestString: String,
-                          requestFormData: Multipart.FormData,
-                        )
+    headers: Seq[HttpHeader],
+    requestBytes: Array[Byte],
+    requestMap: Map[String, Any],
+    requestString: String,
+    requestFormData: Multipart.FormData,
+  )
 
   def extractRequestInfo(map: Map[String, Any], method: String): RequestInfo = {
     val headers = map.m("headers")
@@ -205,23 +205,24 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
     logger.debug(Seq(
       "=========================",
       "scenario:           " + scenario.getName,
-      "testCase:           " + testCase,
-      "rawTestCaseData:    " + map,
+      "test case:          " + testCase,
+      "raw test case data: " + Option(map).getOrElse(""),
       "path:               " + path,
       "method:             " + method,
-      "params:             " + params,
-      "headers:            " + headers,
-      "requestMap:         " + requestMap,
-      "requestString:      " + requestString,
-      "mergeResponse:      " + mergeResponse,
-      "expectedResponse:   " + expectedResponse,
-      "error:              " + error,
-      "context:            " + context,
-      "tresql_row:         " + tresqlRow,
-      "tresql_list:        " + tresqlList,
-      "tresql_transaction: " + tresqlTransaction,
+      "params:             " + Option(params).filter(_.nonEmpty).getOrElse(""),
+      "headers:            " + Option(headers).filter(_.nonEmpty).getOrElse(""),
+      "request json        " + Option(requestMap).map(_.toJson.compactPrint).getOrElse(""),
+      "request string:     " + Option(requestString).getOrElse(""),
+      "expected response:  " + Option(expectedResponse).getOrElse(""),
+      "expected error:     " + Option(error).getOrElse(""),
+      "merge response:     " + mergeResponse,
+      "context:            " + Option(context).filter(_.nonEmpty).getOrElse(""),
+      "tresql row:         " + Option(tresqlRow).getOrElse(""),
+      "tresql list:        " + Option(tresqlList).getOrElse(""),
+      "tresql transaction: " + Option(tresqlTransaction).getOrElse(""),
       "=========================",
-    ).mkString("\n", "\n", ""))
+    ) .filter(_.length > "tresql transaction: ".length)
+      .mkString("\n", "\n", ""))
   }
 
   def logScenarioResponseInfo(debugResponse: Boolean, response: Any): Unit = {
