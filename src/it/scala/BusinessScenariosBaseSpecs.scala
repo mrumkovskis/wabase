@@ -1,7 +1,7 @@
 package org.wabase
 
 import java.io.File
-import akka.http.scaladsl.model.{ContentTypes, HttpEntity, HttpHeader, HttpMethods, Multipart}
+import akka.http.scaladsl.model.{ContentTypes, HttpEntity, HttpHeader, HttpMethods, HttpResponse, Multipart}
 import akka.http.scaladsl.model.headers.`Content-Type`
 import akka.http.scaladsl.model.headers.RawHeader
 import org.scalatest.BeforeAndAfterAll
@@ -12,6 +12,7 @@ import org.wabase.AppMetadata.DbAccessKey
 import spray.json._
 
 import scala.collection.immutable.Seq
+import scala.concurrent.Await
 import scala.language.reflectiveCalls
 import scala.util.{Random, Try}
 import org.wabase.client.{ClientException, WabaseHttpClient}
@@ -78,6 +79,14 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
       case (a, b) if b != null && String.valueOf(a) == b.toString => Map.empty
       case (null, null) => Map.empty
       case (a, b) => err(s"Element $a should be equal to $b")
+    }
+  }
+
+  def assertResponseHeaders(response: HttpResponse, expectedResponseHeaders: Seq[HttpHeader]) = {
+    val received = response.headers.map(_.toString).toSet
+    expectedResponseHeaders foreach { expectedHeader =>
+      if (!received.contains(expectedHeader.toString))
+        sys.error(s"Response did not contain expected header $expectedHeader. Headers received: ${received.toSeq.sorted.mkString(", ")}")
     }
   }
 
@@ -277,6 +286,12 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
       case (null, req) => req
       case (resp : Map[String, Any] @unchecked, req) => cleanupTemplate(mergeTemplate(req, resp))
     }
+    val expectedResponseHeaders = map.m("response_headers").map {
+      case ("Content-Type", value) => // Content-Type is not accepted as valid RawHeader
+        `Content-Type`.parseFromValueString(value.toString).toOption.get
+      case (name, value) =>
+        RawHeader(name, value.toString)
+    }.toList
     val tresqlRow = map.sd("tresql_row", null)
     val tresqlList = map.sd("tresql_list", null)
     val tresqlTransaction = map.sd("tresql_transaction", null)
@@ -287,23 +302,23 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
       tresqlRow, tresqlList, tresqlTransaction,
     )
 
-    def doRequest = (method, requestMap, requestString, requestBytes, requestFormData) match {
-      case ("GET",   null, null,   null, null) => httpGetAwait [String](path, params, headers)
-      case ("POST",   map, null,   null, null) => httpPostAwait[JsValue,     String](HttpMethods.POST,   path, map.toJson, headers)
-      case ("POST",  null, string, null, null) => httpPostAwait[String,      String](HttpMethods.POST,   path, string,     headers)
-      case ("POST",  null, null,  bytes, null) => httpPostAwait[Array[Byte], String](HttpMethods.POST,   path, bytes,      headers)
+    def doRequest: HttpResponse  = (method, requestMap, requestString, requestBytes, requestFormData) match {
+      case ("GET",   null, null,   null, null) => httpGetAwait [HttpResponse](path, params, headers)
+      case ("POST",   map, null,   null, null) => httpPostAwait[JsValue,     HttpResponse](HttpMethods.POST,   path, map.toJson, headers)
+      case ("POST",  null, string, null, null) => httpPostAwait[String,      HttpResponse](HttpMethods.POST,   path, string,     headers)
+      case ("POST",  null, null,  bytes, null) => httpPostAwait[Array[Byte], HttpResponse](HttpMethods.POST,   path, bytes,      headers)
       case ("POST",  null, null,   null, form) => httpPostAwait[
-        Multipart.FormData, String](HttpMethods.POST,   path, form,       headers)
-      case ("PUT",    map, null,   null, null) => httpPostAwait[JsValue,     String](HttpMethods.PUT,    path, map.toJson, headers)
-      case ("PUT",   null, string, null, null) => httpPostAwait[String,      String](HttpMethods.PUT,    path, string,     headers)
-      case ("PUT",   null, null,  bytes, null) => httpPostAwait[Array[Byte], String](HttpMethods.PUT,    path, bytes,      headers)
+        Multipart.FormData, HttpResponse](HttpMethods.POST,   path, form,       headers)
+      case ("PUT",    map, null,   null, null) => httpPostAwait[JsValue,     HttpResponse](HttpMethods.PUT,    path, map.toJson, headers)
+      case ("PUT",   null, string, null, null) => httpPostAwait[String,      HttpResponse](HttpMethods.PUT,    path, string,     headers)
+      case ("PUT",   null, null,  bytes, null) => httpPostAwait[Array[Byte], HttpResponse](HttpMethods.PUT,    path, bytes,      headers)
       case ("PUT",   null, null,   null, form) => httpPostAwait[
-        Multipart.FormData, String](HttpMethods.PUT,    path, form,       headers)
-      case ("DELETE", null, null,  null, null) => httpPostAwait[String,      String](HttpMethods.DELETE, path, "",         headers)
+        Multipart.FormData, HttpResponse](HttpMethods.PUT,    path, form,       headers)
+      case ("DELETE", null, null,  null, null) => httpPostAwait[String,      HttpResponse](HttpMethods.DELETE, path, "",         headers)
       case r => sys.error("Unsupported request type: "+r)
     }
 
-    val processedResponse =
+    val unprocessedResponse =
       if (tresqlRow != null)
         transformToStringValues(dbUse(Query(tresqlRow, context).toListOfMaps.headOption.getOrElse(Map())))
       else if (tresqlList != null)
@@ -312,13 +327,21 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
         transaction(Query(tresqlTransaction, context))
         Map("result" -> "ok")
       } else if (error == null) {
-        val res = doRequest
-        Try(JsonToAny(res.parseJson)).toOption.map(JsonResponse(res, _)).getOrElse(res)
+        doRequest
       } else {
         val message = intercept[ClientException](doRequest).getMessage
         message should include (error)
         message
       }
+
+    val processedResponse = unprocessedResponse match {
+      case httpResponse: HttpResponse =>
+        val resString = Await.result(httpResponse.entity.toStrict(awaitTimeout), awaitTimeout).data.utf8String
+        if (error == null) {
+          Try(JsonToAny(resString.parseJson)).toOption.map(JsonResponse(resString, _)).getOrElse(resString)
+        }
+      case _ => unprocessedResponse
+    }
 
     val (rawResponse, response) = processedResponse match {
       case JsonResponse(jsonString, processed) => (jsonString, processed)
@@ -326,6 +349,13 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
     }
 
     logScenarioResponseInfo(debugResponse, response)
+
+    if (expectedResponseHeaders.nonEmpty)
+      unprocessedResponse match {
+        case httpResponse: HttpResponse =>
+          assertResponseHeaders(httpResponse, expectedResponseHeaders)
+        case x => sys.error(s"Unexpected response class for header tests: ${x.getClass.getName}")
+      }
 
     if(expectedResponse != null) try assertResponse(response, expectedResponse, "[ROOT]", fullCompare) catch {
       case util.control.NonFatal(ex) =>
