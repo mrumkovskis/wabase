@@ -83,7 +83,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
   }
 
   def assertResponseHeaders(response: HttpResponse, expectedResponseHeaders: Seq[HttpHeader]) = {
-    val received = response.headers.map(_.toString).toSet
+    val received = (response.headers.toSet + `Content-Type`(response.entity.contentType)).map(_.toString)
     expectedResponseHeaders foreach { expectedHeader =>
       if (!received.contains(expectedHeader.toString))
         sys.error(s"Response did not contain expected header $expectedHeader. Headers received: ${received.toSeq.sorted.mkString(", ")}")
