@@ -82,9 +82,9 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
     }
   }
 
-  def assertResponseHeaders(response: HttpResponse, expectedResponseHeaders: Seq[HttpHeader]) = {
+  def assertResponseHeaders(response: HttpResponse, expectedHeaders: Seq[HttpHeader]) = {
     val received = (response.headers.toSet + `Content-Type`(response.entity.contentType)).map(_.toString)
-    expectedResponseHeaders foreach { expectedHeader =>
+    expectedHeaders foreach { expectedHeader =>
       if (!received.contains(expectedHeader.toString))
         sys.error(s"Response did not contain expected header $expectedHeader. Headers received: ${received.toSeq.sorted.mkString(", ")}")
     }
@@ -206,8 +206,8 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
 
   def logScenarioRequestInfo(
     scenario: File, testCase: File, context: Map[String, String], map: Map[String, Any],
-    path: String, method: String, params: Map[String, Any], requestInfo: RequestInfo,
-    mergeResponse: Boolean, expectedResponse: Any, error: String,
+    path: String, method: String, params: Map[String, Any], requestInfo: RequestInfo, mergeResponse: Boolean,
+    expectedHeaders: Seq[HttpHeader], expectedResponse: Any, expectedError: String,
     tresqlRow: String, tresqlList: String, tresqlTransaction: String,
   ): Unit = logger.whenDebugEnabled {
     import requestInfo._
@@ -222,8 +222,10 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
                                  .map(_.map(_.toString).toSeq.sorted.mkString(", ")).getOrElse(""),
       "request json        " + Option(requestMap).map(_.toJson.compactPrint).getOrElse(""),
       "request string:     " + Option(requestString).getOrElse(""),
+      "expected headers:   " + Option(expectedHeaders).filter(_.nonEmpty)
+                                 .map(_.map(_.toString).toSeq.sorted.mkString(", ")).getOrElse(""),
       "expected response:  " + Option(expectedResponse).getOrElse(""),
-      "expected error:     " + Option(error).getOrElse(""),
+      "expected error:     " + Option(expectedError).getOrElse(""),
       "merge response:     " + mergeResponse,
       "tresql row:         " + Option(tresqlRow).getOrElse(""),
       "tresql list:        " + Option(tresqlList).getOrElse(""),
@@ -279,14 +281,14 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
     val mergeResponse = map.b("merge_response")
     val debugResponse = map.get("debug_response")
       .map { case false => false case _ => true }.getOrElse(true)
-    val error = map.sd("error", null)
+    val expectedError = map.sd("error", null)
     val expectedResponse = (map.getOrElse("response", null), requestMap) match{
       case (resp, _) if !mergeResponse => resp
       case (resp, null) => resp
       case (null, req) => req
       case (resp : Map[String, Any] @unchecked, req) => cleanupTemplate(mergeTemplate(req, resp))
     }
-    val expectedResponseHeaders = map.m("response_headers").map {
+    val expectedHeaders = map.m("response_headers").map {
       case ("Content-Type", value) => // Content-Type is not accepted as valid RawHeader
         `Content-Type`.parseFromValueString(value.toString).toOption.get
       case (name, value) =>
@@ -297,8 +299,8 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
     val tresqlTransaction = map.sd("tresql_transaction", null)
     logScenarioRequestInfo(
       scenario, testCase, context, map,
-      path, method, params, requestInfo,
-      mergeResponse, expectedResponse, error,
+      path, method, params, requestInfo, mergeResponse,
+      expectedHeaders, expectedResponse, expectedError,
       tresqlRow, tresqlList, tresqlTransaction,
     )
 
@@ -326,18 +328,18 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
       else if (tresqlTransaction != null) {
         transaction(Query(tresqlTransaction, context))
         Map("result" -> "ok")
-      } else if (error == null) {
+      } else if (expectedError == null) {
         doRequest
       } else {
         val message = intercept[ClientException](doRequest).getMessage
-        message should include (error)
+        message should include (expectedError)
         message
       }
 
     val processedResponse = unprocessedResponse match {
       case httpResponse: HttpResponse =>
         val resString = Await.result(httpResponse.entity.toStrict(awaitTimeout), awaitTimeout).data.utf8String
-        if (error == null) {
+        if (expectedError == null) {
           Try(JsonToAny(resString.parseJson)).toOption.map(JsonResponse(resString, _)).getOrElse(resString)
         }
       case _ => unprocessedResponse
@@ -350,10 +352,10 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
 
     logScenarioResponseInfo(debugResponse, response)
 
-    if (expectedResponseHeaders.nonEmpty)
+    if (expectedHeaders.nonEmpty)
       unprocessedResponse match {
         case httpResponse: HttpResponse =>
-          assertResponseHeaders(httpResponse, expectedResponseHeaders)
+          assertResponseHeaders(httpResponse, expectedHeaders)
         case x => sys.error(s"Unexpected response class for header tests: ${x.getClass.getName}")
       }
 
