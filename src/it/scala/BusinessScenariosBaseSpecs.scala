@@ -4,6 +4,7 @@ import java.io.File
 import akka.http.scaladsl.model.{ContentTypes, HttpEntity, HttpHeader, HttpMethods, HttpResponse, Multipart}
 import akka.http.scaladsl.model.headers.`Content-Type`
 import akka.http.scaladsl.model.headers.RawHeader
+import com.typesafe.config.{Config, ConfigFactory}
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers
@@ -29,6 +30,16 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
   implicit val Cp: PoolName = DEFAULT_CP
   implicit val extraDb: Seq[DbAccessKey] = Nil
 
+  protected lazy val config = ConfigFactory.load()
+  protected lazy val testOnlyScenariousPattern = {
+    val defaultPattern = ".+"
+    val pattern =
+      Option("business-scenarios.test-only").filter(config.hasPath).map(config.getString).getOrElse(defaultPattern)
+    if (pattern != defaultPattern)
+      logger.warn(s"Business scenarios test-only pattern: $pattern")
+    pattern.r
+  }
+
   override def beforeAll() = {
     login()
     listenToWs(deferredActor)
@@ -46,7 +57,8 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
     file.isFile && file.getName.endsWith(".yaml")
 
   def shouldTestScenario(scenario: File): Boolean =
-    scenario.listFiles.exists(isTestCaseFile)
+    scenario.listFiles.exists(isTestCaseFile) &&
+      testOnlyScenariousPattern.pattern.matcher(scenario.getName).matches
 
   val scenarios = for {
     scenarioPath <- scenarioPaths
