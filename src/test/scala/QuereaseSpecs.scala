@@ -16,6 +16,12 @@ object QuereaseSpecsDtos {
     var surname: String = null
   }
 
+  class PersonWithAuth extends DtoWithId {
+    var id: java.lang.Long = null
+    var name: String = null
+    var surname: String = null
+  }
+
   class sys_user_role_choice extends DtoWithId {
     var id: java.lang.Long = null
     var sys_role: String = null
@@ -47,6 +53,7 @@ object QuereaseSpecsDtos {
 
   val viewNameToClass = Map[String, Class[_ <: Dto]](
     "person" -> classOf[Person],
+    "person_with_auth" -> classOf[PersonWithAuth],
     "sys_user_role_ref_only_save"      -> classOf[sys_user_role_ref_only_save],
     "sys_user_role_ref_only_save_role" -> classOf[sys_user_role_ref_only_save_role],
     "sys_user_role_ref_only_save_user" -> classOf[sys_user_role_ref_only_save_user],
@@ -138,6 +145,8 @@ class QuereaseSpecs extends AsyncFlatSpec with Matchers with TestQuereaseInitial
   it should "respect horizontal auth filters" in {
     var p = new Person
     var pl: List[Person] = null
+    var pa: PersonWithAuth = null
+    var pal: List[PersonWithAuth] = null
     p.name = "Name"
     p.surname = "Readonly"
 
@@ -164,19 +173,35 @@ class QuereaseSpecs extends AsyncFlatSpec with Matchers with TestQuereaseInitial
     p.surname = "NotReadable"
     querease.save(p)
 
+    pal = querease.list[PersonWithAuth](Map("name" -> "Name"))
+    pal.size shouldBe 0
     pl = querease.list[Person](Map("name" -> "Name"))
     pl.size shouldBe 0
 
+    querease.get[PersonWithAuth](id) shouldBe None
     querease.get[Person](id) shouldBe None
     p.surname = "Surname"
     querease.save(p)
 
+    pal = querease.list[PersonWithAuth](Map("name" -> "Name"))
+    pal.size shouldBe 1
     pl = querease.list[Person](Map("name" -> "Name"))
     pl.size shouldBe 1
+
+    pa = pal.head
+    pa.id shouldBe id
+    pa.name shouldBe "Name"
+    pa.surname shouldBe "Surname"
+
     p = pl.head
     p.id shouldBe id
     p.name shouldBe "Name"
     p.surname shouldBe "Surname"
+
+    pa = querease.get[PersonWithAuth](id).get
+    pa.id shouldBe id
+    pa.name shouldBe "Name"
+    pa.surname shouldBe "Surname"
 
     p = querease.get[Person](id).get
     p.id shouldBe id

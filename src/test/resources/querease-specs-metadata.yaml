@@ -19,6 +19,17 @@ filter:
 - name
 
 
+name: person_with_auth
+table: person p
+auth: p.surname  in ('Readonly', 'Surname')
+fields:
+- id
+- name
+- surname
+filter:
+- name
+
+
 table:   sys_user
 columns:
 - id
