@@ -79,9 +79,9 @@ class QuereaseSpecs extends AsyncFlatSpec with Matchers with TestQuereaseInitial
     querease.persistenceMetadata("person") shouldBe View(
       List(SaveTo("person",Set(),List())),
       Some(Filters(
-        Some( "(:surname != 'Readonly')"),
-        Some("(p.surname != 'Readonly')"),
-        Some("(p.surname  = 'Readonly')"),
+        Some( "(:surname  !=  'Readonly')"),
+        Some("(p.surname  !=  'Readonly')"),
+        Some("(p.surname   =  'Readonly')"),
       )),
       "p",
       List(
@@ -137,6 +137,7 @@ class QuereaseSpecs extends AsyncFlatSpec with Matchers with TestQuereaseInitial
 
   it should "respect horizontal auth filters" in {
     var p = new Person
+    var pl: List[Person] = null
     p.name = "Name"
     p.surname = "Readonly"
 
@@ -155,6 +156,27 @@ class QuereaseSpecs extends AsyncFlatSpec with Matchers with TestQuereaseInitial
     intercept[org.mojoz.querease.NotFoundException] {
       querease.delete(p)
     }.getMessage shouldBe "Record not deleted in table person"
+
+    p = querease.get[Person](id).get
+    p.id shouldBe id
+    p.name shouldBe "Name"
+    p.surname shouldBe "Surname"
+    p.surname = "NotReadable"
+    querease.save(p)
+
+    pl = querease.list[Person](Map("name" -> "Name"))
+    pl.size shouldBe 0
+
+    querease.get[Person](id) shouldBe None
+    p.surname = "Surname"
+    querease.save(p)
+
+    pl = querease.list[Person](Map("name" -> "Name"))
+    pl.size shouldBe 1
+    p = pl.head
+    p.id shouldBe id
+    p.name shouldBe "Name"
+    p.surname shouldBe "Surname"
 
     p = querease.get[Person](id).get
     p.id shouldBe id

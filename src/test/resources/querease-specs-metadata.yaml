@@ -7,13 +7,16 @@ columns:
 
 name: person
 table: person p
-auth insert:  :surname != 'Readonly'
-auth update: p.surname != 'Readonly'
-auth delete: p.surname  = 'Readonly'
+auth insert:    :surname  !=  'Readonly'
+auth update:   p.surname  !=  'Readonly'
+auth delete:   p.surname   =  'Readonly'
+auth get list: p.surname  in ('Readonly', 'Surname')
 fields:
 - id
 - name
 - surname
+filter:
+- name
 
 
 table:   sys_user
