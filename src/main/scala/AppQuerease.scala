@@ -191,15 +191,14 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       extraFilterAndAuthString(extraFilter, viewDef.auth.forGet)
     super.get(viewDef, keyValues, keyColNames, extraFilterAndAuth, extraParams, fieldFilter)
   }
-  override def result[B <: AnyRef: Manifest](params: Map[String, Any],
-      offset: Int = 0, limit: Int = 0, orderBy: String = null,
-      extraFilter: String = null, extraParams: Map[String, Any] = Map(),
-      fieldFilter: FieldFilter = null)(
-      implicit resources: Resources, qio: QuereaseIo[B]): QuereaseIteratorResult[B] = {
-    val v = viewDefFromMf[B]
+  override def rowsResult(viewDef: ViewDef, params: Map[String, Any],
+      offset: Int, limit: Int, orderBy: String,
+      extraFilter: String, extraParams: Map[String, Any],
+      fieldFilter: FieldFilter)(
+      implicit resources: Resources): Result[RowLike] = {
     val extraFilterAndAuth =
-      extraFilterAndAuthString(extraFilter, v.auth.forList)
-    super.result(params, offset, limit, orderBy, extraFilterAndAuth, extraParams, fieldFilter)
+      extraFilterAndAuthString(extraFilter, viewDef.auth.forList)
+    super.rowsResult(viewDef, params, offset, limit, orderBy, extraFilterAndAuth, extraParams, fieldFilter)
   }
 
   override protected def countAll_(viewDef: ViewDef, params: Map[String, Any],
@@ -652,7 +651,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
                 .map(TresqlSingleRowResult) getOrElse notFound
             case Action.List =>
               TresqlResult(rowsResult(v, callData, int(OffsetKey).getOrElse(0), int(LimitKey).getOrElse(0),
-                string(OrderKey).orNull, null, context.fieldFilter))
+                string(OrderKey).orNull, null, Map(), context.fieldFilter))
             case Save =>
               val saveMethod = context.actionName match {
                 case Insert => SaveMethod.Insert
