@@ -58,7 +58,7 @@ lazy val wabase = (project in file("."))
       "io.bullet"                  %% "borer-derivation"      % borerV,
       "io.bullet"                  %% "borer-compat-akka"     % borerV,
     ) ++ Seq( // for test
-      "org.scalatest"              %% "scalatest"             % "3.2.15"  % "it,test",
+      "org.scalatest"              %% "scalatest"             % "3.2.17"  % "it,test",
       "com.typesafe.akka"          %% "akka-http-testkit"     % akkaHttpV % "it,test" cross CrossVersion.for3Use2_13,
       "com.typesafe.akka"          %% "akka-testkit"          % akkaV     % "it,test" cross CrossVersion.for3Use2_13,
       "com.typesafe.akka"          %% "akka-stream-testkit"   % akkaV     % "it,test" cross CrossVersion.for3Use2_13,
