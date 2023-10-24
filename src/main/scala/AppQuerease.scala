@@ -64,7 +64,7 @@ case class IdResult(id: Any, name: String) extends QuereaseResult {
 }
 case class KeyResult(ir: IdResult, viewName: String, key: Seq[Any]) extends QuereaseResult
 case class QuereaseDeleteResult(count: Int) extends QuereaseResult
-case class StatusResult(code: Int, value: StatusValue) extends DataResult
+case class StatusResult(code: Int, value: StatusValue) extends QuereaseResult
 case class FileInfoResult(fileInfo: FileInfo) extends QuereaseResult
 case class FileResult(fileInfo: FileInfo, fileStreamer: FileStreamer) extends DataResult
 sealed trait TemplateResult extends QuereaseResult
@@ -810,7 +810,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     req: HttpRequest,
     qio: AppQuereaseIo[Dto],
   ): Future[QuereaseResult] = {
-    def createGetResult(res: QuereaseResult): DataResult = res match {
+    def createGetResult(res: QuereaseResult): QuereaseResult = res match {
       case TresqlResult(r) if !r.isInstanceOf[DMLResult] =>
         r.uniqueOption map TresqlSingleRowResult getOrElse notFound
       case IteratorResult(r) =>
@@ -823,7 +823,10 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           case c: AutoCloseable => c.close()
           case _ =>
         }
-      case c: CompatibleResult => c.copy(result = createGetResult(c.result))
+      case c: CompatibleResult => createGetResult(c.result) match {
+        case dr: DataResult => c.copy(result = dr)
+        case r => r
+      }
       case r => sys.error(s"unique opt can only process DataResult type, instead encountered: $r")
     }
     doActionOp(op.innerOp, data, env, context) map createGetResult
