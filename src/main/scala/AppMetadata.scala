@@ -584,7 +584,6 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val validationRegex = new Regex(s"(?U)${Action.ValidationsKey}(?:\\s+(\\w+))?(?:\\s+\\[(?:\\s*(\\w+)?\\s*(?::\\s*(\\w+)\\s*)?)\\])?")
     val dbUseRegex = new Regex(s"${Action.DbUseKey}")
     val transactionRegex = new Regex(s"${Action.TransactionKey}")
-    val httpHeaderRegex = """extract header\s+(.*)""".r
     val removeVarStepRegex = {
       val ident = """\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*"""
       val str_lit = """"[^"]*+"|'[^']*+'"""
@@ -619,9 +618,6 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
           }
           require(code.nonEmpty || bodyTresql != null, s"Empty status operation!")
           Action.Status(code, bodyTresql, statusParameterIdx(bodyTresql))
-        } else if (httpHeaderRegex.pattern.matcher(st).matches()) {
-          val httpHeaderRegex(h) = st
-          Action.HttpHeader(h)
         } else if (commitOpRegex.pattern.matcher(st).matches()) {
           Action.Commit
         } else {
@@ -847,6 +843,10 @@ trait AppMetadataDataFlowParser extends QueryParsers { self =>
       case pt ~ param => Conf(param, ConfTypes.parse(pt.orNull))
     }
   } named "conf-op"
+  def httpHeaderOp: MemParser[HttpHeader] = "extract header" ~> ".*".r ^^ {
+    case h => HttpHeader(h)
+  } named "http-header-op"
+
   def bracesOp: MemParser[Op] = "(" ~> operation <~ ")" named "braces-op"
   def bracesTresql: MemParser[Exp] = (("(" ~> expr <~ ")") | expr) named "braces-tresql-op"
   def namedOps(allowedNames: Set[String]): MemParser[List[(String, Op)]] = {
@@ -861,7 +861,7 @@ trait AppMetadataDataFlowParser extends QueryParsers { self =>
   } named "named-ops"
   def operation: MemParser[Op] = (viewOp | jobOp | confOp | uniqueOptOp | invocationOp |
     httpOp | fileOp | toFileOp | templateOp | emailOp |
-    jsonCodecOp | bracesOp | tresqlOp) named "operation"
+    jsonCodecOp | httpHeaderOp | bracesOp | tresqlOp) named "operation"
 
   private def opResultType: MemParser[OpResultType] = {
     sealed trait ResType
