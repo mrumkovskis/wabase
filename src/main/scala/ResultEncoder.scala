@@ -65,8 +65,9 @@ object ResultEncoder {
             case v: Number => w.writeNumberString(v.toString)
             case v: Boolean => w.writeBoolean(v)
             case null => w.writeNull()
-            case v: Map[Any, Any]@unchecked => w.writeMap(v)(jsValEncoder(encoder), jsValEncoder(encoder))
-            case v: Iterable[Any]@unchecked => w.writeIterator(v.iterator)(jsValEncoder(encoder))
+            case v: Map[Any@unchecked, Any@unchecked] => w.writeMap(v)(jsValEncoder(encoder), jsValEncoder(encoder))
+            case v: Iterable[Any@unchecked] => w.writeIterator(v.iterator)(jsValEncoder(encoder))
+            case v: Iterator[Any@unchecked] => w.writeIterator(v)(jsValEncoder(encoder))
             case v => w.writeString(v.toString)
           }
         customEncoder(w) orElse defaultEncoder(w)
