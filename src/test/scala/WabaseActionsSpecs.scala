@@ -808,7 +808,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       t1 <- doAction("insert", "owner", Map("name" -> "Pedro", "address" -> "Morocco"))
         .flatMap {
           case KeyResult(_, _, key) => doAction("get", "owner", Map(), keyValues = key)
-        }.map { _ shouldBe Map("name" -> "Pedro", "address" -> "Morocco") }
+        }.map { _ shouldBe MapResult(Map("name" -> "Pedro", "address" -> "Morocco")) }
       t2 <- recoverToExceptionIf[NullPointerException](doAction("list", "owner", Map()))
         .map(_.getMessage shouldBe "Connection not found in environment." )
     } yield {
@@ -932,7 +932,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         .map { _ shouldBe StatusResult(404, StringStatus("not found")) }
       t4 <- doAction("get", "not_found_test_2", Map("name" -> "Pedro"))
         .map {
-          _ shouldBe Map("name" -> "Pedro", "address" -> "Morocco")
+          _ shouldBe MapResult(Map("name" -> "Pedro", "address" -> "Morocco"))
         }
     } yield {
       t1
@@ -1124,5 +1124,16 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         doAction("get", "form_urlencoded_test", Map("name" -> "Nicola", "surname" -> "Ola"))
           .map(_ shouldBe StringResult("Nicola Ola"))
     } yield t1
+  }
+
+  it should "process config" in {
+    for {
+      t1 <-
+        doAction("insert", "conf_test", Map())
+          .map(_ shouldBe MapResult(Map("list" -> List(1, 2, 3), "uri" -> "http://wabase.org/")))
+      t2 <-
+        doAction("update", "conf_test", Map())
+          .map(_ shouldBe StringResult("http://wabase.org/"))
+    } yield t2
   }
 }

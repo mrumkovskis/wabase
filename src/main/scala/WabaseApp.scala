@@ -125,7 +125,7 @@ trait WabaseApp[User] {
           case class StrictRes(result: QuereaseResult) extends Res
           def res(r: QuereaseResult, filter: ResultRenderer.ResultFilter): Res = {
             def single_res(sr: SingleValueResult[_]) = sr.value match {
-              case m: Map[String@unchecked, _] => SourceRes(DataSerializer.source(() => Seq(m).iterator), filter, false)
+              case m: Map[String@unchecked, _] => StrictRes(MapResult(m))
               case s: Seq[Map[String, _]@unchecked] => SourceRes(DataSerializer.source(() => s.iterator), filter, true)
               case x => StrictRes(StringResult(String.valueOf(x)))
             }

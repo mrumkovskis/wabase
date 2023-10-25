@@ -599,11 +599,6 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val ifOpRegex = """if\s+(.+)""".r
     val elseOpRegex = """else""".r
     val foreachOpRegex = """foreach\s+(.+)""".r
-    val confRegex = {
-      val confPropRegex = """\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*(?:\.\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*+)*"""
-      val typeNames = Action.ConfTypes.types.map(_.name).mkString("|")
-      new Regex(s"(?U)conf(?:\\s+($typeNames))?\\s+($confPropRegex)")
-    }
     import ViewDefExtrasUtils._
     val steps = stepData.map { step =>
       def parseOp(st: String): Action.Op = {
@@ -624,9 +619,6 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
           }
           require(code.nonEmpty || bodyTresql != null, s"Empty status operation!")
           Action.Status(code, bodyTresql, statusParameterIdx(bodyTresql))
-        } else if (confRegex.pattern.matcher(st).matches()) {
-          val confRegex(t, n) = st
-          Action.Conf(n, Action.ConfTypes.parse(t))
         } else if (httpHeaderRegex.pattern.matcher(st).matches()) {
           val httpHeaderRegex(h) = st
           Action.HttpHeader(h)
@@ -769,6 +761,7 @@ trait AppMetadataDataFlowParser extends QueryParsers { self =>
   val ActionRegex = new Regex(Action().mkString("(?U)(", "|", """)\s+"""))
   val InvocationRegex = """(?U)\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*(\.\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*)+""".r
   val ViewNameRegex = "(?U)\\w+".r
+  val ConfPropRegex = """\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*(?:\.\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*+)*""".r
 
   protected def cache: CacheBase[Op] = null
   protected def tresqlUri: TresqlUri
@@ -848,6 +841,12 @@ trait AppMetadataDataFlowParser extends QueryParsers { self =>
   def jobOp: MemParser[Job] = "job" ~> expr ^^ {
     case nameTresql => Job(nameTresql.tresql)
   } named "job-op"
+  def confOp: MemParser[Conf] = {
+    val parType = new Regex(ConfTypes.types.map(_.name).mkString("|"))
+    "conf" ~> opt(parType) ~ ConfPropRegex ^^ {
+      case pt ~ param => Conf(param, ConfTypes.parse(pt.orNull))
+    }
+  } named "conf-op"
   def bracesOp: MemParser[Op] = "(" ~> operation <~ ")" named "braces-op"
   def bracesTresql: MemParser[Exp] = (("(" ~> expr <~ ")") | expr) named "braces-tresql-op"
   def namedOps(allowedNames: Set[String]): MemParser[List[(String, Op)]] = {
@@ -860,8 +859,9 @@ trait AppMetadataDataFlowParser extends QueryParsers { self =>
       }) named "named-op"
     rep(namedOp)
   } named "named-ops"
-  def operation: MemParser[Op] = (viewOp | jobOp | uniqueOptOp | invocationOp | httpOp | fileOp | toFileOp |
-    templateOp | emailOp | jsonCodecOp | bracesOp | tresqlOp) named "operation"
+  def operation: MemParser[Op] = (viewOp | jobOp | confOp | uniqueOptOp | invocationOp |
+    httpOp | fileOp | toFileOp | templateOp | emailOp |
+    jsonCodecOp | bracesOp | tresqlOp) named "operation"
 
   private def opResultType: MemParser[OpResultType] = {
     sealed trait ResType

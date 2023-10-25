@@ -616,6 +616,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         def unwrapSingleRow(d: Any): Map[String, _] = d match {
           case r: Map[String@unchecked, _] => r ++ env
           case r: Seq[_] if r.size == 1 => unwrapSingleRow(r.head)
+          case NoResult => env
           case x => sys.error(s"Invalid view op result. Currently unable to create Map[String, _] from $x")
         }
         doActionOp(viewOp, data, env, context).flatMap(dataForNextStep(_, context, false))
@@ -1009,6 +1010,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           .flatMap {
             case m: Map[String@unchecked, _] => templateEngine(template, List(m))
             case s: Seq[Map[String, _]@unchecked] => templateEngine(template, s)
+            case NoResult => templateEngine(template, Nil)
             case x => sys.error(s"Expected template data Seq[Map[String, Any]], got: $x")
           }
       }
@@ -1305,10 +1307,29 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     isCollection: Option[Boolean],
   ): (Source[ByteString, _], String, ContentType, Option[Long]) = {
     val ct: ContentType = if (contentType == null) MediaTypes.`application/json` else contentType
+
+    def encodeJson(data: Any): (Source[ByteString, _], String, ContentType, Option[Long]) = {
+      import ResultEncoder._
+      implicit lazy val enc: JsValueEncoderPF = JsonEncoder.extendableJsValueEncoderPF(enc)(jsonValueEncoder)
+      val res = encodeJsValue(data)
+      (Source.single(ByteString(res)), null, ct, Option(res.length))
+    }
+
+    def encodePrimitive(v: Any): (Source[ByteString, _], String, ContentType, Option[Long]) = {
+      val b = String.valueOf(v).getBytes("UTF8")
+      (Source.single(ByteString(b)), null, ContentTypes.`text/plain(UTF-8)`, Option(b.length))
+    }
+
     res match {
-      case StringResult(s) =>
-        val data = ByteString(s)
-        (Source.single(data), null, ct, Option(data.size))
+      case StringResult(v) => encodePrimitive(v)
+      case LongResult(v) => encodePrimitive(v)
+      case NumberResult(v) => encodePrimitive(v)
+      case ConfResult(_, v) => v match {
+        case i: Iterable[_] => encodeJson(i)
+        case _ => encodePrimitive(v)
+      }
+      case MapResult(data) => encodeJson(data)
+      case IteratorResult(data) => encodeJson(data)
       case TresqlResult(tr) => tr match {
         case SingleValueResult(r: Iterable[_]) =>
           (renderedSource(DataSerializer.source(() => r.iterator), resFil, isCollection.getOrElse(true), ct),
@@ -1346,6 +1367,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           res.entity.contentLengthOption
         )
       case CompatibleResult(r, fil, isCollection) => renderedResult(r, ct, fil, Option(isCollection))
+      case NoResult => encodePrimitive("")
       case x => sys.error(s"Currently unable to create rendered source from result: $x")
     }
   }

@@ -673,12 +673,20 @@ list:
 
 name: conf_test
 table:
-api: list, get
+api: list, get, insert, update
 get:
 - uri = conf string conf.test.uri
 - status ok { :uri || 'about' }
 list:
 - conf conf.test
+insert:
+- file = to file conf conf.test 'inserted'
+- res = file {:file.id, :file.sha_256}
+- :res
+update:
+- file = to file conf string conf.test.uri 'updated'
+- res = file {:file.id, :file.sha_256}
+- :res
 
 
 name: http_test_1
