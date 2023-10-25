@@ -604,9 +604,6 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       val typeNames = Action.ConfTypes.types.map(_.name).mkString("|")
       new Regex(s"(?U)conf(?:\\s+($typeNames))?\\s+($confPropRegex)")
     }
-    /* [jobs]
-    val jobCallRegex = """(?U)job\s+(:?\w+)""".r
-    [jobs] */
     import ViewDefExtrasUtils._
     val steps = stepData.map { step =>
       def parseOp(st: String): Action.Op = {
@@ -848,6 +845,9 @@ trait AppMetadataDataFlowParser extends QueryParsers { self =>
   def jsonCodecOp: MemParser[JsonCodec] = """(from|to)""".r ~ "json" ~ operation ^^ {
     case mode ~ _ ~ op => JsonCodec(mode == "to", op)
   } named "json-op"
+  def jobOp: MemParser[Job] = "job" ~> expr ^^ {
+    case nameTresql => Job(nameTresql.tresql)
+  } named "job-op"
   def bracesOp: MemParser[Op] = "(" ~> operation <~ ")" named "braces-op"
   def bracesTresql: MemParser[Exp] = (("(" ~> expr <~ ")") | expr) named "braces-tresql-op"
   def namedOps(allowedNames: Set[String]): MemParser[List[(String, Op)]] = {
@@ -860,7 +860,7 @@ trait AppMetadataDataFlowParser extends QueryParsers { self =>
       }) named "named-op"
     rep(namedOp)
   } named "named-ops"
-  def operation: MemParser[Op] = (viewOp | uniqueOptOp | invocationOp | httpOp | fileOp | toFileOp |
+  def operation: MemParser[Op] = (viewOp | jobOp | uniqueOptOp | invocationOp | httpOp | fileOp | toFileOp |
     templateOp | emailOp | jsonCodecOp | bracesOp | tresqlOp) named "operation"
 
   private def opResultType: MemParser[OpResultType] = {
@@ -1004,10 +1004,7 @@ object AppMetadata extends Loggable {
     case class JsonCodec(encode: Boolean, op: Op) extends Op
     /** This operation exists only in parsing stage for if operation */
     case class Else(action: Action) extends Op
-
-    /* [jobs]
-    case class JobCall(name: String) extends Op
-    [jobs] */
+    case class Job(nameTresql: String) extends Op
     case object Commit extends Op
 
     case class Evaluation(name: Option[String], varTrans: List[VariableTransform], op: Op) extends Step
@@ -1023,7 +1020,8 @@ object AppMetadata extends Loggable {
         extractor: OpTraverser[T]): OpTraverser[T] = {
       def traverse(state: T): PartialFunction[Op, T] = {
         case _: Tresql | _: RedirectToKey | _: Invocation | _: Status |
-             _: VariableTransforms | _: File | _: Conf | _: HttpHeader | Commit | null => state
+             _: VariableTransforms | _: File | _: Conf | _: HttpHeader | _: Job |
+             Commit | null => state
         case o: ViewCall => opTrav(state)(o.data)
         case UniqueOpt(o) => opTrav(state)(o)
         case Foreach(o, a) => traverseAction(a)(stepTrav)(opTrav(state)(o))
@@ -1131,6 +1129,7 @@ object AppMetadata extends Loggable {
               val vn = if (view == "this") state.viewName else view
               val ns = opTrTr(data)
               processView(stepTresqlTrav)(ns.copy(action = method, viewName = vn))
+            case Job(nameTresql) => us(state, nv(state.value)(nameTresql))
           }
         }
         opTraverser(opTresqlTrav, stepTresqlTrav) { state => extractor(state) orElse traverse(state) }

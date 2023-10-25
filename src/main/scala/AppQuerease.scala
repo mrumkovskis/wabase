@@ -766,23 +766,24 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     }
   }
 
-  /* [jobs]
-  protected def doJobCall(jobName: String,
-                          data: Map[String, Any],
-                          env: Map[String, Any])(implicit
-                                                 resources: Resources,
-                                                 ec: ExecutionContext): Future[QuereaseResult] = {
-    val job = null: Job
-    // TODO get job from metadata
-    //getJob(if (jobName.startsWith(":")) stringValue(jobName, data, env) else jobName)
-    val ctx = ActionContext(null, job.name, env, None)
-    job.condition
-      .collect { case cond if Query(cond, data ++ env).unique[Boolean] =>
-        doSteps(job.action.steps, ctx, Future.successful(data))
-      }
-      .getOrElse(Future.successful(NoResult))
+  protected def doJob(
+    job: Action.Job,
+    data: Map[String, Any],
+    env: Map[String, Any],
+    context: ActionContext,
+  )(implicit
+    res: Resources,
+    ec: ExecutionContext,
+    as: ActorSystem,
+    fs: FileStreamer,
+    req: HttpRequest,
+    qio: AppQuereaseIo[Dto],
+  ): Future[QuereaseResult] = {
+    val jobName = Query(job.nameTresql).unique[String]
+    val ctx = ActionContext(jobName, "job", env, None, contextStack = context :: context.contextStack)
+    // TODO get job from metadata and execute steps
+    Future.successful(NoResult)
   }
-  [jobs] */
 
   protected def doVarsTransforms(transforms: List[VariableTransform],
                                  seed: Map[String, Any],
@@ -1271,10 +1272,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case db: Action.Db => doDb(db, data, env, context)
       case c: Action.Conf => doConf(c, data, env, context)
       case j: Action.JsonCodec => doJsonCodec(j, data, env, context)
-      /* [jobs]
-      case Action.JobCall(job) =>
-        doJobCall(job, data, env)
-      [jobs] */
+      case job: Action.Job => doJob(job, data, env, context)
       case VariableTransforms(vts) =>
         Future.successful(doVarsTransforms(vts, Map[String, Any](), data ++ env))
       case _: Action.Else => sys.error(s"Integrity error. Else operation cannot be here, must be coalesced into if operation")
