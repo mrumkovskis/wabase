@@ -37,6 +37,11 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   protected lazy val joinsParserCache: Map[String, Map[String, Exp]] =
     loadJoinsParserCache(resourceLoader)
 
+  def jobDefOption(jobName: String): Option[JobDef] = None
+  def jobDef(jobName: String): JobDef = jobDefOption(jobName)
+    .getOrElse(sys.error(s"Job definition for $jobName not found"))
+
+
   def toAppViewDefs(mojozViewDefs: Map[String, ViewDef]) = transformAppViewDefs {
     val inlineViewDefNames =
       mojozViewDefs.values.flatMap { viewDef =>
@@ -1263,6 +1268,8 @@ object AppMetadata extends Loggable {
     override protected def updateExtrasMap(extras: Map[String, Any]): Any = fieldDef.copy(extras = extras)
     override protected def extrasMap = fieldDef.extras
   }
+
+  case class JobDef(name: String, steps: Action, db: String = null, explicitDb: Boolean = false)
 
   trait AppMdConventions extends MdConventions {
     def isIntegerName(name: String) = false

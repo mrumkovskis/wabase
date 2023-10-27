@@ -773,17 +773,18 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     env: Map[String, Any],
     context: ActionContext,
   )(implicit
-    res: Resources,
+    resFac: ResourcesFactory,
     ec: ExecutionContext,
     as: ActorSystem,
     fs: FileStreamer,
     req: HttpRequest,
     qio: AppQuereaseIo[Dto],
   ): Future[QuereaseResult] = {
+    import resFac._
     val jobName = Query(job.nameTresql).unique[String]
     val ctx = ActionContext(jobName, "job", env, None, contextStack = context :: context.contextStack)
-    // TODO get job from metadata and execute steps
-    Future.successful(NoResult)
+    val jd = jobDef(jobName)
+    doSteps(jd.steps.steps, ctx, Future.successful(data))
   }
 
   protected def doVarsTransforms(transforms: List[VariableTransform],
