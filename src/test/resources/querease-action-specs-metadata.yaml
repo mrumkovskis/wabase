@@ -527,6 +527,16 @@ update:
 - :x -> org.wabase.QuereaseActionTestManager.seqMethod
 
 
+name: invocation_result_mapper_test
+table:
+api: list
+fields:
+- person_name
+list:
+- org.wabase.QuereaseActionTestManagerObj.name_surname_formatter
+    []({ 'N1' name, 'S1' surname } + { 'N2', 'S2' } + { 'N3', 'S3' }){name, surname}#(1,2)  #query must begin with [] to indicate tresql instead of op in braces
+
+
 name: if_test_1
 table: if_and_foreach_test
 api: save

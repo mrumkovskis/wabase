@@ -688,9 +688,13 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     }
   }
 
-  protected def doInvocation(op: Action.Invocation,
-                             data: Map[String, Any])(
-    implicit res: Resources,
+  protected def doInvocation(
+    op: Action.Invocation,
+    data: Map[String, Any],
+    env: Map[String, Any],
+    context: ActionContext,
+  )(
+    implicit resFac: ResourcesFactory,
     ec: ExecutionContext,
     as: ActorSystem,
     fs: FileStreamer,
@@ -698,72 +702,97 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     qio: AppQuereaseIo[Dto],
   ): Future[QuereaseResult] = {
     import op._
-    def comp_q_result(r: Any) = {
-      def createCompatibleResult(result: QuereaseResult, conformTo: Action.OpResultType) = result match {
-        case c: CompatibleResult =>
-          require(c.isCollection == conformTo.isCollection, s"Incompatible results $c != $conformTo")
-          val c1 = comp_res(c.result, conformTo)
-          c.copy(resultFilter = new ResultRenderer.IntersectionFilter(c1.resultFilter, c.resultFilter))
-        case r: DataResult => comp_res(r, conformTo)
-        case x => throw new IllegalArgumentException(s"Result argument must be of type DataResult, instead encountered: $x")
+    def invokeFunction(className: String, function: String, paramFun: PartialFunction[Class[_], Any]): Any = {
+      val pf: PartialFunction[Class[_], Any] = paramFun orElse {
+        case parType if parType.isAssignableFrom(classOf[Resources]) => resFac.resources
+        case parType if parType.isAssignableFrom(classOf[ResourcesFactory]) => resFac
+        case parType if parType.isAssignableFrom(classOf[ExecutionContext]) => ec
+        case parType if parType.isAssignableFrom(classOf[ActorSystem]) => as
+        case parType if parType.isAssignableFrom(classOf[FileStreamer]) => fs
+        case parType if parType.isAssignableFrom(classOf[HttpRequest]) => req
+        case parType if parType.isAssignableFrom(classOf[AppQuereaseIo[Dto]]) => qio
+        case x => sys.error(s"Cannot find value for function parameter. Unsupported parameter type: $x")
       }
-      val qr = qresult(r)
-      conformTo.map(createCompatibleResult(qr, _)).getOrElse(qr)
-    }
-    def qresult(r: Any): QuereaseResult = r match {
-      case null | () => NoResult // reflection call on function with Unit (void) return type returns null
-      case r: Result[_] => TresqlResult(r)
-      case r: RowLike => TresqlSingleRowResult(r)
-      case i: Iterator[_] => IteratorResult(i.map {
-        case m: Map[String, Any]@unchecked => m
-        case m: java.util.Map[String, Any]@unchecked => m.asScala.toMap
-        case d: Dto => d.toMap(this)
-      })
-      case m: Map[String, Any]@unchecked => MapResult(m)
-      case l: Seq[_] => qresult(l.iterator)
-      case m: java.util.Map[String, Any]@unchecked => MapResult(m.asScala.toMap)
-      case l: Long => LongResult(l)
-      case s: String => StringResult(s)
-      case n: java.lang.Number => NumberResult(n)
-      case d: Dto => MapResult(d.toMap(this))
-      case o: Option[Dto]@unchecked => o.map(d => MapResult(d.toMap(this))).getOrElse(notFound)
-      case h: HttpResponse => HttpResult(h)
-      case q: QuereaseResult => q
-      case x => sys.error(s"Unrecognized result type: ${x.getClass}, value: $x from function $className.$function")
-    }
-
-    import scala.language.existentials
-    val (clazz, obj) = Try {
-      val c = Class.forName(className + "$")
-      (c, c.getField("MODULE$").get(null))
-    }.recover {
-      case _: ClassNotFoundException =>
-        val c = Class.forName(className)
-        (c, c.getDeclaredConstructor().newInstance())
-    }.get
-    val result =
+      import scala.language.existentials // import otherwise gets warning for tuple deconstruction
+      val (clazz, obj) = Try {
+        val c = Class.forName(className + "$")
+        (c, c.getField("MODULE$").get(null))
+      }.recover {
+        case _: ClassNotFoundException =>
+          val c = Class.forName(className)
+          (c, c.getDeclaredConstructor().newInstance())
+      }.get
       clazz.getMethods.filter(_.getName == function) match {
         case Array(method) =>
-          def param(parType: Class[_]) = {
-            import qio.MapJsonFormat
-            if (classOf[Dto].isAssignableFrom(parType))
-              qio.fill(data.toJson.asJsObject)(Manifest.classType(parType)) // specify manifest explicitly so it is not Nothing
-            else if (parType.isAssignableFrom(classOf[java.util.Map[_, _]])) data.asJava
-            else if (parType.isAssignableFrom(classOf[Resources])) res
-            else if (parType.isAssignableFrom(classOf[ExecutionContext])) ec
-            else if (parType.isAssignableFrom(classOf[ActorSystem])) as
-            else if (parType.isAssignableFrom(classOf[FileStreamer])) fs
-            else if (parType.isAssignableFrom(classOf[HttpRequest])) req
-            else data
-          }
           val parTypes = method.getParameterTypes
-          method.invoke(obj, parTypes map param: _*)
+          method.invoke(obj, (parTypes map pf).asInstanceOf[Array[Object]]: _*) //cast is needed for scala 2.12.x
         case Array() => sys.error(s"Method $function not found in class $className")
         case m => sys.error(s"Multiple methods '$function' found: (${m.toList}) in class $className")
       }
-    result match {
-      case f: Future[_] => f map comp_q_result
-      case x => Future.successful(comp_q_result(x))
+    }
+
+    def wrongRes(x: Any) =
+      sys.error(s"Unrecognized result type: ${x.getClass}, value: $x from function $className.$function")
+
+    if (op.arg == null) {
+      def comp_q_result(r: Any) = {
+        def qresult(r: Any): QuereaseResult = r match {
+          case null | () => NoResult // reflection call on function with Unit (void) return type returns null
+          case r: Result[_] => TresqlResult(r)
+          case r: RowLike => TresqlSingleRowResult(r)
+          case i: Iterator[_] => IteratorResult(i.map {
+            case m: Map[String, Any]@unchecked => m
+            case m: java.util.Map[String, Any]@unchecked => m.asScala.toMap
+            case d: Dto => d.toMap(this)
+          })
+          case m: Map[String, Any]@unchecked => MapResult(m)
+          case l: Seq[_] => qresult(l.iterator)
+          case m: java.util.Map[String, Any]@unchecked => MapResult(m.asScala.toMap)
+          case l: Long => LongResult(l)
+          case s: String => StringResult(s)
+          case n: java.lang.Number => NumberResult(n)
+          case d: Dto => MapResult(d.toMap(this))
+          case o: Option[Dto]@unchecked => o.map(d => MapResult(d.toMap(this))).getOrElse(notFound)
+          case h: HttpResponse => HttpResult(h)
+          case q: QuereaseResult => q
+          case x => wrongRes(x)
+        }
+
+        def createCompatibleResult(result: QuereaseResult, conformTo: Action.OpResultType) = result match {
+          case c: CompatibleResult =>
+            require(c.isCollection == conformTo.isCollection, s"Incompatible results $c != $conformTo")
+            val c1 = comp_res(c.result, conformTo)
+            c.copy(resultFilter = new ResultRenderer.IntersectionFilter(c1.resultFilter, c.resultFilter))
+          case r: DataResult => comp_res(r, conformTo)
+          case x => throw new IllegalArgumentException(s"Result argument must be of type DataResult, instead encountered: $x")
+        }
+        val qr = qresult(r)
+        conformTo.map(createCompatibleResult(qr, _)).getOrElse(qr)
+      }
+
+      val invocationData = data ++ env
+      val result = invokeFunction(className, function, {
+        case parType if classOf[Dto].isAssignableFrom(parType) =>
+          import qio.MapJsonFormat
+          qio.fill(invocationData.toJson.asJsObject)(Manifest.classType(parType)) // specify manifest explicitly so it is not Nothing
+        case partType if partType.isAssignableFrom(classOf[scala.collection.immutable.Map[_, _]]) => invocationData
+        case parType if parType.isAssignableFrom(classOf[java.util.Map[_, _]]) => invocationData.asJava
+        case parType if parType.isAssignableFrom(classOf[MapResult]) => MapResult(invocationData)
+      })
+      result match {
+        case f: Future[_] => f map comp_q_result
+        case x => Future.successful(comp_q_result(x))
+      }
+    } else {
+      doActionOp(op.arg, data, env, context).flatMap { opRes =>
+        invokeFunction(className, function, {
+          case parType if classOf[QuereaseResult].isAssignableFrom(parType) => opRes
+        }) match {
+          case r: Future[QuereaseResult@unchecked] => r
+          case r: QuereaseResult => Future.successful(r)
+          case x => wrongRes(x)
+        }
+      }
     }
   }
 
@@ -1251,7 +1280,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case Action.Tresql(tresql) => Future.successful(doTresql(tresql, data ++ env, context))
       case Action.ViewCall(method, view, viewOp) => doViewCall(method, view, viewOp, data, env, context)
       case op: Action.UniqueOpt => doUniqueOpt(op, data, env, context)
-      case inv: Action.Invocation => doInvocation(inv, data ++ env)
+      case inv: Action.Invocation => doInvocation(inv, data, env, context)
       case Action.RedirectToKey(name) =>
         val viewName = if (name == "this") context.viewName else name
         val idName = viewNameToIdName.getOrElse(viewName, null)
