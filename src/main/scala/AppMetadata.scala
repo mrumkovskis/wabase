@@ -1274,7 +1274,13 @@ object AppMetadata extends Loggable {
     override protected def extrasMap = fieldDef.extras
   }
 
-  case class JobDef(name: String, steps: Action, db: String = null, explicitDb: Boolean = false)
+  case class JobDef(
+    name: String,
+    steps: Action,
+    db: String = null,
+    explicitDb: Boolean = false,
+    dbAccessKeys: Seq[DbAccessKey] = Nil,
+  )
 
   trait AppMdConventions extends MdConventions {
     def isIntegerName(name: String) = false

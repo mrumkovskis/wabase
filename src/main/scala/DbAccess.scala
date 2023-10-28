@@ -16,6 +16,8 @@ trait DbAccessProvider {
 }
 
 trait DbAccess { this: Loggable =>
+
+  val DefaultCp: PoolName = WabaseAppConfig.DefaultCp
   implicit def tresqlResources: ThreadLocalResources
 
   protected def defaultQueryTimeout: QueryTimeout = DefaultQueryTimeout

@@ -386,7 +386,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     doSteps(steps, ctx, Future.successful(data))
   }
 
-  protected def doSteps(
+  def doSteps(
     steps: List[Action.Step],
     context: ActionContext,
     curData: Future[Map[String, Any]],

@@ -28,7 +28,6 @@ trait WabaseApp[User] {
 
   import qe.viewDefOption
 
-  val DefaultCp: PoolName = WabaseAppConfig.DefaultCp
   val SerializationBufferSize: Int = WabaseAppConfig.SerializationBufferSize
   val SerializationBufferMaxFileSize: Long = WabaseAppConfig.SerializationBufferMaxFileSize
   val SerializationBufferMaxFileSizes: Map[String, Long] = WabaseAppConfig.SerializationBufferMaxFileSizes
