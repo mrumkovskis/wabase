@@ -17,6 +17,8 @@ import scala.jdk.CollectionConverters._
 
 class WabaseScheduler extends Loggable {
   def init(service: AppServiceBase[_]): Future[QuereaseResult] = {
+    WabaseJobStatusController.init(service.app.dbAccess)
+
     val system = ActorSystem("wabase-cron-jobs")
     if (config.hasPath("akka.quartz.schedules")) {
       val scheduler = QuartzSchedulerExtension(system)
