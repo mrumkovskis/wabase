@@ -15,25 +15,8 @@ import scala.util.{Failure, Success}
 import scala.jdk.CollectionConverters._
 
 
-trait WabaseScheduler extends Loggable {
-  def init(service: AppServiceBase[_]): Unit
-  def scheduleJob(jobName: String)(service: AppServiceBase[_],
-                                   scheduler: QuartzSchedulerExtension,
-                                   wabaseCronActor: ActorRef): Unit = {
-    service.app.qe.jobDefOption(jobName).map { job =>
-      scheduler.schedule(jobName, wabaseCronActor, Tick(job))
-    }.getOrElse {
-      logger.warn(s"Job definition for schedule $jobName not found." +
-        s"If you would like to schedule please override this method or define wabase job.")
-    }
-  }
-}
-
-object WabaseScheduler extends WabaseScheduler {
-  case class Tick(job: JobDef)
-  case class JobResponse(data: Any) // for testing purposes, scheduler.schedule will ignore these messages
-
-  def init(service: AppServiceBase[_]): Unit = {
+class WabaseScheduler extends Loggable {
+  def init(service: AppServiceBase[_]): Future[QuereaseResult] = {
     val system = ActorSystem("wabase-cron-jobs")
     if (config.hasPath("akka.quartz.schedules")) {
       val scheduler = QuartzSchedulerExtension(system)
@@ -41,16 +24,65 @@ object WabaseScheduler extends WabaseScheduler {
       config
         .getConfig("akka.quartz.schedules")
         .root().asScala.keys
-        .foreach(scheduleJob(_)(service, scheduler, wabaseJobActor))
+        .foreach { jobName => schedule(jobName)(service, scheduler, wabaseJobActor) }
     } else {
       logger.debug(s"No schedules found for background jobs.")
     }
+
+    if (config.hasPath("app.init.job")) {
+      val jobDef = service.app.qe.jobDef(config.getString("app.init.job"))
+      doJob(jobDef)(service)
+    } else Future.successful(NoResult)
   }
+
+  def schedule(jobName: String)(service: AppServiceBase[_],
+                                scheduler: QuartzSchedulerExtension,
+                                wabaseJobActor: ActorRef): Unit = {
+    service.app.qe.jobDefOption(jobName).map { job =>
+      scheduler.schedule(jobName, wabaseJobActor, Tick(job, this))
+    }.getOrElse {
+      logger.warn(s"Job definition for schedule $jobName not found." +
+        s"If you would like to schedule please override this method or define wabase job.")
+    }
+  }
+
+  def doJob(job: JobDef)(service: AppServiceBase[_]): Future[QuereaseResult] = {
+    def resourceFactory(jd: AppMetadata.JobDef, dbAccess: DbAccess): () => Resources = {
+      val poolName = Option(jd.db).map(PoolName) getOrElse dbAccess.DefaultCp
+      val extraDbs = dbAccess.extraDb(jd.dbAccessKeys)
+      () => dbAccess.initResources(dbAccess.tresqlResources.resourcesTemplate)(poolName, extraDbs)
+    }
+
+    val qe = service.app.qe
+    val dbAccess = service.app.asInstanceOf[DbAccess]
+
+    val emptyResFactory: ResourcesFactory =
+      ResourcesFactory(resourceFactory(job, dbAccess), dbAccess.closeResources)(dbAccess.tresqlResources)
+    implicit val resourcesFactory: ResourcesFactory =
+      if (job.explicitDb) emptyResFactory
+      else emptyResFactory.copy()(resources = emptyResFactory.initResources())
+    implicit val executionContext: ExecutionContext = service.asInstanceOf[Execution].executor
+    implicit val actorSystem: ActorSystem = service.asInstanceOf[Execution].system
+    implicit val fileStreamer: FileStreamer = service match {
+      case s: AppFileServiceBase[_] => s.fileStreamer.fileStreamer
+      case _ => null
+    }
+    implicit val httpRequest: HttpRequest = null
+    implicit val qio: AppQuereaseIo[Dto] = service.app.qio
+
+    val ctx = qe.ActionContext(job.name, "job", Map(), None)
+    qe.doSteps(job.steps.steps, ctx, Future.successful(Map()))
+  }
+}
+
+object WabaseScheduler {
+  case class Tick(job: JobDef, executor: WabaseScheduler)
+  case class JobResponse(data: Any) // for testing purposes, scheduler.schedule will ignore these messages
 }
 
 class WabaseJobActor(service: AppServiceBase[_]) extends Actor {
   override def receive: Receive = {
-    case Tick(jd) =>
+    case Tick(jd, scheduler) =>
       val s = sender()
       val jobName = jd.name
       val dbAccess = service.app.asInstanceOf[DbAccess]
@@ -58,7 +90,7 @@ class WabaseJobActor(service: AppServiceBase[_]) extends Actor {
       try {
         if (WabaseJobStatusController.acquireIsRunnningLock(jobName)(dbAccess)) {
           context.system.log.info(jobName + " started")
-          job(jd).onComplete {
+          scheduler.doJob(jd)(service).onComplete {
             case Success(r) =>
               WabaseJobStatusController.updateCronJobStatus(jobName, "SUCC")(dbAccess)
               context.system.log.info(jobName + " ended")
@@ -75,34 +107,6 @@ class WabaseJobActor(service: AppServiceBase[_]) extends Actor {
           s ! JobResponse(e)
           throw e
       }
-  }
-
-  def job(jd: JobDef): Future[QuereaseResult] = {
-    def resourceFactory(jd: AppMetadata.JobDef, dbAccess: DbAccess): () => Resources = {
-      val poolName = Option(jd.db).map(PoolName) getOrElse dbAccess.DefaultCp
-      val extraDbs = dbAccess.extraDb(jd.dbAccessKeys)
-      () => dbAccess.initResources(dbAccess.tresqlResources.resourcesTemplate)(poolName, extraDbs)
-    }
-
-    val qe = service.app.qe
-    val dbAccess = service.app.asInstanceOf[DbAccess]
-
-    val emptyResFactory: ResourcesFactory =
-      ResourcesFactory(resourceFactory(jd, dbAccess), dbAccess.closeResources)(dbAccess.tresqlResources)
-    implicit val resourcesFactory: ResourcesFactory =
-      if (jd.explicitDb) emptyResFactory
-      else emptyResFactory.copy()(resources = emptyResFactory.initResources())
-    implicit val executionContext: ExecutionContext = service.asInstanceOf[Execution].executor
-    implicit val actorSystem: ActorSystem = service.asInstanceOf[Execution].system
-    implicit val fileStreamer: FileStreamer = service match {
-      case s: AppFileServiceBase[_] => s.fileStreamer.fileStreamer
-      case _ => null
-    }
-    implicit val httpRequest: HttpRequest = null
-    implicit val qio: AppQuereaseIo[Dto] = service.app.qio
-
-    val ctx = qe.ActionContext(jd.name, "job", Map(), None)
-    qe.doSteps(jd.steps.steps, ctx, Future.successful(Map()))
   }
 }
 
