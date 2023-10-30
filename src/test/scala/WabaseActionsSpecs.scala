@@ -237,7 +237,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
   it should "compile metadata" in {
     var msgs: List[String] = Nil
     app.qe.compileAllQueries(Set(), true, msgs ::= _)
-    msgs.head should include ("Action compilation done")
+    msgs.head should include ("compilation done")
   }
 
   behavior of "actions"

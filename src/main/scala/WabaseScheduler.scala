@@ -19,8 +19,8 @@ class WabaseScheduler extends Loggable {
   def init(service: AppServiceBase[_]): Future[QuereaseResult] = {
     WabaseJobStatusController.init(service.app.dbAccess)
 
-    val system = ActorSystem("wabase-cron-jobs")
     if (config.hasPath("akka.quartz.schedules")) {
+      val system = ActorSystem("wabase-cron-jobs")
       val scheduler = QuartzSchedulerExtension(system)
       val wabaseJobActor = system.actorOf(Props(classOf[WabaseJobActor], service))
       config
@@ -37,9 +37,11 @@ class WabaseScheduler extends Loggable {
     } else Future.successful(NoResult)
   }
 
-  def schedule(jobName: String)(service: AppServiceBase[_],
-                                scheduler: QuartzSchedulerExtension,
-                                wabaseJobActor: ActorRef): Unit = {
+  protected def schedule(jobName: String)(
+    service: AppServiceBase[_],
+    scheduler: QuartzSchedulerExtension,
+    wabaseJobActor: ActorRef
+  ): Unit = {
     service.app.qe.jobDefOption(jobName).map { job =>
       scheduler.schedule(jobName, wabaseJobActor, Tick(job, this))
     }.getOrElse {

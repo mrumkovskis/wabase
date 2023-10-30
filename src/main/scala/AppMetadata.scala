@@ -37,7 +37,9 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   protected lazy val joinsParserCache: Map[String, Map[String, Exp]] =
     loadJoinsParserCache(resourceLoader)
 
-  def jobDefOption(jobName: String): Option[JobDef] = None
+  lazy val nameToJobDef: Map[String, JobDef] = Map()
+
+  def jobDefOption(jobName: String): Option[JobDef] = nameToJobDef.get(jobName)
   def jobDef(jobName: String): JobDef = jobDefOption(jobName)
     .getOrElse(sys.error(s"Job definition for $jobName not found"))
 
@@ -405,8 +407,12 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
   protected def transformAppViewDefs(viewDefs: Map[String, ViewDef]): Map[String, ViewDef] =
     Option(viewDefs)
-      // .map(resolveAuth)
-      .map(resolveDbAccessKeys)
+      .map(resolveViewDbAccessKeys(_, Map()))
+      .orNull
+
+  protected def transformJobDefs(jobDefs: Map[String, JobDef]) =
+    Option(jobDefs)
+      .map(resolveJobDbAccessKeys(nameToViewDef, _))
       .orNull
 
   /* Sets field options to horizontal auth statements if such are defined for child view, so that during ort auth
@@ -427,10 +433,11 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     })
   }
 
-  override def compileAllQueries(previouslyCompiledQueries: Set[String],
-                        showFailedViewQuery: Boolean,
-                        log: => String => Unit,
-                       ): (Set[String], Map[String, Array[Byte]]) = {
+  override def compileAllQueries(
+    previouslyCompiledQueries: Set[String],
+    showFailedViewQuery: Boolean,
+    log: => String => Unit,
+  ): (Set[String], Map[String, Array[Byte]]) = {
     val (quereaseCompiledQueries, caches) =
       super.compileAllQueries(previouslyCompiledQueries, showFailedViewQuery, log)
 
@@ -442,7 +449,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     lazy val stepTresqlTrav: StepTresqlTraverser[scala.collection.mutable.Set[String]] =
       stepTresqlTraverser(opTresqlTrav)(st => {
         case Validations(_, validations, db) =>
-          val v = viewDef(st.viewName)
+          val v = viewDef(st.name)
           validationsQueryString(v, emptyData(v), validations).flatMap { valStr =>
             db.flatMap(k => Option(k.db)).map("|" + _ + ":" + valStr)
               .orElse(Option(valStr))
@@ -451,8 +458,6 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
               }
           }.getOrElse(st)
       })
-    val viewsToCompile = nameToViewDef.values.toList.sortBy(_.name)
-    log(s"Compiling actions for ${viewsToCompile.size} views")
     val compiler = new org.tresql.compiling.Compiler {
       override val metadata = tresqlMetadata
       override val extraMetadata = tresqlMetadata.extraDbToMetadata
@@ -460,35 +465,56 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val compiledQueries = scala.collection.mutable.Set(quereaseCompiledQueries.toSeq: _*)
     var compiledActionCount = 0
     var compiledTresqlCount = 0
+    def compilerState(a: String, n: String) = {
+      State[scala.collection.mutable.Set[String]](
+        a, n, Map(), Map(), parser,
+        tresqlExtractor = cq => {
+          case e =>
+            val tresqlString = e.tresql
+            if (!cq.contains(tresqlString)) {
+              try compiler.compile(e) catch {
+                case NonFatal(ex) =>
+                  val msg = s"\nFailed to compile viewdef ${n} action $a: ${ex.getMessage}" +
+                    (if (showFailedViewQuery) s"\n$tresqlString" else "")
+                  throw new RuntimeException(msg, ex)
+              }
+              compiledTresqlCount += 1
+            }
+            cq += tresqlString
+        },
+        viewExtractor = v => _ => v,
+        jobExtractor = v => _ => v,
+        processed = Set(), value = compiledQueries
+      )
+    }
+    val viewsToCompile = nameToViewDef.values.toList.sortBy(_.name)
+    log(s"Compiling actions for ${viewsToCompile.size} views")
     viewsToCompile.foreach { v =>
       v.actions.foreach { case (n, a) =>
-        val st = State[scala.collection.mutable.Set[String]](
-          n, v.name, Map(), parser,
-          tresqlExtractor = cq => {
-            case e =>
-              val tresqlString = e.tresql
-              if(!cq.contains(tresqlString)) {
-                try compiler.compile(e) catch {
-                  case NonFatal(ex) =>
-                    val msg = s"\nFailed to compile viewdef ${v.name} action $n: ${ex.getMessage}" +
-                      (if (showFailedViewQuery) s"\n$tresqlString" else "")
-                    throw new RuntimeException(msg, ex)
-                }
-                compiledTresqlCount += 1
-              }
-              cq += tresqlString
-          },
-          viewExtractor = v => _ => v,
-          processed = Set(), value = compiledQueries
-        )
+        val st = compilerState(n, v.name)
         traverseAction(a)(stepTresqlTrav)(st).value
         compiledActionCount += 1
       }
     }
-    val endTime = System.currentTimeMillis
+    val viewEndTime = System.currentTimeMillis
     log(
-      s"Action compilation done in ${endTime - startTime} ms, " +
+      s"Action compilation done in ${viewEndTime - startTime} ms, " +
         s"$compiledTresqlCount queries compiled for $compiledActionCount actions")
+
+    val jobsToCompile = nameToJobDef.values.toList.sortBy(_.name)
+    log(s"Compiling ${jobsToCompile.size} jobs")
+    compiledActionCount = 0
+    compiledTresqlCount = 0
+    jobsToCompile.foreach { j =>
+      val st = compilerState("job", j.name)
+      traverseAction(j.steps)(stepTresqlTrav)(st).value
+      compiledActionCount += 1
+    }
+    val jobEndTime = System.currentTimeMillis
+    log(
+      s"Job compilation done in ${jobEndTime - viewEndTime} ms, " +
+        s"$compiledTresqlCount queries compiled for $compiledActionCount actions")
+
     (compiledQueries.toSet, caches)
   }
 
@@ -512,7 +538,10 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   protected def createJoinsParserCache(db: String): Option[Cache] =
     joinsParserCacheFactory(joinsParserCache, tresqlParserCacheSize)(db)
 
-  protected def extractViewVariables(viewDefs: Map[String, ViewDef])(action: String, viewName: String): Seq[Variable] = {
+  protected def extractViewVariables(
+    viewDefs: Map[String, ViewDef],
+    jobDefs: Map[String, JobDef]
+  )(action: String, viewName: String): Seq[Variable] = {
     import Action._
     import TresqlExtraction._
     val varExtractor = parser.variableExtractor(Nil)
@@ -534,43 +563,56 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
         }
       }
 
-    val state = State[(Seq[Variable], Set[String])](action, viewName, viewDefs, parser,
+    val state = State[(Seq[Variable], Set[String])](action, viewName, viewDefs, jobDefs, parser,
       tresqlExtractor = vars => {
         case e if varExtractor.isDefinedAt(e) =>
           val actionDefinedVars = vars._2
           (vars._1 ++ varExtractor(e).filterNot(v => actionDefinedVars(v.variable))) -> actionDefinedVars
       },
       viewExtractor = vars => vd => vars, // TODO extract variables from view, move AppBase.filterParams function here?
+      jobExtractor = vars => _ => vars,
       processed = Set(), value = (Nil, Set())
     )
     processView(stepTresqlTrav)(state).value._1.distinct
   }
 
-  protected def resolveDbAccessKeys(viewDefs: Map[String, ViewDef]): Map[String, ViewDef] =
+  private def resolveDbAccessKeys(
+    action: String, name: String,
+    viewDefs: Map[String, ViewDef], jobDefs: Map[String, JobDef],
+    fun: (=>StepTresqlTraverser[Seq[DbAccessKey]]) => State[Seq[DbAccessKey]] => State[Seq[DbAccessKey]]
+  ): State[Seq[DbAccessKey]] = {
+    lazy val opTresqlTrav: OpTresqlTraverser[Seq[DbAccessKey]] =
+      opTresqlTraverser(opTresqlTrav, stepTresqlTrav)(_ => PartialFunction.empty)
+
+    lazy val stepTresqlTrav: StepTresqlTraverser[Seq[DbAccessKey]] =
+      stepTresqlTraverser(opTresqlTrav)(state => {
+        case Validations(_, _, dbkey) => state.copy(value = state.value ++ dbkey.toList)
+      })
+
+    val dbExtractor = parser.dbExtractor(Nil)
+    val state = State[Seq[DbAccessKey]](action, name, viewDefs, jobDefs, parser,
+      tresqlExtractor = dbKeys => {
+        case e if dbExtractor.isDefinedAt(e) => dbKeys ++ dbExtractor(e).map(DbAccessKey(_, null))
+      },
+      viewExtractor = dbkeys => vd =>
+        dbkeys ++ (if (vd.db != null || vd.cp != null) Seq(DbAccessKey(vd.db, vd.cp)) else Nil),
+      jobExtractor = dbkeys => jd =>
+        dbkeys ++ Option(jd.db).map(db => Seq(DbAccessKey(db, null))).getOrElse(Nil),
+      processed = Set(), value = Nil
+    )
+    fun(stepTresqlTrav)(state)
+  }
+
+  protected def resolveViewDbAccessKeys(
+    viewDefs: Map[String, ViewDef],
+    jobDefs: Map[String, JobDef],
+  ): Map[String, ViewDef] = {
     viewDefs.transform { case (viewName, viewDef) =>
       import Action._
       import TresqlExtraction._
       val actionToDbAccessKeys = Action().map { case action =>
-        val dbExtractor = parser.dbExtractor(Nil)
-
-        lazy val opTresqlTrav: OpTresqlTraverser[Seq[DbAccessKey]] =
-          opTresqlTraverser(opTresqlTrav, stepTresqlTrav)(_ => PartialFunction.empty)
-
-        lazy val stepTresqlTrav: StepTresqlTraverser[Seq[DbAccessKey]] =
-          stepTresqlTraverser(opTresqlTrav) { state =>
-            { case Validations(_, _, dbkey) => state.copy(value = state.value ++ dbkey.toList) }
-          }
-
-        val state = State[Seq[DbAccessKey]](action, viewName, viewDefs, parser,
-          tresqlExtractor = dbKeys => {
-            case e if dbExtractor.isDefinedAt(e) => dbKeys ++ dbExtractor(e).map(DbAccessKey(_, null))
-          },
-          viewExtractor = dbkeys => vd =>
-            dbkeys ++ (if (vd.db != null || vd.cp != null) Seq(DbAccessKey(vd.db, vd.cp)) else Nil),
-          processed = Set(), value = Nil
-        )
-
-        val dbkeys = processView(stepTresqlTrav)(state).value.distinct
+        val st = resolveDbAccessKeys(action, viewName, viewDefs, jobDefs, processView[Seq[DbAccessKey]])
+        val dbkeys = st.value.distinct
         // validate db access keys so that one db corresponds only to one connection pool
         dbkeys.groupBy(_.db).foreach { case (db, gr) =>
           if (gr.size > 1) {
@@ -582,6 +624,20 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       }.toMap
       viewDef.updateWabaseExtras(_.copy(actionToDbAccessKeys = actionToDbAccessKeys))
     }
+  }
+
+  protected def resolveJobDbAccessKeys(
+    viewDefs: Map[String, ViewDef],
+    jobDefs: Map[String, JobDef],
+  ): Map[String, JobDef] = {
+    jobDefs.transform { case (jobName, jobDef) =>
+      import Action._
+      import TresqlExtraction._
+      val st = resolveDbAccessKeys("job", jobName, viewDefs, jobDefs, processJob[Seq[DbAccessKey]])
+      val dbkeys = st.value.distinct
+      jobDef.copy(dbAccessKeys = dbkeys)
+    }
+  }
 
   protected def parseAction(objectName: String, stepData: Seq[Any]): Action = {
     val namedStepRegex = """(?U)(?:((?:\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*)(?:\.\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*)*)\s*=\s*)?(.+)""".r
@@ -1062,18 +1118,22 @@ object AppMetadata extends Loggable {
 
     object TresqlExtraction {
       type ViewExtractor[T] = T => ViewDef => T
+      type JobExtractor[T] = T => JobDef => T
       type TresqlExtractor[T] = T => PartialFunction[Exp, T]
       type StepTresqlTraverser[T] = StepTraverser[State[T]]
       type OpTresqlTraverser[T] = OpTraverser[State[T]]
 
-      case class State[T](action: String, viewName: String, viewDefs: Map[String, ViewDef],
-                          parser: QueryParsers, tresqlExtractor: TresqlExtractor[T],
-                          viewExtractor: ViewExtractor[T],
-                          processed: Set[(String, String)], value: T)
-
+      case class State[T](
+        action: String, name: String,
+        viewDefs: Map[String, ViewDef], jobDefs: Map[String, JobDef],
+        parser: QueryParsers, tresqlExtractor: TresqlExtractor[T],
+        viewExtractor: ViewExtractor[T], jobExtractor: JobExtractor[T],
+        processed: Set[(String, String)],
+        value: T
+      )
 
       def processView[T](stepTresqlTrav: => StepTresqlTraverser[T])(s: State[T]): State[T] = {
-        if (s.processed(s.action -> s.viewName)) s else {
+        if (s.processed(s.action -> s.name)) s else {
           def process(vn: String, initVal: T, processed: Set[String]): T = {
             if (processed(vn)) initVal else {
               val vd = s.viewDefs(vn)
@@ -1086,13 +1146,20 @@ object AppMetadata extends Loggable {
             }
           }
 
-          val newVal = process(s.viewName, s.value, Set())
-          val s1 = s.copy(value = newVal, processed = s.processed + (s.action -> s.viewName))
-          val vd = s1.viewDefs(s.viewName)
+          val newVal = process(s.name, s.value, Set())
+          val s1 = s.copy(value = newVal, processed = s.processed + (s.action -> s.name))
+          val vd = s1.viewDefs(s.name)
           vd.actions.get(s1.action).map { a =>
             traverseAction(a)(stepTresqlTrav)(s1)
           }.getOrElse(s1)
         }
+      }
+
+      def processJob[T](stepTresqlTrav: => StepTresqlTraverser[T])(s: State[T]): State[T] = {
+        val jd = s.jobDefs(s.name)
+        val newVal = s.jobExtractor(s.value)(jd)
+        val s1 = s.copy(value = newVal, processed = s.processed + (s.action -> s.name))
+        traverseAction(jd.steps)(stepTresqlTrav)(s1)
       }
 
       private def newValFromTresql[T](parser: QueryParsers,
@@ -1135,9 +1202,9 @@ object AppMetadata extends Loggable {
               val s2 = us(s1, nv(s1.value)(headerTresql))
               opTresqlTrav(s2)(body)
             case ViewCall(method, view, data) =>
-              val vn = if (view == "this") state.viewName else view
+              val vn = if (view == "this") state.name else view
               val ns = opTrTr(data)
-              processView(stepTresqlTrav)(ns.copy(action = method, viewName = vn))
+              processView(stepTresqlTrav)(ns.copy(action = method, name = vn))
             case Job(nameTresql) => us(state, nv(state.value)(nameTresql))
             case Invocation(_, _, o, _) => opTrTr(o)
           }
