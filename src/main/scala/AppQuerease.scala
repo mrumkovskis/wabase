@@ -810,7 +810,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     qio: AppQuereaseIo[Dto],
   ): Future[QuereaseResult] = {
     import resFac._
-    val jobName = Query(job.nameTresql).unique[String]
+    val jobName =
+      if (job.isDynamic) Query(job.nameTresql).unique[String] else job.nameTresql
     val ctx = ActionContext(jobName, "job", env, None, contextStack = context :: context.contextStack)
     val jd = jobDef(jobName)
     doSteps(jd.steps.steps, ctx, Future.successful(data))

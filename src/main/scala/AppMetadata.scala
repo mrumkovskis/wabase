@@ -8,13 +8,12 @@ import org.mojoz.metadata.io.MdConventions
 import org.mojoz.metadata.out.DdlGenerator.SimpleConstraintNamingRules
 import org.mojoz.querease.{QuereaseMetadata, TresqlJoinsParser}
 import org.tresql.{Cache, CacheBase, SimpleCache, SimpleCacheBase}
-import org.tresql.ast.{Exp, Variable}
+import org.tresql.ast.{Exp, Ident, Obj, StringConst, Variable}
 import org.tresql.parsing.QueryParsers
 import org.wabase.AppMetadata.Action.TresqlExtraction.{OpTresqlTraverser, State, StepTresqlTraverser, opTresqlTraverser, stepTresqlTraverser}
 import org.wabase.AppMetadata.Action.{QuereaseActionCacheName, Validations, VariableTransform, ViewCall, traverseAction}
 
 import java.io.InputStream
-
 import scala.collection.immutable.{Seq, Set}
 import scala.jdk.CollectionConverters._
 import scala.language.reflectiveCalls
@@ -896,7 +895,9 @@ trait AppMetadataDataFlowParser extends QueryParsers { self =>
     case mode ~ _ ~ op => JsonCodec(mode == "to", op)
   } named "json-op"
   def jobOp: MemParser[Job] = "job" ~> expr ^^ {
-    case nameTresql => Job(nameTresql.tresql)
+    case StringConst(value) => Job(value, false)
+    case Obj(i: Ident, _, _, _, _) => Job(i.tresql, false)
+    case e => Job(e.tresql, true)
   } named "job-op"
   def confOp: MemParser[Conf] = {
     val parType = new Regex(ConfTypes.types.map(_.name).mkString("|"))
@@ -1068,7 +1069,9 @@ object AppMetadata extends Loggable {
     case class JsonCodec(encode: Boolean, op: Op) extends Op
     /** This operation exists only in parsing stage for if operation */
     case class Else(action: Action) extends Op
-    case class Job(nameTresql: String) extends Op
+    /** if isDynamic is false, nameTresql parameter is expected to be indentifier or string constant
+     * (not to be evaluated as tresql to get job name). */
+    case class Job(nameTresql: String, isDynamic: Boolean) extends Op
     case object Commit extends Op
 
     case class Evaluation(name: Option[String], varTrans: List[VariableTransform], op: Op) extends Step
@@ -1205,7 +1208,10 @@ object AppMetadata extends Loggable {
               val vn = if (view == "this") state.name else view
               val ns = opTrTr(data)
               processView(stepTresqlTrav)(ns.copy(action = method, name = vn))
-            case Job(nameTresql) => us(state, nv(state.value)(nameTresql))
+            case Job(nameTresql, isDynamic) =>
+              val s = us(state, nv(state.value)(nameTresql))
+              if (isDynamic) s
+              else processJob(stepTresqlTrav)(s.copy(action = "job", name = nameTresql))
             case Invocation(_, _, o, _) => opTrTr(o)
           }
         }
