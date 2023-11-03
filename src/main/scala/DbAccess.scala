@@ -183,7 +183,14 @@ trait DbAccess { this: Loggable =>
 }
 
 trait PostgresDbAccess extends DbAccess { this: QuereaseProvider with Loggable =>
-  override lazy val tresqlResources: ThreadLocalResources = new PostgreSqlTresqlResources(qe)
+  override lazy val tresqlResources: ThreadLocalResources = new TresqlResources {
+    override def initResourcesTemplate: ResourcesTemplate =
+      super.initResourcesTemplate.copy(
+        dialect = AppPostgreSqlDialect orElse dialects.PostgresqlDialect
+          orElse dialects.ANSISQLDialect orElse dialects.VariableNameDialect,
+        idExpr = _ => "nextval(\"seq\")",
+      )
+  }
 }
 
 trait TresqlResources extends ThreadLocalResources {
@@ -224,80 +231,17 @@ object TresqlResources {
   val cache: Cache = new SimpleCache(4096)
 }
 
-class PostgreSqlTresqlResources(qe: AppQuerease, db: String = null) extends TresqlResources {
-  protected lazy val typeDefs = qe.typeDefs
-  protected lazy val YamlToPgTypeMap =
-    typeDefs.map(t => t.name -> t.name).toMap ++
-      typeDefs.filter(_.ddlWrite contains "sql")
-        .map(t => t.name -> t.ddlWrite.get("sql")
-          .map(_.map(_.targetNamePattern).min).getOrElse(t.name)).toMap ++
-      typeDefs.filter(_.ddlWrite contains "postgresql")
-        .map(t => t.name -> t.ddlWrite.get("postgresql")
-          .map(_.map(_.targetNamePattern).min).getOrElse(t.name)).toMap
-
-  /*
-  protected val YamlToPgTypeMap = Map("string" -> "varchar", "long" -> "bigint",
-    "date" -> "date", "dateTime" -> "timestamp", "int" -> "integer",
-    "boolean" -> "boolean", "decimal" -> "decimal")
-  */
-  protected def yamlToPgTypeMap = YamlToPgTypeMap
-
-  override def initResourcesTemplate: ResourcesTemplate =
-    super.initResourcesTemplate.copy(
-      metadata = if (db == qe.tresqlMetadata.db) qe.tresqlMetadata else qe.tresqlMetadata.extraDbToMetadata(db),
-      dialect  = AppPostgreSqlDialect orElse dialects.PostgresqlDialect
-        orElse dialects.ANSISQLDialect orElse dialects.VariableNameDialect,
-      idExpr   = _ => "nextval(\"seq\")",
-    )
-
-  object AppPostgreSqlDialect extends Dialect {
-    private val dialect: Dialect = {
-      case f: QueryBuilder#FunExpr if f.name == "unaccent" => s"f_unaccent(${f.params map (_.sql) mkString ", "})"
-      case f: QueryBuilder#FunExpr if f.name == "cast" && f.params.size == 2 => s"cast(${f.params(0).sql} as ${
-        f.params(1) match {
-          case c: QueryBuilder#ConstExpr => String.valueOf(c.value)
-          case x => x.sql
-        }
-      })"
-      case f: QueryBuilder#FunExpr if f.name == "decode" && f.params.size > 2 =>
-        f.params.tail.grouped(2).map { g =>
-          if (g.size == 2) s"when ${g(0).sql} then ${g(1).sql}"
-          else s"else ${g(0).sql}"
-        }.mkString(s"case ${f.params(0).sql} ", " ", " end")
-      case i: QueryBuilder#InsertExpr =>
-        //pg insert as select needs column cast if bind variables are from 'from' clause select
-        val b = i.builder
-        i.vals match {
-          case ivals@b.SelectExpr(
-          List(valstable@b.Table(b.BracesExpr(vals: b.SelectExpr), _, _, _, _, _)),
-          _, _, _, _, _, _, _, _, _) =>
-            val table = i.table.name.last
-            //insertable column names
-            val colNames = i.cols.collect { case b.ColExpr(b.IdentExpr(name), _, _, _) => name.last } toSet
-            //second level query which needs column casts matching insertable column names
-            val colsWithCasts =
-              vals.cols.cols.map {
-                case c@b.ColExpr(e, a, _, _) if colNames(a) =>
-                  qe.tableMetadata.col(table, a, db).flatMap(n => yamlToPgTypeMap.get(n.type_.name))
-                    .map(typ => c.copy(col = b.CastExpr(e, typ)))
-                    .getOrElse(c)
-                case x => x
-              }
-            //copy modified cols to second level query cols
-            val colsExprWithCasts = vals.cols.copy(cols = colsWithCasts)
-            new b.InsertExpr(i.table.asInstanceOf[b.IdentExpr], i.alias, i.cols, ivals
-              .copy(tables = List(valstable.copy(
-                table = b.BracesExpr(vals.copy(cols = colsExprWithCasts))))),
-              i.returning.asInstanceOf[Option[b.ColsExpr]]
-            ).defaultSQL
-          case _ => i.defaultSQL
-        }
-    }
-
-    override def isDefinedAt(e: Expr) = dialect.isDefinedAt(e)
-
-    override def apply(e: Expr) = dialect(e)
+object AppPostgreSqlDialect extends Dialect {
+  private val dialect: Dialect = {
+    case f: QueryBuilder#FunExpr if f.name == "unaccent" => s"f_unaccent(${f.params map (_.sql) mkString ", "})"
+    case f: QueryBuilder#FunExpr if f.name == "decode" && f.params.size > 2 =>
+      f.params.tail.grouped(2).map { g =>
+        if (g.size == 2) s"when ${g(0).sql} then ${g(1).sql}"
+        else s"else ${g(0).sql}"
+      }.mkString(s"case ${f.params(0).sql} ", " ", " end")
   }
+  override def isDefinedAt(e: Expr) = dialect.isDefinedAt(e)
+  override def apply(e: Expr) = dialect(e)
 }
 
 object DbAccess extends Loggable {
