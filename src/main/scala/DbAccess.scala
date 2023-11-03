@@ -301,6 +301,11 @@ class PostgreSqlTresqlResources(qe: AppQuerease, db: String = null) extends Tres
 }
 
 object DbAccess extends Loggable {
+  private val DbVendorRegex = """jdbc:(\w+):.*""".r
+  def dbVendor(jdbcUrl: String): String = {
+    val DbVendorRegex(vendor) = jdbcUrl
+    vendor
+  }
   def commitAndCloseConnection(dbConn: Connection): Unit = {
     try if (dbConn != null && !dbConn.isClosed) dbConn.commit() catch {
       case NonFatal(ex) => logger.warn(s"Failed to commit db connection $dbConn", ex)
