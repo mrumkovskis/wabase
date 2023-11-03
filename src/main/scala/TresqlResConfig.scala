@@ -57,8 +57,8 @@ object TresqlResConf {
             tresqlConf.getInt("max-result-size")
           else -1
         override val recursiveStackDepth: Int =
-          if (tresqlConf.hasPath("max-result-size"))
-            tresqlConf.getInt("max-result-size")
+          if (tresqlConf.hasPath("recursive-stack-depth"))
+            tresqlConf.getInt("recursive-stack-depth")
           else -1
       }
 
