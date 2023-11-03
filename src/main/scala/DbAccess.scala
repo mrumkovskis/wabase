@@ -182,11 +182,11 @@ trait DbAccess { this: Loggable =>
   }
 }
 
-trait PostgresDbAccess extends DbAccess { this: QuereaseProvider with Loggable =>
+trait PostgresDbAccess extends DbAccess { this: Loggable =>
   override lazy val tresqlResources: ThreadLocalResources = new TresqlResources {
     override def initResourcesTemplate: ResourcesTemplate =
       super.initResourcesTemplate.copy(
-        dialect = AppPostgreSqlDialect orElse dialects.PostgresqlDialect
+        dialect = TresqlResources.PostgresSqlDialect orElse dialects.PostgresqlDialect
           orElse dialects.ANSISQLDialect orElse dialects.VariableNameDialect,
         idExpr = _ => "nextval(\"seq\")",
       )
@@ -229,14 +229,10 @@ object TresqlResources {
   }
 
   val cache: Cache = new SimpleCache(4096)
-}
 
-object AppPostgreSqlDialect extends Dialect {
-  private val dialect: Dialect = {
+  val PostgresSqlDialect: Dialect = {
     case f: QueryBuilder#FunExpr if f.name == "unaccent" => s"f_unaccent(${f.params map (_.sql) mkString ", "})"
   }
-  override def isDefinedAt(e: Expr) = dialect.isDefinedAt(e)
-  override def apply(e: Expr) = dialect(e)
 }
 
 object DbAccess extends Loggable {
