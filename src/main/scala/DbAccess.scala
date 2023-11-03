@@ -234,11 +234,6 @@ object TresqlResources {
 object AppPostgreSqlDialect extends Dialect {
   private val dialect: Dialect = {
     case f: QueryBuilder#FunExpr if f.name == "unaccent" => s"f_unaccent(${f.params map (_.sql) mkString ", "})"
-    case f: QueryBuilder#FunExpr if f.name == "decode" && f.params.size > 2 =>
-      f.params.tail.grouped(2).map { g =>
-        if (g.size == 2) s"when ${g(0).sql} then ${g(1).sql}"
-        else s"else ${g(0).sql}"
-      }.mkString(s"case ${f.params(0).sql} ", " ", " end")
   }
   override def isDefinedAt(e: Expr) = dialect.isDefinedAt(e)
   override def apply(e: Expr) = dialect(e)
