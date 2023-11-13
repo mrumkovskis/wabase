@@ -6,7 +6,7 @@ import akka.stream.Materializer
 import akka.stream.scaladsl.{Keep, Source}
 import akka.util.ByteString
 import org.mojoz.metadata.{FieldDef, ViewDef}
-import org.mojoz.querease.FieldFilter
+import org.mojoz.querease.{FieldFilter, TresqlMetadata}
 import org.tresql.{Resources, SingleValueResult}
 import org.wabase.AppMetadata.{Action, AugmentedAppFieldDef, AugmentedAppViewDef}
 import org.wabase.AppMetadata.Action.{LimitKey, OffsetKey, OrderKey}
@@ -31,6 +31,8 @@ trait WabaseApp[User] {
   val SerializationBufferSize: Int = WabaseAppConfig.SerializationBufferSize
   val SerializationBufferMaxFileSize: Long = WabaseAppConfig.SerializationBufferMaxFileSize
   val SerializationBufferMaxFileSizes: Map[String, Long] = WabaseAppConfig.SerializationBufferMaxFileSizes
+
+  def tresqlMetadata: TresqlMetadata = qe.tresqlMetadata
 
   def viewSerializationBufferMaxFileSize(viewName: String): Long =
     SerializationBufferMaxFileSizes.getOrElse(viewName, SerializationBufferMaxFileSize)

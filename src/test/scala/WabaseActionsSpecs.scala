@@ -6,10 +6,10 @@ import akka.http.scaladsl.model.{HttpRequest, HttpResponse, MessageEntity, Statu
 import akka.http.scaladsl.server.Route
 import akka.http.scaladsl.unmarshalling.Unmarshal
 import akka.util.ByteString
-import org.mojoz.querease.{ValidationException, ValidationResult}
+import org.mojoz.querease.{TresqlMetadata, ValidationException, ValidationResult}
 import org.scalatest.flatspec.{AsyncFlatSpec, AsyncFlatSpecLike}
 import org.scalatest.matchers.should.Matchers
-import org.tresql.{convString, MissingBindVariableException, Query, ThreadLocalResources}
+import org.tresql.{MissingBindVariableException, Query, ThreadLocalResources, convString}
 import org.wabase.QuereaseActionsDtos.PersonWithHealthDataHealth
 
 import java.io.File
@@ -131,6 +131,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     super.beforeAll()
     val db = new DbAccess with Loggable {
       override implicit val tresqlResources: ThreadLocalResources = WabaseActionsSpecs.this.tresqlThreadLocalResources
+      override protected def tresqlMetadata: TresqlMetadata = WabaseActionsSpecs.this.querease.tresqlMetadata
     }
     app = new TestApp with NoValidation {
       override val DefaultCp: PoolName = PoolName("wabase_db")

@@ -43,6 +43,7 @@ class DeferredTests extends AnyFlatSpec with Matchers with TestQuereaseInitializ
 
     val db = new DbAccess with Loggable {
       override val tresqlResources = DeferredTests.this.tresqlThreadLocalResources
+      override protected def tresqlMetadata = querease.tresqlMetadata
       //save conn if later test execution happens in another thread
       private val conn = tresqlResources.conn
 

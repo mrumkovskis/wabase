@@ -6,7 +6,7 @@ import org.mojoz.metadata.out.DdlGenerator
 import org.mojoz.querease.TresqlMetadata
 import org.scalatest.{BeforeAndAfterAll, Suite}
 import org.tresql.dialects.HSQLDialect
-import org.tresql.{LogTopic, Logging, QueryBuilder, Resources}
+import org.tresql.{LogTopic, Logging, QueryBuilder, Resources, ResourcesTemplate, ThreadLocalResources}
 
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -17,9 +17,21 @@ class TestQuerease(val metadataFile: String, mdFilter: YamlMd => Boolean = _ => 
   def persistenceMetadata(viewName: String) = nameToPersistenceMetadata(viewName)
 }
 
+class TestTresqlConf extends TresqlResourcesConf {
+  override val dialect = HSQLDialect orElse {
+    case c: QueryBuilder#CastExpr => c.typ match {
+      case "bigint" | "long" | "int" => s"convert(${c.exp.sql}, BIGINT)"
+      case "decimal" => s"convert(${c.exp.sql}, NUMERIC(10,2))"
+      case "date" => s"convert(${c.exp.sql}, DATE)"
+      case _ => c.exp.sql
+    }
+  }
+  override val idExpr = _ => "nextval('seq')"
+}
+
 trait TestQuereaseInitializer extends BeforeAndAfterAll with Loggable { this: Suite =>
 
-  protected var tresqlThreadLocalResources: TresqlResources = _
+  protected var tresqlThreadLocalResources: ThreadLocalResources = _
   protected var querease: TestQuerease = _
   protected implicit var qio: AppQuereaseIo[Dto] = _
 
@@ -53,60 +65,48 @@ trait TestQuereaseInitializer extends BeforeAndAfterAll with Loggable { this: Su
     )
     Thread.sleep(50) // allow property to be set for sure (fix unstable hsqldb tests)
 
-    def init_db(db: String): (String, Connection) = {
-      val url = s"jdbc:hsqldb:mem:$dbNamePrefix${ if(db != null) "_" + db else ""}"
-      val db_conn = DriverManager.getConnection(url)
-      logger.debug(s"Creating database $url ...\n")
-      DdlGenerator.hsqldb().schema(querease.tableMetadata.dbToTableDefs(db))
-        .split(";\\s+").map(_ + ";")
-        .++(customStatements)
-        .foreach { sql =>
-          logger.debug(sql)
-          val st = db_conn.createStatement
-          st.execute(sql)
-          st.close
-        }
-      val st = db_conn.createStatement
-      st.execute("create sequence seq start with 1")
-      st.close
-      logger.debug("Database created successfully.")
-      (db, db_conn)
-    }
-    def create_resources(md: TresqlMetadata, extra: Map[String, Resources]) = {
-      new TresqlResources {
-        override def logger = TresqlLogger
-        override def initResourcesTemplate =
-          super.initResourcesTemplate.copy(
-            metadata = md,
-            dialect = HSQLDialect orElse {
-              case c: QueryBuilder#CastExpr => c.typ match {
-                case "bigint" | "long" | "int" => s"convert(${c.exp.sql}, BIGINT)"
-                case "decimal" => s"convert(${c.exp.sql}, NUMERIC(10,2))"
-                case "date" => s"convert(${c.exp.sql}, DATE)"
-                case _ => c.exp.sql
-              }
-            },
-            idExpr = _ => "nextval('seq')",
-            extraResources = extra
-          )
+    this.tresqlThreadLocalResources = {
+      def init_db(db: String): (String, Connection) = {
+        val url = s"jdbc:hsqldb:mem:$dbNamePrefix${if (db != null) "_" + db else ""}"
+        val db_conn = DriverManager.getConnection(url)
+        logger.debug(s"Creating database $url ...\n")
+        DdlGenerator.hsqldb().schema(querease.tableMetadata.dbToTableDefs(db))
+          .split(";\\s+").map(_ + ";")
+          .++(customStatements)
+          .foreach { sql =>
+            logger.debug(sql)
+            val st = db_conn.createStatement
+            st.execute(sql)
+            st.close
+          }
+        val st = db_conn.createStatement
+        st.execute("create sequence seq start with 1")
+        st.close
+        logger.debug("Database created successfully.")
+        (db, db_conn)
+      }
+      val dbs = querease.tableMetadata.dbToTableDefs.keys.toSet
+      val templ = {
+        val confs = TresqlResourcesConf.confs.filter(d => dbs(d._1))
+        val templ = TresqlResourcesConf.tresqlResourcesTemplate(confs, querease.tresqlMetadata)
+        if (templ == null) null else templ.copy(
+          logger = TresqlLogger,
+          extraResources = templ.extraResources.transform((_, r) => r.withLogger(TresqlLogger))
+        )
+      }
+      if (templ == null) null
+      else {
+        val res =
+          new ThreadLocalResources {
+            override def initResourcesTemplate: ResourcesTemplate = templ
+          }
+        val dbcons = dbs map init_db
+        def findConn(n: String) = dbcons.find(_._1 == n).map(_._2).orNull
+        res.conn = findConn(null)
+        res.extraResources = res.extraResources.transform((db, r) => r.withConn(findConn(db)))
+        res
       }
     }
-    this.tresqlThreadLocalResources =
-      querease.tableMetadata.dbToTableDefs.keys.map(init_db).toList.partition(_._1 == null) match {
-        case (List((null, conn)), extra) =>
-          val extra_res = extra.map { case (db, _) =>
-            db -> create_resources(querease.tresqlMetadata.extraDbToMetadata(db), Map())
-          }.toMap
-          val res = create_resources(querease.tresqlMetadata, extra_res)
-          res.conn = conn
-          res.extraResources = extra.map { case (db, extraConn) =>
-            ( db
-            , res.extraResources(db).withConn(extraConn)
-            )
-          }.toMap
-          res
-        case x => null // No main database found
-      }
   }
 
   protected def customStatements: Seq[String] = {

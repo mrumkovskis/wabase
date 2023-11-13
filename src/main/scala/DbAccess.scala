@@ -1,11 +1,12 @@
 package org.wabase
 
 import com.typesafe.scalalogging.Logger
+import org.mojoz.querease.TresqlMetadata
 
 import java.sql.Connection
 import javax.sql.DataSource
 import org.slf4j.LoggerFactory
-import org.tresql.{Cache, Dialect, Expr, LogTopic, Logging, QueryBuilder, Resources, ResourcesTemplate, SimpleCache, ThreadLocalResources, dialects}
+import org.tresql.{Cache, Dialect, Expr, LogTopic, Logging, QueryBuilder, Resources, ResourcesTemplate, SimpleCache, ThreadLocalResources}
 import org.wabase.AppMetadata.DbAccessKey
 
 import scala.language.postfixOps
@@ -18,7 +19,13 @@ trait DbAccessProvider {
 trait DbAccess { this: Loggable =>
 
   val DefaultCp: PoolName = WabaseAppConfig.DefaultCp
-  implicit def tresqlResources: ThreadLocalResources
+
+  protected lazy val resourcesTemplate: ResourcesTemplate =
+    TresqlResourcesConf.tresqlResourcesTemplate(TresqlResourcesConf.confs, tresqlMetadata)
+  implicit def tresqlResources: ThreadLocalResources = new ThreadLocalResources {
+    override def initResourcesTemplate: ResourcesTemplate = DbAccess.this.resourcesTemplate
+  }
+  protected def tresqlMetadata: TresqlMetadata
 
   protected def defaultQueryTimeout: QueryTimeout = DefaultQueryTimeout
 
@@ -182,26 +189,6 @@ trait DbAccess { this: Loggable =>
   }
 }
 
-trait PostgresDbAccess extends DbAccess { this: Loggable =>
-  override lazy val tresqlResources: ThreadLocalResources = new TresqlResources {
-    override def initResourcesTemplate: ResourcesTemplate =
-      super.initResourcesTemplate.copy(
-        dialect = TresqlResources.PostgresSqlDialect orElse dialects.PostgresqlDialect
-          orElse dialects.ANSISQLDialect orElse dialects.VariableNameDialect,
-        idExpr = _ => "nextval(\"seq\")",
-      )
-  }
-}
-
-trait TresqlResources extends ThreadLocalResources {
-  override def initResourcesTemplate = MaxResultSize.map { maxSize =>
-    super.initResourcesTemplate.copy(maxResultSize = maxSize, macros = Macros)
-  }.getOrElse(super.initResourcesTemplate.copy(macros = Macros))
-
-  override def logger: TresqlLogger = TresqlResources.logger
-  override def cache: Cache = TresqlResources.cache
-}
-
 object TresqlResources {
   def sqlWithParams(sql: String, params: Seq[(String, Any)]) = params.foldLeft(sql) {
     case (sql, (name, value)) => sql.replace(s"?/*$name*/", value match {
@@ -228,19 +215,18 @@ object TresqlResources {
     case _ => infoLogger.debug(m)
   }
 
-  val cache: Cache = new SimpleCache(4096)
+  val cache: Cache = new SimpleCache(config.getInt("tresql.cache-size"))
 
   val PostgresSqlDialect: Dialect = {
     case f: QueryBuilder#FunExpr if f.name == "unaccent" => s"f_unaccent(${f.params map (_.sql) mkString ", "})"
   }
+
+  val bindVarLogFilter: Logging#BindVarLogFilter = {
+    case v: QueryBuilder#VarExpr if v.name == "password" => v.fullName + " = ***"
+  }
 }
 
 object DbAccess extends Loggable {
-  private val DbVendorRegex = """jdbc:(\w+):.*""".r
-  def dbVendor(jdbcUrl: String): String = {
-    val DbVendorRegex(vendor) = jdbcUrl
-    vendor
-  }
   def commitAndCloseConnection(dbConn: Connection): Unit = {
     try if (dbConn != null && !dbConn.isClosed) dbConn.commit() catch {
       case NonFatal(ex) => logger.warn(s"Failed to commit db connection $dbConn", ex)
@@ -331,7 +317,7 @@ trait DbAccessDelegate extends DbAccess { this: Loggable =>
 
   def dbAccessDelegate: DbAccess
 
-  implicit val tresqlResources: ThreadLocalResources = dbAccessDelegate.tresqlResources
+  override implicit val tresqlResources: ThreadLocalResources = dbAccessDelegate.tresqlResources
 
   override def commitAndCloseConnection: Connection => Unit = dbAccessDelegate.commitAndCloseConnection
   override def rollbackAndCloseConnection: Connection => Unit = dbAccessDelegate.rollbackAndCloseConnection

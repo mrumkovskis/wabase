@@ -84,7 +84,8 @@ package object wabase extends Loggable {
   case class PoolName(connectionPoolName: String) {
     require(connectionPoolName != null, "connectionPoolName must not be null - try ConnectionPools.key instead")
   }
-  val DEFAULT_CP = PoolName(config.getString("jdbc.default"))
+  val DefaultCpName = config.getString("jdbc.default")
+  val DEFAULT_CP = PoolName(DefaultCpName)
   if (!config.hasPath(s"jdbc.cp.${DEFAULT_CP.connectionPoolName}"))
     logger.warn(s"""Default connection pool configuration missing (key jdbc.cp.${DEFAULT_CP.connectionPoolName}), or jdbc.default not set to correct key (default value = "main"). \nThere will be errors if You rely on JDBC connections""")
 

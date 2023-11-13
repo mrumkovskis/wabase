@@ -319,17 +319,18 @@ class FileCleanupSpecs extends FlatSpec with Matchers with BeforeAndAfterEach {
   }
 }
 
+
+
 object FileCleanupSpecsHelper {
   implicit val queryTimeout: QueryTimeout = QueryTimeout(10)
 
   DbDrivers.loadDrivers
-  val db: DbAccess = new DbAccess with Loggable {
-    override implicit lazy val tresqlResources: ThreadLocalResources = new TresqlResources {
-      override def initResourcesTemplate = super.initResourcesTemplate
-        .copy(dialect = dialects.HSQLDialect)
-        .copy(idExpr = s => "nextval('seq')")
-        .copy(metadata = FileCleanupSpecsQuerease.tresqlMetadata)
+  val db: DbAccess = new DbAccess with Loggable { self =>
+    override implicit lazy val tresqlResources: ThreadLocalResources = new ThreadLocalResources {
+      override def initResourcesTemplate: ResourcesTemplate =
+        self.resourcesTemplate.extraResources("file-cleanup-test").asInstanceOf[ResourcesTemplate]
     }
+    override protected def tresqlMetadata = FileCleanupSpecsQuerease.tresqlMetadata
   }
   import db._
 

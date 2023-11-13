@@ -27,6 +27,7 @@ class MarshallingSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     }
     val db = new DbAccess with Loggable {
       override val tresqlResources = null
+      override protected def tresqlMetadata = querease.tresqlMetadata
     }
 
     super.beforeAll()

@@ -1,6 +1,7 @@
 package org.wabase
 
 import akka.http.scaladsl.testkit.ScalatestRouteTest
+import org.mojoz.querease.TresqlMetadata
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers
@@ -13,9 +14,10 @@ class MultiPoolTest extends FlatSpec with Matchers with ScalatestRouteTest with 
   implicit val queryTimeout: QueryTimeout = QueryTimeout(10)
 
   val db = new DbAccess with Loggable {
-    override implicit val tresqlResources: ThreadLocalResources = new TresqlResources {
+    override implicit val tresqlResources: ThreadLocalResources = new ThreadLocalResources {
       override def initResourcesTemplate = super.initResourcesTemplate
     }
+    override protected def tresqlMetadata: TresqlMetadata = null
   }
 
   import db._

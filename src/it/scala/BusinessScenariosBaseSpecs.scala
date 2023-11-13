@@ -5,6 +5,7 @@ import akka.http.scaladsl.model.{ContentTypes, HttpEntity, HttpHeader, HttpMetho
 import akka.http.scaladsl.model.headers.`Content-Type`
 import akka.http.scaladsl.model.headers.RawHeader
 import com.typesafe.config.{Config, ConfigFactory}
+import org.mojoz.querease.TresqlMetadata
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers
@@ -22,7 +23,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
 
   import jsonConverter.MapJsonFormat
   val db = new DbAccess with Loggable {
-    override implicit val tresqlResources: ThreadLocalResources = new TresqlResources {}
+    override protected def tresqlMetadata: TresqlMetadata = null
   }
   import db._
 

@@ -8,9 +8,7 @@ case class TestUsr(id: Long) {
 }
 
 object TestDbAccess extends DbAccess with Loggable {
-  override val tresqlResources  = new TresqlResources {
-    override def initResourcesTemplate = super.initResourcesTemplate.copy(metadata = DefaultAppQuerease.tresqlMetadata)
-  }
+  override protected def tresqlMetadata = DefaultAppQuerease.tresqlMetadata
 }
 
 trait TestApp extends AppBase[TestUsr] with NoAudit[TestUsr] with PostgreSqlConstraintMessage

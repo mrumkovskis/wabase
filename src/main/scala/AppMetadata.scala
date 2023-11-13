@@ -25,6 +25,22 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
   import AppMetadata._
 
+  override val aliasToDb: String => String = db =>
+    TresqlResourcesConf.confs
+      .transform((_, c) => c.db)
+      .getOrElse(db, db)
+  override val dbToAlias: String => Seq[String] = db =>
+    TresqlResourcesConf.confs
+      .transform((_, c) => c.db)
+      .groupBy(_._2).map { case (k, v) => k -> v.keys.toList }
+      .getOrElse(db, Seq(db))
+
+  /** Get macro class from 'main' tresql resources config */
+  override lazy val macrosClass: Class[_] =
+    // somehow flatMap needs type parameter [Class[_]] for scala 2.12.x compiler in order to compiler
+    TresqlResourcesConf.confs.get(null)
+      .flatMap[Class[_]](c => Option(c.macrosClass))
+      .getOrElse(classOf[Macros])
   override lazy val joinsParser: JoinsParser =
     new TresqlJoinsParser(tresqlMetadata, createJoinsParserCache(_))
   override lazy val metadataConventions: AppMdConventions = new DefaultAppMdConventions

@@ -33,6 +33,7 @@ class FileUploadSpecs extends AnyFlatSpec with TestQuereaseInitializer with Scal
 
     val db = new DbAccess with Loggable {
       override val tresqlResources  = FileUploadSpecs.this.tresqlThreadLocalResources
+      override protected def tresqlMetadata = querease.tresqlMetadata
       //save conn if later test execution happens in another thread
       private val conn = tresqlResources.conn
       override def initResources = template => (_, _) => template.withConn(conn)

@@ -49,13 +49,8 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     qio         = new AppQuereaseIo[Dto](querease)
     super.beforeAll()
     dbAccess    = new DbAccess with Loggable {
-      override implicit lazy val tresqlResources: ThreadLocalResources = new TresqlResources {
-        override def initResourcesTemplate = super.initResourcesTemplate.copy(
-          dialect   = dialects.HSQLDialect,
-          idExpr    = s => "nextval('seq')",
-          metadata  = querease.tresqlMetadata,
-        )
-      }
+      override implicit lazy val tresqlResources: ThreadLocalResources = super.tresqlResources
+      override protected def tresqlMetadata = querease.tresqlMetadata
     }
     val testApp = new TestApp with NoValidation {
       override protected def initQuerease = querease
