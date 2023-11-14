@@ -326,10 +326,6 @@ object FileCleanupSpecsHelper {
 
   DbDrivers.loadDrivers
   val db: DbAccess = new DbAccess with Loggable { self =>
-    override implicit lazy val tresqlResources: ThreadLocalResources = new ThreadLocalResources {
-      override def initResourcesTemplate: ResourcesTemplate =
-        self.resourcesTemplate.extraResources("file-cleanup-test").asInstanceOf[ResourcesTemplate]
-    }
     override protected def tresqlMetadata = FileCleanupSpecsQuerease.tresqlMetadata
   }
   import db._
