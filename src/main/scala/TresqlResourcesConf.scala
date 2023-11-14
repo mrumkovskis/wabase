@@ -19,6 +19,8 @@ trait TresqlResourcesConf {
   def logger: Logging#TresqlLogger = null
   def bindVarLogFilter: Logging#BindVarLogFilter = null
   def db: String = null
+  /** This method allows to distinguish between null db value and no db value. In the last case db name
+   * is taken from configuration parameter tresql-resources.<db name>. */
   protected def isDbSet: Boolean = false
 }
 
@@ -27,8 +29,8 @@ object TresqlResourcesConf {
   val config = ConfigFactory.load("tresql-resources.conf")
 
   lazy val confs: Map[String, TresqlResourcesConf] = {
-    if (config.hasPath("tresql.resources"))
-      config.getConfig("tresql.resources").root().asScala
+    if (config.hasPath("tresql-resources"))
+      config.getConfig("tresql-resources").root().asScala
         .collect { case e@(_, v) if v.valueType() == ConfigValueType.OBJECT => e }
         .map { case (dbName, confValue) =>
           val n = if (dbName == DefaultCpName) null else dbName
@@ -40,6 +42,19 @@ object TresqlResourcesConf {
     else Map((null, new TresqlResourcesConf {}))
   }
 
+  /**
+   * Merges configuration from config-class instance and if value not defined
+   * (null for strings or -1 for numbers), configuration parameters.
+   * Following configuration parameters under tresql-resources.<db name> can be used (primitive values):
+   *  - config-class          - custom TresqlResourcesConf class name (must have no arg constructor)
+   *  - macro-class           - macros implementation class name (must have no arg constructor)
+   *  - query-timeout
+   *  - max-result-size
+   *  - fetch-size
+   *  - resursive-stack-depth
+   *  - cache-size
+   *  - db                    - db instance name where tables are defined.
+   * */
   def tresqlResourcesConf(dbName: String, tresqlConf: Config): TresqlResourcesConf = {
     val tresqlConfInstance =
       if (tresqlConf.hasPath("config-class"))
