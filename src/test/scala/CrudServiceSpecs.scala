@@ -49,6 +49,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     qio         = new AppQuereaseIo[Dto](querease)
     super.beforeAll()
     dbAccess    = new DbAccess with Loggable {
+      override val tresqlResources = CrudServiceSpecs.this.tresqlThreadLocalResources
       override protected def tresqlMetadata = querease.tresqlMetadata
     }
     val testApp = new TestApp with NoValidation {
