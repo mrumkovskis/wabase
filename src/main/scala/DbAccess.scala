@@ -25,8 +25,8 @@ trait DbAccess { this: Loggable =>
   protected lazy val threadLocalResources = new ThreadLocalResources {
     override def initResourcesTemplate: ResourcesTemplate = DbAccess.this.resourcesTemplate
   }
-  implicit def tresqlResources: ThreadLocalResources = threadLocalResources
   protected def tresqlMetadata: TresqlMetadata
+  implicit def tresqlResources: ThreadLocalResources = threadLocalResources
 
   protected def defaultQueryTimeout: QueryTimeout = DefaultQueryTimeout
 
