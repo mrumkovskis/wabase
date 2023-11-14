@@ -25,19 +25,19 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
   import AppMetadata._
 
-  override val aliasToDb: String => String = db =>
-    TresqlResourcesConf.confs
-      .transform((_, c) => c.db)
-      .getOrElse(db, db)
-  override val dbToAlias: String => Seq[String] = db =>
-    TresqlResourcesConf.confs
+  override val aliasToDb: String => String = {
+    val m = TresqlResourcesConf.confs.transform((_, c) => c.db)
+    db => m.getOrElse(db, db)
+  }
+  override val dbToAlias: String => Seq[String] = {
+    val m = TresqlResourcesConf.confs
       .transform((_, c) => c.db)
       .groupBy(_._2).map { case (k, v) => k -> v.keys.toList }
-      .getOrElse(db, Seq(db))
-
+    db => m.getOrElse(db, Seq(db))
+  }
   /** Get macro class from 'main' tresql resources config */
   override lazy val macrosClass: Class[_] =
-    // somehow flatMap needs type parameter [Class[_]] for scala 2.12.x compiler in order to compiler
+    // somehow flatMap needs type parameter [Class[_]] for scala 2.12.x compiler in order to succeed
     TresqlResourcesConf.confs.get(null)
       .flatMap[Class[_]](c => Option(c.macrosClass))
       .getOrElse(classOf[Macros])
