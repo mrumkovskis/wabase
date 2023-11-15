@@ -16,7 +16,6 @@ trait TresqlResourcesConf {
   def recursiveStackDepth: Int = -1
   def cacheSize: Int = -1
   def cache: Cache = null
-  def logger: Logging#TresqlLogger = null
   def bindVarLogFilter: Logging#BindVarLogFilter = null
   def db: String = null
   /** This method allows to distinguish between null db value and no db value. In the last case db name
@@ -120,8 +119,6 @@ object TresqlResourcesConf {
           .getOrElse(tresqlConfFromConfig.recursiveStackDepth)
       override val cache: Cache =
         Option(tresqlConfInstance.cache).orNull
-      override val logger: Logging#TresqlLogger =
-        Option(tresqlConfInstance.logger).orNull
       override val bindVarLogFilter: Logging#BindVarLogFilter =
         Option(tresqlConfInstance.bindVarLogFilter).orNull
       override val db: String =
@@ -196,9 +193,6 @@ object TresqlResourcesConf {
       val cache =
         if (conf.cache != null) conf.cache
         else new SimpleCache(cacheSize)
-      val logger =
-        if(conf.logger != null) conf.logger
-        else TresqlResources.logger
       val bindVarLogFilter =
         if(conf.bindVarLogFilter != null) conf.bindVarLogFilter
         else TresqlResources.bindVarLogFilter
@@ -214,7 +208,7 @@ object TresqlResourcesConf {
         recursiveStackDepth = recursiveStackDepth,
         params = Map(),
         extraResources = extraResources,
-        logger = logger,
+        logger = null,
         cache = cache,
         bindVarLogFilter = bindVarLogFilter,
         macros = macros
