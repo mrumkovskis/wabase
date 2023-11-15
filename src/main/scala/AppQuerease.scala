@@ -7,12 +7,14 @@ import akka.http.scaladsl.model.headers.`Content-Disposition`
 import akka.http.scaladsl.model.{ContentType, ContentTypes, HttpEntity, HttpHeader, HttpMethods, HttpRequest, HttpResponse, MediaTypes, StatusCodes, UniversalEntity}
 import akka.stream.scaladsl.Source
 import akka.util.ByteString
+import com.typesafe.scalalogging.Logger
 import org.mojoz.querease.QuereaseExpressions.DefaultParser
 import org.tresql._
 import org.mojoz.querease._
 import org.mojoz.querease.SaveMethod
 import org.mojoz.metadata.Type
 import org.mojoz.metadata.{FieldDef, ViewDef}
+import org.slf4j.LoggerFactory
 import org.tresql.ast.{Exp, Fun, Join, Obj, Variable, With, Query => PQuery}
 import org.wabase.AppFileStreamer.FileInfo
 import org.wabase.AppMetadata.Action
@@ -329,6 +331,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     actionName: String,
     env: Map[String, Any],
     view: Option[ViewDef],
+    log: String => Unit,
     fieldFilter: FieldFilter = null,
     stepName: String = null,
     contextStack: List[ActionContext] = Nil,
@@ -377,13 +380,22 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   ): Future[QuereaseResult] = {
     val vd = viewDef(view)
 
-    val ctx = ActionContext(view, actionName, env, Some(vd), fieldFilter, null, contextStack)
-    logger.debug(s"Doing action '${ctx.name}'.\n Env: $env\nCtx stack: [${contextStack.map(_.name).mkString(", ")}]")
+    val ctx = ActionContext(view, actionName, env, Some(vd), quereaseActionLogger(s"$view.$actionName"),
+      fieldFilter, null, contextStack)
+    ctx.log(s"Doing action '${ctx.name}'.\n Env: $env\nCtx stack: [${contextStack.map(_.name).mkString(", ")}]")
     val steps =
       quereaseActionOpt(vd, actionName)
         .map(_.steps)
         .getOrElse(List(Action.Return(None, Nil, Action.ViewCall(actionName, view, null))))
     doSteps(steps, ctx, Future.successful(data))
+  }
+
+  def quereaseActionLogger(name: String): String => Unit = {
+    val logger = Logger(LoggerFactory.getLogger(name))
+    msg => {
+      logger.debug(msg)
+      this.logger.debug(msg)
+    }
   }
 
   def doSteps(
@@ -425,7 +437,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     def doStep(step: Step, stepDataF: Future[Map[String, Any]]): Future[QuereaseResult] = {
       import resourcesFactory._
       stepDataF flatMap { stepData =>
-        logger.debug(s"Doing action '${context.name}' step '$step'.\nData: $stepData")
+        context.log(s"Doing action '${context.name}' step '$step'.\nData: $stepData")
         step match {
           case Evaluation(_, vts, op) =>
             doActionOp(op, doVarsTransforms(vts, stepData, stepData).result, context.env, context)
@@ -812,7 +824,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     import resFac._
     val jobName =
       if (job.isDynamic) Query(job.nameTresql).unique[String] else job.nameTresql
-    val ctx = ActionContext(jobName, "job", env, None, contextStack = context :: context.contextStack)
+    val ctx = ActionContext(jobName, "job", env, None, context.log,
+      contextStack = context :: context.contextStack)
     val jd = jobDef(jobName)
     doSteps(jd.steps.steps, ctx, Future.successful(data))
   }

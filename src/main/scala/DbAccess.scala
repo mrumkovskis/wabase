@@ -225,7 +225,7 @@ object TresqlResources {
     val ortLogger = Logger(LoggerFactory.getLogger(s"$loggerPrefix.tresql.ort"))
     val sqlLogger = Logger(LoggerFactory.getLogger(s"$loggerPrefix.tresql.sql"))
     val varsLogger = Logger(LoggerFactory.getLogger(s"$loggerPrefix.tresql.vars"))
-    val sqlWithParamsLogger = Logger(LoggerFactory.getLogger(s"$loggerPrefix.tresql.swp"))
+    val sqlWithParamsLogger = Logger(LoggerFactory.getLogger(s"$loggerPrefix.tresql.sql_wp"))
 
     (msg, params, topic) => {
       topic match {

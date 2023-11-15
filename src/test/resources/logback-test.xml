@@ -27,7 +27,7 @@
     <!-- logger name="purchase_get.get" level="debug"/ -->
 
     <!-- specific job logger -->
-    <!-- logger name="job.job-name" level="debug"/ -->
+    <!-- logger name="job-name.job" level="debug"/ -->
 
     <!-- logger name="org.wabase.tresql" level="debug"/ -->
 
@@ -41,5 +41,5 @@
     <!-- tresql params logger -->
     <!-- logger name="org.wabase.tresql.params" level="debug"/ -->
     <!-- sql statement with embedded params logger -->
-    <!-- logger name="org.wabase.tresql.swp" level="debug"/ -->
+    <!-- logger name="org.wabase.tresql.sql_wp" level="debug"/ -->
 </configuration>
