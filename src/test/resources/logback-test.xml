@@ -22,4 +22,24 @@
 
     <logger name="com.zaxxer.hikari" level="warn"/>
     <logger name="akka.stream.scaladsl.RestartWithBackoffSource" level="error"/>
+
+    <!-- specific view logger -->
+    <!-- logger name="purchase_get.get" level="debug"/ -->
+
+    <!-- specific job logger -->
+    <!-- logger name="job.job-name" level="debug"/ -->
+
+    <!-- logger name="org.wabase.tresql" level="debug"/ -->
+
+    <!-- SPECIFIC tresql LOGGERS -->
+    <!-- tresql statement logger -->
+    <!-- logger name="org.wabase.tresql.tql" level="debug"/ -->
+    <!-- ort metadata logger -->
+    <!-- logger name="org.wabase.tresql.ort" level="debug"/ -->
+    <!-- sql statement logger -->
+    <!-- logger name="org.wabase.tresql.sql" level="debug"/ -->
+    <!-- tresql params logger -->
+    <!-- logger name="org.wabase.tresql.params" level="debug"/ -->
+    <!-- sql statement with embedded params logger -->
+    <!-- logger name="org.wabase.tresql.swp" level="debug"/ -->
 </configuration>

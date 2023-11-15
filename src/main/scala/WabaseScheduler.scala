@@ -51,17 +51,16 @@ class WabaseScheduler extends Loggable {
   }
 
   def doJob(job: JobDef)(service: AppServiceBase[_]): Future[QuereaseResult] = {
-    def resourceFactory(jd: AppMetadata.JobDef, dbAccess: DbAccess): () => Resources = {
-      val poolName = Option(jd.db).map(PoolName) getOrElse dbAccess.DefaultCp
-      val extraDbs = dbAccess.extraDb(jd.dbAccessKeys)
-      () => dbAccess.initResources(dbAccess.tresqlResources.resourcesTemplate)(poolName, extraDbs)
-    }
-
     val qe = service.app.qe
     val dbAccess = service.app.asInstanceOf[DbAccess]
 
-    val emptyResFactory: ResourcesFactory =
-      ResourcesFactory(resourceFactory(job, dbAccess), dbAccess.closeResources)(dbAccess.tresqlResources)
+    val emptyResFactory: ResourcesFactory = {
+      val resTempl = dbAccess.withLogger(dbAccess.tresqlResources.resourcesTemplate, s"job.${job.name}")
+      val poolName = Option(job.db).map(PoolName) getOrElse dbAccess.DefaultCp
+      val extraDbs = dbAccess.extraDb(job.dbAccessKeys)
+      val initRes = () => dbAccess.initResources(resTempl)(poolName, extraDbs)
+        ResourcesFactory(initRes, dbAccess.closeResources)(resTempl)
+    }
     implicit val resourcesFactory: ResourcesFactory =
       if (job.explicitDb) emptyResFactory
       else emptyResFactory.copy()(resources = emptyResFactory.initResources())

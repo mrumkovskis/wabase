@@ -174,7 +174,7 @@ trait WabaseApp[User] {
 
   def simpleAction(context: AppActionContext): ActionHandlerResult = {
     import context._
-    val rf = ResourcesFactory(resourceFactory(context), closeResources)(tresqlResources.resourcesTemplate)
+    val rf = resourceFactory(context)
     qe.QuereaseAction(viewName, actionName, values, env, fieldFilter(context))(rf, fileStreamer, req, qio)
       .map(WabaseResult(context, _))
   }
@@ -218,7 +218,7 @@ trait WabaseApp[User] {
 
     }
     val fFilter = fieldFilter(context)
-    val rf = ResourcesFactory(resourceFactory(context), closeResources)(tresqlResources.resourcesTemplate)
+    val rf = resourceFactory(context)
     qe.QuereaseAction(viewName, Action.Get, values, env, fFilter)(rf, fileStreamer, req, qio).map(oldVal)
   }
   protected def throwOldValueNotFound(message: String, locale: Locale): Nothing =
@@ -244,7 +244,7 @@ trait WabaseApp[User] {
         val saveableContext = richContext.copy(values = saveable)
         validateFields(viewName, saveable)
         this.customValidations(saveableContext)(state.locale)
-        val rf = ResourcesFactory(resourceFactory(context), closeResources)(tresqlResources.resourcesTemplate)
+        val rf = resourceFactory(context)
         val fFilter = fieldFilter(context)
         qe.QuereaseAction(viewName, context.actionName, saveable, env, fFilter)(rf, fileStreamer, req, qio)
           .map(WabaseResult(saveableContext, _))
@@ -256,7 +256,7 @@ trait WabaseApp[User] {
     import context._
     maybeGetOldValue(context).flatMap { oldValue =>
       val richContext = context.copy(oldValue = oldValue)
-      val rf = ResourcesFactory(resourceFactory(richContext), closeResources)(tresqlResources.resourcesTemplate)
+      val rf = resourceFactory(richContext)
       qe.QuereaseAction(viewName, actionName, values, env, fieldFilter(context))(rf, fileStreamer, req, qio)
         .map(WabaseResult(richContext, _))
         .recover { case ex => friendlyConstraintErrorMessage(throw ex)(state.locale) }
@@ -276,12 +276,16 @@ trait WabaseApp[User] {
     }
   }
 
-  def resourceFactory(context: AppActionContext): () => Resources = {
+  def resourceFactory(context: AppActionContext): ResourcesFactory = {
     import context.{actionName, viewName}
     val vdo = viewDefOption(viewName)
     val poolName = vdo.flatMap(v => Option(v.cp)).map(PoolName) getOrElse DefaultCp
     val extraDbs = extraDb(vdo.map(_.actionToDbAccessKeys(actionName).toList).getOrElse(Nil))
-    () => initResources(tresqlResources.resourcesTemplate)(poolName, extraDbs)
+    val rt = DbAccess.withLogger(
+      tresqlResources.resourcesTemplate,
+      s"${context.viewName}.${context.actionName}"
+    )
+    ResourcesFactory(() => initResources(rt)(poolName, extraDbs), closeResources)(rt)
   }
 
   /** Runs {{{src}}} via {{{FileBufferedFlow}}} of {{{bufferSize}}} with {{{maxFileSize}}} to {{{CheckCompletedSink}}}

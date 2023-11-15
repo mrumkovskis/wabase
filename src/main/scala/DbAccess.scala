@@ -65,6 +65,9 @@ trait DbAccess { this: Loggable =>
 
   def extraDb(keys: Seq[DbAccessKey]): Seq[DbAccessKey] = keys.filter(_.db != null)
 
+  def withLogger(rt: ResourcesTemplate, loggerPrefix: String): ResourcesTemplate =
+    DbAccess.withLogger(rt, loggerPrefix)
+
   private val currentPool = new ThreadLocal[PoolName]
   // TODO do not call nested dbUse with extraDb parameter set to avoid connection leaks
   def dbUse[A](a: => A)(implicit timeout: QueryTimeout = defaultQueryTimeout,
@@ -200,11 +203,11 @@ object TresqlResources {
     })
   }
   val infoLogger = Logger(LoggerFactory.getLogger("org.wabase.tresql"))
-  val tresqlLogger = Logger(LoggerFactory.getLogger("org.wabase.tresql.tresql"))
+  val tresqlLogger = Logger(LoggerFactory.getLogger("org.wabase.tresql.tql"))
   val ortLogger = Logger(LoggerFactory.getLogger("org.wabase.tresql.ort"))
-  val sqlLogger = Logger(LoggerFactory.getLogger("org.wabase.tresql.db.sql"))
-  val varsLogger = Logger(LoggerFactory.getLogger("org.wabase.tresql.db.vars"))
-  val sqlWithParamsLogger = Logger(LoggerFactory.getLogger("org.wabase.tresql.sql_with_params"))
+  val sqlLogger = Logger(LoggerFactory.getLogger("org.wabase.tresql.sql"))
+  val varsLogger = Logger(LoggerFactory.getLogger("org.wabase.tresql.params"))
+  val sqlWithParamsLogger = Logger(LoggerFactory.getLogger("org.wabase.tresql.swp"))
 
   val logger: Logging#TresqlLogger = (m, params, topic) => topic match {
     case LogTopic.sql => sqlLogger.debug(m)
@@ -214,6 +217,38 @@ object TresqlResources {
     case LogTopic.ort => ortLogger.debug(m)
     case LogTopic.info => infoLogger.debug(m)
     case _ => infoLogger.debug(m)
+  }
+
+  def withLogger(loggerPrefix: String): Logging#TresqlLogger = {
+    val infoLogger = Logger(LoggerFactory.getLogger(s"$loggerPrefix.tresql"))
+    val tresqlLogger = Logger(LoggerFactory.getLogger(s"$loggerPrefix.tresql.tql"))
+    val ortLogger = Logger(LoggerFactory.getLogger(s"$loggerPrefix.tresql.ort"))
+    val sqlLogger = Logger(LoggerFactory.getLogger(s"$loggerPrefix.tresql.sql"))
+    val varsLogger = Logger(LoggerFactory.getLogger(s"$loggerPrefix.tresql.vars"))
+    val sqlWithParamsLogger = Logger(LoggerFactory.getLogger(s"$loggerPrefix.tresql.swp"))
+
+    (msg, params, topic) => {
+      topic match {
+        case LogTopic.sql =>
+          sqlLogger.debug(msg)
+          this.sqlLogger.debug(msg)
+        case LogTopic.tresql =>
+          tresqlLogger.debug(msg)
+          this.tresqlLogger.debug(msg)
+        case LogTopic.params =>
+          varsLogger.debug(msg)
+          this.varsLogger.debug(msg)
+        case LogTopic.sql_with_params =>
+          sqlWithParamsLogger.debug(sqlWithParams(msg, params))
+          this.sqlWithParamsLogger.debug(sqlWithParams(msg, params))
+        case LogTopic.ort =>
+          ortLogger.debug(msg)
+          this.ortLogger.debug(msg)
+        case LogTopic.info =>
+          infoLogger.debug(msg)
+          this.infoLogger.debug(msg)
+      }
+    }
   }
 
   val cache: Cache = new SimpleCache(config.getInt("tresql.cache-size"))
@@ -311,6 +346,14 @@ object DbAccess extends Loggable {
         closeConns(rollbackAndCloseConnection)(res)
         throw ex
     }
+  }
+
+  def withLogger(rt: ResourcesTemplate, loggerPrefix: String): ResourcesTemplate = {
+    val logger = TresqlResources.withLogger(loggerPrefix)
+    rt.copy(
+      logger = logger,
+      extraResources = rt.extraResources.transform((_, rt) => rt.withLogger(logger))
+    )
   }
 }
 
