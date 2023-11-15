@@ -65,7 +65,7 @@ trait DbAccess { this: Loggable =>
 
   def extraDb(keys: Seq[DbAccessKey]): Seq[DbAccessKey] = keys.filter(_.db != null)
 
-  def withLogger(rt: ResourcesTemplate, loggerPrefix: String): ResourcesTemplate =
+  def withDbAccessLogger(rt: ResourcesTemplate, loggerPrefix: String): ResourcesTemplate =
     DbAccess.withLogger(rt, loggerPrefix)
 
   private val currentPool = new ThreadLocal[PoolName]

@@ -55,7 +55,7 @@ class WabaseScheduler extends Loggable {
     val dbAccess = service.app.asInstanceOf[DbAccess]
 
     val emptyResFactory: ResourcesFactory = {
-      val resTempl = dbAccess.withLogger(dbAccess.tresqlResources.resourcesTemplate, s"job.${job.name}")
+      val resTempl = dbAccess.withDbAccessLogger(dbAccess.tresqlResources.resourcesTemplate, s"job.${job.name}")
       val poolName = Option(job.db).map(PoolName) getOrElse dbAccess.DefaultCp
       val extraDbs = dbAccess.extraDb(job.dbAccessKeys)
       val initRes = () => dbAccess.initResources(resTempl)(poolName, extraDbs)

@@ -281,7 +281,7 @@ trait WabaseApp[User] {
     val vdo = viewDefOption(viewName)
     val poolName = vdo.flatMap(v => Option(v.cp)).map(PoolName) getOrElse DefaultCp
     val extraDbs = extraDb(vdo.map(_.actionToDbAccessKeys(actionName).toList).getOrElse(Nil))
-    val rt = DbAccess.withLogger(
+    val rt = withDbAccessLogger(
       tresqlResources.resourcesTemplate,
       s"${context.viewName}.${context.actionName}"
     )
