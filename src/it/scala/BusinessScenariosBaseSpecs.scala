@@ -144,6 +144,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
     }
     val result = map.map(e => (e._1, e._2 match {
       case l: List[_] => l.map {
+        case null => null
         case m: Map[String, _]@unchecked =>
           val (v, c) = applyContext(m, context)
           newValues ++= v
