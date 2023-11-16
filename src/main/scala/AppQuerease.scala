@@ -14,6 +14,7 @@ import org.mojoz.querease._
 import org.mojoz.querease.SaveMethod
 import org.mojoz.metadata.Type
 import org.mojoz.metadata.{FieldDef, ViewDef}
+import org.mojoz.querease.QuereaseMetadata.BindVarCursorsFunctionName
 import org.slf4j.LoggerFactory
 import org.tresql.ast.Variable
 import org.wabase.AppFileStreamer.FileInfo
@@ -534,8 +535,11 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   )(implicit
     resources: Resources,
   ): TresqlResult = {
-    val qp = new QueryParser(macros = resources, cache = resources.cache)
-    val tql = maybeExpandWithBindVarsCursorsForView(tresql, bindVars)(context.view.orNull, qp)
+    val tql =
+      if (tresql.indexOf(BindVarCursorsFunctionName) != -1) {
+        val qp = new QueryParser(macros = resources, cache = resources.cache)
+        maybeExpandWithBindVarsCursorsForView(tresql, bindVars)(context.view.orNull, qp)
+      } else tresql
     TresqlResult(Query(tql)(resources.withParams(bindVars)))
   }
 
