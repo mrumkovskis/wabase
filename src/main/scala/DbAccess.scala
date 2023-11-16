@@ -231,22 +231,22 @@ object TresqlResources {
       topic match {
         case LogTopic.sql =>
           sqlLogger.debug(msg)
-          this.sqlLogger.debug(msg)
+          if(!sqlLogger.underlying.isDebugEnabled) this.sqlLogger.debug(msg)
         case LogTopic.tresql =>
           tresqlLogger.debug(msg)
-          this.tresqlLogger.debug(msg)
+          if(!tresqlLogger.underlying.isDebugEnabled) this.tresqlLogger.debug(msg)
         case LogTopic.params =>
           varsLogger.debug(msg)
-          this.varsLogger.debug(msg)
+          if(!varsLogger.underlying.isDebugEnabled) this.varsLogger.debug(msg)
         case LogTopic.sql_with_params =>
           sqlWithParamsLogger.debug(sqlWithParams(msg, params))
-          this.sqlWithParamsLogger.debug(sqlWithParams(msg, params))
+          if(!sqlWithParamsLogger.underlying.isDebugEnabled) this.sqlWithParamsLogger.debug(sqlWithParams(msg, params))
         case LogTopic.ort =>
           ortLogger.debug(msg)
-          this.ortLogger.debug(msg)
+          if(!ortLogger.underlying.isDebugEnabled) this.ortLogger.debug(msg)
         case LogTopic.info =>
           infoLogger.debug(msg)
-          this.infoLogger.debug(msg)
+          if(!infoLogger.underlying.isDebugEnabled) this.infoLogger.debug(msg)
       }
     }
   }

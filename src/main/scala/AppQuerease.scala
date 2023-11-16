@@ -393,7 +393,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     val logger = Logger(LoggerFactory.getLogger(name))
     msg => {
       logger.debug(msg)
-      this.logger.debug(msg)
+      if(!logger.underlying.isDebugEnabled()) this.logger.debug(msg)
     }
   }
 
