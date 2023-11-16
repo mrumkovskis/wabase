@@ -5,7 +5,7 @@ import akka.http.scaladsl.model.HttpRequest
 import org.mojoz.querease.{ValidationException, ValidationResult}
 import org.scalatest.flatspec.{AsyncFlatSpec, AsyncFlatSpecLike}
 import org.scalatest.matchers.should.Matchers
-import org.tresql.{convLong, Query, Resources}
+import org.tresql.{Query, Resources, convLong}
 import org.wabase.QuereaseActionsDtos.Person
 
 import scala.concurrent.{ExecutionContext, Future}
@@ -114,8 +114,8 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
 
   it should "have correct data" in {
     val pVd = querease.viewDef("person")
-    pVd.actions("save").steps.head.isInstanceOf[Action.Validations] should be (true)
-    pVd.actions("save").steps.head.asInstanceOf[Action.Validations].validations.head should be {
+    pVd.actions("save").steps(1).isInstanceOf[Action.Validations] should be (true)
+    pVd.actions("save").steps(1).asInstanceOf[Action.Validations].validations.head should be {
       "build cursors"
     }
   }
@@ -148,7 +148,10 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
     recoverToExceptionIf[ValidationException] {
       querease.doAction("person", "save", p.toMap(querease), Map())
     }.map(_.details should be(List(ValidationResult(Nil,
-      List("person cannot have more than 3 accounts, instead '4' encountered")
+      List(
+        "person cannot have more than 3 accounts, got '4'",
+        "person cannot have more than 3 accounts, instead '4' encountered"
+      )
     )))).flatMap { _ =>
       p.accounts = Nil
       recoverToExceptionIf[ValidationException] {

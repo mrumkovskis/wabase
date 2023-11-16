@@ -99,6 +99,7 @@ trait TestQuereaseInitializer extends BeforeAndAfterAll with Loggable { this: Su
         val res =
           new ThreadLocalResources {
             override def initResourcesTemplate: ResourcesTemplate = templ
+            override val logger = TresqlLogger // override thread local logger since tresql does not take it from template
           }
         val dbcons = dbs map init_db
         def findConn(n: String) = dbcons.find(_._1 == n).map(_._2).orNull

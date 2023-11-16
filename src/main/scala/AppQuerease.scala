@@ -15,9 +15,8 @@ import org.mojoz.querease.SaveMethod
 import org.mojoz.metadata.Type
 import org.mojoz.metadata.{FieldDef, ViewDef}
 import org.slf4j.LoggerFactory
-import org.tresql.ast.{Exp, Fun, Join, Obj, Variable, With, Query => PQuery}
+import org.tresql.ast.Variable
 import org.wabase.AppFileStreamer.FileInfo
-import org.wabase.AppMetadata.Action
 import org.wabase.AppMetadata.Action.{VariableTransform, VariableTransforms}
 
 import scala.reflect.ManifestFactory
@@ -535,68 +534,9 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   )(implicit
     resources: Resources,
   ): TresqlResult = {
-    def maybeExpandWithBindVarsCursors(tresql: String, env: Map[String, Any]): String = {
-      import CoreTypes._
-      if (tresql.indexOf(Action.BindVarCursorsFunctionName) == -1) tresql
-      else {
-        val qp = new QueryParser(macros = resources, cache = resources.cache)
-        def bindVarsCursorsCreator(bindVars: Map[String, Any]): qp.Transformer = {
-          def singleValue[T: Converter : Manifest](tresql: String, data: Map[String, Any]): T = {
-            Query(tresql, data) match {
-              case SingleValueResult(value) => value.asInstanceOf[T]
-              case r: Result[_] => r.unique[T]
-            }
-          }
-
-          qp.transformer {
-            case q @ PQuery(List(
-            Obj(_, _, Join(_,
-              Fun(fn @
-                (Action.BindVarCursorsFunctionName | Action.BindVarCursorsForViewFunctionName),
-                varPars, _, _, _), _
-            ), _, _), _*), _, _, _, _, _, _) =>
-              def calcBindVars(args: List[Exp]) = {
-                if (args.isEmpty) bindVars else {
-                  args.foldLeft(Map[String, Any]()) { (res, var_par) =>
-                    var_par match {
-                      case Variable(var_name, _, _) =>
-                        singleValue[Any](var_par.tresql, bindVars) match {
-                          case r: Map[String@unchecked, _] => res ++ r
-                          case x => res + (var_name -> x)
-                        }
-                      case x =>
-                        sys.error(s"Unsupported parameter: function parameter ${x.tresql} in tresql: $tresql")
-                    }
-                  }
-                }
-              }
-              val (vd, bv) =
-                if (fn == Action.BindVarCursorsFunctionName) {
-                  context.view.getOrElse(sys.error(s"view context missing for tresql: $tresql")) ->
-                    calcBindVars(varPars)
-                } else {
-                  varPars.headOption
-                    .map(p => singleValue[String](p.tresql, bindVars))
-                    .map(viewDef)
-                    .getOrElse(sys.error(s"view name parameter missing in tresql function ${
-                      Action.BindVarCursorsForViewFunctionName
-                    }: $tresql")) -> calcBindVars(varPars.tail)
-                }
-              qp.parseExp(cursorsFromViewBindVars(bv, vd)) match {
-                case With(tables, _) => With(tables, q)
-                case _ => q
-              }
-            case With(tables, query) => bindVarsCursorsCreator(bindVars)(query) match {
-              case w: With => With(w.tables ++ tables, w.query) //put bind var cursor tables first
-              case q: Exp => With(tables, q)
-            }
-          }
-        }
-        bindVarsCursorsCreator(env)(qp.parseExp(tresql)).tresql
-      }
-    }
-
-    TresqlResult(Query(maybeExpandWithBindVarsCursors(tresql, bindVars))(resources.withParams(bindVars)))
+    val qp = new QueryParser(macros = resources, cache = resources.cache)
+    val tql = maybeExpandWithBindVarsCursorsForView(tresql, bindVars)(context.view.orNull, qp)
+    TresqlResult(Query(tql)(resources.withParams(bindVars)))
   }
 
   protected def doViewCall(

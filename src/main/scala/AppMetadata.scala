@@ -6,6 +6,7 @@ import org.mojoz.metadata.FieldDef
 import org.mojoz.metadata.in._
 import org.mojoz.metadata.io.MdConventions
 import org.mojoz.metadata.out.DdlGenerator.SimpleConstraintNamingRules
+import org.mojoz.querease.QuereaseMetadata.BindVarCursorsFunctionName
 import org.mojoz.querease.{QuereaseMetadata, TresqlJoinsParser}
 import org.tresql.{Cache, CacheBase, SimpleCache, SimpleCacheBase}
 import org.tresql.ast.{Exp, Ident, Obj, StringConst, Variable}
@@ -487,7 +488,12 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
           case e =>
             val tresqlString = e.tresql
             if (!cq.contains(tresqlString)) {
-              try compiler.compile(e) catch {
+              val ce = if (tresqlString.indexOf(BindVarCursorsFunctionName) != -1) {
+                val v = viewDef(n)
+                val expTresql = maybeExpandWithBindVarsCursorsForView(tresqlString, emptyData(v))(v, parser)
+                parser.parseExp(expTresql)
+              } else e
+              try compiler.compile(ce) catch {
                 case NonFatal(ex) =>
                   val msg = s"\nFailed to compile viewdef ${n} action $a: ${ex.getMessage}" +
                     (if (showFailedViewQuery) s"\n$tresqlString" else "")
@@ -1016,9 +1022,6 @@ object AppMetadata extends Loggable {
     val OffsetKey = "offset"
     val LimitKey  = "limit"
     val OrderKey  = "sort"
-
-    val BindVarCursorsFunctionName = "build_cursors"
-    val BindVarCursorsForViewFunctionName = "build_cursors_for_view"
 
     val QuereaseActionCacheName = "querease-action-cache.cbor"
     def loadActionCache(getResourceAsStream: String => InputStream): Map[String, Map[String, Action]] = {
