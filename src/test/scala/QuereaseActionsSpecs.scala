@@ -114,8 +114,8 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
 
   it should "have correct data" in {
     val pVd = querease.viewDef("person")
-    pVd.actions("save").steps(1).isInstanceOf[Action.Validations] should be (true)
-    pVd.actions("save").steps(1).asInstanceOf[Action.Validations].validations.head should be {
+    pVd.actions("save").steps(2).isInstanceOf[Action.Validations] should be (true)
+    pVd.actions("save").steps(2).asInstanceOf[Action.Validations].validations.head should be {
       "build cursors"
     }
   }
@@ -150,6 +150,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
     }.map(_.details should be(List(ValidationResult(Nil,
       List(
         "person cannot have more than 3 accounts, got '4'",
+        "person cannot have more than 3 accounts, got '4' with total balance (0.00)",
         "person cannot have more than 3 accounts, instead '4' encountered"
       )
     )))).flatMap { _ =>
