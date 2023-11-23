@@ -1009,6 +1009,19 @@ insert:
 - status ok { :name || ' ' || :surname }
 
 
+name: build_cursors_test
+table:
+api: list, get
+fields:
+- title
+- year int
+list:
+- "[build_cursors(:books, build_cursors_test)]books { title, year }"   # quotes used to get around yaml parser bug
+get:
+- forests = http {'/forest'}
+- unique_opt [build_cursors(:forests, forest)]forests{group_concat('(' || nr || ', ' || owner || ')')#(1) title}
+
+
 name: escape_syntax
 table: get
 api: insert, update, get, list

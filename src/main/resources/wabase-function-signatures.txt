@@ -1,2 +1,3 @@
 include /querease-function-signatures.txt
 build_cursors()::any
+build_cursors(data_variable, view_name)::any

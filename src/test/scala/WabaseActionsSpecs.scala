@@ -1140,4 +1140,21 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
           .map(_ shouldBe StringResult("http://wabase.org/"))
     } yield t2
   }
+
+  it should "build cursors" in {
+    for {
+      t1 <-
+        doAction("list", "build_cursors_test", Map("books" ->
+          List(
+            Map("title" -> "Bear book", "year" -> 1971),
+            Map("title" -> "Cat book", "year" -> 1971)
+          )
+        )).map(_ shouldBe List(
+          Map("title" -> "Bear book", "year" -> 1971),
+          Map("title" -> "Cat book", "year" -> 1971)
+        ))
+      t2 <- doAction("get", "build_cursors_test", Map())
+        .map(_ shouldBe Map("title" -> "(OF1, Pedro),(OF2, Pedro)", "year" -> null))
+    } yield t1
+  }
 }
