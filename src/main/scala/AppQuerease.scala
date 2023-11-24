@@ -570,7 +570,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
                       Action.BindVarCursorsForViewFunctionName
                     }: $tresql")) -> calcBindVars(varPars.tail)
                 }
-              qp.parseExp(cursorsFromViewBindVars(bv, vd)) match {
+              qp.parseExp(cursorsFromViewBindVars(Nil, bv, vd)) match {
                 case With(tables, _) => With(tables, q)
                 case _ => q
               }
