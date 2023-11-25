@@ -218,9 +218,9 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
 
   def logScenarioRequestInfo(
     scenario: File, testCase: File, context: Map[String, String], map: Map[String, Any],
-    path: String, method: String, params: Map[String, Any], requestInfo: RequestInfo, mergeResponse: Boolean,
+    path: String, method: String, params: Map[String, Any], requestInfo: RequestInfo,
     expectedHeaders: Seq[HttpHeader], expectedResponse: Any, expectedError: String,
-    tresqlRow: String, tresqlList: String, tresqlTransaction: String,
+    tresqlRow: String, tresqlList: String, tresqlTransaction: String, options: Seq[String],
   ): Unit = logger.whenDebugEnabled {
     import requestInfo._
     logger.debug(Seq(
@@ -238,7 +238,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
                                  .map(_.map(_.toString).toSeq.sorted.mkString(", ")).getOrElse(""),
       "expected response:  " + Option(expectedResponse).getOrElse(""),
       "expected error:     " + Option(expectedError).getOrElse(""),
-      "merge response:     " + mergeResponse,
+      "response options:   " + Option(options).map(_.mkString(", ")).getOrElse(""),
       "tresql row:         " + Option(tresqlRow).getOrElse(""),
       "tresql list:        " + Option(tresqlList).getOrElse(""),
       "tresql transaction: " + Option(tresqlTransaction).getOrElse(""),
@@ -309,11 +309,17 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
     val tresqlRow = map.sd("tresql_row", null)
     val tresqlList = map.sd("tresql_list", null)
     val tresqlTransaction = map.sd("tresql_transaction", null)
+    val options = Seq(
+      if (fullCompare)      "full compare" else "partial compare",
+      if (mergeResponse)    "merge"        else "no merge",
+      if (debugResponse)    "debug"        else "no debug",
+      if (retriesLeft > 0) s"retries left: $retriesLeft" else "",
+    ).filter(_ != "")
     logScenarioRequestInfo(
       scenario, testCase, context, map,
-      path, method, params, requestInfo, mergeResponse,
+      path, method, params, requestInfo,
       expectedHeaders, expectedResponse, expectedError,
-      tresqlRow, tresqlList, tresqlTransaction,
+      tresqlRow, tresqlList, tresqlTransaction, options,
     )
 
     def doRequest: HttpResponse  = (method, requestMap, requestString, requestBytes, requestFormData) match {
