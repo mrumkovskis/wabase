@@ -37,4 +37,5 @@ object CacheIo {
   implicit lazy val selectDefBaseCodec: Codec[SelectDefBase]  = deriveAllCodecs[SelectDefBase] // TODO
   implicit lazy val sqlDefBaseCodec:    Codec[SQLDefBase]     = deriveAllCodecs[SQLDefBase]    // TODO
   implicit lazy val expCodec:           Codec[Exp]            = deriveAllCodecs[Exp]
+  implicit lazy val varCodec:           Codec[Variable]       = deriveCodec    [Variable]
 }

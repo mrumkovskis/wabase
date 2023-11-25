@@ -7,7 +7,7 @@ import org.mojoz.metadata.in._
 import org.mojoz.metadata.io.MdConventions
 import org.mojoz.metadata.out.DdlGenerator.SimpleConstraintNamingRules
 import org.mojoz.querease.{QuereaseMetadata, TresqlJoinsParser}
-import org.tresql.{Cache, CacheBase, SimpleCache, SimpleCacheBase}
+import org.tresql.{Cache, CacheBase, MacroResourcesImpl, QueryParser, SimpleCache, SimpleCacheBase}
 import org.tresql.ast.{Exp, Variable}
 import org.tresql.parsing.QueryParsers
 import org.wabase.AppMetadata.Action.TresqlExtraction.{OpTresqlTraverser, State, StepTresqlTraverser, opTresqlTraverser, stepTresqlTraverser}
@@ -36,6 +36,8 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     Action.loadActionCache(resourceLoader)
   protected lazy val joinsParserCache: Map[String, Map[String, Exp]] =
     loadJoinsParserCache(resourceLoader)
+  lazy val viewNameToQueryVariablesCache: Map[String, Seq[Variable]] =
+    loadViewNameToQueryVariablesCache(resourceLoader)
 
   def toAppViewDefs(mojozViewDefs: Map[String, ViewDef]) = transformAppViewDefs {
     val inlineViewDefNames =
@@ -422,6 +424,55 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     })
   }
 
+  private lazy val viewNameToQueryVariablesCompilerCache = {
+    val cache = new SimpleCacheBase[Seq[Variable]](4096)
+    cache.load(viewNameToQueryVariablesCache)
+    cache
+  }
+  override protected def compileQueries(
+    category: String,
+    viewNamesAndQueriesToCompile: Seq[(String, String)],
+    previouslyCompiledQueries: Set[String],
+    showFailedViewQuery: Boolean,
+    log: => String => Unit,
+  ): Int = category match {
+    case "queries" =>
+      log(s"Compiling $category - ${viewNamesAndQueriesToCompile.size} total")
+      val startTime = System.currentTimeMillis
+      val scalaMacros: Any = Option(tresqlMetadata.macrosClass).map(_.newInstance()).orNull
+      val macroResources = new MacroResourcesImpl(scalaMacros, tresqlMetadata)
+      val compiler = new QueryParser(macroResources, new SimpleCache(4096)) with org.tresql.compiling.Compiler {
+        override val metadata = tresqlMetadata
+        override val extraMetadata = tresqlMetadata.extraDbToMetadata
+      }
+      val compiledQueries = collection.mutable.Set[String](previouslyCompiledQueries.toSeq: _*)
+      var compiledCount = 0
+      viewNamesAndQueriesToCompile.foreach { case (viewName, q) =>
+        if (!compiledQueries.contains(q) ||
+            viewNameToQueryVariablesCompilerCache.get(viewName).isEmpty) {
+          try compiler.compile(compiler.parseExp(q)) catch { case util.control.NonFatal(ex) =>
+            val msg = s"\nFailed to compile viewdef $viewName: ${ex.getMessage}" +
+              (if (showFailedViewQuery) s"\n$q" else "")
+            throw new RuntimeException(msg, ex)
+          }
+          viewNameToQueryVariablesCompilerCache.put(viewName, compiler.extractVariables(q))
+          if (!compiledQueries.contains(q)) {
+            compiledCount += 1
+            compiledQueries += q
+          }
+        }
+      }
+      val endTime = System.currentTimeMillis
+      val allQueries = viewNamesAndQueriesToCompile.map(_._2).toSet
+      log(
+        s"Query compilation done - ${endTime - startTime} ms, " +
+        s"queries compiled: $compiledCount" +
+        (if (compiledCount != allQueries.size) s" of ${allQueries.size}" else ""))
+      compiledCount
+    case _ => super.compileQueries(
+      category, viewNamesAndQueriesToCompile, previouslyCompiledQueries, showFailedViewQuery, log)
+  }
+
   override def compileAllQueries(previouslyCompiledQueries: Set[String],
                         showFailedViewQuery: Boolean,
                         log: => String => Unit,
@@ -499,9 +550,13 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       }
     val serializedActions = Map(QuereaseActionCacheName -> Cbor.encode(actionData).toByteArray)
 
+    import CacheIo.varCodec
+    val serializedVars = Map(
+      ViewNameToQueryVariablesCacheName -> Cbor.encode(viewNameToQueryVariablesCompilerCache.toMap).toByteArray)
+
     import CacheIo.expCodec
     val serializedJoins = Map(JoinsCompilerCacheName -> Cbor.encode(joinData).toByteArray)
-    super.serializedCaches ++ serializedActions ++ serializedJoins
+    super.serializedCaches ++ serializedActions ++ serializedJoins ++ serializedVars
   }
 
   protected def createJoinsParserCache(db: String): Option[Cache] =
@@ -907,6 +962,22 @@ object AppMetadata extends Loggable {
         Cbor.decode(res).to[Map[String, Map[String, Exp]]].value
       logger.debug(s"Joins compiler cache loaded for databases: ${
         cache.map { case (db, c) => s"$db - ${c.size}" }.mkString("(", ", ", ")") }")
+      cache
+    }
+  }
+
+  val ViewNameToQueryVariablesCacheName  = "view-query-variables-cache.cbor"
+  def loadViewNameToQueryVariablesCache(getResourceAsStream: String => InputStream): Map[String, Seq[Variable]] = {
+    val res = getResourceAsStream(s"/$ViewNameToQueryVariablesCacheName")
+    if (res == null) {
+      logger.debug(s"Query variables cache resource not found: '/$ViewNameToQueryVariablesCacheName'")
+      Map()
+    } else {
+      import io.bullet.borer._
+      import CacheIo.varCodec
+      val cache =
+        Cbor.decode(res).to[Map[String, Seq[Variable]]].value
+      logger.debug(s"Query variables cache loaded for ${cache.size} views")
       cache
     }
   }
