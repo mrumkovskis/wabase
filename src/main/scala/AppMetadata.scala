@@ -990,6 +990,9 @@ object AppMetadata extends Loggable {
     }.orElse(Some(new SimpleCache(cacheSize)))
   }
 
+  def joinsParserCacheFactory(getResourceAsStream: String => InputStream, cacheSize: Int)(db: String): Option[Cache] =
+    joinsParserCacheFactory(loadJoinsParserCache(getResourceAsStream), cacheSize)(db)
+
   object Action {
     val Get    = "get"
     val List   = "list"
