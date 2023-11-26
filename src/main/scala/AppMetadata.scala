@@ -14,6 +14,7 @@ import org.wabase.AppMetadata.Action.TresqlExtraction.{OpTresqlTraverser, State,
 import org.wabase.AppMetadata.Action.{QuereaseActionCacheName, Validations, VariableTransform, ViewCall, traverseAction}
 
 import java.io.InputStream
+import java.util.concurrent.ConcurrentHashMap
 
 import scala.collection.immutable.{Seq, Set}
 import scala.jdk.CollectionConverters._
@@ -425,8 +426,8 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   }
 
   private lazy val viewNameToQueryVariablesCompilerCache = {
-    val cache = new SimpleCacheBase[Seq[Variable]](4096)
-    cache.load(viewNameToQueryVariablesCache)
+    val cache = new ConcurrentHashMap[String, Seq[Variable]]
+    cache.putAll(viewNameToQueryVariablesCache.asJava)
     cache
   }
   override protected def compileQueries(
@@ -449,7 +450,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       var compiledCount = 0
       viewNamesAndQueriesToCompile.foreach { case (viewName, q) =>
         if (!compiledQueries.contains(q) ||
-            viewNameToQueryVariablesCompilerCache.get(viewName).isEmpty) {
+            viewNameToQueryVariablesCompilerCache.get(viewName) == null) {
           try compiler.compile(compiler.parseExp(q)) catch { case util.control.NonFatal(ex) =>
             val msg = s"\nFailed to compile viewdef $viewName: ${ex.getMessage}" +
               (if (showFailedViewQuery) s"\n$q" else "")
@@ -552,7 +553,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
     import CacheIo.varCodec
     val serializedVars = Map(
-      ViewNameToQueryVariablesCacheName -> Cbor.encode(viewNameToQueryVariablesCompilerCache.toMap).toByteArray)
+      ViewNameToQueryVariablesCacheName -> Cbor.encode(viewNameToQueryVariablesCompilerCache.asScala.toMap).toByteArray)
 
     import CacheIo.expCodec
     val serializedJoins = Map(JoinsCompilerCacheName -> Cbor.encode(joinData).toByteArray)
