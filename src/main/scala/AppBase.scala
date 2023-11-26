@@ -855,7 +855,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
     def fieldNameToLabel(n: String) =
       n.replace("_", " ").capitalize
     val v = view
-    if (v.apiMethodToRoles != null && v.apiMethodToRoles.nonEmpty && (v.table != null || v.joins != null && v.joins.size > 0)) {
+    if (v.apiMethodToRoles != null && v.apiMethodToRoles.nonEmpty && (v.table != null || v.joins != null && v.joins.nonEmpty)) {
       val filters =
         Option(v.filter).getOrElse(Nil) flatMap { f =>
           qe.analyzeFilter(f, v, v.tableAlias)
@@ -897,8 +897,11 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
         filters.flatMap(filterToParameterNamesAndCols).toMap
       val parameterNameToFilterType =
         filters.flatMap(filter => filterToParameterNames(filter).map(_ -> filter)).toMap
-      val q = qe.queryStringAndParams(v, Map.empty)._1
-      val allVariables = new QueryParser(tresqlResources, tresqlResources.cache).extractVariables(q)
+      val allVariables =
+        qe.viewNameToQueryVariablesCache.getOrElse(v.name, {
+          val q = qe.queryStringAndParams(v, Map.empty)._1
+          new QueryParser(tresqlResources, tresqlResources.cache).extractVariables(q)
+        })
       // TODO? fromAndPathToAlias(v): (String, Map[List[String], String])
       allVariables
         .distinct // FIXME aggregate v.opt!
