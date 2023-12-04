@@ -782,7 +782,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       ).mkString("\n"))
       excelXml should include ("Zoe")
       excelXml should include ("Zorg")
-      excelXml should endWith ("</Workbook>\r\n")
+      excelXml should endWith ("</Workbook>\n")
     }
   }
 
