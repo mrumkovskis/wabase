@@ -253,16 +253,16 @@ class OdsContentStreamer(val out: Writer, styles: List[OdsStyle] = Nil) {
   }
 
   def endRow: Unit = {
-    out write "</table:table-row>\r\n"
+    out write "</table:table-row>\n"
   }
   def endTable: Unit = {
-    out write "      </table:table>\r\n"
+    out write "      </table:table>\n"
   }
   def endWorksheet: Unit = {
-    out write "    </office:spreadsheet>\r\n"
+    out write "    </office:spreadsheet>\n"
   }
   def endWorkbook: Unit = {
-    out write "  </office:body>\r\n"
-    out write "</office:document-content>\r\n"
+    out write "  </office:body>\n"
+    out write "</office:document-content>\n"
   }
 }

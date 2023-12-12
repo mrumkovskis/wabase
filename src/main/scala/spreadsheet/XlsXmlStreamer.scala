@@ -7,7 +7,7 @@ case class Font(bold: Boolean) {
   def write(out: Writer): Unit = {
     out write "    <Font ss:Bold=\""
     out write (if (bold) "1" else "0")
-    out write "\"/>\r\n"
+    out write "\"/>\n"
   }
 }
 object Font {
@@ -18,7 +18,7 @@ case class NumberFormat(format: String) {
   def write(out: Writer): Unit = {
     out write "    <NumberFormat ss:Format=\""
     out write format
-    out write "\"/>\r\n"
+    out write "\"/>\n"
   }
 }
 object NumberFormat {
@@ -29,12 +29,12 @@ case class Style(id: String, numberFormat: NumberFormat = null, font: Font = nul
   def write(out: Writer): Unit = {
     out write "   <Style ss:ID=\""
     out write id
-    out write "\">\r\n"
+    out write "\">\n"
     if (font != null)
       font write out
     if (numberFormat != null)
       numberFormat write out
-    out write "   </Style>\r\n"
+    out write "   </Style>\n"
   }
 }
 
@@ -64,10 +64,10 @@ class XlsXmlStreamer(val out: Writer) {
   def startWorksheet(name: String): Unit = {
     out write "  <Worksheet ss:Name=\""
     out write name
-    out write "\">\r\n"
+    out write "\">\n"
   }
   def startTable: Unit = {
-    out write "    <Table>\r\n"
+    out write "    <Table>\n"
   }
   def startRow: Unit = {
     out write "      <Row>"
@@ -105,15 +105,15 @@ class XlsXmlStreamer(val out: Writer) {
     out write "</Cell>"
   }
   def endRow: Unit = {
-    out write "</Row>\r\n"
+    out write "</Row>\n"
   }
   def endTable: Unit = {
-    out write "    </Table>\r\n"
+    out write "    </Table>\n"
   }
   def endWorksheet: Unit = {
-    out write "  </Worksheet>\r\n"
+    out write "  </Worksheet>\n"
   }
   def endWorkbook: Unit = {
-    out write "</Workbook>\r\n"
+    out write "</Workbook>\n"
   }
 }
