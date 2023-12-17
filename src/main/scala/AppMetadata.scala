@@ -57,7 +57,15 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   lazy val viewNameToQueryVariablesCache: Map[String, Seq[Variable]] =
     loadViewNameToQueryVariablesCache(resourceLoader)
 
-  lazy val nameToJobDef: Map[String, JobDef] = Map()
+  lazy val nameToJobDef: Map[String, JobDef] =
+    transformJobDefs(
+      new YamlJobDefLoader(yamlMetadata, jdMap => parseAction(
+        jdMap.get("job").map(_.toString).get,
+        ViewDefExtrasUtils.getSeq("action", jdMap)
+      )).jobDefs
+        .map(jd => jd.name -> jd)
+        .toMap
+    )
 
   def jobDefOption(jobName: String): Option[JobDef] = nameToJobDef.get(jobName)
   def jobDef(jobName: String): JobDef = jobDefOption(jobName)
@@ -873,17 +881,6 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   // lazy val so that tresqlUri is initialized when dataFlowParser is referenced
   protected lazy val dataFlowParser: AppMetadataDataFlowParser =
     new CachedAppMetadataDataFlowParser(4096, tresqlUri)
-
-  /* [jobs]
-  protected def parseJob(job: Map[String, Any]): Job = {
-    val name = job.get("name").map(String.valueOf)
-      .getOrElse(sys.error(s"Error parsing job, missing 'name' attribute"))
-    val schedule = job.get("schedule").map(String.valueOf)
-    val condition = job.get("condition").map(String.valueOf)
-    val action = parseAction(name, ViewDefExtrasUtils.getSeq("action", job))
-    Job(name, schedule, condition, action)
-  }
-  [jobs] */
 }
 
 // TODO add macros from resources so that saved parser cache can be used later in runtime
@@ -1350,13 +1347,6 @@ object AppMetadata extends Loggable {
     db: String,
     cp: String = null,
   )
-
-  /* [jobs]
-  case class Job(name: String,
-                 schedule: Option[String],
-                 condition: Option[String],
-                 action: Action)
-  [jobs] */
 
   trait AppViewDefExtras {
     val limit: Int
