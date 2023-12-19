@@ -35,7 +35,7 @@ trait TemplateUtil { this: client.WabaseHttpClient =>
       }
   }
 
-  implicit def mapShortcats(map: Map[String, Any]): Object {
+  implicit def mapShortcuts(map: Map[String, Any]): Object {
     def a(param: String): List[MapTemplate]
     def b(param: String): Boolean
     def m(param: String): Map[String, Any]
