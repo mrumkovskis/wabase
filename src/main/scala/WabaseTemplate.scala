@@ -3,9 +3,11 @@ package org.wabase
 import akka.actor.ActorSystem
 import akka.stream.scaladsl.{FileIO, StreamConverters}
 import akka.util.ByteString
+import com.samskivert.mustache.Mustache
 
 import java.nio.file.FileSystems
 import scala.concurrent.{ExecutionContext, Future}
+import scala.jdk.CollectionConverters._
 
 trait WabaseTemplate {
   def apply(template: String, data: Seq[Map[String, Any]])(implicit
@@ -13,6 +15,30 @@ trait WabaseTemplate {
     as: ActorSystem,
     fs: FileStreamer,
   ): Future[TemplateResult]
+}
+
+object WabaseTemplate {
+  def mapToJavaMap(map: Map[String, _]):java.util.Map[String, _] = {
+    val result = map.map { (entry: (String, _)) =>
+      (entry._1,
+        entry._2 match {
+          case l: Seq[_] => seqToJavaList(l)
+          case m: Map[String@unchecked, _] => mapToJavaMap(m)
+          case r => r
+        }
+      )
+    }
+    result.asInstanceOf[Map[String, _]].asJava
+  }
+
+  def  seqToJavaList(seq: Seq[_]): java.util.List[_] = {
+    val result = seq.toList.map {
+      case l: Seq[_] => seqToJavaList(l)
+      case m: Map[String @unchecked, _] => mapToJavaMap(m)
+      case r => r
+    }
+    result.asJava
+  }
 }
 
 class DefaultWabaseTemplate extends WabaseTemplate {
@@ -98,18 +124,27 @@ class DefaultWabaseTemplateLoader extends WabaseTemplateLoader {
 trait WabaseTemplateRenderer {
   def apply(templateName: String, template: Array[Byte], data: Seq[Map[String, Any]]): Future[TemplateResult]
 }
+
 /**
- * Replaces all {{<key>}} in template with corresponding value from data.head
+ * See http://mustache.github.io/mustache.5.html
  * */
 class SimpleTemplateRenderer extends WabaseTemplateRenderer {
-  val templateRegex = """\{\{(\w+)\}\}""".r
+  import WabaseTemplate._
   def apply(templateName: String, template: Array[Byte], data: Seq[Map[String, Any]]): Future[TemplateResult] = {
-    val templ_str = new String(template, "UTF-8")
-    val dataMap = data.head
-    val (idx, res) = templateRegex.findAllMatchIn(templ_str).foldLeft(0 -> "") {
-      case ((idx, r), m) =>
-        (m.end, r + m.source.subSequence(idx, m.start) + String.valueOf(dataMap(m.group(1))))
-    }
-    Future.successful(StringTemplateResult(res + templ_str.substring(idx)))
+    val templateString = new String(template, "UTF-8")
+    val context = mapToJavaMap(
+      data.headOption.getOrElse(Map.empty) + ("items" -> data)
+    )
+    Future.successful(StringTemplateResult(
+      try {
+        Mustache.compiler()
+          .nullValue("")
+          .compile(templateString) // TODO CACHE???
+          .execute(context)
+      } catch {
+        case util.control.NonFatal(ex) =>
+          throw new RuntimeException(s"Failed to render template '$templateString' with values $data", ex)
+      }
+    ))
   }
 }

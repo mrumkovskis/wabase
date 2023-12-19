@@ -191,27 +191,8 @@ trait TemplateUtil { this: client.WabaseHttpClient =>
   }
 
 
-  def mapToJavaMap(map: Map[String, _]):java.util.Map[String, _] = {
-    val result = map.map { (entry: (String, _)) =>
-      (entry._1,
-        entry._2 match {
-          case l: List[_] => listToJavaList(l)
-          case m: Map[String@unchecked, _] => mapToJavaMap(m)
-          case r => r
-        }
-      )
-    }
-    result.asInstanceOf[Map[String, _]].asJava
-  }
-
-  def  listToJavaList(list: List[_]): java.util.List[_] = {
-    val result = list.toList.map {
-      case l: List[_] => listToJavaList(l)
-      case m: Map[String @unchecked, _] => mapToJavaMap(m)
-      case r => r
-    }
-    result.asJava
-  }
+  def mapToJavaMap(map: Map[String, _]):java.util.Map[String, _] = WabaseTemplate.mapToJavaMap(map)
+  def listToJavaList(list: List[_]): java.util.List[_]           = WabaseTemplate.seqToJavaList(list)
 
   def javaMapToMap(map: java.util.Map[String, _]):Map[String, _] = {
     val result = map.asScala.map(entry=>
