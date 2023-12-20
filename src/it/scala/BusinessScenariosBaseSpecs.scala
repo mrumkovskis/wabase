@@ -40,6 +40,15 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
     pattern.r
   }
 
+  protected lazy val testOnlyFilesPattern = {
+    val defaultPattern = "^.*\\.yaml$"
+    val pattern =
+      Option("business-scenarios.test-only-files").filter(config.hasPath).map(config.getString).getOrElse(defaultPattern)
+    if (pattern != defaultPattern)
+      logger.warn(s"Business scenarios test-only-files pattern: $pattern")
+    pattern.r
+  }
+
   override def beforeAll() = {
     login()
     listenToWs(deferredActor)
@@ -54,7 +63,8 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
   }
 
   def isTestCaseFile(file: File): Boolean =
-    file.isFile && file.getName.endsWith(".yaml")
+    file.isFile &&
+      testOnlyFilesPattern.pattern.matcher(file.getName).matches
 
   def shouldTestScenario(scenario: File): Boolean =
     scenario.listFiles.exists(isTestCaseFile) &&
