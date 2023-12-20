@@ -1,7 +1,7 @@
 package org.wabase
 
 import com.typesafe.scalalogging.Logger
-import org.mojoz.querease.TresqlMetadata
+import org.mojoz.querease.{QuereaseMacros, TresqlMetadata}
 
 import java.sql.Connection
 import javax.sql.DataSource
@@ -434,7 +434,7 @@ class Macros extends TresqlComparisonMacros {
   override def shouldIgnoreCase(s: String) = true
 }
 
-class TresqlComparisonMacros extends org.tresql.Macros {
+class TresqlComparisonMacros extends QuereaseMacros {
 
   val hasNonAscii = """[^\p{ASCII}]"""r
   val hasUpper = """\p{javaUpperCase}"""r

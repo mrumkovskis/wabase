@@ -6,9 +6,8 @@ import org.mojoz.metadata.FieldDef
 import org.mojoz.metadata.in._
 import org.mojoz.metadata.io.MdConventions
 import org.mojoz.metadata.out.DdlGenerator.SimpleConstraintNamingRules
-import org.mojoz.querease.QuereaseMetadata.BindVarCursorsFunctionName
-import org.mojoz.querease.{QuereaseMetadata, TresqlJoinsParser}
-import org.tresql.{Cache, CacheBase, MacroResourcesImpl, QueryParser, SimpleCache, SimpleCacheBase}
+import org.mojoz.querease.{QuereaseMetadata, TresqlJoinsParser, TresqlMetadata}
+import org.tresql.{Cache, CacheBase, MacroResourcesImpl, Metadata, QueryParser, SimpleCache, SimpleCacheBase, compiling}
 import org.tresql.ast.{Exp, Ident, Obj, StringConst, Variable}
 import org.tresql.parsing.QueryParsers
 import org.wabase.AppMetadata.Action.TresqlExtraction.{OpTresqlTraverser, State, StepTresqlTraverser, opTresqlTraverser, stepTresqlTraverser}
@@ -16,7 +15,6 @@ import org.wabase.AppMetadata.Action.{QuereaseActionCacheName, Validations, Vari
 
 import java.io.InputStream
 import java.util.concurrent.ConcurrentHashMap
-
 import scala.collection.immutable.{Seq, Set}
 import scala.jdk.CollectionConverters._
 import scala.language.reflectiveCalls
@@ -45,7 +43,12 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       .flatMap[Class[_]](c => Option(c.macrosClass))
       .getOrElse(classOf[Macros])
   override lazy val joinsParser: JoinsParser =
-    new TresqlJoinsParser(tresqlMetadata, createJoinsParserCache(_))
+    new TresqlJoinsParser(
+      // to avoid stack overflow cannot use directly field tresqlMetadata,
+      // since it is initialized with viewDefs (for cursor table metadata)
+      TresqlMetadata(tableMetadata.tableDefs, typeDefs, macrosClass, dbToAlias = dbToAlias),
+      createJoinsParserCache(_)
+    )
   override lazy val metadataConventions: AppMdConventions = new DefaultAppMdConventions
   override lazy val nameToViewDef: Map[String, ViewDef] =
     toAppViewDefs(viewDefLoader.nameToViewDef)
@@ -527,7 +530,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       stepTresqlTraverser(opTresqlTrav)(st => {
         case Validations(_, validations, db) =>
           val v = viewDef(st.name)
-          validationsQueryString(v, emptyData(v), validations).flatMap { valStr =>
+          validationsQueryString(v, validations).flatMap { valStr =>
             db.flatMap(k => Option(k.db)).map("|" + _ + ":" + valStr)
               .orElse(Option(valStr))
               .map { tresql =>
@@ -538,23 +541,20 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val compiler = new org.tresql.compiling.Compiler {
       override val metadata = tresqlMetadata
       override val extraMetadata = tresqlMetadata.extraDbToMetadata
+      override protected val macros =
+        new MacroResourcesImpl(Option(macrosClass).map(_.newInstance()).orNull, tresqlMetadata)
     }
     val compiledQueries = scala.collection.mutable.Set(quereaseCompiledQueries.toSeq: _*)
     var compiledActionCount = 0
     var compiledTresqlCount = 0
     def compilerState(a: String, n: String) = {
       State[scala.collection.mutable.Set[String]](
-        a, n, Map(), Map(), parser,
+        a, n, Map(), Map(), compiler,
         tresqlExtractor = cq => {
           case e =>
             val tresqlString = e.tresql
             if (!cq.contains(tresqlString)) {
-              val ce = if (tresqlString.indexOf(BindVarCursorsFunctionName) != -1) {
-                val v = viewDef(n)
-                val expTresql = maybeExpandWithBindVarsCursorsForView(tresqlString, emptyData(v))(v, parser)
-                parser.parseExp(expTresql)
-              } else e
-              try compiler.compile(ce) catch {
+              try compiler.compile(e) catch {
                 case NonFatal(ex) =>
                   val msg = s"\nFailed to compile viewdef ${n} action $a: ${ex.getMessage}" +
                     (if (showFailedViewQuery) s"\n$tresqlString" else "")

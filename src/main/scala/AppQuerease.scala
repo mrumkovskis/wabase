@@ -14,7 +14,6 @@ import org.mojoz.querease._
 import org.mojoz.querease.SaveMethod
 import org.mojoz.metadata.Type
 import org.mojoz.metadata.{FieldDef, ViewDef}
-import org.mojoz.querease.QuereaseMetadata.BindVarCursorsFunctionName
 import org.slf4j.LoggerFactory
 import org.tresql.ast.Variable
 import org.wabase.AppFileStreamer.FileInfo
@@ -516,7 +515,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
                                  dbkey: Option[DbAccessKey],
                                  params: Map[String, Any],
                                  view: ViewDef)(implicit res: Resources): Unit = {
-    validationsQueryString(view, params, validations) foreach { vs =>
+    validationsQueryString(view, validations) foreach { vs =>
       Query(dbkey.flatMap(k => Option(k.db)).map("|" + _ + ":").mkString("", "", vs), params)
         .map(_.s("msg"))
         .filter(_ != null).filter(_ != "")
@@ -535,12 +534,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   )(implicit
     resources: Resources,
   ): TresqlResult = {
-    val tql =
-      if (tresql.indexOf(BindVarCursorsFunctionName) != -1) {
-        val qp = new QueryParser(macros = resources, cache = resources.cache)
-        maybeExpandWithBindVarsCursorsForView(tresql, bindVars)(context.view.orNull, qp)
-      } else tresql
-    TresqlResult(Query(tql)(resources.withParams(bindVars)))
+    TresqlResult(Query(tresql)(resources.withParams(bindVars)))
   }
 
   protected def doViewCall(
