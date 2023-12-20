@@ -7,8 +7,8 @@ import org.mojoz.metadata.in._
 import org.mojoz.metadata.io.MdConventions
 import org.mojoz.metadata.out.DdlGenerator.SimpleConstraintNamingRules
 import org.mojoz.querease.{QuereaseMetadata, TresqlJoinsParser, TresqlMetadata}
-import org.tresql.{Cache, CacheBase, MacroResourcesImpl, Metadata, QueryParser, SimpleCache, SimpleCacheBase, compiling}
-import org.tresql.ast.{Exp, Ident, Obj, StringConst, Variable}
+import org.tresql.{Cache, MacroResourcesImpl, QueryParser, SimpleCache, ast}
+import org.tresql.ast.Exp
 import org.tresql.parsing.QueryParsers
 import org.wabase.AppMetadata.Action.TresqlExtraction.{OpTresqlTraverser, State, StepTresqlTraverser, opTresqlTraverser, stepTresqlTraverser}
 import org.wabase.AppMetadata.Action.{QuereaseActionCacheName, Validations, VariableTransform, ViewCall, traverseAction}
@@ -57,18 +57,21 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     Action.loadActionCache(resourceLoader)
   protected lazy val joinsParserCache: Map[String, Map[String, Exp]] =
     loadJoinsParserCache(resourceLoader)
-  lazy val viewNameToQueryVariablesCache: Map[String, Seq[Variable]] =
+  lazy val viewNameToQueryVariablesCache: Map[String, Seq[ast.Variable]] =
     loadViewNameToQueryVariablesCache(resourceLoader)
 
-  lazy val nameToJobDef: Map[String, JobDef] =
+  lazy val nameToJobDef: Map[String, JobDef] = {
+    val opParser = new OpParser(null, tresqlUri)
     transformJobDefs(
       new YamlJobDefLoader(yamlMetadata, jdMap => parseAction(
         jdMap.get("job").map(_.toString).get,
-        ViewDefExtrasUtils.getSeq("action", jdMap)
+        ViewDefExtrasUtils.getSeq("action", jdMap),
+        opParser
       )).jobDefs
         .map(jd => jd.name -> jd)
         .toMap
     )
+  }
 
   def jobDefOption(jobName: String): Option[JobDef] = nameToJobDef.get(jobName)
   def jobDef(jobName: String): JobDef = jobDefOption(jobName)
@@ -410,7 +413,8 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val explicitDb = getBooleanExtra(ExplicitDb, viewDef)
     val decodeRequest = getBooleanExtraOpt(DecodeRequest, viewDef).forall(identity)
     def parseActions = Action().foldLeft(Map[String, Action]()) { (res, actionName) =>
-      val a = parseAction(s"${viewDef.name}.$actionName", getSeq(actionName, viewDef.extras))
+      val opParser = new OpParser(viewDef.name, tresqlUri)
+      val a = parseAction(s"${viewDef.name}.$actionName", getSeq(actionName, viewDef.extras), opParser)
       if (a.steps.nonEmpty) res + (actionName -> a) else res
     }
     val actions = actionCache.getOrElse(viewDef.name, parseActions)
@@ -465,7 +469,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   }
 
   private lazy val viewNameToQueryVariablesCompilerCache = {
-    val cache = new ConcurrentHashMap[String, Seq[Variable]]
+    val cache = new ConcurrentHashMap[String, Seq[ast.Variable]]
     cache.putAll(viewNameToQueryVariablesCache.asJava)
     cache
   }
@@ -627,18 +631,18 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   protected def extractViewVariables(
     viewDefs: Map[String, ViewDef],
     jobDefs: Map[String, JobDef]
-  )(action: String, viewName: String): Seq[Variable] = {
+  )(action: String, viewName: String): Seq[ast.Variable] = {
     import Action._
     import TresqlExtraction._
     val varExtractor = parser.variableExtractor(Nil)
 
-    lazy val opTresqlTrav: OpTresqlTraverser[(Seq[Variable], Set[String])] =
+    lazy val opTresqlTrav: OpTresqlTraverser[(Seq[ast.Variable], Set[String])] =
       opTresqlTraverser(opTresqlTrav, stepTresqlTrav)(_ => PartialFunction.empty)
 
-    lazy val stepTresqlTrav: StepTresqlTraverser[(Seq[Variable], Set[String])] =
+    lazy val stepTresqlTrav: StepTresqlTraverser[(Seq[ast.Variable], Set[String])] =
       stepTresqlTraverser(opTresqlTrav) { state =>
         def trav = opTresqlTrav(state)
-        def us(st: Step, s: State[(Seq[Variable], Set[String])]) = { st.name
+        def us(st: Step, s: State[(Seq[ast.Variable], Set[String])]) = { st.name
           .map(n => s.copy(value = s.value._1 -> (s.value._2 + n)))
           .getOrElse(s)
         }
@@ -649,7 +653,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
         }
       }
 
-    val state = State[(Seq[Variable], Set[String])](action, viewName, viewDefs, jobDefs, parser,
+    val state = State[(Seq[ast.Variable], Set[String])](action, viewName, viewDefs, jobDefs, parser,
       tresqlExtractor = vars => {
         case e if varExtractor.isDefinedAt(e) =>
           val actionDefinedVars = vars._2
@@ -725,7 +729,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     }
   }
 
-  protected def parseAction(objectName: String, stepData: Seq[Any]): Action = {
+  protected def parseAction(objectName: String, stepData: Seq[Any], opParser: OpParser): Action = {
     val namedStepRegex = """(?U)(?:((?:\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*)(?:\.\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*)*)\s*=\s*)?(.+)""".r
     // matches - 'validations validation_name [db:cp]'
     val validationRegex = new Regex(s"(?U)${Action.ValidationsKey}(?:\\s+(\\w+))?(?:\\s+\\[(?:\\s*(\\w+)?\\s*(?::\\s*(\\w+)\\s*)?)\\])?")
@@ -768,7 +772,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
         } else if (commitOpRegex.pattern.matcher(st).matches()) {
           Action.Commit
         } else {
-          dataFlowParser.parseOperation(st)
+          opParser.parseOperation(st)
         }
       }
       def parseStringStep(name: Option[String], statement: String): Action.Step = {
@@ -838,16 +842,16 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
                   val op =
                     if (ifOpRegex.pattern.matcher(opStr).matches()) {
                       val ifOpRegex(condOpSt) = opStr
-                      Action.If(parseOp(condOpSt), parseAction(objectName, al.asScala.toList))
+                      Action.If(parseOp(condOpSt), parseAction(objectName, al.asScala.toList, opParser))
                     } else if (elseOpRegex.pattern.matcher(opStr).matches()) {
-                      Action.Else(parseAction(objectName, al.asScala.toList))
+                      Action.Else(parseAction(objectName, al.asScala.toList, opParser))
                     } else if (foreachOpRegex.pattern.matcher(opStr).matches()) {
                       val foreachOpRegex(initOpSt) = opStr
-                      Action.Foreach(parseOp(initOpSt), parseAction(objectName, al.asScala.toList))
+                      Action.Foreach(parseOp(initOpSt), parseAction(objectName, al.asScala.toList, opParser))
                     } else if (dbUseRegex.pattern.matcher(opStr).matches()) {
-                      Action.Db(parseAction(objectName, al.asScala.toList), true)
+                      Action.Db(parseAction(objectName, al.asScala.toList, opParser), true)
                     } else if (transactionRegex.pattern.matcher(opStr).matches()) {
-                      Action.Db(parseAction(objectName, al.asScala.toList), false)
+                      Action.Db(parseAction(objectName, al.asScala.toList, opParser), false)
                     } else sys.error(s"'$objectName' parsing error, invalid value: '$opStr'. " +
                       s"Only 'if', 'foreach', 'db use', 'transaction' operations allowed.")
                   Action.Evaluation(Option(varName), Nil, op)
@@ -877,14 +881,10 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       }).reverse
     Action(coalescedSteps)
   }
-
-  // lazy val so that tresqlUri is initialized when dataFlowParser is referenced
-  protected lazy val dataFlowParser: AppMetadataDataFlowParser =
-    new CachedAppMetadataDataFlowParser(4096, tresqlUri)
 }
 
-// TODO add macros from resources so that saved parser cache can be used later in runtime
-trait AppMetadataDataFlowParser extends QueryParsers { self =>
+class OpParser(viewName: String, tresqlUri: TresqlUri)
+  extends QueryParsers { self =>
   import AppMetadata.Action._
   import AppMetadata.Action
 
@@ -895,24 +895,21 @@ trait AppMetadataDataFlowParser extends QueryParsers { self =>
   val ViewNameRegex = "(?U)\\w+".r
   val ConfPropRegex = """\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*(?:\.\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*+)*""".r
 
-  protected def cache: CacheBase[Op] = null
-  protected def tresqlUri: TresqlUri
-
   def parseOperation(op: String): Op = {
-    def parseOp = phrase(operation)(new scala.util.parsing.input.CharSequenceReader(op)) match {
+    phrase(operation)(new scala.util.parsing.input.CharSequenceReader(op)) match {
       case Success(r, _) => r
       case x => sys.error(x.toString)
     }
-    if (cache != null) {
-      cache.get(op).getOrElse {
-        val pop = parseOp
-        cache.put(op, pop)
-        pop
-      }
-    } else parseOp
   }
 
-  def tresqlOp: MemParser[Tresql] = expr ^^ { e => Tresql(e.tresql) } named "tresql-op"
+  def tresqlOp: MemParser[Tresql] = expr ^^ { e =>
+    val te = transformer {
+      case f@ast.Fun("build_cursors",
+        (o@ast.Obj(ast.Ident("this" :: Nil), _, _, _, _)) :: tail, false, None, None
+      ) => f.copy(parameters = o.copy(obj = ast.Ident(viewName :: Nil)) :: tail)
+    }(e)
+    Tresql(te.tresql)
+  } named "tresql-op"
   def viewOp: MemParser[ViewCall] = ActionRegex ~ ViewNameRegex ~ opt(operation) ^^ {
     case action ~ view ~ op =>
       ViewCall(action.trim /* trim ending whitespace */, view, op.orNull)
@@ -971,8 +968,8 @@ trait AppMetadataDataFlowParser extends QueryParsers { self =>
     case mode ~ _ ~ op => JsonCodec(mode == "to", op)
   } named "json-op"
   def jobOp: MemParser[Job] = "job" ~> expr ^^ {
-    case StringConst(value) => Job(value, false)
-    case Obj(i: Ident, _, _, _, _) => Job(i.tresql, false)
+    case ast.StringConst(value) => Job(value, false)
+    case ast.Obj(i: ast.Ident, _, _, _, _) => Job(i.tresql, false)
     case e => Job(e.tresql, true)
   } named "job-op"
   def confOp: MemParser[Conf] = {
@@ -1013,13 +1010,6 @@ trait AppMetadataDataFlowParser extends QueryParsers { self =>
     } named "op-result-type"
   }
 }
-
-class CachedAppMetadataDataFlowParser(maxCacheSize: Int, override val tresqlUri: TresqlUri)
-  extends AppMetadataDataFlowParser {
-  import AppMetadata.Action.Op
-  override protected val cache: CacheBase[Op] = new SimpleCacheBase[Op](maxCacheSize)
-}
-
 object AppMetadata extends Loggable {
 
   case class AuthFilters(
@@ -1050,7 +1040,7 @@ object AppMetadata extends Loggable {
   }
 
   val ViewNameToQueryVariablesCacheName  = "view-query-variables-cache.cbor"
-  def loadViewNameToQueryVariablesCache(getResourceAsStream: String => InputStream): Map[String, Seq[Variable]] = {
+  def loadViewNameToQueryVariablesCache(getResourceAsStream: String => InputStream): Map[String, Seq[ast.Variable]] = {
     val res = getResourceAsStream(s"/$ViewNameToQueryVariablesCacheName")
     if (res == null) {
       logger.debug(s"Query variables cache resource not found: '/$ViewNameToQueryVariablesCacheName'")
@@ -1059,7 +1049,7 @@ object AppMetadata extends Loggable {
       import io.bullet.borer._
       import CacheIo.varCodec
       val cache =
-        Cbor.decode(res).to[Map[String, Seq[Variable]]].value
+        Cbor.decode(res).to[Map[String, Seq[ast.Variable]]].value
       logger.debug(s"Query variables cache loaded for ${cache.size} views")
       cache
     }

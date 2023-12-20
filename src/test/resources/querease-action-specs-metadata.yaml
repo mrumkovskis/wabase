@@ -127,9 +127,9 @@ validations:
   - build cursors
   - ac(# c) { accounts {count(*)} }, (ac{c}) > 0, "person must have at least one account"
 save:
-- account_count = [build_cursors(person)]accounts{count(*)}
+- account_count = [build_cursors(this)]accounts{count(*)}
 - account_count_total_b_from_with =
-    unique_opt ac(# count, total_b) {accounts{count(*), sum(coalesce(balance, 0))}} [build_cursors(person)]ac{count, total_b}
+    unique_opt ac(# count, total_b) {accounts{count(*), sum(coalesce(balance, 0))}} [build_cursors(this)]ac{count, total_b}
 - validations:
   - build cursors
   - :account_count <= 3, "person cannot have more than 3 accounts, got '" || :account_count || "'"
@@ -1016,7 +1016,7 @@ fields:
 - title
 - year int
 list:
-- "[build_cursors(build_cursors_test, :books)]books { title, year }"   # quotes used to get around yaml parser bug
+- "[build_cursors(this, :books)]books { title, year }"   # quotes used to get around yaml parser bug
 get:
 - forests = http {'/forest'}
 - unique_opt [build_cursors(forest, :forests)]forests{group_concat('(' || nr || ', ' || owner || ')')#(1) title}
