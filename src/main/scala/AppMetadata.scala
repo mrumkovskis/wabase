@@ -635,8 +635,6 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   )(action: String, viewName: String): Seq[ast.Variable] = {
     import Action._
     import TresqlExtraction._
-    val varExtractor = parser.variableExtractor(Nil)
-
     lazy val opTresqlTrav: OpTresqlTraverser[(Seq[ast.Variable], Set[String])] =
       opTresqlTraverser(opTresqlTrav, stepTresqlTrav)(_ => PartialFunction.empty)
 
