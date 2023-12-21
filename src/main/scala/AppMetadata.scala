@@ -6,12 +6,13 @@ import org.mojoz.metadata.FieldDef
 import org.mojoz.metadata.in._
 import org.mojoz.metadata.io.MdConventions
 import org.mojoz.metadata.out.DdlGenerator.SimpleConstraintNamingRules
-import org.mojoz.querease.{QuereaseMetadata, TresqlJoinsParser, TresqlMetadata}
+import org.mojoz.querease.QuereaseExpressions.DefaultParser
+import org.mojoz.querease.{QuereaseExpressions, QuereaseMetadata, TresqlJoinsParser, TresqlMetadata}
 import org.tresql.{Cache, MacroResourcesImpl, QueryParser, SimpleCache, ast}
-import org.tresql.ast.Exp
+import org.tresql.ast.{Exp, Variable}
 import org.tresql.parsing.QueryParsers
 import org.wabase.AppMetadata.Action.TresqlExtraction.{OpTresqlTraverser, State, StepTresqlTraverser, opTresqlTraverser, stepTresqlTraverser}
-import org.wabase.AppMetadata.Action.{QuereaseActionCacheName, Validations, VariableTransform, ViewCall, traverseAction}
+import org.wabase.AppMetadata.Action.{QuereaseActionCacheName, Validations, VariableTransform, VariableTransforms, ViewCall, traverseAction}
 
 import java.io.InputStream
 import java.util.concurrent.ConcurrentHashMap
@@ -881,6 +882,29 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       }).reverse
     Action(coalescedSteps)
   }
+
+  abstract class AppQuereaseDefaultParser(cache: Option[Cache]) extends DefaultParser(cache) {
+    private def varsTransform: MemParser[VariableTransform] = {
+      def v2s(v: Variable) = (v.variable :: v.members) mkString "."
+      (variable | ("(" ~> ident ~ "=" ~ variable <~ ")")) ^^ {
+        case v: Variable => VariableTransform(v2s(v), None)
+        case (v1: String) ~ _ ~ (v2: Variable) => VariableTransform(v2s(v2), Option(v1))
+      }
+    }
+    def varsTransforms: MemParser[VariableTransforms] = {
+      rep1sep(varsTransform, "+") ^^ (VariableTransforms) named "var-transforms"
+    }
+    def stepWithVarsTransform: MemParser[(List[VariableTransform], String)] = {
+      (varsTransforms ~ ("->" ~> "(?s).*".r)) ^^ {
+        case VariableTransforms(vts) ~ step => vts -> step
+      } named "step-with-vars-transform"
+    }
+  }
+
+  object AppQuereaseDefaultParser extends AppQuereaseDefaultParser(createParserCache)
+
+  val tresqlParserCacheSize: Int = 4096
+  override val parser: QuereaseExpressions.Parser = this.AppQuereaseDefaultParser
 }
 
 class OpParser(viewName: String, tresqlUri: TresqlUri)

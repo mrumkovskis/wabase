@@ -8,14 +8,12 @@ import akka.http.scaladsl.model.{ContentType, ContentTypes, HttpEntity, HttpHead
 import akka.stream.scaladsl.Source
 import akka.util.ByteString
 import com.typesafe.scalalogging.Logger
-import org.mojoz.querease.QuereaseExpressions.DefaultParser
 import org.tresql._
 import org.mojoz.querease._
 import org.mojoz.querease.SaveMethod
 import org.mojoz.metadata.Type
 import org.mojoz.metadata.{FieldDef, ViewDef}
 import org.slf4j.LoggerFactory
-import org.tresql.ast.Variable
 import org.wabase.AppFileStreamer.FileInfo
 import org.wabase.AppMetadata.Action.{VariableTransform, VariableTransforms}
 
@@ -1470,30 +1468,6 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       new ResultRenderer.ViewFieldFilter(conformTo.viewName, nameToViewDef), conformTo.isCollection)
 
   private def notFound = StatusResult(StatusCodes.NotFound.intValue, StringStatus("not found"))
-
-  // TODO add macros from resources
-  abstract class AppQuereaseDefaultParser(cache: Option[Cache]) extends DefaultParser(cache) {
-    private def varsTransform: MemParser[VariableTransform] = {
-      def v2s(v: Variable) = (v.variable :: v.members) mkString "."
-      (variable | ("(" ~> ident ~ "=" ~ variable <~ ")")) ^^ {
-        case v: Variable => VariableTransform(v2s(v), None)
-        case (v1: String) ~ _ ~ (v2: Variable) => VariableTransform(v2s(v2), Option(v1))
-      }
-    }
-    def varsTransforms: MemParser[VariableTransforms] = {
-      rep1sep(varsTransform, "+") ^^ (VariableTransforms) named "var-transforms"
-    }
-    def stepWithVarsTransform: MemParser[(List[VariableTransform], String)] = {
-      (varsTransforms ~ ("->" ~> "(?s).*".r)) ^^ {
-        case VariableTransforms(vts) ~ step => vts -> step
-      } named "step-with-vars-transform"
-    }
-  }
-
-  object AppQuereaseDefaultParser extends AppQuereaseDefaultParser(createParserCache)
-
-  val tresqlParserCacheSize: Int = 4096
-  override val parser: QuereaseExpressions.Parser = this.AppQuereaseDefaultParser
 }
 
 trait Dto extends org.mojoz.querease.Dto { self =>
