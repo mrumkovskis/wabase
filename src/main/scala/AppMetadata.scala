@@ -655,11 +655,8 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       }
 
     val state = State[(Seq[ast.Variable], Set[String])](action, viewName, viewDefs, jobDefs, parser,
-      tresqlExtractor = vars => {
-        case e if varExtractor.isDefinedAt(e) =>
-          val actionDefinedVars = vars._2
-          (vars._1 ++ varExtractor(e).filterNot(v => actionDefinedVars(v.variable))) -> actionDefinedVars
-      },
+      tresqlExtractor = vars => parser.variableExtractor(vars._1.toList)
+        .andThen(vs => vs.filterNot(v => vars._2(v.variable)) -> vars._2),
       viewExtractor = vars => vd => vars, // TODO extract variables from view, move AppBase.filterParams function here?
       jobExtractor = vars => _ => vars,
       processed = Set(), value = (Nil, Set())
@@ -682,9 +679,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
     val dbExtractor = parser.dbExtractor(Nil)
     val state = State[Seq[DbAccessKey]](action, name, viewDefs, jobDefs, parser,
-      tresqlExtractor = dbKeys => {
-        case e if dbExtractor.isDefinedAt(e) => dbKeys ++ dbExtractor(e).map(DbAccessKey(_, null))
-      },
+      tresqlExtractor = dbKeys => parser.dbExtractor(dbKeys.toList.map(_.db)).andThen(_.map(DbAccessKey(_, null))),
       viewExtractor = dbkeys => vd =>
         dbkeys ++ (if (vd.db != null || vd.cp != null) Seq(DbAccessKey(vd.db, vd.cp)) else Nil),
       jobExtractor = dbkeys => jd =>
