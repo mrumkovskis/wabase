@@ -539,7 +539,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
             db.flatMap(k => Option(k.db)).map("|" + _ + ":" + valStr)
               .orElse(Option(valStr))
               .map { tresql =>
-                st.copy(value = st.tresqlExtractor(st.value)(st.parser.parseExp(tresql)))
+                st.copy(value = st.tresqlExtractor(st.value)(tresql))
               }
           }.getOrElse(st)
       })
@@ -554,20 +554,18 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     var compiledTresqlCount = 0
     def compilerState(a: String, n: String) = {
       State[scala.collection.mutable.Set[String]](
-        a, n, Map(), Map(), compiler,
-        tresqlExtractor = cq => {
-          case e =>
-            val tresqlString = e.tresql
-            if (!cq.contains(tresqlString)) {
-              try compiler.compile(e) catch {
-                case NonFatal(ex) =>
-                  val msg = s"\nFailed to compile viewdef ${n} action $a: ${ex.getMessage}" +
-                    (if (showFailedViewQuery) s"\n$tresqlString" else "")
-                  throw new RuntimeException(msg, ex)
-              }
-              compiledTresqlCount += 1
+        a, n, Map(), Map(),
+        tresqlExtractor = cq => tresql => {
+          if (!cq.contains(tresql)) {
+            try compiler.compile(compiler.parseExp(tresql)) catch {
+              case NonFatal(ex) =>
+                val msg = s"\nFailed to compile viewdef ${n} action $a: ${ex.getMessage}" +
+                  (if (showFailedViewQuery) s"\n$tresql" else "")
+                throw new RuntimeException(msg, ex)
             }
-            cq += tresqlString
+            compiledTresqlCount += 1
+          }
+          cq += tresql
         },
         viewExtractor = v => _ => v,
         jobExtractor = v => _ => v,
@@ -642,8 +640,10 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
         case Validations(_, _, dbkey) => state.copy(value = state.value ++ dbkey.toList)
       })
 
-    val state = State[Seq[DbAccessKey]](action, name, viewDefs, jobDefs, parser,
-      tresqlExtractor = dbKeys => parser.dbExtractor(dbKeys.toList.map(_.db)).andThen(_.map(DbAccessKey(_, null))),
+    val state = State[Seq[DbAccessKey]](action, name, viewDefs, jobDefs,
+      tresqlExtractor = dbKeys => tresql =>
+        parser.traverser(parser.dbExtractor)(dbKeys.toList.map(_.db))
+          .andThen(_.map(DbAccessKey(_, null)))(parser.parseExp(tresql)),
       viewExtractor = dbkeys => vd =>
         dbkeys ++ (if (vd.db != null || vd.cp != null) Seq(DbAccessKey(vd.db, vd.cp)) else Nil),
       jobExtractor = dbkeys => jd =>
@@ -1187,14 +1187,14 @@ object AppMetadata extends Loggable {
     object TresqlExtraction {
       type ViewExtractor[T] = T => ViewDef => T
       type JobExtractor[T] = T => JobDef => T
-      type TresqlExtractor[T] = T => PartialFunction[Exp, T]
+      type TresqlExtractor[T] = T => String => T
       type StepTresqlTraverser[T] = StepTraverser[State[T]]
       type OpTresqlTraverser[T] = OpTraverser[State[T]]
 
       case class State[T](
         action: String, name: String,
         viewDefs: Map[String, ViewDef], jobDefs: Map[String, JobDef],
-        parser: QueryParsers, tresqlExtractor: TresqlExtractor[T],
+        tresqlExtractor: TresqlExtractor[T],
         viewExtractor: ViewExtractor[T], jobExtractor: JobExtractor[T],
         processed: Set[(String, String)],
         value: T
@@ -1230,16 +1230,11 @@ object AppMetadata extends Loggable {
         traverseAction(jd.steps)(stepTresqlTrav)(s1)
       }
 
-      private def newValFromTresql[T](parser: QueryParsers,
-                                      extr: TresqlExtractor[T])(oldVal: T)(tresql: String) =
-        if (tresql == null) oldVal
-        else parser.traverser(extr)(oldVal)(parser.parseExp(tresql))
-
       def opTresqlTraverser[T](opTresqlTrav: => OpTresqlTraverser[T],
         stepTresqlTrav: => StepTresqlTraverser[T])(extractor: OpTresqlTraverser[T]):
           OpTresqlTraverser[T] = {
         def traverse(state: State[T]): PartialFunction[Op, State[T]]= {
-          val nv: T => String => T = newValFromTresql[T](state.parser, state.tresqlExtractor)
+          val nv: T => String => T = v => t => Option(t).map(state.tresqlExtractor(v)(_)).getOrElse(v)
           def opTrTr = opTresqlTrav(state)
           def us(s: State[T], v: T) = {
             s.copy(value = v)
@@ -1289,7 +1284,7 @@ object AppMetadata extends Loggable {
           {
             case Validations(_, validations, _) =>
               val nv = validations.foldLeft(state.value) { (v, s) =>
-                newValFromTresql[T](state.parser, state.tresqlExtractor)(v)(s)
+                state.tresqlExtractor(v)(s)
               }
               state.copy(value = nv)
           }
