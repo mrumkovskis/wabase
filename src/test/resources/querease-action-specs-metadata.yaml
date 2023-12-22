@@ -1032,3 +1032,18 @@ list:
 - "[]get g {key, value}#(key)"    # query must begin with [] so that it is not parsed as 'get' from view 'g'
 get:
 - gets {key, value}#(key)         # must throw exception during compile time or runtime not parsing time, like view 's' not found
+
+
+job: test_job1
+action:
+- unique_opt { 'Hello ' || coalesce(if_defined(:name?, :name || ' '), '') || 'from test_job1!' greeting }
+
+
+name: job_call_test1
+table:
+api: get, list
+fields:
+  - name
+get:
+  - job_res = job test_job1
+  - status ok :job_res.greeting

@@ -1157,4 +1157,15 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         .map(_ shouldBe Map("title" -> "(OF1, Pedro),(OF2, Pedro)", "year" -> null))
     } yield t1
   }
+
+  it should "call job" in {
+    for {
+      t1 <-
+        doAction("get", "job_call_test1", Map())
+          .map(_ shouldBe StatusResult(200, StringStatus("Hello from test_job1!")))
+      t2 <-
+        doAction("get", "job_call_test1", Map("name" -> "John"))
+          .map(_ shouldBe StatusResult(200, StringStatus("Hello John from test_job1!")))
+    } yield t1
+  }
 }

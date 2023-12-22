@@ -51,13 +51,23 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       createJoinsParserCache(_)
     )
   override lazy val metadataConventions: AppMdConventions = new DefaultAppMdConventions
-  override lazy val nameToViewDef: Map[String, ViewDef] =
-    toAppViewDefs(viewDefLoader.nameToViewDef)
   protected lazy val resourceLoader: String => InputStream = getClass.getResourceAsStream _
   protected lazy val jobDefLoader: YamlJobDefLoader = new YamlJobDefLoader(yamlMetadata)
+  override lazy val nameToViewDef: Map[String, ViewDef] =
+    toAppViewDefs(viewDefLoader.nameToViewDef)
+  /* Not transformed job defs to avoid stack overflow when transforming view defs */
+  private lazy val notTransformedJobDefs: Map[String, JobDef] =
+    jobDefLoader.rawJobDefs.transform { (jobName, jdMap) =>
+      val opParser = new OpParser(jobName, tresqlUri, actionOpCache(jobName))
+      jobDefLoader.toJobDef(jobName, jdMap, jdata =>
+        parseAction(jobName, ViewDefExtrasUtils.getSeq("action", jdata), opParser))
+    }
+  lazy val nameToJobDef: Map[String, JobDef] = transformJobDefs(notTransformedJobDefs)
   protected lazy val actionOpCache: Map[String, OpParser.Cache] = {
     val cacheData = OpParser.loadSerializedOpCaches(resourceLoader)
     def cc(k: String) = OpParser.createOpParserCache(cacheData.getOrElse(k, Map()), 4096)
+    val duplicates = viewDefLoader.nameToViewDef.keys.toSet intersect jobDefLoader.rawJobDefs.keys.toSet
+    require(duplicates.isEmpty, s"Duplicate view, job names found - '${duplicates.mkString(", ")}'")
     viewDefLoader.nameToViewDef.transform { (k, _) => cc(k) } ++
       jobDefLoader.rawJobDefs.transform { (k, _) => cc(k) }
   }
@@ -66,13 +76,6 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   lazy val viewNameToQueryVariablesCache: Map[String, Seq[ast.Variable]] =
     loadViewNameToQueryVariablesCache(resourceLoader)
 
-  lazy val nameToJobDef: Map[String, JobDef] = transformJobDefs {
-    jobDefLoader.rawJobDefs.transform { (jobName, jdMap) =>
-      val opParser = new OpParser(jobName, tresqlUri, actionOpCache(jobName))
-      jobDefLoader.toJobDef(jobName, jdMap, jdata =>
-        parseAction(jobName, ViewDefExtrasUtils.getSeq("action", jdata), opParser))
-    }
-  }
 
   def jobDefOption(jobName: String): Option[JobDef] = nameToJobDef.get(jobName)
   def jobDef(jobName: String): JobDef = jobDefOption(jobName)
@@ -442,7 +445,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
   protected def transformAppViewDefs(viewDefs: Map[String, ViewDef]): Map[String, ViewDef] =
     Option(viewDefs)
-      .map(resolveViewDbAccessKeys(_, Map()))
+      .map(resolveViewDbAccessKeys(_, notTransformedJobDefs))
       .orNull
 
   protected def transformJobDefs(jobDefs: Map[String, JobDef]) =
@@ -528,7 +531,8 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val startTime = System.currentTimeMillis
     lazy val opTresqlTrav: OpTresqlTraverser[scala.collection.mutable.Set[String]] =
       opTresqlTraverser(opTresqlTrav, stepTresqlTrav)(st => {
-        case ViewCall(_, _, data) => opTresqlTrav(st)(data)
+        case ViewCall(_, _, data) => opTresqlTrav(st)(data) // do not go to process view call since all views are compiled
+        case _: Action.Job => st // do not go to process job call since all jobs are compiled in a loop
       })
     lazy val stepTresqlTrav: StepTresqlTraverser[scala.collection.mutable.Set[String]] =
       stepTresqlTraverser(opTresqlTrav)(st => {
@@ -559,7 +563,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
           if (!cq.contains(tresqlString)) {
             try compiler.compile(compiler.parseExp(tresqlString)) catch {
               case NonFatal(ex) =>
-                val msg = s"\nFailed to compile viewdef ${n} action $a: ${ex.getMessage}" +
+                val msg = s"\nFailed to compile view or job ${n} action $a: ${ex.getMessage}" +
                   (if (showFailedViewQuery) s"\n$tresqlString" else "")
                 throw new RuntimeException(msg, ex)
             }
@@ -1282,9 +1286,8 @@ object AppMetadata extends Loggable {
               val ns = opTrTr(data)
               processView(stepTresqlTrav)(ns.copy(action = method, name = vn))
             case Job(nameTresql, isDynamic) =>
-              val s = us(state, nv(state.value)(Tresql(nameTresql)))
-              if (isDynamic) s
-              else processJob(stepTresqlTrav)(s.copy(action = "job", name = nameTresql))
+              if (isDynamic) us(state, nv(state.value)(Tresql(nameTresql)))
+              else processJob(stepTresqlTrav)(state.copy(action = "job", name = nameTresql))
             case Invocation(_, _, o, _) => opTrTr(o)
           }
         }
