@@ -1,6 +1,5 @@
 package org.wabase
 
-import io.bullet.borer.Codec
 import org.mojoz.metadata.ViewDef
 import org.mojoz.metadata.FieldDef
 import org.mojoz.metadata.in._
@@ -8,11 +7,12 @@ import org.mojoz.metadata.io.MdConventions
 import org.mojoz.metadata.out.DdlGenerator.SimpleConstraintNamingRules
 import org.mojoz.querease.QuereaseExpressions.DefaultParser
 import org.mojoz.querease.{QuereaseExpressions, QuereaseMetadata, TresqlJoinsParser, TresqlMetadata}
-import org.tresql.{Cache, MacroResourcesImpl, QueryParser, SimpleCache, ast}
+import org.tresql.{Cache, MacroResourcesImpl, QueryParser, SimpleCache, SimpleCacheBase, ast}
 import org.tresql.ast.{Exp, Variable}
 import org.tresql.parsing.QueryParsers
+import org.wabase.AppMetadata.Action
 import org.wabase.AppMetadata.Action.TresqlExtraction.{OpTresqlTraverser, State, StepTresqlTraverser, opTresqlTraverser, stepTresqlTraverser}
-import org.wabase.AppMetadata.Action.{QuereaseActionCacheName, Validations, VariableTransform, VariableTransforms, ViewCall, traverseAction}
+import org.wabase.AppMetadata.Action.{Validations, VariableTransform, VariableTransforms, ViewCall, traverseAction}
 
 import java.io.InputStream
 import java.util.concurrent.ConcurrentHashMap
@@ -54,24 +54,24 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   override lazy val nameToViewDef: Map[String, ViewDef] =
     toAppViewDefs(viewDefLoader.nameToViewDef)
   protected lazy val resourceLoader: String => InputStream = getClass.getResourceAsStream _
-  protected lazy val actionCache: Map[String, Map[String, Action]] =
-    Action.loadActionCache(resourceLoader)
+  protected lazy val jobDefLoader: YamlJobDefLoader = new YamlJobDefLoader(yamlMetadata)
+  protected lazy val actionOpCache: Map[String, OpParser.Cache] = {
+    val cacheData = OpParser.loadSerializedOpCaches(resourceLoader)
+    def cc(k: String) = OpParser.createOpParserCache(cacheData.getOrElse(k, Map()), 4096)
+    viewDefLoader.nameToViewDef.transform { (k, _) => cc(k) } ++
+      jobDefLoader.rawJobDefs.transform { (k, _) => cc(k) }
+  }
   protected lazy val joinsParserCache: Map[String, Map[String, Exp]] =
     loadJoinsParserCache(resourceLoader)
   lazy val viewNameToQueryVariablesCache: Map[String, Seq[ast.Variable]] =
     loadViewNameToQueryVariablesCache(resourceLoader)
 
-  lazy val nameToJobDef: Map[String, JobDef] = {
-    val opParser = new OpParser(null, tresqlUri)
-    transformJobDefs(
-      new YamlJobDefLoader(yamlMetadata, jdMap => parseAction(
-        jdMap.get("job").map(_.toString).get,
-        ViewDefExtrasUtils.getSeq("action", jdMap),
-        opParser
-      )).jobDefs
-        .map(jd => jd.name -> jd)
-        .toMap
-    )
+  lazy val nameToJobDef: Map[String, JobDef] = transformJobDefs {
+    jobDefLoader.rawJobDefs.transform { (jobName, jdMap) =>
+      val opParser = new OpParser(jobName, tresqlUri, actionOpCache(jobName))
+      jobDefLoader.toJobDef(jobName, jdMap, jdata =>
+        parseAction(jobName, ViewDefExtrasUtils.getSeq("action", jdata), opParser))
+    }
   }
 
   def jobDefOption(jobName: String): Option[JobDef] = nameToJobDef.get(jobName)
@@ -87,7 +87,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
           field.type_.name == viewDef.name + "_" + field.name // XXX
         }.map(_.type_.name)
       }.toSet
-    mojozViewDefs.map{ case (k, v) => (k, toAppViewDef(v, isInline = inlineViewDefNames.contains(v.name))) }.toMap
+    mojozViewDefs.transform { (_, v) => toAppViewDef(v, isInline = inlineViewDefNames.contains(v.name)) }
   }
   override def viewNameFromMf[T <: AnyRef](implicit mf: Manifest[T]): String =
     classToViewNameMap.getOrElse(mf.runtimeClass, mf.runtimeClass.getSimpleName)
@@ -413,12 +413,11 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val cp = getStringExtra(ConnectionPool, viewDef).orNull
     val explicitDb = getBooleanExtra(ExplicitDb, viewDef)
     val decodeRequest = getBooleanExtraOpt(DecodeRequest, viewDef).forall(identity)
-    def parseActions = Action().foldLeft(Map[String, Action]()) { (res, actionName) =>
-      val opParser = new OpParser(viewDef.name, tresqlUri)
+    val actions = Action().foldLeft(Map[String, Action]()) { (res, actionName) =>
+      val opParser = new OpParser(viewDef.name, tresqlUri, actionOpCache(viewDef.name))
       val a = parseAction(s"${viewDef.name}.$actionName", getSeq(actionName, viewDef.extras), opParser)
       if (a.steps.nonEmpty) res + (actionName -> a) else res
     }
-    val actions = actionCache.getOrElse(viewDef.name, parseActions)
 
     val extras =
       Option(viewDef.extras)
@@ -605,15 +604,10 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
   override protected def serializedCaches: Map[String, Array[Byte]] = {
     import io.bullet.borer._
-    import AppMetadata.Action.actionCodec
-    val actionData: Map[String, Map[String, Action]] = nameToViewDef.map {
-      case (vn, v) => (vn, v.actions)
-    }
     val joinData: Map[String, Map[String, Exp]] =
       joinsParser.asInstanceOf[TresqlJoinsParser].dbToCompilerAndCache.map {
         case (db, (_, c)) => Option(db).getOrElse("null") -> c.map(_.toMap).getOrElse(Map[String, Exp]())
       }
-    val serializedActions = Map(QuereaseActionCacheName -> Cbor.encode(actionData).toByteArray)
 
     import CacheIo.varCodec
     val serializedVars = Map(
@@ -621,7 +615,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
     import CacheIo.expCodec
     val serializedJoins = Map(JoinsCompilerCacheName -> Cbor.encode(joinData).toByteArray)
-    super.serializedCaches ++ serializedActions ++ serializedJoins ++ serializedVars
+    super.serializedCaches ++ OpParser.serializeOpCaches(actionOpCache) ++ serializedJoins ++ serializedVars
   }
 
   protected def createJoinsParserCache(db: String): Option[Cache] =
@@ -866,7 +860,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   override val parser: QuereaseExpressions.Parser = this.AppQuereaseDefaultParser
 }
 
-class OpParser(viewName: String, tresqlUri: TresqlUri)
+class OpParser(viewName: String, tresqlUri: TresqlUri, cache: OpParser.Cache)
   extends QueryParsers { self =>
   import AppMetadata.Action._
   import AppMetadata.Action
@@ -878,11 +872,13 @@ class OpParser(viewName: String, tresqlUri: TresqlUri)
   val ViewNameRegex = "(?U)\\w+".r
   val ConfPropRegex = """\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*(?:\.\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*+)*""".r
 
-  def parseOperation(op: String): Op = {
-    phrase(operation)(new scala.util.parsing.input.CharSequenceReader(op)) match {
+  def parseOperation(op: String): Op = cache.get(op).getOrElse {
+    val parsedOp = phrase(operation)(new scala.util.parsing.input.CharSequenceReader(op)) match {
       case Success(r, _) => r
       case x => sys.error(x.toString)
     }
+    cache.put(op, parsedOp)
+    parsedOp
   }
 
   def tresqlOp: MemParser[Tresql] = expr ^^ { e =>
@@ -993,6 +989,39 @@ class OpParser(viewName: String, tresqlUri: TresqlUri)
     } named "op-result-type"
   }
 }
+
+object OpParser extends Loggable {
+  class Cache(maxSize: Int) extends SimpleCacheBase[Action.Op](maxSize)
+
+  val QuereaseActionOpCacheName = "querease-action-op-cache.cbor"
+  def loadSerializedOpCaches(getResourceAsStream: String => InputStream): Map[String, Map[String, Action.Op]] = {
+    val res = getResourceAsStream(s"/$QuereaseActionOpCacheName")
+    if (res == null) {
+      logger.debug(s"No querease view action op cache resource - '/$QuereaseActionOpCacheName' found")
+      Map()
+    } else {
+      import io.bullet.borer._
+      import CacheIo.opCodec
+      val cache =
+        Cbor.decode(res).to[Map[String, Map[String, Action.Op]]].value
+      logger.debug(s"Querease action op cache loaded for ${cache.size} views.")
+      cache
+    }
+  }
+
+  def serializeOpCaches(caches: Map[String, Cache]): Map[String, Array[Byte]] = {
+    import io.bullet.borer._
+    import CacheIo.opCodec
+    val actionOpData: Map[String, Map[String, Action.Op]] = caches.transform { (_, c) => c.toMap }
+    Map(QuereaseActionOpCacheName -> Cbor.encode(actionOpData).toByteArray)
+  }
+
+  def createOpParserCache(initData: Map[String, Action.Op], maxSize: Int): Cache = {
+    val c = new Cache(maxSize)
+    c.load(initData)
+    c
+  }
+}
 object AppMetadata extends Loggable {
 
   case class AuthFilters(
@@ -1068,22 +1097,6 @@ object AppMetadata extends Loggable {
     val OffsetKey = "offset"
     val LimitKey  = "limit"
     val OrderKey  = "sort"
-
-    val QuereaseActionCacheName = "querease-action-cache.cbor"
-    def loadActionCache(getResourceAsStream: String => InputStream): Map[String, Map[String, Action]] = {
-      val res = getResourceAsStream(s"/$QuereaseActionCacheName")
-      if (res == null) {
-        logger.debug(s"No querease view action cache resource - '/$QuereaseActionCacheName' found")
-        Map()
-      } else {
-        import io.bullet.borer._
-        import AppMetadata.Action.actionCodec
-        val cache =
-          Cbor.decode(res).to[Map[String, Map[String, Action]]].value
-        logger.debug(s"Querease action cache loaded for ${cache.size} views.")
-        cache
-      }
-    }
 
     object ConfTypes {
       def types: Set[ConfType] = Set(NumberConf, StringConf, BooleanConf)
@@ -1291,20 +1304,6 @@ object AppMetadata extends Loggable {
         }
         stepTraverser(opTresqlTrav)(state => extractor(state) orElse traverse(state))
       }
-    }
-
-    implicit def actionCodec: Codec[Action] = {
-      import io.bullet.borer.derivation.MapBasedCodecs._
-      implicit val dbAccessKeyCodec = deriveCodec[DbAccessKey]
-      implicit val varTransformCodec = deriveCodec[VariableTransform]
-      implicit val opResultTypeCodec = deriveCodec[OpResultType]
-      implicit val trUriCodec = deriveAllCodecs[TresqlUri.TrUri]
-      implicit val confTypeCodec = deriveAllCodecs[ConfType]
-      // for codecs below must specify type explicitly for derive macro to work
-      implicit lazy val opCodec: Codec[Op] = deriveAllCodecs[Op]
-      implicit lazy val stepCodec: Codec[Step] = deriveAllCodecs[Step]
-      implicit lazy val actionCodec: Codec[Action] = deriveCodec[Action]
-      actionCodec
     }
   }
 

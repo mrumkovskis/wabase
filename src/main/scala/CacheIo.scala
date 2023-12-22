@@ -6,6 +6,8 @@ import io.bullet.borer.Codec
 import org.tresql.ast._
 import org.tresql.metadata.{Par, Procedure, ReturnType}
 import CompilerAst._
+import org.wabase.AppMetadata.Action.{ConfType, Op, OpResultType, Step, VariableTransform}
+import org.wabase.AppMetadata.{Action, DbAccessKey}
 
 object CacheIo {
   implicit      val tableColDefCodec:   Codec[TableColDef]    = deriveCodec    [TableColDef]
@@ -47,4 +49,14 @@ object CacheIo {
   )
   implicit lazy val expCodec:           Codec[Exp]            = deriveAllCodecs[Exp]
   implicit lazy val varCodec:           Codec[Variable]       = deriveCodec    [Variable]
+
+  implicit val dbAccessKeyCodec: Codec[DbAccessKey] = deriveCodec[DbAccessKey]
+  implicit val varTransformCodec: Codec[VariableTransform] = deriveCodec[VariableTransform]
+  implicit val opResultTypeCodec: Codec[OpResultType] = deriveCodec[OpResultType]
+  implicit val trUriCodec: Codec[TresqlUri.TrUri] = deriveAllCodecs[TresqlUri.TrUri]
+  implicit val confTypeCodec: Codec[ConfType] = deriveAllCodecs[ConfType]
+  // for codecs below must specify type explicitly for derive macro to work
+  implicit lazy val opCodec: Codec[Op] = deriveAllCodecs[Op]
+  implicit lazy val stepCodec: Codec[Step] = deriveAllCodecs[Step]
+  implicit lazy val actionCodec: Codec[Action] = deriveCodec[Action]
 }

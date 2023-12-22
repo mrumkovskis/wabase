@@ -122,7 +122,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
 
   it should "correctly encode, decode action data" in {
     import io.bullet.borer._
-    import AppMetadata.Action.actionCodec
+    import CacheIo.actionCodec
     val actionData: Map[(String, String), AppMetadata.Action] =
       querease.nameToViewDef.flatMap { case (vn, vd) =>
         vd.actions.map { case (n, a) => ((n, vn), a) }.toList

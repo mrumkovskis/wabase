@@ -13,37 +13,39 @@ object YamlJobDefLoader {
   private def isJobDef(d: YamlMd) = jobDefPattern.findFirstIn(d.body).isDefined
 }
 
-class YamlJobDefLoader(yamlMd: Seq[YamlMd], parseAction: Map[String, Any] => Action) {
+class YamlJobDefLoader(yamlMd: Seq[YamlMd]) {
   val sources = yamlMd.filter(YamlJobDefLoader.isJobDef)
-  val jobDefs = {
-    val rawJobDefs = sources map { jd =>
-      try loadYamlJobDef(jd.body, jd.filename, jd.line) catch {
+  val rawJobDefs: Map[String, Map[String, Any]] = {
+    def loadYamlRawJobDef(jobDefString: String, labelOrFilename: String = null, lineNumber: Int = 0) = {
+      val loaderSettings = LoadSettings.builder()
+        .setLabel(Option(labelOrFilename) getOrElse "wabase job metadata")
+        .setAllowDuplicateKeys(false)
+        .build();
+      val lineNumberCorrection = if (lineNumber > 1) "\n" * (lineNumber - 1) else ""
+      val jdMap =
+        (new Load(loaderSettings)).loadFromString(lineNumberCorrection + jobDefString) match {
+          case m: java.util.Map[String @unchecked, _] => m.asScala.toMap
+          case x => sys.error(
+            "Unexpected class: " + Option(x).map(_.getClass).orNull)
+        }
+      val jobName:      String  = jdMap.get("job").map(_.toString).getOrElse(sys.error("Missing job name"))
+      jobName -> jdMap
+    }
+    val jds = sources map { jd =>
+      try loadYamlRawJobDef(jd.body, jd.filename, jd.line) catch {
         case e: Exception => throw new RuntimeException(
           s"Failed to load job definition from ${jd.filename}, line ${jd.line}", e)
       }
     }
-    val duplicateNames = rawJobDefs.map(_.name).groupBy(n => n).filter(_._2.size > 1).map(_._1)
-    if (duplicateNames.size > 0)
-      sys.error("Duplicate job definitions: " + duplicateNames.mkString(", "))
-    rawJobDefs
+    val duplicateNames = jds.map(_._1).groupBy(identity).filter(_._2.size > 1).keys
+    require(duplicateNames.isEmpty, "Duplicate job definitions: " + duplicateNames.mkString(", "))
+    jds.toMap
   }
-  private def loadYamlJobDef(jobDefString: String, labelOrFilename: String = null, lineNumber: Int = 0) = {
-    val loaderSettings = LoadSettings.builder()
-      .setLabel(Option(labelOrFilename) getOrElse "wabase job metadata")
-      .setAllowDuplicateKeys(false)
-      .build();
-    val lineNumberCorrection = if (lineNumber > 1) "\n" * (lineNumber - 1) else ""
-    val jdMap =
-      (new Load(loaderSettings)).loadFromString(lineNumberCorrection + jobDefString) match {
-        case m: java.util.Map[String @unchecked, _] => m.asScala.toMap
-        case x => sys.error(
-          "Unexpected class: " + Option(x).map(_.getClass).orNull)
-      }
-    val jobName:      String  = jdMap.get("job").map(_.toString).getOrElse(sys.error("Missing job name"))
-    val steps:        Action  = parseAction(jdMap)
-    val db:           String  = jdMap.get("db").map(_.toString).orNull
-    val explicitDb:   Boolean = jdMap.get("explicit db").map(_.toString.toBoolean).getOrElse(false)
+  def toJobDef(name: String, jdMap: Map[String, Any], parseAction: Map[String, Any] => Action): JobDef = {
+    val steps: Action = parseAction(jdMap)
+    val db: String = jdMap.get("db").map(_.toString).orNull
+    val explicitDb: Boolean = jdMap.get("explicit db").exists(_.toString.toBoolean)
     val dbAccessKeys: Seq[DbAccessKey] = Nil
-    JobDef(jobName, steps, db, explicitDb, dbAccessKeys)
+    JobDef(name, steps, db, explicitDb, dbAccessKeys)
   }
 }
