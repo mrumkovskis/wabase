@@ -629,39 +629,6 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   protected def createJoinsParserCache(db: String): Option[Cache] =
     joinsParserCacheFactory(joinsParserCache, tresqlParserCacheSize)(db)
 
-  protected def extractViewVariables(
-    viewDefs: Map[String, ViewDef],
-    jobDefs: Map[String, JobDef]
-  )(action: String, viewName: String): Seq[ast.Variable] = {
-    import Action._
-    import TresqlExtraction._
-    lazy val opTresqlTrav: OpTresqlTraverser[(Seq[ast.Variable], Set[String])] =
-      opTresqlTraverser(opTresqlTrav, stepTresqlTrav)(_ => PartialFunction.empty)
-
-    lazy val stepTresqlTrav: StepTresqlTraverser[(Seq[ast.Variable], Set[String])] =
-      stepTresqlTraverser(opTresqlTrav) { state =>
-        def trav = opTresqlTrav(state)
-        def us(st: Step, s: State[(Seq[ast.Variable], Set[String])]) = { st.name
-          .map(n => s.copy(value = s.value._1 -> (s.value._2 + n)))
-          .getOrElse(s)
-        }
-        {
-          case s: Evaluation => us(s, trav(s.op))
-          case s: SetEnv => us(s, trav(s.value))
-          case s: Return => us(s, trav(s.value))
-        }
-      }
-
-    val state = State[(Seq[ast.Variable], Set[String])](action, viewName, viewDefs, jobDefs, parser,
-      tresqlExtractor = vars => parser.variableExtractor(vars._1.toList)
-        .andThen(vs => vs.filterNot(v => vars._2(v.variable)) -> vars._2),
-      viewExtractor = vars => vd => vars, // TODO extract variables from view, move AppBase.filterParams function here?
-      jobExtractor = vars => _ => vars,
-      processed = Set(), value = (Nil, Set())
-    )
-    processView(stepTresqlTrav)(state).value._1.distinct
-  }
-
   private def resolveDbAccessKeys(
     action: String, name: String,
     viewDefs: Map[String, ViewDef], jobDefs: Map[String, JobDef],
@@ -675,7 +642,6 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
         case Validations(_, _, dbkey) => state.copy(value = state.value ++ dbkey.toList)
       })
 
-    val dbExtractor = parser.dbExtractor(Nil)
     val state = State[Seq[DbAccessKey]](action, name, viewDefs, jobDefs, parser,
       tresqlExtractor = dbKeys => parser.dbExtractor(dbKeys.toList.map(_.db)).andThen(_.map(DbAccessKey(_, null))),
       viewExtractor = dbkeys => vd =>
