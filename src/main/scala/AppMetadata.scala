@@ -538,7 +538,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
             db.flatMap(k => Option(k.db)).map("|" + _ + ":" + valStr)
               .orElse(Option(valStr))
               .map { tresql =>
-                st.copy(value = st.tresqlExtractor(st.value)(tresql))
+                st.copy(value = st.tresqlExtractor(st.value)(Action.Tresql(tresql)))
               }
           }.getOrElse(st)
       })
@@ -555,16 +555,17 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       State[scala.collection.mutable.Set[String]](
         a, n, Map(), Map(),
         tresqlExtractor = cq => tresql => {
-          if (!cq.contains(tresql)) {
-            try compiler.compile(compiler.parseExp(tresql)) catch {
+          val tresqlString = tresql.tresql
+          if (!cq.contains(tresqlString)) {
+            try compiler.compile(compiler.parseExp(tresqlString)) catch {
               case NonFatal(ex) =>
                 val msg = s"\nFailed to compile viewdef ${n} action $a: ${ex.getMessage}" +
-                  (if (showFailedViewQuery) s"\n$tresql" else "")
+                  (if (showFailedViewQuery) s"\n$tresqlString" else "")
                 throw new RuntimeException(msg, ex)
             }
             compiledTresqlCount += 1
           }
-          cq += tresql
+          cq += tresqlString
         },
         viewExtractor = v => _ => v,
         jobExtractor = v => _ => v,
@@ -635,9 +636,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       })
 
     val state = State[Seq[DbAccessKey]](action, name, viewDefs, jobDefs,
-      tresqlExtractor = dbKeys => tresql =>
-        parser.traverser(parser.dbExtractor)(dbKeys.toList.map(_.db))
-          .andThen(_.map(DbAccessKey(_, null)))(parser.parseExp(tresql)),
+      tresqlExtractor = dbKeys => tresql => dbKeys ++ tresql.dbs.map(DbAccessKey(_, null)),
       viewExtractor = dbkeys => vd =>
         dbkeys ++ (if (vd.db != null || vd.cp != null) Seq(DbAccessKey(vd.db, vd.cp)) else Nil),
       jobExtractor = dbkeys => jd =>
@@ -887,7 +886,8 @@ class OpParser(viewName: String, tresqlUri: TresqlUri, cache: OpParser.Cache)
         (o@ast.Obj(ast.Ident("this" :: Nil), _, _, _, _)) :: tail, false, None, None
       ) => f.copy(parameters = o.copy(obj = ast.Ident(viewName :: Nil)) :: tail)
     }(e)
-    Tresql(te.tresql)
+    val dbs = traverser(dbExtractor)(Nil)(e)
+    Tresql(te.tresql, dbs)
   } named "tresql-op"
   def viewOp: MemParser[ViewCall] = ActionRegex ~ ViewNameRegex ~ opt(operation) ^^ {
     case action ~ view ~ op =>
@@ -899,12 +899,12 @@ class OpParser(viewName: String, tresqlUri: TresqlUri, cache: OpParser.Cache)
       val idx = res.lastIndexOf('.')
       Action.Invocation(res.substring(0, idx), res.substring(idx + 1), arg.orNull, rt)
   } named "invocation-op"
-  def fileOp: MemParser[File] = opt(opResultType) ~ ("file" ~> expr) ^^ {
-    case conformTo ~ e => File(e.tresql, conformTo)
+  def fileOp: MemParser[File] = opt(opResultType) ~ ("file" ~> tresqlOp) ^^ {
+    case conformTo ~ e => File(e, conformTo)
   } named "file-op"
-  def toFileOp: MemParser[ToFile] = "to file" ~> operation ~ opt(expr) ~ opt(expr) ^^ {
+  def toFileOp: MemParser[ToFile] = "to file" ~> operation ~ opt(tresqlOp) ~ opt(tresqlOp) ^^ {
     case op ~ fileName ~ contentType =>
-      ToFile(op, fileName.map(_.tresql).orNull, contentType.map(_.tresql).orNull)
+      ToFile(op, fileName.orNull, contentType.orNull)
   } named "to-file-op"
   def templateOp: MemParser[Template] = {
     val Data = "data"
@@ -912,32 +912,31 @@ class OpParser(viewName: String, tresqlUri: TresqlUri, cache: OpParser.Cache)
     val args = Set(Data, Filename)
     def findArg(name: String, idx: Int, l: List[(String, Op)]) =
       l.find(_._1 == name).orElse(l.lift(idx).filter(_._1 == null)).map(_._2)
-    "template" ~> expr ~ namedOps(args) ^^ {
+    "template" ~> tresqlOp ~ namedOps(args) ^^ {
       case templ ~ args =>
-        val templTresql = templ.tresql
         args match {
-          case Nil => Template(templTresql, null, null)
+          case Nil => Template(templ, null, null)
           case l =>
             val dataOp = findArg(Data, 0, l)
             val filename = findArg(Filename, 1, l).map(_.asInstanceOf[Tresql])
-            Template(templTresql, dataOp.orNull, filename.map(_.tresql).orNull)
+            Template(templ, dataOp.orNull, filename.orNull)
         }
     } named "template-op"
   }
-  def emailOp: MemParser[Email] = "email" ~> expr ~ operation ~ operation ~ rep(operation) ^^ {
-    case data ~ subj ~ body ~ att => Email(data.tresql, subj, body, att)
+  def emailOp: MemParser[Email] = "email" ~> tresqlOp ~ operation ~ operation ~ rep(operation) ^^ {
+    case data ~ subj ~ body ~ att => Email(data, subj, body, att)
   } named "email-op"
   def httpOp: MemParser[Http] = {
     def tu(uri: Exp) = tresqlUri.parse(uri)(self)
     def http_get_delete: MemParser[Http] =
-      "http" ~> opt("get" | "delete") ~ bracesTresql ~ opt(expr) ^^ {
+      "http" ~> opt("get" | "delete") ~ bracesTresql ~ opt(tresqlOp) ^^ {
         case method ~ uri ~ headers =>
-          Http(method.getOrElse("get"), tu(uri), headers.map(_.tresql).orNull, null)
+          Http(method.getOrElse("get"), tu(uri), headers.orNull, null)
       } named "http-get-delete-op"
     def http_post_put: MemParser[Http] =
-      "http" ~> ("post" | "put") ~ bracesTresql ~ operation ~ opt(expr) ^^ {
+      "http" ~> ("post" | "put") ~ bracesTresql ~ operation ~ opt(tresqlOp) ^^ {
         case method ~ uri ~ op ~ headers =>
-          Http(method, tu(uri), headers.map(_.tresql).orNull, op )
+          Http(method, tu(uri), headers.orNull, op)
       } named "http-post-put-op"
     opt(opResultType) ~ (http_post_put | http_get_delete) ^^ {
       case conformTo ~ http => http.copy(conformTo = conformTo)
@@ -1120,7 +1119,7 @@ object AppMetadata extends Loggable {
     case class VariableTransform(form: String, to: Option[String] = None)
     case class OpResultType(viewName: String = null, isCollection: Boolean = false)
 
-    case class Tresql(tresql: String) extends Op
+    case class Tresql(tresql: String, dbs: List[String] = Nil) extends Op
     case class ViewCall(method: String, view: String, data: Op = null) extends Op
     case class RedirectToKey(name: String) extends Op
     case class UniqueOpt(innerOp: Op) extends Op
@@ -1132,13 +1131,13 @@ object AppMetadata extends Loggable {
     case class VariableTransforms(transforms: List[VariableTransform]) extends Op
     case class Foreach(initOp: Op, action: Action) extends Op
     case class If(cond: Op, action: Action, elseAct: Action = null) extends Op
-    case class File(idShaTresql: String, conformTo: Option[OpResultType] = None) extends Op
-    case class ToFile(contentOp: Op, nameTresql: String = null, contentTypeTresql: String = null) extends Op
-    case class Template(templateTresql: String, dataOp: Op = null, filenameTresql: String = null) extends Op
-    case class Email(emailTresql: String, subject: Op, body: Op, attachmentsOp: List[Op] = Nil) extends Op
+    case class File(idShaTresql: Tresql, conformTo: Option[OpResultType] = None) extends Op
+    case class ToFile(contentOp: Op, nameTresql: Tresql = null, contentTypeTresql: Tresql = null) extends Op
+    case class Template(templateTresql: Tresql, dataOp: Op = null, filenameTresql: Tresql = null) extends Op
+    case class Email(emailTresql: Tresql, subject: Op, body: Op, attachmentsOp: List[Op] = Nil) extends Op
     case class Http(method: String,
                     uriTresql: TresqlUri.TrUri,
-                    headerTresql: String = null,
+                    headerTresql: Tresql = null,
                     body: Op = null,
                     conformTo: Option[OpResultType] = None) extends Op
     case class HttpHeader(name: String) extends Op
@@ -1200,7 +1199,7 @@ object AppMetadata extends Loggable {
     object TresqlExtraction {
       type ViewExtractor[T] = T => ViewDef => T
       type JobExtractor[T] = T => JobDef => T
-      type TresqlExtractor[T] = T => String => T
+      type TresqlExtractor[T] = T => Tresql => T
       type StepTresqlTraverser[T] = StepTraverser[State[T]]
       type OpTresqlTraverser[T] = OpTraverser[State[T]]
 
@@ -1247,14 +1246,15 @@ object AppMetadata extends Loggable {
         stepTresqlTrav: => StepTresqlTraverser[T])(extractor: OpTresqlTraverser[T]):
           OpTresqlTraverser[T] = {
         def traverse(state: State[T]): PartialFunction[Op, State[T]]= {
-          val nv: T => String => T = v => t => Option(t).map(state.tresqlExtractor(v)(_)).getOrElse(v)
+          val nv: T => Tresql => T = v => t => Option(t).map(state.tresqlExtractor(v)(_)).getOrElse(v)
           def opTrTr = opTresqlTrav(state)
           def us(s: State[T], v: T) = {
             s.copy(value = v)
           }
           {
-            case Tresql(tresql) => us(state, nv(state.value)(tresql))
-            case Status(_, bodyTresql, _) => us(state, nv(state.value)(bodyTresql))
+            case t: Tresql => us(state, nv(state.value)(t))
+            case Status(_, bodyTresql, _) =>
+              if (bodyTresql == null) state else us(state, nv(state.value)(Tresql(bodyTresql)))
             case File(idShaTresql, _) => us(state, nv(state.value)(idShaTresql))
             case ToFile(contentOp, nameTresql, contentTypeTresql) =>
               val s1 = opTrTr(contentOp)
@@ -1270,9 +1270,9 @@ object AppMetadata extends Loggable {
                 )(s))(b)
               )(opTresqlTrav(_)(_))
             case Http(_, uriTresql, headerTresql, body, _) =>
-              def tresqlUriTresql(trUri: TresqlUri.TrUri): String = trUri match {
-                case p: TresqlUri.PrimitiveTresql => p.origin
-                case t: TresqlUri.Tresql => t.uriTresql
+              def tresqlUriTresql(trUri: TresqlUri.TrUri): Tresql = trUri match {
+                case p: TresqlUri.PrimitiveTresql => Tresql(p.origin)
+                case t: TresqlUri.Tresql => Tresql(t.uriTresql)
               }
               val s1 = us(state, nv(state.value)(tresqlUriTresql(uriTresql)))
               val s2 = us(s1, nv(s1.value)(headerTresql))
@@ -1282,7 +1282,7 @@ object AppMetadata extends Loggable {
               val ns = opTrTr(data)
               processView(stepTresqlTrav)(ns.copy(action = method, name = vn))
             case Job(nameTresql, isDynamic) =>
-              val s = us(state, nv(state.value)(nameTresql))
+              val s = us(state, nv(state.value)(Tresql(nameTresql)))
               if (isDynamic) s
               else processJob(stepTresqlTrav)(s.copy(action = "job", name = nameTresql))
             case Invocation(_, _, o, _) => opTrTr(o)
@@ -1297,7 +1297,7 @@ object AppMetadata extends Loggable {
           {
             case Validations(_, validations, _) =>
               val nv = validations.foldLeft(state.value) { (v, s) =>
-                state.tresqlExtractor(v)(s)
+                state.tresqlExtractor(v)(Tresql(s))
               }
               state.copy(value = nv)
           }

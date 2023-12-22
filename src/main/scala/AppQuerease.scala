@@ -929,7 +929,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     res: Resources,
     ec: ExecutionContext,
     fs: FileStreamer): Future[DataResult] = {
-    val (id, sha) = Query(op.idShaTresql)(res.withParams(data ++ env)).unique[Long, String]
+    val (id, sha) = Query(op.idShaTresql.tresql)(res.withParams(data ++ env)).unique[Long, String]
     val r = FileResult(fs.getFileInfo(id, sha).map(_.file_info).orNull, fs)
     Future.successful { op.conformTo.map(comp_res(r, _)).getOrElse(r) }
   }
@@ -950,7 +950,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     import akka.http.scaladsl.model.{MediaTypes, ContentType}
     import resFac._
     val bindVars = data ++ env
-    def getVal(tr: String) = Query(tr)(resources.withParams(bindVars)).unique[String]
+    def getVal(tr: Action.Tresql) = Query(tr.tresql)(resources.withParams(bindVars)).unique[String]
     val fn = if (op.nameTresql != null) getVal(op.nameTresql) else "file"
     val contentType =
       if (op.contentTypeTresql != null) {
@@ -980,7 +980,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   ): Future[TemplateResult] = {
     import resFac._
     val bindVars = data ++ env
-    val template = Query(op.templateTresql)(resources.withParams(bindVars)).unique[String]
+    val template = Query(op.templateTresql.tresql)(resources.withParams(bindVars)).unique[String]
     val resF =
       if (op.dataOp == null) {
         templateEngine(template, List(bindVars))
@@ -995,7 +995,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           }
       }
     Option(op.filenameTresql)
-      .map(Query(_)(resources.withParams(bindVars)).unique[String])
+      .map(t => Query(t.tresql)(resources.withParams(bindVars)).unique[String])
       .map { filename =>
         resF.map {
           case ft: FileTemplateResult => ft.copy(filename = filename)
@@ -1029,7 +1029,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     def s(v: Any): String = if (v == null) null else String.valueOf(v)
     import resFac._
     val bindVars = data ++ env
-    val count = Query(op.emailTresql)(resources.withParams(bindVars))
+    val count = Query(op.emailTresql.tresql)(resources.withParams(bindVars))
       .foldLeft(Future.successful(0)) { (c, row) =>
         val email = row.toMap
         val to = s(email.getOrElse("to", sys.error(s"Email to missing")))
@@ -1075,7 +1075,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     }
     val (optContentType, headers) = if (op.headerTresql == null) (Some(null) -> Nil) else {
       // content type is used for request body if present
-      val parsedValues = (Query(op.headerTresql, opData) match {
+      val parsedValues = (Query(op.headerTresql.tresql, opData) match {
         case SingleValueResult(r) => r match { // unwrap header values from list of maps
           case i: Iterable[_] => i.map {
             case m: Map[_, _] if m.size > 1 =>
@@ -1227,7 +1227,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   ): Future[QuereaseResult] = {
     import resFac._
     op match {
-      case Action.Tresql(tresql) => Future.successful(doTresql(tresql, data ++ env, context))
+      case Action.Tresql(tresql, _) => Future.successful(doTresql(tresql, data ++ env, context))
       case Action.ViewCall(method, view, viewOp) => doViewCall(method, view, viewOp, data, env, context)
       case op: Action.UniqueOpt => doUniqueOpt(op, data, env, context)
       case inv: Action.Invocation => doInvocation(inv, data, env, context)
