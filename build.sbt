@@ -46,7 +46,7 @@ lazy val wabase = (project in file("."))
       "com.typesafe.akka"          %% "akka-stream"           % akkaV                 cross CrossVersion.for3Use2_13,
       "com.typesafe.scala-logging" %% "scala-logging"         % "3.9.5",
       "com.typesafe"               %% "ssl-config-core"       % "0.6.1"               cross CrossVersion.for3Use2_13,
-      "com.zaxxer"                  % "HikariCP"              % "4.0.3",
+      "com.zaxxer"                  % "HikariCP"              % "5.1.0",
       "ch.qos.logback"              % "logback-classic"       % "1.3.5",
       "org.mojoz"                  %% "mojoz"                 % mojozV,
       "org.mojoz"                  %% "querease"              % quereaseV,
