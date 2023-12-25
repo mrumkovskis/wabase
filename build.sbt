@@ -50,7 +50,7 @@ lazy val wabase = (project in file("."))
       "ch.qos.logback"              % "logback-classic"       % "1.4.14",
       "org.mojoz"                  %% "mojoz"                 % mojozV,
       "org.mojoz"                  %% "querease"              % quereaseV,
-      "commons-validator"           % "commons-validator"     % "1.7",
+      "commons-validator"           % "commons-validator"     % "1.8.0",
       "commons-codec"               % "commons-codec"         % "1.15",
       "org.postgresql"              % "postgresql"            % "42.6.0",
       "com.lambdaworks"             % "scrypt"                % "1.4.0",
