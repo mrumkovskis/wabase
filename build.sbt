@@ -64,7 +64,7 @@ lazy val wabase = (project in file("."))
       "com.typesafe.akka"          %% "akka-http-testkit"     % akkaHttpV % "it,test" cross CrossVersion.for3Use2_13,
       "com.typesafe.akka"          %% "akka-testkit"          % akkaV     % "it,test" cross CrossVersion.for3Use2_13,
       "com.typesafe.akka"          %% "akka-stream-testkit"   % akkaV     % "it,test" cross CrossVersion.for3Use2_13,
-      "org.hsqldb"                  % "hsqldb"                % "2.7.1"   %    "test" classifier "jdk8",
+      "org.hsqldb"                  % "hsqldb"                % "2.7.2"   %    "test",
       "com.vladsch.flexmark"        % "flexmark-all"          % "0.62.2"  % "it,test",
     )
   },
