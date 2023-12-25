@@ -145,6 +145,9 @@ trait RestClient extends Loggable{
     else if (!uri.startsWith("/") && !serverPath.endsWith("/")) serverPath + "/" + uri
     else serverPath + uri
 
+  def doRequest(req: HttpRequest): Future[HttpResponse] =
+    doRequest(req, new CookieMap, requestTimeout)
+
   protected def doRequest(req: HttpRequest, cookieStorage: CookieMap, timeout: FiniteDuration, maxRedirects: Int = 20): Future[HttpResponse] = {
     val request = req.withHeaders(req.headers ++ cookieStorage.getCookies)
     logger.debug(s"HTTP ${request.method.value} ${request.uri}")

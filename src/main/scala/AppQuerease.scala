@@ -1109,7 +1109,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           reqWithoutBody.withEntity(clo.map(HttpEntity(ct, _, src)).getOrElse(HttpEntity(ct, src)))
       }
     }
-    doHttpRequest(reqF)
+    reqF
+      .flatMap(doHttpRequest)
       .map(HttpResult)
       .map { r => op.conformTo.map(comp_res(r, _)).getOrElse(r) }
   }
@@ -1352,8 +1353,11 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     }
   }
 
-  protected def doHttpRequest(reqF: Future[HttpRequest])(implicit as: ActorSystem): Future[HttpResponse] = {
-    reqF.flatMap(req => akka.http.scaladsl.Http().singleRequest(req))(as.dispatcher)
+  protected lazy val doHttpRequest: HttpRequest => Future[HttpResponse] = {
+    val httpClient =
+      new org.wabase.client.RestClient {
+      }
+    httpClient.doRequest _
   }
 
   private def renderedSource(serializedSource: Source[ByteString, _],

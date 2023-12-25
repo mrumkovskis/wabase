@@ -89,10 +89,8 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     querease = new TestQuerease("/querease-action-specs-metadata.yaml") {
       override lazy val viewNameToClassMap = QuereaseActionsDtos.viewNameToClass ++ WabaseActionDtos.viewNameToClass
 
-      override def doHttpRequest(reqF: Future[HttpRequest])(implicit as: ActorSystem): Future[HttpResponse] =
-        reqF.flatMap { req =>
-          Route.toFunction(service.route)(as)(req)
-        }
+      override protected lazy val doHttpRequest: HttpRequest => Future[HttpResponse] =
+        Route.toFunction(service.route)(service.system)(_)
 
       override lazy val macrosClass: Class[_] = classOf[Macros]
 
