@@ -39,7 +39,7 @@ lazy val wabase = (project in file("."))
       case v if v startsWith "3"    => "1.10.3"
     }
     Seq(
-      "com.samskivert"              % "jmustache"             % "1.15",
+      "com.samskivert"              % "jmustache"             % "1.16",
       "com.typesafe.akka"          %% "akka-actor"            % akkaV                 cross CrossVersion.for3Use2_13,
       "com.typesafe.akka"          %% "akka-http-spray-json"  % akkaHttpV             cross CrossVersion.for3Use2_13,
       "com.typesafe.akka"          %% "akka-slf4j"            % akkaV                 cross CrossVersion.for3Use2_13,
