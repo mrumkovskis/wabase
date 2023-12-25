@@ -51,7 +51,8 @@ trait TemplateUtil { this: client.WabaseHttpClient =>
     def sd(param: String, defaultValue: String) = map.getOrElse(param, defaultValue).asInstanceOf[String]
   }
 
-  def pojoFromTemplate[T <: Dto](viewClass: Class[T], fileName: String) = viewClass.getConstructor().newInstance().fill(readPojoMap(new File(resourcePath + fileName), getTemplatePath).toJson.asJsObject)
+  def pojoFromTemplate[T <: Dto](viewClass: Class[T], fileName: String) =
+    viewClass.getConstructor().newInstance().fill(readPojoMap(new File(resourcePath + fileName), getTemplatePath).toJson.asJsObject)
   def readFileBytes(fileName: String): Array[Byte] = Files.readAllBytes(Paths.get(fileName))
 
   def mergeTemplate(template : MapTemplate, extras: MapTemplate): MapTemplate = template.zipWithMap(extras, nullObject = NotDefined) map {

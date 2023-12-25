@@ -486,7 +486,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     case "queries" =>
       log(s"Compiling $category - ${viewNamesAndQueriesToCompile.size} total")
       val startTime = System.currentTimeMillis
-      val scalaMacros: Any = Option(tresqlMetadata.macrosClass).map(_.newInstance()).orNull
+      val scalaMacros: Any = Option(tresqlMetadata.macrosClass).map(_.getDeclaredConstructor().newInstance()).orNull
       val macroResources = new MacroResourcesImpl(scalaMacros, tresqlMetadata)
       val compiler = new QueryParser(macroResources, new SimpleCache(4096)) with org.tresql.compiling.Compiler {
         override val metadata = tresqlMetadata
@@ -550,7 +550,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       override val metadata = tresqlMetadata
       override val extraMetadata = tresqlMetadata.extraDbToMetadata
       override protected val macros =
-        new MacroResourcesImpl(Option(macrosClass).map(_.newInstance()).orNull, tresqlMetadata)
+        new MacroResourcesImpl(Option(macrosClass).map(_.getDeclaredConstructor().newInstance()).orNull, tresqlMetadata)
     }
     val compiledQueries = scala.collection.mutable.Set(quereaseCompiledQueries.toSeq: _*)
     var compiledActionCount = 0

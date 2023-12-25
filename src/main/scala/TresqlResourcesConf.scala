@@ -57,7 +57,7 @@ object TresqlResourcesConf {
   def tresqlResourcesConf(dbName: String, tresqlConf: Config): TresqlResourcesConf = {
     val tresqlConfInstance =
       if (tresqlConf.hasPath("config-class"))
-        Class.forName(tresqlConf.getString("config-class")).newInstance().asInstanceOf[TresqlResourcesConf]
+        Class.forName(tresqlConf.getString("config-class")).getDeclaredConstructor().newInstance().asInstanceOf[TresqlResourcesConf]
       else new TresqlResourcesConf {}
 
     val tresqlConfFromConfig =
@@ -153,7 +153,7 @@ object TresqlResourcesConf {
     ): ResourcesTemplate = {
       val wabaseConf = org.wabase.config
       val macros =
-        if (conf.macrosClass != null) conf.macrosClass.newInstance()
+        if (conf.macrosClass != null) conf.macrosClass.getDeclaredConstructor().newInstance()
         else Macros
       val dialect: Dialect = {
         def vendor_dialect(db: String): Dialect = dbToVendor(db) match {
