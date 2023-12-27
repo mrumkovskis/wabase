@@ -160,6 +160,10 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
           newValues ++= v
           c
         case s: String => mapString(s)
+        case b: Boolean => b
+        case d: Double => d
+        case i: Int => i
+        case l: Long => l
       }
       case m: Map[String, _] @unchecked =>
         val (v, c) = applyContext(m, context)
