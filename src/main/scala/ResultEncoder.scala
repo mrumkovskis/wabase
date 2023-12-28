@@ -571,16 +571,28 @@ class OdsResultRenderer(zos: ZipOutputStream, worksheetName: String = "data") ex
 
 class XlsXmlResultRenderer(writer: io.Writer, worksheetName: String = "data") extends TableResultRenderer {
   import org.wabase.spreadsheet.xlsxml._
-  val headerStyle = Style("header", null, Font.BOLD)
+  val headerStyle   = Style("header", null, Font.BOLD)
+  val dateStyle     = Style("sd",     NumberFormat.DATE_YMD, null)
+  val dateTimeStyle = Style("sdt",    NumberFormat.DATE_TIME_HMS_MS, null)
+  lazy val styles: Seq[Style] = Seq(headerStyle, dateStyle, dateTimeStyle)
+  def cellStyle(value: Any) = value match {
+    case d: java.time.LocalDate     => dateStyle
+    case d: java.time.LocalDateTime => dateTimeStyle
+    case d: java.sql.Timestamp      => dateTimeStyle
+    case d: java.sql.Date           => dateStyle
+    case d: java.time.Instant       => dateTimeStyle
+    case d: java.util.Date          => dateTimeStyle
+    case _                          => null
+  }
   val streamer = new XlsXmlStreamer(writer)
   override def renderHeader() = {
-    streamer.startWorkbook(Seq(headerStyle))
+    streamer.startWorkbook(styles)
     streamer.startWorksheet(worksheetName)
     streamer.startTable
   }
   override def renderRowStart()             = streamer.startRow
   override def renderHeaderCell(value: Any) = streamer.cell(value, headerStyle)
-  override def renderCell(value: Any)       = streamer.cell(value)
+  override def renderCell(value: Any)       = streamer.cell(value, cellStyle(value))
   override def renderRowEnd()               = streamer.endRow
   override def renderFooter() = {
     streamer.endTable
