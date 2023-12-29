@@ -128,7 +128,7 @@ trait WabaseTemplateRenderer {
 /**
  * See http://mustache.github.io/mustache.5.html
  * */
-class SimpleTemplateRenderer extends WabaseTemplateRenderer {
+class MustacheTemplateRenderer extends WabaseTemplateRenderer {
   import WabaseTemplate._
   def apply(templateName: String, template: Array[Byte], data: Iterable[_]): Future[TemplateResult] = {
     val templateString = new String(template, "UTF-8")
