@@ -4,7 +4,9 @@ import akka.actor.ActorSystem
 import akka.stream.scaladsl.{FileIO, StreamConverters}
 import akka.util.ByteString
 import com.samskivert.mustache.Mustache
+import org.xhtmlrenderer.pdf.{ITextOutputDevice, ITextRenderer, ITextUserAgent}
 
+import java.io.{ByteArrayOutputStream, InputStream, OutputStream}
 import java.nio.file.FileSystems
 import scala.concurrent.{ExecutionContext, Future}
 import scala.jdk.CollectionConverters._
@@ -130,7 +132,12 @@ trait WabaseTemplateRenderer {
  * */
 class MustacheTemplateRenderer extends WabaseTemplateRenderer {
   import WabaseTemplate._
-  def apply(templateName: String, template: Array[Byte], data: Iterable[_]): Future[TemplateResult] = {
+  override def apply(templateName: String, template: Array[Byte], data: Iterable[_]): Future[TemplateResult] = {
+    Future.successful(StringTemplateResult(
+      render(templateName, template, data)
+    ))
+  }
+  def render(templateName: String, template: Array[Byte], data: Iterable[_]): String = {
     val templateString = new String(template, "UTF-8")
     val context = mapToJavaMap(data match {
       case m: Map[String@unchecked, _]      => m
@@ -139,16 +146,58 @@ class MustacheTemplateRenderer extends WabaseTemplateRenderer {
         val className = Option(x).map(_.getClass.getName).orNull
         sys.error(s"Unexpected template data class: $className. Expecting Map[String, _] or Seq[_]")
     })
-    Future.successful(StringTemplateResult(
-      try {
-        Mustache.compiler()
-          .nullValue("")
-          .compile(templateString) // TODO CACHE???
-          .execute(context)
-      } catch {
-        case util.control.NonFatal(ex) =>
-          throw new RuntimeException(s"Failed to render template '$templateString' with values $data", ex)
+    try {
+      Mustache.compiler()
+        .nullValue("")
+        .compile(templateString) // TODO CACHE???
+        .execute(context)
+    } catch {
+      case util.control.NonFatal(ex) =>
+        throw new RuntimeException(s"Failed to render template '$templateString' with values $data", ex)
+    }
+  }
+}
+
+class MustacheAndPdfTemplateRenderer extends MustacheTemplateRenderer {
+  override def apply(templateName: String, template: Array[Byte], data: Iterable[_]): Future[TemplateResult] = {
+    Future.successful {
+      val s = super.render(templateName, template, data)
+      if (templateName endsWith ".pdf") {
+        val baos = new ByteArrayOutputStream
+        PdfRenderer.render(s, baos)
+        FileTemplateResult(templateName, "application/pdf", baos.toByteArray)
+      } else {
+        StringTemplateResult(s)
       }
-    ))
+    }
+  }
+}
+
+object PdfRenderer {
+  class FontResourceLoader(outputDevice: ITextOutputDevice) extends ITextUserAgent(outputDevice) {
+    override def resolveAndOpenStream(uri: String): InputStream = {
+      if  (uri != null && uri.contains("fonts/"))
+           getClass.getResourceAsStream(uri)
+      else super.resolveAndOpenStream(uri)
+    }
+  }
+
+  def render(htmlContent: String, outputStream: OutputStream) = {
+    val renderer = new ITextRenderer
+
+    val sharedContext = renderer.getSharedContext
+    sharedContext.setPrint(true)
+    sharedContext.setInteractive(false)
+    // Register custom ReplacedElementFactory implementation
+    sharedContext.getTextRenderer.setSmoothingThreshold(0)
+
+    // Register additional font
+    val fontResourceLoader = new FontResourceLoader(renderer.getOutputDevice)
+    fontResourceLoader.setSharedContext(renderer.getSharedContext)
+    renderer.getSharedContext.setUserAgentCallback(fontResourceLoader)
+
+    renderer.setDocumentFromString(htmlContent)
+    renderer.layout
+    renderer.createPDF(outputStream)
   }
 }
