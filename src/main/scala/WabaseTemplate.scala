@@ -10,7 +10,7 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.jdk.CollectionConverters._
 
 trait WabaseTemplate {
-  def apply(template: String, data: Seq[Map[String, Any]])(implicit
+  def apply(template: String, data: Iterable[_])(implicit
     ec: ExecutionContext,
     as: ActorSystem,
     fs: FileStreamer,
@@ -50,7 +50,7 @@ class DefaultWabaseTemplate extends WabaseTemplate {
     Class.forName(config.getString(propName)).getDeclaredConstructor().newInstance().asInstanceOf[T]
   }
 
-  override def apply(template: String, data: Seq[Map[String, Any]])(implicit
+  override def apply(template: String, data: Iterable[_])(implicit
     ec: ExecutionContext,
     as: ActorSystem,
     fs: FileStreamer
@@ -122,7 +122,7 @@ class DefaultWabaseTemplateLoader extends WabaseTemplateLoader {
 }
 
 trait WabaseTemplateRenderer {
-  def apply(templateName: String, template: Array[Byte], data: Seq[Map[String, Any]]): Future[TemplateResult]
+  def apply(templateName: String, template: Array[Byte], data: Iterable[_]): Future[TemplateResult]
 }
 
 /**
@@ -130,11 +130,15 @@ trait WabaseTemplateRenderer {
  * */
 class SimpleTemplateRenderer extends WabaseTemplateRenderer {
   import WabaseTemplate._
-  def apply(templateName: String, template: Array[Byte], data: Seq[Map[String, Any]]): Future[TemplateResult] = {
+  def apply(templateName: String, template: Array[Byte], data: Iterable[_]): Future[TemplateResult] = {
     val templateString = new String(template, "UTF-8")
-    val context = mapToJavaMap(
-      data.headOption.getOrElse(Map.empty) + ("items" -> data)
-    )
+    val context = mapToJavaMap(data match {
+      case m: Map[String@unchecked, _]      => m
+      case s: Seq[Map[String, _]@unchecked] => s.headOption.getOrElse(Map.empty) + ("items" -> data)
+      case x =>
+        val className = Option(x).map(_.getClass.getName).orNull
+        sys.error(s"Unexpected template data class: $className. Expecting Map[String, _] or Seq[_]")
+    })
     Future.successful(StringTemplateResult(
       try {
         Mustache.compiler()
