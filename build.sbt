@@ -61,6 +61,7 @@ lazy val wabase = (project in file("."))
       "com.enragedginger"          %% "akka-quartz-scheduler" % "1.9.3-akka-2.6.x" % Provided,
       "com.github.librepdf"         % "openpdf"               % "1.3.35"            % Provided,
       "org.xhtmlrenderer"           % "flying-saucer-pdf-openpdf" % "9.3.1"         % Provided,
+      "org.simplejavamail"          % "simple-java-mail"      % "8.5.1"             % Provided,
     ) ++ Seq( // for test
       "org.scalatest"              %% "scalatest"             % "3.2.17"  % "it,test",
       "com.typesafe.akka"          %% "akka-http-testkit"     % akkaHttpV % "it,test" cross CrossVersion.for3Use2_13,

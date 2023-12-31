@@ -1034,10 +1034,11 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     val count = Query(op.emailTresql.tresql)(resources.withParams(bindVars))
       .foldLeft(Future.successful(0)) { (c, row) =>
         val email = row.toMap
-        val to = s(email.getOrElse("to", sys.error(s"Email to missing")))
+        val to = s(email.getOrElse("to", sys.error(s"""Missing "to" address - email can not be sent""")))
         val cc = s(email.getOrElse("cc", null))
         val bcc = s(email.getOrElse("bcc", null))
         val from = s(email.getOrElse("from", null))
+        val replyTo = s(email.getOrElse("replyTo", null))
         val opData = bindVars ++ email
         subj_body(opData).flatMap { sb =>
           val List(subject, body) = sb
@@ -1048,7 +1049,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
               }
             )
           ).flatMap { att =>
-            emailSender.sendMail(to, cc, bcc, from, subject, body, att, true)
+            emailSender.sendMail(to, cc, bcc, from, replyTo, subject, body, att, true)
           }
         }.flatMap(_ => c.map(_ + 1))
       }

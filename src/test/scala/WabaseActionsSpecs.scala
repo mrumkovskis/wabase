@@ -16,7 +16,7 @@ import java.io.File
 import java.nio.file.Files
 import java.util.UUID
 import scala.collection.immutable.{ListMap, Seq}
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration.DurationInt
 import scala.util.Try
 
@@ -67,11 +67,49 @@ object WabaseActionDtos {
   )
 }
 
-class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseInitializer with AsyncFlatSpecLike {
-
+object WabaseActionsSpecs {
   class MailBox {
     var emails: Map[String, Map[String, _]] = Map()
   }
+
+  class TestEmailSender(mailBox: MailBox) extends WabaseEmail {
+    def sendMail(
+      to: String,
+      cc: String,
+      bcc: String,
+      from: String,
+      replyTo: String,
+      subject: String,
+      body: String,
+      attachments: Seq[EmailAttachment],
+      async: Boolean
+    )(implicit
+      ec: ExecutionContext,
+      as: ActorSystem,
+    ): Future[Unit] = {
+      Future.traverse(attachments) { att =>
+        att.content.runFold(ByteString.empty)(_ ++ _)
+          .map(_.decodeString("UTF8"))(ec)
+          .map(d => (att.filename, att.content_type, d))(ec)
+      }.map { att =>
+        val email = Map(
+          "to" -> to,
+          "cc" -> cc,
+          "bcc" -> bcc,
+          "from" -> from,
+          "replyTo" -> replyTo,
+          "subject" -> subject,
+          "body" -> body,
+          "attachments" -> att,
+        )
+        mailBox.emails += (to -> email)
+      }
+    }
+  }
+}
+
+class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseInitializer with AsyncFlatSpecLike {
+  import WabaseActionsSpecs._
 
   val mailBox = new MailBox
 
@@ -94,36 +132,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
 
       override lazy val macrosClass: Class[_] = classOf[Macros]
 
-      override def createEmailSender: WabaseEmail = new TestEmailSender
-      class TestEmailSender extends WabaseEmail {
-        def sendMail(
-          to: String,
-          cc: String,
-          bcc: String,
-          from: String,
-          subject: String,
-          body: String,
-          attachments: Seq[EmailAttachment],
-          async: Boolean
-        ): Future[Unit] = {
-          Future.traverse(attachments) { att =>
-            att.content.runFold(ByteString.empty)(_ ++ _)
-              .map(_.decodeString("UTF8"))
-              .map(d => (att.filename, att.content_type, d))
-          }.map { att =>
-            val email = Map(
-              "to" -> to,
-              "cc" -> cc,
-              "bcc" -> bcc,
-              "from" -> from,
-              "subject" -> subject,
-              "body" -> body,
-              "attachments" -> att,
-            )
-            mailBox.emails += (to -> email)
-          }
-        }
-      }
+      override def createEmailSender: WabaseEmail = new TestEmailSender(mailBox)
     }
     qio = new AppQuereaseIo[Dto](querease)
     super.beforeAll()
@@ -1082,6 +1091,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
                 "body" -> "Content for Hannah.",
                 "subject" -> "Subject for Hannah!",
                 "to" -> "a@a.a",
+                "replyTo" -> null,
                 "from" -> null,
                 "bcc" -> null,
                 "cc" -> null,
@@ -1095,6 +1105,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
                 "body" -> "Content for Baiba.",
                 "subject" -> "Subject for Baiba !",
                 "to" -> "b@b.b",
+                "replyTo" -> null,
                 "from" -> null,
                 "bcc" -> null,
                 "cc" -> null,
