@@ -620,7 +620,16 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
     import CacheIo.expCodec
     val serializedJoins = Map(JoinsCompilerCacheName -> Cbor.encode(joinData).toByteArray)
-    super.serializedCaches ++ OpParser.serializeOpCaches(actionOpCache) ++ serializedJoins ++ serializedVars
+
+    val serializedQeParserCache = parser.cache.map { cache =>
+      Map(AppQuereaseParserCacheName -> Cbor.encode(cache.toMap).toByteArray)
+    }.getOrElse(Map.empty)
+
+    super.serializedCaches ++
+      serializedQeParserCache ++
+      OpParser.serializeOpCaches(actionOpCache) ++
+      serializedJoins ++
+      serializedVars
   }
 
   protected def createJoinsParserCache(db: String): Option[Cache] =
@@ -860,6 +869,25 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   object AppQuereaseDefaultParser extends AppQuereaseDefaultParser(createParserCache)
 
   val tresqlParserCacheSize: Int = 4096
+  val AppQuereaseParserCacheName  = "app-querease-parser-cache.cbor"
+  override protected def createParserCache: Option[Cache] = {
+    def loadAppQuereaseParserCache(getResourceAsStream: String => InputStream): Map[String, Exp] = {
+      val res = getResourceAsStream(s"/$AppQuereaseParserCacheName")
+      if (res == null) {
+        logger.debug(s"No app querease parser cache resource - '/$AppQuereaseParserCacheName' found")
+        Map()
+      } else {
+        import io.bullet.borer._
+        import CacheIo.expCodec
+        val cache = Cbor.decode(res).to[Map[String, Exp]].value
+        logger.debug(s"App querease parser cache loaded for ${cache.size} expressions")
+        cache
+      }
+    }
+    val cache = new SimpleCache(4096)
+    cache.load(loadAppQuereaseParserCache(resourceLoader))
+    Some(cache)
+  }
   override val parser: QuereaseExpressions.Parser = this.AppQuereaseDefaultParser
 }
 
