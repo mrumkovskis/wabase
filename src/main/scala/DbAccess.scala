@@ -207,7 +207,7 @@ object TresqlResources {
   val ortLogger = Logger(LoggerFactory.getLogger("org.wabase.tresql.ort"))
   val sqlLogger = Logger(LoggerFactory.getLogger("org.wabase.tresql.sql"))
   val varsLogger = Logger(LoggerFactory.getLogger("org.wabase.tresql.params"))
-  val sqlWithParamsLogger = Logger(LoggerFactory.getLogger("org.wabase.tresql.swp"))
+  val sqlWithParamsLogger = Logger(LoggerFactory.getLogger("org.wabase.tresql.sql_wp"))
 
   val logger: Logging#TresqlLogger = (m, params, topic) => topic match {
     case LogTopic.sql => sqlLogger.debug(m)
