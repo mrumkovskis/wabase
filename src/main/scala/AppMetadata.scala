@@ -16,7 +16,7 @@ import org.wabase.AppMetadata.Action.{Validations, VariableTransform, VariableTr
 
 import java.io.InputStream
 import java.util.concurrent.ConcurrentHashMap
-import scala.collection.immutable.{Seq, Set}
+import scala.collection.immutable.{Map, Seq, Set}
 import scala.jdk.CollectionConverters._
 import scala.language.reflectiveCalls
 import scala.util.Try
@@ -27,16 +27,9 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
   import AppMetadata._
 
-  override val aliasToDb: String => String = {
-    val m = TresqlResourcesConf.confs.transform((_, c) => c.db)
-    db => m.getOrElse(db, db)
-  }
-  override val dbToAlias: String => Seq[String] = {
-    val m = TresqlResourcesConf.confs
-      .transform((_, c) => c.db)
-      .groupBy(_._2).map { case (k, v) => k -> v.keys.toList }
-    db => m.getOrElse(db, Seq(db))
-  }
+  override lazy val aliasToDb: Map[String, String] =
+    TresqlResourcesConf.confs.transform((_, c) => c.db)
+
   /** Get macro class from 'main' tresql resources config */
   override lazy val macrosClass: Class[_] =
     // somehow flatMap needs type parameter [Class[_]] for scala 2.12.x compiler in order to succeed
@@ -47,11 +40,10 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     new TresqlJoinsParser(
       // to avoid stack overflow cannot use directly field tresqlMetadata,
       // since it is initialized with viewDefs (for cursor table metadata)
-      TresqlMetadata(tableMetadata.tableDefs, typeDefs, macrosClass, dbToAlias = dbToAlias),
+      TresqlMetadata(tableMetadata.tableDefs, typeDefs, macrosClass, resourceLoader, aliasToDb),
       createJoinsParserCache(_)
     )
   override lazy val metadataConventions: AppMdConventions = new DefaultAppMdConventions
-  protected lazy val resourceLoader: String => InputStream = getClass.getResourceAsStream _
   protected lazy val jobDefLoader: YamlJobDefLoader = new YamlJobDefLoader(yamlMetadata)
   override lazy val nameToViewDef: Map[String, ViewDef] =
     toAppViewDefs(viewDefLoader.nameToViewDef)
