@@ -66,6 +66,14 @@ object TresqlResourcesConf {
           if (tresqlConf.hasPath("macros-class"))
             Class.forName(tresqlConf.getString("macros-class"))
           else null
+        override val dialect: Dialect =
+          if (tresqlConf.hasPath("vendor"))
+            vendor_dialect(tresqlConf.getString("vendor"))
+          else null
+        override val idExpr: String => String =
+          if (tresqlConf.hasPath("vendor"))
+            vendor_id_expr(tresqlConf.getString("vendor"))
+          else null
         override val queryTimeout: Int =
           if (tresqlConf.hasPath("query-timeout"))
             tresqlConf.getDuration("query-timeout").getSeconds.toInt
@@ -99,9 +107,11 @@ object TresqlResourcesConf {
         Option(tresqlConfInstance.macrosClass)
           .getOrElse(tresqlConfFromConfig.macrosClass)
       override val dialect: Dialect =
-        Option(tresqlConfInstance.dialect).orNull
+        Option(tresqlConfInstance.dialect)
+          .getOrElse(tresqlConfFromConfig.dialect)
       override val idExpr: String => String =
-        Option(tresqlConfInstance.idExpr).orNull
+        Option(tresqlConfInstance.idExpr)
+          .getOrElse(tresqlConfFromConfig.idExpr)
       override val queryTimeout: Int =
         Option(tresqlConfInstance.queryTimeout).filter(_ != -1)
           .getOrElse(tresqlConfFromConfig.queryTimeout)
@@ -129,20 +139,35 @@ object TresqlResourcesConf {
     }
   }
 
+  def vendor_dialect(vendor: String): Dialect = vendor match {
+    case "postgresql" =>
+      TresqlResources.PostgresSqlDialect orElse dialects.PostgresqlDialect orElse dialects.VariableNameDialect
+    case "oracle" => dialects.OracleDialect orElse dialects.VariableNameDialect
+    case "hsqldb" => dialects.HSQLDialect orElse dialects.VariableNameDialect
+    case _ => dialects.ANSISQLDialect orElse dialects.VariableNameDialect
+  }
+
+  def vendor_id_expr(vendor: String): String => String = vendor match {
+    case "postgresql" => _ => "nextval('seq')"
+    case "oracle" => seq => s"dual{`$seq.nextval`}"
+    case "hsqldb" => _ => "nextval('seq')"
+    case _ => seq => s"nextval('$seq')"
+  }
+
   def tresqlResourcesTemplate(
     resConfs: Map[String, TresqlResourcesConf],
     tresqlMetadata: TresqlMetadata
   ): ResourcesTemplate = {
-    val dbToVendor = {
+    val cpToVendor = {
       val DbVendorRegex = """jdbc:(\w+):.*""".r
       def dbVendor(jdbcUrl: String): String = {
         val DbVendorRegex(vendor) = jdbcUrl
         vendor
       }
       val c = org.wabase.config.getConfig("jdbc.cp")
-      c.root().asScala.keys.map { db =>
-        val n = if (db == DefaultCpName) null else db
-        n -> dbVendor(c.getString(s"$db.jdbcUrl"))
+      c.root().asScala.keys.map { cp =>
+        val n = if (cp == DefaultCpName) null else cp
+        n -> dbVendor(c.getString(s"$cp.jdbcUrl"))
       }.toMap
     }
     def resources(
@@ -156,25 +181,13 @@ object TresqlResourcesConf {
         if (conf.macrosClass != null) conf.macrosClass.getDeclaredConstructor().newInstance()
         else Macros
       val dialect: Dialect = {
-        def vendor_dialect(db: String): Dialect = dbToVendor(db) match {
-          case "postgresql" =>
-            TresqlResources.PostgresSqlDialect orElse dialects.PostgresqlDialect orElse dialects.VariableNameDialect
-          case "oracle" => dialects.OracleDialect orElse dialects.VariableNameDialect
-          case "hsqldb" => dialects.HSQLDialect orElse dialects.VariableNameDialect
-          case _ => dialects.ANSISQLDialect orElse dialects.VariableNameDialect
-        }
-
-        if (conf.dialect != null) conf.dialect orElse vendor_dialect(db)
-        else vendor_dialect(db)
+        val dbVendor = cpToVendor.getOrElse(db, null)
+        if (conf.dialect != null) conf.dialect orElse vendor_dialect(dbVendor)
+        else vendor_dialect(dbVendor)
       }
       val idExpr: String => String =
         if (conf.idExpr != null) conf.idExpr
-        else dbToVendor(db) match {
-          case "postgresql" => _ => "nextval('seq')"
-          case "oracle" => seq => s"dual{`$seq.nextval`}"
-          case "hsqldb" => _ => "nextval('seq')"
-          case _ => seq => s"nextval('$seq')"
-        }
+        else vendor_id_expr(cpToVendor.getOrElse(db, null))
       val queryTimeout =
         if (conf.queryTimeout != -1) conf.queryTimeout
         else wabaseConf.getDuration("jdbc.query-timeout").getSeconds.toInt
