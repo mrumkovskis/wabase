@@ -1049,7 +1049,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
               }
             )
           ).flatMap { att =>
-            emailSender.sendMail(to, cc, bcc, from, replyTo, subject, body, att, true)
+            emailSender.sendMail(to, subject, body, att, cc, bcc, from, replyTo, true)
           }
         }.flatMap(_ => c.map(_ + 1))
       }

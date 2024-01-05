@@ -22,14 +22,14 @@ case class EmailAttachment(filename: String, content_type: String, content: Sour
 trait WabaseEmail {
   def sendMail(
     to: String,
-    cc: String,
-    bcc: String,
-    from: String,
-    replyTo: String,
     subject: String,
     body: String,
-    attachments: Seq[EmailAttachment],
-    async: Boolean /** Asynchronous sending flag */
+    attachments: Seq[EmailAttachment] = Nil,
+    cc: String = null,
+    bcc: String = null,
+    from: String = null,
+    replyTo: String = null,
+    async: Boolean = true, /** Asynchronous sending flag */
   )(implicit
     ec: ExecutionContext,
     as: ActorSystem,
@@ -58,14 +58,14 @@ class DefaultWabaseEmailSender extends WabaseEmail with Loggable {
 
   override def sendMail(
     to: String,
-    cc: String,
-    bcc: String,
-    from: String,
-    replyTo: String,
     subject: String,
     body: String,
-    attachments: Seq[EmailAttachment],
-    async: Boolean /** Asynchronous sending flag */
+    attachments: Seq[EmailAttachment] = Nil,
+    cc: String = null,
+    bcc: String = null,
+    from: String = null,
+    replyTo: String = null,
+    async: Boolean = true, /** Asynchronous sending flag */
   )(implicit
     ec: ExecutionContext,
     as: ActorSystem,

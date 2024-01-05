@@ -75,14 +75,14 @@ object WabaseActionsSpecs {
   class TestEmailSender(mailBox: MailBox) extends WabaseEmail {
     def sendMail(
       to: String,
-      cc: String,
-      bcc: String,
-      from: String,
-      replyTo: String,
       subject: String,
       body: String,
-      attachments: Seq[EmailAttachment],
-      async: Boolean
+      attachments: Seq[EmailAttachment] = Nil,
+      cc: String = null,
+      bcc: String = null,
+      from: String = null,
+      replyTo: String = null,
+      async: Boolean = true, /** Asynchronous sending flag */
     )(implicit
       ec: ExecutionContext,
       as: ActorSystem,
