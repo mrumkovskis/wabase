@@ -67,8 +67,11 @@ case class StatusResult(code: Int, value: StatusValue) extends QuereaseResult
 case class FileInfoResult(fileInfo: FileInfo) extends QuereaseResult
 case class FileResult(fileInfo: FileInfo, fileStreamer: FileStreamer) extends DataResult
 sealed trait TemplateResult extends QuereaseResult
+  { def contentString: String }
 case class StringTemplateResult(content: String) extends TemplateResult
+  { override def contentString: String = content }
 case class FileTemplateResult(filename: String, contentType: String, content: Array[Byte]) extends TemplateResult
+  { override def contentString: String = new String(content, "UTF-8") }
 case class HttpResult(response: HttpResponse) extends DataResult
 case object NoResult extends QuereaseResult
 case class QuereaseResultWithCleanup(result: QuereaseCloseableResult, cleanup: Option[Throwable] => Unit)
