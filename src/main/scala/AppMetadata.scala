@@ -57,7 +57,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   lazy val nameToJobDef: Map[String, JobDef] = transformJobDefs(notTransformedJobDefs)
   protected lazy val actionOpCache: Map[String, OpParser.Cache] = {
     val cacheData = OpParser.loadSerializedOpCaches(resourceLoader)
-    def cc(k: String) = OpParser.createOpParserCache(cacheData.getOrElse(k, Map()), 4096)
+    def cc(k: String) = OpParser.createOpParserCache(cacheData.getOrElse(k, Map()), parserCacheSize)
     val duplicates = viewDefLoader.nameToViewDef.keys.toSet intersect jobDefLoader.rawJobDefs.keys.toSet
     require(duplicates.isEmpty, s"Duplicate view, job names found - '${duplicates.mkString(", ")}'")
     viewDefLoader.nameToViewDef.transform { (k, _) => cc(k) } ++
@@ -480,7 +480,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       val startTime = System.currentTimeMillis
       val scalaMacros: Any = Option(tresqlMetadata.macrosClass).map(_.getDeclaredConstructor().newInstance()).orNull
       val macroResources = new MacroResourcesImpl(scalaMacros, tresqlMetadata)
-      val compiler = new QueryParser(macroResources, new SimpleCache(4096)) with org.tresql.compiling.Compiler {
+      val compiler = new QueryParser(macroResources, new SimpleCache(parserCacheSize)) with org.tresql.compiling.Compiler {
         override val metadata = tresqlMetadata
         override val extraMetadata = tresqlMetadata.extraDbToMetadata
       }
@@ -625,7 +625,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   }
 
   protected def createJoinsParserCache(db: String): Option[Cache] =
-    joinsParserCacheFactory(joinsParserCache, tresqlParserCacheSize)(db)
+    joinsParserCacheFactory(joinsParserCache, parserCacheSize)(db)
 
   private def resolveDbAccessKeys(
     action: String, name: String,
@@ -860,7 +860,6 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
   object AppQuereaseDefaultParser extends AppQuereaseDefaultParser(createParserCache)
 
-  val tresqlParserCacheSize: Int = 4096
   val AppQuereaseParserCacheName  = "app-querease-parser-cache.cbor"
   override protected def createParserCache: Option[Cache] = {
     def loadAppQuereaseParserCache(getResourceAsStream: String => InputStream): Map[String, Exp] = {
@@ -876,7 +875,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
         cache
       }
     }
-    val cache = new SimpleCache(4096)
+    val cache = new SimpleCache(parserCacheSize)
     cache.load(loadAppQuereaseParserCache(resourceLoader))
     Some(cache)
   }
