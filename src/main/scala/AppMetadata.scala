@@ -44,25 +44,27 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       createJoinsParserCache(_)
     )
   override lazy val metadataConventions: AppMdConventions = new DefaultAppMdConventions
-  protected lazy val jobDefLoader: YamlJobDefLoader = new YamlJobDefLoader(yamlMetadata)
   override lazy val nameToViewDef: Map[String, ViewDef] =
     toAppViewDefs(viewDefLoader.nameToViewDef)
-  /* Not transformed job defs to avoid stack overflow when transforming view defs */
-  private lazy val notTransformedJobDefs: Map[String, JobDef] =
-    jobDefLoader.rawJobDefs.transform { (jobName, jdMap) =>
-      val opParser = new OpParser(jobName, tresqlUri, actionOpCache(jobName))
-      jobDefLoader.toJobDef(jobName, jdMap, jdata =>
-        parseAction(jobName, ViewDefExtrasUtils.getSeq("action", jdata), opParser))
+
+  lazy val jobDefLoader = new YamlJobDefLoader(
+    yamlMetadata,
+    jobName => jdMap => {
+      val opParser = new OpParser(jobName, tresqlUri, createOpParserCache(jobName))
+      parseAction(jobName, ViewDefExtrasUtils.getSeq("action", jdMap), opParser)
     }
-  lazy val nameToJobDef: Map[String, JobDef] = transformJobDefs(notTransformedJobDefs)
-  protected lazy val actionOpCache: Map[String, OpParser.Cache] = {
-    val cacheData = OpParser.loadSerializedOpCaches(resourceLoader)
-    def cc(k: String) = OpParser.createOpParserCache(cacheData.getOrElse(k, Map()), parserCacheSize)
-    val duplicates = viewDefLoader.nameToViewDef.keys.toSet intersect jobDefLoader.rawJobDefs.keys.toSet
+  )
+  lazy val nameToJobDef: Map[String, JobDef] = {
+    val duplicates = viewDefLoader.nameToViewDef.keys.toSet intersect jobDefLoader.nameToJobDef.keys.toSet
     require(duplicates.isEmpty, s"Duplicate view, job names found - '${duplicates.mkString(", ")}'")
-    viewDefLoader.nameToViewDef.transform { (k, _) => cc(k) } ++
-      jobDefLoader.rawJobDefs.transform { (k, _) => cc(k) }
+    transformJobDefs(jobDefLoader.nameToJobDef)
   }
+
+  protected lazy val actionOpCache: Map[String, Map[String, Action.Op]] =
+    OpParser.loadSerializedOpCaches(resourceLoader)
+
+  protected def createOpParserCache(name: String) =
+    OpParser.createOpParserCache(actionOpCache.getOrElse(name, Map()), parserCacheSize)
   protected lazy val joinsParserCache: Map[String, Map[String, Exp]] =
     loadJoinsParserCache(resourceLoader)
   lazy val viewNameToQueryVariablesCache: Map[String, Seq[ast.Variable]] =
@@ -409,7 +411,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val explicitDb = getBooleanExtra(ExplicitDb, viewDef)
     val decodeRequest = getBooleanExtraOpt(DecodeRequest, viewDef).forall(identity)
     val actions = Action().foldLeft(Map[String, Action]()) { (res, actionName) =>
-      val opParser = new OpParser(viewDef.name, tresqlUri, actionOpCache(viewDef.name))
+      val opParser = new OpParser(viewDef.name, tresqlUri, createOpParserCache(viewDef.name))
       val a = parseAction(s"${viewDef.name}.$actionName", getSeq(actionName, viewDef.extras), opParser)
       if (a.steps.nonEmpty) res + (actionName -> a) else res
     }
@@ -437,7 +439,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
   protected def transformAppViewDefs(viewDefs: Map[String, ViewDef]): Map[String, ViewDef] =
     Option(viewDefs)
-      .map(resolveViewDbAccessKeys(_, notTransformedJobDefs))
+      .map(resolveViewDbAccessKeys(_, jobDefLoader.nameToJobDef))
       .orNull
 
   protected def transformJobDefs(jobDefs: Map[String, JobDef]) =
@@ -1031,11 +1033,10 @@ object OpParser extends Loggable {
     }
   }
 
-  def serializeOpCaches(caches: Map[String, Cache]): Map[String, Array[Byte]] = {
+  def serializeOpCaches(caches: Map[String, Map[String, Action.Op]]): Map[String, Array[Byte]] = {
     import io.bullet.borer._
     import CacheIo.opCodec
-    val actionOpData: Map[String, Map[String, Action.Op]] = caches.transform { (_, c) => c.toMap }
-    Map(QuereaseActionOpCacheName -> Cbor.encode(actionOpData).toByteArray)
+    Map(QuereaseActionOpCacheName -> Cbor.encode(caches).toByteArray)
   }
 
   def createOpParserCache(initData: Map[String, Action.Op], maxSize: Int): Cache = {
