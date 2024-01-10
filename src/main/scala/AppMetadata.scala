@@ -50,7 +50,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   lazy val jobDefLoader = new YamlJobDefLoader(
     yamlMetadata,
     jobName => jdMap => {
-      val opParser = new OpParser(jobName, tresqlUri, createOpParserCache(jobName))
+      val opParser = new OpParser(jobName, tresqlUri, opParserCache(jobName))
       parseAction(jobName, ViewDefExtrasUtils.getSeq("action", jdMap), opParser)
     }
   )
@@ -60,11 +60,16 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     transformJobDefs(jobDefLoader.nameToJobDef)
   }
 
-  protected lazy val actionOpCache: Map[String, Map[String, Action.Op]] =
-    OpParser.loadSerializedOpCaches(resourceLoader)
+  protected lazy val actionOpCache: scala.collection.mutable.Map[String, OpParser.Cache] =
+    new java.util.concurrent.ConcurrentHashMap[String, OpParser.Cache].asScala
+      .++(OpParser.loadSerializedOpCaches(resourceLoader).transform { (_, data) =>
+        OpParser.createOpParserCache(data, parserCacheSize)
+      })
 
-  protected def createOpParserCache(name: String) =
-    OpParser.createOpParserCache(actionOpCache.getOrElse(name, Map()), parserCacheSize)
+  protected def opParserCache(name: String) = actionOpCache.getOrElseUpdate(
+    name,
+    OpParser.createOpParserCache(Map(), parserCacheSize)
+  )
   protected lazy val joinsParserCache: Map[String, Map[String, Exp]] =
     loadJoinsParserCache(resourceLoader)
   lazy val viewNameToQueryVariablesCache: Map[String, Seq[ast.Variable]] =
@@ -411,7 +416,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val explicitDb = getBooleanExtra(ExplicitDb, viewDef)
     val decodeRequest = getBooleanExtraOpt(DecodeRequest, viewDef).forall(identity)
     val actions = Action().foldLeft(Map[String, Action]()) { (res, actionName) =>
-      val opParser = new OpParser(viewDef.name, tresqlUri, createOpParserCache(viewDef.name))
+      val opParser = new OpParser(viewDef.name, tresqlUri, opParserCache(viewDef.name))
       val a = parseAction(s"${viewDef.name}.$actionName", getSeq(actionName, viewDef.extras), opParser)
       if (a.steps.nonEmpty) res + (actionName -> a) else res
     }
@@ -605,7 +610,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   override protected def clearAllCaches(): Unit = {
     super.clearAllCaches()
     viewNameToQueryVariablesCompilerCache.clear()
-    // TODO clear op caches
+    actionOpCache.clear()
   }
 
   override protected def serializedCaches: Map[String, Array[Byte]] = {
@@ -1040,10 +1045,11 @@ object OpParser extends Loggable {
     }
   }
 
-  def serializeOpCaches(caches: Map[String, Map[String, Action.Op]]): Map[String, Array[Byte]] = {
+  def serializeOpCaches(caches: scala.collection.mutable.Map[String, Cache]): Map[String, Array[Byte]] = {
     import io.bullet.borer._
     import CacheIo.opCodec
-    Map(QuereaseActionOpCacheName -> Cbor.encode(caches).toByteArray)
+    val actionOpData = caches.map { case (n, c) => (n, c.toMap) }.toMap
+    Map(QuereaseActionOpCacheName -> Cbor.encode(actionOpData).toByteArray)
   }
 
   def createOpParserCache(initData: Map[String, Action.Op], maxSize: Int): Cache = {
