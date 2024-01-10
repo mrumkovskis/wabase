@@ -186,7 +186,8 @@ class MustacheAndPdfTemplateRenderer extends MustacheTemplateRenderer {
 }
 
 object PdfRenderer {
-  class FontResourceLoader(outputDevice: ITextOutputDevice) extends ITextUserAgent(outputDevice) {
+  class FontResourceLoader(outputDevice: ITextOutputDevice)
+    extends ITextUserAgent(outputDevice, ITextRenderer.DEFAULT_DOTS_PER_PIXEL) {
     override def resolveAndOpenStream(uri: String): InputStream = {
       if  (uri != null && uri.contains("fonts/"))
            getClass.getResourceAsStream(uri)
@@ -205,7 +206,7 @@ object PdfRenderer {
 
     // Register additional font
     val fontResourceLoader = new FontResourceLoader(renderer.getOutputDevice)
-    fontResourceLoader.setSharedContext(renderer.getSharedContext)
+    // fontResourceLoader.setSharedContext(renderer.getSharedContext)
     renderer.getSharedContext.setUserAgentCallback(fontResourceLoader)
 
     renderer.setDocumentFromString(htmlContent)
