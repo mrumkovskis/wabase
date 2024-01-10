@@ -1,10 +1,12 @@
 package org.wabase
 
-import java.util.Locale
-import javax.script.ScriptEngineManager
+import com.oracle.truffle.js.scriptengine.GraalJSScriptEngine
+import javax.script.ScriptEngine
+import org.graalvm.polyglot.{Context, Engine, HostAccess}
 import org.tresql.Query
 import spray.json._
 
+import java.util.Locale
 import scala.util.control.NonFatal
 
 trait ValidationEngine {
@@ -27,7 +29,6 @@ trait DefaultValidationEngine extends ValidationEngine with Loggable {
     var message: String = null
   }
 
-  val scriptEngineFactory = new ScriptEngineManager(null)
   def argsString(m: java.lang.reflect.Method) =
     ('a' to ('a'.toInt + m.getParameterTypes.size - 1).toChar)
        .mkString(", ")
@@ -42,8 +43,17 @@ trait DefaultValidationEngine extends ValidationEngine with Loggable {
     customFunctionsAndArgs
       .map { case (f, args) => s"$f = function($args) { return CustomFunctions.$f($args); };" }
       .mkString("\n")
-  def getEngine(viewName: String, instance: Map[String, Any]) = {
-    val engine = scriptEngineFactory getEngineByName "JavaScript"
+  def getScriptEngine: ScriptEngine =
+    GraalJSScriptEngine.create(
+      Engine.newBuilder()
+        .option("engine.WarnInterpreterOnly", "false")
+        .build(),
+      Context.newBuilder().allowExperimentalOptions(true)
+        .allowHostAccess(HostAccess.ALL)
+        .option("js.nashorn-compat", "true"),
+    )
+  def getEngine(viewName: String, instance: Map[String, Any]): ScriptEngine = {
+    val engine = getScriptEngine
     val instancePropsToVars =
       instance
         .toJson
