@@ -3,7 +3,8 @@ package org.wabase
 import akka.actor.ActorSystem
 import akka.stream.scaladsl.{FileIO, StreamConverters}
 import akka.util.ByteString
-import com.samskivert.mustache.Mustache
+import com.samskivert.mustache.{Mustache, Template}
+import org.tresql.SimpleCacheBase
 import org.xhtmlrenderer.pdf.{ITextOutputDevice, ITextRenderer, ITextUserAgent}
 
 import java.io.{ByteArrayOutputStream, InputStream, OutputStream}
@@ -127,11 +128,17 @@ trait WabaseTemplateRenderer {
   def apply(templateName: String, template: Array[Byte], data: Iterable[_]): Future[TemplateResult]
 }
 
+class MustacheTemplateCache(maxSize: Int)
+  extends SimpleCacheBase[Template](maxSize, "Mustache template cache")
+
 /**
  * See http://mustache.github.io/mustache.5.html
  * */
 class MustacheTemplateRenderer extends WabaseTemplateRenderer {
   import WabaseTemplate._
+
+  protected val cache: Option[MustacheTemplateCache] =
+    Some(new MustacheTemplateCache(256))
   override def apply(templateName: String, template: Array[Byte], data: Iterable[_]): Future[TemplateResult] = {
     Future.successful(StringTemplateResult(
       render(templateName, template, data)
@@ -147,9 +154,14 @@ class MustacheTemplateRenderer extends WabaseTemplateRenderer {
         sys.error(s"Unexpected template data class: $className. Expecting Map[String, _] or Seq[_]")
     })
     try {
-      Mustache.compiler()
-        .nullValue("")
-        .compile(templateString) // TODO CACHE???
+      cache.flatMap(_.get(templateString)).getOrElse {
+        val template =
+          Mustache.compiler()
+            .nullValue("")
+            .compile(templateString)
+        cache.foreach(_.put(templateString, template))
+        template
+      }
         .execute(context)
     } catch {
       case util.control.NonFatal(ex) =>
