@@ -601,6 +601,13 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     (compiledQueries.toSet, caches)
   }
 
+  /** Clear all caches used for query compilation */
+  override protected def clearAllCaches(): Unit = {
+    super.clearAllCaches()
+    viewNameToQueryVariablesCompilerCache.clear()
+    // TODO clear op caches
+  }
+
   override protected def serializedCaches: Map[String, Array[Byte]] = {
     import io.bullet.borer._
     val joinData: Map[String, Map[String, Exp]] =
