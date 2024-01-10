@@ -1015,7 +1015,7 @@ class OpParser(viewName: String, tresqlUri: TresqlUri, cache: OpParser.Cache)
 }
 
 object OpParser extends Loggable {
-  class Cache(maxSize: Int) extends SimpleCacheBase[Action.Op](maxSize)
+  class Cache(maxSize: Int) extends SimpleCacheBase[Action.Op](maxSize, "OpParser cache")
 
   val QuereaseActionOpCacheName = "querease-action-op-cache.cbor"
   def loadSerializedOpCaches(getResourceAsStream: String => InputStream): Map[String, Map[String, Action.Op]] = {
