@@ -6,6 +6,7 @@ import org.mojoz.metadata.in._
 import org.mojoz.metadata.io.MdConventions
 import org.mojoz.metadata.out.DdlGenerator.SimpleConstraintNamingRules
 import org.mojoz.querease.QuereaseExpressions.DefaultParser
+import org.mojoz.querease.QueryStringBuilder.CompilationUnit
 import org.mojoz.querease.{QuereaseExpressions, QuereaseMetadata, TresqlJoinsParser, TresqlMetadata}
 import org.tresql.{Cache, MacroResourcesImpl, QueryParser, SimpleCache, SimpleCacheBase, ast}
 import org.tresql.ast.{Exp, Variable}
@@ -477,13 +478,13 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   }
   override protected def compileQueries(
     category: String,
-    viewNamesAndQueriesToCompile: Seq[(String, String)],
+    compilationUnits: Seq[CompilationUnit],
     previouslyCompiledQueries: Set[String],
     showFailedViewQuery: Boolean,
     log: => String => Unit,
   ): Int = category match {
     case "queries" =>
-      log(s"Compiling $category - ${viewNamesAndQueriesToCompile.size} total")
+      log(s"Compiling $category - ${compilationUnits.size} total")
       val startTime = System.currentTimeMillis
       val scalaMacros: Any = Option(tresqlMetadata.macrosClass).map(_.getDeclaredConstructor().newInstance()).orNull
       val macroResources = new MacroResourcesImpl(scalaMacros, tresqlMetadata)
@@ -493,7 +494,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       }
       val compiledQueries = collection.mutable.Set[String](previouslyCompiledQueries.toSeq: _*)
       var compiledCount = 0
-      viewNamesAndQueriesToCompile.foreach { case (viewName, q) =>
+      compilationUnits.foreach { case CompilationUnit(_, viewName, q) =>
         if (!compiledQueries.contains(q) ||
             viewNameToQueryVariablesCompilerCache.get(viewName) == null) {
           try compiler.compile(compiler.parseExp(q)) catch { case util.control.NonFatal(ex) =>
@@ -509,14 +510,14 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
         }
       }
       val endTime = System.currentTimeMillis
-      val allQueries = viewNamesAndQueriesToCompile.map(_._2).toSet
+      val allQueries = compilationUnits.map(_.query).toSet
       log(
         s"Query compilation done - ${endTime - startTime} ms, " +
         s"queries compiled: $compiledCount" +
         (if (compiledCount != allQueries.size) s" of ${allQueries.size}" else ""))
       compiledCount
     case _ => super.compileQueries(
-      category, viewNamesAndQueriesToCompile, previouslyCompiledQueries, showFailedViewQuery, log)
+      category, compilationUnits, previouslyCompiledQueries, showFailedViewQuery, log)
   }
 
   override def compileAllQueries(
