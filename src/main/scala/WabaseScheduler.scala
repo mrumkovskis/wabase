@@ -76,7 +76,7 @@ class WabaseScheduler extends Loggable {
 
     val ctx =
       qe.ActionContext(job.name, "job", Map(), None, qe.quereaseActionLogger(s"${job.name}.job"))
-    qe.doSteps(job.steps.steps, ctx, Future.successful(Map()))
+    qe.doSteps(job.action.steps, ctx, Future.successful(Map()))
   }
 }
 

@@ -766,7 +766,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     val ctx = ActionContext(jobName, "job", env, None, context.log,
       contextStack = context :: context.contextStack)
     val jd = jobDef(jobName)
-    doSteps(jd.steps.steps, ctx, Future.successful(data))
+    doSteps(jd.action.steps, ctx, Future.successful(data))
   }
 
   protected def doVarsTransforms(transforms: List[VariableTransform],

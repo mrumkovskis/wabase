@@ -476,6 +476,57 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     cache.putAll(viewNameToQueryVariablesCache.asJava)
     cache
   }
+
+  protected def actionQueries(actionName: String, objName: String, action: Action): Set[String] = {
+    lazy val opTresqlTrav: OpTresqlTraverser[scala.collection.mutable.Set[String]] =
+      opTresqlTraverser(opTresqlTrav, stepTresqlTrav)(st => {
+        case ViewCall(_, _, data) => opTresqlTrav(st)(data) // do not go to process view call since all views are compiled
+        case _: Action.Job => st // do not go to process job call since all jobs are compiled in a loop
+      })
+    lazy val stepTresqlTrav: StepTresqlTraverser[scala.collection.mutable.Set[String]] =
+      stepTresqlTraverser(opTresqlTrav)(st => {
+        case Validations(_, validations, db) =>
+          val v = viewDef(st.name)
+          validationsQueryString(v, validations).flatMap { valStr =>
+            db.flatMap(k => Option(k.db)).map("|" + _ + ":" + valStr)
+              .orElse(Option(valStr))
+              .map { tresql =>
+                st.copy(value = st.tresqlExtractor(st.value)(Action.Tresql(tresql)))
+              }
+          }.getOrElse(st)
+      })
+    val state = State[scala.collection.mutable.Set[String]](
+      actionName, objName, Map(), Map(),
+      tresqlExtractor = cq => tresql => {
+        val tresqlString = tresql.tresql
+        cq += tresqlString
+      },
+      viewExtractor = v => _ => v,
+      jobExtractor = v => _ => v,
+      processed = Set(), value = scala.collection.mutable.Set[String]()
+    )
+    traverseAction(action)(stepTresqlTrav)(state).value.toSet
+  }
+  override def allQueryStrings(viewDef: ViewDef): Seq[CompilationUnit] = {
+    super.allQueryStrings(viewDef) ++ viewDef.actions.flatMap { case (actionName, action) =>
+      val objName = viewDef.name
+      actionQueries(actionName, objName, action)
+        .map(q => CompilationUnit("action-queries", s"$objName.$actionName", q))
+    }
+  }
+
+  override protected def generateQueriesForCompilation(log: => String => Unit): Seq[CompilationUnit] = {
+    val viewQueries = super.generateQueriesForCompilation(log)
+    log(s"Generating queries to be compiled for ${nameToJobDef.size} jobs")
+    val startTime = System.currentTimeMillis
+    val jobQueries = nameToJobDef.flatMap { case (jobName, job) =>
+      actionQueries("job", jobName, job.action).map(q => CompilationUnit("action-queries", s"$jobName.job", q))
+    }
+    val endTime = System.currentTimeMillis
+    log(s"Query generation done in ${endTime - startTime} ms, ${jobQueries.size} queries generated")
+    viewQueries ++ jobQueries
+  }
+
   override protected def compileQueries(
     category: String,
     compilationUnits: Seq[CompilationUnit],
@@ -498,7 +549,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
         if (!compiledQueries.contains(q) ||
             viewNameToQueryVariablesCompilerCache.get(viewName) == null) {
           try compiler.compile(compiler.parseExp(q)) catch { case util.control.NonFatal(ex) =>
-            val msg = s"\nFailed to compile viewdef $viewName: ${ex.getMessage}" +
+            val msg = s"\nFailed to compile $viewName query: ${ex.getMessage}" +
               (if (showFailedViewQuery) s"\n$q" else "")
             throw new RuntimeException(msg, ex)
           }
@@ -518,93 +569,6 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       compiledCount
     case _ => super.compileQueries(
       category, compilationUnits, previouslyCompiledQueries, showFailedViewQuery, log)
-  }
-
-  override def compileAllQueries(
-    previouslyCompiledQueries: Set[String],
-    showFailedViewQuery: Boolean,
-    log: => String => Unit,
-  ): (Set[String], Map[String, Array[Byte]]) = {
-    val (quereaseCompiledQueries, caches) =
-      super.compileAllQueries(previouslyCompiledQueries, showFailedViewQuery, log)
-
-    val startTime = System.currentTimeMillis
-    lazy val opTresqlTrav: OpTresqlTraverser[scala.collection.mutable.Set[String]] =
-      opTresqlTraverser(opTresqlTrav, stepTresqlTrav)(st => {
-        case ViewCall(_, _, data) => opTresqlTrav(st)(data) // do not go to process view call since all views are compiled
-        case _: Action.Job => st // do not go to process job call since all jobs are compiled in a loop
-      })
-    lazy val stepTresqlTrav: StepTresqlTraverser[scala.collection.mutable.Set[String]] =
-      stepTresqlTraverser(opTresqlTrav)(st => {
-        case Validations(_, validations, db) =>
-          val v = viewDef(st.name)
-          validationsQueryString(v, validations).flatMap { valStr =>
-            db.flatMap(k => Option(k.db)).map("|" + _ + ":" + valStr)
-              .orElse(Option(valStr))
-              .map { tresql =>
-                st.copy(value = st.tresqlExtractor(st.value)(Action.Tresql(tresql)))
-              }
-          }.getOrElse(st)
-      })
-    val compiler = new org.tresql.compiling.Compiler {
-      override val metadata = tresqlMetadata
-      override val extraMetadata = tresqlMetadata.extraDbToMetadata
-      override protected val macros =
-        new MacroResourcesImpl(Option(macrosClass).map(_.getDeclaredConstructor().newInstance()).orNull, tresqlMetadata)
-    }
-    val compiledQueries = scala.collection.mutable.Set(quereaseCompiledQueries.toSeq: _*)
-    var compiledActionCount = 0
-    var compiledTresqlCount = 0
-    def compilerState(a: String, n: String) = {
-      State[scala.collection.mutable.Set[String]](
-        a, n, Map(), Map(),
-        tresqlExtractor = cq => tresql => {
-          val tresqlString = tresql.tresql
-          if (!cq.contains(tresqlString)) {
-            try compiler.compile(compiler.parseExp(tresqlString)) catch {
-              case NonFatal(ex) =>
-                val msg = s"\nFailed to compile view or job ${n} action $a: ${ex.getMessage}" +
-                  (if (showFailedViewQuery) s"\n$tresqlString" else "")
-                throw new RuntimeException(msg, ex)
-            }
-            compiledTresqlCount += 1
-          }
-          cq += tresqlString
-        },
-        viewExtractor = v => _ => v,
-        jobExtractor = v => _ => v,
-        processed = Set(), value = compiledQueries
-      )
-    }
-    val viewsToCompile = nameToViewDef.values.toList.sortBy(_.name)
-    log(s"Compiling actions for ${viewsToCompile.size} views")
-    viewsToCompile.foreach { v =>
-      v.actions.foreach { case (n, a) =>
-        val st = compilerState(n, v.name)
-        traverseAction(a)(stepTresqlTrav)(st).value
-        compiledActionCount += 1
-      }
-    }
-    val viewEndTime = System.currentTimeMillis
-    log(
-      s"Action compilation done in ${viewEndTime - startTime} ms, " +
-        s"$compiledTresqlCount queries compiled for $compiledActionCount actions")
-
-    val jobsToCompile = nameToJobDef.values.toList.sortBy(_.name)
-    log(s"Compiling ${jobsToCompile.size} jobs")
-    compiledActionCount = 0
-    compiledTresqlCount = 0
-    jobsToCompile.foreach { j =>
-      val st = compilerState("job", j.name)
-      traverseAction(j.steps)(stepTresqlTrav)(st).value
-      compiledActionCount += 1
-    }
-    val jobEndTime = System.currentTimeMillis
-    log(
-      s"Job compilation done in ${jobEndTime - viewEndTime} ms, " +
-        s"$compiledTresqlCount queries compiled for $compiledActionCount actions")
-
-    (compiledQueries.toSet, caches)
   }
 
   /** Clear all caches used for query compilation */
@@ -1277,7 +1241,7 @@ object AppMetadata extends Loggable {
         val jd = s.jobDefs(s.name)
         val newVal = s.jobExtractor(s.value)(jd)
         val s1 = s.copy(value = newVal, processed = s.processed + (s.action -> s.name))
-        traverseAction(jd.steps)(stepTresqlTrav)(s1)
+        traverseAction(jd.action)(stepTresqlTrav)(s1)
       }
 
       def opTresqlTraverser[T](opTresqlTrav: => OpTresqlTraverser[T],
@@ -1438,7 +1402,7 @@ object AppMetadata extends Loggable {
 
   case class JobDef(
     name: String,
-    steps: Action,
+    action: Action,
     db: String = null,
     explicitDb: Boolean = false,
     dbAccessKeys: Seq[DbAccessKey] = Nil,
