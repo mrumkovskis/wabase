@@ -61,11 +61,13 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     transformJobDefs(jobDefLoader.nameToJobDef)
   }
 
-  protected lazy val actionOpCache: scala.collection.mutable.Map[String, OpParser.Cache] =
-    new java.util.concurrent.ConcurrentHashMap[String, OpParser.Cache].asScala
-      .++(OpParser.loadSerializedOpCaches(resourceLoader).transform { (_, data) =>
-        OpParser.createOpParserCache(data, parserCacheSize)
-      })
+  protected lazy val actionOpCache: scala.collection.concurrent.Map[String, OpParser.Cache] = {
+    val m = new java.util.concurrent.ConcurrentHashMap[String, OpParser.Cache]
+    m.putAll(OpParser.loadSerializedOpCaches(resourceLoader).transform { (_, data) =>
+      OpParser.createOpParserCache(data, parserCacheSize)
+    }.asJava)
+    m.asScala
+  }
 
   protected def opParserCache(name: String) = actionOpCache.getOrElseUpdate(
     name,
