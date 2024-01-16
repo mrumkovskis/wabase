@@ -89,9 +89,9 @@ trait Authentication[User] extends SecurityDirectives with SessionInfoRemover wi
 
   val sessionTimeOut = config.getDuration("session.timeout").toMillis
   val httpOnlyCookies = true
-  val secureCookies = false
+  val secureCookies = Crypto.secureCookies
 
-  def uniqueSessionId = new Random(new SecureRandom).alphanumeric.take(100).mkString
+  def uniqueSessionId = Crypto.uniqueSessionId
 
   def remoteAddressToString(a: RemoteAddress) = a.toIP.map(_.ip.toString).orNull
   protected val IP = "IP"
@@ -262,6 +262,10 @@ object Authentication {
 
     lazy val cryptoKey = secretKey("auth.crypto.key")
     lazy val macKey = secretKey("auth.mac.key")
+
+    lazy val secureCookies: Boolean =
+      if(config.hasPath("session.cookie.secure")) config.getBoolean("session.cookie.secure") else false
+    def uniqueSessionId = new Random(new SecureRandom).alphanumeric.take(100).mkString
 
     def secretKey(name: String) = Option(decodeBytes(config.getString(name)))
       .filter(_.length >= 16)
