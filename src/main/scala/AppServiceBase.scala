@@ -483,6 +483,15 @@ object AppServiceBase {
         complete(HttpResponse(BadRequest, entity = e.details.toJson.compactPrint))
     }
 
+    def csrfExceptionHandler = {
+      val logger = LoggerFactory.getLogger("org.wabase.csrf")
+      ExceptionHandler {
+        case e: CSRFException =>
+          logger.error("CSRF error", e)
+          complete(StatusCodes.BadRequest)
+      }
+    }
+
     /** Handles and logs PostgreSQL timeout exceptions */
     trait PostgresTimeoutExceptionHandler[User] extends AppExceptionHandler {
       this: AppStateExtractor with SessionUserExtractor[User] with ServerStatistics with DeferredCheck with AppI18nService =>
@@ -536,6 +545,7 @@ object AppServiceBase {
           .withFallback(businessExceptionHandler(this.logger))
           .withFallback(bindVariableExceptionHandler(this.logger, this.bindVariableExceptionResponseMessage))
           .withFallback(viewNotFoundExceptionHandler)
+          .withFallback(csrfExceptionHandler)
     }
 
     trait DefaultAppExceptionHandler[User] extends SimpleExceptionHandler with PostgresTimeoutExceptionHandler[User] {
@@ -555,6 +565,7 @@ object AppServiceBase {
           .withFallback(PostgresTimeoutExceptionHandler(this))
           .withFallback(TresqExceptionHandler(this))
           .withFallback(viewNotFoundExceptionHandler)
+          .withFallback(csrfExceptionHandler)
     }
   }
 

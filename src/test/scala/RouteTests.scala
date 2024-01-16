@@ -1,13 +1,16 @@
 package org.wabase
 
+import akka.http.scaladsl.model.StatusCodes
 import akka.http.scaladsl.testkit.ScalatestRouteTest
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers
-
 import akka.http.scaladsl.server.Directives._
+import akka.http.scaladsl.server.{ExceptionHandler, Route}
+import org.scalatest.Inspectors.forAll
 
 class RouteTests extends FlatSpec with Matchers with ScalatestRouteTest{
   val service = new TestAppService(system)
+
   behavior of "Core routes"
 
   it should "handle get by id" in {
@@ -114,22 +117,33 @@ class RouteTests extends FlatSpec with Matchers with ScalatestRouteTest{
 
   }
   it should "pass csrf defence" in {
-    //sameorigin check
-    val route = service.checkSameOrigin {
-      complete("OK")
+    implicit val csrfExceptionHandler: ExceptionHandler = ExceptionHandler {
+      case e: CSRFException => complete(StatusCodes.BadRequest, e.getMessage)
     }
+    //sameorigin check with csrf exception handler
+    val route = Route.seal(service.checkSameOrigin {
+      complete("OK")
+    })
     import akka.http.scaladsl.model.headers.{Host, Referer, Origin, RawHeader, HttpOrigin, Cookie}
     import akka.http.scaladsl.server.InvalidOriginRejection
     import akka.http.scaladsl.model.Uri
 
-    Get("/") ~> Origin(List(HttpOrigin("http", Host("localhost", 80)))) ~> route ~> check (handled shouldBe false)
-    Get("/") ~> Host("localhost", 80) ~> route ~> check (handled shouldBe false)
-    Get("/") ~> route ~> check (handled shouldBe false)
+    def csrfCheck(strings: Seq[String]) = {
+      response.status shouldBe StatusCodes.BadRequest
+      val resp = entityAs[String]
+      forAll(strings) { resp should include(_) }
+    }
+
+    Get("/") ~> Origin(List(HttpOrigin("http", Host("localhost", 80)))) ~> route ~> check {
+      csrfCheck(List("Host", "X-Forwarded-Host"))
+    }
+    Get("/") ~> Host("localhost", 80) ~> route ~> check (csrfCheck(List("Origin", "Referer")))
+    Get("/") ~> route ~> check (csrfCheck(List("Host", "X-Forwarded-Host")))
 
     Get("/") ~> Origin(List(HttpOrigin("http", Host("localhost", 80)))) ~>
       Host("localhost", 80) ~> route ~> check (handled shouldBe true)
     Get("/") ~> Origin(List(HttpOrigin("http", Host("localhost", 80)))) ~>
-      Host("localhost", 90) ~> route ~> check (handled shouldBe false)
+      Host("localhost", 90) ~> route ~> check (csrfCheck(List("CSRF")))
 
     Get("/") ~> Origin(List(HttpOrigin("http", Host("localhost", 80)))) ~>
       RawHeader("X-Forwarded-Host", "localhost:80") ~> route ~> check (handled shouldBe true)
@@ -138,67 +152,67 @@ class RouteTests extends FlatSpec with Matchers with ScalatestRouteTest{
     Get("/") ~> Origin(List(HttpOrigin("http", Host("localhost", 0)))) ~>
       RawHeader("X-Forwarded-Host", "localhost") ~> route ~> check (handled shouldBe true)
     Get("/") ~> Origin(List(HttpOrigin("http", Host("localhost", 80)))) ~>
-      RawHeader("X-Forwarded-Host", "localhost:90") ~> route ~> check (handled shouldBe false)
+      RawHeader("X-Forwarded-Host", "localhost:90") ~> route ~> check (csrfCheck(List("CSRF")))
 
-    Get("/") ~> Referer(Uri("https://localhost")) ~> route ~> check (handled shouldBe false)
+    Get("/") ~> Referer(Uri("https://localhost")) ~> route ~> check (csrfCheck(List("Host", "X-Forwarded-Host")))
 
     Get("/") ~> Referer(Uri("https://localhost")) ~>
       Host("localhost", 0) ~> route ~> check (handled shouldBe true)
     Get("/") ~> Referer(Uri("https://localhost")) ~>
       Host("localhost", 443) ~> route ~> check (handled shouldBe true)
     Get("/") ~> Referer(Uri("https://localhost")) ~>
-      Host("localhost", 444) ~> route ~> check (handled shouldBe false)
+      Host("localhost", 444) ~> route ~> check (csrfCheck(List("CSRF")))
 
     Get("/") ~> Referer(Uri("https://localhost:443")) ~>
       Host("localhost", 0) ~> route ~> check (handled shouldBe true)
     Get("/") ~> Referer(Uri("https://localhost:443")) ~>
       Host("localhost", 443) ~> route ~> check (handled shouldBe true)
     Get("/") ~> Referer(Uri("https://localhost:443")) ~>
-      Host("localhost", 444) ~> route ~> check (handled shouldBe false)
+      Host("localhost", 444) ~> route ~> check (csrfCheck(List("CSRF")))
 
     Get("/") ~> Referer(Uri("https://localhost:444")) ~>
-      Host("localhost", 0) ~> route ~> check (handled shouldBe false)
+      Host("localhost", 0) ~> route ~> check (csrfCheck(List("CSRF")))
     Get("/") ~> Referer(Uri("https://localhost:444")) ~>
-      Host("localhost", 443) ~> route ~> check (handled shouldBe false)
+      Host("localhost", 443) ~> route ~> check (csrfCheck(List("CSRF")))
     Get("/") ~> Referer(Uri("https://localhost:444")) ~>
       Host("localhost", 444) ~> route ~> check (handled shouldBe true)
     Get("/") ~> Referer(Uri("https://localhost:444")) ~>
-      Host("localhost", 440) ~> route ~> check (handled shouldBe false)
+      Host("localhost", 440) ~> route ~> check (csrfCheck(List("CSRF")))
 
     Get("/") ~> Referer(Uri("http://localhost")) ~>
       Host("localhost", 0) ~> route ~> check (handled shouldBe true)
     Get("/") ~> Referer(Uri("http://localhost")) ~>
       Host("localhost", 80) ~> route ~> check (handled shouldBe true)
     Get("/") ~> Referer(Uri("http://localhost")) ~>
-      Host("localhost", 88) ~> route ~> check (handled shouldBe false)
+      Host("localhost", 88) ~> route ~> check (csrfCheck(List("CSRF")))
 
     Get("/") ~> Referer(Uri("http://localhost:80")) ~>
       Host("localhost", 0) ~> route ~> check (handled shouldBe true)
     Get("/") ~> Referer(Uri("http://localhost:80")) ~>
       Host("localhost", 80) ~> route ~> check (handled shouldBe true)
     Get("/") ~> Referer(Uri("http://localhost:80")) ~>
-      Host("localhost", 88) ~> route ~> check (handled shouldBe false)
+      Host("localhost", 88) ~> route ~> check (csrfCheck(List("CSRF")))
 
     Get("/") ~> Referer(Uri("http://localhost:88")) ~>
-      Host("localhost", 0) ~> route ~> check (handled shouldBe false)
+      Host("localhost", 0) ~> route ~> check (csrfCheck(List("CSRF")))
     Get("/") ~> Referer(Uri("http://localhost:88")) ~>
-      Host("localhost", 80) ~> route ~> check (handled shouldBe false)
+      Host("localhost", 80) ~> route ~> check (csrfCheck(List("CSRF")))
     Get("/") ~> Referer(Uri("http://localhost:88")) ~>
       Host("localhost", 88) ~> route ~> check (handled shouldBe true)
     Get("/") ~> Referer(Uri("http://localhost:88")) ~>
-      Host("localhost", 90) ~> route ~> check (handled shouldBe false)
+      Host("localhost", 90) ~> route ~> check (csrfCheck(List("CSRF")))
 
     Get("/") ~> Referer(Uri("https://localhost")) ~>
       RawHeader("X-Forwarded-Host", "localhost") ~> route ~> check (handled shouldBe true)
     Get("/") ~> Referer(Uri("https://localhost:90")) ~>
       RawHeader("X-Forwarded-Host", "localhost:90") ~> route ~> check (handled shouldBe true)
     Get("/") ~> Referer(Uri("https://localhost:90")) ~>
-      RawHeader("X-Forwarded-Host", "localhost:91") ~> route ~> check (handled shouldBe false)
+      RawHeader("X-Forwarded-Host", "localhost:91") ~> route ~> check (csrfCheck(List("CSRF")))
 
     //route with provided appConfig
-    val route1 = (new TestAppService(system) {
+    val route1 = Route.seal((new TestAppService(system) {
       override lazy val appConfig = com.typesafe.config.ConfigFactory.parseString("""{"host": "http://localhost"}""")
-    }).checkSameOrigin { complete("OK") }
+    }).checkSameOrigin { complete("OK") })
     Get("/") ~> Origin(List(HttpOrigin("http", Host("localhost", 0))))  ~>
       route1 ~> check (handled shouldBe true)
     Get("/") ~> Origin(List(HttpOrigin("http", Host("localhost", 80))))  ~>
@@ -209,19 +223,19 @@ class RouteTests extends FlatSpec with Matchers with ScalatestRouteTest{
     Get("/") ~> Referer(Uri("http://localhost:80"))  ~>
       route1 ~> check (handled shouldBe true)
     Get("/") ~> Referer(Uri("xxx://localhost"))  ~>
-      route1 ~> check (handled shouldBe false)
+      route1 ~> check (csrfCheck(List("CSRF")))
 
-    //check token
-    val route2 = service.checkCSRFToken {
+    //check csrf token with set csrf exception handler
+    val route2 = Route.seal(service.checkCSRFToken {
       complete("OK")
-    }
+    })
     Get("/") ~> Cookie(service.CSRFCookieName -> "abc") ~> RawHeader(service.CSRFHeaderName, "abc") ~>
       route2 ~> check(handled shouldBe true)
     Get("/") ~> Cookie(service.CSRFCookieName -> "abc") ~> RawHeader(service.CSRFHeaderName, "123") ~>
-      route2 ~> check(handled shouldBe false)
+      route2 ~> check(csrfCheck(List("does not match")))
     Get("/") ~> Cookie(service.CSRFCookieName -> "abc") ~>
-      route2 ~> check(handled shouldBe false)
+      route2 ~> check(csrfCheck(List("X-XSRF-TOKEN header")))
     Get("/") ~> RawHeader(service.CSRFHeaderName, "123") ~>
-      route2 ~> check(handled shouldBe false)
+      route2 ~> check(csrfCheck(List("XSRF-TOKEN cookie")))
   }
 }
