@@ -2,12 +2,12 @@ package org.wabase
 
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.{Directive0, Directive1}
-import akka.http.scaladsl.server.{AuthenticationFailedRejection, InvalidOriginRejection}
-import akka.http.scaladsl.server.AuthenticationFailedRejection._
-import akka.http.scaladsl.model.{HttpRequest, Uri}
+import akka.http.scaladsl.model.Uri
 import akka.http.scaladsl.model.headers.{Host, HttpCookie, HttpOrigin, HttpOriginRange, Origin, Referer, SameSite}
 
-trait CSRFDefence { this: AppConfig with Authentication[_] with Execution with Loggable =>
+class CSRFException(message: String) extends Exception(message)
+
+trait CSRFDefence { this: AppConfig =>
 
   lazy val CSRFCookieName = "XSRF-TOKEN"
   lazy val CSRFHeaderName = "X-XSRF-TOKEN"
@@ -31,13 +31,13 @@ trait CSRFDefence { this: AppConfig with Authentication[_] with Execution with L
   protected def extractTargetOrigins: Directive1[List[HttpOrigin]] =
     if (targetOrigin != null) provide(List(targetOrigin))
     else
-      headerValuePF[List[HttpOrigin]]({ case h: Host => fullOriginList(h) }) |
-      headerValueByName("X-Forwarded-Host")
-      .map(Host.parseFromValueString(_))
-      .map {
-        case Right(h) => fullOriginList(h)
-        case Left(_) => Nil
-      }
+      (headerValuePF[List[HttpOrigin]]({ case h: Host => fullOriginList(h) }) |
+        headerValueByName("X-Forwarded-Host")
+          .map(Host.parseFromValueString)
+          .map {
+            case Right(h) => fullOriginList(h)
+            case Left(_) => Nil
+          }).recover(_ => error(s"Either 'Host' or 'X-Forwarded-Host' http header must be set."))
 
   protected def normalizePort(origin: HttpOrigin) = {
     if (origin.host.port == 0)
@@ -49,46 +49,38 @@ trait CSRFDefence { this: AppConfig with Authentication[_] with Execution with L
     else origin
   }
 
-  protected def csrfRejectionMessage(
-      request: HttpRequest, sourceOrigins: Seq[HttpOrigin], targetOrigins: Seq[HttpOrigin]) =
-    "CSRF rejection. " +
-      s"""Source origins: ${sourceOrigins.mkString(", ")}, """ +
-      s"""target origins: ${targetOrigins.mkString(", ")}, """ +
-      s"""uri: ${request.uri}"""
-
-  protected def logCsrfRejection(
-      request: HttpRequest, sourceOrigins: Seq[HttpOrigin], targetOrigins: Seq[HttpOrigin]) =
-    logger.error(csrfRejectionMessage(request, sourceOrigins, targetOrigins))
-
   def checkSameOrigin: Directive0 =
     (extractRequest & extractTargetOrigins).tflatMap { case (request, targetOriginsRaw) =>
       val targetOrigins = targetOriginsRaw.map(normalizePort)
-      headerValuePF[Seq[HttpOrigin]]({
+      optionalHeaderValuePF[Seq[HttpOrigin]]({
         case Origin(origins) =>
           origins.map(normalizePort)
         case Referer(uri) =>
           List(HttpOrigin(uri.scheme, Host(uri.authority.host, uri.authority.port)))
             .map(normalizePort)
-      }).flatMap { sourceOrigins =>
+      }).map(_.getOrElse(error("Either 'Origin' or 'Referer' http header must be set.")))
+        .flatMap { sourceOrigins =>
         if (sourceOrigins.exists(HttpOriginRange(targetOrigins: _*).matches)) pass
         else {
-          logCsrfRejection(request, sourceOrigins, targetOrigins)
-          reject(InvalidOriginRejection(targetOrigins))
+          val msg =
+            "Cross Site Request Forgery (CSRF) - " +
+            s"""Source origins: ${sourceOrigins.mkString(", ")}, """ +
+            s"""target origins: ${targetOrigins.mkString(", ")}, """ +
+            s"""uri: ${request.uri}"""
+          throw new CSRFException(msg)
         }
       }
     }
 
-  def checkCSRFToken: Directive0 = (cookie(CSRFCookieName) & headerValueByName(CSRFHeaderName))
-    .tflatMap {
+  def checkCSRFToken: Directive0 = (
+    optionalCookie(CSRFCookieName).map(_.getOrElse(error(s"$CSRFCookieName cookie not found."))) &
+      optionalHeaderValueByName(CSRFHeaderName).map(_.getOrElse(error(s"$CSRFHeaderName header not found.")))
+    ).tflatMap {
       case (cookie, header) =>
         if (cookie.value == header) pass
-        else reject(AuthenticationFailedRejection(
-          CredentialsRejected,
-          AppDefaultChallenge))
+        else error(s"$CSRFCookieName cookie value does not match $CSRFHeaderName header value - " +
+          s"${cookie.value} != $header")
     }
-
-  private def hash(string: String) = org.apache.commons.codec.digest.DigestUtils.sha256Hex(
-    string + String.valueOf(Authentication.Crypto.randomBytes(8)))
 
   protected def csrfCookieTransformer(cookie: HttpCookie): HttpCookie = cookie
 
@@ -96,10 +88,11 @@ trait CSRFDefence { this: AppConfig with Authentication[_] with Execution with L
     csrfCookieTransformer(
       HttpCookie(
         CSRFCookieName,
-        value = uniqueSessionId,
+        value = Authentication.Crypto.uniqueSessionId,
         path = Some("/"),
-        secure = secureCookies
+        secure = Authentication.Crypto.secureCookies
       ).withSameSite(SameSite.Lax)))
 
   def deleteCSRFCookie: Directive0 = deleteCookie(CSRFCookieName)
+  private def error(msg: String) = throw new CSRFException(msg)
 }
