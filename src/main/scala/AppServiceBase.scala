@@ -689,7 +689,7 @@ object AppServiceBase {
       val logger = LoggerFactory.getLogger("org.wabase.csrf")
       ExceptionHandler {
         case e: CSRFException =>
-          logger.error("CSRF error", e)
+          logger.info(e.toString)
           complete(StatusCodes.BadRequest)
       }
     }
