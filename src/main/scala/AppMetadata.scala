@@ -1415,7 +1415,7 @@ object AppMetadata extends Loggable {
     name: String,
     path: Regex,
     requestTransformer: HttpRequest => Future[HttpRequest] = null,
-    responseTransformer: HttpResponse => Future[HttpResponse] = null,
+    responseTransformer: WabaseRequestContext => HttpResponse => Future[HttpResponse] = null,
   )
 
   trait AppMdConventions extends MdConventions {
