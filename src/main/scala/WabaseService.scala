@@ -24,7 +24,7 @@ object WabaseService {
       case Segment(head, tail) =>
         if (head contains viewNameAndActionStr) (head, tail)
         else view_action_key(tail)
-      case p => view_action_key(p)
+      case p => view_action_key(p.tail)
     }
     val (view_action, keyPath) = view_action_key(ctx.request.uri.path)
     val ActionAndView(action, viewName) = view_action
