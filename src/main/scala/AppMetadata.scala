@@ -1,5 +1,6 @@
 package org.wabase
 
+import akka.http.scaladsl.model.{HttpRequest, HttpResponse}
 import org.mojoz.metadata.ViewDef
 import org.mojoz.metadata.FieldDef
 import org.mojoz.metadata.in._
@@ -18,10 +19,10 @@ import org.wabase.AppMetadata.Action.{Validations, VariableTransform, VariableTr
 import java.io.InputStream
 import java.util.concurrent.ConcurrentHashMap
 import scala.collection.immutable.{Map, Seq, Set}
+import scala.concurrent.Future
 import scala.jdk.CollectionConverters._
 import scala.language.reflectiveCalls
 import scala.util.Try
-import scala.util.control.NonFatal
 import scala.util.matching.Regex
 
 trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
@@ -1408,6 +1409,13 @@ object AppMetadata extends Loggable {
     db: String = null,
     explicitDb: Boolean = false,
     dbAccessKeys: Seq[DbAccessKey] = Nil,
+  )
+
+  case class RouteDef(
+    name: String,
+    path: Regex,
+    requestTransformer: HttpRequest => Future[HttpRequest] = null,
+    responseTransformer: HttpResponse => Future[HttpResponse] = null,
   )
 
   trait AppMdConventions extends MdConventions {
