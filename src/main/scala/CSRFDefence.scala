@@ -33,14 +33,15 @@ trait CSRFDefence { this: AppConfig =>
 
   protected def extractTargetOrigins: Directive1[List[HttpOrigin]] =
     if (targetOrigin != null) provide(List(targetOrigin))
-    else
+    else extractUri.flatMap { uri =>
       (headerValuePF[List[HttpOrigin]]({ case h: Host => fullOriginList(h) }) |
         headerValueByName("X-Forwarded-Host")
           .map(Host.parseFromValueString)
           .map {
             case Right(h) => fullOriginList(h)
             case Left(_) => Nil
-          }).recover(_ => error(s"Either 'Host' or 'X-Forwarded-Host' http header must be set."))
+          }).recover(_ => error(s"Either 'Host' or 'X-Forwarded-Host' http header must be set.", uri))
+    }
 
   protected def normalizePort(origin: HttpOrigin) = {
     if (origin.host.port == 0)
@@ -68,7 +69,7 @@ trait CSRFDefence { this: AppConfig =>
         case Referer(uri) =>
           List(HttpOrigin(uri.scheme, Host(uri.authority.host, uri.authority.port)))
             .map(normalizePort)
-      }).map(_.getOrElse(error("Either 'Origin' or 'Referer' http header must be set.")))
+      }).map(_.getOrElse(error("Either 'Origin' or 'Referer' http header must be set.", request.uri)))
         .flatMap { sourceOrigins =>
           if (sourceOrigins.exists(HttpOriginRange(targetOrigins: _*).matches)) pass
           else {
@@ -77,20 +78,22 @@ trait CSRFDefence { this: AppConfig =>
                 s"""Source origins: ${sourceOrigins.mkString(", ")}, """ +
                 s"""target origins: ${targetOrigins.mkString(", ")}, """ +
                 s"""uri: ${request.uri}"""
-            throw new CSRFException(msg)
+            error(msg, request.uri)
           }
         }
     }
 
-  def checkCSRFToken: Directive0 = (
-    optionalCookie(CSRFCookieName).map(_.getOrElse(error(s"$CSRFCookieName cookie not found."))) &
-      optionalHeaderValueByName(CSRFHeaderName).map(_.getOrElse(error(s"$CSRFHeaderName header not found.")))
-    ).tflatMap {
+
+  def checkCSRFToken: Directive0 = extractUri.flatMap { uri =>
+    (optionalCookie(CSRFCookieName).map(_.getOrElse(error(s"$CSRFCookieName cookie not found.", uri))) &
+        optionalHeaderValueByName(CSRFHeaderName).map(_.getOrElse(error(s"$CSRFHeaderName header not found.", uri)))
+      ).tflatMap {
       case (cookie, header) =>
         if (cookie.value == header) pass
         else error(s"$CSRFCookieName cookie value does not match $CSRFHeaderName header value - " +
-          s"${cookie.value} != $header")
+          s"${cookie.value} != $header", uri)
     }
+  }
 
   protected def csrfCookieTransformer(cookie: HttpCookie): HttpCookie = cookie
 
@@ -104,5 +107,8 @@ trait CSRFDefence { this: AppConfig =>
       ).withSameSite(SameSite.Lax)))
 
   def deleteCSRFCookie: Directive0 = deleteCookie(CSRFCookieName)
-  private def error(msg: String) = throw new CSRFException(msg)
+
+  private def error(msg: String, uri: Uri) =
+    throw new CSRFException(s"$msg (url - ${uri.withQuery(Uri.Query(Map[String, String]())).toString()})")
+
 }
