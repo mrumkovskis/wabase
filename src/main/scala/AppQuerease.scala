@@ -4,8 +4,10 @@ import akka.actor.ActorSystem
 import akka.http.scaladsl.model.HttpHeader.ParsingResult.{Error, Ok}
 import akka.http.scaladsl.model.headers.ContentDispositionTypes.attachment
 import akka.http.scaladsl.model.headers.`Content-Disposition`
-import akka.http.scaladsl.model.{ContentType, ContentTypes, HttpEntity, HttpHeader, HttpMethods, HttpRequest, HttpResponse, MediaTypes, StatusCodes, UniversalEntity}
-import akka.stream.scaladsl.Source
+import akka.http.scaladsl.model.{ContentType, ContentTypes, HttpCharsets, HttpEntity, HttpHeader, HttpMethods, HttpRequest, HttpResponse, MediaTypes, StatusCodes, UniversalEntity}
+import akka.http.scaladsl.server.directives.ContentTypeResolver
+import akka.http.scaladsl.server.directives.FileAndResourceDirectives.ResourceFile
+import akka.stream.scaladsl.{Source, StreamConverters}
 import akka.util.ByteString
 import com.typesafe.scalalogging.Logger
 import org.tresql._
@@ -64,6 +66,7 @@ case class IdResult(id: Any, name: String) extends QuereaseResult {
 case class KeyResult(ir: IdResult, viewName: String, key: Seq[Any]) extends QuereaseResult
 case class QuereaseDeleteResult(count: Int) extends QuereaseResult
 case class StatusResult(code: Int, value: StatusValue) extends QuereaseResult
+case class ResourceResult(resource: ResourceFile, contentType: ContentType) extends DataResult
 case class FileInfoResult(fileInfo: FileInfo) extends QuereaseResult
 case class FileResult(fileInfo: FileInfo, fileStreamer: FileStreamer) extends DataResult
 sealed trait TemplateResult extends QuereaseResult
@@ -923,6 +926,33 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     }.map(it => IteratorResult(it.iterator))
   }
 
+  protected def doResource(
+    op: Action.Resource,
+    data: Map[String, Any],
+    env: Map[String, Any],
+    context: ActionContext,
+  )(implicit
+    res: Resources,
+    ec: ExecutionContext,
+  ): Future[ResourceResult] = {
+    val name = Query(op.nameTresql.tresql)(res.withParams(data ++ env)).unique[String]
+    val ct = Option(op.contentTypeTresql)
+      .map { ctt =>
+        val ct = Query(ctt.tresql)(res.withParams(data ++ env)).unique[String]
+        ContentType.parse(ct)
+          .toOption
+          .getOrElse(sys.error(s"Invalid content type: $ct"))
+      }
+      .getOrElse {
+        ContentTypeResolver.withDefaultCharset(HttpCharsets.`UTF-8`)(name)
+      }
+    Future.successful {
+      ResourceFile(classOf[AppQuerease].getResource(name))
+        .map(rf => ResourceResult(rf, ct))
+        .getOrElse(ResourceResult(null, null))
+    }
+  }
+
   protected def doFile(
     op: Action.File,
     data: Map[String, Any],
@@ -1252,6 +1282,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         Future.successful(NoResult)
       case cond: Action.If => doIf(cond, data, env, context)
       case foreach: Action.Foreach => doForeach(foreach, data, env, context)
+      case resource: Action.Resource => doResource(resource, data, env, context)
       case file: Action.File => doFile(file, data, env, context)
       case toFile: Action.ToFile => doToFile(toFile, data, env, context)
       case template: Action.Template => doTemplate(template, data, env, context)
@@ -1335,6 +1366,12 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         fileHttpEntity(fileResult)
           .map(e => (e.dataBytes, fileResult.fileInfo.filename, e.contentType, e.contentLengthOption))
           .getOrElse(sys.error(s"File not found: ${fileResult.fileInfo}"))
+      case resourceResult: ResourceResult =>
+        ( StreamConverters.fromInputStream(() => resourceResult.resource.url.openStream()),
+          null,
+          if (contentType == null) resourceResult.contentType else contentType,
+          Some(resourceResult.resource.length)
+        )
       case templateResult: TemplateResult => templateResult match {
         case StringTemplateResult(content) =>
           val data = ByteString(content)
@@ -1361,8 +1398,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
 
   protected lazy val doHttpRequest: HttpRequest => Future[HttpResponse] = {
     val httpClient =
-      new org.wabase.client.RestClient {
-      }
+      new org.wabase.client.RestClient {}
     httpClient.doRequest _
   }
 
@@ -1443,6 +1479,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case fi: FileInfoResult => fi.fileInfo.toMap
       case fr: FileResult => fileHttpEntity(fr).map(objFromHttpEntity(_, null, false))
         .getOrElse(sys.error(s"File not found: ${fr.fileInfo}"))
+      case rs: ResourceResult =>
+        StreamConverters.fromInputStream(() => rs.resource.url.openStream()).runReduce(_ ++ _)
       case tr: TemplateResult => tr match {
         case StringTemplateResult(content) => content
         case FileTemplateResult(_, _, content) => content

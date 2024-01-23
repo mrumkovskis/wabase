@@ -7,14 +7,12 @@ import akka.http.scaladsl.model.MediaTypes._
 import akka.http.scaladsl.model.headers.ContentDispositionTypes.attachment
 import akka.http.scaladsl.util.FastFuture
 
-import java.io.OutputStreamWriter
 import java.net.URLEncoder
 import java.text.Normalizer
-import java.util.zip.ZipOutputStream
 import scala.concurrent.{ExecutionContext, Future}
 import akka.http.scaladsl.model.headers.{ContentDispositionType, ContentDispositionTypes, Location, RawHeader, `Content-Disposition`}
 import akka.http.scaladsl.unmarshalling.{FromEntityUnmarshaller, FromResponseUnmarshaller, Unmarshaller}
-import akka.stream.scaladsl.{Flow, Source}
+import akka.stream.scaladsl.{Flow, Source, StreamConverters}
 import akka.util.ByteString
 import io.bullet.borer.compat.akka.ByteStringProvider
 import org.mojoz.metadata.ViewDef
@@ -223,6 +221,18 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
       HttpResponse(status = StatusCodes.OK, entity = ent)
     }.getOrElse(HttpResponse(status = StatusCodes.NotFound))
   }
+  implicit val toResponseResourceResultMarshaller:          ToResponseMarshaller[ResourceResult] = Marshaller.combined {
+    rr =>
+      if (rr.resource != null) {
+        val rf = rr.resource
+        HttpResponse(
+          status = StatusCodes.OK,
+          entity = HttpEntity.Default(
+            rr.contentType, rf.length, StreamConverters.fromInputStream(() => rf.url.openStream())
+          )
+        )
+      } else HttpResponse(status = StatusCodes.NotFound)
+  }
   implicit val toResponseTemplateResultMarshaller:          ToResponseMarshaller[TemplateResult] =
     Marshaller.combined {
       case StringTemplateResult(content) =>
@@ -316,6 +326,7 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
       case no: NoResult.type  => (toEntityQuereaseNoResultMarshaller:         ToResponseMarshaller[NoResult.type] )(no)
       case dr: QuereaseDelRes => (toEntityQuereaseDeleteResultMarshaller:     ToResponseMarshaller[QuereaseDelRes])(dr)
       case fr: FileResult     => (toResponseFileResultMarshaller:             ToResponseMarshaller[FileResult]    )(fr)
+      case rr: ResourceResult => (toResponseResourceResultMarshaller:         ToResponseMarshaller[ResourceResult])(rr)
       case tr: TemplateResult => (toResponseTemplateResultMarshaller:         ToResponseMarshaller[TemplateResult])(tr)
       case hr: HttpResult     => (toResponseHttpResultMarshaller:             ToResponseMarshaller[HttpResult]    )(hr)
       case cr: CompatibleResult => (toResponseCompatibleResultMarshaller(wr): ToResponseMarshaller[CompatibleResult])(cr)

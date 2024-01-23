@@ -1047,3 +1047,10 @@ fields:
 get:
   - job_res = job test_job1
   - status ok :job_res.greeting
+
+
+name: resource_test1
+table:
+api: get
+get:
+- resource '/resource.txt'

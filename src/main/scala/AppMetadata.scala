@@ -755,6 +755,9 @@ class OpParser(viewName: String, tresqlUri: TresqlUri, cache: OpParser.Cache)
       val idx = res.lastIndexOf('.')
       Action.Invocation(res.substring(0, idx), res.substring(idx + 1), arg.orNull, rt)
   } named "invocation-op"
+  def resourceOp: MemParser[Resource] = "resource" ~> tresqlOp ~ opt(tresqlOp) ^^ {
+    case nameTresql ~ ctTresql => Resource(nameTresql, ctTresql.orNull)
+  } named "resource-op"
   def fileOp: MemParser[File] = opt(opResultType) ~ ("file" ~> tresqlOp) ^^ {
     case conformTo ~ e => File(e, conformTo)
   } named "file-op"
@@ -829,7 +832,7 @@ class OpParser(viewName: String, tresqlUri: TresqlUri, cache: OpParser.Cache)
     rep(namedOp)
   } named "named-ops"
   def operation: MemParser[Op] = (viewOp | jobOp | confOp | uniqueOptOp | invocationOp |
-    httpOp | fileOp | toFileOp | templateOp | emailOp |
+    httpOp | resourceOp | fileOp | toFileOp | templateOp | emailOp |
     jsonCodecOp | httpHeaderOp | bracesOp | tresqlOp) named "operation"
 
   private def opResultType: MemParser[OpResultType] = {
@@ -987,6 +990,7 @@ object AppMetadata extends Loggable {
     case class VariableTransforms(transforms: List[VariableTransform]) extends Op
     case class Foreach(initOp: Op, action: Action) extends Op
     case class If(cond: Op, action: Action, elseAct: Action = null) extends Op
+    case class Resource(nameTresql: Tresql, contentTypeTresql: Tresql = null) extends Op
     case class File(idShaTresql: Tresql, conformTo: Option[OpResultType] = None) extends Op
     case class ToFile(contentOp: Op, nameTresql: Tresql = null, contentTypeTresql: Tresql = null) extends Op
     case class Template(templateTresql: Tresql, dataOp: Op = null, filenameTresql: Tresql = null) extends Op
@@ -1021,7 +1025,7 @@ object AppMetadata extends Loggable {
       def traverse(state: T): PartialFunction[Op, T] = {
         case _: Tresql | _: RedirectToKey | _: Status |
              _: VariableTransforms | _: File | _: Conf | _: HttpHeader | _: Job |
-             Commit | null => state
+             _: Resource | Commit | null => state
         case o: ViewCall => opTrav(state)(o.data)
         case UniqueOpt(o) => opTrav(state)(o)
         case Foreach(o, a) => traverseAction(a)(stepTrav)(opTrav(state)(o))
@@ -1111,6 +1115,9 @@ object AppMetadata extends Loggable {
             case t: Tresql => us(state, nv(state.value)(t))
             case Status(_, bodyTresql, _) =>
               if (bodyTresql == null) state else us(state, nv(state.value)(Tresql(bodyTresql)))
+            case Resource(nameTresql, contentTypeTresql) =>
+              val s1 = us(state, nv(state.value)(nameTresql))
+              us(s1, nv(s1.value)(contentTypeTresql))
             case File(idShaTresql, _) => us(state, nv(state.value)(idShaTresql))
             case ToFile(contentOp, nameTresql, contentTypeTresql) =>
               val s1 = opTrTr(contentOp)

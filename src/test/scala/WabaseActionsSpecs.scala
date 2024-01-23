@@ -5,6 +5,7 @@ import akka.http.scaladsl.marshalling.Marshal
 import akka.http.scaladsl.model.{HttpRequest, HttpResponse, MessageEntity, StatusCodes}
 import akka.http.scaladsl.server.Route
 import akka.http.scaladsl.unmarshalling.Unmarshal
+import akka.stream.scaladsl.StreamConverters
 import akka.util.ByteString
 import org.mojoz.querease.{TresqlMetadata, ValidationException, ValidationResult}
 import org.scalatest.flatspec.{AsyncFlatSpec, AsyncFlatSpecLike}
@@ -1175,6 +1176,20 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       t2 <-
         doAction("get", "job_call_test1", Map("name" -> "John"))
           .map(_ shouldBe StatusResult(200, StringStatus("Hello John from test_job1!")))
+    } yield t1
+  }
+
+  it should "get resource" in {
+    for {
+      t1 <-
+        doAction("get", "resource_test1", Map())
+          .mapTo[ResourceResult]
+          .flatMap { resource =>
+            StreamConverters.fromInputStream(() => resource.resource.url.openStream())
+              .runReduce(_ ++ _)
+          }
+          .map(_.decodeString("UTF-8"))
+          .map(_ should include("This is test resource!"))
     } yield t1
   }
 }
