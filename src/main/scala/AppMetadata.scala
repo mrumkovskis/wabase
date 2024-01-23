@@ -1,6 +1,5 @@
 package org.wabase
 
-import akka.http.scaladsl.model.{HttpRequest, HttpResponse}
 import org.mojoz.metadata.ViewDef
 import org.mojoz.metadata.FieldDef
 import org.mojoz.metadata.in._
@@ -19,7 +18,6 @@ import org.wabase.AppMetadata.Action.{Validations, VariableTransform, VariableTr
 import java.io.InputStream
 import java.util.concurrent.ConcurrentHashMap
 import scala.collection.immutable.{Map, Seq, Set}
-import scala.concurrent.Future
 import scala.jdk.CollectionConverters._
 import scala.language.reflectiveCalls
 import scala.util.Try
@@ -49,17 +47,30 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   override lazy val nameToViewDef: Map[String, ViewDef] =
     toAppViewDefs(viewDefLoader.nameToViewDef)
 
-  lazy val jobDefLoader = new YamlJobDefLoader(
-    yamlMetadata,
-    jobName => jdMap => {
-      val opParser = new OpParser(jobName, tresqlUri, opParserCache(jobName))
-      parseAction(jobName, ViewDefExtrasUtils.getSeq("action", jdMap), opParser)
+  private def actionParser(dataKey: String): String => Map[String, Any] => Action =
+    name => dataMap => {
+      val opParser = new OpParser(name, tresqlUri, opParserCache(name))
+      parseAction(name, ViewDefExtrasUtils.getSeq(dataKey, dataMap), opParser)
     }
-  )
+  private def validateDuplicateNames = {
+    val viewNames = viewDefLoader.nameToViewDef.keys.toSet
+    val jobNames = jobDefLoader.nameToJobDef.keys.toSet
+    val routeNames = routeDefLoader.routeDefs.map(_.name).toSet
+    val duplicates = viewNames intersect jobNames intersect routeNames
+    require(duplicates.isEmpty, s"Duplicate view, job, route names found - '${duplicates.mkString(", ")}'")
+  }
+
+  lazy val jobDefLoader = new YamlJobDefLoader(yamlMetadata, actionParser("action"))
   lazy val nameToJobDef: Map[String, JobDef] = {
-    val duplicates = viewDefLoader.nameToViewDef.keys.toSet intersect jobDefLoader.nameToJobDef.keys.toSet
-    require(duplicates.isEmpty, s"Duplicate view, job names found - '${duplicates.mkString(", ")}'")
+    validateDuplicateNames
     transformJobDefs(jobDefLoader.nameToJobDef)
+  }
+
+  lazy val routeDefLoader =
+    new YamlRouteDefLoader(yamlMetadata, actionParser("req-trans"), actionParser("resp-trans"))
+  lazy val routeDefs: Seq[RouteDef] = {
+    validateDuplicateNames
+    routeDefLoader.routeDefs
   }
 
   protected lazy val actionOpCache: scala.collection.concurrent.Map[String, OpParser.Cache] = {
@@ -116,7 +127,6 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   lazy val viewNameToApiKeyFieldNames: Map[String, Seq[String]] =
     viewNameToApiKeyFields.map { case (name, fields) => (name, fields.map(_.fieldName)) }
 
-  val knownApiMethods = Set("create", "count", "get", "list", "insert", "update", "save", "delete")
   def splitToLabelAndComments(s: String): (String, String) = {
     def clear(s: String) = Option(s).filter(_ != "").orNull
     def unescape(s: String) = s.replace("--", "-")
@@ -129,168 +139,9 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
   def collectViews[A](f: PartialFunction[ViewDef, A]): Iterable[A] = nameToViewDef.values.collect(f)
 
-  object KnownAuthOps {
-    val Get = "get"
-    val List = "list"
-    val Save = "save"
-    val Insert = "insert"
-    val Update = "update"
-    val Delete = "delete"
-    def apply() =
-      Set(Get, List, Save, Insert, Update, Delete)
-  }
-  val knownAuthOps = KnownAuthOps()
-
-  object KnownViewExtras {
-    val Api = "api"
-    val Auth = "auth"
-    val Key   = "key"
-    val Limit = "limit"
-    val Validations = "validations"
-    val ConnectionPool = "cp"
-    val ExplicitDb = "explicit db"
-    val DecodeRequest = "decode request"
-    val QuereaseViewExtrasKey = QuereaseMetadata.QuereaseViewExtrasKey
-    val WabaseViewExtrasKey = AppMetadata.WabaseViewExtrasKey
-    def apply() =
-      Set(Api, Auth, Key, Limit, Validations, ConnectionPool, ExplicitDb, DecodeRequest, QuereaseViewExtrasKey, WabaseViewExtrasKey) ++
-        Action()
-  }
-
-  lazy val knownViewExtras = KnownViewExtras()
   protected val handledViewExtras = KnownViewExtras() - KnownViewExtras.QuereaseViewExtrasKey
-
-  lazy val knownPrefixes = Set(KnownViewExtras.Auth)
-
-  object KnownFieldExtras {
-    val FieldApi = "field api" // avoid name clash with "api"
-
-    val Excluded = "excluded"
-    val Readonly = "readonly"
-    val Readwrite = "readwrite"
-    val NoInsert = "no insert"
-    val NoUpdate = "no update"
-
-    val Domain = "domain" // legacy, not ported, ignored
-    val Required = "required"
-    val Sortable = "sortable"
-    val Hidden = "hidden"
-    val Visible = "visible"
-    val Initial = "initial"
-    val QuereaseFieldExtrasKey = QuereaseMetadata.QuereaseFieldExtrasKey
-    val WabaseFieldExtrasKey = AppMetadata.WabaseFieldExtrasKey
-    def apply() = Set(
-      Domain, Hidden, Sortable, Visible, Required,
-      FieldApi, Initial, QuereaseFieldExtrasKey, WabaseFieldExtrasKey)
-  }
-
-  lazy val knownFieldExtras = KnownFieldExtras()
   protected val handledFieldExtras = KnownFieldExtras() - KnownFieldExtras.QuereaseFieldExtrasKey
-
   lazy val knownInlineViewExtras = knownViewExtras ++ knownFieldExtras
-
-  object ViewDefExtrasUtils {
-    def getStringSeq(name: String, extras: Map[String, Any]): Seq[String] = {
-      getSeq(name, extras) map {
-        case s: java.lang.String => s
-        case m: java.util.Map[_, _] =>
-          if (m.size == 1) m.entrySet.asScala.toList(0).getKey.toString
-          else m.toString // TODO error?
-        case x => x.toString
-      }
-    }
-    def getSeq(name: String, extras: Map[String, Any]): Seq[_] =
-      Option(extras).flatMap(_ get name) match {
-        case Some(s: java.lang.String) => Seq(s)
-        case Some(a: java.util.ArrayList[_]) => a.asScala.toList
-        case None => Nil
-        case Some(null) => Seq("")
-        case Some(x) => Seq(x)
-      }
-    def getIntExtra(name: String, viewDef: ViewDef) =
-      Option(viewDef.extras).flatMap(_ get name).map {
-        case i: Int => i
-        case x => sys.error(
-          s"Expecting int value, viewDef, key: ${viewDef.name}, $name")
-      }
-    def getStringExtra(name: String, viewDef: ViewDef) =
-      Option(viewDef.extras).flatMap(_ get name).map {
-        case s: String => s
-        case x => sys.error(
-          s"Expecting string value, viewDef, key: ${viewDef.name}, $name")
-      }
-    def getBooleanExtraOpt(name: String, viewDef: ViewDef) =
-      Option(viewDef.extras).flatMap(_ get name).map {
-        case b: Boolean => b
-        case s: String if s == name => true
-        case x => sys.error(
-          s"Expecting boolean value or no value, viewDef, key: ${viewDef.name}.$name")
-      }
-    def getBooleanExtra(name: String, viewDef: ViewDef) =
-      getBooleanExtraOpt(name, viewDef) getOrElse false
-
-    def toAuth(viewDef: ViewDef, authPrefix: String) = {
-      import KnownAuthOps._
-      viewDef.extras.keySet
-        .filter(k => k == authPrefix || k.startsWith(authPrefix + " "))
-        .foldLeft(AuthEmpty)((a, k) => {
-          val filters = getStringSeq(k, viewDef.extras)
-          if (k == authPrefix)
-            a.copy(
-              forGet = a.forGet ++ filters,
-              forList = a.forList ++ filters,
-              forInsert = a.forInsert ++ filters,
-              forUpdate = a.forUpdate ++ filters,
-              forDelete = a.forDelete ++ filters)
-          else {
-            val ops = k.substring(authPrefix.length).trim.split("[\\s,]+").toList.filter(_ != "")
-            val unknownAuthOps = ops.toSet -- knownAuthOps
-            if (unknownAuthOps.nonEmpty)
-              sys.error(
-                s"Unknown auth specifier(s), viewDef: ${viewDef.name}, specifier(s): ${unknownAuthOps.mkString(", ")}")
-            ops.foldLeft(a)((a, op) => op match {
-              case Get =>
-                a.copy(forGet = a.forGet ++ filters)
-              case List => a.copy(forList = a.forList ++ filters)
-              case Save => a.copy(
-                forInsert = a.forInsert ++ filters,
-                forUpdate = a.forUpdate ++ filters)
-              case Insert => a.copy(forInsert = a.forInsert ++ filters)
-              case Update => a.copy(forUpdate = a.forUpdate ++ filters)
-              case Delete => a.copy(forDelete = a.forDelete ++ filters)
-            })
-          }
-        })
-    }
-  }
-
-  object FieldDefExtrasUtils {
-    def fieldNameToLabel(n: String) =
-      n.replace("_", " ").capitalize
-    def fieldLabelFromName(f: FieldDef) = fieldNameToLabel(f.fieldName)
-    def getExtraOpt(viewDef: ViewDef, f: FieldDef, key: String) =
-      Option(f.extras).flatMap(_ get key).map {
-        case s: String => s
-        case i: Int => i.toString
-        case l: Long => l.toString
-        case d: Double => d.toString
-        case bd: BigDecimal => bd.toString
-        case b: Boolean => b.toString
-        case null => null
-        case x => sys.error(
-          s"Expecting String, AnyVal, BigDecimal value or no value, viewDef field, key: ${viewDef.name}.${f.name}, $key")
-      }
-    def getBooleanExtraOpt(viewDef: ViewDef, f: FieldDef, key: String) =
-      Option(f.extras).flatMap(_ get key).map {
-        case b: Boolean => b
-        case s: String if s == key => true
-        case x => sys.error(
-          s"Expecting boolean value or no value, viewDef field, key: ${viewDef.name}.${f.name}, $key")
-      }
-    def getBooleanExtra(viewDef: ViewDef, f: FieldDef, key: String) =
-      getBooleanExtraOpt(viewDef, f, key) getOrElse false
-
-  }
 
   protected def isSortableField(viewDef: ViewDef, f: FieldDef) = {
     FieldDefExtrasUtils.getBooleanExtraOpt(viewDef, f, KnownFieldExtras.Sortable) getOrElse {
@@ -1414,8 +1265,8 @@ object AppMetadata extends Loggable {
   case class RouteDef(
     name: String,
     path: Regex,
-    requestTransformer: HttpRequest => Future[HttpRequest] = null,
-    responseTransformer: WabaseRequestContext => HttpResponse => Future[HttpResponse] = null,
+    requestTransformer: Action.Invocation = null,
+    responseTransformer: Action.Invocation = null,
   )
 
   trait AppMdConventions extends MdConventions {
@@ -1442,5 +1293,161 @@ object AppMetadata extends Loggable {
 
   object AppConstraintNamingRules extends SimpleConstraintNamingRules {
     override val maxNameLen = 63 // default maximum identifier length on postgres
+  }
+
+  val knownApiMethods = Set("create", "count", "get", "list", "insert", "update", "save", "delete")
+  lazy val knownViewExtras = KnownViewExtras()
+  lazy val knownPrefixes = Set(KnownViewExtras.Auth)
+  object KnownAuthOps {
+    val Get = "get"
+    val List = "list"
+    val Save = "save"
+    val Insert = "insert"
+    val Update = "update"
+    val Delete = "delete"
+    def apply() =
+      Set(Get, List, Save, Insert, Update, Delete)
+  }
+  val knownAuthOps = KnownAuthOps()
+
+  object KnownViewExtras {
+    val Api = "api"
+    val Auth = "auth"
+    val Key   = "key"
+    val Limit = "limit"
+    val Validations = "validations"
+    val ConnectionPool = "cp"
+    val ExplicitDb = "explicit db"
+    val DecodeRequest = "decode request"
+    val QuereaseViewExtrasKey = QuereaseMetadata.QuereaseViewExtrasKey
+    val WabaseViewExtrasKey = AppMetadata.WabaseViewExtrasKey
+    def apply() =
+      Set(Api, Auth, Key, Limit, Validations, ConnectionPool, ExplicitDb, DecodeRequest, QuereaseViewExtrasKey, WabaseViewExtrasKey) ++
+        Action()
+  }
+  object KnownFieldExtras {
+    val FieldApi = "field api" // avoid name clash with "api"
+
+    val Excluded = "excluded"
+    val Readonly = "readonly"
+    val Readwrite = "readwrite"
+    val NoInsert = "no insert"
+    val NoUpdate = "no update"
+
+    val Domain = "domain" // legacy, not ported, ignored
+    val Required = "required"
+    val Sortable = "sortable"
+    val Hidden = "hidden"
+    val Visible = "visible"
+    val Initial = "initial"
+    val QuereaseFieldExtrasKey = QuereaseMetadata.QuereaseFieldExtrasKey
+    val WabaseFieldExtrasKey = AppMetadata.WabaseFieldExtrasKey
+    def apply() = Set(
+      Domain, Hidden, Sortable, Visible, Required,
+      FieldApi, Initial, QuereaseFieldExtrasKey, WabaseFieldExtrasKey)
+  }
+
+  lazy val knownFieldExtras = KnownFieldExtras()
+
+  object ViewDefExtrasUtils {
+    def getStringSeq(name: String, extras: Map[String, Any]): Seq[String] = {
+      getSeq(name, extras) map {
+        case s: java.lang.String => s
+        case m: java.util.Map[_, _] =>
+          if (m.size == 1) m.entrySet.asScala.toList.head.getKey.toString
+          else m.toString // TODO error?
+        case x => x.toString
+      }
+    }
+    def getSeq(name: String, extras: Map[String, Any]): Seq[_] =
+      Option(extras).flatMap(_ get name) match {
+        case Some(s: java.lang.String) => Seq(s)
+        case Some(a: java.util.ArrayList[_]) => a.asScala.toList
+        case None => Nil
+        case Some(null) => Seq("")
+        case Some(x) => Seq(x)
+      }
+    def getIntExtra(name: String, viewDef: ViewDef) =
+      Option(viewDef.extras).flatMap(_ get name).map {
+        case i: Int => i
+        case x => sys.error(
+          s"Expecting int value, viewDef, key: ${viewDef.name}, $name")
+      }
+    def getStringExtra(name: String, viewDef: ViewDef) =
+      Option(viewDef.extras).flatMap(_ get name).map {
+        case s: String => s
+        case x => sys.error(
+          s"Expecting string value, viewDef, key: ${viewDef.name}, $name")
+      }
+    def getBooleanExtraOpt(name: String, viewDef: ViewDef) =
+      Option(viewDef.extras).flatMap(_ get name).map {
+        case b: Boolean => b
+        case s: String if s == name => true
+        case x => sys.error(
+          s"Expecting boolean value or no value, viewDef, key: ${viewDef.name}.$name")
+      }
+    def getBooleanExtra(name: String, viewDef: ViewDef) =
+      getBooleanExtraOpt(name, viewDef) getOrElse false
+
+    def toAuth(viewDef: ViewDef, authPrefix: String) = {
+      import KnownAuthOps._
+      viewDef.extras.keySet
+        .filter(k => k == authPrefix || k.startsWith(authPrefix + " "))
+        .foldLeft(AuthEmpty)((a, k) => {
+          val filters = getStringSeq(k, viewDef.extras)
+          if (k == authPrefix)
+            a.copy(
+              forGet = a.forGet ++ filters,
+              forList = a.forList ++ filters,
+              forInsert = a.forInsert ++ filters,
+              forUpdate = a.forUpdate ++ filters,
+              forDelete = a.forDelete ++ filters)
+          else {
+            val ops = k.substring(authPrefix.length).trim.split("[\\s,]+").toList.filter(_ != "")
+            val unknownAuthOps = ops.toSet -- knownAuthOps
+            if (unknownAuthOps.nonEmpty)
+              sys.error(
+                s"Unknown auth specifier(s), viewDef: ${viewDef.name}, specifier(s): ${unknownAuthOps.mkString(", ")}")
+            ops.foldLeft(a)((a, op) => op match {
+              case Get =>
+                a.copy(forGet = a.forGet ++ filters)
+              case List => a.copy(forList = a.forList ++ filters)
+              case Save => a.copy(
+                forInsert = a.forInsert ++ filters,
+                forUpdate = a.forUpdate ++ filters)
+              case Insert => a.copy(forInsert = a.forInsert ++ filters)
+              case Update => a.copy(forUpdate = a.forUpdate ++ filters)
+              case Delete => a.copy(forDelete = a.forDelete ++ filters)
+            })
+          }
+        })
+    }
+  }
+
+  object FieldDefExtrasUtils {
+    def fieldNameToLabel(n: String) =
+      n.replace("_", " ").capitalize
+    def fieldLabelFromName(f: FieldDef) = fieldNameToLabel(f.fieldName)
+    def getExtraOpt(viewDef: ViewDef, f: FieldDef, key: String) =
+      Option(f.extras).flatMap(_ get key).map {
+        case s: String => s
+        case i: Int => i.toString
+        case l: Long => l.toString
+        case d: Double => d.toString
+        case bd: BigDecimal => bd.toString
+        case b: Boolean => b.toString
+        case null => null
+        case x => sys.error(
+          s"Expecting String, AnyVal, BigDecimal value or no value, viewDef field, key: ${viewDef.name}.${f.name}, $key")
+      }
+    def getBooleanExtraOpt(viewDef: ViewDef, f: FieldDef, key: String) =
+      Option(f.extras).flatMap(_ get key).map {
+        case b: Boolean => b
+        case s: String if s == key => true
+        case x => sys.error(
+          s"Expecting boolean value or no value, viewDef field, key: ${viewDef.name}.${f.name}, $key")
+      }
+    def getBooleanExtra(viewDef: ViewDef, f: FieldDef, key: String) =
+      getBooleanExtraOpt(viewDef, f, key) getOrElse false
   }
 }
