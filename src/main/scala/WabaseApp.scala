@@ -341,7 +341,7 @@ trait WabaseApp[User] {
           case seq: Seq[_] => seq.map(_.toString).toSet
           case cols => s"$cols".split(",").map(_.trim).toSet
         }.orNull
-        logger.info(s"Adding result filter. allowed: ${allowed}")
+        logger.debug(s"Adding result filter. allowed: ${allowed}")
         if (allowed != null) {
           class ColsFilter(viewName: String, nameToViewDef: Map[String, ViewDef])
             extends ResultRenderer.ViewFieldFilter(viewName, nameToViewDef) {
