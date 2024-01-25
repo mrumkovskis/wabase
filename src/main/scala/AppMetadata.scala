@@ -27,6 +27,12 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
   import AppMetadata._
 
+  val knownApiMethods = Set("create", "count", "get", "list", "insert", "update", "save", "delete")
+  lazy val knownViewExtras = KnownViewExtras()
+  lazy val knownPrefixes = Set(KnownViewExtras.Auth)
+  val knownAuthOps = KnownAuthOps()
+  lazy val knownFieldExtras = KnownFieldExtras()
+
   override lazy val aliasToDb: Map[String, String] =
     TresqlResourcesConf.confs.transform((_, c) => c.db)
 
@@ -235,7 +241,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       .updateWabaseExtras(_ => AppFieldDef(fieldApi, label, required, sortable, visible))
     }
     import viewDef._
-    val auth = toAuth(viewDef, Auth)
+    val auth = toAuth(viewDef, Auth, knownAuthOps)
 
     def badApiStructure = s"Unexpected API methods and roles structure for view ${viewDef.name}"
     val api =
@@ -1302,9 +1308,6 @@ object AppMetadata extends Loggable {
     override val maxNameLen = 63 // default maximum identifier length on postgres
   }
 
-  val knownApiMethods = Set("create", "count", "get", "list", "insert", "update", "save", "delete")
-  lazy val knownViewExtras = KnownViewExtras()
-  lazy val knownPrefixes = Set(KnownViewExtras.Auth)
   object KnownAuthOps {
     val Get = "get"
     val List = "list"
@@ -1315,7 +1318,6 @@ object AppMetadata extends Loggable {
     def apply() =
       Set(Get, List, Save, Insert, Update, Delete)
   }
-  val knownAuthOps = KnownAuthOps()
 
   object KnownViewExtras {
     val Api = "api"
@@ -1354,7 +1356,6 @@ object AppMetadata extends Loggable {
       FieldApi, Initial, QuereaseFieldExtrasKey, WabaseFieldExtrasKey)
   }
 
-  lazy val knownFieldExtras = KnownFieldExtras()
 
   object ViewDefExtrasUtils {
     def getStringSeq(name: String, extras: Map[String, Any]): Seq[String] = {
@@ -1396,7 +1397,7 @@ object AppMetadata extends Loggable {
     def getBooleanExtra(name: String, viewDef: ViewDef) =
       getBooleanExtraOpt(name, viewDef) getOrElse false
 
-    def toAuth(viewDef: ViewDef, authPrefix: String) = {
+    def toAuth(viewDef: ViewDef, authPrefix: String, knownAuthOps: Set[String]) = {
       import KnownAuthOps._
       viewDef.extras.keySet
         .filter(k => k == authPrefix || k.startsWith(authPrefix + " "))
