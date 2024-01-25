@@ -634,19 +634,23 @@ object TresqlResultSerializer {
     }
     override def close(): Unit = rows.close()
   }
-  private class TresqlColsIterator(cols: Iterator[_], includeHeaders: Boolean) extends Iterator[Any] {
-    override def hasNext: Boolean = cols.hasNext
+  private class TresqlColsIterator(cols: Iterator[_], includeHeaders: Boolean, close: () => Unit) extends Iterator[Any] {
+    override def hasNext: Boolean =
+      if (cols.hasNext)
+        true
+      else {
+        close()
+        false
+      }
     override def next(): Any = cols.next() match {
       case rows: Result[_] => new TresqlRowsIterator(rows, includeHeaders)
       case value => value
     }
   }
   private def headerIterator(row: RowLike, includeHeaders: Boolean) =
-    new TresqlColsIterator(row.columns.map(_.name).toVector.iterator, includeHeaders)
+    new TresqlColsIterator(row.columns.map(_.name).toVector.iterator, includeHeaders, () => {})
   private def valuesIterator(row: RowLike, includeHeaders: Boolean, closeAfterUse: Boolean) = {
-    val it = row.values.iterator
-    if (closeAfterUse) row.close()
-    new TresqlColsIterator(it, includeHeaders)
+    new TresqlColsIterator(row.values.iterator, includeHeaders, () => if (closeAfterUse) row.close())
   }
 
   def rowSource(
