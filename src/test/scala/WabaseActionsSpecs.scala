@@ -3,7 +3,8 @@ package org.wabase
 import akka.actor.ActorSystem
 import akka.http.scaladsl.marshalling.Marshal
 import akka.http.scaladsl.model.{HttpRequest, HttpResponse, MessageEntity, StatusCodes}
-import akka.http.scaladsl.server.Route
+import akka.http.scaladsl.server.{RequestContext, Route}
+import akka.http.scaladsl.testkit.ScalatestRouteTest
 import akka.http.scaladsl.unmarshalling.Unmarshal
 import akka.stream.scaladsl.StreamConverters
 import akka.util.ByteString
@@ -16,9 +17,11 @@ import org.wabase.QuereaseActionsDtos.PersonWithHealthDataHealth
 import java.io.File
 import java.nio.file.Files
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import scala.collection.immutable.{ListMap, Seq}
 import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration.DurationInt
+import scala.jdk.CollectionConverters._
 import scala.util.Try
 
 object WabaseActionDtos {
@@ -70,7 +73,9 @@ object WabaseActionDtos {
 
 object WabaseActionsSpecs {
   class MailBox {
-    var emails: Map[String, Map[String, _]] = Map()
+    /* use concurrent map since immutable map var declaration may lead to race condition errors. */
+    val emails: scala.collection.concurrent.Map[String, Map[String, _]] =
+      new ConcurrentHashMap[String, Map[String, _]]().asScala
   }
 
   class TestEmailSender(mailBox: MailBox) extends WabaseEmail {
@@ -109,7 +114,8 @@ object WabaseActionsSpecs {
   }
 }
 
-class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseInitializer with AsyncFlatSpecLike {
+class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseInitializer with AsyncFlatSpecLike
+  with ScalatestRouteTest {
   import WabaseActionsSpecs._
 
   val mailBox = new MailBox
@@ -208,7 +214,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
                           ) = {
     implicit val state = ApplicationState(env)
     implicit val fileStreamer: AppFileStreamer[TestUsr] = app
-    implicit val req: HttpRequest = null
+    implicit val reqCtx: RequestContext = null
     app.doWabaseAction(action, view, keyValues, params, values)
       .map(_.result)
       .flatMap {
@@ -1185,11 +1191,29 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         doAction("get", "resource_test1", Map())
           .mapTo[ResourceResult]
           .flatMap { resource =>
-            StreamConverters.fromInputStream(() => resource.resource.url.openStream())
+            StreamConverters.fromInputStream(() =>
+                classOf[Marshalling].getResource(resource.resource).openStream())
               .runReduce(_ ++ _)
           }
           .map(_.decodeString("UTF-8"))
           .map(_ should include("This is test resource!"))
     } yield t1
   }
+
+  /*
+  * Cannot execute this test since 'resource.txt' file used in test not found from classloader which is used by
+  * akka-http FileAndResourceDirectives.getFromResource method.
+  *
+  * classOf[Marshalling].getResource("/resource.txt") - WORKS
+  * classOf[Marshalling].getClassLoader.getResource("/resource.txt") - DOES NOT WORK
+  */
+//  it should "marshall resources" in {
+//    implicit val user: TestUsr = TestUsr(100)
+//    implicit val timeout: QueryTimeout = QueryTimeout(10)
+//    implicit val state: ApplicationState = ApplicationState(Map())
+//    val route = service.listOrGetAction("resource_test1")
+//    Get("/data/resource_test1") ~> route ~> check {
+//      entityAs[String] should include("This is test resource!")
+//    }
+//  }
 }

@@ -1,9 +1,8 @@
 package org.wabase
 
 import akka.actor.{Actor, ActorRef, ActorSystem, Props}
-import akka.http.scaladsl.model.HttpRequest
+import akka.http.scaladsl.server.RequestContext
 import com.typesafe.akka.extension.quartz.QuartzSchedulerExtension
-import org.tresql.Resources
 import org.wabase.WabaseScheduler.{JobResponse, Tick}
 
 import scala.concurrent.{ExecutionContext, Future}
@@ -71,7 +70,7 @@ class WabaseScheduler extends Loggable {
       case s: AppFileServiceBase[_] => s.fileStreamer.fileStreamer
       case _ => null
     }
-    implicit val httpRequest: HttpRequest = null
+    implicit val httpCtx: RequestContext = null
     implicit val qio: AppQuereaseIo[Dto] = service.app.qio
 
     val ctx =

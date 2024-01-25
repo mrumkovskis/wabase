@@ -11,8 +11,10 @@ import java.net.URLEncoder
 import java.text.Normalizer
 import scala.concurrent.{ExecutionContext, Future}
 import akka.http.scaladsl.model.headers.{ContentDispositionType, ContentDispositionTypes, Location, RawHeader, `Content-Disposition`}
+import akka.http.scaladsl.server.RouteResult.{Complete, Rejected}
+import akka.http.scaladsl.server.directives.{FileAndResourceDirectives}
 import akka.http.scaladsl.unmarshalling.{FromEntityUnmarshaller, FromResponseUnmarshaller, Unmarshaller}
-import akka.stream.scaladsl.{Flow, Source, StreamConverters}
+import akka.stream.scaladsl.{Flow, Source}
 import akka.util.ByteString
 import io.bullet.borer.compat.akka.ByteStringProvider
 import org.mojoz.metadata.ViewDef
@@ -222,16 +224,12 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
     }.getOrElse(HttpResponse(status = StatusCodes.NotFound))
   }
   implicit val toResponseResourceResultMarshaller:          ToResponseMarshaller[ResourceResult] = Marshaller.combined {
-    rr =>
-      if (rr.resource != null) {
-        val rf = rr.resource
-        HttpResponse(
-          status = StatusCodes.OK,
-          entity = HttpEntity.Default(
-            rr.contentType, rf.length, StreamConverters.fromInputStream(() => rf.url.openStream())
-          )
-        )
-      } else HttpResponse(status = StatusCodes.NotFound)
+    rr => FileAndResourceDirectives
+      .getFromResource(rr.resource, rr.contentType)(rr.httpCtx)
+      .map {
+        case Complete(response) => response
+        case _: Rejected => HttpResponse(status = StatusCodes.NotFound)
+      }
   }
   implicit val toResponseTemplateResultMarshaller:          ToResponseMarshaller[TemplateResult] =
     Marshaller.combined {

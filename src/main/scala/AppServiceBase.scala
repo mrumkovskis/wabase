@@ -22,14 +22,13 @@ import AppMetadata.AugmentedAppViewDef
 import AppServiceBase._
 import Authentication.SessionUserExtractor
 import DeferredControl._
-import akka.http.scaladsl.model.MediaTypes.{`application/json`, `application/x-www-form-urlencoded`}
+import akka.http.scaladsl.model.MediaTypes.`application/json`
 
-import java.net.URLEncoder
 import java.util.Locale
 import akka.http.scaladsl.server.util.Tuple
 import akka.http.scaladsl.unmarshalling.{FromEntityUnmarshaller, FromRequestUnmarshaller, PredefinedFromEntityUnmarshallers}
 import akka.util.ByteString
-import io.bullet.borer.{Json, Writer}
+import io.bullet.borer.Json
 import org.mojoz.querease.{ValidationException, ValidationResult}
 
 import java.lang.reflect.InvocationTargetException
@@ -89,7 +88,6 @@ trait AppServiceBase[User]
 
   def entityOrException[T](um: FromRequestUnmarshaller[T]): Directive1[T] =
     extractRequestContext.flatMap[Tuple1[T]] { ctx =>
-      // import ctx.executionContext
       import ctx.materializer
       onComplete(um(ctx.request)) flatMap {
         case Success(value) => provide(value)
@@ -136,7 +134,7 @@ trait AppServiceBase[User]
   def getByIdAction(viewName: String, id: Long)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
       if (useActions(viewName, Action.Get)) {
-        extractRequest { implicit req =>
+        extractRequestContext { implicit ctx =>
           extractStringId { idString =>
             complete(app.doWabaseAction(Action.Get, viewName, Seq(idString), filterPars(params)))
           }
@@ -150,7 +148,7 @@ trait AppServiceBase[User]
     implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
       if (useActions(viewName, Action.Get)) {
-        extractRequest { implicit req =>
+        extractRequestContext { implicit ctx =>
           complete(app.doWabaseAction(Action.Get, viewName, keyValues, filterPars(params)))
         }
       } else {
@@ -164,7 +162,7 @@ trait AppServiceBase[User]
     implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
       if (useActions(viewName, Action.Get)) {
-        extractRequest { implicit req =>
+        extractRequestContext { implicit ctx =>
           complete(app.doWabaseAction(Action.Get, viewName, Seq(value), filterPars(params) + (name -> value)))
         }
       } else {
@@ -175,7 +173,7 @@ trait AppServiceBase[User]
   def createAction(viewName: String)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
       if (useActions(viewName, Action.Create)) {
-        extractRequest { implicit req =>
+        extractRequestContext { implicit ctx =>
           complete(app.doWabaseAction(Action.Create, viewName, Nil, filterPars(params)))
         }
       } else {
@@ -200,7 +198,7 @@ trait AppServiceBase[User]
   def deleteByKeyAction(viewName: String, keyValues: Seq[Any])(
     implicit user: User, state: ApplicationState, timeout: QueryTimeout): Route =
     parameterMultiMap { params =>
-      extractRequest { implicit req =>
+      extractRequestContext { implicit ctx =>
         complete {
           app.doWabaseAction(Action.Delete, viewName, keyValues, filterPars(params))
         }
@@ -230,7 +228,7 @@ trait AppServiceBase[User]
         app.checkApi(viewName, Action.Update, user, keyValues)
         implicit val um = toMapUnmarshallerForView(viewName)
         entityAsMapOrException(um, viewName) { entityAsMap =>
-          extractRequest { implicit req =>
+          extractRequestContext { implicit ctx =>
             complete {
               app.doWabaseAction(Action.Update, viewName, keyValues, filterPars(params), entityAsMap,
                 doApiCheck = false /* api checked above */)
@@ -244,7 +242,7 @@ trait AppServiceBase[User]
       val impliedIdForGetOpt = app.impliedIdForGetOverList(viewName)
       if (impliedIdForGetOpt.isDefined)
         if (useActions(viewName, Action.Get)) {
-          extractRequest { implicit req =>
+          extractRequestContext { implicit ctx =>
             complete(app.doWabaseAction(Action.Get, viewName, Nil, filterPars(params)))
           }
         } else {
@@ -257,7 +255,7 @@ trait AppServiceBase[User]
   protected def listAction(viewName: String, params: Map[String, List[String]])(
     implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     if (useActions(viewName, Action.List)) {
-      extractRequest { implicit req =>
+      extractRequestContext { implicit ctx =>
         complete {
           app.doWabaseAction(
             Action.List,
@@ -289,7 +287,7 @@ trait AppServiceBase[User]
           app.checkApi(viewName, Action.Insert, user, keyValues)
           implicit val um = toMapUnmarshallerForView(viewName)
           entityAsMapOrException(um, viewName) { entityAsMap =>
-            extractRequest { implicit req =>
+            extractRequestContext { implicit ctx =>
               complete {
                 app.doWabaseAction(Action.Insert, viewName, keyValues, filterPars(params), entityAsMap,
                   doApiCheck = false /* api checked above */)
@@ -309,7 +307,7 @@ trait AppServiceBase[User]
   def countAction(viewName: String)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
       if (useActions(viewName, Action.Count)) {
-        extractRequest { implicit req =>
+        extractRequestContext { implicit ctx =>
           complete(app.doWabaseAction(Action.Count, viewName, Nil, filterPars(params)))
         }
       } else {

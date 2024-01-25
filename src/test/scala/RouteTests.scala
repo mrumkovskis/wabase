@@ -10,7 +10,8 @@ import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.{ExceptionHandler, Route}
 import org.scalatest.Inspectors.forAll
 
-class RouteTests extends FlatSpec with Matchers with ScalatestRouteTest{
+
+class RouteTests extends FlatSpec with Matchers with ScalatestRouteTest {
   val service = new TestAppService(system)
 
   behavior of "Core routes"

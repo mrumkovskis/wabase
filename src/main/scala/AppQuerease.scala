@@ -5,6 +5,7 @@ import akka.http.scaladsl.model.HttpHeader.ParsingResult.{Error, Ok}
 import akka.http.scaladsl.model.headers.ContentDispositionTypes.attachment
 import akka.http.scaladsl.model.headers.`Content-Disposition`
 import akka.http.scaladsl.model.{ContentType, ContentTypes, HttpCharsets, HttpEntity, HttpHeader, HttpMethods, HttpRequest, HttpResponse, MediaTypes, StatusCodes, UniversalEntity}
+import akka.http.scaladsl.server.RequestContext
 import akka.http.scaladsl.server.directives.ContentTypeResolver
 import akka.http.scaladsl.server.directives.FileAndResourceDirectives.ResourceFile
 import akka.stream.scaladsl.{Source, StreamConverters}
@@ -66,7 +67,7 @@ case class IdResult(id: Any, name: String) extends QuereaseResult {
 case class KeyResult(ir: IdResult, viewName: String, key: Seq[Any]) extends QuereaseResult
 case class QuereaseDeleteResult(count: Int) extends QuereaseResult
 case class StatusResult(code: Int, value: StatusValue) extends QuereaseResult
-case class ResourceResult(resource: ResourceFile, contentType: ContentType) extends DataResult
+case class ResourceResult(resource: String, contentType: ContentType, httpCtx: RequestContext) extends DataResult
 case class FileInfoResult(fileInfo: FileInfo) extends QuereaseResult
 case class FileResult(fileInfo: FileInfo, fileStreamer: FileStreamer) extends DataResult
 sealed trait TemplateResult extends QuereaseResult
@@ -288,7 +289,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       fieldFilter: FieldFilter = null,
     )(resourcesFactory: ResourcesFactory,
       fileStreamer: FileStreamer,
-      req: HttpRequest,
+      reqCtx: RequestContext,
       qio: AppQuereaseIo[Dto],
     ): QuereaseAction[QuereaseResult] = {
         new QuereaseAction[QuereaseResult] {
@@ -298,7 +299,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
               if (AugmentedAppViewDef(vd).explicitDb) resourcesFactory
               else resourcesFactory.copy()(resources = resourcesFactory.initResources())
             implicit val fs = fileStreamer
-            implicit val httpReq = req
+            implicit val httpReqCtx = reqCtx
             implicit val io = qio
             import resFac._
             def processResult(res: QuereaseResult, cleanup: Option[Throwable] => Unit): QuereaseResult = res match {
@@ -360,7 +361,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     ec: ExecutionContext,
     as: ActorSystem,
     fs: FileStreamer,
-    req: HttpRequest,
+    reqCtx: RequestContext,
     qio: AppQuereaseIo[Dto],
   ): Future[QuereaseResult] = {
     do_action(view, actionName, data, env, fieldFilter)
@@ -378,7 +379,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     ec: ExecutionContext,
     as: ActorSystem,
     fs: FileStreamer,
-    req: HttpRequest,
+    reqCtx: RequestContext,
     qio: AppQuereaseIo[Dto],
   ): Future[QuereaseResult] = {
     val vd = viewDef(view)
@@ -410,7 +411,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     ec: ExecutionContext,
     as: ActorSystem,
     fs: FileStreamer,
-    req: HttpRequest,
+    reqCtx: RequestContext,
     qio: AppQuereaseIo[Dto],
   ): Future[QuereaseResult] = {
     import Action._
@@ -553,7 +554,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     ec: ExecutionContext,
     as: ActorSystem,
     fs: FileStreamer,
-    req: HttpRequest,
+    reqCtx: RequestContext,
     qio: AppQuereaseIo[Dto],
   ): Future[QuereaseResult] = {
     import Action._
@@ -652,7 +653,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     ec: ExecutionContext,
     as: ActorSystem,
     fs: FileStreamer,
-    req: HttpRequest,
+    reqCtx: RequestContext,
     qio: AppQuereaseIo[Dto],
   ): Future[QuereaseResult] = {
     import op._
@@ -663,7 +664,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         case parType if parType.isAssignableFrom(classOf[ExecutionContext]) => ec
         case parType if parType.isAssignableFrom(classOf[ActorSystem]) => as
         case parType if parType.isAssignableFrom(classOf[FileStreamer]) => fs
-        case parType if parType.isAssignableFrom(classOf[HttpRequest]) => req
+        case parType if parType.isAssignableFrom(classOf[HttpRequest]) => Option(reqCtx).map(_.request).orNull
+        case parType if parType.isAssignableFrom(classOf[RequestContext]) => reqCtx
         case parType if parType.isAssignableFrom(classOf[AppQuereaseIo[Dto]]) => qio
         case x => sys.error(s"Cannot find value for function parameter. Unsupported parameter type: $x")
       }
@@ -760,7 +762,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     ec: ExecutionContext,
     as: ActorSystem,
     fs: FileStreamer,
-    req: HttpRequest,
+    reqCtx: RequestContext,
     qio: AppQuereaseIo[Dto],
   ): Future[QuereaseResult] = {
     import resFac._
@@ -795,7 +797,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     ec: ExecutionContext,
     as: ActorSystem,
     fs: FileStreamer,
-    req: HttpRequest,
+    reqCtx: RequestContext,
     qio: AppQuereaseIo[Dto],
   ): Future[QuereaseResult] = {
     def createGetResult(res: QuereaseResult): QuereaseResult = res match {
@@ -830,7 +832,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
    ec: ExecutionContext,
    as: ActorSystem,
    fs: FileStreamer,
-   req: HttpRequest,
+   reqCtx: RequestContext,
    qio: AppQuereaseIo[Dto],
   ): Future[QuereaseResult] = {
     val Action.Status(maybeCode, bodyTresql, parameterIndex) = op
@@ -864,7 +866,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     ec: ExecutionContext,
     as: ActorSystem,
     fs: FileStreamer,
-    req: HttpRequest,
+    reqCtx: RequestContext,
     qio: AppQuereaseIo[Dto],
   ): Future[QuereaseResult] = {
     doActionOp(op.cond, data, env, context).map {
@@ -891,7 +893,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     ec: ExecutionContext,
     as: ActorSystem,
     fs: FileStreamer,
-    req: HttpRequest,
+    reqCtx: RequestContext,
     qio: AppQuereaseIo[Dto],
   ): Future[IteratorResult] = {
     def iterator(res: QuereaseResult): Iterator[Map[String, Any]] = {
@@ -933,9 +935,9 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     context: ActionContext,
   )(implicit
     res: Resources,
-    ec: ExecutionContext,
+    reqCtx: RequestContext,
   ): Future[ResourceResult] = {
-    val name = Query(op.nameTresql.tresql)(res.withParams(data ++ env)).unique[String]
+    val resource = Query(op.nameTresql.tresql)(res.withParams(data ++ env)).unique[String]
     val ct = Option(op.contentTypeTresql)
       .map { ctt =>
         val ct = Query(ctt.tresql)(res.withParams(data ++ env)).unique[String]
@@ -944,13 +946,9 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           .getOrElse(sys.error(s"Invalid content type: $ct"))
       }
       .getOrElse {
-        ContentTypeResolver.withDefaultCharset(HttpCharsets.`UTF-8`)(name)
+        ContentTypeResolver.withDefaultCharset(HttpCharsets.`UTF-8`)(resource)
       }
-    Future.successful {
-      ResourceFile(classOf[AppQuerease].getResource(name))
-        .map(rf => ResourceResult(rf, ct))
-        .getOrElse(ResourceResult(null, null))
-    }
+    Future.successful(ResourceResult(resource, ct, reqCtx))
   }
 
   protected def doFile(
@@ -977,7 +975,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     ec: ExecutionContext,
     as: ActorSystem,
     fs: FileStreamer,
-    req: HttpRequest,
+    reqCtx: RequestContext,
     qio: AppQuereaseIo[Dto],
   ): Future[FileInfoResult] = {
     import akka.http.scaladsl.model.{MediaTypes, ContentType}
@@ -1008,7 +1006,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     ec: ExecutionContext,
     as: ActorSystem,
     fs: FileStreamer,
-    req: HttpRequest,
+    reqCtx: RequestContext,
     qio: AppQuereaseIo[Dto],
   ): Future[TemplateResult] = {
     import resFac._
@@ -1050,7 +1048,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     ec: ExecutionContext,
     as: ActorSystem,
     fs: FileStreamer,
-    req: HttpRequest,
+    reqCtx: RequestContext,
     qio: AppQuereaseIo[Dto],
   ): Future[LongResult] = {
     def subj_body(bv: Map[String, Any]) = {
@@ -1099,7 +1097,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     ec: ExecutionContext,
     as: ActorSystem,
     fs: FileStreamer,
-    req: HttpRequest,
+    reqCtx: RequestContext,
     qio: AppQuereaseIo[Dto],
   ): Future[DataResult] = {
     import resFac._
@@ -1161,9 +1159,9 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     ec: ExecutionContext,
     as: ActorSystem,
     fs: FileStreamer,
-    req: HttpRequest,
+    reqCtx: RequestContext,
   ): Future[QuereaseResult] = {
-    val headerVal = Option(req).map(_.headers).flatMap(_.collectFirst {
+    val headerVal = Option(reqCtx).map(_.request.headers).flatMap(_.collectFirst {
       case h if h.is(op.name.toLowerCase) => StringResult(h.value())
     }).getOrElse(NoResult)
     Future.successful(headerVal)
@@ -1179,13 +1177,13 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     ec: ExecutionContext,
     as: ActorSystem,
     fs: FileStreamer,
-    req: HttpRequest,
+    reqCtx: RequestContext,
     qio: AppQuereaseIo[Dto],
   ): Future[DbResult] = {
     val newRes = resFac.initResources()
     val closeRes = resFac.closeResources(newRes, op.doRollback, _)
     val newResFact = resFac.copy()(resources = newRes)
-    doSteps(op.action.steps, context.copy(stepName = "db"), Future.successful(data))(newResFact, ec, as, fs, req, qio).map {
+    doSteps(op.action.steps, context.copy(stepName = "db"), Future.successful(data))(newResFact, ec, as, fs, reqCtx, qio).map {
       case DbResult(r, cl) => DbResult(r, cl.andThen(_ => closeRes(None)))
       case r => DbResult(r, closeRes)
     }.andThen {
@@ -1227,7 +1225,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     ec: ExecutionContext,
     as: ActorSystem,
     fs: FileStreamer,
-    req: HttpRequest,
+    reqCtx: RequestContext,
     qio: AppQuereaseIo[Dto],
   ): Future[QuereaseResult] = {
     doActionOp(op.op, data, env, context)
@@ -1259,7 +1257,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     ec: ExecutionContext,
     as: ActorSystem,
     fs: FileStreamer,
-    req: HttpRequest,
+    reqCtx: RequestContext,
     qio: AppQuereaseIo[Dto],
   ): Future[QuereaseResult] = {
     import resFac._
@@ -1310,7 +1308,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
      ec: ExecutionContext,
      as: ActorSystem,
      fs: FileStreamer,
-     req: HttpRequest,
+     reqCtx: RequestContext,
      qio: AppQuereaseIo[Dto],
    ): Future[(Source[ByteString, _], ContentType, Option[Long])] = {
     doActionOp(op, data, env, context)
@@ -1367,11 +1365,13 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           .map(e => (e.dataBytes, fileResult.fileInfo.filename, e.contentType, e.contentLengthOption))
           .getOrElse(sys.error(s"File not found: ${fileResult.fileInfo}"))
       case resourceResult: ResourceResult =>
-        ( StreamConverters.fromInputStream(() => resourceResult.resource.url.openStream()),
-          null,
-          if (contentType == null) resourceResult.contentType else contentType,
-          Some(resourceResult.resource.length)
-        )
+        ResourceFile(classOf[AppQuerease].getResource(resourceResult.resource)).map { rf =>
+          ( StreamConverters.fromInputStream(() => rf.url.openStream()),
+            null,
+            if (contentType == null) resourceResult.contentType else contentType,
+            Some(rf.length)
+          )
+        }.getOrElse(sys.error(s"Resource not found: ${resourceResult.resource}"))
       case templateResult: TemplateResult => templateResult match {
         case StringTemplateResult(content) =>
           val data = ByteString(content)
@@ -1480,7 +1480,9 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case fr: FileResult => fileHttpEntity(fr).map(objFromHttpEntity(_, null, false))
         .getOrElse(sys.error(s"File not found: ${fr.fileInfo}"))
       case rs: ResourceResult =>
-        StreamConverters.fromInputStream(() => rs.resource.url.openStream()).runReduce(_ ++ _)
+        ResourceFile(classOf[AppQuerease].getResource(rs.resource))
+          .map(rf => StreamConverters.fromInputStream(() => rf.url.openStream()).runReduce(_ ++ _))
+          .orNull
       case tr: TemplateResult => tr match {
         case StringTemplateResult(content) => content
         case FileTemplateResult(_, _, content) => content
