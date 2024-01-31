@@ -49,7 +49,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       TresqlMetadata(tableMetadata.tableDefs, typeDefs, macrosClass, resourceLoader, aliasToDb),
       createJoinsParserCache(_)
     )
-  override lazy val metadataConventions: AppMdConventions = new DefaultAppMdConventions
+  override lazy val metadataConventions: AppMdConventions = new DefaultAppMdConventions(resourceLoader)()
   override lazy val nameToViewDef: Map[String, ViewDef] =
     toAppViewDefs(viewDefLoader.nameToViewDef)
 
@@ -1288,12 +1288,16 @@ object AppMetadata extends Loggable {
   }
 
   import MdConventions._
-  class DefaultAppMdConventions(
+  class DefaultAppMdConventions(resourceLoader: String => InputStream)(
     integerNamePatternStrings: Seq[String] =
-      namePatternsFromResource("/md-conventions/integer-name-patterns.txt", Nil),
+      namePatternsFromResource("/md-conventions/integer-name-patterns.txt", Nil, resourceLoader),
     decimalNamePatternStrings: Seq[String] =
-      namePatternsFromResource("/md-conventions/decimal-name-patterns.txt", Nil)
-  ) extends SimplePatternMdConventions with AppMdConventions {
+      namePatternsFromResource("/md-conventions/decimal-name-patterns.txt", Nil, resourceLoader),
+  ) extends SimplePatternMdConventions(
+    booleanNamePatternStrings  = namePatternsFromResource(defaultBooleanNamePatternSource,  resourceLoader),
+    dateNamePatternStrings     = namePatternsFromResource(defaultDateNamePatternSource,     resourceLoader),
+    dateTimeNamePatternStrings = namePatternsFromResource(defaultDateTimeNamePatternSource, resourceLoader),
+  ) with AppMdConventions {
 
   val integerNamePatterns = integerNamePatternStrings.map(pattern).toSeq
   val decimalNamePatterns = decimalNamePatternStrings.map(pattern).toSeq
