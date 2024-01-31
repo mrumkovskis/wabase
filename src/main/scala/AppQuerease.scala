@@ -533,13 +533,14 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   }
 
   protected def doTresql(
-    tresql: String,
+    tresql: Action.Tresql,
     bindVars: Map[String, Any],
     context: ActionContext,
   )(implicit
     resources: Resources,
-  ): TresqlResult = {
-    TresqlResult(Query(tresql)(resources.withParams(bindVars)))
+  ): DataResult = {
+    val r = TresqlResult(Query(tresql.tresql)(resources.withParams(bindVars)))
+    tresql.conformTo.map(comp_res(r, _)).getOrElse(r)
   }
 
   protected def doViewCall(
@@ -819,7 +820,11 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       }
       case r => sys.error(s"unique opt can only process DataResult type, instead encountered: $r")
     }
-    doActionOp(op.innerOp, data, env, context) map createGetResult
+    val r = doActionOp(op.innerOp, data, env, context) map createGetResult
+    op.conformTo.map(rf => r.map {
+      case dr: DataResult => comp_res(dr, rf)
+      case x => x
+    }).getOrElse(r)
   }
 
   protected def doStatus(
@@ -1262,7 +1267,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   ): Future[QuereaseResult] = {
     import resFac._
     op match {
-      case Action.Tresql(tresql, _) => Future.successful(doTresql(tresql, data ++ env, context))
+      case to: Action.Tresql => Future.successful(doTresql(to, data ++ env, context))
       case Action.ViewCall(method, view, viewOp) => doViewCall(method, view, viewOp, data, env, context)
       case op: Action.UniqueOpt => doUniqueOpt(op, data, env, context)
       case inv: Action.Invocation => doInvocation(inv, data, env, context)

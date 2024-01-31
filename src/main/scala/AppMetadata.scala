@@ -742,20 +742,23 @@ class OpParser(viewName: String, tresqlUri: TresqlUri, cache: OpParser.Cache)
     parsedOp
   }
 
-  def tresqlOp: MemParser[Tresql] = expr ^^ { e =>
+  def tresqlOp: MemParser[Tresql] = opt(opResultType) ~ expr ^^ { case rt ~ e =>
     val te = transformer {
       case f@ast.Fun("build_cursors",
         (o@ast.Obj(ast.Ident("this" :: Nil), _, _, _, _)) :: tail, false, None, None
       ) => f.copy(parameters = o.copy(obj = ast.Ident(viewName :: Nil)) :: tail)
     }(e)
     val dbs = traverser(dbExtractor)(Nil)(e)
-    Tresql(te.tresql, dbs)
+    Tresql(te.tresql, dbs, rt)
   } named "tresql-op"
   def viewOp: MemParser[ViewCall] = ActionRegex ~ ViewNameRegex ~ opt(operation) ^^ {
     case action ~ view ~ op =>
       ViewCall(action.trim /* trim ending whitespace */, view, op.orNull)
   }  named "view-op"
-  def uniqueOptOp: MemParser[UniqueOpt] = "unique_opt" ~> operation ^^ UniqueOpt  named "unique-opt-op"
+  def uniqueOptOp: MemParser[UniqueOpt] = opt(opResultType) ~ ("unique_opt" ~> operation) ^^ {
+    case rt ~ op => UniqueOpt(op, rt)
+  } named "unique-opt-op"
+
   def invocationOp: MemParser[Invocation] = opt(opResultType) ~ InvocationRegex ~ opt(operation) ^^ {
     case rt ~ res ~ arg =>
       val idx = res.lastIndexOf('.')
@@ -977,6 +980,9 @@ object AppMetadata extends Loggable {
 
 
     sealed trait Op
+    sealed trait CastableOp extends Op {
+      def conformTo: Option[OpResultType]
+    }
     sealed trait Step {
       def name: Option[String]
     }
@@ -984,20 +990,22 @@ object AppMetadata extends Loggable {
     case class VariableTransform(form: String, to: Option[String] = None)
     case class OpResultType(viewName: String = null, isCollection: Boolean = false)
 
-    case class Tresql(tresql: String, dbs: List[String] = Nil) extends Op
+    case class Tresql(tresql: String,
+                      dbs: List[String] = Nil,
+                      conformTo: Option[OpResultType] = None) extends CastableOp
     case class ViewCall(method: String, view: String, data: Op = null) extends Op
     case class RedirectToKey(name: String) extends Op
-    case class UniqueOpt(innerOp: Op) extends Op
+    case class UniqueOpt(innerOp: Op, conformTo: Option[OpResultType] = None) extends CastableOp
     case class Invocation(className: String,
                           function: String,
                           arg: Op = null,
-                          conformTo: Option[OpResultType] = None) extends Op
+                          conformTo: Option[OpResultType] = None) extends CastableOp
     case class Status(code: Option[Int], bodyTresql: String = null, parameterIndex: Int = -1) extends Op
     case class VariableTransforms(transforms: List[VariableTransform]) extends Op
     case class Foreach(initOp: Op, action: Action) extends Op
     case class If(cond: Op, action: Action, elseAct: Action = null) extends Op
     case class Resource(nameTresql: Tresql, contentTypeTresql: Tresql = null) extends Op
-    case class File(idShaTresql: Tresql, conformTo: Option[OpResultType] = None) extends Op
+    case class File(idShaTresql: Tresql, conformTo: Option[OpResultType] = None) extends CastableOp
     case class ToFile(contentOp: Op, nameTresql: Tresql = null, contentTypeTresql: Tresql = null) extends Op
     case class Template(templateTresql: Tresql, dataOp: Op = null, filenameTresql: Tresql = null) extends Op
     case class Email(emailTresql: Tresql, subject: Op, body: Op, attachmentsOp: List[Op] = Nil) extends Op
@@ -1005,7 +1013,7 @@ object AppMetadata extends Loggable {
                     uriTresql: TresqlUri.TrUri,
                     headerTresql: Tresql = null,
                     body: Op = null,
-                    conformTo: Option[OpResultType] = None) extends Op
+                    conformTo: Option[OpResultType] = None) extends CastableOp
     case class HttpHeader(name: String) extends Op
     case class Db(action: Action, doRollback: Boolean) extends Op
     case class Conf(param: String, paramType: ConfType = null) extends Op
@@ -1033,7 +1041,7 @@ object AppMetadata extends Loggable {
              _: VariableTransforms | _: File | _: Conf | _: HttpHeader | _: Job |
              _: Resource | Commit | null => state
         case o: ViewCall => opTrav(state)(o.data)
-        case UniqueOpt(o) => opTrav(state)(o)
+        case UniqueOpt(o, _) => opTrav(state)(o)
         case Foreach(o, a) => traverseAction(a)(stepTrav)(opTrav(state)(o))
         case If(o, a, e) =>
           val r = traverseAction(a)(stepTrav)(opTrav(state)(o))
