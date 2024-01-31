@@ -987,7 +987,7 @@ object AppMetadata extends Loggable {
       def name: Option[String]
     }
 
-    case class VariableTransform(form: String, to: Option[String] = None)
+    case class VariableTransform(from: String, to: Option[String] = None)
     case class OpResultType(viewName: String = null, isCollection: Boolean = false)
 
     case class Tresql(tresql: String,
