@@ -780,9 +780,13 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
                                  data: Map[String, Any]): MapResult = {
     val transRes = transforms.foldLeft(seed) { (sd, vt) =>
       if (vt.form == "_") sd ++ data //indicates all call data map
-      else data(vt.form) match {
-        case m: Map[String, _]@unchecked => sd ++ m
-        case x => sd + (vt.to.getOrElse(vt.form) -> x)
+      else Query(":" + vt.form)(new Resources {}.withParams(data)) match {
+        case SingleValueResult(m: Map[String, _]@unchecked) => sd ++ m
+        case SingleValueResult(x) =>
+          val f = vt.form
+          val from = f.substring(f.lastIndexOf(".") + 1, f.length)
+          sd + (vt.to.getOrElse(from) -> x)
+        case x => sys.error(s"Unexpected variable transformation result: $x, expected SingleValueResult")
       }
     }
     MapResult(transRes)

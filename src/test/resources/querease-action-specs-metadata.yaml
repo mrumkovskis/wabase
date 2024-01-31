@@ -233,6 +233,15 @@ get:
 - return :person + (main_account = :main_account_data)
 
 
+name: variable_transform_test
+table:
+fields:
+get:
+- v1.n = 'Gunzis'
+- v2.j = 'Developer'
+- return (name = :v1.n) + (job = :v2.j)
+
+
 name: person_health
 api: save, get
 db: med_db
@@ -786,7 +795,7 @@ get:
 - unique_opt { :nr nr, :owner owner, :area::decimal area, :trees trees }
 update:
 - forest = http { '/forest', :nr }
-- :forest + :_ -> http put {'/forest/', :nr } get http_forest
+- :forest + :_ /* all data reference */ -> http put {'/forest/', :nr } get http_forest
 
 
 name: json_codec_1

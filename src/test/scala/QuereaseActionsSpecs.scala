@@ -329,6 +329,14 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
     }
   }
 
+  behavior of "variable transformations"
+
+  it should "transform variables" in {
+    querease.doAction("variable_transform_test", "get", Map(), Map()).map {
+      _ shouldBe MapResult(Map("name" -> "Gunzis", "job" -> "Developer"))
+    }
+  }
+
   behavior of "extra db support"
 
   it should "fail register non existing person health data" in {
