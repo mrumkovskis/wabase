@@ -9,7 +9,6 @@ import io.bullet.borer.compat.akka.ByteStringProvider
 
 import java.io
 import java.io.{OutputStream, OutputStreamWriter}
-import java.lang.{Boolean => JBoolean, Double => JDouble, Long => JLong}
 import java.math.{BigDecimal => JBigDecimal, BigInteger => JBigInteger}
 import java.time.{LocalDate, LocalDateTime, LocalTime}
 import java.util.zip.ZipOutputStream
@@ -46,6 +45,7 @@ object ResultEncoder {
   def encodeJsValue[T: Encoder](value: T): Array[Byte] = Json.encode(value).toByteArray
 
   object JsonEncoder {
+    import scala.jdk.CollectionConverters._
     /**
       * Default scala value json encoder as a partial function.
       * */
@@ -66,8 +66,12 @@ object ResultEncoder {
             case v: Boolean => w.writeBoolean(v)
             case null => w.writeNull()
             case v: Map[Any@unchecked, Any@unchecked] => w.writeMap(v)(jsValEncoder(encoder), jsValEncoder(encoder))
+            case v: java.util.Map[Any@unchecked, Any@unchecked] =>
+              w.writeMap(v.asScala.toMap)(jsValEncoder(encoder), jsValEncoder(encoder))
             case v: Iterable[Any@unchecked] => w.writeIterator(v.iterator)(jsValEncoder(encoder))
             case v: Iterator[Any@unchecked] => w.writeIterator(v)(jsValEncoder(encoder))
+            case v: java.lang.Iterable[Any@unchecked] => w.writeIterator(v.iterator.asScala)(jsValEncoder(encoder))
+            case v: java.util.Iterator[Any@unchecked] => w.writeIterator(v.asScala)(jsValEncoder(encoder))
             case v => w.writeString(v.toString)
           }
         customEncoder(w) orElse defaultEncoder(w)
@@ -161,7 +165,7 @@ abstract class ResultRenderer(
       val isCollection = resFilter == null || resFilter.isCollection(name)
       val shouldRender_ = context.shouldRender && !context.namesToHide.contains(name)
       val childFilter =
-        if (shouldRender_ && resFilter != null && resFilter.type_(name).isComplexType)
+        if (shouldRender_ && resFilter != null && Option(resFilter.type_(name)).exists(_.isComplexType))
           resFilter.childFilter(name)
         else null
       val allNames = impliedNames(childFilter)
@@ -281,6 +285,15 @@ object ResultRenderer {
       .map(new ViewFieldFilter(_, nameToViewDef))
       .orNull
     override def unfilteredNames = viewDef.fields.map(_.fieldName).toList
+  }
+
+  class NoFilter extends ResultFilter {
+    override def name: String = null
+    override def shouldRender(field: String): Boolean = true
+    override def isCollection(field: String): Boolean = false
+    override def type_(field: String): Type = null
+    override def childFilter(field: String): ResultFilter = this
+    override def unfilteredNames: List[String] = Nil
   }
 
   class IntersectionFilter(filter1: ResultFilter, filter2: ResultFilter) extends ResultFilter {
