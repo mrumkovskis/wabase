@@ -399,6 +399,8 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
       }
   }
 
+  behavior of "config"
+
   it should "process config" in {
     querease.doAction("conf_test", "get", Map(), Map()).map {
       case r => r should be (StatusResult(200, StringStatus("http://wabase.org/about")))
@@ -409,6 +411,8 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
       }
     }
   }
+
+  behavior of "escape syntax"
 
   it should "use tresql instead of view call - escape syntax" in {
     querease.doAction("escape_syntax", "insert", Map("key" -> "k", "value" -> "v"), Map())
@@ -470,10 +474,10 @@ class QuereaseActionTestManager extends Loggable {
     Query(tresql)(res)
   }
   def iteratorMethod(data: Map[String, Any]) = {
-    List(data).iterator
+    List(data - "x").iterator
   }
   def seqMethod(data: Map[String, Any]) = {
-    List(data)
+    List(data - "x")
   }
 }
 
@@ -488,4 +492,15 @@ object QuereaseActionTestManagerObj {
     val tr = res.result.map(row => Map("person_name" -> s"${row("name")} ${row("surname")}"))
     IteratorResult(tr)
   }
+  def result_render_test() = Map[String, Any](
+      "string_field" -> "string",
+      "extra field" -> 1,
+    )
+  def free_result_render_test() = Map[String, Any](
+    "1" -> Map("key" -> "value"),
+  )
+  def free_result_render_list_test() = List[Map[String, Any]](
+    Map("1" -> List(Map("key1" -> "value1"))),
+    Map("2" -> List(Map("key2" -> "value2"))),
+  )
 }

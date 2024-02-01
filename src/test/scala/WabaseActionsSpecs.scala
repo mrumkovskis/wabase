@@ -219,15 +219,18 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       .map(_.result)
       .flatMap {
         case sr: QuereaseSerializedResult =>
-          implicit val marshaller     = marshallers.toEntityQuereaseSerializedResultMarshaller(view,
-            new ResultRenderer.ViewFieldFilter(view, app.qe.nameToViewDef))
+          val filter =
+            if (sr.resultFilter == null) new ResultRenderer.ViewFieldFilter(view, app.qe.nameToViewDef)
+            else sr.resultFilter
+          implicit val marshaller     = marshallers.toEntityQuereaseSerializedResultMarshaller(view, filter)
           implicit val unmarshaller_1 = marshallers.toMapUnmarshallerForView(view)
           implicit val unmarshaller_2 = marshallers.toSeqOfMapsUnmarshallerForView(view)
-          Marshal(sr).to[MessageEntity].flatMap { entity =>
-            if  (sr.isCollection)
-                 Unmarshal(entity).to[Seq[Map[String, Any]]]
-            else Unmarshal(entity).to[Map[String, Any]]
-          }
+          Marshal(sr).to[MessageEntity]
+            .flatMap { entity =>
+              if  (sr.isCollection)
+                   Unmarshal(entity).to[Seq[Map[String, Any]]]
+              else Unmarshal(entity).to[Map[String, Any]]
+            }
             .map(r => if (removeIdsFlag) removeIds(r) else r)
         case r => Future.successful(r)
       }
@@ -660,10 +663,10 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         _ shouldBe List(Map("key" -> "key_val", "value" -> "value_val"))
       }
       t6 <- doAction("insert", "invocation_test_2", Map()).map {
-        _ shouldBe List(Map("key" -> "key_val", "value" -> "value_val"))
+        case AnyResult(v: Iterator[_]) => v.toList shouldBe List(Map("key" -> "key_val", "value" -> "value_val"))
       }
       t7 <- doAction("update", "invocation_test_2", Map()).map {
-        _ shouldBe List(Map("key" -> "key_val", "value" -> "value_val"))
+        _ shouldBe AnyResult(List(Map("key" -> "key_val", "value" -> "value_val")))
       }
       t8 <- doAction("list", "invocation_result_mapper_test", Map()).map {
         _ shouldBe List(Map("person_name" -> "N1 S1"), Map("person_name" -> "N2 S2"), Map("person_name" -> "N3 S3"))
@@ -1200,20 +1203,56 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     } yield t1
   }
 
-  /*
-  * Cannot execute this test since 'resource.txt' file used in test not found from classloader which is used by
-  * akka-http FileAndResourceDirectives.getFromResource method.
-  *
-  * classOf[Marshalling].getResource("/resource.txt") - WORKS
-  * classOf[Marshalling].getClassLoader.getResource("/resource.txt") - DOES NOT WORK
-  */
-//  it should "marshall resources" in {
-//    implicit val user: TestUsr = TestUsr(100)
-//    implicit val timeout: QueryTimeout = QueryTimeout(10)
-//    implicit val state: ApplicationState = ApplicationState(Map())
-//    val route = service.listOrGetAction("resource_test1")
-//    Get("/data/resource_test1") ~> route ~> check {
-//      entityAs[String] should include("This is test resource!")
-//    }
-//  }
+  it should "render result with conversion" in {
+    for {
+      t1 <-
+        doAction("insert", "result_render_test", Map())
+          .map(_ shouldBe
+            MapResult(Map("string_field" -> "text", "date_field" -> "2024-01-31"))
+          )
+      t2 <-
+        doAction("get", "result_render_test", Map())
+          .map(_ shouldBe
+            List(
+              Map("string_field" -> "text1", "date_field" -> null, "number_field" -> null),
+              Map("string_field" -> "text2", "date_field" -> null, "number_field" -> null))
+          )
+      t3 <-
+        doAction("update", "result_render_test", Map())
+          .map(_ shouldBe MapResult(Map("string_field" -> "string", "extra field" -> 1)))
+      t4 <-
+        doAction("delete", "result_render_test", Map())
+          .map {
+            _ shouldBe AnyResult(Map("1" -> Map("key" -> "value")))
+          }
+      t5 <-
+        doAction("create", "result_render_test", Map())
+          .map {
+            _ shouldBe AnyResult(
+              List(Map("1" -> List(Map("key1" -> "value1"))), Map("2" -> List(Map("key2" -> "value2"))))
+            )
+          }
+    } yield t1
+  }
+
+  it should "marshall resources" in {
+    implicit val user: TestUsr = TestUsr(100)
+    /*
+    * Cannot test since resources marshaller since 'resource.txt' file used in test not found from classloader which is used by
+    * akka-http FileAndResourceDirectives.getFromResource method.
+    *
+    * classOf[Marshalling].getResource("/resource.txt") - WORKS
+    * classOf[Marshalling].getClassLoader.getResource("/resource.txt") - DOES NOT WORK
+    */
+    val route = service.crudAction
+    Delete("/result_render_test") ~> route ~> check {
+      val r = entityAs[String]
+      new CborOrJsonAnyValueDecoder().decode(ByteString(r)) shouldBe Map("1" -> Map("key" -> "value"))
+    }
+    Get("/create/result_render_test") ~> route ~> check {
+      val r = entityAs[String]
+      new CborOrJsonAnyValueDecoder().decode(ByteString(r)) shouldBe
+        List(Map("1" -> List(Map("key1" -> "value1"))), Map("2" -> List(Map("key2" -> "value2"))))
+    }
+  }
 }

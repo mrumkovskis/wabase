@@ -65,6 +65,7 @@ case class IdResult(id: Any, name: String) extends QuereaseResult {
     if (id == null || id == 0L) Map.empty else Map((if (name == null) "id" else name) -> id)
 }
 case class KeyResult(ir: IdResult, viewName: String, key: Seq[Any]) extends QuereaseResult
+case class AnyResult(result: Any) extends QuereaseResult
 case class QuereaseDeleteResult(count: Int) extends QuereaseResult
 case class StatusResult(code: Int, value: StatusValue) extends QuereaseResult
 case class ResourceResult(resource: String, contentType: ContentType, httpCtx: RequestContext) extends DataResult
@@ -697,14 +698,6 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           case null | () => NoResult // reflection call on function with Unit (void) return type returns null
           case r: Result[_] => TresqlResult(r)
           case r: RowLike => TresqlSingleRowResult(r)
-          case i: Iterator[_] => IteratorResult(i.map {
-            case m: Map[String, Any]@unchecked => m
-            case m: java.util.Map[String, Any]@unchecked => m.asScala.toMap
-            case d: Dto => d.toMap(this)
-          })
-          case m: Map[String, Any]@unchecked => MapResult(m)
-          case l: Seq[_] => qresult(l.iterator)
-          case m: java.util.Map[String, Any]@unchecked => MapResult(m.asScala.toMap)
           case l: Long => LongResult(l)
           case s: String => StringResult(s)
           case n: java.lang.Number => NumberResult(n)
@@ -712,7 +705,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           case o: Option[Dto]@unchecked => o.map(d => MapResult(d.toMap(this))).getOrElse(notFound)
           case h: HttpResponse => HttpResult(h)
           case q: QuereaseResult => q
-          case x => wrongRes(x)
+          case x => AnyResult(x)
         }
 
         def createCompatibleResult(result: QuereaseResult, conformTo: Action.OpResultType) = result match {
@@ -721,7 +714,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
             val c1 = comp_res(c.result, conformTo)
             c.copy(resultFilter = new ResultRenderer.IntersectionFilter(c1.resultFilter, c.resultFilter))
           case r: DataResult => comp_res(r, conformTo)
-          case x => throw new IllegalArgumentException(s"Result argument must be of type DataResult, instead encountered: $x")
+          case x => x
         }
         val qr = qresult(r)
         conformTo.map(createCompatibleResult(qr, _)).getOrElse(qr)
@@ -1245,12 +1238,15 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           implicit lazy val enc: JsValueEncoderPF = JsonEncoder.extendableJsValueEncoderPF(enc)(jsonValueEncoder)
           StringResult(new String(encodeJsValue(res), "UTF-8"))
         } else {
-          new CborOrJsonAnyValueDecoder().decode(ByteString(String.valueOf(res))) match {
+          try new CborOrJsonAnyValueDecoder().decode(ByteString(String.valueOf(res))) match {
             case m: Map[String@unchecked, _] => MapResult(m)
             case s: Seq[Map[String, _]@unchecked] => IteratorResult(s.iterator)
             case n: java.lang.Number => NumberResult(n)
+            case s: String => StringResult(s)
             case null => NoResult
-            case x => StringResult(String.valueOf(x))
+            case x => AnyResult(x)
+          } catch {
+            case NonFatal(e) => throw new RuntimeException(s"ERROR decoding result: $res", e)
           }
         }
       }
@@ -1353,8 +1349,12 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         case i: Iterable[_] => encodeJson(i)
         case _ => encodePrimitive(v)
       }
-      case MapResult(data) => encodeJson(data)
-      case IteratorResult(data) => encodeJson(data)
+      case AnyResult(v) => encodeJson(v)
+      case MapResult(data) =>
+        (renderedSource(DataSerializer.source(() => Seq(data).iterator), resFil, false, ct),
+          null, contentType, None)
+      case IteratorResult(data) =>
+        (renderedSource(DataSerializer.source(() => data), resFil, true, ct), null, contentType, None)
       case TresqlResult(tr) => tr match {
         case SingleValueResult(r: Iterable[_]) =>
           (renderedSource(DataSerializer.source(() => r.iterator), resFil, isCollection.getOrElse(true), ct),
@@ -1480,6 +1480,10 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case StringResult(str) => str
       case id: IdResult => id
       case kr: KeyResult => kr.ir
+      case AnyResult(ar) => ar match {
+        case v: Iterator[_] => v.toList
+        case v => v // TODO may be need to convert java collections to scala?
+      }
       case StatusResult(code, value) => Map("code" -> code, "value" ->
         (value match {
           case StringStatus(v) => v
@@ -1523,8 +1527,14 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   }
 
   private def comp_res(res: DataResult, conformTo: Action.OpResultType) =
-    CompatibleResult(res,
-      new ResultRenderer.ViewFieldFilter(conformTo.viewName, nameToViewDef), conformTo.isCollection)
+    CompatibleResult(
+      res,
+      if (conformTo.viewName != null)
+        new ResultRenderer.ViewFieldFilter(conformTo.viewName, nameToViewDef)
+      else
+        new ResultRenderer.NoFilter,
+      conformTo.isCollection
+    )
 
   private def notFound = StatusResult(StatusCodes.NotFound.intValue, StringStatus("not found"))
 }

@@ -848,11 +848,13 @@ class OpParser(viewName: String, tresqlUri: TresqlUri, cache: OpParser.Cache)
     sealed trait ResType
     case object NoType extends ResType
     case class ViewType(vn: String) extends ResType
-    def noType: Parser[ResType] = "map" ^^^ NoType
+    def noType: Parser[ResType] = "any" ^^^ NoType
     def viewType: Parser[ResType] = opt("`") ~> ViewNameRegex <~ opt("`") ^^ ViewType
 
-    "as" ~> (noType | (opt("`") ~> viewType <~ opt("`"))) ~ opt("*") ^^ {
-      case ct ~ coll => OpResultType(ct match { case NoType => null case ViewType(vn) => vn }, coll.nonEmpty)
+    "as" ~> (noType | ((opt("`") ~> viewType <~ opt("`")) ~ opt("*"))) ^^ {
+      case NoType => OpResultType(null)
+      case ViewType(typ) ~ (coll: Option[String]@unchecked) => OpResultType(typ, coll.nonEmpty)
+      case x => sys.error(s"Knipis, unexpected op result type: $x")
     } named "op-result-type"
   }
 }

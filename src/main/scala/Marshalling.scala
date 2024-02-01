@@ -251,12 +251,18 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
   implicit val toResponseHttpResultMarshaller:              ToResponseMarshaller[HttpResult] =
     Marshaller.combined(_.response)
 
-  implicit val toEntityConfResultMarshaller:                ToEntityMarshaller[ConfResult] =
-    Marshaller.combined { cr =>
+  private def jsonAnyValueMarshaller:                       ToEntityMarshaller[Any] =
+    Marshaller.opaque { value =>
       import ResultEncoder._
       implicit lazy val enc: JsValueEncoderPF = JsonEncoder.extendableJsValueEncoderPF(enc)(app.qe.jsonValueEncoder)
-      HttpEntity.Strict(`application/json`, ByteString(encodeJsValue(cr.result)))
+      HttpEntity.Strict(`application/json`, ByteString(encodeJsValue(value)))
     }
+
+  implicit val toEntityConfResultMarshaller:                ToEntityMarshaller[ConfResult] =
+    Marshaller.combined((cr: ConfResult) => cr.result)(jsonAnyValueMarshaller)
+
+  implicit val toEntityAnyResultMarshaller:                 ToEntityMarshaller[AnyResult] =
+    Marshaller.combined((r: AnyResult) => r.result)(jsonAnyValueMarshaller)
 
   def toEntitySerializedResultMarshaller(
     contentType: ContentType,
@@ -320,6 +326,7 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
       case nr: NumberResult   => (toEntityQuereaseNumberResultMarshaller:     ToResponseMarshaller[NumberResult]  )(nr)
       case id: IdResult       => (toEntityQuereaseIdResultMarshaller:         ToResponseMarshaller[IdResult]      )(id)
       case kr: KeyResult      => (toResponseQuereaseKeyResultMarshaller:      ToResponseMarshaller[KeyResult]     )(kr)
+      case ar: AnyResult      => (toEntityAnyResultMarshaller:                ToResponseMarshaller[AnyResult]     )(ar)
       case sr: StatusResult   => (toResponseQuereaseStatusResultMarshaller:   ToResponseMarshaller[StatusResult]  )(sr)
       case no: NoResult.type  => (toEntityQuereaseNoResultMarshaller:         ToResponseMarshaller[NoResult.type] )(no)
       case dr: QuereaseDelRes => (toEntityQuereaseDeleteResultMarshaller:     ToResponseMarshaller[QuereaseDelRes])(dr)

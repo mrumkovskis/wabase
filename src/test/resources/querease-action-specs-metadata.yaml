@@ -1063,3 +1063,40 @@ table:
 api: get
 get:
 - resource '/resource.txt'
+
+
+name: result_render_test
+table:
+api: insert, update, get, delete, create
+fields:
+- string_field
+- date_field      date
+- number_field    decimal 5 2
+insert:
+- res_map =
+    to file (
+        as `result_render_test` unique_opt
+        { 'text' string_field, '2024-01-31'::date date_field, 'x' filtered_field }
+    ) 'rendered_results' 'application/json'
+- res = file {:res_map.id, :res_map.sha_256}
+- :res
+get:
+- res_map =
+  to file (
+      as `result_render_test`*
+      ({ 'text1' string_field, 'x' filtered_field } ++
+      { 'text2' string_field, 'y' filtered_field }){string_field, filtered_field}#(1)
+  ) 'rendered_results1' 'application/json'
+- res = file {:res_map.id, :res_map.sha_256}
+- :res
+update:
+- res_map =
+  to file
+    (as `result_render_test`* org.wabase.QuereaseActionTestManagerObj.result_render_test)
+    'rendered_list_results' 'application/json'
+- res = file {:res_map.id, :res_map.sha_256}
+- :res
+delete:
+- as any org.wabase.QuereaseActionTestManagerObj.free_result_render_test # no special type
+create:
+- as any org.wabase.QuereaseActionTestManagerObj.free_result_render_list_test # no special list type
