@@ -1305,6 +1305,8 @@ object AppMetadata extends Loggable {
       namePatternsFromResource("/md-conventions/decimal-name-patterns.txt", Nil, resourceLoader),
   ) extends SimplePatternMdConventions(resourceLoader) with AppMdConventions {
 
+  def this() = this(getClass.getResourceAsStream _)()
+
   val integerNamePatterns = integerNamePatternStrings.map(pattern).toSeq
   val decimalNamePatterns = decimalNamePatternStrings.map(pattern).toSeq
 
