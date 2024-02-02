@@ -23,7 +23,7 @@ trait TresqlResourcesConf {
   protected def isDbSet: Boolean = false
 }
 
-object TresqlResourcesConf {
+object TresqlResourcesConf extends Loggable {
 
   val config = ConfigFactory.load("tresql-resources.conf")
 
@@ -178,7 +178,16 @@ object TresqlResourcesConf {
     ): ResourcesTemplate = {
       val wabaseConf = org.wabase.config
       val macros =
-        if (conf.macrosClass != null) conf.macrosClass.getDeclaredConstructor().newInstance()
+        if (conf.macrosClass != null) {
+          try conf.macrosClass.getField("MODULE$").get(null) catch {
+            case util.control.NonFatal(ex1) =>
+              try conf.macrosClass.getDeclaredConstructor().newInstance() catch {
+                case util.control.NonFatal(ex2) =>
+                  logger.error("Failed to get macros instance, tried both object and empty constructor", ex1)
+                  throw new RuntimeException("Failed to get macros instance", ex2)
+              }
+          }
+        }
         else Macros
       val dialect: Dialect = {
         val dbVendor = cpToVendor.getOrElse(db, null)
