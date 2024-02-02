@@ -28,16 +28,18 @@ object TresqlResourcesConf extends Loggable {
   val config = ConfigFactory.load("tresql-resources.conf")
 
   lazy val confs: Map[String, TresqlResourcesConf] = {
-    if (config.hasPath("tresql-resources"))
-      config.getConfig("tresql-resources").root().asScala
+    if (config.hasPath("tresql-resources")) {
+      val rConf = config.getConfig("tresql-resources")
+      rConf.root().asScala
         .collect { case e@(_, v) if v.valueType() == ConfigValueType.OBJECT => e }
         .map { case (dbName, confValue) =>
           val n = if (dbName == DefaultCpName) null else dbName
-          n -> tresqlResourcesConf(n, confValue.asInstanceOf[ConfigObject].toConfig)
+          n -> tresqlResourcesConf(n, confValue.asInstanceOf[ConfigObject].toConfig.withFallback(rConf))
         }.toMap match {
           case m if m.isEmpty => Map((null, new TresqlResourcesConf {}))
           case m => m
         }
+    }
     else Map((null, new TresqlResourcesConf {}))
   }
 
