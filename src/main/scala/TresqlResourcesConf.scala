@@ -232,7 +232,7 @@ object TresqlResourcesConf extends Loggable {
         recursiveStackDepth = recursiveStackDepth,
         params = Map(),
         extraResources = extraResources,
-        logger = null,
+        logger = TresqlResources.logger,
         cache = cache,
         bindVarLogFilter = bindVarLogFilter,
         macros = macros
