@@ -503,4 +503,21 @@ object QuereaseActionTestManagerObj {
     Map("1" -> List(Map("key1" -> "value1"))),
     Map("2" -> List(Map("key2" -> "value2"))),
   )
+  def int_array() = Array(1 ,2, 3)
+  def person_dtos_list() = {
+    import org.wabase.QuereaseActionsDtos._
+    def pers(id: Long, name: String, sex: String, birthdate: java.sql.Date) = {
+      val p = new PersonSimple
+      p.id = id
+      p.name = name
+      p.sex = sex
+      p.birthdate = birthdate
+      p
+    }
+    List(
+      pers(1, "Kizis", "M", java.sql.Date.valueOf("1977-04-10")),
+      pers(2, "Ala", "F", java.sql.Date.valueOf("1955-07-01")),
+      pers(3, "Ola", "F", java.sql.Date.valueOf("1988-10-09")),
+    )
+  }
 }

@@ -663,10 +663,10 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         _ shouldBe List(Map("key" -> "key_val", "value" -> "value_val"))
       }
       t6 <- doAction("insert", "invocation_test_2", Map()).map {
-        case AnyResult(v: Iterator[_]) => v.toList shouldBe List(Map("key" -> "key_val", "value" -> "value_val"))
+        _ shouldBe Seq(Map("key" -> "key_val", "value" -> "value_val"))
       }
       t7 <- doAction("update", "invocation_test_2", Map()).map {
-        _ shouldBe AnyResult(List(Map("key" -> "key_val", "value" -> "value_val")))
+        _ shouldBe Seq(Map("key" -> "key_val", "value" -> "value_val"))
       }
       t8 <- doAction("list", "invocation_result_mapper_test", Map()).map {
         _ shouldBe List(Map("person_name" -> "N1 S1"), Map("person_name" -> "N2 S2"), Map("person_name" -> "N3 S3"))
@@ -1219,23 +1219,16 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
           )
       t3 <-
         doAction("update", "result_render_test", Map())
-          .map(_ shouldBe MapResult(Map("string_field" -> "string", "extra field" -> 1)))
+          .map(_ shouldBe MapResult(Map("string_field" -> "string")))
       t4 <-
-        doAction("delete", "result_render_test", Map())
+        doAction("delete", "invocation_test_3", Map())
           .map {
             _ shouldBe AnyResult(Map("1" -> Map("key" -> "value")))
-          }
-      t5 <-
-        doAction("create", "result_render_test", Map())
-          .map {
-            _ shouldBe AnyResult(
-              List(Map("1" -> List(Map("key1" -> "value1"))), Map("2" -> List(Map("key2" -> "value2"))))
-            )
           }
     } yield t1
   }
 
-  it should "marshall resources" in {
+  it should "do wabase routes and return results" in {
     implicit val user: TestUsr = TestUsr(100)
     /*
     * Cannot test since resources marshaller since 'resource.txt' file used in test not found from classloader which is used by
@@ -1245,14 +1238,31 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     * classOf[Marshalling].getClassLoader.getResource("/resource.txt") - DOES NOT WORK
     */
     val route = service.crudAction
-    Delete("/result_render_test") ~> route ~> check {
+    def jsonAssert(jsonStr: String, res: Any) =
+      new CborOrJsonAnyValueDecoder().decode(ByteString(jsonStr)) shouldBe res
+    Delete("/invocation_test_3") ~> route ~> check {
       val r = entityAs[String]
-      new CborOrJsonAnyValueDecoder().decode(ByteString(r)) shouldBe Map("1" -> Map("key" -> "value"))
+      jsonAssert(r, Map("1" -> Map("key" -> "value")))
     }
-    Get("/create/result_render_test") ~> route ~> check {
+    Get("/create/invocation_test_3") ~> route ~> check {
       val r = entityAs[String]
-      new CborOrJsonAnyValueDecoder().decode(ByteString(r)) shouldBe
-        List(Map("1" -> List(Map("key1" -> "value1"))), Map("2" -> List(Map("key2" -> "value2"))))
+      jsonAssert(r, List(Map("1" -> List(Map("key1" -> "value1"))), Map("2" -> List(Map("key2" -> "value2")))))
+    }
+    Get("/invocation_test_3/0") ~> route ~> check {
+      val r = entityAs[String]
+      jsonAssert(r, Seq(1, 2, 3))
+    }
+    Get("/invocation_test_3") ~> route ~> check {
+      val r = entityAs[String]
+      jsonAssert(r, Seq(Map("name" -> "Kizis"), Map("name" -> "Ala"), Map("name" -> "Ola")))
+    }
+    Get("/count/invocation_test_3") ~> route ~> check {
+      val r = entityAs[String]
+      jsonAssert(r, Seq(
+        Map("id" -> 1, "name" -> "Kizis", "sex" -> "M", "birthdate" -> "1977-04-10"),
+        Map("id" -> 2, "name" -> "Ala", "sex" -> "F", "birthdate" -> "1955-07-01"),
+        Map("id" -> 3, "name" -> "Ola", "sex" -> "F", "birthdate" -> "1988-10-09"),
+      ))
     }
   }
 }

@@ -690,10 +690,12 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     }
 
     def wrongRes(x: Any) =
-      sys.error(s"Unrecognized result type: ${x.getClass}, value: $x from function $className.$function")
+      sys.error(s"Unrecognized result type: ${x.getClass}, value: $x from function $className.$function. You " +
+        s"may want to prefix invocation with 'as any'")
 
     if (op.arg == null) {
       def comp_q_result(r: Any) = {
+        val allowAny = op.conformTo.exists(_.viewName == null)
         def qresult(r: Any): QuereaseResult = r match {
           case null | () => NoResult // reflection call on function with Unit (void) return type returns null
           case r: Result[_] => TresqlResult(r)
@@ -705,7 +707,34 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           case o: Option[Dto]@unchecked => o.map(d => MapResult(d.toMap(this))).getOrElse(notFound)
           case h: HttpResponse => HttpResult(h)
           case q: QuereaseResult => q
-          case x => AnyResult(x)
+          // view compatible collections if not allow any
+          case i: Iterator[_] if !allowAny => IteratorResult(i.map {
+            case m: Map[String, Any]@unchecked => m
+            case m: java.util.Map[String, Any]@unchecked => m.asScala.toMap
+            case d: Dto => d.toMap(this)
+            case x => wrongRes(x)
+          })
+          case m: Map[String, Any]@unchecked if !allowAny => MapResult(m)
+          case l: Iterable[_] if !allowAny => qresult(l.iterator)
+          // view compatible collections if not allow any for java types
+          case m: java.util.Map[_, _] => qresult(m.asScala.toMap)
+          case i: java.lang.Iterable[_] => qresult(i.asScala)
+          case i: java.util.Iterator[_] => qresult(i.asScala)
+          case a: Array[_] => qresult(a.iterator)
+          //any res
+          case x if allowAny => (x match { // convert dto(s) in collections to map for json encoder
+            case v: Map[_, _] => v
+            case v: Iterable[_] => qresult(v.iterator)
+            case v: Iterator[_] => v.map {
+              case d: Dto => d.toMap(this)
+              case v => v
+            }
+            case v => v
+          }) match {
+            case v: AnyResult => v
+            case v => AnyResult(v)
+          }
+          case x => wrongRes(x)
         }
 
         def createCompatibleResult(result: QuereaseResult, conformTo: Action.OpResultType) = result match {

@@ -1067,7 +1067,7 @@ get:
 
 name: result_render_test
 table:
-api: insert, update, get, delete, create
+api: insert, update, get
 fields:
 - string_field
 - date_field      date
@@ -1096,7 +1096,21 @@ update:
     'rendered_list_results' 'application/json'
 - res = file {:res_map.id, :res_map.sha_256}
 - :res
+
+
+name: invocation_test_3
+table:
+api: get, list, delete, create, count
+key: name
+fields:
+  - name
+list:
+- org.wabase.QuereaseActionTestManagerObj.person_dtos_list
+get:
+- as any org.wabase.QuereaseActionTestManagerObj.int_array # no special type
 delete:
 - as any org.wabase.QuereaseActionTestManagerObj.free_result_render_test # no special type
 create:
 - as any org.wabase.QuereaseActionTestManagerObj.free_result_render_list_test # no special list type
+count:
+- as any org.wabase.QuereaseActionTestManagerObj.person_dtos_list # no special type
