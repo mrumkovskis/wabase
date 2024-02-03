@@ -146,6 +146,9 @@ class MustacheTemplateRenderer extends WabaseTemplateRenderer {
   }
   def render(templateName: String, template: Array[Byte], data: Iterable[_]): String = {
     val templateString = new String(template, "UTF-8")
+    render(templateName, templateString, data)
+  }
+  def render(templateName: String, templateString: String, data: Iterable[_]): String = {
     val context = mapToJavaMap(data match {
       case m: Map[String@unchecked, _]      => m
       case s: Seq[Map[String, _]@unchecked] => s.headOption.getOrElse(Map.empty) + ("items" -> data)
