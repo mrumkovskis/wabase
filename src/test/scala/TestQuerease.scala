@@ -45,19 +45,6 @@ trait TestQuereaseInitializer extends BeforeAndAfterAll with Loggable { this: Su
       def format(date: Date) = get.format(date)
     }
     val Timestamp = new ThreadLocalDateFormat("yyyy.MM.dd HH:mm:ss.SSS")
-
-    val TresqlLogger: Logging#TresqlLogger = { (msg, _, topic) =>
-      val topicName = topic match {
-        case LogTopic.info   => "info  "
-        case LogTopic.params => "params"
-        case LogTopic.sql    => "sql --"
-        case LogTopic.tresql => "tresql"
-        case LogTopic.ort => "ort"
-        case LogTopic.sql_with_params => null
-      }
-      if (topicName != null) logger.debug(/*Timestamp(new Date()) + */s"  [$topicName]  $msg")
-    }
-
     DbDrivers.loadDrivers
     System.setProperty(
       "hsqldb.method_class_names",
@@ -88,18 +75,13 @@ trait TestQuereaseInitializer extends BeforeAndAfterAll with Loggable { this: Su
       val dbs = querease.tableMetadata.dbToTableDefs.keys.toSet
       val templ = {
         val confs = TresqlResourcesConf.confs.filter(d => dbs(d._1))
-        val templ = TresqlResourcesConf.tresqlResourcesTemplate(confs, querease.tresqlMetadata)
-        if (templ == null) null else templ.copy(
-          logger = TresqlLogger,
-          extraResources = templ.extraResources.transform((_, r) => r.withLogger(TresqlLogger))
-        )
+        TresqlResourcesConf.tresqlResourcesTemplate(confs, querease.tresqlMetadata)
       }
       if (templ == null) null
       else {
         val res =
           new ThreadLocalResources {
             override def initResourcesTemplate: ResourcesTemplate = templ
-            override val logger = TresqlLogger // override thread local logger since tresql does not take it from template
           }
         val dbcons = dbs map init_db
         def findConn(n: String) = dbcons.find(_._1 == n).map(_._2).orNull

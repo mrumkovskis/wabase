@@ -23,6 +23,8 @@
     <logger name="com.zaxxer.hikari" level="warn"/>
     <logger name="akka.stream.scaladsl.RestartWithBackoffSource" level="error"/>
 
+    <!-- <logger name="org.wabase.tresql" level="debug"/> -->
+
     <!-- specific view logger -->
     <!-- logger name="purchase_get.get" level="debug"/ -->
 
