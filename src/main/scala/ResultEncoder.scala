@@ -72,6 +72,7 @@ object ResultEncoder {
             case v: Iterator[Any@unchecked] => w.writeIterator(v)(jsValEncoder(encoder))
             case v: java.lang.Iterable[Any@unchecked] => w.writeIterator(v.iterator.asScala)(jsValEncoder(encoder))
             case v: java.util.Iterator[Any@unchecked] => w.writeIterator(v.asScala)(jsValEncoder(encoder))
+            case v: Array[_] => jsValEncoder(encoder).write(w, v.iterator)
             case v => w.writeString(v.toString)
           }
         customEncoder(w) orElse defaultEncoder(w)
