@@ -187,7 +187,8 @@ abstract class ResultRenderer(
       val shouldRender_ = context.shouldRender && !context.namesToHide.contains(name)
       if (shouldRender_) {
         renderKey(name)
-        if (unwrapJson && context.resultFilter != null && context.resultFilter.type_(name).name == "json") {
+        if (unwrapJson && context.resultFilter != null &&
+          Option(context.resultFilter.type_(name)).exists(_.name == "json")) {
           value match {
             case null => renderRawValue(null)
             case jsonString: String =>
@@ -291,7 +292,7 @@ object ResultRenderer {
   class NoFilter extends ResultFilter {
     override def name: String = null
     override def shouldRender(field: String): Boolean = true
-    override def isCollection(field: String): Boolean = false
+    override def isCollection(field: String): Boolean = true
     override def type_(field: String): Type = null
     override def childFilter(field: String): ResultFilter = this
     override def unfilteredNames: List[String] = Nil
@@ -489,7 +490,7 @@ class FlatTableResultRenderer(
   override protected def shouldRender(name: String): Boolean = {
     val context = contextStack.head
     val rf = context.resultFilter
-    rf == null || (rf.shouldRender(name) && !rf.isCollection(name) && !rf.type_(name).isComplexType)
+    rf == null || (rf.shouldRender(name) && !rf.isCollection(name) && !Option(rf.type_(name)).exists(_.isComplexType))
   }
   override protected def renderHeader():  Unit = renderer.renderHeader()
   override protected def renderKey(key: Any): Unit = {}

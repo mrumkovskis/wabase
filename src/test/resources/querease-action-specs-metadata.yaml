@@ -1067,7 +1067,7 @@ get:
 
 name: result_render_test
 table:
-api: insert, update, get
+api: insert, update, get, delete, count
 fields:
 - string_field
 - date_field      date
@@ -1096,6 +1096,15 @@ update:
     'rendered_list_results' 'application/json'
 - res = file {:res_map.id, :res_map.sha_256}
 - :res
+delete:
+- as any
+    { 'text' string_field, '2024-01-31'::date date_field, 'x' filtered_field,
+      |null{ 'child' child } children }
+count:
+- as any unique_opt
+    { 'text' string_field, '2024-01-31'::date date_field, 'x' filtered_field,
+      |null{ 'child' child } children }
+
 
 
 name: invocation_test_3

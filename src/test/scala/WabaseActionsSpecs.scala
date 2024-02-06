@@ -223,13 +223,18 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
             if (sr.resultFilter == null) new ResultRenderer.ViewFieldFilter(view, app.qe.nameToViewDef)
             else sr.resultFilter
           implicit val marshaller     = marshallers.toEntityQuereaseSerializedResultMarshaller(view, filter)
-          implicit val unmarshaller_1 = marshallers.toMapUnmarshallerForView(view)
-          implicit val unmarshaller_2 = marshallers.toSeqOfMapsUnmarshallerForView(view)
           Marshal(sr).to[MessageEntity]
             .flatMap { entity =>
-              if  (sr.isCollection)
-                   Unmarshal(entity).to[Seq[Map[String, Any]]]
-              else Unmarshal(entity).to[Map[String, Any]]
+              if (filter.name == view) {
+                implicit val unmarshaller_1 = marshallers.toMapUnmarshallerForView(view)
+                implicit val unmarshaller_2 = marshallers.toSeqOfMapsUnmarshallerForView(view)
+                if  (sr.isCollection)
+                  Unmarshal(entity).to[Seq[Map[String, Any]]]
+                else Unmarshal(entity).to[Map[String, Any]]
+              }else Future.successful {
+                val in = entity.dataBytes.runWith(StreamConverters.asInputStream(1.second))
+                new CborOrJsonAnyValueDecoder().decodeFromInputStream(in)
+              }
             }
             .map(r => if (removeIdsFlag) removeIds(r) else r)
         case r => Future.successful(r)
@@ -1225,6 +1230,18 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
           .map {
             _ shouldBe AnyResult(Map("1" -> Map("key" -> "value")))
           }
+      t5 <-
+        doAction("delete", "result_render_test", Map())
+          .map(_ shouldBe
+            List(Map("string_field" -> "text", "date_field" -> "2024-01-31", "filtered_field" -> "x", "children" ->
+              List(Map("child" -> "child"))))
+          )
+      t6 <-
+        doAction("count", "result_render_test", Map())
+          .map(_ shouldBe
+            Map("string_field" -> "text", "date_field" -> "2024-01-31", "filtered_field" -> "x", "children" ->
+              List(Map("child" -> "child")))
+          )
     } yield t1
   }
 
