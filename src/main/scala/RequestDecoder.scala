@@ -3,13 +3,14 @@ package org.wabase
 import akka.util.ByteString
 import io.bullet.borer.compat.akka.ByteStringProvider
 import io.bullet.borer.encodings.BaseEncoding
-import io.bullet.borer.{Cbor, DataItem => DI, Decoder, Json, Tag, Target}
-import org.mojoz.metadata.{ViewDef, Type, TypeDef}
+import io.bullet.borer.{Cbor, Decoder, Input, Json, Tag, Target, DataItem => DI}
+import org.mojoz.metadata.{Type, TypeDef, ViewDef}
 import org.wabase.BorerDatetimeDecoders._
 
+import java.io.InputStream
 import java.lang.{Boolean => JBoolean, Double => JDouble, Long => JLong}
 import java.math.{BigDecimal => JBigDecimal, BigInteger => JBigInteger}
-import java.time.{LocalDate, LocalTime, LocalDateTime}
+import java.time.{LocalDate, LocalDateTime, LocalTime}
 import scala.annotation.tailrec
 import scala.collection.immutable.{Map, Seq}
 import scala.language.postfixOps
@@ -233,7 +234,7 @@ class CborOrJsonAnyValueDecoder() {
     } else r.unexpectedDataItem(expected = "Map")
   }
 
-  protected def reader(data: ByteString, decodeFrom: Target) = decodeFrom match {
+  protected def reader[T: Input.Provider](data: T, decodeFrom: Target) = decodeFrom match {
     case _: Cbor.type => Cbor.reader(data)
     case _: Json.type => Json.reader(data, Json.DecodingConfig.default.copy(
       maxNumberAbsExponent = 308, // to accept up to Double.MaxValue
@@ -246,7 +247,16 @@ class CborOrJsonAnyValueDecoder() {
     mapZero:    () => M = () => Map.empty[String, Any],
   ): Any = {
     implicit val decoder: Decoder[Any] = anyValueDecoder(mapZero)
-    reader(data, decodeFrom)[Any]
+    reader(data, decodeFrom).apply[Any]
+  }
+
+  def decodeFromInputStream[M <: Map[String, Any] : ClassTag](
+    data:       InputStream,
+    decodeFrom: Target = Json,
+    mapZero:    () => M = () => Map.empty[String, Any],
+  ): Any = {
+    implicit val decoder: Decoder[Any] = anyValueDecoder(mapZero)
+    reader(data, decodeFrom).apply[Any]
   }
 
   def decodeToMap[M <: Map[String, Any] : ClassTag](
@@ -255,7 +265,7 @@ class CborOrJsonAnyValueDecoder() {
     mapZero:    () => M = () => Map.empty[String, Any],
   ): M = {
     implicit val decoder: Decoder[M] = toMapDecoder(mapZero)
-    reader(data, decodeFrom)[M]
+    reader(data, decodeFrom).apply[M]
   }
 
   def decodeToSeqOfMaps[M <: Map[String, Any] : ClassTag](
@@ -264,6 +274,6 @@ class CborOrJsonAnyValueDecoder() {
     mapZero:    () => M = () => Map.empty[String, Any],
   ): Seq[M] = {
     implicit val decoder: Decoder[M] = toMapDecoder(mapZero)
-    toSeq(reader(data, decodeFrom)[Array[M]])
+    toSeq(reader(data, decodeFrom).apply[Array[M]])
   }
 }
