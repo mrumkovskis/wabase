@@ -693,64 +693,64 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       sys.error(s"Unrecognized result type: ${x.getClass}, value: $x from function $className.$function. You " +
         s"may want to prefix invocation with 'as any'")
 
-    if (op.arg == null) {
-      def comp_q_result(r: Any) = {
-        val allowAny = op.conformTo.exists(_.viewName == null)
-        def qresult(r: Any): QuereaseResult = r match {
-          case null | () => NoResult // reflection call on function with Unit (void) return type returns null
-          case r: Result[_] => TresqlResult(r)
-          case r: RowLike => TresqlSingleRowResult(r)
-          case l: Long => LongResult(l)
-          case s: String => StringResult(s)
-          case n: java.lang.Number => NumberResult(n)
-          case d: Dto => MapResult(d.toMap(this))
-          case o: Option[Dto]@unchecked => o.map(d => MapResult(d.toMap(this))).getOrElse(notFound)
-          case h: HttpResponse => HttpResult(h)
-          case q: QuereaseResult => q
-          // view compatible collections if not allow any
-          case i: Iterator[_] if !allowAny => IteratorResult(i.map {
-            case m: Map[String, Any]@unchecked => m
-            case m: java.util.Map[String, Any]@unchecked => m.asScala.toMap
-            case d: Dto => d.toMap(this)
-            case x => wrongRes(x)
-          })
-          case m: Map[String, Any]@unchecked if !allowAny => MapResult(m)
-          case l: Iterable[_] if !allowAny => qresult(l.iterator)
-          // view compatible collections if not allow any for java types
-          case m: java.util.Map[_, _] => qresult(m.asScala.toMap)
-          case i: java.lang.Iterable[_] => qresult(i.asScala)
-          case i: java.util.Iterator[_] => qresult(i.asScala)
-          case a: Array[_] => qresult(a.iterator)
-          //any res
-          case x if allowAny => (x match { // convert dto(s) in collections to map for json encoder
-            case v: Map[_, _] => v
-            case v: Iterable[_] => qresult(v.iterator)
-            case v: Iterator[_] => v.map {
-              case d: Dto => d.toMap(this)
-              case v => v
-            }
-            case v => v
-          }) match {
-            case v: AnyResult => v
-            case v => AnyResult(v)
-          }
+    def comp_q_result(r: Any) = {
+      val allowAny = op.conformTo.exists(_.viewName == null)
+      def qresult(r: Any): QuereaseResult = r match {
+        case null | () => NoResult // reflection call on function with Unit (void) return type returns null
+        case r: Result[_] => TresqlResult(r)
+        case r: RowLike => TresqlSingleRowResult(r)
+        case l: Long => LongResult(l)
+        case s: String => StringResult(s)
+        case n: java.lang.Number => NumberResult(n)
+        case d: Dto => MapResult(d.toMap(this))
+        case o: Option[Dto]@unchecked => o.map(d => MapResult(d.toMap(this))).getOrElse(notFound)
+        case h: HttpResponse => HttpResult(h)
+        case q: QuereaseResult => q
+        // view compatible collections if not allow any
+        case i: Iterator[_] if !allowAny => IteratorResult(i.map {
+          case m: Map[String, Any]@unchecked => m
+          case m: java.util.Map[String, Any]@unchecked => m.asScala.toMap
+          case d: Dto => d.toMap(this)
           case x => wrongRes(x)
+        })
+        case m: Map[String, Any]@unchecked if !allowAny => MapResult(m)
+        case l: Iterable[_] if !allowAny => qresult(l.iterator)
+        // view compatible collections if not allow any for java types
+        case m: java.util.Map[_, _] => qresult(m.asScala.toMap)
+        case i: java.lang.Iterable[_] => qresult(i.asScala)
+        case i: java.util.Iterator[_] => qresult(i.asScala)
+        case a: Array[_] => qresult(a.iterator)
+        //any res
+        case x if allowAny => (x match { // convert dto(s) in collections to map for json encoder
+          case v: Map[_, _] => v
+          case v: Iterable[_] => qresult(v.iterator)
+          case v: Iterator[_] => v.map {
+            case d: Dto => d.toMap(this)
+            case v => v
+          }
+          case v => v
+        }) match {
+          case v: AnyResult => v
+          case v => AnyResult(v)
         }
-
-        def createCompatibleResult(result: QuereaseResult, conformTo: Action.OpResultType) = result match {
-          case c: CompatibleResult =>
-            require(c.isCollection == conformTo.isCollection, s"Incompatible results $c != $conformTo")
-            val c1 = comp_res(c.result, conformTo)
-            c.copy(resultFilter = new ResultRenderer.IntersectionFilter(c1.resultFilter, c.resultFilter))
-          case r: DataResult => comp_res(r, conformTo)
-          case x => x
-        }
-        val qr = qresult(r)
-        conformTo.map(createCompatibleResult(qr, _)).getOrElse(qr)
+        case x => wrongRes(x)
       }
 
+      def createCompatibleResult(result: QuereaseResult, conformTo: Action.OpResultType) = result match {
+        case c: CompatibleResult =>
+          require(c.isCollection == conformTo.isCollection, s"Incompatible results $c != $conformTo")
+          val c1 = comp_res(c.result, conformTo)
+          c.copy(resultFilter = new ResultRenderer.IntersectionFilter(c1.resultFilter, c.resultFilter))
+        case r: DataResult => comp_res(r, conformTo)
+        case x => x
+      }
+      val qr = qresult(r)
+      conformTo.map(createCompatibleResult(qr, _)).getOrElse(qr)
+    }
+
+    (if (op.arg == null) {
       val invocationData = data ++ env
-      val result = invokeFunction(className, function, {
+      invokeFunction(className, function, {
         case parType if classOf[Dto].isAssignableFrom(parType) =>
           import qio.MapJsonFormat
           qio.fill(invocationData.toJson.asJsObject)(Manifest.classType(parType)) // specify manifest explicitly so it is not Nothing
@@ -758,20 +758,15 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         case parType if parType.isAssignableFrom(classOf[java.util.Map[_, _]]) => invocationData.asJava
         case parType if parType.isAssignableFrom(classOf[MapResult]) => MapResult(invocationData)
       })
-      result match {
-        case f: Future[_] => f map comp_q_result
-        case x => Future.successful(comp_q_result(x))
-      }
     } else {
-      doActionOp(op.arg, data, env, context).flatMap { opRes =>
+      doActionOp(op.arg, data, env, context).map { opRes =>
         invokeFunction(className, function, {
           case parType if classOf[QuereaseResult].isAssignableFrom(parType) => opRes
-        }) match {
-          case r: Future[QuereaseResult@unchecked] => r
-          case r: QuereaseResult => Future.successful(r)
-          case x => wrongRes(x)
-        }
+        })
       }
+    }) match {
+      case f: Future[_] => f map comp_q_result
+      case x => Future.successful(comp_q_result(x))
     }
   }
 
