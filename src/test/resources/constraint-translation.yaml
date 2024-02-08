@@ -1,4 +1,4 @@
-# This file defines constraint violation message translations
+# This file defines constraint violation message translations.
 # For FK constraints, there can be two messages per constraint:
 # first one for delete and 2nd one for insert operation.
 
