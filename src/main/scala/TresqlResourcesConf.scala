@@ -19,7 +19,7 @@ trait TresqlResourcesConf {
   def bindVarLogFilter: Logging#BindVarLogFilter = null
   def db: String = null
   /** This method allows to distinguish between null db value and no db value. In the last case db name
-   * is taken from configuration parameter tresql-resources.<db name>. */
+   * is taken from configuration parameter tresql.<db name>. */
   protected def isDbSet: Boolean = false
 }
 
@@ -28,8 +28,8 @@ object TresqlResourcesConf extends Loggable {
   val config = ConfigFactory.load("tresql-resources.conf")
 
   lazy val confs: Map[String, TresqlResourcesConf] = {
-    if (config.hasPath("tresql-resources")) {
-      val rConf = config.getConfig("tresql-resources")
+    if (config.hasPath("tresql")) {
+      val rConf = config.getConfig("tresql")
       rConf.root().asScala
         .collect { case e@(_, v) if v.valueType() == ConfigValueType.OBJECT => e }
         .map { case (dbName, confValue) =>
@@ -46,7 +46,7 @@ object TresqlResourcesConf extends Loggable {
   /**
    * Merges configuration from config-class instance and if value not defined
    * (null for strings or -1 for numbers), configuration parameters.
-   * Following configuration parameters under tresql-resources.<db name> can be used (primitive values):
+   * Following configuration parameters under tresql.<db name> can be used (primitive values):
    *  - config-class          - custom TresqlResourcesConf class name (must have no arg constructor)
    *  - macro-class           - macros implementation class name (must have no arg constructor)
    *  - query-timeout
