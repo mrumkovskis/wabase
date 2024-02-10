@@ -64,9 +64,6 @@ package object wabase extends Loggable {
   val DefaultQueryTimeout: QueryTimeout =
     QueryTimeout(config.getDuration("jdbc.query-timeout").toSeconds.toInt)
 
-  val MaxResultSize: Option[Int] =
-    Some(config.getInt("tresql.max-result-size")).filter(_ > 0)
-
   //db connection pool configuration
   def createConnectionPool(config: Config): HikariDataSource = {
     val props = new java.util.Properties(System.getProperties)

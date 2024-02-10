@@ -26,15 +26,18 @@ trait TresqlResourcesConf {
 object TresqlResourcesConf extends Loggable {
 
   val config = ConfigFactory.load("tresql-resources.conf")
+  val wabaseConf = ConfigFactory.load
 
   lazy val confs: Map[String, TresqlResourcesConf] = {
     if (config.hasPath("tresql")) {
       val rConf = config.getConfig("tresql")
+      val wConf = if (wabaseConf.hasPath("tresql")) wabaseConf.getConfig("tresql") else ConfigFactory.empty
       rConf.root().asScala
         .collect { case e@(_, v) if v.valueType() == ConfigValueType.OBJECT => e }
         .map { case (dbName, confValue) =>
+          val fConf = if (wConf.hasPath(dbName)) wConf.getConfig(dbName) else ConfigFactory.empty
           val n = if (dbName == DefaultCpName) null else dbName
-          n -> tresqlResourcesConf(n, confValue.asInstanceOf[ConfigObject].toConfig.withFallback(rConf))
+          n -> tresqlResourcesConf(n, fConf, confValue.asInstanceOf[ConfigObject].toConfig.withFallback(rConf), wConf)
         }.toMap match {
           case m if m.isEmpty => Map((null, new TresqlResourcesConf {}))
           case m => m
@@ -56,88 +59,57 @@ object TresqlResourcesConf extends Loggable {
    *  - cache-size
    *  - db                    - db instance name where tables are defined.
    * */
-  def tresqlResourcesConf(dbName: String, tresqlConf: Config): TresqlResourcesConf = {
+  def tresqlResourcesConf(
+      dbName: String, forcedConfTuned: Config, tresqlConf: Config, fallbackConf: Config): TresqlResourcesConf = {
     val tresqlConfInstance =
       if (tresqlConf.hasPath("config-class"))
         Class.forName(tresqlConf.getString("config-class")).getDeclaredConstructor().newInstance().asInstanceOf[TresqlResourcesConf]
       else new TresqlResourcesConf {}
 
-    val tresqlConfFromConfig =
+    def tresqlConfFromConfig(cConf: Config, tunableOnly: Boolean) = {
+      def getStringOpt(parameterName: String): Option[String] =
+        Option(parameterName).filter(cConf.hasPath).filterNot(_ => tunableOnly).map(cConf.getString)
+      def getSeconds(parameterName: String): Int =
+        Option(parameterName).filter(cConf.hasPath).map(cConf.getDuration).map(_.getSeconds.toInt).getOrElse(-1)
+      def getInt(parameterName: String): Int =
+        Option(parameterName).filter(cConf.hasPath).map(cConf.getInt).getOrElse(-1)
       new TresqlResourcesConf {
-        override val macrosClass: Class[_] =
-          if (tresqlConf.hasPath("macros-class"))
-            Class.forName(tresqlConf.getString("macros-class"))
-          else null
-        override val dialect: Dialect =
-          if (tresqlConf.hasPath("vendor"))
-            vendor_dialect(tresqlConf.getString("vendor"))
-          else null
-        override val idExpr: String => String =
-          if (tresqlConf.hasPath("vendor"))
-            vendor_id_expr(tresqlConf.getString("vendor"))
-          else null
-        override val queryTimeout: Int =
-          if (tresqlConf.hasPath("query-timeout"))
-            tresqlConf.getDuration("query-timeout").getSeconds.toInt
-          else -1
-        override val maxResultSize: Int =
-          if (tresqlConf.hasPath("max-result-size"))
-            tresqlConf.getInt("max-result-size")
-          else -1
-        override val fetchSize: Int =
-          if (tresqlConf.hasPath("fetch-size"))
-            tresqlConf.getInt("fetch-size")
-          else -1
-        override val recursiveStackDepth: Int =
-          if (tresqlConf.hasPath("recursive-stack-depth"))
-            tresqlConf.getInt("recursive-stack-depth")
-          else -1
-        override val cacheSize: Int =
-          if (tresqlConf.hasPath("cache-size"))
-            tresqlConf.getInt("cache-size")
-          else -1
-        override val db: String =
-          if (tresqlConf.hasPath("db"))
-            tresqlConf.getString("db")
-          else null
-        override protected val isDbSet: Boolean =
-          tresqlConf.hasPathOrNull("db")
+        override val cacheSize:             Int = getInt("cache-size")
+        override val db:                 String = getStringOpt("db").orNull
+        override val dialect:           Dialect = getStringOpt("vendor").map(vendor_dialect).orNull
+        override val fetchSize:             Int = getInt("fetch-size")
+        override val idExpr:   String => String = getStringOpt("vendor").map(vendor_id_expr).orNull
+        override val macrosClass:      Class[_] = getStringOpt("macros-class").map(Class.forName).orNull
+        override val maxResultSize:         Int = getInt("max-result-size")
+        override val queryTimeout:          Int = getSeconds("query-timeout")
+        override val recursiveStackDepth:   Int = getInt("recursive-stack-depth")
+        override protected val isDbSet: Boolean = cConf.hasPathOrNull("db") && !tunableOnly
       }
+    }
+
+    val tresqlConfs = Seq(
+      tresqlConfFromConfig(forcedConfTuned, tunableOnly = true), // 1. settings in application conf for specific db, tunable only (sizes, timeouts)
+      tresqlConfInstance,                                        // 2. settings in configuration class
+      tresqlConfFromConfig(tresqlConf, tunableOnly = false),     // 3. settings in tresql-resources.conf for specific db;   4. ... for any db
+      tresqlConfFromConfig(fallbackConf, tunableOnly = true),    // 5. settings in application conf for any db, tunable only (sizes, timeouts)
+    )
+
+    def getInt(getIntValue: TresqlResourcesConf => Int) = tresqlConfs.map(getIntValue).find(_ != -1).getOrElse(-1)
+    def getValue[T >: Null](getValue: TresqlResourcesConf => T): T = tresqlConfs.map(getValue).find(_ != null).orNull
 
     new TresqlResourcesConf {
-      override val macrosClass: Class[_] =
-        Option(tresqlConfInstance.macrosClass)
-          .getOrElse(tresqlConfFromConfig.macrosClass)
-      override val dialect: Dialect =
-        Option(tresqlConfInstance.dialect)
-          .getOrElse(tresqlConfFromConfig.dialect)
-      override val idExpr: String => String =
-        Option(tresqlConfInstance.idExpr)
-          .getOrElse(tresqlConfFromConfig.idExpr)
-      override val queryTimeout: Int =
-        Option(tresqlConfInstance.queryTimeout).filter(_ != -1)
-          .getOrElse(tresqlConfFromConfig.queryTimeout)
-      override val fetchSize: Int =
-        Option(tresqlConfInstance.fetchSize).filter(_ != -1)
-          .getOrElse(tresqlConfFromConfig.fetchSize)
-      override val maxResultSize: Int =
-        Option(tresqlConfInstance.maxResultSize).filter(_ != -1)
-          .getOrElse(tresqlConfFromConfig.maxResultSize)
-      override val cacheSize: Int =
-        Option(tresqlConfInstance.cacheSize).filter(_ != -1)
-          .getOrElse(tresqlConfFromConfig.cacheSize)
-      override val recursiveStackDepth: Int =
-        Option(tresqlConfInstance.recursiveStackDepth).filter(_ != -1)
-          .getOrElse(tresqlConfFromConfig.recursiveStackDepth)
-      override val cache: Cache =
-        Option(tresqlConfInstance.cache).orNull
-      override val bindVarLogFilter: Logging#BindVarLogFilter =
-        Option(tresqlConfInstance.bindVarLogFilter).orNull
-      override val db: String =
-        (if (tresqlConfInstance.isDbSet) Some(tresqlConfInstance.db) else Option(tresqlConfInstance.db))
-        .orElse(if (tresqlConfFromConfig.isDbSet) Some(tresqlConfFromConfig.db) else Option(tresqlConfFromConfig.db))
-        .getOrElse(dbName)
-      override protected val isDbSet: Boolean = tresqlConfInstance.isDbSet || tresqlConfFromConfig.isDbSet
+      override val bindVarLogFilter: Logging#BindVarLogFilter = getValue(_.bindVarLogFilter)
+      override val cache:               Cache = getValue(_.cache)
+      override val cacheSize:             Int = getInt(_.cacheSize)
+      override val db:                 String = tresqlConfs.filter(_.isDbSet).headOption.map(_.db).getOrElse(dbName)
+      override val dialect:           Dialect = getValue(_.dialect)
+      override val fetchSize:             Int = getInt(_.fetchSize)
+      override val idExpr:   String => String = getValue(_.idExpr)
+      override val macrosClass:      Class[_] = getValue(_.macrosClass)
+      override val maxResultSize:         Int = getInt(_.maxResultSize)
+      override val queryTimeout:          Int = getInt(_.queryTimeout)
+      override val recursiveStackDepth:   Int = getInt(_.recursiveStackDepth)
+      override protected val isDbSet: Boolean = tresqlConfs.exists(_.isDbSet)
     }
   }
 
@@ -178,7 +150,6 @@ object TresqlResourcesConf extends Loggable {
       metadata: Metadata,
       extraResources: Map[String, Resources],
     ): ResourcesTemplate = {
-      val wabaseConf = org.wabase.config
       val macros =
         if (conf.macrosClass != null) {
           try conf.macrosClass.getField("MODULE$").get(null) catch {
