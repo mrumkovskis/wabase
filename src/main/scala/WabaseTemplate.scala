@@ -50,7 +50,7 @@ class DefaultWabaseTemplate extends WabaseTemplate {
   protected val renderer: WabaseTemplateRenderer =
     factory[WabaseTemplateRenderer]("app.template.renderer")
   private def factory[T](propName: String): T = {
-    Class.forName(config.getString(propName)).getDeclaredConstructor().newInstance().asInstanceOf[T]
+    getObjectOrNewInstance(config.getString(propName), "template factory").asInstanceOf[T]
   }
 
   override def apply(template: String, data: Iterable[_])(implicit

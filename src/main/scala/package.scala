@@ -15,7 +15,7 @@ package object wabase extends Loggable {
   import scala.language.reflectiveCalls
   import com.typesafe.config._
 
-  val config = ConfigFactory.load
+  lazy val config = ConfigFactory.load
 
   type jBoolean = java.lang.Boolean
   type jLong = java.lang.Long
@@ -61,7 +61,7 @@ package object wabase extends Loggable {
   case class QueryTimeout(timeoutSeconds: Int)
 
   /** Default query timeout based on "jdbc.query-timeout" configuration setting */
-  val DefaultQueryTimeout: QueryTimeout =
+  lazy val DefaultQueryTimeout: QueryTimeout =
     QueryTimeout(config.getDuration("jdbc.query-timeout").toSeconds.toInt)
 
   //db connection pool configuration
@@ -78,13 +78,40 @@ package object wabase extends Loggable {
     new HikariDataSource(hikariConfig)
   }
 
+  def getObjectOrNewInstance(className: String, description: String): AnyRef = {
+    if (className endsWith "$")
+      getObjectOrNewInstance(Class.forName(className), description)
+    else try Class.forName(className).getDeclaredConstructor().newInstance().asInstanceOf[AnyRef] catch {
+      case util.control.NonFatal(ex1) =>
+        try Class.forName(className + "$").getField("MODULE$").get(null) catch {
+          case util.control.NonFatal(ex2) =>
+            logger.error(s"Failed to get $description instance, tried both empty constructor and object", ex2)
+            throw new RuntimeException(s"Failed to get $description instance", ex1)
+        }
+      }
+  }
+
+  def getObjectOrNewInstance(clazz: Class[_], description: String): AnyRef = {
+    try clazz.getField("MODULE$").get(null) catch {
+      case util.control.NonFatal(ex1) =>
+        try clazz.getDeclaredConstructor().newInstance().asInstanceOf[AnyRef] catch {
+          case util.control.NonFatal(ex2) =>
+            logger.error(s"Failed to get $description instance, tried both object and empty constructor", ex1)
+            throw new RuntimeException(s"Failed to get $description instance", ex2)
+        }
+    }
+  }
+
   case class PoolName(connectionPoolName: String) {
     require(connectionPoolName != null, "connectionPoolName must not be null - try ConnectionPools.key instead")
   }
-  val DefaultCpName = config.getString("jdbc.default")
+  lazy val DefaultCpName = config.getString("jdbc.default")
+  lazy val DEFAULT_CP = {
   val DEFAULT_CP = PoolName(DefaultCpName)
   if (!config.hasPath(s"jdbc.cp.${DEFAULT_CP.connectionPoolName}"))
     logger.warn(s"""Default connection pool configuration missing (key jdbc.cp.${DEFAULT_CP.connectionPoolName}), or jdbc.default not set to correct key (default value = "main"). \nThere will be errors if You rely on JDBC connections""")
+  DEFAULT_CP
+  }
 
   object ConnectionPools {
     private lazy val cps = {

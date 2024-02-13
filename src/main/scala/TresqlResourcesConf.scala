@@ -63,7 +63,7 @@ object TresqlResourcesConf extends Loggable {
       dbName: String, forcedConfTuned: Config, tresqlConf: Config, fallbackConf: Config): TresqlResourcesConf = {
     val tresqlConfInstance =
       if (tresqlConf.hasPath("config-class"))
-        Class.forName(tresqlConf.getString("config-class")).getDeclaredConstructor().newInstance().asInstanceOf[TresqlResourcesConf]
+        getObjectOrNewInstance(tresqlConf.getString("config-class"), "tresql resources config").asInstanceOf[TresqlResourcesConf]
       else new TresqlResourcesConf {}
 
     def tresqlConfFromConfig(cConf: Config, tunableOnly: Boolean) = {
@@ -151,16 +151,8 @@ object TresqlResourcesConf extends Loggable {
       extraResources: Map[String, Resources],
     ): ResourcesTemplate = {
       val macros =
-        if (conf.macrosClass != null) {
-          try conf.macrosClass.getField("MODULE$").get(null) catch {
-            case util.control.NonFatal(ex1) =>
-              try conf.macrosClass.getDeclaredConstructor().newInstance() catch {
-                case util.control.NonFatal(ex2) =>
-                  logger.error("Failed to get macros instance, tried both object and empty constructor", ex1)
-                  throw new RuntimeException("Failed to get macros instance", ex2)
-              }
-          }
-        }
+        if (conf.macrosClass != null)
+             getObjectOrNewInstance(conf.macrosClass, "macros")
         else Macros
       val dialect: Dialect = {
         val dbVendor = cpToVendor.getOrElse(db, null)

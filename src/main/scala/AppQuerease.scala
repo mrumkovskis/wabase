@@ -158,14 +158,14 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   val jsonValueEncoder: ResultEncoder.JsValueEncoderPF = _ => PartialFunction.empty
   lazy val templateEngine: WabaseTemplate = createTemplateEngine
   protected def createTemplateEngine: WabaseTemplate = {
-    Class.forName(config.getString("app.template.engine")).getDeclaredConstructor().newInstance() match {
+    getObjectOrNewInstance(config.getString("app.template.engine"), "template engine") match {
       case wt: WabaseTemplate => wt
       case x => sys.error(s"Expected type WabaseTemplate, got: ${x.getClass.getName}")
     }
   }
   lazy val emailSender: WabaseEmail = createEmailSender
   protected def createEmailSender: WabaseEmail = {
-    Class.forName(config.getString("app.email.sender")).getDeclaredConstructor().newInstance() match {
+    getObjectOrNewInstance(config.getString("app.email.sender"), "email sender") match {
       case es: WabaseEmail => es
       case x => sys.error(s"Expected type WabaseEmail, got: ${x.getClass.getName}")
     }
