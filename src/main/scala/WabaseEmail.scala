@@ -29,6 +29,7 @@ trait WabaseEmail {
     bcc: String = null,
     from: String = null,
     replyTo: String = null,
+    html: Boolean = false, /** Send body as HTML? */
     async: Boolean = true, /** Asynchronous sending flag */
   )(implicit
     ec: ExecutionContext,
@@ -65,6 +66,7 @@ class DefaultWabaseEmailSender extends WabaseEmail with Loggable {
     bcc: String = null,
     from: String = null,
     replyTo: String = null,
+    html: Boolean = false, /** Send body as HTML? */
     async: Boolean = true, /** Asynchronous sending flag */
   )(implicit
     ec: ExecutionContext,
@@ -81,7 +83,10 @@ class DefaultWabaseEmailSender extends WabaseEmail with Loggable {
     optional(builder.from _, from)
     optional(builder.withReplyTo _, replyTo)
     builder.withSubject(subject)
-    builder.withPlainText(body)
+    if (html)
+      builder.withHTMLText(body)
+    else
+      builder.withPlainText(body)
     attachments.foreach { attachment =>
       val filename = attachment.filename // org.apache.commons.lang3.StringUtils.stripAccents(attachment.filename)
       val inputStream: InputStream = attachment.content.runWith(StreamConverters.asInputStream())

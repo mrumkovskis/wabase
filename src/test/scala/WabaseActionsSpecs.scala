@@ -88,6 +88,7 @@ object WabaseActionsSpecs {
       bcc: String = null,
       from: String = null,
       replyTo: String = null,
+      html: Boolean = false, /** Send body as plain text   */
       async: Boolean = true, /** Asynchronous sending flag */
     )(implicit
       ec: ExecutionContext,
