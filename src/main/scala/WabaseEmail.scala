@@ -4,6 +4,7 @@ import akka.actor.ActorSystem
 import akka.stream.scaladsl.{Source, StreamConverters}
 import akka.util.ByteString
 
+import com.typesafe.config.ConfigFactory
 import jakarta.activation.DataSource
 import org.simplejavamail.api.email.EmailPopulatingBuilder
 import org.simplejavamail.api.mailer.Mailer
@@ -39,12 +40,13 @@ trait WabaseEmail {
 
 class DefaultWabaseEmailSender extends WabaseEmail with Loggable {
 
-  val isEnabled: Boolean = config.getBoolean("app.email.enabled")
+  val enabled: Boolean = config.getBoolean("app.email.enabled")
 
   // extract simplejavamail properties from application conf to reduce configuration file count
   def simplejavamailPropertiesFromConfig: Properties = {
     import scala.jdk.CollectionConverters._
-    val sjmConfig = config.getConfig("simplejavamail")
+    val sjmConfig =
+      Some("simplejavamail").filter(config.hasPath).map(config.getConfig).getOrElse(ConfigFactory.empty)
     val map: Map[String, String] = sjmConfig.entrySet.asScala.map({ entry =>
       s"simplejavamail.${entry.getKey}" -> Option(entry.getValue.unwrapped()).map(_.toString).orNull
     }).toMap
@@ -54,8 +56,11 @@ class DefaultWabaseEmailSender extends WabaseEmail with Loggable {
     props
   }
 
-  if (isEnabled) ConfigLoader.loadProperties(simplejavamailPropertiesFromConfig, /*addProperties=*/true)
-  val mailer: Mailer = if (isEnabled) MailerBuilder.buildMailer() else null
+  lazy val mailer: Mailer =
+    if (enabled) {
+      ConfigLoader.loadProperties(simplejavamailPropertiesFromConfig, /*addProperties=*/true)
+      MailerBuilder.buildMailer()
+    } else null
 
   override def sendMail(
     to: String,
