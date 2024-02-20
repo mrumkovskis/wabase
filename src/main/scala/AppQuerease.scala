@@ -659,34 +659,18 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     qio: AppQuereaseIo[Dto],
   ): Future[QuereaseResult] = {
     import op._
-    def invokeFunction(className: String, function: String, paramFun: PartialFunction[Class[_], Any]): Any = {
-      val pf: PartialFunction[Class[_], Any] = paramFun orElse {
-        case parType if parType.isAssignableFrom(classOf[Resources]) => resFac.resources
-        case parType if parType.isAssignableFrom(classOf[ResourcesFactory]) => resFac
-        case parType if parType.isAssignableFrom(classOf[ExecutionContext]) => ec
-        case parType if parType.isAssignableFrom(classOf[ActorSystem]) => as
-        case parType if parType.isAssignableFrom(classOf[FileStreamer]) => fs
-        case parType if parType.isAssignableFrom(classOf[HttpRequest]) => Option(reqCtx).map(_.request).orNull
-        case parType if parType.isAssignableFrom(classOf[RequestContext]) => reqCtx
-        case parType if parType.isAssignableFrom(classOf[AppQuereaseIo[Dto]]) => qio
-        case x => sys.error(s"Cannot find value for function parameter. Unsupported parameter type: $x")
-      }
-      import scala.language.existentials // import otherwise gets warning for tuple deconstruction
-      val (clazz, obj) = Try {
-        val c = Class.forName(className + "$")
-        (c, c.getField("MODULE$").get(null))
-      }.recover {
-        case _: ClassNotFoundException =>
-          val c = Class.forName(className)
-          (c, c.getDeclaredConstructor().newInstance())
-      }.get
-      clazz.getMethods.filter(_.getName == function) match {
-        case Array(method) =>
-          val parTypes = method.getParameterTypes
-          method.invoke(obj, (parTypes map pf).asInstanceOf[Array[Object]]: _*) //cast is needed for scala 2.12.x
-        case Array() => sys.error(s"Method $function not found in class $className")
-        case m => sys.error(s"Multiple methods '$function' found: (${m.toList}) in class $className")
-      }
+    def invokeFunction(className: String, function: String, params: Seq[(Class[_], Class[_] => Any)]): Any = {
+      val contextParams = Seq[(Class[_], Class[_] => Any)](
+        (classOf[Resources], _ => resFac.resources),
+        (classOf[ResourcesFactory], _ => resFac),
+        (classOf[ExecutionContext], _ => ec),
+        (classOf[ActorSystem], _ => as),
+        (classOf[FileStreamer], _ => fs),
+        (classOf[HttpRequest], _ => Option(reqCtx).map(_.request).orNull),
+        (classOf[RequestContext], _ => reqCtx),
+        (classOf[AppQuereaseIo[Dto]], _ => qio),
+      )
+      org.wabase.invokeFunction(className, function, params ++ contextParams)
     }
 
     def wrongRes(x: Any) =
@@ -750,19 +734,21 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
 
     (if (op.arg == null) {
       val invocationData = data ++ env
-      invokeFunction(className, function, {
-        case parType if classOf[Dto].isAssignableFrom(parType) =>
-          import qio.MapJsonFormat
-          qio.fill(invocationData.toJson.asJsObject)(Manifest.classType(parType)) // specify manifest explicitly so it is not Nothing
-        case partType if partType.isAssignableFrom(classOf[scala.collection.immutable.Map[_, _]]) => invocationData
-        case parType if parType.isAssignableFrom(classOf[java.util.Map[_, _]]) => invocationData.asJava
-        case parType if parType.isAssignableFrom(classOf[MapResult]) => MapResult(invocationData)
-      })
+      invokeFunction(className, function,
+        Seq(
+          (classOf[scala.collection.immutable.Map[_, _]], _ => invocationData),
+          (classOf[Dto], parClass => {
+            import qio.MapJsonFormat
+            val mf = Manifest.classType[Dto](parClass) // somehow need to specify method type parameter Dto for not to fail in runtime on next line??
+            qio.fill(invocationData.toJson.asJsObject)(mf) // specify manifest explicitly so it is not Nothing
+          }),
+          (classOf[java.util.Map[_, _]], _ => invocationData.asJava),
+          (classOf[MapResult], _ => MapResult(invocationData)),
+        )
+      )
     } else {
       doActionOp(op.arg, data, env, context).map { opRes =>
-        invokeFunction(className, function, {
-          case parType if classOf[QuereaseResult].isAssignableFrom(parType) => opRes
-        })
+        invokeFunction(className, function, Seq((classOf[QuereaseResult], _ => opRes)))
       }
     }) match {
       case f: Future[_] => f map comp_q_result

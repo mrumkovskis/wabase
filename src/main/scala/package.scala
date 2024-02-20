@@ -102,6 +102,21 @@ package object wabase extends Loggable {
     }
   }
 
+  def invokeFunction(className: String, function: String, params: Seq[(Class[_], Class[_] => Any)]): Any = {
+    val obj = getObjectOrNewInstance(className, s"function $function")
+    val clazz = obj.getClass
+    clazz.getMethods.filter(_.getName == function) match {
+      case Array(method) =>
+        def param(parClass: Class[_]) = params.collectFirst {
+          case (c, f) if parClass.isAssignableFrom(c) || c.isAssignableFrom(parClass) => f(parClass)
+        }.getOrElse(sys.error(s"Cannot find value for function parameter. Unsupported parameter type: $parClass"))
+
+        method.invoke(obj, (method.getParameterTypes map param).asInstanceOf[Array[Object]]: _*) //cast is needed for scala 2.12.x
+      case Array() => sys.error(s"Method $function not found in class $className")
+      case m => sys.error(s"Multiple methods '$function' found: (${m.toList}) in class $className")
+    }
+  }
+
   case class PoolName(connectionPoolName: String) {
     require(connectionPoolName != null, "connectionPoolName must not be null - try ConnectionPools.key instead")
   }
