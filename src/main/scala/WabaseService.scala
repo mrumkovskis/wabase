@@ -61,7 +61,7 @@ object WabaseService {
         case `POST`   => Action.Insert
         case `PUT`    => Action.Update
         case `DELETE` => Action.Delete
-        case x        => x.value
+        case x        => error(s"Unsupported http method $x for request '${req.uri}'")
       }
 
       WabaseRequestContext(route, ctx, view_name, action, key)
