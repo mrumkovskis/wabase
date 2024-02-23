@@ -21,7 +21,10 @@ class WabaseScheduler extends Loggable {
     if (config.hasPath("akka.quartz.schedules")) {
       val system = ActorSystem("wabase-cron-jobs")
       val scheduler = QuartzSchedulerExtension(system)
-      val wabaseJobActor = system.actorOf(Props(classOf[WabaseJobActor], service))
+      val jobActorClass = try Class.forName(config.getString("app.job.actor")) catch {
+        case util.control.NonFatal(ex) => throw new RuntimeException(s"Failed to get job actor class", ex)
+      }
+      val wabaseJobActor = system.actorOf(Props(jobActorClass, service))
       config
         .getConfig("akka.quartz.schedules")
         .root().asScala.keys
@@ -115,6 +118,9 @@ class WabaseJobActor(service: AppServiceBase[_]) extends Actor {
 }
 
 object WabaseJobStatusController {
+
+  val job_max_time = config.getString("app.job.max-time")
+
   def init(dbAccess: DbAccess) = dbAccess.transaction() { implicit res =>
     Query("-cron_job_status[status != 'RUN']")
   }
@@ -144,9 +150,9 @@ object WabaseJobStatusController {
         |[!(cron_job_status existing[cron_name = ?])]""".stripMargin, name, name)
     // Single statement to do it properly - for 'Read Committed' transaction isolation level (default in postgres)
     // Because of multiple nodes and shutdowns - ignore 'RUN' lock held for too long:
-    if (Query("""=cron_job_status[
+    if (Query(s"""=cron_job_status[
                     cron_name = ? &
-                    (status != 'RUN' | report_time < now() - '1 hour'::interval)
+                    (status != 'RUN' | report_time < now() - '$job_max_time'::interval)
                   ] {status, report_time, up_count} ['RUN', now(), up_count + 1]""", name)
       .affectedRowCount > 0)
       true
