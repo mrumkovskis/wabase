@@ -5,42 +5,42 @@ import akka.http.scaladsl.server.RequestContext
 import com.typesafe.akka.extension.quartz.QuartzSchedulerExtension
 import org.wabase.WabaseScheduler.{JobResponse, Tick}
 
-import scala.concurrent.{ExecutionContext, Future}
 import org.tresql._
 import org.wabase.AppMetadata.JobDef
 
+import scala.concurrent.{ExecutionContext, Future}
+import scala.jdk.CollectionConverters._
+import scala.language.existentials
 import scala.util.control.NonFatal
 import scala.util.{Failure, Success}
-import scala.jdk.CollectionConverters._
 
 
-class WabaseScheduler extends Loggable {
-  def init(service: AppServiceBase[_]): Future[QuereaseResult] = {
+class WabaseScheduler(service: AppServiceBase[_]) extends Loggable {
+  protected lazy val system = ActorSystem("wabase-cron-jobs")
+  protected lazy val scheduler = QuartzSchedulerExtension(system)
+  protected lazy val jobActorClass = try Class.forName(config.getString("app.job.actor")) catch {
+    case NonFatal(ex) => throw new RuntimeException(s"Failed to get job actor class", ex)
+  }
+  protected lazy val wabaseJobActor = system.actorOf(Props(jobActorClass, service))
+
+  def init(): Future[QuereaseResult] = {
     WabaseJobStatusController.init(service.app.dbAccess)
-
     if (config.hasPath("akka.quartz.schedules")) {
-      val system = ActorSystem("wabase-cron-jobs")
-      val scheduler = QuartzSchedulerExtension(system)
-      val jobActorClass = try Class.forName(config.getString("app.job.actor")) catch {
-        case util.control.NonFatal(ex) => throw new RuntimeException(s"Failed to get job actor class", ex)
-      }
-      val wabaseJobActor = system.actorOf(Props(jobActorClass, service))
       config
         .getConfig("akka.quartz.schedules")
         .root().asScala.keys
-        .foreach { jobName => schedule(jobName)(service, scheduler, wabaseJobActor) }
+        .foreach { jobName => schedule(jobName)(scheduler, wabaseJobActor) }
     } else {
       logger.debug(s"No schedules found for background jobs.")
     }
 
     if (config.hasPath("app.init.job")) {
       val jobDef = service.app.qe.jobDef(config.getString("app.init.job"))
-      doJob(jobDef)(service)
+      doJob(jobDef)
     } else Future.successful(NoResult)
   }
 
   protected def schedule(jobName: String)(
-    service: AppServiceBase[_],
     scheduler: QuartzSchedulerExtension,
     wabaseJobActor: ActorRef
   ): Unit = {
@@ -52,9 +52,9 @@ class WabaseScheduler extends Loggable {
     }
   }
 
-  def doJob(job: JobDef)(service: AppServiceBase[_]): Future[QuereaseResult] = {
+  def doJob(job: JobDef): Future[QuereaseResult] = {
     val qe = service.app.qe
-    val dbAccess = service.app.asInstanceOf[DbAccess]
+    val dbAccess = service.app.dbAccess
 
     val emptyResFactory: ResourcesFactory = {
       val resTempl = dbAccess
@@ -92,12 +92,12 @@ class WabaseJobActor(service: AppServiceBase[_]) extends Actor {
     case Tick(jd, scheduler) =>
       val s = sender()
       val jobName = jd.name
-      val dbAccess = service.app.asInstanceOf[DbAccess]
+      val dbAccess = service.app.dbAccess
 
       try {
         if (WabaseJobStatusController.acquireIsRunnningLock(jobName)(dbAccess)) {
           context.system.log.info(jobName + " started")
-          scheduler.doJob(jd)(service).onComplete {
+          scheduler.doJob(jd).onComplete {
             case Success(r) =>
               WabaseJobStatusController.updateCronJobStatus(jobName, "SUCC")(dbAccess)
               context.system.log.info(jobName + " ended")
@@ -120,12 +120,13 @@ class WabaseJobActor(service: AppServiceBase[_]) extends Actor {
 object WabaseJobStatusController {
 
   val job_max_time = config.getString("app.job.max-time")
+  val jobStatusCp  = PoolName(config.getString("app.job.job-status-cp"))
 
-  def init(dbAccess: DbAccess) = dbAccess.transaction() { implicit res =>
+  def init(dbAccess: DbAccess) = dbAccess.transaction(poolName = jobStatusCp) { implicit res =>
     Query("-cron_job_status[status != 'RUN']")
   }
 
-  def updateCronJobStatus(name: String, status: String)(dbAccess: DbAccess): Unit = dbAccess.transaction() {
+  def updateCronJobStatus(name: String, status: String)(dbAccess: DbAccess): Unit = dbAccess.transaction(poolName = jobStatusCp) {
     implicit res => status match {
       case "SUCC" =>
         Query(
@@ -142,7 +143,7 @@ object WabaseJobStatusController {
     }
   }
 
-  def acquireIsRunnningLock(name: String)(dbAccess: DbAccess): Boolean = dbAccess.transaction() { implicit res =>
+  def acquireIsRunnningLock(name: String)(dbAccess: DbAccess): Boolean = dbAccess.transaction(poolName = jobStatusCp) { implicit res =>
     Query(
       """+cron_job_status
         |{id, cron_name, status, report_time}
