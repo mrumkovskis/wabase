@@ -1566,50 +1566,6 @@ trait Dto extends org.mojoz.querease.Dto { self =>
       (if (auth.isEmpty) "" else ", auth: " + auth.toString)
   }
   */
-  private def isSavableFieldAppExtra(
-    field: FieldDef,
-    view: ViewDef,
-    saveToMulti: Boolean,
-    saveToTableNames: Seq[String],
-  ) = {
-    def isForInsert = // TODO isForInsert
-      this match {
-        case id: DtoWithId => id.id == null
-        case _ => sys.error(s"isForInsert() for ${getClass.getName} not supported yet")
-      }
-    def isForUpdate = // TODO isForUpdate
-      this match {
-        case id: DtoWithId => id.id != null
-        case _ => sys.error(s"isForUpdate() for ${getClass.getName} not supported yet")
-      }
-    lazy val idxSlash = field.options.indexOf('/')
-    lazy val idxPlus  = field.options.indexOf('+')
-    lazy val idxEq    = field.options.indexOf('=')
-    lazy val idxExcl  = field.options.indexOf('!')
-    lazy val optsIns  = idxExcl < 0 && idxPlus >= 0 && (idxSlash < 0 || idxPlus < idxSlash)
-    lazy val optsUpd  = idxExcl < 0 && idxEq   >= 0 && (idxSlash < 0 || idxEq   < idxSlash)
-
-    (field.options == null  ||
-     optsIns && optsUpd     ||
-     optsIns && isForInsert ||
-     optsUpd && isForUpdate)
-  }
-
-  override protected def isSavableField(
-      field: FieldDef,
-      view: ViewDef,
-      saveToMulti: Boolean,
-      saveToTableNames: Seq[String]) =
-    isSavableFieldAppExtra(field, view, saveToMulti, saveToTableNames) &&
-      super.isSavableField(field, view, saveToMulti, saveToTableNames)
-
-  override protected def isSavableChildField(
-      field: FieldDef,
-      view: ViewDef,
-      saveToMulti: Boolean,
-      saveToTableNames: Seq[String],
-      childView: ViewDef): Boolean =
-    isSavableFieldAppExtra(field, view, saveToMulti, saveToTableNames)
 
   override protected def throwUnsupportedConversion(
       value: Any, targetType: Manifest[_], fieldName: String, cause: Throwable = null): Unit = {
