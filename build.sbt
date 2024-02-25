@@ -62,8 +62,8 @@ lazy val wabase = (project in file("."))
       "com.github.librepdf"         % "openpdf"               % "1.3.41"            % Provided,
       "org.xhtmlrenderer"           % "flying-saucer-pdf-openpdf" % "9.4.0"         % Provided,
       "org.simplejavamail"          % "simple-java-mail"      % "8.6.3"             % Provided,
-      "org.graalvm.js"              % "js"                    % "22.3.4"            % Provided,
-      "org.graalvm.js"              % "js-scriptengine"       % "22.3.4"            % Provided,
+      "org.graalvm.js"              % "js"                    % "22.3.5"            % Provided,
+      "org.graalvm.js"              % "js-scriptengine"       % "22.3.5"            % Provided,
     ) ++ Seq( // for test
       "org.scalatest"              %% "scalatest"             % "3.2.17"  % "it,test",
       "com.typesafe.akka"          %% "akka-http-testkit"     % akkaHttpV % "it,test" cross CrossVersion.for3Use2_13,
