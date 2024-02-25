@@ -65,7 +65,7 @@ lazy val wabase = (project in file("."))
       "org.graalvm.js"              % "js"                    % "22.3.5"            % Provided,
       "org.graalvm.js"              % "js-scriptengine"       % "22.3.5"            % Provided,
     ) ++ Seq( // for test
-      "org.scalatest"              %% "scalatest"             % "3.2.17"  % "it,test",
+      "org.scalatest"              %% "scalatest"             % "3.2.18"  % "it,test",
       "com.typesafe.akka"          %% "akka-http-testkit"     % akkaHttpV % "it,test" cross CrossVersion.for3Use2_13,
       "com.typesafe.akka"          %% "akka-testkit"          % akkaV     % "it,test" cross CrossVersion.for3Use2_13,
       "com.typesafe.akka"          %% "akka-stream-testkit"   % akkaV     % "it,test" cross CrossVersion.for3Use2_13,
