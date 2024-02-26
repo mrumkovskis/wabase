@@ -555,7 +555,7 @@ list:
 
 name: if_test_1
 table: if_and_foreach_test
-api: save
+api: save, get
 fields:
 - code
 - parent
@@ -569,6 +569,12 @@ save:
     - value = :value || '_value'
     - =if_and_foreach_test[code = :code]{value = :value}
 - unique_opt if_and_foreach_test[code = :code]{code, value}
+get:
+- result = if {:code = 'true'}:
+  - unique_opt { :code code, null parent, 'Value' value }
+- else:
+  - unique_opt { :code code, null parent, 'Else value' value }
+- :result
 
 
 name: if_test_2
