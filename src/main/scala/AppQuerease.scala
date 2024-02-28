@@ -1204,8 +1204,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     }
   }
 
-  protected def doBatch(
-    op: Action.Batch,
+  protected def doBlock(
+    op: Action.Block,
     data: Map[String, Any],
     env: Map[String, Any],
     context: ActionContext,
@@ -1217,7 +1217,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     reqCtx: RequestContext,
     qio: AppQuereaseIo[Dto],
   ): Future[QuereaseResult] = {
-    doSteps(op.action.steps, context.copy(stepName = "batch"), Future.successful(data))
+    doSteps(op.action.steps, context.copy(stepName = "block"), Future.successful(data))
   }
 
   protected def doConf(
@@ -1320,7 +1320,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case http: Action.Http => doHttp(http, data, env, context)
       case eh: Action.HttpHeader => doExtractHeader(eh, data, env, context)
       case db: Action.Db => doDb(db, data, env, context)
-      case batch: Action.Batch => doBatch(batch, data, env, context)
+      case block: Action.Block => doBlock(block, data, env, context)
       case c: Action.Conf => doConf(c, data, env, context)
       case j: Action.JsonCodec => doJsonCodec(j, data, env, context)
       case job: Action.Job => doJob(job, data, env, context)

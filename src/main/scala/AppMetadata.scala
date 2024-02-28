@@ -650,9 +650,9 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
                       Action.Db(pa, true)
                     } else if (transactionRegex.pattern.matcher(opStr).matches()) {
                       Action.Db(pa, false)
-                    } else Action.Batch(pa)
+                    } else Action.Block(pa)
                   val eval_var_name = op match {
-                    case _: Action.Batch => name
+                    case _: Action.Block => name
                     case _ => varName
                   }
                   Action.Evaluation(Option(eval_var_name), Nil, op)
@@ -1026,7 +1026,7 @@ object AppMetadata extends Loggable {
     case class JsonCodec(encode: Boolean, op: Op) extends Op
     /** This operation exists only in parsing stage for if operation */
     case class Else(action: Action) extends Op
-    case class Batch(action: Action) extends Op
+    case class Block(action: Action) extends Op
     /** if isDynamic is false, nameTresql parameter is expected to be indentifier or string constant
      * (not to be evaluated as tresql to get job name). */
     case class Job(nameTresql: String, isDynamic: Boolean) extends Op
@@ -1058,7 +1058,7 @@ object AppMetadata extends Loggable {
         case Email(_, s, b, a) => a.foldLeft(opTrav(opTrav(state)(s))(b))(opTrav(_)(_))
         case o: Http => opTrav(state)(o.body)
         case Db(a, _) => traverseAction(a)(stepTrav)(state)
-        case Batch(a) => traverseAction(a)(stepTrav)(state)
+        case Block(a) => traverseAction(a)(stepTrav)(state)
         case JsonCodec(_, o) => opTrav(state)(o)
         case i: Invocation => opTrav(state)(i.arg)
       }
