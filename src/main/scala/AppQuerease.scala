@@ -795,8 +795,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     MapResult(transRes)
   }
 
-  protected def doUniqueOpt(
-    op: Action.UniqueOpt,
+  protected def doUnique(
+    op: Action.Unique,
     data: Map[String, Any],
     env: Map[String, Any],
     context: ActionContext,
@@ -810,13 +810,14 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   ): Future[QuereaseResult] = {
     def createGetResult(res: QuereaseResult): QuereaseResult = res match {
       case TresqlResult(r) if !r.isInstanceOf[DMLResult] =>
-        r.uniqueOption map TresqlSingleRowResult getOrElse notFound
+        if (op.opt) r.uniqueOption map TresqlSingleRowResult getOrElse notFound
+        else TresqlSingleRowResult(r.unique)
       case IteratorResult(r) =>
         try r.hasNext match {
           case true =>
             val v = r.next()
             if (r.hasNext) sys.error("More than one row for unique result") else MapResult(v)
-          case false => notFound
+          case false => if (op.opt) notFound else throw new NoSuchElementException(s"No rows in result")
         } finally r match {
           case c: AutoCloseable => c.close()
           case _ =>
@@ -849,7 +850,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   ): Future[QuereaseResult] = {
     val Action.Status(maybeCode, bodyTresql, parameterIndex) = op
     Option(bodyTresql).map { bt =>
-      doActionOp(Action.UniqueOpt(Action.Tresql(bt)), data, env, context).map {
+      doActionOp(Action.Unique(Action.Tresql(bt), opt = true), data, env, context).map {
         case srr: TresqlSingleRowResult => srr.map { row =>
           val colCount = row.columnCount
           val (code, idx) = maybeCode.map(_ -> 0).getOrElse(row.int(0) -> Math.min(1, colCount - 1))
@@ -1295,7 +1296,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     op match {
       case to: Action.Tresql => Future.successful(doTresql(to, data ++ env, context))
       case Action.ViewCall(method, view, viewOp) => doViewCall(method, view, viewOp, data, env, context)
-      case op: Action.UniqueOpt => doUniqueOpt(op, data, env, context)
+      case op: Action.Unique => doUnique(op, data, env, context)
       case inv: Action.Invocation => doInvocation(inv, data, env, context)
       case Action.RedirectToKey(name) =>
         val viewName = if (name == "this") context.viewName else name

@@ -571,16 +571,16 @@ save:
 - unique_opt if_and_foreach_test[code = :code]{code, value}
 get:
 - result = if {:code = 'true'}:
-  - unique_opt { :code code, null parent, 'Value' value }
+  - unique { :code code, null parent, 'Value' value }
 - else:
-  - unique_opt { :code code, null parent, 'Else value' value }
+  - unique { :code code, null parent, 'Else value' value }
 - :result
 delete:
 - result:
   - if {:code = 'true'}:
-    - unique_opt { :code code, null parent, 'Value delete' value }
+    - unique { :code code, null parent, 'Value delete' value }
   - else:
-    - unique_opt { :code code, null parent, 'Else value delete' value }
+    - unique { :code code, null parent, 'Else value delete' value }
 - :result
 
 
@@ -748,14 +748,14 @@ fields:
 - manipulation_date
 - vaccine
 get:
-- unique_opt {:name name, :manipulation_date::date manipulation_date, :vaccine vaccine, :id::long id}
+- unique {:name name, :manipulation_date::date manipulation_date, :vaccine vaccine, :id::long id}
 list:
 - res = http '/invocation_test_1'
 - status ok :res
 insert:
   # http post ends with empty array explicitly indicating no headers
 - res = http post '/person_health'
-          unique_opt { 'Mr. Mario' name, 'Moderna' 'vaccine', '2022-04-11' 'manipulation_date' }
+          unique { 'Mr. Mario' name, 'Moderna' 'vaccine', '2022-04-11' 'manipulation_date' }
           []
 - status ok :res
 update:
@@ -805,7 +805,7 @@ fields:
 - area decimal 10 2
 - trees
 get:
-- unique_opt { :nr nr, :owner owner, :area::decimal area, :trees trees }
+- unique { :nr nr, :owner owner, :area::decimal area, :trees trees }
 update:
 - forest = http { '/forest', :nr }
 - :forest + :_ /* all data reference */ -> http put {'/forest/', :nr } get http_forest
@@ -827,7 +827,7 @@ get:
 insert:
 - forest = from json :value
 - http post '/forest' to json
-    unique_opt { :forest.nr nr, :forest.owner owner, :forest.trees trees, :forest.area::decimal area }
+    unique { :forest.nr nr, :forest.owner owner, :forest.trees trees, :forest.area::decimal area }
 
 
 name: last_step_assignment_test
@@ -987,7 +987,7 @@ api: insert, update, get
 fields:
 - name
 get:
-- unique_opt { :name name }
+- unique { :name name }
 insert:
 - status ok { if_defined_or_else(:name?, 'error', 'ok') }
 update:
@@ -1004,7 +1004,7 @@ api: insert, update, get
 fields:
   - name
 get:
-  - unique_opt { :name name }
+  - unique { :name name }
 insert:
   - res =
       http put { '/not_decode_request_update_test' }
@@ -1058,7 +1058,7 @@ get:
 
 job: test_job1
 action:
-- unique_opt { 'Hello ' || coalesce(if_defined(:name?, :name || ' '), '') || 'from test_job1!' greeting }
+- unique { 'Hello ' || coalesce(if_defined(:name?, :name || ' '), '') || 'from test_job1!' greeting }
 
 
 name: job_call_test1
@@ -1088,7 +1088,7 @@ fields:
 insert:
 - res_map =
     to file (
-        as `result_render_test` unique_opt
+        as `result_render_test` unique
         { 'text' string_field, '2024-01-31'::date date_field, 'x' filtered_field }
     ) 'rendered_results' 'application/json'
 - res = file {:res_map.id, :res_map.sha_256}
@@ -1114,7 +1114,7 @@ delete:
     { 'text' string_field, '2024-01-31'::date date_field, 'x' filtered_field,
       |null{ 'child' child } children }
 count:
-- as any unique_opt
+- as any unique
     { 'text' string_field, '2024-01-31'::date date_field, 'x' filtered_field,
       |null{ 'child' child } children }
 

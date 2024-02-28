@@ -759,9 +759,9 @@ class OpParser(viewName: String, tresqlUri: TresqlUri, cache: OpParser.Cache)
     case action ~ view ~ op =>
       ViewCall(action.trim /* trim ending whitespace */, view, op.orNull)
   }  named "view-op"
-  def uniqueOptOp: MemParser[UniqueOpt] = opt(opResultType) ~ ("unique_opt" ~> operation) ^^ {
-    case rt ~ op => UniqueOpt(op, rt)
-  } named "unique-opt-op"
+  def uniqueOp: MemParser[Unique] = opt(opResultType) ~ (("unique_opt" | "unique") ~ operation) ^^ {
+    case rt ~ (mode ~ op) => Unique(op, mode == "unique_opt", rt)
+  } named "unique-op"
 
   def invocationOp: MemParser[Invocation] = opt(opResultType) ~ InvocationRegex ~ opt(operation) ^^ {
     case rt ~ res ~ arg =>
@@ -844,7 +844,7 @@ class OpParser(viewName: String, tresqlUri: TresqlUri, cache: OpParser.Cache)
       }) named "named-op"
     rep(namedOp)
   } named "named-ops"
-  def operation: MemParser[Op] = (viewOp | jobOp | confOp | uniqueOptOp | invocationOp |
+  def operation: MemParser[Op] = (viewOp | jobOp | confOp | uniqueOp | invocationOp |
     httpOp | resourceOp | fileOp | toFileOp | templateOp | emailOp |
     jsonCodecOp | httpHeaderOp | bracesOp | tresqlOp) named "operation"
 
@@ -1001,7 +1001,7 @@ object AppMetadata extends Loggable {
                       conformTo: Option[OpResultType] = None) extends CastableOp
     case class ViewCall(method: String, view: String, data: Op = null) extends Op
     case class RedirectToKey(name: String) extends Op
-    case class UniqueOpt(innerOp: Op, conformTo: Option[OpResultType] = None) extends CastableOp
+    case class Unique(innerOp: Op, opt: Boolean, conformTo: Option[OpResultType] = None) extends CastableOp
     case class Invocation(className: String,
                           function: String,
                           arg: Op = null,
@@ -1048,7 +1048,7 @@ object AppMetadata extends Loggable {
              _: VariableTransforms | _: File | _: Conf | _: HttpHeader | _: Job |
              _: Resource | Commit | null => state
         case o: ViewCall => opTrav(state)(o.data)
-        case UniqueOpt(o, _) => opTrav(state)(o)
+        case Unique(o, _, _) => opTrav(state)(o)
         case Foreach(o, a) => traverseAction(a)(stepTrav)(opTrav(state)(o))
         case If(o, a, e) =>
           val r = traverseAction(a)(stepTrav)(opTrav(state)(o))
