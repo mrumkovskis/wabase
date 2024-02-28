@@ -555,7 +555,7 @@ list:
 
 name: if_test_1
 table: if_and_foreach_test
-api: save, get
+api: save, get, delete
 fields:
 - code
 - parent
@@ -574,6 +574,13 @@ get:
   - unique_opt { :code code, null parent, 'Value' value }
 - else:
   - unique_opt { :code code, null parent, 'Else value' value }
+- :result
+delete:
+- result:
+  - if {:code = 'true'}:
+    - unique_opt { :code code, null parent, 'Value delete' value }
+  - else:
+    - unique_opt { :code code, null parent, 'Else value delete' value }
 - :result
 
 

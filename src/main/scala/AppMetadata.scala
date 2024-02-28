@@ -631,27 +631,31 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
                   // may be 'if', 'foreach', 'db ...' step
                   parseStep(jm) match {
                     case e: Action.Evaluation => e.copy(name = Option(name))
-                    case x => sys.error(s"Invalid step '$name' value here: $x")
+                    case x => sys.error(s"Invalid step '$name' value here: ($x), expected Evaluation step.")
                   }
                 case al: java.util.ArrayList[_] if name != null =>
                   // 'if', 'foreach', 'db ...' step
                   val namedStepRegex(varName, opStr) = name
+                  def pa = parseAction(objectName, al.asScala.toList, opParser)
                   val op =
                     if (ifOpRegex.pattern.matcher(opStr).matches()) {
                       val ifOpRegex(condOpSt) = opStr
-                      Action.If(parseOp(condOpSt), parseAction(objectName, al.asScala.toList, opParser))
+                      Action.If(parseOp(condOpSt), pa)
                     } else if (elseOpRegex.pattern.matcher(opStr).matches()) {
-                      Action.Else(parseAction(objectName, al.asScala.toList, opParser))
+                      Action.Else(pa)
                     } else if (foreachOpRegex.pattern.matcher(opStr).matches()) {
                       val foreachOpRegex(initOpSt) = opStr
-                      Action.Foreach(parseOp(initOpSt), parseAction(objectName, al.asScala.toList, opParser))
+                      Action.Foreach(parseOp(initOpSt), pa)
                     } else if (dbUseRegex.pattern.matcher(opStr).matches()) {
-                      Action.Db(parseAction(objectName, al.asScala.toList, opParser), true)
+                      Action.Db(pa, true)
                     } else if (transactionRegex.pattern.matcher(opStr).matches()) {
-                      Action.Db(parseAction(objectName, al.asScala.toList, opParser), false)
-                    } else sys.error(s"'$objectName' parsing error, invalid value: '$opStr'. " +
-                      s"Only 'if', 'foreach', 'db use', 'transaction' operations allowed.")
-                  Action.Evaluation(Option(varName), Nil, op)
+                      Action.Db(pa, false)
+                    } else Action.Batch(pa)
+                  val eval_var_name = op match {
+                    case _: Action.Batch => name
+                    case _ => varName
+                  }
+                  Action.Evaluation(Option(eval_var_name), Nil, op)
                 case x => parseStringStep(Option(name), x.toString)
               }
             }
@@ -1022,6 +1026,7 @@ object AppMetadata extends Loggable {
     case class JsonCodec(encode: Boolean, op: Op) extends Op
     /** This operation exists only in parsing stage for if operation */
     case class Else(action: Action) extends Op
+    case class Batch(action: Action) extends Op
     /** if isDynamic is false, nameTresql parameter is expected to be indentifier or string constant
      * (not to be evaluated as tresql to get job name). */
     case class Job(nameTresql: String, isDynamic: Boolean) extends Op
@@ -1053,6 +1058,7 @@ object AppMetadata extends Loggable {
         case Email(_, s, b, a) => a.foldLeft(opTrav(opTrav(state)(s))(b))(opTrav(_)(_))
         case o: Http => opTrav(state)(o.body)
         case Db(a, _) => traverseAction(a)(stepTrav)(state)
+        case Batch(a) => traverseAction(a)(stepTrav)(state)
         case JsonCodec(_, o) => opTrav(state)(o)
         case i: Invocation => opTrav(state)(i.arg)
       }

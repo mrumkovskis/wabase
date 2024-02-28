@@ -724,6 +724,12 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       t8 <- doAction("get", "if_test_1", Map("code" -> "false")).map {
         _ shouldBe MapResult(ListMap("code" -> "false", "parent" -> null, "value" -> "Else value"))
       }
+      t9 <- doAction("delete", "if_test_1", Map("code" -> "true")).map {
+        _ shouldBe MapResult(ListMap("code" -> "true", "parent" -> null, "value" -> "Value delete"))
+      }
+      t10 <- doAction("delete", "if_test_1", Map("code" -> "false")).map {
+        _ shouldBe MapResult(ListMap("code" -> "false", "parent" -> null, "value" -> "Else value delete"))
+      }
     } yield {
       t4
     }
