@@ -34,9 +34,9 @@ object TresqlResourcesConf extends Loggable {
       val wConf = if (wabaseConf.hasPath("tresql")) wabaseConf.getConfig("tresql") else ConfigFactory.empty
       rConf.root().asScala
         .collect { case e@(_, v) if v.valueType() == ConfigValueType.OBJECT => e }
-        .map { case (dbName, confValue) =>
-          val fConf = if (wConf.hasPath(dbName)) wConf.getConfig(dbName) else ConfigFactory.empty
-          val n = if (dbName == DefaultCpName) null else dbName
+        .map { case (cpName, confValue) =>
+          val fConf = if (wConf.hasPath(cpName)) wConf.getConfig(cpName) else ConfigFactory.empty
+          val n = if (cpName == DefaultCpName) null else cpName
           n -> tresqlResourcesConf(n, fConf, confValue.asInstanceOf[ConfigObject].toConfig.withFallback(rConf), wConf)
         }.toMap match {
           case m if m.isEmpty => Map((null, new TresqlResourcesConf {}))
@@ -60,7 +60,7 @@ object TresqlResourcesConf extends Loggable {
    *  - db                    - db instance name where tables are defined.
    * */
   def tresqlResourcesConf(
-      dbName: String, forcedConfTuned: Config, tresqlConf: Config, fallbackConf: Config): TresqlResourcesConf = {
+      cpName: String, forcedConfTuned: Config, tresqlConf: Config, fallbackConf: Config): TresqlResourcesConf = {
     val tresqlConfInstance =
       if (tresqlConf.hasPath("config-class"))
         getObjectOrNewInstance(tresqlConf.getString("config-class"), "tresql resources config").asInstanceOf[TresqlResourcesConf]
@@ -101,7 +101,7 @@ object TresqlResourcesConf extends Loggable {
       override val bindVarLogFilter: Logging#BindVarLogFilter = getValue(_.bindVarLogFilter)
       override val cache:               Cache = getValue(_.cache)
       override val cacheSize:             Int = getInt(_.cacheSize)
-      override val db:                 String = tresqlConfs.filter(_.isDbSet).headOption.map(_.db).getOrElse(dbName)
+      override val db:                 String = tresqlConfs.filter(_.isDbSet).headOption.map(_.db).getOrElse(cpName)
       override val dialect:           Dialect = getValue(_.dialect)
       override val fetchSize:             Int = getInt(_.fetchSize)
       override val idExpr:   String => String = getValue(_.idExpr)
@@ -145,7 +145,7 @@ object TresqlResourcesConf extends Loggable {
       }.toMap
     }
     def resources(
-      db: String,
+      cpName: String,
       conf: TresqlResourcesConf,
       metadata: Metadata,
       extraResources: Map[String, Resources],
@@ -155,13 +155,13 @@ object TresqlResourcesConf extends Loggable {
              getObjectOrNewInstance(conf.macrosClass, "macros")
         else Macros
       val dialect: Dialect = {
-        val dbVendor = cpToVendor.getOrElse(db, null)
+        val dbVendor = cpToVendor.getOrElse(cpName, null)
         if (conf.dialect != null) conf.dialect orElse vendor_dialect(dbVendor)
         else vendor_dialect(dbVendor)
       }
       val idExpr: String => String =
         if (conf.idExpr != null) conf.idExpr
-        else vendor_id_expr(cpToVendor.getOrElse(db, null))
+        else vendor_id_expr(cpToVendor.getOrElse(cpName, null))
       val queryTimeout =
         if (conf.queryTimeout != -1) conf.queryTimeout
         else wabaseConf.getDuration("jdbc.query-timeout").getSeconds.toInt
@@ -205,9 +205,9 @@ object TresqlResourcesConf extends Loggable {
     resConfs.partition(_._1 == null) match {
       case (main, extra) if main.nonEmpty =>
         val extraRes = extra.flatMap {
-          case (db, extraConf) =>
-            if (tresqlMetadata.extraDbToMetadata.contains(db))
-              List(db -> resources(db, extraConf, tresqlMetadata.extraDbToMetadata(db), Map()))
+          case (cpName, extraConf) =>
+            if (tresqlMetadata.extraDbToMetadata.contains(cpName))
+              List(cpName -> resources(cpName, extraConf, tresqlMetadata.extraDbToMetadata(cpName), Map()))
             else Nil
         }
         resources(null, main(null), tresqlMetadata, extraRes)
