@@ -53,7 +53,6 @@ trait WabaseApp[User] {
   )(implicit
     val user:     User,
     val state:    ApplicationState,
-    val timeout:  QueryTimeout,
     val ec:       ExecutionContext,
     val as:       ActorSystem,
     val appFs:    AppFileStreamer[User],
@@ -91,7 +90,6 @@ trait WabaseApp[User] {
   )(implicit
     user:     User,
     state:    ApplicationState,
-    timeout:  QueryTimeout,
     ec:       ExecutionContext,
     as:       ActorSystem,
     appFs:    AppFileStreamer[User],
