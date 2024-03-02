@@ -630,6 +630,7 @@ class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseIni
     import scala.language.existentials
     def test(value: String, bufferSizeHint: Int) =
       serializeValuesToString(List(value).iterator, bufferSizeHint = bufferSizeHint)
+    test("XY",      2) shouldBe "~7faXaY~ff"
     test("Rūķīši",  2) shouldBe "~7faRa~c5a~aba~c4a~b7a~c4a~aba~c5a~a1ai~ff"
     test("Rūķīši",  3) shouldBe "~7fbR~c5b~ab~c4b~b7~c4b~ab~c5b~a1i~ff"
     test("Rūķīši",  4) shouldBe "~7fcR~c5~abc~c4~b7~c4c~ab~c5~a1ai~ff"
@@ -650,6 +651,40 @@ class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseIni
     test("Rūķīši".getBytes("UTF-8"),  2) shouldBe "_ARA~c5A~abA~c4A~b7A~c4A~abA~c5A~a1Ai~ff"
     test("Rūķīši".getBytes("UTF-8"),  3) shouldBe "_BR~c5B~ab~c4B~b7~c4B~ab~c5B~a1i~ff"
     test("Rūķīši".getBytes("UTF-8"), 11) shouldBe "JR~c5~ab~c4~b7~c4~ab~c5~a1i"
+  }
+
+  it should "serialize and transform with any buffer size" in {
+    import scala.language.existentials
+    def test(values: Seq[_], serializerBufferSizeHint: Int, deserializerBufferSize: Int) = {
+      val encoderFactory: EncoderFactory = os => new ResultEncoder {
+        override def writeStartOfInput():               Unit = {}
+        override def writeArrayStart():                 Unit = {}
+        override def writeValue(value: Any):            Unit = { os.write(value.toString.getBytes("UTF-8")) }
+        override def startChunks(chunkType: ChunkType): Unit = {}
+        override def writeChunk(chunk: Any): Unit = chunk match {
+          case bytes: ByteString => writeValue(bytes.utf8String)
+          case x => sys.error("Unsupported chunk class: " + x.getClass.getName)
+        }
+        override def writeBreak():                      Unit = {}
+        override def writeEndOfInput():                 Unit = {}
+      }
+      val source = ResultSerializer.source(() => values.iterator, BorerNestedArraysEncoder(_), serializerBufferSizeHint)
+        .fold(ByteString.empty)(_ ++ _)
+        .map(_.compact)
+        .mapConcat(_.grouped(deserializerBufferSize))
+        .via(BorerNestedArraysTransformer.flow(encoderFactory, bufferSizeHint = serializerBufferSizeHint))
+      Await.result(source.runWith(foldToStringSink()), 1.second)
+    }
+    val mx = 13
+    for (bufferSizeHint           <- 2 to mx) {
+      for (deserializerBufferSize <- 2 to mx) {
+        for (stringSize           <- 2 to mx) {
+          val s = s"${"x" * stringSize},"
+          val expected = s * 3
+          test(Seq(s, s, s), bufferSizeHint, deserializerBufferSize) shouldBe expected
+        }
+      }
+    }
   }
 
   it should "encode byte arrays to text formats" in {
