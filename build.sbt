@@ -1,4 +1,4 @@
-val scalaV    = "2.13.12" // "3.3.1"
+val scalaV    = "2.13.13" // "3.3.3"
 
 val akkaV     =  "2.6.20" // Ensure Apache-2.0 license
 val akkaHttpV = "10.2.10" // Ensure Apache-2.0 license
@@ -26,9 +26,9 @@ lazy val wabase = (project in file("."))
   name := "wabase",
   scalaVersion := scalaV,
   crossScalaVersions := Seq(
-    "3.3.1",
-    "2.13.12",
-    "2.12.18",
+    "3.3.3",
+    "2.13.13",
+    "2.12.19",
   ),
   scalacOptions ++= Seq("-unchecked", "-deprecation", "-feature"),
   resolvers += "snapshots" at "https://oss.sonatype.org/content/repositories/snapshots",

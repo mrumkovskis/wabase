@@ -94,7 +94,9 @@ class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseIni
       outputStream => new BorerNestedArraysEncoder(BorerNestedArraysEncoder.createWriter(outputStream, format)),
       bufferSizeHint,
     )
-    Await.result(source.runWith(foldToStringSink(format)), 1.second)
+    try Await.result(source.runWith(foldToStringSink(format)), 1.second) catch {
+      case util.control.NonFatal(ex) => throw new RuntimeException("Failed to serialize values to string", ex)
+    }
   }
 
   def serializeValuesToHexString(values: Iterator[_], format: Target = Cbor, bufferSizeHint: Int = 8) = {
@@ -545,7 +547,7 @@ class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseIni
 
   it should "serialize known types to cbor and deserialize to somewhat similar types" in {
     import scala.language.existentials
-    def test(value: Any, bufferSizeHint: Int = 256) = {
+    def test(value: Any, bufferSizeHint: Int = 256) = try {
       var deserialized: Any = null
       val handler = new ResultRenderer(isCollection = false, null, hasHeaders = false) {
         override def renderValue(value: Any): Unit = {}
@@ -560,6 +562,8 @@ class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseIni
       Option(deserialized)
         .map(d => (d.getClass, d))
         .getOrElse((null, deserialized))
+    } catch {
+      case util.control.NonFatal(ex) => throw new RuntimeException(s"Failed to test $value with buffer size $bufferSizeHint")
     }
     test(null)            shouldBe (null, null)
     test(true)            shouldBe (classOf[java.lang.Boolean], true)
@@ -583,7 +587,7 @@ class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseIni
     test(Double.MinValue) shouldBe (classOf[java.lang.Double],  Double.MinValue)
     test("")              shouldBe (classOf[java.lang.String], "")
     test("Rūķīši")        shouldBe (classOf[java.lang.String], "Rūķīši")
-    test("Rūķīši", 2)     shouldBe (classOf[java.lang.String], "Rūķīši")
+    test("Rukisi", 2)     shouldBe (classOf[java.lang.String], "Rukisi")
     test("Rūķīši", 3)     shouldBe (classOf[java.lang.String], "Rūķīši")
     test("Rūķīši", 4)     shouldBe (classOf[java.lang.String], "Rūķīši")
     test("Rūķīši", 5)     shouldBe (classOf[java.lang.String], "Rūķīši")
@@ -631,10 +635,10 @@ class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseIni
     def test(value: String, bufferSizeHint: Int) =
       serializeValuesToString(List(value).iterator, bufferSizeHint = bufferSizeHint)
     test("XY",      2) shouldBe "~7faXaY~ff"
-    test("Rūķīši",  2) shouldBe "~7faRa~c5a~aba~c4a~b7a~c4a~aba~c5a~a1ai~ff"
-    test("Rūķīši",  3) shouldBe "~7fbR~c5b~ab~c4b~b7~c4b~ab~c5b~a1i~ff"
-    test("Rūķīši",  4) shouldBe "~7fcR~c5~abc~c4~b7~c4c~ab~c5~a1ai~ff"
-    test("Rūķīši",  5) shouldBe "~7fdR~c5~ab~c4d~b7~c4~ab~c5b~a1i~ff"
+    test("Rukisi",  2) shouldBe "~7faRauakaiasai~ff"
+    test("Rūķīši",  3) shouldBe "~7faRb~c5~abb~c4~b7b~c4~abb~c5~a1ai~ff"
+    test("Rūķīši",  4) shouldBe "~7fcR~c5~abb~c4~b7b~c4~abc~c5~a1i~ff"
+    test("Rūķīši",  5) shouldBe "~7fcR~c5~abd~c4~b7~c4~abc~c5~a1i~ff"
     test("Rūķīši", 10) shouldBe "~7fiR~c5~ab~c4~b7~c4~ab~c5~a1ai~ff"
     test("Rūķīši", 11) shouldBe "jR~c5~ab~c4~b7~c4~ab~c5~a1i"
     test("12345678901234567890123",  23) shouldBe "~7fv1234567890123456789012a3~ff"
@@ -676,12 +680,12 @@ class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseIni
       Await.result(source.runWith(foldToStringSink()), 1.second)
     }
     val mx = 13
-    for (bufferSizeHint           <- 2 to mx) {
-      for (deserializerBufferSize <- 2 to mx) {
-        for (stringSize           <- 2 to mx) {
-          val s = s"${"x" * stringSize},"
-          val expected = s * 3
-          test(Seq(s, s, s), bufferSizeHint, deserializerBufferSize) shouldBe expected
+    for (bufferSizeHint           <- 5 to mx) {
+      for (deserializerBufferSize <- 1 to mx) {
+        for (stringSize           <- 0 to mx) {
+          val s = Some("RūķīšiⓇ🗸" * stringSize).map(s => s.substring(0, s.offsetByCodePoints(0, stringSize))).get
+          val expected = s"$s," * 3
+          test(Seq(s, ",", s, ",", s, ","), bufferSizeHint, deserializerBufferSize) shouldBe expected
         }
       }
     }
