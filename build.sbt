@@ -1,4 +1,4 @@
-val scalaV    = "2.13.12" // "3.3.1"
+val scalaV    = "2.13.13" // "3.3.3"
 
 val akkaV     =  "2.6.20" // Ensure Apache-2.0 license
 val akkaHttpV = "10.2.10" // Ensure Apache-2.0 license
@@ -27,8 +27,8 @@ lazy val wabase = (project in file("."))
   scalaVersion := scalaV,
   crossScalaVersions := Seq(
     "3.3.1",
-    "2.13.12",
-    "2.12.18",
+    "2.13.13",
+    "2.12.19",
   ),
   scalacOptions ++= Seq("-unchecked", "-deprecation", "-feature"),
   resolvers += "snapshots" at "https://oss.sonatype.org/content/repositories/snapshots",
@@ -58,11 +58,11 @@ lazy val wabase = (project in file("."))
       "io.bullet"                  %% "borer-derivation"      % borerV,
       "io.bullet"                  %% "borer-compat-akka"     % borerV,
     ) ++ Seq( // for test
-      "org.scalatest"              %% "scalatest"             % "3.2.17"  % "it,test",
+      "org.scalatest"              %% "scalatest"             % "3.2.18"  % "it,test",
       "com.typesafe.akka"          %% "akka-http-testkit"     % akkaHttpV % "it,test" cross CrossVersion.for3Use2_13,
       "com.typesafe.akka"          %% "akka-testkit"          % akkaV     % "it,test" cross CrossVersion.for3Use2_13,
       "com.typesafe.akka"          %% "akka-stream-testkit"   % akkaV     % "it,test" cross CrossVersion.for3Use2_13,
-      "org.hsqldb"                  % "hsqldb"                % "2.7.1"   %    "test" classifier "jdk8",
+      "org.hsqldb"                  % "hsqldb"                % "2.7.2"   %    "test" classifier "jdk8",
       "com.vladsch.flexmark"        % "flexmark-all"          % "0.62.2"  % "it,test",
     )
   },

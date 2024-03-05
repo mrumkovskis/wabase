@@ -9,6 +9,9 @@ import akka.util.{ByteString, ByteStringBuilder}
 import java.io.{InputStream, OutputStream}
 import java.lang.{Boolean => JBoolean, Byte => JByte, Double => JDouble, Float => JFloat, Long => JLong, Short => JShort}
 import java.math.{BigDecimal => JBigDecimal, BigInteger => JBigInteger}
+import java.nio.{ByteBuffer, CharBuffer}
+import java.nio.charset.{Charset, CharsetEncoder, CodingErrorAction}
+import java.nio.charset.StandardCharsets.UTF_8
 import java.time.{Instant, LocalDate, LocalTime, LocalDateTime, OffsetDateTime, ZonedDateTime}
 import java.time.format.DateTimeFormatter
 
@@ -19,7 +22,7 @@ object ResultSerializer {
     def chunkSize(bufferSize: Int): Int
   }
   class ByteStringChunker(bytes: ByteString, chunkSize: Int) {
-    // chunk strings and byte arrays to enable reactive streaming with limited buffer size
+    // chunk byte arrays to enable reactive streaming with limited buffer size
     val shouldChunk = chunkSize != Int.MaxValue && bytes.length > chunkSize
     def chunks: Iterator[ByteString] = new Iterator[ByteString] {
       var remaining = bytes
@@ -40,7 +43,37 @@ object ResultSerializer {
   class ByteArrayChunker(bytes: Array[Byte], chunkSize: Int)
     extends ByteStringChunker(ByteString(bytes), chunkSize)
   class StringChunker(s: String, chunkSize: Int)
-    extends ByteStringChunker(ByteString.fromString(s), chunkSize)
+  {
+    // chunk strings to enable reactive streaming with limited buffer size
+    val shouldChunk = chunkSize != Int.MaxValue && (
+      s.length > chunkSize || {
+        val tryIt = chunks
+        tryIt.next()
+        tryIt.hasNext
+      }
+    )
+    def chunks: Iterator[ByteString] = new Iterator[ByteString] {
+      val in = CharBuffer.wrap(s)
+      val out = ByteBuffer.allocate(chunkSize)
+      val coder = UTF_8.newEncoder().onMalformedInput(CodingErrorAction.REPLACE)
+      var hasMore = true
+      override def hasNext: Boolean = hasMore
+      override def next(): ByteString = {
+        out.clear()
+        val coderResult = coder.encode(in, out, true)
+        if (!coderResult.isOverflow) {
+          hasMore = false
+          if (coderResult.isError)
+            coderResult.throwException()
+        }
+        out.flip()
+        if (out.limit == 0)
+          throw new IllegalArgumentException(
+            s"Chunkable string is not compatible with chunk size $chunkSize.")
+        ByteString(out)
+      }
+    }
+  }
   def source(
     createEncodable:  () => Iterator[_],
     createEncoder:    EncoderFactory,
