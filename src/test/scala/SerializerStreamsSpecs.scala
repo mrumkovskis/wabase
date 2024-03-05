@@ -679,7 +679,7 @@ class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseIni
         .via(BorerNestedArraysTransformer.flow(encoderFactory, bufferSizeHint = serializerBufferSizeHint))
       Await.result(source.runWith(foldToStringSink()), 1.second)
     }
-    val mx = 13
+    val mx = 25
     for (bufferSizeHint           <- 5 to mx) {
       for (deserializerBufferSize <- 1 to mx) {
         for (stringSize           <- 0 to mx) {
