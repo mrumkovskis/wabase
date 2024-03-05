@@ -93,7 +93,9 @@ class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseIni
       outputStream => new BorerNestedArraysEncoder(BorerNestedArraysEncoder.createWriter(outputStream, format)),
       bufferSizeHint,
     )
-    Await.result(source.runWith(foldToStringSink(format)), 1.second)
+    try Await.result(source.runWith(foldToStringSink(format)), 1.second) catch {
+      case util.control.NonFatal(ex) => throw new RuntimeException("Failed to serialize values to string", ex)
+    }
   }
 
   def serializeValuesToHexString(values: Iterator[_], format: Target = Cbor, bufferSizeHint: Int = 8) = {
@@ -539,7 +541,7 @@ class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseIni
 
   it should "serialize known types to cbor and deserialize to somewhat similar types" in {
     import scala.language.existentials
-    def test(value: Any, bufferSizeHint: Int = 256) = {
+    def test(value: Any, bufferSizeHint: Int = 256) = try {
       var deserialized: Any = null
       val handler = new ResultRenderer(isCollection = false, viewName = null, nameToViewDef = null, hasHeaders = false) {
         override def renderValue(value: Any): Unit = {}
@@ -554,6 +556,8 @@ class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseIni
       Option(deserialized)
         .map(d => (d.getClass, d))
         .getOrElse((null, deserialized))
+    } catch {
+      case util.control.NonFatal(ex) => throw new RuntimeException(s"Failed to test $value with buffer size $bufferSizeHint")
     }
     test(null)            shouldBe (null, null)
     test(true)            shouldBe (classOf[java.lang.Boolean], true)
@@ -577,7 +581,7 @@ class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseIni
     test(Double.MinValue) shouldBe (classOf[java.lang.Double],  Double.MinValue)
     test("")              shouldBe (classOf[java.lang.String], "")
     test("Rūķīši")        shouldBe (classOf[java.lang.String], "Rūķīši")
-    test("Rūķīši", 2)     shouldBe (classOf[java.lang.String], "Rūķīši")
+    test("Rukisi", 2)     shouldBe (classOf[java.lang.String], "Rukisi")
     test("Rūķīši", 3)     shouldBe (classOf[java.lang.String], "Rūķīši")
     test("Rūķīši", 4)     shouldBe (classOf[java.lang.String], "Rūķīši")
     test("Rūķīši", 5)     shouldBe (classOf[java.lang.String], "Rūķīši")
@@ -624,10 +628,11 @@ class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseIni
     import scala.language.existentials
     def test(value: String, bufferSizeHint: Int) =
       serializeValuesToString(List(value).iterator, bufferSizeHint = bufferSizeHint)
-    test("Rūķīši",  2) shouldBe "~7faRa~c5a~aba~c4a~b7a~c4a~aba~c5a~a1ai~ff"
-    test("Rūķīši",  3) shouldBe "~7fbR~c5b~ab~c4b~b7~c4b~ab~c5b~a1i~ff"
-    test("Rūķīši",  4) shouldBe "~7fcR~c5~abc~c4~b7~c4c~ab~c5~a1ai~ff"
-    test("Rūķīši",  5) shouldBe "~7fdR~c5~ab~c4d~b7~c4~ab~c5b~a1i~ff"
+    test("XY",      2) shouldBe "~7faXaY~ff"
+    test("Rukisi",  2) shouldBe "~7faRauakaiasai~ff"
+    test("Rūķīši",  3) shouldBe "~7faRb~c5~abb~c4~b7b~c4~abb~c5~a1ai~ff"
+    test("Rūķīši",  4) shouldBe "~7fcR~c5~abb~c4~b7b~c4~abc~c5~a1i~ff"
+    test("Rūķīši",  5) shouldBe "~7fcR~c5~abd~c4~b7~c4~abc~c5~a1i~ff"
     test("Rūķīši", 10) shouldBe "~7fiR~c5~ab~c4~b7~c4~ab~c5~a1ai~ff"
     test("Rūķīši", 11) shouldBe "jR~c5~ab~c4~b7~c4~ab~c5~a1i"
     test("12345678901234567890123",  23) shouldBe "~7fv1234567890123456789012a3~ff"
@@ -644,6 +649,40 @@ class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseIni
     test("Rūķīši".getBytes("UTF-8"),  2) shouldBe "_ARA~c5A~abA~c4A~b7A~c4A~abA~c5A~a1Ai~ff"
     test("Rūķīši".getBytes("UTF-8"),  3) shouldBe "_BR~c5B~ab~c4B~b7~c4B~ab~c5B~a1i~ff"
     test("Rūķīši".getBytes("UTF-8"), 11) shouldBe "JR~c5~ab~c4~b7~c4~ab~c5~a1i"
+  }
+
+  it should "serialize and transform with any buffer size" in {
+    import scala.language.existentials
+    def test(values: Seq[_], serializerBufferSizeHint: Int, deserializerBufferSize: Int) = {
+      val encoderFactory: EncoderFactory = os => new ResultEncoder {
+        override def writeStartOfInput():               Unit = {}
+        override def writeArrayStart():                 Unit = {}
+        override def writeValue(value: Any):            Unit = { os.write(value.toString.getBytes("UTF-8")) }
+        override def startChunks(chunkType: ChunkType): Unit = {}
+        override def writeChunk(chunk: Any): Unit = chunk match {
+          case bytes: ByteString => writeValue(bytes.utf8String)
+          case x => sys.error("Unsupported chunk class: " + x.getClass.getName)
+        }
+        override def writeBreak():                      Unit = {}
+        override def writeEndOfInput():                 Unit = {}
+      }
+      val source = ResultSerializer.source(() => values.iterator, BorerNestedArraysEncoder(_), serializerBufferSizeHint)
+        .fold(ByteString.empty)(_ ++ _)
+        .map(_.compact)
+        .mapConcat(_.grouped(deserializerBufferSize))
+        .via(BorerNestedArraysTransformer.flow(encoderFactory, bufferSizeHint = serializerBufferSizeHint))
+      Await.result(source.runWith(foldToStringSink()), 1.second)
+    }
+    val mx = 13
+    for (bufferSizeHint           <- 5 to mx) {
+      for (deserializerBufferSize <- 1 to mx) {
+        for (stringSize           <- 0 to mx) {
+          val s = Some("RūķīšiⓇ🗸" * stringSize).map(s => s.substring(0, s.offsetByCodePoints(0, stringSize))).get
+          val expected = s"$s," * 3
+          test(Seq(s, ",", s, ",", s, ","), bufferSizeHint, deserializerBufferSize) shouldBe expected
+        }
+      }
+    }
   }
 
   it should "encode byte arrays to text formats" in {
