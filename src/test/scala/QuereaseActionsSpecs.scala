@@ -339,7 +339,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
 
   behavior of "extra db support"
 
-  it should "fail register non existing person health data" in {
+  it should "fail to register non existing person health data" in {
     val ph = new PersonHealth
     ph.name = "Gunza"
     ph.vaccine = "AstraZeneca"
