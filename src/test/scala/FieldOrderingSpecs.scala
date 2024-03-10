@@ -13,9 +13,9 @@ class FieldOrderingSpecs extends FlatSpec with Matchers {
 
   object TestApp extends AppBase[TestUsr] with NoAudit[TestUsr] with NoAuthorization[TestUsr]
       with NoValidation with DbAccess with PostgreSqlConstraintMessage {
-    object TestQuerease extends TestQuerease("/constraint-message-spec.yaml")
+    object FieldOrdTestQuerease extends TestQuerease("/constraint-message-spec.yaml")
 
-    override protected def initQuerease = TestQuerease
+    override protected def initQuerease = FieldOrdTestQuerease
   }
 
   it should "preserve field ordering when jsonizing" in {
