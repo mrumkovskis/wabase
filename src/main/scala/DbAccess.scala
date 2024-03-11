@@ -35,11 +35,11 @@ trait DbAccess { this: Loggable =>
     tresqlResources.conn = pool.getConnection
     tresqlResources.queryTimeout = timeout.timeoutSeconds
     if (extraDb.nonEmpty) tresqlResources.extraResources =
-      extraDb.map { case DbAccessKey(db, cp) =>
+      extraDb.map { case DbAccessKey(db) =>
         ( db
         , tresqlResources
             .extraResources(db)
-            .withConn(dataSource(ConnectionPools.key(if (cp == null) db else cp)).getConnection)
+            .withConn(dataSource(ConnectionPools.key(db)).getConnection)
         )
       }.toMap
   }
@@ -286,8 +286,8 @@ object DbAccess extends Loggable {
   }
   def initResources(initialResources: Resources)(poolName: PoolName, extraDb: Seq[DbAccessKey]): Resources = {
     val dsFactory = () => ConnectionPools(poolName)
-    val dsExtraFactories = extraDb.map { case DbAccessKey(db, cp) =>
-      (db, () => ConnectionPools(if (cp == null) db else cp))
+    val dsExtraFactories = extraDb.map { case DbAccessKey(db) =>
+      (db, () => ConnectionPools(db))
     }.toMap
     initConns(initialResources)(dsFactory, dsExtraFactories)
   }

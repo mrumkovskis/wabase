@@ -33,8 +33,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   val knownAuthOps = KnownAuthOps()
   lazy val knownFieldExtras = KnownFieldExtras()
 
-  override lazy val aliasToDb: Map[String, String] =
-    TresqlResourcesConf.confs.transform((_, c) => c.db)
+  override protected lazy val defaultCpName = DefaultCpName
 
   /** Get macro class from 'main' tresql resources config */
   override lazy val macrosClass: Class[_] =
@@ -273,7 +272,6 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     }._1
 
     val limit = getIntExtra(Limit, viewDef) getOrElse 100
-    val cp = getStringExtra(ConnectionPool, viewDef).orNull
     val explicitDb = getBooleanExtra(ExplicitDb, viewDef)
     val decodeRequest = getBooleanExtraOpt(DecodeRequest, viewDef).forall(identity)
     val actions = Action().foldLeft(Map[String, Action]()) { (res, actionName) =>
@@ -300,7 +298,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     ViewDef(name, db, table, tableAlias, joins, filter,
       viewDef.groupBy, viewDef.having, orderBy, extends_,
       comments, appFields, viewDef.saveTo, extras)
-      .updateWabaseExtras(_ => AppViewDef(limit, cp, explicitDb, decodeRequest, auth, apiToRoles, actions, Map.empty))
+      .updateWabaseExtras(_ => AppViewDef(limit, explicitDb, decodeRequest, auth, apiToRoles, actions, Map.empty))
   }
 
   protected def transformAppViewDefs(viewDefs: Map[String, ViewDef]): Map[String, ViewDef] =
@@ -480,11 +478,11 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       })
 
     val state = State[Seq[DbAccessKey]](action, name, viewDefs, jobDefs,
-      tresqlExtractor = dbKeys => tresql => dbKeys ++ tresql.dbs.map(DbAccessKey(_, null)),
+      tresqlExtractor = dbKeys => tresql => dbKeys ++ tresql.dbs.map(DbAccessKey(_)),
       viewExtractor = dbkeys => vd =>
-        dbkeys ++ (if (vd.db != null || vd.cp != null) Seq(DbAccessKey(vd.db, vd.cp)) else Nil),
+        dbkeys ++ (if (vd.db != null) Seq(DbAccessKey(vd.db)) else Nil),
       jobExtractor = dbkeys => jd =>
-        dbkeys ++ Option(jd.db).map(db => Seq(DbAccessKey(db, null))).getOrElse(Nil),
+        dbkeys ++ Option(jd.db).map(db => Seq(DbAccessKey(db))).getOrElse(Nil),
       processed = Set(), value = Nil
     )
     fun(stepTresqlTrav)(state)
@@ -500,6 +498,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       val actionToDbAccessKeys = Action().map { case action =>
         val st = resolveDbAccessKeys(action, viewName, viewDefs, jobDefs, processView[Seq[DbAccessKey]])
         val dbkeys = st.value.distinct
+        /* TODO ?   
         // validate db access keys so that one db corresponds only to one connection pool
         dbkeys.groupBy(_.db).foreach { case (db, gr) =>
           if (gr.size > 1) {
@@ -507,6 +506,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
             sys.error(s"Multiple connection pools - ($pools) for db $db in view $viewName")
           }
         }
+        */
         (action, dbkeys)
       }.toMap
       viewDef.updateWabaseExtras(_.copy(actionToDbAccessKeys = actionToDbAccessKeys))
@@ -623,7 +623,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
               Action.Validations(
                 Option(vn),
                 validations,
-                if (db == null && cp == null) None else Option(DbAccessKey(db, cp))
+                if (db == null) None else Option(DbAccessKey(db))
               )
             } else {
               value match {
@@ -1196,12 +1196,10 @@ object AppMetadata extends Loggable {
   /** Database name (as used in mojoz metadata) and corresponding connection pool name */
   case class DbAccessKey(
     db: String,
-    cp: String = null,
   )
 
   trait AppViewDefExtras {
     val limit: Int
-    val cp: String
     val explicitDb: Boolean
     val decodeRequest: Boolean
     val auth: AuthFilters
@@ -1212,7 +1210,6 @@ object AppMetadata extends Loggable {
 
   private [wabase] case class AppViewDef(
     limit: Int = 1000,
-    cp: String = null,
     explicitDb: Boolean = false,
     decodeRequest: Boolean = false,
     auth: AuthFilters = AuthFilters(Nil, Nil, Nil, Nil, Nil),
@@ -1253,7 +1250,6 @@ object AppMetadata extends Loggable {
     private val defaultExtras = AppViewDef()
     private val appExtras = extras(WabaseViewExtrasKey, defaultExtras)
     override val limit = appExtras.limit
-    override val cp = appExtras.cp
     override val explicitDb = appExtras.explicitDb
     override val decodeRequest = appExtras.decodeRequest
     override val auth = appExtras.auth
@@ -1343,13 +1339,12 @@ object AppMetadata extends Loggable {
     val Key   = "key"
     val Limit = "limit"
     val Validations = "validations"
-    val ConnectionPool = "cp"
     val ExplicitDb = "explicit db"
     val DecodeRequest = "decode request"
     val QuereaseViewExtrasKey = QuereaseMetadata.QuereaseViewExtrasKey
     val WabaseViewExtrasKey = AppMetadata.WabaseViewExtrasKey
     def apply() =
-      Set(Api, Auth, Key, Limit, Validations, ConnectionPool, ExplicitDb, DecodeRequest, QuereaseViewExtrasKey, WabaseViewExtrasKey) ++
+      Set(Api, Auth, Key, Limit, Validations, ExplicitDb, DecodeRequest, QuereaseViewExtrasKey, WabaseViewExtrasKey) ++
         Action()
   }
   object KnownFieldExtras {
