@@ -348,7 +348,7 @@ save:
 - commit
 - save this
 get:
-- null{:purchase_time, :customer}    # ensure bind variable existence (must prefix columns with null table due to yaml parser)
+- '{:purchase_time, :customer}'      # ensure bind variable existence
 - unique_opt list this
 delete:
 - -shop_db:purchase [purchase_time = :purchase_time & customer = :customer]
