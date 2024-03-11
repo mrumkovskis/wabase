@@ -267,7 +267,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
   behavior of "actions"
 
   // this is deprecated use wabase action calls
-  it should "should purchase without validation" in {
+  it should "purchase without validation" in {
     val purchase = Map(
       "customer" -> "Ravus",
       "purchase_time" -> java.sql.Timestamp.valueOf("2021-12-04 00:06:53"),
@@ -909,7 +909,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     }
   }
 
-  it should "last step assignment returns call data" in {
+  it should "return call data if last step is an assignment" in {
     for {
       t1 <- doAction("get", "last_step_assignment_test",
         Map("param" -> "value", "nr" -> "#1"))
