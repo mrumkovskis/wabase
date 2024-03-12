@@ -293,6 +293,26 @@ order:
 - name
 
 
+name:   db_context_person
+table:  person p
+fields:
+- name
+update:
+- update db_context_person_health
+- status ok
+
+
+name:   db_context_person_health
+db:     med_db
+table:  person_health
+fields:
+- id
+update:
+- validations check_health_exists:
+  - exists(person_health[id = :id]), "Person health record to be updated must exist"
+- status ok
+
+
 name: person_health_and_shop
 api: list
 table: person p

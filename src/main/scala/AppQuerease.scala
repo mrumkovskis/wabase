@@ -44,7 +44,9 @@ case class ResourcesFactory(
 )(implicit val resources: Resources)
 {
   def focus(name: String): ResourcesFactory =
-    ResourcesFactory(initResources, closeResources)(resources.extraResources(name).withExtraResources(resources.extraResources))
+    if (resources.extraResources.contains(name))
+      copy()(resources.extraResources(name).withExtraResources(resources.extraResources))
+    else this
 }
 
 sealed trait StatusValue
@@ -644,7 +646,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           }
         Future.successful(res)
       } else {
-        do_action(viewName, method, callData, env, context.fieldFilter, context :: context.contextStack)
+        do_action(viewName, method, callData, env, context.fieldFilter, context :: context.contextStack)(
+          resFac.focus(if (v.db != null) v.db else defaultCpName), ec, as, fs, reqCtx, qio)
       }
     }
   }
@@ -1197,9 +1200,10 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     reqCtx: RequestContext,
     qio: AppQuereaseIo[Dto],
   ): Future[DbResult] = {
-    val newRes = resFac.initResources()
+    val newResFact = resFac.copy()(resources = resFac.initResources())
+      .focus(context.view.map(_.db).filter(_ != null).getOrElse(defaultCpName))
+    val newRes = newResFact.resources
     val closeRes = resFac.closeResources(newRes, op.doRollback, _)
-    val newResFact = resFac.copy()(resources = newRes)
     doSteps(op.action.steps, context.copy(stepName = "db"), Future.successful(data))(newResFact, ec, as, fs, reqCtx, qio).map {
       case DbResult(r, cl) => DbResult(r, cl.andThen(_ => closeRes(None)))
       case r => DbResult(r, closeRes)

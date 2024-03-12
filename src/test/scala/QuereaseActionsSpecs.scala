@@ -403,6 +403,13 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
       }
   }
 
+  it should "switch db context when calling action on another view" in {
+    recoverToExceptionIf[ValidationException] {
+      querease.doAction("db_context_person", "update", Map("id" -> 0), Map())
+    }.map(_.details should be (List(ValidationResult(Nil, List("Person health record to be updated must exist")))))
+  }
+
+
   behavior of "config"
 
   it should "process config" in {
