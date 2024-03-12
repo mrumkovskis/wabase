@@ -253,10 +253,10 @@ fields:
 - vaccine
 - had_virus
 save:
-- validations check_person:
+- validations check_person [wabase_db]:
   - (person[name = :name]{count(1)}) > 0, "Person '" || :name || "' must be registered"
 - save this
-- redirect |med_db:{'person_health', :name, :manipulation_date::date, '?', 'val1' par1, 'val2' par2 }
+- redirect {'person_health', :name, :manipulation_date::date, '?', 'val1' par1, 'val2' par2 }
 
 
 name: person_health_priv
@@ -342,7 +342,7 @@ filter:
 save:
 - validations is_vaccinated [med_db]:
     - exists(person_health[name = :customer & vaccine != null]{1}), "Pardon, customer '" || :customer || "' is not vaccinated..."
-- validations has_funds:
+- validations has_funds  [wabase_db]:
     - funds(# s) { account[person_id = (person[name = :customer]{id})] {max(balance)} },
         (funds{s}) >= :amount, "Insufficient funds, available (" || (funds{s}) || ")"
 - commit
@@ -351,7 +351,7 @@ get:
 - '{:purchase_time, :customer}'      # ensure bind variable existence
 - unique_opt list this
 delete:
-- -shop_db:purchase [purchase_time = :purchase_time & customer = :customer]
+- -purchase [purchase_time = :purchase_time & customer = :customer]
 
 
 name: purchase_get

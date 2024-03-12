@@ -12,6 +12,8 @@ import java.text.SimpleDateFormat
 import java.util.Date
 
 class TestQuerease(val metadataFile: String, mdFilter: YamlMd => Boolean = _ => true) extends AppQuerease {
+  override lazy val defaultCpName = "wabase_db"
+  override lazy val aliasToDb: Map[String, String] = Map(defaultCpName -> null)
   override lazy val yamlMetadata = YamlMd.fromResource(metadataFile).filter(mdFilter)
   override lazy val viewNameToClassMap = Map[String, Class[_ <: Dto]]()
   def persistenceMetadata(viewName: String) = nameToPersistenceMetadata(viewName)

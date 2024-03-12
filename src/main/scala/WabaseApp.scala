@@ -8,7 +8,7 @@ import akka.stream.scaladsl.{Keep, Source}
 import akka.util.ByteString
 import org.mojoz.metadata.{FieldDef, ViewDef}
 import org.mojoz.querease.{FieldFilter, TresqlMetadata}
-import org.tresql.SingleValueResult
+import org.tresql.{Resources, ResourcesTemplate, SingleValueResult}
 import org.wabase.AppMetadata.{Action, AugmentedAppFieldDef, AugmentedAppViewDef}
 import org.wabase.AppMetadata.Action.{LimitKey, OffsetKey, OrderKey}
 
@@ -276,13 +276,33 @@ trait WabaseApp[User] {
   }
 
   def resourceFactory(context: AppActionContext): ResourcesFactory = {
-    import context.{actionName, viewName}
+    resourceFactory(context.viewName, context.actionName)
+  }
+
+  def resourceFactory(viewName: String, actionName: String): ResourcesFactory = {
     val vdo = viewDefOption(viewName)
-    val poolName = DefaultCp // FIXME   
+    val poolName = vdo.flatMap(v => Option(v.db)).map(PoolName) getOrElse DefaultCp
+    val resourcesTemplate: ResourcesTemplate = poolName match {
+      case DefaultCp =>
+        tresqlResources.resourcesTemplate
+      case _ =>
+        def toTemplate(res: Resources) =
+          ResourcesTemplate(
+            res.conn, res.metadata, res.dialect, res.idExpr, res.queryTimeout,
+            res.fetchSize, res.maxResultSize, res.recursiveStackDepth, res.params, res.extraResources,
+            res.logger, res.cache, res.bindVarLogFilter)
+        toTemplate(
+          tresqlResources.resourcesTemplate.extraResources(poolName.connectionPoolName)
+            .withExtraResources(
+              tresqlResources.resourcesTemplate.extraResources +
+              (DefaultCp.connectionPoolName -> tresqlResources.resourcesTemplate)
+            )
+        )
+      }
     val extraDbs = extraDb(vdo.map(_.actionToDbAccessKeys(actionName).toList).getOrElse(Nil))
     val rt = withDbAccessLogger(
-      tresqlResources.resourcesTemplate,
-      s"${context.viewName}.${context.actionName}"
+      resourcesTemplate,
+      s"$viewName.$actionName"
     )
     ResourcesFactory(() => initResources(rt)(poolName, extraDbs), closeResources)(rt)
   }

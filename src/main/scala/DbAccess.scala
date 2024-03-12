@@ -36,8 +36,11 @@ trait DbAccess { this: Loggable =>
     tresqlResources.queryTimeout = timeout.timeoutSeconds
     if (extraDb.nonEmpty) tresqlResources.extraResources =
       extraDb.map { case DbAccessKey(db) =>
-        ( db
-        , tresqlResources
+        db -> (
+         if (db == DefaultCp.connectionPoolName)
+          tresqlResources
+         else
+          tresqlResources
             .extraResources(db)
             .withConn(dataSource(ConnectionPools.key(db)).getConnection)
         )
@@ -289,10 +292,12 @@ object DbAccess extends Loggable {
     val dsExtraFactories = extraDb.map { case DbAccessKey(db) =>
       (db, () => ConnectionPools(db))
     }.toMap
-    initConns(initialResources)(dsFactory, dsExtraFactories)
+    initConns(initialResources, poolName)(dsFactory, dsExtraFactories)
   }
-  def initConns(initialResources: Resources)(dsFactory: () => DataSource,
-                                             dsExtraFactories: Map[String, () => DataSource]): Resources = {
+  def initConns(initialResources: Resources, poolName: PoolName)(
+    dsFactory: () => DataSource,
+    dsExtraFactories: Map[String, () => DataSource]
+  ): Resources = {
     val dbConn = dsFactory().getConnection
     var extraConns = List[Connection]()
     try {
@@ -300,7 +305,11 @@ object DbAccess extends Loggable {
       if (dsExtraFactories.isEmpty) initRes
       else dsExtraFactories.foldLeft(initRes) { case (res, (db, fac)) =>
         if (res.extraResources.contains(db)) {
-          val extraConn = fac().getConnection
+          val extraConn =
+            if (db == poolName.connectionPoolName)
+              dbConn
+            else
+              fac().getConnection
           extraConns ::= extraConn
           res.withUpdatedExtra(db)(_.withConn(extraConns.head))
         } else res

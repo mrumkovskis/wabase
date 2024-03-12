@@ -369,7 +369,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     super.allQueryStrings(viewDef) ++ viewDef.actions.flatMap { case (actionName, action) =>
       val objName = viewDef.name
       actionQueries(actionName, objName, action)
-        .map(q => CompilationUnit("action-queries", s"$objName.$actionName", q))
+        .map(q => CompilationUnit("action-queries", s"$objName.$actionName", viewDef.db, q))
     }
   }
 
@@ -378,7 +378,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     log(s"Generating queries to be compiled for ${nameToJobDef.size} jobs")
     val startTime = System.currentTimeMillis
     val jobQueries = nameToJobDef.flatMap { case (jobName, job) =>
-      actionQueries("job", jobName, job.action).map(q => CompilationUnit("action-queries", s"$jobName.job", q))
+      actionQueries("job", jobName, job.action).map(q => CompilationUnit("action-queries", s"$jobName.job", job.db, q))
     }
     val endTime = System.currentTimeMillis
     log(s"Query generation done in ${endTime - startTime} ms, ${jobQueries.size} queries generated")
@@ -397,29 +397,33 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       val startTime = System.currentTimeMillis
       val scalaMacros: Any = Option(tresqlMetadata.macrosClass).map(getObjectOrNewInstance(_, "metadata macros")).orNull
       val macroResources = new MacroResourcesImpl(scalaMacros, tresqlMetadata)
-      val compiler = new QueryParser(macroResources, new SimpleCache(parserCacheSize)) with org.tresql.compiling.Compiler {
-        override val metadata = tresqlMetadata
+      val dbToCompiler = compilationUnits.map(_.db).toSet.map { (db: String) =>
+       val compiler = new QueryParser(macroResources, new SimpleCache(parserCacheSize)) with org.tresql.compiling.Compiler {
+        override val metadata = if (db == null) tresqlMetadata else tresqlMetadata.extraDbToMetadata(db)
         override val extraMetadata = tresqlMetadata.extraDbToMetadata
-      }
+       }
+       db -> compiler
+      }.toMap
       val compiledQueries = collection.mutable.Set[String](previouslyCompiledQueries.toSeq: _*)
       var compiledCount = 0
-      compilationUnits.foreach { case CompilationUnit(_, viewName, q) =>
-        if (!compiledQueries.contains(q) ||
+      compilationUnits.foreach { case cu @ CompilationUnit(_, viewName, db, q) =>
+        if (!compiledQueries.contains(cu.queryStringWithContext) ||
             viewNameToQueryVariablesCompilerCache.get(viewName) == null) {
+          val compiler = dbToCompiler(db)
           try compiler.compile(compiler.parseExp(q)) catch { case util.control.NonFatal(ex) =>
             val msg = s"\nFailed to compile $viewName query: ${ex.getMessage}" +
               (if (showFailedViewQuery) s"\n$q" else "")
             throw new RuntimeException(msg, ex)
           }
           viewNameToQueryVariablesCompilerCache.put(viewName, compiler.extractVariables(q))
-          if (!compiledQueries.contains(q)) {
+          if (!compiledQueries.contains(cu.queryStringWithContext)) {
             compiledCount += 1
-            compiledQueries += q
+            compiledQueries += cu.queryStringWithContext
           }
         }
       }
       val endTime = System.currentTimeMillis
-      val allQueries = compilationUnits.map(_.query).toSet
+      val allQueries = compilationUnits.map(_.queryStringWithContext).toSet
       log(
         s"Query compilation done - ${endTime - startTime} ms, " +
         s"queries compiled: $compiledCount" +

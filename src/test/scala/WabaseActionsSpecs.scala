@@ -145,6 +145,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     qio = new AppQuereaseIo[Dto](querease)
     super.beforeAll()
     val db = new DbAccess with Loggable {
+      override val DefaultCp: PoolName = PoolName("wabase_db")
       override implicit val tresqlResources: ThreadLocalResources = WabaseActionsSpecs.this.tresqlThreadLocalResources
       override protected def tresqlMetadata: TresqlMetadata = WabaseActionsSpecs.this.querease.tresqlMetadata
     }

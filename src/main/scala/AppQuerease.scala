@@ -42,6 +42,10 @@ case class ResourcesFactory(
   initResources: () => Resources,
   closeResources: (Resources, Boolean, Option[Throwable]) => Unit,
 )(implicit val resources: Resources)
+{
+  def focus(name: String): ResourcesFactory =
+    ResourcesFactory(initResources, closeResources)(resources.extraResources(name).withExtraResources(resources.extraResources))
+}
 
 sealed trait StatusValue
 case class RedirectStatus(value: TresqlUri.Uri) extends StatusValue
