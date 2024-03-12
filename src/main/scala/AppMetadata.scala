@@ -496,7 +496,13 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       import Action._
       import TresqlExtraction._
       val actionToDbAccessKeys = Action().map { case action =>
-        val st = resolveDbAccessKeys(action, viewName, viewDefs, jobDefs, processView[Seq[DbAccessKey]])
+        val action_ = viewDef.actions.get(action).map(_ => action).getOrElse(action match {
+          case Action.Insert | Action.Update | Action.Upsert if (viewDef.actions.get(Action.Save).nonEmpty) =>
+            Action.Save
+          case _ =>
+            action
+        })
+        val st = resolveDbAccessKeys(action_, viewName, viewDefs, jobDefs, processView[Seq[DbAccessKey]])
         val dbkeys = st.value.distinct
         /* TODO ?   
         // validate db access keys so that one db corresponds only to one connection pool
