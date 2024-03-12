@@ -508,15 +508,6 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
         })
         val st = resolveDbAccessKeys(action_, viewName, viewDefs, jobDefs, processView[Seq[DbAccessKey]])
         val dbkeys = st.value.distinct
-        /* TODO ?   
-        // validate db access keys so that one db corresponds only to one connection pool
-        dbkeys.groupBy(_.db).foreach { case (db, gr) =>
-          if (gr.size > 1) {
-            val pools = gr.map(_.cp)
-            sys.error(s"Multiple connection pools - ($pools) for db $db in view $viewName")
-          }
-        }
-        */
         (action, dbkeys)
       }.toMap
       viewDef.updateWabaseExtras(_.copy(actionToDbAccessKeys = actionToDbAccessKeys))
