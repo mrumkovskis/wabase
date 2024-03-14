@@ -28,6 +28,12 @@ object TresqlResourcesConf extends Loggable {
   val config = ConfigFactory.load("tresql-resources.conf")
   val wabaseConf = ConfigFactory.load
 
+  lazy val DefaultCpName: String =
+    Option("tresql.default")
+      .filter(config.hasPathOrNull)
+      .map(n => if (config.getIsNull(n)) null else config.getString(n))
+      .getOrElse("main")
+
   lazy val confs: Map[String, TresqlResourcesConf] = {
     if (config.hasPath("tresql")) {
       val rConf = config.getConfig("tresql")

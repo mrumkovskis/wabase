@@ -120,12 +120,13 @@ package object wabase extends Loggable {
   case class PoolName(connectionPoolName: String) {
     require(connectionPoolName != null, "connectionPoolName must not be null - try ConnectionPools.key instead")
   }
-  lazy val DefaultCpName = Option("jdbc.default").filter(config.hasPath).map(config.getString) getOrElse "main"
   lazy val DEFAULT_CP = {
-  val DEFAULT_CP = PoolName(DefaultCpName)
-  if (!config.hasPath(s"jdbc.cp.${DEFAULT_CP.connectionPoolName}"))
-    logger.warn(s"""Default connection pool configuration missing (key jdbc.cp.${DEFAULT_CP.connectionPoolName}), or jdbc.default not set to correct key (default value = "main"). \nThere will be errors if You rely on JDBC connections""")
-  DEFAULT_CP
+    val dcp = Option(TresqlResourcesConf.DefaultCpName).map(PoolName).orNull
+    if (dcp == null)
+      logger.debug("Default JDBC connection pool disabled")
+    else if (!config.hasPath(s"jdbc.cp.${dcp.connectionPoolName}"))
+      logger.warn(s"Default JDBC connection pool configuration missing (key jdbc.cp.${dcp.connectionPoolName}).")
+    dcp
   }
 
   object ConnectionPools {
@@ -144,6 +145,8 @@ package object wabase extends Loggable {
       cps.getOrElse(pool, {
         require(pool == null || pool.connectionPoolName == null,
           s"""Unable to find connection pool "${pool.connectionPoolName}"""")
+        require(DEFAULT_CP != null,
+          "Default connection pool disabled")
         cps(DEFAULT_CP)
       })
     }
