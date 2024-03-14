@@ -38,12 +38,25 @@ object TresqlResourcesConf extends Loggable {
     if (config.hasPath("tresql")) {
       val rConf = config.getConfig("tresql")
       val wConf = if (wabaseConf.hasPath("tresql")) wabaseConf.getConfig("tresql") else ConfigFactory.empty
-      rConf.root().asScala
+      val cpConfs =
+       wabaseConf.getConfig("jdbc.cp").root().asScala.keys.map { cpName =>
+          val n = if (cpName == DefaultCpName) null else cpName
+          cpName ->
+            // force db name here because plugin does not read application.conf when initializing aliasToDb
+            ConfigFactory.parseString(s"db = ${Option(n).map("\"" + _ + "\"").orNull}")
+        }.toMap
+
+      val resConfs = rConf.root().asScala
         .collect { case e@(_, v) if v.valueType() == ConfigValueType.OBJECT => e }
         .map { case (cpName, confValue) =>
+          cpName -> confValue.asInstanceOf[ConfigObject].toConfig
+        }.toMap
+
+      (cpConfs ++ resConfs)
+        .map { case (cpName, cpOrResConf) =>
           val fConf = if (wConf.hasPath(cpName)) wConf.getConfig(cpName) else ConfigFactory.empty
           val n = if (cpName == DefaultCpName) null else cpName
-          n -> tresqlResourcesConf(n, fConf, confValue.asInstanceOf[ConfigObject].toConfig.withFallback(rConf), wConf)
+          n -> tresqlResourcesConf(n, fConf, cpOrResConf.withFallback(rConf), wConf)
         }.toMap match {
           case m if m.isEmpty => Map((null, new TresqlResourcesConf {}))
           case m => m
@@ -144,7 +157,7 @@ object TresqlResourcesConf extends Loggable {
         val DbVendorRegex(vendor) = jdbcUrl
         vendor
       }
-      val c = org.wabase.config.getConfig("jdbc.cp")
+      val c = wabaseConf.getConfig("jdbc.cp")
       c.root().asScala.keys.map { cp =>
         val n = if (cp == DefaultCpName) null else cp
         n -> dbVendor(c.getString(s"$cp.jdbcUrl"))
