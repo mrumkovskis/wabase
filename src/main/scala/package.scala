@@ -117,12 +117,10 @@ package object wabase extends Loggable {
     }
   }
 
-  case class PoolName(connectionPoolName: String) {
-    require(connectionPoolName != null, "connectionPoolName must not be null - try ConnectionPools.key instead")
-  }
+  case class PoolName(connectionPoolName: String)
   lazy val DEFAULT_CP = {
-    val dcp = Option(TresqlResourcesConf.DefaultCpName).map(PoolName).orNull
-    if (dcp == null)
+    val dcp = PoolName(TresqlResourcesConf.DefaultCpName)
+    if (dcp.connectionPoolName == null)
       logger.debug("Default JDBC connection pool disabled")
     else if (!config.hasPath(s"jdbc.cp.${dcp.connectionPoolName}"))
       logger.warn(s"Default JDBC connection pool configuration missing (key jdbc.cp.${dcp.connectionPoolName}).")
@@ -133,7 +131,8 @@ package object wabase extends Loggable {
     private lazy val cps = {
       val c = config.getConfig("jdbc.cp")
       val s: Seq[(PoolName, DataSource)] =
-        c.root().asScala.keys.map(v => (PoolName(v), createConnectionPool(c.getConfig(v)))).toSeq
+        c.root().asScala.keys.map(v => (PoolName(v), createConnectionPool(c.getConfig(v)))).toSeq ++
+          Seq(PoolName(null) -> DisabledDataSource)
       scala.collection.concurrent.TrieMap(s: _*)
     }
     def key(poolName: String): PoolName =
@@ -145,8 +144,6 @@ package object wabase extends Loggable {
       cps.getOrElse(pool, {
         require(pool == null || pool.connectionPoolName == null,
           s"""Unable to find connection pool "${pool.connectionPoolName}"""")
-        require(DEFAULT_CP != null,
-          "Default connection pool disabled")
         cps(DEFAULT_CP)
       })
     }
@@ -158,5 +155,22 @@ package object wabase extends Loggable {
         ds
       })
     }
+  }
+
+  object DisabledDataSource extends DataSource {
+    // Members declared in javax.sql.CommonDataSource
+    override def getParentLogger(): java.util.logging.Logger = ???
+
+    // Members declared in javax.sql.DataSource
+    override def getConnection(username: String, password: String): java.sql.Connection = null
+    override def getConnection(): java.sql.Connection = null
+    override def getLogWriter(): java.io.PrintWriter = ???
+    override def getLoginTimeout(): Int = ???
+    override def setLogWriter(out: java.io.PrintWriter): Unit = ???
+    override def setLoginTimeout(seconds: Int): Unit = ???
+
+    // Members declared in java.sql.Wrapper
+    override def isWrapperFor(iface: Class[_]): Boolean = false
+    override def unwrap[T](iface: Class[T]): T = ???
   }
 }

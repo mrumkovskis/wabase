@@ -166,7 +166,7 @@ trait DbAccess { this: Loggable =>
     try {
       val res = a
       if (forceNewConnection || poolChanges) {
-        tresqlResources.conn.commit()
+        if (tresqlResources.conn != null) tresqlResources.conn.commit()
         tresqlResources.extraResources.foreach { case (_, r) => if (r.conn != null) r.conn.commit() }
       }
       res

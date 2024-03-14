@@ -209,16 +209,16 @@ object TresqlResourcesConf extends Loggable {
     }
 
     resConfs.partition(_._1 == null) match {
-      case (main, extra) if main.nonEmpty =>
+      case (main, extra) =>
         val extraRes = extra.flatMap {
           case (cpName, extraConf) =>
             if (tresqlMetadata.extraDbToMetadata.contains(cpName))
               List(cpName -> resources(cpName, extraConf, tresqlMetadata.extraDbToMetadata(cpName), Map()))
             else Nil
         }
-        resources(null, main(null), tresqlMetadata, extraRes)
-      case (_, extra) if extra.isEmpty => null //return null if no resources are configured
-      case _ => sys.error(s"no main database found in (${resConfs.keys.mkString(",")})")
+        if  (main.nonEmpty)
+             resources(null, main(null),                 tresqlMetadata,          extraRes)
+        else resources(null, new TresqlResourcesConf {}, new TresqlMetadata(Nil), extraRes)
     }
   }
 }
