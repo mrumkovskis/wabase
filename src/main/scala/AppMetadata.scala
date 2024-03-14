@@ -33,7 +33,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   val knownAuthOps = KnownAuthOps()
   lazy val knownFieldExtras = KnownFieldExtras()
 
-  override protected lazy val defaultCpName = DefaultCpName
+  lazy val defaultCpName = DefaultCpName
 
   /** Get macro class from 'main' tresql resources config */
   override lazy val macrosClass: Class[_] =
