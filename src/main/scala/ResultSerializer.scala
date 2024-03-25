@@ -525,7 +525,7 @@ object BorerNestedArraysTransformer {
         encoder,
       )
       override def preStart(): Unit = {
-        outBuf.sizeHint(bufferSizeHint)
+        outBuf.sizeHint(bufferSizeHint * 2)
         encoder.writeStartOfInput()
       }
       private def transform(): Unit = {
