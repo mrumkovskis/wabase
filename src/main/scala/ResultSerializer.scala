@@ -502,6 +502,7 @@ object BorerNestedArraysTransformer {
       // XXX adding empty bytestring to queue because borer reader starts reading in constructor
       private val inQueue           = collection.mutable.Queue(ByteString.empty)
       private var inQueueByteCount  = 0
+      private val inMinByteCount    = bufferSizeHint * 4 // XXX ×4 because input buffer exhausted for some unknown reason
       private val outBuf            = new ByteStringBuilder
       private val transformable     = new Iterator[ByteString] {
         override def hasNext  = inQueue.nonEmpty || !isClosed(in)
@@ -529,9 +530,9 @@ object BorerNestedArraysTransformer {
         encoder.writeStartOfInput()
       }
       private def transform(): Unit = {
-        while ((inQueueByteCount >= bufferSizeHint || isClosed(in)) &&
+        while ((inQueueByteCount >= inMinByteCount || isClosed(in)) &&
                outBuf.length < bufferSizeHint && transformer.transformNext()) {}
-        if (inQueueByteCount < bufferSizeHint && !isClosed(in) && !hasBeenPulled(in))
+        if (inQueueByteCount < inMinByteCount && !isClosed(in) && !hasBeenPulled(in))
           pull(in)
         if (outBuf.nonEmpty) {
           if (isAvailable(out)) {
