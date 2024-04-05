@@ -6,7 +6,7 @@ import org.mojoz.metadata.out.DdlGenerator
 import org.mojoz.querease.TresqlMetadata
 import org.scalatest.{BeforeAndAfterAll, Suite}
 import org.tresql.dialects.HSQLDialect
-import org.tresql.{LogTopic, Logging, QueryBuilder, Resources, ResourcesTemplate, ThreadLocalResources}
+import org.tresql.{Dialect, LogTopic, Logging, QueryBuilder, Resources, ResourcesTemplate, ThreadLocalResources}
 
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -20,14 +20,14 @@ class TestQuerease(val metadataFile: String, mdFilter: YamlMd => Boolean = _ => 
 }
 
 class TestTresqlConf extends TresqlResourcesConf {
-  override val dialect = HSQLDialect orElse {
+  override val dialect = ({
     case c: QueryBuilder#CastExpr => c.typ match {
       case "bigint" | "long" | "int" => s"convert(${c.exp.sql}, BIGINT)"
       case "decimal" => s"convert(${c.exp.sql}, NUMERIC(10,2))"
       case "date" => s"convert(${c.exp.sql}, DATE)"
       case _ => c.exp.sql
     }
-  }
+  }: Dialect) orElse HSQLDialect
   override val idExpr = _ => "nextval('seq')"
 }
 
