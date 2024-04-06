@@ -23,7 +23,7 @@ lazy val dependencies = {
     "ch.qos.logback"              % "logback-classic"                   % "1.2.3",
     "org.tresql"                 %% "tresql"                            % "10.1.2",
     "org.mojoz"                  %% "querease"                          % "5.0.1",
-    "commons-validator"           % "commons-validator"                 % "1.7",
+    "commons-validator"           % "commons-validator"                 % "1.8.0",
     "commons-codec"               % "commons-codec"                     % "1.16.1",
     "org.postgresql"              % "postgresql"                        % "42.7.3",
     "com.lambdaworks"             % "scrypt"                            % "1.4.0",
