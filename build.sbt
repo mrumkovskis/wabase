@@ -1,6 +1,6 @@
 val scalaV    = "2.13.13" // "3.3.3"
 
-val akkaV     =  "2.6.20" // Ensure Apache-2.0 license
+val akkaV     =  "2.6.21" // Ensure Apache-2.0 license
 val akkaHttpV = "10.2.10" // Ensure Apache-2.0 license
 
 val mojozV    = "5.2.0-SNAPSHOT"
@@ -52,7 +52,7 @@ lazy val wabase = (project in file("."))
       "org.mojoz"                  %% "querease"              % quereaseV,
       "commons-validator"           % "commons-validator"     % "1.8.0",
       "commons-codec"               % "commons-codec"         % "1.16.1",
-      "org.postgresql"              % "postgresql"            % "42.7.2",
+      "org.postgresql"              % "postgresql"            % "42.7.3",
       "com.lambdaworks"             % "scrypt"                % "1.4.0",
       "org.tresql"                 %% "tresql"                % tresqlV,
       "io.bullet"                  %% "borer-core"            % borerV,
