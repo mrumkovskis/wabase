@@ -18,7 +18,7 @@ lazy val dependencies = {
     "com.typesafe.akka"          %% "akka-http-xml"                     % akkaHttpV,
     "com.typesafe.akka"          %% "akka-slf4j"                        % akkaV,
     "com.typesafe.akka"          %% "akka-stream"                       % akkaV,
-    "com.typesafe.scala-logging" %% "scala-logging"                     % "3.9.2",
+    "com.typesafe.scala-logging" %% "scala-logging"                     % "3.9.5",
     "com.zaxxer"                  % "HikariCP"                          % "3.4.5",
     "ch.qos.logback"              % "logback-classic"                   % "1.2.3",
     "org.tresql"                 %% "tresql"                            % "10.1.2",
