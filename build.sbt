@@ -1,7 +1,7 @@
 val scalaV = "2.13.13"
 
-val akkaV     = "2.6.20"
-val akkaHttpV = "10.2.10"
+val akkaV     =  "2.6.21" // Ensure Apache-2.0 license
+val akkaHttpV = "10.2.10" // Ensure Apache-2.0 license
 
 val borerV = "1.7.2"
 
@@ -25,9 +25,9 @@ lazy val dependencies = {
     "ch.qos.logback"              % "logback-classic"                   % "1.2.13",
     "org.mojoz"                  %% "mojoz"                             % "4.2.0",
     "org.mojoz"                  %% "querease"                          % "6.2.2",
-    "commons-validator"           % "commons-validator"                 % "1.7",
-    "commons-codec"               % "commons-codec"                     % "1.15",
-    "org.postgresql"              % "postgresql"                        % "42.5.5",
+    "commons-validator"           % "commons-validator"                 % "1.8.0",
+    "commons-codec"               % "commons-codec"                     % "1.16.1",
+    "org.postgresql"              % "postgresql"                        % "42.7.3",
     "com.lambdaworks"             % "scrypt"                            % "1.4.0",
     "org.tresql"                 %% "tresql"                            % "11.2.2",
     "io.bullet"                  %% "borer-core"                        % borerV,
@@ -40,8 +40,8 @@ lazy val testDependencies = Seq(
     "com.typesafe.akka"          %% "akka-http-testkit"                 % akkaHttpV % "it,test",
     "com.typesafe.akka"          %% "akka-testkit"                      % akkaV   % "it,test",
     "com.typesafe.akka"          %% "akka-stream-testkit"               % akkaV   % "it,test",
-   ("org.hsqldb"                  % "hsqldb"                            % "2.7.2"   %    "test").classifier("jdk8"),
-    "com.vladsch.flexmark"        % "flexmark-all"                      % "0.62.2" % "it,test",
+    "org.hsqldb"                  % "hsqldb"                            % "2.7.2"   %    "test" classifier "jdk8",
+    "com.vladsch.flexmark"        % "flexmark-all"                      % "0.62.2"  % "it,test",
 )
 
 ThisBuild / versionScheme          := Some("semver-spec")

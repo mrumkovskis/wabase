@@ -500,6 +500,18 @@ trait AppFileServiceBase[User] {
         user: User,
         state: ApplicationState
     ): Directive1[Future[Seq[PartInfo]]] = {
+    (uploadMultipleAsSource & extractRequestContext).tflatMap { case (src, ctx) =>
+      provide {
+        import ctx._
+        src.runFold(Seq.empty[PartInfo])(_ :+ _)
+      }
+    }
+  }
+
+  def uploadMultipleAsSource(implicit
+        user: User,
+        state: ApplicationState
+    ): Directive1[Source[PartInfo, _]] = {
     (entity(as[Multipart.FormData]) & extractRequestContext).tflatMap { case (formdata, ctx) =>
       provide {
         import ctx._
@@ -533,7 +545,7 @@ trait AppFileServiceBase[User] {
                 file_info = null,
               )
             }
-        }.runFold(Seq.empty[PartInfo])(_ :+ _)
+        }
       }
     }
   }
