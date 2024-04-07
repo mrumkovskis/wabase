@@ -1,7 +1,7 @@
 val scalaV = "2.13.13"
 
-val akkaHttpV = "10.2.4"
-val akkaV = "2.6.15"
+val akkaV     =  "2.6.21" // Ensure Apache-2.0 license
+val akkaHttpV = "10.2.10" // Ensure Apache-2.0 license
 
 javacOptions ++= Seq("-source", "1.8", "-target", "1.8", "-Xlint")
 initialize := {
