@@ -74,7 +74,8 @@ object DbConstraintMessage {
       Map()
     } else {
       val source = scala.io.Source.fromURL(resource)
-      Option(new Yaml().load(source.mkString)).map(_.asInstanceOf[java.util.Map[String, _]].asScala.toMap) getOrElse Map()
+      Option(new Yaml().loadAs(source.mkString, classOf[java.util.Map[String, _]]))
+        .map(_.asInstanceOf[java.util.Map[String, _]].asScala.toMap) getOrElse Map()
     }
   }
 
