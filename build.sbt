@@ -22,7 +22,7 @@ lazy val dependencies = {
     "com.typesafe.akka"          %% "akka-stream"                       % akkaV,
     "com.typesafe.scala-logging" %% "scala-logging"                     % "3.9.5",
     "com.zaxxer"                  % "HikariCP"                          % "4.0.3",
-    "ch.qos.logback"              % "logback-classic"                   % "1.2.13",
+    "ch.qos.logback"              % "logback-classic"                   % "1.3.14",
     "org.mojoz"                  %% "mojoz"                             % "4.3.0",
     "org.mojoz"                  %% "querease"                          % "6.3.0",
     "commons-validator"           % "commons-validator"                 % "1.8.0",
@@ -44,7 +44,7 @@ lazy val testDependencies = Seq(
     "com.vladsch.flexmark"        % "flexmark-all"                      % "0.62.2"  % "it,test",
 )
 
-ThisBuild / versionScheme          := Some("semver-spec")
+ThisBuild / versionScheme          := Some("pvp") // semver disabled for 6.3.0 to upgrade logback-classic
 ThisBuild / versionPolicyIntention := Compatibility.BinaryCompatible
 
 lazy val wabase = (project in file("."))
