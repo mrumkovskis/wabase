@@ -16,4 +16,4 @@ jobs:
         java-version: ${{ matrix.java }}
         distribution: 'adopt'
     - name: Compile and test and check version policy
-      run:  sbt clean update +compile +test +it:test +versionPolicyCheck
+      run:  sbt clean update +compile +test +versionPolicyCheck

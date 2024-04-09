@@ -19,8 +19,6 @@ ThisBuild / versionScheme          := Some("semver-spec")
 ThisBuild / versionPolicyIntention := Compatibility.BinaryCompatible
 
 lazy val wabase = (project in file("."))
-  .configs(IntegrationTest extend(Test))
-  .settings(Defaults.itSettings : _*)
   .settings(
   organization := "org.wabase",
   name := "wabase",
@@ -65,12 +63,12 @@ lazy val wabase = (project in file("."))
       "org.graalvm.js"              % "js"                    % "22.3.5"            % Provided,
       "org.graalvm.js"              % "js-scriptengine"       % "22.3.5"            % Provided,
     ) ++ Seq( // for test
-      "org.scalatest"              %% "scalatest"             % "3.2.18"  % "it,test",
-      "com.typesafe.akka"          %% "akka-http-testkit"     % akkaHttpV % "it,test" cross CrossVersion.for3Use2_13,
-      "com.typesafe.akka"          %% "akka-testkit"          % akkaV     % "it,test" cross CrossVersion.for3Use2_13,
-      "com.typesafe.akka"          %% "akka-stream-testkit"   % akkaV     % "it,test" cross CrossVersion.for3Use2_13,
-      "org.hsqldb"                  % "hsqldb"                % "2.7.2"   %    "test",
-      "com.vladsch.flexmark"        % "flexmark-all"          % "0.64.8"  % "it,test",
+      "org.scalatest"              %% "scalatest"             % "3.2.18"  %     Test,
+      "com.typesafe.akka"          %% "akka-http-testkit"     % akkaHttpV %     Test  cross CrossVersion.for3Use2_13,
+      "com.typesafe.akka"          %% "akka-testkit"          % akkaV     %     Test  cross CrossVersion.for3Use2_13,
+      "com.typesafe.akka"          %% "akka-stream-testkit"   % akkaV     %     Test  cross CrossVersion.for3Use2_13,
+      "org.hsqldb"                  % "hsqldb"                % "2.7.2"   %     Test,
+      "com.vladsch.flexmark"        % "flexmark-all"          % "0.64.8"  %     Test,
     )
   },
   apiMappings ++= (Compile / fullClasspath map { fcp =>
@@ -115,6 +113,7 @@ lazy val wabase = (project in file("."))
         Seq(sharedSourceDir / "scala-2.12")
       else Nil
     },
+    Test / unmanagedSourceDirectories += baseDirectory.value / "src" / "it" / "scala",
   )
   .settings(
     Compile / doc / scalacOptions ++= (baseDirectory map { bd =>
@@ -131,10 +130,6 @@ lazy val wabase = (project in file("."))
     }.value,
     publishMavenStyle := true,
     Test / publishArtifact := true,
-    //publishArtifact in IntegrationTest := true, --does not work, https://github.com/sbt/sbt/issues/2458
-    addArtifact(IntegrationTest / packageBin / artifact, IntegrationTest / packageBin),
-    addArtifact(IntegrationTest / packageDoc / artifact, IntegrationTest / packageDoc),
-    addArtifact(IntegrationTest / packageSrc / artifact, IntegrationTest / packageSrc)
   )
   .settings(
     pomIncludeRepository := { _ => false },
@@ -174,13 +169,6 @@ lazy val wabase = (project in file("."))
       </developers>
   )
 
-ThisBuild / IntegrationTest / fork := true
-ThisBuild / IntegrationTest / javaOptions := Seq("-Xmx1G")
-
 Test            / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-h", "report")
 
-IntegrationTest / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-h", "it-report")
-
 Test            / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-oDSF")
-
-IntegrationTest / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-oDSF")
