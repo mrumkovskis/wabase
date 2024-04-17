@@ -416,11 +416,21 @@ trait WabaseApp[User] {
       instance
   }
 
+  protected def extractNamesFromOrderBy(orderBy: String): Seq[String] =
+    if (orderBy == null || orderBy == "")
+      Seq.empty
+    else
+      orderBy.split("\\s*\\,\\s*").toSeq.map(
+        _.replaceFirst("^\\s*null\\s+", "")
+         .replaceFirst("\\s+null\\s*$", "")
+         .replaceFirst("^\\s*~\\s*", "")
+         .trim
+      ).filter(_ != "")
   protected def stableOrderBy(viewDef: ViewDef, orderBy: String): String = {
-    if (orderBy != null && orderBy != "" && viewDef.orderBy != null && viewDef.orderBy.nonEmpty) {
-      val forcedSortCols = orderBy.replace("~", "").split("[\\s\\,]+").toSet
+    val forcedSortCols = extractNamesFromOrderBy(orderBy).toSet
+    if (forcedSortCols.nonEmpty && viewDef.orderBy != null && viewDef.orderBy.nonEmpty) {
       Option(viewDef.orderBy)
-        .map(_.filter(c => c != null && c != "" && !forcedSortCols.contains(c.replace("~", ""))))
+        .map(_.filter(c => extractNamesFromOrderBy(c).headOption.exists(!forcedSortCols.contains(_))))
         .filter(_.nonEmpty)
         .map(s => (orderBy :: s.toList).mkString(", "))
         .getOrElse(orderBy)
@@ -459,7 +469,7 @@ trait WabaseApp[User] {
     if (orderBy != null) {
       val sortableFields =
         viewDef.fields.filter(_.sortable).map(_.fieldName).toSet
-      val sortCols = orderBy.replace("~", "").split("[\\s\\,]+").toList
+      val sortCols = extractNamesFromOrderBy(orderBy)
       val notSortable = sortCols.filterNot(sortableFields.contains)
       if (notSortable.nonEmpty)
         throw new BusinessException(s"Not sortable: ${viewDef.name} by " + notSortable.mkString(", "), null)
