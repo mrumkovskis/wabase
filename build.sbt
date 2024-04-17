@@ -130,6 +130,11 @@ lazy val wabase = (project in file("."))
     }.value,
     publishMavenStyle := true,
     Test / publishArtifact := true,
+    Test / packageBin / mappings ~= { _.filter(m =>
+      !m._1.getName.endsWith(".conf")       &&
+      !m._1.getName.endsWith(".properties") &&
+      !m._1.getName.endsWith(".xml")
+    )}
   )
   .settings(
     pomIncludeRepository := { _ => false },
