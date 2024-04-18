@@ -19,6 +19,7 @@ import org.mojoz.metadata.{FieldDef, ViewDef}
 import org.slf4j.LoggerFactory
 import org.wabase.AppFileStreamer.FileInfo
 import org.wabase.AppMetadata.Action.{VariableTransform, VariableTransforms}
+import org.wabase.AppMetadata.DbAccessKey
 
 import scala.reflect.ManifestFactory
 import spray.json._
@@ -39,7 +40,7 @@ trait QuereaseProvider {
 }
 
 case class ResourcesFactory(
-  initResources: () => Resources,
+  initResources: (PoolName, Seq[DbAccessKey]) => Resources,
   closeResources: (Resources, Boolean, Option[Throwable]) => Unit,
 )(implicit val resources: Resources)
 {
@@ -304,7 +305,10 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
             val vd = viewDef(viewName)
             implicit val resFac =
               if (AugmentedAppViewDef(vd).explicitDb) resourcesFactory
-              else resourcesFactory.copy()(resources = resourcesFactory.initResources())
+              else {
+                val (poolName, extraDbs) = dbResourceNames(viewName, actionName)
+                resourcesFactory.copy()(resources = resourcesFactory.initResources(poolName, extraDbs))
+              }
             implicit val fs = fileStreamer
             implicit val httpReqCtx = reqCtx
             implicit val io = qio
@@ -342,7 +346,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     actionName: String,
     env: Map[String, Any],
     view: Option[ViewDef],
-    log: String => Unit,
+    log: (=> String) => Unit,
     fieldFilter: FieldFilter = null,
     stepName: String = null,
     contextStack: List[ActionContext] = Nil,
@@ -356,6 +360,20 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           view.actions.get(Action.Save)
         case _ => None
       })
+
+  def dbResourceNames(objectName: String, actionName: String): (PoolName, Seq[DbAccessKey]) = {
+    if (actionName == "job") {
+      val jdo = jobDefOption(objectName)
+      val poolName = jdo.flatMap(j => Option(j.db)).map(PoolName) getOrElse PoolName(defaultCpName)
+      val extraDbs = jdo.map(_.dbAccessKeys.filter(_.db != null)).getOrElse(Nil)
+      (poolName, extraDbs)
+    } else {
+      val vdo = viewDefOption(objectName)
+      val poolName = vdo.flatMap(v => Option(v.db)).map(PoolName) getOrElse PoolName(defaultCpName)
+      val extraDbs = vdo.map(_.actionToDbAccessKeys(actionName).filter(_.db != null).toList).getOrElse(Nil)
+      (poolName, extraDbs)
+    }
+  }
 
   def doAction(
     view: String,
@@ -393,7 +411,13 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
 
     val ctx = ActionContext(view, actionName, env, Some(vd), quereaseActionLogger(s"$view.$actionName"),
       fieldFilter, null, contextStack)
-    ctx.log(s"Doing action '${ctx.name}'.\n Env: $env\nCtx stack: [${contextStack.map(_.name).mkString(", ")}]")
+    def log(): Unit = {
+      val res = resourcesFactory.resources
+      ctx.log(s"Doing action '${ctx.name}'.\nEnv: $env\nCtx stack: [${
+        contextStack.map(_.name).mkString(", ")}]\nDatabase connections: [${(("[main]", res.conn) ::
+        res.extraResources.map{case (n, r) => n -> r.conn}.toList).mkString(", ")}]")
+    }
+    log()
     val steps =
       quereaseActionOpt(vd, actionName)
         .map(_.steps)
@@ -401,7 +425,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     doSteps(steps, ctx, Future.successful(data))
   }
 
-  def quereaseActionLogger(name: String): String => Unit = {
+  def quereaseActionLogger(name: String): (=>String) => Unit = {
     val logger = Logger(LoggerFactory.getLogger(name))
     msg => {
       logger.debug(msg)
@@ -1200,7 +1224,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     reqCtx: RequestContext,
     qio: AppQuereaseIo[Dto],
   ): Future[DbResult] = {
-    val newResFact = resFac.copy()(resources = resFac.initResources())
+    val (poolName, extraDbs) = dbResourceNames(context.viewName, context.actionName)
+    val newResFact = resFac.copy()(resources = resFac.initResources(poolName, extraDbs))
       .focus(context.view.map(_.db).filter(_ != null).getOrElse(defaultCpName))
     val newRes = newResFact.resources
     val closeRes = resFac.closeResources(newRes, op.doRollback, _)

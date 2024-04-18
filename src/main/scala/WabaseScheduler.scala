@@ -59,14 +59,15 @@ class WabaseScheduler(service: AppServiceBase[_]) extends Loggable {
     val emptyResFactory: ResourcesFactory = {
       val resTempl = dbAccess
         .withDbAccessLogger(dbAccess.tresqlResources.resourcesTemplate, s"${job.name}.job")
-      val poolName = Option(job.db).map(PoolName) getOrElse dbAccess.DefaultCp
-      val extraDbs = dbAccess.extraDb(job.dbAccessKeys)
-      val initRes = () => dbAccess.initResources(resTempl)(poolName, extraDbs)
+      val initRes = dbAccess.initResources(resTempl)
         ResourcesFactory(initRes, dbAccess.closeResources)(resTempl)
     }
     implicit val resourcesFactory: ResourcesFactory =
       if (job.explicitDb) emptyResFactory
-      else emptyResFactory.copy()(resources = emptyResFactory.initResources())
+      else {
+        val (poolName, extraDbs) = qe.dbResourceNames(job.name, "job")
+        emptyResFactory.copy()(resources = emptyResFactory.initResources(poolName, extraDbs))
+      }
     implicit val executionContext: ExecutionContext = service.asInstanceOf[Execution].executor
     implicit val actorSystem: ActorSystem = service.asInstanceOf[Execution].system
     implicit val fileStreamer: FileStreamer = service match {

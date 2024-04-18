@@ -299,12 +299,11 @@ trait WabaseApp[User] {
             )
         )
       }
-    val extraDbs = extraDb(vdo.map(_.actionToDbAccessKeys(actionName).toList).getOrElse(Nil))
     val rt = withDbAccessLogger(
       resourcesTemplate,
       s"$viewName.$actionName"
     )
-    ResourcesFactory(() => initResources(rt)(poolName, extraDbs), closeResources)(rt)
+    ResourcesFactory(initResources(rt), closeResources)(rt)
   }
 
   /** Runs {{{src}}} via {{{FileBufferedFlow}}} of {{{bufferSize}}} with {{{maxFileSize}}} to {{{CheckCompletedSink}}}

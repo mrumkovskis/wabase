@@ -45,7 +45,9 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
 
   override def dbNamePrefix: String = "main"
   override def beforeAll(): Unit = {
-    querease    = new TestQuerease("/crud-service-specs-metadata.yaml")
+    querease    = new TestQuerease("/crud-service-specs-metadata.yaml") {
+      override lazy val defaultCpName = "main"
+    }
     qio         = new AppQuereaseIo[Dto](querease)
     super.beforeAll()
     dbAccess    = new DbAccess with Loggable {
