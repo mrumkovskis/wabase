@@ -445,6 +445,9 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
           - purchase_time: 2021-12-04 15:15:23.0
             item: joystick
             amount: 60.00
+          vaccines:
+          - manipulation_date: 2021-06-05
+            vaccine: AstraZeneca
         """
         )))
     } yield t1

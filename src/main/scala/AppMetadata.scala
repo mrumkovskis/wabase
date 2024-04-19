@@ -335,13 +335,19 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     cache
   }
 
-  protected def actionQueries(actionName: String, objName: String, action: Action): Set[String] = {
-    lazy val opTresqlTrav: OpTresqlTraverser[scala.collection.mutable.Set[String]] =
+  protected def actionQueries(actionName: String, objName: String, action: Action): Set[(String,String)] = {
+    case class QueriesState(dbStack: List[String], queries: scala.collection.mutable.Set[(String, String)])
+    lazy val opTresqlTrav: OpTresqlTraverser[QueriesState] =
       opTresqlTraverser(opTresqlTrav, stepTresqlTrav)(st => {
+        case Action.Db(action, _, dbk :: _) =>
+          traverseAction(action)(stepTresqlTrav)(
+            st.copy(value = st.value.copy(dbStack = dbk.db :: st.value.dbStack))
+          )
+          st
         case ViewCall(_, _, data) => opTresqlTrav(st)(data) // do not go to process view call since all views are compiled
         case _: Action.Job => st // do not go to process job call since all jobs are compiled in a loop
       })
-    lazy val stepTresqlTrav: StepTresqlTraverser[scala.collection.mutable.Set[String]] =
+    lazy val stepTresqlTrav: StepTresqlTraverser[QueriesState] =
       stepTresqlTraverser(opTresqlTrav)(st => {
         case Validations(_, validations, db) =>
           val v = viewDef(st.name)
@@ -353,23 +359,24 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
               }
           }.getOrElse(st)
       })
-    val state = State[scala.collection.mutable.Set[String]](
+    val state = State[QueriesState](
       actionName, objName, Map(), Map(),
       tresqlExtractor = cq => tresql => {
         val tresqlString = tresql.tresql
-        cq += tresqlString
+        cq.queries += (cq.dbStack.headOption.orNull -> tresqlString)
+        cq
       },
       viewExtractor = v => _ => v,
       jobExtractor = v => _ => v,
-      processed = Set(), value = scala.collection.mutable.Set[String]()
+      processed = Set(), value = QueriesState(Nil, scala.collection.mutable.Set[(String, String)]())
     )
-    traverseAction(action)(stepTresqlTrav)(state).value.toSet
+    traverseAction(action)(stepTresqlTrav)(state).value.queries.toSet
   }
   override def allQueryStrings(viewDef: ViewDef): Seq[CompilationUnit] = {
     super.allQueryStrings(viewDef) ++ viewDef.actions.flatMap { case (actionName, action) =>
       val objName = viewDef.name
       actionQueries(actionName, objName, action)
-        .map(q => CompilationUnit("action-queries", s"$objName.$actionName", viewDef.db, q))
+        .map(compilationUnit("action-queries", s"$objName.$actionName", viewDef.db, _))
     }
   }
 
@@ -378,11 +385,16 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     log(s"Generating queries to be compiled for ${nameToJobDef.size} jobs")
     val startTime = System.currentTimeMillis
     val jobQueries = nameToJobDef.flatMap { case (jobName, job) =>
-      actionQueries("job", jobName, job.action).map(q => CompilationUnit("action-queries", s"$jobName.job", job.db, q))
+      actionQueries("job", jobName, job.action).map(compilationUnit("action-queries", s"$jobName.job", job.db, _))
     }
     val endTime = System.currentTimeMillis
     log(s"Query generation done in ${endTime - startTime} ms, ${jobQueries.size} queries generated")
     viewQueries ++ jobQueries
+  }
+
+  private def compilationUnit(category: String, source: String, defaultDb: String, query: (String, String)) = {
+    val (db, q) = query
+    CompilationUnit(category, source, if (db == null) defaultDb else db, q)
   }
 
   override protected def compileQueries(

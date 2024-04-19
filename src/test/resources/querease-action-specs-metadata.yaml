@@ -357,12 +357,19 @@ fields:
     - purchase_time
     - item
     - amount
+- vaccines * :
+    table:
+    fields:
+    - manipulation_date
+    - vaccine
 filter:
 - name ~~
 get:
 - setenv get this
 - purchases = db use [shop_db]:
-  - '|shop_db:purchase[customer ~~ :name]{purchase_time, item, amount}#(1)'
+  - purchase[customer ~~ :name]{purchase_time, item, amount}#(1)              # do not use db prefix
+- vaccines = db use [med_db]:
+  - '|med_db:person_health[name ~~ :name] {manipulation_date, vaccine}#(1)'   # use db prefix (optional)
 
 
 name: purchase
