@@ -345,6 +345,26 @@ order:
 - name
 
 
+name: person_and_shop
+api: get
+table: person p
+fields:
+- name
+- birthdate
+- purchases * :
+    table:
+    fields:
+    - purchase_time
+    - item
+    - amount
+filter:
+- name ~~
+get:
+- setenv get this
+- purchases = db use [shop_db]:
+  - '|shop_db:purchase[customer ~~ :name]{purchase_time, item, amount}#(1)'
+
+
 name: purchase
 api: save, get, list, count, delete
 db: shop_db

@@ -433,6 +433,23 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     }
   }
 
+  it should "retrieve person purchase data from db use block" in {
+    for {
+      t1 <- doAction("get", "person_and_shop", Map("name" -> "Mr. Gunza"))
+        .mapTo[MapResult]
+        .map (_.result should be ( YamlUtils.parseYamlData(
+          """
+          name: Mr. Gunza
+          birthdate: 1999-04-23
+          purchases:
+          - purchase_time: 2021-12-04 15:15:23.0
+            item: joystick
+            amount: 60.00
+        """
+        )))
+    } yield t1
+  }
+
   it should "throw MissingBindVariableException on list" in {
     recoverToSucceededIf[MissingBindVariableException] {
       doAction("list",

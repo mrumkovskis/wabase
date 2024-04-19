@@ -392,6 +392,13 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     do_action(view, actionName, data, env, fieldFilter)
   }
 
+  private def logContext(ctx: ActionContext, env: Map[String, Any], rf: ResourcesFactory) = {
+    val res = rf.resources
+    ctx.log(s"Doing action '${ctx.name}'.\nEnv: $env\nCtx stack: [${
+      ctx.contextStack.map(_.name).mkString(", ")}]\nDatabase connections: [${(("[main]", res.conn) ::
+      res.extraResources.map{case (n, r) => n -> r.conn}.toList).mkString(", ")}]")
+  }
+
   private def do_action(
     view: String,
     actionName: String,
@@ -411,13 +418,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
 
     val ctx = ActionContext(view, actionName, env, Some(vd), quereaseActionLogger(s"$view.$actionName"),
       fieldFilter, null, contextStack)
-    def log(): Unit = {
-      val res = resourcesFactory.resources
-      ctx.log(s"Doing action '${ctx.name}'.\nEnv: $env\nCtx stack: [${
-        contextStack.map(_.name).mkString(", ")}]\nDatabase connections: [${(("[main]", res.conn) ::
-        res.extraResources.map{case (n, r) => n -> r.conn}.toList).mkString(", ")}]")
-    }
-    log()
+    logContext(ctx, env, resourcesFactory)
     val steps =
       quereaseActionOpt(vd, actionName)
         .map(_.steps)
@@ -1224,9 +1225,17 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     reqCtx: RequestContext,
     qio: AppQuereaseIo[Dto],
   ): Future[DbResult] = {
-    val (poolName, extraDbs) = dbResourceNames(context.viewName, context.actionName)
+    val (poolName, extraDbs) =
+      if (op.dbs.nonEmpty) {
+        def may_be_add_extra(pn: PoolName, edb: Seq[DbAccessKey]) =
+          if (pn.connectionPoolName == defaultCpName || edb.exists(_.db == pn.connectionPoolName)) (pn, edb)
+          else (pn, edb ++ Seq(DbAccessKey(pn.connectionPoolName)))
+        may_be_add_extra(PoolName(op.dbs.head.db), op.dbs.tail)
+      }
+      else dbResourceNames(context.viewName, context.actionName)
     val newResFact = resFac.copy()(resources = resFac.initResources(poolName, extraDbs))
       .focus(context.view.map(_.db).filter(_ != null).getOrElse(defaultCpName))
+    logContext(context, env, newResFact)
     val newRes = newResFact.resources
     val closeRes = resFac.closeResources(newRes, op.doRollback, _)
     doSteps(op.action.steps, context.copy(stepName = "db"), Future.successful(data))(newResFact, ec, as, fs, reqCtx, qio).map {

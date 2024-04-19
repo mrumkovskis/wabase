@@ -474,7 +474,10 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     fun: (=>StepTresqlTraverser[Seq[DbAccessKey]]) => State[Seq[DbAccessKey]] => State[Seq[DbAccessKey]]
   ): State[Seq[DbAccessKey]] = {
     lazy val opTresqlTrav: OpTresqlTraverser[Seq[DbAccessKey]] =
-      opTresqlTraverser(opTresqlTrav, stepTresqlTrav)(_ => PartialFunction.empty)
+      opTresqlTraverser(opTresqlTrav, stepTresqlTrav)(state => {
+        case Action.Db(action, _, dbs) =>
+          traverseAction(action)(stepTresqlTrav)(state.copy(value = state.value ++ dbs))
+      })
 
     lazy val stepTresqlTrav: StepTresqlTraverser[Seq[DbAccessKey]] =
       stepTresqlTraverser(opTresqlTrav)(state => {
@@ -482,7 +485,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       })
 
     val state = State[Seq[DbAccessKey]](action, name, viewDefs, jobDefs,
-      tresqlExtractor = dbKeys => tresql => dbKeys ++ tresql.dbs.map(DbAccessKey(_)),
+      tresqlExtractor = dbKeys => tresql => dbKeys ++ tresql.dbs.map(DbAccessKey),
       viewExtractor = dbkeys => vd =>
         dbkeys ++ (if (vd.db != null) Seq(DbAccessKey(vd.db)) else Nil),
       jobExtractor = dbkeys => jd =>
@@ -531,8 +534,8 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val namedStepRegex = """(?U)(?:((?:\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*)(?:\.\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*)*)\s*=\s*)?(.+)""".r
     // matches - 'validations validation_name [db:cp]'
     val validationRegex = new Regex(s"(?U)${Action.ValidationsKey}(?:\\s+(\\w+))?(?:\\s+\\[(?:\\s*(\\w+)?\\s*(?::\\s*(\\w+)\\s*)?)\\])?")
-    val dbUseRegex = new Regex(s"${Action.DbUseKey}")
-    val transactionRegex = new Regex(s"${Action.TransactionKey}")
+    val arr_regex = "(?:\\s+\\[([^\\[^\\]]+)\\])?"
+    val db_use_or_transaction_regex = new Regex(s"(${Action.DbUseKey}|${Action.TransactionKey})$arr_regex")
     val removeVarStepRegex = {
       val ident = """\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*"""
       val str_lit = """"[^"]*+"|'[^']*+'"""
@@ -647,10 +650,10 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
                     } else if (foreachOpRegex.pattern.matcher(opStr).matches()) {
                       val foreachOpRegex(initOpSt) = opStr
                       Action.Foreach(parseOp(initOpSt), pa)
-                    } else if (dbUseRegex.pattern.matcher(opStr).matches()) {
-                      Action.Db(pa, true)
-                    } else if (transactionRegex.pattern.matcher(opStr).matches()) {
-                      Action.Db(pa, false)
+                    } else if (db_use_or_transaction_regex.pattern.matcher(opStr).matches()) {
+                      val db_use_or_transaction_regex(action, dbs) = opStr
+                      val db_keys = if (dbs == null) Nil else dbs.split(",").toList
+                      Action.Db(pa, action == Action.DbUseKey, db_keys.map(DbAccessKey))
                     } else Action.Block(pa)
                   val eval_var_name = op match {
                     case _: Action.Block => name
@@ -1022,7 +1025,7 @@ object AppMetadata extends Loggable {
                     body: Op = null,
                     conformTo: Option[OpResultType] = None) extends CastableOp
     case class HttpHeader(name: String) extends Op
-    case class Db(action: Action, doRollback: Boolean) extends Op
+    case class Db(action: Action, doRollback: Boolean, dbs: List[DbAccessKey]) extends Op
     case class Conf(param: String, paramType: ConfType = null) extends Op
     case class JsonCodec(encode: Boolean, op: Op) extends Op
     /** This operation exists only in parsing stage for if operation */
@@ -1058,7 +1061,7 @@ object AppMetadata extends Loggable {
         case o: Template => opTrav(state)(o.dataOp)
         case Email(_, s, b, a) => a.foldLeft(opTrav(opTrav(state)(s))(b))(opTrav(_)(_))
         case o: Http => opTrav(state)(o.body)
-        case Db(a, _) => traverseAction(a)(stepTrav)(state)
+        case Db(a, _, _) => traverseAction(a)(stepTrav)(state)
         case Block(a) => traverseAction(a)(stepTrav)(state)
         case JsonCodec(_, o) => opTrav(state)(o)
         case i: Invocation => opTrav(state)(i.arg)
