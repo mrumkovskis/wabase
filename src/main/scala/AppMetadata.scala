@@ -52,10 +52,10 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   override lazy val nameToViewDef: Map[String, ViewDef] =
     toAppViewDefs(viewDefLoader.nameToViewDef)
 
-  private def actionParser(dataKey: String): String => Map[String, Any] => Action =
-    name => dataMap => {
-      val opParser = new OpParser(name, tresqlUri, opParserCache(name))
-      parseAction(name, ViewDefExtrasUtils.getSeq(dataKey, dataMap), opParser)
+  private val actionParser: String => String => Map[String, Any] => Action =
+    objectName => dataKey => dataMap => {
+      val opParser = new OpParser(objectName, tresqlUri, opParserCache(objectName))
+      parseAction(objectName, ViewDefExtrasUtils.getSeq(dataKey, dataMap), opParser)
     }
   private def validateDuplicateNames = {
     val viewNames = viewDefLoader.nameToViewDef.keys.toSet
@@ -65,14 +65,14 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     require(duplicates.isEmpty, s"Duplicate view, job, route names found - '${duplicates.mkString(", ")}'")
   }
 
-  lazy val jobDefLoader = new YamlJobDefLoader(yamlMetadata, actionParser("action"))
+  lazy val jobDefLoader = new YamlJobDefLoader(yamlMetadata, actionParser)
   lazy val nameToJobDef: Map[String, JobDef] = {
     validateDuplicateNames
     transformJobDefs(jobDefLoader.nameToJobDef)
   }
 
   lazy val routeDefLoader =
-    new YamlRouteDefLoader(yamlMetadata, actionParser("req-trans"), actionParser("resp-trans"))
+    new YamlRouteDefLoader(yamlMetadata, actionParser)
   lazy val routeDefs: Seq[RouteDef] = {
     validateDuplicateNames
     routeDefLoader.routeDefs
@@ -1306,7 +1306,9 @@ object AppMetadata extends Loggable {
   case class RouteDef(
     name: String,
     path: Regex,
-    requestTransformer: Action.Invocation = null,
+    auth: Action.Invocation = null,
+    state: Action.Invocation = null,
+    requestFilter: Action.Invocation = null,
     responseTransformer: Action.Invocation = null,
   )
 

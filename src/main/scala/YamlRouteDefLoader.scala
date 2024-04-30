@@ -8,26 +8,29 @@ import scala.util.matching.Regex
 
 class YamlRouteDefLoader(
   yamlMd: Seq[YamlMd],
-  requestTransfomerParser:    String => Map[String, Any] => Action,
-  responseTransformerParser:  String => Map[String, Any] => Action,
+  actionParser: String => String => Map[String, Any] => Action,
 ) {
 
   lazy val routeDefs: Seq[RouteDef] = {
     YamlRawDefLoader.rawDefs("route", yamlMd, isRouteDef).transform { (routeName, rdMap) =>
 
-      def parseTransformer(trName: String, parser: String => Map[String, Any] => Action) =
+      val parser = actionParser(routeName)
+
+      def parseProperty(property: String) =
         parser(routeName)(rdMap).steps match {
           case Nil => null
           case List(Action.Evaluation(_, _, op: Action.Invocation)) => op
-          case x => sys.error(s"Error parsing route $routeName $trName, expected invocation call, got: $x")
+          case x => sys.error(s"Error parsing route $routeName $property, expected invocation call, got: $x")
         }
 
       val path: Regex = rdMap.get("path")
         .map(p => new Regex(p.toString))
         .getOrElse(sys.error(s"Path field not found for route $routeName"))
-      val requestTransformer = parseTransformer("request transformer", requestTransfomerParser)
-      val responseTransformer = parseTransformer("response transformer", responseTransformerParser)
-      RouteDef(routeName, path, requestTransformer, responseTransformer)
+      val auth = parseProperty("auth")
+      val state = parseProperty("state")
+      val filter = parseProperty("req-filter")
+      val transformer = parseProperty("resp-transformer")
+      RouteDef(routeName, path, auth, state, filter, transformer)
     }.values.toList
   }
 

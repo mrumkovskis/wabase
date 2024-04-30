@@ -11,9 +11,24 @@ import org.wabase.AppMetadata.{Action, RouteDef}
 
 import scala.concurrent.{ExecutionContext, Future}
 
-case class WabaseRequestContext(route: RouteDef, ctx: RequestContext, viewName: String, action: String, key: Seq[Any])
+case class WabaseUser(properties: Map[String, Any]) {
+  val id: Long      = properties.get("id").collect { case x: Number => x.longValue }.getOrElse(-1)
+  val name: String  = properties.get("name").map(String.valueOf).orNull
+}
+
+case class WabaseRequestContext(
+  route: RouteDef,
+  ctx: RequestContext,
+  viewName: String,
+  action: String,
+  key: Seq[Any],
+  applicationState: ApplicationState,
+  user: WabaseUser,
+)
 
 class WabaseRouteException(message: String) extends Exception(message)
+/** Can be used for example in authentication filter to return HTTP Unauthorized */
+class WabaseRouteFilterException(response: HttpResponse) extends Exception
 
 object WabaseService {
 
@@ -33,7 +48,7 @@ object WabaseService {
     }.getOrElse((null, null, null))
 
     if (viewNameAndActionStr == null)
-      WabaseRequestContext(route, ctx, null, null, null)
+      WabaseRequestContext(route, ctx, null, null, null, null, null)
     else {
       val key = {
         def key_path(path: Path): Path = path match {
@@ -64,7 +79,7 @@ object WabaseService {
         case x        => error(s"Unsupported http method $x for request '${req.uri}'")
       }
 
-      WabaseRequestContext(route, ctx, view_name, action, key)
+      WabaseRequestContext(route, ctx, view_name, action, key, null, null)
     }
   }
 
@@ -97,7 +112,7 @@ object WabaseService {
         processResult(invokeFunction(cn, fn, Seq((classOf[WabaseRequestContext], _ => tctx))))
       }
       if (route.responseTransformer == null) error(s"If view name for route not specified, response transformer must be defined!")
-      else Option(route.requestTransformer)
+      else Option(route.requestFilter)
         .map { case Action.Invocation(cn, fn, _, _) =>
           invokeReqTrans(cn, fn)
         }.getOrElse(Future.successful(wrctx))
