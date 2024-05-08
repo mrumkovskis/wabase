@@ -622,7 +622,7 @@ object BorerNestedArraysTransformer {
               val encoder = createEncoder(out)
               encoder.writeStartOfInput()
               val tr = new BorerNestedArraysTransformer(reader, encoder)
-              while (tr.transformNext()) {}
+              try while (tr.transformNext()) {} finally out.close()
             }.recover {
               case e: Exception => logger.error("Blocking serialized transform error", e)
             }

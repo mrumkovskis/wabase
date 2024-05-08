@@ -659,24 +659,35 @@ class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseIni
 
   it should "serialize and transform with any buffer size" in {
     import scala.language.existentials
-    def test(values: Seq[_], serializerBufferSizeHint: Int, deserializerBufferSize: Int) = {
-      val encoderFactory: EncoderFactory = os => new ResultEncoder {
-        override def writeStartOfInput():               Unit = {}
-        override def writeArrayStart():                 Unit = {}
-        override def writeValue(value: Any):            Unit = { os.write(value.toString.getBytes("UTF-8")) }
-        override def startChunks(chunkType: ChunkType): Unit = {}
-        override def writeChunk(chunk: Any): Unit = chunk match {
-          case bytes: ByteString => writeValue(bytes.utf8String)
-          case x => sys.error("Unsupported chunk class: " + x.getClass.getName)
-        }
-        override def writeBreak():                      Unit = {}
-        override def writeEndOfInput():                 Unit = {}
+    val encoderFactory: EncoderFactory = os => new ResultEncoder {
+      override def writeStartOfInput():               Unit = {}
+      override def writeArrayStart():                 Unit = {}
+      override def writeValue(value: Any):            Unit = { os.write(value.toString.getBytes("UTF-8")) }
+      override def startChunks(chunkType: ChunkType): Unit = {}
+      override def writeChunk(chunk: Any): Unit = chunk match {
+        case bytes: ByteString => writeValue(bytes.utf8String)
+        case x => sys.error("Unsupported chunk class: " + x.getClass.getName)
       }
-      val source = ResultSerializer.source(() => values.iterator, BorerNestedArraysEncoder(_), serializerBufferSizeHint)
+      override def writeBreak():                      Unit = {}
+      override def writeEndOfInput():                 Unit = {}
+    }
+    def serializedSource(values: Seq[_], serializerBufferSizeHint: Int, deserializerBufferSize: Int) = {
+      ResultSerializer.source(() => values.iterator, BorerNestedArraysEncoder(_), serializerBufferSizeHint)
         .fold(ByteString.empty)(_ ++ _)
         .map(_.compact)
         .mapConcat(_.grouped(deserializerBufferSize))
+    }
+    def test(values: Seq[_], serializerBufferSizeHint: Int, deserializerBufferSize: Int) = {
+      val source = serializedSource(values, serializerBufferSizeHint, deserializerBufferSize)
         .via(BorerNestedArraysTransformer.flow(encoderFactory, bufferSizeHint = serializerBufferSizeHint))
+      Await.result(source.runWith(foldToStringSink()), 1.second)
+    }
+    def testBlocking(values: Seq[_], serializerBufferSizeHint: Int, deserializerBufferSize: Int) = {
+      val sr = IncompleteResultSource(serializedSource(values, serializerBufferSizeHint, deserializerBufferSize))
+      val source = BorerNestedArraysTransformer.blockingTransform(sr, encoderFactory) match {
+        case CompleteResult(bytes) => Source.single(bytes)
+        case IncompleteResultSource(result) => result
+      }
       Await.result(source.runWith(foldToStringSink()), 1.second)
     }
     val mx = 25
@@ -686,6 +697,7 @@ class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseIni
           val s = Some("RūķīšiⓇ🗸" * stringSize).map(s => s.substring(0, s.offsetByCodePoints(0, stringSize))).get
           val expected = s"$s," * 3
           test(Seq(s, ",", s, ",", s, ","), bufferSizeHint, deserializerBufferSize) shouldBe expected
+          testBlocking(Seq(s, ",", s, ",", s, ","), bufferSizeHint, deserializerBufferSize) shouldBe expected
         }
       }
     }
