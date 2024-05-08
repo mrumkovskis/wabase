@@ -1,9 +1,9 @@
 package org.wabase
 
 import akka.NotUsed
-import akka.stream.scaladsl.{Flow, Source}
+import akka.stream.scaladsl.{Flow, Source, StreamConverters}
 import akka.stream.stage.{GraphStage, GraphStageLogic, InHandler, OutHandler}
-import akka.stream.{Attributes, FlowShape, Inlet, Outlet, SourceShape}
+import akka.stream.{Attributes, FlowShape, Inlet, Materializer, Outlet, SourceShape}
 import akka.util.{ByteString, ByteStringBuilder}
 
 import java.io.{InputStream, OutputStream}
@@ -12,10 +12,12 @@ import java.math.{BigDecimal => JBigDecimal, BigInteger => JBigInteger}
 import java.nio.{ByteBuffer, CharBuffer}
 import java.nio.charset.{Charset, CharsetEncoder, CodingErrorAction}
 import java.nio.charset.StandardCharsets.UTF_8
-import java.time.{Instant, LocalDate, LocalTime, LocalDateTime, OffsetDateTime, ZonedDateTime}
+import java.time.{Instant, LocalDate, LocalDateTime, LocalTime, OffsetDateTime, ZonedDateTime}
 import java.time.format.DateTimeFormatter
-
 import ResultEncoder._
+import com.typesafe.scalalogging.Logger
+
+import scala.concurrent.{ExecutionContext, Future}
 
 object ResultSerializer {
   trait ChunkInfo {
@@ -597,6 +599,38 @@ object BorerNestedArraysTransformer {
     while (transformer.transformNext()) {}
     buf.result()
   }
+
+  private val logger = Logger("borer-nested-arrays-transformer")
+
+  def blockingTransform(
+    serializedResult: SerializedResult,
+    createEncoder: EncoderFactory,
+    transformFrom: Target = Cbor,
+  )(implicit ec: ExecutionContext, mat: Materializer): SerializedResult = {
+    serializedResult match {
+      case CompleteResult(bytes) =>
+        CompleteResult(transform(bytes, createEncoder, transformFrom))
+      case IncompleteResultSource(rs) =>
+        val in = rs.runWith(StreamConverters.asInputStream())
+        val reader = transformFrom match {
+          case _: Cbor.type => Cbor.reader(in)
+          case _: Json.type => Json.reader(in)
+        }
+        val src = StreamConverters.asOutputStream()
+          .mapMaterializedValue { out =>
+            Future {
+              val encoder = createEncoder(out)
+              encoder.writeStartOfInput()
+              val tr = new BorerNestedArraysTransformer(reader, encoder)
+              while (tr.transformNext()) {}
+            }.recover {
+              case e: Exception => logger.error("Blocking serialized transform error", e)
+            }
+          }
+        IncompleteResultSource(src)
+    }
+  }
+
 }
 
 object DataSerializer {
