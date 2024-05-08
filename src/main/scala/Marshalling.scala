@@ -12,7 +12,7 @@ import java.text.Normalizer
 import scala.concurrent.{ExecutionContext, Future}
 import akka.http.scaladsl.model.headers.{ContentDispositionType, ContentDispositionTypes, Location, RawHeader, `Content-Disposition`}
 import akka.http.scaladsl.server.RouteResult.{Complete, Rejected}
-import akka.http.scaladsl.server.directives.{FileAndResourceDirectives}
+import akka.http.scaladsl.server.directives.FileAndResourceDirectives
 import akka.http.scaladsl.unmarshalling.{FromEntityUnmarshaller, FromResponseUnmarshaller, Unmarshaller}
 import akka.stream.scaladsl.{Flow, Source}
 import akka.util.ByteString
@@ -276,6 +276,18 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
     }
   }
 
+  def toEntitySerializedResultBlockingMarshaller(
+    contentType: ContentType,
+    createEncoder: EncoderFactory,
+  ): ToEntityMarshaller[SerializedResult] = {
+    Marshaller.withFixedContentType(contentType) { sr =>
+      BorerNestedArraysTransformer.blockingTransform(sr, createEncoder) match {
+        case CompleteResult(bytes) => HttpEntity.Strict(contentType, bytes)
+        case IncompleteResultSource(src) => HttpEntity.Chunked.fromData(contentType, src)
+      }
+    }
+  }
+
   private def getResultFilter(viewName: String,
                               filter1: ResultRenderer.ResultFilter,
                               filter2: ResultRenderer.ResultFilter) = {
@@ -303,7 +315,8 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
           case (contentType, encCreator) =>
             val vd = qe.nameToViewDef(viewName)
             val fil = getResultFilter(viewName, resultFilter, sr.resultFilter)
-            toEntitySerializedResultMarshaller(contentType, encCreator(sr.isCollection, fil, vd))
+            //toEntitySerializedResultMarshaller(contentType, encCreator(sr.isCollection, fil, vd))
+            toEntitySerializedResultBlockingMarshaller(contentType, encCreator(sr.isCollection, fil, vd))
         }.toSeq
         Marshaller.oneOf(marshallers: _*)
       }
