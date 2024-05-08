@@ -619,10 +619,12 @@ object BorerNestedArraysTransformer {
         val src = StreamConverters.asOutputStream()
           .mapMaterializedValue { out =>
             Future {
-              val encoder = createEncoder(out)
-              encoder.writeStartOfInput()
-              val tr = new BorerNestedArraysTransformer(reader, encoder)
-              try while (tr.transformNext()) {} finally out.close()
+              try {
+                val encoder = createEncoder(out)
+                encoder.writeStartOfInput()
+                val tr = new BorerNestedArraysTransformer(reader, encoder)
+                while (tr.transformNext()) {}
+              } finally out.close()
             }.recover {
               case e: Exception => logger.error("Blocking serialized transform error", e)
             }
