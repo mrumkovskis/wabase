@@ -683,11 +683,8 @@ class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseIni
       Await.result(source.runWith(foldToStringSink()), 1.second)
     }
     def testBlocking(values: Seq[_], serializerBufferSizeHint: Int, deserializerBufferSize: Int) = {
-      val sr = IncompleteResultSource(serializedSource(values, serializerBufferSizeHint, deserializerBufferSize))
-      val source = BorerNestedArraysTransformer.blockingTransform(sr, encoderFactory) match {
-        case CompleteResult(bytes) => Source.single(bytes)
-        case IncompleteResultSource(result) => result
-      }
+      val source = BorerNestedArraysTransformer.blockingTransform(
+        serializedSource(values, serializerBufferSizeHint, deserializerBufferSize), encoderFactory)
       Await.result(source.runWith(foldToStringSink()), 1.second)
     }
     val mx = 25

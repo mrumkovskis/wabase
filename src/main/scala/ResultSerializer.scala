@@ -1,6 +1,6 @@
 package org.wabase
 
-import akka.NotUsed
+import akka.{Done, NotUsed}
 import akka.stream.scaladsl.{Flow, Source, StreamConverters}
 import akka.stream.stage.{GraphStage, GraphStageLogic, InHandler, OutHandler}
 import akka.stream.{Attributes, FlowShape, Inlet, Materializer, Outlet, SourceShape}
@@ -18,6 +18,7 @@ import ResultEncoder._
 import com.typesafe.scalalogging.Logger
 
 import scala.concurrent.{ExecutionContext, Future}
+import scala.util.control.NonFatal
 
 object ResultSerializer {
   trait ChunkInfo {
@@ -603,34 +604,31 @@ object BorerNestedArraysTransformer {
   private val logger = Logger("borer-nested-arrays-transformer")
 
   def blockingTransform(
-    serializedResult: SerializedResult,
+    src: Source[ByteString, _],
     createEncoder: EncoderFactory,
     transformFrom: Target = Cbor,
-  )(implicit ec: ExecutionContext, mat: Materializer): SerializedResult = {
-    serializedResult match {
-      case CompleteResult(bytes) =>
-        CompleteResult(transform(bytes, createEncoder, transformFrom))
-      case IncompleteResultSource(rs) =>
-        val in = rs.runWith(StreamConverters.asInputStream())
-        val reader = transformFrom match {
-          case _: Cbor.type => Cbor.reader(in)
-          case _: Json.type => Json.reader(in)
-        }
-        val src = StreamConverters.asOutputStream()
-          .mapMaterializedValue { out =>
-            Future {
-              try {
-                val encoder = createEncoder(out)
-                encoder.writeStartOfInput()
-                val tr = new BorerNestedArraysTransformer(reader, encoder)
-                while (tr.transformNext()) {}
-              } finally out.close()
-            }.recover {
-              case e: Exception => logger.error("Blocking serialized transform error", e)
-            }
-          }
-        IncompleteResultSource(src)
+  )(implicit ec: ExecutionContext, mat: Materializer): Source[ByteString, Future[Done]] = {
+    val in = src.runWith(StreamConverters.asInputStream())
+    val reader = transformFrom match {
+      case _: Cbor.type => Cbor.reader(in)
+      case _: Json.type => Json.reader(in)
     }
+    StreamConverters.asOutputStream()
+      .mapMaterializedValue { out =>
+        Future {
+          try {
+            val encoder = createEncoder(out)
+            encoder.writeStartOfInput()
+            val tr = new BorerNestedArraysTransformer(reader, encoder)
+            while (tr.transformNext()) {}
+          } finally out.close()
+          Done
+        }.recover {
+          case NonFatal(e) =>
+            logger.error("Blocking serialized transform error", e)
+            throw e
+        }
+      }
   }
 }
 

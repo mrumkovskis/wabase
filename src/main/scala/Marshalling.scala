@@ -280,11 +280,11 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
     contentType: ContentType,
     createEncoder: EncoderFactory,
   ): ToEntityMarshaller[SerializedResult] = {
-    Marshaller.withFixedContentType(contentType) { sr =>
-      BorerNestedArraysTransformer.blockingTransform(sr, createEncoder) match {
-        case CompleteResult(bytes) => HttpEntity.Strict(contentType, bytes)
-        case IncompleteResultSource(src) => HttpEntity.Chunked.fromData(contentType, src)
-      }
+    Marshaller.withFixedContentType(contentType) {
+      case CompleteResult(bytes) =>
+        HttpEntity.Strict(contentType, BorerNestedArraysTransformer.transform(bytes, createEncoder))
+      case IncompleteResultSource(src) =>
+        HttpEntity.Chunked.fromData(contentType, BorerNestedArraysTransformer.blockingTransform(src, createEncoder))
     }
   }
 
