@@ -301,8 +301,10 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
           case (contentType, encCreator) =>
             val vd = qe.nameToViewDef(viewName)
             val fil = getResultFilter(viewName, resultFilter, sr.resultFilter)
-            //toEntitySerializedResultMarshaller(contentType, encCreator(sr.isCollection, fil, vd))
-            toEntitySerializedResultBlockingMarshaller(contentType, encCreator(sr.isCollection, fil, vd))
+            if (MarshallingConfig.useBlockingTransformer)
+              toEntitySerializedResultBlockingMarshaller(contentType, encCreator(sr.isCollection, fil, vd))
+            else
+              toEntitySerializedResultMarshaller(contentType, encCreator(sr.isCollection, fil, vd))
         }.toSeq
         Marshaller.oneOf(marshallers: _*)
       }
@@ -392,4 +394,5 @@ object MarshallingConfig extends AppBase.AppConfig with Loggable {
     logger.debug(s"Custom db data max file sizes: $vals")
     vals
   }
+  lazy val useBlockingTransformer: Boolean = appConfig.getBoolean("use-blocking-transformer")
 }
