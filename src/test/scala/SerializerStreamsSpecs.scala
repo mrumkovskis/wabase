@@ -677,6 +677,9 @@ class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseIni
         .map(_.compact)
         .mapConcat(_.grouped(deserializerBufferSize))
     }
+    class JsonOrWhatever(value: String) {
+      override def toString = value
+    }
     def test(values: Seq[_], serializerBufferSizeHint: Int, deserializerBufferSize: Int) = {
       val source = serializedSource(values, serializerBufferSizeHint, deserializerBufferSize)
         .via(BorerNestedArraysTransformer.flow(encoderFactory, bufferSizeHint = serializerBufferSizeHint))
@@ -687,14 +690,25 @@ class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseIni
         serializedSource(values, serializerBufferSizeHint, deserializerBufferSize), encoderFactory)
       Await.result(source.runWith(foldToStringSink()), 1.second)
     }
+    def testNonStrings(values: Seq[_], serializerBufferSizeHint: Int, deserializerBufferSize: Int) = {
+      val nonStrings = values map {
+        case s: String => new JsonOrWhatever(s)
+        case x => sys.error(s"Unexpected value class: ${Option(x).map(_.getClass.getName).orNull}")
+      }
+      val source = serializedSource(nonStrings, serializerBufferSizeHint, deserializerBufferSize)
+        .via(BorerNestedArraysTransformer.flow(encoderFactory, bufferSizeHint = serializerBufferSizeHint))
+      Await.result(source.runWith(foldToStringSink()), 1.second)
+    }
     val mx = 25
     for (bufferSizeHint           <- 5 to mx) {
       for (deserializerBufferSize <- 1 to mx) {
         for (stringSize           <- 0 to mx) {
           val s = Some("RūķīšiⓇ🗸" * stringSize).map(s => s.substring(0, s.offsetByCodePoints(0, stringSize))).get
           val expected = s"$s," * 3
-          test(Seq(s, ",", s, ",", s, ","), bufferSizeHint, deserializerBufferSize) shouldBe expected
-          testBlocking(Seq(s, ",", s, ",", s, ","), bufferSizeHint, deserializerBufferSize) shouldBe expected
+          val values = Seq(s, ",", s, ",", s, ",")
+          test          (values, bufferSizeHint, deserializerBufferSize) shouldBe expected
+          testBlocking  (values, bufferSizeHint, deserializerBufferSize) shouldBe expected
+          testNonStrings(values, bufferSizeHint, deserializerBufferSize) shouldBe expected
         }
       }
     }
