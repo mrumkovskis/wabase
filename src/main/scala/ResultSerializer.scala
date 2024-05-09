@@ -485,6 +485,12 @@ class BorerNestedArraysTransformer(reader: Reader, handler: ResultEncoder) {
 
 import io.bullet.borer.compat.akka.ByteStringProvider
 object BorerNestedArraysTransformer {
+
+  private def borerReader[T: Input.Provider](source: T, format: Target) = format match {
+    case _: Cbor.type => Cbor.reader(source)
+    case _: Json.type => Json.reader(source)
+  }
+
   private class TransformerSource(
     createTransformable:  () => InputStream,
     createEncoder:        EncoderFactory,
@@ -497,10 +503,7 @@ object BorerNestedArraysTransformer {
       private val buf         = new ByteStringBuilder
       private val encoder     = createEncoder(buf.asOutputStream)
       private val transformer = new BorerNestedArraysTransformer(
-        transformFrom match {
-          case _: Cbor.type => Cbor.reader(createTransformable())
-          case _: Json.type => Json.reader(createTransformable())
-        },
+        borerReader(createTransformable(), transformFrom),
         encoder,
       )
       override def preStart(): Unit = {
@@ -551,10 +554,7 @@ object BorerNestedArraysTransformer {
       }
       private val encoder     = createEncoder(outBuf.asOutputStream)
       private val transformer = new BorerNestedArraysTransformer(
-        transformFrom match {
-          case _: Cbor.type => Cbor.reader(transformable)
-          case _: Json.type => Json.reader(transformable)
-        },
+        borerReader(transformable, transformFrom),
         encoder,
       )
       override def preStart(): Unit = {
@@ -611,18 +611,15 @@ object BorerNestedArraysTransformer {
     new TransformerFlow(createEncoder, transformFrom, bufferSizeHint)
   )
 
-  def transform[T](
+  def transform[T: Input.Provider](
     transformable:  T,
     createEncoder:  EncoderFactory,
     transformFrom:  Target = Cbor,
-  )(implicit p: Input.Provider[T]): ByteString = {
+  ): ByteString = {
     val buf = new ByteStringBuilder
     val encoder = createEncoder(buf.asOutputStream)
     val transformer = new BorerNestedArraysTransformer(
-      transformFrom match {
-        case _: Cbor.type => Cbor.reader(transformable)
-        case _: Json.type => Json.reader(transformable)
-      },
+      borerReader(transformable, transformFrom),
       encoder,
     )
     transformer.transform()
@@ -637,14 +634,10 @@ object BorerNestedArraysTransformer {
     transformFrom: Target = Cbor,
   )(implicit ec: ExecutionContext, mat: Materializer): Source[ByteString, Future[Done]] = {
     val in = src.runWith(StreamConverters.asInputStream())
-    val reader = transformFrom match {
-      case _: Cbor.type => Cbor.reader(in)
-      case _: Json.type => Json.reader(in)
-    }
     StreamConverters.asOutputStream()
       .mapMaterializedValue { out =>
         Future {
-          try new BorerNestedArraysTransformer(reader, createEncoder(out)).transform()
+          try new BorerNestedArraysTransformer(borerReader(in, transformFrom), createEncoder(out)).transform()
           finally out.close()
           Done
         }.recover {
