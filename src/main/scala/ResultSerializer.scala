@@ -476,6 +476,11 @@ class BorerNestedArraysTransformer(reader: Reader, handler: ResultEncoder) {
     }
     di != DI.EndOfInput
   }
+
+  def transform(): Unit = {
+    handler.writeStartOfInput()
+    while (transformNext()) {}
+  }
 }
 
 import io.bullet.borer.compat.akka.ByteStringProvider
@@ -620,8 +625,7 @@ object BorerNestedArraysTransformer {
       },
       encoder,
     )
-    encoder.writeStartOfInput()
-    while (transformer.transformNext()) {}
+    transformer.transform()
     buf.result()
   }
 
@@ -642,9 +646,8 @@ object BorerNestedArraysTransformer {
         Future {
           try {
             val encoder = createEncoder(out)
-            encoder.writeStartOfInput()
             val tr = new BorerNestedArraysTransformer(reader, encoder)
-            while (tr.transformNext()) {}
+            tr.transform()
           } finally out.close()
           Done
         }.recover {

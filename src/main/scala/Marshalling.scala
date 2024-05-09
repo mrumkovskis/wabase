@@ -272,19 +272,10 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
       case CompleteResult(bytes) =>
         HttpEntity.Strict(contentType, BorerNestedArraysTransformer.transform(bytes, createEncoder))
       case IncompleteResultSource(src)  =>
-        HttpEntity.Chunked.fromData(contentType, src.via(BorerNestedArraysTransformer.flow(createEncoder)))
-    }
-  }
-
-  def toEntitySerializedResultBlockingMarshaller(
-    contentType: ContentType,
-    createEncoder: EncoderFactory,
-  ): ToEntityMarshaller[SerializedResult] = {
-    Marshaller.withFixedContentType(contentType) {
-      case CompleteResult(bytes) =>
-        HttpEntity.Strict(contentType, BorerNestedArraysTransformer.transform(bytes, createEncoder))
-      case IncompleteResultSource(src) =>
-        HttpEntity.Chunked.fromData(contentType, BorerNestedArraysTransformer.blockingTransform(src, createEncoder))
+        if (MarshallingConfig.useBlockingTransformer)
+          HttpEntity.Chunked.fromData(contentType, BorerNestedArraysTransformer.blockingTransform(src, createEncoder))
+        else
+          HttpEntity.Chunked.fromData(contentType, src.via(BorerNestedArraysTransformer.flow(createEncoder)))
     }
   }
 
@@ -315,10 +306,7 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
           case (contentType, encCreator) =>
             val vd = qe.nameToViewDef(viewName)
             val fil = getResultFilter(viewName, resultFilter, sr.resultFilter)
-            if (MarshallingConfig.useBlockingTransformer)
-              toEntitySerializedResultBlockingMarshaller(contentType, encCreator(sr.isCollection, fil, vd))
-            else
-              toEntitySerializedResultMarshaller(contentType, encCreator(sr.isCollection, fil, vd))
+            toEntitySerializedResultMarshaller(contentType, encCreator(sr.isCollection, fil, vd))
         }.toSeq
         Marshaller.oneOf(marshallers: _*)
       }
@@ -410,5 +398,5 @@ object MarshallingConfig extends AppBase.AppConfig with Loggable {
     logger.debug(s"Custom db data max file sizes: $vals")
     vals
   }
-  lazy val useBlockingTransformer: Boolean = appConfig.getBoolean("use-blocking-transformer")
+  lazy val useBlockingTransformer: Boolean = appConfig.getBoolean("use-serialized-result-blocking-transformer")
 }
