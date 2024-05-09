@@ -18,7 +18,7 @@ import ResultEncoder._
 import com.typesafe.scalalogging.Logger
 
 import scala.concurrent.{ExecutionContext, Future}
-import scala.util.control.NonFatal
+import scala.util.Failure
 
 object ResultSerializer {
   trait ChunkInfo {
@@ -640,10 +640,8 @@ object BorerNestedArraysTransformer {
           try new BorerNestedArraysTransformer(borerReader(in, transformFrom), createEncoder(out)).transform()
           finally out.close()
           Done
-        }.recover {
-          case NonFatal(e) =>
-            logger.error("Blocking serialized transform error", e)
-            throw e
+        }.andThen {
+          case Failure(e) => logger.error("Blocking serialized transform error", e)
         }
       }
   }
