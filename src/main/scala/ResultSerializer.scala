@@ -23,6 +23,7 @@ import scala.util.control.NonFatal
 object ResultSerializer {
   trait ChunkInfo {
     def chunkSize(bufferSize: Int): Int
+    def chunkable(value: Any): Any // returns null for non-chunkable value, potentially chunkable value otherwise
   }
   class ByteStringChunker(bytes: ByteString, chunkSize: Int) {
     // chunk byte arrays to enable reactive streaming with limited buffer size
@@ -99,16 +100,17 @@ class ResultSerializer(
     private val buf       = new ByteStringBuilder
     private val encodable = createEncodable()
     private val encoder   = createEncoder(buf.asOutputStream)
-    private val chunkSize = encoder match {
+    private val (chunkSize, chunkInfo) = encoder match {
       case chunkInfo: ChunkInfo =>
-        chunkInfo.chunkSize(bufferSizeHint)
-      case _ => Int.MaxValue
+        (chunkInfo.chunkSize(bufferSizeHint), chunkInfo)
+      case _ => (Int.MaxValue, null)
     }
     if (chunkSize <= 0) {
       throw new IllegalArgumentException(
         s"Unable to chunk for buffer size $bufferSizeHint. " +
         s"Resulting chunk size is $chunkSize but should be > 0")
     }
+    private val isChunkingEnabled = chunkSize != Int.MaxValue
     private val neverChunkStringLength = chunkSize / 4   // max 4 utf-8 bytes per codepoint
     private var isChunking = false
     private var iterators  = encodable :: Nil
@@ -122,23 +124,31 @@ class ResultSerializer(
         case children: Iterator[_] =>
           iterators = children :: iterators
           encoder.writeArrayStart()
-        case s: String if chunkSize != Int.MaxValue && s.length > neverChunkStringLength =>
-          val stringChunker = new StringChunker(s, chunkSize)
-          if (stringChunker.shouldChunk) {
-            isChunking = true
-            iterators = stringChunker.chunks :: iterators
-            encoder.startChunks(TextChunks)
-          } else {
-            encoder.writeValue(s)
-          }
-        case bytes: Array[Byte] if chunkSize != Int.MaxValue && bytes.length > chunkSize =>
-          isChunking = true
-          iterators = new ByteArrayChunker(bytes, chunkSize).chunks :: iterators
-          encoder.startChunks(ByteChunks)
         // TODO blob / clob etc support
         case value =>
           if (isChunking)
             encoder.writeChunk(value)
+          else if (isChunkingEnabled)
+            chunkInfo.chunkable(value) match {
+              case null => encoder.writeValue(value)
+              case s: String =>
+                if (s.length > neverChunkStringLength) {
+                  val stringChunker = new StringChunker(s, chunkSize)
+                  if (stringChunker.shouldChunk) {
+                    isChunking = true
+                    iterators = stringChunker.chunks :: iterators
+                    encoder.startChunks(TextChunks)
+                  } else encoder.writeValue(value)
+                } else encoder.writeValue(value)
+              case bytes: Array[Byte] =>
+                if (bytes.length > chunkSize) {
+                  isChunking = true
+                  iterators = new ByteArrayChunker(bytes, chunkSize).chunks :: iterators
+                  encoder.startChunks(ByteChunks)
+                } else encoder.writeValue(value)
+              case x =>
+                sys.error(s"Unexpected class of chunkable: ${x.getClass.getName}")
+            }
           else
             encoder.writeValue(value)
       } else {
@@ -225,7 +235,12 @@ object BorerDatetimeEncoders {
 
 class BorerValueEncoder(w: Writer) {
   import BorerDatetimeEncoders._
-  val valueEncoder: PartialFunction[Any, Unit] = {
+  protected lazy val knownValueEncoder: PartialFunction[Any, Unit] =
+    initValueEncoder
+  protected lazy val valueEncoder: PartialFunction[Any, Unit] = {
+    knownValueEncoder orElse anyValueEncoder
+  }
+  protected def initValueEncoder: PartialFunction[Any, Unit] = {
     case null               => w.writeNull()
     case value: Boolean     => w writeBoolean value
     case value: Char        => w writeChar    value
@@ -255,6 +270,8 @@ class BorerValueEncoder(w: Writer) {
     case value: LocalDate   => w ~ value
     case value: LocalTime   => w ~ value
     case value: LocalDateTime => w ~ value
+  }
+  private val anyValueEncoder: PartialFunction[Any, Unit] = {
     case x                  => w writeString x.toString
   }
   def writeValue(value: Any):  Unit = valueEncoder(value)
@@ -297,6 +314,13 @@ class BorerNestedArraysEncoder(
     else if (bufferSize <= (  255 + 2)) bufferSize - 2
     else if (bufferSize <= (65535 + 3)) bufferSize - 3
     else 65535 // enough?
+  override def chunkable(value: Any): Any = value match {
+    case null           => value
+    case s: String      => value
+    case b: Array[Byte] => value
+    case _ if knownValueEncoder.isDefinedAt(value) => null
+    case x              => x.toString
+  }
 }
 
 object BorerNestedArraysEncoder {
@@ -311,7 +335,7 @@ object BorerNestedArraysEncoder {
     else
       new BorerNestedArraysEncoder(createWriter(outputStream, format), wrap = wrap) {
         val customValueEncoder = valueEncoderFactory(this)
-        override def writeValue(value: Any):  Unit = (customValueEncoder orElse valueEncoder)(value)
+        override def initValueEncoder = customValueEncoder orElse super.initValueEncoder
       }
   }
   def createWriter(outputStream:  OutputStream, format: Target = Cbor): Writer = format match {
@@ -505,13 +529,13 @@ object BorerNestedArraysTransformer {
       // XXX adding empty bytestring to queue because borer reader starts reading in constructor
       private val inQueue           = collection.mutable.Queue(ByteString.empty)
       private var inQueueByteCount  = 0
-      private val inMinByteCount    = bufferSizeHint * 4 // XXX ×4 because input buffer exhausted for some unknown reason
+      private val inMinByteCount    = bufferSizeHint
       private val outBuf            = new ByteStringBuilder
       private val transformable     = new Iterator[ByteString] {
         override def hasNext  = inQueue.nonEmpty || !isClosed(in)
         override def next()   = {
           if (inQueue.isEmpty) sys.error(
-            "TransformerFlow input buffer exhausted. " +
+            "TransformerFlow input buffer underflow. " +
             "Please use output of chunking serializer with matching buffer size" +
             " or split at (atomic) data item boundaries"
           )
