@@ -644,11 +644,8 @@ object BorerNestedArraysTransformer {
     StreamConverters.asOutputStream()
       .mapMaterializedValue { out =>
         Future {
-          try {
-            val encoder = createEncoder(out)
-            val tr = new BorerNestedArraysTransformer(reader, encoder)
-            tr.transform()
-          } finally out.close()
+          try new BorerNestedArraysTransformer(reader, createEncoder(out)).transform()
+          finally out.close()
           Done
         }.recover {
           case NonFatal(e) =>
