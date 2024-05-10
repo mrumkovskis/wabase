@@ -161,9 +161,9 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         if (context.viewName == "result_audit_test") {
           val res = context.serializedResult
           implicit val as = marshallers.system
-          res
-            .via(marshallers.serializedResultToJsonFlow(false,
-              new ResultRenderer.ViewFieldFilter(context.viewName, qe.nameToViewDef)))
+          BorerNestedArraysTransformer
+            .blockingTransform(res,
+              JsonResultRenderer(_, false, new ResultRenderer.ViewFieldFilter(context.viewName, qe.nameToViewDef)))
             .runFold(ByteString.empty){_ ++ _}
             .map { bytes =>
               val id = context.values("id").toString.toLong + 1
