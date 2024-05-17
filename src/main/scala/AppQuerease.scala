@@ -392,9 +392,30 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     do_action(view, actionName, data, env, fieldFilter)
   }
 
+  private def loggable(res: Resources, x: Any): String = {
+    def hinted(v: Any, s: String) = v match {
+      case _: Map[String @unchecked, _] => s"{$s}"
+      case _: Seq[_]                    => s"[$s]"
+      case _                            =>     s
+    }
+    x match {
+      case m: scala.collection.Map[String @unchecked, _] =>
+        m.map {
+          case (k, v) =>
+            val vs   = loggable(res, v)
+            val safe = Option(res.bindVarLogFilter).filter(_.isDefinedAt((k, vs))).map(_((k, vs))).getOrElse(vs)
+            s"$k -> ${hinted(v, safe)}"
+        }.mkString(", ")
+      case s: String => s
+      case s: scala.collection.Seq[_] =>
+        s.map(sv => hinted(sv, loggable(res, sv))).mkString(", ")
+      case "" => "\"\""
+      case x => s"$x"
+    }
+  }
   private def logContext(ctx: ActionContext, env: Map[String, Any], rf: ResourcesFactory) = {
     val res = rf.resources
-    ctx.log(s"Doing action '${ctx.name}'.\nEnv: $env\nCtx stack: [${
+    ctx.log(s"Doing action '${ctx.name}'.\nEnv: {${loggable(res, env)}}\nCtx stack: [${
       ctx.contextStack.map(_.name).mkString(", ")}]\nDatabase connections: [${(("[main]", res.conn) ::
       res.extraResources.map{case (n, r) => n -> r.conn}.toList).mkString(", ")}]")
   }
@@ -473,7 +494,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     def doStep(step: Step, stepDataF: Future[Map[String, Any]]): Future[QuereaseResult] = {
       import resourcesFactory._
       stepDataF flatMap { stepData =>
-        context.log(s"Doing action '${context.name}' step '$step'.\nData: $stepData")
+        context.log(s"Doing action '${context.name}' step '$step'.\nData: {${loggable(resourcesFactory.resources, stepData)}}")
         step match {
           case Evaluation(_, vts, op) =>
             doActionOp(op, doVarsTransforms(vts, stepData, stepData).result, context.env, context)

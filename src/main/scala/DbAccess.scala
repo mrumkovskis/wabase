@@ -261,7 +261,7 @@ object TresqlResources {
   }
 
   val bindVarLogFilter: Logging#BindVarLogFilter = {
-    case v: QueryBuilder#VarExpr if v.name == "password" => v.fullName + " = ***"
+    case (fullName, _) if fullName == "password" || fullName.startsWith("password.") => "***"
   }
 }
 

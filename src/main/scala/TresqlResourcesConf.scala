@@ -88,6 +88,8 @@ object TresqlResourcesConf extends Loggable {
     def tresqlConfFromConfig(cConf: Config, tunableOnly: Boolean) = {
       def getStringOpt(parameterName: String): Option[String] =
         Option(parameterName).filter(cConf.hasPath).filterNot(_ => tunableOnly).map(cConf.getString)
+      def getStringSetOpt(parameterName: String): Option[Set[String]] =
+        Option(parameterName).filter(cConf.hasPath).filterNot(_ => tunableOnly).map(cConf.getStringList).map(_.asScala.toSet)
       def getSeconds(parameterName: String): Int =
         Option(parameterName).filter(cConf.hasPath).map(cConf.getDuration).map(_.getSeconds.toInt).getOrElse(-1)
       def getInt(parameterName: String): Int =
@@ -102,6 +104,10 @@ object TresqlResourcesConf extends Loggable {
         override val maxResultSize:         Int = getInt("max-result-size")
         override val queryTimeout:          Int = getSeconds("query-timeout")
         override val recursiveStackDepth:   Int = getInt("recursive-stack-depth")
+        override val bindVarLogFilter:      Logging#BindVarLogFilter =
+          getStringSetOpt("confidential-value-variable-names").map { hide => {
+            case (fullName, _) if hide.contains(fullName) || hide.exists(h => fullName startsWith s"$h.") => "***"
+          }: Logging#BindVarLogFilter}.orNull
         override protected val isDbSet: Boolean = cConf.hasPathOrNull("db") && !tunableOnly
       }
     }
