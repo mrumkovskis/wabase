@@ -415,9 +415,11 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   }
   private def logContext(ctx: ActionContext, env: Map[String, Any], rf: ResourcesFactory) = {
     val res = rf.resources
-    ctx.log(s"Doing action '${ctx.name}'.\nEnv: {${loggable(res, env)}}\nCtx stack: [${
-      ctx.contextStack.map(_.name).mkString(", ")}]\nDatabase connections: [${(("[main]", res.conn) ::
+    ctx.log(s"Doing action '${ctx.name}'")
+    ctx.log(s"Ctx stack: [${ctx.contextStack.map(_.name).mkString(", ")}]")
+    ctx.log(s"Database connections: [${(("[main]", res.conn) ::
       res.extraResources.map{case (n, r) => n -> r.conn}.toList).mkString(", ")}]")
+    ctx.log(s"Env: {${loggable(res, env)}}")
   }
 
   private def do_action(
@@ -437,7 +439,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   ): Future[QuereaseResult] = {
     val vd = viewDef(view)
 
-    val ctx = ActionContext(view, actionName, env, Some(vd), quereaseActionLogger(s"$view.$actionName"),
+    val ctx = ActionContext(view, actionName, env, Some(vd), quereaseActionLogger(s"$view.$actionName.ctx"),
       fieldFilter, null, contextStack)
     logContext(ctx, env, resourcesFactory)
     val steps =
@@ -494,7 +496,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     def doStep(step: Step, stepDataF: Future[Map[String, Any]]): Future[QuereaseResult] = {
       import resourcesFactory._
       stepDataF flatMap { stepData =>
-        context.log(s"Doing action '${context.name}' step '$step'.\nData: {${loggable(resourcesFactory.resources, stepData)}}")
+        context.log(s"Doing action '${context.name}' step '$step'.")
+        context.log(s"Step data: {${loggable(resourcesFactory.resources, stepData)}}")
         step match {
           case Evaluation(_, vts, op) =>
             doActionOp(op, doVarsTransforms(vts, stepData, stepData).result, context.env, context)
