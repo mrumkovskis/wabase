@@ -3,6 +3,7 @@ package org
 import java.util.concurrent.TimeUnit.MILLISECONDS
 import com.zaxxer.hikari.{HikariConfig, HikariDataSource}
 
+import java.lang.reflect.InvocationTargetException
 import javax.sql.DataSource
 import scala.concurrent.duration.{Duration, FiniteDuration}
 import scala.jdk.CollectionConverters._
@@ -111,7 +112,10 @@ package object wabase extends Loggable {
           case (c, f) if parClass.isAssignableFrom(c) || c.isAssignableFrom(parClass) => f(parClass)
         }.getOrElse(sys.error(s"Cannot find value for function parameter. Unsupported parameter type: $parClass"))
 
-        method.invoke(obj, (method.getParameterTypes map param).asInstanceOf[Array[Object]]: _*) //cast is needed for scala 2.12.x
+        try method.invoke(obj, (method.getParameterTypes map param).asInstanceOf[Array[Object]]: _*) //cast is needed for scala 2.12.x
+        catch {
+          case e: InvocationTargetException if e.getCause != null => throw e.getCause
+        }
       case Array() => sys.error(s"Method $function not found in class $className")
       case m => sys.error(s"Multiple methods '$function' found: (${m.toList}) in class $className")
     }

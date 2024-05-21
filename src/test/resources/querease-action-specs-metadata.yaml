@@ -675,7 +675,7 @@ save:
 - if { :value = 'new' } :
     - foreach :children :
        - if { :value = 'new child' } :
-           - parent = :'..'.code
+           - parent = :'..'.code  # '..' denotes parent data since curent data is :children.<idx> element
            - insert this
 - get this
 
@@ -1169,7 +1169,7 @@ count:
 
 name: invocation_test_3
 table:
-api: get, list, delete, create, count
+api: get, list, delete, create, count, insert
 key: name
 fields:
   - name
@@ -1183,3 +1183,5 @@ create:
 - as any org.wabase.QuereaseActionTestManagerObj.free_result_render_list_test # no special list type
 count:
 - as any org.wabase.QuereaseActionTestManagerObj.person_dtos_list # no special type
+insert:
+- org.wabase.QuereaseActionTestManagerObj.businessException

@@ -1276,6 +1276,10 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
             Map("string_field" -> "text", "date_field" -> "2024-01-31", "filtered_field" -> "x", "children" ->
               List(Map("child" -> "child")))
           )
+      t7 <- recoverToExceptionIf[BusinessException](doAction("insert", "invocation_test_3", Map()))
+        .map {
+          _.getMessage shouldBe "Invocation error"
+        }
     } yield t1
   }
 

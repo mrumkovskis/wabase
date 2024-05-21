@@ -531,4 +531,7 @@ object QuereaseActionTestManagerObj {
       pers(3, "Ola", "F", java.sql.Date.valueOf("1988-10-09")),
     )
   }
+  def businessException(data: Map[String, Any]) = {
+    throw new BusinessException("Invocation error")
+  }
 }
