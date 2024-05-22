@@ -1212,8 +1212,16 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           reqWithoutBody.withEntity(clo.map(HttpEntity(ct, _, src)).getOrElse(HttpEntity(ct, src)))
       }
     }
+    def do_http: HttpRequest => Future[HttpResponse] = {
+      import context._
+      val http_logger = Logger(LoggerFactory.getLogger(s"$viewName.$actionName.http"))
+      req => {
+        http_logger.debug(s"HTTP ${req.method.value} ${req.uri}")
+        doHttpRequest(req)
+      }
+    }
     reqF
-      .flatMap(doHttpRequest)
+      .flatMap(do_http)
       .map(HttpResult)
       .map { r => op.conformTo.map(comp_res(r, _)).getOrElse(r) }
   }
