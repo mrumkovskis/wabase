@@ -540,7 +540,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           case x => Future.successful(x)
         } flatMap { res => s match {
           case Evaluation(n@Some(_), _, _) => curData
-            .flatMap(updateCurRes(_, n, dataForNextStep(res, context, false)))
+            .flatMap(updateCurRes(_, n, dataForNextStep(res, context, true)))
             .map(MapResult)
           case _ => Future.successful(res)
         }}
@@ -987,11 +987,15 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     }
     doActionOp(op.initOp, data, env, context).map(iterator)
     .flatMap { mapIterator =>
+      var idx = 0
       Future.traverse(mapIterator.toSeq) { itData =>
-        doSteps(op.action.steps, context.copy(stepName = "foreach"), Future.successful(itData))
+        val IdxName = "__idx"
+        val dataWithIdx = if (itData.contains(IdxName)) itData else itData + (IdxName -> idx)
+        idx += 1
+        doSteps(op.action.steps, context.copy(stepName = "foreach"), Future.successful(dataWithIdx))
           .flatMap {
             case MapResult(r) => Future.successful(r)
-            case _ => Future.successful(itData)
+            case _ => Future.successful(dataWithIdx)
           }
       }
     }.map(it => IteratorResult(it.iterator))

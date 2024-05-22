@@ -680,6 +680,17 @@ save:
 - get this
 
 
+name: foreach_test_3
+table:
+api: list
+fields:
+- nr      int
+- value
+list:
+- foreach []({'value3' value} + {'value2'} + {'value1'}){value}#(1) :
+    - nr = {:__idx + 1}
+
+
 name:   insert_update_test_1
 table:  simple_table
 api:    get, save
@@ -926,6 +937,7 @@ get:
 - forests = foreach :forests :
   - tree_list = as tree * http { '/tree', '?', :nr nr }
   - "'..'-="  # remove super data for easier assertion
+  - __idx -=  # remove idx for easier assertion
 
 
 name: not_found_test

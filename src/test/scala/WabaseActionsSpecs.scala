@@ -811,6 +811,9 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
           )
         )
       }
+      t5 <- doAction("list", "foreach_test_3", Map()).map {
+        _ shouldBe List(Map("nr" -> 1, "value" -> "value1"), Map("nr" -> 2, "value" -> "value2"), Map("nr" -> 3, "value" -> "value3"))
+      }
     } yield {
       t4
     }
