@@ -11,7 +11,7 @@ import org.mojoz.querease.{QuereaseExpressions, QuereaseMetadata, TresqlJoinsPar
 import org.tresql.{Cache, MacroResourcesImpl, QueryParser, SimpleCache, SimpleCacheBase, ast}
 import org.tresql.ast.{Exp, Variable}
 import org.tresql.parsing.QueryParsers
-import org.wabase.AppMetadata.Action
+import org.wabase.AppMetadata.{Action, JobAct}
 import org.wabase.AppMetadata.Action.TresqlExtraction.{OpTresqlTraverser, State, StepTresqlTraverser, opTresqlTraverser, stepTresqlTraverser}
 import org.wabase.AppMetadata.Action.{Validations, VariableTransform, VariableTransforms, ViewCall, traverseAction}
 
@@ -385,7 +385,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     log(s"Generating queries to be compiled for ${nameToJobDef.size} jobs")
     val startTime = System.currentTimeMillis
     val jobQueries = nameToJobDef.flatMap { case (jobName, job) =>
-      actionQueries("job", jobName, job.action).map(compilationUnit("action-queries", s"$jobName.job", job.db, _))
+      actionQueries(JobAct, jobName, job.action).map(compilationUnit("action-queries", s"$jobName.$JobAct", job.db, _))
     }
     val endTime = System.currentTimeMillis
     log(s"Query generation done in ${endTime - startTime} ms, ${jobQueries.size} queries generated")
@@ -536,7 +536,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     jobDefs.transform { case (jobName, jobDef) =>
       import Action._
       import TresqlExtraction._
-      val st = resolveDbAccessKeys("job", jobName, viewDefs, jobDefs, processJob[Seq[DbAccessKey]])
+      val st = resolveDbAccessKeys(JobAct, jobName, viewDefs, jobDefs, processJob[Seq[DbAccessKey]])
       val dbkeys = st.value.distinct
       jobDef.copy(dbAccessKeys = dbkeys)
     }
@@ -833,7 +833,7 @@ class OpParser(viewName: String, tresqlUri: TresqlUri, cache: OpParser.Cache)
   def jsonCodecOp: MemParser[JsonCodec] = """(from|to)""".r ~ "json" ~ operation ^^ {
     case mode ~ _ ~ op => JsonCodec(mode == "to", op)
   } named "json-op"
-  def jobOp: MemParser[Job] = "job" ~> expr ^^ {
+  def jobOp: MemParser[Job] = JobAct ~> expr ^^ {
     case ast.StringConst(value) => Job(value, false)
     case ast.Obj(i: ast.Ident, _, _, _, _) => Job(i.tresql, false)
     case e => Job(e.tresql, true)
@@ -966,6 +966,8 @@ object AppMetadata extends Loggable {
 
   def joinsParserCacheFactory(getResourceAsStream: String => InputStream, cacheSize: Int)(db: String): Option[Cache] =
     joinsParserCacheFactory(loadJoinsParserCache(getResourceAsStream), cacheSize)(db)
+
+  val JobAct = "job"
 
   object Action {
     val Get    = "get"
@@ -1184,7 +1186,7 @@ object AppMetadata extends Loggable {
               processView(stepTresqlTrav)(ns.copy(action = method, name = vn))
             case Job(nameTresql, isDynamic) =>
               if (isDynamic) us(state, nv(state.value)(Tresql(nameTresql)))
-              else processJob(stepTresqlTrav)(state.copy(action = "job", name = nameTresql))
+              else processJob(stepTresqlTrav)(state.copy(action = JobAct, name = nameTresql))
             case Invocation(_, _, o, _) => opTrTr(o)
           }
         }

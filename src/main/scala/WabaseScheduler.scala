@@ -4,9 +4,8 @@ import akka.actor.{Actor, ActorRef, ActorSystem, Props}
 import akka.http.scaladsl.server.RequestContext
 import com.typesafe.akka.extension.quartz.QuartzSchedulerExtension
 import org.wabase.WabaseScheduler.{JobResponse, Tick}
-
 import org.tresql._
-import org.wabase.AppMetadata.JobDef
+import org.wabase.AppMetadata.{JobAct, JobDef}
 
 import scala.concurrent.{ExecutionContext, Future}
 import scala.jdk.CollectionConverters._
@@ -56,30 +55,28 @@ class WabaseScheduler(service: AppServiceBase[_]) extends Loggable {
     val qe = service.app.qe
     val dbAccess = service.app.dbAccess
 
-    val emptyResFactory: ResourcesFactory = {
+    val resourcesFactory: ResourcesFactory = {
       val resTempl = dbAccess
         .withDbAccessLogger(dbAccess.tresqlResources.resourcesTemplate, s"${job.name}.job")
       val initRes = dbAccess.initResources(resTempl)
         ResourcesFactory(initRes, dbAccess.closeResources)(resTempl)
     }
-    implicit val resourcesFactory: ResourcesFactory =
-      if (job.explicitDb) emptyResFactory
-      else {
-        val (poolName, extraDbs) = qe.dbResourceNames(job.name, "job")
-        emptyResFactory.copy()(resources = emptyResFactory.initResources(poolName, extraDbs))
-      }
     implicit val executionContext: ExecutionContext = service.asInstanceOf[Execution].executor
     implicit val actorSystem: ActorSystem = service.asInstanceOf[Execution].system
     implicit val fileStreamer: FileStreamer = service match {
       case s: AppFileServiceBase[_] => s.fileStreamer.fileStreamer
       case _ => null
     }
-    implicit val httpCtx: RequestContext = null
-    implicit val qio: AppQuereaseIo[Dto] = service.app.qio
 
-    val ctx =
-      qe.ActionContext(job.name, "job", Map(), None, qe.quereaseActionLogger(s"${job.name}.job"))
-    qe.doSteps(job.action.steps, ctx, Future.successful(Map()))
+    qe.QuereaseAction(job.name, JobAct, Map(), Map())(
+        resourcesFactory, fileStreamer, reqCtx = null, qio = service.app.qio)
+      .run
+      .map {
+        case QuereaseResultWithCleanup(result, cleanup) =>
+          cleanup(None)
+          result
+        case r => r
+      }
   }
 }
 

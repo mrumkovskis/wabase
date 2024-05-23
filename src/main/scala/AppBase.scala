@@ -51,7 +51,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
   import qe.{viewDef, viewDefOption, classToViewNameMap, viewNameToClassMap}
 
   protected def isQuereaseActionDefined(viewName: String, actionName: String) =
-    qe.viewDefOption(viewName).flatMap(qe.quereaseActionOpt(_, actionName)).isDefined
+    qe.quereaseActionOpt(viewName, actionName).isDefined
 
   protected def hasLegacyHandlers(viewName: String, actionName: String): Boolean = {
     val handler = actionName match {

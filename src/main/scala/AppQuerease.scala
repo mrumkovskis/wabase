@@ -274,6 +274,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     KeyResult(ir, viewName, getKeyValues(viewName, data ++ ir.toMap, forApi = true))
   }
 
+
+
   /********************************
    ******** Querease actions ******
    ********************************/
@@ -290,7 +292,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   }
   object QuereaseAction {
     def apply(
-      viewName: String,
+      objName: String,
       actionName: String,
       data: Map[String, Any],
       env: Map[String, Any],
@@ -302,11 +304,10 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     ): QuereaseAction[QuereaseResult] = {
         new QuereaseAction[QuereaseResult] {
           def run(implicit ec: ExecutionContext, as: ActorSystem) = {
-            val vd = viewDef(viewName)
             implicit val resFac =
-              if (AugmentedAppViewDef(vd).explicitDb) resourcesFactory
+              if (isExplicitDb(objName, actionName)) resourcesFactory
               else {
-                val (poolName, extraDbs) = dbResourceNames(viewName, actionName)
+                val (poolName, extraDbs) = dbResourceNames(objName, actionName)
                 resourcesFactory.copy()(resources = resourcesFactory.initResources(poolName, extraDbs))
               }
             implicit val fs = fileStreamer
@@ -325,7 +326,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
             }
 
             try {
-              doAction(viewName, actionName, data, env, fieldFilter).map {
+              doAction(objName, actionName, data, env, fieldFilter).map {
                 processResult(_, closeResources(resources, false, _))
               }.andThen {
                 case Failure(NonFatal(exception)) => closeResources(resources, true, Option(exception))
@@ -353,16 +354,27 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   ) {
     val name = s"$viewName.$actionName" + Option(stepName).map(s => s".$s").getOrElse("")
   }
-  private[wabase] def quereaseActionOpt(view: ViewDef, actionName: String) =
-    view.actions.get(actionName)
-      .orElse(actionName match {
-        case Action.Insert | Action.Update | Action.Upsert =>
-          view.actions.get(Action.Save)
-        case _ => None
-      })
+
+  private[wabase] def quereaseActionOpt(objectName: String, actionName: String) = {
+    if (actionName == JobAct) Option(jobDef(objectName).action)
+    else {
+      val vd = viewDef(objectName)
+      vd.actions.get(actionName)
+        .orElse(actionName match {
+          case Action.Insert | Action.Update | Action.Upsert =>
+            vd.actions.get(Action.Save)
+          case _ => None
+        })
+    }
+  }
+
+  private def isExplicitDb(objectName: String, actionName: String) = {
+    if (actionName == JobAct) jobDef(objectName).explicitDb
+    else viewDef(objectName).explicitDb
+  }
 
   def dbResourceNames(objectName: String, actionName: String): (PoolName, Seq[DbAccessKey]) = {
-    if (actionName == "job") {
+    if (actionName == JobAct) {
       val jdo = jobDefOption(objectName)
       val poolName = jdo.flatMap(j => Option(j.db)).map(PoolName) getOrElse PoolName(defaultCpName)
       val extraDbs = jdo.map(_.dbAccessKeys.filter(_.db != null)).getOrElse(Nil)
@@ -437,13 +449,11 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     reqCtx: RequestContext,
     qio: AppQuereaseIo[Dto],
   ): Future[QuereaseResult] = {
-    val vd = viewDef(view)
-
-    val ctx = ActionContext(view, actionName, env, Some(vd), quereaseActionLogger(s"$view.$actionName.ctx"),
+    val ctx = ActionContext(view, actionName, env, viewDefOption(view), quereaseActionLogger(s"$view.$actionName.ctx"),
       fieldFilter, null, contextStack)
     logContext(ctx, env, resourcesFactory)
     val steps =
-      quereaseActionOpt(vd, actionName)
+      quereaseActionOpt(view, actionName)
         .map(_.steps)
         .getOrElse(List(Action.Return(None, Nil, Action.ViewCall(actionName, view, null))))
     doSteps(steps, ctx, Future.successful(data))
@@ -828,7 +838,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     import resFac._
     val jobName =
       if (job.isDynamic) Query(job.nameTresql).unique[String] else job.nameTresql
-    val ctx = ActionContext(jobName, "job", env, None, context.log,
+    val ctx = ActionContext(jobName, JobAct, env, None, context.log,
       contextStack = context :: context.contextStack)
     val jd = jobDef(jobName)
     doSteps(jd.action.steps, ctx, Future.successful(data))
