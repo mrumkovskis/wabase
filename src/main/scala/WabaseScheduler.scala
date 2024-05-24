@@ -1,9 +1,8 @@
 package org.wabase
 
 import akka.actor.{Actor, ActorRef, ActorSystem, Props}
-import akka.http.scaladsl.server.RequestContext
 import com.typesafe.akka.extension.quartz.QuartzSchedulerExtension
-import org.wabase.WabaseScheduler.{JobResponse, Tick}
+import org.wabase.WabaseScheduler.Tick
 import org.tresql._
 import org.wabase.AppMetadata.{JobAct, JobDef}
 
@@ -68,21 +67,14 @@ class WabaseScheduler(service: AppServiceBase[_]) extends Loggable {
       case _ => null
     }
 
-    qe.QuereaseAction(job.name, JobAct, Map(), Map())(
+    qe.QuereaseAction(job.name, JobAct, Map(), Map(), doCleanup = true)(
         resourcesFactory, fileStreamer, reqCtx = null, qio = service.app.qio)
       .run
-      .map {
-        case QuereaseResultWithCleanup(result, cleanup) =>
-          cleanup(None)
-          result
-        case r => r
-      }
   }
 }
 
 object WabaseScheduler {
   case class Tick(job: JobDef, executor: WabaseScheduler)
-  case class JobResponse(data: Any) // for testing purposes, scheduler.schedule will ignore these messages
 }
 
 class WabaseJobActor(service: AppServiceBase[_]) extends Actor {
@@ -99,17 +91,14 @@ class WabaseJobActor(service: AppServiceBase[_]) extends Actor {
             case Success(r) =>
               WabaseJobStatusController.updateCronJobStatus(jobName, "SUCC")(dbAccess)
               context.system.log.info(jobName + " ended")
-              s ! JobResponse(r)
             case Failure(e) =>
               context.system.log.error(e, jobName)
               WabaseJobStatusController.updateCronJobStatus(jobName, "ERR")(dbAccess)
               context.system.log.info(jobName + " ended with error")
-              s ! JobResponse(e)
           }(context.dispatcher)
-        } else s ! JobResponse(())
+        }
       } catch {
         case NonFatal(e) =>
-          s ! JobResponse(e)
           throw e
       }
   }

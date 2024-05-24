@@ -297,6 +297,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       data: Map[String, Any],
       env: Map[String, Any],
       fieldFilter: FieldFilter = null,
+      doCleanup: Boolean = false,
     )(resourcesFactory: ResourcesFactory,
       fileStreamer: FileStreamer,
       reqCtx: RequestContext,
@@ -319,7 +320,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
                 // close outer resources
                 cleanup(None)
                 processResult(result, cl)
-              case r: QuereaseCloseableResult => QuereaseResultWithCleanup(r, cleanup)
+              case r: QuereaseCloseableResult if !doCleanup => QuereaseResultWithCleanup(r, cleanup)
               case r: QuereaseResult =>
                 cleanup(None)
                 r
