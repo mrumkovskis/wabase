@@ -688,7 +688,7 @@ fields:
 - value
 list:
 - foreach []({'value3' value} + {'value2'} + {'value1'}){value}#(1) :
-    - nr = {:__idx + 1}
+    - nr = :__idx + 1
 
 
 name:   insert_update_test_1
