@@ -339,6 +339,9 @@ trait WabaseApp[User] {
     if (value == "null") null else qe.convertToType(field.type_, value)
   def prepareKey(viewName: String, keyValues: Seq[Any], actionName: String): Map[String, Any] = {
     val keyFields = qe.viewNameToKeyFields(viewName).filterNot(_.api.excluded)
+    prepareKey(viewName, keyFields, keyValues, actionName)
+  }
+  def prepareKey(viewName: String, keyFields: Seq[FieldDef], keyValues: Seq[Any], actionName: String): Map[String, Any] = {
     if (keyValues.nonEmpty) {
       if (keyValues.length != keyFields.length)
         throw new BusinessException(
