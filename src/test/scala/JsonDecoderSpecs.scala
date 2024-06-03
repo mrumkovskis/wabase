@@ -60,6 +60,16 @@ class JsonDecoderSpecs extends FlatSpec with Matchers {
     decoded("l_time") shouldBe sql.Time.valueOf("02:00:00").toLocalTime
   }
 
+  it should "decode iso offset datetime to sql timestamp" in {
+    val obj = new decoder_test
+    val viewName = classToViewName(obj.getClass)
+    val incoming = """{
+      "date_time": "1992-05-27T00:00:00+03:00"
+    }""".replaceAll("\n    ", "\n")
+    val decoded = decodeToMap(ByteString(incoming), viewName)
+    decoded("date_time") shouldBe sql.Timestamp.valueOf("1992-05-27 00:00:00")
+  }
+
   it should "decode json to compatible map" in {
 
     // empty
