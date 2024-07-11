@@ -12,7 +12,10 @@ class YamlRouteDefLoader(
 ) {
 
   lazy val routeDefs: Seq[RouteDef] = {
-    YamlRawDefLoader.rawDefs("route", yamlMd, isRouteDef).transform { (routeName, rdMap) =>
+    val ds = yamlMd.flatMap(_.parsed).filter(_ contains "route").map(s => s("route").toString -> s)
+    val duplicateNames = ds.map(_._1).groupBy(identity).filter(_._2.size > 1).keys
+    require(duplicateNames.isEmpty, s"Duplicate route definitions: ${duplicateNames.mkString(", ")}")
+    ds.toMap.transform { (routeName, rdMap) =>
 
       val parser = actionParser(routeName)
 
@@ -33,7 +36,4 @@ class YamlRouteDefLoader(
       RouteDef(routeName, path, auth, state, filter, transformer)
     }.values.toList
   }
-
-  private val routeDefPattern       = "(^|\\n)route\\s*:".r // XXX
-  private def isRouteDef(d: YamlMd) = routeDefPattern.findFirstIn(d.body).isDefined
 }
