@@ -64,16 +64,6 @@ trait WabaseApp[User] {
       copy(resultFilter = resFil)
   }
 
-  protected def fieldFilter(context: AppActionContext): FieldFilter = {
-    def fieldFilter(resultFilter: ResultRenderer.ResultFilter): FieldFilter = {
-      if (resultFilter == null) null else new FieldFilter {
-        override def shouldQuery(field: String) = resultFilter.shouldRender(field)
-        override def childFilter(field: String) = fieldFilter(resultFilter.childFilter(field))
-      }
-    }
-    fieldFilter(context.resultFilter)
-  }
-
   case class WabaseResult(ctx: AppActionContext, result: QuereaseResult)
 
   /** Override to request serialized result source in AppActionContext, e.g., for auditing */
@@ -174,7 +164,7 @@ trait WabaseApp[User] {
   def simpleAction(context: AppActionContext): ActionHandlerResult = {
     import context._
     val rf = resourceFactory(context)
-    qe.QuereaseAction(viewName, actionName, values, env, fieldFilter(context))(rf, fileStreamer, reqCtx, qio)
+    qe.QuereaseAction(viewName, actionName, values, env, context.resultFilter)(rf, fileStreamer, reqCtx, qio)
       .map(WabaseResult(context, _))
   }
 
@@ -216,9 +206,8 @@ trait WabaseApp[User] {
       case x => throwUnexpectedResultClass(x)
 
     }
-    val fFilter = fieldFilter(context)
     val rf = resourceFactory(context)
-    qe.QuereaseAction(viewName, Action.Get, values, env, fFilter)(rf, fileStreamer, reqCtx, qio).map(oldVal)
+    qe.QuereaseAction(viewName, Action.Get, values, env, context.resultFilter)(rf, fileStreamer, reqCtx, qio).map(oldVal)
   }
   protected def throwOldValueNotFound(message: String, locale: Locale): Nothing =
     throw new org.mojoz.querease.NotFoundException(translate(message)(locale))
@@ -244,8 +233,7 @@ trait WabaseApp[User] {
         validateFields(viewName, saveable)
         this.customValidations(saveableContext)(state.locale)
         val rf = resourceFactory(context)
-        val fFilter = fieldFilter(context)
-        qe.QuereaseAction(viewName, context.actionName, saveable, env, fFilter)(rf, fileStreamer, reqCtx, qio)
+        qe.QuereaseAction(viewName, context.actionName, saveable, env, context.resultFilter)(rf, fileStreamer, reqCtx, qio)
           .map(WabaseResult(saveableContext, _))
           .recover { case ex => friendlyConstraintErrorMessage(viewDef, throw ex)(state.locale) }
       }
@@ -256,7 +244,7 @@ trait WabaseApp[User] {
     maybeGetOldValue(context).flatMap { oldValue =>
       val richContext = context.copy(oldValue = oldValue)
       val rf = resourceFactory(richContext)
-      qe.QuereaseAction(viewName, actionName, values, env, fieldFilter(context))(rf, fileStreamer, reqCtx, qio)
+      qe.QuereaseAction(viewName, actionName, values, env, context.resultFilter)(rf, fileStreamer, reqCtx, qio)
         .map(WabaseResult(richContext, _))
         .recover { case ex => friendlyConstraintErrorMessage(throw ex)(state.locale) }
     }
@@ -357,12 +345,14 @@ trait WabaseApp[User] {
     } else Map.empty
   }
 
+  private val fieldFilterParameterNameOpt =
+    Option("app.field-filter-parameter-name").filter(config.hasPath).map(config.getString)
 
   protected def addResultFilter(context: AppActionContext): AppActionContext = {
     if (context.resultFilter != null) context
     else context.actionName match {
       case Action.Get | Action.List | Action.Create =>
-        val allowed = context.params.get("cols").map {
+        val allowed = fieldFilterParameterNameOpt.flatMap(context.params.get).map {
           case null => null
           case seq: Seq[_] => seq.map(_.toString).toSet
           case cols => s"$cols".split(",").map(_.trim).toSet
@@ -371,8 +361,8 @@ trait WabaseApp[User] {
         if (allowed != null) {
           class ColsFilter(viewName: String, nameToViewDef: Map[String, ViewDef])
             extends ResultRenderer.ViewFieldFilter(viewName, nameToViewDef) {
-            override def shouldRender(field: String) =
-              allowed.contains(field) && super.shouldRender(field)
+            override def shouldInclude(field: String) =
+              allowed.contains(field) && super.shouldInclude(field)
             override def childFilter(field: String) = viewDef.fieldOpt(field)
               .map(_.type_.name)
               .map(new ColsFilter(_, nameToViewDef))

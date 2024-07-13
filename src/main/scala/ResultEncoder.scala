@@ -12,6 +12,7 @@ import java.io.{OutputStream, OutputStreamWriter}
 import java.math.{BigDecimal => JBigDecimal, BigInteger => JBigInteger}
 import java.time.{LocalDate, LocalDateTime, LocalTime}
 import java.util.zip.ZipOutputStream
+import org.mojoz.querease.FieldFilter
 import org.mojoz.metadata.{Type, ViewDef}
 import org.wabase.ResultEncoder.{ByteChunks, ChunkType, TextChunks}
 
@@ -118,7 +119,7 @@ abstract class ResultRenderer(
   }
   protected def shouldRender(name: String): Boolean = {
     val context = contextStack.head
-    context.resultFilter == null || context.resultFilter.shouldRender(name)
+    context.resultFilter == null || context.resultFilter.shouldInclude(name)
   }
   protected def childFilter(resFilter: ResultRenderer.ResultFilter, fieldName: String) =
     if (resFilter != null)
@@ -266,12 +267,12 @@ object ResultRenderer {
     var namesToHide:  Set[String]   = Set.empty
   }
 
-  trait ResultFilter {
+  trait ResultFilter extends FieldFilter {
+    override def shouldInclude(field: String): Boolean
+    override def childFilter  (field: String): ResultFilter
     def name: String
-    def shouldRender(field: String): Boolean
     def isCollection(field: String): Boolean
     def type_       (field: String): Type
-    def childFilter (field: String): ResultFilter
     def unfilteredNames: List[String]
   }
 
@@ -279,7 +280,7 @@ object ResultRenderer {
     protected val viewDef =
       nameToViewDef.getOrElse(viewName, sys.error(s"View $viewName not found - can not render result"))
     override def name = viewName
-    override def shouldRender(field: String) = viewDef.fieldOpt(field).exists(!_.api.excluded)
+    override def shouldInclude(field: String)= viewDef.fieldOpt(field).exists(!_.api.excluded)
     override def isCollection(field: String) = viewDef.fieldOpt(field).exists(_.isCollection)
     override def type_       (field: String) = viewDef.fieldOpt(field).map(_.type_).orNull
     override def childFilter (field: String) = viewDef.fieldOpt(field)
@@ -291,7 +292,7 @@ object ResultRenderer {
 
   class NoFilter extends ResultFilter {
     override def name: String = null
-    override def shouldRender(field: String): Boolean = true
+    override def shouldInclude(field: String): Boolean = true
     override def isCollection(field: String): Boolean = true
     override def type_(field: String): Type = null
     override def childFilter(field: String): ResultFilter = this
@@ -300,12 +301,12 @@ object ResultRenderer {
 
   class IntersectionFilter(filter1: ResultFilter, filter2: ResultFilter) extends ResultFilter {
     override def name = s"(${filter1.name}, ${filter2.name})"
-    override def shouldRender(field: String) = filter1.shouldRender(field) && filter2.shouldRender(field)
+    override def shouldInclude(field: String) = filter1.shouldInclude(field) && filter2.shouldInclude(field)
     override def isCollection(field: String) = filter2.isCollection(field)
     override def type_       (field: String) = filter2.type_(field)
     override def childFilter (field: String) =
       new IntersectionFilter(filter1.childFilter(field), filter2.childFilter(field))
-    override def unfilteredNames = filter1.unfilteredNames
+    override def unfilteredNames = filter1.unfilteredNames.filter(filter2.shouldInclude)
   }
 
   class JsonForwarder(renderer: ResultRenderer) {
@@ -490,7 +491,7 @@ class FlatTableResultRenderer(
   override protected def shouldRender(name: String): Boolean = {
     val context = contextStack.head
     val rf = context.resultFilter
-    rf == null || (rf.shouldRender(name) && !rf.isCollection(name) && !Option(rf.type_(name)).exists(_.isComplexType))
+    rf == null || (rf.shouldInclude(name) && !rf.isCollection(name) && !Option(rf.type_(name)).exists(_.isComplexType))
   }
   override protected def renderHeader():  Unit = renderer.renderHeader()
   override protected def renderKey(key: Any): Unit = {}

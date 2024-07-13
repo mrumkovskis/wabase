@@ -1046,19 +1046,19 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         doAction("get", "cols_filter_test_1", Map("id" -> id), Map.empty)
           .map( _ shouldBe person)
       t1 <-
-        doAction("get", "cols_filter_test_1", Map("id" -> id), Map.empty, Map("cols" -> ""))
+        doAction("get", "cols_filter_test_1", Map("id" -> id), Map.empty, Map("fields" -> ""))
           .map( _ shouldBe (person - "surname" - "birthdate" - "sex"))
       t2 <-
-        doAction("get", "cols_filter_test_1", Map("id" -> id), Map.empty, Map("cols" -> "name"))
+        doAction("get", "cols_filter_test_1", Map("id" -> id), Map.empty, Map("fields" -> "name"))
           .map( _ shouldBe (person - "surname" - "birthdate" - "sex"))
       t3 <-
-        doAction("get", "cols_filter_test_1", Map("id" -> id), Map.empty, Map("cols" -> "name, sex"))
+        doAction("get", "cols_filter_test_1", Map("id" -> id), Map.empty, Map("fields" -> "name, sex"))
           .map( _ shouldBe (person - "surname" - "birthdate"))
       t4 <-
-        doAction("get", "cols_filter_test_1", Map("id" -> id), Map.empty, Map("cols" -> "name, surname"))
+        doAction("get", "cols_filter_test_1", Map("id" -> id), Map.empty, Map("fields" -> "name, surname"))
           .map( _ shouldBe (person - "birthdate" - "sex"))
       t5 <-
-        doAction("get", "cols_filter_test_1", Map("id" -> id), Map.empty, Map("cols" -> "sex"))
+        doAction("get", "cols_filter_test_1", Map("id" -> id), Map.empty, Map("fields" -> "sex"))
           .map( _ shouldBe (person - "surname" - "birthdate"))
       cleanup <-
         doAction("delete", "cols_filter_test_1", Map("id" -> id))
@@ -1073,7 +1073,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       "surname" -> "CfGetSurname"
     )
     def listAndFind(id: Any, cols: String) =
-      doAction("list", "cols_filter_test_1", Map.empty, Map.empty, Map("cols" -> cols), removeIdsFlag = false)
+      doAction("list", "cols_filter_test_1", Map.empty, Map.empty, Map("fields" -> cols), removeIdsFlag = false)
         .map(_.asInstanceOf[Seq[Map[String, Any]]].find(_("id") == id).map(_ - "id").get)
     for {
       id <-
