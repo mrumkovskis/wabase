@@ -103,16 +103,17 @@ package object wabase extends Loggable {
     }
   }
 
-  def invokeFunction(className: String, function: String, params: Seq[(Class[_], Class[_] => Any)]): Any = {
+  def invocationParameter(availableParameters: Seq[(Class[_], Class[_] => Any)])(parameterClass: Class[_]): Any =
+    availableParameters.collectFirst {
+      case (c, f) if parameterClass.isAssignableFrom(c) || c.isAssignableFrom(parameterClass) => f(parameterClass)
+    }.getOrElse(sys.error(s"Cannot find value for function parameter. Unsupported parameter type: $parameterClass"))
+
+  def invokeFunction(className: String, function: String, getParameter: Class[_] => Any): Any = {
     val obj = getObjectOrNewInstance(className, s"function $function")
     val clazz = obj.getClass
     clazz.getMethods.filter(_.getName == function) match {
       case Array(method) =>
-        def param(parClass: Class[_]) = params.collectFirst {
-          case (c, f) if parClass.isAssignableFrom(c) || c.isAssignableFrom(parClass) => f(parClass)
-        }.getOrElse(sys.error(s"Cannot find value for function parameter. Unsupported parameter type: $parClass"))
-
-        try method.invoke(obj, (method.getParameterTypes map param).asInstanceOf[Array[Object]]: _*) //cast is needed for scala 2.12.x
+        try method.invoke(obj, (method.getParameterTypes map getParameter).asInstanceOf[Array[Object]]: _*) // cast is needed for scala 2.12.x
         catch {
           case e: InvocationTargetException if e.getCause != null => throw e.getCause
         }
@@ -120,6 +121,9 @@ package object wabase extends Loggable {
       case m => sys.error(s"Multiple methods '$function' found: (${m.toList}) in class $className")
     }
   }
+
+  def invokeFunction(className: String, function: String, availableParameters: Seq[(Class[_], Class[_] => Any)]): Any =
+    invokeFunction(className, function, invocationParameter(availableParameters)(_))
 
   case class PoolName(connectionPoolName: String)
   lazy val DEFAULT_CP = {

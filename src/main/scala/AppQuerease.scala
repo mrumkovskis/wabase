@@ -712,6 +712,9 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     }
   }
 
+  protected def getInvocationParameter(defaultGetParameter: Class[_] => Any)(parameterClass: Class[_]): Any =
+    defaultGetParameter(parameterClass)
+
   protected def doInvocation(
     op: Action.Invocation,
     data: Map[String, Any],
@@ -737,7 +740,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         (classOf[RequestContext], _ => reqCtx),
         (classOf[AppQuereaseIo[Dto]], _ => qio),
       )
-      org.wabase.invokeFunction(className, function, params ++ contextParams)
+      org.wabase.invokeFunction(className, function,
+        getInvocationParameter(org.wabase.invocationParameter(params ++ contextParams)(_))(_))
     }
 
     def wrongRes(x: Any) =
