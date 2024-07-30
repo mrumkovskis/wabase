@@ -1,6 +1,6 @@
 package org.wabase
 
-import com.typesafe.config.{Config, ConfigFactory, ConfigObject, ConfigValueType}
+import com.typesafe.config.{Config, ConfigFactory, ConfigObject, ConfigResolveOptions, ConfigValueType}
 import org.mojoz.querease.TresqlMetadata
 import org.tresql.{Cache, Dialect, Logging, Metadata, Resources, ResourcesTemplate, SimpleCache, dialects}
 
@@ -25,7 +25,7 @@ trait TresqlResourcesConf {
 
 object TresqlResourcesConf extends Loggable {
 
-  val config = ConfigFactory.load("tresql-resources.conf")
+  val config = ConfigFactory.parseResources("tresql-resources.conf").resolve(ConfigResolveOptions.noSystem())
   val wabaseConf = ConfigFactory.load
 
   lazy val DefaultCpName: String =
