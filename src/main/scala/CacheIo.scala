@@ -25,6 +25,9 @@ object CacheIo {
   implicit lazy val deleteCodec:        Codec[Delete]         = deriveCodec    [Delete]        // TODO
   implicit lazy val colDefCodec:        Codec[ColDef]         = deriveCodec    [ColDef]        // TODO
   implicit lazy val insertCodec:        Codec[Insert]         = deriveCodec    [Insert]        // TODO
+  implicit lazy val insertCfl:          Codec[InsertConflict] = deriveCodec    [InsertConflict]// TODO
+  implicit lazy val insertCflAct:       Codec[InsertConflictAction] = deriveCodec    [InsertConflictAction]// TODO
+  implicit lazy val insertCflTrg:       Codec[InsertConflictTarget] = deriveCodec    [InsertConflictTarget]// TODO
   implicit lazy val updateCodec:        Codec[Update]         = deriveCodec    [Update]        // TODO
   implicit lazy val withTableDefCodec:  Codec[WithTableDef]   = deriveCodec    [WithTableDef]  // TODO
   implicit lazy val dmlDefBaseCodec:    Codec[DMLDefBase]     = deriveAllCodecs[DMLDefBase]    // TODO

@@ -110,7 +110,7 @@ case class DbResult(result: QuereaseResult, cleanup: Option[Throwable] => Unit)
   extends QuereaseResult
 case class ConfResult(param: String, result: Any) extends QuereaseResult
 
-class AppQuereaseIo[DTO <: Dto](val qe: QuereaseMetadata with QuereaseResolvers)
+class AppQuereaseIo[DTO <: Dto](val qe: QuereaseMetadata with QuereaseResolvers with ValueTransformer)
   extends ScalaDtoQuereaseIo[DTO](qe) with JsonConverter[DTO] {
 
   def fill[B <: DTO: Manifest](jsObject: JsObject): B = {
