@@ -44,7 +44,7 @@ lazy val testDependencies = Seq(
     "com.vladsch.flexmark"        % "flexmark-all"                      % "0.62.2"  % "it,test",
 )
 
-ThisBuild / versionScheme          := Some("pvp") // semver disabled for 6.3.0 to upgrade logback-classic
+ThisBuild / versionScheme          := Some("semver-spec") // semver was disabled for 6.3.0 to upgrade logback-classic
 ThisBuild / versionPolicyIntention := Compatibility.BinaryCompatible
 
 lazy val wabase = (project in file("."))
