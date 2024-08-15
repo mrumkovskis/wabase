@@ -57,7 +57,7 @@ lazy val wabase = (project in file("."))
       "io.bullet"                  %% "borer-derivation"      % borerV,
       "io.bullet"                  %% "borer-compat-akka"     % borerV,
       "com.enragedginger"          %% "akka-quartz-scheduler" % "1.9.3-akka-2.6.x"  % Optional,
-      "com.github.librepdf"         % "openpdf"               % "1.3.41"            % Optional,
+      "com.github.librepdf"         % "openpdf"               % "1.3.43"            % Optional,
       "org.xhtmlrenderer"           % "flying-saucer-pdf-openpdf" % "9.4.0"         % Optional,
       "org.simplejavamail"          % "simple-java-mail"      % "8.6.3"             % Optional,
       "org.graalvm.js"              % "js"                    % "22.3.5"            % Optional,
