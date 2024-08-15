@@ -1,4 +1,4 @@
-val scalaV = "2.13.13"
+val scalaV = "2.13.14"
 
 val akkaV     =  "2.6.21" // Ensure Apache-2.0 license
 val akkaHttpV = "10.2.10" // Ensure Apache-2.0 license
