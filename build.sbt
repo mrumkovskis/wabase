@@ -1,4 +1,4 @@
-val scalaV    = "2.13.13" // "3.3.3"
+val scalaV    = "2.13.14" // "3.3.3"
 
 val akkaV     =  "2.6.21" // Ensure Apache-2.0 license
 val akkaHttpV = "10.2.10" // Ensure Apache-2.0 license
@@ -25,7 +25,7 @@ lazy val wabase = (project in file("."))
   scalaVersion := scalaV,
   crossScalaVersions := Seq(
     "3.3.3",
-    "2.13.13",
+    "2.13.14",
     "2.12.19",
   ),
   scalacOptions ++= Seq("-unchecked", "-deprecation", "-feature"),
@@ -48,8 +48,8 @@ lazy val wabase = (project in file("."))
       "ch.qos.logback"              % "logback-classic"       % "1.5.3",
       "org.mojoz"                  %% "mojoz"                 % mojozV,
       "org.mojoz"                  %% "querease"              % quereaseV,
-      "commons-validator"           % "commons-validator"     % "1.8.0",
-      "commons-codec"               % "commons-codec"         % "1.16.1",
+      "commons-validator"           % "commons-validator"     % "1.9.0",
+      "commons-codec"               % "commons-codec"         % "1.17.1",
       "org.postgresql"              % "postgresql"            % "42.7.3",
       "com.lambdaworks"             % "scrypt"                % "1.4.0",
       "org.tresql"                 %% "tresql"                % tresqlV,
@@ -63,11 +63,11 @@ lazy val wabase = (project in file("."))
       "org.graalvm.js"              % "js"                    % "22.3.5"            % Optional,
       "org.graalvm.js"              % "js-scriptengine"       % "22.3.5"            % Optional,
     ) ++ Seq( // for test
-      "org.scalatest"              %% "scalatest"             % "3.2.18"  %     Test,
+      "org.scalatest"              %% "scalatest"             % "3.2.19"  %     Test,
       "com.typesafe.akka"          %% "akka-http-testkit"     % akkaHttpV %     Test  cross CrossVersion.for3Use2_13,
       "com.typesafe.akka"          %% "akka-testkit"          % akkaV     %     Test  cross CrossVersion.for3Use2_13,
       "com.typesafe.akka"          %% "akka-stream-testkit"   % akkaV     %     Test  cross CrossVersion.for3Use2_13,
-      "org.hsqldb"                  % "hsqldb"                % "2.7.2"   %     Test,
+      "org.hsqldb"                  % "hsqldb"                % "2.7.3"   %     Test,
       "com.vladsch.flexmark"        % "flexmark-all"          % "0.64.8"  %     Test,
     )
   },
