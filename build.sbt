@@ -26,7 +26,7 @@ lazy val dependencies = {
     "org.mojoz"                  %% "mojoz"                             % "4.3.0",
     "org.mojoz"                  %% "querease"                          % "6.3.0",
     "commons-validator"           % "commons-validator"                 % "1.9.0",
-    "commons-codec"               % "commons-codec"                     % "1.16.1",
+    "commons-codec"               % "commons-codec"                     % "1.17.1",
     "org.postgresql"              % "postgresql"                        % "42.7.3",
     "com.lambdaworks"             % "scrypt"                            % "1.4.0",
     "org.tresql"                 %% "tresql"                            % "11.2.2",
