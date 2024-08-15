@@ -59,7 +59,7 @@ lazy val wabase = (project in file("."))
       "com.enragedginger"          %% "akka-quartz-scheduler" % "1.9.3-akka-2.6.x"  % Optional,
       "com.github.librepdf"         % "openpdf"               % "1.3.43"            % Optional,
       "org.xhtmlrenderer"           % "flying-saucer-pdf-openpdf" % "9.4.0"         % Optional,
-      "org.simplejavamail"          % "simple-java-mail"      % "8.6.3"             % Optional,
+      "org.simplejavamail"          % "simple-java-mail"      % "8.11.2"            % Optional,
       "org.graalvm.js"              % "js"                    % "22.3.5"            % Optional,
       "org.graalvm.js"              % "js-scriptengine"       % "22.3.5"            % Optional,
     ) ++ Seq( // for test
