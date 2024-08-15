@@ -55,7 +55,7 @@ trait CSRFDefence { this: AppConfig =>
 
   protected def csrfRejectionMessage(
       request: HttpRequest, sourceOrigins: Seq[HttpOrigin], targetOrigins: Seq[HttpOrigin]) =
-    "CSRF rejection. " +
+    "Cross Site Request Forgery (CSRF) - " +
       s"""Source origins: ${sourceOrigins.mkString(", ")}, """ +
       s"""target origins: ${targetOrigins.mkString(", ")}, """ +
       s"""uri: ${request.uri}"""
@@ -74,10 +74,7 @@ trait CSRFDefence { this: AppConfig =>
           if (sourceOrigins.exists(HttpOriginRange(targetOrigins: _*).matches)) pass
           else {
             val msg =
-              "Cross Site Request Forgery (CSRF) - " +
-                s"""Source origins: ${sourceOrigins.mkString(", ")}, """ +
-                s"""target origins: ${targetOrigins.mkString(", ")}, """ +
-                s"""uri: ${request.uri}"""
+              csrfRejectionMessage(request, sourceOrigins, targetOrigins)
             error(msg, request.uri)
           }
         }
@@ -110,5 +107,4 @@ trait CSRFDefence { this: AppConfig =>
 
   private def error(msg: String, uri: Uri) =
     throw new CSRFException(s"$msg (url - ${uri.withQuery(Uri.Query(Map[String, String]())).toString()})")
-
 }
