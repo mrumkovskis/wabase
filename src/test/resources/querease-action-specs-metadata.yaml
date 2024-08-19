@@ -351,13 +351,13 @@ table: person p
 fields:
 - name
 - birthdate
-- purchases * :
+- purchases * = :
     table:
     fields:
     - purchase_time
     - item
     - amount
-- vaccines * :
+- vaccines * = :
     table:
     fields:
     - manipulation_date
@@ -916,7 +916,7 @@ filter:
 name: forest_with_trees
 extends: forest
 fields:
-- tree_list * :
+- tree_list * = :
     table:
     fields:
     - id

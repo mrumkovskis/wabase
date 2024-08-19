@@ -60,7 +60,7 @@ trait TestQuereaseInitializer extends BeforeAndAfterAll with Loggable { this: Su
         val db_conn = DriverManager.getConnection(url)
         logger.debug(s"Creating database $url ...\n")
         DdlGenerator.hsqldb().schema(querease.tableMetadata.dbToTableDefs(db))
-          .split(";\\s+").map(_ + ";")
+          .split(";\\s+").filter(_ != "").map(_ + ";")
           .++(customStatements)
           .foreach { sql =>
             logger.debug(sql)
