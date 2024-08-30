@@ -408,26 +408,64 @@ trait WabaseApp[User] {
       instance
   }
 
+  // supports balanced parens max 5 levels deep in order-by expressions
+  private val orderByPartR =
+  """((?:[^)(,]|\((?:[^)(]|\((?:[^)(]|\((?:[^)(]|\((?:[^)(]|\([^)(]*\))*\))*\))*\))*\))*)""".r
+  protected def splitOrderBy(orderBy: String): Seq[String] =
+    if (orderBy == null || orderBy == "")
+      Seq.empty
+    else if (orderBy.indexOf('(') < 0)
+      orderBy.split("\\s*\\,\\s*").toSeq.filter(_ != "")
+    else
+      orderByPartR.findAllIn(orderBy).toSeq.map(_.trim).filter(_ != "")
   protected def extractNamesFromOrderBy(orderBy: String): Seq[String] =
     if (orderBy == null || orderBy == "")
       Seq.empty
     else
-      orderBy.split("\\s*\\,\\s*").toSeq.map(
-        _.replaceFirst("^\\s*null\\s+", "")
+      splitOrderBy(orderBy)
+        .map(nameFromOrderByPart)
+        .filter(_ != "")
+  protected def nameFromOrderByPart(orderByPart: String): String =
+      orderByPart
+         .replaceFirst("^\\s*null\\s+", "")
          .replaceFirst("\\s+null\\s*$", "")
          .replaceFirst("^\\s*~\\s*", "")
          .trim
-      ).filter(_ != "")
   protected def stableOrderBy(viewDef: ViewDef, orderBy: String): String = {
-    val forcedSortCols = extractNamesFromOrderBy(orderBy).toSet
+    val parts          = substitutedOrderBy(viewDef, orderBy)
+    val forcedSortCols = parts.map(nameFromOrderByPart).toSet
+    val orderBySubst   = if (orderBy != null) parts.mkString(", ") else null
     if (forcedSortCols.nonEmpty && viewDef.orderBy != null && viewDef.orderBy.nonEmpty) {
       Option(viewDef.orderBy)
-        .map(_.filter(c => extractNamesFromOrderBy(c).headOption.exists(!forcedSortCols.contains(_))))
+        .map(_.filter(c => !forcedSortCols.contains(nameFromOrderByPart(c))))
         .filter(_.nonEmpty)
-        .map(s => (orderBy :: s.toList).mkString(", "))
-        .getOrElse(orderBy)
-    } else orderBy
+        .map(s => (orderBySubst :: s.toList).mkString(", "))
+        .getOrElse(orderBySubst)
+    } else orderBySubst
   }
+  protected def substitutedOrderBy(viewDef: ViewDef, orderBy: String): Seq[String] =
+    splitOrderBy(orderBy).flatMap { part =>
+      viewDef.fieldOpt(nameFromOrderByPart(part))
+        .map(_.orderBy)
+        .filter(_ != null)
+        .map(splitOrderBy)
+        .map { substituteParts =>
+          val forcedNullsFirst = part.startsWith("null ")
+          val forcedNullsLast  = part.endsWith(" null")
+          val forcedDesc       = part.replaceFirst("^null\\s+", "").trim.startsWith("~")
+          substituteParts.map { substitutePart =>
+            val substName       = nameFromOrderByPart(substitutePart)
+            val substNullsFirst = substitutePart.startsWith("null ")
+            val substNullsLast  = substitutePart.endsWith(" null")
+            val substDesc       = substitutePart.replaceFirst("^null\\s+", "").trim.startsWith("~")
+            val nullsFirst      = !forcedNullsLast  && (forcedNullsFirst || substNullsFirst)
+            val nullsLast       = !forcedNullsFirst && (forcedNullsLast  || substNullsLast )
+            val desc            = forcedDesc != substDesc
+            s"${if (nullsFirst) "null " else ""}${if (desc) "~" else ""}${substName}${if (nullsLast) " null" else ""}"
+          }
+        }
+        .getOrElse(Seq(part))
+    }.filter(_ != "")
   private val ident = "[_\\p{IsLatin}][_\\p{IsLatin}0-9]*"
   private val qualifiedIdent = s"$ident(\\.$ident)*"
   private val qualifiedIdentRegex = s"^$qualifiedIdent$$".r

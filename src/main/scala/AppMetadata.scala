@@ -150,6 +150,12 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
   protected def isSortableField(viewDef: ViewDef, f: FieldDef) = {
     FieldDefExtrasUtils.getBooleanExtraOpt(viewDef, f, KnownFieldExtras.Sortable) getOrElse {
+      if (f.orderBy != null && viewDef.table != null && (
+        !f.type_.isComplexType || viewDefOption(f.type_.name).exists { childView =>
+          childView.table == null && (childView.joins == null || childView.joins == Nil)
+        }
+      )) true
+      else
       if (f.isExpression || f.isCollection || viewDef.table == null) false
       else f.table == viewDef.table && {
         val td = tableMetadata.tableDef(f.table, viewDef.db)
