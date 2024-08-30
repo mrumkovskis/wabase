@@ -430,6 +430,7 @@ trait WabaseApp[User] {
   }
   private val ident = "[_\\p{IsLatin}][_\\p{IsLatin}0-9]*"
   private val qualifiedIdent = s"$ident(\\.$ident)*"
+  private val qualifiedIdentRegex = s"^$qualifiedIdent$$".r
   private val validViewNameRegex = s"^$qualifiedIdent$$".r
   protected def noApiException(viewName: String, method: String, user: User): Exception =
     if (validViewNameRegex.pattern.matcher(viewName).matches())
@@ -463,8 +464,14 @@ trait WabaseApp[User] {
         viewDef.fields.filter(_.sortable).map(_.fieldName).toSet
       val sortCols = extractNamesFromOrderBy(orderBy)
       val notSortable = sortCols.filterNot(sortableFields.contains)
+      def notSortableSafe =
+        notSortable.map { sortCol =>
+          if  (qualifiedIdentRegex.pattern.matcher(sortCol).matches())
+               sortCol
+          else "(strange name)"
+        }
       if (notSortable.nonEmpty)
-        throw new BusinessException(s"Not sortable: ${viewDef.name} by " + notSortable.mkString(", "), null)
+        throw new BusinessException(s"Not sortable: ${viewDef.name} by " + notSortableSafe.mkString(", "), null)
     }
   }
   protected def customValidations(ctx: AppActionContext)(implicit locale: Locale): Unit = {}

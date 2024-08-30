@@ -866,6 +866,10 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       status shouldEqual StatusCodes.BadRequest
       responseAs[String] shouldBe "Strange name.get is not a part of this API"
     }
+    Get("/data/by_id_view_1?sort=x,no%3Cb%3Ecol%3C%2Fb%3E,id,z") ~> route ~> check {
+      status shouldEqual StatusCodes.BadRequest
+      responseAs[String] shouldBe "Not sortable: by_id_view_1 by x, (strange name), z"
+    }
   }
 
   it should "fail properly on bad json" in {
