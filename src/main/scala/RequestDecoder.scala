@@ -12,7 +12,7 @@ import java.lang.{Boolean => JBoolean, Double => JDouble, Long => JLong}
 import java.math.{BigDecimal => JBigDecimal, BigInteger => JBigInteger}
 import java.time.{LocalDate, LocalDateTime, LocalTime}
 import scala.annotation.tailrec
-import scala.collection.immutable.{Map, Seq}
+import scala.collection.immutable.{Map, Seq, ListMap} // no TreeSeqMap in scala 2.12
 import scala.language.postfixOps
 import scala.reflect.ClassTag
 
@@ -53,6 +53,7 @@ class CborOrJsonDecoder(typeDefs: Seq[TypeDef], nameToViewDef: Map[String, ViewD
     }).asInstanceOf[Decoder[Any]]
 
   protected def toSeq[T](array: Array[T]): Seq[T] = array.toList
+  protected def anyJsonMapZero: Map[String, Any]  = ListMap[String, Any]() // Preserve ordering? No TreeSeqMap in scala 2.12
 
   def toMapDecoder[M <: Map[String, Any] : ClassTag](
     viewName: String,
@@ -69,6 +70,14 @@ class CborOrJsonDecoder(typeDefs: Seq[TypeDef], nameToViewDef: Map[String, ViewD
             else if (field.type_.isComplexType) {
               implicit val decoder: Decoder[M] = toMapDecoder(field.type_.name, viewNameToMapZero)
               map.updated(key, if (field.isCollection) toSeq(r[Array[M]]) else r[M])
+            } else if (field.type_.name == "json") {
+              implicit val decoder: Decoder[Any] = new CborOrJsonAnyValueDecoder().anyValueDecoder(() => anyJsonMapZero)
+              map.updated(key,
+                (if (field.isCollection) toSeq(r[Array[Any]]) else r[Any]) match {
+                  case s: String => spray.json.JsString(s).compactPrint
+                  case x => x
+                }
+              )
             } else {
               implicit val decoder: Decoder[Any] = simpleValueDecoder(field.type_)
               map.updated(key, if (field.isCollection) toSeq(r[Array[Any]]) else r[Any])

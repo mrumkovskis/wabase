@@ -10,6 +10,21 @@ uk:
 - name, surname
 
 
+table:   json_io_test
+columns:
+- id
+- value                  json
+- values_array         * json
+
+
+table:    types_test_child
+columns:
+- id
+- name              string
+- date              date
+- date_time         dateTime
+
+
 name:   by_id_view_1
 api:    get list count create save delete
 table:  person
@@ -204,8 +219,61 @@ fields:
 - name
 
 
+name:   json_test_any
+api:    get list count create save delete
+table:  json_io_test
+fields:
+- id
+- value
+# - values_array
+
+
+name:   json_test_types
+table:  json_io_test
+api:    get list save delete
+key:    id
+fields:
+- id
+- child = value :
+    table:
+    fields:
+    - id
+    - long              long
+    - string            string
+    - date              date
+    - time              time
+    - date_time         dateTime
+    - int               int
+    - bigint            integer
+    - double            double
+    - decimal           decimal  20 2
+    - boolean           boolean
+    - bytes             bytes
+    - json              json
+    - long_arr        * long
+    - string_arr      * string   4096
+    - date_arr        * date
+    - time_arr        * time
+    - date_time_arr   * dateTime
+    - int_arr         * int
+    - bigint_arr      * integer
+    - double_arr      * double
+    - decimal_arr     * decimal  20 2
+    - boolean_arr     * boolean
+    - child             types_test_child
+    - children        * types_test_child
+
+
 name:   no_api_view
 table:  person
 fields:
 - id
 - name
+
+
+name:   types_test_child
+table:  types_test_child
+fields:
+- name
+- date
+- date_time
