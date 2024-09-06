@@ -408,16 +408,13 @@ trait WabaseApp[User] {
       instance
   }
 
-  // supports balanced parens max 5 levels deep in order-by expressions
-  private val orderByPartR =
-  """((?:[^)(,]|\((?:[^)(]|\((?:[^)(]|\((?:[^)(]|\((?:[^)(]|\([^)(]*\))*\))*\))*\))*\))*)""".r
   protected def splitOrderBy(orderBy: String): Seq[String] =
     if (orderBy == null || orderBy == "")
       Seq.empty
     else if (orderBy.indexOf('(') < 0)
       orderBy.split("\\s*\\,\\s*").toSeq.filter(_ != "")
     else
-      orderByPartR.findAllIn(orderBy).toSeq.map(_.trim).filter(_ != "")
+      qe.parser.parseWithParser(qe.parser.colAndOrd)(s"#($orderBy)")._2.cols.map(_.tresql)
   protected def extractNamesFromOrderBy(orderBy: String): Seq[String] =
     if (orderBy == null || orderBy == "")
       Seq.empty
