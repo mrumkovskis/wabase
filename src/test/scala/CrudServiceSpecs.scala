@@ -874,6 +874,21 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
   // JSON IO -------------------------------------------------//
   it should "transport json fields to db and back" in {
     var id: Long = 0L
+
+    val jsons = Seq(
+      null,
+      """0""",
+      """"0"""",
+      """{}""",
+      """[]""",
+      """null""",
+      """{"x":"y"}""",
+      """["x","y"]""",
+      """[1,"2","other"]""",
+      """{"a":"b","c":{"d":["e"]}}""",
+      """{"a":[1,"a",{},[],[42]],"x":1,"y":2,"z":"3","b":"d"}""",
+    )
+
     Post("/data/json_test_any", """{}""") ~> route ~> check {
       status shouldEqual StatusCodes.SeeOther
       val location = header[Location].get.uri.toString
@@ -885,60 +900,14 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       responseAs[String] shouldBe s"""{"id":$id,"value":null}"""
     }
 
-    Put(s"/data/json_test_any?/$id", """{"value":0}""") ~> route ~> check {
-      status shouldEqual StatusCodes.SeeOther
-    }
-    Get(s"/data/json_test_any?/$id") ~> route ~> check {
-      status shouldEqual StatusCodes.OK
-      responseAs[String] shouldBe s"""{"id":$id,"value":0}"""
-    }
-
-    Put(s"/data/json_test_any?/$id", """{"value":"0"}""") ~> route ~> check {
-      status shouldEqual StatusCodes.SeeOther
-    }
-    Get(s"/data/json_test_any?/$id") ~> route ~> check {
-      status shouldEqual StatusCodes.OK
-      responseAs[String] shouldBe s"""{"id":$id,"value":"0"}"""
-    }
-
-    Put(s"/data/json_test_any?/$id", """{"value":null}""") ~> route ~> check {
-      status shouldEqual StatusCodes.SeeOther
-    }
-    Get(s"/data/json_test_any?/$id") ~> route ~> check {
-      status shouldEqual StatusCodes.OK
-      responseAs[String] shouldBe s"""{"id":$id,"value":null}"""
-    }
-
-    Put(s"/data/json_test_any?/$id", """{"value":{}}""") ~> route ~> check {
-      status shouldEqual StatusCodes.SeeOther
-    }
-    Get(s"/data/json_test_any?/$id") ~> route ~> check {
-      status shouldEqual StatusCodes.OK
-      responseAs[String] shouldBe s"""{"id":$id,"value":{}}"""
-    }
-
-    Put(s"/data/json_test_any?/$id", """{"value":[]}""") ~> route ~> check {
-      status shouldEqual StatusCodes.SeeOther
-    }
-    Get(s"/data/json_test_any?/$id") ~> route ~> check {
-      status shouldEqual StatusCodes.OK
-      responseAs[String] shouldBe s"""{"id":$id,"value":[]}"""
-    }
-
-    Put(s"/data/json_test_any?/$id", """{"value":[1,"2","other"]}""") ~> route ~> check {
-      status shouldEqual StatusCodes.SeeOther
-    }
-    Get(s"/data/json_test_any?/$id") ~> route ~> check {
-      status shouldEqual StatusCodes.OK
-      responseAs[String] shouldBe s"""{"id":$id,"value":[1,"2","other"]}"""
-    }
-
-    Put(s"/data/json_test_any?/$id", """{"value":{"a":"b","c":{"d":["e"]}}}""") ~> route ~> check {
-      status shouldEqual StatusCodes.SeeOther
-    }
-    Get(s"/data/json_test_any?/$id") ~> route ~> check {
-      status shouldEqual StatusCodes.OK
-      responseAs[String] shouldBe s"""{"id":$id,"value":{"a":"b","c":{"d":["e"]}}}"""
+    for (value <- jsons) yield {
+      Put(s"/data/json_test_any?/$id", s"""{"value":$value}""") ~> route ~> check {
+        status shouldEqual StatusCodes.SeeOther
+      }
+      Get(s"/data/json_test_any?/$id") ~> route ~> check {
+        status shouldEqual StatusCodes.OK
+        responseAs[String] shouldBe s"""{"id":$id,"value":$value}"""
+      }
     }
   }
 
