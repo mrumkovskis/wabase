@@ -10,6 +10,8 @@ import akka.http.scaladsl.server.{ExceptionHandler, Rejection, RejectionHandler,
 import akka.http.scaladsl.settings.{ParserSettings, RoutingSettings}
 import akka.http.scaladsl.testkit.ScalatestRouteTest
 import akka.stream.Materializer
+import java.time.{LocalDate, LocalTime, LocalDateTime}
+import org.mojoz.querease.QuereaseMetadata
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import org.tresql.{convInt, DMLResult, Query, ThreadLocalResources, dialects}
@@ -38,7 +40,60 @@ class CrudTestService(system: ActorSystem, testApp: TestApp) extends TestAppServ
     }
 }
 
+object CrudServiceSpecsDtos {
+  class json_test_any extends DtoWithId {
+    var id: java.lang.Long = null
+    var value: String = null
+  }
+  class json_test_types extends DtoWithId {
+    var id: java.lang.Long = null
+    var child: json_test_types_child = null
+  }
+  class json_test_types_child extends DtoWithId {
+    var id: java.lang.Long = null
+    var long: java.lang.Long = null
+    var string: String = null
+    var date: java.time.LocalDate = null
+    var time: java.time.LocalTime = null
+    var date_time: java.time.LocalDateTime = null
+    var int: java.lang.Integer = null
+    var bigint: scala.math.BigInt = null
+    var double: java.lang.Double = null
+    var decimal: scala.math.BigDecimal = null
+    var boolean: java.lang.Boolean = null
+    var bytes: Array[Byte] = null
+    var json: String = null
+    var long_arr: List[java.lang.Long] = Nil
+    var string_arr: List[String] = Nil
+    var date_arr: List[java.time.LocalDate] = Nil
+    var time_arr: List[java.time.LocalTime] = Nil
+    var date_time_arr: List[java.time.LocalDateTime] = Nil
+    var int_arr: List[java.lang.Integer] = Nil
+    var bigint_arr: List[scala.math.BigInt] = Nil
+    var double_arr: List[java.lang.Double] = Nil
+    var decimal_arr: List[scala.math.BigDecimal] = Nil
+    var boolean_arr: List[java.lang.Boolean] = Nil
+    var child: types_test_child = null
+    var children: List[types_test_child] = Nil
+  }
+  class json_test_types_legacy_flow extends json_test_types with DtoWithId
+  class types_test_child extends Dto {
+    var name: String = null
+    var date: java.time.LocalDate = null
+    var date_time: java.time.LocalDateTime = null
+  }
+
+  val viewNameToClass = Map[String, Class[_ <: Dto]](
+    "json_test_any"               -> classOf[json_test_any],
+    "json_test_types"             -> classOf[json_test_types],
+    "json_test_types_child"       -> classOf[json_test_types_child],
+    "json_test_types_legacy_flow" -> classOf[json_test_types_legacy_flow],
+    "types_test_child"            -> classOf[types_test_child],
+  )
+}
+
 class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitializer with ScalatestRouteTest {
+  import CrudServiceSpecsDtos._
   var dbAccess: DbAccess        = _
   var service:  CrudTestService = _
   var route:    Route           = _
@@ -47,6 +102,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
   override def beforeAll(): Unit = {
     querease    = new TestQuerease("/crud-service-specs-metadata.yaml") {
       override lazy val defaultCpName = "main"
+      override lazy val viewNameToClassMap = CrudServiceSpecsDtos.viewNameToClass
     }
     qio         = new AppQuereaseIo[Dto](querease)
     super.beforeAll()
@@ -908,6 +964,109 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
         status shouldEqual StatusCodes.OK
         responseAs[String] shouldBe s"""{"id":$id,"value":$value}"""
       }
+    }
+
+    // json io types ---------------------------------------------------------------
+    val j1 = new json_test_any
+
+    implicit val qe: QuereaseMetadata = querease
+    import DefaultAppQuereaseIo.MapJsonFormat
+    def checkDtoRoundtrip(obj: json_test_types): Unit = {
+      val json = obj.toMap.toJson.compactPrint
+      implicit val encoder: io.bullet.borer.Encoder[Any] = ResultEncoder.jsValEncoder(ResultEncoder.JsonEncoder.jsValueEncoderPF)   
+      val json2: String = new String(ResultEncoder.encodeJsValue(obj.toMap), "UTF-8")
+      json shouldBe json2
+      Put(s"/data/json_test_types?/$id", json) ~> route ~> check {
+        status shouldEqual StatusCodes.SeeOther
+      }
+      Get(s"/data/json_test_any?/$id") ~> route ~> check {
+        status shouldEqual StatusCodes.OK
+        responseAs[String] shouldBe json.replace(s"""{"id":$id,"child"""", s"""{"id":$id,"value"""")
+      }
+      Get(s"/data/json_test_types?/$id") ~> route ~> check {
+        status shouldEqual StatusCodes.OK
+        responseAs[String] shouldBe json
+      }
+      Get(s"/data/json_test_types_legacy_flow?/$id") ~> route ~> check {
+        status shouldEqual StatusCodes.OK
+        responseAs[String] shouldBe json
+      }
+    }
+
+    // empty
+    val obj = new json_test_types
+    obj.id  = id
+    obj.child shouldBe null
+    checkDtoRoundtrip(obj)
+    val child = new json_test_types_child
+    obj.child = child
+    obj.child shouldBe child
+    obj.toMap.get("child").get.getClass.getName shouldBe "scala.collection.immutable.TreeMap"
+    obj.toMap.toJson.compactPrint should startWith(s"""{"id":$id,"child":{"id":null""")
+
+    // strings
+    child.string = "Rūķīši-X-123"
+    checkDtoRoundtrip(obj)
+
+    // dates and times
+    child.date = LocalDate.parse("2021-12-21") // java.sql.Date.valueOf("2021-12-21")
+    child.time = LocalTime.parse("10:42:15")   // java.sql.Time.valueOf("10:42:15")
+    checkDtoRoundtrip(obj)
+    child.date = null
+    child.time = null
+    child.date_time = null
+
+    // negatives
+    child.long = Long.MinValue
+    child.int = Integer.MIN_VALUE
+    child.bigint = BigInt(Long.MinValue) - 1
+    child.boolean = false
+    checkDtoRoundtrip(obj)
+
+    // positives
+    child.long = Long.MaxValue
+    child.int = Integer.MAX_VALUE
+    child.bigint = BigInt(Long.MaxValue) + 1
+    child.boolean = true
+    checkDtoRoundtrip(obj)
+
+    // zeroes
+    child.long   = 0L
+    child.int    = 0
+    child.bigint = BigInt(0)
+    child.double = 0
+    checkDtoRoundtrip(obj)
+
+    // child view
+    child.child = new types_test_child
+    child.child.name = "CHILD-1"
+    child.child.date = LocalDate.parse("2021-11-08")  // java.sql.Date.valueOf("2021-11-08")
+    checkDtoRoundtrip(obj)
+
+    // children
+    child.children = List(new types_test_child, new types_test_child)
+    child.children(0).name = "CHILD-2"
+    child.children(1).name = "CHILD-3"
+    checkDtoRoundtrip(obj)
+
+    child.long_arr = List(Long.MinValue, 0, 42, Long.MaxValue)
+    child.string_arr = List("one", "two", "three")
+    child.date_arr    = List(
+      LocalDate.parse("2021-11-08"),
+      LocalDate.parse("2024-04-16"),
+    )
+    child.time_arr = List(
+      LocalTime.parse("10:42:15"),
+      LocalTime.parse("17:06:45"),
+    )
+    child.int_arr      = List(Int.MinValue, 0, 42, Int.MaxValue)
+    child.bigint_arr   = List(BigInt(0), BigInt(Long.MaxValue) + 1)
+    child.boolean_arr  = List(true, false)
+    checkDtoRoundtrip(obj)
+
+    j1.id = id
+    Delete(s"/data/json_test_any?/$id") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
     }
   }
 

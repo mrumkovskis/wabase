@@ -264,6 +264,11 @@ fields:
     - children        * types_test_child
 
 
+name:     json_test_types_legacy_flow
+extends:  json_test_types
+api:      get list save delete
+
+
 name:   no_api_view
 table:  person
 fields:

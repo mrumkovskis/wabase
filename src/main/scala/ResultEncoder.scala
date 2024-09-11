@@ -179,6 +179,12 @@ abstract class ResultRenderer(
       contextStack = new Context(isForRows = true, childFilter, allNames, isCollection, shouldRender_) :: contextStack
     }
   }
+  protected def shouldRenderAsJson(name: String, context: Context) =
+    unwrapJson && context.resultFilter != null && (context.resultFilter.type_(name) match {
+      case null => false
+      case t => t.isComplexType || t.name == "json"
+    })
+
   override def writeValue(value: Any): Unit = {
     val context = contextStack.head
     if (context.readingNames) {
@@ -188,15 +194,12 @@ abstract class ResultRenderer(
       val shouldRender_ = context.shouldRender && !context.namesToHide.contains(name)
       if (shouldRender_) {
         renderKey(name)
-        if (unwrapJson && context.resultFilter != null &&
-          Option(context.resultFilter.type_(name)).exists(_.name == "json")) {
-          value match {
-            case null => renderRawValue(null)
-            case jsonString: String =>
-              new ResultRenderer.JsonForwarder(this).forwardJson(ByteString(jsonString))
-            case x => sys.error(s"Unexpected value class for json type: ${x.getClass.getName}")
-          }
-        } else renderRawValue(value)
+        value match {
+          case null => renderRawValue(null)
+          case jsonString: String if shouldRenderAsJson(name, context) =>
+            new ResultRenderer.JsonForwarder(this).forwardJson(ByteString(jsonString))
+          case _ => renderRawValue(value)
+        }
       }
     } else  {
       renderRawValue(value)

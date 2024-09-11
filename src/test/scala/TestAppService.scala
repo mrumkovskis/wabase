@@ -17,6 +17,7 @@ trait TestApp extends AppBase[TestUsr] with NoAudit[TestUsr] with PostgreSqlCons
   override protected def initQuerease = new TestQuerease("/no-metadata.yaml")
   override def dbAccessDelegate: DbAccess = TestDbAccess
   override val I18nResourceName = "test"
+  override def useLegacyFlow(viewName: String, actionName: String): Boolean = viewName endsWith "_legacy_flow"
 }
 
 object TestApp extends TestApp
