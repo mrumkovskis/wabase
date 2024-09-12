@@ -26,7 +26,7 @@ lazy val wabase = (project in file("."))
   crossScalaVersions := Seq(
     "3.3.3",
     "2.13.14",
-    "2.12.19",
+    "2.12.20",
   ),
   scalacOptions ++= Seq("-unchecked", "-deprecation", "-feature"),
   resolvers += "snapshots" at "https://oss.sonatype.org/content/repositories/snapshots",
@@ -50,7 +50,7 @@ lazy val wabase = (project in file("."))
       "org.mojoz"                  %% "querease"              % quereaseV,
       "commons-validator"           % "commons-validator"     % "1.9.0",
       "commons-codec"               % "commons-codec"         % "1.17.1",
-      "org.postgresql"              % "postgresql"            % "42.7.3",
+      "org.postgresql"              % "postgresql"            % "42.7.4",
       "com.lambdaworks"             % "scrypt"                % "1.4.0",
       "org.tresql"                 %% "tresql"                % tresqlV,
       "io.bullet"                  %% "borer-core"            % borerV,
