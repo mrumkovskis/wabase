@@ -1154,10 +1154,10 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     val bindVars = data ++ env
     val emails = {
       val r = Query(op.emailTresql.tresql)(resources.withParams(bindVars))
-      if (op.isBatch) r else Iterator(try r.unique catch {
+      if (op.isBatch) r else (try r.uniqueOption catch {
         case _: TooManyRowsException => throw new TooManyRowsException(s"Tresql '${op.emailTresql.tresql}' returned more than one row. " +
           s"Use 'email batch' to send more than one email.")
-      })
+      }).iterator
     }
     val count = emails.foldLeft(Future.successful(0)) { (c, row) =>
         val email = row.toMap
