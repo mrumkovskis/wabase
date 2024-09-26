@@ -3,12 +3,14 @@ package org.wabase
 import akka.http.scaladsl.model.HttpMethods._
 import akka.http.scaladsl.model.Uri.Path
 import akka.http.scaladsl.model.Uri.Path.{Empty, Segment, SlashOrEmpty}
-import akka.http.scaladsl.server.RequestContext
+import akka.http.scaladsl.server.{LanguageNegotiator, RequestContext}
 import org.mojoz.metadata.ViewDef
 import AppMetadata._
+import akka.http.scaladsl.model.headers.Cookie
 import akka.http.scaladsl.model.{HttpRequest, HttpResponse}
 import org.wabase.AppMetadata.{Action, RouteDef}
 
+import java.util.Locale
 import scala.concurrent.{ExecutionContext, Future}
 
 case class WabaseUser(properties: Map[String, Any]) {
@@ -18,7 +20,7 @@ case class WabaseUser(properties: Map[String, Any]) {
 
 case class WabaseRequestContext(
   route: RouteDef,
-  ctx: RequestContext,
+  req: HttpRequest,
   viewName: String,
   action: String,
   key: Seq[Any],
@@ -30,12 +32,11 @@ class WabaseRouteException(message: String) extends Exception(message)
 /** Can be used for example in authentication filter to return HTTP Unauthorized */
 class WabaseRouteFilterException(response: HttpResponse) extends Exception
 
-object WabaseService {
+class WabaseService {
 
   private val CreateCountActionAndView = """(?U)(?:(count|create):)?(\w*)""".r
 
-  def requestContext(routes: Seq[RouteDef], viewDefs: Map[String, ViewDef])(ctx: RequestContext): WabaseRequestContext = {
-    val req = ctx.request
+  def requestContext(routes: Seq[RouteDef], viewDefs: Map[String, ViewDef])(req: HttpRequest): WabaseRequestContext = {
     val pathString = req.uri.path.toString
     val route = routes.find(_.path.pattern.matcher(pathString).matches)
       .getOrElse(error(s"Route not found for path '$pathString'"))
@@ -48,7 +49,7 @@ object WabaseService {
     }.getOrElse((null, null, null))
 
     if (viewNameAndActionStr == null)
-      WabaseRequestContext(route, ctx, null, null, null, null, null)
+      WabaseRequestContext(route, req, null, null, null, null, null)
     else {
       val key = {
         def key_path(path: Path): Path = path match {
@@ -79,12 +80,12 @@ object WabaseService {
         case x        => error(s"Unsupported http method $x for request '${req.uri}'")
       }
 
-      WabaseRequestContext(route, ctx, view_name, action, key, null, null)
+      WabaseRequestContext(route, req, view_name, action, key, null, null)
     }
   }
 
-  def doRequest(wrctx: WabaseRequestContext)(implicit ec: ExecutionContext): Future[HttpResponse] = {
-    import wrctx._
+  def doRequest(ctx: WabaseRequestContext)(implicit ec: ExecutionContext): Future[HttpResponse] = {
+    import ctx._
     if (viewName == null) {
       def invokeFunction(className: String, function: String, params: Seq[(Class[_], Class[_] => Any)]) = {
         val contextParams = Seq[(Class[_], Class[_] => Any)](
@@ -95,12 +96,12 @@ object WabaseService {
       def invokeReqTrans(cn: String, fn: String): Future[WabaseRequestContext] = {
         def processResult(r: Any): Future[WabaseRequestContext] = r match {
           case ctx: WabaseRequestContext => Future.successful(ctx)
-          case req: HttpRequest => processResult(wrctx.copy(ctx = wrctx.ctx.withRequest(req)))
+          case req: HttpRequest => processResult(ctx.copy(req = req))
           case f: Future[_] => f.flatMap(processResult)
           case x => error(s"Request transformer must return either WabaseRequestContext or HttpRequest or Future of them." +
             s" Instead got: $x")
         }
-        processResult(invokeFunction(cn, fn, Seq((classOf[WabaseRequestContext], _ => wrctx))))
+        processResult(invokeFunction(cn, fn, Seq((classOf[WabaseRequestContext], _ => ctx))))
       }
       def invokeRespTrans(cn: String, fn: String, tctx: WabaseRequestContext): Future[HttpResponse] = {
         def processResult(r: Any): Future[HttpResponse] = r match {
@@ -115,7 +116,7 @@ object WabaseService {
       else Option(route.requestFilter)
         .map { case Action.Invocation(cn, fn, _, _) =>
           invokeReqTrans(cn, fn)
-        }.getOrElse(Future.successful(wrctx))
+        }.getOrElse(Future.successful(ctx))
         .flatMap { tctx =>
           import route.responseTransformer._
           invokeRespTrans(className, function, tctx)
@@ -124,4 +125,11 @@ object WabaseService {
   }
 
   private def error(msg: String) = throw new WabaseRouteException(msg)
+
+  protected def extractState: WabaseRequestContext => WabaseApp[_] => Future[ApplicationState] =
+    WabaseService.extractState
+}
+
+object WabaseService {
+  def extractState(reqCtx: WabaseRequestContext)(app: WabaseApp[_]): Future[ApplicationState] = ???
 }

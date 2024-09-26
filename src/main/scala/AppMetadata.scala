@@ -57,26 +57,14 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       val opParser = new OpParser(objectName, tresqlUri, opParserCache(objectName))
       parseAction(objectName, ViewDefExtrasUtils.getSeq(dataKey, dataMap), opParser)
     }
-  private def validateDuplicateNames = {
-    val viewNames = viewDefLoader.nameToViewDef.keys.toSet
-    val jobNames = jobDefLoader.nameToJobDef.keys.toSet
-    val routeNames = routeDefLoader.routeDefs.map(_.name).toSet
-    val duplicates = viewNames intersect jobNames intersect routeNames
-    require(duplicates.isEmpty, s"Duplicate view, job, route names found - '${duplicates.mkString(", ")}'")
-  }
 
   lazy val jobDefLoader = new YamlJobDefLoader(yamlMetadata, actionParser)
-  lazy val nameToJobDef: Map[String, JobDef] = {
-    validateDuplicateNames
-    transformJobDefs(jobDefLoader.nameToJobDef)
-  }
+  lazy val nameToJobDef: Map[String, JobDef] = transformJobDefs(jobDefLoader.nameToJobDef)
 
   lazy val routeDefLoader =
     new YamlRouteDefLoader(yamlMetadata, actionParser)
-  lazy val routeDefs: Seq[RouteDef] = {
-    validateDuplicateNames
-    routeDefLoader.routeDefs
-  }
+  lazy val routeDefs: Seq[RouteDef] = routeDefLoader.routeDefs
+
 
   protected lazy val actionOpCache: scala.collection.concurrent.Map[String, OpParser.Cache] = {
     val m = new java.util.concurrent.ConcurrentHashMap[String, OpParser.Cache]
@@ -1312,12 +1300,15 @@ object AppMetadata extends Loggable {
   )
 
   case class RouteDef(
-    name: String,
     path: Regex,
-    auth: Action.Invocation = null,
-    state: Action.Invocation = null,
     requestFilter: Action.Invocation = null,
     responseTransformer: Action.Invocation = null,
+    state: Action.Invocation = null,
+    authentication: Action.Invocation = null,
+    authorization: Action.Invocation = null,
+    processor: Action.Invocation = null,
+    session: Action.Invocation = null,
+    error: Action.Invocation = null,
   )
 
   trait AppMdConventions extends MdConventions {

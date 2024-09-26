@@ -12,28 +12,38 @@ class YamlRouteDefLoader(
 ) {
 
   lazy val routeDefs: Seq[RouteDef] = {
-    val ds = yamlMd.flatMap(_.parsed).filter(_ contains "route").map(s => s("route").toString -> s)
-    val duplicateNames = ds.map(_._1).groupBy(identity).filter(_._2.size > 1).keys
-    require(duplicateNames.isEmpty, s"Duplicate route definitions: ${duplicateNames.mkString(", ")}")
-    ds.toMap.transform { (routeName, rdMap) =>
+    val ds = yamlMd.flatMap(_.parsed).filter(_ contains "path").map(s => s("path").toString -> s)
+    ds.toMap.transform { (route, rdMap) =>
 
-      val parser = actionParser(routeName)
+      val parser = actionParser(route)
 
       def parseProperty(property: String) =
-        parser(routeName)(rdMap).steps match {
+        parser(route)(rdMap).steps match {
           case Nil => null
           case List(Action.Evaluation(_, _, op: Action.Invocation)) => op
-          case x => sys.error(s"Error parsing route $routeName $property, expected invocation call, got: $x")
+          case x => sys.error(s"Error parsing route $route $property, expected invocation call, got: $x")
         }
 
-      val path: Regex = rdMap.get("path")
-        .map(p => new Regex(p.toString))
-        .getOrElse(sys.error(s"Path field not found for route $routeName"))
-      val auth = parseProperty("auth")
+      val path: Regex = new Regex(route)
+      val filter = parseProperty("request-filter")
+      val transformer = parseProperty("response-transformer")
       val state = parseProperty("state")
-      val filter = parseProperty("req-filter")
-      val transformer = parseProperty("resp-transformer")
-      RouteDef(routeName, path, auth, state, filter, transformer)
+      val auth = parseProperty("authentication")
+      val authz = parseProperty("authorization")
+      val processor = parseProperty("processor")
+      val session = parseProperty("session")
+      val error = parseProperty("error")
+      RouteDef(
+        path = path,
+        requestFilter = filter,
+        responseTransformer = transformer,
+        state = state,
+        authentication = auth,
+        authorization = authz,
+        processor = processor,
+        session = session,
+        error = error,
+      )
     }.values.toList
   }
 }
