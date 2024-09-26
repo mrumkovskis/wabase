@@ -1030,13 +1030,17 @@ get:
 - :attachment
 insert:
 - file = to file {'attachment from file' attachment} 'file_attachment'
-- email
+- email batch
     ({ 'a@a.a' 'to', 'Hannah' name } + { 'b@b.b' 'to', 'Baiba' name })
     (template 'Subject for {{name}}!')
     (template 'Content for {{recipient}}.' {trim(:name) recipient})
     (http { '/email_test1', '?', :name name })
     (file {:file.id, :file.sha_256})
     (template 'Template attachment for {{name}}' {trim(:name) name} 'attachment name')
+- email
+    ({ 'c@c.c' 'to', 'Minna' name, 'c1@.c1.c1' cc, 'f@f.f' 'from', 'r@r.r' replyTo })
+    (template 'Subject for {{name}}!')
+    (template 'Content for {{recipient}}.' {trim(:name) recipient})
 
 
 name: not_decode_request_insert_test

@@ -1137,7 +1137,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       t1 <-
         doAction("insert", "email_test1", Map())
           .map { sentCount =>
-            sentCount shouldBe LongResult(2)
+            sentCount shouldBe LongResult(1)
             mailBox.emails shouldBe Map(
               "a@a.a" -> Map(
                 "body" -> "Content for Hannah.",
@@ -1166,7 +1166,16 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
                   ("file_attachment", "application/json", """[{"attachment":"attachment from file"}]"""),
                   ("attachment name", "text/plain; charset=UTF-8", "Template attachment for Baiba")
                 )
-              )
+              ),
+              "c@c.c" -> Map(
+                "body" -> "Content for Minna.",
+                "subject" -> "Subject for Minna!",
+                "replyTo" -> "r@r.r",
+                "to" -> "c@c.c",
+                "from" -> "f@f.f",
+                "bcc" -> null,
+                "cc" -> "c1@.c1.c1",
+                "attachments" -> Nil),
             )
           }
     } yield t1

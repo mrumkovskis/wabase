@@ -805,8 +805,8 @@ class OpParser(viewName: String, tresqlUri: TresqlUri, cache: OpParser.Cache)
         }
     } named "template-op"
   }
-  def emailOp: MemParser[Email] = "email" ~> tresqlOp ~ operation ~ operation ~ rep(operation) ^^ {
-    case data ~ subj ~ body ~ att => Email(data, subj, body, att)
+  def emailOp: MemParser[Email] = "email" ~> opt("batch") ~ tresqlOp ~ operation ~ operation ~ rep(operation) ^^ {
+    case batch ~ data ~ subj ~ body ~ att => Email(data, subj, body, att, batch.isDefined)
   } named "email-op"
   def httpOp: MemParser[Http] = {
     def tu(uri: Exp) = tresqlUri.parse(uri)(self)
@@ -1026,7 +1026,7 @@ object AppMetadata extends Loggable {
     case class File(idShaTresql: Tresql, conformTo: Option[OpResultType] = None) extends CastableOp
     case class ToFile(contentOp: Op, nameTresql: Tresql = null, contentTypeTresql: Tresql = null) extends Op
     case class Template(templateTresql: Tresql, dataOp: Op = null, filenameTresql: Tresql = null) extends Op
-    case class Email(emailTresql: Tresql, subject: Op, body: Op, attachmentsOp: List[Op] = Nil) extends Op
+    case class Email(emailTresql: Tresql, subject: Op, body: Op, attachmentsOp: List[Op] = Nil, isBatch: Boolean = false) extends Op
     case class Http(method: String,
                     uriTresql: TresqlUri.TrUri,
                     headerTresql: Tresql = null,
@@ -1067,7 +1067,7 @@ object AppMetadata extends Loggable {
           if (e == null) r else traverseAction(e)(stepTrav)(r)
         case o: ToFile => opTrav(state)(o.contentOp)
         case o: Template => opTrav(state)(o.dataOp)
-        case Email(_, s, b, a) => a.foldLeft(opTrav(opTrav(state)(s))(b))(opTrav(_)(_))
+        case Email(_, s, b, a, _) => a.foldLeft(opTrav(opTrav(state)(s))(b))(opTrav(_)(_))
         case o: Http => opTrav(state)(o.body)
         case Db(a, _, _) => traverseAction(a)(stepTrav)(state)
         case Block(a) => traverseAction(a)(stepTrav)(state)
@@ -1160,7 +1160,7 @@ object AppMetadata extends Loggable {
             case Template(templateTresql, dataOp, filenameTresql) =>
               val s = opTresqlTrav(us(state, nv(state.value)(templateTresql)))(dataOp)
               us(s, nv(s.value)(filenameTresql))
-            case Email(emailTresql, s, b, a) =>
+            case Email(emailTresql, s, b, a, _) =>
               a.foldLeft(
                 opTresqlTrav(
                   opTresqlTrav(us(state, nv(state.value)(emailTresql))
