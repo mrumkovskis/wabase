@@ -4,7 +4,7 @@ import akka.actor.ActorSystem
 import akka.http.scaladsl.model.HttpHeader.ParsingResult.{Error, Ok}
 import akka.http.scaladsl.model.headers.ContentDispositionTypes.attachment
 import akka.http.scaladsl.model.headers.`Content-Disposition`
-import akka.http.scaladsl.model.{ContentType, ContentTypes, HttpCharsets, HttpEntity, HttpHeader, HttpMethods, HttpRequest, HttpResponse, MediaTypes, StatusCodes, UniversalEntity}
+import akka.http.scaladsl.model.{ContentType, ContentTypes, HttpCharsets, HttpEntity, HttpHeader, HttpMethods, HttpRequest, HttpResponse, MediaTypes, Multipart, StatusCodes, UniversalEntity}
 import akka.http.scaladsl.server.RequestContext
 import akka.http.scaladsl.server.directives.ContentTypeResolver
 import akka.http.scaladsl.server.directives.FileAndResourceDirectives.ResourceFile
@@ -78,6 +78,8 @@ case class StatusResult(code: Int, value: StatusValue) extends QuereaseResult
 case class ResourceResult(resource: String, contentType: ContentType, httpCtx: RequestContext) extends DataResult
 case class FileInfoResult(fileInfo: FileInfo) extends QuereaseResult
 case class FileResult(fileInfo: FileInfo, fileStreamer: FileStreamer) extends DataResult
+case class RequestPartResult(result: Source[RequestPart, Any]) extends DataResult
+case class RequestPart(name: String, contentType: ContentType, filename: String, data: Source[ByteString, Any])
 sealed trait TemplateResult extends QuereaseResult
   { def contentString: String }
 case class StringTemplateResult(content: String) extends TemplateResult
@@ -389,6 +391,10 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       (poolName, extraDbs)
     }
   }
+
+  def requestPartsToMap(result: RequestPartResult)(
+    implicit fs: FileStreamer, as: ActorSystem): Future[Map[String, Any]] =
+    AppQuerease.requestPartsToMap(result)
 
   def doAction(
     view: String,
@@ -1380,6 +1386,35 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       }
   }
 
+  protected def doExtractParts(implicit reqCtx: RequestContext, as: ActorSystem): Future[RequestPartResult] = {
+    val req = reqCtx.request
+    val entity = req.entity
+    if (entity.contentType.mediaType.isMultipart) {
+      import akka.http.scaladsl.unmarshalling.MultipartUnmarshallers._
+      import akka.http.scaladsl.server.directives.MarshallingDirectives
+      val um = MarshallingDirectives.as[Multipart.FormData]
+      implicit val ec = as.dispatcher
+      um(req).map { formdata =>
+        val src = formdata.parts.map {
+          case filePart if filePart.filename.isDefined =>
+            RequestPart(filePart.name, filePart.entity.contentType, filePart.filename.get, filePart.entity.dataBytes)
+          case dataPart =>
+            RequestPart(dataPart.name, dataPart.entity.contentType, null, dataPart.entity.dataBytes)
+        }
+        RequestPartResult(src)
+      }
+    } else {
+      val filename = req.uri.path.reverse.head.toString
+      Future.successful(
+        RequestPartResult(
+          Source.single(
+            RequestPart(null, entity.contentType, if (filename.isEmpty) null else filename, entity.dataBytes)
+          )
+        )
+      )
+    }
+  }
+
   protected def doActionOp(
     op: Action.Op,
     data: Map[String, Any],
@@ -1425,6 +1460,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case c: Action.Conf => doConf(c, data, env, context)
       case j: Action.JsonCodec => doJsonCodec(j, data, env, context)
       case job: Action.Job => doJob(job, data, env, context)
+      case Action.ExtractParts => doExtractParts
       case VariableTransforms(vts) =>
         Future.successful(doVarsTransforms(vts, Map[String, Any](), data ++ env))
       case _: Action.Else => sys.error(s"Integrity error. Else operation cannot be here, must be coalesced into if operation")
@@ -1580,7 +1616,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   }
 
   private def dataForNextStep(res: QuereaseResult, context: ActionContext,
-                              unwrapSingleValue: Boolean)(implicit as: ActorSystem): Future[_] = {
+                              unwrapSingleValue: Boolean)(implicit fs: FileStreamer, as: ActorSystem): Future[_] = {
     def v(view: String) = viewDef(
       if (view == "this") context.view.map(_.name) getOrElse view
       else view
@@ -1648,6 +1684,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         case r => cl(r.failed.toOption) // close db resources
       } (as.dispatcher)
       case ConfResult(_, r) => r
+      case r: RequestPartResult => requestPartsToMap(r)
       case x => sys.error(s"${x.getClass.getName} not expected here!")
     }) match {
       case f: Future[_] => f
@@ -1661,7 +1698,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       if (conformTo.viewName != null)
         new ResultRenderer.ViewFieldFilter(conformTo.viewName, nameToViewDef)
       else
-        new ResultRenderer.NoFilter,
+        ResultRenderer.NoFilter,
       conformTo.isCollection
     )
 
@@ -1824,3 +1861,17 @@ trait DtoWithId extends Dto with org.mojoz.querease.DtoWithId
 
 object DefaultAppQuerease extends AppQuerease
 object DefaultAppQuereaseIo extends AppQuereaseIo[Dto](DefaultAppQuerease)
+
+object AppQuerease {
+  def requestPartsToMap(parts: RequestPartResult)(
+    implicit fs: FileStreamer, as: ActorSystem): Future[Map[String, Any]] = {
+    implicit val ec = as.dispatcher
+    parts.result.mapAsync(1) {
+      case p if p.filename != null =>
+        p.data.runWith(fs.fileSink(p.filename, p.contentType.toString))
+          .map(_.toMap)
+          .map(m => if (p.name == null) m else Map(p.name -> m))
+      case p => p.data.runFold(ByteString.empty)(_ ++ _).map(v => Map(p.name -> v.utf8String))
+    }.runFold(Map[String, Any]())(_ ++ _)
+  }
+}

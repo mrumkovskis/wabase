@@ -1182,7 +1182,6 @@ count:
       |null{ 'child' child } children }
 
 
-
 name: invocation_test_3
 table:
 api: get, list, delete, create, count, insert
@@ -1201,3 +1200,18 @@ count:
 - as any org.wabase.QuereaseActionTestManagerObj.person_dtos_list # no special type
 insert:
 - org.wabase.QuereaseActionTestManagerObj.businessException
+
+
+name: extract_parts_test
+decode request: false
+table:
+key: none
+api: insert, update
+fields:
+- none
+insert:
+- res = extract parts
+- as any unique { :res.file.filename file, :res.file.sha_256 sha_256 }
+update:
+- res = extract parts
+- as any unique { :res.filename file, :res.sha_256 sha_256 }

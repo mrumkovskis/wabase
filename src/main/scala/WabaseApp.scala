@@ -7,7 +7,7 @@ import akka.stream.Materializer
 import akka.stream.scaladsl.{Keep, Source}
 import akka.util.ByteString
 import org.mojoz.metadata.{FieldDef, ViewDef}
-import org.mojoz.querease.{FieldFilter, TresqlMetadata}
+import org.mojoz.querease.TresqlMetadata
 import org.tresql.{Resources, ResourcesTemplate, SingleValueResult}
 import org.wabase.AppMetadata.{Action, AugmentedAppFieldDef, AugmentedAppViewDef}
 import org.wabase.AppMetadata.Action.{LimitKey, OffsetKey, OrderKey}
@@ -115,8 +115,10 @@ trait WabaseApp[User] {
           case class StrictRes(result: QuereaseResult) extends Res
           def res(r: QuereaseResult, filter: ResultRenderer.ResultFilter): Res = {
             def single_res(sr: SingleValueResult[_]) = sr.value match {
-              case m: Map[String@unchecked, _] => StrictRes(MapResult(m))
-              case s: Seq[Map[String, _]@unchecked] => SourceRes(DataSerializer.source(() => s.iterator), filter, true)
+              case m: Map[String@unchecked, _] =>
+                if (filter == ResultRenderer.NoFilter) StrictRes(AnyResult(m))
+                else StrictRes(MapResult(m)) // return strict since structure may not conform to tresql result so serialization might fail
+              case s: Seq[Map[String, _]@unchecked] => SourceRes(DataSerializer.source(() => s.iterator), filter, true) // serialization might fail if data does not conform to tresql result table structure
               case x => StrictRes(StringResult(String.valueOf(x)))
             }
             r match {

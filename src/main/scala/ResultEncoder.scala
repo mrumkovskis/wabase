@@ -293,7 +293,7 @@ object ResultRenderer {
     override def unfilteredNames = viewDef.fields.map(_.fieldName).toList
   }
 
-  class NoFilter extends ResultFilter {
+  object NoFilter extends ResultFilter {
     override def name: String = null
     override def shouldInclude(field: String): Boolean = true
     override def isCollection(field: String): Boolean = true

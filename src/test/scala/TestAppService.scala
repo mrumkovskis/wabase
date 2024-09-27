@@ -57,7 +57,7 @@ class TestAppServiceNoDeferred(system: ActorSystem) extends ExecutionImpl()(syst
   with CSRFDefence {
   override type App = TestApp
   override def initApp: App = TestApp
-  override def initFileStreamer: TestApp = TestApp
+  override def initFileStreamer: AppFileStreamer[TestUsr] = TestApp
   override def encodeSession(session: Authentication.Session[TestUsr]): String = ???
   override def decodeSession(session: String) = ???
   override def signInUser = ???

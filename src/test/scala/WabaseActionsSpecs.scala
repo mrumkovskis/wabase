@@ -2,7 +2,7 @@ package org.wabase
 
 import akka.actor.ActorSystem
 import akka.http.scaladsl.marshalling.Marshal
-import akka.http.scaladsl.model.{HttpRequest, HttpResponse, MessageEntity, StatusCodes}
+import akka.http.scaladsl.model.{ContentType, ContentTypes, HttpEntity, HttpRequest, HttpResponse, MessageEntity, StatusCodes}
 import akka.http.scaladsl.server.{RequestContext, Route}
 import akka.http.scaladsl.testkit.ScalatestRouteTest
 import akka.http.scaladsl.unmarshalling.Unmarshal
@@ -13,6 +13,7 @@ import org.scalatest.flatspec.{AsyncFlatSpec, AsyncFlatSpecLike}
 import org.scalatest.matchers.should.Matchers
 import org.tresql.{MissingBindVariableException, Query, ThreadLocalResources, convString}
 import org.wabase.QuereaseActionsDtos.PersonWithHealthDataHealth
+import org.wabase.client.WabaseHttpClient
 
 import java.io.File
 import java.nio.file.Files
@@ -125,6 +126,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
 
   class WabaseActionsService(as: ActorSystem) extends TestAppServiceNoDeferred(as) {
     val route = crudAction(user)
+    override def initFileStreamer: TestApp = WabaseActionsSpecs.this.app
   }
 
   var app: TestApp = _
@@ -1330,6 +1332,17 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         Map("id" -> 2, "name" -> "Ala", "sex" -> "F", "birthdate" -> "1955-07-01"),
         Map("id" -> 3, "name" -> "Ola", "sex" -> "F", "birthdate" -> "1988-10-09"),
       ))
+    }
+    def createEntity(content: String, ct: ContentType) = HttpEntity(ct, ByteString(content))
+    Post("/extract_parts_test", WabaseHttpClient
+      .fileUploadForm(createEntity("Hi people!", ContentTypes.`text/plain(UTF-8)`), "test.txt")) ~> route ~> check {
+      val r = entityAs[String]
+      jsonAssert(r, Map("file" -> "test.txt", "sha_256" -> "228c55536f6bcca78166c30c29199c4b6a52c8ed560cdc1db62ec1ac8af5df30"))
+    }
+    Put("/extract_parts_test/test-upd.txt", createEntity("Hi people again!", ContentTypes.`text/plain(UTF-8)`)) ~>
+      route ~> check {
+      val r = entityAs[String]
+      jsonAssert(r, Map("file" -> "test-upd.txt", "sha_256" -> "4744b699460641b88c590e8a9c089970345ffcce056501652b06ec166c01b666"))
     }
   }
 }
