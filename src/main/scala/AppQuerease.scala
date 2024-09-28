@@ -1280,6 +1280,24 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     Future.successful(headerVal)
   }
 
+  protected def doExtractCookie(
+    op: Action.Cookie,
+    data: Map[String, Any],
+    env: Map[String, Any],
+    context: ActionContext,
+  )(implicit
+    resFac: ResourcesFactory,
+    ec: ExecutionContext,
+    as: ActorSystem,
+    fs: FileStreamer,
+    reqCtx: RequestContext,
+  ): Future[QuereaseResult] = {
+    val cookie = Option(reqCtx).map(_.request.cookies).flatMap(_.collectFirst {
+      case h if h.name.toLowerCase == op.name.toLowerCase => StringResult(h.value)
+    }).getOrElse(NoResult)
+    Future.successful(cookie)
+  }
+
   protected def doDb(
     op: Action.Db,
     data: Map[String, Any],
@@ -1458,6 +1476,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case email: Action.Email => doEmail(email, data, env, context)
       case http: Action.Http => doHttp(http, data, env, context)
       case eh: Action.HttpHeader => doExtractHeader(eh, data, env, context)
+      case exc: Action.Cookie => doExtractCookie(exc, data, env, context)
       case db: Action.Db => doDb(db, data, env, context)
       case block: Action.Block => doBlock(block, data, env, context)
       case c: Action.Conf => doConf(c, data, env, context)

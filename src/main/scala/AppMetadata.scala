@@ -838,9 +838,10 @@ class OpParser(viewName: String, tresqlUri: TresqlUri, cache: OpParser.Cache)
       case pt ~ param => Conf(param, ConfTypes.parse(pt.orNull))
     }
   } named "conf-op"
-  def httpHeaderOp: MemParser[HttpHeader] = "extract header" ~> ".*".r ^^ {
-    case h => HttpHeader(h)
-  } named "http-header-op"
+  def httpHeaderOrCookieOp: MemParser[Op] = "extract" ~> ("header" | "cookie") ~ ".*".r ^^ {
+    case "header" ~ h => HttpHeader(h)
+    case _ ~ c => Cookie(c)
+  } named "http-hoc-op"
   def extractPartsOp: MemParser[ExtractParts.type] =
     "extract parts" ^^ (_ => ExtractParts) named "extract-parts"
 
@@ -858,7 +859,7 @@ class OpParser(viewName: String, tresqlUri: TresqlUri, cache: OpParser.Cache)
   } named "named-ops"
   def operation: MemParser[Op] = (viewOp | jobOp | confOp | uniqueOp | invocationOp |
     httpOp | resourceOp | fileOp | toFileOp | templateOp | emailOp |
-    jsonCodecOp | httpHeaderOp | extractPartsOp | bracesOp | tresqlOp) named "operation"
+    jsonCodecOp | httpHeaderOrCookieOp | extractPartsOp | bracesOp | tresqlOp) named "operation"
 
   private def opResultType: MemParser[OpResultType] = {
     sealed trait ResType
@@ -1035,6 +1036,7 @@ object AppMetadata extends Loggable {
                     body: Op = null,
                     conformTo: Option[OpResultType] = None) extends CastableOp
     case class HttpHeader(name: String) extends Op
+    case class Cookie(name: String) extends Op
     case class Db(action: Action, doRollback: Boolean, dbs: List[DbAccessKey]) extends Op
     case class Conf(param: String, paramType: ConfType = null) extends Op
     case class JsonCodec(encode: Boolean, op: Op) extends Op
@@ -1061,8 +1063,8 @@ object AppMetadata extends Loggable {
         extractor: OpTraverser[T]): OpTraverser[T] = {
       def traverse(state: T): PartialFunction[Op, T] = {
         case _: Tresql | _: RedirectToKey | _: Status |
-             _: VariableTransforms | _: File | _: Conf | _: HttpHeader | ExtractParts | _: Job |
-             _: Resource | Commit | null => state
+             _: VariableTransforms | _: File | _: Conf | _: HttpHeader | _: Cookie |
+             ExtractParts | _: Job | _: Resource | Commit | null => state
         case o: ViewCall => opTrav(state)(o.data)
         case Unique(o, _, _) => opTrav(state)(o)
         case Foreach(o, a) => traverseAction(a)(stepTrav)(opTrav(state)(o))

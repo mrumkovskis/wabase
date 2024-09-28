@@ -1017,6 +1017,15 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     }
   }
 
+  it should "extract http cookies" in {
+    for {
+      t1 <- doAction("list", "extract_http_cookie_test", Map())
+        .map { _ shouldBe MapResult(Map("lang_user" -> "lv dzidzis", "c_var" -> "lv dzidzis", "no_cookie" -> null)) }
+    } yield {
+      t1
+    }
+  }
+
   it should "assign value to variable path" in {
     for {
       t1 <- doAction("get", "variable_path_test", Map())
