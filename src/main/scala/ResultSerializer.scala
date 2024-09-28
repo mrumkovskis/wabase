@@ -225,7 +225,7 @@ object BorerDatetimeEncoders {
     Encoder { (w, value) => w ~ sql.Timestamp.valueOf(value) }
   implicit val offsetDateTimeEncoder: Encoder[OffsetDateTime] = Encoder { (w, value) =>
     // TODO optimize cbor for OffsetDateTime - maybe see https://datatracker.ietf.org/doc/draft-ietf-cbor-time-tag/
-    w writeString value.format(DateTimeFormatter.ISO_OFFSET_DATE)
+    w writeString value.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
   }
   implicit val zonedDateTimeEncoder: Encoder[ZonedDateTime] = Encoder { (w, value) =>
     // TODO optimize cbor for ZonedDateTime - maybe see https://datatracker.ietf.org/doc/draft-ietf-cbor-time-tag/
