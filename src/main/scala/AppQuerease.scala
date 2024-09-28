@@ -826,8 +826,11 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         )
       )
     } else {
-      doActionOp(op.arg, data, env, context).map { opRes =>
-        invokeFunction(className, function, Seq((classOf[QuereaseResult], _ => opRes)))
+      doActionOp(op.arg, data, env, context).flatMap { opRes =>
+        invokeFunction(className, function, Seq((classOf[QuereaseResult], _ => opRes))) match {
+          case f: Future[_] => f
+          case x => Future.successful(x)
+        }
       }
     }) match {
       case f: Future[_] => f map comp_q_result

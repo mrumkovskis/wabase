@@ -1344,5 +1344,10 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       val r = entityAs[String]
       jsonAssert(r, Map("file" -> "test-upd.txt", "sha_256" -> "4744b699460641b88c590e8a9c089970345ffcce056501652b06ec166c01b666"))
     }
+    Post("/extract_parts_test2", WabaseHttpClient
+      .fileUploadForm(createEntity("Hi people!", ContentTypes.`text/plain(UTF-8)`), "test.txt")) ~> route ~> check {
+      val r = entityAs[String]
+      jsonAssert(r, Seq(Map("file" -> "test.txt", "sha_256" -> "228c55536f6bcca78166c30c29199c4b6a52c8ed560cdc1db62ec1ac8af5df30")))
+    }
   }
 }

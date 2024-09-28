@@ -1215,3 +1215,11 @@ insert:
 update:
 - res = extract parts
 - as any unique { :res.filename file, :res.sha_256 sha_256 }
+
+
+name: extract_parts_test2
+decode request: false
+table:
+api: insert
+insert:
+  - as any org.wabase.QuereaseActionTestManagerObj.processRequestParts extract parts
