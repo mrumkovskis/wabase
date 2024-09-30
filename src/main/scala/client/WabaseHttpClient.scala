@@ -154,6 +154,5 @@ object WabaseHttpClient{
         Multipart.FormData.BodyPart(
           fieldName,
           entity,
-          Map("filename" -> fileName))))
-
+          if (fileName == null) Map() else Map("filename" -> fileName))))
 }

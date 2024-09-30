@@ -2,11 +2,11 @@ package org.wabase
 
 import akka.actor.ActorSystem
 import akka.http.scaladsl.marshalling.Marshal
-import akka.http.scaladsl.model.{ContentType, ContentTypes, HttpEntity, HttpRequest, HttpResponse, MessageEntity, StatusCodes}
+import akka.http.scaladsl.model.{ContentType, ContentTypes, HttpEntity, HttpRequest, HttpResponse, MessageEntity, Multipart, StatusCodes}
 import akka.http.scaladsl.server.{RequestContext, Route}
 import akka.http.scaladsl.testkit.ScalatestRouteTest
 import akka.http.scaladsl.unmarshalling.Unmarshal
-import akka.stream.scaladsl.StreamConverters
+import akka.stream.scaladsl.{Source, StreamConverters}
 import akka.util.ByteString
 import org.mojoz.querease.{TresqlMetadata, ValidationException, ValidationResult}
 import org.scalatest.flatspec.{AsyncFlatSpec, AsyncFlatSpecLike}
@@ -1343,10 +1343,22 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       ))
     }
     def createEntity(content: String, ct: ContentType) = HttpEntity(ct, ByteString(content))
-    Post("/extract_parts_test", WabaseHttpClient
-      .fileUploadForm(createEntity("Hi people!", ContentTypes.`text/plain(UTF-8)`), "test.txt")) ~> route ~> check {
+    def concatForms(forms: Multipart.FormData*) = Multipart.FormData(
+      forms.foldLeft(Source.empty[Multipart.FormData.BodyPart])(_ ++ _.parts)
+    )
+    Post("/extract_parts_test", concatForms(
+      WabaseHttpClient.fileUploadForm(createEntity("Field value1", ContentTypes.`text/plain(UTF-8)`), null, "field1"),
+      WabaseHttpClient.fileUploadForm(createEntity("Field value2", ContentTypes.`text/plain(UTF-8)`), null, "field2"),
+      WabaseHttpClient.fileUploadForm(createEntity("Hi people!", ContentTypes.`text/plain(UTF-8)`), "test1.txt", "file1"),
+      WabaseHttpClient.fileUploadForm(createEntity("How are you!", ContentTypes.`text/plain(UTF-8)`), "test2.txt", "file2"),
+    )) ~> route ~> check {
       val r = entityAs[String]
-      jsonAssert(r, Map("file" -> "test.txt", "sha_256" -> "228c55536f6bcca78166c30c29199c4b6a52c8ed560cdc1db62ec1ac8af5df30"))
+      jsonAssert(r, Seq(
+        Map("name" -> "field1", "value" -> "Field value1"),
+        Map("name" -> "field2", "value" -> "Field value2"),
+        Map("name" -> "test1.txt", "value" -> "228c55536f6bcca78166c30c29199c4b6a52c8ed560cdc1db62ec1ac8af5df30"),
+        Map("name" -> "test2.txt", "value" -> "8be8a3875c871e2f3990640f18d914836152dfacfd34880a13358e04c6471ea9")
+      ))
     }
     Put("/extract_parts_test/test-upd.txt", createEntity("Hi people again!", ContentTypes.`text/plain(UTF-8)`)) ~>
       route ~> check {

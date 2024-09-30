@@ -1231,7 +1231,11 @@ fields:
 - none
 insert:
 - res = extract parts
-- as any unique { :res.file.filename file, :res.file.sha_256 sha_256 }
+- as any
+    { 'field1' name, :res.field1 value } ++
+    { 'field2' name, :res.field2 value } ++
+    { :res.file1.filename name, :res.file1.sha_256 value } ++
+    { :res.file2.filename name, :res.file2.sha_256 value }
 update:
 - res = extract parts
 - as any unique { :res.filename file, :res.sha_256 sha_256 }
