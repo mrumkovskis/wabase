@@ -1060,6 +1060,7 @@ insert:
     ({ 'c@c.c' 'to', 'Minna' name, 'c1@.c1.c1' cc, 'f@f.f' 'from', 'r@r.r' replyTo })
     (template 'Subject for {{name}}!')
     (template 'Content for {{recipient}}.' {trim(:name) recipient})
+- email null[false]{'n@n.n' 'to'} 'no mail' 'no content'
 
 
 name: not_decode_request_insert_test

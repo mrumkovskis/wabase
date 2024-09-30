@@ -1148,7 +1148,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       t1 <-
         doAction("insert", "email_test1", Map())
           .map { sentCount =>
-            sentCount shouldBe LongResult(1)
+            sentCount shouldBe LongResult(0)
             mailBox.emails shouldBe Map(
               "a@a.a" -> Map(
                 "body" -> "Content for Hannah.",
