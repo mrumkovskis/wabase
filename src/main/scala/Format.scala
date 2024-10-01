@@ -32,11 +32,23 @@ object Format {
     s.length match {
       case 24 =>
         Format.jsIsoDateTime.parse(s)
-      case 21 | 22 | 23 =>
+      case 23 =>
         s.charAt(10) match {
           case ' ' => Format.humanDateTimeWithMillis.parse(s)
           case 'T' => Format.xlsxDateTime.parse(s)
           case  _  => Format.uriDateTimeWithMillis.parse(s)
+        }
+      case 22 =>
+        s.charAt(10) match {
+          case ' ' => Format.humanDateTimeWithMillis.parse(s"${s}0")
+          case 'T' => Format.xlsxDateTime.parse(s"${s}0")
+          case  _  => Format.uriDateTimeWithMillis.parse(s"${s}0")
+        }
+      case 21 =>
+        s.charAt(10) match {
+          case ' ' => Format.humanDateTimeWithMillis.parse(s"${s}00")
+          case 'T' => Format.xlsxDateTime.parse(s"${s}00")
+          case  _  => Format.uriDateTimeWithMillis.parse(s"${s}00")
         }
       case 19 =>
         s.charAt(10) match {
