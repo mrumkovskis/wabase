@@ -62,4 +62,13 @@ class FormatTest extends FlatSpec with Matchers {
   cal.getTimeInMillis shouldBe Format.parseDate("2011-12-13T00:00").getTime
   cal.getTimeInMillis shouldBe Format.parseDate("2011-12-13T00:00").getTime
   cal.getTimeInMillis shouldBe Format.parseDate("2011-12-13").getTime
+
+  cal.set(Calendar.YEAR, 1970)
+  cal.set(Calendar.MONTH, 0)
+  cal.set(Calendar.DATE, 1)
+  cal.set(Calendar.HOUR_OF_DAY, 10)
+  cal.set(Calendar.MINUTE, 11)
+  cal.getTimeInMillis shouldBe Format.time.parse("10:11").getTime
+  cal.set(Calendar.HOUR_OF_DAY, 15)
+  cal.getTimeInMillis shouldBe Format.time.parse("15:11").getTime
 }
