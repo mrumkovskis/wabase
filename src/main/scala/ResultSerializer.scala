@@ -214,7 +214,9 @@ object BorerDatetimeEncoders {
     }
   }
   implicit val javaTimeInstantEncoder: Encoder[Instant] = Encoder { (w, value) =>
-    // TODO optimize cbor for Instant - maybe see https://datatracker.ietf.org/doc/draft-ietf-cbor-time-tag/
+    // TODO optimize cbor for Instant
+    // - maybe see https://datatracker.ietf.org/doc/rfc9581/
+    // - maybe see https://datatracker.ietf.org/doc/draft-ietf-cbor-time-tag/
     w writeString value.toString
   }
   implicit val localDateEncoder: Encoder[LocalDate] =
@@ -224,11 +226,15 @@ object BorerDatetimeEncoders {
   implicit val localDateTimeEncoder: Encoder[LocalDateTime] =
     Encoder { (w, value) => w ~ sql.Timestamp.valueOf(value) }
   implicit val offsetDateTimeEncoder: Encoder[OffsetDateTime] = Encoder { (w, value) =>
-    // TODO optimize cbor for OffsetDateTime - maybe see https://datatracker.ietf.org/doc/draft-ietf-cbor-time-tag/
+    // TODO optimize cbor for OffsetDateTime
+    // - maybe see https://datatracker.ietf.org/doc/rfc9581/
+    // - maybe see https://datatracker.ietf.org/doc/draft-ietf-cbor-time-tag/
     w writeString value.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
   }
   implicit val zonedDateTimeEncoder: Encoder[ZonedDateTime] = Encoder { (w, value) =>
-    // TODO optimize cbor for ZonedDateTime - maybe see https://datatracker.ietf.org/doc/draft-ietf-cbor-time-tag/
+    // TODO optimize cbor for ZonedDateTime
+    // - maybe see https://datatracker.ietf.org/doc/rfc9581/
+    // - maybe see https://datatracker.ietf.org/doc/draft-ietf-cbor-time-tag/
     w writeString value.toString
   }
 }
