@@ -326,7 +326,7 @@ trait WabaseApp[User] {
     * Default implementation also converts "null" to null.
     */
   def prepareKeyValue(field: FieldDef, value: Any): Any =
-    if (value == "null") null else qe.convertToType(field.type_, value)
+    if (value == "null") null else qe.convertToType(value, field.type_)
   def prepareKey(viewName: String, keyValues: Seq[Any], actionName: String): Map[String, Any] = {
     val keyFields = qe.viewNameToKeyFields(viewName).filterNot(_.api.excluded)
     prepareKey(viewName, keyFields, keyValues, actionName)

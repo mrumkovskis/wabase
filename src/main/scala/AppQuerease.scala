@@ -14,6 +14,9 @@ import com.typesafe.scalalogging.Logger
 import org.tresql._
 import org.mojoz.querease._
 import org.mojoz.querease.SaveMethod
+import org.mojoz.querease.ValueTransformer.{ClassOfJavaSqlDate, ClassOfJavaSqlTimestamp, ClassOfJavaUtilDate}
+import org.mojoz.querease.ValueTransformer.{ClassOfJavaTimeLocalDate, ClassOfJavaTimeLocalDateTime}
+
 import org.mojoz.metadata.Type
 import org.mojoz.metadata.{FieldDef, ViewDef}
 import org.slf4j.LoggerFactory
@@ -134,30 +137,16 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
 
  import AppMetadata._
 
-  def convertToType(type_ : Type, value: Any): Any = {
-    value match {
-      case s: String =>
-        (typeNameToScalaTypeName.get(type_.name).orNull match {
-          case "String"             => s
-          case "java.lang.Long"     => s.toLong
-          case "java.lang.Integer"  => s.toInt
-          case "java.sql.Date"      => new java.sql.Date(Format.parseDate(s).getTime)
-          case "java.sql.Time"      => BorerDatetimeDecoders.toSqlTime(s)
-          case "java.sql.Timestamp" => new java.sql.Timestamp(Format.parseDateTime(s).getTime)
-          case "java.time.Instant"       => java.time.Instant.parse(s) // TODO more formats?
-          case "java.time.LocalDate"     => new java.sql.Date(Format.parseDate(s).getTime).toLocalDate
-          case "java.time.LocalTime"     => BorerDatetimeDecoders.toSqlTime(s).toLocalTime
-          case "java.time.LocalDateTime" => new java.sql.Timestamp(Format.parseDateTime(s).getTime).toLocalDateTime
-          case "java.time.OffsetDateTime"=> java.time.OffsetDateTime.parse(s) // TODO more formats?
-          case "java.time.ZonedDateTime" => java.time.ZonedDateTime.parse(s)  // TODO more formats?
-          case "scala.math.BigInt"     => BigInt(s)
-          case "scala.math.BigDecimal" => BigDecimal(s)
-          case "java.lang.Double"   => s.toDouble
-          case "java.lang.Boolean"  => s.toBoolean
-          case _ /* "Array[Byte]" */=> s
-        })
-      case x => x
+  override def convertToType(value: Any, targetClass: Class[_]): Any = value match {
+    case s: java.lang.String          => targetClass match {
+      case ClassOfJavaSqlDate            => new java.sql.Date     (Format.parseDate(s)    .getTime)
+      case ClassOfJavaSqlTimestamp       => new java.sql.Timestamp(Format.parseDateTime(s).getTime)
+      case ClassOfJavaTimeLocalDate      => new java.sql.Date     (Format.parseDate(s)    .getTime).toLocalDate
+      case ClassOfJavaTimeLocalDateTime  => new java.sql.Timestamp(Format.parseDateTime(s).getTime).toLocalDateTime
+      case ClassOfJavaUtilDate           => Format.parseDateTime(s)
+      case _                             => super.convertToType(value, targetClass)
     }
+    case _                            => super.convertToType(value, targetClass)
   }
 
   val resultRenderers: ResultRenderers = new ResultRenderers
@@ -263,7 +252,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     val keyValues = tryOp(
       keyFieldNames.map(n => data.getOrElse(n, sys.error(s"Mapping not found for key field $n of view $viewName")))
         .zip(keyFields).map { case (v, f) =>
-          try convertToType(f.type_, v)
+          try convertToType(v, f.type_)
           catch {
             case util.control.NonFatal(ex) => throw new BusinessException(
               s"Failed to convert value for key field ${f.name} to type ${f.type_.name}", ex)
