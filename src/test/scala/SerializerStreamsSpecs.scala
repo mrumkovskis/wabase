@@ -3,10 +3,10 @@ package org.wabase
 import akka.actor.ActorSystem
 import akka.stream.scaladsl.{Sink, Source, StreamConverters}
 import akka.util.ByteString
-import org.apache.commons.codec.binary.Hex
 import io.bullet.borer.{Cbor, Json, Target}
 
 import java.io.{ByteArrayInputStream, InputStream, OutputStream, OutputStreamWriter}
+import java.math.BigInteger
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers
 import org.wabase.ResultEncoder.{ChunkType, EncoderFactory}
@@ -555,7 +555,7 @@ class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseIni
       }
       val serialized  = serializeValuesToHexString(List(value).iterator, bufferSizeHint = bufferSizeHint)
       val transformer = new BorerNestedArraysTransformer(
-        Cbor.reader(new ByteArrayInputStream(Hex.decodeHex(serialized))), handler
+        Cbor.reader(new BigInteger(serialized, 16).toByteArray), handler
       )
       handler.writeStartOfInput()
       while (transformer.transformNext()) {}

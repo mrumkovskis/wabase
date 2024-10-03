@@ -681,7 +681,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
   def createSaveResult[T <: Dto](ctx: SaveContext[T]) = ctx.result
   def createDeleteResult[T <: DtoWithId](ctx: RemoveContext[T]) = ctx.result
 
-  lazy val metadataVersionString = org.apache.commons.codec.binary.Base64.encodeBase64URLSafeString(
+  lazy val metadataVersionString = java.util.Base64.getUrlEncoder.encodeToString(
     java.security.MessageDigest.getInstance("MD5").digest(qe.collectViews{ case v => v }.toList.toString.getBytes))
 
   def metadata(viewName: String)(implicit user: User, state: ApplicationState): JsObject = {

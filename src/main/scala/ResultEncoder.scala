@@ -114,7 +114,7 @@ abstract class ResultRenderer(
   protected def renderFooter(): Unit      = {}
   protected def renderRawValue(value: Any): Unit = value match {
     case bytes: Array[Byte] =>
-      renderValue(ByteString.fromArrayUnsafe(bytes).encodeBase64.utf8String)
+      renderValue(java.util.Base64.getEncoder.encodeToString(bytes))
     case _ => renderValue(value)
   }
   protected def shouldRender(name: String): Boolean = {

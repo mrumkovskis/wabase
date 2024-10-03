@@ -49,7 +49,6 @@ lazy val wabase = (project in file("."))
       "org.mojoz"                  %% "mojoz"                 % mojozV,
       "org.mojoz"                  %% "querease"              % quereaseV,
       "commons-validator"           % "commons-validator"     % "1.9.0",
-      "commons-codec"               % "commons-codec"         % "1.17.1",
       "org.postgresql"              % "postgresql"            % "42.7.4",
       "com.lambdaworks"             % "scrypt"                % "1.4.0",
       "org.tresql"                 %% "tresql"                % tresqlV,

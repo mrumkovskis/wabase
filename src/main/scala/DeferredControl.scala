@@ -305,7 +305,7 @@ trait DeferredControl
   protected def requestHash(username: String, req: HttpRequest) = {
     val md = java.security.MessageDigest.getInstance("SHA-1")
     implicit val usr = username
-    org.apache.commons.codec.binary.Base64.encodeBase64URLSafeString(
+    java.util.Base64.getUrlEncoder.encodeToString(
       md.digest(serialize((username, serializeHttpRequest(removeSessionInfoFromRequest(req))))))
   }
 

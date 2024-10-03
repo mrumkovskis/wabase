@@ -249,7 +249,7 @@ object Authentication {
     import javax.crypto.{ Cipher, KeyGenerator, Mac }
     import javax.crypto.spec.{ IvParameterSpec, SecretKeySpec }
     import System.currentTimeMillis
-    import org.apache.commons.codec.binary.Base64
+    import java.util.Base64
     import org.wabase.config
 
     val cryptoAlgoritm = "AES/CBC/PKCS5Padding"
@@ -279,8 +279,8 @@ object Authentication {
       array ++ java.nio.ByteBuffer.allocate(8).putLong(currentTime).array.drop(2)
     }
 
-    def encodeBytes(bytes: Array[Byte]) = Base64.encodeBase64URLSafeString(bytes)
-    def decodeBytes(string: String) = Base64.decodeBase64(string)
+    def encodeBytes(bytes: Array[Byte]) = Base64.getUrlEncoder.encodeToString(bytes)
+    def decodeBytes(string: String) = Base64.getUrlDecoder.decode(string)
 
     def encrypt(s: String) = {
       val rb = randomBytes(10)

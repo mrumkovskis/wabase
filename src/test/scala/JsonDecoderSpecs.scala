@@ -28,7 +28,7 @@ class JsonDecoderSpecs extends FlatSpec with Matchers {
   def decodeToMap(bytes: ByteString, viewName: String, decoder: CborOrJsonAnyValueDecoder) =
     qe.viewNameToMapZero(viewName) ++ // to sort properly for string compare
       decoder.decodeToMap(bytes)
-  def encodeBytes(bytes: Array[Byte]) = ByteString.fromArrayUnsafe(bytes).encodeBase64.utf8String
+  def encodeBytes(bytes: Array[Byte]) = java.util.Base64.getEncoder.encodeToString(bytes)
   def comparable(map: Map[String, Any]): Map[String, Any] = // scalatest does not compare bytes - convert to string
     map.updated("bytes",     Option(map("bytes")).map(_.asInstanceOf[Array[Byte]]).map(encodeBytes).orNull)
        .updated("bytes_seq", Option(map("bytes_seq")).map(_.asInstanceOf[List[Array[Byte]]].map(encodeBytes)).orNull)

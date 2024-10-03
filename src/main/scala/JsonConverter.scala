@@ -52,7 +52,7 @@ trait JsonConverter[DTO <: Dto] { self: AppQuereaseIo[DTO] =>
     case d: LocalDate => JsString(xsdDate(sql.Date.valueOf(d)))
     case jv: JsValue => jv
     case null => JsNull
-    case b: Array[Byte] => JsString(ByteString.fromArrayUnsafe(b).encodeBase64.utf8String)
+    case b: Array[Byte] => JsString(java.util.Base64.getEncoder.encodeToString(b))
     case x => JsString(String.valueOf(x))
   }
   implicit object DtoJsonFormat extends RootJsonFormat[DTO] {
