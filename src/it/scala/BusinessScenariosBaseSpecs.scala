@@ -13,7 +13,7 @@ import org.tresql.{Query, ThreadLocalResources}
 import org.wabase.AppMetadata.DbAccessKey
 import spray.json._
 
-import scala.collection.immutable.Seq
+import scala.collection.immutable.{Map, Seq}
 import scala.concurrent.Await
 import scala.language.reflectiveCalls
 import scala.util.{Random, Try}
@@ -114,13 +114,13 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
   }
 
   private val randomStringPattern = "randomString\\((\\d*)\\)".r
-  def templateFunctions: Map[String, String] => PartialFunction[String, String] = context => {
+  def templateFunctions: Map[String, Any] => PartialFunction[String, Any] = context => {
     case (randomStringPattern(length)) => Random.alphanumeric.take(length.toInt).mkString
   }
 
   private val placeholderPattern = """.*\{\{(.+)\}\}""".r
-  def applyContext(map: Map[String, Any], context: Map[String, String]): (Map[String, String], Map[String, Any]) = {
-    var newValues = Map.empty[String, String]
+  def applyContext(map: Map[String, Any], context: Map[String, Any]): (Map[String, Any], Map[String, Any]) = {
+    var newValues = Map.empty[String, Any]
     def mapString(s: String) = {
       def patchString(key: String, cKey: String) = {
         val value = try {
@@ -134,23 +134,40 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
         if (cKey != null) newValues += cKey -> value
         value
       }
+      def applyPlaceholder(currentValue: String, placeholderName: String, value: Any) = {
+        // Mustache like 'Template', for now it's enough
+        val placeholder = s"{{$placeholderName}}"
+        if (currentValue == placeholder)
+          value
+        else if (currentValue.indexOf(placeholder) >= 0)
+          currentValue.replace(placeholder, s"${transformToStringValues(value)}")
+        else
+          currentValue
+      }
       val kcPattern = "<-\\W*(.*)\\W*->\\W*(.*)\\W*".r
       val ckPattern = "->\\W*(.*)\\W*<-\\W*(.*)\\W*".r
       val kPattern = "<-\\W*(.*)".r
 
-      val patchedS =
+      val patched =
       if (s != null && s.contains("<-")) s.trim match {
         case kcPattern(key, cKey) => patchString(key.trim, cKey.trim)
         case ckPattern(cKey, key) => patchString(key.trim, cKey.trim)
         case kPattern(key) => patchString(key.trim, null)
-      } else context.foldLeft(s){case (string, (key, value)) => string.replace(s"{{$key}}", value)} // Mustache like 'Template', for now it's enough
-      patchedS match {
+      } else context.foldLeft(s: Any) { case (currentResult, (key, value)) => currentResult match {
+        case currentResult: String =>
+          applyPlaceholder(currentResult, key, value)
+        case _ => currentResult
+      }}
+      patched match {
+       case patchedS: String => patchedS match {
         case placeholderPattern(placeholderName) =>
           // TODO for all
           if (templateFunctions(context).isDefinedAt(placeholderName))
-            patchedS.replace(s"{{$placeholderName}}", templateFunctions(context)(placeholderName))
+            applyPlaceholder(patchedS, placeholderName, templateFunctions(context)(placeholderName))
           else patchedS
         case _ => patchedS
+       }
+       case _ => patched
       }
     }
     val result = map.map(e => (e._1, e._2 match {
@@ -233,7 +250,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
   }
 
   def logScenarioRequestInfo(
-    scenario: File, testCase: File, context: Map[String, String], map: Map[String, Any],
+    scenario: File, testCase: File, context: Map[String, Any], map: Map[String, Any],
     path: String, method: String, params: Map[String, Any], requestInfo: RequestInfo,
     expectedHeaders: Seq[HttpHeader], expectedResponse: Any, expectedError: String,
     tresqlRow: String, tresqlList: String, tresqlTransaction: String, options: Seq[String],
@@ -278,7 +295,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
   }
 
   def logScenarioResponseInfoOnFailure(
-    scenario: File, testCase: File, context: Map[String, String], exception: Throwable,
+    scenario: File, testCase: File, context: Map[String, Any], exception: Throwable,
     debugResponse: Boolean, rawResponse: Any, response: Any,
   ): Unit = {
     if (debugResponse) {
@@ -299,7 +316,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
     case x => x
   }
 
-  def checkTestCase(scenario: File, testCase: File, context: Map[String, String], map: Map[String, Any], retriesLeft: Int): Map[String, String] = {
+  def checkTestCase(scenario: File, testCase: File, context: Map[String, Any], map: Map[String, Any], retriesLeft: Int): Map[String, Any] = {
     val path = map.s("path")
     val method = map.sd("method", "GET")
     val params = map.m("params")
@@ -401,9 +418,9 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
     else Map.empty[String, String]
   }
 
-  def checkTestCase(scenario: File, testCase: File, context: Map[String, String], map: Map[String, Any]): Map[String, String] = {
+  def checkTestCase(scenario: File, testCase: File, context: Map[String, Any], map: Map[String, Any]): Map[String, Any] = {
     val retries = map.get("retries").map(_.toString.toInt).getOrElse(0)
-    var result: Map[String, String] = Map.empty
+    var result: Map[String, Any] = Map.empty
     import scala.util.control.Breaks._
     breakable {
       for (retriesLeft <- (0 to retries).reverse) {
@@ -428,7 +445,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
   def ckeckAllTestCases =
     scenarios.sortBy(_.getCanonicalPath).foreach{scenario =>
       behavior of scenario.getName
-      var context = Map.empty[String, String]
+      var context = Map.empty[String, Any]
       it should "login" in login()
       scenario.listFiles.filter(isTestCaseFile).sortBy(_.getName).foreach{testCase =>
         it should "handle "+testCase.getName in {
