@@ -279,8 +279,15 @@ object Authentication {
       array ++ java.nio.ByteBuffer.allocate(8).putLong(currentTime).array.drop(2)
     }
 
-    def encodeBytes(bytes: Array[Byte]) = Base64.getUrlEncoder.encodeToString(bytes)
-    def decodeBytes(string: String) = Base64.getUrlDecoder.decode(string)
+    def encodeBytes(bytes: Array[Byte]) = Base64.getUrlEncoder.encodeToString(bytes) match {
+      // TODO performance
+      case s if s endsWith "==" => s.dropRight(2)
+      case s if s endsWith "="  => s.dropRight(1)
+      case s => s
+    }
+    def decodeBytes(string: String) =
+      // TODO performance
+      Base64.getMimeDecoder.decode(string.replace('-', '+').replace('_', '/'))
 
     def encrypt(s: String) = {
       val rb = randomBytes(10)
