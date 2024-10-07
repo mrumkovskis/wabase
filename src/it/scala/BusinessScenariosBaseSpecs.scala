@@ -55,8 +55,6 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
     listenToWs(deferredActor)
   }
 
-  private case class JsonResponse(jsonString: String, processed: Any)
-
   def recursiveListDirectories(f: File): Array[File] = {
     val these = Option(f.listFiles) getOrElse Array[File]()
     these.filter(_.isDirectory) ++
@@ -387,18 +385,11 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
         message
       }
 
-    val processedResponse = unprocessedResponse match {
+    val (rawResponse, response) = unprocessedResponse match {
       case httpResponse: HttpResponse =>
         val resString = Await.result(httpResponse.entity.toStrict(awaitTimeout), awaitTimeout).data.utf8String
-        if (expectedError == null) {
-          Try(JsonToAny(resString.parseJson)).toOption.map(JsonResponse(resString, _)).getOrElse(resString)
-        }
-      case _ => unprocessedResponse
-    }
-
-    val (rawResponse, response) = processedResponse match {
-      case JsonResponse(jsonString, processed) => (jsonString, processed)
-      case other => (other, other)
+        Try(JsonToAny(resString.parseJson)).toOption.map((resString, _)).getOrElse((resString, resString))
+      case _ => (unprocessedResponse, unprocessedResponse)
     }
 
     logScenarioResponseInfo(debugResponse, response)
