@@ -1,0 +1,36 @@
+table:   person
+columns:
+- id
+- name                 ! 51
+- sex                  ! 1   (M F)
+- mother.id              person.id
+- father.id              person.id
+pk: id
+
+
+name:    mother_with_children
+table:   person m
+fields:
+- id
+- name
+- sex -> sex = 'F'
+- daughters * [m.id = d.mother_id] :
+    table:    person d
+    save-to:  person:mother_id    # Ambiguous references resolved for save
+    auth:     d.sex = 'F'         # XXX abusing auth to avoid inteference with siblings while persisting to the same table
+    fields:
+    - name
+    - sex -> sex = 'F'
+    filter:
+    - sex = 'F'
+- sons      * [m.id = s.mother_id] :
+    table:    person s
+    save-to:  person:mother_id    # Ambiguous references resolved for save
+    auth:     s.sex = 'M'         # XXX abusing auth to avoid inteference with siblings while persisting to the same table
+    fields:
+    - name
+    - sex -> sex = 'M'
+    filter:
+    - sex = 'M'
+filter:
+- sex = 'F'
