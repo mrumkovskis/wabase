@@ -653,7 +653,7 @@ fields:
 - code
 - parent
 - value
-- children[!] * [:1(code) = parent]foreach_test_1
+- children[!] * [^1.code = parent]foreach_test_1
 save:
 - insert this
 - foreach :children :
