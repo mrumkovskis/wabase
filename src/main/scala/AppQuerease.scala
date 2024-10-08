@@ -1741,8 +1741,7 @@ trait Dto extends org.mojoz.querease.Dto { self =>
        value.getClass.getName, targetType.toString, s"${getClass.getName}.$fieldName")
   }
 
-  // TODO Drop or extract string parsing for number and boolean fields! Then rename parseJsValue() to exclude 'parse'!
-  protected def parseJsValue(
+  protected def convertJsValueTypeForField(
     fieldName: String,
     emptyStringsToNull: Boolean
   )(implicit qe: QuereaseMetadata with ValueTransformer): PartialFunction[JsValue, Any] = {
@@ -1813,7 +1812,7 @@ trait Dto extends org.mojoz.querease.Dto { self =>
   def fill(js: JsObject, emptyStringsToNull: Boolean)(implicit qe: QuereaseMetadata with ValueTransformer): this.type = {
     js.fields foreach { case (name, value) =>
       setters.get(name).map { case s =>
-        val converted = parseJsValue(name, emptyStringsToNull)(qe)(value).asInstanceOf[Object]
+        val converted = convertJsValueTypeForField(name, emptyStringsToNull)(qe)(value).asInstanceOf[Object]
         if  (s.mfOpt == null)
              s.method.invoke(this, converted)
         else s.method invoke(this, Some(converted))
