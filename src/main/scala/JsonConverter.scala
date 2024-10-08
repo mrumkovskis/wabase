@@ -2,6 +2,7 @@ package org.wabase
 
 import Format._
 import akka.util.ByteString
+import org.mojoz.querease.ValueTransformer.ClassOfString
 import scala.collection.immutable.TreeMap
 import scala.language.postfixOps
 import spray.json._
@@ -44,15 +45,11 @@ trait JsonConverter[DTO <: Dto] { self: AppQuereaseIo[DTO] =>
     case n: BigInt => JsNumber(n)
     case n: java.lang.Number => JsNumber(String.valueOf(n))
     case b: Boolean => JsBoolean(b)
-    case t: sql.Time => JsString(t.toString)
-    case t: LocalTime => JsString(sql.Time.valueOf(t).toString)
-    case t: Timestamp => JsString(humanDateTime(t))
-    case t: LocalDateTime => JsString(humanDateTime(sql.Timestamp.valueOf(t)))
-    case d: jDate => JsString(xsdDate(d))
-    case d: LocalDate => JsString(xsdDate(sql.Date.valueOf(d)))
+    case t: java.time.temporal.Temporal => JsString(qe.convertToType(t, ClassOfString).toString)
+    case t: java.util.Date              => JsString(qe.convertToType(t, ClassOfString).toString)
     case jv: JsValue => jv
     case null => JsNull
-    case b: Array[Byte] => JsString(java.util.Base64.getEncoder.encodeToString(b))
+    case b: Array[Byte]                 => JsString(qe.convertToType(b, ClassOfString).toString)
     case x => JsString(String.valueOf(x))
   }
   implicit object DtoJsonFormat extends RootJsonFormat[DTO] {
