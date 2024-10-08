@@ -50,6 +50,8 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
     pattern.r
   }
 
+  protected lazy val isFullCompareByDefault: Boolean = true
+
   override def beforeAll() = {
     login()
     listenToWs(deferredActor)
@@ -320,7 +322,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
     val params = map.m("params")
     val requestInfo = extractRequestInfo(cleanupTemplate(map), method)
     import requestInfo._
-    val fullCompare   = map.b("full_compare")
+    val fullCompare   = map.bd("full_compare", isFullCompareByDefault)
     val mergeResponse = map.b("merge_response")
     val debugResponse = map.get("debug_response")
       .map { case false => false case _ => true }.getOrElse(true)

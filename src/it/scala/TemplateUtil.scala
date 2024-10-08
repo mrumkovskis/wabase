@@ -38,6 +38,7 @@ trait TemplateUtil { this: client.WabaseHttpClient =>
   implicit def mapShortcuts(map: Map[String, Any]): Object {
     def a(param: String): List[MapTemplate]
     def b(param: String): Boolean
+    def bd(param: String, defultValue: Boolean): Boolean
     def m(param: String): Map[String, Any]
     def md(param: String, defaultValue: Map[String, Any]): Map[String, Any]
     def s(param: String): String
@@ -45,6 +46,7 @@ trait TemplateUtil { this: client.WabaseHttpClient =>
   } = new {
     def a(param: String) = map(param).asInstanceOf[List[MapTemplate]]
     def b(param: String) = map.get(param).contains("true") || map.get(param).contains(true)
+    def bd(param: String, defaultValue: Boolean) = map.get(param).map(b => b == "true" || b == true).getOrElse(defaultValue)
     def m(param: String) = map.getOrElse(param, Map.empty).asInstanceOf[Map[String, Any]]
     def md(param: String, defaultValue: Map[String, Any]) = map.getOrElse(param, defaultValue).asInstanceOf[Map[String, Any]]
     def s(param: String) = map(param).asInstanceOf[String]
