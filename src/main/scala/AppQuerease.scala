@@ -1742,7 +1742,10 @@ trait Dto extends org.mojoz.querease.Dto { self =>
   }
 
   // TODO Drop or extract string parsing for number and boolean fields! Then rename parseJsValue() to exclude 'parse'!
-  protected def parseJsValue(fieldName: String, emptyStringsToNull: Boolean)(implicit qe: QuereaseMetadata): PartialFunction[JsValue, Any] = {
+  protected def parseJsValue(
+    fieldName: String,
+    emptyStringsToNull: Boolean
+  )(implicit qe: QuereaseMetadata with ValueTransformer): PartialFunction[JsValue, Any] = {
     import scala.language.existentials
     val (typ, parType) = setters(fieldName) match {
       case DtoSetter(_, met, mOpt, mSeq, mDto, mOth) =>
@@ -1752,72 +1755,20 @@ trait Dto extends org.mojoz.querease.Dto { self =>
     }
     val parseFunc: PartialFunction[JsValue, Any] = {
       case v: JsString =>
-        val converted = try {
-          if (ManifestFactory.singleType(v.value) == typ) {
-            if (emptyStringsToNull && v.value.trim == "")
-              null
-            else v.value
-          } else if (ManifestFactory.classType(classOf[java.sql.Date     ]) == typ) {
-            val jdate = Format.parseDate(v.value)
-            new java.sql.Date(jdate.getTime)
-          } else if (ManifestFactory.classType(classOf[java.sql.Timestamp]) == typ) {
-            val jdate = Format.parseDateTime(v.value)
-            new java.sql.Timestamp(jdate.getTime)
-          } else if (ManifestFactory.classType(classOf[java.time.Instant       ]) == typ) {
-            java.time.Instant.parse(v.value)
-          } else if (ManifestFactory.classType(classOf[java.time.LocalDate     ]) == typ) {
-            java.time.LocalDate.parse(v.value)
-          } else if (ManifestFactory.classType(classOf[java.time.LocalTime     ]) == typ) {
-            java.time.LocalTime.parse(v.value)
-          } else if (ManifestFactory.classType(classOf[java.time.LocalDateTime ]) == typ) {
-            java.time.LocalDateTime.parse(v.value)
-          } else if (ManifestFactory.classType(classOf[java.time.OffsetDateTime]) == typ) {
-            java.time.OffsetDateTime.parse(v.value)
-          } else if (ManifestFactory.classType(classOf[java.time.ZonedDateTime ]) == typ) {
-            java.time.ZonedDateTime.parse(v.value)
-          } else if (ManifestFactory.classType(classOf[java.lang.Long    ]) == typ || ManifestFactory.Long    == typ) {
-            if (v.value.trim == "") null else v.value.toLong
-          } else if (ManifestFactory.classType(classOf[java.lang.Integer ]) == typ || ManifestFactory.Int     == typ) {
-            if (v.value.trim == "") null else v.value.toInt
-          } else if (ManifestFactory.classType(classOf[java.lang.Double  ]) == typ || ManifestFactory.Double  == typ) {
-            if (v.value.trim == "") null else v.value.toDouble
-          } else if (ManifestFactory.classType(classOf[BigDecimal        ]) == typ) {
-            if (v.value.trim == "") null else BigDecimal(v.value)
-          } else if (ManifestFactory.classType(classOf[BigInt            ]) == typ) {
-            if (v.value.trim == "") null else BigInt(v.value)
-          } else if (ManifestFactory.classType(classOf[java.lang.Boolean ]) == typ || ManifestFactory.Boolean == typ) {
-            v.value.toBoolean
-          } else this // XXX
-        } catch {
+        try qe.convertToType(v.value, typ.runtimeClass) catch {
           case util.control.NonFatal(ex) =>
             throwUnsupportedConversion(v, typ, fieldName, ex)
         }
-        if (converted == this)
-          throwUnsupportedConversion(v, typ, fieldName)
-        else converted
       case v: JsNumber =>
-        val converted = try {
-          if (ManifestFactory.singleType(v.value) == typ) v.value
-          else if (ManifestFactory.classType(classOf[java.lang.Long   ]) == typ) v.value.longValue
-          else if (ManifestFactory.Long   == typ) v.value.longValue
-          else if (ManifestFactory.classType(classOf[java.lang.Integer]) == typ) v.value.intValue
-          else if (ManifestFactory.Int    == typ) v.value.intValue
-          else if (ManifestFactory.classType(classOf[java.lang.Double ]) == typ) v.value.doubleValue
-          else if (ManifestFactory.Double == typ) v.value.doubleValue
-          else if (ManifestFactory.classType(classOf[String]) == typ) v.toString
-          else this // XXX
-        } catch {
+        try qe.convertToType(v.value, typ.runtimeClass) catch {
           case util.control.NonFatal(ex) =>
             throwUnsupportedConversion(v, typ, fieldName, ex)
         }
-        if (converted == this)
-          throwUnsupportedConversion(v, typ, fieldName)
-        else converted
       case v: JsBoolean =>
-        if (ManifestFactory.classType(classOf[java.lang.Boolean]) == typ) v.value
-        else if (ManifestFactory.Boolean == typ) v.value
-        else if (ManifestFactory.classType(classOf[String]) == typ) v.toString
-        else throwUnsupportedConversion(v, typ, fieldName)
+        try qe.convertToType(v.value, typ.runtimeClass) catch {
+          case util.control.NonFatal(ex) =>
+            throwUnsupportedConversion(v, typ, fieldName, ex)
+        }
       case v: JsObject if typ.runtimeClass.isAssignableFrom(classOf[JsObject]) => v
       case v: JsArray if typ.runtimeClass.isAssignableFrom(classOf[JsArray]) => v
       case v: JsObject =>
@@ -1836,17 +1787,21 @@ trait Dto extends org.mojoz.querease.Dto { self =>
               .fill(o.asInstanceOf[JsObject], emptyStringsToNull))
           if(isList) res.toList else res
         } else if (parType != null &&
-          parType.toString == "java.lang.String" &&
           classOf[Seq[_]].isAssignableFrom(c) && (isList || isVector) )  {
-
-          val res = v.elements.map{
-            case JsString(s) => s
-            case JsNull => null
-            case x => throwUnsupportedConversion(x, parType, fieldName)
+          val parTypeClass = parType.runtimeClass
+          try { val res =
+            v.elements.map {
+              case v: JsString  => qe.convertToType(v.value, parTypeClass)
+              case v: JsNumber  => qe.convertToType(v.value, parTypeClass)
+              case v: JsBoolean => qe.convertToType(v.value, parTypeClass)
+              case    JsNull    => null
+              case x            => throwUnsupportedConversion(x, parType, fieldName)
+            }
+            if(isList) res.toList else res
+          } catch {
+            case util.control.NonFatal(ex) =>
+              throwUnsupportedConversion(v, typ, fieldName, ex)
           }
-
-          if(isList) res.toList else res
-
         } else throwUnsupportedConversion(v, typ, fieldName)
       case JsNull => null
     }
@@ -1854,8 +1809,8 @@ trait Dto extends org.mojoz.querease.Dto { self =>
   }
 
   //creating dto from JsObject
-  def fill(js: JsObject)(implicit qe: QuereaseMetadata): this.type = fill(js, emptyStringsToNull = true)(qe)
-  def fill(js: JsObject, emptyStringsToNull: Boolean)(implicit qe: QuereaseMetadata): this.type = {
+  def fill(js: JsObject)(implicit qe: QuereaseMetadata with ValueTransformer): this.type = fill(js, emptyStringsToNull = true)(qe)
+  def fill(js: JsObject, emptyStringsToNull: Boolean)(implicit qe: QuereaseMetadata with ValueTransformer): this.type = {
     js.fields foreach { case (name, value) =>
       setters.get(name).map { case s =>
         val converted = parseJsValue(name, emptyStringsToNull)(qe)(value).asInstanceOf[Object]
