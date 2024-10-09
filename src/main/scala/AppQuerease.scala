@@ -14,9 +14,6 @@ import com.typesafe.scalalogging.Logger
 import org.tresql._
 import org.mojoz.querease._
 import org.mojoz.querease.SaveMethod
-import org.mojoz.querease.ValueConverter.{ClassOfJavaSqlDate, ClassOfJavaSqlTimestamp, ClassOfJavaUtilDate}
-import org.mojoz.querease.ValueConverter.{ClassOfJavaTimeLocalDate, ClassOfJavaTimeLocalDateTime}
-import org.mojoz.querease.ValueConverter.ClassOfString
 
 import org.mojoz.metadata.Type
 import org.mojoz.metadata.{FieldDef, ViewDef}
@@ -138,35 +135,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
 
  import AppMetadata._
 
-  override def convertToType(value: Any, targetClass: Class[_]): Any = value match {
-    case s: java.lang.String          => targetClass match {
-      case ClassOfJavaSqlDate            => new java.sql.Date     (Format.parseDate(s)    .getTime)
-      case ClassOfJavaSqlTimestamp       => new java.sql.Timestamp(Format.parseDateTime(s).getTime)
-      case ClassOfJavaTimeLocalDate      => new java.sql.Date     (Format.parseDate(s)    .getTime).toLocalDate
-      case ClassOfJavaTimeLocalDateTime  => new java.sql.Timestamp(Format.parseDateTime(s).getTime).toLocalDateTime
-      case ClassOfJavaUtilDate           => Format.parseDateTime(s)
-      case _                             => super.convertToType(value, targetClass)
-    }
-    case _: java.sql.Date                => super.convertToType(value, targetClass) // guard to avoid case java.util.Date below
-    case _: java.sql.Time                => super.convertToType(value, targetClass) // guard to avoid case java.util.Date below
-    case t: java.sql.Timestamp        => targetClass match {
-      case ClassOfString                 => Format.humanDateTime(t)
-      case _                             => super.convertToType(value, targetClass)
-    }
-    case t: java.time.LocalDateTime   => targetClass match {
-      case ClassOfString                 => Format.humanDateTime(java.sql.Timestamp.valueOf(t))
-      case _                             => super.convertToType(value, targetClass)
-    }
-    case t: java.time.LocalTime       => targetClass match {
-      case ClassOfString                 => java.sql.Time.valueOf(t).toString
-      case _                             => super.convertToType(value, targetClass)
-    }
-    case t: java.util.Date            => targetClass match {
-      case ClassOfString                 => Format.humanDateTime(new java.sql.Timestamp(t.getTime))
-      case _                             => super.convertToType(value, targetClass)
-    }
-    case _                            => super.convertToType(value, targetClass)
-  }
+  override def convertToType(value: Any, targetClass: Class[_]): Any =
+    Format.convertToType(value, targetClass)
 
   val resultRenderers: ResultRenderers = new ResultRenderers
   val tresqlUri: TresqlUri = new TresqlUri()

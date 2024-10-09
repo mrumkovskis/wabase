@@ -1,11 +1,16 @@
 package org.wabase
 
+import org.mojoz.querease.ValueConverter
+import org.mojoz.querease.ValueConverter.{ClassOfJavaSqlDate, ClassOfJavaSqlTimestamp}
+import org.mojoz.querease.ValueConverter.{ClassOfJavaTimeLocalDate, ClassOfJavaTimeLocalDateTime}
+import org.mojoz.querease.ValueConverter.{ClassOfJavaUtilDate, ClassOfString}
+
 import java.text.SimpleDateFormat
 import java.time.Instant
 import java.util.Date
 import scala.util.control.NonFatal
 
-object Format {
+object Format extends ValueConverter {
 
   class ThreadLocalDateFormat(val pattern: String) extends ThreadLocal[SimpleDateFormat] {
     override def initialValue = { val f = new SimpleDateFormat(pattern); f.setLenient(false); f }
@@ -148,4 +153,34 @@ object Format {
      .replace("\'", "&apos;")
      .replace("<", "&lt;")
      .replace(">", "&gt;")
+
+  override def convertToType(value: Any, targetClass: Class[_]): Any = value match {
+    case s: java.lang.String          => targetClass match {
+      case ClassOfJavaSqlDate            => new java.sql.Date     (Format.parseDate(s)    .getTime)
+      case ClassOfJavaSqlTimestamp       => new java.sql.Timestamp(Format.parseDateTime(s).getTime)
+      case ClassOfJavaTimeLocalDate      => new java.sql.Date     (Format.parseDate(s)    .getTime).toLocalDate
+      case ClassOfJavaTimeLocalDateTime  => new java.sql.Timestamp(Format.parseDateTime(s).getTime).toLocalDateTime
+      case ClassOfJavaUtilDate           => Format.parseDateTime(s)
+      case _                             => super.convertToType(value, targetClass)
+    }
+    case _: java.sql.Date                => super.convertToType(value, targetClass) // guard to avoid case java.util.Date below
+    case _: java.sql.Time                => super.convertToType(value, targetClass) // guard to avoid case java.util.Date below
+    case t: java.sql.Timestamp        => targetClass match {
+      case ClassOfString                 => Format.humanDateTime(t)
+      case _                             => super.convertToType(value, targetClass)
+    }
+    case t: java.time.LocalDateTime   => targetClass match {
+      case ClassOfString                 => Format.humanDateTime(java.sql.Timestamp.valueOf(t))
+      case _                             => super.convertToType(value, targetClass)
+    }
+    case t: java.time.LocalTime       => targetClass match {
+      case ClassOfString                 => java.sql.Time.valueOf(t).toString
+      case _                             => super.convertToType(value, targetClass)
+    }
+    case t: java.util.Date            => targetClass match {
+      case ClassOfString                 => Format.humanDateTime(new java.sql.Timestamp(t.getTime))
+      case _                             => super.convertToType(value, targetClass)
+    }
+    case _                            => super.convertToType(value, targetClass)
+  }
 }
