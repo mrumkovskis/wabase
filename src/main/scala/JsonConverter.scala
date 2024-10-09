@@ -2,7 +2,7 @@ package org.wabase
 
 import Format._
 import akka.util.ByteString
-import org.mojoz.querease.ValueTransformer.ClassOfString
+import org.mojoz.querease.ValueConverter.ClassOfString
 import scala.collection.immutable.TreeMap
 import scala.language.postfixOps
 import spray.json._

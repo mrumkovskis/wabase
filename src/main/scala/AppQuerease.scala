@@ -14,9 +14,9 @@ import com.typesafe.scalalogging.Logger
 import org.tresql._
 import org.mojoz.querease._
 import org.mojoz.querease.SaveMethod
-import org.mojoz.querease.ValueTransformer.{ClassOfJavaSqlDate, ClassOfJavaSqlTimestamp, ClassOfJavaUtilDate}
-import org.mojoz.querease.ValueTransformer.{ClassOfJavaTimeLocalDate, ClassOfJavaTimeLocalDateTime}
-import org.mojoz.querease.ValueTransformer.ClassOfString
+import org.mojoz.querease.ValueConverter.{ClassOfJavaSqlDate, ClassOfJavaSqlTimestamp, ClassOfJavaUtilDate}
+import org.mojoz.querease.ValueConverter.{ClassOfJavaTimeLocalDate, ClassOfJavaTimeLocalDateTime}
+import org.mojoz.querease.ValueConverter.ClassOfString
 
 import org.mojoz.metadata.Type
 import org.mojoz.metadata.{FieldDef, ViewDef}
@@ -1763,7 +1763,7 @@ trait Dto extends org.mojoz.querease.Dto { self =>
   protected def convertJsValueTypeForField(
     fieldName: String,
     emptyStringsToNull: Boolean
-  )(implicit qe: QuereaseMetadata with ValueTransformer): PartialFunction[JsValue, Any] = {
+  )(implicit qe: QuereaseMetadata with ValueConverter): PartialFunction[JsValue, Any] = {
     import scala.language.existentials
     val (typ, parType) = setters(fieldName) match {
       case DtoSetter(_, met, mOpt, mSeq, mDto, mOth) =>
@@ -1827,8 +1827,8 @@ trait Dto extends org.mojoz.querease.Dto { self =>
   }
 
   //creating dto from JsObject
-  def fill(js: JsObject)(implicit qe: QuereaseMetadata with ValueTransformer): this.type = fill(js, emptyStringsToNull = true)(qe)
-  def fill(js: JsObject, emptyStringsToNull: Boolean)(implicit qe: QuereaseMetadata with ValueTransformer): this.type = {
+  def fill(js: JsObject)(implicit qe: QuereaseMetadata with ValueConverter): this.type = fill(js, emptyStringsToNull = true)(qe)
+  def fill(js: JsObject, emptyStringsToNull: Boolean)(implicit qe: QuereaseMetadata with ValueConverter): this.type = {
     js.fields foreach { case (name, value) =>
       setters.get(name).map { case s =>
         val converted = convertJsValueTypeForField(name, emptyStringsToNull)(qe)(value).asInstanceOf[Object]
