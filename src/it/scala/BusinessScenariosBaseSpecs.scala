@@ -77,7 +77,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
     if shouldTestScenario(scenario)
   } yield scenario
 
-  def assertResponse(response: Any, expectedResponse: Any, path: String, fullCompare: Boolean): Map[String, String] = {
+  def assertResponse(response: Any, expectedResponse: Any, path: String, fullCompare: Boolean): Map[String, Any] = {
     def err(message: String) = sys.error(path + ": " + message)
 
     (response, expectedResponse) match {
@@ -98,7 +98,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
             case Some(value) => assertResponse(value, expectedValue, path + "/" + key, fullCompare)
           }
         }
-      case (a, s: String) if s.trim.startsWith("->") => Map(s.trim.substring(2).trim -> String.valueOf(a))
+      case (a, s: String) if s.trim.startsWith("->") => Map(s.trim.substring(2).trim -> a)
       case (a, b) if b != null && String.valueOf(a) == b.toString => Map.empty
       case (null, null) => Map.empty
       case (a, b) => err(s"Element $a should be equal to $b")
@@ -175,27 +175,19 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
     }
     val result = map.map(e => (e._1, e._2 match {
       case l: List[_] => l.map {
-        case null => null
         case m: Map[String, _]@unchecked =>
           val (v, c) = applyContext(m, context)
           newValues ++= v
           c
         case s: String => mapString(s)
-        case b: Boolean => b
-        case d: Double => d
-        case i: Int => i
-        case l: Long => l
+        case x => x
       }
       case m: Map[String, _] @unchecked =>
         val (v, c) = applyContext(m, context)
         newValues ++= v
         c
-      case null => null
-      case b: Boolean => b
-      case d: Double => d
-      case i: Int => i
-      case l: Long => l
-      case s => mapString(s.toString)
+      case s: String => mapString(s)
+      case x => x
     }))
     (newValues, result)
   }
@@ -411,7 +403,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
         logScenarioResponseInfoOnFailure(scenario, testCase, context, ex, debugResponse, rawResponse, response)
       throw ex
     }
-    else Map.empty[String, String]
+    else Map.empty[String, Any]
   }
 
   def checkTestCase(scenario: File, testCase: File, context: Map[String, Any], map: Map[String, Any]): Map[String, Any] = {
