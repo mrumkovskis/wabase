@@ -1743,6 +1743,11 @@ trait Dto extends org.mojoz.querease.Dto { self =>
     }
     val parseFunc: PartialFunction[JsValue, Any] = {
       case v: JsString =>
+        if (typ.runtimeClass == classOf[String])
+          if (emptyStringsToNull && v.value.trim == "")
+            null
+          else v.value
+        else
         try qe.convertToType(v.value, typ.runtimeClass) catch {
           case util.control.NonFatal(ex) =>
             throwUnsupportedConversion(v, typ, fieldName, ex)
