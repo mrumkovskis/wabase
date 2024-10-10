@@ -122,17 +122,15 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
   def applyContext(map: Map[String, Any], context: Map[String, Any]): (Map[String, Any], Map[String, Any]) = {
     var newValues = Map.empty[String, Any]
     def mapString(s: String) = {
-      def patchString(key: String, cKey: String) = {
-        val value = try {
-          context.getOrElse(key, templateFunctions(context)(key))
+      def deriveFromContext(keyOrFunctionName: String) = {
+        try {
+          context.getOrElse(keyOrFunctionName, templateFunctions(context)(keyOrFunctionName))
         } catch {
           case util.control.NonFatal(ex) =>
             throw new RuntimeException(
-              s"Key '$key' is not found in context and templateFunctions failed. " +
+              s"Key '$keyOrFunctionName' is not found in context and templateFunctions failed. " +
               s"Keys in context: [${context.keys.toSeq.sorted.mkString(", ")}].", ex)
         }
-        if (cKey != null) newValues += cKey -> value
-        value
       }
       def applyPlaceholder(currentValue: String, placeholderName: String, value: Any) = {
         // Mustache like 'Template', for now it's enough
@@ -149,10 +147,15 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
       val kPattern = "<-\\W*(.*)".r
 
       val patched =
-      if (s != null && s.contains("<-")) s.trim match {
-        case kcPattern(key, cKey) => patchString(key.trim, cKey.trim)
-        case ckPattern(cKey, key) => patchString(key.trim, cKey.trim)
-        case kPattern(key) => patchString(key.trim, null)
+      if (s != null && s.contains("<-")) {
+        val (keyOrFunctionName, cKey) = s.trim match {
+          case kcPattern(keyOrFunctionName, cKey) => (keyOrFunctionName.trim, cKey.trim)
+          case ckPattern(cKey, keyOrFunctionName) => (keyOrFunctionName.trim, cKey.trim)
+          case kPattern (keyOrFunctionName)       => (keyOrFunctionName.trim, null)
+        }
+        val value = deriveFromContext(keyOrFunctionName)
+        if (cKey != null) newValues += cKey.trim -> value
+        value
       } else context.foldLeft(s: Any) { case (currentResult, (key, value)) => currentResult match {
         case currentResult: String =>
           applyPlaceholder(currentResult, key, value)
