@@ -187,11 +187,8 @@ object BorerDatetimeEncoders {
       val seconds = value.getTime.toDouble / 1000 // TODO nanos?
       w writeTag    Tag.EpochDateTime
       w writeDouble seconds
-    } else value.toString match {
-      case s if s endsWith ".0" =>
-        w writeString s.substring(0, 19)
-      case s =>
-        w writeString s
+    } else {
+      w writeString Format.convertToString(value)
     }
   }
   implicit val javaSqlDateEncoder: Encoder[sql.Date] = Encoder { (w, value) =>
@@ -200,7 +197,7 @@ object BorerDatetimeEncoders {
       w writeTag    Tag.EpochDateTime
       w writeLong   seconds
     } else {
-      w writeString value.toString
+      w writeString Format.convertToString(value)
     }
   }
   val TimeTag = Tag.Other(1042)
@@ -210,14 +207,14 @@ object BorerDatetimeEncoders {
       w writeTag    TimeTag
       w writeDouble seconds
     } else {
-      w writeString value.toString
+      w writeString Format.convertToString(value)
     }
   }
   implicit val javaTimeInstantEncoder: Encoder[Instant] = Encoder { (w, value) =>
     // TODO optimize cbor for Instant
     // - maybe see https://datatracker.ietf.org/doc/rfc9581/
     // - maybe see https://datatracker.ietf.org/doc/draft-ietf-cbor-time-tag/
-    w writeString value.toString
+    w writeString Format.convertToString(value)
   }
   implicit val localDateEncoder: Encoder[LocalDate] =
     Encoder { (w, value) => w ~ sql.Date.valueOf(value) }
@@ -229,13 +226,13 @@ object BorerDatetimeEncoders {
     // TODO optimize cbor for OffsetDateTime
     // - maybe see https://datatracker.ietf.org/doc/rfc9581/
     // - maybe see https://datatracker.ietf.org/doc/draft-ietf-cbor-time-tag/
-    w writeString value.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+    w writeString Format.convertToString(value)
   }
   implicit val zonedDateTimeEncoder: Encoder[ZonedDateTime] = Encoder { (w, value) =>
     // TODO optimize cbor for ZonedDateTime
     // - maybe see https://datatracker.ietf.org/doc/rfc9581/
     // - maybe see https://datatracker.ietf.org/doc/draft-ietf-cbor-time-tag/
-    w writeString value.toString
+    w writeString Format.convertToString(value)
   }
 }
 
@@ -276,6 +273,9 @@ class BorerValueEncoder(w: Writer) {
     case value: LocalDate   => w ~ value
     case value: LocalTime   => w ~ value
     case value: LocalDateTime => w ~ value
+    case value: Instant       => w ~ value
+    case value: OffsetDateTime=> w ~ value
+    case value: ZonedDateTime => w ~ value
   }
   private val anyValueEncoder: PartialFunction[Any, Unit] = {
     case x                  => w writeString x.toString

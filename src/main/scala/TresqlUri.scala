@@ -109,8 +109,8 @@ class TresqlUri {
 
   // akka http uri methods
   def keyToUriStrings(key: Seq[Any]): Seq[String] = key.map {
-    case t: java.sql.Timestamp => t.toLocalDateTime.toString.replace('T', '_')
-    case t: java.time.LocalDateTime => t.toString.replace('T', '_')
+    case t: java.time.temporal.Temporal => Format.convertToString(t).replace(' ', '_').replace('T', '_')
+    case t: java.util.Date              => Format.convertToString(t).replace(' ', '_').replace('T', '_')
     case x => s"$x"
   }
 

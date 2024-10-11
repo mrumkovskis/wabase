@@ -669,7 +669,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
         """{"name": "DtTmIns", "date_time": "2022-08-02 05:45:00"}""") ~> route ~> check {
       status shouldEqual StatusCodes.SeeOther
       val location = header[Location].get.uri.toString
-      location shouldBe "/data/by_datetime_key_view?/2022-08-02_05:45"
+      location shouldBe "/data/by_datetime_key_view?/2022-08-02_05:45:00"
     }
     hasPerson("DtTmIns") shouldBe true
     Get("/data/by_datetime_key_view/2022-08-02_05:45:00.0") ~> route ~> check {
@@ -710,7 +710,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     Put("/data/by_datetime_key_view/2022-08-02_05:45:00", s"""{"name": "DtTmUpd"}""") ~> route ~> check {
       status shouldEqual StatusCodes.SeeOther
       val location = header[Location].get.uri.toString
-      location shouldBe "/data/by_datetime_key_view?/2022-08-02_05:45"
+      location shouldBe "/data/by_datetime_key_view?/2022-08-02_05:45:00"
     }
     hasPerson("DtTmUpd") shouldBe true
     Delete("/data/by_datetime_key_view/2022-08-02_05:45:00.0") ~> route ~> check {
@@ -734,7 +734,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
         """{"name": "DtTmIns", "l_date_time": "2022-08-02 05:45:00"}""") ~> route ~> check {
       status shouldEqual StatusCodes.SeeOther
       val location = header[Location].get.uri.toString
-      location shouldBe "/data/by_local_datetime_key_view?/2022-08-02_05:45"
+      location shouldBe "/data/by_local_datetime_key_view?/2022-08-02_05:45:00"
     }
     hasPerson("DtTmIns") shouldBe true
     Get("/data/by_local_datetime_key_view/2022-08-02_05:45:00.0") ~> route ~> check {
@@ -775,7 +775,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     Put("/data/by_local_datetime_key_view/2022-08-02_05:45:00", s"""{"name": "DtTmUpd"}""") ~> route ~> check {
       status shouldEqual StatusCodes.SeeOther
       val location = header[Location].get.uri.toString
-      location shouldBe "/data/by_local_datetime_key_view?/2022-08-02_05:45"
+      location shouldBe "/data/by_local_datetime_key_view?/2022-08-02_05:45:00"
     }
     hasPerson("DtTmUpd") shouldBe true
     Delete("/data/by_local_datetime_key_view/2022-08-02_05:45:00.0") ~> route ~> check {

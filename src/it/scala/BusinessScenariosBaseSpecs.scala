@@ -302,12 +302,8 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
   def transformToStringValues(m: Any): Any = m match {
     case mm: Map[String@unchecked, _] => mm.map { case (key, value) => (key, transformToStringValues(value)) }
     case s: Seq[_] => s map transformToStringValues
-    case t: java.sql.Timestamp => t.toString match {
-      case s if s endsWith ".0" => s.substring(0, 19)
-      case s => s
-    }
-    case d: java.sql.Date => d.toString
-    case d: java.util.Date => Format.humanDateTime(d)
+    case t: java.time.temporal.Temporal => Format.convertToString(t)
+    case t: java.util.Date              => Format.convertToString(t)
     case x => x
   }
 
