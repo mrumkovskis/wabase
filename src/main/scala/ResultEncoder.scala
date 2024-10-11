@@ -62,11 +62,7 @@ object ResultEncoder {
     def extendableJsValueEncoderPF(encoder: => JsValueEncoderPF)(customEncoder: JsValueEncoderPF): JsValueEncoderPF = {
       lazy val borerEncoder = jsValEncoder(encoder)
       w => {
-        val defaultEncoder: JsValueEncoderPF = w => {
-            case v: String => w.writeString(v)
-            case v: Number => w.writeNumberString(v.toString)
-            case v: Boolean => w.writeBoolean(v)
-            case null => w.writeNull()
+        val structuresEncoder: JsValueEncoderPF = w => {
             case v: Map[Any@unchecked, Any@unchecked] => w.writeMap(v)(borerEncoder, borerEncoder)
             case v: java.util.Map[Any@unchecked, Any@unchecked] =>
               w.writeMap(v.asScala.toMap)(borerEncoder, borerEncoder)
@@ -75,9 +71,9 @@ object ResultEncoder {
             case v: java.lang.Iterable[Any@unchecked] => w.writeIterator(v.iterator.asScala)(borerEncoder)
             case v: java.util.Iterator[Any@unchecked] => w.writeIterator(v.asScala)(borerEncoder)
             case v: Array[_] => borerEncoder.write(w, v.iterator)
-            case v => w.writeString(v.toString)
           }
-        customEncoder(w) orElse defaultEncoder(w)
+        val valueEncoder = new BorerValueEncoder(w).valueEncoder
+        customEncoder(w) orElse structuresEncoder(w) orElse valueEncoder
       }
     }
   }

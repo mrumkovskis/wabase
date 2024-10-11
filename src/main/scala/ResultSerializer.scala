@@ -238,12 +238,12 @@ object BorerDatetimeEncoders {
 
 class BorerValueEncoder(w: Writer) {
   import BorerDatetimeEncoders._
-  protected lazy val knownValueEncoder: PartialFunction[Any, Unit] =
+  protected lazy val knownValueEncoder: PartialFunction[Any, Writer] =
     initValueEncoder
-  protected lazy val valueEncoder: PartialFunction[Any, Unit] = {
+  lazy val valueEncoder: PartialFunction[Any, Writer] = {
     knownValueEncoder orElse anyValueEncoder
   }
-  protected def initValueEncoder: PartialFunction[Any, Unit] = {
+  protected def initValueEncoder: PartialFunction[Any, Writer] = {
     case null               => w.writeNull()
     case value: Boolean     => w writeBoolean value
     case value: Char        => w writeChar    value
@@ -277,7 +277,7 @@ class BorerValueEncoder(w: Writer) {
     case value: OffsetDateTime=> w ~ value
     case value: ZonedDateTime => w ~ value
   }
-  private val anyValueEncoder: PartialFunction[Any, Unit] = {
+  private val anyValueEncoder: PartialFunction[Any, Writer] = {
     case x                  => w writeString x.toString
   }
   def writeValue(value: Any):  Unit = valueEncoder(value)
@@ -334,7 +334,7 @@ object BorerNestedArraysEncoder {
     outputStream: OutputStream,
     format:       Target  = Cbor,
     wrap:         Boolean = false,
-    valueEncoderFactory: BorerNestedArraysEncoder => PartialFunction[Any, Unit] = null,
+    valueEncoderFactory: BorerNestedArraysEncoder => PartialFunction[Any, Writer] = null,
   ) = {
     if (valueEncoderFactory == null)
       new BorerNestedArraysEncoder(createWriter(outputStream, format), wrap = wrap)

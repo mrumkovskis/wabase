@@ -904,6 +904,7 @@ object AppServiceBase {
             encoder.writeValue(k)
             encoder.writeValue(v)
             encoder.writeBreak()
+            encoder.w
         })
       )
       HttpEntity.Chunked.fromData(`application/json`, source)
