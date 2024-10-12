@@ -43,7 +43,9 @@ object ResultEncoder {
     * */
   implicit def jsValEncoder(implicit jsEncoderPF: JsValueEncoderPF): Encoder[Any] = jsEncoderPF(_)(_)
 
-  def encodeJsValue[T: Encoder](value: T): Array[Byte] = Json.encode(value).toByteArray
+  def encodeToJsonBytes[T: Encoder](value: T): Array[Byte] = Json.encode(value).toByteArray
+
+  def encodeToJsonString[T: Encoder](value: T): String = new String(encodeToJsonBytes(value), "UTF-8")
 
   object JsonEncoder {
     import scala.jdk.CollectionConverters._

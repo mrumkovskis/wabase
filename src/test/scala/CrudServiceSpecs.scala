@@ -974,7 +974,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     def checkDtoRoundtrip(obj: json_test_types): Unit = {
       val json = obj.toMap.toJson.compactPrint
       implicit val encoder: io.bullet.borer.Encoder[Any] = ResultEncoder.jsValEncoder(ResultEncoder.JsonEncoder.jsValueEncoderPF)   
-      val json2: String = new String(ResultEncoder.encodeJsValue(obj.toMap), "UTF-8")
+      val json2: String = ResultEncoder.encodeToJsonString(obj.toMap)
       json shouldBe json2
       Put(s"/data/json_test_types?/$id", json) ~> route ~> check {
         status shouldEqual StatusCodes.SeeOther

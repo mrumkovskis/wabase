@@ -1369,7 +1369,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         if (op.encode) {
           import ResultEncoder._
           implicit lazy val enc: JsValueEncoderPF = JsonEncoder.extendableJsValueEncoderPF(enc)(jsonValueEncoder)
-          StringResult(new String(encodeJsValue(res), "UTF-8"))
+          StringResult(encodeToJsonString(res))
         } else {
           try new CborOrJsonAnyValueDecoder().decode(ByteString(String.valueOf(res))) match {
             case m: Map[String@unchecked, _] => MapResult(m)
@@ -1497,8 +1497,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     def encodeJson(data: Any): (Source[ByteString, _], String, ContentType, Option[Long]) = {
       import ResultEncoder._
       implicit lazy val enc: JsValueEncoderPF = JsonEncoder.extendableJsValueEncoderPF(enc)(jsonValueEncoder)
-      val res = encodeJsValue(data)
-      (Source.single(ByteString(res)), null, ct, Option(res.length))
+      val res = encodeToJsonBytes(data)
+      (Source.single(ByteString.fromArrayUnsafe(res)), null, ct, Option(res.length))
     }
 
     def encodePrimitive(v: Any): (Source[ByteString, _], String, ContentType, Option[Long]) = {

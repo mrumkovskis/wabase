@@ -253,7 +253,7 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
     Marshaller.opaque { value =>
       import ResultEncoder._
       implicit lazy val enc: JsValueEncoderPF = JsonEncoder.extendableJsValueEncoderPF(enc)(app.qe.jsonValueEncoder)
-      HttpEntity.Strict(`application/json`, ByteString(encodeJsValue(value)))
+      HttpEntity.Strict(`application/json`, ByteString.fromArrayUnsafe(encodeToJsonBytes(value)))
     }
 
   implicit val toEntityConfResultMarshaller:                ToEntityMarshaller[ConfResult] =

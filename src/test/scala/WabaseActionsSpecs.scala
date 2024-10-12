@@ -918,7 +918,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     def enc(v: Any) = {
       import ResultEncoder._
       import JsonEncoder._
-      new String(encodeJsValue(v), "UTF-8")
+      encodeToJsonString(v)
     }
     for {
       t1 <- doAction("get", "json_codec_1", Map("value" ->
