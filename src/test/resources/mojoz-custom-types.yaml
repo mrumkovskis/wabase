@@ -40,6 +40,42 @@ sql:
 - timestamp
 
 
+type:       instant
+xsd name:   dateTime
+json name:  string
+scala name: java.time.Instant
+jdbc:
+- TIMESTAMP
+yaml:
+- instant
+sql:
+- timestamp
+
+
+type:       o_dateTime
+xsd name:   dateTime
+json name:  string
+scala name: java.time.OffsetDateTime
+jdbc:
+- TIMESTAMP
+yaml:
+- o_dateTime
+sql:
+- timestamp
+
+
+type:       z_dateTime
+xsd name:   dateTime
+json name:  string
+scala name: java.time.ZonedDateTime
+jdbc:
+- TIMESTAMP
+yaml:
+- z_dateTime
+sql:
+- timestamp
+
+
 type:       date
 scala name: java.sql.Date
 

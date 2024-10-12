@@ -240,9 +240,15 @@ fields:
     - id
     - long              long
     - string            string
-    - date              date
-    - time              time
-    - date_time         dateTime
+    - instant           instant
+    - l_date            l_date
+    - l_time            l_time
+    - l_date_time       l_dateTime
+    - o_date_time       o_dateTime
+    - z_date_time       z_dateTime
+    - sql_date          date
+    - sql_time          time
+    - sql_timestamp     dateTime
     - int               int
     - bigint            integer
     - double            double

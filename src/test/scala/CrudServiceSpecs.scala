@@ -4,14 +4,16 @@ import akka.actor.ActorSystem
 import akka.event.LoggingAdapter
 import akka.http.scaladsl.marshalling.ToResponseMarshallable
 import akka.http.scaladsl.model.headers.{Location, `Content-Type`}
-import akka.http.scaladsl.model.{ContentTypes, HttpRequest, MediaTypes, StatusCodes, Uri}
+import akka.http.scaladsl.model.{ContentTypes, HttpEntity, HttpRequest, MediaTypes, StatusCodes, Uri}
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.{ExceptionHandler, Rejection, RejectionHandler, RequestContext, Route, RouteResult}
 import akka.http.scaladsl.settings.{ParserSettings, RoutingSettings}
 import akka.http.scaladsl.testkit.ScalatestRouteTest
 import akka.stream.Materializer
+import akka.util.ByteString
 import java.time.{LocalDate, LocalTime, LocalDateTime}
-import org.mojoz.querease.QuereaseMetadata
+import java.time.format.DateTimeFormatter
+import org.mojoz.querease.{QuereaseMetadata, ValueConverter}
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import org.tresql.{convInt, DMLResult, Query, ThreadLocalResources, dialects}
@@ -53,9 +55,15 @@ object CrudServiceSpecsDtos {
     var id: java.lang.Long = null
     var long: java.lang.Long = null
     var string: String = null
-    var date: java.time.LocalDate = null
-    var time: java.time.LocalTime = null
-    var date_time: java.time.LocalDateTime = null
+    var instant:       java.time.Instant        = null
+    var l_date:        java.time.LocalDate      = null
+    var l_time:        java.time.LocalTime      = null
+    var l_date_time:   java.time.LocalDateTime  = null
+    var o_date_time:   java.time.OffsetDateTime = null
+    var z_date_time:   java.time.ZonedDateTime  = null
+    var sql_date:      java.sql.Date            = null
+    var sql_time:      java.sql.Time            = null
+    var sql_timestamp: java.sql.Timestamp       = null
     var int: java.lang.Integer = null
     var bigint: scala.math.BigInt = null
     var double: java.lang.Double = null
@@ -969,27 +977,150 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     // json io types ---------------------------------------------------------------
     val j1 = new json_test_any
 
-    implicit val qe: QuereaseMetadata = querease
+    implicit val qe: QuereaseMetadata with ValueConverter = querease
     import DefaultAppQuereaseIo.MapJsonFormat
     def checkDtoRoundtrip(obj: json_test_types): Unit = {
-      val json = obj.toMap.toJson.compactPrint
-      implicit val encoder: io.bullet.borer.Encoder[Any] = ResultEncoder.jsValEncoder(ResultEncoder.JsonEncoder.jsValueEncoderPF)   
+      def comparable(s: String) =
+        s.replace("E+", "E") // compact exponent
+      val json = comparable(obj.toMap.toJson.compactPrint)
+      import ResultEncoder.jsValEncoder
+      import ResultEncoder.JsonEncoder.jsValueEncoderPF
       val json2: String = ResultEncoder.encodeToJsonString(obj.toMap)
       json shouldBe json2
+
       Put(s"/data/json_test_types?/$id", json) ~> route ~> check {
         status shouldEqual StatusCodes.SeeOther
       }
       Get(s"/data/json_test_any?/$id") ~> route ~> check {
         status shouldEqual StatusCodes.OK
-        responseAs[String] shouldBe json.replace(s"""{"id":$id,"child"""", s"""{"id":$id,"value"""")
+        comparable(responseAs[String]) shouldBe json.replace(s"""{"id":$id,"child"""", s"""{"id":$id,"value"""")
       }
       Get(s"/data/json_test_types?/$id") ~> route ~> check {
         status shouldEqual StatusCodes.OK
-        responseAs[String] shouldBe json
+        comparable(responseAs[String]) shouldBe json
       }
       Get(s"/data/json_test_types_legacy_flow?/$id") ~> route ~> check {
         status shouldEqual StatusCodes.OK
         responseAs[String] shouldBe json
+      }
+
+      Put(s"/data/json_test_types_legacy_flow?/$id", HttpEntity.Strict(ContentTypes.`application/json`, ByteString(json))) ~> route ~> check {
+        status shouldEqual StatusCodes.SeeOther
+      }
+
+      Get(s"/data/json_test_any?/$id") ~> route ~> check {
+        status shouldEqual StatusCodes.OK
+        comparable(responseAs[String]) shouldBe json.replace(s"""{"id":$id,"child"""", s"""{"id":$id,"value"""")
+      }
+      Get(s"/data/json_test_types?/$id") ~> route ~> check {
+        status shouldEqual StatusCodes.OK
+        comparable(responseAs[String]) shouldBe json
+      }
+      Get(s"/data/json_test_types_legacy_flow?/$id") ~> route ~> check {
+        status shouldEqual StatusCodes.OK
+        responseAs[String] shouldBe json
+      }
+
+      val obj2 = new json_test_types
+      obj2.fill(json.parseJson.asJsObject, emptyStringsToNull = false)
+      if (obj.child == null)
+        obj2.child shouldBe null
+      else {
+        val c1 = obj.child
+        val c2 = obj2.child
+        c2.id            shouldBe c1.id
+        c2.long          shouldBe c1.long
+        c2.string        shouldBe c1.string
+        c2.instant       shouldBe c1.instant
+        c2.l_date        shouldBe c1.l_date
+        c2.l_time        shouldBe c1.l_time
+        c2.l_date_time   shouldBe c1.l_date_time
+        c2.o_date_time   shouldBe c1.o_date_time
+        c2.z_date_time   shouldBe c1.z_date_time
+        c2.sql_date      shouldBe c1.sql_date
+        c2.sql_time      shouldBe c1.sql_time
+        c2.sql_timestamp shouldBe c1.sql_timestamp
+        c2.int           shouldBe c1.int
+        c2.bigint        shouldBe c1.bigint
+        c2.double        shouldBe c1.double
+        c2.decimal       shouldBe c1.decimal
+        c2.boolean       shouldBe c1.boolean
+        c2.bytes         shouldBe c1.bytes
+        c2.json          shouldBe c1.json
+        if (c1.long_arr      == null)        c2.long_arr      shouldBe null else {
+            c2.long_arr     .length shouldBe c1.long_arr     .length
+            c2.long_arr.zip(c1.long_arr).foreach {
+              case (e1, e2) => e1 shouldBe e2
+            }
+        }
+        if (c1.string_arr    == null)        c2.string_arr    shouldBe null else {
+            c2.string_arr   .length shouldBe c1.string_arr   .length
+            c2.string_arr.zip(c1.string_arr).foreach {
+              case (e1, e2) => e1 shouldBe e2
+            }
+        }
+        if (c1.date_arr      == null)        c2.date_arr      shouldBe null else {
+            c2.date_arr     .length shouldBe c1.date_arr     .length
+            c2.date_arr.zip(c1.date_arr).foreach {
+              case (e1, e2) => e1 shouldBe e2
+            }
+        }
+        if (c1.time_arr      == null)        c2.time_arr      shouldBe null else {
+            c2.time_arr     .length shouldBe c1.time_arr     .length
+            c2.time_arr.zip(c1.time_arr).foreach {
+              case (e1, e2) => e1 shouldBe e2
+            }
+        }
+        if (c1.date_time_arr == null)        c2.date_time_arr shouldBe null else {
+            c2.date_time_arr.length shouldBe c1.date_time_arr.length
+            c2.date_time_arr.zip(c1.date_time_arr).foreach {
+              case (e1, e2) => e1 shouldBe e2
+            }
+        }
+        if (c1.int_arr       == null)        c2.int_arr       shouldBe null else {
+            c2.int_arr      .length shouldBe c1.int_arr      .length
+            c2.int_arr.zip(c1.int_arr).foreach {
+              case (e1, e2) => e1 shouldBe e2
+            }
+        }
+        if (c1.bigint_arr    == null)        c2.bigint_arr    shouldBe null else {
+            c2.bigint_arr   .length shouldBe c1.bigint_arr   .length
+            c2.bigint_arr.zip(c1.bigint_arr).foreach {
+              case (e1, e2) => e1 shouldBe e2
+            }
+        }
+        if (c1.double_arr    == null)        c2.double_arr    shouldBe null else {
+            c2.double_arr   .length shouldBe c1.double_arr   .length
+            c2.double_arr.zip(c1.double_arr).foreach {
+              case (e1, e2) => e1 shouldBe e2
+            }
+        }
+        if (c1.decimal_arr   == null)        c2.decimal_arr   shouldBe null else {
+            c2.decimal_arr  .length shouldBe c1.decimal_arr  .length
+            c2.decimal_arr.zip(c1.decimal_arr).foreach {
+              case (e1, e2) => e1 shouldBe e2
+            }
+        }
+        if (c1.boolean_arr   == null)        c2.boolean_arr   shouldBe null else {
+            c2.boolean_arr  .length shouldBe c1.boolean_arr  .length
+            c2.boolean_arr.zip(c1.boolean_arr).foreach {
+              case (e1, e2) => e1 shouldBe e2
+            }
+        }
+        /* TODO
+        if (c1.child         == null) c2.child         shouldBe null else {
+            c2.child        .length shouldBe c1.child        .length
+            c2.child.zip(c1.child).foreach {
+              case (e1, e2) => e1 shouldBe e2
+            }
+        }
+        if (c1.children      == null) c2.children      shouldBe null else {
+            c2.children     .length shouldBe c1.children     .length
+            c2.children.zip(c1.children).foreach {
+              case (e1, e2) => e1 shouldBe e2
+            }
+        }
+        */
       }
     }
 
@@ -1009,17 +1140,32 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     checkDtoRoundtrip(obj)
 
     // dates and times
-    child.date = LocalDate.parse("2021-12-21") // java.sql.Date.valueOf("2021-12-21")
-    child.time = LocalTime.parse("10:42:15")   // java.sql.Time.valueOf("10:42:15")
+    child.l_date        = LocalDate.parse("2021-12-21")
+    child.l_time        = LocalTime.parse("10:42:15")
+    child.l_date_time   =
+      LocalDateTime.parse("2021-12-26 23:57:14.0".replace(' ', 'T'), DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+    child.sql_date      = java.sql.Date.valueOf("2021-12-21")
+    child.sql_time      = java.sql.Time.valueOf("10:42:15")
+    child.sql_timestamp = java.sql.Timestamp.valueOf("2021-12-26 23:57:14")
+    child.instant       = java.time.Instant.parse("2024-10-12T03:09:08.722844Z")
+    child.o_date_time   = java.time.OffsetDateTime.parse("2024-10-12T06:09:45.382568+07:00")
+    child.z_date_time   = java.time.ZonedDateTime.parse("2024-10-12T06:10:32.898849+03:00[Europe/Riga]")
     checkDtoRoundtrip(obj)
-    child.date = null
-    child.time = null
-    child.date_time = null
+    child.l_date        = null
+    child.l_time        = null
+    child.l_date_time   = null
+    child.sql_date      = null
+    child.sql_time      = null
+    child.sql_timestamp = null
+    child.instant       = null
+    child.o_date_time   = null
+    child.z_date_time   = null
 
     // negatives
     child.long = Long.MinValue
     child.int = Integer.MIN_VALUE
     child.bigint = BigInt(Long.MinValue) - 1
+    child.double = Double.MinValue
     child.boolean = false
     checkDtoRoundtrip(obj)
 
@@ -1027,6 +1173,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     child.long = Long.MaxValue
     child.int = Integer.MAX_VALUE
     child.bigint = BigInt(Long.MaxValue) + 1
+    child.double = Double.MaxValue
     child.boolean = true
     checkDtoRoundtrip(obj)
 
@@ -1041,6 +1188,8 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     child.child = new types_test_child
     child.child.name = "CHILD-1"
     child.child.date = LocalDate.parse("2021-11-08")  // java.sql.Date.valueOf("2021-11-08")
+    child.child.date_time =                           // java.sql.Timestamp.valueOf("2021-12-26 23:57:14.0")
+      LocalDateTime.parse("2021-12-26 23:57:14.0".replace(' ', 'T'), DateTimeFormatter.ISO_LOCAL_DATE_TIME)
     checkDtoRoundtrip(obj)
 
     // children
@@ -1059,8 +1208,13 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       LocalTime.parse("10:42:15"),
       LocalTime.parse("17:06:45"),
     )
+    child.date_time_arr = List(
+      LocalDateTime.parse("2021-12-26 23:57:14.0".replace(' ', 'T'), DateTimeFormatter.ISO_LOCAL_DATE_TIME),
+      LocalDateTime.parse("2024-01-16 13:09:10.2".replace(' ', 'T'), DateTimeFormatter.ISO_LOCAL_DATE_TIME),
+    )
     child.int_arr      = List(Int.MinValue, 0, 42, Int.MaxValue)
     child.bigint_arr   = List(BigInt(0), BigInt(Long.MaxValue) + 1)
+    child.double_arr   = List(0, Double.MaxValue)
     child.boolean_arr  = List(true, false)
     checkDtoRoundtrip(obj)
 
