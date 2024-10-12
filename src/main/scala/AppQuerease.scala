@@ -252,6 +252,9 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     keyValues
   }, data)
 
+  lazy val viewNameToPathSegments: Map[String, Seq[AppMetadata.Segment]] =
+    nameToViewDef.map { case (name, viewDef) => (name, viewDef.segments) }.filter(_._2 != null).toMap
+
   protected def keyResult(ir: IdResult, viewName: String, data: Map[String, Any]) = {
     KeyResult(ir, viewName, getKeyValues(viewName, data ++ ir.toMap, forApi = true))
   }

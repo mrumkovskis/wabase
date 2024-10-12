@@ -266,6 +266,19 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     }._1
 
     val limit = getIntExtra(Limit, viewDef) getOrElse 100
+    val segments = getStringExtra(Segments, viewDef).map(_.split(""",\s+""").toList.map { s =>
+      val (segAndOpt, typeName) =
+        s.trim.split("::", 2).toList match {
+          case Seq(s)           => (s.trim, "string")
+          case Seq(s, typeName) => (s.trim, typeName.trim)
+          case _ => sys.error(s"Failed to parse segments for ${viewDef.name}") // unexpected
+        }
+      Segment(
+        name       = if (segAndOpt.endsWith("?")) segAndOpt.dropRight(1) else segAndOpt,
+        isOptional = segAndOpt endsWith "?",
+        typeName   = typeName,
+      )
+    }).orNull
     val explicitDb = getBooleanExtra(ExplicitDb, viewDef)
     val decodeRequest = getBooleanExtraOpt(DecodeRequest, viewDef).forall(identity)
     val actions = Action().foldLeft(Map[String, Action]()) { (res, actionName) =>
@@ -292,7 +305,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     ViewDef(name, db, table, tableAlias, joins, filter,
       viewDef.groupBy, viewDef.having, orderBy, extends_,
       comments, appFields, viewDef.saveTo, extras)
-      .updateWabaseExtras(_ => AppViewDef(limit, explicitDb, decodeRequest, auth, apiToRoles, actions, Map.empty))
+      .updateWabaseExtras(_ => AppViewDef(limit, segments, explicitDb, decodeRequest, auth, apiToRoles, actions, Map.empty))
   }
 
   protected def transformAppViewDefs(viewDefs: Map[String, ViewDef]): Map[String, ViewDef] =
@@ -1216,8 +1229,16 @@ object AppMetadata extends Loggable {
     db: String,
   )
 
+  /** Uri path segment definition for rest api */
+  case class Segment(
+    name: String,
+    isOptional: Boolean,
+    typeName: String,
+  )
+
   trait AppViewDefExtras {
     val limit: Int
+    val segments: Seq[Segment]
     val explicitDb: Boolean
     val decodeRequest: Boolean
     val auth: AuthFilters
@@ -1228,6 +1249,7 @@ object AppMetadata extends Loggable {
 
   private [wabase] case class AppViewDef(
     limit: Int = 1000,
+    segments: Seq[Segment] = null,
     explicitDb: Boolean = false,
     decodeRequest: Boolean = false,
     auth: AuthFilters = AuthFilters(Nil, Nil, Nil, Nil, Nil),
@@ -1268,6 +1290,7 @@ object AppMetadata extends Loggable {
     private val defaultExtras = AppViewDef()
     private val appExtras = extras(WabaseViewExtrasKey, defaultExtras)
     override val limit = appExtras.limit
+    override val segments = appExtras.segments
     override val explicitDb = appExtras.explicitDb
     override val decodeRequest = appExtras.decodeRequest
     override val auth = appExtras.auth
@@ -1361,13 +1384,16 @@ object AppMetadata extends Loggable {
     val Auth = "auth"
     val Key   = "key"
     val Limit = "limit"
+    val Segments = "segments"
     val Validations = "validations"
     val ExplicitDb = "explicit db"
     val DecodeRequest = "decode request"
     val QuereaseViewExtrasKey = QuereaseMetadata.QuereaseViewExtrasKey
     val WabaseViewExtrasKey = AppMetadata.WabaseViewExtrasKey
     def apply() =
-      Set(Api, Auth, Key, Limit, Validations, ExplicitDb, DecodeRequest, QuereaseViewExtrasKey, WabaseViewExtrasKey) ++
+      Set(Api, Auth, Key, Limit, Segments, Validations, ExplicitDb,
+          DecodeRequest, QuereaseViewExtrasKey, WabaseViewExtrasKey,
+      ) ++
         Action()
   }
   object KnownFieldExtras {

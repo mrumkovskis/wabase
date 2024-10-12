@@ -1225,10 +1225,8 @@ insert:
 name: extract_parts_test
 decode request: false
 table:
-key: none
+segments: filename?
 api: insert, update
-fields:
-- none
 insert:
 - res = extract parts
 - as any

@@ -6,7 +6,7 @@ import akka.http.scaladsl.server.{RequestContext => HttpReqCtx}
 import akka.stream.Materializer
 import akka.stream.scaladsl.{Keep, Source}
 import akka.util.ByteString
-import org.mojoz.metadata.{FieldDef, ViewDef}
+import org.mojoz.metadata.{FieldDef, Type, ViewDef}
 import org.mojoz.querease.TresqlMetadata
 import org.tresql.{Resources, ResourcesTemplate, SingleValueResult}
 import org.wabase.AppMetadata.{Action, AugmentedAppFieldDef, AugmentedAppViewDef}
@@ -328,8 +328,13 @@ trait WabaseApp[User] {
   def prepareKeyValue(field: FieldDef, value: Any): Any =
     if (value == "null") null else qe.convertToType(value, field.type_)
   def prepareKey(viewName: String, keyValues: Seq[Any], actionName: String): Map[String, Any] = {
-    val keyFields = qe.viewNameToKeyFields(viewName).filterNot(_.api.excluded)
-    prepareKey(viewName, keyFields, keyValues, actionName)
+    qe.viewNameToPathSegments.get(viewName) match {
+      case Some(segments) =>
+        prepareSegments(viewName, segments, keyValues, actionName)
+      case _ =>
+        val keyFields = qe.viewNameToKeyFields(viewName).filterNot(_.api.excluded)
+        prepareKey(viewName, keyFields, keyValues, actionName)
+    }
   }
   def prepareKey(viewName: String, keyFields: Seq[FieldDef], keyValues: Seq[Any], actionName: String): Map[String, Any] = {
     if (keyValues.nonEmpty) {
@@ -342,6 +347,26 @@ trait WabaseApp[User] {
           catch {
             case util.control.NonFatal(ex) => throw new BusinessException(
               s"Failed to convert value for key field ${f.name} to type ${f.type_.name}", ex)
+          }
+        }.toMap
+    } else Map.empty
+  }
+  def prepareSegments(viewName: String, segments: Seq[AppMetadata.Segment], keyValues: Seq[Any], actionName: String): Map[String, Any] = {
+    def throwBadKeySize(expectedSize: Int) =
+      throw new BusinessException(
+        s"Unexpected key length for $actionName of $viewName - expecting ${expectedSize}, got ${keyValues.length}")
+    val minKeySize = segments.count(!_.isOptional)
+    if (keyValues.nonEmpty) {
+      if (keyValues.length < minKeySize)
+        throwBadKeySize(expectedSize = minKeySize)
+      else if (keyValues.length > segments.length)
+        throwBadKeySize(expectedSize = segments.length)
+      else
+        segments.zip(keyValues).map { case (s, v) =>
+          try s.name -> qe.convertToType(v, new Type(s.typeName))
+          catch {
+            case util.control.NonFatal(ex) => throw new BusinessException(
+              s"Failed to convert value for key segment ${s.name} to type ${s.typeName}", ex)
           }
         }.toMap
     } else Map.empty
