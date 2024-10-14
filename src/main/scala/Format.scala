@@ -154,6 +154,20 @@ object Format extends ValueConverter {
      .replace("<", "&lt;")
      .replace(">", "&gt;")
 
+  private lazy val valueConverterDelegate: ValueConverter =
+    Option("app.value-converter").filter(config.hasPath).map(config.getString).map(c => getObjectOrNewInstance(c, "value converter")).map {
+      case vc: ValueConverter => vc
+      case x => sys.error(s"Expected type ValueConverter, got: ${x.getClass.getName}")
+    }.getOrElse(DefaultValueConverter)
+
+  override def convertToType(value: Any, targetClass: Class[_]): Any =
+    valueConverterDelegate.convertToType(value, targetClass)
+
+  override def convertToString(value: Any): String =
+    valueConverterDelegate.convertToString(value)
+}
+
+object DefaultValueConverter extends ValueConverter {
   override def convertToType(value: Any, targetClass: Class[_]): Any = value match {
     case s: java.lang.String          => targetClass match {
       case ClassOfJavaSqlDate            => new java.sql.Date     (Format.parseDate(s)    .getTime)
