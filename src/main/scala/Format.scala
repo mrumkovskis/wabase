@@ -163,33 +163,6 @@ object Format extends ValueConverter {
       case ClassOfJavaUtilDate           => Format.parseDateTime(s)
       case _                             => super.convertToType(value, targetClass)
     }
-    case _: java.sql.Date                => super.convertToType(value, targetClass) // guard to avoid case java.util.Date below
-    case _: java.sql.Time                => super.convertToType(value, targetClass) // guard to avoid case java.util.Date below
-    case t: java.sql.Timestamp        => targetClass match {
-      case ClassOfString                 => t.toString match {
-                                              case s if s endsWith ".0" => s.substring(0, 19)
-                                              case s => s
-                                            }
-      case _                             => super.convertToType(value, targetClass)
-    }
-    case t: java.time.LocalDateTime   => targetClass match {
-      case ClassOfString                 => java.sql.Timestamp.valueOf(t).toString match {
-                                              case s if s endsWith ".0" => s.substring(0, 19)
-                                              case s => s
-                                            }
-      case _                             => super.convertToType(value, targetClass)
-    }
-    case t: java.time.LocalTime       => targetClass match {
-      case ClassOfString                 => java.sql.Time.valueOf(t).toString
-      case _                             => super.convertToType(value, targetClass)
-    }
-    case t: java.util.Date            => targetClass match {
-      case ClassOfString                 => new java.sql.Timestamp(t.getTime).toString match {
-                                              case s if s endsWith ".0" => s.substring(0, 19)
-                                              case s => s
-                                            }
-      case _                             => super.convertToType(value, targetClass)
-    }
     case _                            => super.convertToType(value, targetClass)
   }
 }
