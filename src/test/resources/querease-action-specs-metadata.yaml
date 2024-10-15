@@ -1245,3 +1245,11 @@ table:
 api: insert
 insert:
   - as any org.wabase.QuereaseActionTestManagerObj.processRequestParts extract parts
+
+
+name: fake_key_test
+table:
+key: id, sha_256
+api: get
+get:
+- as any unique { :id::int id, :sha_256 sha_256 }
