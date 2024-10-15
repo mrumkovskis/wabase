@@ -363,10 +363,10 @@ trait WabaseApp[User] {
         throwBadKeySize(expectedSize = segments.length)
       else
         segments.zip(keyValues).map { case (s, v) =>
-          try s.name -> qe.convertToType(v, new Type(s.typeName))
+          try s.name -> qe.convertToType(v, s.type_)
           catch {
             case util.control.NonFatal(ex) => throw new BusinessException(
-              s"Failed to convert value for key segment ${s.name} to type ${s.typeName}", ex)
+              s"Failed to convert value for key segment ${s.name} to type ${s.type_.name}", ex)
           }
         }.toMap
     } else Map.empty

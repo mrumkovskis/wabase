@@ -1,7 +1,6 @@
 package org.wabase
 
-import org.mojoz.metadata.ViewDef
-import org.mojoz.metadata.FieldDef
+import org.mojoz.metadata.{FieldDef, Type, ViewDef}
 import org.mojoz.metadata.in._
 import org.mojoz.metadata.io.MdConventions
 import org.mojoz.metadata.out.DdlGenerator.SimpleConstraintNamingRules
@@ -266,18 +265,28 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     }._1
 
     val limit = getIntExtra(Limit, viewDef) getOrElse 100
+
     val segments = getStringExtra(Segments, viewDef).map(_.split(""",\s+""").toList.map { s =>
-      val (segAndOpt, typeName) =
+      val (segAndOpt, typeOpt) =
         s.trim.split("::", 2).toList match {
-          case Seq(s)           => (s.trim, "string")
-          case Seq(s, typeName) => (s.trim, typeName.trim)
+          case Seq(s)           => (s.trim, None)
+          case Seq(s, typeName) => (s.trim, Some(new Type(typeName.trim)))
           case _ => sys.error(s"Failed to parse segments for ${viewDef.name}") // unexpected
         }
-      Segment(
-        name       = if (segAndOpt.endsWith("?")) segAndOpt.dropRight(1) else segAndOpt,
-        isOptional = segAndOpt endsWith "?",
-        typeName   = typeName,
-      )
+      val name       = if (segAndOpt.endsWith("?")) segAndOpt.dropRight(1) else segAndOpt
+      val isOptional = segAndOpt endsWith "?"
+      lazy val conventionsType = metadataConventions.typeFromExternal(name, typeOpt)
+      val type_ =
+        if (typeOpt.isDefined)
+          conventionsType
+        else
+          viewDef.fieldOpt(name).map(_.type_)
+            .orElse(viewDef.table match {
+              case null  => Some(conventionsType)
+              case table => tableMetadata.col(table, name, viewDef.db).map(_.type_)
+            })
+            .getOrElse(conventionsType)
+      Segment(name, isOptional, type_)
     }).orNull
     val explicitDb = getBooleanExtra(ExplicitDb, viewDef)
     val decodeRequest = getBooleanExtraOpt(DecodeRequest, viewDef).forall(identity)
@@ -1233,7 +1242,7 @@ object AppMetadata extends Loggable {
   case class Segment(
     name: String,
     isOptional: Boolean,
-    typeName: String,
+    type_ : Type,
   )
 
   trait AppViewDefExtras {
