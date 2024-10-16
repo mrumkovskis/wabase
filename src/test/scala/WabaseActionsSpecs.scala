@@ -20,7 +20,7 @@ import java.nio.file.Files
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import scala.collection.immutable.{ListMap, Seq}
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.concurrent.duration.DurationInt
 import scala.jdk.CollectionConverters._
 import scala.util.Try
@@ -1316,8 +1316,9 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     * classOf[Marshalling].getClassLoader.getResource("/resource.txt") - DOES NOT WORK
     */
     val route = service.crudAction
+    def decodeJs(js: String) = new CborOrJsonAnyValueDecoder().decode(ByteString(js))
     def jsonAssert(jsonStr: String, res: Any) =
-      new CborOrJsonAnyValueDecoder().decode(ByteString(jsonStr)) shouldBe res
+       decodeJs(jsonStr) shouldBe res
     Delete("/invocation_test_3") ~> route ~> check {
       val r = entityAs[String]
       jsonAssert(r, Map("1" -> Map("key" -> "value")))
@@ -1373,6 +1374,19 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       .fileUploadForm(createEntity("Hi people!", ContentTypes.`text/plain(UTF-8)`), "test.txt")) ~> route ~> check {
       val r = entityAs[String]
       jsonAssert(r, Seq(Map("file" -> "test.txt", "sha_256" -> "228c55536f6bcca78166c30c29199c4b6a52c8ed560cdc1db62ec1ac8af5df30")))
+    }
+    var fileId: Any = null
+    var fileSha: Any = null
+    Post("/upload_test/file.txt", createEntity("upload download", ContentTypes.`text/plain(UTF-8)`)) ~>
+      route ~> check {
+        val r = decodeJs(entityAs[String]).asInstanceOf[Map[String, Any]]
+        fileId = r("id")
+        fileSha = r("sha_256")
+        handled shouldBe true
+      }
+    Get(s"/download_test/$fileId/$fileSha") ~> route ~> check {
+      val r = entityAs[String]
+      r shouldBe "upload download"
     }
   }
 }

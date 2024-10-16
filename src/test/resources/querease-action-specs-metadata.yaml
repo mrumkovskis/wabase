@@ -1253,3 +1253,20 @@ key: id, sha_256
 api: get
 get:
 - as any unique { :id::int id, :sha_256 sha_256 }
+
+
+name: upload_test
+decode request: false
+table:
+key: filename
+api: insert
+insert:
+  - extract parts
+
+
+name: download_test
+table:
+key: id, sha_256
+api: get
+get:
+- file { :id::long, :sha_256 }

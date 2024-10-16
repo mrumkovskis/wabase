@@ -311,6 +311,11 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
       formats_marshaller(sr.result)
     }
 
+  def toEntityRequestPartResultMarshaller(ac: app.AppActionContext): ToEntityMarshaller[RequestPartResult] =
+    Marshaller.combined { rpr =>
+      AppQuerease.requestPartsToMap(rpr)(ac.fileStreamer, ac.as).map(AnyResult(_))
+    }
+
   import org.wabase.{QuereaseSerializedResult => QuereaseSerRes}
   import org.wabase.{QuereaseDeleteResult     => QuereaseDelRes}
   import org.wabase.{TresqlSingleRowResult    => TresqlSingleRr}
@@ -337,7 +342,7 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
       case hr: HttpResult     => (toResponseHttpResultMarshaller:             ToResponseMarshaller[HttpResult]    )(hr)
       case cr: CompatibleResult => (toResponseCompatibleResultMarshaller(wr): ToResponseMarshaller[CompatibleResult])(cr)
       case cr: ConfResult     => (toEntityConfResultMarshaller:               ToResponseMarshaller[ConfResult]    )(cr)
-      case pr: RequestPartResult => sys.error("RequestPartResult cannot be marshalled, must be processed before.")
+      case pr: RequestPartResult => (toEntityRequestPartResultMarshaller(wr.ctx): ToResponseMarshaller[RequestPartResult])(pr)
       case tq: TresqlResult   => sys.error("TresqlResult must be serialized before marshalling.")
       case rr: TresqlSingleRr => sys.error("TresqlSingleRowResult must be serialized before marshalling.")
       case it: IteratorResult => sys.error("IteratorResult must be serialized before marshalling.")
