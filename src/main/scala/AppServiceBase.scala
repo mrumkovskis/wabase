@@ -12,6 +12,7 @@ import StatusCodes._
 import scala.language.postfixOps
 import scala.util.matching.Regex
 import spray.json._
+import org.mojoz.querease.ValueConverter.{ClassOfJavaSqlDate, ClassOfJavaSqlTimestamp}
 import org.slf4j.LoggerFactory
 import org.tresql.MissingBindVariableException
 
@@ -423,9 +424,9 @@ trait AppServiceBase[User]
         case "false" => FALSE
       }, "boolean")
     } else if (metadataConventions.isDateName(key)) {
-          handleType(d => new java.sql.Date(Format.parseDate(d.replaceAll("\"", "")).getTime),"date")
+          handleType(d => Format.convertToType(d.replaceAll("\"", ""), ClassOfJavaSqlDate), "date")
     } else if (metadataConventions.isDateTimeName(key)) {
-          handleType(d => new java.sql.Timestamp(Format.parseDateTime(d.replaceAll("\"", "")).getTime), "dateTime (not supported yet)")
+          handleType(d => Format.convertToType(d.replaceAll("\"", ""), ClassOfJavaSqlTimestamp), "dateTime (not supported yet)")
     } else if (namesForInts.contains(key) ||
                metadataConventions.isIntegerName(key) ||
                metadataConventions.isIdName(key) ||

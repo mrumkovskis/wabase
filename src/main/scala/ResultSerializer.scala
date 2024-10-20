@@ -6,6 +6,8 @@ import akka.stream.stage.{GraphStage, GraphStageLogic, InHandler, OutHandler}
 import akka.stream.{Attributes, FlowShape, Inlet, Materializer, Outlet, SourceShape}
 import akka.util.{ByteString, ByteStringBuilder}
 
+import org.mojoz.querease.ValueConverter
+
 import java.io.{InputStream, OutputStream}
 import java.lang.{Boolean => JBoolean, Byte => JByte, Double => JDouble, Float => JFloat, Long => JLong, Short => JShort}
 import java.math.{BigDecimal => JBigDecimal, BigInteger => JBigInteger}
@@ -352,18 +354,18 @@ object BorerNestedArraysEncoder {
 
 object BorerDatetimeDecoders {
   import io.bullet.borer.{DataItem => DI}
+  import ValueConverter._
   implicit val javaSqlTimestampDecoder: Decoder[Timestamp] = Decoder { reader =>
     import reader._
+    def toSqlTimestamp(v: AnyRef) =
+      Format.convertToType(v, ClassOfJavaSqlTimestamp) match {
+        case d: java.sql.Timestamp => d
+        case null => null
+        case x => sys.error(s"Unexpected class ${x.getClass.getName}, expected java.sql.Timestamp")
+      }
     dataItem() match {
-      case DI.Chars |
-           DI.String =>
-        val s = readString()
-        if (s.length > 10 && s.charAt(10) == 'T')
-          sql.Timestamp.from(ZonedDateTime.parse(s).toLocalDateTime.atZone(ZoneId.systemDefault()).toInstant) // drops zone info!
-        else
-          sql.Timestamp.valueOf(s)
-      case _ if tryReadTag(Tag.DateTimeString)  =>
-        new sql.Timestamp(Format.jsIsoDateTime.parse(readString()).getTime)
+      case DI.Chars | DI.String                 => toSqlTimestamp(readString())
+      case _ if tryReadTag(Tag.DateTimeString)  => toSqlTimestamp(readString())
       case _ if tryReadTag(Tag.EpochDateTime)   => new Timestamp((readDouble() * 1000).toLong)
       case DI.Double                            => new Timestamp((readDouble() * 1000).toLong)
       case _                                    => unexpectedDataItem(expected = "Timestamp")
@@ -371,28 +373,31 @@ object BorerDatetimeDecoders {
   }
   implicit val javaSqlDateDecoder: Decoder[sql.Date] = Decoder { reader =>
     import reader._
+    def toSqlDate(v: AnyRef) =
+      Format.convertToType(v, ClassOfJavaSqlDate) match {
+        case d: java.sql.Date => d
+        case null => null
+        case x => sys.error(s"Unexpected class ${x.getClass.getName}, expected java.sql.Date")
+      }
     dataItem() match {
-      case DI.Chars |
-           DI.String => sql.Date.valueOf(readString())
-      case _ if tryReadTag(Tag.DateTimeString)  =>
-        new sql.Date(Format.jsIsoDateTime.parse(readString()).getTime)
+      case DI.Chars | DI.String                 => toSqlDate(readString())
+      case _ if tryReadTag(Tag.DateTimeString)  => toSqlDate(readString())
       case _ if tryReadTag(Tag.EpochDateTime)   => new sql.Date(readLong() * 1000)
       case DI.Int | DI.Long                     => new sql.Date(readLong() * 1000)
       case _                                    => unexpectedDataItem(expected = "Date")
     }
   }
-  private val hh_mm_regex = """^\d\d?:\d\d?$""".r
-  def toSqlTime(timeString: String) =
-    if  (hh_mm_regex.pattern.matcher(timeString).matches)
-         sql.Time.valueOf(s"$timeString:00")
-    else sql.Time.valueOf(timeString)
   implicit val javaSqlTimeDecoder: Decoder[sql.Time] = Decoder { reader =>
     import reader._
+    def toSqlTime(v: AnyRef) =
+      Format.convertToType(v, ClassOfJavaSqlTime) match {
+        case d: java.sql.Time => d
+        case null => null
+        case x => sys.error(s"Unexpected class ${x.getClass.getName}, expected java.sql.Time")
+      }
     dataItem() match {
-      case DI.Chars |
-           DI.String => toSqlTime(readString())
-      case _ if tryReadTag(Tag.DateTimeString)  =>
-        new sql.Time(Format.jsIsoDateTime.parse(readString()).getTime)
+      case DI.Chars | DI.String                 => toSqlTime(readString())
+      case _ if tryReadTag(Tag.DateTimeString)  => toSqlTime(readString())
       case _ if tryReadTag(BorerDatetimeEncoders.TimeTag)
                                                 => new sql.Time((readDouble() * 1000).toLong)
       case _ if tryReadTag(Tag.EpochDateTime)   => new sql.Time((readDouble() * 1000).toLong)
@@ -400,8 +405,22 @@ object BorerDatetimeDecoders {
       case _                                    => unexpectedDataItem(expected = "Time")
     }
   }
-  implicit val javaTimeInstantDecoder: Decoder[Instant] =
-    Decoder { r => r[ZonedDateTime].toInstant }
+  implicit val javaTimeInstantDecoder: Decoder[Instant] = Decoder { reader =>
+    import reader._
+    def toInstant(v: AnyRef) =
+      Format.convertToType(v, ClassOfJavaTimeInstant) match {
+        case d: java.time.Instant => d
+        case null => null
+        case x => sys.error(s"Unexpected class ${x.getClass.getName}, expected java.time.Instant")
+      }
+    dataItem() match {
+      case DI.Chars | DI.String               => toInstant(readString())
+      case _ if tryReadTag(Tag.DateTimeString)=> toInstant(readString())
+      case _ if tryReadTag(Tag.EpochDateTime) => Instant.ofEpochMilli((readDouble() * 1000).toLong)
+      case DI.Double                          => Instant.ofEpochMilli((readDouble() * 1000).toLong)
+      case _                                  => unexpectedDataItem(expected = "Instant")
+    }
+  }
   implicit val localDateDecoder: Decoder[LocalDate] =
     Decoder { r => r[sql.Date].toLocalDate() }
   implicit val localTimeDecoder: Decoder[LocalTime] =
@@ -410,21 +429,33 @@ object BorerDatetimeDecoders {
     Decoder { r => r[sql.Timestamp].toLocalDateTime() }
   implicit val offsetDateTimeDecoder: Decoder[OffsetDateTime] = Decoder { reader =>
     import reader._
+    def toOffsetDateTime(v: AnyRef) =
+      Format.convertToType(v, ClassOfJavaTimeOffsetDateTime) match {
+        case d: java.time.OffsetDateTime => d
+        case null => null
+        case x => sys.error(s"Unexpected class ${x.getClass.getName}, expected java.time.OffsetDateTime")
+      }
     dataItem() match {
-      case DI.Chars | DI.String               => OffsetDateTime.parse(readString())
-      case _ if tryReadTag(Tag.DateTimeString)=> OffsetDateTime.parse(readString())
-      case _ if tryReadTag(Tag.EpochDateTime) => OffsetDateTime.from(Instant.ofEpochMilli((readDouble() * 1000).toLong))
-      case DI.Double                          => OffsetDateTime.from(Instant.ofEpochMilli((readDouble() * 1000).toLong))
+      case DI.Chars | DI.String               => toOffsetDateTime(readString())
+      case _ if tryReadTag(Tag.DateTimeString)=> toOffsetDateTime(readString())
+      case _ if tryReadTag(Tag.EpochDateTime) => toOffsetDateTime(Instant.ofEpochMilli((readDouble() * 1000).toLong))
+      case DI.Double                          => toOffsetDateTime(Instant.ofEpochMilli((readDouble() * 1000).toLong))
       case _                                  => unexpectedDataItem(expected = "OffsetDateTime")
     }
   }
   implicit val zonedDateTimeDecoder: Decoder[ZonedDateTime] = Decoder { reader =>
     import reader._
+    def toZonedDateTime(v: AnyRef) =
+      Format.convertToType(v, ClassOfJavaTimeZonedDateTime) match {
+        case d: java.time.ZonedDateTime => d
+        case null => null
+        case x => sys.error(s"Unexpected class ${x.getClass.getName}, expected java.time.ZonedDateTime")
+      }
     dataItem() match {
-      case DI.Chars | DI.String               => ZonedDateTime.parse(readString())
-      case _ if tryReadTag(Tag.DateTimeString)=> ZonedDateTime.parse(readString())
-      case _ if tryReadTag(Tag.EpochDateTime) => ZonedDateTime.from(Instant.ofEpochMilli((readDouble() * 1000).toLong))
-      case DI.Double                          => ZonedDateTime.from(Instant.ofEpochMilli((readDouble() * 1000).toLong))
+      case DI.Chars | DI.String               => toZonedDateTime(readString())
+      case _ if tryReadTag(Tag.DateTimeString)=> toZonedDateTime(readString())
+      case _ if tryReadTag(Tag.EpochDateTime) => toZonedDateTime(Instant.ofEpochMilli((readDouble() * 1000).toLong))
+      case DI.Double                          => toZonedDateTime(Instant.ofEpochMilli((readDouble() * 1000).toLong))
       case _                                  => unexpectedDataItem(expected = "ZonedDateTime")
     }
   }

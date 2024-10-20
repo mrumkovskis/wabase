@@ -9,6 +9,7 @@ import akka.http.scaladsl.unmarshalling.Unmarshal
 import akka.stream.scaladsl.{Source, StreamConverters}
 import akka.util.ByteString
 import org.mojoz.querease.{TresqlMetadata, ValidationException, ValidationResult}
+import org.mojoz.querease.ValueConverter.ClassOfJavaSqlDate
 import org.scalatest.flatspec.{AsyncFlatSpec, AsyncFlatSpecLike}
 import org.scalatest.matchers.should.Matchers
 import org.tresql.{MissingBindVariableException, Query, ThreadLocalResources, convString}
@@ -565,7 +566,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
               "name" -> "EnvTestName",
               "surname" -> "EnvTestSurname",
               "sex" -> "M",
-              "birthdate" -> new java.sql.Date(Format.parseDate("1988-09-20").getTime),
+              "birthdate" -> Format.convertToType("1988-09-20", ClassOfJavaSqlDate),
             )
           }
         }
@@ -579,7 +580,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
               "name" -> "EnvTestName",
               "surname" -> "EnvTestSurname",
               "sex" -> "M",
-              "birthdate" -> new java.sql.Date(Format.parseDate("1988-09-20").getTime),
+              "birthdate" -> Format.convertToType("1988-09-20", ClassOfJavaSqlDate),
             )
           }
         }
@@ -594,7 +595,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
                 "id" -> id,
                 "name" -> "Mika",
                 "sex" -> "F",
-                "birthdate" -> new java.sql.Date(Format.parseDate("1988-09-20").getTime),
+                "birthdate" -> Format.convertToType("1988-09-20", ClassOfJavaSqlDate),
               )
             }
           }
@@ -1044,7 +1045,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
 
   it should "apply column filter to optional columns for get" in  {
     val person = Map(
-      "birthdate" -> new java.sql.Date(Format.parseDate("1988-09-20").getTime),
+      "birthdate" -> Format.convertToType("1988-09-20", ClassOfJavaSqlDate),
       "sex" -> "M",
       "name" -> "CfGetName",
       "surname" -> "CfGetSurname"
@@ -1078,7 +1079,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
 
   it should "apply column filter to optional columns for list" in  {
     val person = Map(
-      "birthdate" -> new java.sql.Date(Format.parseDate("1988-09-20").getTime),
+      "birthdate" -> Format.convertToType("1988-09-20", ClassOfJavaSqlDate),
       "sex" -> "M",
       "name" -> "CfGetName",
       "surname" -> "CfGetSurname"

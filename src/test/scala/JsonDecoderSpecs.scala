@@ -53,7 +53,7 @@ class JsonDecoderSpecs extends FlatSpec with Matchers {
     val viewName = classToViewName(obj.getClass)
     val incoming = """{
       "time": "12:15",
-      "l_time": "2:0"
+      "l_time": "02:00"
     }""".replaceAll("\n    ", "\n")
     val decoded = decodeToMap(ByteString(incoming), viewName)
     decoded("time") shouldBe sql.Time.valueOf("12:15:00")
