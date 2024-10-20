@@ -24,63 +24,15 @@ object Format extends ValueConverter {
   }
 
   def parseDate(s: String) =
-    s.length match {
-      case 10 =>
-        Format.xsdDate.parse(s)
-      case 16 | 19 | 21 | 22 | 23 | 24 =>
-        Format.xsdDate.parse(Format.xsdDate(Format.parseDateTime(s)))
-      case _ =>
-        throw new BusinessException(s"Unsupported date format - $s")
+    valueConverterDelegate.convertToType(s, ClassOfJavaUtilDate) match {
+      case d: java.util.Date => d
+      case _ => sys.error("Failed to parse date")
     }
 
   def parseDateTime(s: String) =
-    s.length match {
-      case 24 =>
-        Format.jsIsoDateTime.parse(s)
-      case 23 =>
-        s.charAt(10) match {
-          case ' ' => Format.humanDateTimeWithMillis.parse(s)
-          case 'T' => Format.xlsxDateTime.parse(s)
-          case  _  => Format.uriDateTimeWithMillis.parse(s)
-        }
-      case 22 =>
-        s.charAt(10) match {
-          case ' ' => Format.humanDateTimeWithMillis.parse(s"${s}0")
-          case 'T' => Format.xlsxDateTime.parse(s"${s}0")
-          case  _  => Format.uriDateTimeWithMillis.parse(s"${s}0")
-        }
-      case 21 =>
-        s.charAt(10) match {
-          case ' ' => Format.humanDateTimeWithMillis.parse(s"${s}00")
-          case 'T' => Format.xlsxDateTime.parse(s"${s}00")
-          case  _  => Format.uriDateTimeWithMillis.parse(s"${s}00")
-        }
-      case 19 =>
-        s.charAt(10) match {
-          case ' ' => Format.humanDateTime.parse(s)
-          case 'T' => Format.timerDate.parse(s)
-          case  _  => Format.uriDateTime.parse(s)
-        }
-      case 16 =>
-        s.charAt(10) match {
-          case ' ' => Format.humanDateTimeMin.parse(s)
-          case 'T' => Format.timerDateHTML5.parse(s)
-          case  _  => Format.uriDateTimeMin.parse(s)
-        }
-      case 10 =>
-        Format.xsdDate.parse(s)
-      case x if x > 10 =>
-        val st = s.charAt(10) match {
-          case ' ' => s"${s.substring(0, 10)}T${s.substring(11)}"
-          case 'T' => s
-          case  _  => s"${s.substring(0, 10)}T${s.substring(11)}"
-        }
-        try Date.from(Instant.parse(st)) catch {
-          case ex: java.time.format.DateTimeParseException =>
-            throw new BusinessException(s"Unsupported timestamp format. ${ex.getMessage}")
-        }
-      case _ =>
-        throw new BusinessException(s"Unsupported timestamp format - $s")
+    valueConverterDelegate.convertToType(s, ClassOfJavaUtilDate) match {
+      case d: java.util.Date => d
+      case _ => sys.error("Failed to parse datetime")
     }
 
   val time                    = new ThreadLocalDateFormat("HH:mm")
@@ -167,16 +119,4 @@ object Format extends ValueConverter {
     valueConverterDelegate.convertToString(value)
 }
 
-object DefaultValueConverter extends ValueConverter {
-  override def convertToType(value: Any, targetClass: Class[_]): Any = value match {
-    case s: java.lang.String          => targetClass match {
-      case ClassOfJavaSqlDate            => new java.sql.Date     (Format.parseDate(s)    .getTime)
-      case ClassOfJavaSqlTimestamp       => new java.sql.Timestamp(Format.parseDateTime(s).getTime)
-      case ClassOfJavaTimeLocalDate      => new java.sql.Date     (Format.parseDate(s)    .getTime).toLocalDate
-      case ClassOfJavaTimeLocalDateTime  => new java.sql.Timestamp(Format.parseDateTime(s).getTime).toLocalDateTime
-      case ClassOfJavaUtilDate           => Format.parseDateTime(s)
-      case _                             => super.convertToType(value, targetClass)
-    }
-    case _                            => super.convertToType(value, targetClass)
-  }
-}
+object DefaultValueConverter extends ValueConverter
