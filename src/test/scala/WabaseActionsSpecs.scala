@@ -21,7 +21,7 @@ import java.nio.file.Files
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import scala.collection.immutable.{ListMap, Seq}
-import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration.DurationInt
 import scala.jdk.CollectionConverters._
 import scala.util.Try
