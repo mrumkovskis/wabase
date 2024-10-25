@@ -1383,7 +1383,8 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         val r = decodeJs(entityAs[String]).asInstanceOf[Map[String, Any]]
         fileId = r("id")
         fileSha = r("sha_256")
-        handled shouldBe true
+        val filename = r("filename")
+        filename shouldBe "file.txt"
       }
     Get(s"/download_test/$fileId/$fileSha") ~> route ~> check {
       val r = entityAs[String]

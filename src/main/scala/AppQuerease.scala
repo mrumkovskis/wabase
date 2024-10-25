@@ -1388,7 +1388,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       }
   }
 
-  protected def doExtractParts(implicit reqCtx: RequestContext, as: ActorSystem): Future[RequestPartResult] = {
+  protected def doExtractParts(data: Map[String, Any], env: Map[String, Any], context: ActionContext)(
+    implicit reqCtx: RequestContext, as: ActorSystem): Future[RequestPartResult] = {
     val req = reqCtx.request
     val entity = req.entity
     if (entity.contentType.mediaType.isMultipart) {
@@ -1406,7 +1407,10 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         RequestPartResult(src)
       }
     } else {
-      val filename = req.uri.path.reverse.head.toString
+      val filename = viewDefOption(context.viewName)
+        .filter(_.keyFieldNames.size == 1)
+        .flatMap(vd => data.get(vd.keyFieldNames.head).map(String.valueOf))
+        .getOrElse(req.uri.path.reverse.head.toString)
       Future.successful(
         RequestPartResult(
           Source.single(
@@ -1463,7 +1467,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case c: Action.Conf => doConf(c, data, env, context)
       case j: Action.JsonCodec => doJsonCodec(j, data, env, context)
       case job: Action.Job => doJob(job, data, env, context)
-      case Action.ExtractParts => doExtractParts
+      case Action.ExtractParts => doExtractParts(data, env, context)
       case VariableTransforms(vts) =>
         Future.successful(doVarsTransforms(vts, Map[String, Any](), data ++ env))
       case _: Action.Else => sys.error(s"Integrity error. Else operation cannot be here, must be coalesced into if operation")
