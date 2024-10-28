@@ -277,6 +277,7 @@ object ResultRenderer {
     def isCollection(field: String): Boolean
     def type_       (field: String): Type
     def unfilteredNames: List[String]
+    def includedNames:   List[String]
   }
 
   class ViewFieldFilter(viewName: String, nameToViewDef: Map[String, ViewDef]) extends ResultFilter {
@@ -291,6 +292,7 @@ object ResultRenderer {
       .map(new ViewFieldFilter(_, nameToViewDef))
       .orNull
     override def unfilteredNames = viewDef.fields.map(_.fieldName).toList
+    override def includedNames   = viewDef.fields.map(_.fieldName).filter(shouldInclude).toList
   }
 
   object NoFilter extends ResultFilter {
@@ -300,6 +302,7 @@ object ResultRenderer {
     override def type_(field: String): Type = null
     override def childFilter(field: String): ResultFilter = this
     override def unfilteredNames: List[String] = Nil
+    override def includedNames:   List[String] = Nil
   }
 
   class IntersectionFilter(filter1: ResultFilter, filter2: ResultFilter) extends ResultFilter {
@@ -309,7 +312,8 @@ object ResultRenderer {
     override def type_       (field: String) = filter2.type_(field)
     override def childFilter (field: String) =
       new IntersectionFilter(filter1.childFilter(field), filter2.childFilter(field))
-    override def unfilteredNames = filter1.unfilteredNames.filter(filter2.shouldInclude)
+    override def unfilteredNames = filter1.unfilteredNames
+    override def includedNames   = filter1.includedNames.filter(filter2.shouldInclude)
   }
 
   class JsonForwarder(renderer: ResultRenderer) {
