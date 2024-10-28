@@ -288,11 +288,22 @@ object ResultRenderer {
     override def isCollection(field: String) = viewDef.fieldOpt(field).exists(_.isCollection)
     override def type_       (field: String) = viewDef.fieldOpt(field).map(_.type_).orNull
     override def childFilter (field: String) = viewDef.fieldOpt(field)
+      // TODO prepare, maybe cache
       .map(_.type_.name)
       .map(new ViewFieldFilter(_, nameToViewDef))
       .orNull
     override def unfilteredNames = viewDef.fields.map(_.fieldName).toList
     override def includedNames   = viewDef.fields.map(_.fieldName).filter(shouldInclude).toList
+  }
+
+  object NoAccess extends ResultFilter {
+    override def name: String = null
+    override def shouldInclude(field: String): Boolean = false
+    override def isCollection(field: String):  Boolean = false
+    override def type_(field: String): Type = null
+    override def childFilter(field: String):   ResultFilter = this
+    override def unfilteredNames: List[String] = Nil
+    override def includedNames:   List[String] = Nil
   }
 
   object NoFilter extends ResultFilter {
