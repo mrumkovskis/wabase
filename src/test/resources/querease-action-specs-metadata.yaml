@@ -718,6 +718,18 @@ get:
 - get this
 
 
+name: insert_to_no_result_test    # insert tresql does not return id, resulting NoResult (empty content response)
+table: simple_table
+api: insert, get
+fields:
+- id
+- value
+insert:
+- +simple_table{id = 43, value = :value}
+get:
+- unique_opt simple_table[value = :value]{id, value}
+
+
 name: remove_var_test
 table:
 api: insert, update

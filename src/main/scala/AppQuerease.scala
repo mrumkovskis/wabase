@@ -532,8 +532,15 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           case TresqlResult(r: DMLResult) if context.stepName == null && context.contextStack.isEmpty =>
             r match {
               case _: InsertResult | _: UpdateResult =>
-                val idName = viewNameToIdName.getOrElse(context.viewName, null)
-                curData.map(keyResult(IdResult(r.id, idName), context.viewName, _))
+                r.id.map { id =>
+                  val idName = viewNameToIdName.getOrElse(context.viewName, null)
+                  curData.map(keyResult(IdResult(id, idName), context.viewName, _))
+                }.getOrElse {
+                  if (hasExplicitKey(viewDef(context.viewName)))
+                    curData.map(keyResult(IdResult(null, null), context.viewName, _))
+                  else
+                    Future.successful(NoResult)
+                }
               case _: DeleteResult =>
                 Future.successful(QuereaseDeleteResult(r.count.getOrElse(0)))
             }
