@@ -646,13 +646,13 @@ object BorerNestedArraysTransformer {
     new TransformerSource(createTransformable, createEncoder, transformFrom, bufferSizeHint)
   )
 
-  /** This method is wabase private since returned flow's incoming cbor or json data item (token)
+  /** Returned flow's incoming cbor or json data item (token)
    * size must not exceed parameter [[bufferSizeHint]] value, otherwise flow will fail with
    * [[RuntimeException]] - see [[TransformerFlow.createLogic]].
    *
    * Produced flow is used for performance reasons as an alternative to method [[blockingTransform]]
    * */
-  private [wabase] def flow(
+  def flow(
     createEncoder:  EncoderFactory,
     transformFrom:  Target = Cbor,
     bufferSizeHint: Int = 1024,
