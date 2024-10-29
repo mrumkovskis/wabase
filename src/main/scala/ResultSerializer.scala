@@ -472,36 +472,38 @@ class BorerNestedArraysTransformer(reader: Reader, handler: ResultEncoder) {
   import io.bullet.borer.{DataItem => DI}
   private var di = DI.None
   private var isChunking = false
+  private def handleKeyOrValue(value: Any) =
+    if (!writeValue(value)) reader.skipElement()
   def transformNext(): Boolean = {
     if (di != DI.EndOfInput) {
       di = dataItem()
       di match {
-        case DI.Null          => writeValue(readNull())
-        case DI.Undefined     => readUndefined();   writeValue(null)  // unexpected
-        case DI.Boolean       => writeValue(readBoolean())
-        case DI.Int           => writeValue(readInt())        // byte, char, short also here, convert if necessary
-        case DI.Long          => writeValue(readLong())
-        case DI.OverLong      => writeValue(read[JBigInteger]())
-        case DI.Float16       => writeValue(readFloat())
-        case DI.Float         => writeValue(readFloat())
-        case DI.Double        => writeValue(readDouble())
-        case DI.NumberString  => writeValue(read[JBigDecimal]())
-        case DI.String        => writeValue(readString())
-        case DI.Chars         => writeValue(readString())
+        case DI.Null          => handleKeyOrValue(readNull())
+        case DI.Undefined     => readUndefined();   handleKeyOrValue(null)  // unexpected
+        case DI.Boolean       => handleKeyOrValue(readBoolean())
+        case DI.Int           => handleKeyOrValue(readInt())  // byte, char, short also here, convert if necessary
+        case DI.Long          => handleKeyOrValue(readLong())
+        case DI.OverLong      => handleKeyOrValue(read[JBigInteger]())
+        case DI.Float16       => handleKeyOrValue(readFloat())
+        case DI.Float         => handleKeyOrValue(readFloat())
+        case DI.Double        => handleKeyOrValue(readDouble())
+        case DI.NumberString  => handleKeyOrValue(read[JBigDecimal]())
+        case DI.String        => handleKeyOrValue(readString())
+        case DI.Chars         => handleKeyOrValue(readString())
         case DI.Text          => if  (isChunking)
                                       writeChunk(readSizedTextBytes[ByteString]())
-                                 else writeValue(readString())
+                                 else handleKeyOrValue(readString())
         case DI.TextStart     => readTextStart();   isChunking = true;  startChunks(TextChunks)
         case DI.Bytes         => if  (isChunking)
                                       writeChunk(readSizedBytes[ByteString]())
-                                 else writeValue(readByteArray())
+                                 else handleKeyOrValue(readByteArray())
         case DI.BytesStart    => readBytesStart();  isChunking = true;  startChunks(ByteChunks)
         case DI.ArrayHeader   => readArrayHeader(); writeArrayStart()
         case DI.ArrayStart    => readArrayStart();  writeArrayStart()
-        case DI.MapHeader     => readMapHeader();   writeArrayStart() // unexpected TODO map support?
-        case DI.MapStart      => readMapStart();    writeArrayStart() // unexpected TODO map support?
+        case DI.MapHeader     => readMapHeader();   writeMapStart()
+        case DI.MapStart      => readMapStart();    writeMapStart()
         case DI.Break         => readBreak();       isChunking = false; writeBreak()
-        case DI.Tag           => writeValue {
+        case DI.Tag           => handleKeyOrValue {
           if      (hasTag(Tag.PositiveBigNum))   read[JBigInteger]()
           else if (hasTag(Tag.NegativeBigNum))   read[JBigInteger]()
           else if (hasTag(Tag.DecimalFraction))  read[JBigDecimal]()
@@ -516,7 +518,7 @@ class BorerNestedArraysTransformer(reader: Reader, handler: ResultEncoder) {
           else if (hasTag(BorerDatetimeEncoders.TimeTag)) read[sql.Time]()
           else readString()                                   // unexpected
         }
-        case DI.SimpleValue   => writeValue(readInt())        // unexpected
+        case DI.SimpleValue   => handleKeyOrValue(readInt())  // unexpected
         case DI.EndOfInput    => readEndOfInput(); writeEndOfInput()
       }
     }
