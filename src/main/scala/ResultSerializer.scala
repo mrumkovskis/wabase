@@ -292,6 +292,7 @@ class BorerNestedArraysEncoder(
   private  var chunkType: ChunkType = null
   override def writeStartOfInput():     Unit = { if (wrap) w.writeArrayStart() }
   override def writeArrayStart():       Unit = w.writeArrayStart()
+  override def writeMapStart():         Unit = w.writeMapStart()
   override def writeValue(value: Any):  Unit = super.writeValue(value)
   override def startChunks(chunkType: ChunkType): Unit = {
     chunkType match {

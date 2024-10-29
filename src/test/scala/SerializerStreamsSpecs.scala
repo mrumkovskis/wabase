@@ -662,6 +662,7 @@ class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseIni
     val encoderFactory: EncoderFactory = os => new ResultEncoder {
       override def writeStartOfInput():               Unit = {}
       override def writeArrayStart():                 Unit = {}
+      override def writeMapStart():                   Unit = ???
       override def writeValue(value: Any):            Unit = { os.write(value.toString.getBytes("UTF-8")) }
       override def startChunks(chunkType: ChunkType): Unit = {}
       override def writeChunk(chunk: Any): Unit = chunk match {

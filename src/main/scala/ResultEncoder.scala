@@ -85,6 +85,7 @@ import ResultEncoder._
 trait ResultEncoder {
   def writeStartOfInput():      Unit
   def writeArrayStart():        Unit
+  def writeMapStart():          Unit
   def writeValue(value: Any):   Unit
   def startChunks(
         chunkType: ChunkType):  Unit
@@ -178,6 +179,9 @@ abstract class ResultRenderer(
       }
       contextStack = new Context(isForRows = true, childFilter, allNames, isCollection, shouldRender_) :: contextStack
     }
+  }
+  override def writeMapStart(): Unit = {
+    throw new NotImplementedError("writeMapStart() in ResultRenderer is not implemented yet") // TODO
   }
   protected def shouldRenderAsJson(name: String, context: Context) =
     unwrapJson && context.resultFilter != null && (context.resultFilter.type_(name) match {
