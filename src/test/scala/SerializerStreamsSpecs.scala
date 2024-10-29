@@ -551,7 +551,7 @@ class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseIni
       var deserialized: Any = null
       val handler = new ResultRenderer(isCollection = false, null, hasHeaders = false) {
         override def renderValue(value: Any): Unit = {}
-        override def writeValue(value: Any): Unit = { deserialized = value }
+        override def writeValue(value: Any): Boolean = { deserialized = value; true }
       }
       val serialized  = serializeValuesToHexString(List(value).iterator, bufferSizeHint = bufferSizeHint)
       val transformer = new BorerNestedArraysTransformer(
@@ -663,7 +663,7 @@ class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseIni
       override def writeStartOfInput():               Unit = {}
       override def writeArrayStart():                 Unit = {}
       override def writeMapStart():                   Unit = ???
-      override def writeValue(value: Any):            Unit = { os.write(value.toString.getBytes("UTF-8")) }
+      override def writeValue(value: Any):         Boolean = { os.write(value.toString.getBytes("UTF-8")); true }
       override def startChunks(chunkType: ChunkType): Unit = {}
       override def writeChunk(chunk: Any): Unit = chunk match {
         case bytes: ByteString => writeValue(bytes.utf8String)

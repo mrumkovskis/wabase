@@ -282,7 +282,10 @@ class BorerValueEncoder(w: Writer) {
   private val anyValueEncoder: PartialFunction[Any, Writer] = {
     case x                  => w writeString x.toString
   }
-  def writeValue(value: Any):  Unit = valueEncoder(value)
+  def writeValue(value: Any): Boolean = {
+    valueEncoder(value)
+    true
+  }
 }
 
 class BorerNestedArraysEncoder(
@@ -293,7 +296,7 @@ class BorerNestedArraysEncoder(
   override def writeStartOfInput():     Unit = { if (wrap) w.writeArrayStart() }
   override def writeArrayStart():       Unit = w.writeArrayStart()
   override def writeMapStart():         Unit = w.writeMapStart()
-  override def writeValue(value: Any):  Unit = super.writeValue(value)
+  override def writeValue(value: Any):  Boolean = super.writeValue(value)
   override def startChunks(chunkType: ChunkType): Unit = {
     chunkType match {
       case TextChunks => w.writeTextStart()

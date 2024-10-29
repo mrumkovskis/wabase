@@ -86,7 +86,7 @@ trait ResultEncoder {
   def writeStartOfInput():      Unit
   def writeArrayStart():        Unit
   def writeMapStart():          Unit
-  def writeValue(value: Any):   Unit
+  def writeValue(value: Any):   Boolean
   def startChunks(
         chunkType: ChunkType):  Unit
   def writeChunk(chunk: Any):   Unit
@@ -189,7 +189,7 @@ abstract class ResultRenderer(
       case t => t.isComplexType || t.name == "json"
     })
 
-  override def writeValue(value: Any): Unit = {
+  override def writeValue(value: Any): Boolean = {
     val context = contextStack.head
     if (context.readingNames) {
       context.names = ("" + value) :: context.names
@@ -209,6 +209,7 @@ abstract class ResultRenderer(
       renderRawValue(value)
     }
     context.index += 1
+    true
   }
   override def startChunks(chunkType: ChunkType): Unit = {
     this.chunkType = chunkType
