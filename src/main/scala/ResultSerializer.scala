@@ -601,7 +601,7 @@ object BorerNestedArraysTransformer {
         }
       }
       private val encoder     = createEncoder(outBuf.asOutputStream)
-      private val transformer = new BorerNestedArraysTransformer(
+      private lazy val transformer = new BorerNestedArraysTransformer(
         borerReader(transformable, transformFrom),
         encoder,
       )
