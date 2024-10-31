@@ -15,18 +15,16 @@ import org.tresql._
 import org.mojoz.querease._
 import org.mojoz.querease.SaveMethod
 
-import org.mojoz.metadata.Type
-import org.mojoz.metadata.{FieldDef, ViewDef}
+import org.mojoz.metadata.ViewDef
 import org.slf4j.LoggerFactory
 import org.wabase.AppFileStreamer.FileInfo
 import org.wabase.AppMetadata.Action.{VariableTransform, VariableTransforms}
 import org.wabase.AppMetadata.DbAccessKey
 
-import scala.reflect.ManifestFactory
 import spray.json._
 
 import java.sql.Connection
-import scala.collection.immutable.{ListMap, Seq}
+import scala.collection.immutable.Seq
 import scala.concurrent.{ExecutionContext, Future}
 import scala.jdk.CollectionConverters._
 import scala.util.{Failure, Try}
@@ -1587,7 +1585,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   protected lazy val doHttpRequest: HttpRequest => Future[HttpResponse] = {
     val httpClient =
       new org.wabase.client.RestClient {}
-    httpClient.doRequest _
+    httpClient.doRequest
   }
 
   private def renderedSource(serializedSource: Source[ByteString, _],
