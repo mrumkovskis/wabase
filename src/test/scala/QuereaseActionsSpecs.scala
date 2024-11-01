@@ -9,6 +9,7 @@ import org.scalatest.matchers.should.Matchers
 import org.tresql.{Query, Resources, convLong}
 import org.wabase.QuereaseActionsDtos.Person
 
+import scala.concurrent.duration.DurationInt
 import scala.concurrent.{ExecutionContext, Future}
 
 object QuereaseActionsDtos {
@@ -538,4 +539,12 @@ object QuereaseActionTestManagerObj {
     res.result.mapAsync(1) { part =>
       part.data.runWith(AppFileStreamer.sha256sink).map(sha => Map("file" -> part.filename, "sha_256" -> sha))
     }.runFold(List[Map[String, Any]]())(_ :+ _)
+
+  def customDecoder(req: HttpRequest)(implicit as: ActorSystem, ec: ExecutionContext): Future[Map[String, Any]] = {
+    req.entity.toStrict(1.second).map(_.data.utf8String).map(_.split("\n").toList).map {
+      case List(h, v) => (h.split(",") zip v.split(",")).toMap
+      case x => sys.error(s"Illegal argument: $x")
+    }
+  }
+
 }

@@ -17,12 +17,13 @@ import org.slf4j.LoggerFactory
 import org.tresql.MissingBindVariableException
 
 import scala.concurrent.duration._
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
 import AppMetadata.Action
 import AppMetadata.AugmentedAppViewDef
 import AppServiceBase._
 import Authentication.SessionUserExtractor
 import DeferredControl._
+import akka.actor.ActorSystem
 import akka.http.scaladsl.model.MediaTypes.`application/json`
 
 import java.util.Locale
@@ -120,10 +121,26 @@ trait AppServiceBase[User]
             }
           case _ => defaultContent
         }
-    case AppMetadata.CustomDecoder(o, f) =>
-      provide(Map())
-    case AppMetadata.NoneDecoder => provide(Map())
-  }
+      case AppMetadata.CustomDecoder(o, f) =>
+        extractRequestContext.flatMap { ctx =>
+          val value: Future[Map[String, Any]] = invokeFunction(o, f,
+            Seq[(Class[_], Class[_] => Any)](
+              (classOf[HttpRequest], _ => ctx.request),
+              (classOf[ActorSystem], _ => system),
+              (classOf[ExecutionContext], _ => executor)
+            )
+          ) match {
+            case f: Future[_] => f.mapTo[Map[String, Any]]
+            case m: Map[String, Any]@unchecked => Future.successful(m)
+            case x => throw new IllegalArgumentException(s"Custom decoder must return Map[String, Any], instead got: $x")
+          }
+          onComplete(value) flatMap {
+            case Success(v) => provide(v)
+            case Failure(x) => throw x
+          }
+        }
+      case AppMetadata.NoneDecoder => provide(Map())
+    }
 
   private def extractStringId: Directive1[String] =
     extractMatchedPath flatMap { path =>

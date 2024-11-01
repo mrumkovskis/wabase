@@ -1291,3 +1291,11 @@ key: id, sha_256
 api: get
 get:
   - http {'/download_test', :id, :sha_256}
+
+
+name: custom_decoder_test
+decoder: org.wabase.QuereaseActionTestManagerObj.customDecoder
+api: insert
+table:
+save:
+- as any {:id id, :value value}

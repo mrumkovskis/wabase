@@ -1407,5 +1407,10 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     Get(s"/http_with_limit_test/$fileId/$fileSha") ~> route ~> check {
       an [Exception] should be thrownBy entityAs[String]
     }
+    Post("/custom_decoder_test", createEntity("id,value\n1,hello", ContentTypes.`text/plain(UTF-8)`)) ~>
+      route ~> check {
+      val r = entityAs[String]
+      jsonAssert(r, List(Map("id" -> "1", "value" -> "hello")))
+    }
   }
 }
