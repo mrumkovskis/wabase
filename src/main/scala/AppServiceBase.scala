@@ -229,8 +229,9 @@ trait AppServiceBase[User]
       parameterMultiMap { params =>
         app.checkApi(viewName, Action.Update, user, keyValues)
         entityAsMapOrException(viewName) { entityAsMap =>
-          extractRequestContext { implicit ctx =>
+          extractRequestContext { ctx =>
             complete {
+              implicit val reqCtx = setMaxContentSize(ctx, viewName)
               app.doWabaseAction(Action.Update, viewName, keyValues, filterPars(params), entityAsMap,
                 doApiCheck = false /* api checked above */)
             }
@@ -287,8 +288,9 @@ trait AppServiceBase[User]
         if (useActions(viewName, Action.Insert)) {
           app.checkApi(viewName, Action.Insert, user, keyValues)
           entityAsMapOrException(viewName) { entityAsMap =>
-            extractRequestContext { implicit ctx =>
+            extractRequestContext { ctx =>
               complete {
+                implicit val reqCtx = setMaxContentSize(ctx, viewName)
                 app.doWabaseAction(Action.Insert, viewName, keyValues, filterPars(params), entityAsMap,
                   doApiCheck = false /* api checked above */)
               }
@@ -448,6 +450,11 @@ trait AppServiceBase[User]
           case _ => None
         }
         .toList
+  }
+
+  protected def setMaxContentSize(ctx: RequestContext, viewName: String): RequestContext = {
+    val maxSize = app.qe.viewDef(viewName).maxContentSize
+    if (maxSize == null) ctx else ctx.withRequest(ctx.request.withEntity(ctx.request.entity.withSizeLimit(maxSize)))
   }
 }
 

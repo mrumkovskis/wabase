@@ -1252,7 +1252,7 @@ update:
 
 
 name: extract_parts_test2
-decoder: none
+decoder: none ${small-file.upload.size-limit} # second parameter denotes reference to configuration property with content size limit
 table:
 api: insert
 insert:
@@ -1282,3 +1282,12 @@ key: id, sha_256
 api: get
 get:
 - file { :id::long, :sha_256 }
+
+
+name: http_with_limit_test
+decoder: none 8 # second parameter denotes content size limit for request and for akka client response
+table:
+key: id, sha_256
+api: get
+get:
+  - http {'/download_test', :id, :sha_256}

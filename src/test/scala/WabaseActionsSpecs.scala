@@ -138,8 +138,12 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     querease = new TestQuerease("/querease-action-specs-metadata.yaml") {
       override lazy val viewNameToClassMap = QuereaseActionsDtos.viewNameToClass ++ WabaseActionDtos.viewNameToClass
 
-      override protected lazy val doHttpRequest: HttpRequest => Future[HttpResponse] =
-        Route.toFunction(service.route)(service.system)(_)
+      override protected lazy val doHttpRequest: jLong => HttpRequest => Future[HttpResponse] = {
+        val f = Route.toFunction(service.route)(service.system)(_)
+        maxSize => req => f(req).map {
+          res => if (maxSize == null) res else res.withEntity(res.entity.withSizeLimit(maxSize))
+        }
+      }
 
       override lazy val macrosClass: Class[_] = classOf[Macros]
 
@@ -1382,6 +1386,10 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       val r = entityAs[String]
       jsonAssert(r, Seq(Map("file" -> "test.txt", "sha_256" -> "228c55536f6bcca78166c30c29199c4b6a52c8ed560cdc1db62ec1ac8af5df30")))
     }
+    Post("/extract_parts_test2", WabaseHttpClient
+      .fileUploadForm(createEntity("Hi people!" * 150, ContentTypes.`text/plain(UTF-8)`), "test.txt")) ~> route ~> check {
+      status == StatusCodes.PayloadTooLarge
+    }
     var fileId: Any = null
     var fileSha: Any = null
     Post("/upload_test/file.txt", createEntity("upload download", ContentTypes.`text/plain(UTF-8)`)) ~>
@@ -1395,6 +1403,9 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     Get(s"/download_test/$fileId/$fileSha") ~> route ~> check {
       val r = entityAs[String]
       r shouldBe "upload download"
+    }
+    Get(s"/http_with_limit_test/$fileId/$fileSha") ~> route ~> check {
+      an [Exception] should be thrownBy entityAs[String]
     }
   }
 }

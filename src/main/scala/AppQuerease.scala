@@ -1239,7 +1239,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       val http_logger = Logger(LoggerFactory.getLogger(s"$viewName.$actionName.http"))
       req => {
         http_logger.debug(s"HTTP ${req.method.value} ${req.uri}")
-        doHttpRequest(req)
+        doHttpRequest(viewDefOption(context.viewName).map(_.maxContentSize).orNull)(req)
       }
     }
     reqF
@@ -1582,10 +1582,13 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     }
   }
 
-  protected lazy val doHttpRequest: HttpRequest => Future[HttpResponse] = {
+  protected lazy val doHttpRequest: jLong => HttpRequest => Future[HttpResponse] = {
     val httpClient =
       new org.wabase.client.RestClient {}
-    httpClient.doRequest
+    import httpClient._ // make accessible executor
+    maxSize => req => httpClient.doRequest(req).map {
+      res => if (maxSize == null) res else res.withEntity(res.entity.withSizeLimit(maxSize))
+    }
   }
 
   private def renderedSource(serializedSource: Source[ByteString, _],

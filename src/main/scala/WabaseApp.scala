@@ -90,13 +90,13 @@ trait WabaseApp[User] {
       doApiCheck)
   }
 
-  def doWabaseAction(
+  protected def doWabaseAction(
     context:    AppActionContext,
     doApiCheck: Boolean,
   ): Future[WabaseResult] =
     doWabaseAction(getActionHandler(context), context, doApiCheck)
 
-  def doWabaseAction(
+  protected def doWabaseAction(
     action:     ActionHandler,
     context:    AppActionContext,
     doApiCheck: Boolean,
