@@ -1,5 +1,6 @@
 package org.wabase
 
+import com.typesafe.config.ConfigFactory
 import org.mojoz.metadata.{FieldDef, Type, ViewDef}
 import org.mojoz.metadata.in._
 import org.mojoz.metadata.io.MdConventions
@@ -289,7 +290,8 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       Segment(name, isOptional, type_)
     }).orNull
     val explicitDb = getBooleanExtra(ExplicitDb, viewDef)
-    val decodeRequest = getBooleanExtraOpt(DecodeRequest, viewDef).forall(identity)
+    val (decoder, maxContentSize) = getStringExtra(Decoder, viewDef)
+      .map(parseDecoder(viewDef.name, _)).getOrElse((DefaultDecoder, null))
     val actions = Action().foldLeft(Map[String, Action]()) { (res, actionName) =>
       val opParser = new OpParser(viewDef.name, tresqlUri, opParserCache(viewDef.name))
       val a = parseAction(s"${viewDef.name}.$actionName", getSeq(actionName, viewDef.extras), opParser)
@@ -314,7 +316,8 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     ViewDef(name, db, table, tableAlias, joins, filter,
       viewDef.groupBy, viewDef.having, orderBy, extends_,
       comments, appFields, viewDef.saveTo, extras)
-      .updateWabaseExtras(_ => AppViewDef(limit, segments, explicitDb, decodeRequest, auth, apiToRoles, actions, Map.empty))
+      .updateWabaseExtras(_ =>
+        AppViewDef(limit, segments, explicitDb, decoder, maxContentSize, auth, apiToRoles, actions, Map.empty))
   }
 
   protected def transformAppViewDefs(viewDefs: Map[String, ViewDef]): Map[String, ViewDef] =
@@ -715,6 +718,25 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     Action(coalescedSteps)
   }
 
+  protected def parseDecoder(viewName: String, decStr: String): (RequestDecoder, jLong) = {
+    val decPattern = new Regex(s"(none|default|${OpParser.InvocationRegex})(.*)")
+    if (decPattern.pattern.matcher(decStr).matches()) {
+      val decPattern(dec, _, size) = decStr
+      (dec match {
+        case "default" => DefaultDecoder
+        case "none" => NoneDecoder
+        case x =>
+          val idx = x.lastIndexOf('.')
+          CustomDecoder(x.substring(0, idx), x.substring(idx + 1))
+      }, if (size.trim.isEmpty) null else {
+        val propName = s"wabase.$viewName.upload.size.limit"
+        val cf = ConfigFactory.parseString(s"$propName = ${size.trim}").withFallback(config).resolve()
+        cf.getBytes(propName)
+      })
+    } else throw new IllegalArgumentException(s"Decoder string does not match pattern: " +
+    s"<none|default|<custom function>> [<max content size>]")
+  }
+
   abstract class AppQuereaseDefaultParser(cache: Option[Cache]) extends DefaultParser(cache) {
     private def varsTransform: MemParser[VariableTransform] = {
       def v2s(v: Variable) = (v.variable :: v.members) mkString "."
@@ -765,7 +787,6 @@ class OpParser(viewName: String, tresqlUri: TresqlUri, cache: OpParser.Cache)
   /** View action must be end with whitespace regexp so that no match is if space(s) is omitted between action and
     * view name since spaces are eliminated at the beginning of input before applying parser */
   val ActionRegex = new Regex(Action().mkString("(?U)(", "|", """)\s+"""))
-  val InvocationRegex = """(?U)\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*(\.\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*)+""".r
   val ViewNameRegex = "(?U)\\w+".r
   val ConfPropRegex = """\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*(?:\.\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*+)*""".r
 
@@ -795,7 +816,7 @@ class OpParser(viewName: String, tresqlUri: TresqlUri, cache: OpParser.Cache)
     case rt ~ (mode ~ op) => Unique(op, mode == "unique_opt", rt)
   } named "unique-op"
 
-  def invocationOp: MemParser[Invocation] = opt(opResultType) ~ InvocationRegex ~ opt(operation) ^^ {
+  def invocationOp: MemParser[Invocation] = opt(opResultType) ~ OpParser.InvocationRegex ~ opt(operation) ^^ {
     case rt ~ res ~ arg =>
       val idx = res.lastIndexOf('.')
       Action.Invocation(res.substring(0, idx), res.substring(idx + 1), arg.orNull, rt)
@@ -899,6 +920,8 @@ class OpParser(viewName: String, tresqlUri: TresqlUri, cache: OpParser.Cache)
 }
 
 object OpParser extends Loggable {
+  val InvocationRegex = """(?U)\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*(\.\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*)+""".r
+
   class Cache(maxSize: Int) extends SimpleCacheBase[Action.Op](maxSize, "OpParser cache")
 
   val QuereaseActionOpCacheName = "querease-action-op-cache.cbor"
@@ -931,6 +954,11 @@ object OpParser extends Loggable {
   }
 }
 object AppMetadata extends Loggable {
+
+  sealed trait RequestDecoder
+  case object DefaultDecoder extends RequestDecoder
+  case object NoneDecoder extends RequestDecoder
+  case class CustomDecoder(className: String, function: String) extends RequestDecoder
 
   case class AuthFilters(
     forGet: Seq[String],
@@ -1249,7 +1277,8 @@ object AppMetadata extends Loggable {
     val limit: Int
     val segments: Seq[Segment]
     val explicitDb: Boolean
-    val decodeRequest: Boolean
+    val decoder: RequestDecoder
+    val maxContentSize: jLong
     val auth: AuthFilters
     val apiMethodToRoles: Map[String, Set[String]]
     val actions: Map[String, Action]
@@ -1260,7 +1289,8 @@ object AppMetadata extends Loggable {
     limit: Int = 1000,
     segments: Seq[Segment] = null,
     explicitDb: Boolean = false,
-    decodeRequest: Boolean = false,
+    decoder: RequestDecoder = DefaultDecoder,
+    maxContentSize: jLong = null,
     auth: AuthFilters = AuthFilters(Nil, Nil, Nil, Nil, Nil),
     apiMethodToRoles: Map[String, Set[String]] = Map(),
     actions: Map[String, Action] = Map(),
@@ -1301,7 +1331,8 @@ object AppMetadata extends Loggable {
     override val limit = appExtras.limit
     override val segments = appExtras.segments
     override val explicitDb = appExtras.explicitDb
-    override val decodeRequest = appExtras.decodeRequest
+    override val decoder = appExtras.decoder
+    override val maxContentSize = appExtras.maxContentSize
     override val auth = appExtras.auth
     override val apiMethodToRoles = appExtras.apiMethodToRoles
     override val actions = appExtras.actions
@@ -1396,12 +1427,12 @@ object AppMetadata extends Loggable {
     val Segments = "segments"
     val Validations = "validations"
     val ExplicitDb = "explicit db"
-    val DecodeRequest = "decode request"
+    val Decoder = "decoder"
     val QuereaseViewExtrasKey = QuereaseMetadata.QuereaseViewExtrasKey
     val WabaseViewExtrasKey = AppMetadata.WabaseViewExtrasKey
     def apply() =
       Set(Api, Auth, Key, Limit, Segments, Validations, ExplicitDb,
-          DecodeRequest, QuereaseViewExtrasKey, WabaseViewExtrasKey,
+          Decoder, QuereaseViewExtrasKey, WabaseViewExtrasKey,
       ) ++
         Action()
   }

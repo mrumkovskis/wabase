@@ -96,32 +96,33 @@ trait AppServiceBase[User]
       }
     }
 
-  def entityAsMapOrException(
-    mapUm: FromEntityUnmarshaller[Map[String, Any]],
-    viewName: String,
-  ): Directive1[Map[String, Any]] = {
-    if (app.qe.viewDef(viewName).decodeRequest) {
-      def defaultContent = extractRequestContext.flatMap { ctx =>
-        import ctx.materializer
-        onComplete(mapUm(ctx.request.entity)) flatMap {
-          case Success(value) => provide(value)
-          case Failure(x) => throw x
-        }
-      }
-      extractRequestEntity.map(_.contentType).flatMap {
-        case ContentTypes.`application/json` => defaultContent
-        case ContentTypes.`application/x-www-form-urlencoded` =>
-          extractRequestContext.flatMap { ctx =>
-            import ctx.materializer
-            onComplete(PredefinedFromEntityUnmarshallers
-              .defaultUrlEncodedFormDataUnmarshaller(ctx.request.entity)) flatMap {
-              case Success(value) => provide(value.fields.toMap)
-              case Failure(x) => throw x
-            }
+  def entityAsMapOrException(viewName: String): Directive1[Map[String, Any]] =
+    app.qe.viewDef(viewName).decoder match {
+      case AppMetadata.DefaultDecoder =>
+        def defaultContent = extractRequestContext.flatMap { ctx =>
+          import ctx.materializer
+          val um = toMapUnmarshallerForView(viewName)
+          onComplete(um(ctx.request.entity)) flatMap {
+            case Success(value) => provide(value)
+            case Failure(x) => throw x
           }
-        case _ => defaultContent
-      }
-    } else provide(Map())
+        }
+        extractRequestEntity.map(_.contentType).flatMap {
+          case ContentTypes.`application/json` => defaultContent
+          case ContentTypes.`application/x-www-form-urlencoded` =>
+            extractRequestContext.flatMap { ctx =>
+              import ctx.materializer
+              onComplete(PredefinedFromEntityUnmarshallers
+                .defaultUrlEncodedFormDataUnmarshaller(ctx.request.entity)) flatMap {
+                case Success(value) => provide(value.fields.toMap)
+                case Failure(x) => throw x
+              }
+            }
+          case _ => defaultContent
+        }
+    case AppMetadata.CustomDecoder(o, f) =>
+      provide(Map())
+    case AppMetadata.NoneDecoder => provide(Map())
   }
 
   private def extractStringId: Directive1[String] =
@@ -227,8 +228,7 @@ trait AppServiceBase[User]
     implicit user: User, state: ApplicationState, timeout: QueryTimeout): Route =
       parameterMultiMap { params =>
         app.checkApi(viewName, Action.Update, user, keyValues)
-        implicit val um = toMapUnmarshallerForView(viewName)
-        entityAsMapOrException(um, viewName) { entityAsMap =>
+        entityAsMapOrException(viewName) { entityAsMap =>
           extractRequestContext { implicit ctx =>
             complete {
               app.doWabaseAction(Action.Update, viewName, keyValues, filterPars(params), entityAsMap,
@@ -286,8 +286,7 @@ trait AppServiceBase[User]
       parameterMultiMap { params =>
         if (useActions(viewName, Action.Insert)) {
           app.checkApi(viewName, Action.Insert, user, keyValues)
-          implicit val um = toMapUnmarshallerForView(viewName)
-          entityAsMapOrException(um, viewName) { entityAsMap =>
+          entityAsMapOrException(viewName) { entityAsMap =>
             extractRequestContext { implicit ctx =>
               complete {
                 app.doWabaseAction(Action.Insert, viewName, keyValues, filterPars(params), entityAsMap,

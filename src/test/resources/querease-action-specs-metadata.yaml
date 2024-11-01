@@ -1077,7 +1077,7 @@ insert:
 
 name: not_decode_request_insert_test
 table:
-decode request: false
+decoder: none
 api: insert, update, get
 fields:
 - name
@@ -1094,7 +1094,7 @@ update:
 
 name: not_decode_request_update_test
 table:
-decode request: false
+decoder: none
 api: insert, update, get
 fields:
   - name
@@ -1235,7 +1235,7 @@ insert:
 
 
 name: extract_parts_test
-decode request: false
+decoder: none
 table:
 segments: filename?
 api: insert, update
@@ -1252,7 +1252,7 @@ update:
 
 
 name: extract_parts_test2
-decode request: false
+decoder: none
 table:
 api: insert
 insert:
@@ -1268,7 +1268,7 @@ get:
 
 
 name: upload_test
-decode request: false
+decoder: none
 table:
 key: filename
 api: insert
