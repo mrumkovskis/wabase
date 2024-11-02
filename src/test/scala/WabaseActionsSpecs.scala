@@ -1418,7 +1418,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       val r = entityAs[String]
       jsonAssert(r, Map("id" -> "1", "value" -> "hello"))
     }
-    Post("/default_decoder_form_urlencoded_test",
+    Post("/default_decoder_test",
       createEntity("id=1&value=hello", ContentTypes.`application/x-www-form-urlencoded`)) ~>
       route ~> check {
       val r = entityAs[String]

@@ -1310,11 +1310,3 @@ fields:                     # fields must be defined since default json decoder 
 - value
 insert:
 - as any unique {:id id, :value value}
-
-
-name: default_decoder_form_urlencoded_test
-decoder: default         # default decoder needs to be specified if additionally max content size limit is necessary otherwise it is redundant
-api: insert
-table:
-insert:
-- as any unique {:id id, :value value}

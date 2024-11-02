@@ -115,7 +115,7 @@ trait AppServiceBase[User]
               import ctx.materializer
               onComplete(PredefinedFromEntityUnmarshallers
                 .defaultUrlEncodedFormDataUnmarshaller(ctx.request.entity)) flatMap {
-                case Success(value) => provide(value.fields.toMap)
+                case Success(value) => provide(app.qe.toCompatibleMap(value.fields.toMap, app.qe.viewDef(viewName)))
                 case Failure(x) => throw x
               }
             }
