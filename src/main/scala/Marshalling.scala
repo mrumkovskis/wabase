@@ -178,6 +178,14 @@ trait QuereaseMarshalling extends QuereaseResultMarshalling { this: AppProvider[
     Unmarshaller.byteStringUnmarshaller map { bytes =>
       app.qe.cborOrJsonDecoder.decodeToSeqOfMaps(bytes, viewName)(app.qe.viewNameToMapZero)
     }
+  def toMapUnmarshaller: FromEntityUnmarshaller[Map[String, Any]] =
+    Unmarshaller.byteStringUnmarshaller map { bytes =>
+      new CborOrJsonAnyValueDecoder().decodeToMap(bytes)
+    }
+  def toSeqOfMapsUnmarshaller: FromEntityUnmarshaller[Seq[Map[String, Any]]] =
+    Unmarshaller.byteStringUnmarshaller map { bytes =>
+      new CborOrJsonAnyValueDecoder().decodeToSeqOfMaps(bytes)
+    }
 }
 
 trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with QuereaseMarshalling with OptionMarshalling =>
