@@ -28,6 +28,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   import AppMetadata._
 
   val knownApiMethods = Set("create", "count", "get", "list", "insert", "update", "save", "delete")
+  override lazy val uninheritableExtras: Seq[String] = Seq("api")
   lazy val knownViewExtras = KnownViewExtras()
   lazy val knownPrefixes = Set(KnownViewExtras.Auth)
   val knownAuthOps = KnownAuthOps()
