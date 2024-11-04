@@ -142,6 +142,12 @@ class QuereaseSpecs extends AsyncFlatSpec with Matchers with TestQuereaseInitial
     )
   }
 
+  it should "return result" in {
+    val thisQio = qio
+    import thisQio.DtoJsonFormat
+    querease.result[PersonWithAuth](Map("name" -> "Name")).toList.map(DtoJsonFormat.write(_)).mkString("[", ", ", "]") shouldBe "[]"
+  }
+
   it should "respect horizontal auth filters" in {
     var p = new Person
     var pl: List[Person] = null
@@ -187,6 +193,9 @@ class QuereaseSpecs extends AsyncFlatSpec with Matchers with TestQuereaseInitial
     pal.size shouldBe 1
     pl = querease.list[Person](Map("name" -> "Name"))
     pl.size shouldBe 1
+
+    querease.result[PersonWithAuth](Map("name" -> "Name")).toList.map(
+      qio.DtoJsonFormat.write(_)).mkString("[", ", ", "]") shouldBe s"""[{"id":$id,"name":"Name","surname":"Surname"}]"""
 
     pa = pal.head
     pa.id shouldBe id
