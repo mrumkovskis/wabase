@@ -44,13 +44,14 @@ object TresqlResourcesConf extends Loggable {
   lazy val confs: Map[String, TresqlResourcesConf] = {
       val plainCfgR = if (     config.hasPath("tresql"))      config.getConfig("tresql") else ConfigFactory.empty
       val tunedCfgR = if (tunedConfig.hasPath("tresql")) tunedConfig.getConfig("tresql") else ConfigFactory.empty
-      val cpConfs =
+      val cpConfs =  Option("jdbc.cp").filter(wabaseConf.hasPath).map(_ =>
        wabaseConf.getConfig("jdbc.cp").root().asScala.keys.map { cpName =>
           val n = if (cpName == DefaultCpName) null else cpName
           cpName ->
             // force db name here because plugin does not read application.conf when initializing aliasToDb
             ConfigFactory.parseString(s"db = ${Option(n).map("\"" + _ + "\"").orNull}")
         }.toMap
+      ).getOrElse(Map.empty)
 
       val resConfs = plainCfgR.root().asScala
         .collect { case e@(_, v) if v.valueType() == ConfigValueType.OBJECT => e }
