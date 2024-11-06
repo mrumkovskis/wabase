@@ -245,6 +245,8 @@ get:
 name: person_health
 api: save, get
 db: med_db
+timeout: 1m                           # http request processing timeout
+sql-timeout: ${jdbc.query-timeout}    # sql statement timeout, if not defined timeout property is used
 table: person_health
 fields:
 - id

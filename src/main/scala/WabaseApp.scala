@@ -2,6 +2,7 @@ package org.wabase
 
 import akka.actor.ActorSystem
 import akka.http.scaladsl.model.StatusCodes
+import akka.http.scaladsl.model.headers.`Timeout-Access`
 import akka.http.scaladsl.server.{RequestContext => HttpReqCtx}
 import akka.stream.Materializer
 import akka.stream.scaladsl.{Keep, Source}
@@ -85,8 +86,22 @@ trait WabaseApp[User] {
     appFs:    AppFileStreamer[User],
     reqCtx:   HttpReqCtx,
   ): Future[WabaseResult] = {
+    val vdo = qe.viewDefOption(viewName)
+    def setMaxContentSize(ctx: HttpReqCtx) = vdo.map { vd =>
+      if (vd.maxContentSize == null || ctx == null) ctx
+      else ctx.withRequest(ctx.request.withEntity(ctx.request.entity.withSizeLimit(vd.maxContentSize)))
+    }.getOrElse(ctx)
+    def setTimeout(ctx: HttpReqCtx) = vdo.map { vd =>
+      if(vd.timeout == null || ctx == null) ctx
+      else {
+        ctx.request.header[`Timeout-Access`].map(_.timeoutAccess.updateTimeout(vd.timeout))
+          .getOrElse(logger.warn(s"request timeout is defined for view $viewName, however no request-timeout http header is set!"))
+        ctx
+      }
+    }.getOrElse(ctx)
     doWabaseAction(
-      AppActionContext(actionName, viewName, keyValues, params, values ++ params, resultFilter),
+      AppActionContext(actionName, viewName, keyValues, params, values ++ params, resultFilter)(
+        user, state, ec, as, appFs, setMaxContentSize(setTimeout(reqCtx))),
       doApiCheck)
   }
 
@@ -289,10 +304,15 @@ trait WabaseApp[User] {
             )
         )
       }
-    val rt = withDbAccessLogger(
-      resourcesTemplate,
-      s"$viewName.$actionName"
-    )
+    val rt = Option(withDbAccessLogger(resourcesTemplate, s"$viewName.$actionName")).map { templ =>
+      vdo.map { v =>
+        val timeout: jLong = if (v.sqlTimeout != null) v.sqlTimeout.toSeconds else if(v.timeout != null) {
+          val ts = v.timeout.toSeconds
+          if (ts < 2) ts else ts - 1  // reduce timeout to be a little less than http timeout
+        } else null
+        if (timeout == null) templ else templ.copy(queryTimeout = timeout.toInt)
+      }.getOrElse(templ)
+    }.get
     ResourcesFactory(initResources(rt), closeResources)(rt)
   }
 

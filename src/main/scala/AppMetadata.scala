@@ -16,8 +16,9 @@ import org.wabase.AppMetadata.Action.TresqlExtraction.{OpTresqlTraverser, State,
 import org.wabase.AppMetadata.Action.{Validations, VariableTransform, VariableTransforms, ViewCall, traverseAction}
 
 import java.io.InputStream
-import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.{ConcurrentHashMap, TimeUnit}
 import scala.collection.immutable.{Map, Seq, Set}
+import scala.concurrent.duration.FiniteDuration
 import scala.jdk.CollectionConverters._
 import scala.language.reflectiveCalls
 import scala.util.Try
@@ -293,6 +294,8 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val explicitDb = getBooleanExtra(ExplicitDb, viewDef)
     val (decoder, maxContentSize) = getStringExtra(Decoder, viewDef)
       .map(parseDecoder(viewDef.name, _)).getOrElse((DefaultDecoder, null))
+    val timeout = parseTimeout(viewDef.name, getStringExtra(Timeout, viewDef).orNull)
+    val sqlTimeout = parseTimeout(viewDef.name, getStringExtra(SqlTimeout, viewDef).orNull)
     val actions = Action().foldLeft(Map[String, Action]()) { (res, actionName) =>
       val opParser = new OpParser(viewDef.name, tresqlUri, opParserCache(viewDef.name))
       val a = parseAction(s"${viewDef.name}.$actionName", getSeq(actionName, viewDef.extras), opParser)
@@ -318,7 +321,8 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       viewDef.groupBy, viewDef.having, orderBy, extends_,
       comments, appFields, viewDef.saveTo, extras)
       .updateWabaseExtras(_ =>
-        AppViewDef(limit, segments, explicitDb, decoder, maxContentSize, auth, apiToRoles, actions, Map.empty))
+        AppViewDef(limit, segments, explicitDb, decoder, maxContentSize, timeout, sqlTimeout,
+          auth, apiToRoles, actions, Map.empty))
   }
 
   protected def transformAppViewDefs(viewDefs: Map[String, ViewDef]): Map[String, ViewDef] =
@@ -736,6 +740,16 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       })
     } else throw new IllegalArgumentException(s"Decoder string does not match pattern: " +
     s"<none|default|<custom function>> [<max content size>]")
+  }
+
+  protected def parseTimeout(viewName: String, timeoutStr: String): FiniteDuration = {
+    if (timeoutStr == null) null
+    else {
+      val propName = s"wabase.$viewName.timeout"
+      val d = ConfigFactory.parseString(s"$propName = $timeoutStr").withFallback(config).resolve()
+        .getDuration(propName)
+      FiniteDuration(d.toSeconds, TimeUnit.SECONDS)
+    }
   }
 
   abstract class AppQuereaseDefaultParser(cache: Option[Cache]) extends DefaultParser(cache) {
@@ -1280,6 +1294,8 @@ object AppMetadata extends Loggable {
     val explicitDb: Boolean
     val decoder: RequestDecoder
     val maxContentSize: jLong
+    val timeout: FiniteDuration
+    val sqlTimeout: FiniteDuration
     val auth: AuthFilters
     val apiMethodToRoles: Map[String, Set[String]]
     val actions: Map[String, Action]
@@ -1292,6 +1308,8 @@ object AppMetadata extends Loggable {
     explicitDb: Boolean = false,
     decoder: RequestDecoder = DefaultDecoder,
     maxContentSize: jLong = null,
+    timeout: FiniteDuration = null,
+    sqlTimeout: FiniteDuration = null,
     auth: AuthFilters = AuthFilters(Nil, Nil, Nil, Nil, Nil),
     apiMethodToRoles: Map[String, Set[String]] = Map(),
     actions: Map[String, Action] = Map(),
@@ -1334,6 +1352,8 @@ object AppMetadata extends Loggable {
     override val explicitDb = appExtras.explicitDb
     override val decoder = appExtras.decoder
     override val maxContentSize = appExtras.maxContentSize
+    override val timeout = appExtras.timeout
+    override val sqlTimeout = appExtras.sqlTimeout
     override val auth = appExtras.auth
     override val apiMethodToRoles = appExtras.apiMethodToRoles
     override val actions = appExtras.actions
@@ -1429,11 +1449,13 @@ object AppMetadata extends Loggable {
     val Validations = "validations"
     val ExplicitDb = "explicit db"
     val Decoder = "decoder"
+    val Timeout = "timeout"
+    val SqlTimeout = "sql-timeout"
     val QuereaseViewExtrasKey = QuereaseMetadata.QuereaseViewExtrasKey
     val WabaseViewExtrasKey = AppMetadata.WabaseViewExtrasKey
     def apply() =
       Set(Api, Auth, Key, Limit, Segments, Validations, ExplicitDb,
-          Decoder, QuereaseViewExtrasKey, WabaseViewExtrasKey,
+          Decoder, Timeout, SqlTimeout, QuereaseViewExtrasKey, WabaseViewExtrasKey,
       ) ++
         Action()
   }

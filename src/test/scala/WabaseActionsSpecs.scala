@@ -140,8 +140,10 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
 
       override protected lazy val doHttpRequest: jLong => HttpRequest => Future[HttpResponse] = {
         val f = Route.toFunction(service.route)(service.system)(_)
-        maxSize => req => f(req).map {
-          res => if (maxSize == null) res else res.withEntity(res.entity.withSizeLimit(maxSize))
+        maxSize => req => {
+          f(req).map {
+            res => if (maxSize == null) res else res.withEntity(res.entity.withSizeLimit(maxSize))
+          }
         }
       }
 
