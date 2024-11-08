@@ -1307,7 +1307,7 @@ name: default_decoder_test
 decoder: default 1k         # default decoder needs to be specified if additionally max content size limit is necessary
 api: insert
 table:
-fields:                     # fields must be defined since default json decoder checks against h
+fields:                     # fields must be defined since default json decoder checks against view structure
 - id string
 - value
 insert:
