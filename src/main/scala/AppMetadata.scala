@@ -804,6 +804,7 @@ class OpParser(viewName: String, tresqlUri: TresqlUri, cache: OpParser.Cache)
   val ActionRegex = new Regex(Action().mkString("(?U)(", "|", """)\s+"""))
   val ViewNameRegex = "(?U)\\w+".r
   val ConfPropRegex = """\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*(?:\.\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*+)*""".r
+  val HttpClientNameRegex = """\w+(-\w+)*""".r
 
   def parseOperation(op: String): Op = cache.get(op).getOrElse {
     val parsedOp = phrase(operation)(new scala.util.parsing.input.CharSequenceReader(op)) match {
@@ -869,17 +870,17 @@ class OpParser(viewName: String, tresqlUri: TresqlUri, cache: OpParser.Cache)
   def httpOp: MemParser[Http] = {
     def tu(uri: Exp) = tresqlUri.parse(uri)(self)
     def http_get_delete: MemParser[Http] =
-      "http" ~> opt("get" | "delete") ~ bracesTresql ~ opt(tresqlOp) ^^ {
+      opt("get" | "delete") ~ bracesTresql ~ opt(tresqlOp) ^^ {
         case method ~ uri ~ headers =>
           Http(method.getOrElse("get"), tu(uri), headers.orNull, null)
       } named "http-get-delete-op"
     def http_post_put: MemParser[Http] =
-      "http" ~> ("post" | "put") ~ bracesTresql ~ operation ~ opt(tresqlOp) ^^ {
+      ("post" | "put") ~ bracesTresql ~ operation ~ opt(tresqlOp) ^^ {
         case method ~ uri ~ op ~ headers =>
           Http(method, tu(uri), headers.orNull, op)
       } named "http-post-put-op"
-    opt(opResultType) ~ (http_post_put | http_get_delete) ^^ {
-      case conformTo ~ http => http.copy(conformTo = conformTo)
+    opt(opResultType) ~ ("http" ~> opt("[" ~> HttpClientNameRegex <~ "]")) ~ (http_post_put | http_get_delete) ^^ {
+      case conformTo ~ client ~ http => http.copy(conformTo = conformTo, httpClientName = client.orNull)
     } named "http-op"
   }
   def jsonCodecOp: MemParser[JsonCodec] = """(from|to)""".r ~ "json" ~ operation ^^ {
@@ -1099,7 +1100,8 @@ object AppMetadata extends Loggable {
                     uriTresql: TresqlUri.TrUri,
                     headerTresql: Tresql = null,
                     body: Op = null,
-                    conformTo: Option[OpResultType] = None) extends CastableOp
+                    conformTo: Option[OpResultType] = None,
+                    httpClientName: String = null) extends CastableOp
     case class HttpHeader(name: String) extends Op
     case class Cookie(name: String) extends Op
     case class Db(action: Action, doRollback: Boolean, dbs: List[DbAccessKey]) extends Op
@@ -1237,7 +1239,7 @@ object AppMetadata extends Loggable {
                   opTresqlTrav(us(state, nv(state.value)(emailTresql))
                 )(s))(b)
               )(opTresqlTrav(_)(_))
-            case Http(_, uriTresql, headerTresql, body, _) =>
+            case Http(_, uriTresql, headerTresql, body, _, _) =>
               def tresqlUriTresql(trUri: TresqlUri.TrUri): Tresql = trUri match {
                 case p: TresqlUri.PrimitiveTresql => Tresql(p.origin)
                 case t: TresqlUri.Tresql => Tresql(t.uriTresql)

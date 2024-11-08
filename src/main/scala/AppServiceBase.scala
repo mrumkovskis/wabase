@@ -32,6 +32,7 @@ import akka.http.scaladsl.unmarshalling.{FromEntityUnmarshaller, FromRequestUnma
 import akka.util.ByteString
 import io.bullet.borer.Json
 import org.mojoz.querease.{ValidationException, ValidationResult}
+import org.wabase.client.RestClient
 
 import java.lang.reflect.InvocationTargetException
 import scala.util.{Failure, Success}
@@ -43,6 +44,8 @@ trait AppProvider[User] {
   /** Override this method in subclass to initialize {{{app}}}. */
   protected def initApp: App
 }
+
+case class WabaseHttpClients(httpClients: Map[String, RestClient])
 
 trait AppServiceBase[User]
   extends AppProvider[User]
@@ -466,6 +469,10 @@ trait AppServiceBase[User]
         }
         .toList
   }
+
+  implicit lazy val httpClients: WabaseHttpClients = WabaseHttpClients(
+    Map("default-wabase-http-client" -> new org.wabase.client.RestClient {})
+  )
 }
 
 trait AppFileServiceBase[User] {

@@ -285,6 +285,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       fileStreamer: FileStreamer,
       reqCtx: RequestContext,
       qio: AppQuereaseIo[Dto],
+      httpClients: WabaseHttpClients,
     ): QuereaseAction[QuereaseResult] = {
         new QuereaseAction[QuereaseResult] {
           def run(implicit ec: ExecutionContext, as: ActorSystem) = {
@@ -297,6 +298,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
             implicit val fs = fileStreamer
             implicit val httpReqCtx = reqCtx
             implicit val io = qio
+            implicit val hc = httpClients
             import resFac._
             def processResult(res: QuereaseResult, cleanup: Option[Throwable] => Unit): QuereaseResult = res match {
               case DbResult(result, cl) =>
@@ -388,6 +390,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     fs: FileStreamer,
     reqCtx: RequestContext,
     qio: AppQuereaseIo[Dto],
+    httpClients: WabaseHttpClients,
   ): Future[QuereaseResult] = {
     do_action(view, actionName, data, env, fieldFilter)
   }
@@ -436,6 +439,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     fs: FileStreamer,
     reqCtx: RequestContext,
     qio: AppQuereaseIo[Dto],
+    httpClients: WabaseHttpClients,
   ): Future[QuereaseResult] = {
     val ctx = ActionContext(view, actionName, env, viewDefOption(view), quereaseActionLogger(s"$view.$actionName.ctx"),
       fieldFilter, null, contextStack)
@@ -466,6 +470,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     fs: FileStreamer,
     reqCtx: RequestContext,
     qio: AppQuereaseIo[Dto],
+    httpClients: WabaseHttpClients,
   ): Future[QuereaseResult] = {
     import Action._
 
@@ -618,6 +623,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     fs: FileStreamer,
     reqCtx: RequestContext,
     qio: AppQuereaseIo[Dto],
+    httpClients: WabaseHttpClients,
   ): Future[QuereaseResult] = {
     import Action._
     import CoreTypes._
@@ -701,7 +707,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         Future.successful(res)
       } else {
         do_action(viewName, method, callData, env, context.fieldFilter, context :: context.contextStack)(
-          resFac.focus(if (v.db != null) v.db else defaultCpName), ec, as, fs, reqCtx, qio)
+          resFac.focus(if (v.db != null) v.db else defaultCpName), ec, as, fs, reqCtx, qio, httpClients)
       }
     }
   }
@@ -721,6 +727,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     fs: FileStreamer,
     reqCtx: RequestContext,
     qio: AppQuereaseIo[Dto],
+    httpClients: WabaseHttpClients,
   ): Future[QuereaseResult] = {
     import op._
     def invokeFunction(className: String, function: String, params: Seq[(Class[_], Class[_] => Any)]): Any = {
@@ -836,6 +843,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     fs: FileStreamer,
     reqCtx: RequestContext,
     qio: AppQuereaseIo[Dto],
+    httpClients: WabaseHttpClients,
   ): Future[QuereaseResult] = {
     import resFac._
     val jobName =
@@ -875,6 +883,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     fs: FileStreamer,
     reqCtx: RequestContext,
     qio: AppQuereaseIo[Dto],
+    httpClients: WabaseHttpClients,
   ): Future[QuereaseResult] = {
     def createGetResult(res: QuereaseResult): QuereaseResult = res match {
       case TresqlResult(r) if !r.isInstanceOf[DMLResult] =>
@@ -915,6 +924,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
    fs: FileStreamer,
    reqCtx: RequestContext,
    qio: AppQuereaseIo[Dto],
+   httpClients: WabaseHttpClients,
   ): Future[QuereaseResult] = {
     val Action.Status(maybeCode, bodyTresql, parameterIndex) = op
     Option(bodyTresql).map { bt =>
@@ -949,6 +959,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     fs: FileStreamer,
     reqCtx: RequestContext,
     qio: AppQuereaseIo[Dto],
+    httpClients: WabaseHttpClients,
   ): Future[QuereaseResult] = {
     doActionOp(op.cond, data, env, context).map {
       case TresqlResult(tr) => tr.unique[Boolean]
@@ -976,6 +987,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     fs: FileStreamer,
     reqCtx: RequestContext,
     qio: AppQuereaseIo[Dto],
+    httpClients: WabaseHttpClients,
   ): Future[IteratorResult] = {
     def iterator(res: QuereaseResult): Iterator[Map[String, Any]] = {
       def addParentData(map: Map[String, Any]) = {
@@ -1062,6 +1074,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     fs: FileStreamer,
     reqCtx: RequestContext,
     qio: AppQuereaseIo[Dto],
+    httpClients: WabaseHttpClients,
   ): Future[FileInfoResult] = {
     import akka.http.scaladsl.model.{MediaTypes, ContentType}
     import resFac._
@@ -1093,6 +1106,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     fs: FileStreamer,
     reqCtx: RequestContext,
     qio: AppQuereaseIo[Dto],
+    httpClients: WabaseHttpClients,
   ): Future[TemplateResult] = {
     import resFac._
     val bindVars = data ++ env
@@ -1135,6 +1149,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     fs: FileStreamer,
     reqCtx: RequestContext,
     qio: AppQuereaseIo[Dto],
+    httpClients: WabaseHttpClients,
   ): Future[LongResult] = {
     def subj_body(bv: Map[String, Any]) = {
       def stringContent(qr: QuereaseResult) = qr match {
@@ -1190,6 +1205,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     fs: FileStreamer,
     reqCtx: RequestContext,
     qio: AppQuereaseIo[Dto],
+    httpClients: WabaseHttpClients,
   ): Future[DataResult] = {
     import resFac._
     val opData = data ++ env
@@ -1239,7 +1255,12 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       val http_logger = Logger(LoggerFactory.getLogger(s"$viewName.$actionName.http"))
       req => {
         http_logger.debug(s"HTTP ${req.method.value} ${req.uri}")
-        doHttpRequest(viewDefOption(context.viewName).map(_.maxContentSize).orNull)(req)
+        val httpClient = Option(op.httpClientName)
+          .map(httpClients.httpClients.getOrElse(_, sys.error(s"Http client '${op.httpClientName}' not defined")))
+          .getOrElse(
+            if (httpClients.httpClients.size == 1) httpClients.httpClients.head._2
+            else sys.error(s"Http client name not specified, expected one http client, got: $httpClients"))
+        doHttpRequest(httpClient)(viewDefOption(context.viewName).map(_.maxContentSize).orNull)(req)
       }
     }
     reqF
@@ -1296,6 +1317,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     fs: FileStreamer,
     reqCtx: RequestContext,
     qio: AppQuereaseIo[Dto],
+    httpClients: WabaseHttpClients,
   ): Future[DbResult] = {
     val (poolName, extraDbs) =
       if (op.dbs.nonEmpty) {
@@ -1310,7 +1332,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     logContext(context, env, newResFact)
     val newRes = newResFact.resources
     val closeRes = resFac.closeResources(newRes, op.doRollback, _)
-    doSteps(op.action.steps, context.copy(stepName = "db"), Future.successful(data))(newResFact, ec, as, fs, reqCtx, qio).map {
+    doSteps(op.action.steps, context.copy(stepName = "db"),
+      Future.successful(data))(newResFact, ec, as, fs, reqCtx, qio, httpClients).map {
       case DbResult(r, cl) => DbResult(r, cl.andThen(_ => closeRes(None)))
       case r => DbResult(r, closeRes)
     }.andThen {
@@ -1330,6 +1353,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     fs: FileStreamer,
     reqCtx: RequestContext,
     qio: AppQuereaseIo[Dto],
+    httpClients: WabaseHttpClients,
   ): Future[QuereaseResult] = {
     doSteps(op.action.steps, context.copy(stepName = "block"), Future.successful(data))
   }
@@ -1370,6 +1394,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     fs: FileStreamer,
     reqCtx: RequestContext,
     qio: AppQuereaseIo[Dto],
+    httpClients: WabaseHttpClients,
   ): Future[QuereaseResult] = {
     doActionOp(op.op, data, env, context)
       .flatMap(dataForNextStep(_, context, true))
@@ -1438,6 +1463,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     fs: FileStreamer,
     reqCtx: RequestContext,
     qio: AppQuereaseIo[Dto],
+    httpClients: WabaseHttpClients,
   ): Future[QuereaseResult] = {
     import resFac._
     op match {
@@ -1492,6 +1518,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
      fs: FileStreamer,
      reqCtx: RequestContext,
      qio: AppQuereaseIo[Dto],
+     httpClients: WabaseHttpClients,
    ): Future[(Source[ByteString, _], ContentType, Option[Long])] = {
     doActionOp(op, data, env, context)
       .map(renderedResult(_, contentType, null, None))
@@ -1582,12 +1609,12 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     }
   }
 
-  protected lazy val doHttpRequest: jLong => HttpRequest => Future[HttpResponse] = {
-    val httpClient =
-      new org.wabase.client.RestClient {}
-    import httpClient._ // make accessible executor
-    maxSize => req => httpClient.doRequest(req).map {
-      res => if (maxSize == null) res else res.withEntity(res.entity.withSizeLimit(maxSize))
+  protected lazy val doHttpRequest: org.wabase.client.RestClient => jLong => HttpRequest => Future[HttpResponse] = {
+    httpClient => maxSize => req => {
+      import httpClient._ // make accessible executor
+      httpClient.doRequest(req).map {
+        res => if (maxSize == null) res else res.withEntity(res.entity.withSizeLimit(maxSize))
+      }
     }
   }
 

@@ -1292,7 +1292,7 @@ table:
 key: id, sha_256
 api: get
 get:
-  - http {'/download_test', :id, :sha_256}
+  - http [default-wabase-http-client] {'/download_test', :id, :sha_256}
 
 
 name: custom_decoder_test

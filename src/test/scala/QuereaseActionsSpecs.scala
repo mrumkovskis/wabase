@@ -100,6 +100,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
   implicit val fs: FileStreamer = null
   implicit val as: ActorSystem = ActorSystem("querease-action-specs")
   implicit val reqCtx: RequestContext = null
+  implicit val httpClients: WabaseHttpClients = null
 
   override def beforeAll(): Unit = {
     querease = new TestQuerease("/querease-action-specs-metadata.yaml") {
@@ -377,7 +378,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
     def saveData(view: String, data: List[Map[String, Any]])(implicit res: Resources) =
       data.foldLeft(Future.successful[QuereaseResult](LongResult(0))) { (r, d) =>
         r.flatMap(_ => querease.doAction(view, "save", d, Map())(
-          tresqlResourcesFactory, implicitly[ExecutionContext], as, fs, reqCtx, qio))
+          tresqlResourcesFactory, implicitly[ExecutionContext], as, fs, reqCtx, qio, httpClients))
       }
 
     saveData("person_simple", persons)
