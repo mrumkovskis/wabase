@@ -470,9 +470,7 @@ trait AppServiceBase[User]
         .toList
   }
 
-  implicit lazy val httpClients: WabaseHttpClients = WabaseHttpClients(
-    Map("default-wabase-http-client" -> new org.wabase.client.RestClient {})
-  )
+  implicit def httpClients: WabaseHttpClients = WabaseHttpClients(Map())
 }
 
 trait AppFileServiceBase[User] {

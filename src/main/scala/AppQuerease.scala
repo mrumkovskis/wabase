@@ -1256,9 +1256,9 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       req => {
         http_logger.debug(s"HTTP ${req.method.value} ${req.uri}")
         val httpClient = Option(op.httpClientName)
-          .map(httpClients.httpClients.getOrElse(_, sys.error(s"Http client '${op.httpClientName}' not defined")))
+          .map(httpClients.httpClients.getOrElse(_, null))
           .getOrElse(
-            if (httpClients.httpClients.size == 1) httpClients.httpClients.head._2
+            if (httpClients.httpClients.size < 2) httpClients.httpClients.headOption.map(_._2).orNull
             else sys.error(s"Http client name not specified, expected one http client, got: $httpClients"))
         doHttpRequest(httpClient)(viewDefOption(context.viewName).map(_.maxContentSize).orNull)(req)
       }
@@ -1611,6 +1611,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
 
   protected lazy val doHttpRequest: org.wabase.client.RestClient => jLong => HttpRequest => Future[HttpResponse] = {
     httpClient => maxSize => req => {
+      require(httpClient != null, "Http client is null")
       import httpClient._ // make accessible executor
       httpClient.doRequest(req).map {
         res => if (maxSize == null) res else res.withEntity(res.entity.withSizeLimit(maxSize))
