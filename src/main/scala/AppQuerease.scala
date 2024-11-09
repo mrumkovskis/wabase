@@ -1260,7 +1260,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           .getOrElse(
             if (httpClients.httpClients.size < 2) httpClients.httpClients.headOption.map(_._2).orNull
             else sys.error(s"Http client name not specified, expected one http client, got: $httpClients"))
-        doHttpRequest(httpClient)(viewDefOption(context.viewName).map(_.maxContentSize).orNull)(req)
+        doHttpRequest(httpClient, viewDefOption(context.viewName).map(_.maxContentSize).orNull, req)
       }
     }
     reqF
@@ -1609,15 +1609,15 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     }
   }
 
-  protected lazy val doHttpRequest: org.wabase.client.RestClient => jLong => HttpRequest => Future[HttpResponse] = {
-    httpClient => maxSize => req => {
-      require(httpClient != null, "Http client is null")
-      import httpClient._ // make accessible executor
-      httpClient.doRequest(req).map {
-        res => if (maxSize == null) res else res.withEntity(res.entity.withSizeLimit(maxSize))
+  protected def doHttpRequest(
+    httpClient: HttpRequest => Future[HttpResponse],
+    responseMaxSize: jLong,
+    req: HttpRequest,
+  )(implicit ec: ExecutionContext): Future[HttpResponse] = {
+      httpClient(req).map {
+        res => if (responseMaxSize == null) res else res.withEntity(res.entity.withSizeLimit(responseMaxSize))
       }
     }
-  }
 
   private def renderedSource(serializedSource: Source[ByteString, _],
                              resFilter: ResultRenderer.ResultFilter,

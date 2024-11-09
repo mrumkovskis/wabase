@@ -14,7 +14,7 @@ import org.scalatest.flatspec.{AsyncFlatSpec, AsyncFlatSpecLike}
 import org.scalatest.matchers.should.Matchers
 import org.tresql.{MissingBindVariableException, Query, ThreadLocalResources, convString}
 import org.wabase.QuereaseActionsDtos.PersonWithHealthDataHealth
-import org.wabase.client.{RestClient, WabaseHttpClient}
+import org.wabase.client.WabaseHttpClient
 
 import java.io.File
 import java.nio.file.Files
@@ -138,15 +138,6 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     querease = new TestQuerease("/querease-action-specs-metadata.yaml") {
       override lazy val viewNameToClassMap = QuereaseActionsDtos.viewNameToClass ++ WabaseActionDtos.viewNameToClass
 
-      override protected lazy val doHttpRequest: RestClient => jLong => HttpRequest => Future[HttpResponse] = {
-        val f = Route.toFunction(service.route)(service.system)(_)
-        _ => maxSize => req => {
-          f(req).map {
-            res => if (maxSize == null) res else res.withEntity(res.entity.withSizeLimit(maxSize))
-          }
-        }
-      }
-
       override lazy val macrosClass: Class[_] = classOf[Macros]
 
       override def createEmailSender: WabaseEmail = new TestEmailSender(mailBox)
@@ -195,6 +186,8 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
 
     service = new WabaseActionsService(as) {
       override def initApp = myApp
+      override implicit lazy val httpClients: WabaseHttpClients =
+        WabaseHttpClients(Map("default-wabase-http-client" -> (Route.toFunction(service.route)(service.system)(_))))
     }
   }
 
@@ -214,9 +207,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
   private implicit val timeout: QueryTimeout = QueryTimeout(10)
   private implicit val defaultCp: PoolName = PoolName(dbNamePrefix)
   private implicit val as: ActorSystem = ActorSystem("wabase-action-specs")
-  private implicit val httpClients: WabaseHttpClients = WabaseHttpClients(
-    Map("default-wabase-http-client" -> new org.wabase.client.RestClient {})
-  )
+  private implicit lazy val httpClients: WabaseHttpClients = service.httpClients
 
   protected def doAction[T](action: String,
                             view: String,
