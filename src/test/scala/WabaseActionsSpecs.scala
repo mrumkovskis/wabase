@@ -916,6 +916,9 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       t8 <- doAction("delete", "http_test_1", Map()). map {
         _ shouldBe StringResult("/count:invocation_test_1 = 0")
       }
+      t9 <- doAction("get", "http_client_test", Map("uri" -> "/invocation_test_1")).map {
+        _ shouldBe StringResult("val1 val2")
+      }
     } yield {
       t1
     }

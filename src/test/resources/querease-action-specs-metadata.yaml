@@ -1312,3 +1312,13 @@ fields:                     # fields must be defined since default json decoder 
 - value
 insert:
 - as any unique {:id id, :value value}
+
+
+name: http_client_test
+api: get
+table:
+fields:
+- uri
+get:
+- res = org.wabase.QuereaseActionTestManagerObj.httpRequest
+- :res

@@ -547,5 +547,8 @@ object QuereaseActionTestManagerObj {
       case x => sys.error(s"Illegal argument: $x")
     }
   }
-
+  def httpRequest(data: Map[String, Any], httpClients: WabaseHttpClients) = {
+    val httpClient = httpClients.httpClients.head._2
+    httpClient(HttpRequest(uri = data("uri").toString))
+  }
 }

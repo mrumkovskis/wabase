@@ -740,6 +740,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         (classOf[HttpRequest], _ => Option(reqCtx).map(_.request).orNull),
         (classOf[RequestContext], _ => reqCtx),
         (classOf[AppQuereaseIo[Dto]], _ => qio),
+        (classOf[WabaseHttpClients], _ => httpClients),
       )
       org.wabase.invokeFunction(className, function,
         getInvocationParameter(org.wabase.invocationParameter(params ++ contextParams)(_))(_))
