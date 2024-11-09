@@ -1257,9 +1257,9 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       req => {
         http_logger.debug(s"HTTP ${req.method.value} ${req.uri}")
         val httpClient = Option(op.httpClientName)
-          .map(httpClients.httpClients.getOrElse(_, null))
+          .map(httpClients.httpClients.getOrElse(_, sys.error(s"Http client not found: ${op.httpClientName}")))
           .getOrElse(
-            if (httpClients.httpClients.size < 2) httpClients.httpClients.headOption.map(_._2).orNull
+            if (httpClients.httpClients.size == 1) httpClients.httpClients.head._2
             else sys.error(s"Http client name not specified, expected one http client, got: $httpClients"))
         doHttpRequest(httpClient, viewDefOption(context.viewName).map(_.maxContentSize).orNull, req)
       }
