@@ -582,7 +582,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
                                  params: Map[String, Any],
                                  view: ViewDef)(implicit res: Resources): Unit = {
     validationsQueryString(view, validations) foreach { vs =>
-      Query(dbkey.flatMap(k => Option(k.db)).map("|" + _ + ":").mkString("", "", vs), params)
+      Query(dbkey.flatMap(k => Option(k.db)).map("|" + _ + ":").mkString("", "", vs), toSaveableMap(params, view))
         .map(_.s("msg"))
         .filter(_ != null).filter(_ != "")
         .toList match {
