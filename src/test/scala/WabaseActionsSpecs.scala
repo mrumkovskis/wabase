@@ -175,6 +175,8 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
 
       override lazy val rootPath =
         new File(System.getProperty("java.io.tmpdir"), "wabase-actions-specs/" + UUID.randomUUID().toString).getPath
+      override implicit lazy val httpClients: WabaseHttpClients =
+        WabaseHttpClients(Map("default-wabase-http-client" -> (Route.toFunction(service.route)(service.system)(_))))
     }
     val myApp = app
     marshallers =
@@ -186,8 +188,6 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
 
     service = new WabaseActionsService(as) {
       override def initApp = myApp
-      override implicit lazy val httpClients: WabaseHttpClients =
-        WabaseHttpClients(Map("default-wabase-http-client" -> (Route.toFunction(service.route)(service.system)(_))))
     }
   }
 
@@ -207,7 +207,6 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
   private implicit val timeout: QueryTimeout = QueryTimeout(10)
   private implicit val defaultCp: PoolName = PoolName(dbNamePrefix)
   private implicit val as: ActorSystem = ActorSystem("wabase-action-specs")
-  private implicit lazy val httpClients: WabaseHttpClients = service.httpClients
 
   protected def doAction[T](action: String,
                             view: String,

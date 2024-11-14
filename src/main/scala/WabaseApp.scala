@@ -1,7 +1,7 @@
 package org.wabase
 
 import akka.actor.ActorSystem
-import akka.http.scaladsl.model.StatusCodes
+import akka.http.scaladsl.model.{HttpRequest, HttpResponse, StatusCodes}
 import akka.http.scaladsl.model.headers.`Timeout-Access`
 import akka.http.scaladsl.server.{RequestContext => HttpReqCtx}
 import akka.stream.Materializer
@@ -17,6 +17,8 @@ import java.util.Locale
 import scala.concurrent.{ExecutionContext, Future}
 import scala.language.{existentials, implicitConversions}
 import scala.util.{Failure, Success, Try}
+
+case class WabaseHttpClients(httpClients: Map[String, HttpRequest => Future[HttpResponse]])
 
 trait WabaseApp[User] {
   this:  AppBase[User]
@@ -41,6 +43,7 @@ trait WabaseApp[User] {
 
   type ActionHandlerResult = qe.QuereaseAction[WabaseResult]
   type ActionHandler       = AppActionContext => ActionHandlerResult
+  implicit lazy val httpClients: WabaseHttpClients = WabaseHttpClients(Map())
 
   case class AppActionContext(
     actionName: String,
@@ -58,7 +61,6 @@ trait WabaseApp[User] {
     val as:       ActorSystem,
     val appFs:    AppFileStreamer[User],
     val reqCtx:   HttpReqCtx,
-    val httpClients: WabaseHttpClients,
   ) {
     lazy val env: Map[String, Any] = state ++ current_user_param(user)
     val fileStreamer = if (appFs == null) null else appFs.fileStreamer
@@ -86,7 +88,6 @@ trait WabaseApp[User] {
     as:       ActorSystem,
     appFs:    AppFileStreamer[User],
     reqCtx:   HttpReqCtx,
-    httpClients: WabaseHttpClients,
   ): Future[WabaseResult] = {
     val vdo = qe.viewDefOption(viewName)
     def setMaxContentSize(ctx: HttpReqCtx) = vdo.map { vd =>
@@ -103,7 +104,7 @@ trait WabaseApp[User] {
     }.getOrElse(ctx)
     doWabaseAction(
       AppActionContext(actionName, viewName, keyValues, params, values ++ params, resultFilter)(
-        user, state, ec, as, appFs, setMaxContentSize(setTimeout(reqCtx)), httpClients),
+        user, state, ec, as, appFs, setMaxContentSize(setTimeout(reqCtx))),
       doApiCheck)
   }
 

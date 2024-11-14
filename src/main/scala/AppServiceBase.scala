@@ -44,8 +44,6 @@ trait AppProvider[User] {
   protected def initApp: App
 }
 
-case class WabaseHttpClients(httpClients: Map[String, HttpRequest => Future[HttpResponse]])
-
 trait AppServiceBase[User]
   extends AppProvider[User]
   with AppStateExtractor
@@ -468,8 +466,6 @@ trait AppServiceBase[User]
         }
         .toList
   }
-
-  implicit def httpClients: WabaseHttpClients = WabaseHttpClients(Map())
 }
 
 trait AppFileServiceBase[User] {
