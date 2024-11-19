@@ -23,6 +23,7 @@ object CacheIo {
   implicit lazy val colCodec:           Codec[Col]            = deriveCodec    [Col]           // TODO
   implicit lazy val colsCodec:          Codec[Cols]           = deriveCodec    [Cols]          // TODO
   implicit lazy val deleteCodec:        Codec[Delete]         = deriveCodec    [Delete]        // TODO
+  implicit lazy val distinctCodec:      Codec[Distinct]       = deriveCodec    [Distinct]      // TODO
   implicit lazy val colDefCodec:        Codec[ColDef]         = deriveCodec    [ColDef]        // TODO
   implicit lazy val insertCodec:        Codec[Insert]         = deriveCodec    [Insert]        // TODO
   implicit lazy val insertCfl:          Codec[InsertConflict] = deriveCodec    [InsertConflict]// TODO

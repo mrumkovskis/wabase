@@ -23,7 +23,7 @@ class TresqlUri {
   def queryStringColIdx(tresqlUriExp: Exp)(parser: QueryParsers): Int = {
     if (tresqlUriExp == null) -1 else
       parser.traverser[Int](_ => {
-        case Cols(_, cols) => cols indexWhere {
+        case Cols(cols, _) => cols indexWhere {
           _ == Col(StringConst("?"), null)
         }
       })(-1)(tresqlUriExp)
