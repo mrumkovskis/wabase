@@ -1811,7 +1811,10 @@ trait Dto extends org.mojoz.querease.Dto { self =>
       case v: JsObject =>
         if (classOf[Dto].isAssignableFrom(typ.runtimeClass)) {
           typ.runtimeClass.getConstructor().newInstance().asInstanceOf[QDto].fill(v, emptyStringsToNull)
-        } else throwUnsupportedConversion(v, typ, fieldName)
+        } else try qe.convertToType(v.compactPrint, typ.runtimeClass) catch {
+          case util.control.NonFatal(ex) =>
+            throwUnsupportedConversion(v, typ, fieldName, ex)
+        }
       case v: JsArray =>
         val c = typ.runtimeClass
         val isList = c.isAssignableFrom(classOf[List[_]])
@@ -1839,7 +1842,10 @@ trait Dto extends org.mojoz.querease.Dto { self =>
             case util.control.NonFatal(ex) =>
               throwUnsupportedConversion(v, typ, fieldName, ex)
           }
-        } else throwUnsupportedConversion(v, typ, fieldName)
+        } else try qe.convertToType(v.compactPrint, typ.runtimeClass) catch {
+          case util.control.NonFatal(ex) =>
+            throwUnsupportedConversion(v, typ, fieldName, ex)
+        }
       case JsNull => null
     }
     parseFunc
