@@ -883,6 +883,10 @@ class OpParser(viewName: String, tresqlUri: TresqlUri, cache: OpParser.Cache)
       case conformTo ~ client ~ http => http.copy(conformTo = conformTo, httpClientName = client.orNull)
     } named "http-op"
   }
+  def dbOp: MemParser[Db] = (Action.DbUseKey | Action.TransactionKey) ~ opt("[" ~> ident <~ "]") ~ operation ^^ {
+    case op_type ~ db ~ op => Db(Action(Evaluation(None, Nil, op) :: Nil), op_type == Action.DbUseKey,
+      db.map(AppMetadata.DbAccessKey).toList)
+  } named "db-op"
   def jsonCodecOp: MemParser[JsonCodec] = """(from|to)""".r ~ "json" ~ operation ^^ {
     case mode ~ _ ~ op => JsonCodec(mode == "to", op)
   } named "json-op"
@@ -917,7 +921,7 @@ class OpParser(viewName: String, tresqlUri: TresqlUri, cache: OpParser.Cache)
     rep(namedOp)
   } named "named-ops"
   def operation: MemParser[Op] = (viewOp | jobOp | confOp | uniqueOp | invocationOp |
-    httpOp | resourceOp | fileOp | toFileOp | templateOp | emailOp |
+    httpOp | dbOp | resourceOp | fileOp | toFileOp | templateOp | emailOp |
     jsonCodecOp | httpHeaderOrCookieOp | extractPartsOp | bracesOp | tresqlOp) named "operation"
 
   private def opResultType: MemParser[OpResultType] = {
