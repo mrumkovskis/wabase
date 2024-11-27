@@ -1320,3 +1320,15 @@ fields:
 get:
 - res = org.wabase.QuereaseActionTestManagerObj.httpRequest
 - :res
+
+
+name: this_test1
+api: get
+table:
+fields:
+- name
+- surname
+get:
+- name = 'John'
+- surname = 'Telos'
+- return this

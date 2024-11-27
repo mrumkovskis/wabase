@@ -1315,6 +1315,13 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     } yield t1
   }
 
+  it should "return this" in {
+    for {
+      t1 <- doAction("get", "this_test1", Map())
+        .map(_ shouldBe MapResult(Map("name" -> "John", "surname" -> "Telos")))
+    } yield t1
+  }
+
   it should "do wabase routes and return results" in {
     implicit val user: TestUsr = TestUsr(100)
     /*

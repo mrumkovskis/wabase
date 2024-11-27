@@ -1452,6 +1452,10 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     }
   }
 
+  protected def doThis(data: Map[String, Any], env: Map[String, Any], context: ActionContext): Future[MapResult] = {
+    Future.successful(MapResult(data))
+  }
+
   protected def doActionOp(
     op: Action.Op,
     data: Map[String, Any],
@@ -1500,6 +1504,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case j: Action.JsonCodec => doJsonCodec(j, data, env, context)
       case job: Action.Job => doJob(job, data, env, context)
       case Action.ExtractParts => doExtractParts(data, env, context)
+      case Action.This => doThis(data, env, context)
       case VariableTransforms(vts) =>
         Future.successful(doVarsTransforms(vts, Map[String, Any](), data ++ env))
       case _: Action.Else => sys.error(s"Integrity error. Else operation cannot be here, must be coalesced into if operation")

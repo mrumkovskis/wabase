@@ -907,6 +907,7 @@ class OpParser(viewName: String, tresqlUri: TresqlUri, cache: OpParser.Cache)
   } named "http-hoc-op"
   def extractPartsOp: MemParser[ExtractParts.type] =
     "extract parts" ^^ (_ => ExtractParts) named "extract-parts"
+  def thisOp: MemParser[This.type] = "this" ^^^ This
 
   def bracesOp: MemParser[Op] = "(" ~> operation <~ ")" named "braces-op"
   def bracesTresql: MemParser[Exp] = (("(" ~> expr <~ ")") | expr) named "braces-tresql-op"
@@ -922,7 +923,7 @@ class OpParser(viewName: String, tresqlUri: TresqlUri, cache: OpParser.Cache)
   } named "named-ops"
   def operation: MemParser[Op] = (viewOp | jobOp | confOp | uniqueOp | invocationOp |
     httpOp | dbOp | resourceOp | fileOp | toFileOp | templateOp | emailOp |
-    jsonCodecOp | httpHeaderOrCookieOp | extractPartsOp | bracesOp | tresqlOp) named "operation"
+    jsonCodecOp | httpHeaderOrCookieOp | extractPartsOp | thisOp | bracesOp | tresqlOp) named "operation"
 
   private def opResultType: MemParser[OpResultType] = {
     sealed trait ResType
@@ -1120,6 +1121,7 @@ object AppMetadata extends Loggable {
     case object Commit extends Op
     /** This op can be used if view property 'decode request' is false */
     case object ExtractParts extends Op
+    case object This extends Op
 
     case class Evaluation(name: Option[String], varTrans: List[VariableTransform], op: Op) extends Step
     case class SetEnv(name: Option[String], varTrans: List[VariableTransform], value: Op) extends Step
@@ -1135,7 +1137,7 @@ object AppMetadata extends Loggable {
       def traverse(state: T): PartialFunction[Op, T] = {
         case _: Tresql | _: RedirectToKey | _: Status |
              _: VariableTransforms | _: File | _: Conf | _: HttpHeader | _: Cookie |
-             ExtractParts | _: Job | _: Resource | Commit | null => state
+             ExtractParts | This |  _: Job | _: Resource | Commit | null => state
         case o: ViewCall => opTrav(state)(o.data)
         case Unique(o, _, _) => opTrav(state)(o)
         case Foreach(o, a) => traverseAction(a)(stepTrav)(opTrav(state)(o))
