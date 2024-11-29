@@ -546,6 +546,6 @@ object QuereaseActionTestManagerObj {
   }
   def httpRequest(data: Map[String, Any], httpClients: WabaseHttpClients) = {
     val httpClient = httpClients.httpClients.head._2
-    httpClient(HttpRequest(uri = data("uri").toString))
+    httpClient(null)(HttpRequest(uri = data("uri").toString))
   }
 }

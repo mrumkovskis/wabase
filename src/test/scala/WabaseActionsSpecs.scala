@@ -176,7 +176,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       override lazy val rootPath =
         new File(System.getProperty("java.io.tmpdir"), "wabase-actions-specs/" + UUID.randomUUID().toString).getPath
       override implicit lazy val httpClients: WabaseHttpClients =
-        WabaseHttpClients(Map("default-wabase-http-client" -> (Route.toFunction(service.route)(service.system)(_))))
+        WabaseHttpClients(Map("default-wabase-http-client" -> (_ => Route.toFunction(service.route)(service.system)(_))))
     }
     val myApp = app
     marshallers =

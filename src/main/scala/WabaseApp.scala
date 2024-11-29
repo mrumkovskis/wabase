@@ -12,13 +12,14 @@ import org.mojoz.querease.TresqlMetadata
 import org.tresql.{Resources, ResourcesTemplate, SingleValueResult}
 import org.wabase.AppMetadata.{Action, AugmentedAppFieldDef, AugmentedAppViewDef}
 import org.wabase.AppMetadata.Action.{LimitKey, OffsetKey, OrderKey}
+import org.wabase.AppQuerease.InjectionParametersContext
 
 import java.util.Locale
 import scala.concurrent.{ExecutionContext, Future}
 import scala.language.{existentials, implicitConversions}
 import scala.util.{Failure, Success, Try}
 
-case class WabaseHttpClients(httpClients: Map[String, HttpRequest => Future[HttpResponse]])
+case class WabaseHttpClients(httpClients: Map[String, InjectionParametersContext => HttpRequest => Future[HttpResponse]])
 
 trait WabaseApp[User] {
   this:  AppBase[User]

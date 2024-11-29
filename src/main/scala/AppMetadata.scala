@@ -834,8 +834,8 @@ class OpParser(viewName: String, tresqlUri: TresqlUri, cache: OpParser.Cache)
 
   def invocationOp: MemParser[Invocation] = opt(opResultType) ~ OpParser.InvocationRegex ~ opt(operation) ^^ {
     case rt ~ res ~ arg =>
-      val idx = res.lastIndexOf('.')
-      Action.Invocation(res.substring(0, idx), res.substring(idx + 1), arg.orNull, rt)
+      val (cn, fn) = OpParser.classNameFunctionName(res)
+      Action.Invocation(cn, fn, arg.orNull, rt)
   } named "invocation-op"
   def resourceOp: MemParser[Resource] = "resource" ~> tresqlOp ~ opt(tresqlOp) ^^ {
     case nameTresql ~ ctTresql => Resource(nameTresql, ctTresql.orNull)
@@ -972,6 +972,10 @@ object OpParser extends Loggable {
     val c = new Cache(maxSize)
     c.load(initData)
     c
+  }
+  def classNameFunctionName(name: String): (String, String) = {
+    val idx = name.lastIndexOf('.')
+    (name.substring(0, idx), name.substring(idx + 1))
   }
 }
 object AppMetadata extends Loggable {
