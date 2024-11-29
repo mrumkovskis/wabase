@@ -124,10 +124,10 @@ trait AppServiceBase[User]
       case AppMetadata.CustomDecoder(o, f) =>
         extractRequestContext.flatMap { ctx =>
           val value: Future[Map[String, Any]] = invokeFunction(o, f,
-            Seq[(Class[_], Class[_] => Any)](
-              (classOf[HttpRequest], _ => ctx.request),
-              (classOf[ActorSystem], _ => system),
-              (classOf[ExecutionContext], _ => executor)
+            Seq[(Class[_], () => Any)](
+              (classOf[HttpRequest], () => ctx.request),
+              (classOf[ActorSystem], () => system),
+              (classOf[ExecutionContext], () => executor)
             )
           ) match {
             case f: Future[_] => f.mapTo[Map[String, Any]]

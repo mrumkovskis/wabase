@@ -14,13 +14,12 @@ import com.typesafe.scalalogging.Logger
 import org.tresql._
 import org.mojoz.querease._
 import org.mojoz.querease.SaveMethod
-
 import org.mojoz.metadata.ViewDef
 import org.slf4j.LoggerFactory
 import org.wabase.AppFileStreamer.FileInfo
 import org.wabase.AppMetadata.Action.{VariableTransform, VariableTransforms}
 import org.wabase.AppMetadata.DbAccessKey
-
+import org.wabase.AppQuerease.{InjectionParametersContext, InjectionParametersFactory}
 import spray.json._
 
 import java.sql.Connection
@@ -37,6 +36,17 @@ trait QuereaseProvider {
   protected def initQuerease: AppQuerease
   protected def initQuereaseIo: AppQuereaseIo[Dto] = new AppQuereaseIo[Dto](qe)
 }
+
+case class QuereaseResources()(implicit
+  val resourcesFactory: ResourcesFactory,
+  val ec: ExecutionContext,
+  val as: ActorSystem,
+  val fs: FileStreamer,
+  val reqCtx: RequestContext,
+  val qio: AppQuereaseIo[Dto],
+  val httpClients: WabaseHttpClients,
+  val parametersFactory: InjectionParametersFactory,
+)
 
 case class ResourcesFactory(
   initResources: (PoolName, Seq[DbAccessKey]) => Resources,
@@ -286,6 +296,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       reqCtx: RequestContext,
       qio: AppQuereaseIo[Dto],
       httpClients: WabaseHttpClients,
+      parameterFactory: InjectionParametersFactory,
     ): QuereaseAction[QuereaseResult] = {
         new QuereaseAction[QuereaseResult] {
           def run(implicit ec: ExecutionContext, as: ActorSystem) = {
@@ -295,10 +306,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
                 val (poolName, extraDbs) = dbResourceNames(objName, actionName)
                 resourcesFactory.copy()(resources = resourcesFactory.initResources(poolName, extraDbs))
               }
-            implicit val fs = fileStreamer
-            implicit val httpReqCtx = reqCtx
-            implicit val io = qio
-            implicit val hc = httpClients
+            implicit val qr = new QuereaseResources()(resFac, ec, as, fileStreamer, reqCtx, qio, httpClients,
+              parameterFactory)
             import resFac._
             def processResult(res: QuereaseResult, cleanup: Option[Throwable] => Unit): QuereaseResult = res match {
               case DbResult(result, cl) =>
@@ -383,15 +392,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     data: Map[String, Any],
     env: Map[String, Any],
     fieldFilter: FieldFilter = null,
-  )(implicit
-    resourcesFactory: ResourcesFactory,
-    ec: ExecutionContext,
-    as: ActorSystem,
-    fs: FileStreamer,
-    reqCtx: RequestContext,
-    qio: AppQuereaseIo[Dto],
-    httpClients: WabaseHttpClients,
-  ): Future[QuereaseResult] = {
+  )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
     do_action(view, actionName, data, env, fieldFilter)
   }
 
@@ -432,18 +433,10 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     env: Map[String, Any],
     fieldFilter: FieldFilter = null,
     contextStack: List[ActionContext] = Nil,
-  )(implicit
-    resourcesFactory: ResourcesFactory,
-    ec: ExecutionContext,
-    as: ActorSystem,
-    fs: FileStreamer,
-    reqCtx: RequestContext,
-    qio: AppQuereaseIo[Dto],
-    httpClients: WabaseHttpClients,
-  ): Future[QuereaseResult] = {
+  )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
     val ctx = ActionContext(view, actionName, env, viewDefOption(view), quereaseActionLogger(s"$view.$actionName.ctx"),
       fieldFilter, null, contextStack)
-    logContext(ctx, env, resourcesFactory)
+    logContext(ctx, env, qr.resourcesFactory)
     val steps =
       quereaseActionOpt(view, actionName)
         .map(_.steps)
@@ -463,17 +456,9 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     steps: List[Action.Step],
     context: ActionContext,
     curData: Future[Map[String, Any]],
-  )(implicit
-    resourcesFactory: ResourcesFactory,
-    ec: ExecutionContext,
-    as: ActorSystem,
-    fs: FileStreamer,
-    reqCtx: RequestContext,
-    qio: AppQuereaseIo[Dto],
-    httpClients: WabaseHttpClients,
-  ): Future[QuereaseResult] = {
+  )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
     import Action._
-
+    import qr._
     def updateCurRes(cr: Map[String, Any], key: Option[String], resF: Future[_]) = {
       def upd(d: Map[String, _], k: String, v: Any) = {
         def rec(m: Map[String, _], kp: List[String]): Map[String, _] = kp match {
@@ -616,18 +601,10 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     data: Map[String, Any],
     env: Map[String, Any],
     context: ActionContext,
-  )(implicit
-    resFac: ResourcesFactory,
-    ec: ExecutionContext,
-    as: ActorSystem,
-    fs: FileStreamer,
-    reqCtx: RequestContext,
-    qio: AppQuereaseIo[Dto],
-    httpClients: WabaseHttpClients,
-  ): Future[QuereaseResult] = {
+  )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
     import Action._
-    import CoreTypes._
-    import resFac._
+    import qr._
+    import resourcesFactory._
     val v = viewDef(
       if (view == "this") context.view.map(_.name) getOrElse view
       else                view
@@ -706,44 +683,28 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           }
         Future.successful(res)
       } else {
-        do_action(viewName, method, callData, env, context.fieldFilter, context :: context.contextStack)(
-          resFac.focus(if (v.db != null) v.db else defaultCpName), ec, as, fs, reqCtx, qio, httpClients)
+        val nqr = qr.copy()(resourcesFactory = resourcesFactory.focus(if (v.db != null) v.db else defaultCpName),
+          ec, as, fs, reqCtx, qio, httpClients, parametersFactory)
+        do_action(viewName, method, callData, env, context.fieldFilter, context :: context.contextStack)(nqr)
       }
     }
   }
-
-  protected def getInvocationParameter(defaultGetParameter: Class[_] => Any)(parameterClass: Class[_]): Any =
-    defaultGetParameter(parameterClass)
 
   protected def doInvocation(
     op: Action.Invocation,
     data: Map[String, Any],
     env: Map[String, Any],
     context: ActionContext,
-  )(
-    implicit resFac: ResourcesFactory,
-    ec: ExecutionContext,
-    as: ActorSystem,
-    fs: FileStreamer,
-    reqCtx: RequestContext,
-    qio: AppQuereaseIo[Dto],
-    httpClients: WabaseHttpClients,
-  ): Future[QuereaseResult] = {
+  )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
     import op._
-    def invokeFunction(className: String, function: String, params: Seq[(Class[_], Class[_] => Any)]): Any = {
-      val contextParams = Seq[(Class[_], Class[_] => Any)](
-        (classOf[Resources], _ => resFac.resources),
-        (classOf[ResourcesFactory], _ => resFac),
-        (classOf[ExecutionContext], _ => ec),
-        (classOf[ActorSystem], _ => as),
-        (classOf[FileStreamer], _ => fs),
-        (classOf[HttpRequest], _ => Option(reqCtx).map(_.request).orNull),
-        (classOf[RequestContext], _ => reqCtx),
-        (classOf[AppQuereaseIo[Dto]], _ => qio),
-        (classOf[WabaseHttpClients], _ => httpClients),
+    import qr._
+    def invokeFunction(className: String, function: String,
+                       params: Seq[(Class[_], () => Any)], pf: PartialFunction[Class[_], Any]): Any = {
+      this.invokeFunction(className, function, params,
+        InjectionParametersContext(Option(reqCtx).map(_.request).orNull, env, data),
+        qr.copy()(resourcesFactory, ec, as, fs, reqCtx, qio, httpClients,
+          parametersFactory = ipc => pf orElse qr.parametersFactory(ipc))
       )
-      org.wabase.invokeFunction(className, function,
-        getInvocationParameter(org.wabase.invocationParameter(params ++ contextParams)(_))(_))
     }
 
     def wrongRes(x: Any) =
@@ -809,19 +770,19 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       val invocationData = data ++ env
       invokeFunction(className, function,
         Seq(
-          (classOf[scala.collection.immutable.Map[_, _]], _ => invocationData),
-          (classOf[Dto], parClass => {
+          (classOf[scala.collection.immutable.Map[_, _]], () => invocationData),
+          (classOf[java.util.Map[_, _]], () => invocationData.asJava),
+          (classOf[MapResult], () => MapResult(invocationData)),
+        ),
+        { case parClass if classOf[Dto].isAssignableFrom(parClass) =>
             import qio.MapJsonFormat
-            val mf = Manifest.classType[Dto](parClass) // somehow need to specify method type parameter Dto for not to fail in runtime on next line??
-            qio.fill(invocationData.toJson.asJsObject)(mf) // specify manifest explicitly so it is not Nothing
-          }),
-          (classOf[java.util.Map[_, _]], _ => invocationData.asJava),
-          (classOf[MapResult], _ => MapResult(invocationData)),
-        )
+            val mf = Manifest.classType[Dto](parClass)      // somehow need to specify method type parameter Dto for not to fail in runtime on next line??
+            qio.fill(invocationData.toJson.asJsObject)(mf)  // specify manifest explicitly so it is not Nothing
+        }
       )
     } else {
       doActionOp(op.arg, data, env, context).flatMap { opRes =>
-        invokeFunction(className, function, Seq((classOf[QuereaseResult], _ => opRes))) match {
+        invokeFunction(className, function, Seq((classOf[QuereaseResult], () => opRes)), PartialFunction.empty) match {
           case f: Future[_] => f
           case x => Future.successful(x)
         }
@@ -837,16 +798,9 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     data: Map[String, Any],
     env: Map[String, Any],
     context: ActionContext,
-  )(implicit
-    resFac: ResourcesFactory,
-    ec: ExecutionContext,
-    as: ActorSystem,
-    fs: FileStreamer,
-    reqCtx: RequestContext,
-    qio: AppQuereaseIo[Dto],
-    httpClients: WabaseHttpClients,
-  ): Future[QuereaseResult] = {
-    import resFac._
+  )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
+    import qr._
+    import resourcesFactory._
     val jobName =
       if (job.isDynamic) Query(job.nameTresql).unique[String] else job.nameTresql
     val ctx = ActionContext(jobName, JobAct, env, None, context.log,
@@ -877,15 +831,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     data: Map[String, Any],
     env: Map[String, Any],
     context: ActionContext,
-  )(implicit
-    resFac: ResourcesFactory,
-    ec: ExecutionContext,
-    as: ActorSystem,
-    fs: FileStreamer,
-    reqCtx: RequestContext,
-    qio: AppQuereaseIo[Dto],
-    httpClients: WabaseHttpClients,
-  ): Future[QuereaseResult] = {
+  )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
+    import qr.ec
     def createGetResult(res: QuereaseResult): QuereaseResult = res match {
       case TresqlResult(r) if !r.isInstanceOf[DMLResult] =>
         if (op.opt) r.uniqueOption map TresqlSingleRowResult getOrElse notFound
@@ -918,15 +865,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
    data: Map[String, Any],
    env: Map[String, Any],
    context: ActionContext,
-  )(implicit
-   resFac: ResourcesFactory,
-   ec: ExecutionContext,
-   as: ActorSystem,
-   fs: FileStreamer,
-   reqCtx: RequestContext,
-   qio: AppQuereaseIo[Dto],
-   httpClients: WabaseHttpClients,
-  ): Future[QuereaseResult] = {
+  )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
+    import qr.ec
     val Action.Status(maybeCode, bodyTresql, parameterIndex) = op
     Option(bodyTresql).map { bt =>
       doActionOp(Action.Unique(Action.Tresql(bt), opt = true), data, env, context).map {
@@ -953,15 +893,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     data: Map[String, Any],
     env: Map[String, Any],
     context: ActionContext,
-  )(implicit
-    resFac: ResourcesFactory,
-    ec: ExecutionContext,
-    as: ActorSystem,
-    fs: FileStreamer,
-    reqCtx: RequestContext,
-    qio: AppQuereaseIo[Dto],
-    httpClients: WabaseHttpClients,
-  ): Future[QuereaseResult] = {
+  )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
+    import qr.ec
     doActionOp(op.cond, data, env, context).map {
       case TresqlResult(tr) => tr.unique[Boolean]
       case r: TresqlSingleRowResult => r.map(_.boolean(0))
@@ -981,15 +914,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     data: Map[String, Any],
     env: Map[String, Any],
     context: ActionContext,
-  )(implicit
-    resFac: ResourcesFactory,
-    ec: ExecutionContext,
-    as: ActorSystem,
-    fs: FileStreamer,
-    reqCtx: RequestContext,
-    qio: AppQuereaseIo[Dto],
-    httpClients: WabaseHttpClients,
-  ): Future[IteratorResult] = {
+  )(implicit qr: QuereaseResources): Future[IteratorResult] = {
     def iterator(res: QuereaseResult): Iterator[Map[String, Any]] = {
       def addParentData(map: Map[String, Any]) = {
         var key = ".."
@@ -1010,6 +935,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         case x => sys.error(s"Not iterable result for foreach operation: $x")
       }
     }
+    import qr.ec
     doActionOp(op.initOp, data, env, context).map(iterator)
     .flatMap { mapIterator =>
       var idx = 0
@@ -1068,17 +994,10 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     data: Map[String, Any],
     env: Map[String, Any],
     context: ActionContext,
-  )(implicit
-    resFac: ResourcesFactory,
-    ec: ExecutionContext,
-    as: ActorSystem,
-    fs: FileStreamer,
-    reqCtx: RequestContext,
-    qio: AppQuereaseIo[Dto],
-    httpClients: WabaseHttpClients,
-  ): Future[FileInfoResult] = {
+  )(implicit qr: QuereaseResources): Future[FileInfoResult] = {
     import akka.http.scaladsl.model.{MediaTypes, ContentType}
-    import resFac._
+    import qr._
+    import resourcesFactory._
     val bindVars = data ++ env
     def getVal(tr: Action.Tresql) = Query(tr.tresql)(resources.withParams(bindVars)).unique[String]
     val fn = if (op.nameTresql != null) getVal(op.nameTresql) else "file"
@@ -1100,16 +1019,9 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     data: Map[String, Any],
     env: Map[String, Any],
     context: ActionContext,
-  )(implicit
-    resFac: ResourcesFactory,
-    ec: ExecutionContext,
-    as: ActorSystem,
-    fs: FileStreamer,
-    reqCtx: RequestContext,
-    qio: AppQuereaseIo[Dto],
-    httpClients: WabaseHttpClients,
-  ): Future[TemplateResult] = {
-    import resFac._
+  )(implicit qr: QuereaseResources): Future[TemplateResult] = {
+    import qr._
+    import resourcesFactory._
     val bindVars = data ++ env
     val template = Query(op.templateTresql.tresql)(resources.withParams(bindVars)).unique[String]
     val resF =
@@ -1143,15 +1055,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     data: Map[String, Any],
     env: Map[String, Any],
     context: ActionContext,
-  )(implicit
-    resFac: ResourcesFactory,
-    ec: ExecutionContext,
-    as: ActorSystem,
-    fs: FileStreamer,
-    reqCtx: RequestContext,
-    qio: AppQuereaseIo[Dto],
-    httpClients: WabaseHttpClients,
-  ): Future[LongResult] = {
+  )(implicit qr: QuereaseResources): Future[LongResult] = {
+    import qr._
     def subj_body(bv: Map[String, Any]) = {
       def stringContent(qr: QuereaseResult) = qr match {
         case TresqlResult(r) => Future.successful(r.unique[String])
@@ -1161,7 +1066,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       Future.traverse(List(op.subject, op.body))(doActionOp(_, bv, env, context).flatMap(stringContent))
     }
     def s(v: Any): String = if (v == null) null else String.valueOf(v)
-    import resFac._
+    import resourcesFactory._
     val bindVars = data ++ env
     val emails = {
       val r = Query(op.emailTresql.tresql)(resources.withParams(bindVars))
@@ -1199,16 +1104,9 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     data: Map[String, Any],
     env: Map[String, Any],
     context: ActionContext,
-  )(implicit
-    resFac: ResourcesFactory,
-    ec: ExecutionContext,
-    as: ActorSystem,
-    fs: FileStreamer,
-    reqCtx: RequestContext,
-    qio: AppQuereaseIo[Dto],
-    httpClients: WabaseHttpClients,
-  ): Future[DataResult] = {
-    import resFac._
+  )(implicit qr: QuereaseResources): Future[DataResult] = {
+    import qr._
+    import resourcesFactory._
     val opData = data ++ env
     val httpMeth = HttpMethods.getForKeyCaseInsensitive(op.method).get
     val uri = {
@@ -1311,15 +1209,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     data: Map[String, Any],
     env: Map[String, Any],
     context: ActionContext,
-  )(implicit
-    resFac: ResourcesFactory,
-    ec: ExecutionContext,
-    as: ActorSystem,
-    fs: FileStreamer,
-    reqCtx: RequestContext,
-    qio: AppQuereaseIo[Dto],
-    httpClients: WabaseHttpClients,
-  ): Future[DbResult] = {
+  )(implicit qr: QuereaseResources): Future[DbResult] = {
+    import qr._
     val (poolName, extraDbs) =
       if (op.dbs.nonEmpty) {
         def may_be_add_extra(pn: PoolName, edb: Seq[DbAccessKey]) =
@@ -1328,13 +1219,13 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         may_be_add_extra(PoolName(op.dbs.head.db), op.dbs.tail)
       }
       else dbResourceNames(context.viewName, context.actionName)
-    val newResFact = resFac.copy()(resources = resFac.initResources(poolName, extraDbs))
+    val newResFact = resourcesFactory.copy()(resources = resourcesFactory.initResources(poolName, extraDbs))
       .focus(context.view.map(_.db).filter(_ != null).getOrElse(defaultCpName))
     logContext(context, env, newResFact)
-    val newRes = newResFact.resources
-    val closeRes = resFac.closeResources(newRes, op.doRollback, _)
+    val closeRes = resourcesFactory.closeResources(newResFact.resources, op.doRollback, _)
+    val nqr = new QuereaseResources()(newResFact, ec, as, fs, reqCtx, qio, httpClients, parametersFactory)
     doSteps(op.action.steps, context.copy(stepName = "db"),
-      Future.successful(data))(newResFact, ec, as, fs, reqCtx, qio, httpClients).map {
+      Future.successful(data))(nqr).map {
       case DbResult(r, cl) => DbResult(r, cl.andThen(_ => closeRes(None)))
       case r => DbResult(r, closeRes)
     }.andThen {
@@ -1347,15 +1238,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     data: Map[String, Any],
     env: Map[String, Any],
     context: ActionContext,
-  )(implicit
-    resFac: ResourcesFactory,
-    ec: ExecutionContext,
-    as: ActorSystem,
-    fs: FileStreamer,
-    reqCtx: RequestContext,
-    qio: AppQuereaseIo[Dto],
-    httpClients: WabaseHttpClients,
-  ): Future[QuereaseResult] = {
+  )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
     doSteps(op.action.steps, context.copy(stepName = "block"), Future.successful(data))
   }
 
@@ -1388,15 +1271,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     data: Map[String, Any],
     env: Map[String, Any],
     context: ActionContext
-  )(implicit
-    resFac: ResourcesFactory,
-    ec: ExecutionContext,
-    as: ActorSystem,
-    fs: FileStreamer,
-    reqCtx: RequestContext,
-    qio: AppQuereaseIo[Dto],
-    httpClients: WabaseHttpClients,
-  ): Future[QuereaseResult] = {
+  )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
+    import qr._
     doActionOp(op.op, data, env, context)
       .flatMap(dataForNextStep(_, context, true))
       .map { res =>
@@ -1461,16 +1337,9 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     data: Map[String, Any],
     env: Map[String, Any],
     context: ActionContext,
-  )(implicit
-    resFac: ResourcesFactory,
-    ec: ExecutionContext,
-    as: ActorSystem,
-    fs: FileStreamer,
-    reqCtx: RequestContext,
-    qio: AppQuereaseIo[Dto],
-    httpClients: WabaseHttpClients,
-  ): Future[QuereaseResult] = {
-    import resFac._
+  )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
+    import qr._
+    import resourcesFactory._
     op match {
       case to: Action.Tresql => Future.successful(doTresql(to, data ++ env, context))
       case Action.ViewCall(method, view, viewOp) => doViewCall(method, view, viewOp, data, env, context)
@@ -1517,15 +1386,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     data: Map[String, Any],
     env: Map[String, Any],
     context: ActionContext,
-   )(implicit
-     resFac: ResourcesFactory,
-     ec: ExecutionContext,
-     as: ActorSystem,
-     fs: FileStreamer,
-     reqCtx: RequestContext,
-     qio: AppQuereaseIo[Dto],
-     httpClients: WabaseHttpClients,
-   ): Future[(Source[ByteString, _], ContentType, Option[Long])] = {
+   )(implicit qr: QuereaseResources): Future[(Source[ByteString, _], ContentType, Option[Long])] = {
+    import qr._
     doActionOp(op, data, env, context)
       .map(renderedResult(_, contentType, null, None))
       .map { case (src, _, ct, l) => (src, ct, l) }
@@ -1752,6 +1614,30 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     )
 
   private def notFound = StatusResult(StatusCodes.NotFound.intValue, StringStatus("not found"))
+
+  private def invokeFunction(
+    className: String,
+    function: String,
+    params: Seq[(Class[_], () => Any)],
+    injectionContext: InjectionParametersContext,
+    qr: QuereaseResources,
+  ): Any = {
+    import qr._
+    val contextParams = Seq[(Class[_], () => Any)](
+      (classOf[Resources], () => resourcesFactory.resources),
+      (classOf[ResourcesFactory], () => resourcesFactory),
+      (classOf[ExecutionContext], () => ec),
+      (classOf[ActorSystem], () => as),
+      (classOf[FileStreamer], () => fs),
+      (classOf[HttpRequest], () => Option(reqCtx).map(_.request).orNull),
+      (classOf[RequestContext], () => reqCtx),
+      (classOf[AppQuereaseIo[Dto]], () => qio),
+      (classOf[WabaseHttpClients], () => httpClients),
+    )
+    val default: PartialFunction[Class[_], Any] =
+      { case c: Class[_] => org.wabase.invocationParameter(params ++ contextParams)(c) }
+    org.wabase.invokeFunction(className, function, parametersFactory(injectionContext) orElse default)
+  }
 }
 
 trait Dto extends org.mojoz.querease.Dto { self =>
@@ -1877,6 +1763,13 @@ object DefaultAppQuerease extends AppQuerease
 object DefaultAppQuereaseIo extends AppQuereaseIo[Dto](DefaultAppQuerease)
 
 object AppQuerease {
+  case class InjectionParametersContext(
+    req: HttpRequest,
+    env: Map[String, Any] = Map(),	  // action env (application state)
+    data: Map[String, Any] = Map(),	// action current step data
+  )
+  type InjectionParametersFactory = InjectionParametersContext => PartialFunction[Class[_], Any]
+
   def requestPartsToMap(parts: RequestPartResult)(
     implicit fs: FileStreamer, as: ActorSystem): Future[Map[String, Any]] = {
     implicit val ec = as.dispatcher

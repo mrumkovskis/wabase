@@ -103,9 +103,9 @@ package object wabase extends Loggable {
     }
   }
 
-  def invocationParameter(availableParameters: Seq[(Class[_], Class[_] => Any)])(parameterClass: Class[_]): Any =
+  def invocationParameter(availableParameters: Seq[(Class[_], () => Any)])(parameterClass: Class[_]): Any =
     availableParameters.collectFirst {
-      case (c, f) if parameterClass.isAssignableFrom(c) || c.isAssignableFrom(parameterClass) => f(parameterClass)
+      case (c, f) if parameterClass.isAssignableFrom(c) || c.isAssignableFrom(parameterClass) => f()
     }.getOrElse(sys.error(s"Cannot find value for function parameter. Unsupported parameter type: $parameterClass"))
 
   def invokeFunction(className: String, function: String, getParameter: Class[_] => Any): Any = {
@@ -122,7 +122,7 @@ package object wabase extends Loggable {
     }
   }
 
-  def invokeFunction(className: String, function: String, availableParameters: Seq[(Class[_], Class[_] => Any)]): Any =
+  def invokeFunction(className: String, function: String, availableParameters: Seq[(Class[_], () => Any)]): Any =
     invokeFunction(className, function, invocationParameter(availableParameters)(_))
 
   case class PoolName(connectionPoolName: String)

@@ -87,9 +87,9 @@ class WabaseService {
   def doRequest(ctx: WabaseRequestContext)(implicit ec: ExecutionContext): Future[HttpResponse] = {
     import ctx._
     if (viewName == null) {
-      def invokeFunction(className: String, function: String, params: Seq[(Class[_], Class[_] => Any)]) = {
-        val contextParams = Seq[(Class[_], Class[_] => Any)](
-          (classOf[ExecutionContext], _ => ec),
+      def invokeFunction(className: String, function: String, params: Seq[(Class[_], () => Any)]) = {
+        val contextParams = Seq[(Class[_], () => Any)](
+          (classOf[ExecutionContext], () => ec),
         )
         org.wabase.invokeFunction(className, function, params ++ contextParams)
       }
@@ -101,7 +101,7 @@ class WabaseService {
           case x => error(s"Request transformer must return either WabaseRequestContext or HttpRequest or Future of them." +
             s" Instead got: $x")
         }
-        processResult(invokeFunction(cn, fn, Seq((classOf[WabaseRequestContext], _ => ctx))))
+        processResult(invokeFunction(cn, fn, Seq((classOf[WabaseRequestContext], () => ctx))))
       }
       def invokeRespTrans(cn: String, fn: String, tctx: WabaseRequestContext): Future[HttpResponse] = {
         def processResult(r: Any): Future[HttpResponse] = r match {
@@ -110,7 +110,7 @@ class WabaseService {
           case x => error(s"Response transformer must return either HttpResponse or Future of it." +
             s" Instead got: $x")
         }
-        processResult(invokeFunction(cn, fn, Seq((classOf[WabaseRequestContext], _ => tctx))))
+        processResult(invokeFunction(cn, fn, Seq((classOf[WabaseRequestContext], () => tctx))))
       }
       if (route.responseTransformer == null) error(s"If view name for route not specified, response transformer must be defined!")
       else Option(route.requestFilter)

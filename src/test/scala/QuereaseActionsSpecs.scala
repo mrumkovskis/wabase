@@ -7,6 +7,7 @@ import org.mojoz.querease.{ValidationException, ValidationResult}
 import org.scalatest.flatspec.{AsyncFlatSpec, AsyncFlatSpecLike}
 import org.scalatest.matchers.should.Matchers
 import org.tresql.{Query, Resources, convLong}
+import org.wabase.AppQuerease.InjectionParametersFactory
 import org.wabase.QuereaseActionsDtos.Person
 
 import scala.concurrent.duration.DurationInt
@@ -96,11 +97,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
 
   import AppMetadata._
 
-  implicit protected var tresqlResourcesFactory: ResourcesFactory = _
-  implicit val fs: FileStreamer = null
-  implicit val as: ActorSystem = ActorSystem("querease-action-specs")
-  implicit val reqCtx: RequestContext = null
-  implicit val httpClients: WabaseHttpClients = null
+  implicit var qr: QuereaseResources = null
 
   override def beforeAll(): Unit = {
     querease = new TestQuerease("/querease-action-specs-metadata.yaml") {
@@ -114,7 +111,9 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
         tresqlThreadLocalResources.extraResources +
           (querease.defaultCpName -> tresqlThreadLocalResources.withConn(tresqlThreadLocalResources.conn))
       )
-    tresqlResourcesFactory = ResourcesFactory(null, null)(tresqlResources)
+    qr = new QuereaseResources()(ResourcesFactory(null, null)(tresqlResources),
+      scala.concurrent.ExecutionContext.global, ActorSystem("querease-action-specs"), null, null, qio, null,
+        _ => PartialFunction.empty)
   }
 
   behavior of "metadata"
@@ -146,7 +145,6 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
 
   behavior of "person save action"
   import QuereaseActionsDtos._
-  implicit val ec: scala.concurrent.ExecutionContext = scala.concurrent.ExecutionContext.global
 
   it should "fail account count validation" in {
     val p = new Person
@@ -268,7 +266,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
         res.getClass.getName should be ("org.wabase.TresqlResult")
       }
     }.map { _ =>
-      implicit val res = tresqlResourcesFactory.resources
+      implicit val res = qr.resourcesFactory.resources
       Query("account{number, balance}#(1)").toListOfMaps should be(
         List(Map("number" -> "AAA", "balance" -> 8.00), Map("number" -> "BBB", "balance" -> 2.00)))
     }
@@ -307,7 +305,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
   behavior of "person with main account"
 
   it should "return person with main account" in {
-    implicit val res = tresqlResourcesFactory.resources
+    implicit val res = qr.resourcesFactory.resources
     val name = "Kalis"
     val id = Query("person[name %~~% ?] {id}", name).unique[Long]
     querease.doAction("person_with_main_account", "get", Map("id" -> id), Map()).map {
@@ -363,7 +361,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
   }
 
   it should "register person health data" in {
-    implicit val res = tresqlResourcesFactory.resources
+    implicit val res = qr.resourcesFactory.resources
 
     val persons = List(
       Map("name" -> "Mario", "sex" -> "M", "birthdate" -> java.sql.Date.valueOf("1988-09-12")),
@@ -377,8 +375,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
     )
     def saveData(view: String, data: List[Map[String, Any]])(implicit res: Resources) =
       data.foldLeft(Future.successful[QuereaseResult](LongResult(0))) { (r, d) =>
-        r.flatMap(_ => querease.doAction(view, "save", d, Map())(
-          tresqlResourcesFactory, implicitly[ExecutionContext], as, fs, reqCtx, qio, httpClients))
+        r.flatMap(_ => querease.doAction(view, "save", d, Map()))
       }
 
     saveData("person_simple", persons)

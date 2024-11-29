@@ -68,7 +68,9 @@ class WabaseScheduler(service: AppServiceBase[_]) extends Loggable {
     }
 
     qe.QuereaseAction(job.name, JobAct, Map(), Map(), doCleanup = true)(
-        resourcesFactory, fileStreamer, reqCtx = null, qio = service.app.qio, httpClients = service.app.httpClients)
+        resourcesFactory, fileStreamer, reqCtx = null, qio = service.app.qio,
+        httpClients = service.app.httpClients,
+        parameterFactory = service.app.injectionParametersFactory)
       .run
   }
 }
