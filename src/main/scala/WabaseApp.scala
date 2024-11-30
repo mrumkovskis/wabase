@@ -306,7 +306,9 @@ trait WabaseApp[User] {
             res.fetchSize, res.maxResultSize, res.recursiveStackDepth, res.params, res.extraResources,
             res.logger, res.cache, res.bindVarLogFilter)
         toTemplate(
-          tresqlResources.resourcesTemplate.extraResources(poolName.connectionPoolName)
+          tresqlResources.resourcesTemplate.extraResources.getOrElse(poolName.connectionPoolName,
+            sys.error(s"Resource key '${poolName.connectionPoolName}' not found in resources template")
+          )
             .withExtraResources(
               tresqlResources.resourcesTemplate.extraResources +
               (DefaultCp.connectionPoolName -> tresqlResources.resourcesTemplate)
