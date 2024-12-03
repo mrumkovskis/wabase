@@ -589,6 +589,8 @@ insert:
 update:
 - x = create this
 - :x -> org.wabase.QuereaseActionTestManager.seqMethod
+delete:
+- test.QuereaseActionJavaManager.identity
 
 
 name: invocation_result_mapper_test
