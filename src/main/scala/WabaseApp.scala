@@ -24,7 +24,6 @@ case class WabaseHttpClients(httpClients: Map[String, InjectionParametersContext
 trait WabaseApp[User] {
   this:  AppBase[User]
     with Audit[User]
-    with Authorization[User]
     with DbAccess
     with Authorization[User]
     with DbConstraintMessage
