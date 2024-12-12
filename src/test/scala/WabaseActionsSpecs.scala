@@ -1328,7 +1328,8 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
   it should "use evaluator db" in {
     for {
       t1 <- doAction("get", "evaluator_db_test", Map())
-        .map(_ shouldBe Map("greeting" -> "Hello from wabase!"))
+        .mapTo[CompatibleResult]
+        .map(_.result shouldBe MapResult(Map("greeting" -> "Hello from wabase!")))
     } yield t1
   }
 

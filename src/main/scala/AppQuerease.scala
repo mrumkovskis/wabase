@@ -594,9 +594,20 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   )(implicit
     resources: Resources,
   ): DataResult = {
-    val res = if (resources.conn != null) resources else resources.withConn(evaluatorConn())
-    val r = TresqlResult(Query(tresql.tresql)(res.withParams(bindVars)))
-    tresql.conformTo.map(comp_res(r, _)).getOrElse(r)
+    val (res, evConn) =
+      if (resources.conn != null) (resources, null)
+      else {
+        val c = evaluatorConn()     // do fallback to evaluator connection
+        (resources.withConn(c), c)
+      }
+    val result = Query(tresql.tresql)(res.withParams(bindVars)) match {
+      case sel: SelectResult[_] if evConn != null =>
+        // convert select result to list so evaluator conn can be closed
+        IteratorResult(sel.toListOfMaps.iterator)
+      case r => TresqlResult(r)
+    }
+    if (evConn != null) evConn.close()
+    tresql.conformTo.map(comp_res(result, _)).getOrElse(result)
   }
 
   protected def doViewCall(
