@@ -167,6 +167,10 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case x => sys.error(s"Expected type WabaseEmail, got: ${x.getClass.getName}")
     }
   }
+  protected def evaluatorConn(): Connection = {
+    val evaluatorPoolName = config.getString("app.wabase.evaluator.pool")
+    ConnectionPools(PoolName(evaluatorPoolName)).getConnection
+  }
 
   override protected def persistenceFilters(
     view: ViewDef,
@@ -590,7 +594,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   )(implicit
     resources: Resources,
   ): DataResult = {
-    val r = TresqlResult(Query(tresql.tresql)(resources.withParams(bindVars)))
+    val res = if (resources.conn != null) resources else resources.withConn(evaluatorConn())
+    val r = TresqlResult(Query(tresql.tresql)(res.withParams(bindVars)))
     tresql.conformTo.map(comp_res(r, _)).getOrElse(r)
   }
 

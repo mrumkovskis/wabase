@@ -1325,6 +1325,13 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     } yield t1
   }
 
+  it should "use evaluator db" in {
+    for {
+      t1 <- doAction("get", "evaluator_db_test", Map())
+        .map(_ shouldBe Map("greeting" -> "Hello from wabase!"))
+    } yield t1
+  }
+
   it should "do wabase routes and return results" in {
     implicit val user: TestUsr = TestUsr(100)
     /*

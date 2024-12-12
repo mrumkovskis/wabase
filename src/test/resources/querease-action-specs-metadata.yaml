@@ -1334,3 +1334,11 @@ get:
 - name = 'John'
 - surname = 'Telos'
 - return this
+
+
+name: evaluator_db_test
+api: get
+explicit db: true
+table:
+get:
+- as any unique_opt {'Hello' || ' ' || 'from' || ' ' || 'wabase!' greeting}
