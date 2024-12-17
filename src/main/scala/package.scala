@@ -106,7 +106,10 @@ package object wabase extends Loggable {
   def invocationParameter(availableParameters: Seq[(Class[_], () => Any)])(parameterClass: Class[_]): Any =
     availableParameters.collectFirst {
       case (c, f) if parameterClass.isAssignableFrom(c) || c.isAssignableFrom(parameterClass) => f()
-    }.getOrElse(sys.error(s"Cannot find value for function parameter. Unsupported parameter type: $parameterClass"))
+    }.getOrElse(throw new IllegalArgumentException(s"Cannot find value for function parameter. " +
+      s"Unsupported parameter type: $parameterClass\nAllowed parameters are of type: (${
+        availableParameters.map(_._1.getName).mkString(", ")
+      })"))
 
   def invokeFunction(className: String, function: String, getParameter: Class[_] => Any): Any = {
     val obj = getObjectOrNewInstance(className, s"function $function")

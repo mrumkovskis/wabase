@@ -570,7 +570,7 @@ create:
 
 name: invocation_test_2
 table:
-api: get, list, save, delete
+api: get, list, save, delete, count
 key: key
 fields:
 - key:
@@ -591,6 +591,8 @@ update:
 - :x -> org.wabase.QuereaseActionTestManager.seqMethod
 delete:
 - test.QuereaseActionJavaManager.identity
+count:
+- org.wabase.QuereaseActionTestManagerObj.invalidArgument   # will throw java.lang.IllegalArgumentException
 
 
 name: invocation_result_mapper_test
