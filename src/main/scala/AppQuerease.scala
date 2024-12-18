@@ -804,12 +804,10 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         }
         val pf2: PartialFunction[String, Any] = {
           case mf if tresqlResult.typedPf(0).isDefinedAt(mf) =>
-            if (tresqlResult.hasNext) {
+            try if (tresqlResult.hasNext) {
               tresqlResult.next()
-              val r = tresqlResult.typedPf(0)(mf)
-              tresqlResult.close()
-              r
-            } else null
+              tresqlResult.typedPf(0)(mf)
+            } else null finally tresqlResult.close()
         }
         val pf3 = new PartialFunction[Class[_], Any] {
           override def isDefinedAt(clazz: Class[_]): Boolean =
