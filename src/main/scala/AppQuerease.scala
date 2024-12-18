@@ -798,7 +798,32 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       )
     } else {
       doActionOp(op.arg, data, env, context).flatMap { opRes =>
-        invokeFunction(className, function, Seq((classOf[QuereaseResult], () => opRes)), PartialFunction.empty) match {
+        val tresqlResult = opRes match { case TresqlResult(result) => result case _ => null }
+        val pf1: PartialFunction[Class[_], String] = {
+          case clazz if tresqlResult != null => scala.reflect.Manifest.classType(clazz).toString()
+        }
+        val pf2: PartialFunction[String, Any] = {
+          case mf if tresqlResult.typedPf(0).isDefinedAt(mf) =>
+            if (tresqlResult.hasNext) {
+              tresqlResult.next()
+              val r = tresqlResult.typedPf(0)(mf)
+              tresqlResult.close()
+              r
+            } else null
+        }
+        val pf3 = new PartialFunction[Class[_], Any] {
+          override def isDefinedAt(clazz: Class[_]): Boolean =
+            pf1.isDefinedAt(clazz) && pf2.isDefinedAt(pf1(clazz))
+          override def apply(clazz: Class[_]): Any = pf2(pf1(clazz))
+        }
+
+        invokeFunction(
+          className,
+          function,
+          Seq((classOf[QuereaseResult], () => opRes)),
+          // if opRes is tresql result and function parameter is of primitive value use typedPf function to get the value.
+          pf3 // cannot use pf1 andThen pf2 on scala 2.12
+        ) match {
           case f: Future[_] => f
           case x => Future.successful(x)
         }

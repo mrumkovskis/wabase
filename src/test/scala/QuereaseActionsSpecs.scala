@@ -548,6 +548,5 @@ object QuereaseActionTestManagerObj {
     val httpClient = httpClients.httpClients.head._2
     httpClient(null)(HttpRequest(uri = data("uri").toString))
   }
-  // will throw IllegalArgumentException
-  def invalidArgument(s: String) = s
+  def stringArgument(s: String) = s + " " + s
 }

@@ -592,7 +592,8 @@ update:
 delete:
 - test.QuereaseActionJavaManager.identity
 count:
-- org.wabase.QuereaseActionTestManagerObj.invalidArgument   # will throw java.lang.IllegalArgumentException
+- arg = 'value'
+- org.wabase.QuereaseActionTestManagerObj.stringArgument :arg
 
 
 name: invocation_result_mapper_test
