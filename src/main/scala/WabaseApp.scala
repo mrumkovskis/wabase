@@ -3,7 +3,6 @@ package org.wabase
 import akka.actor.ActorSystem
 import akka.http.scaladsl.model.{HttpRequest, HttpResponse, StatusCodes}
 import akka.http.scaladsl.model.headers.`Timeout-Access`
-import akka.http.scaladsl.server.{RequestContext => HttpReqCtx}
 import akka.stream.Materializer
 import akka.stream.scaladsl.{Keep, Source}
 import akka.util.ByteString
@@ -61,7 +60,7 @@ trait WabaseApp[User] {
     val ec:       ExecutionContext,
     val as:       ActorSystem,
     val appFs:    AppFileStreamer[User],
-    val reqCtx:   HttpReqCtx,
+    val httpReq:  HttpRequest,
   ) {
     lazy val env: Map[String, Any] = state ++ current_user_param(user)
     val fileStreamer = if (appFs == null) null else appFs.fileStreamer
@@ -88,24 +87,24 @@ trait WabaseApp[User] {
     ec:       ExecutionContext,
     as:       ActorSystem,
     appFs:    AppFileStreamer[User],
-    reqCtx:   HttpReqCtx,
+    httpReq:  HttpRequest,
   ): Future[WabaseResult] = {
     val vdo = qe.viewDefOption(viewName)
-    def setMaxContentSize(ctx: HttpReqCtx) = vdo.map { vd =>
-      if (vd.maxContentSize == null || ctx == null) ctx
-      else ctx.withRequest(ctx.request.withEntity(ctx.request.entity.withSizeLimit(vd.maxContentSize)))
-    }.getOrElse(ctx)
-    def setTimeout(ctx: HttpReqCtx) = vdo.map { vd =>
-      if(vd.timeout == null || ctx == null) ctx
+    def setMaxContentSize(httpReq: HttpRequest) = vdo.map { vd =>
+      if (vd.maxContentSize == null || httpReq == null) httpReq
+      else httpReq.withEntity(httpReq.entity.withSizeLimit(vd.maxContentSize))
+    }.getOrElse(httpReq)
+    def setTimeout(httpReq: HttpRequest) = vdo.map { vd =>
+      if(vd.timeout == null || httpReq == null) httpReq
       else {
-        ctx.request.header[`Timeout-Access`].map(_.timeoutAccess.updateTimeout(vd.timeout))
+        httpReq.header[`Timeout-Access`].map(_.timeoutAccess.updateTimeout(vd.timeout))
           .getOrElse(logger.warn(s"request timeout is defined for view $viewName, however no request-timeout http header is set!"))
-        ctx
+        httpReq
       }
-    }.getOrElse(ctx)
+    }.getOrElse(httpReq)
     doWabaseAction(
       AppActionContext(actionName, viewName, keyValues, params, values ++ params, resultFilter)(
-        user, state, ec, as, appFs, setMaxContentSize(setTimeout(reqCtx))),
+        user, state, ec, as, appFs, setMaxContentSize(setTimeout(httpReq))),
       doApiCheck)
   }
 
@@ -177,7 +176,7 @@ trait WabaseApp[User] {
         case wr => Future.successful(wr)
       }
       .andThen {
-        case Success(WabaseResult(ctx, res)) => this.afterWabaseAction(ctx, Success(res))
+        case Success(WabaseResult(httpReq, res)) => this.afterWabaseAction(httpReq, Success(res))
         case Failure(error) => this.afterWabaseAction(context, Failure[QuereaseResult](error))
       }
   }
@@ -186,7 +185,7 @@ trait WabaseApp[User] {
     import context._
     val rf = resourceFactory(context)
     qe.QuereaseAction(viewName, actionName, values, env, context.resultFilter)(
-        rf, fileStreamer, reqCtx, qio, httpClients, injectionParametersFactory)
+        rf, fileStreamer, httpReq, qio, httpClients, injectionParametersFactory)
       .map(WabaseResult(context, _))
   }
 
@@ -230,7 +229,7 @@ trait WabaseApp[User] {
     }
     val rf = resourceFactory(context)
     qe.QuereaseAction(viewName, Action.Get, values, env,
-      context.resultFilter)(rf, fileStreamer, reqCtx, qio, httpClients, injectionParametersFactory).map(oldVal)
+      context.resultFilter)(rf, fileStreamer, httpReq, qio, httpClients, injectionParametersFactory).map(oldVal)
   }
   protected def throwOldValueNotFound(message: String, locale: Locale): Nothing =
     throw new org.mojoz.querease.NotFoundException(translate(message)(locale))
@@ -257,7 +256,7 @@ trait WabaseApp[User] {
         this.customValidations(saveableContext)(state.locale)
         val rf = resourceFactory(context)
         qe.QuereaseAction(viewName, context.actionName, saveable, env, context.resultFilter)(rf, fileStreamer,
-            reqCtx, qio, httpClients, injectionParametersFactory)
+            httpReq, qio, httpClients, injectionParametersFactory)
           .map(WabaseResult(saveableContext, _))
           .recover { case ex => friendlyConstraintErrorMessage(viewDef, throw ex)(state.locale) }
       }
@@ -269,7 +268,7 @@ trait WabaseApp[User] {
       val richContext = context.copy(oldValue = oldValue)
       val rf = resourceFactory(richContext)
       qe.QuereaseAction(viewName, actionName, values, env, context.resultFilter)(
-          rf, fileStreamer, reqCtx, qio, httpClients, injectionParametersFactory)
+          rf, fileStreamer, httpReq, qio, httpClients, injectionParametersFactory)
         .map(WabaseResult(richContext, _))
         .recover { case ex => friendlyConstraintErrorMessage(throw ex)(state.locale) }
     }

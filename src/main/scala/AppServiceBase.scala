@@ -153,7 +153,7 @@ trait AppServiceBase[User]
   def getByIdAction(viewName: String, id: Long)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
       if (useActions(viewName, Action.Get)) {
-        extractRequestContext { implicit ctx =>
+        extractRequest { implicit httpReq =>
           extractStringId { idString =>
             complete(app.doWabaseAction(Action.Get, viewName, Seq(idString), filterPars(params)))
           }
@@ -167,7 +167,7 @@ trait AppServiceBase[User]
     implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
       if (useActions(viewName, Action.Get)) {
-        extractRequestContext { implicit ctx =>
+        extractRequest { implicit httpReq =>
           complete(app.doWabaseAction(Action.Get, viewName, keyValues, filterPars(params)))
         }
       } else {
@@ -181,7 +181,7 @@ trait AppServiceBase[User]
     implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
       if (useActions(viewName, Action.Get)) {
-        extractRequestContext { implicit ctx =>
+        extractRequest { implicit httpReq =>
           complete(app.doWabaseAction(Action.Get, viewName, Seq(value), filterPars(params) + (name -> value)))
         }
       } else {
@@ -192,7 +192,7 @@ trait AppServiceBase[User]
   def createAction(viewName: String)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
       if (useActions(viewName, Action.Create)) {
-        extractRequestContext { implicit ctx =>
+        extractRequest { implicit httpReq =>
           complete(app.doWabaseAction(Action.Create, viewName, Nil, filterPars(params)))
         }
       } else {
@@ -217,7 +217,7 @@ trait AppServiceBase[User]
   def deleteByKeyAction(viewName: String, keyValues: Seq[Any])(
     implicit user: User, state: ApplicationState, timeout: QueryTimeout): Route =
     parameterMultiMap { params =>
-      extractRequestContext { implicit ctx =>
+      extractRequest { implicit httpReq =>
         complete {
           app.doWabaseAction(Action.Delete, viewName, keyValues, filterPars(params))
         }
@@ -246,7 +246,7 @@ trait AppServiceBase[User]
       parameterMultiMap { params =>
         app.checkApi(viewName, Action.Update, user, keyValues)
         entityAsMapOrException(viewName) { entityAsMap =>
-          extractRequestContext { implicit ctx =>
+          extractRequest { implicit httpReq =>
             complete {
               app.doWabaseAction(Action.Update, viewName, keyValues, filterPars(params), entityAsMap,
                 doApiCheck = false /* api checked above */)
@@ -260,7 +260,7 @@ trait AppServiceBase[User]
       val impliedIdForGetOpt = app.impliedIdForGetOverList(viewName)
       if (impliedIdForGetOpt.isDefined)
         if (useActions(viewName, Action.Get)) {
-          extractRequestContext { implicit ctx =>
+          extractRequest { implicit httpReq =>
             complete(app.doWabaseAction(Action.Get, viewName, Nil, filterPars(params)))
           }
         } else {
@@ -273,7 +273,7 @@ trait AppServiceBase[User]
   protected def listAction(viewName: String, params: Map[String, List[String]])(
     implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     if (useActions(viewName, Action.List)) {
-      extractRequestContext { implicit ctx =>
+      extractRequest { implicit httpReq =>
         complete {
           app.doWabaseAction(
             Action.List,
@@ -304,7 +304,7 @@ trait AppServiceBase[User]
         if (useActions(viewName, Action.Insert)) {
           app.checkApi(viewName, Action.Insert, user, keyValues)
           entityAsMapOrException(viewName) { entityAsMap =>
-            extractRequestContext { implicit ctx =>
+            extractRequest { implicit httpReq =>
               complete {
                 app.doWabaseAction(Action.Insert, viewName, keyValues, filterPars(params), entityAsMap,
                   doApiCheck = false /* api checked above */)
@@ -324,7 +324,7 @@ trait AppServiceBase[User]
   def countAction(viewName: String)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
       if (useActions(viewName, Action.Count)) {
-        extractRequestContext { implicit ctx =>
+        extractRequest { implicit httpReq =>
           complete(app.doWabaseAction(Action.Count, viewName, Nil, filterPars(params)))
         }
       } else {

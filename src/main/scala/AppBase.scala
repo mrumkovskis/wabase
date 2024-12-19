@@ -587,7 +587,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
         implicit val ec = scala.concurrent.ExecutionContext.global
         implicit val as: ActorSystem = null
         implicit val fs: AppFileStreamer[User] = null
-        implicit val reqCtx: akka.http.scaladsl.server.RequestContext = null
+        implicit val httpReq: akka.http.scaladsl.model.HttpRequest = null
         implicit val httpClients: WabaseHttpClients = null
         dbUse {
           validateFields(instance)

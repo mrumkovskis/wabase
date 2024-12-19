@@ -5,7 +5,6 @@ import akka.http.scaladsl.model.HttpHeader.ParsingResult.{Error, Ok}
 import akka.http.scaladsl.model.headers.ContentDispositionTypes.attachment
 import akka.http.scaladsl.model.headers.`Content-Disposition`
 import akka.http.scaladsl.model.{ContentType, ContentTypes, HttpCharsets, HttpEntity, HttpHeader, HttpMethods, HttpRequest, HttpResponse, MediaTypes, Multipart, StatusCodes, UniversalEntity}
-import akka.http.scaladsl.server.RequestContext
 import akka.http.scaladsl.server.directives.ContentTypeResolver
 import akka.http.scaladsl.server.directives.FileAndResourceDirectives.ResourceFile
 import akka.stream.scaladsl.{Source, StreamConverters}
@@ -42,7 +41,7 @@ case class QuereaseResources()(implicit
   val ec: ExecutionContext,
   val as: ActorSystem,
   val fs: FileStreamer,
-  val reqCtx: RequestContext,
+  val httpReq: HttpRequest,
   val qio: AppQuereaseIo[Dto],
   val httpClients: WabaseHttpClients,
   val parametersFactory: InjectionParametersFactory,
@@ -84,7 +83,7 @@ case class KeyResult(ir: IdResult, viewName: String, key: Seq[Any]) extends Quer
 case class AnyResult(result: Any) extends QuereaseResult
 case class QuereaseDeleteResult(count: Int) extends QuereaseResult
 case class StatusResult(code: Int, value: StatusValue) extends QuereaseResult
-case class ResourceResult(resource: String, contentType: ContentType, httpCtx: RequestContext) extends DataResult
+case class ResourceResult(resource: String, contentType: ContentType, httpReq: HttpRequest) extends DataResult
 case class FileInfoResult(fileInfo: FileInfo) extends QuereaseResult
 case class FileResult(fileInfo: FileInfo, fileStreamer: FileStreamer) extends DataResult
 case class RequestPartResult(result: Source[RequestPart, Any]) extends DataResult
@@ -297,7 +296,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       doCleanup: Boolean = false,
     )(resourcesFactory: ResourcesFactory,
       fileStreamer: FileStreamer,
-      reqCtx: RequestContext,
+      httpReq: HttpRequest,
       qio: AppQuereaseIo[Dto],
       httpClients: WabaseHttpClients,
       parameterFactory: InjectionParametersFactory,
@@ -310,7 +309,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
                 val (poolName, extraDbs) = dbResourceNames(objName, actionName)
                 resourcesFactory.copy()(resources = resourcesFactory.initResources(poolName, extraDbs))
               }
-            implicit val qr = new QuereaseResources()(resFac, ec, as, fileStreamer, reqCtx, qio, httpClients,
+            implicit val qr = new QuereaseResources()(resFac, ec, as, fileStreamer, httpReq, qio, httpClients,
               parameterFactory)
             import resFac._
             def processResult(res: QuereaseResult, cleanup: Option[Throwable] => Unit): QuereaseResult = res match {
@@ -700,7 +699,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         Future.successful(res)
       } else {
         val nqr = qr.copy()(resourcesFactory = resourcesFactory.focus(if (v.db != null) v.db else defaultCpName),
-          ec, as, fs, reqCtx, qio, httpClients, parametersFactory)
+          ec, as, fs, httpReq, qio, httpClients, parametersFactory)
         do_action(viewName, method, callData, env, context.fieldFilter, context :: context.contextStack)(nqr)
       }
     }
@@ -717,8 +716,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     def invokeFunction(className: String, function: String,
                        params: Seq[(Class[_], () => Any)], pf: PartialFunction[Class[_], Any]): Any = {
       this.invokeFunction(className, function, params,
-        InjectionParametersContext(Option(reqCtx).map(_.request).orNull, env, data),
-        qr.copy()(resourcesFactory, ec, as, fs, reqCtx, qio, httpClients,
+        InjectionParametersContext(httpReq, env, data),
+        qr.copy()(resourcesFactory, ec, as, fs, httpReq, qio, httpClients,
           parametersFactory = ipc => pf orElse qr.parametersFactory(ipc))
       )
     }
@@ -998,7 +997,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     context: ActionContext,
   )(implicit
     res: Resources,
-    reqCtx: RequestContext,
+    httpReq: HttpRequest,
   ): Future[ResourceResult] = {
     val resource = Query(op.nameTresql.tresql)(res.withParams(data ++ env)).unique[String]
     val ct = Option(op.contentTypeTresql)
@@ -1011,7 +1010,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       .getOrElse {
         ContentTypeResolver.withDefaultCharset(HttpCharsets.`UTF-8`)(resource)
       }
-    Future.successful(ResourceResult(resource, ct, reqCtx))
+    Future.successful(ResourceResult(resource, ct, httpReq))
   }
 
   protected def doFile(
@@ -1198,7 +1197,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           .getOrElse(
             if (httpClients.httpClients.size == 1) httpClients.httpClients.head._2
             else sys.error(s"Http client name not specified, expected one http client, got: $httpClients"))
-        val httpClient = httpClientFactory(InjectionParametersContext(Option(reqCtx).map(_.request).orNull, env, data))
+        val httpClient = httpClientFactory(InjectionParametersContext(httpReq, env, data))
         doHttpRequest(httpClient, viewDefOption(context.viewName).map(_.maxContentSize).orNull, req)
       }
     }
@@ -1218,9 +1217,9 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     ec: ExecutionContext,
     as: ActorSystem,
     fs: FileStreamer,
-    reqCtx: RequestContext,
+    httpReq: HttpRequest,
   ): Future[QuereaseResult] = {
-    val headerVal = Option(reqCtx).map(_.request.headers).flatMap(_.collectFirst {
+    val headerVal = Option(httpReq).map(_.headers).flatMap(_.collectFirst {
       case h if h.is(op.name.toLowerCase) => StringResult(h.value())
     }).getOrElse(NoResult)
     Future.successful(headerVal)
@@ -1236,9 +1235,9 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     ec: ExecutionContext,
     as: ActorSystem,
     fs: FileStreamer,
-    reqCtx: RequestContext,
+    httpReq: HttpRequest,
   ): Future[QuereaseResult] = {
-    val cookie = Option(reqCtx).map(_.request.cookies).flatMap(_.collectFirst {
+    val cookie = Option(httpReq).map(_.cookies).flatMap(_.collectFirst {
       case h if h.name.toLowerCase == op.name.toLowerCase => StringResult(h.value)
     }).getOrElse(NoResult)
     Future.successful(cookie)
@@ -1263,7 +1262,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       .focus(context.view.map(_.db).filter(_ != null).getOrElse(defaultCpName))
     logContext(context, env, newResFact)
     val closeRes = resourcesFactory.closeResources(newResFact.resources, op.doRollback, _)
-    val nqr = new QuereaseResources()(newResFact, ec, as, fs, reqCtx, qio, httpClients, parametersFactory)
+    val nqr = new QuereaseResources()(newResFact, ec, as, fs, httpReq, qio, httpClients, parametersFactory)
     doSteps(op.action.steps, context.copy(stepName = "db"),
       Future.successful(data))(nqr).map {
       case DbResult(r, cl) => DbResult(r, cl.andThen(_ => closeRes(None)))
@@ -1336,15 +1335,14 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   }
 
   protected def doExtractParts(data: Map[String, Any], env: Map[String, Any], context: ActionContext)(
-    implicit reqCtx: RequestContext, as: ActorSystem): Future[RequestPartResult] = {
-    val req = reqCtx.request
-    val entity = req.entity
+    implicit httpReq: HttpRequest, as: ActorSystem): Future[RequestPartResult] = {
+    val entity = httpReq.entity
     if (entity.contentType.mediaType.isMultipart) {
       import akka.http.scaladsl.unmarshalling.MultipartUnmarshallers._
       import akka.http.scaladsl.server.directives.MarshallingDirectives
       val um = MarshallingDirectives.as[Multipart.FormData]
       implicit val ec = as.dispatcher
-      um(req).map { formdata =>
+      um(httpReq).map { formdata =>
         val src = formdata.parts.map {
           case filePart if filePart.filename.isDefined =>
             RequestPart(filePart.name, filePart.entity.contentType, filePart.filename.get, filePart.entity.dataBytes)
@@ -1357,7 +1355,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       val filename = viewDefOption(context.viewName)
         .filter(_.keyFieldNames.size == 1)
         .flatMap(vd => data.get(vd.keyFieldNames.head).map(String.valueOf))
-        .getOrElse(req.uri.path.reverse.head.toString)
+        .getOrElse(httpReq.uri.path.reverse.head.toString)
       Future.successful(
         RequestPartResult(
           Source.single(
@@ -1669,8 +1667,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       (classOf[ExecutionContext], () => ec),
       (classOf[ActorSystem], () => as),
       (classOf[FileStreamer], () => fs),
-      (classOf[HttpRequest], () => Option(reqCtx).map(_.request).orNull),
-      (classOf[RequestContext], () => reqCtx),
+      (classOf[HttpRequest], () => httpReq),
       (classOf[AppQuereaseIo[Dto]], () => qio),
       (classOf[WabaseHttpClients], () => httpClients),
     )

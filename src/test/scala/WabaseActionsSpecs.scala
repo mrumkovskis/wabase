@@ -3,7 +3,7 @@ package org.wabase
 import akka.actor.ActorSystem
 import akka.http.scaladsl.marshalling.Marshal
 import akka.http.scaladsl.model.{ContentType, ContentTypes, HttpEntity, HttpRequest, HttpResponse, MessageEntity, Multipart, StatusCodes}
-import akka.http.scaladsl.server.{RequestContext, Route}
+import akka.http.scaladsl.server.Route
 import akka.http.scaladsl.testkit.ScalatestRouteTest
 import akka.http.scaladsl.unmarshalling.Unmarshal
 import akka.stream.scaladsl.{Source, StreamConverters}
@@ -218,7 +218,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
                           ) = {
     implicit val state = ApplicationState(env)
     implicit val fileStreamer: AppFileStreamer[TestUsr] = app
-    implicit val reqCtx: RequestContext = null
+    implicit val httpReq: HttpRequest = null
     app.doWabaseAction(action, view, keyValues, params, values)
       .map(_.result)
       .flatMap {

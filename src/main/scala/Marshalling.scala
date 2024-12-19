@@ -12,8 +12,9 @@ import scala.concurrent.{ExecutionContext, Future}
 import akka.http.scaladsl.model.headers.{ContentDispositionType, ContentDispositionTypes, Location, RawHeader, `Content-Disposition`}
 import akka.http.scaladsl.server.RouteResult.{Complete, Rejected}
 import akka.http.scaladsl.server.directives.FileAndResourceDirectives
+import akka.http.scaladsl.server.directives.FileAndResourceDirectives.ResourceFile
 import akka.http.scaladsl.unmarshalling.{FromEntityUnmarshaller, FromResponseUnmarshaller, Unmarshaller}
-import akka.stream.scaladsl.Source
+import akka.stream.scaladsl.{Source, StreamConverters}
 import akka.util.ByteString
 import io.bullet.borer.compat.akka.ByteStringProvider
 import org.mojoz.querease.QuereaseIteratorResult
@@ -230,12 +231,30 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
     }.getOrElse(HttpResponse(status = StatusCodes.NotFound))
   }
   implicit val toResponseResourceResultMarshaller:          ToResponseMarshaller[ResourceResult] = Marshaller.combined {
+    /*
     rr => FileAndResourceDirectives
       .getFromResource(rr.resource, rr.contentType)(rr.httpCtx)
       .map {
         case Complete(response) => response
         case _: Rejected => HttpResponse(status = StatusCodes.NotFound)
       }
+    */
+    rr =>
+      if (!rr.resource.endsWith("/"))
+        Option(this.getClass.getResource(rr.resource)) flatMap ResourceFile.apply match {
+          case Some(ResourceFile(url, length, lastModified)) =>
+          //conditionalFor(length, lastModified) { // TODO
+              if (length > 0) {
+              //withRangeSupportAndPrecompressedMediaTypeSupport { // TODO
+                  HttpResponse(entity =
+                    HttpEntity.Default(rr.contentType, length, StreamConverters.fromInputStream(() => url.openStream()))
+                  )
+              //}
+              } else HttpResponse(entity = HttpEntity.Empty)
+          //}
+          case _ => HttpResponse(status = StatusCodes.NotFound) // not found or directory
+        }
+      else HttpResponse(status = StatusCodes.NotFound) // don't serve the content of resource "directories"
   }
   implicit val toResponseTemplateResultMarshaller:          ToResponseMarshaller[TemplateResult] =
     Marshaller.combined {
