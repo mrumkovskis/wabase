@@ -1131,6 +1131,17 @@ insert:
 - status ok { :name || ' ' || :surname }
 
 
+name: form_urlencoded_with_evaluator_test
+table:
+api: insert, get
+explicit db: true
+fields:
+  - name
+  - surname
+get:
+  - http post { '/form_urlencoded_' || 'test' } { :name name, :surname surname } { 'Content-Type', 'application/x-www-form-urlencoded' }
+
+
 name: build_cursors_test
 table:
 api: list, get

@@ -177,6 +177,14 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case dialect => defaultResources.withDialect(dialect)
     }
   }
+  private def useResourcesConnOrEvaluator[T](resources: Resources, f: Resources => T): T =
+    if (resources.conn != null)
+      f(resources)
+    else {
+      val r = evaluatorResources(resources)
+      val c = evaluatorConn()     // do fallback to evaluator connection
+      try f(r.withConn(c)) finally c.close()
+    }
 
   override protected def persistenceFilters(
     view: ViewDef,
@@ -600,22 +608,16 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   )(implicit
     resources: Resources,
   ): DataResult = {
-    val (res, evConn) =
-      if (resources.conn != null) (resources, null)
-      else {
-        val r = evaluatorResources(resources)
-        val c = evaluatorConn()     // do fallback to evaluator connection
-        (r.withConn(c), c)
-      }
-    val result = Query(tresql.tresql)(res.withParams(bindVars)) match {
-      case sel: SelectResult[_] if evConn != null =>
+    val result = useResourcesConnOrEvaluator(resources, res =>
+     Query(tresql.tresql)(res.withParams(bindVars)) match {
+      case sel: SelectResult[_] if resources.conn == null =>
         // convert select result to list or single value so evaluator conn can be closed
         val r = sel.toListOfMaps
         if (r.size == 1 && r.head.size == 1) TresqlResult(SingleValueResult(r.head.head._2))
         else IteratorResult(sel.toListOfMaps.iterator)
       case r => TresqlResult(r)
-    }
-    if (evConn != null) evConn.close()
+     }
+    )
     tresql.conformTo.map(comp_res(result, _)).getOrElse(result)
   }
 
@@ -1158,12 +1160,16 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     val opData = data ++ env
     val httpMeth = HttpMethods.getForKeyCaseInsensitive(op.method).get
     val uri = {
-      val trUri = tresqlUri.tresqlUriValue(op.uriTresql)(Query, opData, implicitly[Resources])
+      val trUri =
+        useResourcesConnOrEvaluator(implicitly[Resources], res =>
+          tresqlUri.tresqlUriValue(op.uriTresql)(Query, opData, res)
+        )
       tresqlUri.uri(trUri)
     }
     val (optContentType, headers) = if (op.headerTresql == null) (Some(null) -> Nil) else {
       // content type is used for request body if present
-      val parsedValues = (Query(op.headerTresql.tresql, opData) match {
+      val parsedValues = useResourcesConnOrEvaluator(implicitly[Resources], res =>
+       (Query(op.headerTresql.tresql, opData)(res) match {
         case SingleValueResult(r) => r match { // unwrap header values from list of maps
           case i: Iterable[_] => i.map {
             case m: Map[_, _] if m.size > 1 =>
@@ -1174,9 +1180,10 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           case x => sys.error(s"Cannot retrieve http headers from structure: [$x], Iterable[Map[_, _]] is required")
         }
         case r: Result[_] => r.list[String, String]
-      }).map {
+       }).map {
         case (name, value) => HttpHeader.parse(name, value)
-      }
+       }
+      )
       val (ok, errs) = parsedValues.partition(_.isInstanceOf[Ok])
       require(errs.isEmpty, s"Error(s) parsing http headers:\n${
         errs.map(e => e.asInstanceOf[Error].error.formatPretty).mkString("\n")}")

@@ -1225,6 +1225,16 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     } yield t1
   }
 
+  /* FIXME   
+  it should "use evaluator for http request builder" in {
+    for {
+      t1 <-
+        doAction("get", "form_urlencoded_with_evaluator_test", Map("name" -> "Nicola", "surname" -> "Ola"))
+          .map(_ shouldBe StringResult("Nicola Ola"))
+    } yield t1
+  }
+  */
+
   it should "process config" in {
     for {
       t1 <-
