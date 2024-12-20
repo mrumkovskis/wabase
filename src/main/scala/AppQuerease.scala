@@ -170,6 +170,13 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     val evaluatorPoolName = config.getString("app.wabase.evaluator.pool")
     ConnectionPools(PoolName(evaluatorPoolName)).getConnection
   }
+  protected def evaluatorResources(defaultResources: Resources): Resources = {
+    val evaluatorPoolName = config.getString("app.wabase.evaluator.pool")
+    TresqlResourcesConf.confs.get(evaluatorPoolName).map(_.dialect).orNull match {
+      case null    => defaultResources
+      case dialect => defaultResources.withDialect(dialect)
+    }
+  }
 
   override protected def persistenceFilters(
     view: ViewDef,
@@ -596,8 +603,9 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     val (res, evConn) =
       if (resources.conn != null) (resources, null)
       else {
+        val r = evaluatorResources(resources)
         val c = evaluatorConn()     // do fallback to evaluator connection
-        (resources.withConn(c), c)
+        (r.withConn(c), c)
       }
     val result = Query(tresql.tresql)(res.withParams(bindVars)) match {
       case sel: SelectResult[_] if evConn != null =>
