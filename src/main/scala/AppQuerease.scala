@@ -609,8 +609,10 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       }
     val result = Query(tresql.tresql)(res.withParams(bindVars)) match {
       case sel: SelectResult[_] if evConn != null =>
-        // convert select result to list so evaluator conn can be closed
-        IteratorResult(sel.toListOfMaps.iterator)
+        // convert select result to list or single value so evaluator conn can be closed
+        val r = sel.toListOfMaps
+        if (r.size == 1 && r.head.size == 1) TresqlResult(SingleValueResult(r.head.head._2))
+        else IteratorResult(sel.toListOfMaps.iterator)
       case r => TresqlResult(r)
     }
     if (evConn != null) evConn.close()
@@ -1583,7 +1585,6 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case row :: Nil if row.size == 1 => row.head._2
       case rows => rows
     }
-
     (res match {
       case TresqlResult(tr) => tr match {
         case dml: DMLResult =>

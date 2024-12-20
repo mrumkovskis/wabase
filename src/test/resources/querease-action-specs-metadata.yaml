@@ -1344,4 +1344,14 @@ api: get
 explicit db: true
 table:
 get:
-- as any unique_opt {'Hello' || ' ' || 'from' || ' ' || 'wabase!' greeting}
+- null{'Hello' || ' ' || 'from' || ' ' || 'wabase!'}
+
+
+name: evaluator_db_test1
+table:
+api: get
+explicit db: true
+get:
+- app_id = 123
+- uri = { 'set-basic-auth-credentials/' || :app_id }
+- as any :uri # must return single string value not result set
