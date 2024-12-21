@@ -614,7 +614,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         // convert select result to list or single value so evaluator conn can be closed
         val r = sel.toListOfMaps
         if (r.size == 1 && r.head.size == 1) TresqlResult(SingleValueResult(r.head.head._2))
-        else IteratorResult(sel.toListOfMaps.iterator)
+        else IteratorResult(r.iterator)
       case r => TresqlResult(r)
      }
     )
