@@ -1463,13 +1463,19 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       (Source.single(ByteString.fromArrayUnsafe(res)), null, ct, Option(res.length))
     }
 
-    def encodePrimitive(v: Any): (Source[ByteString, _], String, ContentType, Option[Long]) = {
+    def encodePrimitive(
+       v: Any,
+       pct: ContentType = ContentTypes.`text/plain(UTF-8)`
+    ): (Source[ByteString, _], String, ContentType, Option[Long]) = {
       val b = String.valueOf(v).getBytes("UTF8")
-      (Source.single(ByteString(b)), null, ContentTypes.`text/plain(UTF-8)`, Option(b.length))
+      (Source.single(ByteString(b)), null,
+        pct,
+        Option(b.length)
+      )
     }
 
     res match {
-      case StringResult(v) => encodePrimitive(v)
+      case StringResult(v) => encodePrimitive(v, ct)
       case LongResult(v) => encodePrimitive(v)
       case NumberResult(v) => encodePrimitive(v)
       case ConfResult(_, v) => v match {
@@ -1486,7 +1492,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         case SingleValueResult(r: Iterable[_]) =>
           (renderedSource(DataSerializer.source(() => r.iterator), resFil, isCollection.getOrElse(true), ct),
             null, contentType, None)
-        case SingleValueResult("") => (Source.empty[ByteString], null, ct, Option(0))
+        case SingleValueResult(s: String) => encodePrimitive(s, ct)
         case SingleValueResult(r) =>
           (renderedSource(DataSerializer.source(() => Iterator(r)), resFil, isCollection.getOrElse(false), ct),
             null, contentType, None)
