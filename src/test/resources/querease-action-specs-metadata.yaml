@@ -1144,6 +1144,19 @@ get:
   - :res
 
 
+name: form_urlencoded_empty_status_test
+table:
+api: insert, get
+explicit db: true
+fields:
+  - name
+  - surname
+get:
+  - status ok 'FIXME'   
+  #- res = http post { '/form_urlencoded_test' }
+  #- :res
+
+
 name: build_cursors_test
 table:
 api: list, get
