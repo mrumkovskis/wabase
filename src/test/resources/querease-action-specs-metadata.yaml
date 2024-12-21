@@ -1139,7 +1139,9 @@ fields:
   - name
   - surname
 get:
-  - http post { '/form_urlencoded_' || 'test' } { :name name, :surname surname } { 'Content-Type', 'application/x-www-form-urlencoded' }
+  - res =
+      http post { '/form_urlencoded_' || 'test' } { :name name, :surname surname } { 'Content-Type', 'application/x-www-form-urlencoded' }
+  - :res
 
 
 name: build_cursors_test

@@ -1225,7 +1225,6 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     } yield t1
   }
 
-  /* FIXME   
   it should "use evaluator for http request builder" in {
     for {
       t1 <-
@@ -1233,7 +1232,6 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
           .map(_ shouldBe StringResult("Nicola Ola"))
     } yield t1
   }
-  */
 
   it should "process config" in {
     for {
