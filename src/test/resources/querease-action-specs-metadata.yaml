@@ -1152,9 +1152,8 @@ fields:
   - name
   - surname
 get:
-  - status ok 'FIXME'   
-  #- res = http post { '/form_urlencoded_test' }
-  #- :res
+  - res = http post { '/form_urlencoded_test' } '' { 'Content-Type', 'application/x-www-form-urlencoded' }
+  - :res
 
 
 name: build_cursors_test

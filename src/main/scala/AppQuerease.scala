@@ -1486,6 +1486,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         case SingleValueResult(r: Iterable[_]) =>
           (renderedSource(DataSerializer.source(() => r.iterator), resFil, isCollection.getOrElse(true), ct),
             null, contentType, None)
+        case SingleValueResult("") => (Source.empty[ByteString], null, ct, Option(0))
         case SingleValueResult(r) =>
           (renderedSource(DataSerializer.source(() => Iterator(r)), resFil, isCollection.getOrElse(false), ct),
             null, contentType, None)

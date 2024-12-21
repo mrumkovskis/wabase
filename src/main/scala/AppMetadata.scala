@@ -875,9 +875,9 @@ class OpParser(viewName: String, tresqlUri: TresqlUri, cache: OpParser.Cache)
           Http(method.getOrElse("get"), tu(uri), headers.orNull, null)
       } named "http-get-delete-op"
     def http_post_put: MemParser[Http] =
-      ("post" | "put") ~ bracesTresql ~ operation ~ opt(tresqlOp) ^^ {
+      ("post" | "put") ~ bracesTresql ~ opt(operation) ~ opt(tresqlOp) ^^ {
         case method ~ uri ~ op ~ headers =>
-          Http(method, tu(uri), headers.orNull, op)
+          Http(method, tu(uri), headers.orNull, op.orNull)
       } named "http-post-put-op"
     opt(opResultType) ~ ("http" ~> opt("[" ~> HttpClientNameRegex <~ "]")) ~ (http_post_put | http_get_delete) ^^ {
       case conformTo ~ client ~ http => http.copy(conformTo = conformTo, httpClientName = client.orNull)

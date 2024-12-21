@@ -1233,7 +1233,6 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     } yield t1
   }
 
-  /* FIXME   
   it should "handle empty status message correctly" in {
     for {
       t1 <-
@@ -1241,7 +1240,6 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
           .map(_ shouldBe StringResult(""))
     } yield t1
   }
-  */
 
   it should "process config" in {
     for {
