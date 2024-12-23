@@ -1461,4 +1461,14 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       jsonAssert(r, Map("id" -> "1", "value" -> "hello"))
     }
   }
+
+  it should "extract entity and pass in http client request" in {
+    implicit val user: TestUsr = TestUsr(100)
+    val route = service.crudAction
+    Put("/extract_http_entity_test",
+      HttpEntity(ContentTypes.`text/plain(UTF-8)`, ByteString("Good morning!"))) ~> route ~> check {
+      val r = entityAs[String]
+      r shouldBe "Good morning!"
+    }
+  }
 }

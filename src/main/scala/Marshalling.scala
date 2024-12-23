@@ -274,6 +274,9 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
           )
         )
     }
+
+  implicit val toEntityHttpEntityResultMarshaller:          ToEntityMarshaller[HttpEntityResult] =
+    Marshaller.combined(_.entity)
   implicit val toResponseHttpResultMarshaller:              ToResponseMarshaller[HttpResult] =
     Marshaller.combined(_.response)
 
@@ -367,6 +370,7 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
       case fr: FileResult     => (toResponseFileResultMarshaller:             ToResponseMarshaller[FileResult]    )(fr)
       case rr: ResourceResult => (toResponseResourceResultMarshaller:         ToResponseMarshaller[ResourceResult])(rr)
       case tr: TemplateResult => (toResponseTemplateResultMarshaller:         ToResponseMarshaller[TemplateResult])(tr)
+      case er: HttpEntityResult => (toEntityHttpEntityResultMarshaller:       ToResponseMarshaller[HttpEntityResult])(er)
       case hr: HttpResult     => (toResponseHttpResultMarshaller:             ToResponseMarshaller[HttpResult]    )(hr)
       case cr: CompatibleResult => (toResponseCompatibleResultMarshaller(wr): ToResponseMarshaller[CompatibleResult])(cr)
       case cr: ConfResult     => (toEntityConfResultMarshaller:               ToResponseMarshaller[ConfResult]    )(cr)

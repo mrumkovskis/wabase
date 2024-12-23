@@ -4,7 +4,7 @@ import akka.actor.ActorSystem
 import akka.http.scaladsl.model.HttpHeader.ParsingResult.{Error, Ok}
 import akka.http.scaladsl.model.headers.ContentDispositionTypes.attachment
 import akka.http.scaladsl.model.headers.`Content-Disposition`
-import akka.http.scaladsl.model.{ContentType, ContentTypes, HttpCharsets, HttpEntity, HttpHeader, HttpMethods, HttpRequest, HttpResponse, MediaTypes, Multipart, StatusCodes, UniversalEntity}
+import akka.http.scaladsl.model.{ContentType, ContentTypes, HttpCharsets, HttpEntity, HttpHeader, HttpMethods, HttpRequest, HttpResponse, MediaTypes, Multipart, RequestEntity, StatusCodes, UniversalEntity}
 import akka.http.scaladsl.server.directives.ContentTypeResolver
 import akka.http.scaladsl.server.directives.FileAndResourceDirectives.ResourceFile
 import akka.stream.scaladsl.{Source, StreamConverters}
@@ -94,6 +94,7 @@ case class StringTemplateResult(content: String) extends TemplateResult
   { override def contentString: String = content }
 case class FileTemplateResult(filename: String, contentType: String, content: Array[Byte]) extends TemplateResult
   { override def contentString: String = new String(content, "UTF-8") }
+case class HttpEntityResult(entity: RequestEntity) extends DataResult
 case class HttpResult(response: HttpResponse) extends DataResult
 case object NoResult extends QuereaseResult
 case class QuereaseResultWithCleanup(result: QuereaseCloseableResult, cleanup: Option[Throwable] => Unit)
@@ -749,6 +750,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         case n: java.lang.Number => NumberResult(n)
         case d: Dto => MapResult(d.toMap(this))
         case o: Option[Dto]@unchecked => o.map(d => MapResult(d.toMap(this))).getOrElse(notFound)
+        case e: RequestEntity => HttpEntityResult(e)
         case h: HttpResponse => HttpResult(h)
         case q: QuereaseResult => q
         // view compatible collections if not allow any
@@ -1260,6 +1262,20 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     Future.successful(cookie)
   }
 
+  protected def doExtractEntity(
+    data: Map[String, Any],
+    env: Map[String, Any],
+    context: ActionContext,
+  )(implicit
+    resFac: ResourcesFactory,
+    ec: ExecutionContext,
+    as: ActorSystem,
+    fs: FileStreamer,
+    httpReq: HttpRequest,
+  ): Future[HttpEntityResult] = {
+    Future.successful(HttpEntityResult(httpReq.entity))
+  }
+
   protected def doDb(
     op: Action.Db,
     data: Map[String, Any],
@@ -1422,6 +1438,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case http: Action.Http => doHttp(http, data, env, context)
       case eh: Action.HttpHeader => doExtractHeader(eh, data, env, context)
       case exc: Action.Cookie => doExtractCookie(exc, data, env, context)
+      case Action.ExtractHttpEntity => doExtractEntity(data, env, context)
       case db: Action.Db => doDb(db, data, env, context)
       case block: Action.Block => doBlock(block, data, env, context)
       case c: Action.Conf => doConf(c, data, env, context)
@@ -1524,6 +1541,12 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
             .getOrElse(sys.error(s"Error parsing template result content type: $contentType"))
           (Source.single(ByteString(content)), fn, ct, Option(content.size))
       }
+      case HttpEntityResult(res) =>
+        ( res.dataBytes,
+          null,
+          res.contentType,
+          res.contentLengthOption
+        )
       case HttpResult(res) =>
         ( res.entity.dataBytes,
           res.header[`Content-Disposition`]
@@ -1649,6 +1672,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         case r: TresqlSingleRowResult => r.map(toCompatibleMap(_, v(filter.name))) // FIXME assumes that filter name matches view name
         case fr: FileResult => fileHttpEntity(fr).map(objFromHttpEntity(_, filter.name, isCollection)) // FIXME assumes that filter matches view name
           .getOrElse(sys.error(s"File not found: ${fr.fileInfo}"))
+        case HttpEntityResult(r) => objFromHttpEntity(r, filter.name, isCollection)  // FIXME assumes that filter name matches view name
         case HttpResult(r) => objFromHttpEntity(r.entity, filter.name, isCollection) // FIXME assumes that filter name matches view name
         case r => dataForNextStep(r, context, unwrapSingleValue)
       }

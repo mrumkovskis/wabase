@@ -907,7 +907,9 @@ class OpParser(viewName: String, tresqlUri: TresqlUri, cache: OpParser.Cache)
     case _ ~ c => Cookie(c)
   } named "http-hoc-op"
   def extractPartsOp: MemParser[ExtractParts.type] =
-    "extract parts" ^^ (_ => ExtractParts) named "extract-parts"
+    "extract parts" ^^^ ExtractParts named "extract-parts"
+  def extractEntityOp: MemParser[ExtractHttpEntity.type ] =
+    "extract entity" ^^^ ExtractHttpEntity named "extract-entity"
   def thisOp: MemParser[This.type] = "this" ^^^ This
 
   def bracesOp: MemParser[Op] = "(" ~> operation <~ ")" named "braces-op"
@@ -924,7 +926,8 @@ class OpParser(viewName: String, tresqlUri: TresqlUri, cache: OpParser.Cache)
   } named "named-ops"
   def operation: MemParser[Op] = (viewOp | jobOp | confOp | uniqueOp | invocationOp |
     httpOp | dbOp | resourceOp | fileOp | toFileOp | templateOp | emailOp |
-    jsonCodecOp | httpHeaderOrCookieOp | extractPartsOp | thisOp | bracesOp | tresqlOp) named "operation"
+    jsonCodecOp | httpHeaderOrCookieOp | extractPartsOp | extractEntityOp |
+    thisOp | bracesOp | tresqlOp) named "operation"
 
   private def opResultType: MemParser[OpResultType] = {
     sealed trait ResType
@@ -1124,8 +1127,10 @@ object AppMetadata extends Loggable {
      * (not to be evaluated as tresql to get job name). */
     case class Job(nameTresql: String, isDynamic: Boolean) extends Op
     case object Commit extends Op
-    /** This op can be used if view property 'decode request' is false */
+    /** This op can be used if view property 'decode request' is false, for multipart request it extracts parts,
+     * for simple request creates one part with body as a Source. */
     case object ExtractParts extends Op
+    case object ExtractHttpEntity extends Op
     case object This extends Op
 
     case class Evaluation(name: Option[String], varTrans: List[VariableTransform], op: Op) extends Step
@@ -1142,7 +1147,7 @@ object AppMetadata extends Loggable {
       def traverse(state: T): PartialFunction[Op, T] = {
         case _: Tresql | _: RedirectToKey | _: Status |
              _: VariableTransforms | _: File | _: Conf | _: HttpHeader | _: Cookie |
-             ExtractParts | This |  _: Job | _: Resource | Commit | null => state
+             ExtractParts | ExtractHttpEntity | This | _: Job | _: Resource | Commit | null => state
         case o: ViewCall => opTrav(state)(o.data)
         case Unique(o, _, _) => opTrav(state)(o)
         case Foreach(o, a) => traverseAction(a)(stepTrav)(opTrav(state)(o))
