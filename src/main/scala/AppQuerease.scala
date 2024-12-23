@@ -492,10 +492,10 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       }
       resF map {
         case ir: IdResult =>
+          // id result always updates current result
           key
             .map(k => upd(cr, k, ir.id))
             .getOrElse(cr ++ ir.toMap)
-        // id result always updates current result
         case NoResult => key.map(k => if (cr.contains(k)) cr else upd(cr, k, null)).getOrElse(cr)
         case r => key.map(k => upd(cr, k, r)).getOrElse(cr)
       }
@@ -506,7 +506,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         context.log(s"Doing action '${context.name}' step '$step'.")
         context.log(s"Step data: {${loggable(resourcesFactory.resources, stepData)}}")
         step match {
-          case Evaluation(_, vts, op) =>
+          case Evaluation(_, vts, op, _) =>
             doActionOp(op, doVarsTransforms(vts, stepData, stepData).result, context.env, context)
           case SetEnv(_, vts, op) =>
             doActionOp(op, doVarsTransforms(vts, stepData, stepData).result, context.env, context)
@@ -533,7 +533,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           case kr: KeyResult =>
             s match {
               // FIXME enable simple redirect from If
-              case Evaluation(_, _, RedirectToKey(_)) => Future.successful(kr)
+              case Evaluation(_, _, RedirectToKey(_), _) => Future.successful(kr)
               case _ => curData.map(keyResult(kr.ir, context.viewName, _)) // FIXME apply kr.toMap
             }
           case TresqlResult(r: DMLResult) if context.stepName == null && context.contextStack.isEmpty =>
@@ -553,7 +553,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
             }
           case x => Future.successful(x)
         } flatMap { res => s match {
-          case Evaluation(n@Some(_), _, _) => curData
+          case Evaluation(n@Some(_), _, _, _) => curData
             .flatMap(updateCurRes(_, n, dataForNextStep(res, context, true)))
             .map(MapResult)
           case _ => Future.successful(res)
@@ -563,7 +563,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           s match {
             case e: Evaluation =>
               doSteps(tail, context, curData
-                .flatMap(updateCurRes(_, e.name, dataForNextStep(stepRes, context, true))))
+                .flatMap(updateCurRes(_, e.name,
+                  if(e.keepResult) Future.successful(stepRes) else dataForNextStep(stepRes, context, true))))
             case se: SetEnv =>
               val newData =
                 dataForNextStep(stepRes, context, true) flatMap {
@@ -1510,6 +1511,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           (renderedSource(DataSerializer.source(() => r.iterator), resFil, isCollection.getOrElse(true), ct),
             null, contentType, None)
         case SingleValueResult(s: String) => encodePrimitive(s, ct)
+        // single value can be querease result if action step keepResult is set like 'as result variable = ...'
+        case SingleValueResult(qr: QuereaseResult) => renderedResult(qr, contentType, resFil, isCollection)
         case SingleValueResult(r) =>
           (renderedSource(DataSerializer.source(() => Iterator(r)), resFil, isCollection.getOrElse(false), ct),
             null, contentType, None)

@@ -1382,12 +1382,22 @@ get:
 - as any :uri # must return single string value not result set
 
 
-name: extract_http_entity_test
+name: extract_http_entity_test1
 decoder: none
 api: insert, update
 explicit db: true
 table:
 update:
-- http post '/extract_http_entity_test' (extract entity)
+- http post '/extract_http_entity_test1' extract entity
 insert:
 - extract entity
+
+
+name: extract_http_entity_test2
+decoder: none
+api: insert, update
+explicit db: true
+table:
+insert:
+- as result extracted_entity = extract entity               # keep result feature, step result not converted to bindable values
+- http post '/extract_http_entity_test1' :extracted_entity

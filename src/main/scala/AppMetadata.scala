@@ -567,7 +567,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   }
 
   protected def parseAction(objectName: String, stepData: Seq[Any], opParser: OpParser): Action = {
-    val namedStepRegex = """(?U)(?:((?:\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*)(?:\.\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*)*)\s*=\s*)?(.+)""".r
+    val namedStepRegex = """(?U)(?:(as\s+result\s+)?((?:\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*)(?:\.\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*)*)\s*=\s*)?(.+)""".r
     // matches - 'validations validation_name [db:cp]'
     val validationRegex = new Regex(s"(?U)${Action.ValidationsKey}(?:\\s+(\\w+))?(?:\\s+\\[(?:\\s*(\\w+)?\\s*(?::\\s*(\\w+)\\s*)?)\\])?")
     val arr_regex = "(?:\\s+\\[([^\\[^\\]]+)\\])?"
@@ -612,7 +612,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
           opParser.parseOperation(st)
         }
       }
-      def parseStringStep(name: Option[String], statement: String): Action.Step = {
+      def parseStringStep(name: Option[String], statement: String, keepResult: Boolean): Action.Step = {
         def parseSt(st: String, varTrs: List[VariableTransform]) = {
           def setEnvOrRetStep(createStep: Action.Op => Action.Step, stepRegex: Regex): Action.Step = {
             val stepRegex(opStr) = st
@@ -631,7 +631,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
           } else if (returnRegex.pattern.matcher(st).matches) {
             setEnvOrRetStep(Action.Return(name, varTrs, _), returnRegex)
           } else {
-            Action.Evaluation(name, varTrs, parseOp(st))
+            Action.Evaluation(name, varTrs, parseOp(st), keepResult)
           }
         }
 
@@ -652,11 +652,13 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
             val name = if (ident != null) ident else str_lit.substring(1, str_lit.length - 1)
             Action.RemoveVar(Some(name))
           case s: String =>
-            val namedStepRegex(name, st) = s
-            parseStringStep(Option(name), st)
+            val namedStepRegex(keepResult, name, st) = s
+            parseStringStep(Option(name), st, keepResult != null)
           case jm: java.util.Map[String, Any]@unchecked if jm.size() == 1 =>
             val m = jm.asScala.toMap
-            val (name, value) = m.head
+            val nameWithKeepResultRegex = """(as\s+result\s+)?(.+)""".r
+            val (nameWithKeepResult, value) = m.head
+            val nameWithKeepResultRegex(keepResult, name) = nameWithKeepResult
             if (validationRegex.pattern.matcher(name).matches()) {
               val validationRegex(vn, db, cp) = name
               val validations = getSeq(name, m).map(_.toString)
@@ -670,12 +672,12 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
                 case jm: java.util.Map[String@unchecked, _] =>
                   // may be 'if', 'foreach', 'db ...' step
                   parseStep(jm) match {
-                    case e: Action.Evaluation => e.copy(name = Option(name))
+                    case e: Action.Evaluation => e.copy(name = Option(name), keepResult = keepResult != null)
                     case x => sys.error(s"Invalid step '$name' value here: ($x), expected Evaluation step.")
                   }
                 case al: java.util.ArrayList[_] if name != null =>
                   // 'if', 'foreach', 'db ...' step
-                  val namedStepRegex(varName, opStr) = name
+                  val namedStepRegex(_, varName, opStr) = name
                   def pa = parseAction(objectName, al.asScala.toList, opParser)
                   val op =
                     if (ifOpRegex.pattern.matcher(opStr).matches()) {
@@ -695,8 +697,8 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
                     case _: Action.Block => name
                     case _ => varName
                   }
-                  Action.Evaluation(Option(eval_var_name), Nil, op)
-                case x => parseStringStep(Option(name), x.toString)
+                  Action.Evaluation(Option(eval_var_name), Nil, op, keepResult != null)
+                case x => parseStringStep(Option(name), x.toString, keepResult != null)
               }
             }
           case x =>
@@ -709,8 +711,8 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val coalescedSteps = if (steps.isEmpty) Nil else
       (steps.tail.foldLeft(steps.head -> List[Action.Step]()) { case ((p, r), s) =>
         s match {
-          case Action.Evaluation(_, _, elseOp: Action.Else) => p match {
-            case ifEv@Action.Evaluation(_, _, ifOp: Action.If) =>
+          case Action.Evaluation(_, _, elseOp: Action.Else, _) => p match {
+            case ifEv@Action.Evaluation(_, _, ifOp: Action.If, _) =>
               (null, ifEv.copy(op = ifOp.copy(elseAct = elseOp.action)) :: r)
             case _ => sys.error(s"else statement must follow if statement, instead found '$p'")
           }
@@ -1133,7 +1135,14 @@ object AppMetadata extends Loggable {
     case object ExtractHttpEntity extends Op
     case object This extends Op
 
-    case class Evaluation(name: Option[String], varTrans: List[VariableTransform], op: Op) extends Step
+    /**
+     * @param name - optional variable name i.e. variable = ...
+     * @param varTrans - variable transformation for operation
+     * @param op - step operation
+     * @param keepResult - if false and name is specified converts QuereaseResult returned by op
+     *                   to some value usable in tresql as bind variable, if true assigns to op result to variable.
+     * */
+    case class Evaluation(name: Option[String], varTrans: List[VariableTransform], op: Op, keepResult: Boolean = false) extends Step
     case class SetEnv(name: Option[String], varTrans: List[VariableTransform], value: Op) extends Step
     case class Return(name: Option[String], varTrans: List[VariableTransform], value: Op) extends Step
     case class Validations(name: Option[String], validations: Seq[String], db: Option[DbAccessKey]) extends Step
