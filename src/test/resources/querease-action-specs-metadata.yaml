@@ -1401,3 +1401,13 @@ table:
 insert:
 - as result extracted_entity = extract entity               # keep result feature, step result not converted to bindable values
 - http post '/extract_http_entity_test1' :extracted_entity
+
+
+name: invocation_keep_result_test
+decoder: none
+api: insert
+explicit db: true
+table:
+insert:
+- as result res = http post '/extract_http_entity_test1' extract entity
+- org.wabase.QuereaseActionTestManagerObj.httpResult :res

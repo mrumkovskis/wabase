@@ -1475,5 +1475,10 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       val r = entityAs[String]
       r shouldBe "Good afternoon!"
     }
+    Post("/invocation_keep_result_test",
+      HttpEntity(ContentTypes.`text/plain(UTF-8)`, ByteString("Good evening!"))) ~> route ~> check {
+      val r = entityAs[String]
+      r shouldBe "Good evening!"
+    }
   }
 }

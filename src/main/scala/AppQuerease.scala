@@ -832,7 +832,10 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         invokeFunction(
           className,
           function,
-          Seq((classOf[QuereaseResult], () => opRes)),
+          Seq((classOf[QuereaseResult], () => opRes match {
+            case TresqlResult(SingleValueResult(qr: QuereaseResult)) => qr // unwrap bind variable value
+            case x => x
+          })),
           // if opRes is tresql result and function parameter is of primitive value use typedPf function to get the value.
           pf3 // cannot use pf1 andThen pf2 on scala 2.12
         ) match {

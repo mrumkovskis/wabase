@@ -548,4 +548,5 @@ object QuereaseActionTestManagerObj {
     httpClient(null)(HttpRequest(uri = data("uri").toString))
   }
   def stringArgument(s: String) = s + " " + s
+  def httpResult(httpResult: HttpResult) = httpResult
 }
