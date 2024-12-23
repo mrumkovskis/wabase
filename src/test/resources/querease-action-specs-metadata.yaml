@@ -830,14 +830,14 @@ list:
 - status ok :res
 insert:
   # http post ends with empty array explicitly indicating no headers
-- res = http post '/person_health'
+- res = http post [default-wabase-http-client] '/person_health'
           unique { 'Mr. Mario' name, 'Moderna' 'vaccine', '2022-04-11' 'manipulation_date' }
           []
 - status ok :res
 update:
 - health_id = unique_opt |med_db:person_health[name = :name]{id}
-- http put { '/person_health/' || :health_id.id }
-    http get
+- http put [default-wabase-http-client] { '/person_health/' || :health_id.id }
+    http get [default-wabase-http-client]
       {'/http_test_2/' || :name, '?', :manipulation_date manipulation_date, :vaccine vaccine, :health_id.id id }
 
 

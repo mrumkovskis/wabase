@@ -869,18 +869,19 @@ class OpParser(viewName: String, tresqlUri: TresqlUri, cache: OpParser.Cache)
   } named "email-op"
   def httpOp: MemParser[Http] = {
     def tu(uri: Exp) = tresqlUri.parse(uri)(self)
+    def http_cln = opt("[" ~> HttpClientNameRegex <~ "]")
     def http_get_delete: MemParser[Http] =
-      opt("get" | "delete") ~ bracesTresql ~ opt(tresqlOp) ^^ {
-        case method ~ uri ~ headers =>
-          Http(method.getOrElse("get"), tu(uri), headers.orNull, null)
+      opt("get" | "delete") ~ http_cln ~ bracesTresql ~ opt(tresqlOp) ^^ {
+        case method ~ client ~ uri ~ headers =>
+          Http(method.getOrElse("get"), tu(uri), headers.orNull, body = null, httpClientName = client.orNull)
       } named "http-get-delete-op"
     def http_post_put: MemParser[Http] =
-      ("post" | "put") ~ bracesTresql ~ opt(operation) ~ opt(tresqlOp) ^^ {
-        case method ~ uri ~ op ~ headers =>
-          Http(method, tu(uri), headers.orNull, op.orNull)
+      ("post" | "put") ~ http_cln ~ bracesTresql ~ opt(operation) ~ opt(tresqlOp) ^^ {
+        case method ~ client ~ uri ~ op ~ headers =>
+          Http(method, tu(uri), headers.orNull, op.orNull, httpClientName = client.orNull)
       } named "http-post-put-op"
-    opt(opResultType) ~ ("http" ~> opt("[" ~> HttpClientNameRegex <~ "]")) ~ (http_post_put | http_get_delete) ^^ {
-      case conformTo ~ client ~ http => http.copy(conformTo = conformTo, httpClientName = client.orNull)
+    opt(opResultType) ~ ("http" ~> (http_post_put | http_get_delete)) ^^ {
+      case conformTo ~ http => http.copy(conformTo = conformTo)
     } named "http-op"
   }
   def dbOp: MemParser[Db] = (Action.DbUseKey | Action.TransactionKey) ~ opt("[" ~> ident <~ "]") ~ operation ^^ {
