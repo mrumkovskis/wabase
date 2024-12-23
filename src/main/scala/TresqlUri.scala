@@ -11,46 +11,17 @@ import scala.collection.immutable.{ListMap, Seq}
 
 object TresqlUri {
   sealed trait TrUri
-  case class Tresql(uriTresql: String, queryStringColIdx: Int) extends TrUri
+  case class Tresql(uriTresql: String) extends TrUri
   case class Uri(value: String, key: Seq[Any] = Nil, params: ListMap[String, String] = ListMap())
 }
 
 class TresqlUri {
-  def queryStringColIdx(tresqlUriExp: Exp)(parser: QueryParsers): Int = {
-    if (tresqlUriExp == null) -1 else
-      parser.traverser[Int](_ => {
-        case Cols(cols, _) => cols indexWhere {
-          _ == Col(StringConst("?"), null)
-        }
-      })(-1)(tresqlUriExp)
-  }
-
-  def parse(exp: Exp)(parser: QueryParsers): TresqlUri.TrUri = {
-    lazy val traverser: parser.Traverser[(TresqlUri.TrUri, Int, Int, String)] = parser.traverser { tru =>
-      {
-        case Col(StringConst("?"), _) if tru._2 < tru._3 => (tru._1, tru._2 + 1, tru._2 + 1, tru._4)
-        case Col(c, a) => traverser((tru._1, tru._2 + 1, tru._3, a))(c)
-        case q: PQuery => traverser(q.tables.foldLeft(tru) { (r, o) => traverser(r)(o) })(q.cols)
-        case cs: Cols => cs.cols.foldLeft(tru) { (r, c) => traverser(r)(c) }
-        case o: Obj if tru._1 == null && o.obj == Null && o.join == null => tru
-        case _ =>
-          val ntru = if (tru._1 == null) TresqlUri.Tresql(exp.tresql, tru._3) else tru._1
-          (ntru, tru._2, tru._3, tru._4)
-      }
-    }
-    traverser((null, -1, Integer.MAX_VALUE, null))(exp) match {
-      case (t: TresqlUri.Tresql, _, idx, _) =>
-        t.copy(queryStringColIdx = if (idx == Integer.MAX_VALUE) -1 else idx)
-      case (null, _, _, _) => TresqlUri.Tresql(exp.tresql, -1)
-    }
-  }
-
   def tresqlUriValue(trUri: TresqlUri.TrUri)(
     q: TresqlQuery, env: Map[String, Any], res: Resources): TresqlUri.Uri = trUri match {
-    case TresqlUri.Tresql(t, idx) => uriValue(q(t, env)(res).unique, 0, idx)
+    case TresqlUri.Tresql(t) => uriValue(q(t, env)(res).unique, 0)
   }
 
-  def uriValue(row: RowLike, startIdx: Int, queryStringColIdx: Int): TresqlUri.Uri = {
+  def uriValue(row: RowLike, startIdx: Int): TresqlUri.Uri = {
     val (names, vals) = (row match {
       case SingleValueResult(u: String) => Map((null, u))
       case SingleValueResult(u: Map[_, _]) => u
@@ -64,12 +35,11 @@ class TresqlUri {
     }).toIndexedSeq.unzip
     val colCount = vals.size
     def sv(v: Any) = if (v == null) null else v.toString
-    val pi = if (queryStringColIdx == -1) colCount else queryStringColIdx
-    val (value, (key, params)) = (sv(vals(startIdx)),
-      ((startIdx + 1) until colCount).foldLeft(List[String]() -> ListMap[String, String]()) {
-        case ((k, p), i) if i < pi => (sv(vals(i)) :: k, p)
-        case ((k, p), i) if i > pi => (k, p + (names(i).toString -> sv(vals(i))))
-        case (r, _) => r // i == pi - parameter separator - '?'
+    val (value, (key, params, _)) = (sv(vals(startIdx)),
+      ((startIdx + 1) until colCount).foldLeft((List[String](), ListMap[String, String](), false)) {
+        case ((k, p, _), i) if sv(vals(i)) == "?" => (k, p, true)
+        case ((k, p, false), i) => (sv(vals(i)) :: k, p, false)
+        case ((k, p, true), i)  => (k, p + (names(i).toString -> sv(vals(i))), true)
       }
     )
     TresqlUri.Uri(value, key.reverse, params)

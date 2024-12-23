@@ -1,55 +1,35 @@
 package org.wabase
 
 import org.scalatest.flatspec.AnyFlatSpec
-import org.scalatest.matchers.{MatchResult, Matcher}
 import org.scalatest.matchers.should.Matchers
-import org.wabase.TresqlUri.Tresql
+import org.tresql.{Resources, Query => TresqlQuery}
 
+import java.sql.{Connection, DriverManager}
 import scala.collection.immutable.ListMap
 
 class TresqlUriSpecs extends AnyFlatSpec with Matchers {
 
-  object TrUriMatchers {
-    class UrisEquals(expectedUri: TresqlUri.TrUri) extends Matcher[TresqlUri.TrUri] {
-      def apply(calculatedUri: TresqlUri.TrUri) = {
-        val res = calculatedUri match {
-          case cu: TresqlUri.Tresql => expectedUri match {
-            case eu: TresqlUri.Tresql => cu.queryStringColIdx == eu.queryStringColIdx
-            case _ => false
-          }
-        }
-        MatchResult(
-          res,
-          s"$calculatedUri does not matches expected $expectedUri",
-          s"$calculatedUri matches expected $expectedUri"
-        )
-      }
-    }
-
-    def matchUri(expectedUri: TresqlUri.TrUri) = new UrisEquals(expectedUri)
-  }
-
-  import TrUriMatchers._
-
-  it should "parse tresql uri" in {
-    val parser = TestApp.qe.parser
-    val tresqlUri = TestApp.qe.tresqlUri
-
-    val samples: Map[String, TresqlUri.TrUri] = ListMap(
-      "'/uri' || :a" -> Tresql(null, -1),
-      "{ '/uri' || :v }" -> Tresql(null,-1),
-      "{ '/uri' || :v, 'path' }" -> Tresql(null,-1),
-      "{ '/uri' || :v, '?', :v v }" -> Tresql(null,1),
-      "{ '/uri', 'path' || 'x', '?', :v v }" -> Tresql(null,2),
-      "[1, 2]" -> Tresql(null,-1),
-      "[]a/b" -> Tresql(null,-1),
-      "[]a/b {1, '?', :p p}" -> Tresql(null,1),
-      "a{1, '?', :p p}" -> Tresql(null,1),
+  it should "create uri from tresql" in {
+    DbDrivers.loadDrivers
+    var conn: Connection = DriverManager.getConnection("jdbc:hsqldb:mem:tresql_uri")
+    val res = new Resources{}.withConn(conn).withDialect(org.tresql.dialects.HSQLDialect)
+    val tresql_uris = List[(String, Map[String, Any], TresqlUri.Uri)](
+      ("{ 'path1', 'path2', '?', 'value1' param1, 'value2' param2 }",
+        Map(),
+        TresqlUri.Uri("path1", List("path2"), ListMap("param1" -> "value1", "param2" -> "value2"))
+      ),
+      ("{ :path1?, :path2?, '?', :param1? param1, :param2? param2 }",
+        Map("path2" -> "path2", "param1" -> "value1"),
+        TresqlUri.Uri("path2", List(), ListMap("param1" -> "value1"))
+      ),
+      ("{ :path1?, :path2?, :path3?, '?', :param1? param1, :param2? param2 }",
+        Map("path2" -> "path2", "path3" -> "path3"),
+        TresqlUri.Uri("path2", List("path3"), ListMap())
+      )
     )
-    for {
-      case (us, spu) <- samples
-    } yield {
-      tresqlUri.parse(parser.parseExp(us))(parser) should matchUri(spu)
+    tresql_uris foreach { case (uriTresql, bind_vars, uri) =>
+      val turi = new TresqlUri().tresqlUriValue(TresqlUri.Tresql(uriTresql))(TresqlQuery, bind_vars, res)
+      turi shouldBe uri
     }
   }
 }

@@ -589,15 +589,12 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     import ViewDefExtrasUtils._
     val steps = stepData.map { step =>
       def parseOp(st: String): Action.Op = {
-        def statusParameterIdx(exp: String) = if (exp == null) -1 else {
-          tresqlUri.queryStringColIdx(parser.parseExp(exp))(parser)
-        }
         if (redirectToKeyOpRegex.pattern.matcher(st).matches()) {
           val redirectToKeyOpRegex(name) = st
           Action.RedirectToKey(name)
         } else if (redirectOpRegex.pattern.matcher(st).matches()) {
           val redirectOpRegex(tresql) = st
-          Action.Status(Option(303), tresql, statusParameterIdx(tresql))
+          Action.Status(Option(303), tresql)
         } else if (statusOpRegex.pattern.matcher(st).matches()) {
           val statusOpRegex(status, bodyTresql) = st
           val code = Option(status).collect {
@@ -605,7 +602,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
             case x => throw new IllegalArgumentException(s"Status must be 'ok' or omitted, instead '$x' encountered.")
           }
           require(code.nonEmpty || bodyTresql != null, s"Empty status operation!")
-          Action.Status(code, bodyTresql, statusParameterIdx(bodyTresql))
+          Action.Status(code, bodyTresql)
         } else if (commitOpRegex.pattern.matcher(st).matches()) {
           Action.Commit
         } else {
@@ -870,7 +867,7 @@ class OpParser(viewName: String, tresqlUri: TresqlUri, cache: OpParser.Cache)
     case batch ~ data ~ subj ~ body ~ att => Email(data, subj, body, att, batch.isDefined)
   } named "email-op"
   def httpOp: MemParser[Http] = {
-    def tu(uri: Exp) = tresqlUri.parse(uri)(self)
+    def tu(uri: Exp) = TresqlUri.Tresql(uri.tresql)
     def http_cln = opt("[" ~> HttpClientNameRegex <~ "]")
     def http_get_delete: MemParser[Http] =
       opt("get" | "delete") ~ http_cln ~ bracesTresql ~ opt(tresqlOp) ^^ {
@@ -1102,7 +1099,7 @@ object AppMetadata extends Loggable {
                           function: String,
                           arg: Op = null,
                           conformTo: Option[OpResultType] = None) extends CastableOp
-    case class Status(code: Option[Int], bodyTresql: String = null, parameterIndex: Int = -1) extends Op
+    case class Status(code: Option[Int], bodyTresql: String = null) extends Op
     case class VariableTransforms(transforms: List[VariableTransform]) extends Op
     case class Foreach(initOp: Op, action: Action) extends Op
     case class If(cond: Op, action: Action, elseAct: Action = null) extends Op
@@ -1245,7 +1242,7 @@ object AppMetadata extends Loggable {
           }
           {
             case t: Tresql => us(state, nv(state.value)(t))
-            case Status(_, bodyTresql, _) =>
+            case Status(_, bodyTresql) =>
               if (bodyTresql == null) state else us(state, nv(state.value)(Tresql(bodyTresql)))
             case Resource(nameTresql, contentTypeTresql) =>
               val s1 = us(state, nv(state.value)(nameTresql))

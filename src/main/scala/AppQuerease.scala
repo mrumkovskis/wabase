@@ -920,7 +920,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
    context: ActionContext,
   )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
     import qr.ec
-    val Action.Status(maybeCode, bodyTresql, parameterIndex) = op
+    val Action.Status(maybeCode, bodyTresql) = op
     Option(bodyTresql).map { bt =>
       doActionOp(Action.Unique(Action.Tresql(bt), opt = true), data, env, context).map {
         case srr: TresqlSingleRowResult => srr.map { row =>
@@ -928,7 +928,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           val (code, idx) = maybeCode.map(_ -> 0).getOrElse(row.int(0) -> Math.min(1, colCount - 1))
           import akka.http.scaladsl.model.StatusCode._
           val statusValue =
-            if (code.isRedirection()) RedirectStatus(tresqlUri.uriValue(row, idx, parameterIndex))
+            if (code.isRedirection()) RedirectStatus(tresqlUri.uriValue(row, idx))
             else if (colCount > idx) StringStatus(row.string(idx))
             else null
           StatusResult(code, statusValue)
