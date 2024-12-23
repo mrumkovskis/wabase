@@ -12,10 +12,6 @@ import scala.collection.immutable.{ListMap, Seq}
 object TresqlUri {
   sealed trait TrUri
   case class Tresql(uriTresql: String, queryStringColIdx: Int) extends TrUri
-  case class PrimitiveTresql(hostInitPath: String,
-                             path: Seq[String],
-                             params: ListMap[String, String],
-                             origin: String) extends TrUri
   case class Uri(value: String, key: Seq[Any] = Nil, params: ListMap[String, String] = ListMap())
 }
 
@@ -31,36 +27,18 @@ class TresqlUri {
 
   def parse(exp: Exp)(parser: QueryParsers): TresqlUri.TrUri = {
     lazy val traverser: parser.Traverser[(TresqlUri.TrUri, Int, Int, String)] = parser.traverser { tru =>
-      def calcPv(e: Exp) = {
-        val (pt, idx, paramIdx, a) = tru
-        val ptru =
-          if (pt == null) TresqlUri.PrimitiveTresql(null, Nil, ListMap(), exp.tresql)
-          else pt.asInstanceOf[TresqlUri.PrimitiveTresql]
-        val nptru = {
-          if (idx <= 0) ptru.copy(hostInitPath = e.tresql)
-          else if (idx < paramIdx) ptru.copy(path = ptru.path ++ Seq(e.tresql))
-          else ptru.copy(params = ptru.params + (a -> e.tresql))
-        }
-        (nptru, idx, paramIdx, a)
-      }
       {
         case Col(StringConst("?"), _) if tru._2 < tru._3 => (tru._1, tru._2 + 1, tru._2 + 1, tru._4)
         case Col(c, a) => traverser((tru._1, tru._2 + 1, tru._3, a))(c)
-        case c: Const if tru._1 == null || tru._1.isInstanceOf[TresqlUri.PrimitiveTresql] => calcPv(c)
-        case v: Variable if tru._1 == null || tru._1.isInstanceOf[TresqlUri.PrimitiveTresql] => calcPv(v)
         case q: PQuery => traverser(q.tables.foldLeft(tru) { (r, o) => traverser(r)(o) })(q.cols)
         case cs: Cols => cs.cols.foldLeft(tru) { (r, c) => traverser(r)(c) }
         case o: Obj if tru._1 == null && o.obj == Null && o.join == null => tru
         case _ =>
-          val ntru =
-            if (tru._1 == null || tru._1.isInstanceOf[TresqlUri.PrimitiveTresql])
-              TresqlUri.Tresql(exp.tresql, tru._3)
-            else tru._1
+          val ntru = if (tru._1 == null) TresqlUri.Tresql(exp.tresql, tru._3) else tru._1
           (ntru, tru._2, tru._3, tru._4)
       }
     }
     traverser((null, -1, Integer.MAX_VALUE, null))(exp) match {
-      case (p: TresqlUri.PrimitiveTresql, _, _, _) => p
       case (t: TresqlUri.Tresql, _, idx, _) =>
         t.copy(queryStringColIdx = if (idx == Integer.MAX_VALUE) -1 else idx)
       case (null, _, _, _) => TresqlUri.Tresql(exp.tresql, -1)
@@ -70,16 +48,6 @@ class TresqlUri {
   def tresqlUriValue(trUri: TresqlUri.TrUri)(
     q: TresqlQuery, env: Map[String, Any], res: Resources): TresqlUri.Uri = trUri match {
     case TresqlUri.Tresql(t, idx) => uriValue(q(t, env)(res).unique, 0, idx)
-    case TresqlUri.PrimitiveTresql(hostInitPath, key, params, _) =>
-      def getVal(valTresql: String) = q(valTresql, env)(res).unique match {
-        case SingleValueResult(v) => v
-        case x => sys.error(s"Unexpected result for uri component '$valTresql': $x")
-      }
-      val value = String.valueOf(getVal(hostInitPath))
-      val keyVal = key map getVal
-      val paramsVal: ListMap[String, String] =
-        params.map { case (k, v) => (k, String.valueOf(getVal(v))) }
-      TresqlUri.Uri(value, keyVal, paramsVal)
   }
 
   def uriValue(row: RowLike, startIdx: Int, queryStringColIdx: Int): TresqlUri.Uri = {

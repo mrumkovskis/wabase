@@ -1266,7 +1266,6 @@ object AppMetadata extends Loggable {
               )(opTresqlTrav(_)(_))
             case Http(_, uriTresql, headerTresql, body, _, _) =>
               def tresqlUriTresql(trUri: TresqlUri.TrUri): Tresql = trUri match {
-                case p: TresqlUri.PrimitiveTresql => Tresql(p.origin)
                 case t: TresqlUri.Tresql => Tresql(t.uriTresql)
               }
               val s1 = us(state, nv(state.value)(tresqlUriTresql(uriTresql)))
