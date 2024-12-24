@@ -883,7 +883,7 @@ get:
 - unique { :nr nr, :owner owner, :area::decimal area, :trees trees }
 update:
 - forest = http { '/forest', :nr, :xx? }  # optional variable (xx) in url must work
-- :forest + :_ /* all data reference */ -> http put {'/forest', :nr } get http_forest
+- :forest + :_ /* all data reference */ -> http put {'/forest/', :nr } get http_forest
 
 
 name: json_codec_1
