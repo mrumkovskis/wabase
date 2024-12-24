@@ -4,8 +4,8 @@ val akkaV     =  "2.6.21" // Ensure Apache-2.0 license
 val akkaHttpV = "10.2.10" // Ensure Apache-2.0 license
 
 val mojozV    = "5.3.3"
-val quereaseV = "7.0.1-SNAPSHOT"
-val tresqlV   = "12.0.1-SNAPSHOT"
+val quereaseV = "7.0.1"
+val tresqlV   = "12.0.1"
 
 javacOptions ++= Seq("-source", "11", "-target", "11", "-Xlint")
 initialize := {
