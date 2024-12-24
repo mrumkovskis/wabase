@@ -493,7 +493,7 @@ save:
 count:
 - status ok {:status}[false]  # should return 200 with no message in response
 list:
-- status { 303, '/data', '?/', 'path', :status }
+- status 303 { '/data', '?/', 'path', :status }
 
 
 name:   status_test_2
@@ -517,11 +517,11 @@ api:    get, save, list, count
 fields:
   - id
 save:
-  - status { 303 }
+  - status 303 { 303 }
 get:
   - redirect { 'data/path/' || :id }
 list:
-  - status { 303, 'data/path', '?/', :id, '?', 'val-of-par1' par1 }
+  - status 303 { 'data/path', '?/', :id, '?', 'val-of-par1' par1 }
 count:
   - redirect { null, '?/', :id, '?', (:id + 1) par1 }
 
@@ -979,7 +979,7 @@ get:
 - if if_defined_or_else(:val.name, true, false) :
   - :val
 - else:
-  - status {404, 'not found'}
+  - status 404 {'not found'}
 
 
 name: extract_http_header_test

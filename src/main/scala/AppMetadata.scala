@@ -594,15 +594,16 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
           Action.RedirectToKey(name)
         } else if (redirectOpRegex.pattern.matcher(st).matches()) {
           val redirectOpRegex(tresql) = st
-          Action.Status(Option(303), tresql)
+          Action.Status(303, tresql)
         } else if (statusOpRegex.pattern.matcher(st).matches()) {
           val statusOpRegex(status, bodyTresql) = st
           val code = Option(status).collect {
             case "ok" => 200
-            case x => throw new IllegalArgumentException(s"Status must be 'ok' or omitted, instead '$x' encountered.")
+            case code if (Try(code.toInt).toOption.isDefined) => code.toInt
+            case x => throw new IllegalArgumentException(s"Status must be 'ok' or integer, instead '$x' encountered in $objectName.")
           }
-          require(code.nonEmpty || bodyTresql != null, s"Empty status operation!")
-          Action.Status(code, bodyTresql)
+          require(code.nonEmpty, s"Empty status code or name in $objectName!")
+          Action.Status(code.get, bodyTresql)
         } else if (commitOpRegex.pattern.matcher(st).matches()) {
           Action.Commit
         } else {
@@ -1099,7 +1100,7 @@ object AppMetadata extends Loggable {
                           function: String,
                           arg: Op = null,
                           conformTo: Option[OpResultType] = None) extends CastableOp
-    case class Status(code: Option[Int], bodyTresql: String = null) extends Op
+    case class Status(code: Int, bodyTresql: String = null) extends Op
     case class VariableTransforms(transforms: List[VariableTransform]) extends Op
     case class Foreach(initOp: Op, action: Action) extends Op
     case class If(cond: Op, action: Action, elseAct: Action = null) extends Op

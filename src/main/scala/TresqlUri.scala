@@ -18,10 +18,10 @@ object TresqlUri {
 class TresqlUri {
   def tresqlUriValue(trUri: TresqlUri.TrUri)(
     q: TresqlQuery, env: Map[String, Any], res: Resources): TresqlUri.Uri = trUri match {
-    case TresqlUri.Tresql(t) => uriValue(q(t, env)(res).unique, 0)
+    case TresqlUri.Tresql(t) => uriValue(q(t, env)(res).unique)
   }
 
-  def uriValue(row: RowLike, startIdx: Int): TresqlUri.Uri = {
+  private[wabase] def uriValue(row: RowLike): TresqlUri.Uri = {
     val (names, vals) = (row match {
       case SingleValueResult(u: String) => Map((null, u))
       case SingleValueResult(u: Map[_, _]) => u
@@ -36,7 +36,7 @@ class TresqlUri {
     val colCount = vals.size
     def sv(v: Any) = if (v == null) null else v.toString
     val (trUri, _) =
-      (startIdx until colCount).foldLeft((TresqlUri.Uri(Nil), "s")) {
+      (0 until colCount).foldLeft((TresqlUri.Uri(Nil), "s")) {
         case ((u, "s"), i) if sv(vals(i)) == "?/" => (u, "k")
         case ((u, "s"), i) if sv(vals(i)) == "?"  => (u, "p")
         case ((u, "k"), i) if sv(vals(i)) == "?"  => (u, "p")
