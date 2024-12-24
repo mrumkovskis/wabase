@@ -18,10 +18,10 @@ object TresqlUri {
 class TresqlUri {
   def tresqlUriValue(trUri: TresqlUri.TrUri)(
     q: TresqlQuery, env: Map[String, Any], res: Resources): TresqlUri.Uri = trUri match {
-    case TresqlUri.Tresql(t) => uriValue(q(t, env)(res).unique, 0, withKey = false)
+    case TresqlUri.Tresql(t) => uriValue(q(t, env)(res).unique, 0)
   }
 
-  def uriValue(row: RowLike, startIdx: Int, withKey: Boolean): TresqlUri.Uri = {
+  def uriValue(row: RowLike, startIdx: Int): TresqlUri.Uri = {
     val (names, vals) = (row match {
       case SingleValueResult(u: String) => Map((null, u))
       case SingleValueResult(u: Map[_, _]) => u
@@ -35,14 +35,19 @@ class TresqlUri {
     }).toIndexedSeq.unzip
     val colCount = vals.size
     def sv(v: Any) = if (v == null) null else v.toString
-    val (value, (key, params, _)) = (sv(vals(startIdx)),
-      ((startIdx + 1) until colCount).foldLeft((List[String](), ListMap[String, String](), false)) {
-        case ((k, p, _), i) if sv(vals(i)) == "?" => (k, p, true)
-        case ((k, p, false), i) => (sv(vals(i)) :: k, p, false)
-        case ((k, p, true), i)  => (k, p + (names(i).toString -> sv(vals(i))), true)
+    val (trUri, _) =
+      (startIdx until colCount).foldLeft((TresqlUri.Uri(Nil), "s")) {
+        case ((u, "s"), i) if sv(vals(i)) == "?/" => (u, "k")
+        case ((u, "s"), i) if sv(vals(i)) == "?"  => (u, "p")
+        case ((u, "k"), i) if sv(vals(i)) == "?"  => (u, "p")
+        case ((u, "s"), i)  => (u.copy(segments = sv(vals(i)) :: u.segments.toList), "s")
+        case ((u, "k"), i)  => (u.copy(key      = sv(vals(i)) :: u.key     .toList), "k")
+        case ((u, "p"), i)  => (u.copy(params   = u.params + (names(i).toString -> sv(vals(i)))), "p")
       }
+    trUri.copy(
+      segments = trUri.segments.reverse,
+      key      = trUri.key.reverse
     )
-    TresqlUri.Uri(value :: (if (withKey) Nil else key.reverse), if (withKey) key.reverse else Nil, params)
   }
 
   // akka http uri methods

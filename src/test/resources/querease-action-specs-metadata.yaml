@@ -258,7 +258,7 @@ save:
 - validations check_person [wabase_db]:
   - (person[name = :name]{count(1)}) > 0, "Person '" || :name || "' must be registered"
 - save this
-- redirect {'person_health', :name, :manipulation_date::date, '?', 'val1' par1, 'val2' par2 }
+- redirect {'person_health', '?/', :name, :manipulation_date::date, '?', 'val1' par1, 'val2' par2 }
 
 
 name: person_health_priv
@@ -493,7 +493,7 @@ save:
 count:
 - status ok {:status}[false]  # should return 200 with no message in response
 list:
-- status { 303, '/data', 'path', :status }
+- status { 303, '/data', '?/', 'path', :status }
 
 
 name:   status_test_2
@@ -502,7 +502,7 @@ api:    get, save, list, count
 fields:
   - id
 get:
-  - redirect { 'data/path', :id }
+  - redirect { 'data/path', '?/', :id }
 save:
   - redirect { 'data/path', '?', :id id }
 count:
@@ -521,9 +521,9 @@ save:
 get:
   - redirect { 'data/path/' || :id }
 list:
-  - status { 303, 'data/path', :id, '?', 'val-of-par1' par1 }
+  - status { 303, 'data/path', '?/', :id, '?', 'val-of-par1' par1 }
 count:
-  - redirect { null, :id, '?', (:id + 1) par1 }
+  - redirect { null, '?/', :id, '?', (:id + 1) par1 }
 
 
 name:   status_test_4
@@ -532,7 +532,7 @@ api:    get, save, list, count
 fields:
   - id
 save:
-  - redirect { 'data/path', :id }
+  - redirect { 'data/path', '?/', :id }
 get:
   - redirect { 'data/path', '?', :id id }
 list:
