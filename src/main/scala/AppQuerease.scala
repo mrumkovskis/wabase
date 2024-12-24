@@ -931,7 +931,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           val (code, idx) = maybeCode.map(_ -> 0).getOrElse(row.int(0) -> Math.min(1, colCount - 1))
           import akka.http.scaladsl.model.StatusCode._
           val statusValue =
-            if (code.isRedirection()) RedirectStatus(tresqlUri.uriValue(row, idx))
+            if (code.isRedirection()) RedirectStatus(tresqlUri.uriValue(row, idx, false))
             else if (colCount > idx) StringStatus(row.string(idx))
             else null
           StatusResult(code, statusValue)
@@ -1168,7 +1168,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     val uri = {
       val trUri =
         useResourcesConnOrEvaluator(implicitly[Resources], res =>
-          tresqlUri.tresqlUriValue(op.uriTresql)(Query, opData, res)
+          tresqlUri.tresqlUriValue(op.uriTresql, true)(Query, opData, res)
         )
       tresqlUri.uri(trUri)
     }

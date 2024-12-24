@@ -12,16 +12,21 @@ import scala.collection.immutable.{ListMap, Seq}
 object TresqlUri {
   sealed trait TrUri
   case class Tresql(uriTresql: String) extends TrUri
-  case class Uri(value: String, key: Seq[Any] = Nil, params: ListMap[String, String] = ListMap())
+  case class Uri(
+    value: String,
+    key: Seq[Any] = Nil,
+    params: ListMap[String, String] = ListMap(),
+    keyInPath: Boolean = false,
+  )
 }
 
 class TresqlUri {
-  def tresqlUriValue(trUri: TresqlUri.TrUri)(
+  def tresqlUriValue(trUri: TresqlUri.TrUri, keyInPath: Boolean)(
     q: TresqlQuery, env: Map[String, Any], res: Resources): TresqlUri.Uri = trUri match {
-    case TresqlUri.Tresql(t) => uriValue(q(t, env)(res).unique, 0)
+    case TresqlUri.Tresql(t) => uriValue(q(t, env)(res).unique, 0, keyInPath)
   }
 
-  def uriValue(row: RowLike, startIdx: Int): TresqlUri.Uri = {
+  def uriValue(row: RowLike, startIdx: Int, keyInPath: Boolean): TresqlUri.Uri = {
     val (names, vals) = (row match {
       case SingleValueResult(u: String) => Map((null, u))
       case SingleValueResult(u: Map[_, _]) => u
@@ -42,7 +47,7 @@ class TresqlUri {
         case ((k, p, true), i)  => (k, p + (names(i).toString -> sv(vals(i))), true)
       }
     )
-    TresqlUri.Uri(value, key.reverse, params)
+    TresqlUri.Uri(value, key.reverse, params, keyInPath)
   }
 
   // akka http uri methods
@@ -70,12 +75,8 @@ class TresqlUri {
     } else uri
   }
 
-  /** Override to change key representation in redirect uri,
-    * see uriWithKeyInPath(uri, key) and uriWithKeyInQuery(uri, key).
-    * Default is uriWithKeyInQuery.
-    */
-  def uriWithKey(uri: Uri, key: Seq[Any]): Uri =
-    uriWithKeyInQuery(uri, key)
+  def uriWithKey(uri: Uri, key: Seq[Any], keyInPath: Boolean): Uri =
+    if (keyInPath) uriWithKeyInPath(uri, key) else uriWithKeyInQuery(uri, key)
 
   def uri(value: TresqlUri.Uri): Uri = {
     require(value.value != null, "Uri value must not be null!")
@@ -87,6 +88,6 @@ class TresqlUri {
       Option(uriStart).map(Uri(_)).getOrElse(Uri.Empty)
         .withPath(path)
         .withQuery(Query(nonNullParams))
-    uriWithKey(uriWithoutKey, value.key.toVector)
+    uriWithKey(uriWithoutKey, value.key.toVector, value.keyInPath)
   }
 }
