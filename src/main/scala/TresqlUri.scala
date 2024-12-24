@@ -12,16 +12,16 @@ import scala.collection.immutable.{ListMap, Seq}
 object TresqlUri {
   sealed trait TrUri
   case class Tresql(uriTresql: String) extends TrUri
-  case class Uri(value: String, key: Seq[Any] = Nil, params: ListMap[String, String] = ListMap())
+  case class Uri(segments: Seq[Any], key: Seq[Any] = Nil, params: ListMap[String, String] = ListMap())
 }
 
 class TresqlUri {
   def tresqlUriValue(trUri: TresqlUri.TrUri)(
     q: TresqlQuery, env: Map[String, Any], res: Resources): TresqlUri.Uri = trUri match {
-    case TresqlUri.Tresql(t) => uriValue(q(t, env)(res).unique, 0)
+    case TresqlUri.Tresql(t) => uriValue(q(t, env)(res).unique, 0, withKey = false)
   }
 
-  def uriValue(row: RowLike, startIdx: Int): TresqlUri.Uri = {
+  def uriValue(row: RowLike, startIdx: Int, withKey: Boolean): TresqlUri.Uri = {
     val (names, vals) = (row match {
       case SingleValueResult(u: String) => Map((null, u))
       case SingleValueResult(u: Map[_, _]) => u
@@ -42,7 +42,7 @@ class TresqlUri {
         case ((k, p, true), i)  => (k, p + (names(i).toString -> sv(vals(i))), true)
       }
     )
-    TresqlUri.Uri(value, key.reverse, params)
+    TresqlUri.Uri(value :: (if (withKey) Nil else key.reverse), if (withKey) key.reverse else Nil, params)
   }
 
   // akka http uri methods
@@ -78,9 +78,9 @@ class TresqlUri {
     uriWithKeyInQuery(uri, key)
 
   def uri(value: TresqlUri.Uri): Uri = {
-    require(value.value != null, "Uri value must not be null!")
+    require(value.segments != null && value.segments.nonEmpty, "Uri segments must not be empty!")
     val uriRegex = """(?U)(https?://[^/]+)?(?:(?:$)|(.+))?""".r
-    val uriRegex(uriStart, uriPath) = value.value
+    val uriRegex(uriStart, uriPath) = value.segments.mkString("/")
     val path = Option(uriPath).map(Path(_)).getOrElse(Path.Empty)
     val nonNullParams = value.params.map { case (k, v) => (k, if (v == null) "" else v) }
     val uriWithoutKey =

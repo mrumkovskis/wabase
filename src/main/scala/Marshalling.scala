@@ -205,7 +205,7 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
     Marshaller.combined(_.toString)
   implicit def toResponseQuereaseKeyResultMarshaller:     ToResponseMarshaller[KeyResult]      =
     Marshaller.combined((kr: KeyResult) =>
-      StatusResult(StatusCodes.SeeOther.intValue, RedirectStatus(TresqlUri.Uri(s"/data/${kr.viewName}", kr.key)))
+      StatusResult(StatusCodes.SeeOther.intValue, RedirectStatus(TresqlUri.Uri(Seq(s"/data/${kr.viewName}"), kr.key)))
     )
   implicit val toResponseQuereaseStatusResultMarshaller:  ToResponseMarshaller[StatusResult] = {
     Marshaller.opaque { sr =>

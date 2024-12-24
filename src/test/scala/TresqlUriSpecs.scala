@@ -5,7 +5,7 @@ import org.scalatest.matchers.should.Matchers
 import org.tresql.{Resources, Query => TresqlQuery}
 
 import java.sql.{Connection, DriverManager}
-import scala.collection.immutable.ListMap
+import scala.collection.immutable.{ListMap, Seq}
 
 class TresqlUriSpecs extends AnyFlatSpec with Matchers {
 
@@ -16,25 +16,24 @@ class TresqlUriSpecs extends AnyFlatSpec with Matchers {
     val tresql_uris = List[(String, Map[String, Any], TresqlUri.Uri, String)](
       ("{ 'path1', 'path2', '?', 'value1' param1, 'value2' param2 }",
         Map(),
-        TresqlUri.Uri("path1", List("path2"), ListMap("param1" -> "value1", "param2" -> "value2")),
-        "x"
+        TresqlUri.Uri(Seq("path1", "path2"), Nil, ListMap("param1" -> "value1", "param2" -> "value2")),
+        "path1/path2?param1=value1&param2=value2",
       ),
       ("{ :path1?, :path2?, '?', :param1? param1, :param2? param2 }",
         Map("path2" -> "path2", "param1" -> "value1"),
-        TresqlUri.Uri("path2", List(), ListMap("param1" -> "value1")),
-        "x"
+        TresqlUri.Uri(Seq("path2"), Nil, ListMap("param1" -> "value1")),
+        "path2?param1=value1",
       ),
       ("{ :path1?, :path2?, :path3?, '?', :param1? param1, :param2? param2 }",
         Map("path2" -> "path2", "path3" -> "path3"),
-        TresqlUri.Uri("path2", List("path3"), ListMap()),
-        "x"
+        TresqlUri.Uri(Seq("path2", "path3"), Nil, ListMap()),
+        "path2/path3",
       )
     )
     tresql_uris foreach { case (uriTresql, bind_vars, truri, uri) =>
       val turi = new TresqlUri().tresqlUriValue(TresqlUri.Tresql(uriTresql))(TresqlQuery, bind_vars, res)
       turi shouldBe truri
-      //TODO test http uris
-      //new TresqlUri().uri(turi).toString() shouldBe uri
+      new TresqlUri().uri(turi).toString() shouldBe uri
     }
   }
 }
