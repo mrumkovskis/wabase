@@ -45,7 +45,7 @@ lazy val wabase = (project in file("."))
       "com.typesafe.scala-logging" %% "scala-logging"         % "3.9.5",
       "com.typesafe"               %% "ssl-config-core"       % "0.6.1"               cross CrossVersion.for3Use2_13,
       "com.zaxxer"                  % "HikariCP"              % "6.2.1",
-      "ch.qos.logback"              % "logback-classic"       % "1.5.8",
+      "ch.qos.logback"              % "logback-classic"       % "1.5.15",
       "org.mojoz"                  %% "mojoz"                 % mojozV,
       "org.mojoz"                  %% "querease"              % quereaseV,
       "commons-validator"           % "commons-validator"     % "1.9.0",
