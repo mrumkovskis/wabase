@@ -12,42 +12,41 @@ import scala.collection.immutable.{ListMap, Seq}
 object TresqlUri {
   sealed trait TrUri
   case class Tresql(uriTresql: String) extends TrUri
-  case class Uri(segments: Seq[Any], key: Seq[Any] = Nil, params: ListMap[String, String] = ListMap())
+  case class Uri(segments: Seq[Any], key: Seq[Any] = Nil, params: ListMap[String, String] = ListMap()) extends TrUri
 }
 
 class TresqlUri {
-  def tresqlUriValue(trUri: TresqlUri.TrUri)(
-    q: TresqlQuery, env: Map[String, Any], res: Resources): TresqlUri.Uri = trUri match {
-    case TresqlUri.Tresql(t) => uriValue(q(t, env)(res).unique)
-  }
-
-  private[wabase] def uriValue(row: RowLike): TresqlUri.Uri = {
-    val (names, vals) = (row match {
-      case SingleValueResult(u: String) => Map((null, u))
-      case SingleValueResult(u: Map[_, _]) => u
-      case SingleValueResult(u: Iterable[_]) if u.size == 1 =>
-        u.head match {
-          case m: Map[_, _] => m
-          case x => sys.error(s"Unable to retrieve uri value from [$x]")
+  private [wabase] def tresqlUriValue(trUri: TresqlUri.Tresql)(
+    q: TresqlQuery, env: Map[String, Any], res: Resources): TresqlUri.Uri = {
+    def uriValue(row: RowLike): TresqlUri.Uri = {
+      val (names, vals) = (row match {
+        case SingleValueResult(u: String) => Map((null, u))
+        case SingleValueResult(u: Map[_, _]) => u
+        case SingleValueResult(u: Iterable[_]) if u.size == 1 =>
+          u.head match {
+            case m: Map[_, _] => m
+            case x => sys.error(s"Unable to retrieve uri value from [$x]")
+          }
+        case SingleValueResult(x) => sys.error(s"Unable to retrieve uri value from [$x]")
+        case r => r.toMap
+      }).toIndexedSeq.unzip
+      val colCount = vals.size
+      def sv(v: Any) = if (v == null) null else v.toString
+      val (trUri, _) =
+        (0 until colCount).foldLeft((TresqlUri.Uri(Nil), "s")) {
+          case ((u, "s"), i) if sv(vals(i)) == "?/" => (u, "k")
+          case ((u, "s"), i) if sv(vals(i)) == "?"  => (u, "p")
+          case ((u, "k"), i) if sv(vals(i)) == "?"  => (u, "p")
+          case ((u, "s"), i)  => (u.copy(segments = sv(vals(i)) :: u.segments.toList), "s")
+          case ((u, "k"), i)  => (u.copy(key      = sv(vals(i)) :: u.key     .toList), "k")
+          case ((u, "p"), i)  => (u.copy(params   = u.params + (names(i).toString -> sv(vals(i)))), "p")
         }
-      case SingleValueResult(x) => sys.error(s"Unable to retrieve uri value from [$x]")
-      case r => r.toMap
-    }).toIndexedSeq.unzip
-    val colCount = vals.size
-    def sv(v: Any) = if (v == null) null else v.toString
-    val (trUri, _) =
-      (0 until colCount).foldLeft((TresqlUri.Uri(Nil), "s")) {
-        case ((u, "s"), i) if sv(vals(i)) == "?/" => (u, "k")
-        case ((u, "s"), i) if sv(vals(i)) == "?"  => (u, "p")
-        case ((u, "k"), i) if sv(vals(i)) == "?"  => (u, "p")
-        case ((u, "s"), i)  => (u.copy(segments = sv(vals(i)) :: u.segments.toList), "s")
-        case ((u, "k"), i)  => (u.copy(key      = sv(vals(i)) :: u.key     .toList), "k")
-        case ((u, "p"), i)  => (u.copy(params   = u.params + (names(i).toString -> sv(vals(i)))), "p")
-      }
-    trUri.copy(
-      segments = trUri.segments.reverse,
-      key      = trUri.key.reverse
-    )
+      trUri.copy(
+        segments = trUri.segments.reverse,
+        key      = trUri.key.reverse
+      )
+    }
+    uriValue(q(trUri.uriTresql, env)(res).unique)
   }
 
   // akka http uri methods
@@ -81,6 +80,9 @@ class TresqlUri {
     */
   def uriWithKey(uri: Uri, key: Seq[Any]): Uri =
     uriWithKeyInQuery(uri, key)
+
+  def fromTresqlUri(value: TresqlUri.Tresql)(q: TresqlQuery, env: Map[String, Any], res: Resources): Uri =
+    uri(tresqlUriValue(value)(q, env, res))
 
   def uri(value: TresqlUri.Uri): Uri = {
     require(value.segments != null && value.segments.nonEmpty, "Uri segments must not be empty!")
