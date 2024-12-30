@@ -1110,7 +1110,7 @@ object AppMetadata extends Loggable {
     case class Template(templateTresql: Tresql, dataOp: Op = null, filenameTresql: Tresql = null) extends Op
     case class Email(emailTresql: Tresql, subject: Op, body: Op, attachmentsOp: List[Op] = Nil, isBatch: Boolean = false) extends Op
     case class Http(method: String,
-                    uriTresql: TresqlUri.TrUri,
+                    uriTresql: TresqlUri.Tresql,
                     headerTresql: Tresql = null,
                     body: Op = null,
                     conformTo: Option[OpResultType] = None,
@@ -1263,10 +1263,7 @@ object AppMetadata extends Loggable {
                 )(s))(b)
               )(opTresqlTrav(_)(_))
             case Http(_, uriTresql, headerTresql, body, _, _) =>
-              def tresqlUriTresql(trUri: TresqlUri.TrUri): Tresql = trUri match {
-                case t: TresqlUri.Tresql => Tresql(t.uriTresql)
-              }
-              val s1 = us(state, nv(state.value)(tresqlUriTresql(uriTresql)))
+              val s1 = us(state, nv(state.value)(Tresql(uriTresql.uriTresql)))
               val s2 = us(s1, nv(s1.value)(headerTresql))
               opTresqlTrav(s2)(body)
             case ViewCall(method, view, data) =>

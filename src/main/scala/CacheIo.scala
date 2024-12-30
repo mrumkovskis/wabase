@@ -57,7 +57,7 @@ object CacheIo {
   implicit val dbAccessKeyCodec: Codec[DbAccessKey] = deriveCodec[DbAccessKey]
   implicit val varTransformCodec: Codec[VariableTransform] = deriveCodec[VariableTransform]
   implicit val opResultTypeCodec: Codec[OpResultType] = deriveCodec[OpResultType]
-  implicit val trUriCodec: Codec[TresqlUri.TrUri] = deriveAllCodecs[TresqlUri.TrUri]
+  implicit val trUriCodec: Codec[TresqlUri.Tresql] = deriveCodec[TresqlUri.Tresql]
   implicit val confTypeCodec: Codec[ConfType] = deriveAllCodecs[ConfType]
   // for codecs below must specify type explicitly for derive macro to work
   implicit lazy val opCodec: Codec[Op] = deriveAllCodecs[Op]

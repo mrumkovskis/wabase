@@ -922,21 +922,20 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
    env: Map[String, Any],
    context: ActionContext,
   )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
-    import qr.ec
     val Action.Status(code, bodyTresql) = op
     Option(bodyTresql).map { bt =>
-      doActionOp(Action.Unique(Action.Tresql(bt), opt = true), data, env, context).map {
-        case srr: TresqlSingleRowResult => srr.map { row =>
-          import akka.http.scaladsl.model.StatusCode._
-          val statusValue =
-            if (code.isRedirection()) RedirectStatus(tresqlUri.uriValue(row))
-            else StringStatus(row.string(0))
-          StatusResult(code, statusValue)
+      import akka.http.scaladsl.model.StatusCode._
+      val statusValue =
+        if (code.isRedirection()) {
+          val truri = tresqlUri.tresqlUriValue(TresqlUri.Tresql(bodyTresql))(
+            Query, data ++ env, qr.resourcesFactory.resources)
+          RedirectStatus(truri)
+        } else {
+          import qr.resourcesFactory.resources
+          Query.uniqueOption[String](bt, data ++ env).map(StringStatus).orNull
         }
-        case _ =>
-          StatusResult(code, null)
-      }
-    }
+      statusValue
+    }.map(sv => Future.successful(StatusResult(code, sv)))
     .getOrElse(Future.successful(StatusResult(code, null)))
   }
 
@@ -1161,13 +1160,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     import resourcesFactory._
     val opData = data ++ env
     val httpMeth = HttpMethods.getForKeyCaseInsensitive(op.method).get
-    val uri = {
-      val trUri =
-        useResourcesConnOrEvaluator(implicitly[Resources], res =>
-          tresqlUri.tresqlUriValue(op.uriTresql)(Query, opData, res)
-        )
-      tresqlUri.uri(trUri)
-    }
+    val uri = useResourcesConnOrEvaluator(implicitly[Resources], res =>
+      tresqlUri.fromTresqlUri(op.uriTresql)(Query, opData, res))
     val (optContentType, headers) = if (op.headerTresql == null) (Some(null) -> Nil) else {
       // content type is used for request body if present
       val parsedValues = useResourcesConnOrEvaluator(implicitly[Resources], res =>
