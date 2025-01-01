@@ -1,10 +1,10 @@
 package org.wabase
 
-import akka.stream.Attributes
+import org.apache.pekko.stream.Attributes
 
-import akka.util.ByteString
+import org.apache.pekko.util.ByteString
 import org.scalatest.flatspec.AsyncFlatSpec
-import akka.stream.scaladsl._
+import org.apache.pekko.stream.scaladsl._
 
 import scala.util.Random
 

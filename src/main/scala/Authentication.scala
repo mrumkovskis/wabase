@@ -3,18 +3,18 @@ package org.wabase
 import java.security.SecureRandom
 import java.util.Locale
 
-import akka.http.scaladsl.model._
-import akka.http.scaladsl.model.Uri
-import akka.http.scaladsl.model.StatusCodes
-import akka.http.scaladsl.model.headers._
-import akka.http.scaladsl.server._
-import akka.http.scaladsl.server.Directives._
-import akka.http.scaladsl.server.directives.AuthenticationDirective
-import akka.http.scaladsl.server.directives.SecurityDirectives
-import akka.http.scaladsl.server.AuthenticationFailedRejection
-import akka.http.scaladsl.server.AuthenticationFailedRejection.Cause
-import akka.http.scaladsl.server.AuthenticationFailedRejection.CredentialsMissing
-import akka.http.scaladsl.server.AuthenticationFailedRejection.CredentialsRejected
+import org.apache.pekko.http.scaladsl.model._
+import org.apache.pekko.http.scaladsl.model.Uri
+import org.apache.pekko.http.scaladsl.model.StatusCodes
+import org.apache.pekko.http.scaladsl.model.headers._
+import org.apache.pekko.http.scaladsl.server._
+import org.apache.pekko.http.scaladsl.server.Directives._
+import org.apache.pekko.http.scaladsl.server.directives.AuthenticationDirective
+import org.apache.pekko.http.scaladsl.server.directives.SecurityDirectives
+import org.apache.pekko.http.scaladsl.server.AuthenticationFailedRejection
+import org.apache.pekko.http.scaladsl.server.AuthenticationFailedRejection.Cause
+import org.apache.pekko.http.scaladsl.server.AuthenticationFailedRejection.CredentialsMissing
+import org.apache.pekko.http.scaladsl.server.AuthenticationFailedRejection.CredentialsRejected
 
 import scala.concurrent.Future
 import scala.util.{Random, Try}
@@ -61,7 +61,7 @@ trait Authentication[User] extends SecurityDirectives with SessionInfoRemover wi
 
   /** Signs out (logs out) user. Can do all necessary cleanup. Session cookie {{{SessionCookieName}}}
       is deleted by {{{signOut}}} directive. Default implementation does nothing. */
-  def signOutUser(user: User): Future[akka.Done] = Future.successful(akka.Done)
+  def signOutUser(user: User): Future[org.apache.pekko.Done] = Future.successful(org.apache.pekko.Done)
   /** Default implementation redirects to / */
   def signOutRoute: Route = redirect(Uri(SignedOutPath), StatusCodes.SeeOther)
   /** Default implementation redirects to 'sign-in' uri */
@@ -102,7 +102,7 @@ trait Authentication[User] extends SecurityDirectives with SessionInfoRemover wi
   def extractSessionToken(user: User) = (extractClientIP.map(remoteAddressToString).filter(_ != null) & extractUserAgent)
     .recover { _ =>
        throw new BusinessException(
-          "Client IP and/or User-Agent header(s) not found, ensure akka.http.server.remote-address-header = on")
+          "Client IP and/or User-Agent header(s) not found, ensure pekko.http.server.remote-address-header = on")
     }.tmap { case (ip, userAgent) =>
       val expirationTime = currentTime + sessionTimeOut
       encryptSession(

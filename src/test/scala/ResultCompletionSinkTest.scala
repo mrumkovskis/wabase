@@ -1,8 +1,8 @@
 package org.wabase
 
-import akka.NotUsed
-import akka.stream.scaladsl.{Keep, Sink, Source}
-import akka.util.ByteString
+import org.apache.pekko.NotUsed
+import org.apache.pekko.stream.scaladsl.{Keep, Sink, Source}
+import org.apache.pekko.util.ByteString
 import org.scalatest.flatspec.AsyncFlatSpec
 
 import scala.concurrent.duration.DurationInt

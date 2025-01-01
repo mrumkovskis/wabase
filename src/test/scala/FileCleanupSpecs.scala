@@ -4,10 +4,10 @@ import java.io.File
 import java.nio.file.attribute.{BasicFileAttributeView, FileTime}
 import java.nio.file.{Files, Paths}
 import java.time.temporal.ChronoUnit
-import akka.actor.ActorSystem
-import akka.http.scaladsl.model.{ContentType, ContentTypes}
-import akka.stream.scaladsl.Source
-import akka.util.ByteString
+import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes}
+import org.apache.pekko.stream.scaladsl.Source
+import org.apache.pekko.util.ByteString
 import org.mojoz.metadata.in.YamlMd
 import org.mojoz.metadata.out.DdlGenerator
 import org.scalatest.BeforeAndAfterEach

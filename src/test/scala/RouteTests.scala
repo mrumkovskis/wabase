@@ -1,13 +1,13 @@
 package org.wabase
 
-import akka.actor.ActorSystem
-import akka.http.scaladsl.model.{HttpRequest, StatusCodes}
-import akka.http.scaladsl.model.headers.HttpOrigin
-import akka.http.scaladsl.testkit.ScalatestRouteTest
+import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.http.scaladsl.model.{HttpRequest, StatusCodes}
+import org.apache.pekko.http.scaladsl.model.headers.HttpOrigin
+import org.apache.pekko.http.scaladsl.testkit.ScalatestRouteTest
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers
-import akka.http.scaladsl.server.Directives._
-import akka.http.scaladsl.server.{ExceptionHandler, Route}
+import org.apache.pekko.http.scaladsl.server.Directives._
+import org.apache.pekko.http.scaladsl.server.{ExceptionHandler, Route}
 import org.scalatest.Inspectors.forAll
 
 
@@ -161,9 +161,9 @@ class RouteTests extends FlatSpec with Matchers with ScalatestRouteTest {
     val route = Route.seal(service.checkSameOrigin {
       complete("OK")
     })
-    import akka.http.scaladsl.model.headers.{Host, Referer, Origin, RawHeader, HttpOrigin, Cookie}
-    import akka.http.scaladsl.server.InvalidOriginRejection
-    import akka.http.scaladsl.model.Uri
+    import org.apache.pekko.http.scaladsl.model.headers.{Host, Referer, Origin, RawHeader, HttpOrigin, Cookie}
+    import org.apache.pekko.http.scaladsl.server.InvalidOriginRejection
+    import org.apache.pekko.http.scaladsl.model.Uri
 
     def csrfErr(strings: Seq[String]) = {
       response.status shouldBe StatusCodes.BadRequest

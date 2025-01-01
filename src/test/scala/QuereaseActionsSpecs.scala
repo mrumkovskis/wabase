@@ -1,7 +1,7 @@
 package org.wabase
 
-import akka.actor.ActorSystem
-import akka.http.scaladsl.model.HttpRequest
+import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.http.scaladsl.model.HttpRequest
 import org.mojoz.querease.{ValidationException, ValidationResult}
 import org.scalatest.flatspec.{AsyncFlatSpec, AsyncFlatSpecLike}
 import org.scalatest.matchers.should.Matchers

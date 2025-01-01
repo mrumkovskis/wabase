@@ -1315,7 +1315,7 @@ get:
 
 
 name: http_with_limit_test
-decoder: none 8 # second parameter denotes content size limit for request and for akka client response
+decoder: none 8 # second parameter denotes content size limit for request and for pekko client response
 table:
 key: id, sha_256
 api: get

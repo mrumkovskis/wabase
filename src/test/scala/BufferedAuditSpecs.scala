@@ -1,8 +1,8 @@
 package org.wabase
 
-import akka.actor.ActorSystem
-import akka.stream.RestartSettings
-import akka.util.ByteString
+import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.stream.RestartSettings
+import org.apache.pekko.util.ByteString
 import org.scalatest.concurrent.Eventually
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers

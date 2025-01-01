@@ -1,9 +1,9 @@
 package org.wabase
 
 import java.io.File
-import akka.http.scaladsl.model.{ContentTypes, HttpEntity, HttpHeader, HttpMethods, HttpResponse, Multipart}
-import akka.http.scaladsl.model.headers.`Content-Type`
-import akka.http.scaladsl.model.headers.RawHeader
+import org.apache.pekko.http.scaladsl.model.{ContentTypes, HttpEntity, HttpHeader, HttpMethods, HttpResponse, Multipart}
+import org.apache.pekko.http.scaladsl.model.headers.`Content-Type`
+import org.apache.pekko.http.scaladsl.model.headers.RawHeader
 import com.typesafe.config.{Config, ConfigFactory}
 import org.mojoz.querease.TresqlMetadata
 import org.scalatest.BeforeAndAfterAll
@@ -106,7 +106,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
   }
 
   def assertResponseHeaders(response: HttpResponse, expectedHeaders: Seq[HttpHeader]) = {
-    val received = (response.headers.toSet + `Content-Type`(response.entity.contentType)).map(_.toString)
+    val received = (response.headers.toSet + s"Content-Type: ${response.entity.contentType}").map(_.toString)
     expectedHeaders foreach { expectedHeader =>
       if (!received.contains(expectedHeader.toString))
         sys.error(s"Response did not contain expected header $expectedHeader. Headers received: ${received.toSeq.sorted.mkString(", ")}")

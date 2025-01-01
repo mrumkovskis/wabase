@@ -1,16 +1,16 @@
 package org.wabase
 
-import akka.http.scaladsl.server.directives.WebSocketDirectives
-import akka.http.scaladsl.model.ws.TextMessage
-import akka.stream.{ActorAttributes, OverflowStrategy, Supervision}
-import akka.stream.scaladsl.{Flow, Sink, Source}
-import akka.actor.{Actor, ActorRef, Props, Terminated}
+import org.apache.pekko.http.scaladsl.server.directives.WebSocketDirectives
+import org.apache.pekko.http.scaladsl.model.ws.TextMessage
+import org.apache.pekko.stream.{ActorAttributes, OverflowStrategy, Supervision}
+import org.apache.pekko.stream.scaladsl.{Flow, Sink, Source}
+import org.apache.pekko.actor.{Actor, ActorRef, Props, Terminated}
 import spray.json._
 import DefaultJsonProtocol._
 import DeferredControl._
-import akka.http.scaladsl.marshalling.sse.EventStreamMarshalling
-import akka.http.scaladsl.model.sse.ServerSentEvent
-import akka.http.scaladsl.server.{Directives, Route}
+import org.apache.pekko.http.scaladsl.marshalling.sse.EventStreamMarshalling
+import org.apache.pekko.http.scaladsl.model.sse.ServerSentEvent
+import org.apache.pekko.http.scaladsl.server.{Directives, Route}
 
 trait ServerNotifications extends EventStreamMarshalling with WebSocketDirectives {
   this: ServerNotifications.InitialEventsPublisher
@@ -117,7 +117,7 @@ object ServerNotifications extends Loggable {
   case class UserAddresseeMsg(user: String) extends Addressee
   case class EventSubscriberActorMsg(actor: ActorRef, user: String)
 
-  class EventSubscriberWatcher(publisher: InitialEventsPublisher) extends Actor with akka.actor.ActorLogging {
+  class EventSubscriberWatcher(publisher: InitialEventsPublisher) extends Actor with org.apache.pekko.actor.ActorLogging {
     override def preStart() = {
       logger.info(s"EventSubscriberWatcher actor started")
     }

@@ -1,11 +1,11 @@
 package org.wabase
 
-import akka.http.scaladsl.marshalling.{Marshal, ToResponseMarshaller}
-import akka.http.scaladsl.model._
-import akka.http.scaladsl.model.headers.ContentDispositionTypes.attachment
-import akka.http.scaladsl.model.headers.{Location, `Content-Disposition`}
-import akka.http.scaladsl.testkit.ScalatestRouteTest
-import akka.http.scaladsl.unmarshalling.Unmarshal
+import org.apache.pekko.http.scaladsl.marshalling.{Marshal, ToResponseMarshaller}
+import org.apache.pekko.http.scaladsl.model._
+import org.apache.pekko.http.scaladsl.model.headers.ContentDispositionTypes.attachment
+import org.apache.pekko.http.scaladsl.model.headers.{Location, `Content-Disposition`}
+import org.apache.pekko.http.scaladsl.testkit.ScalatestRouteTest
+import org.apache.pekko.http.scaladsl.unmarshalling.Unmarshal
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 

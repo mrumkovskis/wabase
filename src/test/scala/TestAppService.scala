@@ -1,6 +1,6 @@
 package org.wabase
 
-import akka.actor.ActorSystem
+import org.apache.pekko.actor.ActorSystem
 import org.wabase.DeferredControl.DeferredStorage
 
 case class TestUsr(id: Long) {

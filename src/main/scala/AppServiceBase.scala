@@ -1,12 +1,12 @@
 package org.wabase
 
-import akka.stream.scaladsl._
-import akka.http.scaladsl.coding.Coders.{Deflate, Gzip, NoCoding}
-import akka.http.scaladsl.marshalling.{Marshaller, ToEntityMarshaller}
-import akka.http.scaladsl.model._
-import akka.http.scaladsl.model.headers._
-import akka.http.scaladsl.server._
-import akka.http.scaladsl.server.Directives._
+import org.apache.pekko.stream.scaladsl._
+import org.apache.pekko.http.scaladsl.coding.Coders.{Deflate, Gzip, NoCoding}
+import org.apache.pekko.http.scaladsl.marshalling.{Marshaller, ToEntityMarshaller}
+import org.apache.pekko.http.scaladsl.model._
+import org.apache.pekko.http.scaladsl.model.headers._
+import org.apache.pekko.http.scaladsl.server._
+import org.apache.pekko.http.scaladsl.server.Directives._
 import StatusCodes._
 
 import scala.language.postfixOps
@@ -23,13 +23,13 @@ import AppMetadata.AugmentedAppViewDef
 import AppServiceBase._
 import Authentication.SessionUserExtractor
 import DeferredControl._
-import akka.actor.ActorSystem
-import akka.http.scaladsl.model.MediaTypes.`application/json`
+import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.http.scaladsl.model.MediaTypes.`application/json`
 
 import java.util.Locale
-import akka.http.scaladsl.server.util.Tuple
-import akka.http.scaladsl.unmarshalling.{FromEntityUnmarshaller, FromRequestUnmarshaller, PredefinedFromEntityUnmarshallers}
-import akka.util.ByteString
+import org.apache.pekko.http.scaladsl.server.util.Tuple
+import org.apache.pekko.http.scaladsl.unmarshalling.{FromEntityUnmarshaller, FromRequestUnmarshaller, PredefinedFromEntityUnmarshallers}
+import org.apache.pekko.util.ByteString
 import io.bullet.borer.Json
 import org.mojoz.querease.{ValidationException, ValidationResult}
 
@@ -887,7 +887,7 @@ object AppServiceBase {
 
     def i18nTranslate: Route = (i18nPath & i18nTranslatePath) { (name, key, params) =>
       applicationLocale { implicit locale =>
-        import akka.http.scaladsl.model.Uri._
+        import org.apache.pekko.http.scaladsl.model.Uri._
         def paramsList(path: Path): List[String] = path match {
           case Path.Empty => Nil
           case _: Path.Slash => paramsList(path.tail)

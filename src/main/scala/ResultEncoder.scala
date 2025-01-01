@@ -1,11 +1,11 @@
 package org.wabase
 
-import akka.util.ByteString
+import org.apache.pekko.util.ByteString
 import org.wabase.Format.{xlsxDateTime, xsdDate}
 import io.bullet.borer
 import io.bullet.borer.{Cbor, Decoder, Encoder, Json, Tag, Target, Writer, DataItem => DI}
-import io.bullet.borer.compat.akka.ByteStringByteAccess
-import io.bullet.borer.compat.akka.ByteStringProvider
+import io.bullet.borer.compat.pekko.ByteStringByteAccess
+import io.bullet.borer.compat.pekko.ByteStringProvider
 
 import java.io
 import java.io.{OutputStream, OutputStreamWriter}
@@ -18,8 +18,8 @@ import org.wabase.ResultEncoder.{ByteChunks, ChunkType, TextChunks}
 
 import scala.collection.immutable.{ListMap, Seq}
 import AppMetadata.AugmentedAppFieldDef
-import akka.http.scaladsl.model.Uri.Query
-import akka.http.scaladsl.model.{ContentType, ContentTypes}
+import org.apache.pekko.http.scaladsl.model.Uri.Query
+import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes}
 import org.wabase.ResultRenderers.EncoderFactoryCreator
 
 import scala.annotation.tailrec
@@ -648,7 +648,7 @@ class ResultRenderers {
 object ResultRenderers {
   type EncoderFactoryCreator = (Boolean, ResultRenderer.ResultFilter, ViewDef) => EncoderFactory
 
-  import akka.http.scaladsl.model.MediaTypes._
+  import org.apache.pekko.http.scaladsl.model.MediaTypes._
   val renderers: ListMap[ContentType, EncoderFactoryCreator] =
     ListMap(
       (`application/json`,                                createJsonEncoderFactory),

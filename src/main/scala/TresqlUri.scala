@@ -1,7 +1,7 @@
 package org.wabase
 
-import akka.http.scaladsl.model.Uri
-import akka.http.scaladsl.model.Uri.{Path, Query}
+import org.apache.pekko.http.scaladsl.model.Uri
+import org.apache.pekko.http.scaladsl.model.Uri.{Path, Query}
 import org.tresql.{Resources, RowLike, SingleValueResult, Query => TresqlQuery}
 import org.tresql.ast.{Col, Cols, Const, Exp, Null, Obj, StringConst, Variable, Query => PQuery}
 import org.tresql.parsing.QueryParsers
@@ -49,7 +49,7 @@ class TresqlUri {
     uriValue(q(trUri.uriTresql, env)(res).unique)
   }
 
-  // akka http uri methods
+  // pekko http uri methods
   def keyToUriStrings(key: Seq[Any]): Seq[String] = key.map {
     case t: java.time.temporal.Temporal => Format.convertToString(t).replace(' ', '_').replace('T', '_')
     case t: java.util.Date              => Format.convertToString(t).replace(' ', '_').replace('T', '_')

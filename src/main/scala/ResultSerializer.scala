@@ -1,10 +1,10 @@
 package org.wabase
 
-import akka.{Done, NotUsed}
-import akka.stream.scaladsl.{Flow, Source, StreamConverters}
-import akka.stream.stage.{GraphStage, GraphStageLogic, InHandler, OutHandler}
-import akka.stream.{Attributes, FlowShape, Inlet, Materializer, Outlet, SourceShape}
-import akka.util.{ByteString, ByteStringBuilder}
+import org.apache.pekko.{Done, NotUsed}
+import org.apache.pekko.stream.scaladsl.{Flow, Source, StreamConverters}
+import org.apache.pekko.stream.stage.{GraphStage, GraphStageLogic, InHandler, OutHandler}
+import org.apache.pekko.stream.{Attributes, FlowShape, Inlet, Materializer, Outlet, SourceShape}
+import org.apache.pekko.util.{ByteString, ByteStringBuilder}
 
 import org.mojoz.querease.ValueConverter
 
@@ -181,7 +181,7 @@ class ResultSerializer(
 }
 
 import io.bullet.borer._
-import io.bullet.borer.compat.akka.ByteStringByteAccess
+import io.bullet.borer.compat.pekko.ByteStringByteAccess
 import java.sql
 object BorerDatetimeEncoders {
   implicit val javaSqlTimestampEncoder: Encoder[Timestamp] = Encoder { (w, value) =>
@@ -531,7 +531,7 @@ class BorerNestedArraysTransformer(reader: Reader, handler: ResultEncoder) {
   }
 }
 
-import io.bullet.borer.compat.akka.ByteStringProvider
+import io.bullet.borer.compat.pekko.ByteStringProvider
 object BorerNestedArraysTransformer {
 
   private def borerReader[T: Input.Provider](source: T, format: Target) = format match {

@@ -1,7 +1,7 @@
 package org.wabase
 
-import akka.http.scaladsl.model.headers._
-import akka.http.scaladsl.server.Directives._
+import org.apache.pekko.http.scaladsl.model.headers._
+import org.apache.pekko.http.scaladsl.server.Directives._
 
 trait SecurityHeaderDirectives {
   

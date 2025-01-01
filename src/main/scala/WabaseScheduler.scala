@@ -1,7 +1,7 @@
 package org.wabase
 
-import akka.actor.{Actor, ActorRef, ActorSystem, Props}
-import com.typesafe.akka.extension.quartz.QuartzSchedulerExtension
+import org.apache.pekko.actor.{Actor, ActorRef, ActorSystem, Props}
+import org.apache.pekko.extension.quartz.QuartzSchedulerExtension
 import org.wabase.WabaseScheduler.Tick
 import org.tresql._
 import org.wabase.AppMetadata.{JobAct, JobDef}
@@ -23,9 +23,9 @@ class WabaseScheduler(service: AppServiceBase[_]) extends Loggable {
 
   def init(): Future[QuereaseResult] = {
     WabaseJobStatusController.init(service.app.dbAccess)
-    if (config.hasPath("akka.quartz.schedules")) {
+    if (config.hasPath("pekko.quartz.schedules")) {
       config
-        .getConfig("akka.quartz.schedules")
+        .getConfig("pekko.quartz.schedules")
         .root().asScala.keys
         .foreach { jobName => schedule(jobName)(scheduler, wabaseJobActor) }
     } else {

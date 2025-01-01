@@ -20,7 +20,7 @@ import scala.util.Try
 import org.tresql.{Resources, RowLike}
 import AppMetadata._
 import ValidationEngine.CustomValidationFunctions.is_valid_email
-import akka.actor.ActorSystem
+import org.apache.pekko.actor.ActorSystem
 
 import java.sql.Connection
 import scala.util.control.NonFatal
@@ -587,7 +587,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
         implicit val ec = scala.concurrent.ExecutionContext.global
         implicit val as: ActorSystem = null
         implicit val fs: AppFileStreamer[User] = null
-        implicit val httpReq: akka.http.scaladsl.model.HttpRequest = null
+        implicit val httpReq: org.apache.pekko.http.scaladsl.model.HttpRequest = null
         implicit val httpClients: WabaseHttpClients = null
         dbUse {
           validateFields(instance)

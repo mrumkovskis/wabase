@@ -1,10 +1,10 @@
 package org.wabase
 
-import akka.actor.ActorSystem
-import akka.stream._
-import akka.stream.scaladsl.{Framing, RestartSource, Sink, Source}
-import akka.stream.stage.{GraphStage, GraphStageLogic, InHandler, OutHandler}
-import akka.util.ByteString
+import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.stream._
+import org.apache.pekko.stream.scaladsl.{Framing, RestartSource, Sink, Source}
+import org.apache.pekko.stream.stage.{GraphStage, GraphStageLogic, InHandler, OutHandler}
+import org.apache.pekko.util.ByteString
 
 import java.io.File
 import java.nio.ByteBuffer

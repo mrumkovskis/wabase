@@ -1,11 +1,11 @@
 package org.wabase
 
-import akka.actor.{Actor, Props}
-import akka.http.scaladsl.server.Route
+import org.apache.pekko.actor.{Actor, Props}
+import org.apache.pekko.http.scaladsl.server.Route
 
 import scala.concurrent.Future
 import scala.concurrent.duration._
-import akka.stream.scaladsl.{Sink, Source}
+import org.apache.pekko.stream.scaladsl.{Sink, Source}
 import com.typesafe.scalalogging.Logger
 import org.slf4j.LoggerFactory
 

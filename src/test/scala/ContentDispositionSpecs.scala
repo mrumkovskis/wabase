@@ -1,6 +1,6 @@
 package org.wabase
 
-import akka.http.scaladsl.model.headers.{ContentDispositionType, ContentDispositionTypes, RawHeader, `Content-Disposition`}
+import org.apache.pekko.http.scaladsl.model.headers.{ContentDispositionType, ContentDispositionTypes, RawHeader, `Content-Disposition`}
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers
 

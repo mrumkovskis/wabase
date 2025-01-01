@@ -1,14 +1,14 @@
 package org.wabase
 
-import akka.actor.ActorSystem
-import akka.http.scaladsl.model.HttpHeader.ParsingResult.{Error, Ok}
-import akka.http.scaladsl.model.headers.ContentDispositionTypes.attachment
-import akka.http.scaladsl.model.headers.`Content-Disposition`
-import akka.http.scaladsl.model.{ContentType, ContentTypes, HttpCharsets, HttpEntity, HttpHeader, HttpMethods, HttpRequest, HttpResponse, MediaTypes, Multipart, RequestEntity, StatusCodes, UniversalEntity}
-import akka.http.scaladsl.server.directives.ContentTypeResolver
-import akka.http.scaladsl.server.directives.FileAndResourceDirectives.ResourceFile
-import akka.stream.scaladsl.{Source, StreamConverters}
-import akka.util.ByteString
+import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.http.scaladsl.model.HttpHeader.ParsingResult.{Error, Ok}
+import org.apache.pekko.http.scaladsl.model.headers.ContentDispositionTypes.attachment
+import org.apache.pekko.http.scaladsl.model.headers.`Content-Disposition`
+import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes, HttpCharsets, HttpEntity, HttpHeader, HttpMethods, HttpRequest, HttpResponse, MediaTypes, Multipart, RequestEntity, StatusCodes, UniversalEntity}
+import org.apache.pekko.http.scaladsl.server.directives.ContentTypeResolver
+import org.apache.pekko.http.scaladsl.server.directives.FileAndResourceDirectives.ResourceFile
+import org.apache.pekko.stream.scaladsl.{Source, StreamConverters}
+import org.apache.pekko.util.ByteString
 import com.typesafe.scalalogging.Logger
 import org.tresql._
 import org.mojoz.querease._
@@ -924,7 +924,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
     val Action.Status(code, bodyTresql) = op
     Option(bodyTresql).map { bt =>
-      import akka.http.scaladsl.model.StatusCode._
+      import org.apache.pekko.http.scaladsl.model.StatusCode._
       val statusValue =
         if (code.isRedirection()) {
           val truri = tresqlUri.tresqlUriValue(TresqlUri.Tresql(bodyTresql))(
@@ -1046,7 +1046,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     env: Map[String, Any],
     context: ActionContext,
   )(implicit qr: QuereaseResources): Future[FileInfoResult] = {
-    import akka.http.scaladsl.model.{MediaTypes, ContentType}
+    import org.apache.pekko.http.scaladsl.model.{MediaTypes, ContentType}
     import qr._
     import resourcesFactory._
     val bindVars = data ++ env
@@ -1365,8 +1365,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     implicit httpReq: HttpRequest, as: ActorSystem): Future[RequestPartResult] = {
     val entity = httpReq.entity
     if (entity.contentType.mediaType.isMultipart) {
-      import akka.http.scaladsl.unmarshalling.MultipartUnmarshallers._
-      import akka.http.scaladsl.server.directives.MarshallingDirectives
+      import org.apache.pekko.http.scaladsl.unmarshalling.MultipartUnmarshallers._
+      import org.apache.pekko.http.scaladsl.server.directives.MarshallingDirectives
       val um = MarshallingDirectives.as[Multipart.FormData]
       implicit val ec = as.dispatcher
       um(httpReq).map { formdata =>

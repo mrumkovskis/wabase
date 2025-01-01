@@ -1,7 +1,7 @@
 package org.wabase
 
 import Format._
-import akka.util.ByteString
+import org.apache.pekko.util.ByteString
 import scala.collection.immutable.TreeMap
 import scala.language.postfixOps
 import spray.json._

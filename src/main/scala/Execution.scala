@@ -1,8 +1,8 @@
 package org.wabase
 
-import akka.actor.ActorSystem
-import akka.stream.ActorMaterializer
-import akka.stream.Materializer
+import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.stream.ActorMaterializer
+import org.apache.pekko.stream.Materializer
 import scala.concurrent.ExecutionContextExecutor
 
 trait Execution {

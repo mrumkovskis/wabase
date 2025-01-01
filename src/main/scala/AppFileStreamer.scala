@@ -5,14 +5,14 @@ import java.math.BigInteger
 import java.nio.channels.FileChannel
 import java.nio.file.Files
 import java.security.MessageDigest
-import akka.http.scaladsl.model.EntityStreamSizeException
+import org.apache.pekko.http.scaladsl.model.EntityStreamSizeException
 import com.typesafe.config.Config
 
 import scala.collection.immutable.TreeMap
 import scala.concurrent.{ExecutionContext, ExecutionContextExecutor, Future}
-import akka.stream._
-import akka.stream.scaladsl._
-import akka.util.ByteString
+import org.apache.pekko.stream._
+import org.apache.pekko.stream.scaladsl._
+import org.apache.pekko.util.ByteString
 import org.tresql._
 
 import scala.util.Failure

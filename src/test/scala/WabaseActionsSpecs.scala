@@ -1,13 +1,13 @@
 package org.wabase
 
-import akka.actor.ActorSystem
-import akka.http.scaladsl.marshalling.Marshal
-import akka.http.scaladsl.model.{ContentType, ContentTypes, HttpEntity, HttpRequest, HttpResponse, MessageEntity, Multipart, StatusCodes}
-import akka.http.scaladsl.server.Route
-import akka.http.scaladsl.testkit.ScalatestRouteTest
-import akka.http.scaladsl.unmarshalling.Unmarshal
-import akka.stream.scaladsl.{Source, StreamConverters}
-import akka.util.ByteString
+import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.http.scaladsl.marshalling.Marshal
+import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes, HttpEntity, HttpRequest, HttpResponse, MessageEntity, Multipart, StatusCodes}
+import org.apache.pekko.http.scaladsl.server.Route
+import org.apache.pekko.http.scaladsl.testkit.ScalatestRouteTest
+import org.apache.pekko.http.scaladsl.unmarshalling.Unmarshal
+import org.apache.pekko.stream.scaladsl.{Source, StreamConverters}
+import org.apache.pekko.util.ByteString
 import org.mojoz.querease.{TresqlMetadata, ValidationException, ValidationResult}
 import org.mojoz.querease.ValueConverter.ClassOfJavaSqlDate
 import org.scalatest.flatspec.{AsyncFlatSpec, AsyncFlatSpecLike}
@@ -1357,7 +1357,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     implicit val user: TestUsr = TestUsr(100)
     /*
     * Cannot test since resources marshaller since 'resource.txt' file used in test not found from classloader which is used by
-    * akka-http FileAndResourceDirectives.getFromResource method.
+    * pekko-http FileAndResourceDirectives.getFromResource method.
     *
     * classOf[Marshalling].getResource("/resource.txt") - WORKS
     * classOf[Marshalling].getClassLoader.getResource("/resource.txt") - DOES NOT WORK

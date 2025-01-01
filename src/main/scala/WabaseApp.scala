@@ -1,11 +1,11 @@
 package org.wabase
 
-import akka.actor.ActorSystem
-import akka.http.scaladsl.model.{HttpRequest, HttpResponse, StatusCodes}
-import akka.http.scaladsl.model.headers.`Timeout-Access`
-import akka.stream.Materializer
-import akka.stream.scaladsl.{Keep, Source}
-import akka.util.ByteString
+import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.http.scaladsl.model.{HttpRequest, HttpResponse, StatusCodes}
+import org.apache.pekko.http.scaladsl.model.headers.`Timeout-Access`
+import org.apache.pekko.stream.Materializer
+import org.apache.pekko.stream.scaladsl.{Keep, Source}
+import org.apache.pekko.util.ByteString
 import org.mojoz.metadata.{FieldDef, ViewDef}
 import org.mojoz.querease.TresqlMetadata
 import org.tresql.{Resources, ResourcesTemplate, SingleValueResult}

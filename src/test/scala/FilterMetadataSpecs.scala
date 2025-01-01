@@ -1,6 +1,6 @@
 package org.wabase
 
-import akka.actor.ActorSystem
+import org.apache.pekko.actor.ActorSystem
 import org.mojoz.metadata.Type
 import org.mojoz.querease.FilterType._
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}

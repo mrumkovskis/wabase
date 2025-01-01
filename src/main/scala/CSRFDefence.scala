@@ -1,9 +1,9 @@
 package org.wabase
 
-import akka.http.scaladsl.server.Directives._
-import akka.http.scaladsl.server.{Directive0, Directive1}
-import akka.http.scaladsl.model.Uri
-import akka.http.scaladsl.model.headers.{Host, HttpCookie, HttpOrigin, HttpOriginRange, Origin, Referer, SameSite}
+import org.apache.pekko.http.scaladsl.server.Directives._
+import org.apache.pekko.http.scaladsl.server.{Directive0, Directive1}
+import org.apache.pekko.http.scaladsl.model.Uri
+import org.apache.pekko.http.scaladsl.model.headers.{Host, HttpCookie, HttpOrigin, HttpOriginRange, Origin, Referer, SameSite}
 
 class CSRFException(message: String) extends Exception(message)
 

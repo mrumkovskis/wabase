@@ -1,8 +1,8 @@
 package org.wabase
 
-import akka.actor.ActorSystem
-import akka.stream.scaladsl.{Sink, Source, StreamConverters}
-import akka.util.ByteString
+import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.stream.scaladsl.{Sink, Source, StreamConverters}
+import org.apache.pekko.util.ByteString
 import io.bullet.borer.{Cbor, Json, Target}
 
 import java.io.{ByteArrayInputStream, InputStream, OutputStream, OutputStreamWriter}

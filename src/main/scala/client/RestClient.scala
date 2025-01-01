@@ -1,16 +1,16 @@
 package org.wabase
 package client
 
-import akka.actor.{ActorRef, ActorSystem}
-import akka.http.scaladsl.Http
-import akka.http.scaladsl.coding.Coders.{Deflate, Gzip, NoCoding}
-import akka.http.scaladsl.marshalling.{Marshal, Marshaller}
-import akka.http.scaladsl.model.Uri.Query
-import akka.http.scaladsl.model._
-import akka.http.scaladsl.model.headers._
-import akka.http.scaladsl.model.ws.{Message, WebSocketRequest}
-import akka.http.scaladsl.unmarshalling._
-import akka.stream.scaladsl.{Flow, Keep, Sink, Source}
+import org.apache.pekko.actor.{ActorRef, ActorSystem}
+import org.apache.pekko.http.scaladsl.Http
+import org.apache.pekko.http.scaladsl.coding.Coders.{Deflate, Gzip, NoCoding}
+import org.apache.pekko.http.scaladsl.marshalling.{Marshal, Marshaller}
+import org.apache.pekko.http.scaladsl.model.Uri.Query
+import org.apache.pekko.http.scaladsl.model._
+import org.apache.pekko.http.scaladsl.model.headers._
+import org.apache.pekko.http.scaladsl.model.ws.{Message, WebSocketRequest}
+import org.apache.pekko.http.scaladsl.unmarshalling._
+import org.apache.pekko.stream.scaladsl.{Flow, Keep, Sink, Source}
 
 import scala.collection.immutable.{Seq => iSeq}
 import scala.concurrent.duration._

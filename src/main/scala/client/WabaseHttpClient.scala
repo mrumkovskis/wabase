@@ -1,21 +1,21 @@
 package org.wabase
 package client
 
-import akka.actor.{Actor, ActorRef, Props}
-import akka.http.scaladsl.model._
-import akka.http.scaladsl.model.headers.{BasicHttpCredentials, Host, HttpOrigin, Origin, RawHeader, Authorization => AuthorizationHeader}
-import akka.http.scaladsl.model.ws.TextMessage
-import akka.http.scaladsl.unmarshalling._
-import akka.stream.scaladsl.Source
-import akka.util.Timeout
+import org.apache.pekko.actor.{Actor, ActorRef, Props}
+import org.apache.pekko.http.scaladsl.model._
+import org.apache.pekko.http.scaladsl.model.headers.{BasicHttpCredentials, Host, HttpOrigin, Origin, RawHeader, Authorization => AuthorizationHeader}
+import org.apache.pekko.http.scaladsl.model.ws.TextMessage
+import org.apache.pekko.http.scaladsl.unmarshalling._
+import org.apache.pekko.stream.scaladsl.Source
+import org.apache.pekko.util.Timeout
 import spray.json.{JsArray, JsObject, JsString, JsValue}
 
 import scala.concurrent.Future
 import scala.collection.immutable.{Seq => iSeq}
 import spray.json._
 import DeferredControl.`X-Deferred-Hash`
-import akka.http.scaladsl.marshalling.Marshaller
-import akka.pattern.ask
+import org.apache.pekko.http.scaladsl.marshalling.Marshaller
+import org.apache.pekko.pattern.ask
 
 import scala.concurrent.duration.FiniteDuration
 

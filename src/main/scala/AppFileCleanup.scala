@@ -28,7 +28,7 @@ class AppFileCleanup(dbAccess: DbAccess, fileStreamers: AppFileStreamerConfig*) 
   4. delete all files from file system when they are in files_on_disk but not in file_body_info
   */
 
-  def doCleanup(log: akka.event.LoggingAdapter) = {
+  def doCleanup(log: org.apache.pekko.event.LoggingAdapter) = {
     fileStreamers foreach { fs =>
       val wd = new File(fs.rootPath)
       val tmp = new File(fs.rootPath + "/tmp")

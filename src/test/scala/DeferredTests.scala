@@ -3,15 +3,15 @@ package org.wabase
 import java.io.File
 import java.nio.file.Files
 import java.util.UUID
-import akka.http.scaladsl.model.{ContentTypes, HttpEntity, HttpResponse, StatusCode, StatusCodes}
-import akka.http.scaladsl.model.headers._
-import akka.http.scaladsl.model.ws.TextMessage
-import akka.http.scaladsl.server.Directives._
-import akka.http.scaladsl.server.ExceptionHandler
-import akka.http.scaladsl.server.Route
-import akka.http.scaladsl.testkit.{ScalatestRouteTest, WSProbe}
-import akka.stream.scaladsl.Source
-import akka.util.ByteString
+import org.apache.pekko.http.scaladsl.model.{ContentTypes, HttpEntity, HttpResponse, StatusCode, StatusCodes}
+import org.apache.pekko.http.scaladsl.model.headers._
+import org.apache.pekko.http.scaladsl.model.ws.TextMessage
+import org.apache.pekko.http.scaladsl.server.Directives._
+import org.apache.pekko.http.scaladsl.server.ExceptionHandler
+import org.apache.pekko.http.scaladsl.server.Route
+import org.apache.pekko.http.scaladsl.testkit.{ScalatestRouteTest, WSProbe}
+import org.apache.pekko.stream.scaladsl.Source
+import org.apache.pekko.util.ByteString
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import org.tresql.Resources

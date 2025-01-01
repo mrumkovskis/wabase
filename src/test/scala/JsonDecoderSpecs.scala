@@ -1,6 +1,6 @@
 package org.wabase
 
-import akka.util.ByteString
+import org.apache.pekko.util.ByteString
 import org.mojoz.querease.{Querease, QuereaseIo}
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers

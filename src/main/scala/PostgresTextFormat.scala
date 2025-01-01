@@ -1,6 +1,6 @@
 package org.wabase
 
-import akka.util.ByteString
+import org.apache.pekko.util.ByteString
 
 import java.io.{BufferedWriter, ByteArrayOutputStream, CharArrayWriter, OutputStreamWriter, Writer}
 

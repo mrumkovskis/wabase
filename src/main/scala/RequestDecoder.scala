@@ -1,7 +1,7 @@
 package org.wabase
 
-import akka.util.ByteString
-import io.bullet.borer.compat.akka.ByteStringProvider
+import org.apache.pekko.util.ByteString
+import io.bullet.borer.compat.pekko.ByteStringProvider
 import io.bullet.borer.encodings.BaseEncoding
 import io.bullet.borer.{Cbor, Decoder, Input, Json, Tag, Target, DataItem => DI}
 import org.mojoz.metadata.{Type, TypeDef, ViewDef}

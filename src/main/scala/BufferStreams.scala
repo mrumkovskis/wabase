@@ -1,16 +1,16 @@
 package org.wabase
 
 import scala.concurrent.{Future, Promise}
-import akka.stream._
-import akka.stream.scaladsl._
-import akka.stream.stage._
-import akka.util.{ByteString, ByteStringBuilder}
+import org.apache.pekko.stream._
+import org.apache.pekko.stream.scaladsl._
+import org.apache.pekko.stream.stage._
+import org.apache.pekko.util.{ByteString, ByteStringBuilder}
 
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 import java.nio.file.StandardOpenOption
-import akka.Done
+import org.apache.pekko.Done
 
 import scala.util.{Failure, Success, Try}
 

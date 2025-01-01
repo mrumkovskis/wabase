@@ -1,8 +1,8 @@
 package org.wabase
 
-import akka.actor.ActorSystem
-import akka.stream.scaladsl.{Source, StreamConverters}
-import akka.util.ByteString
+import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.stream.scaladsl.{Source, StreamConverters}
+import org.apache.pekko.util.ByteString
 
 import com.typesafe.config.ConfigFactory
 import jakarta.activation.DataSource

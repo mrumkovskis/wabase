@@ -1,13 +1,13 @@
 package org.wabase
 
-import akka.http.scaladsl.model.HttpMethods._
-import akka.http.scaladsl.model.Uri.Path
-import akka.http.scaladsl.model.Uri.Path.{Empty, Segment, SlashOrEmpty}
-import akka.http.scaladsl.server.LanguageNegotiator
+import org.apache.pekko.http.scaladsl.model.HttpMethods._
+import org.apache.pekko.http.scaladsl.model.Uri.Path
+import org.apache.pekko.http.scaladsl.model.Uri.Path.{Empty, Segment, SlashOrEmpty}
+import org.apache.pekko.http.scaladsl.server.LanguageNegotiator
 import org.mojoz.metadata.ViewDef
 import AppMetadata._
-import akka.http.scaladsl.model.headers.Cookie
-import akka.http.scaladsl.model.{HttpRequest, HttpResponse}
+import org.apache.pekko.http.scaladsl.model.headers.Cookie
+import org.apache.pekko.http.scaladsl.model.{HttpRequest, HttpResponse}
 import org.wabase.AppMetadata.{Action, RouteDef}
 
 import java.util.Locale

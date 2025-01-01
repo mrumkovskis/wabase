@@ -1,22 +1,22 @@
 package org.wabase
 
-import akka.http.scaladsl.marshalling._
-import akka.http.scaladsl.model._
-import akka.http.scaladsl.model.MediaTypes._
-import akka.http.scaladsl.model.headers.ContentDispositionTypes.attachment
-import akka.http.scaladsl.util.FastFuture
+import org.apache.pekko.http.scaladsl.marshalling._
+import org.apache.pekko.http.scaladsl.model._
+import org.apache.pekko.http.scaladsl.model.MediaTypes._
+import org.apache.pekko.http.scaladsl.model.headers.ContentDispositionTypes.attachment
+import org.apache.pekko.http.scaladsl.util.FastFuture
 
 import java.net.URLEncoder
 import java.text.Normalizer
 import scala.concurrent.{ExecutionContext, Future}
-import akka.http.scaladsl.model.headers.{ContentDispositionType, ContentDispositionTypes, Location, RawHeader, `Content-Disposition`}
-import akka.http.scaladsl.server.RouteResult.{Complete, Rejected}
-import akka.http.scaladsl.server.directives.FileAndResourceDirectives
-import akka.http.scaladsl.server.directives.FileAndResourceDirectives.ResourceFile
-import akka.http.scaladsl.unmarshalling.{FromEntityUnmarshaller, FromResponseUnmarshaller, Unmarshaller}
-import akka.stream.scaladsl.{Source, StreamConverters}
-import akka.util.ByteString
-import io.bullet.borer.compat.akka.ByteStringProvider
+import org.apache.pekko.http.scaladsl.model.headers.{ContentDispositionType, ContentDispositionTypes, Location, RawHeader, `Content-Disposition`}
+import org.apache.pekko.http.scaladsl.server.RouteResult.{Complete, Rejected}
+import org.apache.pekko.http.scaladsl.server.directives.FileAndResourceDirectives
+import org.apache.pekko.http.scaladsl.server.directives.FileAndResourceDirectives.ResourceFile
+import org.apache.pekko.http.scaladsl.unmarshalling.{FromEntityUnmarshaller, FromResponseUnmarshaller, Unmarshaller}
+import org.apache.pekko.stream.scaladsl.{Source, StreamConverters}
+import org.apache.pekko.util.ByteString
+import io.bullet.borer.compat.pekko.ByteStringProvider
 import org.mojoz.querease.QuereaseIteratorResult
 import org.tresql.{Resources, Result, RowLike}
 
@@ -31,7 +31,7 @@ trait Marshalling extends
   with DtoMarshalling
   { this: AppProvider[_] with JsonConverterProvider with Execution => }
 
-trait BasicJsonMarshalling extends akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport with BasicMarshalling {
+trait BasicJsonMarshalling extends org.apache.pekko.http.scaladsl.marshallers.sprayjson.SprayJsonSupport with BasicMarshalling {
   this: JsonConverterProvider =>
 
   import spray.json._

@@ -1,14 +1,14 @@
 package org.wabase
 
-import akka.http.scaladsl.server.PathMatchers.{Remaining, Segment}
-import akka.http.scaladsl.server.{Directive, Route}
-import akka.http.scaladsl.model.{HttpEntity, HttpRequest, HttpResponse, MediaType, StatusCodes}
-import akka.http.scaladsl.model.headers.{ModeledCustomHeader, ModeledCustomHeaderCompanion}
-import akka.http.scaladsl.server.Directives._
-import akka.stream._
-import akka.stream.stage.{GraphStage, GraphStageLogic, InHandler, OutHandler}
-import akka.stream.scaladsl.{Flow, GraphDSL, Sink, Source}
-import akka.actor.{Actor, Props}
+import org.apache.pekko.http.scaladsl.server.PathMatchers.{Remaining, Segment}
+import org.apache.pekko.http.scaladsl.server.{Directive, Route}
+import org.apache.pekko.http.scaladsl.model.{HttpEntity, HttpRequest, HttpResponse, MediaType, StatusCodes}
+import org.apache.pekko.http.scaladsl.model.headers.{ModeledCustomHeader, ModeledCustomHeaderCompanion}
+import org.apache.pekko.http.scaladsl.server.Directives._
+import org.apache.pekko.stream._
+import org.apache.pekko.stream.stage.{GraphStage, GraphStageLogic, InHandler, OutHandler}
+import org.apache.pekko.stream.scaladsl.{Flow, GraphDSL, Sink, Source}
+import org.apache.pekko.actor.{Actor, Props}
 
 import scala.util.{Either, Left, Right, Success, Try}
 import scala.concurrent.{ExecutionContextExecutor, Future}
@@ -23,9 +23,9 @@ import AppServiceBase._
 import Authentication.SessionInfoRemover
 import com.typesafe.config.Config
 import AppFileStreamer.FileInfo
-import akka.http.scaladsl.model.MediaTypes.`application/json`
-import akka.http.scaladsl.server.RouteResult.Complete
-import akka.util.ByteString
+import org.apache.pekko.http.scaladsl.model.MediaTypes.`application/json`
+import org.apache.pekko.http.scaladsl.server.RouteResult.Complete
+import org.apache.pekko.util.ByteString
 import org.wabase.AppMetadata.DbAccessKey
 
 import scala.annotation.tailrec
@@ -578,9 +578,9 @@ object DeferredControl extends Loggable with AppConfig {
     }
   }
 
-  import akka.http.scaladsl.model.{HttpMessage, HttpEntity, HttpRequest, HttpResponse,
+  import org.apache.pekko.http.scaladsl.model.{HttpMessage, HttpEntity, HttpRequest, HttpResponse,
     Uri, ContentType, HttpMethod, HttpProtocol, StatusCode}
-  import akka.http.scaladsl.model.headers.RawHeader
+  import org.apache.pekko.http.scaladsl.model.headers.RawHeader
 
   object HttpMessageSerialization {
     class HttpResponseMarshallingException(cause: Throwable) extends Exception(cause)

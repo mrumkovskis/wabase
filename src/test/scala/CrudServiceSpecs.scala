@@ -1,16 +1,16 @@
 package org.wabase
 
-import akka.actor.ActorSystem
-import akka.event.LoggingAdapter
-import akka.http.scaladsl.marshalling.ToResponseMarshallable
-import akka.http.scaladsl.model.headers.{Location, `Content-Type`}
-import akka.http.scaladsl.model.{ContentTypes, HttpEntity, HttpRequest, MediaTypes, StatusCodes, Uri}
-import akka.http.scaladsl.server.Directives._
-import akka.http.scaladsl.server.{ExceptionHandler, Rejection, RejectionHandler, RequestContext, Route, RouteResult}
-import akka.http.scaladsl.settings.{ParserSettings, RoutingSettings}
-import akka.http.scaladsl.testkit.ScalatestRouteTest
-import akka.stream.Materializer
-import akka.util.ByteString
+import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.event.LoggingAdapter
+import org.apache.pekko.http.scaladsl.marshalling.ToResponseMarshallable
+import org.apache.pekko.http.scaladsl.model.headers.{Location, `Content-Type`}
+import org.apache.pekko.http.scaladsl.model.{ContentTypes, HttpEntity, HttpRequest, MediaTypes, StatusCodes, Uri}
+import org.apache.pekko.http.scaladsl.server.Directives._
+import org.apache.pekko.http.scaladsl.server.{ExceptionHandler, Rejection, RejectionHandler, RequestContext, Route, RouteResult}
+import org.apache.pekko.http.scaladsl.settings.{ParserSettings, RoutingSettings}
+import org.apache.pekko.http.scaladsl.testkit.ScalatestRouteTest
+import org.apache.pekko.stream.Materializer
+import org.apache.pekko.util.ByteString
 import java.time.{LocalDate, LocalTime, LocalDateTime}
 import java.time.format.DateTimeFormatter
 import org.mojoz.querease.{QuereaseMetadata, ValueConverter}

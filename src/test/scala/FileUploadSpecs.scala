@@ -4,14 +4,14 @@ package org.wabase
 import java.io.File
 import java.nio.file.Files
 import java.util.UUID
-import akka.http.scaladsl.model.{ContentTypes, EntityStreamSizeException, HttpEntity, StatusCodes}
-import akka.http.scaladsl.model.HttpEntity.{Chunk, Chunked, Default}
-import akka.http.scaladsl.server.Directives.{complete, handleExceptions}
-import akka.http.scaladsl.server.ExceptionHandler
-import akka.http.scaladsl.testkit.{RouteTestTimeout, ScalatestRouteTest}
-import akka.http.scaladsl.unmarshalling.FromResponseUnmarshaller
-import akka.stream.scaladsl.Source
-import akka.util.ByteString
+import org.apache.pekko.http.scaladsl.model.{ContentTypes, EntityStreamSizeException, HttpEntity, StatusCodes}
+import org.apache.pekko.http.scaladsl.model.HttpEntity.{Chunk, Chunked, Default}
+import org.apache.pekko.http.scaladsl.server.Directives.{complete, handleExceptions}
+import org.apache.pekko.http.scaladsl.server.ExceptionHandler
+import org.apache.pekko.http.scaladsl.testkit.{RouteTestTimeout, ScalatestRouteTest}
+import org.apache.pekko.http.scaladsl.unmarshalling.FromResponseUnmarshaller
+import org.apache.pekko.stream.scaladsl.Source
+import org.apache.pekko.util.ByteString
 import org.scalatest.flatspec.AnyFlatSpec
 import org.tresql.Resources
 import spray.json.{JsObject, JsString}

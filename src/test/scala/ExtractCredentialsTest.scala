@@ -1,13 +1,13 @@
 package org.wabase
 
-import akka.http.scaladsl.model.FormData
-import akka.http.scaladsl.model.headers.{Authorization => AuthorizationHeader, _}
-import akka.http.scaladsl.server.Directives._
-import akka.http.scaladsl.testkit.ScalatestRouteTest
+import org.apache.pekko.http.scaladsl.model.FormData
+import org.apache.pekko.http.scaladsl.model.headers.{Authorization => AuthorizationHeader, _}
+import org.apache.pekko.http.scaladsl.server.Directives._
+import org.apache.pekko.http.scaladsl.testkit.ScalatestRouteTest
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.{AnyWordSpec => WordSpec}
 
-import akka.http.scaladsl.model._
+import org.apache.pekko.http.scaladsl.model._
 import java.net.InetAddress
 
 class ExtractCredentialsTest extends WordSpec with Matchers with ScalatestRouteTest {

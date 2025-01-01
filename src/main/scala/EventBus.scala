@@ -1,7 +1,7 @@
 package org.wabase
 
 
-import akka.event.{ActorEventBus, LookupClassification}
+import org.apache.pekko.event.{ActorEventBus, LookupClassification}
 
 trait EventBus extends ActorEventBus with LookupClassification {
 

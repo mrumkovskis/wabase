@@ -1,8 +1,8 @@
 package org.wabase
 
-import akka.actor.ActorSystem
-import akka.stream.scaladsl.{FileIO, StreamConverters}
-import akka.util.ByteString
+import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.stream.scaladsl.{FileIO, StreamConverters}
+import org.apache.pekko.util.ByteString
 import com.samskivert.mustache.{Mustache, Template}
 import org.tresql.SimpleCacheBase
 import org.xhtmlrenderer.pdf.{ITextOutputDevice, ITextRenderer, ITextUserAgent}

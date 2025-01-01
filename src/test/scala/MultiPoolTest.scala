@@ -1,6 +1,6 @@
 package org.wabase
 
-import akka.http.scaladsl.testkit.ScalatestRouteTest
+import org.apache.pekko.http.scaladsl.testkit.ScalatestRouteTest
 import org.mojoz.querease.TresqlMetadata
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}

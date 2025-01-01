@@ -21,7 +21,7 @@
     </root>
 
     <logger name="com.zaxxer.hikari" level="warn"/>
-    <logger name="akka.stream.scaladsl.RestartWithBackoffSource" level="error"/>
+    <logger name="org.apache.pekko.stream.scaladsl.RestartWithBackoffSource" level="error"/>
 
     <!-- <logger name="org.wabase.tresql" level="debug"/> -->
 

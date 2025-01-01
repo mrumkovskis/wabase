@@ -1,7 +1,7 @@
-val scalaV    = "2.13.15" // "3.3.4"
+val scalaV    = "3.3.4"
 
-val akkaV     =  "2.6.21" // Ensure Apache-2.0 license
-val akkaHttpV = "10.2.10" // Ensure Apache-2.0 license
+val pekkoV    = "1.1.2"
+val pekkoHttpV= "1.1.0"
 
 val mojozV    = "5.3.3"
 val quereaseV = "7.0.1"
@@ -25,8 +25,8 @@ lazy val wabase = (project in file("."))
   scalaVersion := scalaV,
   crossScalaVersions := Seq(
     "3.3.4",
-    "2.13.15",
-    "2.12.20",
+    // "2.13.15",
+    // "2.12.20",
   ),
   scalacOptions ++= Seq("-unchecked", "-deprecation", "-feature"),
   resolvers += "snapshots" at "https://oss.sonatype.org/content/repositories/snapshots",
@@ -38,12 +38,12 @@ lazy val wabase = (project in file("."))
     }
     Seq(
       "com.samskivert"              % "jmustache"             % "1.16",
-      "com.typesafe.akka"          %% "akka-actor"            % akkaV                 cross CrossVersion.for3Use2_13,
-      "com.typesafe.akka"          %% "akka-http-spray-json"  % akkaHttpV             cross CrossVersion.for3Use2_13,
-      "com.typesafe.akka"          %% "akka-slf4j"            % akkaV                 cross CrossVersion.for3Use2_13,
-      "com.typesafe.akka"          %% "akka-stream"           % akkaV                 cross CrossVersion.for3Use2_13,
+      "org.apache.pekko"           %% "pekko-actor"           % pekkoV,
+      "org.apache.pekko"           %% "pekko-http-spray-json" % pekkoHttpV,
+      "org.apache.pekko"           %% "pekko-slf4j"           % pekkoV,
+      "org.apache.pekko"           %% "pekko-stream"          % pekkoV,
       "com.typesafe.scala-logging" %% "scala-logging"         % "3.9.5",
-      "com.typesafe"               %% "ssl-config-core"       % "0.6.1"               cross CrossVersion.for3Use2_13,
+      "com.typesafe"               %% "ssl-config-core"       % "0.6.1",
       "com.zaxxer"                  % "HikariCP"              % "6.2.1",
       "ch.qos.logback"              % "logback-classic"       % "1.5.15",
       "org.mojoz"                  %% "mojoz"                 % mojozV,
@@ -54,49 +54,51 @@ lazy val wabase = (project in file("."))
       "org.tresql"                 %% "tresql"                % tresqlV,
       "io.bullet"                  %% "borer-core"            % borerV,
       "io.bullet"                  %% "borer-derivation"      % borerV,
-      "io.bullet"                  %% "borer-compat-akka"     % borerV,
-      "com.enragedginger"          %% "akka-quartz-scheduler" % "1.9.3-akka-2.6.x"  % Optional,
+      "io.bullet"                  %% "borer-compat-pekko"    % borerV,
+      "io.github.samueleresca"     %% "pekko-quartz-scheduler"% "1.3.0-pekko-1.1.x" % Optional,
       "org.xhtmlrenderer"           % "flying-saucer-pdf"     % "9.11.2"            % Optional,
       "org.simplejavamail"          % "simple-java-mail"      % "8.12.4"            % Optional,
       "org.graalvm.js"              % "js"                    % "22.3.5"            % Optional,
       "org.graalvm.js"              % "js-scriptengine"       % "22.3.5"            % Optional,
     ) ++ Seq( // for test
       "org.scalatest"              %% "scalatest"             % "3.2.19"  %     Test,
-      "com.typesafe.akka"          %% "akka-http-testkit"     % akkaHttpV %     Test  cross CrossVersion.for3Use2_13,
-      "com.typesafe.akka"          %% "akka-testkit"          % akkaV     %     Test  cross CrossVersion.for3Use2_13,
-      "com.typesafe.akka"          %% "akka-stream-testkit"   % akkaV     %     Test  cross CrossVersion.for3Use2_13,
+      "org.apache.pekko"           %% "pekko-http-testkit"    % pekkoHttpV%     Test,
+      "org.apache.pekko"           %% "pekko-testkit"         % pekkoV    %     Test,
+      "org.apache.pekko"           %% "pekko-stream-testkit"  % pekkoV    %     Test,
       "org.hsqldb"                  % "hsqldb"                % "2.7.4"   %     Test,
       "com.vladsch.flexmark"        % "flexmark-all"          % "0.64.8"  %     Test,
     )
   },
+  /*
   apiMappings ++= (Compile / fullClasspath map { fcp =>
     // fix bad api mappings,
     val mappings: Map[String, String] =
-      fcp.files.map(_.getName).filter(_ startsWith "akka-").filterNot(_ startsWith "akka-http-")
-        .map(akkajar => (akkajar, s"http://doc.akka.io/api/akka/$akkaV/")).toMap ++
-      fcp.files.map(_.getName).filter(_ startsWith "akka-http-")
-        .map(akkajar => (akkajar, s"http://doc.akka.io/api/akka/$akkaHttpV/")).toMap
+      fcp.files.map(_.getName).filter(_ startsWith "pekko-").filterNot(_ startsWith "pekko-http-")
+        .map(akkajar => (akkajar, s"http://doc.pekko.io/api/pekko/$pekkoV/")).toMap ++
+      fcp.files.map(_.getName).filter(_ startsWith "pekko-http-")
+        .map(akkajar => (akkajar, s"http://doc.pekko.io/api/pekko/$pekkoHttpV/")).toMap
     fcp.files.filter(f => mappings.contains(f.getName))
       .map(f => (f, new java.net.URL(mappings(f.getName)))).toMap
   }).value,
+  */
   updateOptions := updateOptions.value.withLatestSnapshots(false),
   )
   /*
   .settings(
     initialCommands in console := s"""
-      |import akka.actor._
-      |import akka.stream._
+      |import org.apache.pekko.actor._
+      |import org.apache.pekko.stream._
       |import scaladsl._
       |import stage._
       |import Attributes._
-      |import akka.http._
+      |import org.apache.pekko.http._
       |import scala.concurrent._
       |import duration._
-      |import akka.http.scaladsl.model._
-      |import akka.http.scaladsl.server._
+      |import org.apache.pekko.http.scaladsl.model._
+      |import org.apache.pekko.http.scaladsl.server._
       |import Directives._
-      |import akka.http.scaladsl.client.RequestBuilding._
-      |//import akka.http.scaladsl.testkit._
+      |import org.apache.pekko.http.scaladsl.client.RequestBuilding._
+      |//import org.apache.pekko.http.scaladsl.testkit._
       |//import org.scalatest.{FlatSpec, Matchers, WordSpec}
       |import org.wabase._
       |//implicit val system = ActorSystem("test-system") //creates problems with scalatest call from test:console
