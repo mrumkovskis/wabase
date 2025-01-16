@@ -1,4 +1,4 @@
-val scalaV    = "2.13.15" // "3.3.4"
+val scalaV    = "2.13.16" // "3.3.4"
 
 val pekkoV    = "1.1.2"
 val pekkoHttpV= "1.1.0"
@@ -25,7 +25,7 @@ lazy val wabase = (project in file("."))
   scalaVersion := scalaV,
   crossScalaVersions := Seq(
     "3.3.4",
-    "2.13.15",
+    "2.13.16",
     "2.12.20",
   ),
   scalacOptions ++= Seq("-unchecked", "-deprecation", "-feature"),
