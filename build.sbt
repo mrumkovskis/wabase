@@ -1,6 +1,6 @@
 val scalaV    = "2.13.16" // "3.3.4"
 
-val pekkoV    = "1.1.2"
+val pekkoV    = "1.1.3"
 val pekkoHttpV= "1.1.0"
 
 val mojozV    = "5.3.3"
@@ -46,6 +46,7 @@ lazy val wabase = (project in file("."))
     Seq(
       "com.samskivert"              % "jmustache"             % "1.16",
       "org.apache.pekko"           %% "pekko-actor"           % pekkoV,
+      "org.apache.pekko"           %% "pekko-actor-typed"     % pekkoV,
       "org.apache.pekko"           %% "pekko-http-spray-json" % pekkoHttpV,
       "org.apache.pekko"           %% "pekko-slf4j"           % pekkoV,
       "org.apache.pekko"           %% "pekko-stream"          % pekkoV,
