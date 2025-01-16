@@ -3,8 +3,8 @@ val scalaV    = "2.13.16" // "3.3.4"
 val pekkoV    = "1.1.3"
 val pekkoHttpV= "1.1.0"
 
-val mojozV    = "5.3.3"
-val quereaseV = "7.0.1"
+val mojozV    = "5.4.0"
+val quereaseV = "7.1.0"
 val tresqlV   = "12.0.1"
 
 javacOptions ++= Seq("-source", "11", "-target", "11", "-Xlint")
