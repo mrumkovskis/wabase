@@ -696,7 +696,7 @@ object AppServiceBase {
       case e: EntityStreamSizeException =>
         import marshalling._
         val response = Map[String, Any]("actualSize"-> e.actualSize.orNull, "limit" -> e.limit)
-        complete(StatusCodes.PayloadTooLarge -> response)
+        complete(StatusCodes.ContentTooLarge -> response)
     }
 
     def businessExceptionHandler(logger: com.typesafe.scalalogging.Logger) = ExceptionHandler {
@@ -712,7 +712,7 @@ object AppServiceBase {
     def unprocessableEntityExceptionHandler(logger: com.typesafe.scalalogging.Logger) = ExceptionHandler {
       case e: UnprocessableEntityException =>
         logger.trace(e.getMessage, e)
-        complete(HttpResponse(UnprocessableEntity, entity = e.getMessage))
+        complete(HttpResponse(UnprocessableContent, entity = e.getMessage))
     }
 
     def bindVariableExceptionHandler(logger: com.typesafe.scalalogging.Logger,

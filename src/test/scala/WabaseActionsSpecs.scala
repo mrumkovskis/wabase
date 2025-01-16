@@ -1424,7 +1424,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     }
     Post("/extract_parts_test2", WabaseHttpClient
       .fileUploadForm(createEntity("Hi people!" * 150, ContentTypes.`text/plain(UTF-8)`), "test.txt")) ~> route ~> check {
-      status == StatusCodes.PayloadTooLarge
+      status == StatusCodes.ContentTooLarge
     }
     var fileId: Any = null
     var fileSha: Any = null

@@ -57,7 +57,7 @@ class FileUploadSpecs extends AnyFlatSpec with TestQuereaseInitializer with Scal
     def entityStreamSizeExceptionHandler(logger: com.typesafe.scalalogging.Logger) = ExceptionHandler {
       case e: EntityStreamSizeException =>
         logger.debug("File upload specs: Stream size exception", e)
-        complete(StatusCodes.PayloadTooLarge)
+        complete(StatusCodes.ContentTooLarge)
     }
 
     service = new TestAppService(system) {
@@ -114,7 +114,7 @@ class FileUploadSpecs extends AnyFlatSpec with TestQuereaseInitializer with Scal
       service.uploadPath { _ => service.uploadAction(None)(usr, ApplicationState(Map()))}
     }
     Post(uploadPath, multipartForm) ~> route ~> check {
-      assertResult(status)(StatusCodes.PayloadTooLarge)
+      assertResult(status)(StatusCodes.ContentTooLarge)
     }
   }
 
@@ -131,7 +131,7 @@ class FileUploadSpecs extends AnyFlatSpec with TestQuereaseInitializer with Scal
     }
     val entity = Chunked(ContentTypes.`text/plain(UTF-8)`, source)
     Post(uploadPath, entity) ~> route ~> check {
-      assertResult(status)(StatusCodes.PayloadTooLarge)
+      assertResult(status)(StatusCodes.ContentTooLarge)
     }
   }
 }
