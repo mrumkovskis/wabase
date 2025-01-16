@@ -39,7 +39,7 @@ class TresqlUri {
           case ((u, "k"), i) if sv(vals(i)) == "?"  => (u, "p")
           case ((u, "s"), i)  => (u.copy(segments = sv(vals(i)) :: u.segments.toList), "s")
           case ((u, "k"), i)  => (u.copy(key      = sv(vals(i)) :: u.key     .toList), "k")
-          case ((u, "p"), i)  => (u.copy(params   = u.params + (names(i).toString -> sv(vals(i)))), "p")
+          case ((u,  p ), i)  => (u.copy(params   = u.params + (names(i).toString -> sv(vals(i)))), "p")
         }
       trUri.copy(
         segments = trUri.segments.reverse,
