@@ -18,16 +18,14 @@ case class WabaseUser(properties: Map[String, Any]) {
 case class WabaseRequestContext(
   route: RouteDef,
   req: HttpRequest,
-  viewName: String,
-  action: String,
-  key: Seq[Any],
-  applicationState: ApplicationState,
-  user: WabaseUser,
+  viewName: String = null,
+  action: String = null,
+  key: Seq[Any] = Nil,
+  applicationState: ApplicationState = null,
+  user: WabaseUser = null,
 )
 
 class WabaseRouteException(message: String) extends Exception(message)
-/** Can be used for example in authentication filter to return HTTP Unauthorized */
-class WabaseRouteFilterException(response: HttpResponse) extends Exception
 
 class WabaseService {
 
@@ -37,6 +35,12 @@ class WabaseService {
     val pathString = req.uri.path.toString
     val route = routes.find(_.path.pattern.matcher(pathString).matches)
       .getOrElse(error(s"Route not found for path '$pathString'"))
+    WabaseRequestContext(route, req)
+  }
+
+  def viewActionKey(ctx: WabaseRequestContext, viewDefs: Map[String, ViewDef]): WabaseRequestContext = {
+    import ctx._
+    val pathString = req.uri.path.toString
     val routeRegex = route.path
     val (viewNameAndActionStr, view_name, create_count_action) = routeRegex.unapplySeq(pathString).collect {
       case vna :: _ =>
@@ -82,7 +86,6 @@ class WabaseService {
   }
 
   def doRequest(ctx: WabaseRequestContext)(implicit ec: ExecutionContext): Future[HttpResponse] = {
-    import ctx._
     def invokeFunction(className: String, function: String, params: Seq[(Class[_], () => Any)]) = {
       val contextParams = Seq[(Class[_], () => Any)](
         (classOf[ExecutionContext], () => ec),
@@ -136,16 +139,20 @@ class WabaseService {
       }
     }
 
-    if (viewName == null) {
-      if (route.responseTransformer == null) error(s"If view name for route not specified, response transformer must be defined!")
-      else Option(route.requestMapper)
-        .map { case inv: Action.Invocation =>
-          invokeReqTransChain(inv, ctx)
-        }.getOrElse(Future.successful(ctx))
-        .flatMap { tctx =>
-          invokeRespTransChain(route.responseTransformer, HttpResponse(), tctx)
-        }
-    } else ???
+    Option(ctx.route.requestMapper)
+      .map(invokeReqTransChain(_, ctx))
+      .getOrElse(Future.successful(ctx)).flatMap { mappedCtx =>
+      if (mappedCtx.viewName == null)
+        if (mappedCtx.route.responseTransformer == null)
+          error(s"If view name for route not specified, response transformer must be defined!")
+        else invokeRespTransChain(mappedCtx.route.responseTransformer, HttpResponse(), mappedCtx)
+      else {
+        val httpResponseF = Future.successful(HttpResponse()) // TODO invoke do wabase action
+        if (mappedCtx.route.responseTransformer != null)
+          httpResponseF.flatMap(invokeRespTransChain(mappedCtx.route.responseTransformer, _, mappedCtx))
+        else httpResponseF
+      }
+    }
   }
 
   private def error(msg: String) = throw new WabaseRouteException(msg)
