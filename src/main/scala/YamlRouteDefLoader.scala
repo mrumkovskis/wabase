@@ -25,23 +25,13 @@ class YamlRouteDefLoader(
         }
 
       val path: Regex = new Regex(route)
-      val filter = parseProperty("request-filter")
+      val mapper = parseProperty("request-mapper")
       val transformer = parseProperty("response-transformer")
-      val state = parseProperty("state")
-      val auth = parseProperty("authentication")
-      val authz = parseProperty("authorization")
-      val processor = parseProperty("processor")
-      val session = parseProperty("session")
       val error = parseProperty("error")
       RouteDef(
         path = path,
-        requestFilter = filter,
+        requestMapper = mapper,
         responseTransformer = transformer,
-        state = state,
-        authentication = auth,
-        authorization = authz,
-        processor = processor,
-        session = session,
         error = error,
       )
     }.values.toList

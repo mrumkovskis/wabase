@@ -3,14 +3,11 @@ package org.wabase
 import org.apache.pekko.http.scaladsl.model.HttpMethods._
 import org.apache.pekko.http.scaladsl.model.Uri.Path
 import org.apache.pekko.http.scaladsl.model.Uri.Path.{Empty, Segment, SlashOrEmpty}
-import org.apache.pekko.http.scaladsl.server.LanguageNegotiator
 import org.mojoz.metadata.ViewDef
 import AppMetadata._
-import org.apache.pekko.http.scaladsl.model.headers.Cookie
 import org.apache.pekko.http.scaladsl.model.{HttpRequest, HttpResponse}
 import org.wabase.AppMetadata.{Action, RouteDef}
 
-import java.util.Locale
 import scala.concurrent.{ExecutionContext, Future}
 
 case class WabaseUser(properties: Map[String, Any]) {
@@ -86,14 +83,15 @@ class WabaseService {
 
   def doRequest(ctx: WabaseRequestContext)(implicit ec: ExecutionContext): Future[HttpResponse] = {
     import ctx._
-    if (viewName == null) {
-      def invokeFunction(className: String, function: String, params: Seq[(Class[_], () => Any)]) = {
-        val contextParams = Seq[(Class[_], () => Any)](
-          (classOf[ExecutionContext], () => ec),
-        )
-        org.wabase.invokeFunction(className, function, params ++ contextParams)
-      }
-      def invokeReqTrans(cn: String, fn: String): Future[WabaseRequestContext] = {
+    def invokeFunction(className: String, function: String, params: Seq[(Class[_], () => Any)]) = {
+      val contextParams = Seq[(Class[_], () => Any)](
+        (classOf[ExecutionContext], () => ec),
+      )
+      org.wabase.invokeFunction(className, function, params ++ contextParams)
+    }
+
+    def invokeReqTransChain(inv: Action.Invocation, wrc: WabaseRequestContext): Future[WabaseRequestContext] = {
+      def invokeReqTrans(cn: String, fn: String, tctx: WabaseRequestContext): Future[WabaseRequestContext] = {
         def processResult(r: Any): Future[WabaseRequestContext] = r match {
           case ctx: WabaseRequestContext => Future.successful(ctx)
           case req: HttpRequest => processResult(ctx.copy(req = req))
@@ -101,25 +99,51 @@ class WabaseService {
           case x => error(s"Request transformer must return either WabaseRequestContext or HttpRequest or Future of them." +
             s" Instead got: $x")
         }
-        processResult(invokeFunction(cn, fn, Seq((classOf[WabaseRequestContext], () => ctx))))
+
+        processResult(invokeFunction(cn, fn, Seq((classOf[WabaseRequestContext], () => tctx))))
       }
-      def invokeRespTrans(cn: String, fn: String, tctx: WabaseRequestContext): Future[HttpResponse] = {
+      inv.arg match {
+        case null => invokeReqTrans(inv.className, inv.function, wrc)
+        case i: Action.Invocation => invokeReqTransChain(i, wrc)
+          .flatMap(invokeReqTrans(inv.className, inv.function, _))
+        case x => throw new IllegalArgumentException(s"Unrecognized request mapper argument $x, must be function call.")
+      }
+    }
+
+    def invokeRespTransChain(
+      inv: Action.Invocation,
+      httpResp: HttpResponse,
+      wrc: WabaseRequestContext
+    ): Future[HttpResponse] = {
+      def invokeRespTrans(cn: String, fn: String, resp: HttpResponse, tctx: WabaseRequestContext): Future[HttpResponse] = {
         def processResult(r: Any): Future[HttpResponse] = r match {
           case resp: HttpResponse => Future.successful(resp)
           case f: Future[_] => f.flatMap(processResult)
           case x => error(s"Response transformer must return either HttpResponse or Future of it." +
             s" Instead got: $x")
         }
-        processResult(invokeFunction(cn, fn, Seq((classOf[WabaseRequestContext], () => tctx))))
+
+        processResult(invokeFunction(cn, fn, Seq(
+          (classOf[HttpResponse], () => resp),
+          (classOf[WabaseRequestContext], () => tctx),
+        )))
       }
+      inv.arg match {
+        case null => invokeRespTrans(inv.className, inv.function, httpResp, wrc)
+        case i: Action.Invocation => invokeRespTransChain(i, httpResp, wrc)
+          .flatMap(invokeRespTrans(inv.className, inv.function, _, wrc))
+        case x => throw IllegalArgumentException(s"Unrecognized response transformer argument $x, must be function call.")
+      }
+    }
+
+    if (viewName == null) {
       if (route.responseTransformer == null) error(s"If view name for route not specified, response transformer must be defined!")
-      else Option(route.requestFilter)
-        .map { case Action.Invocation(cn, fn, _, _) =>
-          invokeReqTrans(cn, fn)
+      else Option(route.requestMapper)
+        .map { case inv: Action.Invocation =>
+          invokeReqTransChain(inv, ctx)
         }.getOrElse(Future.successful(ctx))
         .flatMap { tctx =>
-          import route.responseTransformer._
-          invokeRespTrans(className, function, tctx)
+          invokeRespTransChain(route.responseTransformer, HttpResponse(), tctx)
         }
     } else ???
   }
