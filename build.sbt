@@ -1,4 +1,4 @@
-val scalaV    = "3.3.4"
+val scalaV    = "2.13.15" // "3.3.4"
 
 val pekkoV    = "1.1.2"
 val pekkoHttpV= "1.1.0"
@@ -25,8 +25,8 @@ lazy val wabase = (project in file("."))
   scalaVersion := scalaV,
   crossScalaVersions := Seq(
     "3.3.4",
-    // "2.13.15",
-    // "2.12.20",
+    "2.13.15",
+    "2.12.20",
   ),
   scalacOptions ++= Seq("-unchecked", "-deprecation", "-feature"),
   resolvers += "snapshots" at "https://oss.sonatype.org/content/repositories/snapshots",
@@ -36,6 +36,13 @@ lazy val wabase = (project in file("."))
       case v if v startsWith "2.13" => "1.8.0"
       case v if v startsWith "3"    => "1.15.0"
     }
+    (
+      if (scalaVersion.value.startsWith("3."))
+        Seq(
+          "io.bullet"              %% "borer-compat-pekko"    % borerV,
+        )
+      else Nil
+    ) ++
     Seq(
       "com.samskivert"              % "jmustache"             % "1.16",
       "org.apache.pekko"           %% "pekko-actor"           % pekkoV,
@@ -54,7 +61,6 @@ lazy val wabase = (project in file("."))
       "org.tresql"                 %% "tresql"                % tresqlV,
       "io.bullet"                  %% "borer-core"            % borerV,
       "io.bullet"                  %% "borer-derivation"      % borerV,
-      "io.bullet"                  %% "borer-compat-pekko"    % borerV,
       "io.github.samueleresca"     %% "pekko-quartz-scheduler"% "1.3.0-pekko-1.1.x" % Optional,
       "org.xhtmlrenderer"           % "flying-saucer-pdf"     % "9.11.2"            % Optional,
       "org.simplejavamail"          % "simple-java-mail"      % "8.12.4"            % Optional,
@@ -111,6 +117,12 @@ lazy val wabase = (project in file("."))
       val sharedSourceDir = (ThisBuild / baseDirectory).value / "compat"
       if (scalaVersion.value.startsWith("2.12."))
         Seq(sharedSourceDir / "scala-2.12")
+      else Nil
+    },
+    Compile / unmanagedSourceDirectories ++= {
+      val sharedSourceDir = (ThisBuild / baseDirectory).value / "compat"
+      if (scalaVersion.value.startsWith("2."))
+        Seq(sharedSourceDir / "scala-2")
       else Nil
     },
     Test / unmanagedSourceDirectories += baseDirectory.value / "src" / "it" / "scala",

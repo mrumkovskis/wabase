@@ -135,7 +135,7 @@ class WabaseService {
         case null => invokeRespTrans(inv.className, inv.function, httpResp, wrc)
         case i: Action.Invocation => invokeRespTransChain(i, httpResp, wrc)
           .flatMap(invokeRespTrans(inv.className, inv.function, _, wrc))
-        case x => throw IllegalArgumentException(s"Unrecognized response transformer argument $x, must be function call.")
+        case x => throw new IllegalArgumentException(s"Unrecognized response transformer argument $x, must be function call.")
       }
     }
 

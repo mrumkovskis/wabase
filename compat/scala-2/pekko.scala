@@ -5,18 +5,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
-
+// For wabase _2.12, _2.13 - copied from io.bullet/borer-compat-akka v1.8.0, ported to pekko
 package io.bullet.borer.compat
 
 import java.nio.ByteBuffer
 
-import _root_.akka.util.ByteString
-import _root_.akka.actor
-import _root_.akka.actor.typed.{ActorRef, ActorRefResolver, ActorSystem}
-import _root_.akka.serialization.Serialization
+import _root_.org.apache.pekko.actor
+import _root_.org.apache.pekko.actor.typed.{ActorRef, ActorRefResolver, ActorSystem}
+import _root_.org.apache.pekko.serialization.Serialization
+import _root_.org.apache.pekko.util.ByteString
 import io.bullet.borer.{ByteAccess, _}
 
-object akka {
+object pekko {
 
   implicit def actorRefCodec(implicit system: actor.ActorSystem = serializationSystem): Codec[actor.ActorRef] = {
     val actorRefProvider = system.asInstanceOf[actor.ExtendedActorSystem].provider
@@ -86,7 +86,7 @@ object akka {
   /**
    * Encoding and Decoding for [[ByteString]].
    */
-  implicit val ByteStringCodec = Codec[ByteString](_ writeBytes _, _.readBytes())
+  implicit val ByteStringCodec: Codec[ByteString] = Codec[ByteString](_ writeBytes _, _.readBytes())
 
   /**
    * [[Input]] around [[ByteString]].

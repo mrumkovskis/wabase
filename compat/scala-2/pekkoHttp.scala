@@ -5,24 +5,24 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
-
+// For wabase _2.12, _2.13 - copied from io.bullet/borer-compat-akka v1.8.0, ported to pekko
 package io.bullet.borer.compat
 
 import scala.concurrent.Future
 import scala.reflect.ClassTag
-import _root_.akka.http.scaladsl.marshalling.{Marshaller, ToEntityMarshaller}
-import _root_.akka.http.scaladsl.unmarshalling.{FromEntityUnmarshaller, FromMessageUnmarshaller, Unmarshaller}
-import _root_.akka.http.scaladsl.common.EntityStreamingSupport
-import _root_.akka.http.scaladsl.marshalling._
-import _root_.akka.http.scaladsl.model._
-import _root_.akka.http.scaladsl.util.FastFuture
-import _root_.akka.http.scaladsl.util.FastFuture._
-import _root_.akka.stream.scaladsl.{Flow, Keep, Source}
-import _root_.akka.util.ByteString
-import _root_.akka.NotUsed
+import _root_.org.apache.pekko.http.scaladsl.marshalling.{Marshaller, ToEntityMarshaller}
+import _root_.org.apache.pekko.http.scaladsl.unmarshalling.{FromEntityUnmarshaller, FromMessageUnmarshaller, Unmarshaller}
+import _root_.org.apache.pekko.http.scaladsl.common.EntityStreamingSupport
+import _root_.org.apache.pekko.http.scaladsl.marshalling._
+import _root_.org.apache.pekko.http.scaladsl.model._
+import _root_.org.apache.pekko.http.scaladsl.util.FastFuture
+import _root_.org.apache.pekko.http.scaladsl.util.FastFuture._
+import _root_.org.apache.pekko.stream.scaladsl.{Flow, Keep, Source}
+import _root_.org.apache.pekko.util.ByteString
+import _root_.org.apache.pekko.NotUsed
 import io.bullet.borer._
 
-trait AkkaHttpCompat {
+trait PekkoHttpCompat {
 
   // brevity aliases
   type CborDecodingSetup = DecodingSetup.Api[Cbor.DecodingConfig]
@@ -47,7 +47,7 @@ trait AkkaHttpCompat {
       configureJson: JsonDecodingSetup => JsonDecodingSetup = identity
   ): FromEntityUnmarshaller[T] =
     Unmarshaller.withMaterializer { implicit ec => implicit mat => httpEntity =>
-      akkaHttp.byteArrayUnmarshaller(httpEntity).fast.flatMap { bytes =>
+      pekkoHttp.byteArrayUnmarshaller(httpEntity).fast.flatMap { bytes =>
         if (bytes.length > 0) {
           httpEntity.contentType.mediaType match {
             case `cborMediaType` => FastFuture(configureCbor(Cbor.decode(bytes)).to[T].valueTry)
@@ -66,7 +66,7 @@ trait AkkaHttpCompat {
       cborMediaType: MediaType = MediaTypes.`application/cbor`,
       configureCbor: CborDecodingSetup => CborDecodingSetup = identity): FromEntityUnmarshaller[T] =
     Unmarshaller.withMaterializer { implicit ec => implicit mat => httpEntity =>
-      akkaHttp.byteArrayUnmarshaller(httpEntity).fast.flatMap { bytes =>
+      pekkoHttp.byteArrayUnmarshaller(httpEntity).fast.flatMap { bytes =>
         if (bytes.length > 0) {
           httpEntity.contentType.mediaType match {
             case `cborMediaType` => FastFuture(configureCbor(Cbor.decode(bytes)).to[T].valueTry)
@@ -85,7 +85,7 @@ trait AkkaHttpCompat {
       configureJson: JsonDecodingSetup => JsonDecodingSetup = identity
   ): FromEntityUnmarshaller[T] =
     Unmarshaller.withMaterializer { implicit ec => implicit mat => httpEntity =>
-      akkaHttp.byteArrayUnmarshaller(httpEntity).fast.flatMap { bytes =>
+      pekkoHttp.byteArrayUnmarshaller(httpEntity).fast.flatMap { bytes =>
         if (bytes.length > 0) {
           httpEntity.contentType.mediaType match {
             case `jsonMediaType` => FastFuture(configureJson(Json.decode(bytes)).to[T].valueTry)
@@ -165,7 +165,7 @@ trait AkkaHttpCompat {
    * Provides a [[FromEntityUnmarshaller]] which produces streams of [[T]] given an implicit borer Decoder
    * for [[T]]. Supports JSON or CSV, depending on the given [[EntityStreamingSupport]].
    *
-   * @see https://doc.akka.io/api/akka-http/10.1.9/akka/http/scaladsl/common/EntityStreamingSupport.html
+   * @see https://doc.pekko.io/api/pekko-http/10.1.9/pekko/http/scaladsl/common/EntityStreamingSupport.html
    */
   final def borerStreamUnmarshaller[T: Decoder](
       ess: EntityStreamingSupport): FromEntityUnmarshaller[Source[T, NotUsed]] =
@@ -245,7 +245,7 @@ trait AkkaHttpCompat {
 /**
  * Automatic to and from CBOR and/or JSON marshalling/unmarshalling using in-scope borer Encoders / Decoders.
  */
-object akkaHttp extends AkkaHttpCompat {
+object pekkoHttp extends PekkoHttpCompat {
 
   private[compat] val byteArrayUnmarshaller: FromEntityUnmarshaller[Array[Byte]] =
     Unmarshaller.byteArrayUnmarshaller
