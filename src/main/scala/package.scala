@@ -2,6 +2,7 @@ package org
 
 import java.util.concurrent.TimeUnit.MILLISECONDS
 import com.zaxxer.hikari.{HikariConfig, HikariDataSource}
+import org.tresql.SimpleCacheBase
 
 import java.lang.reflect.InvocationTargetException
 import javax.sql.DataSource
@@ -65,6 +66,12 @@ package object wabase extends Loggable {
   lazy val DefaultQueryTimeout: QueryTimeout =
     QueryTimeout(config.getDuration("jdbc.query-timeout").toSeconds.toInt)
 
+  class FunctionInvocationCache(maxSize: Int)
+    extends SimpleCacheBase[(Object, java.lang.reflect.Method)](maxSize, "function-invocation-cache")
+
+  private[wabase] val functionInvocationCache =
+    new FunctionInvocationCache(config.getInt("app.function-invocation-cache-size"))
+
   //db connection pool configuration
   def createConnectionPool(config: Config): HikariDataSource = {
     val props = new java.util.Properties(System.getProperties)
@@ -112,16 +119,23 @@ package object wabase extends Loggable {
       })"))
 
   def invokeFunction(className: String, function: String, getParameter: Class[_] => Any): Any = {
-    val obj = getObjectOrNewInstance(className, s"function $function")
-    val clazz = obj.getClass
-    clazz.getMethods.filter(_.getName == function) match {
-      case Array(method) =>
-        try method.invoke(obj, (method.getParameterTypes map getParameter).asInstanceOf[Array[Object]]: _*) // cast is needed for scala 2.12.x
-        catch {
-          case e: InvocationTargetException if e.getCause != null => throw e.getCause
-        }
-      case Array() => sys.error(s"Method $function not found in class $className")
-      case m => sys.error(s"Multiple methods '$function' found: (${m.toList}) in class $className")
+    def call(o: Object, m: java.lang.reflect.Method) =
+      try m.invoke(o, (m.getParameterTypes map getParameter).asInstanceOf[Array[Object]]: _*) // cast is needed for scala 2.12.x
+      catch {
+        case e: InvocationTargetException if e.getCause != null => throw e.getCause
+      }
+    functionInvocationCache.get(s"$className.$function").map { case (obj, method) =>
+      call(obj, method)
+    }.getOrElse {
+      val obj = getObjectOrNewInstance(className, s"function $function")
+      val clazz = obj.getClass
+      clazz.getMethods.filter(_.getName == function) match {
+        case Array(method) =>
+          functionInvocationCache.put(s"$className.$function", obj -> method)
+          call(obj, method)
+        case Array() => sys.error(s"Method $function not found in class $className")
+        case m => sys.error(s"Multiple methods '$function' found: (${m.toList}) in class $className")
+      }
     }
   }
 
