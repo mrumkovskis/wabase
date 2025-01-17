@@ -401,8 +401,8 @@ trait AppServiceBase[User]
       }
   }
 
-  val DefaultResourceExtensions = config.getStringList("app.default-resource-extensions").asScala.toSet
-  val DefaultResourcePathBase = config.getString("app.default-resource-path-base")
+  val DefaultResourceExtensions = config.getStringList("app.resource-extensions").asScala.toSet
+  val DefaultResourcePathBase = config.getString("app.resource-path-base")
   def staticResources(extensions: Set[String] = DefaultResourceExtensions, basePath: String = DefaultResourcePathBase): Route =
     pathSuffixTest(new Regex(extensions.map("\\." + _).mkString(".*(", "|", ")$"))) { p =>
       path(Remaining) { resource =>
