@@ -35,6 +35,7 @@ import org.mojoz.querease.{ValidationException, ValidationResult}
 
 import java.lang.reflect.InvocationTargetException
 import scala.util.{Failure, Success}
+import scala.jdk.CollectionConverters._
 
 
 trait AppProvider[User] {
@@ -400,8 +401,8 @@ trait AppServiceBase[User]
       }
   }
 
-  val DefaultResourceExtensions = "js,css,html,png,gif,jpg,jpeg,svg,woff,ttf,woff2".split(",").toSet
-  val DefaultResourcePathBase = "app"
+  val DefaultResourceExtensions = config.getStringList("app.default-resource-extensions").asScala.toSet
+  val DefaultResourcePathBase = config.getString("app.default-resource-path-base")
   def staticResources(extensions: Set[String] = DefaultResourceExtensions, basePath: String = DefaultResourcePathBase): Route =
     pathSuffixTest(new Regex(extensions.map("\\." + _).mkString(".*(", "|", ")$"))) { p =>
       path(Remaining) { resource =>
@@ -418,7 +419,7 @@ trait AppServiceBase[User]
     })
   }
   def decodeMultiParams(params: Map[String, List[String]]) = params map { t => t._1 -> t._2.map(decodeParam(t._1, _)) }
-  val namesForInts = Set("limit", "offset")
+  val namesForInts = config.getStringList("app.names-for-int-params").asScala.toSet
   def escapeReflectedXss(msg: String) =
     msg.replace("<", "[<]")
   def decodeParam(key: String, value: String) = {
@@ -646,7 +647,7 @@ trait AppFileServiceBase[User] {
 object AppServiceBase {
 
   trait AppStateExtractor { this: AppServiceBase[_] with QueryTimeoutExtractor with Execution =>
-    val ApplicationStateCookiePrefix = "current_"
+    val ApplicationStateCookiePrefix = config.getString("app.state-cookie-prefix")
     def applicationState = extract(r => extractState(r.request, ApplicationStateCookiePrefix))
     protected def extractState(req: HttpRequest, prefix: String) = {
       val state = req.headers.flatMap {
@@ -854,7 +855,7 @@ object AppServiceBase {
   }
 
   trait AppI18nService { this: AppServiceBase[_] with QueryTimeoutExtractor with Execution =>
-    val ApplicationLanguageCookiePostfix = "lang"
+    val ApplicationLanguageCookiePostfix = config.getString("app.language-cookie-postfix")
 
     val i18n: I18n = initI18n
     protected def initI18n: I18n = app
