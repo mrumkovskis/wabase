@@ -593,7 +593,7 @@ delete:
 - test.QuereaseActionJavaManager.identity
 count:
 - arg = 'value'
-- org.wabase.QuereaseActionTestManagerObj.stringArgument :arg
+- stringArgument :arg  #use alias as defined in configuration param app.wabase-call-alias.stringArgument
 
 
 name: invocation_result_mapper_test

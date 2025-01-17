@@ -832,10 +832,15 @@ class OpParser(viewName: String, tresqlUri: TresqlUri, cache: OpParser.Cache)
     case rt ~ (mode ~ op) => Unique(op, mode == "unique_opt", rt)
   } named "unique-op"
 
-  def invocationOp: MemParser[Invocation] = opt(opResultType) ~ OpParser.InvocationRegex ~ opt(operation) ^^ {
-    case rt ~ res ~ arg =>
-      val (cn, fn) = OpParser.classNameFunctionName(res)
-      Action.Invocation(cn, fn, arg.orNull, rt)
+  def invocationOp: MemParser[Invocation] = Parser { in =>
+    val p = opt(opResultType) ~ OpParser.InvocationRegex ~ opt(operation)
+    p(in) match {
+      case Success(rt ~ res ~ arg, next) =>
+        val (cn, fn) = OpParser.classNameFunctionName(res)
+        if (cn == null) Failure(s"Class name not found for function '$fn'", next)
+        else Success(Action.Invocation(cn, fn, arg.orNull, rt), next)
+      case e: NoSuccess => e
+    }
   } named "invocation-op"
   def resourceOp: MemParser[Resource] = "resource" ~> tresqlOp ~ opt(tresqlOp) ^^ {
     case nameTresql ~ ctTresql => Resource(nameTresql, ctTresql.orNull)
@@ -924,10 +929,10 @@ class OpParser(viewName: String, tresqlUri: TresqlUri, cache: OpParser.Cache)
       }) named "named-op"
     rep(namedOp)
   } named "named-ops"
-  def operation: MemParser[Op] = (viewOp | jobOp | confOp | uniqueOp | invocationOp |
+  def operation: MemParser[Op] = (viewOp | jobOp | confOp | uniqueOp |
     httpOp | dbOp | resourceOp | fileOp | toFileOp | templateOp | emailOp |
     jsonCodecOp | httpHeaderOrCookieOp | extractPartsOp | extractEntityOp |
-    thisOp | bracesOp | tresqlOp) named "operation"
+    thisOp | bracesOp | invocationOp | tresqlOp) named "operation"
 
   private def opResultType: MemParser[OpResultType] = {
     sealed trait ResType
@@ -945,7 +950,7 @@ class OpParser(viewName: String, tresqlUri: TresqlUri, cache: OpParser.Cache)
 }
 
 object OpParser extends Loggable {
-  val InvocationRegex = """(?U)\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*(\.\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*)+""".r
+  val InvocationRegex = """(?U)\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*(\.\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*)*""".r
 
   class Cache(maxSize: Int) extends SimpleCacheBase[Action.Op](maxSize, "OpParser cache")
 
@@ -979,7 +984,11 @@ object OpParser extends Loggable {
   }
   def classNameFunctionName(name: String): (String, String) = {
     val idx = name.lastIndexOf('.')
-    (name.substring(0, idx), name.substring(idx + 1))
+    if (idx == -1)
+      if (config.hasPath(s"app.wabase-call-alias.$name"))
+        classNameFunctionName(config.getString(s"app.wabase-call-alias.$name"))
+      else (null, name)
+    else (name.substring(0, idx), name.substring(idx + 1))
   }
 }
 object AppMetadata extends Loggable {
