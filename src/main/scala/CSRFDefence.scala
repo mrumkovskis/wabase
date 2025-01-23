@@ -2,10 +2,67 @@ package org.wabase
 
 import org.apache.pekko.http.scaladsl.server.Directives._
 import org.apache.pekko.http.scaladsl.server.{Directive0, Directive1}
-import org.apache.pekko.http.scaladsl.model.Uri
+import org.apache.pekko.http.scaladsl.model.{HttpResponse, Uri}
 import org.apache.pekko.http.scaladsl.model.headers.{Host, HttpCookie, HttpOrigin, HttpOriginRange, Origin, Referer, SameSite}
 
 class CSRFException(message: String) extends Exception(message)
+
+object CSRFDefence extends AppConfig with CSRFDefence {
+
+  // request mappers:         checkSameOrigin, checkCSRFToken
+  // response transformers:   setCSRFCookie, deleteCSRFCookie
+
+  def checkSameOrigin(ctx: WabaseRequestContext): WabaseRequestContext = {
+    val targetOrigins = Option(List(targetOrigin)).orElse {
+      WabaseService.optionalHttpHeaderValueByName(ctx, "X-Forwarded-Host")
+        .map(Host.parseFromValueString)
+        .map(_.map(fullOriginList))
+        .map(_.toOption.getOrElse(Nil))
+    }
+      .getOrElse(error(s"Either 'Host' or 'X-Forwarded-Host' http header must be set.", ctx.req.uri))
+      .map(normalizePort)
+    val sourceOrigins = WabaseService.optionalHttpHeaderValuePF(ctx, {
+      case Origin(origins) =>
+        origins.map(normalizePort)
+      case Referer(uri) =>
+        List(HttpOrigin(uri.scheme, Host(uri.authority.host, uri.authority.port)))
+          .map(normalizePort)
+    }).getOrElse(error("Either 'Origin' or 'Referer' http header must be set.", ctx.req.uri))
+    if (sourceOrigins.exists(HttpOriginRange(targetOrigins: _*).matches)) ctx
+    else  {
+      val msg =
+        "Cross Site Request Forgery (CSRF) - " +
+          s"""Source origins: ${sourceOrigins.mkString(", ")}, """ +
+          s"""target origins: ${targetOrigins.mkString(", ")}, """ +
+          s"""uri: ${ctx.req.uri}"""
+      error(msg, ctx.req.uri)
+    }
+  }
+
+  def checkCSRFToken(ctx: WabaseRequestContext): WabaseRequestContext = {
+    val csrfCookie = WabaseService.optionalCookie(ctx, CSRFCookieName)
+      .getOrElse(error(s"$CSRFCookieName cookie not found.", ctx.req.uri))
+    val csrfHeader = WabaseService.optionalHttpHeaderValueByName(ctx, CSRFHeaderName)
+      .getOrElse(error(s"$CSRFHeaderName header not found.", ctx.req.uri))
+    if (csrfCookie == csrfHeader) ctx
+    else error(s"$CSRFCookieName cookie value does not match $CSRFHeaderName header value - " +
+      s"$csrfCookie != $csrfHeader", ctx.req.uri)
+  }
+
+  def setCSRFCookie(resp: HttpResponse): HttpResponse = {
+    val cookie = csrfCookieTransformer(
+      HttpCookie(
+        CSRFCookieName,
+        value = Authentication.Crypto.uniqueSessionId,
+        path = Some("/"),
+        secure = Authentication.Crypto.secureCookies
+      ).withSameSite(SameSite.Lax))
+    WabaseService.setCookie(resp, cookie)
+  }
+
+  def deleteCSRFCookie(resp: HttpResponse): HttpResponse =
+    WabaseService.deleteCookie(resp, CSRFCookieName)
+}
 
 trait CSRFDefence { this: AppConfig =>
 
@@ -20,7 +77,7 @@ trait CSRFDefence { this: AppConfig =>
     } else null
 
   private val schemas = List("http", "https")
-  private def fullOriginList(h: Host) =
+  protected def fullOriginList(h: Host) =
     schemas
     .filterNot {
       case "https" => h.port == 80
@@ -98,7 +155,7 @@ trait CSRFDefence { this: AppConfig =>
 
   def deleteCSRFCookie: Directive0 = deleteCookie(CSRFCookieName)
 
-  private def error(msg: String, uri: Uri) =
+  protected def error(msg: String, uri: Uri) =
     throw new CSRFException(s"$msg (url - ${uri.withQuery(Uri.Query(Map[String, String]())).toString()})")
 
 }

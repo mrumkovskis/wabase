@@ -5,7 +5,8 @@ import org.apache.pekko.http.scaladsl.model.Uri.Path
 import org.apache.pekko.http.scaladsl.model.Uri.Path.{Empty, Segment, SlashOrEmpty}
 import org.mojoz.metadata.ViewDef
 import AppMetadata._
-import org.apache.pekko.http.scaladsl.model.{HttpRequest, HttpResponse}
+import org.apache.pekko.http.scaladsl.model.headers.{Cookie, HttpCookie, `Set-Cookie`}
+import org.apache.pekko.http.scaladsl.model.{DateTime, HttpHeader, HttpRequest, HttpResponse}
 import org.wabase.AppMetadata.{Action, RouteDef}
 
 import scala.concurrent.{ExecutionContext, Future}
@@ -17,6 +18,7 @@ case class WabaseUser(properties: Map[String, Any]) {
 
 case class WabaseRequestContext(
   route: RouteDef,
+  viewDefs: Map[String, ViewDef],
   req: HttpRequest,
   viewName: String = null,
   action: String = null,
@@ -31,61 +33,72 @@ class WabaseService {
 
   private val CreateCountActionAndView = """(?U)(?:(count|create):)?(\w*)""".r
 
-  def requestContext(routes: Seq[RouteDef], viewDefs: Map[String, ViewDef])(req: HttpRequest): WabaseRequestContext = {
+  def handle(
+    routes: Seq[RouteDef],
+    viewDefs: Map[String, ViewDef]
+  )(req: HttpRequest)(implicit ec: ExecutionContext): Future[HttpResponse] = {
+    val ctx = requestContext(routes, viewDefs)(req)
+    doRoute(ctx)
+  }
+
+  protected def requestContext(
+    routes: Seq[RouteDef],
+    viewDefs: Map[String, ViewDef]
+  )(req: HttpRequest): WabaseRequestContext = {
     val pathString = req.uri.path.toString
     val route = routes.find(_.path.pattern.matcher(pathString).matches)
       .getOrElse(error(s"Route not found for path '$pathString'"))
-    WabaseRequestContext(route, req)
+    WabaseRequestContext(route, viewDefs, req)
   }
 
-  def viewActionKey(ctx: WabaseRequestContext, viewDefs: Map[String, ViewDef]): WabaseRequestContext = {
-    import ctx._
-    val pathString = req.uri.path.toString
-    val routeRegex = route.path
-    val (viewNameAndActionStr, view_name, create_count_action) = routeRegex.unapplySeq(pathString).collect {
-      case vna :: _ =>
-        val CreateCountActionAndView(cca, vn) = vna
-        if (viewDefs.contains(vn)) (vna, vn, cca)
-        else (null, null, null)
-    }.getOrElse((null, null, null))
+  protected def doRoute(ctx: WabaseRequestContext)(implicit ec: ExecutionContext): Future[HttpResponse] = {
+    def viewActionKey(ctx: WabaseRequestContext): WabaseRequestContext = {
+      import ctx._
+      val pathString = req.uri.path.toString
+      val routeRegex = route.path
+      val (viewNameAndActionStr, view_name, create_count_action) = routeRegex.unapplySeq(pathString).collect {
+        case vna :: _ =>
+          val CreateCountActionAndView(cca, vn) = vna
+          if (viewDefs.contains(vn)) (vna, vn, cca)
+          else (null, null, null)
+      }.getOrElse((null, null, null))
 
-    if (viewNameAndActionStr == null)
-      WabaseRequestContext(route, req, null, null, null, null, null)
-    else {
-      val key = {
-        def key_path(path: Path): Path = path match {
-          case Segment(head, tail) =>
-            if (head contains viewNameAndActionStr) tail
-            else key_path(tail)
-          case p => key_path(p.tail)
+      if (viewNameAndActionStr == null)
+        WabaseRequestContext(route, viewDefs, req, null, null, null, null, null)
+      else {
+        val key = {
+          def key_path(path: Path): Path = path match {
+            case Segment(head, tail) =>
+              if (head contains viewNameAndActionStr) tail
+              else key_path(tail)
+            case p => key_path(p.tail)
+          }
+          val keyPath = key_path(req.uri.path)
+          def key(path: Path): List[String] = path match {
+            case Segment(v, tail) => v :: key(tail)
+            case Empty => Nil
+            case p: SlashOrEmpty => key(p.tail)
+          }
+          key(keyPath)
         }
-        val keyPath = key_path(req.uri.path)
-        def key(path: Path): List[String] = path match {
-          case Segment(v, tail) => v :: key(tail)
-          case Empty => Nil
-          case p: SlashOrEmpty => key(p.tail)
+
+        val action = if (create_count_action != null) create_count_action else req.method match {
+          case `GET`    =>
+            if (key.nonEmpty || viewDefs.get(view_name)
+              .exists(v => v.apiMethodToRoles.contains("get") && !v.apiMethodToRoles.contains("list")))
+              Action.Get
+            else
+              Action.List
+          case `POST`   => Action.Insert
+          case `PUT`    => Action.Update
+          case `DELETE` => Action.Delete
+          case x        => error(s"Unsupported http method $x for request '${req.uri}'")
         }
-        key(keyPath)
-      }
 
-      val action = if (create_count_action != null) create_count_action else req.method match {
-        case `GET`    =>
-          if (key.nonEmpty || viewDefs.get(view_name)
-            .exists(v => v.apiMethodToRoles.contains("get") && !v.apiMethodToRoles.contains("list")))
-            Action.Get
-          else
-            Action.List
-        case `POST`   => Action.Insert
-        case `PUT`    => Action.Update
-        case `DELETE` => Action.Delete
-        case x        => error(s"Unsupported http method $x for request '${req.uri}'")
+        WabaseRequestContext(route, viewDefs, req, view_name, action, key, null, null)
       }
-
-      WabaseRequestContext(route, req, view_name, action, key, null, null)
     }
-  }
 
-  def doRequest(ctx: WabaseRequestContext)(implicit ec: ExecutionContext): Future[HttpResponse] = {
     def invokeFunction(className: String, function: String, params: Seq[(Class[_], () => Any)]) = {
       val contextParams = Seq[(Class[_], () => Any)](
         (classOf[ExecutionContext], () => ec),
@@ -139,28 +152,64 @@ class WabaseService {
       }
     }
 
+    def doRequest(reqCtx: WabaseRequestContext): Future[HttpResponse] = {
+      if (reqCtx.viewName == null)
+        if (reqCtx.route.responseTransformer == null)
+          error(s"If view name for route ${reqCtx.route.path} not specified, response transformer must be defined!")
+        else invokeRespTransChain(reqCtx.route.responseTransformer, HttpResponse(), reqCtx)
+      else {
+        val httpResponseF = Future.successful(HttpResponse()) // TODO invoke do wabase action
+        if (reqCtx.route.responseTransformer != null)
+          httpResponseF.flatMap(invokeRespTransChain(reqCtx.route.responseTransformer, _, reqCtx))
+        else httpResponseF
+      }
+    }
+
     Option(ctx.route.requestMapper)
       .map(invokeReqTransChain(_, ctx))
       .getOrElse(Future.successful(ctx)).flatMap { mappedCtx =>
-      if (mappedCtx.viewName == null)
-        if (mappedCtx.route.responseTransformer == null)
-          error(s"If view name for route not specified, response transformer must be defined!")
-        else invokeRespTransChain(mappedCtx.route.responseTransformer, HttpResponse(), mappedCtx)
-      else {
-        val httpResponseF = Future.successful(HttpResponse()) // TODO invoke do wabase action
-        if (mappedCtx.route.responseTransformer != null)
-          httpResponseF.flatMap(invokeRespTransChain(mappedCtx.route.responseTransformer, _, mappedCtx))
-        else httpResponseF
-      }
+        val ctxWithView = if (mappedCtx.viewName == null) viewActionKey(mappedCtx) else mappedCtx
+        doRequest(ctxWithView)
     }
   }
 
   private def error(msg: String) = throw new WabaseRouteException(msg)
-
-  protected def extractState: WabaseRequestContext => WabaseApp[_] => Future[ApplicationState] =
-    WabaseService.extractState
 }
 
 object WabaseService {
-  def extractState(httpReq: WabaseRequestContext)(app: WabaseApp[_]): Future[ApplicationState] = ???
+  def extractState(httpReqCtx: WabaseRequestContext)(app: WabaseApp[_]): Future[ApplicationState] = ???
+
+  def optionalHttpHeaderValue[T](ctx: WabaseRequestContext, extractorF: HttpHeader => Option[T]): Option[T] = {
+    ctx.req.headers.collectFirst(Function.unlift(extractorF))
+  }
+
+  def optionalHttpHeaderValueByName(ctx: WabaseRequestContext, name: String): Option[String] = {
+    optionalHttpHeaderValue(ctx, optionalHttpHeaderValueExtractor(name.toLowerCase))
+  }
+
+  def optionalHttpHeaderValuePF[T](ctx: WabaseRequestContext, extractorPF: PartialFunction[HttpHeader, T]): Option[T] = {
+    optionalHttpHeaderValue(ctx, extractorPF.lift)
+  }
+
+  def optionalHttpHeaderValueExtractor(lowerCaseName: String): HttpHeader => Option[String] = {
+    case h: HttpHeader if h.is(lowerCaseName) => Some(h.value)
+    case _                                    => None
+  }
+
+  def optionalCookie(ctx: WabaseRequestContext, name: String): Option[String] = {
+    optionalHttpHeaderValue(ctx, {
+      case Cookie(cookies) => cookies.find(_.name == name).map(_.value)
+      case _               => None
+    })
+  }
+
+  def setCookie(resp: HttpResponse, first: HttpCookie, more: HttpCookie*): HttpResponse = {
+    resp.mapHeaders(_ ++ (first :: more.toList).map(`Set-Cookie`(_)))
+  }
+
+  def deleteCookie(resp: HttpResponse, name: String, domain: String = "", path: String = ""): HttpResponse = {
+    val cookie = HttpCookie(name, "",
+      domain = Option(domain).filter(_.nonEmpty), path = Option(path).filter(_.nonEmpty))
+    resp.mapHeaders(_ ++ Seq(`Set-Cookie`(cookie.withValue("deleted").withExpires(DateTime.MinValue))))
+  }
 }
