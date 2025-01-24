@@ -1,5 +1,8 @@
 package org.wabase
 
+import org.apache.pekko.http.scaladsl.model.HttpRequest
+import org.apache.pekko.http.scaladsl.server.LanguageNegotiator
+
 import java.util.{Collections, Locale, PropertyResourceBundle, ResourceBundle}
 import scala.jdk.CollectionConverters._
 import scala.util.Try
@@ -105,5 +108,16 @@ trait I18n {
   def i18nResourcesFromBundle(name: String)(implicit locale: Locale): I18Bundle = {
     val b = bundle(name)
     I18Bundle(b.getKeys.asScala.map(s => s -> Try(b.getString(s)).getOrElse(s)))
+  }
+}
+
+object I18nService {
+  val ApplicationLanguageCookiePostfix = config.getString("app.language-cookie-postfix")
+  def currentLangFromHeader(request: HttpRequest): Option[String] = {
+    LanguageNegotiator(request.headers)
+      .acceptedLanguageRanges
+      .headOption
+      .map(l => l.primaryTag +: l.subTags)
+      .map(_.mkString("-"))
   }
 }

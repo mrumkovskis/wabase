@@ -3,12 +3,14 @@ package org.wabase
 import org.apache.pekko.http.scaladsl.model.HttpMethods._
 import org.apache.pekko.http.scaladsl.model.Uri.Path
 import org.apache.pekko.http.scaladsl.model.Uri.Path.{Empty, Segment, SlashOrEmpty}
-import org.mojoz.metadata.ViewDef
 import AppMetadata._
+import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.model.headers.{Cookie, HttpCookie, `Set-Cookie`}
 import org.apache.pekko.http.scaladsl.model.{DateTime, HttpHeader, HttpRequest, HttpResponse}
 import org.wabase.AppMetadata.{Action, RouteDef}
+import org.wabase.WabaseService.Wabase
 
+import java.util.Locale
 import scala.concurrent.{ExecutionContext, Future}
 
 case class WabaseUser(properties: Map[String, Any]) {
@@ -17,14 +19,15 @@ case class WabaseUser(properties: Map[String, Any]) {
 }
 
 case class WabaseRequestContext(
-  route: RouteDef,
-  viewDefs: Map[String, ViewDef],
+  wabase: Wabase,
   req: HttpRequest,
+  route: RouteDef = null,
   viewName: String = null,
   action: String = null,
   key: Seq[Any] = Nil,
   applicationState: ApplicationState = null,
   user: WabaseUser = null,
+  as: ActorSystem = null,
 )
 
 class WabaseRouteException(message: String) extends Exception(message)
@@ -33,27 +36,22 @@ class WabaseService {
 
   private val CreateCountActionAndView = """(?U)(?:(count|create):)?(\w*)""".r
 
-  def handle(
-    routes: Seq[RouteDef],
-    viewDefs: Map[String, ViewDef]
-  )(req: HttpRequest)(implicit ec: ExecutionContext): Future[HttpResponse] = {
-    val ctx = requestContext(routes, viewDefs)(req)
+  def handle(wabase: Wabase)(req: HttpRequest)(implicit as: ActorSystem): Future[HttpResponse] = {
+    val ctx = findRoute(WabaseRequestContext(wabase, req))
     doRoute(ctx)
   }
 
-  protected def requestContext(
-    routes: Seq[RouteDef],
-    viewDefs: Map[String, ViewDef]
-  )(req: HttpRequest): WabaseRequestContext = {
-    val pathString = req.uri.path.toString
-    val route = routes.find(_.path.pattern.matcher(pathString).matches)
+  protected def findRoute(ctx: WabaseRequestContext): WabaseRequestContext = {
+    val pathString = ctx.req.uri.path.toString
+    val route = ctx.wabase.qe.routeDefs.find(_.path.pattern.matcher(pathString).matches)
       .getOrElse(error(s"Route not found for path '$pathString'"))
-    WabaseRequestContext(route, viewDefs, req)
+    WabaseRequestContext(ctx.wabase, ctx.req, route)
   }
 
-  protected def doRoute(ctx: WabaseRequestContext)(implicit ec: ExecutionContext): Future[HttpResponse] = {
+  protected def doRoute(ctx: WabaseRequestContext)(implicit as: ActorSystem): Future[HttpResponse] = {
     def viewActionKey(ctx: WabaseRequestContext): WabaseRequestContext = {
       import ctx._
+      val viewDefs = wabase.qe.nameToViewDef
       val pathString = req.uri.path.toString
       val routeRegex = route.path
       val (viewNameAndActionStr, view_name, create_count_action) = routeRegex.unapplySeq(pathString).collect {
@@ -64,7 +62,7 @@ class WabaseService {
       }.getOrElse((null, null, null))
 
       if (viewNameAndActionStr == null)
-        WabaseRequestContext(route, viewDefs, req, null, null, null, null, null)
+        WabaseRequestContext(wabase, req, route, null, null, null, null, null)
       else {
         val key = {
           def key_path(path: Path): Path = path match {
@@ -95,10 +93,11 @@ class WabaseService {
           case x        => error(s"Unsupported http method $x for request '${req.uri}'")
         }
 
-        WabaseRequestContext(route, viewDefs, req, view_name, action, key, null, null)
+        WabaseRequestContext(wabase, req, route, view_name, action, key, null, null)
       }
     }
 
+    implicit val ec: ExecutionContext = as.dispatcher
     def invokeFunction(className: String, function: String, params: Seq[(Class[_], () => Any)]) = {
       val contextParams = Seq[(Class[_], () => Any)](
         (classOf[ExecutionContext], () => ec),
@@ -116,7 +115,10 @@ class WabaseService {
             s" Instead got: $x")
         }
 
-        processResult(invokeFunction(cn, fn, Seq((classOf[WabaseRequestContext], () => tctx))))
+        processResult(invokeFunction(cn, fn, Seq(
+          (classOf[WabaseRequestContext], () => tctx),
+          (classOf[HttpRequest], () => tctx.req),
+        )))
       }
       inv.arg match {
         case null => invokeReqTrans(inv.className, inv.function, wrc)
@@ -142,6 +144,7 @@ class WabaseService {
         processResult(invokeFunction(cn, fn, Seq(
           (classOf[HttpResponse], () => resp),
           (classOf[WabaseRequestContext], () => tctx),
+          (classOf[HttpRequest], () => tctx.req),
         )))
       }
       inv.arg match {
@@ -177,18 +180,19 @@ class WabaseService {
 }
 
 object WabaseService {
-  def extractState(httpReqCtx: WabaseRequestContext)(app: WabaseApp[_]): Future[ApplicationState] = ???
 
-  def optionalHttpHeaderValue[T](ctx: WabaseRequestContext, extractorF: HttpHeader => Option[T]): Option[T] = {
-    ctx.req.headers.collectFirst(Function.unlift(extractorF))
+  type Wabase = WabaseApp[_] with QuereaseProvider with I18n
+
+  def optionalHttpHeaderValue[T](req: HttpRequest)(extractorF: HttpHeader => Option[T]): Option[T] = {
+    req.headers.collectFirst(Function.unlift(extractorF))
   }
 
-  def optionalHttpHeaderValueByName(ctx: WabaseRequestContext, name: String): Option[String] = {
-    optionalHttpHeaderValue(ctx, optionalHttpHeaderValueExtractor(name.toLowerCase))
+  def optionalHttpHeaderValueByName(req: HttpRequest)(name: String): Option[String] = {
+    optionalHttpHeaderValue(req)(optionalHttpHeaderValueExtractor(name.toLowerCase))
   }
 
-  def optionalHttpHeaderValuePF[T](ctx: WabaseRequestContext, extractorPF: PartialFunction[HttpHeader, T]): Option[T] = {
-    optionalHttpHeaderValue(ctx, extractorPF.lift)
+  def optionalHttpHeaderValuePF[T](req: HttpRequest)(extractorPF: PartialFunction[HttpHeader, T]): Option[T] = {
+    optionalHttpHeaderValue(req)(extractorPF.lift)
   }
 
   def optionalHttpHeaderValueExtractor(lowerCaseName: String): HttpHeader => Option[String] = {
@@ -196,20 +200,39 @@ object WabaseService {
     case _                                    => None
   }
 
-  def optionalCookie(ctx: WabaseRequestContext, name: String): Option[String] = {
-    optionalHttpHeaderValue(ctx, {
+  def optionalCookie(req: HttpRequest)(name: String): Option[String] = {
+    optionalHttpHeaderValue(req)({
       case Cookie(cookies) => cookies.find(_.name == name).map(_.value)
       case _               => None
     })
   }
 
-  def setCookie(resp: HttpResponse, first: HttpCookie, more: HttpCookie*): HttpResponse = {
+  def setCookie(resp: HttpResponse)(first: HttpCookie, more: HttpCookie*): HttpResponse = {
     resp.mapHeaders(_ ++ (first :: more.toList).map(`Set-Cookie`(_)))
   }
 
-  def deleteCookie(resp: HttpResponse, name: String, domain: String = "", path: String = ""): HttpResponse = {
+  def deleteCookie(resp: HttpResponse)(name: String, domain: String = "", path: String = ""): HttpResponse = {
     val cookie = HttpCookie(name, "",
       domain = Option(domain).filter(_.nonEmpty), path = Option(path).filter(_.nonEmpty))
     resp.mapHeaders(_ ++ Seq(`Set-Cookie`(cookie.withValue("deleted").withExpires(DateTime.MinValue))))
+  }
+}
+
+object ApplicationStateExtractor {
+  def extractState(ctx: WabaseRequestContext): ApplicationState =
+    extractState(ctx, AppServiceBase.ApplicationStateCookiePrefix)
+  def extractState(ctx: WabaseRequestContext, prefix: String): ApplicationState = {
+    val state = ctx.req.headers.flatMap {
+      case c: Cookie => c.cookies.filter(_.name.startsWith(prefix))
+      case _ => Nil
+    }.map(c => c.name -> AppServiceBase.decodeParam(ctx.wabase.qe.metadataConventions, AppServiceBase.NamesForInts)(
+      c.name, c.value)).toMap
+    val langKey = prefix + I18nService.ApplicationLanguageCookiePostfix
+    if (state.contains(langKey))
+      ApplicationState(state, new Locale(String.valueOf(state(langKey))))
+    else
+      I18nService.currentLangFromHeader(ctx.req)
+        .map(l => ApplicationState(state + (langKey -> l), new Locale(l)))
+        .getOrElse(ApplicationState(state))
   }
 }

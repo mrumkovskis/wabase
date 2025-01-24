@@ -411,48 +411,14 @@ trait AppServiceBase[User]
         }
       }
     }
-  def decodeParams(params: Map[String, List[String]]): Map[String, Any] = params map { t =>
-    t._1 -> (t._2.map(decodeParam(t._1, _)) match {
-      case List(x) => x
-      case x @ List(_, _*) => x
-      case x => throw new IllegalStateException("unexpected: " + x)
-    })
-  }
-  def decodeMultiParams(params: Map[String, List[String]]) = params map { t => t._1 -> t._2.map(decodeParam(t._1, _)) }
-  val namesForInts = config.getStringList("app.names-for-int-params").asScala.toSet
-  def escapeReflectedXss(msg: String) =
-    msg.replace("<", "[<]")
-  def decodeParam(key: String, value: String) = {
-    def throwBadType(type_ : String, cause: Exception = null) =
-      throw new BusinessException(escapeReflectedXss(
-        s"Failed to decode as $type_: parameter: '$key', value: '$value'" +
-          (if (cause == null) "" else " - caused by " + cause.toString)))
-    def handleType[T](goodPath: String => T, typeStr:String)= {
-      try value match {
-        case "" | "null" | null => null
-        case d => goodPath(d)
-      } catch {
-        case ex: Exception => throwBadType(typeStr, ex)
-      }
-    }
-    if (metadataConventions.isBooleanName(key)) {
-      handleType({
-        case "true" => TRUE
-        case "false" => FALSE
-      }, "boolean")
-    } else if (metadataConventions.isDateName(key)) {
-          handleType(d => Format.convertToType(d.replaceAll("\"", ""), ClassOfJavaSqlDate), "date")
-    } else if (metadataConventions.isDateTimeName(key)) {
-          handleType(d => Format.convertToType(d.replaceAll("\"", ""), ClassOfJavaSqlTimestamp), "dateTime (not supported yet)")
-    } else if (namesForInts.contains(key) ||
-               metadataConventions.isIntegerName(key) ||
-               metadataConventions.isIdName(key) ||
-               metadataConventions.isIdRefName(key)) {
-          handleType(l => java.lang.Long.valueOf(l), "long")
-    } else if (metadataConventions.isDecimalName(key)) {
-        handleType(d => BigDecimal(d), "bigDecimal")
-    } else value
-  }
+  def decodeParams(params: Map[String, List[String]]): Map[String, Any] =
+    AppServiceBase.decodeParams(metadataConventions, namesForInts)(params)
+  def decodeMultiParams(params: Map[String, List[String]]) =
+    AppServiceBase.decodeMultiParams(metadataConventions, namesForInts)(params)
+  val namesForInts = AppServiceBase.NamesForInts
+  def escapeReflectedXss(msg: String) = AppServiceBase.escapeReflectedXss(msg)
+  def decodeParam(key: String, value: String) =
+    AppServiceBase.decodeParam(metadataConventions, namesForInts)(key, value)
   override protected def initJsonConverter = app.qio
   override def dbAccess = app.dbAccess
 
@@ -645,15 +611,66 @@ trait AppFileServiceBase[User] {
 }
 
 object AppServiceBase {
+  val ApplicationStateCookiePrefix = config.getString("app.state-cookie-prefix")
+  val NamesForInts = config.getStringList("app.names-for-int-params").asScala.toSet
+
+  def escapeReflectedXss(msg: String) =
+    msg.replace("<", "[<]")
+
+  def decodeParam(metadataConventions: AppMetadata.AppMdConventions, namesForInts: Set[String])(
+    key: String, value: String) = {
+    def throwBadType(type_ : String, cause: Exception = null) =
+      throw new BusinessException(escapeReflectedXss(
+        s"Failed to decode as $type_: parameter: '$key', value: '$value'" +
+          (if (cause == null) "" else " - caused by " + cause.toString)))
+    def handleType[T](goodPath: String => T, typeStr:String)= {
+      try value match {
+        case "" | "null" | null => null
+        case d => goodPath(d)
+      } catch {
+        case ex: Exception => throwBadType(typeStr, ex)
+      }
+    }
+    if (metadataConventions.isBooleanName(key)) {
+      handleType({
+        case "true" => TRUE
+        case "false" => FALSE
+      }, "boolean")
+    } else if (metadataConventions.isDateName(key)) {
+      handleType(d => Format.convertToType(d.replaceAll("\"", ""), ClassOfJavaSqlDate), "date")
+    } else if (metadataConventions.isDateTimeName(key)) {
+      handleType(d => Format.convertToType(d.replaceAll("\"", ""), ClassOfJavaSqlTimestamp), "dateTime (not supported yet)")
+    } else if (namesForInts.contains(key) ||
+      metadataConventions.isIntegerName(key) ||
+      metadataConventions.isIdName(key) ||
+      metadataConventions.isIdRefName(key)) {
+      handleType(l => java.lang.Long.valueOf(l), "long")
+    } else if (metadataConventions.isDecimalName(key)) {
+      handleType(d => BigDecimal(d), "bigDecimal")
+    } else value
+  }
+
+  def decodeParams(metadataConventions: AppMetadata.AppMdConventions, namesForInts: Set[String])(
+    params: Map[String, List[String]]): Map[String, Any] = params map { t =>
+    t._1 -> (t._2.map(decodeParam(metadataConventions, namesForInts)(t._1, _)) match {
+      case List(x) => x
+      case x @ List(_, _*) => x
+      case x => throw new IllegalStateException("unexpected: " + x)
+    })
+  }
+  def decodeMultiParams(metadataConventions: AppMetadata.AppMdConventions, namesForInts: Set[String])(
+    params: Map[String, List[String]]): Map[String, List[Any]] =
+    params map { t => t._1 -> t._2.map(decodeParam(metadataConventions, namesForInts)(t._1, _)) }
+
 
   trait AppStateExtractor { this: AppServiceBase[_] with QueryTimeoutExtractor with Execution =>
-    val ApplicationStateCookiePrefix = config.getString("app.state-cookie-prefix")
+    val ApplicationStateCookiePrefix = AppServiceBase.ApplicationStateCookiePrefix
     def applicationState = extract(r => extractState(r.request, ApplicationStateCookiePrefix))
     protected def extractState(req: HttpRequest, prefix: String) = {
       val state = req.headers.flatMap {
         case c: Cookie => c.cookies.filter(_.name.startsWith(prefix))
         case _ => Nil
-      } map (c => c.name -> decodeParam(c.name, c.value)) toMap
+      } map (c => c.name -> this.decodeParam(c.name, c.value)) toMap
       val langKey = ApplicationStateCookiePrefix + ApplicationLanguageCookiePostfix
       if (state.contains(langKey))
         ApplicationState(state, new Locale(String.valueOf(state(langKey))))
@@ -854,8 +871,8 @@ object AppServiceBase {
     }
   }
 
-  trait AppI18nService { this: AppServiceBase[_] with QueryTimeoutExtractor with Execution =>
-    val ApplicationLanguageCookiePostfix = config.getString("app.language-cookie-postfix")
+  trait AppI18nService { this: AppServiceBase[_] =>
+    val ApplicationLanguageCookiePostfix = I18nService.ApplicationLanguageCookiePostfix
 
     val i18n: I18n = initI18n
     protected def initI18n: I18n = app
@@ -869,7 +886,7 @@ object AppServiceBase {
 
     def setLanguage: Route = (i18nPath & i18nLanguagePath) { lang =>
       setCookie(langCookieTransformer(
-        HttpCookie(ApplicationStateCookiePrefix + ApplicationLanguageCookiePostfix,
+        HttpCookie(this.ApplicationStateCookiePrefix + this.ApplicationLanguageCookiePostfix,
           value = lang,
           path = Some("/")
         ).withSameSite(SameSite.Lax))
@@ -898,18 +915,12 @@ object AppServiceBase {
       }
     }
 
-    def currentLangFromHeader(request: HttpRequest) = {
-      LanguageNegotiator(request.headers)
-        .acceptedLanguageRanges
-        .headOption
-        .map(l => l.primaryTag +: l.subTags)
-        .map(_.mkString("-"))
-    }
+    def currentLangFromHeader(request: HttpRequest) = I18nService.currentLangFromHeader(request)
 
     def applicationLocale = applicationState.map(getApplicationLocale)
 
     def getApplicationLocale(state: ApplicationState): Locale =
-      state.state.get(ApplicationStateCookiePrefix + ApplicationLanguageCookiePostfix)
+      state.state.get(this.ApplicationStateCookiePrefix + this.ApplicationLanguageCookiePostfix)
         .map(l => new Locale(String.valueOf(l)))
         .getOrElse(Locale.getDefault)
 
