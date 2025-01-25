@@ -13,6 +13,7 @@ import org.wabase.WabaseService.Wabase
 
 import java.util.Locale
 import scala.concurrent.{ExecutionContext, Future}
+import scala.util.control.NonFatal
 
 case class WabaseUser(properties: Map[String, Any]) {
   val id: Long      = properties.get("id").collect { case x: Number => x.longValue }.getOrElse(-1)
@@ -35,7 +36,7 @@ case class WabaseRequestContext(
 
 class WabaseRouteException(message: String) extends Exception(message)
 
-class WabaseService {
+class WabaseService extends Loggable {
 
   private val CreateCountActionAndView = """(?U)(?:(count|create):)?(\w*)""".r
 
@@ -159,6 +160,27 @@ class WabaseService {
       }
     }
 
+    def errorHandler(wrc: WabaseRequestContext): PartialFunction[Throwable, Future[HttpResponse]] = {
+      def invokeErrorHandler(
+        inv: Action.Invocation,
+        throwable: Throwable,
+      ): Future[HttpResponse] = {
+        def processResult(r: Any): Future[HttpResponse] = r match {
+          case r: HttpResponse => Future.successful(r)
+          case f: Future[_] => f.flatMap(processResult)
+          case x => error(s"Error handler must return Option[HttpResponse], instead got $x. Original error: $throwable")
+        }
+        processResult(invokeFunction(inv.className, inv.function, Seq(
+          (classOf[Throwable], () => throwable),
+          (classOf[WabaseRequestContext], () => wrc),
+        )))
+      }
+      val errorHandler = wrc.route.errorHandler
+      val pf: PartialFunction[Throwable, Future[HttpResponse]] =
+        { case NonFatal(e) if errorHandler != null => invokeErrorHandler(errorHandler, e) }
+      pf
+    }
+
     def doRequest(reqCtx: WabaseRequestContext): Future[HttpResponse] = {
       if (reqCtx.viewName == null)
         if (reqCtx.route.responseTransformer == null)
@@ -170,14 +192,14 @@ class WabaseService {
           httpResponseF.flatMap(invokeRespTransChain(reqCtx.route.responseTransformer, _, reqCtx))
         else httpResponseF
       }
-    }
+    }.recoverWith(errorHandler(reqCtx))
 
     Option(ctx.route.requestMapper)
       .map(invokeReqTransChain(_, ctx))
       .getOrElse(Future.successful(ctx)).flatMap { mappedCtx =>
         val ctxWithView = if (mappedCtx.viewName == null) viewActionKey(mappedCtx) else mappedCtx
         doRequest(ctxWithView)
-    }
+      }.recoverWith(errorHandler(ctx)) // recover also here in the case request mapper fails
   }
 
   private def error(msg: String) = throw new WabaseRouteException(msg)

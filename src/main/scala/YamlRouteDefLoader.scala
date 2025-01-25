@@ -32,7 +32,7 @@ class YamlRouteDefLoader(
         path = path,
         requestMapper = mapper,
         responseTransformer = transformer,
-        error = error,
+        errorHandler = error,
       )
     }.values.toList
   }

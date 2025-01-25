@@ -1423,7 +1423,7 @@ object AppMetadata extends Loggable {
     path: Regex,
     requestMapper: Action.Invocation = null,
     responseTransformer: Action.Invocation = null,
-    error: Action.Invocation = null,
+    errorHandler: Action.Invocation = null,
   )
 
   trait AppMdConventions extends MdConventions {
