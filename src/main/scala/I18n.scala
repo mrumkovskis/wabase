@@ -8,6 +8,7 @@ import org.apache.pekko.http.scaladsl.model.{HttpEntity, HttpRequest, HttpRespon
 import org.apache.pekko.http.scaladsl.server.{LanguageNegotiator, PathMatcher}
 import org.apache.pekko.http.scaladsl.server.PathMatchers._
 import org.apache.pekko.http.scaladsl.model.StatusCodes
+import org.apache.pekko.http.scaladsl.model.Uri.Path
 
 import java.util.{Collections, Locale, PropertyResourceBundle, ResourceBundle}
 import scala.concurrent.Future
@@ -135,7 +136,7 @@ object I18nService {
 
   def i18nTranslate(ctx: WabaseRequestContext): Future[HttpResponse] = {
     implicit val locale = applicationLocale(ctx.applicationState)
-    val pm = Slash.? ~ I18nPathPrefix / Segment / Segment / RemainingPath
+    val pm = Slash.? ~ PathMatcher(Path(I18nPathPrefix), ()) / Segment / Segment / RemainingPath
     pm(ctx.req.uri.path) match {
       case PathMatcher.Matched(_, (name, key, params)) =>
         val translation = ctx.wabase.translateFromBundle(name, key, WabaseService.pathSegments(params): _*)
@@ -152,7 +153,7 @@ object I18nService {
 
   def i18nResourcesFromBundle(ctx: WabaseRequestContext): Future[HttpResponse] = {
     implicit val locale = applicationLocale(ctx.applicationState)
-    val pm = Slash.? ~ I18nPathPrefix / Segment ~ Slash.?
+    val pm = Slash.? ~ PathMatcher(Path(I18nPathPrefix), ()) / Segment ~ Slash.?
     pm(ctx.req.uri.path) match {
       case PathMatcher.Matched(_, Tuple1(resourcePath)) =>
         val translation = ctx.wabase.i18nResourcesFromBundle(resourcePath)
