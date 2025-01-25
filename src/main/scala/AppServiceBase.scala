@@ -905,13 +905,7 @@ object AppServiceBase {
 
     def i18nTranslate: Route = (i18nPath & i18nTranslatePath) { (name, key, params) =>
       applicationLocale { implicit locale =>
-        import org.apache.pekko.http.scaladsl.model.Uri._
-        def paramsList(path: Path): List[String] = path match {
-          case Path.Empty => Nil
-          case _: Path.Slash => paramsList(path.tail)
-          case Path.Segment(h, t) => h :: paramsList(t)
-        }
-        complete(i18n.translateFromBundle(name, key, paramsList(params): _*))
+        complete(i18n.translateFromBundle(name, key, WabaseService.pathSegments(params): _*))
       }
     }
 
@@ -924,19 +918,6 @@ object AppServiceBase {
         .map(l => new Locale(String.valueOf(l)))
         .getOrElse(Locale.getDefault)
 
-    implicit def i18BundleMarshaller: ToEntityMarshaller[I18Bundle] = Marshaller.combined { bundle =>
-      val source = ResultSerializer.source(
-        () => bundle.bundle,
-        os => BorerNestedArraysEncoder(os, Json, wrap = true, encoder => {
-          case (k: String, v: String) =>
-            encoder.w.writeMapStart()
-            encoder.writeValue(k)
-            encoder.writeValue(v)
-            encoder.writeBreak()
-            encoder.w
-        })
-      )
-      HttpEntity.Chunked.fromData(`application/json`, source)
-    }
+    implicit def i18BundleMarshaller: ToEntityMarshaller[I18Bundle] = I18nService.i18BundleMarshaller
   }
 }

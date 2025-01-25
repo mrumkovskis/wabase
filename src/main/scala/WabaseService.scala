@@ -5,6 +5,7 @@ import org.apache.pekko.http.scaladsl.model.Uri.Path
 import org.apache.pekko.http.scaladsl.model.Uri.Path.{Empty, Segment, SlashOrEmpty}
 import AppMetadata._
 import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.http.scaladsl.marshalling.ToResponseMarshallable
 import org.apache.pekko.http.scaladsl.model.headers.{Cookie, HttpCookie, `Set-Cookie`}
 import org.apache.pekko.http.scaladsl.model.{DateTime, HttpHeader, HttpRequest, HttpResponse}
 import org.wabase.AppMetadata.{Action, RouteDef}
@@ -16,6 +17,8 @@ import scala.concurrent.{ExecutionContext, Future}
 case class WabaseUser(properties: Map[String, Any]) {
   val id: Long      = properties.get("id").collect { case x: Number => x.longValue }.getOrElse(-1)
   val name: String  = properties.get("name").map(String.valueOf).orNull
+  val roles: Set[String] = properties.get("roles")
+    .collect { case r: Iterable[String@unchecked] => r.toSet }.getOrElse(Set())
 }
 
 case class WabaseRequestContext(
@@ -110,6 +113,7 @@ class WabaseService {
         def processResult(r: Any): Future[WabaseRequestContext] = r match {
           case ctx: WabaseRequestContext => Future.successful(ctx)
           case req: HttpRequest => processResult(ctx.copy(req = req))
+          case st: ApplicationState => processResult(ctx.copy(applicationState = st))
           case f: Future[_] => f.flatMap(processResult)
           case x => error(s"Request transformer must return either WabaseRequestContext or HttpRequest or Future of them." +
             s" Instead got: $x")
@@ -216,6 +220,16 @@ object WabaseService {
       domain = Option(domain).filter(_.nonEmpty), path = Option(path).filter(_.nonEmpty))
     resp.mapHeaders(_ ++ Seq(`Set-Cookie`(cookie.withValue("deleted").withExpires(DateTime.MinValue))))
   }
+
+  def pathSegments(path: Path): List[String] = path match {
+    case Path.Empty => Nil
+    case _: Path.Slash => pathSegments(path.tail)
+    case Path.Segment(h, t) => h :: pathSegments(t)
+  }
+
+  def complete(ctx: WabaseRequestContext, marshallable: => ToResponseMarshallable): Future[HttpResponse] =
+    marshallable(ctx.req)(ctx.as.dispatcher)
+
 }
 
 object ApplicationStateExtractor {
