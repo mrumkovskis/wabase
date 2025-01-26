@@ -112,9 +112,10 @@ class WabaseService extends Loggable {
     def invokeReqTransChain(inv: Action.Invocation, wrc: WabaseRequestContext): Future[WabaseRequestContext] = {
       def invokeReqTrans(cn: String, fn: String, tctx: WabaseRequestContext): Future[WabaseRequestContext] = {
         def processResult(r: Any): Future[WabaseRequestContext] = r match {
-          case ctx: WabaseRequestContext => Future.successful(ctx)
-          case req: HttpRequest => processResult(ctx.copy(req = req))
-          case st: ApplicationState => processResult(ctx.copy(applicationState = st))
+          case c: WabaseRequestContext => Future.successful(c)
+          case req: HttpRequest => processResult(tctx.copy(req = req))
+          case st: ApplicationState => processResult(tctx.copy(applicationState = st))
+          case u: WabaseUser => processResult(tctx.copy(user = u))
           case f: Future[_] => f.flatMap(processResult)
           case x => error(s"Request transformer must return either WabaseRequestContext or HttpRequest or Future of them." +
             s" Instead got: $x")
@@ -181,8 +182,8 @@ class WabaseService extends Loggable {
       pf
     }
 
-    def doRequest(reqCtx: WabaseRequestContext): Future[HttpResponse] = {
-      if (reqCtx.viewName == null)
+    def doRequest(reqCtx: WabaseRequestContext): Future[HttpResponse] = try {
+      (if (reqCtx.viewName == null)
         if (reqCtx.route.responseTransformer == null)
           error(s"If view name for route ${reqCtx.route.path} not specified, response transformer must be defined!")
         else invokeRespTransChain(reqCtx.route.responseTransformer, HttpResponse(), reqCtx)
@@ -191,15 +192,18 @@ class WabaseService extends Loggable {
         if (reqCtx.route.responseTransformer != null)
           httpResponseF.flatMap(invokeRespTransChain(reqCtx.route.responseTransformer, _, reqCtx))
         else httpResponseF
-      }
-    }.recoverWith(errorHandler(reqCtx))
+      }).recoverWith(errorHandler(reqCtx))
+    } catch {
+      case NonFatal(e) => errorHandler(reqCtx)(e) // catch and handle exception if current thread throws exception
+    }
 
-    Option(ctx.route.requestMapper)
+    try Option(ctx.route.requestMapper)
       .map(invokeReqTransChain(_, ctx))
       .getOrElse(Future.successful(ctx)).flatMap { mappedCtx =>
         val ctxWithView = if (mappedCtx.viewName == null) viewActionKey(mappedCtx) else mappedCtx
         doRequest(ctxWithView)
       }.recoverWith(errorHandler(ctx)) // recover also here in the case request mapper fails
+    catch { case NonFatal(e) => errorHandler(ctx)(e) } // catch if request mapper (invokeReqTransChain) in current thread throws exception
   }
 
   private def error(msg: String) = throw new WabaseRouteException(msg)
