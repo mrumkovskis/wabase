@@ -176,7 +176,7 @@ trait WabaseApp[User] {
         case wr => Future.successful(wr)
       }
       .andThen {
-        case Success(WabaseResult(httpReq, res)) => this.afterWabaseAction(httpReq, Success(res))
+        case Success(WabaseResult(ctx, res)) => this.afterWabaseAction(ctx, Success(res))
         case Failure(error) => this.afterWabaseAction(context, Failure[QuereaseResult](error))
       }
   }
