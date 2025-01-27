@@ -6,8 +6,9 @@ import ResultEncoder._
 import JsonEncoder._
 import org.apache.pekko.http.scaladsl.server.directives.AuthenticationDirective
 import io.bullet.borer.compat.pekko._
-import org.apache.pekko.http.scaladsl.model.{HttpRequest, HttpResponse}
-import org.apache.pekko.http.scaladsl.model.headers.`User-Agent`
+import org.apache.pekko.http.scaladsl.model.RemoteAddress.Unknown
+import org.apache.pekko.http.scaladsl.model.{AttributeKeys, HttpRequest, HttpResponse, RemoteAddress}
+import org.apache.pekko.http.scaladsl.model.headers.{HttpCookie, SameSite, `Remote-Address`, `User-Agent`, `X-Forwarded-For`, `X-Real-Ip`}
 import org.apache.pekko.util.ByteString
 
 import scala.util.Try
@@ -36,12 +37,55 @@ object WabaseAuthentication extends Authentication[WabaseUser] with Execution {
     }
   }
 
+  // code taken from extractClientIP directive
+  def extractClientIP(req: HttpRequest): RemoteAddress = {
+    WabaseService.optionalHttpHeaderValuePF(req) {
+      case `X-Forwarded-For`(Seq(address, _*)) => address
+      case `X-Real-Ip`(address) => address
+      case `Remote-Address`(address) => address
+    }.orElse(req.attribute(AttributeKeys.remoteAddress))
+      .getOrElse(Unknown)
+  }
   def extractUserAgent(req: HttpRequest): Option[String] = {
     WabaseService.optionalHttpHeaderValuePF(req) { case ua: `User-Agent` => ua.value() }
   }
 
-  def authenticateUser(req: HttpRequest): WabaseUser = ???
-  def setSessionCookie(req: HttpRequest, resp: HttpResponse): HttpResponse = ???
+  def encryptedSession(req: HttpRequest, user: WabaseUser): String = {
+    if (user == null) throw new AuthenticationException(s"User not found in session")
+    val ip = extractClientIP(req) match {
+      case ra: RemoteAddress.IP => remoteAddressToString(ra)
+      case RemoteAddress.Unknown => null
+    }
+    if (ip == null)
+      throw new BusinessException(s"Client IP http header not found, ensure pekko.http.server.remote-address-header = on")
+    val userAgent = extractUserAgent(req)
+    val expirationTime = currentTime + sessionTimeOut
+    encryptSession(encodeSession(Authentication.Session(user, ip, expirationTime, userAgent)))
+  }
+
+  /* Request mapper */
+  def authenticate(req: HttpRequest): WabaseUser = {
+    val (session, ip, userAgent) = (extractSession(req), extractClientIP(req), extractUserAgent(req))
+    session.filter(validateSession(_, ip, userAgent))
+      .map(_.user)
+      .getOrElse(throw new AuthenticationException("Unauthorized"))
+  }
+
+  /* Response transformer */
+  def setSessionCookie(req: HttpRequest, user: WabaseUser, resp: HttpResponse): HttpResponse = {
+    val enc_session = encryptedSession(req, user)
+    WabaseService.setCookie(resp)(HttpCookie(
+      SessionCookieName,
+      value = enc_session,
+      path = Some("/"),
+      httpOnly= httpOnlyCookies,
+      secure = secureCookies
+    ).withSameSite(SameSite.Lax))
+  }
+
+  /* Response transformer */
+  def removeSessionCookie(resp: HttpResponse): HttpResponse =
+    WabaseService.deleteCookie(resp)(SessionCookieName, path = "/")
 
   override def signInUser: AuthenticationDirective[WabaseUser] = ???
   override protected def execution: Execution = ???
