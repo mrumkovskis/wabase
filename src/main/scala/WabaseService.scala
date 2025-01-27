@@ -169,7 +169,7 @@ class WabaseService extends Loggable {
         def processResult(r: Any): Future[HttpResponse] = r match {
           case r: HttpResponse => Future.successful(r)
           case f: Future[_] => f.flatMap(processResult)
-          case x => error(s"Error handler must return Option[HttpResponse], instead got $x. Original error: $throwable")
+          case x => error(s"Error handler must return Future[HttpResponse], instead got $x. Original error: $throwable")
         }
         processResult(invokeFunction(inv.className, inv.function, Seq(
           (classOf[Throwable], () => throwable),
