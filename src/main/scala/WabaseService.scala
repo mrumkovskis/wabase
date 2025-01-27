@@ -109,6 +109,13 @@ class WabaseService extends Loggable {
       org.wabase.invokeFunction(className, function, params ++ contextParams)
     }
 
+    def contextInjectableParameters(wrc: WabaseRequestContext): List[(Class[_], () => Any)] = List(
+      (classOf[WabaseRequestContext], () => wrc),
+      (classOf[HttpRequest], () => wrc.req),
+      (classOf[WabaseUser], () => wrc.user),
+      (classOf[ApplicationState], () => wrc.applicationState),
+    )
+
     def invokeReqTransChain(inv: Action.Invocation, wrc: WabaseRequestContext): Future[WabaseRequestContext] = {
       def invokeReqTrans(cn: String, fn: String, tctx: WabaseRequestContext): Future[WabaseRequestContext] = {
         def processResult(r: Any): Future[WabaseRequestContext] = r match {
@@ -121,10 +128,7 @@ class WabaseService extends Loggable {
             s" Instead got: $x")
         }
 
-        processResult(invokeFunction(cn, fn, Seq(
-          (classOf[WabaseRequestContext], () => tctx),
-          (classOf[HttpRequest], () => tctx.req),
-        )))
+        processResult(invokeFunction(cn, fn, contextInjectableParameters(tctx)))
       }
       inv.arg match {
         case null => invokeReqTrans(inv.className, inv.function, wrc)
@@ -147,11 +151,9 @@ class WabaseService extends Loggable {
             s" Instead got: $x")
         }
 
-        processResult(invokeFunction(cn, fn, Seq(
-          (classOf[HttpResponse], () => resp),
-          (classOf[WabaseRequestContext], () => tctx),
-          (classOf[HttpRequest], () => tctx.req),
-        )))
+        processResult(invokeFunction(cn, fn,
+          (classOf[HttpResponse], () => httpResp) :: contextInjectableParameters(tctx)
+        ))
       }
       inv.arg match {
         case null => invokeRespTrans(inv.className, inv.function, httpResp, wrc)
