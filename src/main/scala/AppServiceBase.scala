@@ -412,13 +412,13 @@ trait AppServiceBase[User]
       }
     }
   def decodeParams(params: Map[String, List[String]]): Map[String, Any] =
-    AppServiceBase.decodeParams(metadataConventions, namesForInts)(params)
+    AppServiceBase.decodeParams(metadataConventions, namesForInts, escapeReflectedXss )(params)
   def decodeMultiParams(params: Map[String, List[String]]) =
-    AppServiceBase.decodeMultiParams(metadataConventions, namesForInts)(params)
+    AppServiceBase.decodeMultiParams(metadataConventions, namesForInts, escapeReflectedXss)(params)
   val namesForInts = AppServiceBase.NamesForInts
   def escapeReflectedXss(msg: String) = AppServiceBase.escapeReflectedXss(msg)
   def decodeParam(key: String, value: String) =
-    AppServiceBase.decodeParam(metadataConventions, namesForInts)(key, value)
+    AppServiceBase.decodeParam(metadataConventions, namesForInts, escapeReflectedXss)(key, value)
   override protected def initJsonConverter = app.qio
   override def dbAccess = app.dbAccess
 
@@ -617,7 +617,11 @@ object AppServiceBase {
   def escapeReflectedXss(msg: String) =
     msg.replace("<", "[<]")
 
-  def decodeParam(metadataConventions: AppMetadata.AppMdConventions, namesForInts: Set[String])(
+  def decodeParam(
+    metadataConventions: AppMetadata.AppMdConventions,
+    namesForInts: Set[String],
+    escapeReflectedXss: String => String,
+  )(
     key: String, value: String) = {
     def throwBadType(type_ : String, cause: Exception = null) =
       throw new BusinessException(escapeReflectedXss(
@@ -650,17 +654,24 @@ object AppServiceBase {
     } else value
   }
 
-  def decodeParams(metadataConventions: AppMetadata.AppMdConventions, namesForInts: Set[String])(
+  def decodeParams(
+    metadataConventions: AppMetadata.AppMdConventions,
+    namesForInts: Set[String],
+    escapeReflectedXss: String => String,
+  )(
     params: Map[String, List[String]]): Map[String, Any] = params map { t =>
-    t._1 -> (t._2.map(decodeParam(metadataConventions, namesForInts)(t._1, _)) match {
+    t._1 -> (t._2.map(decodeParam(metadataConventions, namesForInts, escapeReflectedXss)(t._1, _)) match {
       case List(x) => x
       case x @ List(_, _*) => x
       case x => throw new IllegalStateException("unexpected: " + x)
     })
   }
-  def decodeMultiParams(metadataConventions: AppMetadata.AppMdConventions, namesForInts: Set[String])(
-    params: Map[String, List[String]]): Map[String, List[Any]] =
-    params map { t => t._1 -> t._2.map(decodeParam(metadataConventions, namesForInts)(t._1, _)) }
+  def decodeMultiParams(
+    metadataConventions: AppMetadata.AppMdConventions,
+    namesForInts: Set[String],
+    escapeReflectedXss: String => String,
+  )(params: Map[String, List[String]]): Map[String, List[Any]] =
+    params map { t => t._1 -> t._2.map(decodeParam(metadataConventions, namesForInts, escapeReflectedXss)(t._1, _)) }
 
 
   trait AppStateExtractor { this: AppServiceBase[_] with QueryTimeoutExtractor with Execution =>

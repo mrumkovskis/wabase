@@ -4,6 +4,7 @@ import org.apache.pekko.http.scaladsl.model.HttpMethods._
 import org.apache.pekko.http.scaladsl.model.Uri.Path
 import org.apache.pekko.http.scaladsl.model.Uri.Path.{Empty, Segment, SlashOrEmpty}
 import AppMetadata._
+import com.typesafe.scalalogging.Logger
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.marshalling.ToResponseMarshallable
 import org.apache.pekko.http.scaladsl.model.headers.{Cookie, HttpCookie, `Set-Cookie`}
@@ -25,6 +26,7 @@ case class WabaseUser(properties: Map[String, Any]) {
 case class WabaseRequestContext(
   wabase: Wabase,
   req: HttpRequest,
+  logger: Logger,
   route: RouteDef = null,
   viewName: String = null,
   action: String = null,
@@ -41,7 +43,7 @@ class WabaseService extends Loggable {
   private val CreateCountActionAndView = """(?U)(?:(count|create):)?(\w*)""".r
 
   def handle(wabase: Wabase)(req: HttpRequest)(implicit as: ActorSystem): Future[HttpResponse] = {
-    val ctx = findRoute(WabaseRequestContext(wabase, req))
+    val ctx = findRoute(WabaseRequestContext(wabase, req, logger))
     doRoute(ctx)
   }
 
@@ -49,7 +51,7 @@ class WabaseService extends Loggable {
     val pathString = ctx.req.uri.path.toString
     val route = ctx.wabase.qe.routeDefs.find(_.path.pattern.matcher(pathString).matches)
       .getOrElse(error(s"Route not found for path '$pathString'"))
-    WabaseRequestContext(ctx.wabase, ctx.req, route)
+    ctx.copy(route = route)
   }
 
   protected def doRoute(ctx: WabaseRequestContext)(implicit as: ActorSystem): Future[HttpResponse] = {
@@ -65,8 +67,7 @@ class WabaseService extends Loggable {
           else (null, null, null)
       }.getOrElse((null, null, null))
 
-      if (viewNameAndActionStr == null)
-        WabaseRequestContext(wabase, req, route, null, null, null, null, null)
+      if (viewNameAndActionStr == null) ctx
       else {
         val key = {
           def key_path(path: Path): Path = path match {
@@ -96,8 +97,7 @@ class WabaseService extends Loggable {
           case `DELETE` => Action.Delete
           case x        => error(s"Unsupported http method $x for request '${req.uri}'")
         }
-
-        WabaseRequestContext(wabase, req, route, view_name, action, key, null, null)
+        ctx.copy(viewName = view_name, action = action, key = key)
       }
     }
 
@@ -213,7 +213,7 @@ class WabaseService extends Loggable {
 
 object WabaseService {
 
-  type Wabase = WabaseApp[_] with QuereaseProvider with I18n
+  type Wabase = WabaseApp[WabaseUser] with QuereaseProvider with I18n
 
   def optionalHttpHeaderValue[T](req: HttpRequest)(extractorF: HttpHeader => Option[T]): Option[T] = {
     req.headers.collectFirst(Function.unlift(extractorF))
@@ -267,8 +267,12 @@ object ApplicationStateExtractor {
     val state = ctx.req.headers.flatMap {
       case c: Cookie => c.cookies.filter(_.name.startsWith(prefix))
       case _ => Nil
-    }.map(c => c.name -> AppServiceBase.decodeParam(ctx.wabase.qe.metadataConventions, AppServiceBase.NamesForInts)(
-      c.name, c.value)).toMap
+    }.map { c => c.name ->
+      AppServiceBase.decodeParam(
+        ctx.wabase.qe.metadataConventions,
+        AppServiceBase.NamesForInts,
+        AppServiceBase.escapeReflectedXss)(c.name, c.value)
+    }.toMap
     val langKey = prefix + I18nService.ApplicationLanguageCookiePostfix
     if (state.contains(langKey))
       ApplicationState(state, new Locale(String.valueOf(state(langKey))))
