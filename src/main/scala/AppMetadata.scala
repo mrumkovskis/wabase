@@ -804,7 +804,7 @@ class OpParser(viewName: String, cache: OpParser.Cache)
   val ActionRegex = new Regex(Action().mkString("(?U)(", "|", """)\s+"""))
   val ViewNameRegex = "(?U)\\w+".r
   val ConfPropRegex = """\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*(?:\.\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*+)*""".r
-  val HttpClientNameRegex = """\w+(-\w+)*""".r
+  val HttpClientFileStreamerNameRegex = """\w+(-\w+)*""".r
 
   def parseOperation(op: String): Op = cache.get(op).getOrElse {
     val parsedOp = phrase(operation)(new scala.util.parsing.input.CharSequenceReader(op)) match {
@@ -845,12 +845,14 @@ class OpParser(viewName: String, cache: OpParser.Cache)
   def resourceOp: MemParser[Resource] = "resource" ~> tresqlOp ~ opt(tresqlOp) ^^ {
     case nameTresql ~ ctTresql => Resource(nameTresql, ctTresql.orNull)
   } named "resource-op"
-  def fileOp: MemParser[File] = opt(opResultType) ~ ("file" ~> tresqlOp) ^^ {
-    case conformTo ~ e => File(e, conformTo)
+  def fileOp: MemParser[File] = opt(opResultType) ~
+    ("file" ~> opt("[" ~> HttpClientFileStreamerNameRegex <~ "]") ~ tresqlOp) ^^ {
+    case conformTo ~ (fileStreamer ~ e) => File(e, conformTo, fileStreamer.orNull)
   } named "file-op"
-  def toFileOp: MemParser[ToFile] = "to file" ~> operation ~ opt(tresqlOp) ~ opt(tresqlOp) ^^ {
-    case op ~ fileName ~ contentType =>
-      ToFile(op, fileName.orNull, contentType.orNull)
+  def toFileOp: MemParser[ToFile] = "to file" ~>
+    opt("[" ~> HttpClientFileStreamerNameRegex <~ "]") ~ operation ~ opt(tresqlOp) ~ opt(tresqlOp) ^^ {
+    case fileStreamer ~ op ~ fileName ~ contentType =>
+      ToFile(op, fileName.orNull, contentType.orNull, fileStreamer.orNull)
   } named "to-file-op"
   def templateOp: MemParser[Template] = {
     val Data = "data"
@@ -874,7 +876,7 @@ class OpParser(viewName: String, cache: OpParser.Cache)
   } named "email-op"
   def httpOp: MemParser[Http] = {
     def tu(uri: Exp) = TresqlUri.Tresql(uri.tresql)
-    def http_cln = opt("[" ~> HttpClientNameRegex <~ "]")
+    def http_cln = opt("[" ~> HttpClientFileStreamerNameRegex <~ "]")
     def http_get_delete: MemParser[Http] =
       opt("get" | "delete") ~ http_cln ~ bracesTresql ~ opt(tresqlOp) ^^ {
         case method ~ client ~ uri ~ headers =>
@@ -1114,8 +1116,17 @@ object AppMetadata extends Loggable {
     case class Foreach(initOp: Op, action: Action) extends Op
     case class If(cond: Op, action: Action, elseAct: Action = null) extends Op
     case class Resource(nameTresql: Tresql, contentTypeTresql: Tresql = null) extends Op
-    case class File(idShaTresql: Tresql, conformTo: Option[OpResultType] = None) extends CastableOp
-    case class ToFile(contentOp: Op, nameTresql: Tresql = null, contentTypeTresql: Tresql = null) extends Op
+    case class File(
+      idShaTresql: Tresql,
+      conformTo: Option[OpResultType] = None,
+      fileStreamerName: String = null
+    ) extends CastableOp
+    case class ToFile(
+      contentOp: Op,
+      nameTresql: Tresql = null,
+      contentTypeTresql: Tresql = null,
+      fileStreamerName: String = null,
+    ) extends Op
     case class Template(templateTresql: Tresql, dataOp: Op = null, filenameTresql: Tresql = null) extends Op
     case class Email(emailTresql: Tresql, subject: Op, body: Op, attachmentsOp: List[Op] = Nil, isBatch: Boolean = false) extends Op
     case class Http(method: String,
@@ -1257,8 +1268,8 @@ object AppMetadata extends Loggable {
             case Resource(nameTresql, contentTypeTresql) =>
               val s1 = us(state, nv(state.value)(nameTresql))
               us(s1, nv(s1.value)(contentTypeTresql))
-            case File(idShaTresql, _) => us(state, nv(state.value)(idShaTresql))
-            case ToFile(contentOp, nameTresql, contentTypeTresql) =>
+            case File(idShaTresql, _, _) => us(state, nv(state.value)(idShaTresql))
+            case ToFile(contentOp, nameTresql, contentTypeTresql, _) =>
               val s1 = opTrTr(contentOp)
               val s2 = us(s1, nv(s1.value)(nameTresql))
               us(s2, nv(s2.value)(contentTypeTresql))
