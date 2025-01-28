@@ -56,7 +56,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
   private val actionParser: String => String => Map[String, Any] => Action =
     objectName => dataKey => dataMap => {
-      val opParser = new OpParser(objectName, tresqlUri, opParserCache(objectName))
+      val opParser = new OpParser(objectName, opParserCache(objectName))
       parseAction(objectName, ViewDefExtrasUtils.getSeq(dataKey, dataMap), opParser)
     }
 
@@ -297,7 +297,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val timeout = parseTimeout(viewDef.name, getStringExtra(Timeout, viewDef).orNull)
     val sqlTimeout = parseTimeout(viewDef.name, getStringExtra(SqlTimeout, viewDef).orNull)
     val actions = Action().foldLeft(Map[String, Action]()) { (res, actionName) =>
-      val opParser = new OpParser(viewDef.name, tresqlUri, opParserCache(viewDef.name))
+      val opParser = new OpParser(viewDef.name, opParserCache(viewDef.name))
       val a = parseAction(s"${viewDef.name}.$actionName", getSeq(actionName, viewDef.extras), opParser)
       if (a.steps.nonEmpty) res + (actionName -> a) else res
     }
@@ -794,7 +794,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   override val parser: QuereaseExpressions.Parser = this.AppQuereaseDefaultParser
 }
 
-class OpParser(viewName: String, tresqlUri: TresqlUri, cache: OpParser.Cache)
+class OpParser(viewName: String, cache: OpParser.Cache)
   extends QueryParsers { self =>
   import AppMetadata.Action._
   import AppMetadata.Action
