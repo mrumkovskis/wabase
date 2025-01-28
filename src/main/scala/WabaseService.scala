@@ -26,7 +26,6 @@ case class WabaseUser(properties: Map[String, Any]) {
 case class WabaseRequestContext(
   wabase: Wabase,
   req: HttpRequest,
-  logger: Logger,
   route: RouteDef = null,
   viewName: String = null,
   action: String = null,
@@ -43,7 +42,7 @@ class WabaseService extends Loggable {
   private val CreateCountActionAndView = """(?U)(?:(count|create):)?(\w*)""".r
 
   def handle(wabase: Wabase)(req: HttpRequest)(implicit as: ActorSystem): Future[HttpResponse] = {
-    val ctx = findRoute(WabaseRequestContext(wabase, req, logger))
+    val ctx = findRoute(WabaseRequestContext(wabase, req))
     doRoute(ctx)
   }
 
@@ -164,24 +163,9 @@ class WabaseService extends Loggable {
     }
 
     def errorHandler(wrc: WabaseRequestContext): PartialFunction[Throwable, Future[HttpResponse]] = {
-      def invokeErrorHandler(
-        inv: Action.Invocation,
-        throwable: Throwable,
-      ): Future[HttpResponse] = {
-        def processResult(r: Any): Future[HttpResponse] = r match {
-          case r: HttpResponse => Future.successful(r)
-          case f: Future[_] => f.flatMap(processResult)
-          case x => error(s"Error handler must return Future[HttpResponse], instead got $x. Original error: $throwable")
-        }
-        processResult(invokeFunction(inv.className, inv.function, Seq(
-          (classOf[Throwable], () => throwable),
-          (classOf[WabaseRequestContext], () => wrc),
-        )))
+      WabaseErrorHandler.errorHandler(ctx).orElse {
+        case NonFatal(e) => Future.failed(e)
       }
-      val errorHandler = wrc.route.errorHandler
-      val pf: PartialFunction[Throwable, Future[HttpResponse]] =
-        { case NonFatal(e) if errorHandler != null => invokeErrorHandler(errorHandler, e) }
-      pf
     }
 
     def doRequest(reqCtx: WabaseRequestContext): Future[HttpResponse] = try {
