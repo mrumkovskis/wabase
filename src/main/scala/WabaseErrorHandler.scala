@@ -48,9 +48,11 @@ object WabaseErrorHandler extends WabaseErrorHandler {
       logger.info(e.toString)
       HttpResponse(StatusCodes.BadRequest)
     case e: org.postgresql.util.PSQLException if e.getMessage.startsWith(TimeoutSignature) =>
+      val timeoutLogger = LoggerFactory.getLogger("JdbcTimeoutLogger")
       val user = Option(ctx.user).map(_.toString).orNull
       val state = ctx.applicationState.state.map{ case (k,v) => s"$k = $v" }.mkString("{", ", ", "}")
       val msg = s"JDBC timeout, statement cancelled - ${ctx.req.method} ${ctx.req.uri}, state - $state, user - $user"
+      timeoutLogger.error(msg)
       HttpResponse(InternalServerError,
         entity = ctx.wabase.translate(TimeoutFriendlyMessage)(I18nService.applicationLocale(ctx.applicationState)))
     case e: org.tresql.TresqlException if e.getCause.isInstanceOf[org.postgresql.util.PSQLException] &&
