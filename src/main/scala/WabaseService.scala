@@ -163,13 +163,7 @@ class WabaseService extends Loggable {
     }
 
     def errorHandler(wrc: WabaseRequestContext): PartialFunction[Throwable, Future[HttpResponse]] = {
-      val errorHandlerClassName =
-        Option(wrc.route.errorHandler).map(inv =>
-          List(inv.className, inv.function).filter(_ != null).mkString("."))
-          .getOrElse(config.getString("app.wabase-error-handler"))
-      val errorHandler = getObjectOrNewInstance(errorHandlerClassName, "Wabase error handler")
-        .asInstanceOf[WabaseErrorHandler]
-      errorHandler.errorHandler(ctx).orElse {
+      wrc.route.errorHandler.errorHandler(ctx).orElse {
         case NonFatal(e) => Future.failed(e)
       }
     }
