@@ -8,13 +8,11 @@ import org.apache.pekko.http.scaladsl.server.Directives._
 import org.apache.pekko.stream._
 import org.apache.pekko.stream.stage.{GraphStage, GraphStageLogic, InHandler, OutHandler}
 import org.apache.pekko.stream.scaladsl.{Flow, GraphDSL, Sink, Source}
-import org.apache.pekko.actor.{Actor, Props}
+import org.apache.pekko.actor.{Actor, ActorSystem, Props}
 
 import scala.util.{Either, Left, Right, Success, Try}
-import scala.concurrent.{ExecutionContextExecutor, Future}
+import scala.concurrent.{ExecutionContext, ExecutionContextExecutor, Future}
 import scala.concurrent.duration.{Duration, FiniteDuration}
-import spray.json._
-import DefaultJsonProtocol._
 import DeferredControl.DeferredCheck
 import DeferredControl.DeferredStatusPublisher
 
@@ -26,7 +24,6 @@ import AppFileStreamer.FileInfo
 import org.apache.pekko.http.scaladsl.model.MediaTypes.`application/json`
 import org.apache.pekko.http.scaladsl.server.RouteResult.Complete
 import org.apache.pekko.util.ByteString
-import org.wabase.AppMetadata.DbAccessKey
 
 import scala.annotation.tailrec
 import scala.util.control.NonFatal
@@ -35,18 +32,13 @@ trait DeferredControl
   extends DeferredCheck with QueryTimeoutExtractor with DeferredStatusPublisher {
   this: Execution
    with AppServiceBase[_]
-   with JsonConverterProvider
    with AppExceptionHandler
    with AppConfig
-   with AppStateExtractor
    with SessionInfoRemover
-   with Marshalling
-   with QueryTimeoutExtractor
    with Loggable =>
 
   import DeferredControl._
-  import HttpMessageSerialization._
-  import jsonConverter.MapJsonFormat
+  import io.bullet.borer._, ResultEncoder._, JsonEncoder._
 
   lazy val defaultTimeout = DeferredControl.defaultTimeout
   lazy val deferredWorkerCount = DeferredControl.deferredWorkerCount
@@ -55,145 +47,25 @@ trait DeferredControl
   lazy val deferredCleanupInterval = DeferredControl.deferredCleanupInterval
   lazy val deferredModules = DeferredControl.deferredModules
 
-  /** This object is not placed in DeferredControl object so that each instance of DeferredControl trait
-      subscribes to it's own notification message
-    */
-  case object DeferredRequestArrived extends ServerNotifications.Addressee
-
-  protected val cleanupActor = system.actorOf(Props(classOf[DeferredControl.DeferredCleanup], this))
+  private val moduleId = java.util.UUID.randomUUID.toString
 
   protected def initDeferredStorage: DeferredStorage
 
   private val deferredStorage = Option(initDeferredStorage)
     .getOrElse(sys.error("initDeferredStorage function returned null, cannot initialize DeferredControl."))
 
-  class DeferredQueue extends GraphStage[FanOutShape2[
-      DeferredContext, DeferredContext, DeferredContext]] {
-    val in = Inlet[DeferredContext]("in")
-    val exe = Outlet[DeferredContext]("exe")
-    val overflow = Outlet[DeferredContext]("overflow")
-    val shape = new FanOutShape2(in, exe, overflow)
-    val MaxQueueSize = 1024
-    val QueueOverflowResponse = HttpResponse(StatusCodes.InternalServerError,
-      entity = "Server too busy. Please try later again.")
-
-    override def createLogic(attributes: Attributes) =
-      new GraphStageLogic(shape) with OutHandler {
-        var queue: scala.collection.mutable.Queue[DeferredContext] = _
-        override def preStart() = {
-          queue = scala.collection.mutable.Queue.empty
-          pull(in)
-        }
-        setHandler(in, new InHandler {
-          override def onPush(): Unit = {
-            val ctx = grab(in)
-            if (queue.size >= MaxQueueSize) {
-              emit(overflow, ctx.copy(status = DEFERRED_ERR, result = QueueOverflowResponse))
-            } else if (isAvailable(exe)) {
-              val nctx = ctx.copy(status = DEFERRED_EXE)
-              push(exe, nctx)
-            } else {
-              val nctx = ctx.copy(status = DEFERRED_QUEUE)
-              queue.enqueue(nctx)
-              deferredStorage.registerDeferredStatus(nctx)
-              publishDeferredStatus(nctx)
-            }
-            pull(in)
-          }
-        })
-        setHandler(exe, new OutHandler {
-          override def onPull() = pushIfQueued
-        })
-        private def pushIfQueued = {
-          if (queue.nonEmpty) {
-            val nctx = queue.dequeue().copy(status = DEFERRED_EXE)
-            push(exe, nctx)
-          }
-        }
-        //does nothing
-        override def onPull(): Unit = {}
-        setHandler(overflow, this)
-      }
-  }
-
-  protected def deferredSink(name: String, parallelism: Int) =
-    GraphDSL.createGraph(new DeferredQueue) { implicit b => deferredQueue =>
-      import GraphDSL.Implicits._
-      val entry = b.add(Flow
-        .fromFunction(deferredStorage.registerDeferredRequest)
-        .mapConcat { ctx =>
-          logger.debug(s"Deferred request registered ${ctx.request}${
-            if (name != null) s" for module $name" else ""
-          }")
-          ctx.status match {
-            case DeferredExists =>
-              publishDeferredStatus(ctx)
-              Nil
-            case _ => List(ctx)
-          }
-        }
-      )
-      entry.out ~> deferredQueue.in
-      deferredQueue.out0 ~> Flow[DeferredContext] //exe port
-        .map(deferredStorage.registerDeferredStatus)
-        .map{ x => publishDeferredStatus(x); x}
-        .mapAsyncUnordered(parallelism)(executeDeferred)
-        .mapAsyncUnordered(parallelism)(deferredStorage.registerDeferredResult)
-        .to(Sink.foreach(publishDeferredStatus))
-      deferredQueue.out1 ~> Flow[DeferredContext] //overflow port
-        .mapAsyncUnordered(parallelism)(deferredStorage.registerDeferredResult)
-        .to(Sink.foreach(publishDeferredStatus))
-      SinkShape(entry.in)
-    }
-
-  protected def startDeferredGraph(name: String, workerCount: Int) = {
-    logger.info(s"Starting deferred request processor${
-      if (name != null) s" ($name)" else ""}, worker count - ($workerCount)")
-    Source.actorRef[DeferredContext](PartialFunction.empty, PartialFunction.empty, 8, OverflowStrategy.dropTail)
-      .to(deferredSink(name, workerCount))
-      .mapMaterializedValue(
-        EventBus.subscribe(_, if (name == null) DeferredRequestArrived else
-          DeferredModuleRequestArrived(name)))
-      .withAttributes(ActorAttributes.supervisionStrategy {
-        case ex: Exception =>
-          logger.error("DeferredGraph crashed", ex)
-          onRestartDeferred()
-          Supervision.Resume
-      }).run()
-  }
+  protected val cleanupActor = system.actorOf(Props(classOf[DeferredControl.DeferredCleanup], deferredStorage))
 
   //Start deferred request processing flow - subscribe entry actor to DeferredRequestArrived message
-  startDeferredGraph(null, deferredWorkerCount)
+  startDeferredGraph(moduleId, deferredStorage, this, deferredWorkerCount)
   deferredModules.foreach { case (mod, workerCount) =>
-    startDeferredGraph(mod, workerCount)
+    startDeferredGraph(mod, deferredStorage, this, workerCount)
   }
 
   /* ***********************
   **** Deferred phases *****
   **************************/
-  def executeDeferred(ctx: DeferredContext) = {
-    val processor = ctx.processor
-    if (processor == null) sys.error(s"Cannot get processor for request: $ctx")
-    Future { //launch processor in future since it is unknown what type of future it returns and whether it blocks
-      processor(ctx.request).map(response => ctx.copy(
-        result = response,
-        status = if (response.status.intValue < 400) DEFERRED_OK else DEFERRED_ERR,
-        responseTime = new Timestamp(currentTime)
-      )) recover {
-        case NonFatal(e) =>
-          logger.error(s"Deferred processor error: ${ctx.request.uri}", e)
-          ctx.copy(
-            result = HttpResponse(status = StatusCodes.InternalServerError, entity = "Error processing deferred request"),
-            status = DEFERRED_ERR,
-            responseTime = new Timestamp(currentTime)
-          )
-      }
-    } flatMap identity //unwrap outer future
-  }
-  def publishDeferredStatus(ctx: DeferredContext) = {
-    import EventBus._
-    publish(Message(ServerNotifications.UserAddresseeMsg(ctx.userIdString), ctx))
-  }
+
   def publishUserDeferredStatuses(user: String): Unit = {
     val deferredRequests = deferredStorage.getUserDeferredStatuses(user)
     import EventBus._
@@ -223,14 +95,8 @@ trait DeferredControl
     .tflatMap(_ => deferred(user)) | pass
 
 
-  def deferredTimeout(viewName: Option[String], timeout: Option[Int]): QueryTimeout = {
-    val limit = viewName.flatMap(deferredTimeouts.get).getOrElse(defaultTimeout).toSeconds.toInt
-    if (timeout.isDefined)
-      timeout.filter(_ <= limit).map(QueryTimeout).getOrElse {
-        throw new BusinessException(s"Max request timeout exceeded: ${timeout.get} > $limit")
-      }
-    else QueryTimeout(limit)
-  }
+  def deferredTimeout(viewName: Option[String], timeout: Option[Int]): QueryTimeout =
+    DeferredControl.deferredTimeout(viewName, timeout, deferredTimeouts, defaultTimeout)
 
   override
   def extractTimeout = headerValuePF { case `X-Deferred`(timeoutString) =>
@@ -259,15 +125,15 @@ trait DeferredControl
       import EventBus._
       val hash = requestHash(user, ctx.request)
       val deferredCtx = DeferredContext(user, hash, ctx.request, requestProcessor)
-      publish(Message(if (module == null) DeferredRequestArrived else
-        DeferredControl.DeferredModuleRequestArrived(module),
+      publish(Message(if (module == null) DeferredRequestArrived(moduleId) else
+        DeferredControl.DeferredRequestArrived(module),
         deferredCtx))
       respondWithHeader(`X-Deferred-Hash`(hash))(_ =>
         // bypass marshalling to ignore request accept header
         Future.successful(
           Complete(
             HttpResponse(
-              entity = HttpEntity.Strict(`application/json`, ByteString(Map("deferred" -> hash).toJson.compactPrint)))
+              entity = HttpEntity.Strict(`application/json`, ByteString(Json.encode(Map("deferred" -> hash)).toUtf8String)))
           )
         )
       )
@@ -280,10 +146,10 @@ trait DeferredControl
   *************************/
   def deferredRequest(hash: String, user: String) = {
     deferredStorage.getDeferredRequest(hash, user)
-      .map(ctx => complete(Map(
+      .map(ctx => complete(Json.encode(Map(
           "url" -> ctx.request.uri.path.toString,
           "status" -> ctx.status
-        ).toJson))
+        )).toUtf8String))
       .getOrElse(complete(StatusCodes.NotFound))
   }
   def deferredResultAction(hash: String, user: String) = {
@@ -294,24 +160,16 @@ trait DeferredControl
   def deferredHttpRequestAction(hash: String, user: String) = {
     deferredStorage.getDeferredHttpRequest(hash, user)
       .map(req => complete(
-        Map[String, Any](
+        Json.encode(Map[String, Any](
           "url" -> req.uri.path.toString,
           "state" -> extractState(req, ApplicationStateCookiePrefix)
-        ).toJson))
+        )).toUtf8String))
       .getOrElse(complete(StatusCodes.NotFound))
   }
   //end of routes
 
-  protected def requestHash(username: String, req: HttpRequest) = {
-    val md = java.security.MessageDigest.getInstance("SHA-1")
-    implicit val usr = username
-    java.util.Base64.getUrlEncoder.encodeToString(
-      md.digest(serialize((username, serializeHttpRequest(removeSessionInfoFromRequest(req))))))
-  }
-
-  protected def doCleanup: Int = deferredStorage.cleanupDeferredRequests
-
-  def onRestartDeferred(): Unit = deferredStorage.onRestart()
+  protected def requestHash(username: String, req: HttpRequest) =
+    DeferredControl.requestHash(username, req, removeSessionInfoFromRequest)
 
   def deferredFileStreamerConfig: Option[AppFileStreamerConfig] = {
     Option(deferredStorage).collect { case ds: DbDeferredStorage => ds }
@@ -326,6 +184,10 @@ object DeferredControl extends Loggable with AppConfig {
     override def isDeferred: Directive[Unit] = reject()
   }
   trait DeferredStatusPublisher {
+    def publishDeferredStatus(ctx: DeferredContext) = {
+      import EventBus._
+      publish(Message(ServerNotifications.UserAddresseeMsg(ctx.userIdString), ctx))
+    }
     /** Publish user deferred request status info to user websocket */
     def publishUserDeferredStatuses(userIdString: String): Unit
   }
@@ -363,7 +225,7 @@ object DeferredControl extends Loggable with AppConfig {
   logger.info(s"deferredCleanupInterval: $deferredCleanupInterval")
   logger.info(s"deferredModules: $deferredModules")
 
-  case class DeferredModuleRequestArrived(module: String) extends ServerNotifications.Addressee
+  case class DeferredRequestArrived(module: String) extends ServerNotifications.Addressee
 
   case class DeferredContext(
     userIdString: String,
@@ -380,7 +242,153 @@ object DeferredControl extends Loggable with AppConfig {
   case object GetProcessedDeferredCount
   case class ProcessedDeferredCount(count: Long)
 
-  class DeferredCleanup(defControl: DeferredControl) extends Actor {
+  def deferredTimeout(
+    viewName: Option[String],
+    timeout: Option[Int],
+    timeouts: Map[String, FiniteDuration],
+    defaultTimeout: FiniteDuration,
+  ): QueryTimeout = {
+    val limit = viewName.flatMap(timeouts.get).getOrElse(defaultTimeout).toSeconds.toInt
+    if (timeout.isDefined)
+      timeout.filter(_ <= limit).map(QueryTimeout).getOrElse {
+        throw new BusinessException(s"Max request timeout exceeded: ${timeout.get} > $limit")
+      }
+    else QueryTimeout(limit)
+  }
+
+  def requestHash(username: String, req: HttpRequest, sessionRemover: HttpRequest => HttpRequest) = {
+    val md = java.security.MessageDigest.getInstance("SHA-1")
+    implicit val usr = username
+    java.util.Base64.getUrlEncoder.encodeToString(
+      md.digest(HttpMessageSerialization.serialize((username,
+        HttpMessageSerialization.serializeHttpRequest(sessionRemover(req))))))
+  }
+
+  def executeDeferred(ctx: DeferredContext)(implicit as: ActorSystem) = {
+    implicit val ec: ExecutionContext = as.dispatcher
+    val processor = ctx.processor
+    if (processor == null) sys.error(s"Cannot get processor for request: $ctx")
+    Future { //launch processor in future since it is unknown what type of future it returns and whether it blocks
+      processor(ctx.request).map(response => ctx.copy(
+        result = response,
+        status = if (response.status.intValue < 400) DEFERRED_OK else DEFERRED_ERR,
+        responseTime = new Timestamp(currentTime)
+      )) recover {
+        case NonFatal(e) =>
+          logger.error(s"Deferred processor error: ${ctx.request.uri}", e)
+          ctx.copy(
+            result = HttpResponse(status = StatusCodes.InternalServerError, entity = "Error processing deferred request"),
+            status = DEFERRED_ERR,
+            responseTime = new Timestamp(currentTime)
+          )
+      }
+    } flatMap identity //unwrap outer future
+  }
+
+  class DeferredQueue(storage: DeferredStorage, publisher: DeferredStatusPublisher) extends GraphStage[FanOutShape2[
+    DeferredContext, DeferredContext, DeferredContext]] {
+    val in = Inlet[DeferredContext]("in")
+    val exe = Outlet[DeferredContext]("exe")
+    val overflow = Outlet[DeferredContext]("overflow")
+    val shape = new FanOutShape2(in, exe, overflow)
+    val MaxQueueSize = 1024
+    val QueueOverflowResponse = HttpResponse(StatusCodes.InternalServerError,
+      entity = "Server too busy. Please try later again.")
+
+    override def createLogic(attributes: Attributes) =
+      new GraphStageLogic(shape) with OutHandler {
+        var queue: scala.collection.mutable.Queue[DeferredContext] = _
+        override def preStart() = {
+          queue = scala.collection.mutable.Queue.empty
+          pull(in)
+        }
+        setHandler(in, new InHandler {
+          override def onPush(): Unit = {
+            val ctx = grab(in)
+            if (queue.size >= MaxQueueSize) {
+              emit(overflow, ctx.copy(status = DEFERRED_ERR, result = QueueOverflowResponse))
+            } else if (isAvailable(exe)) {
+              val nctx = ctx.copy(status = DEFERRED_EXE)
+              push(exe, nctx)
+            } else {
+              val nctx = ctx.copy(status = DEFERRED_QUEUE)
+              queue.enqueue(nctx)
+              storage.registerDeferredStatus(nctx)
+              publisher.publishDeferredStatus(nctx)
+            }
+            pull(in)
+          }
+        })
+        setHandler(exe, new OutHandler {
+          override def onPull() = pushIfQueued
+        })
+        private def pushIfQueued = {
+          if (queue.nonEmpty) {
+            val nctx = queue.dequeue().copy(status = DEFERRED_EXE)
+            push(exe, nctx)
+          }
+        }
+        //does nothing
+        override def onPull(): Unit = {}
+        setHandler(overflow, this)
+      }
+  }
+
+  def deferredSink(
+    name: String,
+    storage: DeferredStorage,
+    publisher: DeferredStatusPublisher,
+    parallelism: Int
+  )(implicit as: ActorSystem) =
+    GraphDSL.createGraph(new DeferredQueue(storage, publisher)) { implicit b => deferredQueue =>
+      import GraphDSL.Implicits._
+      val entry = b.add(Flow
+        .fromFunction(storage.registerDeferredRequest)
+        .mapConcat { ctx =>
+          logger.debug(s"Deferred request registered ${ctx.request}${
+            if (name != null) s" for module $name" else ""
+          }")
+          ctx.status match {
+            case DeferredExists =>
+              publisher.publishDeferredStatus(ctx)
+              Nil
+            case _ => List(ctx)
+          }
+        }
+      )
+      entry.out ~> deferredQueue.in
+      deferredQueue.out0 ~> Flow[DeferredContext] //exe port
+        .map(storage.registerDeferredStatus)
+        .map{ x => publisher.publishDeferredStatus(x); x}
+        .mapAsyncUnordered(parallelism)(executeDeferred)
+        .mapAsyncUnordered(parallelism)(storage.registerDeferredResult)
+        .to(Sink.foreach(publisher.publishDeferredStatus))
+      deferredQueue.out1 ~> Flow[DeferredContext] //overflow port
+        .mapAsyncUnordered(parallelism)(storage.registerDeferredResult)
+        .to(Sink.foreach(publisher.publishDeferredStatus))
+      SinkShape(entry.in)
+    }
+
+  def startDeferredGraph(
+    name: String,
+    storage: DeferredStorage,
+    publisher: DeferredStatusPublisher,
+    workerCount: Int
+  )(implicit as: ActorSystem) = {
+    logger.info(s"Starting deferred request processor$name, worker count - ($workerCount)")
+    Source.actorRef[DeferredContext](PartialFunction.empty, PartialFunction.empty, 8, OverflowStrategy.dropTail)
+      .to(deferredSink(name, storage, publisher, workerCount))
+      .mapMaterializedValue(
+        EventBus.subscribe(_, DeferredRequestArrived(name)))
+      .withAttributes(ActorAttributes.supervisionStrategy {
+        case ex: Exception =>
+          logger.error("DeferredGraph crashed", ex)
+          storage.onRestart()
+          Supervision.Resume
+      }).run()
+  }
+
+  class DeferredCleanup(storage: DeferredStorage) extends Actor {
     var processedCount = 0L
     override def preStart() = {
       val fd = FiniteDuration(
@@ -395,7 +403,7 @@ object DeferredControl extends Loggable with AppConfig {
       case RunDeferredCleanup =>
         //set status to DEL for timeouted requests
         logger.info("DeferredCleanup started")
-        processedCount += defControl.doCleanup
+        processedCount += storage.cleanupDeferredRequests
         logger.info(s"DeferredCleanup job ended, total processed deferred count: $processedCount")
       case GetProcessedDeferredCount => sender() ! ProcessedDeferredCount(processedCount)
     }
