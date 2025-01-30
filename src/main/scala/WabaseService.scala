@@ -24,7 +24,6 @@ case class WabaseUser(properties: Map[String, Any]) {
 
 case class WabaseRequestContext(
   wabase: Wabase,
-  deferredControl: WabaseDeferredControl,
   req: HttpRequest,
   route: RouteDef = null,
   viewName: String = null,
@@ -43,9 +42,9 @@ class WabaseService extends Loggable {
 
   private val CreateCountActionAndView = """(?U)(?:(count|create):)?(\w*)""".r
 
-  def handle(wabase: Wabase, deferredControl: WabaseDeferredControl)(req: HttpRequest)(
+  def handle(wabase: Wabase, deferredModuleId: String)(req: HttpRequest)(
     implicit as: ActorSystem): Future[HttpResponse] = {
-    val ctx = findRoute(WabaseRequestContext(wabase, deferredControl, req))
+    val ctx = findRoute(WabaseRequestContext(wabase, req, deferredModule = deferredModuleId))
     doRoute(ctx)
   }
 

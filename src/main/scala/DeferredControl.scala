@@ -124,7 +124,7 @@ trait DeferredControl
         }.compose[WabaseRequestContext](_.req)
       import EventBus._
       val hash = requestHash(user, ctx.request)
-      val deferredCtx = DeferredContext(user, hash, WabaseRequestContext(null, null, ctx.request), requestProcessor)
+      val deferredCtx = DeferredContext(user, hash, WabaseRequestContext(null, ctx.request), requestProcessor)
       publish(Message(if (module == null) DeferredRequestArrived(moduleId) else
         DeferredControl.DeferredRequestArrived(module),
         deferredCtx))
@@ -539,7 +539,7 @@ object DeferredControl extends Loggable with AppConfig {
             userIdString)
           .list[java.io.InputStream, Timestamp, Timestamp, String, Int, String]
           .map(r => DeferredContext(userIdString, r._6,
-            WabaseRequestContext(null, null, deserializeHttpMessage(r._1, None).asInstanceOf[HttpRequest]),
+            WabaseRequestContext(null, deserializeHttpMessage(r._1, None).asInstanceOf[HttpRequest]),
             null, r._2, null, r._3, r._4, r._5))
       }
 
@@ -559,7 +559,7 @@ object DeferredControl extends Loggable with AppConfig {
           hash, userIdString)
         .headOption[java.io.InputStream, Timestamp, Timestamp, String, Int]
         .map(r => DeferredContext(userIdString, hash,
-          WabaseRequestContext(null, null, deserializeHttpMessage(r._1, None).asInstanceOf[HttpRequest]),
+          WabaseRequestContext(null, deserializeHttpMessage(r._1, None).asInstanceOf[HttpRequest]),
           null, r._2, null, r._3, r._4, r._5))
     }
 

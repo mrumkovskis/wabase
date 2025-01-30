@@ -70,8 +70,7 @@ object WabaseDeferredControl {
   def enableDeferred(ctx: WabaseRequestContext, req: HttpRequest): WabaseRequestContext = {
     if (ctx.user != null && (isDeferredPath(req.uri) || hasDeferredHeader(req))) {
       val timeout = extractTimeout(ctx, req)
-      if (ctx.deferredModule == null) ctx.copy(deferredModule = ctx.deferredControl.moduleId, queryTimeout = timeout)
-      else ctx.copy(queryTimeout = timeout)
+      ctx.copy(queryTimeout = timeout)
     }
     else ctx
   }
