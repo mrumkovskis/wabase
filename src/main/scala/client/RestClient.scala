@@ -148,6 +148,10 @@ trait RestClient extends Loggable{
   def doRequest(req: HttpRequest): Future[HttpResponse] =
     doRequest(req, new CookieMap, requestTimeout)
 
+  private val defaultSuccessStatusCodes = Set(200, 201, 204, 206)
+  protected def isSuccess(response: HttpResponse) =
+    defaultSuccessStatusCodes.contains(response.status.intValue)
+
   protected def doRequest(req: HttpRequest, cookieStorage: CookieMap, timeout: FiniteDuration, maxRedirects: Int = 20): Future[HttpResponse] = {
     val req_abs = if (req.uri.isAbsolute) req else req.withUri(Uri(requestPath(req.uri.toString)))
     val request = if (cookieStorage.map.isEmpty) req_abs else req_abs.withHeaders(req.headers ++ cookieStorage.getCookies)
@@ -160,7 +164,7 @@ trait RestClient extends Loggable{
       case (Success(response), _) =>
         cookieStorage.setCookiesFromHeaders(response.headers)
         (response.status.intValue, response.header[Location]) match {
-          case (200 | 201 | 204 | 206, _) => Future.successful(response)
+          case _  if isSuccess(response)  => Future.successful(response)
           case (301 | 302 | 303, Some(Location(uri))) =>
             response.discardEntityBytes()
             if (maxRedirects > 0)
