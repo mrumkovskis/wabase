@@ -42,7 +42,7 @@ class TestAppService(system: ActorSystem) extends ExecutionImpl()(system)
   override def decodeSession(session: String) = ???
   override def signInUser = ???
   override def appVersion: String = "TEST"
-  override protected def initDeferredStorage: DeferredStorage = new DbDeferredStorage(appConfig, this, dbAccess, this)
+  override protected def initDeferredStorage: DeferredStorage = new DbDeferredStorage(appConfig, dbAccess, this)(system)
 }
 
 class TestAppServiceNoDeferred(system: ActorSystem) extends ExecutionImpl()(system)

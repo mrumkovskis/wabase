@@ -11,7 +11,7 @@ import org.apache.pekko.stream.scaladsl.{Flow, GraphDSL, Sink, Source}
 import org.apache.pekko.actor.{Actor, ActorSystem, Props}
 
 import scala.util.{Either, Left, Right, Success, Try}
-import scala.concurrent.{ExecutionContext, ExecutionContextExecutor, Future}
+import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration.{Duration, FiniteDuration}
 import DeferredControl.DeferredCheck
 import DeferredControl.DeferredStatusPublisher
@@ -121,10 +121,10 @@ trait DeferredControl
       val requestProcessor =
         Route.toFunction { requestContext =>
           wrappedRoute(requestContext.withUnmatchedPath(ctx.unmatchedPath))
-        }
+        }.compose[WabaseRequestContext](_.req)
       import EventBus._
       val hash = requestHash(user, ctx.request)
-      val deferredCtx = DeferredContext(user, hash, ctx.request, requestProcessor)
+      val deferredCtx = DeferredContext(user, hash, WabaseRequestContext(null, null, ctx.request), requestProcessor)
       publish(Message(if (module == null) DeferredRequestArrived(moduleId) else
         DeferredControl.DeferredRequestArrived(module),
         deferredCtx))
@@ -147,7 +147,7 @@ trait DeferredControl
   def deferredRequest(hash: String, user: String) = {
     deferredStorage.getDeferredRequest(hash, user)
       .map(ctx => complete(Json.encode(Map(
-          "url" -> ctx.request.uri.path.toString,
+          "url" -> ctx.requestCtx.req.uri.path.toString,
           "status" -> ctx.status
         )).toUtf8String))
       .getOrElse(complete(StatusCodes.NotFound))
@@ -230,13 +230,14 @@ object DeferredControl extends Loggable with AppConfig {
   case class DeferredContext(
     userIdString: String,
     hash: String,
-    request: HttpRequest,
-    processor: (HttpRequest) => Future[HttpResponse],
+    requestCtx: WabaseRequestContext,
+    processor: WabaseRequestContext => Future[HttpResponse],
     requestTime: Timestamp = new Timestamp(currentTime),
     result: HttpResponse = null,
     responseTime: Timestamp = null,
     status: String = DEFERRED_QUEUE,
-    priority: Int = 0)
+    priority: Int = 0,
+  )
 
   case object RunDeferredCleanup
   case object GetProcessedDeferredCount
@@ -269,13 +270,13 @@ object DeferredControl extends Loggable with AppConfig {
     val processor = ctx.processor
     if (processor == null) sys.error(s"Cannot get processor for request: $ctx")
     Future { //launch processor in future since it is unknown what type of future it returns and whether it blocks
-      processor(ctx.request).map(response => ctx.copy(
+      processor(ctx.requestCtx).map(response => ctx.copy(
         result = response,
         status = if (response.status.intValue < 400) DEFERRED_OK else DEFERRED_ERR,
         responseTime = new Timestamp(currentTime)
       )) recover {
         case NonFatal(e) =>
-          logger.error(s"Deferred processor error: ${ctx.request.uri}", e)
+          logger.error(s"Deferred processor error: ${ctx.requestCtx.req.uri}", e)
           ctx.copy(
             result = HttpResponse(status = StatusCodes.InternalServerError, entity = "Error processing deferred request"),
             status = DEFERRED_ERR,
@@ -345,7 +346,7 @@ object DeferredControl extends Loggable with AppConfig {
       val entry = b.add(Flow
         .fromFunction(storage.registerDeferredRequest)
         .mapConcat { ctx =>
-          logger.debug(s"Deferred request registered ${ctx.request}${
+          logger.debug(s"Deferred request registered ${ctx.requestCtx}${
             if (name != null) s" for module $name" else ""
           }")
           ctx.status match {
@@ -452,13 +453,13 @@ object DeferredControl extends Loggable with AppConfig {
   }
 
   import org.tresql._
-  class DbDeferredStorage(conf: Config, exec: Execution, db: DbAccess, stats: ServerStatistics)
+  class DbDeferredStorage(conf: Config, db: DbAccess, stats: ServerStatistics)(implicit val as: ActorSystem)
     extends DeferredStorage with AppFileStreamer[String] with AppConfig with DbAccessProvider {
 
+    private implicit val ec: ExecutionContext = as.dispatcher
     override lazy val appConfig = conf
     override def dbAccess = db
     import stats._
-    import exec._
 
     protected def deferredStorageConnectionPool: PoolName = DEFAULT_CP
 
@@ -485,7 +486,7 @@ object DeferredControl extends Loggable with AppConfig {
         Query("""+deferred_request
                 {username, priority, request_time, status, topic, request_hash, request}
                 [?, ?, ?, ?, '', ?, ?]""",
-                userIdString, priority, requestTime, status, hash, serializeHttpRequest(request))
+                userIdString, priority, requestTime, status, hash, serializeHttpRequest(requestCtx.req))
         ctx
       }
     }
@@ -538,7 +539,7 @@ object DeferredControl extends Loggable with AppConfig {
             userIdString)
           .list[java.io.InputStream, Timestamp, Timestamp, String, Int, String]
           .map(r => DeferredContext(userIdString, r._6,
-            deserializeHttpMessage(r._1, None).asInstanceOf[HttpRequest],
+            WabaseRequestContext(null, null, deserializeHttpMessage(r._1, None).asInstanceOf[HttpRequest]),
             null, r._2, null, r._3, r._4, r._5))
       }
 
@@ -558,7 +559,7 @@ object DeferredControl extends Loggable with AppConfig {
           hash, userIdString)
         .headOption[java.io.InputStream, Timestamp, Timestamp, String, Int]
         .map(r => DeferredContext(userIdString, hash,
-          deserializeHttpMessage(r._1, None).asInstanceOf[HttpRequest],
+          WabaseRequestContext(null, null, deserializeHttpMessage(r._1, None).asInstanceOf[HttpRequest]),
           null, r._2, null, r._3, r._4, r._5))
     }
 
@@ -624,7 +625,7 @@ object DeferredControl extends Loggable with AppConfig {
     }
     def serializeHttpResponse(fs: AppFileStreamer[String],
                               resp: HttpResponse)(implicit user: String,
-                                                  executor: ExecutionContextExecutor,
+                                                  executor: ExecutionContext,
                                                   materializer: Materializer): (Array[Byte], Future[FileInfo]) =
       resp match {
         case HttpResponse(status, headers, body, protocol) =>

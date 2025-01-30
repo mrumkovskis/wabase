@@ -89,7 +89,7 @@ class DeferredTests extends AnyFlatSpec with Matchers with TestQuereaseInitializ
       override def listOrGetAction(viewName: String)(
         implicit user: TestUsr, state: ApplicationState, timeout: QueryTimeout): Route =
         complete(s"$viewName:${timeout.timeoutSeconds}")
-      override protected def initDeferredStorage = new DbDeferredStorage(appConfig, this, dbAccess, this) {
+      override protected def initDeferredStorage = new DbDeferredStorage(appConfig, dbAccess, this) {
         override lazy val rootPath = deferredResultFileRootPath
         override protected def logDeferredResultMarshallingException(e: Throwable): Unit =
           logger.debug(deferredResultMarshallingExceptionMessage(e), e)

@@ -9,7 +9,7 @@ import org.apache.pekko.http.scaladsl.model.EntityStreamSizeException
 import com.typesafe.config.Config
 
 import scala.collection.immutable.TreeMap
-import scala.concurrent.{ExecutionContext, ExecutionContextExecutor, Future}
+import scala.concurrent.{ExecutionContext, Future}
 import org.apache.pekko.stream._
 import org.apache.pekko.stream.scaladsl._
 import org.apache.pekko.util.ByteString
@@ -137,7 +137,7 @@ trait AppFileStreamer[User] extends AppFileStreamerConfig with Loggable { this: 
     contentType: String,
   )(implicit
     user: User,
-    executor: ExecutionContextExecutor,
+    executor: ExecutionContext,
     materializer: Materializer,
   ): Sink[ByteString, Future[FileInfo]] = {
     fileStreamer.fileSink(filename, contentType)

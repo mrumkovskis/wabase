@@ -4,11 +4,10 @@ import org.apache.pekko.http.scaladsl.model.HttpMethods._
 import org.apache.pekko.http.scaladsl.model.Uri.Path
 import org.apache.pekko.http.scaladsl.model.Uri.Path.{Empty, Segment, SlashOrEmpty}
 import AppMetadata._
-import com.typesafe.scalalogging.Logger
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.marshalling.ToResponseMarshallable
 import org.apache.pekko.http.scaladsl.model.headers.{Cookie, HttpCookie, `Set-Cookie`}
-import org.apache.pekko.http.scaladsl.model.{DateTime, HttpHeader, HttpRequest, HttpResponse}
+import org.apache.pekko.http.scaladsl.model.{DateTime, HttpHeader, HttpRequest, HttpResponse, Uri}
 import org.wabase.AppMetadata.{Action, RouteDef}
 import org.wabase.WabaseService.Wabase
 
@@ -25,6 +24,7 @@ case class WabaseUser(properties: Map[String, Any]) {
 
 case class WabaseRequestContext(
   wabase: Wabase,
+  deferredControl: WabaseDeferredControl,
   req: HttpRequest,
   route: RouteDef = null,
   viewName: String = null,
@@ -32,6 +32,8 @@ case class WabaseRequestContext(
   key: Seq[Any] = Nil,
   applicationState: ApplicationState = null,
   user: WabaseUser = null,
+  deferredModule: String = null,
+  queryTimeout: QueryTimeout = null,
   as: ActorSystem = null,
 )
 
@@ -41,8 +43,9 @@ class WabaseService extends Loggable {
 
   private val CreateCountActionAndView = """(?U)(?:(count|create):)?(\w*)""".r
 
-  def handle(wabase: Wabase)(req: HttpRequest)(implicit as: ActorSystem): Future[HttpResponse] = {
-    val ctx = findRoute(WabaseRequestContext(wabase, req))
+  def handle(wabase: Wabase, deferredControl: WabaseDeferredControl)(req: HttpRequest)(
+    implicit as: ActorSystem): Future[HttpResponse] = {
+    val ctx = findRoute(WabaseRequestContext(wabase, deferredControl, req))
     doRoute(ctx)
   }
 
@@ -127,7 +130,9 @@ class WabaseService extends Loggable {
             s" Instead got: $x")
         }
 
-        processResult(invokeFunction(cn, fn, contextInjectableParameters(tctx)))
+        processResult(invokeFunction(cn, fn,
+          (classOf[Uri], () => tctx.req.uri) ::
+            contextInjectableParameters(tctx)))
       }
       inv.arg match {
         case null => invokeReqTrans(inv.className, inv.function, wrc)
@@ -187,7 +192,9 @@ class WabaseService extends Loggable {
       .map(invokeReqTransChain(_, ctx))
       .getOrElse(Future.successful(ctx)).flatMap { mappedCtx =>
         val ctxWithView = if (mappedCtx.viewName == null) viewActionKey(mappedCtx) else mappedCtx
-        doRequest(ctxWithView)
+        if (ctxWithView.deferredModule != null)
+          Future.successful(WabaseDeferredControl.doDeferred(ctxWithView, doRequest))
+        else doRequest(ctxWithView)
       }.recoverWith(errorHandler(ctx)) // recover also here in the case request mapper fails
     catch { case NonFatal(e) => errorHandler(ctx)(e) } // catch if request mapper (invokeReqTransChain) in current thread throws exception
   }
@@ -197,7 +204,7 @@ class WabaseService extends Loggable {
 
 object WabaseService {
 
-  type Wabase = WabaseApp[WabaseUser] with QuereaseProvider with I18n
+  type Wabase = WabaseApp[WabaseUser] with QuereaseProvider with I18n with DbAccess
 
   def optionalHttpHeaderValue[T](req: HttpRequest)(extractorF: HttpHeader => Option[T]): Option[T] = {
     req.headers.collectFirst(Function.unlift(extractorF))
