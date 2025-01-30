@@ -19,7 +19,6 @@ class WabaseDeferredControl(wabase: WabaseService.Wabase)(implicit as: ActorSyst
     factory.asInstanceOf[DeferredStorageFactory].initialize(wabase)
   }
   private val deferredStorage: DeferredControl.DeferredStorage = initDeferredStorage
-  val moduleId: String = java.util.UUID.randomUUID.toString
 
   protected val cleanupActor = as.actorOf(Props(classOf[DeferredControl.DeferredCleanup], deferredStorage))
 
@@ -32,7 +31,7 @@ class WabaseDeferredControl(wabase: WabaseService.Wabase)(implicit as: ActorSyst
   }
 
   //Start deferred request processing flow - subscribe entry actor to DeferredRequestArrived message
-  DeferredControl.startDeferredGraph(moduleId, deferredStorage, this, DeferredControl.deferredWorkerCount)
+  DeferredControl.startDeferredGraph("", deferredStorage, this, DeferredControl.deferredWorkerCount)
   DeferredControl.deferredModules.foreach { case (mod, workerCount) =>
     DeferredControl.startDeferredGraph(mod, deferredStorage, this, workerCount)
   }
@@ -70,7 +69,7 @@ object WabaseDeferredControl {
   def enableDeferred(ctx: WabaseRequestContext, req: HttpRequest): WabaseRequestContext = {
     if (ctx.user != null && (isDeferredPath(req.uri) || hasDeferredHeader(req))) {
       val timeout = extractTimeout(ctx, req)
-      ctx.copy(queryTimeout = timeout)
+      ctx.copy(queryTimeout = timeout, isDeferred = true)
     }
     else ctx
   }

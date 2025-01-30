@@ -31,7 +31,8 @@ case class WabaseRequestContext(
   key: Seq[Any] = Nil,
   applicationState: ApplicationState = null,
   user: WabaseUser = null,
-  deferredModule: String = null,
+  isDeferred: Boolean = false,
+  deferredModule: String = "",
   queryTimeout: QueryTimeout = null,
   as: ActorSystem = null,
 )
@@ -42,9 +43,9 @@ class WabaseService extends Loggable {
 
   private val CreateCountActionAndView = """(?U)(?:(count|create):)?(\w*)""".r
 
-  def handle(wabase: Wabase, deferredModuleId: String)(req: HttpRequest)(
+  def handle(wabase: Wabase)(req: HttpRequest)(
     implicit as: ActorSystem): Future[HttpResponse] = {
-    val ctx = findRoute(WabaseRequestContext(wabase, req, deferredModule = deferredModuleId))
+    val ctx = findRoute(WabaseRequestContext(wabase, req))
     doRoute(ctx)
   }
 
@@ -191,7 +192,7 @@ class WabaseService extends Loggable {
       .map(invokeReqTransChain(_, ctx))
       .getOrElse(Future.successful(ctx)).flatMap { mappedCtx =>
         val ctxWithView = if (mappedCtx.viewName == null) viewActionKey(mappedCtx) else mappedCtx
-        if (ctxWithView.deferredModule != null)
+        if (ctxWithView.isDeferred)
           Future.successful(WabaseDeferredControl.doDeferred(ctxWithView, doRequest))
         else doRequest(ctxWithView)
       }.recoverWith(errorHandler(ctx)) // recover also here in the case request mapper fails
