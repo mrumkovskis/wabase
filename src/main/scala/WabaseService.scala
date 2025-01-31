@@ -26,7 +26,7 @@ case class WabaseUser(properties: Map[String, Any]) {
 case class WabaseRequestContext(
   wabase: Wabase,
   req: HttpRequest,
-  deferred: Deferred = Deferred(),
+  deferred: Deferred = null,
   route: RouteDef = null,
   viewName: String = null,
   action: String = null,
