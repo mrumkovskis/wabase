@@ -580,8 +580,6 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val setEnvRegex = """setenv\s+(.+)""".r //dot matches new line as well
     val returnRegex = """return\s+(.+)""".r //dot matches new line as well
     val redirectToKeyOpRegex = """redirect\s+([_\p{IsLatin}][_\p{IsLatin}0-9]*)""".r
-    val redirectOpRegex = """redirect\s+(.+)""".r
-    val statusOpRegex = """status(?:\s+(\w+))?(?:\s+(.+))?""".r
     val commitOpRegex = """commit""".r
     val ifOpRegex = """if\s+(.+)""".r
     val elseOpRegex = """else""".r
@@ -592,18 +590,6 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
         if (redirectToKeyOpRegex.pattern.matcher(st).matches()) {
           val redirectToKeyOpRegex(name) = st
           Action.RedirectToKey(name)
-        } else if (redirectOpRegex.pattern.matcher(st).matches()) {
-          val redirectOpRegex(tresql) = st
-          Action.Status(303, tresql)
-        } else if (statusOpRegex.pattern.matcher(st).matches()) {
-          val statusOpRegex(status, bodyTresql) = st
-          val code = Option(status).collect {
-            case "ok" => 200
-            case code if (Try(code.toInt).toOption.isDefined) => code.toInt
-            case x => throw new IllegalArgumentException(s"Status must be 'ok' or integer, instead '$x' encountered in $objectName.")
-          }
-          require(code.nonEmpty, s"Empty status code or name in $objectName!")
-          Action.Status(code.get, bodyTresql)
         } else if (commitOpRegex.pattern.matcher(st).matches()) {
           Action.Commit
         } else {
@@ -805,6 +791,8 @@ class OpParser(viewName: String, cache: OpParser.Cache)
   val ViewNameRegex = "(?U)\\w+".r
   val ConfPropRegex = """\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*(?:\.\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*+)*""".r
   val HttpClientFileStreamerNameRegex = """\w+(-\w+)*""".r
+  val RedirectOpRegex = """redirect\s+""".r
+  val StatusOpRegex = """status\s+""".r
 
   def parseOperation(op: String): Op = cache.get(op).getOrElse {
     val parsedOp = phrase(operation)(new scala.util.parsing.input.CharSequenceReader(op)) match {
@@ -931,7 +919,17 @@ class OpParser(viewName: String, cache: OpParser.Cache)
       }) named "named-op"
     rep(namedOp)
   } named "named-ops"
-  def operation: MemParser[Op] = (viewOp | jobOp | confOp | uniqueOp |
+  def redirect: MemParser[Status] = (RedirectOpRegex ~> tresqlOp) ^^ (Action.Status(303, _)) named "redirect-op"
+  def status: MemParser[Status] = (StatusOpRegex ~> "\\w+".r ~ opt(tresqlOp)) ^^ {
+    case c ~ body =>
+      val code = c match {
+        case "ok" => 200
+        case x if Try(x.toInt).toOption.isDefined => x.toInt
+        case x => throw new IllegalArgumentException(s"Status code must be 'ok' or integer, instead '$x' encountered in $viewName.")
+      }
+      Action.Status(code, body.orNull)
+  } named "status-op"
+  def operation: MemParser[Op] = (redirect | status | viewOp | jobOp | confOp | uniqueOp |
     httpOp | dbOp | resourceOp | fileOp | toFileOp | templateOp | emailOp |
     jsonCodecOp | httpHeaderOrCookieOp | extractPartsOp | extractEntityOp |
     thisOp | bracesOp | invocationOp | tresqlOp) named "operation"
@@ -1111,7 +1109,7 @@ object AppMetadata extends Loggable {
                           function: String,
                           arg: Op = null,
                           conformTo: Option[OpResultType] = None) extends CastableOp
-    case class Status(code: Int, bodyTresql: String = null) extends Op
+    case class Status(code: Int, bodyTresql: Tresql = null) extends Op
     case class VariableTransforms(transforms: List[VariableTransform]) extends Op
     case class Foreach(initOp: Op, action: Action) extends Op
     case class If(cond: Op, action: Action, elseAct: Action = null) extends Op
@@ -1264,7 +1262,7 @@ object AppMetadata extends Loggable {
           {
             case t: Tresql => us(state, nv(state.value)(t))
             case Status(_, bodyTresql) =>
-              if (bodyTresql == null) state else us(state, nv(state.value)(Tresql(bodyTresql)))
+              if (bodyTresql == null) state else us(state, nv(state.value)(bodyTresql))
             case Resource(nameTresql, contentTypeTresql) =>
               val s1 = us(state, nv(state.value)(nameTresql))
               us(s1, nv(s1.value)(contentTypeTresql))

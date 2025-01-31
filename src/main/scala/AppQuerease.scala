@@ -927,12 +927,12 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       import org.apache.pekko.http.scaladsl.model.StatusCode._
       val statusValue =
         if (code.isRedirection()) {
-          val truri = tresqlUri.tresqlUriValue(TresqlUri.Tresql(bodyTresql))(
+          val truri = tresqlUri.tresqlUriValue(TresqlUri.Tresql(bt.tresql))(
             Query, data ++ env, qr.resourcesFactory.resources)
           RedirectStatus(truri)
         } else {
           import qr.resourcesFactory.resources
-          Query.uniqueOption[String](bt, data ++ env).map(StringStatus).orNull
+          Query.uniqueOption[String](bt.tresql, data ++ env).map(StringStatus).orNull
         }
       statusValue
     }.map(sv => Future.successful(StatusResult(code, sv)))
