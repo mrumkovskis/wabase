@@ -2,15 +2,20 @@ package org.wabase
 
 import io.bullet.borer.Json
 import org.apache.pekko.actor.{ActorSystem, Props}
-import org.apache.pekko.http.scaladsl.model.{ContentTypes, HttpEntity, HttpRequest, HttpResponse, Uri}
+import org.apache.pekko.http.scaladsl.model.{ContentTypes, HttpEntity, HttpRequest, HttpResponse, StatusCodes, Uri}
 import org.apache.pekko.http.scaladsl.server.PathMatcher.Matched
 import org.apache.pekko.http.scaladsl.server.PathMatchers._
 import org.apache.pekko.util.ByteString
 import org.wabase.DeferredControl.`X-Deferred`
+import org.wabase.WabaseService.Wabase
 
 import scala.concurrent.Future
 
-class WabaseDeferredControl(wabase: WabaseService.Wabase)(implicit as: ActorSystem)
+class WabaseDeferredControl(
+  wabase: WabaseService.Wabase,
+  moduleId: String = WabaseDeferredControl.defaultModuleId,
+  handleCustomModules: Boolean = true,
+)(implicit as: ActorSystem)
   extends DeferredControl.DeferredStatusPublisher {
 
   protected def initDeferredStorage: DeferredControl.DeferredStorage = {
@@ -30,14 +35,34 @@ class WabaseDeferredControl(wabase: WabaseService.Wabase)(implicit as: ActorSyst
     }
   }
 
+  def deferredResult(hash: String, user: String): HttpResponse = {
+    deferredStorage.getDeferredResult(hash, user)
+      .getOrElse(HttpResponse(StatusCodes.NotFound))
+  }
+
   //Start deferred request processing flow - subscribe entry actor to DeferredRequestArrived message
-  DeferredControl.startDeferredGraph("", deferredStorage, this, DeferredControl.deferredWorkerCount)
-  DeferredControl.deferredModules.foreach { case (mod, workerCount) =>
-    DeferredControl.startDeferredGraph(mod, deferredStorage, this, workerCount)
+  DeferredControl.startDeferredGraph(moduleId, deferredStorage, this, DeferredControl.deferredWorkerCount)
+  if (handleCustomModules) {
+    DeferredControl.deferredModules.foreach { case (mod, workerCount) =>
+      DeferredControl.startDeferredGraph(mod, deferredStorage, this, workerCount)
+    }
   }
 }
 
-object WabaseDeferredControl {
+trait WabaseDeferredControlFactory {
+  def initialize(wabase: WabaseService.Wabase)(implicit as: ActorSystem): WabaseDeferredControl
+}
+
+object WabaseDeferredControl extends WabaseDeferredControlFactory {
+
+  /** NOTE: Default module id must be used only for one WabaseDeferredControl instance to avoid duplicate
+   * deferred routes processing! */
+  val defaultModuleId: String = java.util.UUID.randomUUID().toString
+
+  override def initialize(wabase: Wabase)(implicit as: ActorSystem): WabaseDeferredControl = {
+    new WabaseDeferredControl(wabase)
+  }
+
   def isDeferredPath(uri: Uri): Boolean = {
     val pm = Slash.? ~ Segment
     pm(uri.path) match {
@@ -66,12 +91,19 @@ object WabaseDeferredControl {
     } getOrElse(QueryTimeout(config.getDuration("jdbc.query-timeout").toSeconds.toInt))
   }
 
+  /** Request mapper to enable deferred processing for route. NOTE: Request mappers are not processed in deferred
+   * mode! */
   def enableDeferred(ctx: WabaseRequestContext, req: HttpRequest): WabaseRequestContext = {
     if (ctx.user != null && (isDeferredPath(req.uri) || hasDeferredHeader(req))) {
       val timeout = extractTimeout(ctx, req)
-      ctx.copy(queryTimeout = timeout, isDeferred = true)
+      ctx.copy(queryTimeout = timeout, deferred = ctx.deferred.copy(isDeferred = true))
     }
     else ctx
+  }
+
+  /** Request mapper to get deferred request result. WabaseRequestContext key field must be set to deferred result hash */
+  def deferredResult(ctx: WabaseRequestContext): HttpResponse = {
+    ctx.deferred.deferredControl.deferredResult(ctx.key.mkString, ctx.user.name)
   }
 
   def doDeferred(ctx: WabaseRequestContext, routeFun: WabaseRequestContext => Future[HttpResponse]): HttpResponse = {
@@ -79,7 +111,7 @@ object WabaseDeferredControl {
     val user = ctx.user.name
     val hash = DeferredControl.requestHash(user, ctx.req, WabaseAuthentication.removeSessionInfoFromRequest)
     val deferredCtx = DeferredControl.DeferredContext(user, hash, ctx, routeFun)
-    publish(Message(DeferredControl.DeferredRequestArrived(ctx.deferredModule), deferredCtx))
+    publish(Message(DeferredControl.DeferredRequestArrived(ctx.deferred.deferredModule), deferredCtx))
     HttpResponse(
       entity = HttpEntity.Strict(ContentTypes.`application/json`,
         ByteString(Json.encode(Map("deferred" -> hash)).toUtf8String))

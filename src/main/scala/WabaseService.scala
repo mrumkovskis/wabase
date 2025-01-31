@@ -17,7 +17,8 @@ import scala.util.control.NonFatal
 
 case class WabaseUser(properties: Map[String, Any]) {
   val id: Long      = properties.get("id").collect { case x: Number => x.longValue }.getOrElse(-1)
-  val name: String  = properties.get("name").map(String.valueOf).orNull
+  val name: String  = properties.get("name").map(String.valueOf)
+    .orElse(Option(id).filter(_ != -1).map(_.toString)).orNull
   val roles: Set[String] = properties.get("roles")
     .collect { case r: Iterable[String@unchecked] => r.toSet }.getOrElse(Set())
 }
@@ -25,16 +26,21 @@ case class WabaseUser(properties: Map[String, Any]) {
 case class WabaseRequestContext(
   wabase: Wabase,
   req: HttpRequest,
+  deferred: Deferred = Deferred(),
   route: RouteDef = null,
   viewName: String = null,
   action: String = null,
   key: Seq[Any] = Nil,
   applicationState: ApplicationState = null,
   user: WabaseUser = null,
-  isDeferred: Boolean = false,
-  deferredModule: String = "",
   queryTimeout: QueryTimeout = null,
   as: ActorSystem = null,
+)
+
+case class Deferred(
+  deferredControl: WabaseDeferredControl = null,
+  isDeferred: Boolean = false,
+  deferredModule: String = WabaseDeferredControl.defaultModuleId
 )
 
 class WabaseRouteException(message: String) extends Exception(message)
@@ -43,9 +49,9 @@ class WabaseService extends Loggable {
 
   private val CreateCountActionAndView = """(?U)(?:(count|create):)?(\w*)""".r
 
-  def handle(wabase: Wabase)(req: HttpRequest)(
+  def handle(wabase: Wabase, deferredControl: WabaseDeferredControl)(req: HttpRequest)(
     implicit as: ActorSystem): Future[HttpResponse] = {
-    val ctx = findRoute(WabaseRequestContext(wabase, req))
+    val ctx = findRoute(WabaseRequestContext(wabase, req, Deferred(deferredControl = deferredControl)))
     doRoute(ctx)
   }
 
@@ -174,7 +180,7 @@ class WabaseService extends Loggable {
     }
 
     def doRequest(reqCtx: WabaseRequestContext): Future[HttpResponse] = try {
-      (if (reqCtx.viewName == null)
+      (if (reqCtx.viewName == null || !reqCtx.wabase.qe.nameToViewDef.contains(reqCtx.viewName))
         if (reqCtx.route.responseTransformer == null)
           error(s"If view name for route ${reqCtx.route.path} not specified, response transformer must be defined!")
         else invokeRespTransChain(reqCtx.route.responseTransformer, HttpResponse(), reqCtx)
@@ -192,7 +198,7 @@ class WabaseService extends Loggable {
       .map(invokeReqTransChain(_, ctx))
       .getOrElse(Future.successful(ctx)).flatMap { mappedCtx =>
         val ctxWithView = if (mappedCtx.viewName == null) viewActionKey(mappedCtx) else mappedCtx
-        if (ctxWithView.isDeferred)
+        if (ctxWithView.deferred.isDeferred)
           Future.successful(WabaseDeferredControl.doDeferred(ctxWithView, doRequest))
         else doRequest(ctxWithView)
       }.recoverWith(errorHandler(ctx)) // recover also here in the case request mapper fails
