@@ -933,14 +933,23 @@ class OpParser(viewName: String, cache: OpParser.Cache)
       }
       Action.Status(code, sc, dc, sh.orNull, sua.orNull, body.orNull)
   } named "status-op"
-  def setCookie: MemParser[SetCookie] = (("set_cookie" ~ "(") ~> namedOps(allowedCookiePars, ",") <~ ")") ^? ({
-    case pars if pars.forall(_._2.isInstanceOf[Tresql]) =>
-      SetCookie(pars.map { case (n, p) => (n, p.asInstanceOf[Tresql]) })
+  def setOrDeleteCookie(cmd: String): MemParser[Op] = ((cmd ~ "(") ~> namedOps(allowedCookiePars, ",") <~ ")") ^? ({
+    case pars if pars.forall(_._2.isInstanceOf[Tresql]) && pars.exists(_._1 == "name") => cmd match {
+      case "set_cookie" => SetCookie(pars.map { case (n, p) => (n, p.asInstanceOf[Tresql]) })
+      case "delete_cookie" => DeleteCookie(pars.map { case (n, p) => (n, p.asInstanceOf[Tresql]) })
+      case x => sys.error(s"Knipis: allowed 'set_cookie' or 'delete_cookie', found: '$x'")
+    }
   }, {
-    case p => s"Currently set_cookie operation allows only tresql parameters, instead found: $p"
+    case p => s"$cmd operation must have 'name' parameteter and currently operation allows only tresql" +
+      s" parameters, found: $p"
+  }) named "set-or-delete--cookie"
+  def setCookie: MemParser[SetCookie] = setOrDeleteCookie("set_cookie") ^^ (_.asInstanceOf[SetCookie]) ^? ({
+    case sc if sc.args.exists(_._1 == "value") => sc
+  } , {
+    case x => s"set_cookie command must have 'value' parameter"
   }) named "set-cookie"
-  def deleteCookie: MemParser[DeleteCookie] = (("delete_cookie" ~ "(") ~> tresqlOp <~ ")") ^^ {
-    DeleteCookie(_)
+  def deleteCookie: MemParser[DeleteCookie] = setOrDeleteCookie("delete_cookie") ^^ {
+    _.asInstanceOf[DeleteCookie]
   } named "delete-cookie-op"
   def setHttpHeaders: MemParser[SetHttpHeaders] = (("set_headers" ~ "(") ~> tresqlOp <~ ")") ^^ {
     SetHttpHeaders(_)
@@ -1167,7 +1176,7 @@ object AppMetadata extends Loggable {
     case class Cookie(name: String) extends Op
     /** For argument names see: {{{https://pekko.apache.org/api/pekko-http/current/org/apache/pekko/http/scaladsl/model/headers/HttpCookie$.html}}} */
     case class SetCookie(args: List[(String, Tresql)]) extends Op
-    case class DeleteCookie(name: Tresql) extends Op
+    case class DeleteCookie(args: List[(String, Tresql)]) extends Op
     case class SetUserAttributes(tresql: Tresql) extends Op
     case class Db(action: Action, doRollback: Boolean, dbs: List[DbAccessKey]) extends Op
     case class Conf(param: String, paramType: ConfType = null) extends Op
@@ -1298,7 +1307,7 @@ object AppMetadata extends Loggable {
           {
             case t: Tresql => us(state, nv(state.value)(t))
             case Status(_, setCookies, deleteCookies, setHeaders, setUserAttrs, bodyTresql) =>
-              val cdc = setCookies.flatMap(_.args.map(_._2)) ::: deleteCookies.map(_.name)
+              val cdc = setCookies.flatMap(_.args.map(_._2)) ::: deleteCookies.flatMap(_.args.map(_._2))
               val tresqls = (Option(setHeaders).map(_.tresql).orNull ::
                 Option(setUserAttrs).map(_.tresql).orNull ::
                 Option(bodyTresql).orNull :: Nil).filter(_ != null)
@@ -1334,7 +1343,7 @@ object AppMetadata extends Loggable {
             case Invocation(_, _, o, _) => opTrTr(o)
             case SetHttpHeaders(tresql) => us(state, nv(state.value)(tresql))
             case SetCookie(args) => sfl[(String, Tresql)](args, _._2, state)
-            case DeleteCookie(tresql) => us(state, nv(state.value)(tresql))
+            case DeleteCookie(args) => sfl[(String, Tresql)](args, _._2, state)
             case SetUserAttributes(attrs) => us(state, nv(state.value)(attrs))
           }
         }

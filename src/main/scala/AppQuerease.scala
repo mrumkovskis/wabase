@@ -3,8 +3,8 @@ package org.wabase
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.model.HttpHeader.ParsingResult.{Error, Ok}
 import org.apache.pekko.http.scaladsl.model.headers.ContentDispositionTypes.attachment
-import org.apache.pekko.http.scaladsl.model.headers.`Content-Disposition`
-import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes, HttpCharsets, HttpEntity, HttpHeader, HttpMethods, HttpRequest, HttpResponse, MediaTypes, Multipart, RequestEntity, StatusCodes, UniversalEntity}
+import org.apache.pekko.http.scaladsl.model.headers.{HttpCookie, `Content-Disposition`, `Set-Cookie`}
+import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes, ErrorInfo, HttpCharsets, HttpEntity, HttpHeader, HttpMethods, HttpRequest, HttpResponse, MediaTypes, Multipart, RequestEntity, StatusCodes, UniversalEntity}
 import org.apache.pekko.http.scaladsl.server.directives.ContentTypeResolver
 import org.apache.pekko.http.scaladsl.server.directives.FileAndResourceDirectives.ResourceFile
 import org.apache.pekko.stream.scaladsl.{Source, StreamConverters}
@@ -82,7 +82,12 @@ case class IdResult(id: Any, name: String) extends QuereaseResult {
 case class KeyResult(ir: IdResult, viewName: String, key: Seq[Any]) extends QuereaseResult
 case class AnyResult(result: Any) extends QuereaseResult
 case class QuereaseDeleteResult(count: Int) extends QuereaseResult
-case class StatusResult(code: Int, value: StatusValue) extends QuereaseResult
+case class StatusResult(
+  code: Int,
+  value: StatusValue,
+  headersResult: SetHeadersResult = null,
+  userResult: SetUserResult = null,
+) extends QuereaseResult
 case class ResourceResult(resource: String, contentType: ContentType, httpReq: HttpRequest) extends DataResult
 case class FileInfoResult(fileInfo: FileInfo) extends QuereaseResult
 case class FileResult(fileInfo: FileInfo, fileStreamer: FileStreamer) extends DataResult
@@ -120,6 +125,11 @@ case class CompatibleResult(result: DataResult,
 case class DbResult(result: QuereaseResult, cleanup: Option[Throwable] => Unit)
   extends QuereaseResult
 case class ConfResult(param: String, result: Any) extends QuereaseResult
+/** Header result sets HttpResponse headers. Can be combined with other QuereaseResults which affects
+ * response body. */
+sealed trait HeaderResult extends QuereaseResult
+case class SetHeadersResult(headers: List[HttpHeader]) extends QuereaseResult
+case class SetUserResult(user: WabaseUser) extends QuereaseResult
 
 class AppQuereaseIo[DTO <: Dto](val qe: QuereaseMetadata with QuereaseResolvers with ValueTransformer)
   extends ScalaDtoQuereaseIo[DTO](qe) with JsonConverter[DTO] {
@@ -922,7 +932,15 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
    env: Map[String, Any],
    context: ActionContext,
   )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
-    val Action.Status(code, _, _, _, _, bodyTresql) = op
+    import qr.ec
+    val Action.Status(code, sc, dc, hd, ua, bodyTresql) = op
+    val hl = List(
+      sc.map(c => doSetCookie(c, data, env, context)),
+      dc.map(c => doDeleteCookie(c, data, env, context)),
+      Option(hd).map(doSetHeaders(_, data, env, context)).toList,
+    ).flatten
+    val headersF = Future.foldLeft(hl)(List[HttpHeader]()) { (r, h) => r ::: h.headers }.map(SetHeadersResult(_))
+    val userAttrsF = Option(ua).map(doSetUserAttributes(_, data, env, context)).orNull
     Option(bodyTresql).map { bt =>
       import org.apache.pekko.http.scaladsl.model.StatusCode._
       val statusValue =
@@ -937,6 +955,106 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       statusValue
     }.map(sv => Future.successful(StatusResult(code, sv)))
     .getOrElse(Future.successful(StatusResult(code, null)))
+    .flatMap { st =>
+      headersF
+        .map(sh => if (sh.headers.isEmpty) st else st.copy(headersResult = sh))
+        .flatMap(stwh =>
+          if (userAttrsF == null) Future.successful(stwh)
+          else userAttrsF.map(sur => stwh.copy(userResult = sur)))
+    }
+  }
+
+  protected def doSetCookie(
+    op: Action.SetCookie,
+    data: Map[String, Any],
+    env: Map[String, Any],
+    context: ActionContext,
+  )(implicit qr: QuereaseResources): Future[SetHeadersResult] = {
+    import qr.resourcesFactory._
+    val params = data ++ env
+    def q(s: String) = Query(s, params).unique[String]
+    def qb(s: String) = Query(s, params).unique[Boolean]
+    def evalP(p: String, pars: List[(String, Action.Tresql)]) =
+      pars.find(_._1 == p).map(t => q(t._2.tresql)).get
+    val (nvArg, restArgs) = op.args.partition(a => a._1 == "name" || a._1 == "value")
+    val cookieInit = HttpCookie(
+      name =  evalP("name", nvArg),
+      value = evalP("value", nvArg),
+    )
+    val cookie =
+      restArgs.foldLeft(cookieInit) {
+        case (cookie, (param, Action.Tresql(t, _, _))) => param match {
+          case "value" => cookie.withValue(q(t))
+          case "expires" =>
+            val ds = q(t)
+            cookie.withExpires(
+              org.apache.pekko.http.scaladsl.model.DateTime.fromIsoDateTimeString(ds)
+                .getOrElse(sys.error(s"Date time must conform to format: 'yyyy-mm-ddThh:mm:ss', instead got: '$ds'")))
+          case "maxAge" => cookie.withMaxAge(q(t).toLong)
+          case "domain" => cookie.withDomain(q(t))
+          case "path" => cookie.withPath(q(t))
+          case "secure" => cookie.withSecure(qb(t))
+          case "httpOnly" => cookie.withHttpOnly(qb(t))
+          case "extension" => cookie.withExtension(q(t))
+        }
+      }
+    Future.successful(SetHeadersResult(List(`Set-Cookie`(cookie))))
+  }
+
+  protected def doDeleteCookie(
+    op: Action.DeleteCookie,
+    data: Map[String, Any],
+    env: Map[String, Any],
+    context: ActionContext,
+  )(implicit qr: QuereaseResources): Future[SetHeadersResult] = {
+    import qr.resourcesFactory._
+    val params = data ++ env
+    def q(s: String) = Query(s, params).unique[String]
+    val (nArg, restArgs) = op.args.partition(a => a._1 == "name")
+    val cookieInit = HttpCookie(name =  q(nArg.head._2.tresql), value = "")
+    val cookie =
+      restArgs.foldLeft(cookieInit) {
+        case (cookie, (param, Action.Tresql(t, _, _))) => param match {
+          case "domain" => cookie.withDomain(q(t))
+          case "path" => cookie.withPath(q(t))
+        }
+      }
+    Future.successful(
+      SetHeadersResult(List(
+        `Set-Cookie`(cookie.withExpires(org.apache.pekko.http.scaladsl.model.DateTime.MinValue))
+      ))
+    )
+  }
+
+  protected def doSetHeaders(
+    op: Action.SetHttpHeaders,
+    data: Map[String, Any],
+    env: Map[String, Any],
+    context: ActionContext,
+  )(implicit qr: QuereaseResources): Future[SetHeadersResult] = {
+    import qr.resourcesFactory._
+    val params = data ++ env
+    val headers =
+      Query
+        .list[String, String](op.tresql.tresql, params)
+        .map { case (n, v) => HttpHeader.parse(n, v) }
+        .map {
+          case Ok(header, _) => header
+          case Error(e: ErrorInfo) => sys.error(e.formatPretty)
+        }
+    Future.successful(SetHeadersResult(headers))
+  }
+
+  protected def doSetUserAttributes(
+    op: Action.SetUserAttributes,
+    data: Map[String, Any],
+    env: Map[String, Any],
+    context: ActionContext,
+  )(implicit qr: QuereaseResources): Future[SetUserResult] = {
+    import qr.resourcesFactory._
+    val params = data ++ env
+    val user = WabaseUser(Query.list[String, String](op.tresql.tresql, params).toMap)
+    Future.successful(SetUserResult(user))
   }
 
   protected def doIf(
@@ -1442,6 +1560,10 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case Action.This => doThis(data, env, context)
       case VariableTransforms(vts) =>
         Future.successful(doVarsTransforms(vts, Map[String, Any](), data ++ env))
+      case sc: Action.SetCookie => sys.error(s"Operation not supported yet: $sc")
+      case dc: Action.DeleteCookie => sys.error(s"Operation not supported yet: $dc")
+      case sh: Action.SetHttpHeaders => sys.error(s"Operation not supported yet: $sh")
+      case ua: Action.SetUserAttributes => sys.error(s"Operation not supported yet: $ua")
       case _: Action.Else => sys.error(s"Integrity error. Else operation cannot be here, must be coalesced into if operation")
     }
   }
@@ -1640,7 +1762,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         case v: Iterator[_] => v.toList
         case v => v // TODO may be need to convert java collections to scala?
       }
-      case StatusResult(code, value) => Map("code" -> code, "value" ->
+      case StatusResult(code, value, _, _) => Map("code" -> code, "value" ->
         (value match {
           case StringStatus(v) => v
           case RedirectStatus(value) => tresqlUri.uri(value).toString()

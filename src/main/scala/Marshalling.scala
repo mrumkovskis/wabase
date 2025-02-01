@@ -380,6 +380,8 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
       case it: IteratorResult => sys.error("IteratorResult must be serialized before marshalling.")
       case fr: FileInfoResult => sys.error("File info result marshalling not supported")
       case db: DbResult       => sys.error("Db result cannot be marshalled directly, unwrap inner result and try marshalling.")
+      case hr: SetHeadersResult => sys.error(s"SetHeadersResult cannot be marshalled.")
+      case ur: SetUserResult => sys.error(s"SetUserResult cannot be marshalled.")
       case r: QuereaseResultWithCleanup =>
         sys.error(s"QuereaseResult marshaller for class ${r.getClass.getName} not implemented")
     }}
