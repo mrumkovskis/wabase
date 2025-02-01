@@ -922,7 +922,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
    env: Map[String, Any],
    context: ActionContext,
   )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
-    val Action.Status(code, bodyTresql) = op
+    val Action.Status(code, _, _, _, _, bodyTresql) = op
     Option(bodyTresql).map { bt =>
       import org.apache.pekko.http.scaladsl.model.StatusCode._
       val statusValue =
