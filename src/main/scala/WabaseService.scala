@@ -46,8 +46,7 @@ case class Deferred(
 class WabaseRouteException(message: String) extends Exception(message)
 
 class WabaseService extends Loggable {
-
-  private val CreateCountActionAndView = """(?U)(?:(count|create):)?(\w*)""".r
+  import WabaseService._
 
   def handle(wabase: Wabase, deferredControl: WabaseDeferredControl)(req: HttpRequest)(
     implicit as: ActorSystem): Future[HttpResponse] = {
@@ -63,52 +62,6 @@ class WabaseService extends Loggable {
   }
 
   protected def doRoute(ctx: WabaseRequestContext)(implicit as: ActorSystem): Future[HttpResponse] = {
-    def viewActionKey(ctx: WabaseRequestContext): WabaseRequestContext = {
-      import ctx._
-      val viewDefs = wabase.qe.nameToViewDef
-      val pathString = req.uri.path.toString
-      val routeRegex = route.path
-      val (viewNameAndActionStr, view_name, create_count_action) = routeRegex.unapplySeq(pathString).collect {
-        case vna :: _ =>
-          val CreateCountActionAndView(cca, vn) = vna
-          if (viewDefs.contains(vn)) (vna, vn, cca)
-          else (null, null, null)
-      }.getOrElse((null, null, null))
-
-      if (viewNameAndActionStr == null) ctx
-      else {
-        val key = {
-          def key_path(path: Path): Path = path match {
-            case Segment(head, tail) =>
-              if (head contains viewNameAndActionStr) tail
-              else key_path(tail)
-            case p => key_path(p.tail)
-          }
-          val keyPath = key_path(req.uri.path)
-          def key(path: Path): List[String] = path match {
-            case Segment(v, tail) => v :: key(tail)
-            case Empty => Nil
-            case p: SlashOrEmpty => key(p.tail)
-          }
-          key(keyPath)
-        }
-
-        val action = if (create_count_action != null) create_count_action else req.method match {
-          case `GET`    =>
-            if (key.nonEmpty || viewDefs.get(view_name)
-              .exists(v => v.apiMethodToRoles.contains("get") && !v.apiMethodToRoles.contains("list")))
-              Action.Get
-            else
-              Action.List
-          case `POST`   => Action.Insert
-          case `PUT`    => Action.Update
-          case `DELETE` => Action.Delete
-          case x        => error(s"Unsupported http method $x for request '${req.uri}'")
-        }
-        ctx.copy(viewName = view_name, action = action, key = key)
-      }
-    }
-
     implicit val ec: ExecutionContext = as.dispatcher
     def invokeFunction(className: String, function: String, params: Seq[(Class[_], () => Any)]) = {
       val contextParams = Seq[(Class[_], () => Any)](
@@ -204,14 +157,13 @@ class WabaseService extends Loggable {
       }.recoverWith(errorHandler(ctx)) // recover also here in the case request mapper fails
     catch { case NonFatal(e) => errorHandler(ctx)(e) } // catch if request mapper (invokeReqTransChain) in current thread throws exception
   }
-
-  private def error(msg: String) = throw new WabaseRouteException(msg)
 }
 
 object WabaseService {
 
   type Wabase = WabaseApp[WabaseUser] with QuereaseProvider with I18n with DbAccess
 
+  val CreateCountActionAndViewRegex = """(?U)(?:(count|create):)?(\w*)""".r
   val WabaseUserAttributeName = "wabase-user"
 
   def optionalHttpHeaderValue[T](req: HttpRequest)(extractorF: HttpHeader => Option[T]): Option[T] = {
@@ -268,6 +220,54 @@ object WabaseService {
       } -> h
     }
   }
+
+  def viewActionKey(ctx: WabaseRequestContext): WabaseRequestContext = {
+    import ctx._
+    val viewDefs = wabase.qe.nameToViewDef
+    val pathString = req.uri.path.toString
+    val routeRegex = route.path
+    val (viewNameAndActionStr, view_name, create_count_action) = routeRegex.unapplySeq(pathString).collect {
+      case vna :: _ =>
+        val CreateCountActionAndViewRegex(cca, vn) = vna
+        if (viewDefs.contains(vn)) (vna, vn, cca)
+        else (null, null, null)
+    }.getOrElse((null, null, null))
+
+    if (viewNameAndActionStr == null) ctx
+    else {
+      val key = {
+        def key_path(path: Path): Path = path match {
+          case Segment(head, tail) =>
+            if (head contains viewNameAndActionStr) tail
+            else key_path(tail)
+          case p => key_path(p.tail)
+        }
+        val keyPath = key_path(req.uri.path)
+        def key(path: Path): List[String] = path match {
+          case Segment(v, tail) => v :: key(tail)
+          case Empty => Nil
+          case p: SlashOrEmpty => key(p.tail)
+        }
+        key(keyPath)
+      }
+
+      val action = if (create_count_action != null) create_count_action else req.method match {
+        case `GET`    =>
+          if (key.nonEmpty || viewDefs.get(view_name)
+            .exists(v => v.apiMethodToRoles.contains("get") && !v.apiMethodToRoles.contains("list")))
+            Action.Get
+          else
+            Action.List
+        case `POST`   => Action.Insert
+        case `PUT`    => Action.Update
+        case `DELETE` => Action.Delete
+        case x        => error(s"Unsupported http method $x for request '${req.uri}'")
+      }
+      ctx.copy(viewName = view_name, action = action, key = key)
+    }
+  }
+
+  def error(msg: String) = throw new WabaseRouteException(msg)
 }
 
 object ApplicationStateExtractor {
