@@ -7,7 +7,7 @@ import AppMetadata._
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.marshalling.ToResponseMarshallable
 import org.apache.pekko.http.scaladsl.model.headers.{Cookie, HttpCookie, `Set-Cookie`}
-import org.apache.pekko.http.scaladsl.model.{DateTime, HttpHeader, HttpRequest, HttpResponse, Uri}
+import org.apache.pekko.http.scaladsl.model.{ContentType, DateTime, HttpHeader, HttpRequest, HttpResponse, Uri}
 import org.wabase.AppMetadata.{Action, RouteDef}
 import org.wabase.WabaseService.Wabase
 
@@ -212,6 +212,8 @@ object WabaseService {
 
   type Wabase = WabaseApp[WabaseUser] with QuereaseProvider with I18n with DbAccess
 
+  val WabaseUserAttributeName = "wabase-user"
+
   def optionalHttpHeaderValue[T](req: HttpRequest)(extractorF: HttpHeader => Option[T]): Option[T] = {
     req.headers.collectFirst(Function.unlift(extractorF))
   }
@@ -255,6 +257,17 @@ object WabaseService {
   def complete(ctx: WabaseRequestContext, marshallable: => ToResponseMarshallable): Future[HttpResponse] =
     marshallable(ctx.req)(ctx.as.dispatcher)
 
+  /** Utility function. Extracts Content-Type from list of headers since pekko renders content type from http entity not from header list */
+  def partitionHeaders(headers: List[HttpHeader]): (Option[ContentType], List[HttpHeader]) = {
+    headers.partition(_.is("content-type")) match {
+      case (cts, h) => cts.map(cth => ContentType.parse(cth.value)).collectFirst {
+        case Right(ct) => ct
+        case Left(errs) => throw new IllegalArgumentException(s"Error(s) parsing content type:\n${
+          errs.map(_.formatPretty).mkString("\n")
+        }")
+      } -> h
+    }
+  }
 }
 
 object ApplicationStateExtractor {

@@ -919,44 +919,45 @@ class OpParser(viewName: String, cache: OpParser.Cache)
       }) named "named-op"
     if (separator == null) rep(namedOp) else repsep(namedOp, separator)
   } named "named-ops"
-  def redirect: MemParser[Status] = (RedirectOpRegex ~> rep(setCookie) ~ rep(deleteCookie) ~
-    opt(setHttpHeaders) ~ opt(setUserAttributes) ~ tresqlOp) ^^ {
-    case sc ~ dc ~ sh ~ sua ~ tr => Action.Status(303, sc, dc, sh.orNull, sua.orNull, tr)
+  def redirect: MemParser[Status] = (RedirectOpRegex ~> setHttpHeadersOps ~ tresqlOp) ^^ {
+    case hops ~ tr => Action.Status(303, hops, tr)
   } named "redirect-op"
-  def status: MemParser[Status] = (StatusOpRegex ~> "\\w+".r ~ rep(setCookie) ~ rep(deleteCookie) ~
-    opt(setHttpHeaders) ~ opt(setUserAttributes) ~ opt(tresqlOp)) ^^ {
-    case c ~ sc ~ dc ~ sh ~ sua ~ body =>
+  def status: MemParser[Status] = (StatusOpRegex ~> "\\w+".r ~ setHttpHeadersOps ~ opt(tresqlOp)) ^^ {
+    case c ~ hops ~ body =>
       val code = c match {
         case "ok" => 200
         case x if Try(x.toInt).toOption.isDefined => x.toInt
         case x => throw new IllegalArgumentException(s"Status code must be 'ok' or integer, instead '$x' encountered in $viewName.")
       }
-      Action.Status(code, sc, dc, sh.orNull, sua.orNull, body.orNull)
+      Action.Status(code, hops, body.orNull)
   } named "status-op"
-  def setOrDeleteCookie(cmd: String): MemParser[Op] = ((cmd ~ "(") ~> namedOps(allowedCookiePars, ",") <~ ")") ^? ({
+  /* Cannot be named mem parser since depends on parameter. */
+  def setOrDeleteCookie(cmd: String): Parser[SetHttpHeadersOp] = ((cmd ~ "(") ~> namedOps(allowedCookiePars, ",") <~ ")") ^? ({
     case pars if pars.forall(_._2.isInstanceOf[Tresql]) && pars.exists(_._1 == "name") => cmd match {
       case "set_cookie" => SetCookie(pars.map { case (n, p) => (n, p.asInstanceOf[Tresql]) })
       case "delete_cookie" => DeleteCookie(pars.map { case (n, p) => (n, p.asInstanceOf[Tresql]) })
       case x => sys.error(s"Knipis: allowed 'set_cookie' or 'delete_cookie', found: '$x'")
     }
   }, {
-    case p => s"$cmd operation must have 'name' parameteter and currently operation allows only tresql" +
-      s" parameters, found: $p"
-  }) named "set-or-delete--cookie"
+    case p => sys.error(s"$cmd operation must have 'name' parameteter and currently operation allows only tresql" +
+      s" parameters, found: $p")
+  }) named "set-or-delete-cookie"
   def setCookie: MemParser[SetCookie] = setOrDeleteCookie("set_cookie") ^^ (_.asInstanceOf[SetCookie]) ^? ({
     case sc if sc.args.exists(_._1 == "value") => sc
   } , {
-    case x => s"set_cookie command must have 'value' parameter"
-  }) named "set-cookie"
+    case x => sys.error(s"set_cookie command must have 'value' parameter, instead got '$x'")
+  }) named "set-cookie-op"
   def deleteCookie: MemParser[DeleteCookie] = setOrDeleteCookie("delete_cookie") ^^ {
     _.asInstanceOf[DeleteCookie]
   } named "delete-cookie-op"
   def setHttpHeaders: MemParser[SetHttpHeaders] = (("set_headers" ~ "(") ~> tresqlOp <~ ")") ^^ {
     SetHttpHeaders(_)
   } named "set-http-headers-op"
-  def setUserAttributes: MemParser[SetUserAttributes] = (("set_headers" ~ "(") ~> tresqlOp <~ ")") ^^ {
+  def setUserAttributes: MemParser[SetUserAttributes] = (("user_attrs" ~ "(") ~> tresqlOp <~ ")") ^^ {
     SetUserAttributes(_)
   } named "set-user-attributes-op"
+  def setHttpHeadersOps: MemParser[List[SetHttpHeadersOp]] =
+    rep(setCookie | deleteCookie | setHttpHeaders | setUserAttributes) named "set-http-headers-ops"
   def operation: MemParser[Op] = (redirect | status | viewOp | jobOp | confOp | uniqueOp |
     httpOp | dbOp | resourceOp | fileOp | toFileOp | templateOp | emailOp |
     jsonCodecOp | httpHeaderOrCookieOp | extractPartsOp | extractEntityOp |
@@ -1142,10 +1143,7 @@ object AppMetadata extends Loggable {
                           conformTo: Option[OpResultType] = None) extends CastableOp
     case class Status(
       code: Int,
-      setCookies: List[SetCookie] = Nil,
-      deleteCookies: List[DeleteCookie] = Nil,
-      setHeaders: SetHttpHeaders = null,
-      setUserAttributes: SetUserAttributes = null,
+      setHttpHeaders: List[SetHttpHeadersOp] = Nil,
       bodyTresql: Tresql = null,
     ) extends Op
     case class VariableTransforms(transforms: List[VariableTransform]) extends Op
@@ -1172,12 +1170,7 @@ object AppMetadata extends Loggable {
                     conformTo: Option[OpResultType] = None,
                     httpClientName: String = null) extends CastableOp
     case class HttpHeader(name: String) extends Op
-    case class SetHttpHeaders(tresql: Tresql) extends Op
     case class Cookie(name: String) extends Op
-    /** For argument names see: {{{https://pekko.apache.org/api/pekko-http/current/org/apache/pekko/http/scaladsl/model/headers/HttpCookie$.html}}} */
-    case class SetCookie(args: List[(String, Tresql)]) extends Op
-    case class DeleteCookie(args: List[(String, Tresql)]) extends Op
-    case class SetUserAttributes(tresql: Tresql) extends Op
     case class Db(action: Action, doRollback: Boolean, dbs: List[DbAccessKey]) extends Op
     case class Conf(param: String, paramType: ConfType = null) extends Op
     case class JsonCodec(encode: Boolean, op: Op) extends Op
@@ -1193,6 +1186,12 @@ object AppMetadata extends Loggable {
     case object ExtractParts extends Op
     case object ExtractHttpEntity extends Op
     case object This extends Op
+    sealed trait SetHttpHeadersOp
+    case class SetHttpHeaders(tresql: Tresql) extends SetHttpHeadersOp
+    /** For argument names see: {{{https://pekko.apache.org/api/pekko-http/current/org/apache/pekko/http/scaladsl/model/headers/HttpCookie$.html}}} */
+    case class SetCookie(args: List[(String, Tresql)]) extends SetHttpHeadersOp
+    case class DeleteCookie(args: List[(String, Tresql)]) extends SetHttpHeadersOp
+    case class SetUserAttributes(tresql: Tresql) extends SetHttpHeadersOp
 
     /**
      * @param name - optional variable name i.e. variable = ...
@@ -1215,7 +1214,6 @@ object AppMetadata extends Loggable {
       def traverse(state: T): PartialFunction[Op, T] = {
         case _: Tresql | _: RedirectToKey | _: Status |
              _: VariableTransforms | _: File | _: Conf | _: HttpHeader | _: Cookie |
-             _: SetHttpHeaders | _:SetCookie | _:DeleteCookie | _:SetUserAttributes |
              ExtractParts | ExtractHttpEntity | This | _: Job | _: Resource | Commit | null => state
         case o: ViewCall => opTrav(state)(o.data)
         case Unique(o, _, _) => opTrav(state)(o)
@@ -1306,12 +1304,13 @@ object AppMetadata extends Loggable {
           }
           {
             case t: Tresql => us(state, nv(state.value)(t))
-            case Status(_, setCookies, deleteCookies, setHeaders, setUserAttrs, bodyTresql) =>
-              val cdc = setCookies.flatMap(_.args.map(_._2)) ::: deleteCookies.flatMap(_.args.map(_._2))
-              val tresqls = (Option(setHeaders).map(_.tresql).orNull ::
-                Option(setUserAttrs).map(_.tresql).orNull ::
-                Option(bodyTresql).orNull :: Nil).filter(_ != null)
-              sfl[Tresql](cdc ::: tresqls, identity, state)
+            case Status(_, hops, bodyTresql) =>
+              hops.foldLeft(us(state, nv(state.value)(bodyTresql)))((resSt, hdop) => hdop match {
+                case SetHttpHeaders(tresql) => us(resSt, nv(resSt.value)(tresql))
+                case SetCookie(args) => sfl[(String, Tresql)](args, _._2, resSt)
+                case DeleteCookie(args) => sfl[(String, Tresql)](args, _._2, resSt)
+                case SetUserAttributes(attrs) => us(resSt, nv(resSt.value)(attrs))
+              })
             case Resource(nameTresql, contentTypeTresql) =>
               val s1 = us(state, nv(state.value)(nameTresql))
               us(s1, nv(s1.value)(contentTypeTresql))
@@ -1341,10 +1340,6 @@ object AppMetadata extends Loggable {
               if (isDynamic) us(state, nv(state.value)(Tresql(nameTresql)))
               else processJob(stepTresqlTrav)(state.copy(action = JobAct, name = nameTresql))
             case Invocation(_, _, o, _) => opTrTr(o)
-            case SetHttpHeaders(tresql) => us(state, nv(state.value)(tresql))
-            case SetCookie(args) => sfl[(String, Tresql)](args, _._2, state)
-            case DeleteCookie(args) => sfl[(String, Tresql)](args, _._2, state)
-            case SetUserAttributes(attrs) => us(state, nv(state.value)(attrs))
           }
         }
         opTraverser(opTresqlTrav, stepTresqlTrav) { state => extractor(state) orElse traverse(state) }

@@ -1411,3 +1411,14 @@ table:
 insert:
 - as result res = http post '/extract_http_entity_test1' extract entity
 - org.wabase.QuereaseActionTestManagerObj.httpResult :res
+
+
+name: set_headers_test
+api: get
+table:
+get:
+- status ok
+    set_cookie(name = 'test', value = 'test_val', expires = '2025-02-02T23:10:05')
+    delete_cookie(name = 'deleme', path = 'test_path')
+    set_headers({'header1', 'value1'} + {'header2', 'value2'})
+    user_attrs({'attr1', 'val1'} ++ {'attr2', 'val2'})

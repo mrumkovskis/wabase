@@ -6,7 +6,7 @@ import io.bullet.borer.Codec
 import org.tresql.ast._
 import org.tresql.metadata.{Par, Procedure, ReturnType}
 import CompilerAst._
-import org.wabase.AppMetadata.Action.{ConfType, Op, OpResultType, Step, VariableTransform}
+import org.wabase.AppMetadata.Action.{ConfType, Op, OpResultType, SetCookie, SetHttpHeadersOp, Step, VariableTransform}
 import org.wabase.AppMetadata.{Action, DbAccessKey}
 
 object CacheIo {
@@ -61,6 +61,8 @@ object CacheIo {
   implicit val confTypeCodec: Codec[ConfType] = deriveAllCodecs[ConfType]
   // for codecs below must specify type explicitly for derive macro to work
   implicit lazy val opCodec: Codec[Op] = deriveAllCodecs[Op]
+  implicit lazy val tresqlCodec: Codec[Action.Tresql] = deriveCodec[Action.Tresql]
+  implicit lazy val headerOpCodec: Codec[SetHttpHeadersOp] = deriveAllCodecs[SetHttpHeadersOp]
   implicit lazy val stepCodec: Codec[Step] = deriveAllCodecs[Step]
   implicit lazy val actionCodec: Codec[Action] = deriveCodec[Action]
 }

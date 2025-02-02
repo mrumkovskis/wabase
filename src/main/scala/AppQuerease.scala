@@ -82,12 +82,7 @@ case class IdResult(id: Any, name: String) extends QuereaseResult {
 case class KeyResult(ir: IdResult, viewName: String, key: Seq[Any]) extends QuereaseResult
 case class AnyResult(result: Any) extends QuereaseResult
 case class QuereaseDeleteResult(count: Int) extends QuereaseResult
-case class StatusResult(
-  code: Int,
-  value: StatusValue,
-  headersResult: SetHeadersResult = null,
-  userResult: SetUserResult = null,
-) extends QuereaseResult
+case class StatusResult(code: Int, value: StatusValue, headers: List[HttpHeader] = Nil, user: WabaseUser = null) extends QuereaseResult
 case class ResourceResult(resource: String, contentType: ContentType, httpReq: HttpRequest) extends DataResult
 case class FileInfoResult(fileInfo: FileInfo) extends QuereaseResult
 case class FileResult(fileInfo: FileInfo, fileStreamer: FileStreamer) extends DataResult
@@ -125,11 +120,6 @@ case class CompatibleResult(result: DataResult,
 case class DbResult(result: QuereaseResult, cleanup: Option[Throwable] => Unit)
   extends QuereaseResult
 case class ConfResult(param: String, result: Any) extends QuereaseResult
-/** Header result sets HttpResponse headers. Can be combined with other QuereaseResults which affects
- * response body. */
-sealed trait HeaderResult extends QuereaseResult
-case class SetHeadersResult(headers: List[HttpHeader]) extends QuereaseResult
-case class SetUserResult(user: WabaseUser) extends QuereaseResult
 
 class AppQuereaseIo[DTO <: Dto](val qe: QuereaseMetadata with QuereaseResolvers with ValueTransformer)
   extends ScalaDtoQuereaseIo[DTO](qe) with JsonConverter[DTO] {
@@ -932,15 +922,18 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
    env: Map[String, Any],
    context: ActionContext,
   )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
-    import qr.ec
-    val Action.Status(code, sc, dc, hd, ua, bodyTresql) = op
-    val hl = List(
-      sc.map(c => doSetCookie(c, data, env, context)),
-      dc.map(c => doDeleteCookie(c, data, env, context)),
-      Option(hd).map(doSetHeaders(_, data, env, context)).toList,
-    ).flatten
-    val headersF = Future.foldLeft(hl)(List[HttpHeader]()) { (r, h) => r ::: h.headers }.map(SetHeadersResult(_))
-    val userAttrsF = Option(ua).map(doSetUserAttributes(_, data, env, context)).orNull
+    val Action.Status(code, hops, bodyTresql) = op
+    val (ua, hs) = hops.partition(_.isInstanceOf[Action.SetUserAttributes])
+    val user = if (ua.isEmpty) null else ua.foldLeft(WabaseUser(Map())) { (u, ua) =>
+      WabaseUser(u.properties ++
+        doSetUserAttributes(ua.asInstanceOf[Action.SetUserAttributes], data, env, context).properties)
+    }
+    val headers = hs.foldLeft(List[HttpHeader]())((r, hop) => hop match {
+      case sc: Action.SetCookie => doSetCookie(sc, data, env, context) :: r
+      case dc: Action.DeleteCookie => doDeleteCookie(dc, data, env, context) :: r
+      case sh: Action.SetHttpHeaders => doSetHeaders(sh, data, env, context) ::: r
+      case x => sys.error(s"Cannot convert to http header: $x")
+    })
     Option(bodyTresql).map { bt =>
       import org.apache.pekko.http.scaladsl.model.StatusCode._
       val statusValue =
@@ -953,15 +946,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           Query.uniqueOption[String](bt.tresql, data ++ env).map(StringStatus).orNull
         }
       statusValue
-    }.map(sv => Future.successful(StatusResult(code, sv)))
-    .getOrElse(Future.successful(StatusResult(code, null)))
-    .flatMap { st =>
-      headersF
-        .map(sh => if (sh.headers.isEmpty) st else st.copy(headersResult = sh))
-        .flatMap(stwh =>
-          if (userAttrsF == null) Future.successful(stwh)
-          else userAttrsF.map(sur => stwh.copy(userResult = sur)))
-    }
+    }.map(sv => Future.successful(StatusResult(code, sv, headers, user)))
+    .getOrElse(Future.successful(StatusResult(code, null, headers, user)))
   }
 
   protected def doSetCookie(
@@ -969,36 +955,37 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     data: Map[String, Any],
     env: Map[String, Any],
     context: ActionContext,
-  )(implicit qr: QuereaseResources): Future[SetHeadersResult] = {
-    import qr.resourcesFactory._
-    val params = data ++ env
-    def q(s: String) = Query(s, params).unique[String]
-    def qb(s: String) = Query(s, params).unique[Boolean]
-    def evalP(p: String, pars: List[(String, Action.Tresql)]) =
-      pars.find(_._1 == p).map(t => q(t._2.tresql)).get
-    val (nvArg, restArgs) = op.args.partition(a => a._1 == "name" || a._1 == "value")
-    val cookieInit = HttpCookie(
-      name =  evalP("name", nvArg),
-      value = evalP("value", nvArg),
-    )
-    val cookie =
-      restArgs.foldLeft(cookieInit) {
-        case (cookie, (param, Action.Tresql(t, _, _))) => param match {
-          case "value" => cookie.withValue(q(t))
-          case "expires" =>
-            val ds = q(t)
-            cookie.withExpires(
-              org.apache.pekko.http.scaladsl.model.DateTime.fromIsoDateTimeString(ds)
-                .getOrElse(sys.error(s"Date time must conform to format: 'yyyy-mm-ddThh:mm:ss', instead got: '$ds'")))
-          case "maxAge" => cookie.withMaxAge(q(t).toLong)
-          case "domain" => cookie.withDomain(q(t))
-          case "path" => cookie.withPath(q(t))
-          case "secure" => cookie.withSecure(qb(t))
-          case "httpOnly" => cookie.withHttpOnly(qb(t))
-          case "extension" => cookie.withExtension(q(t))
+  )(implicit qr: QuereaseResources): `Set-Cookie` = {
+    useResourcesConnOrEvaluator(qr.resourcesFactory.resources, implicit res => {
+      val params = data ++ env
+      def q(s: String) = Query(s, params).unique[String]
+      def qb(s: String) = Query(s, params).unique[Boolean]
+      def evalP(p: String, pars: List[(String, Action.Tresql)]) =
+        pars.find(_._1 == p).map(t => q(t._2.tresql)).get
+      val (nvArg, restArgs) = op.args.partition(a => a._1 == "name" || a._1 == "value")
+      val cookieInit = HttpCookie(
+        name =  evalP("name", nvArg),
+        value = evalP("value", nvArg),
+      )
+      val cookie =
+        restArgs.foldLeft(cookieInit) {
+          case (cookie, (param, Action.Tresql(t, _, _))) => param match {
+            case "value" => cookie.withValue(q(t))
+            case "expires" =>
+              val ds = q(t)
+              cookie.withExpires(
+                org.apache.pekko.http.scaladsl.model.DateTime.fromIsoDateTimeString(ds)
+                  .getOrElse(sys.error(s"Date time must conform to format: 'yyyy-mm-ddThh:mm:ss', instead got: '$ds'")))
+            case "maxAge" => cookie.withMaxAge(q(t).toLong)
+            case "domain" => cookie.withDomain(q(t))
+            case "path" => cookie.withPath(q(t))
+            case "secure" => cookie.withSecure(qb(t))
+            case "httpOnly" => cookie.withHttpOnly(qb(t))
+            case "extension" => cookie.withExtension(q(t))
+          }
         }
-      }
-    Future.successful(SetHeadersResult(List(`Set-Cookie`(cookie))))
+      `Set-Cookie`(cookie)
+    })
   }
 
   protected def doDeleteCookie(
@@ -1006,24 +993,21 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     data: Map[String, Any],
     env: Map[String, Any],
     context: ActionContext,
-  )(implicit qr: QuereaseResources): Future[SetHeadersResult] = {
-    import qr.resourcesFactory._
-    val params = data ++ env
-    def q(s: String) = Query(s, params).unique[String]
-    val (nArg, restArgs) = op.args.partition(a => a._1 == "name")
-    val cookieInit = HttpCookie(name =  q(nArg.head._2.tresql), value = "")
-    val cookie =
-      restArgs.foldLeft(cookieInit) {
-        case (cookie, (param, Action.Tresql(t, _, _))) => param match {
-          case "domain" => cookie.withDomain(q(t))
-          case "path" => cookie.withPath(q(t))
+  )(implicit qr: QuereaseResources): `Set-Cookie` = {
+    useResourcesConnOrEvaluator(qr.resourcesFactory.resources, implicit res => {
+      val params = data ++ env
+      def q(s: String) = Query(s, params).unique[String]
+      val (nArg, restArgs) = op.args.partition(a => a._1 == "name")
+      val cookieInit = HttpCookie(name = q(nArg.head._2.tresql), value = "")
+      val cookie =
+        restArgs.foldLeft(cookieInit) {
+          case (cookie, (param, Action.Tresql(t, _, _))) => param match {
+            case "domain" => cookie.withDomain(q(t))
+            case "path" => cookie.withPath(q(t))
+          }
         }
-      }
-    Future.successful(
-      SetHeadersResult(List(
-        `Set-Cookie`(cookie.withExpires(org.apache.pekko.http.scaladsl.model.DateTime.MinValue))
-      ))
-    )
+      `Set-Cookie`(cookie.withExpires(org.apache.pekko.http.scaladsl.model.DateTime.MinValue))
+    })
   }
 
   protected def doSetHeaders(
@@ -1031,10 +1015,9 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     data: Map[String, Any],
     env: Map[String, Any],
     context: ActionContext,
-  )(implicit qr: QuereaseResources): Future[SetHeadersResult] = {
-    import qr.resourcesFactory._
-    val params = data ++ env
-    val headers =
+  )(implicit qr: QuereaseResources): List[HttpHeader] = {
+    useResourcesConnOrEvaluator(qr.resourcesFactory.resources, implicit res => {
+      val params = data ++ env
       Query
         .list[String, String](op.tresql.tresql, params)
         .map { case (n, v) => HttpHeader.parse(n, v) }
@@ -1042,7 +1025,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           case Ok(header, _) => header
           case Error(e: ErrorInfo) => sys.error(e.formatPretty)
         }
-    Future.successful(SetHeadersResult(headers))
+    })
   }
 
   protected def doSetUserAttributes(
@@ -1050,11 +1033,11 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     data: Map[String, Any],
     env: Map[String, Any],
     context: ActionContext,
-  )(implicit qr: QuereaseResources): Future[SetUserResult] = {
-    import qr.resourcesFactory._
-    val params = data ++ env
-    val user = WabaseUser(Query.list[String, String](op.tresql.tresql, params).toMap)
-    Future.successful(SetUserResult(user))
+  )(implicit qr: QuereaseResources): WabaseUser = {
+    useResourcesConnOrEvaluator(qr.resourcesFactory.resources, implicit res => {
+      val params = data ++ env
+      WabaseUser(Query.list[String, String](op.tresql.tresql, params).toMap)
+    })
   }
 
   protected def doIf(
@@ -1301,14 +1284,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       val (ok, errs) = parsedValues.partition(_.isInstanceOf[Ok])
       require(errs.isEmpty, s"Error(s) parsing http headers:\n${
         errs.map(e => e.asInstanceOf[Error].error.formatPretty).mkString("\n")}")
-      ok.map(_.asInstanceOf[Ok].header).partition(_.is("content-type")) match {
-        case (cts, h) => cts.map(cth => ContentType.parse(cth.value)).collect {
-          case Right(ct) => ct
-          case Left(errs) => throw new IllegalArgumentException(s"Error(s) parsing content type:\n${
-            errs.map(_.formatPretty).mkString("\n")
-          }")
-        }.lift(0) -> h
-      }
+      WabaseService.partitionHeaders(ok.map(_.asInstanceOf[Ok].header))
     }
     val reqF = {
       def reqWithoutBody = HttpRequest(httpMeth, uri, headers)
@@ -1560,10 +1536,6 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case Action.This => doThis(data, env, context)
       case VariableTransforms(vts) =>
         Future.successful(doVarsTransforms(vts, Map[String, Any](), data ++ env))
-      case sc: Action.SetCookie => sys.error(s"Operation not supported yet: $sc")
-      case dc: Action.DeleteCookie => sys.error(s"Operation not supported yet: $dc")
-      case sh: Action.SetHttpHeaders => sys.error(s"Operation not supported yet: $sh")
-      case ua: Action.SetUserAttributes => sys.error(s"Operation not supported yet: $ua")
       case _: Action.Else => sys.error(s"Integrity error. Else operation cannot be here, must be coalesced into if operation")
     }
   }

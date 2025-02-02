@@ -2,7 +2,9 @@ package org.wabase
 
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.marshalling.Marshal
-import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes, HttpEntity, HttpRequest, HttpResponse, MessageEntity, Multipart, StatusCodes}
+import org.apache.pekko.http.scaladsl.model.HttpHeader.ParsingResult.Ok
+import org.apache.pekko.http.scaladsl.model.headers.`Set-Cookie`
+import org.apache.pekko.http.scaladsl.model.{AttributeKey, ContentType, ContentTypes, HttpEntity, HttpHeader, HttpRequest, HttpResponse, MessageEntity, Multipart, StatusCodes}
 import org.apache.pekko.http.scaladsl.server.Route
 import org.apache.pekko.http.scaladsl.testkit.ScalatestRouteTest
 import org.apache.pekko.http.scaladsl.unmarshalling.Unmarshal
@@ -1479,6 +1481,17 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       HttpEntity(ContentTypes.`text/plain(UTF-8)`, ByteString("Good evening!"))) ~> route ~> check {
       val r = entityAs[String]
       r shouldBe "Good evening!"
+    }
+  }
+
+  it should "set response headers" in {
+    implicit val user: TestUsr = TestUsr(4)
+    val route = service.crudAction
+    Get("/set_headers_test") ~> route ~> check {
+      headers.collect { case `Set-Cookie`(c) => (c.name, c.value) }.toMap shouldBe Map("deleme" -> "", "test" -> "test_val")
+      header("header1") shouldBe Some(HttpHeader.parse("header1", "value1").asInstanceOf[Ok].header)
+      header("header2") shouldBe Some(HttpHeader.parse("header2", "value2").asInstanceOf[Ok].header)
+      response.attribute(AttributeKey[WabaseUser](WabaseService.WabaseUserAttributeName)) shouldBe Some(WabaseUser(Map("attr1" -> "val1", "attr2" -> "val2")))
     }
   }
 }

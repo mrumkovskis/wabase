@@ -7,7 +7,7 @@ import JsonEncoder._
 import org.apache.pekko.http.scaladsl.server.directives.AuthenticationDirective
 import io.bullet.borer.compat.pekko._
 import org.apache.pekko.http.scaladsl.model.RemoteAddress.Unknown
-import org.apache.pekko.http.scaladsl.model.{AttributeKeys, HttpRequest, HttpResponse, RemoteAddress}
+import org.apache.pekko.http.scaladsl.model.{AttributeKey, AttributeKeys, HttpRequest, HttpResponse, RemoteAddress}
 import org.apache.pekko.http.scaladsl.model.headers.{HttpCookie, SameSite, `Remote-Address`, `User-Agent`, `X-Forwarded-For`, `X-Real-Ip`}
 import org.apache.pekko.util.ByteString
 
@@ -73,7 +73,12 @@ object WabaseAuthentication extends Authentication[WabaseUser] with Execution {
 
   /* Response transformer */
   def setSessionCookie(req: HttpRequest, user: WabaseUser, resp: HttpResponse): HttpResponse = {
-    val enc_session = encryptedSession(req, user)
+    // remove null values, update rest
+    val usr = resp.attribute(AttributeKey[WabaseUser](WabaseService.WabaseUserAttributeName)).map { u =>
+      val (rp, cp) = u.properties.partition(_._2 == null)
+      WabaseUser(user.properties -- rp.keys ++ cp)
+    }.getOrElse(user)
+    val enc_session = encryptedSession(req, usr)
     WabaseService.setCookie(resp)(HttpCookie(
       SessionCookieName,
       value = enc_session,

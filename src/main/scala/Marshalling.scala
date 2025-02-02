@@ -10,8 +10,6 @@ import java.net.URLEncoder
 import java.text.Normalizer
 import scala.concurrent.{ExecutionContext, Future}
 import org.apache.pekko.http.scaladsl.model.headers.{ContentDispositionType, ContentDispositionTypes, Location, RawHeader, `Content-Disposition`}
-import org.apache.pekko.http.scaladsl.server.RouteResult.{Complete, Rejected}
-import org.apache.pekko.http.scaladsl.server.directives.FileAndResourceDirectives
 import org.apache.pekko.http.scaladsl.server.directives.FileAndResourceDirectives.ResourceFile
 import org.apache.pekko.http.scaladsl.unmarshalling.{FromEntityUnmarshaller, FromResponseUnmarshaller, Unmarshaller}
 import org.apache.pekko.stream.scaladsl.{Source, StreamConverters}
@@ -210,16 +208,31 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
   implicit val toResponseQuereaseStatusResultMarshaller:  ToResponseMarshaller[StatusResult] = {
     Marshaller.opaque { sr =>
       val status: StatusCode = sr.code
-      sr.value match {
-        case RedirectStatus(value) =>
-          require(value != null, s"Error marshalling redirect status result - no uri.")
-          HttpResponse(status, headers = Seq(Location(app.qe.tresqlUri.uri(value))))
-        case StringStatus(value) =>
-          HttpResponse(status, entity = HttpEntity.Strict(ContentTypes.`text/plain(UTF-8)`,
-            if (value == null) ByteString.empty else ByteString(value)))
-        case null =>
-          HttpResponse(status, entity = HttpEntity.Empty)
+      def setHeaders(resp: HttpResponse) = {
+        val (oct, h) = WabaseService.partitionHeaders(sr.headers)
+        val respWithCt =
+          if (resp.entity.isKnownEmpty()) resp
+          else oct.map(ct => resp.withEntity(resp.entity.withContentType(ct))).getOrElse(resp)
+        if (h.isEmpty) respWithCt else respWithCt.mapHeaders(_ ++ h)
       }
+      def setUserAttrs(resp: HttpResponse) =
+        if (sr.user != null)
+          resp.withAttributes(Map(AttributeKey[WabaseUser](WabaseService.WabaseUserAttributeName) -> sr.user))
+        else resp
+      setUserAttrs(
+        setHeaders(
+          sr.value match {
+            case RedirectStatus(value) =>
+              require(value != null, s"Error marshalling redirect status result - no uri.")
+              HttpResponse(status, headers = Seq(Location(app.qe.tresqlUri.uri(value))))
+            case StringStatus(value) =>
+              HttpResponse(status, entity = HttpEntity.Strict(ContentTypes.`text/plain(UTF-8)`,
+                if (value == null) ByteString.empty else ByteString(value)))
+            case null =>
+              HttpResponse(status, entity = HttpEntity.Empty)
+          }
+        )
+      )
     }
   }
   implicit val toEntityQuereaseNoResultMarshaller:          ToEntityMarshaller  [NoResult.type]  =
@@ -380,8 +393,6 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
       case it: IteratorResult => sys.error("IteratorResult must be serialized before marshalling.")
       case fr: FileInfoResult => sys.error("File info result marshalling not supported")
       case db: DbResult       => sys.error("Db result cannot be marshalled directly, unwrap inner result and try marshalling.")
-      case hr: SetHeadersResult => sys.error(s"SetHeadersResult cannot be marshalled.")
-      case ur: SetUserResult => sys.error(s"SetUserResult cannot be marshalled.")
       case r: QuereaseResultWithCleanup =>
         sys.error(s"QuereaseResult marshaller for class ${r.getClass.getName} not implemented")
     }}
