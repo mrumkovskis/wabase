@@ -1413,12 +1413,24 @@ insert:
 - org.wabase.QuereaseActionTestManagerObj.httpResult :res
 
 
-name: set_headers_test
+name: set_headers_test1
 api: get
 table:
 get:
 - status ok
-    set_cookie(name = 'test', value = 'test_val', expires = '2025-02-02T23:10:05')
+    set_cookie(name = 'test', value = 'test_val', expires = '2025-02-02 23:10:05')
     delete_cookie(name = 'deleme', path = 'test_path')
     set_headers({'header1', 'value1'} + {'header2', 'value2'})
     user_attrs({'attr1', 'val1'} ++ {'attr2', 'val2'})
+
+
+name: set_headers_test2
+api: get
+table:
+get:
+  - redirect
+      set_headers({'h1', 'v1'} + {'h2', 'v2'})
+      delete_cookie(name = 'x', domain = 'abc.com')
+      set_cookie(name = 'test', value = 'test_val', secure = true, http_only = true, max_age = 1000)
+      set_cookie(name = 'test1', value = 'test_val1', expires = '2025-04-3 13:30:25'::timestamp)
+      {'/redirect_path', 'view'}

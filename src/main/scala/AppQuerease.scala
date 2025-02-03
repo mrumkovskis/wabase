@@ -23,6 +23,7 @@ import spray.json._
 
 import java.sql.Connection
 import scala.collection.immutable.Seq
+import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.{ExecutionContext, Future}
 import scala.jdk.CollectionConverters._
 import scala.util.{Failure, Try}
@@ -285,7 +286,6 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   protected def keyResult(ir: IdResult, viewName: String, data: Map[String, Any]) = {
     KeyResult(ir, viewName, getKeyValues(viewName, data ++ ir.toMap, forApi = true))
   }
-
 
 
   /********************************
@@ -928,12 +928,12 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       WabaseUser(u.properties ++
         doSetUserAttributes(ua.asInstanceOf[Action.SetUserAttributes], data, env, context).properties)
     }
-    val headers = hs.foldLeft(List[HttpHeader]())((r, hop) => hop match {
-      case sc: Action.SetCookie => doSetCookie(sc, data, env, context) :: r
-      case dc: Action.DeleteCookie => doDeleteCookie(dc, data, env, context) :: r
-      case sh: Action.SetHttpHeaders => doSetHeaders(sh, data, env, context) ::: r
+    val headers = hs.foldLeft(ArrayBuffer[HttpHeader]())((r, hop) => hop match {
+      case sc: Action.SetCookie => r ++= doSetCookie(sc, data, env, context)
+      case dc: Action.DeleteCookie => r ++= doDeleteCookie(dc, data, env, context)
+      case sh: Action.SetHttpHeaders => r ++= doSetHeaders(sh, data, env, context)
       case x => sys.error(s"Cannot convert to http header: $x")
-    })
+    }).toList
     Option(bodyTresql).map { bt =>
       import org.apache.pekko.http.scaladsl.model.StatusCode._
       val statusValue =
@@ -950,42 +950,43 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     .getOrElse(Future.successful(StatusResult(code, null, headers, user)))
   }
 
+  protected def doSetOrDeleteCookie(
+    op: Action.SetHttpHeadersOp,
+    data: Map[String, Any],
+    env: Map[String, Any],
+    context: ActionContext,
+  )(implicit qr: QuereaseResources): List[HttpCookie] = {
+    require(op.isInstanceOf[Action.SetCookie] || op.isInstanceOf[Action.DeleteCookie])
+    useResourcesConnOrEvaluator(qr.resourcesFactory.resources, implicit res => {
+      val params = data ++ env
+      val cookieRes = Query(op.tresql.tresql, params)
+      val (nameValueCols, restCols) = cookieRes.columns.partition(c => c.name == "name" || c.name == "value")
+      cookieRes.map { cookieRow =>
+        restCols.foldLeft(HttpCookie(
+          name = cookieRes.s("name"),
+          value = if (nameValueCols.exists(_.name == "value")) cookieRes.s("value") else "deleted")
+        ) { (cookie, col) => col.name match {
+          case "expires" =>
+            val d = convertToType(cookieRow.t("expires"), ValueConverter.ClassOfString).toString.replace(" ", "T")
+            cookie.withExpires(org.apache.pekko.http.scaladsl.model.DateTime.fromIsoDateTimeString(d).get)
+          case "max_age" => cookie.withMaxAge(cookieRow.l("max_age"))
+          case "domain" => cookie.withDomain(cookieRow.s("domain"))
+          case "path" => cookie.withPath(cookieRow.s("path"))
+          case "secure" => cookie.withSecure(cookieRow.boolean("secure"))
+          case "http_only" => cookie.withHttpOnly(cookieRow.boolean("http_only"))
+          case "extension" => cookie.withExtension(cookieRow.s("extension"))
+        }}
+      }.toList
+    })
+  }
+
   protected def doSetCookie(
     op: Action.SetCookie,
     data: Map[String, Any],
     env: Map[String, Any],
     context: ActionContext,
-  )(implicit qr: QuereaseResources): `Set-Cookie` = {
-    useResourcesConnOrEvaluator(qr.resourcesFactory.resources, implicit res => {
-      val params = data ++ env
-      def q(s: String) = Query(s, params).unique[String]
-      def qb(s: String) = Query(s, params).unique[Boolean]
-      def evalP(p: String, pars: List[(String, Action.Tresql)]) =
-        pars.find(_._1 == p).map(t => q(t._2.tresql)).get
-      val (nvArg, restArgs) = op.args.partition(a => a._1 == "name" || a._1 == "value")
-      val cookieInit = HttpCookie(
-        name =  evalP("name", nvArg),
-        value = evalP("value", nvArg),
-      )
-      val cookie =
-        restArgs.foldLeft(cookieInit) {
-          case (cookie, (param, Action.Tresql(t, _, _))) => param match {
-            case "value" => cookie.withValue(q(t))
-            case "expires" =>
-              val ds = q(t)
-              cookie.withExpires(
-                org.apache.pekko.http.scaladsl.model.DateTime.fromIsoDateTimeString(ds)
-                  .getOrElse(sys.error(s"Date time must conform to format: 'yyyy-mm-ddThh:mm:ss', instead got: '$ds'")))
-            case "maxAge" => cookie.withMaxAge(q(t).toLong)
-            case "domain" => cookie.withDomain(q(t))
-            case "path" => cookie.withPath(q(t))
-            case "secure" => cookie.withSecure(qb(t))
-            case "httpOnly" => cookie.withHttpOnly(qb(t))
-            case "extension" => cookie.withExtension(q(t))
-          }
-        }
-      `Set-Cookie`(cookie)
-    })
+  )(implicit qr: QuereaseResources): List[`Set-Cookie`] = {
+    doSetOrDeleteCookie(op, data, env, context).map(`Set-Cookie`(_))
   }
 
   protected def doDeleteCookie(
@@ -993,21 +994,9 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     data: Map[String, Any],
     env: Map[String, Any],
     context: ActionContext,
-  )(implicit qr: QuereaseResources): `Set-Cookie` = {
-    useResourcesConnOrEvaluator(qr.resourcesFactory.resources, implicit res => {
-      val params = data ++ env
-      def q(s: String) = Query(s, params).unique[String]
-      val (nArg, restArgs) = op.args.partition(a => a._1 == "name")
-      val cookieInit = HttpCookie(name = q(nArg.head._2.tresql), value = "")
-      val cookie =
-        restArgs.foldLeft(cookieInit) {
-          case (cookie, (param, Action.Tresql(t, _, _))) => param match {
-            case "domain" => cookie.withDomain(q(t))
-            case "path" => cookie.withPath(q(t))
-          }
-        }
-      `Set-Cookie`(cookie.withExpires(org.apache.pekko.http.scaladsl.model.DateTime.MinValue))
-    })
+  )(implicit qr: QuereaseResources): List[`Set-Cookie`] = {
+    doSetOrDeleteCookie(op, data, env, context)
+      .map(c => `Set-Cookie`(c.withExpires(org.apache.pekko.http.scaladsl.model.DateTime.MinValue)))
   }
 
   protected def doSetHeaders(
