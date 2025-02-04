@@ -196,43 +196,46 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
   implicit val toEntityQuereaseLongResultMarshaller:      ToEntityMarshaller  [LongResult]   =
     Marshaller.combined("" + _.value)
   implicit val toEntityQuereaseStringResultMarshaller:    ToEntityMarshaller  [StringResult]     =
-    Marshaller.combined(_.value)
+    Marshaller.combined(sr => Option(sr.value).getOrElse(""))
   implicit val toEntityQuereaseNumberResultMarshaller:    ToEntityMarshaller  [NumberResult]     =
     Marshaller.combined(_.value.toString)
   implicit val toEntityQuereaseIdResultMarshaller:        ToEntityMarshaller  [IdResult]       =
     Marshaller.combined(_.toString)
   implicit def toResponseQuereaseKeyResultMarshaller:     ToResponseMarshaller[KeyResult]      =
-    Marshaller.combined((kr: KeyResult) =>
-      StatusResult(StatusCodes.SeeOther.intValue, RedirectStatus(TresqlUri.Uri(Seq(s"/data/${kr.viewName}"), kr.key)))
-    )
-  implicit val toResponseQuereaseStatusResultMarshaller:  ToResponseMarshaller[StatusResult] = {
-    Marshaller.opaque { sr =>
-      val status: StatusCode = sr.code
+    Marshaller { ec => kr =>
+      val sr = StatusResult(
+        StatusCodes.SeeOther.intValue,
+        RedirectValue(TresqlUri.Uri(Seq(s"/${config.getString("app.rest-path-base")}/${kr.viewName}"), kr.key))
+      )
+      toResponseQuereaseStatusResultMarshaller(app.WabaseResult(null, sr))(ec)(sr)
+    }
+  implicit def toResponseQuereaseStatusResultMarshaller(wr: app.WabaseResult)(implicit ec: ExecutionContext):  ToResponseMarshaller[StatusResult] = {
+    val str = wr.result.asInstanceOf[StatusResult]
+    val statusMarshaller: ToResponseMarshaller[StatusResult] =
+      str.value match {
+        case RedirectValue(value) =>
+          Marshaller.opaque { _ =>
+            require(value != null, s"Error marshalling redirect status result - no uri.")
+            HttpResponse(headers = Seq(Location(app.qe.tresqlUri.uri(value))))
+          }
+        case ResultValue(value) => Marshaller { _ => _ =>
+           toResponseWabaseResultMarshaller(ec)(wr.copy(result = value))
+        }
+        case null => Marshaller.combined(_ => "")
+      }
+    statusMarshaller.map { response =>
       def setHeaders(resp: HttpResponse) = {
-        val (oct, h) = WabaseService.partitionHeaders(sr.headers)
+        val (oct, h) = WabaseService.partitionHeaders(str.headers)
         val respWithCt =
           if (resp.entity.isKnownEmpty()) resp
           else oct.map(ct => resp.withEntity(resp.entity.withContentType(ct))).getOrElse(resp)
         if (h.isEmpty) respWithCt else respWithCt.mapHeaders(_ ++ h)
       }
       def setUserAttrs(resp: HttpResponse) =
-        if (sr.user != null)
-          resp.withAttributes(Map(AttributeKey[WabaseUser](WabaseService.WabaseUserAttributeName) -> sr.user))
+        if (str.user != null)
+          resp.withAttributes(Map(AttributeKey[WabaseUser](WabaseService.WabaseUserAttributeName) -> str.user))
         else resp
-      setUserAttrs(
-        setHeaders(
-          sr.value match {
-            case RedirectStatus(value) =>
-              require(value != null, s"Error marshalling redirect status result - no uri.")
-              HttpResponse(status, headers = Seq(Location(app.qe.tresqlUri.uri(value))))
-            case StringStatus(value) =>
-              HttpResponse(status, entity = HttpEntity.Strict(ContentTypes.`text/plain(UTF-8)`,
-                if (value == null) ByteString.empty else ByteString(value)))
-            case null =>
-              HttpResponse(status, entity = HttpEntity.Empty)
-          }
-        )
-      )
+      setUserAttrs(setHeaders(response)).withStatus(str.code)
     }
   }
   implicit val toEntityQuereaseNoResultMarshaller:          ToEntityMarshaller  [NoResult.type]  =
@@ -377,7 +380,7 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
       case id: IdResult       => (toEntityQuereaseIdResultMarshaller:         ToResponseMarshaller[IdResult]      )(id)
       case kr: KeyResult      => (toResponseQuereaseKeyResultMarshaller:      ToResponseMarshaller[KeyResult]     )(kr)
       case ar: AnyResult      => (toEntityAnyResultMarshaller:                ToResponseMarshaller[AnyResult]     )(ar)
-      case sr: StatusResult   => (toResponseQuereaseStatusResultMarshaller:   ToResponseMarshaller[StatusResult]  )(sr)
+      case sr: StatusResult   => (toResponseQuereaseStatusResultMarshaller(wr):   ToResponseMarshaller[StatusResult]  )(sr)
       case no: NoResult.type  => (toEntityQuereaseNoResultMarshaller:         ToResponseMarshaller[NoResult.type] )(no)
       case dr: QuereaseDelRes => (toEntityQuereaseDeleteResultMarshaller:     ToResponseMarshaller[QuereaseDelRes])(dr)
       case fr: FileResult     => (toResponseFileResultMarshaller:             ToResponseMarshaller[FileResult]    )(fr)

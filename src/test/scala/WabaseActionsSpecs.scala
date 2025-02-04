@@ -11,6 +11,7 @@ import org.apache.pekko.http.scaladsl.testkit.ScalatestRouteTest
 import org.apache.pekko.http.scaladsl.unmarshalling.Unmarshal
 import org.apache.pekko.stream.scaladsl.{Source, StreamConverters}
 import org.apache.pekko.util.ByteString
+import org.mojoz.metadata.ViewDef
 import org.mojoz.querease.{TresqlMetadata, ValidationException, ValidationResult}
 import org.mojoz.querease.ValueConverter.ClassOfJavaSqlDate
 import org.scalatest.flatspec.{AsyncFlatSpec, AsyncFlatSpecLike}
@@ -226,28 +227,32 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     implicit val httpReq: HttpRequest = null
     app.doWabaseAction(action, view, keyValues, params, values)
       .map(_.result)
-      .flatMap {
-        case sr: QuereaseSerializedResult =>
-          val filter =
-            if (sr.resultFilter == null) new ResultRenderer.ViewFieldFilter(view, app.qe.nameToViewDef)
-            else sr.resultFilter
-          implicit val marshaller     = marshallers.toEntityQuereaseSerializedResultMarshaller(view, filter)
-          Marshal(sr).to[MessageEntity]
-            .flatMap { entity =>
-              if (filter.name == view) {
-                implicit val unmarshaller_1 = marshallers.toMapUnmarshallerForView(view)
-                implicit val unmarshaller_2 = marshallers.toSeqOfMapsUnmarshallerForView(view)
-                if  (sr.isCollection)
-                  Unmarshal(entity).to[Seq[Map[String, Any]]]
-                else Unmarshal(entity).to[Map[String, Any]]
-              }else Future.successful {
-                val in = entity.dataBytes.runWith(StreamConverters.asInputStream(1.second))
-                new CborOrJsonAnyValueDecoder().decodeFromInputStream(in)
-              }
-            }
-            .map(r => if (removeIdsFlag) removeIds(r) else r)
-        case r => Future.successful(r)
-      }
+      .flatMap(processResult(_, view, removeIdsFlag))
+  }
+
+  protected def processResult(r: QuereaseResult, view: String, removeIdsFlag: Boolean): Future[Any] = r match {
+    case sr@StatusResult(_, ResultValue(value: QuereaseSerializedResult), _, _) =>
+      processResult(value, view, removeIdsFlag).map(r => sr.copy(value = ResultValue(AnyResult(r))))
+    case sr: QuereaseSerializedResult =>
+      val filter =
+        if (sr.resultFilter == null) new ResultRenderer.ViewFieldFilter(view, app.qe.nameToViewDef)
+        else sr.resultFilter
+      implicit val marshaller     = marshallers.toEntityQuereaseSerializedResultMarshaller(view, filter)
+      Marshal(sr).to[MessageEntity]
+        .flatMap { entity =>
+          if (filter.name == view) {
+            implicit val unmarshaller_1 = marshallers.toMapUnmarshallerForView(view)
+            implicit val unmarshaller_2 = marshallers.toSeqOfMapsUnmarshallerForView(view)
+            if  (sr.isCollection)
+              Unmarshal(entity).to[Seq[Map[String, Any]]]
+            else Unmarshal(entity).to[Map[String, Any]]
+          } else Future.successful {
+            val in = entity.dataBytes.runWith(StreamConverters.asInputStream(1.second))
+            new CborOrJsonAnyValueDecoder().decodeFromInputStream(in)
+          }
+        }
+        .map(r => if (removeIdsFlag) removeIds(r) else r)
+    case r => Future.successful(r)
   }
 
   protected def unmarshalResponse(resp: HttpResponse): Future[Any] = {
@@ -330,7 +335,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     recoverToExceptionIf[ValidationException](
       doAction("save", "person", person).flatMap { _ =>
         doAction("save", "person_health", vaccine).flatMap { r =>
-          r shouldBe StatusResult(303, RedirectStatus(TresqlUri.Uri(Seq("person_health"), List("Mr. Gunza", "2021-06-05"), ListMap("par1" -> "val1", "par2" -> "val2"))))
+          r shouldBe StatusResult(303, RedirectValue(TresqlUri.Uri(Seq("person_health"), List("Mr. Gunza", "2021-06-05"), ListMap("par1" -> "val1", "par2" -> "val2"))))
           doAction("save", "purchase", purchase)
         }
       }
@@ -400,7 +405,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     )
     doAction("save", "person", person).flatMap { _ =>
       doAction("save", "person_health", vaccine).flatMap { r =>
-        r shouldBe StatusResult(303, RedirectStatus(TresqlUri.Uri(Seq("person_health"), List("Mr. Mario", "2021-08-15"), ListMap("par1" -> "val1", "par2" -> "val2"))))
+        r shouldBe StatusResult(303, RedirectValue(TresqlUri.Uri(Seq("person_health"), List("Mr. Mario", "2021-08-15"), ListMap("par1" -> "val1", "par2" -> "val2"))))
         doAction("save", "payment", payment).flatMap { _ =>
           doAction("save", "purchase", purchase)
         }
@@ -617,7 +622,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         }
       t2 <-
         doAction("save", "status_test_1", Map("status" -> "ok")).map {
-          _ shouldBe StatusResult(200, StringStatus("ok"))
+          _ shouldBe StatusResult(200, ResultValue(StringResult("ok")))
         }
       t3 <-
         doAction("count", "status_test_1", Map("status" -> "ok")).map {
@@ -625,51 +630,51 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         }
       t4 <-
         doAction("list", "status_test_1", Map("status" -> "redirect")).map {
-          _ shouldBe StatusResult(303, RedirectStatus(TresqlUri.Uri(Seq("/data"), List("path", "redirect"), ListMap())))
+          _ shouldBe StatusResult(303, RedirectValue(TresqlUri.Uri(Seq("/data"), List("path", "redirect"), ListMap())))
         }
       t5 <-
         doAction("get", "status_test_2", Map("id" -> 1)).map {
-          _ shouldBe StatusResult(303, RedirectStatus(TresqlUri.Uri(Seq("data/path"), List("1"), ListMap())))
+          _ shouldBe StatusResult(303, RedirectValue(TresqlUri.Uri(Seq("data/path"), List("1"), ListMap())))
         }
       t6 <-
         doAction("save", "status_test_2", Map("id" -> 1)).map {
-          _ shouldBe StatusResult(303, RedirectStatus(TresqlUri.Uri(Seq("data/path"), Nil, ListMap("id" -> "1"))))
+          _ shouldBe StatusResult(303, RedirectValue(TresqlUri.Uri(Seq("data/path"), Nil, ListMap("id" -> "1"))))
         }
       t7 <-
         doAction("count", "status_test_2", Map()).map {
-          _ shouldBe StatusResult(303, RedirectStatus(TresqlUri.Uri(Seq("data/path"), Nil, ListMap())))
+          _ shouldBe StatusResult(303, RedirectValue(TresqlUri.Uri(Seq("data/path"), Nil, ListMap())))
         }
       t8 <-
         doAction("list", "status_test_2", Map()).map {
-          _ shouldBe StatusResult(303, RedirectStatus(TresqlUri.Uri(Seq("data/path"), Nil, ListMap())))
+          _ shouldBe StatusResult(303, RedirectValue(TresqlUri.Uri(Seq("data/path"), Nil, ListMap())))
         }
       t9 <-
         doAction("save", "status_test_3", Map()).map {
-          _ shouldBe StatusResult(303, RedirectStatus(TresqlUri.Uri(Seq("303"), List(), ListMap())))
+          _ shouldBe StatusResult(303, RedirectValue(TresqlUri.Uri(Seq("303"), List(), ListMap())))
         }
       t10 <-
         doAction("get", "status_test_3", Map("id" -> 2)).map {
-          _ shouldBe StatusResult(303, RedirectStatus(TresqlUri.Uri(Seq("data/path/2"), List(), ListMap())))
+          _ shouldBe StatusResult(303, RedirectValue(TresqlUri.Uri(Seq("data/path/2"), List(), ListMap())))
         }
       t11 <-
         doAction("list", "status_test_3", Map("id" -> 3)).map {
-          _ shouldBe StatusResult(303, RedirectStatus(TresqlUri.Uri(Seq("data/path"), List("3"), ListMap("par1" -> "val-of-par1"))))
+          _ shouldBe StatusResult(303, RedirectValue(TresqlUri.Uri(Seq("data/path"), List("3"), ListMap("par1" -> "val-of-par1"))))
         }
       t12 <-
         doAction("count", "status_test_3", Map("id" -> 4)).map {
-          _ shouldBe StatusResult(303, RedirectStatus(TresqlUri.Uri(Seq(null), List("4"), ListMap("par1" -> "5"))))
+          _ shouldBe StatusResult(303, RedirectValue(TresqlUri.Uri(Seq(null), List("4"), ListMap("par1" -> "5"))))
         }
       t13 <-
         doAction("save", "status_test_4", Map("id" -> null)).map {
-          _ shouldBe StatusResult(303, RedirectStatus(TresqlUri.Uri(Seq("data/path"), List(null), ListMap())))
+          _ shouldBe StatusResult(303, RedirectValue(TresqlUri.Uri(Seq("data/path"), List(null), ListMap())))
         }
       t14 <-
         doAction("get", "status_test_4", Map("id" -> null)).map {
-          _ shouldBe StatusResult(303, RedirectStatus(TresqlUri.Uri(Seq("data/path"), List(), ListMap("id" -> null))))
+          _ shouldBe StatusResult(303, RedirectValue(TresqlUri.Uri(Seq("data/path"), List(), ListMap("id" -> null))))
         }
       t15 <-
         doAction("list", "status_test_4", Map("id" -> null)).map {
-          _ shouldBe StatusResult(303, RedirectStatus(TresqlUri.Uri(Seq(null), List(), ListMap())))
+          _ shouldBe StatusResult(303, RedirectValue(TresqlUri.Uri(Seq(null), List(), ListMap())))
         }
     } yield {
       t15
@@ -679,7 +684,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
   it should "do invocations" in {
     for {
       t1 <- doAction("get", "invocation_test_1", Map()).map {
-        _ shouldBe StatusResult(200, StringStatus("val1 val2"))
+        _ shouldBe StatusResult(200, ResultValue(StringResult("val1 val2")))
       }
       t2 <- doAction("save", "invocation_test_1", Map()).map {
         _ shouldBe MapResult(Map("nr" -> 2.5))
@@ -746,16 +751,16 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         _ shouldBe Map("code" -> "if_test_1", "parent" -> null, "value" -> "no_value")
       }
       t3 <- doAction("get", "if_test_2", Map("value" -> true)).map {
-        _ shouldBe StatusResult(200, StringStatus("yes"))
+        _ shouldBe StatusResult(200, ResultValue(StringResult("yes")))
       }
       t4 <- doAction("get", "if_test_2", Map("value" -> false)).map {
-        _ shouldBe StatusResult(200, StringStatus(null))
+        _ shouldBe StatusResult(200, ResultValue(StringResult(null)))
       }
       t5 <- doAction("list", "if_test_2", Map("value" -> true)).map {
-        _ shouldBe StatusResult(200, StringStatus("yes"))
+        _ shouldBe StatusResult(200, ResultValue(StringResult("yes")))
       }
       t6 <- doAction("list", "if_test_2", Map("value" -> false)).map {
-        _ shouldBe StatusResult(200, StringStatus("init"))
+        _ shouldBe StatusResult(200, ResultValue(StringResult("init")))
       }
       t7 <- doAction("get", "if_test_1", Map("code" -> "true")).map {
         _ shouldBe MapResult(ListMap("code" -> "true", "parent" -> null, "value" -> "Value"))
@@ -904,15 +909,15 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         .flatMap(res => unmarshalResponse(res.response))
         .map { _ shouldBe "val1 val2" }
       t2 <- doAction("list", "http_test_2", Map())
-        .map { _ shouldBe StatusResult(200, StringStatus("val1 val2")) }
+        .map { _ shouldBe StatusResult(200, ResultValue(StringResult("val1 val2"))) }
       t3 <- doAction("insert", "http_test_2", Map())
         .map {
-          _ shouldBe StatusResult(200, StringStatus("person_health?/Mr.%20Mario/2022-04-11?par1=val1&par2=val2"))
+          _ shouldBe StatusResult(200, ResultValue(StringResult("person_health?/Mr.%20Mario/2022-04-11?par1=val1&par2=val2")))
         }
       t4 <- doAction("update", "http_test_2", Map("name" -> "Mr. Gunza",
         "manipulation_date" -> "2022-09-10", "vaccine" -> "Pfizer"))
         .mapTo[HttpResult]
-        .flatMap(res => unmarshalResponse(res.response))
+        .flatMap{res => unmarshalResponse(res.response)}
         .map { _ shouldBe "person_health?/Mr.%20Gunza/2022-09-10?par1=val1&par2=val2" }
       t5 <- doAction("insert", "forest", Map("nr" -> "OF1", "owner" -> "Pedro",
         "area" -> 1000, "trees" -> "oaks"))
@@ -1007,13 +1012,13 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
   it should "process not found properly" in {
     for {
       t1 <- doAction("get", "not_found_test", Map("name" -> "Zizo"))
-        .map { _ shouldBe StatusResult(404, StringStatus("not found")) }
+        .map { _ shouldBe StatusResult(404, ResultValue(StringResult("not found"))) }
       t2 <- doAction("get", "not_found_test", Map("name" -> "Pedro"))
         .map {
           _ shouldBe Map("name" -> "Pedro", "address" -> "Morocco")
         }
       t3 <- doAction("get", "not_found_test_2", Map("name" -> "Zizo"))
-        .map { _ shouldBe StatusResult(404, StringStatus("not found")) }
+        .map { _ shouldBe StatusResult(404, ResultValue(StringResult("not found"))) }
       t4 <- doAction("get", "not_found_test_2", Map("name" -> "Pedro"))
         .map {
           _ shouldBe MapResult(Map("name" -> "Pedro", "address" -> "Morocco"))
@@ -1278,10 +1283,10 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     for {
       t1 <-
         doAction("get", "job_call_test1", Map())
-          .map(_ shouldBe StatusResult(200, StringStatus("Hello from test_job1!")))
+          .map(_ shouldBe StatusResult(200, ResultValue(StringResult("Hello from test_job1!"))))
       t2 <-
         doAction("get", "job_call_test1", Map("name" -> "John"))
-          .map(_ shouldBe StatusResult(200, StringStatus("Hello John from test_job1!")))
+          .map(_ shouldBe StatusResult(200, ResultValue(StringResult("Hello John from test_job1!"))))
     } yield t1
   }
 

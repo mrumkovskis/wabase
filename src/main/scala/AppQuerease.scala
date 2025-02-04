@@ -59,9 +59,9 @@ case class ResourcesFactory(
     else this
 }
 
-sealed trait StatusValue
-case class RedirectStatus(value: TresqlUri.Uri) extends StatusValue
-case class StringStatus(value: String) extends StatusValue
+sealed trait ResponseValue
+case class RedirectValue(value: TresqlUri.Uri) extends ResponseValue
+case class ResultValue(value: QuereaseResult) extends ResponseValue
 sealed trait QuereaseResult
 sealed trait QuereaseCloseableResult extends QuereaseResult
 /** Data result can conform to view structure */
@@ -83,7 +83,7 @@ case class IdResult(id: Any, name: String) extends QuereaseResult {
 case class KeyResult(ir: IdResult, viewName: String, key: Seq[Any]) extends QuereaseResult
 case class AnyResult(result: Any) extends QuereaseResult
 case class QuereaseDeleteResult(count: Int) extends QuereaseResult
-case class StatusResult(code: Int, value: StatusValue, headers: List[HttpHeader] = Nil, user: WabaseUser = null) extends QuereaseResult
+case class StatusResult(code: Int, value: ResponseValue, headers: List[HttpHeader] = Nil, user: WabaseUser = null) extends QuereaseResult
 case class ResourceResult(resource: String, contentType: ContentType, httpReq: HttpRequest) extends DataResult
 case class FileInfoResult(fileInfo: FileInfo) extends QuereaseResult
 case class FileResult(fileInfo: FileInfo, fileStreamer: FileStreamer) extends DataResult
@@ -329,6 +329,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
               parameterFactory)
             import resFac._
             def processResult(res: QuereaseResult, cleanup: Option[Throwable] => Unit): QuereaseResult = res match {
+              case sr@StatusResult(_, ResultValue(result), _, _) =>
+                sr.copy(value = ResultValue(processResult(result, cleanup)))
               case DbResult(result, cl) =>
                 // close outer resources
                 cleanup(None)
@@ -922,7 +924,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
    env: Map[String, Any],
    context: ActionContext,
   )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
-    val Action.Status(code, hops, bodyTresql) = op
+    import qr.ec
+    val Action.Status(code, statusMode, hops, body) = op
     val (ua, hs) = hops.partition(_.isInstanceOf[Action.SetUserAttributes])
     val user = if (ua.isEmpty) null else ua.foldLeft(WabaseUser(Map())) { (u, ua) =>
       WabaseUser(u.properties ++
@@ -934,20 +937,28 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case sh: Action.SetHttpHeaders => r ++= doSetHeaders(sh, data, env, context)
       case x => sys.error(s"Cannot convert to http header: $x")
     }).toList
-    Option(bodyTresql).map { bt =>
+    Option(body).map { b =>
       import org.apache.pekko.http.scaladsl.model.StatusCode._
-      val statusValue =
-        if (code.isRedirection()) {
-          val truri = tresqlUri.tresqlUriValue(TresqlUri.Tresql(bt.tresql))(
-            Query, data ++ env, qr.resourcesFactory.resources)
-          RedirectStatus(truri)
-        } else {
-          import qr.resourcesFactory.resources
-          Query.uniqueOption[String](bt.tresql, data ++ env).map(StringStatus).orNull
+      if (code.isRedirection()) {
+        b match {
+          case Action.Tresql(tresql, _, _) =>
+            val truri = tresqlUri.tresqlUriValue(TresqlUri.Tresql(tresql))(
+              Query, data ++ env, qr.resourcesFactory.resources)
+            Future.successful(RedirectValue(truri))
+          case _ => sys.error(s"Redirect operation body must be tresql returning single row, instead found: '$b'")
         }
-      statusValue
-    }.map(sv => Future.successful(StatusResult(code, sv, headers, user)))
-    .getOrElse(Future.successful(StatusResult(code, null, headers, user)))
+      } else {
+        if (statusMode) b match {
+          case Action.Tresql(tresql, _, _) =>
+            val r = Query(tresql, data ++ env)(qr.resourcesFactory.resources)
+              .uniqueOption[String].map(v => ResultValue(StringResult(v))).orNull
+            Future.successful(r)
+          case x => sys.error(s"Status mode supports only tresql op, instead found: $x")
+        } else doActionOp(b, data, env, context).map(ResultValue(_))
+      }
+    }
+      .map(_.map(StatusResult(code, _, headers, user)))
+      .getOrElse(Future.successful(StatusResult(code, null, headers, user)))
   }
 
   protected def doSetOrDeleteCookie(
@@ -1725,8 +1736,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       }
       case StatusResult(code, value, _, _) => Map("code" -> code, "value" ->
         (value match {
-          case StringStatus(v) => v
-          case RedirectStatus(value) => tresqlUri.uri(value).toString()
+          case ResultValue(v) => v
+          case RedirectValue(value) => tresqlUri.uri(value).toString()
         }))
       case fi: FileInfoResult => fi.fileInfo.toMap
       case fr: FileResult => fileHttpEntity(fr).map(objFromHttpEntity(_, null, false))
@@ -1777,7 +1788,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       conformTo.isCollection
     )
 
-  private def notFound = StatusResult(StatusCodes.NotFound.intValue, StringStatus("not found"))
+  private def notFound = StatusResult(StatusCodes.NotFound.intValue, ResultValue(StringResult("not found")))
 
   private def invokeFunction(
     className: String,

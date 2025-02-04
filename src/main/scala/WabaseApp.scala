@@ -124,57 +124,7 @@ trait WabaseApp[User] {
     import context.as
     action(actionContext)
       .run
-      .flatMap {
-        case WabaseResult(ac, QuereaseResultWithCleanup(result, cleanup)) =>
-          sealed trait Res
-          case class SourceRes(src: Source[ByteString, _],
-                               filter: ResultRenderer.ResultFilter,
-                               isCollection: Boolean) extends Res
-          case class StrictRes(result: QuereaseResult) extends Res
-          def res(r: QuereaseResult, filter: ResultRenderer.ResultFilter): Res = {
-            def single_res(sr: SingleValueResult[_]) = sr.value match {
-              case m: Map[String@unchecked, _] =>
-                if (filter == ResultRenderer.NoFilter) StrictRes(AnyResult(m))
-                else StrictRes(MapResult(m)) // return strict since structure may not conform to tresql result so serialization might fail
-              case s: Seq[Map[String, _]@unchecked] => SourceRes(DataSerializer.source(() => s.iterator), filter, true) // serialization might fail if data does not conform to tresql result table structure
-              case x => StrictRes(StringResult(String.valueOf(x)))
-            }
-            r match {
-              case TresqlResult(tr) => tr match {
-                case r: SingleValueResult[_] => single_res(r)
-                case _ => SourceRes(TresqlResultSerializer.source(() => tr), filter, true)
-              }
-              case TresqlSingleRowResult(row) => row match {
-                case r: SingleValueResult[_] => single_res(r)
-                case _ => SourceRes(TresqlResultSerializer.rowSource(() => row), filter, false)
-              }
-              case IteratorResult(ir) =>
-                SourceRes(DataSerializer.source(() => ir), filter, true)
-              case CompatibleResult(dr: QuereaseCloseableResult, filter, _) => res(dr, filter)
-              case x => StrictRes(x)
-            }
-          }
-          res(result, null) match {
-            case SourceRes(resultSource, filter, isCollection) =>
-              val addResultToContext = shouldAddResultToContext(context)
-              serializeResult(SerializationBufferSize, viewSerializationBufferMaxFileSize(ac.viewName),
-                resultSource, cleanup, if (addResultToContext) 2 else 1)
-                .map { srs =>
-                  val qsr = QuereaseSerializedResult(srs.head, filter, isCollection)
-                  import context._
-                  val ac =
-                    if (addResultToContext) srs.tail.head match {
-                      case CompleteResult(bs) => context.copy(serializedResult = Source.single(bs))
-                      case IncompleteResultSource(s) => context.copy(serializedResult = s)
-                    } else context
-                  WabaseResult(ac, qsr)
-                }
-            case StrictRes(strictRes) =>
-              cleanup(None)
-              Future.successful(WabaseResult(ac, strictRes))
-          }
-        case wr => Future.successful(wr)
-      }
+      .flatMap(mayBeSerializeResult(context, _))
       .andThen {
         case Success(WabaseResult(ctx, res)) => this.afterWabaseAction(ctx, Success(res))
         case Failure(error) => this.afterWabaseAction(context, Failure[QuereaseResult](error))
@@ -349,6 +299,61 @@ trait WabaseApp[User] {
         case _ => cleanupFun(None)
       }
     resultF
+  }
+
+  def mayBeSerializeResult(context: AppActionContext, wr: WabaseResult): Future[WabaseResult] = wr match {
+    case wr@WabaseResult(_, sr@StatusResult(_, ResultValue(r), _, _)) =>
+      mayBeSerializeResult(context, wr.copy(result = r))
+        .map{nwr => nwr.copy(result = sr.copy(value = ResultValue(nwr.result)))}(context.ec)
+    case WabaseResult(ac, QuereaseResultWithCleanup(result, cleanup)) =>
+      sealed trait Res
+      case class SourceRes(src: Source[ByteString, _],
+                           filter: ResultRenderer.ResultFilter,
+                           isCollection: Boolean) extends Res
+      case class StrictRes(result: QuereaseResult) extends Res
+      def res(r: QuereaseResult, filter: ResultRenderer.ResultFilter): Res = {
+        def single_res(sr: SingleValueResult[_]) = sr.value match {
+          case m: Map[String@unchecked, _] =>
+            if (filter == ResultRenderer.NoFilter) StrictRes(AnyResult(m))
+            else StrictRes(MapResult(m)) // return strict since structure may not conform to tresql result so serialization might fail
+          case s: Seq[Map[String, _]@unchecked] => SourceRes(DataSerializer.source(() => s.iterator), filter, true) // serialization might fail if data does not conform to tresql result table structure
+          case x => StrictRes(StringResult(String.valueOf(x)))
+        }
+        r match {
+          case TresqlResult(tr) => tr match {
+            case r: SingleValueResult[_] => single_res(r)
+            case _ => SourceRes(TresqlResultSerializer.source(() => tr), filter, true)
+          }
+          case TresqlSingleRowResult(row) => row match {
+            case r: SingleValueResult[_] => single_res(r)
+            case _ => SourceRes(TresqlResultSerializer.rowSource(() => row), filter, false)
+          }
+          case IteratorResult(ir) =>
+            SourceRes(DataSerializer.source(() => ir), filter, true)
+          case CompatibleResult(dr: QuereaseCloseableResult, filter, _) => res(dr, filter)
+          case x => StrictRes(x)
+        }
+      }
+      res(result, null) match {
+        case SourceRes(resultSource, filter, isCollection) =>
+          import context._
+          val addResultToContext = shouldAddResultToContext(context)
+          serializeResult(SerializationBufferSize, viewSerializationBufferMaxFileSize(ac.viewName),
+            resultSource, cleanup, if (addResultToContext) 2 else 1)
+            .map { srs =>
+              val qsr = QuereaseSerializedResult(srs.head, filter, isCollection)
+              val ac =
+                if (addResultToContext) srs.tail.head match {
+                  case CompleteResult(bs) => context.copy(serializedResult = Source.single(bs))
+                  case IncompleteResultSource(s) => context.copy(serializedResult = s)
+                } else context
+              WabaseResult(ac, qsr)
+            }
+        case StrictRes(strictRes) =>
+          cleanup(None)
+          Future.successful(WabaseResult(ac, strictRes))
+      }
+    case wr => Future.successful(wr)
   }
 
   /** Converts key value from uri representation to appropriate type.

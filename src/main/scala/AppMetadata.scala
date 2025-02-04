@@ -792,7 +792,6 @@ class OpParser(viewName: String, cache: OpParser.Cache)
   val ConfPropRegex = """\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*(?:\.\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*+)*""".r
   val HttpClientFileStreamerNameRegex = """\w+(-\w+)*""".r
   val RedirectOpRegex = """redirect\s+""".r
-  val StatusOpRegex = """status\s+""".r
 
   def parseOperation(op: String): Op = cache.get(op).getOrElse {
     val parsedOp = phrase(operation)(new scala.util.parsing.input.CharSequenceReader(op)) match {
@@ -930,17 +929,19 @@ class OpParser(viewName: String, cache: OpParser.Cache)
     })
   } named "named-ops"
   def redirect: MemParser[Status] = (RedirectOpRegex ~> setHttpHeadersOps ~ tresqlOp) ^^ {
-    case hops ~ tr => Action.Status(303, hops, tr)
+    case hops ~ tr => Action.Status(303, true, hops, tr)
   } named "redirect-op"
-  def status: MemParser[Status] = (StatusOpRegex ~> "\\w+".r ~ setHttpHeadersOps ~ opt(tresqlOp)) ^^ {
-    case c ~ hops ~ body =>
+  def status: MemParser[Status] = (("status" | "response") ~ ("\\w+".r ~ setHttpHeadersOps ~ opt(operation))) ^? ({
+    case sor ~ (c ~ hops ~ body) if sor != "status" || body.isEmpty || body.exists(_.isInstanceOf[Tresql])  =>
       val code = c match {
         case "ok" => 200
         case x if Try(x.toInt).toOption.isDefined => x.toInt
         case x => throw new IllegalArgumentException(s"Status code must be 'ok' or integer, instead '$x' encountered in $viewName.")
       }
-      Action.Status(code, hops, body.orNull)
-  } named "status-op"
+      Action.Status(code, sor == "status", hops, body.orNull)
+  }, {
+    case _ ~ (_ ~ _ ~ b) => sys.error(s"For status command, body operation must be tresql instead found: $b")
+  }) named "status-op"
   /* Cannot be named mem parser since depends on parameter. */
   def setOrDeleteCookie(cmd: String, mandatoryPars: Set[String] = Set()): Parser[SetHttpHeadersOp] =
     ((cmd ~ "(") ~> namedOps(allowedCookiePars, mandatoryPars, ",") <~ ")") ^? ({
@@ -1159,8 +1160,9 @@ object AppMetadata extends Loggable {
                           conformTo: Option[OpResultType] = None) extends CastableOp
     case class Status(
       code: Int,
+      statusMode: Boolean,  // if status mode = true, body op must be tresql and is executed as unique[String]
       setHttpHeaders: List[SetHttpHeadersOp] = Nil,
-      bodyTresql: Tresql = null,
+      body: Op = null,
     ) extends Op
     case class VariableTransforms(transforms: List[VariableTransform]) extends Op
     case class Foreach(initOp: Op, action: Action) extends Op
@@ -1311,8 +1313,8 @@ object AppMetadata extends Loggable {
           def us(s: State[T], v: T) = { s.copy(value = v) }
           {
             case t: Tresql => us(state, nv(state.value)(t))
-            case Status(_, hops, bodyTresql) =>
-              hops.foldLeft(us(state, nv(state.value)(bodyTresql))){ (resSt, hdop) =>
+            case Status(_, _, hops, body) =>
+              hops.foldLeft(opTrTr(body)){ (resSt, hdop) =>
                 us(resSt, nv(resSt.value)(hdop.tresql))
               }
             case Resource(nameTresql, contentTypeTresql) =>
