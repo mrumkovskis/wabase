@@ -1,5 +1,6 @@
 package org.wabase
 
+import com.typesafe.config.ConfigFactory
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.marshalling.Marshal
 import org.apache.pekko.http.scaladsl.model.HttpHeader.ParsingResult.Ok
@@ -153,7 +154,6 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     }
     app = new TestApp with NoValidation {
       override val DefaultCp: PoolName = PoolName("wabase_db")
-      override protected val fileStreamerConnectionPool: PoolName = DefaultCp
       override def dbAccessDelegate = db
       override protected def initQuerease = querease
       override protected def shouldAddResultToContext(context: AppActionContext): Boolean =
@@ -175,8 +175,11 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
             }(scala.concurrent.ExecutionContext.global) // do not use AsyncFlatSpec context so that no blocking occurs
         }
 
-      override lazy val rootPath =
+      private val root_path =
         new File(System.getProperty("java.io.tmpdir"), "wabase-actions-specs/" + UUID.randomUUID().toString).getPath
+      override lazy val fileStreamerConfig =
+        ConfigFactory.parseString(s"files.path = $root_path")
+          .withFallback(FileStreamerConfig.configs("main"))
       override implicit lazy val httpClients: WabaseHttpClients =
         WabaseHttpClients(Map("default-wabase-http-client" -> (_ => Route.toFunction(service.route)(service.system)(_))))
     }

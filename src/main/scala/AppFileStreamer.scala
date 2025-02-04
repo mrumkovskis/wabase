@@ -111,22 +111,33 @@ object AppFileStreamer {
 }
 
 trait AppFileStreamerConfig {
-  lazy val rootPath: String             = null
-  lazy val file_info_table: String      = null
-  lazy val file_body_info_table: String = null
-  val shaColName: String = "sha_256"
+  def rootPath: String
+  def file_info_table: String
+  def file_body_info_table: String
+  def shaColName: String
 }
 
-trait AppFileStreamer[User] extends AppFileStreamerConfig with Loggable { this: AppConfig with DbAccessProvider =>
+trait AppFileStreamer[User] extends AppFileStreamerConfig { this: DbAccessProvider =>
   
-  protected def fileStreamerConnectionPool: PoolName = DEFAULT_CP
+  override def rootPath: String             = fileStreamer.rootPath
+  override def file_info_table: String      = fileStreamer.file_info_table
+  override def file_body_info_table: String = fileStreamer.file_body_info_table
+  override def shaColName: String           = fileStreamer.shaColName
 
-  override lazy val rootPath = appConfig.getString("files.path").replaceAll("/+$", "")
-  override lazy val file_info_table      = "file_info"
-  override lazy val file_body_info_table = "file_body_info"
-
+  lazy val fileStreamerConfig: Config = {
+    import FileStreamerConfig.configs
+    if (configs.size == 1)
+      configs.head._2
+    else configs.getOrElse("main",
+      sys.error(
+        "Single or 'main' file-streamer should be configured for this application. " +
+        "See 'file-streamer' in reference.conf"
+      )
+    )
+  }
   lazy val fileStreamer: FileStreamer =
-    new FileStreamer(this, fileStreamerConnectionPool)
+    new FileStreamer(fileStreamerConfig, this)
+
 
   import AppFileStreamer._
 
@@ -149,32 +160,29 @@ trait AppFileStreamer[User] extends AppFileStreamerConfig with Loggable { this: 
 }
 
 class FileStreamer(
-  fsCfg:  AppFileStreamerConfig with AppConfig with DbAccessProvider,
-  fsPoolName: PoolName = DEFAULT_CP,
-) extends AppFileStreamerConfig with AppConfig with DbAccessProvider with Loggable {
+  fsCfg:            Config,
+  dbAccessProvider: DbAccessProvider,
+) extends AppFileStreamerConfig with Loggable {
 
-  override lazy val appConfig: Config             = fsCfg.appConfig
-  override def dbAccess: DbAccess                 = fsCfg.dbAccess
+  override val rootPath: String             = fsCfg.getString("files.path").replaceAll("/+$", "")
+  override val file_info_table: String      = fsCfg.getString("file-info-table")
+  override val file_body_info_table: String = fsCfg.getString("file-body-info-table")
+  override val shaColName: String           = fsCfg.getString("sha-col-name")
+  val connectionPoolName: String            = fsCfg.getString("cp")
+  val queryTimeoutSeconds: Int              = fsCfg.getDuration("jdbc.query-timeout").toSeconds.toInt
 
-  override lazy val rootPath: String              = fsCfg.rootPath
-  override lazy val file_info_table: String       = fsCfg.file_info_table
-  override lazy val file_body_info_table: String  = fsCfg.file_body_info_table
-  override val shaColName: String                 = fsCfg.shaColName
-
-  protected def fileStreamerConnectionPool: PoolName = fsPoolName
-
-  private implicit lazy val queryTimeout: QueryTimeout = DefaultQueryTimeout
-
-  import AppFileStreamer._
-
-  private lazy val db = dbAccess
-
-  private lazy val fileInfoInsert =
+  private val fileInfoInsert =
     s"+$file_info_table {id, upload_time, content_type, $shaColName, filename} " +
       s"[#$file_info_table, :upload_time, :content_type, :sha_256, :filename]"
-  private lazy val fileInfoSelect =
+  private val fileInfoSelect =
     s"$file_info_table f; f/$file_body_info_table b?[id = :id][f.$shaColName = :sha_256] " +
       s"{id, filename, upload_time, content_type, f.$shaColName sha_256, size, path}@(1)"
+
+  private val fileStreamerConnectionPool: PoolName = PoolName(connectionPoolName)
+  private implicit val queryTimeout: QueryTimeout  = QueryTimeout(queryTimeoutSeconds)
+  private lazy val db = dbAccessProvider.dbAccess
+
+  import AppFileStreamer._
 
   def createTempFile = {
     val tempPath = new File(rootPath + "/" + "tmp")
@@ -315,5 +323,27 @@ class FileStreamer(
         out.close()
       }
     }
+  }
+}
+
+object FileStreamerConfig {
+  val fsConfigTunablePaths = Set("files.path", "jdbc.query-timeout")
+  lazy val configs: Map[String, Config] =
+    ComponentConf.getConfigs("file-streamer.conf", "file-streamer", fsConfigTunablePaths)
+      .toMap - "files" - "jdbc"
+}
+
+trait AppFileStreamerFactory {
+  def createAppFileStreamers(dbAccessProvider: DbAccessProvider): Map[String, AppFileStreamer[WabaseUser]]
+}
+
+object AppFileStreamerFactory {
+  def createAppFileStreamers(dbAccessProvider: DbAccessProvider): Map[String, AppFileStreamer[WabaseUser]] = {
+    FileStreamerConfig.configs.map { case (n, fsCfg) =>
+      n -> new AppFileStreamer[WabaseUser] with DbAccessProvider {
+             override def dbAccess = dbAccessProvider.dbAccess
+             override lazy val fileStreamerConfig: Config = fsCfg
+           }
+    }.toMap
   }
 }

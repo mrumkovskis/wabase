@@ -1,5 +1,6 @@
 package org.wabase
 
+import com.typesafe.config.ConfigFactory
 import java.io.File
 import java.nio.file.Files
 import java.util.UUID
@@ -63,8 +64,11 @@ class DeferredTests extends AnyFlatSpec with Matchers with TestQuereaseInitializ
     val appl = new TestApp {
       override def dbAccessDelegate = db
       override protected def initQuerease = querease
-      override lazy val rootPath =
+      private val root_path =
         new File(System.getProperty("java.io.tmpdir"),"deferred-tests/" + UUID.randomUUID().toString).getPath
+      override lazy val fileStreamerConfig =
+        ConfigFactory.parseString(s"files.path = $root_path")
+          .withFallback(config.getConfig("app.deferred-requests.storage"))
     }
 
     streamerConfQe = appl
@@ -90,7 +94,10 @@ class DeferredTests extends AnyFlatSpec with Matchers with TestQuereaseInitializ
         implicit user: TestUsr, state: ApplicationState, timeout: QueryTimeout): Route =
         complete(s"$viewName:${timeout.timeoutSeconds}")
       override protected def initDeferredStorage = new DbDeferredStorage(appConfig, dbAccess, this) {
-        override lazy val rootPath = deferredResultFileRootPath
+        private val root_path = deferredResultFileRootPath
+        override lazy val fileStreamerConfig =
+          ConfigFactory.parseString(s"files.path = $root_path")
+            .withFallback(config.getConfig("app.deferred-requests.storage"))
         override protected def logDeferredResultMarshallingException(e: Throwable): Unit =
           logger.debug(deferredResultMarshallingExceptionMessage(e), e)
       }

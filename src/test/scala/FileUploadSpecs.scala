@@ -1,6 +1,7 @@
 package org.wabase
 
 
+import com.typesafe.config.ConfigFactory
 import java.io.File
 import java.nio.file.Files
 import java.util.UUID
@@ -48,8 +49,11 @@ class FileUploadSpecs extends AnyFlatSpec with TestQuereaseInitializer with Scal
     val appl = new TestApp {
       override def dbAccessDelegate = db
       override protected def initQuerease = querease
-      override lazy val rootPath =
+      private val root_path =
         new File(System.getProperty("java.io.tmpdir"),"file-upload-specs/" + UUID.randomUUID().toString).getPath
+      override lazy val fileStreamerConfig =
+        ConfigFactory.parseString(s"files.path = $root_path")
+          .withFallback(FileStreamerConfig.configs("main"))
     }
 
     streamerConfQe = appl

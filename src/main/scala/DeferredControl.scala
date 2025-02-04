@@ -454,22 +454,17 @@ object DeferredControl extends Loggable with AppConfig {
 
   import org.tresql._
   class DbDeferredStorage(conf: Config, db: DbAccess, stats: ServerStatistics)(implicit val as: ActorSystem)
-    extends DeferredStorage with AppFileStreamer[String] with AppConfig with DbAccessProvider {
+    extends DeferredStorage with AppFileStreamer[String] with DbAccessProvider {
 
     private implicit val ec: ExecutionContext = as.dispatcher
-    override lazy val appConfig = conf
     override def dbAccess = db
     import stats._
 
-    protected def deferredStorageConnectionPool: PoolName = DEFAULT_CP
-
     implicit private lazy val queryTimeout: QueryTimeout = DefaultQueryTimeout
-    private lazy val Cp = deferredStorageConnectionPool
+    private lazy val Cp = PoolName(fileStreamer.connectionPoolName)
     private lazy val resTemplate: Resources = db.tresqlResources.resourcesTemplate
 
-    override lazy val rootPath              = conf.getString("deferred-requests.files.path").replaceAll("/+$", "")
-    override lazy val file_info_table       = conf.getString("deferred-requests.file-info-table")
-    override lazy val file_body_info_table  = conf.getString("deferred-requests.file-body-info-table")
+    override lazy val fileStreamerConfig: Config = config.getConfig("deferred-requests.storage")
 
     import DeferredControl.HttpMessageSerialization._
     def registerDeferredRequest(ctx: DeferredContext): DeferredContext = db.transaction(resTemplate, Cp) { implicit res =>

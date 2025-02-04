@@ -1,5 +1,6 @@
 package org.wabase
 
+import com.typesafe.config.{Config, ConfigFactory}
 import java.io.File
 import java.nio.file.attribute.{BasicFileAttributeView, FileTime}
 import java.nio.file.{Files, Paths}
@@ -100,7 +101,7 @@ class FileCleanupSpecs extends FlatSpec with Matchers with BeforeAndAfterEach {
   }
 
   def clearFiles = {
-    deleteFilesRecursively(new File(new TestFileStreamer(".").attachmentsRootPath))
+    deleteFilesRecursively(new File(FileCleanupSpecsHelper.attachmentsRootPath))
   }
 
   override protected def beforeEach() = {
@@ -330,31 +331,27 @@ object FileCleanupSpecsHelper {
   }
   import db._
 
+  val attachmentsRootPath = {
+    val slash = System.getProperty("file.separator")
+    val tmpdir = System.getProperty("java.io.tmpdir")
+    tmpdir.stripSuffix(slash) + slash + "fs-test-uploads"
+  }
+
+  val fsCfg1 = FileStreamerConfig.configs("TestFileStreamer1")
+  val fsCfg2 = FileStreamerConfig.configs("TestFileStreamer2")
+
   implicit val TestCp: PoolName = PoolName("file-cleanup-test")
   implicit val extraDbs: Seq[DbAccessKey] = Nil
-  class TestFileStreamer(val attachmentsRootPathTail: String) extends AppFileStreamer[String]
-    with AppConfig with QuereaseProvider with DbAccessProvider {
-    override protected def initQuerease = FileCleanupSpecsQuerease
+  class TestFileStreamer(config: Config, val attachmentsRootPathTail: String) extends AppFileStreamer[String]
+      with DbAccessProvider {
     override def dbAccess = db
-    override protected def fileStreamerConnectionPool: PoolName = TestCp
-    override lazy val appConfig = null
-    lazy val attachmentsRootPath = {
-      val slash = System.getProperty("file.separator")
-      val tmpdir = System.getProperty("java.io.tmpdir")
-      tmpdir.stripSuffix(slash) + slash + "fs-test-uploads"
-    }
-    override lazy val rootPath = attachmentsRootPath + "/" + attachmentsRootPathTail
-    lazy val file_ref_table: String = null
+    override lazy val fileStreamerConfig =
+      ConfigFactory.parseString(s"files.path = $attachmentsRootPath/$attachmentsRootPathTail").withFallback(config)
+    val file_ref_table: String = config.getString("file-ref-table")
   }
-  class TestFileStreamer1(attachmentsRootPathTail: String) extends TestFileStreamer(attachmentsRootPathTail) {
-    override lazy val file_ref_table = "file_ref_1"
-    override lazy val file_info_table = "file_info_1"
-    override lazy val file_body_info_table = "file_body_info_1"
+  class TestFileStreamer1(attachmentsRootPathTail: String) extends TestFileStreamer(fsCfg1, attachmentsRootPathTail) {
   }
-  class TestFileStreamer2(attachmentsRootPathTail: String) extends TestFileStreamer(attachmentsRootPathTail) {
-    override lazy val file_ref_table = "file_ref_2"
-    override lazy val file_info_table = "file_info_2"
-    override lazy val file_body_info_table = "file_body_info_2"
+  class TestFileStreamer2(attachmentsRootPathTail: String) extends TestFileStreamer(fsCfg2, attachmentsRootPathTail) {
   }
   object FileCleanupSpecsQuerease extends AppQuerease {
     override lazy val yamlMetadata = YamlMd.fromResource("/filestreamer-specs-table-metadata.yaml")
