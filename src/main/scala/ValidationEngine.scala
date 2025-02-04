@@ -72,7 +72,7 @@ trait DefaultValidationEngine extends ValidationEngine with Loggable {
     "validation[context ~~ :context] {id, context, expression, message}#(context, id)"
 
   protected def validations(viewName: String, actionName: String): List[Validation] = {
-    withRollbackConn(tresqlResources.resourcesTemplate, DEFAULT_CP) { res =>
+    withRollbackConn() { res =>
       Query(validationsQuery, Map("context" -> viewName))(res).map(r => new Validation().fill(r)).toList
     }
   }

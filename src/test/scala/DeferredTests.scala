@@ -50,11 +50,11 @@ class DeferredTests extends AnyFlatSpec with Matchers with TestQuereaseInitializ
 
       override def initResources = template => (_, _) => template.withConn(conn)
       override def closeResources = (res, roll, err) => err.map(_ => res.conn.rollback()).getOrElse(res.conn.commit())
-      override def transaction[A](template: Resources, poolName: PoolName, extraDb: Seq[DbAccessKey])(f: Resources => A): A = {
+      override def newTransaction[A](poolName: PoolName, template: Resources, extraDb: Seq[DbAccessKey])(f: Resources => A): A = {
         val res = initResources(template)(poolName, extraDb)
         try f(res) finally res.conn.commit()
       }
-      override def withRollbackConn[A](template: Resources, poolName: PoolName, extraDb: Seq[AppMetadata.DbAccessKey])(
+      override def withRollbackConn[A](poolName: PoolName, template: Resources, extraDb: Seq[AppMetadata.DbAccessKey])(
         f: Resources => A): A = {
         val res = initResources(template)(poolName, extraDb)
         try f(res) finally res.conn.rollback()

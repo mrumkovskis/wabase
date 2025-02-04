@@ -101,25 +101,25 @@ trait DbAccess { this: Loggable =>
   }
 
   def withConn[A](
-    template: Resources = tresqlResources.resourcesTemplate,
     poolName: PoolName = DEFAULT_CP,
+    template: Resources = tresqlResources.resourcesTemplate,
     extraDb:  Seq[DbAccessKey] = Nil,
   )(f: Resources => A): A =
-    DbAccess.withConn(template, poolName, extraDb)(f)
+    DbAccess.withConn(poolName, template, extraDb)(f)
 
   def withRollbackConn[A](
-    template: Resources = tresqlResources.resourcesTemplate,
     poolName: PoolName = DEFAULT_CP,
+    template: Resources = tresqlResources.resourcesTemplate,
     extraDb:  Seq[DbAccessKey] = Nil,
   )(f: Resources => A): A =
-    DbAccess.withRollbackConn(template, poolName, extraDb)(f)
+    DbAccess.withRollbackConn(poolName, template, extraDb)(f)
 
-  def transaction[A](
-    template: Resources = tresqlResources.resourcesTemplate,
+  def newTransaction[A](
     poolName: PoolName = DEFAULT_CP,
+    template: Resources = tresqlResources.resourcesTemplate,
     extraDb:  Seq[DbAccessKey] = Nil,
   )(f: Resources => A): A =
-    DbAccess.transaction(template, poolName, extraDb)(f)
+    DbAccess.newTransaction(poolName, template, extraDb)(f)
 
   val transaction: Transaction = new Transaction
 
@@ -292,9 +292,9 @@ object DbAccess extends Loggable {
     val dsExtraFactories = extraDb.map { case DbAccessKey(db) =>
       (db, () => ConnectionPools(db))
     }.toMap
-    initConns(initialResources, poolName)(dsFactory, dsExtraFactories)
+    initConns(poolName, initialResources)(dsFactory, dsExtraFactories)
   }
-  def initConns(initialResources: Resources, poolName: PoolName)(
+  def initConns(poolName: PoolName, initialResources: Resources)(
     dsFactory: () => DataSource,
     dsExtraFactories: Map[String, () => DataSource]
   ): Resources = {
@@ -325,24 +325,24 @@ object DbAccess extends Loggable {
     else closeConns(rollbackAndCloseConnection)(res)
   }
   def withConn[A](
+    poolName: PoolName,
     template: Resources,
-    poolName: PoolName = DEFAULT_CP,
     extraDb:  Seq[DbAccessKey] = Nil,
   )(f: Resources => A): A = {
     val res = initResources(template)(poolName, extraDb)
     try f(res) finally closeConns(closeConnection)(res)
   }
   def withRollbackConn[A](
+    poolName: PoolName,
     template: Resources,
-    poolName: PoolName = DEFAULT_CP,
     extraDb:  Seq[DbAccessKey] = Nil,
   )(f: Resources => A): A = {
     val res = initResources(template)(poolName, extraDb)
     try f(res) finally closeConns(rollbackAndCloseConnection)(res)
   }
-  def transaction[A](
+  def newTransaction[A](
+    poolName: PoolName,
     template: Resources,
-    poolName: PoolName = DEFAULT_CP,
     extraDb:  Seq[DbAccessKey] = Nil,
   )(f: Resources => A): A = {
     val res = initResources(template)(poolName, extraDb)
@@ -379,12 +379,12 @@ trait DbAccessDelegate extends DbAccess { this: Loggable =>
   override def closeResources: (Resources, Boolean, Option[Throwable]) => Unit = dbAccessDelegate.closeResources
   override def extraDb(keys: Seq[DbAccessKey]): Seq[DbAccessKey] = dbAccessDelegate.extraDb(keys)
 
-  override def withConn[A](template: Resources, poolName: PoolName, extraDb: Seq[DbAccessKey])(f: Resources => A): A =
-    dbAccessDelegate.withConn(template, poolName, extraDb)(f)
-  override def withRollbackConn[A](template: Resources, poolName: PoolName, extraDb: Seq[DbAccessKey])(f: Resources => A): A =
-    dbAccessDelegate.withRollbackConn(template, poolName, extraDb)(f)
-  override def transaction[A](template: Resources, poolName: PoolName, extraDb: Seq[DbAccessKey])(f: Resources => A): A =
-    dbAccessDelegate.transaction(template, poolName, extraDb)(f)
+  override def withConn[A](poolName: PoolName, template: Resources, extraDb: Seq[DbAccessKey])(f: Resources => A): A =
+    dbAccessDelegate.withConn(poolName, template, extraDb)(f)
+  override def withRollbackConn[A](poolName: PoolName, template: Resources, extraDb: Seq[DbAccessKey])(f: Resources => A): A =
+    dbAccessDelegate.withRollbackConn(poolName, template, extraDb)(f)
+  override def newTransaction[A](poolName: PoolName, template: Resources, extraDb: Seq[DbAccessKey])(f: Resources => A): A =
+    dbAccessDelegate.newTransaction(poolName, template, extraDb)(f)
 
   override def dbUse[A](a: => A)(implicit timeout: QueryTimeout = defaultQueryTimeout,
                                  pool: PoolName = DEFAULT_CP,

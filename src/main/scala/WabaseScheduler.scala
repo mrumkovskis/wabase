@@ -111,11 +111,11 @@ object WabaseJobStatusController {
   val job_max_time = config.getString("app.job.max-time")
   val jobStatusCp  = PoolName(config.getString("app.job.job-status-cp"))
 
-  def init(dbAccess: DbAccess) = dbAccess.transaction(poolName = jobStatusCp) { implicit res =>
+  def init(dbAccess: DbAccess) = dbAccess.newTransaction(jobStatusCp) { implicit res =>
     Query("-cron_job_status[status != 'RUN']")
   }
 
-  def updateCronJobStatus(name: String, status: String)(dbAccess: DbAccess): Unit = dbAccess.transaction(poolName = jobStatusCp) {
+  def updateCronJobStatus(name: String, status: String)(dbAccess: DbAccess): Unit = dbAccess.newTransaction(jobStatusCp) {
     implicit res => status match {
       case "SUCC" =>
         Query(
@@ -132,7 +132,7 @@ object WabaseJobStatusController {
     }
   }
 
-  def acquireIsRunnningLock(name: String)(dbAccess: DbAccess): Boolean = dbAccess.transaction(poolName = jobStatusCp) { implicit res =>
+  def acquireIsRunnningLock(name: String)(dbAccess: DbAccess): Boolean = dbAccess.newTransaction(jobStatusCp) { implicit res =>
     Query(
       """+cron_job_status
         |{id, cron_name, status, report_time}

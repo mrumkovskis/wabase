@@ -169,7 +169,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
             .runFold(ByteString.empty){_ ++ _}
             .map { bytes =>
               val id = context.values("id").toString.toLong + 1
-              db.transaction(template = tresqlResources.resourcesTemplate, poolName = DefaultCp) { r =>
+              db.newTransaction(DefaultCp) { r =>
                 Query("+simple_table {id = ?, value = ?}", id, bytes.decodeString("UTF-8"))(r)
               }
             }(scala.concurrent.ExecutionContext.global) // do not use AsyncFlatSpec context so that no blocking occurs
@@ -842,7 +842,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     doAction("get", "result_audit_test", Map("id" -> id))
       .map { _ =>
         Thread.sleep(200) // wait until hopefully afterWabaseAction method is completed
-        app.dbAccess.withConn(template = app.dbAccess.tresqlResources.resourcesTemplate, poolName = app.DefaultCp) { implicit r =>
+        app.dbAccess.withConn(app.DefaultCp) { implicit r =>
           val res = Query("simple_table [id = ?] {value}", id + 1).unique[String]
           app.qe.cborOrJsonDecoder
             .decodeToMap(ByteString(res), "result_audit_test")(app.qe.viewNameToMapZero) shouldBe Map("id" -> 55, "value" -> "data")

@@ -105,7 +105,7 @@ class AppFileCleanup(dbAccess: DbAccess, fileStreamers: AppFileStreamerConfig*) 
           })
 
       // insert files into files_on_disk
-      dbAccess.transaction(dbAccess.tresqlResources.resourcesTemplate, connectionPool) { implicit res =>
+      dbAccess.newTransaction(connectionPool) { implicit res =>
         def prepareStatement = res.conn.prepareStatement("INSERT INTO files_on_disk(path) VALUES (?)")
         val lastBatch =
           files.foldLeft((prepareStatement, 0)) { case ((stmt, count), file) =>
@@ -121,7 +121,7 @@ class AppFileCleanup(dbAccess: DbAccess, fileStreamers: AppFileStreamerConfig*) 
           lastBatch._1.executeBatch()
       }
       //filesUploaded as count query also for "warming up" DB (something like sql "analyze file_body_info"); independent of logger.debug scope
-      val filesUploaded = dbAccess.withRollbackConn(dbAccess.tresqlResources.resourcesTemplate, connectionPool) { implicit res =>
+      val filesUploaded = dbAccess.withRollbackConn(connectionPool) { implicit res =>
         Query("files_on_disk{count(1)}").unique[Long]
       }
       logger.debug(s"Number of records inserted into files_on_disk for $rootPath: $filesUploaded")
@@ -138,7 +138,7 @@ class AppFileCleanup(dbAccess: DbAccess, fileStreamers: AppFileStreamerConfig*) 
     val pathsParams = fileStreamers.zipWithIndex.map {
       case (fs, idx) => s"path_$idx" -> fs.rootPath
     }.toMap
-    dbAccess.withRollbackConn(dbAccess.tresqlResources.resourcesTemplate, connectionPool) { implicit res =>
+    dbAccess.withRollbackConn(connectionPool) { implicit res =>
       val filesMoved = Query(query, pathsParams).list[String]
         .map(new File(_))
         .foldLeft(0){case (counter, fullPathFile) =>
@@ -196,7 +196,7 @@ class AppFileCleanup(dbAccess: DbAccess, fileStreamers: AppFileStreamerConfig*) 
     @tailrec
     def deleteWhileNonEmpty(deletedTotalCount: Int): Int = {
       val deletedCount =
-        dbAccess.transaction(dbAccess.tresqlResources.resourcesTemplate, connectionPool) { implicit res =>
+        dbAccess.newTransaction(connectionPool) { implicit res =>
           Query(statement)
         } match {
           case deleteResult: DeleteResult => deleteResult.count.getOrElse(0)

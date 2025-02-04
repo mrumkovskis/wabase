@@ -298,7 +298,7 @@ class FileStreamer(
   }
 
   def getFileInfo(id: Long, sha256: String): Option[FileInfoHelper] = {
-    db.withRollbackConn(db.tresqlResources.resourcesTemplate, fileStreamerConnectionPool) { implicit res: Resources =>
+    db.withRollbackConn(fileStreamerConnectionPool) { implicit res: Resources =>
       Query(fileInfoSelect, Map("id" -> id, "sha_256" -> sha256))
         .map(new FileInfoHelper(_)).toList.headOption
         .map { fi => fi.copy(
