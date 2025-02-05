@@ -360,7 +360,7 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
 
   def toEntityRequestPartResultMarshaller(ac: app.AppActionContext): ToEntityMarshaller[RequestPartResult] =
     Marshaller.combined { rpr =>
-      app.qe.requestPartsToMap(rpr)(ac.fileStreamer, ac.as).map(AnyResult(_))
+      app.qe.requestPartsToMap(rpr)(app.qe.getFs(null, app.fileStreamers), ac.as).map(AnyResult(_))
     }
 
   import org.wabase.{QuereaseSerializedResult => QuereaseSerRes}

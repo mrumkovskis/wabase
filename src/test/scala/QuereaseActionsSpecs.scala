@@ -111,8 +111,8 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
           (querease.defaultCpName -> tresqlThreadLocalResources.withConn(tresqlThreadLocalResources.conn))
       )
     qr = new QuereaseResources()(ResourcesFactory(null, null)(tresqlResources),
-      scala.concurrent.ExecutionContext.global, ActorSystem("querease-action-specs"), null, null, qio, null,
-        _ => PartialFunction.empty)
+      scala.concurrent.ExecutionContext.global, ActorSystem("querease-action-specs"), null, qio,
+      WabaseFileStreamers(Map("main" -> null)), null, _ => PartialFunction.empty)
   }
 
   behavior of "metadata"

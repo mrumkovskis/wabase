@@ -19,6 +19,7 @@ import scala.language.{existentials, implicitConversions}
 import scala.util.{Failure, Success, Try}
 
 case class WabaseHttpClients(httpClients: Map[String, InjectionParametersContext => HttpRequest => Future[HttpResponse]])
+case class WabaseFileStreamers(fileStreamers: Map[String, FileStreamer])
 
 trait WabaseApp[User] {
   this:  AppBase[User]
@@ -43,6 +44,12 @@ trait WabaseApp[User] {
   type ActionHandlerResult = qe.QuereaseAction[WabaseResult]
   type ActionHandler       = AppActionContext => ActionHandlerResult
   implicit lazy val httpClients: WabaseHttpClients = WabaseHttpClients(Map())
+  implicit lazy val fileStreamers: WabaseFileStreamers = {
+    val factory =
+      getObjectOrNewInstance(config.getString("file-streamer.factory-class"), "File streamers factory")
+        .asInstanceOf[FileStreamerFactory]
+    WabaseFileStreamers(factory.createFileStreamers(this))
+  }
   def injectionParametersFactory: AppQuerease.InjectionParametersFactory = _ => PartialFunction.empty
 
   case class AppActionContext(
@@ -59,11 +66,9 @@ trait WabaseApp[User] {
     val state:    ApplicationState,
     val ec:       ExecutionContext,
     val as:       ActorSystem,
-    val appFs:    AppFileStreamer[User],
     val httpReq:  HttpRequest,
   ) {
     lazy val env: Map[String, Any] = state ++ current_user_param(user)
-    val fileStreamer = if (appFs == null) null else appFs.fileStreamer
     def withResultFilter(resFil: ResultRenderer.ResultFilter): AppActionContext =
       copy(resultFilter = resFil)
   }
@@ -86,7 +91,6 @@ trait WabaseApp[User] {
     state:    ApplicationState,
     ec:       ExecutionContext,
     as:       ActorSystem,
-    appFs:    AppFileStreamer[User],
     httpReq:  HttpRequest,
   ): Future[WabaseResult] = {
     val vdo = qe.viewDefOption(viewName)
@@ -104,7 +108,7 @@ trait WabaseApp[User] {
     }.getOrElse(httpReq)
     doWabaseAction(
       AppActionContext(actionName, viewName, keyValues, params, values ++ params, resultFilter)(
-        user, state, ec, as, appFs, setMaxContentSize(setTimeout(httpReq))),
+        user, state, ec, as, setMaxContentSize(setTimeout(httpReq))),
       doApiCheck)
   }
 
@@ -135,7 +139,7 @@ trait WabaseApp[User] {
     import context._
     val rf = resourceFactory(context)
     qe.QuereaseAction(viewName, actionName, values, env, context.resultFilter)(
-        rf, fileStreamer, httpReq, qio, httpClients, injectionParametersFactory)
+        rf, httpReq, qio, fileStreamers, httpClients, injectionParametersFactory)
       .map(WabaseResult(context, _))
   }
 
@@ -179,7 +183,7 @@ trait WabaseApp[User] {
     }
     val rf = resourceFactory(context)
     qe.QuereaseAction(viewName, Action.Get, values, env,
-      context.resultFilter)(rf, fileStreamer, httpReq, qio, httpClients, injectionParametersFactory).map(oldVal)
+      context.resultFilter)(rf, httpReq, qio, fileStreamers, httpClients, injectionParametersFactory).map(oldVal)
   }
   protected def throwOldValueNotFound(message: String, locale: Locale): Nothing =
     throw new org.mojoz.querease.NotFoundException(translate(message)(locale))
@@ -205,8 +209,8 @@ trait WabaseApp[User] {
         validateFields(viewName, saveable)
         this.customValidations(saveableContext)(state.locale)
         val rf = resourceFactory(context)
-        qe.QuereaseAction(viewName, context.actionName, saveable, env, context.resultFilter)(rf, fileStreamer,
-            httpReq, qio, httpClients, injectionParametersFactory)
+        qe.QuereaseAction(viewName, context.actionName, saveable, env, context.resultFilter)(rf,
+            httpReq, qio, fileStreamers, httpClients, injectionParametersFactory)
           .map(WabaseResult(saveableContext, _))
           .recover { case ex => friendlyConstraintErrorMessage(viewDef, throw ex)(state.locale) }
       }
@@ -218,7 +222,7 @@ trait WabaseApp[User] {
       val richContext = context.copy(oldValue = oldValue)
       val rf = resourceFactory(richContext)
       qe.QuereaseAction(viewName, actionName, values, env, context.resultFilter)(
-          rf, fileStreamer, httpReq, qio, httpClients, injectionParametersFactory)
+          rf, httpReq, qio, fileStreamers, httpClients, injectionParametersFactory)
         .map(WabaseResult(richContext, _))
         .recover { case ex => friendlyConstraintErrorMessage(throw ex)(state.locale) }
     }

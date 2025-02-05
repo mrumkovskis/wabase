@@ -62,13 +62,10 @@ class WabaseScheduler(service: AppServiceBase[_]) extends Loggable {
     }
     implicit val executionContext: ExecutionContext = service.asInstanceOf[Execution].executor
     implicit val actorSystem: ActorSystem = service.asInstanceOf[Execution].system
-    implicit val fileStreamer: FileStreamer = service match {
-      case s: AppFileServiceBase[_] => s.fileStreamer.fileStreamer
-      case _ => null
-    }
 
     qe.QuereaseAction(job.name, JobAct, Map(), Map(), doCleanup = true)(
-        resourcesFactory, fileStreamer, httpReq = null, qio = service.app.qio,
+        resourcesFactory, httpReq = null, qio = service.app.qio,
+        fileStreamers = service.app.fileStreamers,
         httpClients = service.app.httpClients,
         parameterFactory = service.app.injectionParametersFactory)
       .run

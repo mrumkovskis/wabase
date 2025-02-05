@@ -181,6 +181,9 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       override lazy val fileStreamerConfig =
         ConfigFactory.parseString(s"files.path = $root_path")
           .withFallback(FileStreamerConfig.configs("main"))
+      override implicit lazy val fileStreamers: WabaseFileStreamers = WabaseFileStreamers(
+        Map("main" -> app.fileStreamer)
+      )
       override implicit lazy val httpClients: WabaseHttpClients =
         WabaseHttpClients(Map("default-wabase-http-client" -> (_ => Route.toFunction(service.route)(service.system)(_))))
     }
