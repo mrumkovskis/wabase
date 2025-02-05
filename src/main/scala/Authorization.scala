@@ -22,7 +22,8 @@ trait Authorization[User] {
     * }}}
     */
   def hasRole(user: User, roles: Set[String]): Boolean = user match {
-    case wabaseUser: WabaseUser => wabaseAuth.hasRole(wabaseUser, roles)
+    case wabaseUser: WabaseUser =>
+      wabaseAuth.hasRole(this.asInstanceOf[WabaseService.Wabase], wabaseUser, roles)
     case x                      => false
   }
 }
@@ -32,7 +33,11 @@ trait WabaseAuthorizationFactory {
 }
 
 class WabaseAuthorization {
-  def hasRole(user: WabaseUser, roles: Set[String]): Boolean = user.roles.intersect(roles).nonEmpty
+  def hasRole(
+    wabase: WabaseService.Wabase,
+    user: WabaseUser,
+    roles: Set[String],
+  ): Boolean = user.roles.intersect(roles).nonEmpty
 }
 
 object Authorization extends WabaseAuthorizationFactory {
