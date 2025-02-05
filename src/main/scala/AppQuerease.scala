@@ -83,7 +83,7 @@ case class IdResult(id: Any, name: String) extends QuereaseResult {
 case class KeyResult(ir: IdResult, viewName: String, key: Seq[Any]) extends QuereaseResult
 case class AnyResult(result: Any) extends QuereaseResult
 case class QuereaseDeleteResult(count: Int) extends QuereaseResult
-case class StatusResult(code: Int, value: ResponseValue, headers: List[HttpHeader] = Nil, user: WabaseUser = null) extends QuereaseResult
+case class ResponseResult(code: Int, value: ResponseValue, headers: List[HttpHeader] = Nil, user: WabaseUser = null) extends QuereaseResult
 case class ResourceResult(resource: String, contentType: ContentType, httpReq: HttpRequest) extends DataResult
 case class FileInfoResult(fileInfo: FileInfo) extends QuereaseResult
 case class FileResult(fileInfo: FileInfo, fileStreamer: FileStreamer) extends DataResult
@@ -329,7 +329,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
               parameterFactory)
             import resFac._
             def processResult(res: QuereaseResult, cleanup: Option[Throwable] => Unit): QuereaseResult = res match {
-              case sr@StatusResult(_, ResultValue(result), _, _) =>
+              case sr@ResponseResult(_, ResultValue(result), _, _) =>
                 sr.copy(value = ResultValue(processResult(result, cleanup)))
               case DbResult(result, cl) =>
                 // close outer resources
@@ -918,14 +918,14 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     }).getOrElse(r)
   }
 
-  protected def doStatus(
-   op: Action.Status,
-   data: Map[String, Any],
-   env: Map[String, Any],
-   context: ActionContext,
+  protected def doResponse(
+    op: Action.Response,
+    data: Map[String, Any],
+    env: Map[String, Any],
+    context: ActionContext,
   )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
     import qr.ec
-    val Action.Status(code, statusMode, hops, body) = op
+    val Action.Response(code, statusMode, hops, body) = op
     val (ua, hs) = hops.partition(_.isInstanceOf[Action.SetUserAttributes])
     val user = if (ua.isEmpty) null else ua.foldLeft(WabaseUser(Map())) { (u, ua) =>
       WabaseUser(u.properties ++
@@ -957,8 +957,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         } else doActionOp(b, data, env, context).map(ResultValue(_))
       }
     }
-      .map(_.map(StatusResult(code, _, headers, user)))
-      .getOrElse(Future.successful(StatusResult(code, null, headers, user)))
+      .map(_.map(ResponseResult(code, _, headers, user)))
+      .getOrElse(Future.successful(ResponseResult(code, null, headers, user)))
   }
 
   protected def doSetOrDeleteCookie(
@@ -1510,7 +1510,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         val dataWithEnv = data ++ env
         val id = dataWithEnv.getOrElse(idName, null)
         Future.successful(keyResult(IdResult(id, idName), viewName, dataWithEnv))
-      case st: Action.Status => doStatus(st, data, env, context)
+      case st: Action.Response => doResponse(st, data, env, context)
       case Action.Commit =>
         def commit(c: Connection) = Option(c).foreach(_.commit())
         commit(resources.conn)
@@ -1734,7 +1734,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         case v: Iterator[_] => v.toList
         case v => v // TODO may be need to convert java collections to scala?
       }
-      case StatusResult(code, value, _, _) => Map("code" -> code, "value" ->
+      case ResponseResult(code, value, _, _) => Map("code" -> code, "value" ->
         (value match {
           case ResultValue(v) => v
           case RedirectValue(value) => tresqlUri.uri(value).toString()
@@ -1788,7 +1788,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       conformTo.isCollection
     )
 
-  private def notFound = StatusResult(StatusCodes.NotFound.intValue, ResultValue(StringResult("not found")))
+  private def notFound = ResponseResult(StatusCodes.NotFound.intValue, ResultValue(StringResult("not found")))
 
   private def invokeFunction(
     className: String,

@@ -412,7 +412,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
 
   it should "process config" in {
     querease.doAction("conf_test", "get", Map(), Map()).map {
-      case r => r should be (StatusResult(200, ResultValue(StringResult("http://wabase.org/about"))))
+      case r => r should be (ResponseResult(200, ResultValue(StringResult("http://wabase.org/about"))))
     }.flatMap { _ =>
       querease.doAction("conf_test", "list", Map(), Map()).map {
         case r => r should be(

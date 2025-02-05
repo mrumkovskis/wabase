@@ -150,170 +150,170 @@ class MarshallingSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
 
   it should "marshal status result, key in query" in {
     val svc = service
-    implicit val sm: ToResponseMarshaller[StatusResult] = Marshaller { implicit ec => sr =>
-      svc.toResponseQuereaseStatusResultMarshaller(svc.app.WabaseResult(null, sr))(ec)(sr)
+    implicit val sm: ToResponseMarshaller[ResponseResult] = Marshaller { implicit ec =>sr =>
+      svc.toResponseQuereaseResponseResultMarshaller(svc.app.WabaseResult(null, sr))(ec)(sr)
     }
-    def response(sr: StatusResult) = Await.result(Marshal(sr).to[HttpResponse], 1.second)
+    def response(sr: ResponseResult) = Await.result(Marshal(sr).to[HttpResponse], 1.second)
 
     var res: HttpResponse = null
-    res = response(StatusResult(200, null))
+    res = response(ResponseResult(200, null))
     res.status shouldEqual StatusCodes.OK
 
-    res = response(StatusResult(200, ResultValue(StringResult("ok"))))
+    res = response(ResponseResult(200, ResultValue(StringResult("ok"))))
     Await.result(res.entity.toStrict(1.second).map(_.data.decodeString("UTF-8")), 1.second) shouldEqual "ok"
 
-    res = response(StatusResult(303, RedirectValue(TresqlUri.Uri(Seq("/"), Nil, ListMap()))))
+    res = response(ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq("/"), Nil, ListMap()))))
     res.status shouldEqual StatusCodes.SeeOther
     res.header[Location] shouldEqual Some(Location("/"))
 
-    res = response(StatusResult(303, RedirectValue(TresqlUri.Uri(Seq(""), List("s1", "1"), ListMap())))) // NOTE: if keys are specified uri must not end with slash !
+    res = response(ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq(""), List("s1", "1"), ListMap())))) // NOTE: if keys are specified uri must not end with slash !
     res.status shouldEqual StatusCodes.SeeOther
     res.header[Location] shouldEqual Some(Location("?/s1/1"))
 
-    res = response(StatusResult(303, RedirectValue(TresqlUri.Uri(Seq("data/path"), Nil, ListMap()))))
+    res = response(ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq("data/path"), Nil, ListMap()))))
     res.status shouldEqual StatusCodes.SeeOther
     res.header[Location] shouldEqual Some(Location("data/path"))
 
-    res = response(StatusResult(303, RedirectValue(TresqlUri.Uri(Seq("data/path"), List("1"), ListMap()))))
+    res = response(ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq("data/path"), List("1"), ListMap()))))
     res.status shouldEqual StatusCodes.SeeOther
     res.header[Location] shouldEqual Some(Location("data/path?/1"))
 
-    res = response(StatusResult(303, RedirectValue(TresqlUri.Uri(Seq("data/path"), Nil, ListMap("id" -> "1")))))
+    res = response(ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq("data/path"), Nil, ListMap("id" -> "1")))))
     res.status shouldEqual StatusCodes.SeeOther
     res.header[Location] shouldEqual Some(Location("data/path?id=1"))
 
-    res = response(StatusResult(303, RedirectValue(TresqlUri.Uri(Seq("/data"), List("path", "redirect"), ListMap()))))
+    res = response(ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq("/data"), List("path", "redirect"), ListMap()))))
     res.status shouldEqual StatusCodes.SeeOther
     res.header[Location] shouldEqual Some(Location("/data?/path/redirect"))
 
-    res = response(StatusResult(303, RedirectValue(TresqlUri.Uri(Seq("/data"), List("sub/path"), ListMap()))))
+    res = response(ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq("/data"), List("sub/path"), ListMap()))))
     res.status shouldEqual StatusCodes.SeeOther
     res.header[Location] shouldEqual Some(Location("/data?/sub%2Fpath"))
 
-    res = response(StatusResult(303, RedirectValue(TresqlUri.Uri(Seq("/data"), List("sub?path"), ListMap()))))
+    res = response(ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq("/data"), List("sub?path"), ListMap()))))
     res.status shouldEqual StatusCodes.SeeOther
     res.header[Location] shouldEqual Some(Location("/data?/sub%3Fpath"))
 
-    res = response(StatusResult(303, RedirectValue(TresqlUri.Uri(Seq("person_health"), List("Mr. Gunza", "2021-06-05"), ListMap("par1" -> "val1", "par2" -> "val2")))))
+    res = response(ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq("person_health"), List("Mr. Gunza", "2021-06-05"), ListMap("par1" -> "val1", "par2" -> "val2")))))
     res.status shouldEqual StatusCodes.SeeOther
     res.header[Location] shouldEqual Some(Location("person_health?/Mr.%20Gunza/2021-06-05?par1=val1&par2=val2"))
 
-    res = response(StatusResult(303, RedirectValue(TresqlUri.Uri(Seq("data/path/2"), List(), ListMap()))))
+    res = response(ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq("data/path/2"), List(), ListMap()))))
     res.status shouldEqual StatusCodes.SeeOther
     res.header[Location] shouldEqual Some(Location("data/path/2"))
 
-    intercept[IllegalArgumentException](response(StatusResult(303, RedirectValue(TresqlUri.Uri(null, List("4"), ListMap("par1" -> "5"))))))
+    intercept[IllegalArgumentException](response(ResponseResult(303, RedirectValue(TresqlUri.Uri(null, List("4"), ListMap("par1" -> "5"))))))
 
-    res = response(StatusResult(303, RedirectValue(TresqlUri.Uri(Seq("data/path"), List(null), ListMap()))))
+    res = response(ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq("data/path"), List(null), ListMap()))))
     res.status shouldEqual StatusCodes.SeeOther
     res.header[Location] shouldEqual Some(Location("data/path?/null"))
 
-    res = response(StatusResult(303, RedirectValue(TresqlUri.Uri(Seq("data/path"), List(), ListMap("id" -> null)))))
+    res = response(ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq("data/path"), List(), ListMap("id" -> null)))))
     res.status shouldEqual StatusCodes.SeeOther
     res.header[Location] shouldEqual Some(Location("data/path?id="))
 
-    res = response(StatusResult(303, RedirectValue(TresqlUri.Uri(Seq("data/ēūīāšģķļžčņ"), List("ēūīāšģķļžč/ņ"), ListMap("ē/ūīāšģķļžčņ" -> "ēūīāš/ģķļžčņ")))))
+    res = response(ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq("data/ēūīāšģķļžčņ"), List("ēūīāšģķļžč/ņ"), ListMap("ē/ūīāšģķļžčņ" -> "ēūīāš/ģķļžčņ")))))
     res.status shouldEqual StatusCodes.SeeOther
     res.header[Location] shouldEqual Some(Location("data/%C4%93%C5%AB%C4%AB%C4%81%C5%A1%C4%A3%C4%B7%C4%BC%C5%BE%C4%8D%C5%86?/%C4%93%C5%AB%C4%AB%C4%81%C5%A1%C4%A3%C4%B7%C4%BC%C5%BE%C4%8D%2F%C5%86?%C4%93/%C5%AB%C4%AB%C4%81%C5%A1%C4%A3%C4%B7%C4%BC%C5%BE%C4%8D%C5%86=%C4%93%C5%AB%C4%AB%C4%81%C5%A1/%C4%A3%C4%B7%C4%BC%C5%BE%C4%8D%C5%86"))
 
-    res = response(StatusResult(303, RedirectValue(TresqlUri.Uri(Seq("http://foo.org"), List(), ListMap()))))
+    res = response(ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq("http://foo.org"), List(), ListMap()))))
     res.status shouldEqual StatusCodes.SeeOther
     res.header[Location] shouldEqual Some(Location("http://foo.org"))
 
-    res = response(StatusResult(303, RedirectValue(TresqlUri.Uri(Seq("https://foo.org:8080/"), List(), ListMap()))))
+    res = response(ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq("https://foo.org:8080/"), List(), ListMap()))))
     res.status shouldEqual StatusCodes.SeeOther
     res.header[Location] shouldEqual Some(Location("https://foo.org:8080/"))
 
-    res = response(StatusResult(303, RedirectValue(TresqlUri.Uri(Seq("http://foo.org"), List("s1", "s2"), ListMap()))))
+    res = response(ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq("http://foo.org"), List("s1", "s2"), ListMap()))))
     res.status shouldEqual StatusCodes.SeeOther
     res.header[Location] shouldEqual Some(Location("http://foo.org?/s1/s2"))
 
-    res = response(StatusResult(303, RedirectValue(TresqlUri.Uri(Seq("http://foo.org/data"), List("sā1", "sī2"), ListMap()))))
+    res = response(ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq("http://foo.org/data"), List("sā1", "sī2"), ListMap()))))
     res.status shouldEqual StatusCodes.SeeOther
     res.header[Location] shouldEqual Some(Location("http://foo.org/data?/s%C4%811/s%C4%AB2"))
   }
 
   it should "marshal status result, key in path" in {
     val svc = service2
-    implicit val sm: ToResponseMarshaller[StatusResult] = Marshaller { implicit ec => sr =>
-      svc.toResponseQuereaseStatusResultMarshaller(svc.app.WabaseResult(null, sr))(ec)(sr)
+    implicit val sm: ToResponseMarshaller[ResponseResult] = Marshaller { implicit ec =>sr =>
+      svc.toResponseQuereaseResponseResultMarshaller(svc.app.WabaseResult(null, sr))(ec)(sr)
     }
-    def response(sr: StatusResult) = Await.result(Marshal(sr).to[HttpResponse], 1.second)
+    def response(sr: ResponseResult) = Await.result(Marshal(sr).to[HttpResponse], 1.second)
 
     var res: HttpResponse = null
-    res = response(StatusResult(200, null))
+    res = response(ResponseResult(200, null))
     res.status shouldEqual StatusCodes.OK
 
-    res = response(StatusResult(200, ResultValue(StringResult("ok"))))
+    res = response(ResponseResult(200, ResultValue(StringResult("ok"))))
     Await.result(res.entity.toStrict(1.second).map(_.data.decodeString("UTF-8")), 1.second) shouldEqual "ok"
 
-    res = response(StatusResult(303, RedirectValue(TresqlUri.Uri(Seq("/"), Nil, ListMap()))))
+    res = response(ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq("/"), Nil, ListMap()))))
     res.status shouldEqual StatusCodes.SeeOther
     res.header[Location] shouldEqual Some(Location("/"))
 
-    res = response(StatusResult(303, RedirectValue(TresqlUri.Uri(Seq(""), List("s1", "1"), ListMap())))) // NOTE: if keys are specified uri must not end with slash !
+    res = response(ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq(""), List("s1", "1"), ListMap())))) // NOTE: if keys are specified uri must not end with slash !
     res.status shouldEqual StatusCodes.SeeOther
     res.header[Location] shouldEqual Some(Location("/s1/1"))
 
-    res = response(StatusResult(303, RedirectValue(TresqlUri.Uri(Seq("data/path"), Nil, ListMap()))))
+    res = response(ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq("data/path"), Nil, ListMap()))))
     res.status shouldEqual StatusCodes.SeeOther
     res.header[Location] shouldEqual Some(Location("data/path"))
 
-    res = response(StatusResult(303, RedirectValue(TresqlUri.Uri(Seq("data/path"), List("1"), ListMap()))))
+    res = response(ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq("data/path"), List("1"), ListMap()))))
     res.status shouldEqual StatusCodes.SeeOther
     res.header[Location] shouldEqual Some(Location("data/path/1"))
 
-    res = response(StatusResult(303, RedirectValue(TresqlUri.Uri(Seq("data/path"), Nil, ListMap("id" -> "1")))))
+    res = response(ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq("data/path"), Nil, ListMap("id" -> "1")))))
     res.status shouldEqual StatusCodes.SeeOther
     res.header[Location] shouldEqual Some(Location("data/path?id=1"))
 
-    res = response(StatusResult(303, RedirectValue(TresqlUri.Uri(Seq("/data"), List("path", "redirect"), ListMap()))))
+    res = response(ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq("/data"), List("path", "redirect"), ListMap()))))
     res.status shouldEqual StatusCodes.SeeOther
     res.header[Location] shouldEqual Some(Location("/data/path/redirect"))
 
-    res = response(StatusResult(303, RedirectValue(TresqlUri.Uri(Seq("/data"), List("sub/path"), ListMap()))))
+    res = response(ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq("/data"), List("sub/path"), ListMap()))))
     res.status shouldEqual StatusCodes.SeeOther
     res.header[Location] shouldEqual Some(Location("/data/sub%2Fpath"))
 
-    res = response(StatusResult(303, RedirectValue(TresqlUri.Uri(Seq("/data"), List("sub?path"), ListMap()))))
+    res = response(ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq("/data"), List("sub?path"), ListMap()))))
     res.status shouldEqual StatusCodes.SeeOther
     res.header[Location] shouldEqual Some(Location("/data/sub%3Fpath"))
 
-    res = response(StatusResult(303, RedirectValue(TresqlUri.Uri(Seq("person_health"), List("Mr. Gunza", "2021-06-05"), ListMap("par1" -> "val1", "par2" -> "val2")))))
+    res = response(ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq("person_health"), List("Mr. Gunza", "2021-06-05"), ListMap("par1" -> "val1", "par2" -> "val2")))))
     res.status shouldEqual StatusCodes.SeeOther
     res.header[Location] shouldEqual Some(Location("person_health/Mr.%20Gunza/2021-06-05?par1=val1&par2=val2"))
 
-    res = response(StatusResult(303, RedirectValue(TresqlUri.Uri(Seq("data/path/2"), List(), ListMap()))))
+    res = response(ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq("data/path/2"), List(), ListMap()))))
     res.status shouldEqual StatusCodes.SeeOther
     res.header[Location] shouldEqual Some(Location("data/path/2"))
 
-    intercept[IllegalArgumentException](response(StatusResult(303, RedirectValue(TresqlUri.Uri(null, List("4"), ListMap("par1" -> "5"))))))
+    intercept[IllegalArgumentException](response(ResponseResult(303, RedirectValue(TresqlUri.Uri(null, List("4"), ListMap("par1" -> "5"))))))
 
-    res = response(StatusResult(303, RedirectValue(TresqlUri.Uri(Seq("data/path"), List(null), ListMap()))))
+    res = response(ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq("data/path"), List(null), ListMap()))))
     res.status shouldEqual StatusCodes.SeeOther
     res.header[Location] shouldEqual Some(Location("data/path/null"))
 
-    res = response(StatusResult(303, RedirectValue(TresqlUri.Uri(Seq("data/path"), List(), ListMap("id" -> null)))))
+    res = response(ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq("data/path"), List(), ListMap("id" -> null)))))
     res.status shouldEqual StatusCodes.SeeOther
     res.header[Location] shouldEqual Some(Location("data/path?id="))
 
-    res = response(StatusResult(303, RedirectValue(TresqlUri.Uri(Seq("data/ēūīāšģķļžčņ"), List("ēūīāšģķļžč/ņ"), ListMap("ē/ūīāšģķļžčņ" -> "ēūīāš/ģķļžčņ")))))
+    res = response(ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq("data/ēūīāšģķļžčņ"), List("ēūīāšģķļžč/ņ"), ListMap("ē/ūīāšģķļžčņ" -> "ēūīāš/ģķļžčņ")))))
     res.status shouldEqual StatusCodes.SeeOther
     res.header[Location] shouldEqual Some(Location("data/%C4%93%C5%AB%C4%AB%C4%81%C5%A1%C4%A3%C4%B7%C4%BC%C5%BE%C4%8D%C5%86/%C4%93%C5%AB%C4%AB%C4%81%C5%A1%C4%A3%C4%B7%C4%BC%C5%BE%C4%8D%2F%C5%86?%C4%93/%C5%AB%C4%AB%C4%81%C5%A1%C4%A3%C4%B7%C4%BC%C5%BE%C4%8D%C5%86=%C4%93%C5%AB%C4%AB%C4%81%C5%A1/%C4%A3%C4%B7%C4%BC%C5%BE%C4%8D%C5%86"))
 
-    res = response(StatusResult(303, RedirectValue(TresqlUri.Uri(Seq("http://foo.org"), List(), ListMap()))))
+    res = response(ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq("http://foo.org"), List(), ListMap()))))
     res.status shouldEqual StatusCodes.SeeOther
     res.header[Location] shouldEqual Some(Location("http://foo.org"))
 
-    res = response(StatusResult(303, RedirectValue(TresqlUri.Uri(Seq("https://foo.org:8080/"), List(), ListMap()))))
+    res = response(ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq("https://foo.org:8080/"), List(), ListMap()))))
     res.status shouldEqual StatusCodes.SeeOther
     res.header[Location] shouldEqual Some(Location("https://foo.org:8080/"))
 
-    res = response(StatusResult(303, RedirectValue(TresqlUri.Uri(Seq("http://foo.org"), List("s1", "s2"), ListMap()))))
+    res = response(ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq("http://foo.org"), List("s1", "s2"), ListMap()))))
     res.status shouldEqual StatusCodes.SeeOther
     res.header[Location] shouldEqual Some(Location("http://foo.org/s1/s2"))
 
-    res = response(StatusResult(303, RedirectValue(TresqlUri.Uri(Seq("http://foo.org/data"), List("sā1", "sī2"), ListMap()))))
+    res = response(ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq("http://foo.org/data"), List("sā1", "sī2"), ListMap()))))
     res.status shouldEqual StatusCodes.SeeOther
     res.header[Location] shouldEqual Some(Location("http://foo.org/data/s%C4%811/s%C4%AB2"))
   }

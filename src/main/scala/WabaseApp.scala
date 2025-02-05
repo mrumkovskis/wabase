@@ -169,7 +169,7 @@ trait WabaseApp[User] {
     def throwUnexpectedResultClass(qr: QuereaseResult) =
       sys.error(s"Unexpected result class getting old-value for '$actionName' of $viewName: ${qr.getClass.getName}")
     def oldVal(ov: QuereaseResult): Map[String, Any] = ov match {
-      case StatusResult(StatusCodes.NotFound.intValue, _, _, _) => null
+      case ResponseResult(StatusCodes.NotFound.intValue, _, _, _) => null
       case MapResult(oldMap) => oldMap
       case srr: TresqlSingleRowResult => srr.map(qe.toCompatibleMap(_, qe.viewDef(viewName)))
       case CompatibleResult(r, _, _) => oldVal(r)
@@ -302,7 +302,7 @@ trait WabaseApp[User] {
   }
 
   def mayBeSerializeResult(context: AppActionContext, wr: WabaseResult): Future[WabaseResult] = wr match {
-    case wr@WabaseResult(_, sr@StatusResult(_, ResultValue(r), _, _)) =>
+    case wr@WabaseResult(_, sr@ResponseResult(_, ResultValue(r), _, _)) =>
       mayBeSerializeResult(context, wr.copy(result = r))
         .map{nwr => nwr.copy(result = sr.copy(value = ResultValue(nwr.result)))}(context.ec)
     case WabaseResult(ac, QuereaseResultWithCleanup(result, cleanup)) =>

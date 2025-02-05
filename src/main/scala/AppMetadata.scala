@@ -928,20 +928,20 @@ class OpParser(viewName: String, cache: OpParser.Cache)
         l.map(_._1).mkString(",")}), ")
     })
   } named "named-ops"
-  def redirect: MemParser[Status] = (RedirectOpRegex ~> setHttpHeadersOps ~ tresqlOp) ^^ {
-    case hops ~ tr => Action.Status(303, true, hops, tr)
+  def redirect: MemParser[Response] = (RedirectOpRegex ~> setHttpHeadersOps ~ tresqlOp) ^^ {
+    case hops ~ tr => Action.Response(303, true, hops, tr)
   } named "redirect-op"
-  def status: MemParser[Status] = (("status" | "response") ~ ("\\w+".r ~ setHttpHeadersOps ~ opt(operation))) ^? ({
+  def response: MemParser[Response] = (("status" | "response") ~ ("\\w+".r ~ setHttpHeadersOps ~ opt(operation))) ^? ({
     case sor ~ (c ~ hops ~ body) if sor != "status" || body.isEmpty || body.exists(_.isInstanceOf[Tresql])  =>
       val code = c match {
         case "ok" => 200
         case x if Try(x.toInt).toOption.isDefined => x.toInt
         case x => throw new IllegalArgumentException(s"Status code must be 'ok' or integer, instead '$x' encountered in $viewName.")
       }
-      Action.Status(code, sor == "status", hops, body.orNull)
+      Action.Response(code, sor == "status", hops, body.orNull)
   }, {
     case _ ~ (_ ~ _ ~ b) => sys.error(s"For status command, body operation must be tresql instead found: $b")
-  }) named "status-op"
+  }) named "response-op"
   /* Cannot be named mem parser since depends on parameter. */
   def setOrDeleteCookie(cmd: String, mandatoryPars: Set[String] = Set()): Parser[SetHttpHeadersOp] =
     ((cmd ~ "(") ~> namedOps(allowedCookiePars, mandatoryPars, ",") <~ ")") ^? ({
@@ -969,7 +969,7 @@ class OpParser(viewName: String, cache: OpParser.Cache)
   } named "set-user-attributes-op"
   def setHttpHeadersOps: MemParser[List[SetHttpHeadersOp]] =
     rep(setCookie | deleteCookie | setHttpHeaders | setUserAttributes) named "set-http-headers-ops"
-  def operation: MemParser[Op] = (redirect | status | viewOp | jobOp | confOp | uniqueOp |
+  def operation: MemParser[Op] = (redirect | response | viewOp | jobOp | confOp | uniqueOp |
     httpOp | dbOp | resourceOp | fileOp | toFileOp | templateOp | emailOp |
     jsonCodecOp | httpHeaderOrCookieOp | extractPartsOp | extractEntityOp |
     thisOp | bracesOp | invocationOp | tresqlOp) named "operation"
@@ -1158,7 +1158,7 @@ object AppMetadata extends Loggable {
                           function: String,
                           arg: Op = null,
                           conformTo: Option[OpResultType] = None) extends CastableOp
-    case class Status(
+    case class Response(
       code: Int,
       statusMode: Boolean,  // if status mode = true, body op must be tresql and is executed as unique[String]
       setHttpHeaders: List[SetHttpHeadersOp] = Nil,
@@ -1224,7 +1224,7 @@ object AppMetadata extends Loggable {
     def opTraverser[T](opTrav: => OpTraverser[T], stepTrav: => StepTraverser[T])(
         extractor: OpTraverser[T]): OpTraverser[T] = {
       def traverse(state: T): PartialFunction[Op, T] = {
-        case _: Tresql | _: RedirectToKey | _: Status |
+        case _: Tresql | _: RedirectToKey | _: Response |
              _: VariableTransforms | _: File | _: Conf | _: HttpHeader | _: Cookie |
              ExtractParts | ExtractHttpEntity | This | _: Job | _: Resource | Commit | null => state
         case o: ViewCall => opTrav(state)(o.data)
@@ -1313,7 +1313,7 @@ object AppMetadata extends Loggable {
           def us(s: State[T], v: T) = { s.copy(value = v) }
           {
             case t: Tresql => us(state, nv(state.value)(t))
-            case Status(_, _, hops, body) =>
+            case Response(_, _, hops, body) =>
               hops.foldLeft(opTrTr(body)){ (resSt, hdop) =>
                 us(resSt, nv(resSt.value)(hdop.tresql))
               }

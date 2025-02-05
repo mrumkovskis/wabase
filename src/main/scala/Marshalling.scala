@@ -203,19 +203,19 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
     Marshaller.combined(_.toString)
   implicit def toResponseQuereaseKeyResultMarshaller:     ToResponseMarshaller[KeyResult]      =
     Marshaller { ec => kr =>
-      val sr = StatusResult(
+      val sr = ResponseResult(
         StatusCodes.SeeOther.intValue,
         RedirectValue(TresqlUri.Uri(Seq(s"/${config.getString("app.rest-path-base")}/${kr.viewName}"), kr.key))
       )
-      toResponseQuereaseStatusResultMarshaller(app.WabaseResult(null, sr))(ec)(sr)
+      toResponseQuereaseResponseResultMarshaller(app.WabaseResult(null, sr))(ec)(sr)
     }
-  implicit def toResponseQuereaseStatusResultMarshaller(wr: app.WabaseResult)(implicit ec: ExecutionContext):  ToResponseMarshaller[StatusResult] = {
-    val str = wr.result.asInstanceOf[StatusResult]
-    val statusMarshaller: ToResponseMarshaller[StatusResult] =
+  implicit def toResponseQuereaseResponseResultMarshaller(wr: app.WabaseResult)(implicit ec: ExecutionContext):  ToResponseMarshaller[ResponseResult] = {
+    val str = wr.result.asInstanceOf[ResponseResult]
+    val responseMarshaller: ToResponseMarshaller[ResponseResult] =
       str.value match {
         case RedirectValue(value) =>
           Marshaller.opaque { _ =>
-            require(value != null, s"Error marshalling redirect status result - no uri.")
+            require(value != null, s"Error marshalling redirect response result - no uri.")
             HttpResponse(headers = Seq(Location(app.qe.tresqlUri.uri(value))))
           }
         case ResultValue(value) => Marshaller { _ => _ =>
@@ -223,7 +223,7 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
         }
         case null => Marshaller.combined(_ => "")
       }
-    statusMarshaller.map { response =>
+    responseMarshaller.map { response =>
       def setHeaders(resp: HttpResponse) = {
         val (oct, h) = WabaseService.partitionHeaders(str.headers)
         val respWithCt =
@@ -380,7 +380,7 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
       case id: IdResult       => (toEntityQuereaseIdResultMarshaller:         ToResponseMarshaller[IdResult]      )(id)
       case kr: KeyResult      => (toResponseQuereaseKeyResultMarshaller:      ToResponseMarshaller[KeyResult]     )(kr)
       case ar: AnyResult      => (toEntityAnyResultMarshaller:                ToResponseMarshaller[AnyResult]     )(ar)
-      case sr: StatusResult   => (toResponseQuereaseStatusResultMarshaller(wr):   ToResponseMarshaller[StatusResult]  )(sr)
+      case sr: ResponseResult   => (toResponseQuereaseResponseResultMarshaller(wr):   ToResponseMarshaller[ResponseResult]  )(sr)
       case no: NoResult.type  => (toEntityQuereaseNoResultMarshaller:         ToResponseMarshaller[NoResult.type] )(no)
       case dr: QuereaseDelRes => (toEntityQuereaseDeleteResultMarshaller:     ToResponseMarshaller[QuereaseDelRes])(dr)
       case fr: FileResult     => (toResponseFileResultMarshaller:             ToResponseMarshaller[FileResult]    )(fr)
