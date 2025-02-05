@@ -333,17 +333,14 @@ object FileStreamerConfig {
       .toMap - "files" - "jdbc"
 }
 
-trait AppFileStreamerFactory {
-  def createAppFileStreamers(dbAccessProvider: DbAccessProvider): Map[String, AppFileStreamer[WabaseUser]]
+trait FileStreamerFactory {
+  def createFileStreamers(dbAccessProvider: DbAccessProvider): Map[String, FileStreamer]
 }
 
-object AppFileStreamerFactory {
-  def createAppFileStreamers(dbAccessProvider: DbAccessProvider): Map[String, AppFileStreamer[WabaseUser]] = {
+object FileStreamerFactory extends FileStreamerFactory {
+  def createFileStreamers(dbAccessProvider: DbAccessProvider): Map[String, FileStreamer] = {
     FileStreamerConfig.configs.map { case (n, fsCfg) =>
-      n -> new AppFileStreamer[WabaseUser] with DbAccessProvider {
-             override def dbAccess = dbAccessProvider.dbAccess
-             override lazy val fileStreamerConfig: Config = fsCfg
-           }
+      n -> new FileStreamer(fsCfg, dbAccessProvider)
     }.toMap
   }
 }
