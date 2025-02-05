@@ -4,6 +4,11 @@ import scala.collection.immutable.Set
 
 trait Authorization[User] {
   this: AppBase[User] with Audit[User] with DbAccess with ValidationEngine with DbConstraintMessage =>
+
+  private val wabaseAuth =
+    getObjectOrNewInstance(config.getString("app.wabase-authorization-factory"), "wabase authorization factory")
+      .asInstanceOf[WabaseAuthorizationFactory].initialize()
+
   /** performs authorization, on failure throws UnauthorizedException, otherwise returns */
   def check[C <: RequestContext[_]](ctx: C, clazz: Class[_]): Unit
   /** performs authorization, on success returns true otherwise false */
@@ -16,11 +21,24 @@ trait Authorization[User] {
     *   .headOption.map(_.has_role.booleanValue) getOrElse false
     * }}}
     */
-  def hasRole(user: User, roles: Set[String]): Boolean
+  def hasRole(user: User, roles: Set[String]): Boolean = user match {
+    case wabaseUser: WabaseUser => wabaseAuth.hasRole(wabaseUser, roles)
+    case x                      => false
+  }
 }
 
-object Authorization {
+trait WabaseAuthorizationFactory {
+  def initialize(): WabaseAuthorization
+}
+
+class WabaseAuthorization {
+  def hasRole(user: WabaseUser, roles: Set[String]): Boolean = user.roles.intersect(roles).nonEmpty
+}
+
+object Authorization extends WabaseAuthorizationFactory {
   class UnauthorizedException(msg: String) extends BusinessException(msg)
+
+  override def initialize(): WabaseAuthorization = new WabaseAuthorization
 
   trait NoAuthorization[User] extends Authorization[User] {
     this: AppBase[User] with Audit[User] with DbAccess with ValidationEngine with DbConstraintMessage =>
