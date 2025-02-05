@@ -1434,3 +1434,27 @@ get:
       set_cookie(name = 'test', value = 'test_val', secure = true, http_only = true, max_age = 1000)
       set_cookie(name = 'test1', value = 'test_val1', expires = '2025-04-3 13:30:25'::timestamp)
       {'/redirect_path', 'view'}
+
+
+name: set_headers_test3
+api: get
+table:
+get:
+  - hn = 'response_header_name'
+  - hv = 'response_header_value'
+  - response ok
+      set_headers({:hn, :hv})
+      as any ({'r1' rn, 'v1' c} + {'r2' rn, 'v2' c})#(1,2)
+
+
+name: set_headers_test4
+api: get
+table:
+get:
+  - name = 'my_cookie'
+  - value = 'my_cookie_value'
+  - http_only = false
+  - response ok
+      set_cookie(name = :name, value = :value, secure = false, http_only = :http_only,
+        expires = {`date_add(timestamp '2025-02-05 09:37:40', interval 1 month)`})
+      conf string conf.test.uri

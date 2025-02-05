@@ -1363,6 +1363,10 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     } yield t1
   }
 
+  def decodeJs(js: String) = new CborOrJsonAnyValueDecoder().decode(ByteString(js))
+  def jsonAssert(jsonStr: String, res: Any) =
+    decodeJs(jsonStr) shouldBe res
+
   it should "do wabase routes and return results" in {
     implicit val user: TestUsr = TestUsr(100)
     /*
@@ -1373,9 +1377,6 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     * classOf[Marshalling].getClassLoader.getResource("/resource.txt") - DOES NOT WORK
     */
     val route = service.crudAction
-    def decodeJs(js: String) = new CborOrJsonAnyValueDecoder().decode(ByteString(js))
-    def jsonAssert(jsonStr: String, res: Any) =
-       decodeJs(jsonStr) shouldBe res
     Delete("/invocation_test_3") ~> route ~> check {
       val r = entityAs[String]
       jsonAssert(r, Map("1" -> Map("key" -> "value")))
@@ -1516,6 +1517,16 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       header("h1") shouldBe Some(HttpHeader.parse("h1", "v1").asInstanceOf[Ok].header)
       header("h2") shouldBe Some(HttpHeader.parse("h2", "v2").asInstanceOf[Ok].header)
       header("location") shouldBe Some(HttpHeader.parse("location", "/redirect_path/view").asInstanceOf[Ok].header)
+    }
+    Get("/set_headers_test3") ~> route ~> check {
+      header("response_header_name") shouldBe Some(HttpHeader.parse("response_header_name", "response_header_value").asInstanceOf[Ok].header)
+      jsonAssert(entityAs[String], List(Map("RN" -> "r1", "C" -> "v1"), Map("RN" -> "r2", "C" -> "v2")))
+    }
+    Get("/set_headers_test4") ~> route ~> check {
+      headers.collect {
+        case `Set-Cookie`(c) => (c.name, (c.value, c.secure, c.httpOnly, c.expires.map(_.toString())))
+      }.toMap shouldBe Map("my_cookie" -> ("my_cookie_value", false, false, Some("2025-03-05T09:37:40")))
+      jsonAssert(entityAs[String], "http://wabase.org/")
     }
   }
 }
