@@ -57,7 +57,7 @@ object WabaseAuthentication extends Authentication[WabaseUser] with Execution {
       case RemoteAddress.Unknown => null
     }
     if (ip == null)
-      throw new BusinessException(s"Client IP http header not found, ensure pekko.http.server.remote-address-header = on")
+      throw new BusinessException(s"Client IP http header not found, ensure pekko.http.server.remote-address-attribute = on")
     val userAgent = extractUserAgent(req)
     val expirationTime = currentTime + sessionTimeOut
     encryptSession(encodeSession(Authentication.Session(user, ip, expirationTime, userAgent)))
