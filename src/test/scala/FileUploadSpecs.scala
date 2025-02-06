@@ -28,25 +28,22 @@ class FileUploadSpecs extends AnyFlatSpec with TestQuereaseInitializer with Scal
 
   var service: TestAppService = _
 
+  private val uploadTestsDb = "file-upload-tests"
+  override protected def dbNamePrefix: String = uploadTestsDb
   override def beforeAll(): Unit = {
-    querease = new TestQuerease("/filestreamer-specs-table-metadata.yaml")
+    querease = new TestQuerease("/filestreamer-specs-table-metadata.yaml") {
+      override lazy val defaultCpName = uploadTestsDb
+    }
     super.beforeAll()
 
     val db = new DbAccess with Loggable {
+      override val DefaultCp: PoolName = PoolName(uploadTestsDb)
       override val tresqlResources  = FileUploadSpecs.this.tresqlThreadLocalResources
       override protected def tresqlMetadata = querease.tresqlMetadata
-      //save conn if later test execution happens in another thread
-      private val conn = tresqlResources.conn
-      override def initResources = template => (_, _) => template.withConn(conn)
-      override def closeResources = (res, roll ,err) => err.map(_ => res.conn.rollback()).getOrElse(res.conn.commit())
-      override def withRollbackConn[A](poolName: PoolName, template: Resources, extraDb: Seq[AppMetadata.DbAccessKey])(
-        f: Resources => A): A = {
-        val res = initResources(template)(poolName, extraDb)
-        try f(res) finally res.conn.rollback()
-      }
     }
 
     val appl = new TestApp {
+      override val DefaultCp: PoolName = PoolName(uploadTestsDb)
       override def dbAccessDelegate = db
       override protected def initQuerease = querease
       private val root_path =
