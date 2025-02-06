@@ -253,7 +253,7 @@ class FileStreamer(
                   Files.delete(tempFile.toPath)
                   db.withConn(fsCp) { implicit res =>
                     Query(fileInfoSelect, Map("id" -> id, "sha_256" -> sha))
-                      .map(new FileInfo(_)).toList.headOption
+                      .map(new FileInfo(_)).find(_ => true)
                   }
                 } else throw badFileException // bad sha or size
               }
@@ -278,7 +278,7 @@ class FileStreamer(
                 Query(s"+$file_body_info_table{$shaColName, size, path} [?, ?, ?]", sha, size, tailPath)
             val id = Query(fileInfoInsert, fi.toMap) match { case r: InsertResult => r.id.get }
             Query(fileInfoSelect, Map("id" -> id, "sha_256" -> sha))
-              .map(new FileInfo(_)).toList.headOption
+              .map(new FileInfo(_)).find(_ => true)
           }
         case someFi =>
           someFi
@@ -295,7 +295,7 @@ class FileStreamer(
   def getFileInfo(id: Long, sha256: String): Option[FileInfoHelper] = {
     db.withConn(fsCp) { implicit res =>
       Query(fileInfoSelect, Map("id" -> id, "sha_256" -> sha256))
-        .map(new FileInfoHelper(_)).toList.headOption
+        .map(new FileInfoHelper(_)).find(_ => true)
     }
         .map { fi => fi.copy(
           path = rootPath + "/" + fi.path + "/" + fi.sha_256
