@@ -1714,7 +1714,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       else view
     )
 
-    def mayBeUnwrapSingleVal(l: Seq[Map[String, Any]]) = l match {
+    def maybeUnwrapSingleVal(l: Seq[Map[String, Any]]) = l match {
       case row :: Nil if row.size == 1 => row.head._2
       case rows => rows
     }
@@ -1726,7 +1726,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         case ar: ArrayResult[_] => ar.values.toList
         case r: Result[_] =>
           val l = r.toListOfMaps
-          if (unwrapSingleValue) mayBeUnwrapSingleVal(l) else l
+          if (unwrapSingleValue) maybeUnwrapSingleVal(l) else l
       }
       case srr: TresqlSingleRowResult => srr.map(_.toMap)
       case MapResult(mr) => mr
@@ -1764,7 +1764,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case CompatibleResult(r, filter, isCollection) => r match {
         case TresqlResult(r: Result[_]) =>
           val l = toCompatibleSeqOfMaps(r, v(filter.name)) // FIXME assumes that filter name matches view name, refactor!
-          if (unwrapSingleValue) mayBeUnwrapSingleVal(l) else l
+          if (unwrapSingleValue) maybeUnwrapSingleVal(l) else l
         case r: TresqlSingleRowResult => r.map(toCompatibleMap(_, v(filter.name))) // FIXME assumes that filter name matches view name
         case fr: FileResult => fileHttpEntity(fr).map(objFromHttpEntity(_, filter.name, isCollection)) // FIXME assumes that filter matches view name
           .getOrElse(sys.error(s"File not found: ${fr.fileInfo}"))

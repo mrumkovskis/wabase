@@ -134,7 +134,7 @@ trait WabaseApp[User] {
     import context.as
     action(actionContext)
       .run
-      .flatMap(mayBeSerializeResult(context, _))
+      .flatMap(maybeSerializeResult(context, _))
       .andThen {
         case Success(WabaseResult(ctx, res)) => this.afterWabaseAction(ctx, Success(res))
         case Failure(error) => this.afterWabaseAction(context, Failure[QuereaseResult](error))
@@ -311,9 +311,9 @@ trait WabaseApp[User] {
     resultF
   }
 
-  def mayBeSerializeResult(context: AppActionContext, wr: WabaseResult): Future[WabaseResult] = wr match {
+  def maybeSerializeResult(context: AppActionContext, wr: WabaseResult): Future[WabaseResult] = wr match {
     case wr@WabaseResult(_, sr@ResponseResult(_, ResultValue(r), _, _)) =>
-      mayBeSerializeResult(context, wr.copy(result = r))
+      maybeSerializeResult(context, wr.copy(result = r))
         .map{nwr => nwr.copy(result = sr.copy(value = ResultValue(nwr.result)))}(context.ec)
     case WabaseResult(ac, QuereaseResultWithCleanup(result, cleanup)) =>
       sealed trait Res
