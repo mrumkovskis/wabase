@@ -11,7 +11,7 @@ import scala.math.Ordering
 class FieldOrderingSpecs extends FlatSpec with Matchers {
   behavior of "FieldOrderingSpecs"
 
-  object TestApp extends AppBase[TestUsr] with NoAudit[TestUsr] with NoAuthorization[TestUsr]
+  object FieldOrderingTestApp extends AppBase[TestUsr] with NoAudit[TestUsr] with NoAuthorization[TestUsr]
       with NoValidation with DbAccess with PostgreSqlConstraintMessage {
     object FieldOrdTestQuerease extends TestQuerease("/constraint-message-spec.yaml")
 
@@ -19,7 +19,7 @@ class FieldOrderingSpecs extends FlatSpec with Matchers {
   }
 
   it should "preserve field ordering when jsonizing" in {
-    import TestApp.qio.MapJsonFormat
+    import FieldOrderingTestApp.qio.MapJsonFormat
     val m = (1 to 5).map(_.toString).map(x => (x, x)).toMap
 
     val m1: Map[String, Any] = new TreeMap()(Ordering.String) ++ m
