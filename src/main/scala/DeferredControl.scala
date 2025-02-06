@@ -461,9 +461,11 @@ object DeferredControl extends Loggable with AppConfig {
     import stats._
 
     implicit private lazy val queryTimeout: QueryTimeout = DefaultQueryTimeout
-    private lazy val Cp = PoolName(fileStreamer.connectionPoolName)
+    private lazy val Cp =
+      Option("deferred-requests.storage.cp").filter(conf.hasPath).map(conf.getString).map(PoolName)
+        .getOrElse(db.DefaultCp)
 
-    override lazy val fileStreamerConfig: Config = config.getConfig("deferred-requests.storage")
+    override lazy val fileStreamerConfig: Config = conf.getConfig("deferred-requests.storage.file-streamer")
 
     import DeferredControl.HttpMessageSerialization._
     def registerDeferredRequest(ctx: DeferredContext): DeferredContext = db.newTransaction(Cp) { implicit res =>

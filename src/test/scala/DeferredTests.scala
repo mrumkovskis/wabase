@@ -97,7 +97,7 @@ class DeferredTests extends AnyFlatSpec with Matchers with TestQuereaseInitializ
         private val root_path = deferredResultFileRootPath
         override lazy val fileStreamerConfig =
           ConfigFactory.parseString(s"files.path = $root_path")
-            .withFallback(config.getConfig("app.deferred-requests.storage"))
+            .withFallback(config.getConfig("app.deferred-requests.storage.file-streamer"))
         override protected def logDeferredResultMarshallingException(e: Throwable): Unit =
           logger.debug(deferredResultMarshallingExceptionMessage(e), e)
       }

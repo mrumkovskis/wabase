@@ -168,7 +168,7 @@ class FileStreamer(
   override val file_info_table: String      = fsCfg.getString("file-info-table")
   override val file_body_info_table: String = fsCfg.getString("file-body-info-table")
   override val shaColName: String           = fsCfg.getString("sha-col-name")
-  val connectionPoolName: String            = fsCfg.getString("cp")
+  val connectionPoolName: String            = Option("cp").filter(fsCfg.hasPath).map(fsCfg.getString).orNull
   val queryTimeoutSeconds: Int              = fsCfg.getDuration("jdbc.query-timeout").toSeconds.toInt
 
   private val fileInfoInsert =
@@ -178,9 +178,9 @@ class FileStreamer(
     s"$file_info_table f; f/$file_body_info_table b?[id = :id][f.$shaColName = :sha_256] " +
       s"{id, filename, upload_time, content_type, f.$shaColName sha_256, size, path}@(1)"
 
-  private val fileStreamerConnectionPool: PoolName = PoolName(connectionPoolName)
-  private implicit val queryTimeout: QueryTimeout  = QueryTimeout(queryTimeoutSeconds)
   private lazy val db = dbAccessProvider.dbAccess
+  private lazy val fileStreamerConnectionPool: PoolName = Option(connectionPoolName).map(PoolName).getOrElse(db.DefaultCp)
+  private implicit val queryTimeout: QueryTimeout  = QueryTimeout(queryTimeoutSeconds)
 
   import AppFileStreamer._
 
