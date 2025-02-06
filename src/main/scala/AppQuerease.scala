@@ -1294,8 +1294,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     val reqF = {
       def reqWithoutBody = HttpRequest(httpMeth, uri, headers)
       if (op.body == null) Future.successful(reqWithoutBody)
-      else doActionOpAndRender(optContentType.orNull, op.body, data, env, context).map {
-        case (src, ct, clo) =>
+      else doActionOpAndRender(optContentType.getOrElse(MediaTypes.`application/octet-stream`),
+        op.body, data, env, context).map { case (src, ct, clo) =>
           reqWithoutBody.withEntity(clo.map(HttpEntity(ct, _, src)).getOrElse(HttpEntity(ct, src)))
       }
     }
@@ -1596,26 +1596,26 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case AnyResult(v) => encodeJson(v)
       case MapResult(data) =>
         (renderedSource(DataSerializer.source(() => Seq(data).iterator), resFil, false, ct),
-          null, contentType, None)
+          null, ct, None)
       case IteratorResult(data) =>
-        (renderedSource(DataSerializer.source(() => data), resFil, true, ct), null, contentType, None)
+        (renderedSource(DataSerializer.source(() => data), resFil, true, ct), null, ct, None)
       case TresqlResult(tr) => tr match {
         case SingleValueResult(r: Iterable[_]) =>
           (renderedSource(DataSerializer.source(() => r.iterator), resFil, isCollection.getOrElse(true), ct),
-            null, contentType, None)
+            null, ct, None)
         case SingleValueResult(s: String) => encodePrimitive(s, ct)
         // single value can be querease result if action step keepResult is set like 'as result variable = ...'
         case SingleValueResult(qr: QuereaseResult) => renderedResult(qr, contentType, resFil, isCollection)
         case SingleValueResult(r) =>
           (renderedSource(DataSerializer.source(() => Iterator(r)), resFil, isCollection.getOrElse(false), ct),
-            null, contentType, None)
+            null, ct, None)
         case r =>
           (renderedSource(TresqlResultSerializer.source(() => r), resFil, isCollection.getOrElse(true), ct),
-            null, contentType, None)
+            null, ct, None)
       }
       case TresqlSingleRowResult(row) =>
         (renderedSource(TresqlResultSerializer.rowSource(() => row), resFil, isCollection.getOrElse(false), ct),
-          null, contentType, None)
+          null, ct, None)
       case fileResult: FileResult =>
         fileHttpEntity(fileResult)
           .map(e => (e.dataBytes, fileResult.fileInfo.filename, e.contentType, e.contentLengthOption))
