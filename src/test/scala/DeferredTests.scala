@@ -38,30 +38,21 @@ class DeferredTests extends AnyFlatSpec with Matchers with TestQuereaseInitializ
   implicit val queryTimeout: QueryTimeout = QueryTimeout(10)
   implicit def userToString(user: TestUsr): String = user.id.toString
 
+  private val deferredTestsDb = "deferred-tests"
+  override protected def dbNamePrefix: String = deferredTestsDb
   override def beforeAll(): Unit = {
-    querease = new TestQuerease("/deferred-metadata.yaml")
+    querease = new TestQuerease("/deferred-metadata.yaml") {
+      override lazy val defaultCpName = deferredTestsDb
+    }
     super.beforeAll()
 
     val db = new DbAccess with Loggable {
+      override val DefaultCp: PoolName = PoolName(deferredTestsDb)
       override val tresqlResources = DeferredTests.this.tresqlThreadLocalResources
       override protected def tresqlMetadata = querease.tresqlMetadata
-      //save conn if later test execution happens in another thread
-      private val conn = tresqlResources.conn
-
-      override def initResources = template => (_, _) => template.withConn(conn)
-      override def closeResources = (res, roll, err) => err.map(_ => res.conn.rollback()).getOrElse(res.conn.commit())
-      override def newTransaction[A](poolName: PoolName, template: Resources, extraDb: Seq[DbAccessKey])(f: Resources => A): A = {
-        val res = initResources(template)(poolName, extraDb)
-        try f(res) finally res.conn.commit()
-      }
-      override def withRollbackConn[A](poolName: PoolName, template: Resources, extraDb: Seq[AppMetadata.DbAccessKey])(
-        f: Resources => A): A = {
-        val res = initResources(template)(poolName, extraDb)
-        try f(res) finally res.conn.rollback()
-      }
     }
-
     val appl = new TestApp {
+      override val DefaultCp: PoolName = PoolName(deferredTestsDb)
       override def dbAccessDelegate = db
       override protected def initQuerease = querease
       private val root_path =
