@@ -761,7 +761,7 @@ order:
 list:
 - to file list this
 - to file (list this) 'persons'
-- to file (list this) 'persons' 'application/json'
+- to file [main] (list this) 'persons' 'application/json'   # use named file streamer
 
 
 name: to_file_test2
@@ -800,7 +800,7 @@ insert:
 - :res
 update:
 - file = to file conf string conf.test.uri 'updated'
-- res = file {:file.id, :file.sha_256}
+- res = file [main] {:file.id, :file.sha_256}         # use named file streamer
 - :res
 
 
