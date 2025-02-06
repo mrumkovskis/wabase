@@ -179,7 +179,7 @@ class FileStreamer(
       s"{id, filename, upload_time, content_type, f.$shaColName sha_256, size, path}@(1)"
 
   private lazy val db = dbAccessProvider.dbAccess
-  private lazy val fileStreamerConnectionPool: PoolName = Option(connectionPoolName).map(PoolName).getOrElse(db.DefaultCp)
+  private lazy val fsCp: PoolName = Option(connectionPoolName).map(PoolName).getOrElse(db.DefaultCp)
   private implicit val queryTimeout: QueryTimeout  = QueryTimeout(queryTimeoutSeconds)
 
   import AppFileStreamer._
@@ -233,11 +233,10 @@ class FileStreamer(
         new BusinessException(
           "Cannot process file, please contact administrator: " + sha)
 
-      implicit val res: Resources = db.initResources(db.tresqlResources.resourcesTemplate)(fileStreamerConnectionPool, Nil)
-      val oldPathOptF = Future {
+      def oldPathOpt = db.withConn(fsCp) { implicit res =>
         Query(s"$file_body_info_table[$shaColName=?]{path}", sha).uniqueOption[String]
       }
-      val oldFileInfoF: Future[Option[FileInfo]] = oldPathOptF flatMap {
+      val oldFileInfoF: Future[Option[FileInfo]] = oldPathOpt match {
         case Some(oldPath) =>
           val old = new File(rootPath + "/" + oldPath + "/" + sha).toPath
           if (Files.exists(old)) {
@@ -248,17 +247,21 @@ class FileStreamer(
               } yield {
                 if (size == oldSize && sha == oldSha) {
                   // old file ok
-                  val id = Query(fileInfoInsert, fi.toMap) match { case r: InsertResult => r.id.get }
+                  val id = db.newTransaction(fsCp) { implicit res =>
+                    Query(fileInfoInsert, fi.toMap) match { case r: InsertResult => r.id.get }
+                  }
                   Files.delete(tempFile.toPath)
-                  Query(fileInfoSelect, Map("id" -> id, "sha_256" -> sha))
-                    .map(new FileInfo(_)).toList.headOption
+                  db.withConn(fsCp) { implicit res =>
+                    Query(fileInfoSelect, Map("id" -> id, "sha_256" -> sha))
+                      .map(new FileInfo(_)).toList.headOption
+                  }
                 } else throw badFileException // bad sha or size
               }
             } else Future.failed(badFileException) // not readable or is directory
           } else Future.successful(None) // missing, will add
         case None => Future.successful(None) // new, will add
       }
-      oldFileInfoF flatMap {
+      oldFileInfoF map {
         case None =>
           val tailPath = new java.text.SimpleDateFormat("yyyy/MM/dd").format(new jDate)
           val fullPath = new File(rootPath + "/" + tailPath)
@@ -268,26 +271,18 @@ class FileStreamer(
             if (!targetFile.exists || !Files.isRegularFile(targetFile.toPath))
               throw badFileException
           // if we are here, file body is accepted and copied, db has to be updated
-          oldFileInfoF.map {
-            case Some(_) => Query(s"$file_body_info_table[$shaColName=?]{path} = [?]", sha, tailPath)
-            case _ => oldPathOptF.map {
-              case Some(oldPath) =>
-                // integrity failure - file body record exists, file on disk does not, update path to new file
-                logger.warn(s"Integrity error: file not found under path '$oldPath', updating to new path '$tailPath'")
+          db.newTransaction(fsCp) { implicit res =>
+            if (oldPathOpt.isDefined)
                 Query(s"=$file_body_info_table[$shaColName = ?] {path = ?}", sha, tailPath)
-              case _ =>
+            else
                 Query(s"+$file_body_info_table{$shaColName, size, path} [?, ?, ?]", sha, size, tailPath)
-            }
-          }
-          .map(_ => Query(fileInfoInsert, fi.toMap) match { case r: InsertResult => r.id.get })
-          .map { id =>
+            val id = Query(fileInfoInsert, fi.toMap) match { case r: InsertResult => r.id.get }
             Query(fileInfoSelect, Map("id" -> id, "sha_256" -> sha))
               .map(new FileInfo(_)).toList.headOption
           }
-        case someFi => Future.successful(someFi)
-      } map(_.get) andThen {
-        case x => db.closeResources(res, x.isFailure, x.failed.toOption)
-      }
+        case someFi =>
+          someFi
+      } map(_.get)
     }
 
     Flow
@@ -298,13 +293,13 @@ class FileStreamer(
   }
 
   def getFileInfo(id: Long, sha256: String): Option[FileInfoHelper] = {
-    db.withRollbackConn(fileStreamerConnectionPool) { implicit res: Resources =>
+    db.withConn(fsCp) { implicit res =>
       Query(fileInfoSelect, Map("id" -> id, "sha_256" -> sha256))
         .map(new FileInfoHelper(_)).toList.headOption
+    }
         .map { fi => fi.copy(
           path = rootPath + "/" + fi.path + "/" + fi.sha_256
         )}
-    }
   }
 
   def copy(source: String, dest: String, mkdirs: Boolean = false): Unit = {
