@@ -480,7 +480,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
     import Action._
     import qr._
-    implicit val fs: FileStreamer = getFs(null, fileStreamers)
+    implicit val fs: FileStreamer = fileStreamers.fs(null)
     def updateCurRes(cr: Map[String, Any], key: Option[String], resF: Future[_]) = {
       def upd(d: Map[String, _], k: String, v: Any) = {
         def rec(m: Map[String, _], kp: List[String]): Map[String, _] = kp match {
@@ -637,7 +637,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     import Action._
     import qr._
     import resourcesFactory._
-    implicit val fs: FileStreamer = getFs(null, fileStreamers)
+    implicit val fs: FileStreamer = fileStreamers.fs(null)
     val v = viewDef(
       if (view == "this") context.view.map(_.name) getOrElse view
       else                view
@@ -1138,7 +1138,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     res: Resources,
     ec: ExecutionContext,
     fss: WabaseFileStreamers): Future[DataResult] = {
-    val fs = getFs(op.fileStreamerName, fss)
+    val fs = fss.fs(op.fileStreamerName)
     val (id, sha) = Query(op.idShaTresql.tresql)(res.withParams(data ++ env)).unique[Long, String]
     val r = FileResult(fs.getFileInfo(id, sha).map(_.file_info).orNull, fs)
     Future.successful { op.conformTo.map(comp_res(r, _)).getOrElse(r) }
@@ -1164,7 +1164,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           .getOrElse(sys.error(s"Invalid content type: '$ctStr'"))
       } else ContentType(MediaTypes.`application/json`)
 
-    val fs = getFs(op.fileStreamerName, fileStreamers)
+    val fs = fileStreamers.fs(op.fileStreamerName)
     doActionOpAndRender(contentType, op.contentOp, data, env, context).flatMap { case (src, ct, _) =>
       src.runWith(fs.fileSink(fn, ct.value))
     }.map(FileInfoResult)
@@ -1178,7 +1178,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   )(implicit qr: QuereaseResources): Future[TemplateResult] = {
     import qr._
     import resourcesFactory._
-    implicit val fs: FileStreamer = getFs(null, fileStreamers)
+    implicit val fs: FileStreamer = fileStreamers.fs(null)
     val bindVars = data ++ env
     val template = Query(op.templateTresql.tresql)(resources.withParams(bindVars)).unique[String]
     val resF =
@@ -1437,7 +1437,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     context: ActionContext
   )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
     import qr._
-    implicit val fs: FileStreamer = getFs(null, fileStreamers)
+    implicit val fs: FileStreamer = fileStreamers.fs(null)
     doActionOp(op.op, data, env, context)
       .flatMap(dataForNextStep(_, context, true))
       .map { res =>
@@ -1504,7 +1504,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
     import qr._
     import resourcesFactory._
-    implicit val fs: FileStreamer = getFs(null, fileStreamers)
+    implicit val fs: FileStreamer = fileStreamers.fs(null)
     op match {
       case to: Action.Tresql => Future.successful(doTresql(to, data ++ env, context))
       case Action.ViewCall(method, view, viewOp) => doViewCall(method, view, viewOp, data, env, context)
@@ -1817,12 +1817,6 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     val default: PartialFunction[Class[_], Any] =
       { case c: Class[_] => org.wabase.invocationParameter(params ++ contextParams)(c) }
     org.wabase.invokeFunction(className, function, parametersFactory(injectionContext) orElse default)
-  }
-
-  def getFs(name: String, fileStreamers: WabaseFileStreamers): FileStreamer = {
-    val n = Option(name).getOrElse("main")
-    fileStreamers.fileStreamers.getOrElse(n, sys.error(s"Filestreamer '$n' not found. " +
-      s"Available names: '${fileStreamers.fileStreamers.keys.mkString(", ")}'"))
   }
 }
 
