@@ -1013,9 +1013,9 @@ get:
   - status ok { :lang || ' ' || :user }
 list:
   - no_cookie = extract cookie no-cookie
-  - lang_user = http get { '/extract_http_cookie_test', '1' }
-    ({ 'Cookie', 'current_lang=lv;current_user=dzidzis' }) # cookies
-  - c = { 'Cookie', 'current_lang=lv;current_user=dzidzis' } # cookies as variable to avoid db usage in http op
+  - cookie = buildCookieHeaderValue ({ 'current_lang', 'lv' } + { 'current_user', 'dzidzis' })
+  - lang_user = http get { '/extract_http_cookie_test', '1' } ({ 'Cookie', :cookie }) # cookies
+  - c = { 'Cookie', :cookie } # cookies as variable to avoid db usage in http op
   - c_var = http get { '/extract_http_cookie_test', '1' } :c
   - return :lang_user + :c_var + (no_cookie = :no_cookie) # (no_cookie = :no_cookie) indicates variable transformation rather than tresql
 

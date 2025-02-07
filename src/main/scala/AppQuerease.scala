@@ -3,7 +3,7 @@ package org.wabase
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.model.HttpHeader.ParsingResult.{Error, Ok}
 import org.apache.pekko.http.scaladsl.model.headers.ContentDispositionTypes.attachment
-import org.apache.pekko.http.scaladsl.model.headers.{HttpCookie, `Content-Disposition`, `Set-Cookie`}
+import org.apache.pekko.http.scaladsl.model.headers.{Cookie, HttpCookie, HttpCookiePair, `Content-Disposition`, `Set-Cookie`}
 import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes, ErrorInfo, HttpCharsets, HttpEntity, HttpHeader, HttpMethods, HttpRequest, HttpResponse, MediaTypes, Multipart, RequestEntity, StatusCodes, UniversalEntity}
 import org.apache.pekko.http.scaladsl.server.directives.ContentTypeResolver
 import org.apache.pekko.http.scaladsl.server.directives.FileAndResourceDirectives.ResourceFile
@@ -18,7 +18,7 @@ import org.slf4j.LoggerFactory
 import org.wabase.AppFileStreamer.FileInfo
 import org.wabase.AppMetadata.Action.{VariableTransform, VariableTransforms}
 import org.wabase.AppMetadata.DbAccessKey
-import org.wabase.AppQuerease.{InjectionParametersContext, InjectionParametersFactory}
+import org.wabase.AppQuerease.{InjectionParametersContext, InjectionParametersFactory, listOfStringTuples}
 import spray.json._
 
 import java.sql.Connection
@@ -1271,20 +1271,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     val (optContentType, headers) = if (op.headerTresql == null) (Some(null) -> Nil) else {
       // content type is used for request body if present
       val parsedValues = useResourcesConnOrEvaluator(implicitly[Resources], res =>
-       (Query(op.headerTresql.tresql, opData)(res) match {
-        case SingleValueResult(r) => r match { // unwrap header values from list of maps
-          case i: Iterable[_] => i.map {
-            case m: Map[_, _] if m.size > 1 =>
-              val h = m.toList
-              h.head._2.toString -> h.tail.head._2.toString // extract values - 1st value header name, 2nd - header value
-            case x => sys.error(s"Cannot retrieve http header from structure: [$x], two element Map[_, _] is required")
-          }.toList
-          case x => sys.error(s"Cannot retrieve http headers from structure: [$x], Iterable[Map[_, _]] is required")
-        }
-        case r: Result[_] => r.list[String, String]
-       }).map {
-        case (name, value) => HttpHeader.parse(name, value)
-       }
+        listOfStringTuples(Query(op.headerTresql.tresql, opData)(res))
+          .map { case (name, value) => HttpHeader.parse(name, value) }
       )
       val (ok, errs) = parsedValues.partition(_.isInstanceOf[Ok])
       require(errs.isEmpty, s"Error(s) parsing http headers:\n${
@@ -1294,9 +1282,11 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     val reqF = {
       def reqWithoutBody = HttpRequest(httpMeth, uri, headers)
       if (op.body == null) Future.successful(reqWithoutBody)
-      else doActionOpAndRender(optContentType.getOrElse(MediaTypes.`application/octet-stream`),
-        op.body, data, env, context).map { case (src, ct, clo) =>
-          reqWithoutBody.withEntity(clo.map(HttpEntity(ct, _, src)).getOrElse(HttpEntity(ct, src)))
+      else doActionOpAndRender(optContentType.orNull, op.body, data, env, context).map { case (src, ct, clo) =>
+          reqWithoutBody.withEntity(clo.map(
+            HttpEntity(Option(ct).getOrElse(MediaTypes.`application/octet-stream`), _, src)).getOrElse(
+            HttpEntity(ct, src))
+          )
       }
     }
     def do_http: HttpRequest => Future[HttpResponse] = {
@@ -1960,5 +1950,29 @@ object AppQuerease {
           .map(m => if (p.name == null) m else Map(p.name -> m))
       case p => p.data.runFold(ByteString.empty)(_ ++ _).map(v => Map(p.name -> v.utf8String))
     }.runFold(Map[String, Any]())(_ ++ _)
+  }
+
+  /** Function used for http headers construction.
+   * NOTE: Returned tuple elements are trimmed since sql may return trailing spaces from union select
+   * */
+  def listOfStringTuples(result: Result[_]): List[(String, String)] = {
+    result match {
+      case SingleValueResult(r) => r match { // unwrap header values from list of maps
+        case m: Map[_, _] => m.map { case (k, v) => (k.toString.trim, v.toString.trim) }.toList
+        case i: Iterable[_] => i.map {
+          case m: Map[_, _] if m.size > 1 =>
+            val h = m.toList
+            h.head._2.toString.trim -> h.tail.head._2.toString.trim // extract values - 1st value header name, 2nd - header value
+          case x => sys.error(s"Cannot retrieve values from structure: [$x], Map[_, _] is required")
+        }.toList
+        case x => sys.error(s"Cannot retrieve values from structure: [$x], Iterable[Map[_, _]] is required")
+      }
+      case r: Result[_] => r.list[String, String].map{ case (n, v) => (n.trim, v.trim) }
+    }
+  }
+
+  def buildCookieHeaderValue(tresql: TresqlResult): String = {
+    val pairs = listOfStringTuples(tresql.result).map(HttpCookiePair(_))
+    Cookie(pairs).value
   }
 }
