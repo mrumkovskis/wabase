@@ -19,7 +19,7 @@ object ComponentConf {
   def getConfigs(
     dedicatedConfResourceName: String,
     parentConfPath: String,
-    tunablePaths: Set[String],
+    tunablePaths: Set[String] = null,
   ): Seq[(String, Config)] = {
 
     val dedicLoad = ConfigFactory.parseResources(dedicatedConfResourceName)
@@ -33,7 +33,7 @@ object ComponentConf {
 
     /* Removes tunable tuned (i.e. found in tuned conf) paths from dedicated conf */
     def excludeTunable(dedicConf: Config): Config =
-      tunablePaths.foldLeft(dedicConf)(_ withoutPath _)
+      if (tunablePaths == null) ConfigFactory.empty else tunablePaths.foldLeft(dedicConf)(_ withoutPath _)
 
     val r_path    = parentConfPath
     val tunedCfgR =
@@ -42,7 +42,7 @@ object ComponentConf {
       if (dedicConf.hasPath(r_path)) dedicConf.getConfig(r_path) else ConfigFactory.empty
     )
 
-    dedicCfgR.root().asScala
+    tunedCfgR.root().asScala
       .collect { case (n, v) if v.valueType() == ConfigValueType.OBJECT =>
         val childConf =
           excludeTunable(v.asInstanceOf[ConfigObject].toConfig)
