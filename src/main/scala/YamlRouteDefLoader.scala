@@ -24,12 +24,10 @@ class YamlRouteDefLoader(
           case x => sys.error(s"Error parsing route $route $property, expected invocation call, got: $x")
         }
 
-      def errorHandler(inv: AppMetadata.Action.Invocation) = {
-        val className = Option(inv).map(inv => List(inv.className, inv.function).filter(_ != null).mkString("."))
-          .getOrElse(config.getString("app.wabase-error-handler"))
-        getObjectOrNewInstance(className, "Wabase error handler")
-          .asInstanceOf[WabaseErrorHandler]
-      }
+      def errorHandler(inv: AppMetadata.Action.Invocation) =
+        Option(inv).map(inv => List(inv.className, inv.function).filter(_ != null).mkString("."))
+          .map(getObjectOrNewInstance(_, "wabase error handler").asInstanceOf[WabaseErrorHandler])
+          .getOrElse(getObjectOrNewInstance[WabaseErrorHandler](config, "app.wabase-error-handler", "wabase error handler"))
       val path: Regex = new Regex(route)
       val mapper = parseProperty("request-mapper")
       val transformer = parseProperty("response-transformer")

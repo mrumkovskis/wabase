@@ -57,8 +57,7 @@ trait WabaseApp[User] {
   }
   implicit lazy val fileStreamers: WabaseFileStreamers = {
     val factory =
-      getObjectOrNewInstance(config.getString("file-streamer.factory-class"), "File streamers factory")
-        .asInstanceOf[FileStreamerFactory]
+      getObjectOrNewInstance[FileStreamerFactory](config, "file-streamer.factory-class", "file streamer factory")
     WabaseFileStreamers(factory.createFileStreamers(this))
   }
   def injectionParametersFactory: AppQuerease.InjectionParametersFactory = _ => PartialFunction.empty

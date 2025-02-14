@@ -6,8 +6,9 @@ trait Authorization[User] {
   this: AppBase[User] with Audit[User] with DbAccess with ValidationEngine with DbConstraintMessage =>
 
   private val wabaseAuth =
-    getObjectOrNewInstance(config.getString("app.wabase-authorization-factory"), "wabase authorization factory")
-      .asInstanceOf[WabaseAuthorizationFactory].initialize()
+    getObjectOrNewInstance[WabaseAuthorizationFactory](
+      config, "app.wabase-authorization-factory", "wabase authorization factory"
+    ).initialize()
 
   /** performs authorization, on failure throws UnauthorizedException, otherwise returns */
   def check[C <: RequestContext[_]](ctx: C, clazz: Class[_]): Unit

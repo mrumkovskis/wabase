@@ -93,7 +93,7 @@ object TresqlResourcesConf extends Loggable {
       cpName: String, tunedConfForCp: Config, plainConfForCp: Config): TresqlResourcesConf = {
     val tresqlConfInstance =
       if (plainConfForCp.hasPath("config-class"))
-        getObjectOrNewInstance(plainConfForCp.getString("config-class"), "tresql resources config").asInstanceOf[TresqlResourcesConf]
+        getObjectOrNewInstance[TresqlResourcesConf](plainConfForCp, "config-class", "tresql resources config")
       else new TresqlResourcesConf {}
 
     def tresqlConfFromConfig(cConf: Config, tunableOnly: Boolean) = {

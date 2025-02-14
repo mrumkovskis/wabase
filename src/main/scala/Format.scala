@@ -107,9 +107,8 @@ object Format extends ValueConverter {
      .replace(">", "&gt;")
 
   private lazy val valueConverterDelegate: ValueConverter =
-    Option("app.value-converter").filter(config.hasPath).map(config.getString).map(c => getObjectOrNewInstance(c, "value converter")).map {
-      case vc: ValueConverter => vc
-      case x => sys.error(s"Expected type ValueConverter, got: ${x.getClass.getName}")
+    Option("app.value-converter").filter(config.hasPath).map {
+      getObjectOrNewInstance[ValueConverter](config, _, "value converter")
     }.getOrElse(new ValueConverter {})
 
   override def convertToType(value: Any, targetClass: Class[_]): Any =
