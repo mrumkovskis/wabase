@@ -10,7 +10,7 @@ import scala.language.{implicitConversions, reflectiveCalls}
 import spray.json._
 import MapRecursiveExtensions._
 
-trait TemplateUtil { this: client.WabaseHttpClient =>
+trait TemplateUtil { this: JsonConverterProvider with QuereaseProvider =>
 
   import jsonConverter.MapJsonFormat
 

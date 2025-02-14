@@ -1,8 +1,12 @@
 package org.wabase
 package client
 
+import com.typesafe.config.Config
+import com.typesafe.sslconfig.ssl._
+import com.typesafe.sslconfig.util._
 import org.apache.pekko.actor.{ActorRef, ActorSystem}
 import org.apache.pekko.http.scaladsl.Http
+import org.apache.pekko.http.scaladsl.HttpsConnectionContext
 import org.apache.pekko.http.scaladsl.coding.Coders.{Deflate, Gzip, NoCoding}
 import org.apache.pekko.http.scaladsl.marshalling.{Marshal, Marshaller}
 import org.apache.pekko.http.scaladsl.model.Uri.Query
@@ -28,24 +32,42 @@ object ClientException{
   def apply(message: String): ClientException = apply(message, null)
 }
 
-trait RestClient extends Loggable{
+class RestClient(clientCfg: Config) extends HttpClient with Loggable {
 
   import RestClient.{WsClosed, WsFailed}
-  def actorSystemName = "rest-client"
+  def actorSystemName   = clientCfg.getString("actor-system-name")
   def createActorSystem = ActorSystem(actorSystemName)
   implicit val system: ActorSystem = createActorSystem
   implicit val executionContext: ExecutionContextExecutor = system.dispatcher
 
-  lazy val port = 8080
-  lazy val serverPath = s"http://localhost:$port/"
-  lazy val serverWsPath = s"ws://localhost:$port/ws"
+  lazy val port         = clientCfg.getInt   ("server-port")
+  lazy val serverPath   = clientCfg.getString("server-path")
+  lazy val serverWsPath = clientCfg.getString("server-ws-path")
 
-  val flow = Http().superPool[Unit]()
+  protected def getHttpsConnectionContext: Option[HttpsConnectionContext] = {
+    Option("ssl-config").filter(clientCfg.hasPath).map(config.getConfig).map { sslConfig =>
+      val sslConfigSettings = SSLConfigFactory.parse(sslConfig)
+      val sslContext =
+        new ConfigSSLContextBuilder(
+          NoopLogger.factory(), // PrintlnLogger.factory(),
+          sslConfigSettings,
+          new DefaultKeyManagerFactoryWrapper(javax.net.ssl.KeyManagerFactory.getDefaultAlgorithm()),
+          new DefaultTrustManagerFactoryWrapper(javax.net.ssl.TrustManagerFactory.getDefaultAlgorithm())
+        ).build()
+      val httpsConnectionContext = org.apache.pekko.http.scaladsl.ConnectionContext.httpsClient(sslContext)
+      httpsConnectionContext
+    }
+  }
 
-  val requestTimeout = RestClient.defaultRequestTimeout
-  val awaitTimeout   = RestClient.defaultAwaitTimeout
-  val defaultUsername: String = "admin"
-  val defaultPassword: String = "admin"
+  val flow = getHttpsConnectionContext match {
+    case None             => Http().superPool[Unit]()
+    case Some(sslContext) => Http().superPool[Unit](sslContext)
+  }
+
+  val requestTimeout: FiniteDuration = toFiniteDuration(clientCfg.getDuration("request-timeout"))
+  val awaitTimeout:   FiniteDuration =
+    Option("await-timeout").filter(clientCfg.hasPath).map(clientCfg.getDuration).map(toFiniteDuration)
+      .getOrElse(requestTimeout + (2 seconds))
 
   val urlEncoder = java.net.URLEncoder.encode(_: String, "UTF-8")
   val urlDecoder = java.net.URLDecoder.decode(_: String, "UTF-8")
@@ -145,7 +167,7 @@ trait RestClient extends Loggable{
     else if (!uri.startsWith("/") && !serverPath.endsWith("/")) serverPath + "/" + uri
     else serverPath + uri
 
-  def doRequest(req: HttpRequest): Future[HttpResponse] =
+  override def doRequest(req: HttpRequest): Future[HttpResponse] =
     doRequest(req, new CookieMap, requestTimeout)
 
   private val defaultSuccessStatusCodes = Set(200, 201, 204, 206)
@@ -212,12 +234,7 @@ trait RestClient extends Loggable{
   }
 }
 
-object RestClient extends Loggable{
-  val defaultRequestTimeout = toFiniteDuration(config.getDuration("app.rest-client.request-timeout"))
-  val defaultAwaitTimeout: FiniteDuration =
-    Option("app.rest-client.await-timeout")
-      .filter(config.hasPath).map(config.getDuration).map(toFiniteDuration)
-      .getOrElse(defaultRequestTimeout + (2 seconds))
+object RestClient extends Loggable {
   object WsClosed
   case class WsFailed(cause: Throwable)
 }

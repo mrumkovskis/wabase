@@ -3,9 +3,12 @@ package org.wabase
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers
-import org.wabase.client.WabaseHttpClient
+import org.wabase.client.{HttpClientConfig, WabaseHttpClient}
 
-abstract class DataBaseSpecs[User] extends FlatSpec with Matchers with WabaseHttpClient with BeforeAndAfterAll with TemplateUtil {
+abstract class DataBaseSpecs[User]
+       extends FlatSpec with Matchers with BeforeAndAfterAll
+          with TemplateUtil with QuereaseProvider with JsonConverterProvider {
+
   import AppMetadata._
   val ApplicationStateCookiePrefix = "current_"
   def defaultListParams: Map[String, Any] = Map("limit" -> 1)
@@ -15,6 +18,15 @@ abstract class DataBaseSpecs[User] extends FlatSpec with Matchers with WabaseHtt
 
   def listTestParams(clzz: Class[_ <: Dto], params: Map[String, Any]): Unit = defaultListParamsForClass += clzz -> params
   def listTest(clzz: Class[_ <: Dto], name: String, params: Map[String, Any]): Unit = createListTest(clzz, name, params)
+
+  override protected def initQuerease: AppQuerease           = DefaultAppQuerease
+  override protected def initJsonConverter: JsonConverter[_] = qio
+  def initHttpClient: WabaseHttpClient = new WabaseHttpClient(HttpClientConfig("test")) {
+    override protected def initQuerease: AppQuerease           = qe
+    override protected def initJsonConverter: JsonConverter[_] = qio
+  }
+  final lazy val httpClient = initHttpClient
+  import httpClient._
 
   def views = qe.collectViews{ case v => v }.toSeq.sortBy(_.name)
 

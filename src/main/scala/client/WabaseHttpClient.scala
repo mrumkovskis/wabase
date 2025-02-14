@@ -1,6 +1,7 @@
 package org.wabase
 package client
 
+import com.typesafe.config.Config
 import org.apache.pekko.actor.{Actor, ActorRef, Props}
 import org.apache.pekko.http.scaladsl.model._
 import org.apache.pekko.http.scaladsl.model.headers.{BasicHttpCredentials, Host, HttpOrigin, Origin, RawHeader, Authorization => AuthorizationHeader}
@@ -19,7 +20,7 @@ import org.apache.pekko.pattern.ask
 
 import scala.concurrent.duration.FiniteDuration
 
-trait WabaseHttpClient extends RestClient with JsonConverterProvider with BasicJsonMarshalling with QuereaseProvider {
+class WabaseHttpClient(clientCfg: Config) extends RestClient(clientCfg) with JsonConverterProvider with BasicJsonMarshalling with QuereaseProvider {
 
   /** Override this method in subclass. Method usage instead of direct
   {{{val qe: AppQuerease}}} initialization ensures that this.qe and subclass qe
@@ -41,6 +42,9 @@ trait WabaseHttpClient extends RestClient with JsonConverterProvider with BasicJ
     val cookie = cookies.getCookies.flatMap(_.cookies).find(_.name == CSRFCookieName)
     RawHeader("X-Requested-With", "XMLHttpRequest") :: originHeader :: cookie.map(c => List(RawHeader(CSRFHeaderName, c.value))).getOrElse(Nil)
   }
+
+  private lazy val defaultUsername: String = clientCfg.getString("username")
+  private lazy val defaultPassword: String = clientCfg.getString("password")
 
   def login(username: String = defaultUsername, password: String = defaultPassword) = {
     httpGetAwait[String]("api", headers = iSeq(AuthorizationHeader(BasicHttpCredentials(username, password))))

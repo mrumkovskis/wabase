@@ -17,9 +17,11 @@ import scala.collection.immutable.{Map, Seq}
 import scala.concurrent.Await
 import scala.language.reflectiveCalls
 import scala.util.{Random, Try}
-import org.wabase.client.{ClientException, WabaseHttpClient}
+import org.wabase.client.{ClientException, HttpClientConfig, WabaseHttpClient}
 
-abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends FlatSpec with Matchers with WabaseHttpClient with BeforeAndAfterAll with TemplateUtil {
+abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
+       extends FlatSpec with Matchers with BeforeAndAfterAll
+          with TemplateUtil with QuereaseProvider with JsonConverterProvider with Loggable {
 
   import jsonConverter.MapJsonFormat
   val db = new DbAccess with Loggable {
@@ -49,6 +51,15 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*) extends Fl
       logger.warn(s"Business scenarios test-only-files pattern: $pattern")
     pattern.r
   }
+
+  override protected def initQuerease: AppQuerease           = DefaultAppQuerease
+  override protected def initJsonConverter: JsonConverter[_] = qio
+  def initHttpClient: WabaseHttpClient = new WabaseHttpClient(HttpClientConfig("test")) {
+    override protected def initQuerease: AppQuerease           = qe
+    override protected def initJsonConverter: JsonConverter[_] = qio
+  }
+  final lazy val httpClient = initHttpClient
+  import httpClient._
 
   protected lazy val isFullCompareByDefault: Boolean = true
 

@@ -86,6 +86,14 @@ package object wabase extends Loggable {
     new HikariDataSource(hikariConfig)
   }
 
+  def getObjectOrNewInstance[T](cfg: Config, configPath: String, description: String): T = try {
+    val className = cfg.getString(configPath)
+    getObjectOrNewInstance(className, description).asInstanceOf[T]
+  } catch {
+    case util.control.NonFatal(ex) =>
+      throw new RuntimeException(s"Failed to get $description instance, please cofigure $configPath properly", ex)
+  }
+
   def getObjectOrNewInstance(className: String, description: String): AnyRef = {
     if (className endsWith "$")
       getObjectOrNewInstance(Class.forName(className), description)

@@ -12,6 +12,7 @@ import org.tresql.{Resources, ResourcesTemplate, SingleValueResult}
 import org.wabase.AppMetadata.{Action, AugmentedAppFieldDef, AugmentedAppViewDef}
 import org.wabase.AppMetadata.Action.{LimitKey, OffsetKey, OrderKey}
 import org.wabase.AppQuerease.InjectionParametersContext
+import org.wabase.client.HttpClientFactory
 
 import java.util.Locale
 import scala.concurrent.{ExecutionContext, Future}
@@ -49,7 +50,11 @@ trait WabaseApp[User] {
 
   type ActionHandlerResult = qe.QuereaseAction[WabaseResult]
   type ActionHandler       = AppActionContext => ActionHandlerResult
-  implicit lazy val httpClients: WabaseHttpClients = WabaseHttpClients(Map())
+  implicit lazy val httpClients: WabaseHttpClients = {
+    val factory =
+      getObjectOrNewInstance[HttpClientFactory](config, "http-client.factory-class", "http client factory")
+    WabaseHttpClients(factory.createHttpClients)
+  }
   implicit lazy val fileStreamers: WabaseFileStreamers = {
     val factory =
       getObjectOrNewInstance(config.getString("file-streamer.factory-class"), "File streamers factory")

@@ -7,7 +7,7 @@ import org.apache.pekko.http.scaladsl.testkit.ScalatestRouteTest
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers
-import org.wabase.client.{ClientException, RestClient}
+import org.wabase.client.{ClientException, HttpClientConfig, RestClient}
 
 import scala.concurrent.Await
 import scala.concurrent.duration._
@@ -15,13 +15,8 @@ import scala.language.postfixOps
 
 class RestClientTest  extends FlatSpec with Matchers with ScalatestRouteTest with BeforeAndAfterAll with Loggable{
   behavior of "RestClient"
-  val client = new RestClient{
-    override val requestTimeout = 50 seconds
-    override val awaitTimeout   = 55 seconds
-  }
-  val fastClient = new RestClient{
-    override val requestTimeout = 2 seconds
-  }
+  val client     = new RestClient(HttpClientConfig("slow"))
+  val fastClient = new RestClient(HttpClientConfig("fast"))
 
   val route: Route = {
     path("ok") {complete{"HELLO"}} ~
