@@ -684,3 +684,11 @@ object ResultRenderers {
                                   viewDef: ViewDef): EncoderFactory =
     new FormUrlEncoder(_, isCollection, resultFilter)
 }
+
+trait ResultRenderersFactory {
+  def createResultRenderers: ResultRenderers
+}
+
+object ResultRenderersFactory extends ResultRenderersFactory {
+  override def createResultRenderers: ResultRenderers = new ResultRenderers
+}

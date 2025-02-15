@@ -147,7 +147,10 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   override def convertToType(value: Any, targetClass: Class[_]): Any =
     Format.convertToType(value, targetClass)
 
-  val resultRenderers: ResultRenderers = new ResultRenderers
+  val resultRenderersFactory = getObjectOrNewInstance[ResultRenderersFactory](
+    config, "result-renderers.factory-class", "result renderers factory"
+  )
+  val resultRenderers: ResultRenderers = resultRenderersFactory.createResultRenderers
   val tresqlUri: TresqlUri = new TresqlUri()
   lazy val cborOrJsonDecoder = new CborOrJsonDecoder(typeDefs, nameToViewDef)
   /** Override this to override default scala value (like String, Number, Boolean, null, Iterable, Map) json encoding.
