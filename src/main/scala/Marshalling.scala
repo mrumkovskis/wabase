@@ -1,10 +1,12 @@
 package org.wabase
 
+import org.apache.pekko.http.scaladsl.common.{EntityStreamingSupport, JsonEntityStreamingSupport}
 import org.apache.pekko.http.scaladsl.marshalling._
 import org.apache.pekko.http.scaladsl.model._
 import org.apache.pekko.http.scaladsl.model.MediaTypes._
 import org.apache.pekko.http.scaladsl.model.headers.ContentDispositionTypes.attachment
 import org.apache.pekko.http.scaladsl.util.FastFuture
+import org.apache.pekko.NotUsed
 
 import java.net.URLEncoder
 import java.text.Normalizer
@@ -12,7 +14,7 @@ import scala.concurrent.{ExecutionContext, Future}
 import org.apache.pekko.http.scaladsl.model.headers.{ContentDispositionType, ContentDispositionTypes, Location, RawHeader, `Content-Disposition`}
 import org.apache.pekko.http.scaladsl.server.directives.FileAndResourceDirectives.ResourceFile
 import org.apache.pekko.http.scaladsl.unmarshalling.{FromEntityUnmarshaller, FromResponseUnmarshaller, Unmarshaller}
-import org.apache.pekko.stream.scaladsl.{Source, StreamConverters}
+import org.apache.pekko.stream.scaladsl.{Flow, Keep, Source, StreamConverters}
 import org.apache.pekko.util.ByteString
 import io.bullet.borer.compat.pekko.ByteStringProvider
 import org.mojoz.querease.QuereaseIteratorResult
@@ -169,6 +171,27 @@ trait QuereaseMarshalling extends QuereaseResultMarshalling { this: AppProvider[
     Marshaller { ec => seqOfMapsAndView => marsh(seqOfMapsAndView._2, seqOfMapsAndView._3)(ec)(seqOfMapsAndView._1) }
   }
 
+  def streamUnmarshaller[T](ess: EntityStreamingSupport, unmarshalSync: ByteString => T): FromEntityUnmarshaller[Source[T, NotUsed]] = {
+    Unmarshaller.withMaterializer { implicit ec => implicit mat =>
+      val unmarshallingFlow =
+        if (ess.parallelism > 1) {
+          val unmarshalAsync = (byteString: ByteString) => Future(unmarshalSync(byteString))
+          if (ess.unordered) Flow[ByteString].mapAsyncUnordered(ess.parallelism)(unmarshalAsync)
+          else Flow[ByteString].mapAsync(ess.parallelism)(unmarshalAsync)
+        } else Flow[ByteString].map(unmarshalSync)
+
+      httpEntity => {
+        if (ess.supported matches httpEntity.contentType) {
+          val frames = httpEntity.dataBytes.via(ess.framingDecoder)
+          FastFuture.successful(frames.viaMat(unmarshallingFlow)(Keep.right))
+        } else FastFuture.failed(Unmarshaller.UnsupportedContentTypeException(ess.supported))
+      }
+    }
+  }
+  def largeFrameJsonStreamUnmarshaller[T](unmarshalSync: ByteString => T): FromEntityUnmarshaller[Source[T, NotUsed]] =
+    // https://github.com/akka/akka/issues/31569
+    streamUnmarshaller(new JsonEntityStreamingSupport(maxObjectSize = 8 * 1024 * 1024), unmarshalSync)
+
   def toMapUnmarshallerForView(viewName: String): FromEntityUnmarshaller[Map[String, Any]] =
     Unmarshaller.byteStringUnmarshaller map { bytes =>
       app.qe.cborOrJsonDecoder.decodeToMap(bytes, viewName)(app.qe.viewNameToMapZero)
@@ -177,6 +200,11 @@ trait QuereaseMarshalling extends QuereaseResultMarshalling { this: AppProvider[
     Unmarshaller.byteStringUnmarshaller map { bytes =>
       app.qe.cborOrJsonDecoder.decodeToSeqOfMaps(bytes, viewName)(app.qe.viewNameToMapZero)
     }
+  def toSourceOfMapsUnmarshallerForView(viewName: String): FromEntityUnmarshaller[Source[Map[String, Any], NotUsed]] = {
+    largeFrameJsonStreamUnmarshaller { bytes =>
+      app.qe.cborOrJsonDecoder.decodeToMap(bytes, viewName)(app.qe.viewNameToMapZero)
+    }
+  }
   def toMapUnmarshaller: FromEntityUnmarshaller[Map[String, Any]] =
     Unmarshaller.byteStringUnmarshaller map { bytes =>
       new CborOrJsonAnyValueDecoder().decodeToMap(bytes)
@@ -185,6 +213,11 @@ trait QuereaseMarshalling extends QuereaseResultMarshalling { this: AppProvider[
     Unmarshaller.byteStringUnmarshaller map { bytes =>
       new CborOrJsonAnyValueDecoder().decodeToSeqOfMaps(bytes)
     }
+  def toSourceOfMapsUnmarshaller: FromEntityUnmarshaller[Source[Map[String, Any], NotUsed]] = {
+    largeFrameJsonStreamUnmarshaller { bytes =>
+      new CborOrJsonAnyValueDecoder().decodeToMap(bytes)
+    }
+  }
 }
 
 trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with QuereaseMarshalling with OptionMarshalling =>
