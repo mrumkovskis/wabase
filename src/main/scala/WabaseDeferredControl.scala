@@ -19,9 +19,9 @@ class WabaseDeferredControl(
   extends DeferredControl.DeferredStatusPublisher {
 
   protected def initDeferredStorage: DeferredControl.DeferredStorage = {
-    val className = config.getString("app.deferred-request.storage-factory-class")
-    val factory = getObjectOrNewInstance(className, "Deferred storage factory")
-    factory.asInstanceOf[DeferredStorageFactory].initialize(wabase)
+    val factory = getObjectOrNewInstance[DeferredStorageFactory](
+      config, "app.deferred-request.storage-factory-class", "deferred storage factory")
+    factory.initialize(wabase)
   }
   private val deferredStorage: DeferredControl.DeferredStorage = initDeferredStorage
 
