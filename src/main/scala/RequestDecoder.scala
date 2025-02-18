@@ -4,6 +4,7 @@ import org.apache.pekko.util.ByteString
 import io.bullet.borer.compat.pekko.ByteStringProvider
 import io.bullet.borer.encodings.BaseEncoding
 import io.bullet.borer.{Cbor, Decoder, Input, Json, Tag, Target, DataItem => DI}
+import org.apache.pekko.http.scaladsl.model.HttpEntity
 import org.mojoz.metadata.{Type, TypeDef, ViewDef}
 import org.wabase.BorerDatetimeDecoders._
 
@@ -12,7 +13,7 @@ import java.lang.{Boolean => JBoolean, Double => JDouble, Long => JLong}
 import java.math.{BigDecimal => JBigDecimal, BigInteger => JBigInteger}
 import java.time.{LocalDate, LocalDateTime, LocalTime}
 import scala.annotation.tailrec
-import scala.collection.immutable.{Map, Seq, ListMap} // no TreeSeqMap in scala 2.12
+import scala.collection.immutable.{ListMap, Map, Seq}
 import scala.language.postfixOps
 import scala.reflect.ClassTag
 
@@ -285,4 +286,22 @@ class CborOrJsonAnyValueDecoder() {
     implicit val decoder: Decoder[M] = toMapDecoder(mapZero)
     toSeq(reader(data, decodeFrom).apply[Array[M]])
   }
+}
+
+class RequestDecoders(qe: AppQuerease) {
+  // TODO create default csv decoder
+  def decoders: ListMap[String, RequestDecoders.RequestDecoder] = ListMap()
+}
+
+object RequestDecoders {
+  /** Decodes http entity according to view structure (optional). Boolean parameter indicates collection. */
+  type RequestDecoder = HttpEntity => String => Boolean => Any
+}
+
+trait RequestDecodersFactory {
+  def createRequestDecoders(qe: AppQuerease): RequestDecoders
+}
+
+object RequestDecodersFactory extends RequestDecodersFactory {
+  override def createRequestDecoders(qe: AppQuerease): RequestDecoders = new RequestDecoders(qe)
 }

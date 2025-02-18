@@ -95,7 +95,7 @@ case class StringTemplateResult(content: String) extends TemplateResult
   { override def contentString: String = content }
 case class FileTemplateResult(filename: String, contentType: String, content: Array[Byte]) extends TemplateResult
   { override def contentString: String = new String(content, "UTF-8") }
-case class HttpEntityResult(entity: RequestEntity) extends DataResult
+case class HttpEntityResult(entity: RequestEntity, decoder: RequestDecoders.RequestDecoder) extends DataResult
 case class HttpResult(response: HttpResponse) extends DataResult
 case object NoResult extends QuereaseResult
 case class QuereaseResultWithCleanup(result: QuereaseCloseableResult, cleanup: Option[Throwable] => Unit)
@@ -151,6 +151,12 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     config, "result-renderers.factory-class", "result renderers factory"
   )
   val resultRenderers: ResultRenderers = resultRenderersFactory.createResultRenderers
+
+  val requestDecodersFactory = getObjectOrNewInstance[RequestDecodersFactory](
+    config, "request-decoders.factory-class", "request decoders factory"
+  )
+  val requestDecoders: RequestDecoders = requestDecodersFactory.createRequestDecoders(this)
+
   val tresqlUri: TresqlUri = new TresqlUri()
   lazy val cborOrJsonDecoder = new CborOrJsonDecoder(typeDefs, nameToViewDef)
   /** Override this to override default scala value (like String, Number, Boolean, null, Iterable, Map) json encoding.
@@ -750,7 +756,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         case n: java.lang.Number => NumberResult(n)
         case d: Dto => MapResult(d.toMap(this))
         case o: Option[Dto]@unchecked => o.map(d => MapResult(d.toMap(this))).getOrElse(notFound)
-        case e: RequestEntity => HttpEntityResult(e)
+        case e: RequestEntity => HttpEntityResult(e, null)
         case h: HttpResponse => HttpResult(h)
         case q: QuereaseResult => q
         // view compatible collections if not allow any
@@ -1064,28 +1070,29 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     env: Map[String, Any],
     context: ActionContext,
   )(implicit qr: QuereaseResources): Future[IteratorResult] = {
-    def iterator(res: QuereaseResult): Iterator[Map[String, Any]] = {
+    def iterator(res: Any): Future[Iterator[Map[String, Any]]] = {
       def addParentData(map: Map[String, Any]) = {
         var key = ".."
         //      while (map.contains(key)) key += "_" + key // hopefully no .. key is in data map
         map + (key -> data)
       }
       res match {
+        case s: Seq[Map[String, _]@unchecked] => Future.successful((s map addParentData).iterator)
+        case m: Map[String@unchecked, _] => Future.successful((List(m) map addParentData).iterator)
         case TresqlResult(tr) => tr match {
-          case SingleValueResult(sr) => sr match {
-            case s: Seq[Map[String, _]@unchecked] => (s map addParentData).iterator
-            case m: Map[String@unchecked, _] => (List(m) map addParentData).iterator
-            case x => sys.error(s"Not iterable result for foreach operation: $x")
-          }
-          case r: Result[_] => r.map(_.toMap) map addParentData
+          case SingleValueResult(sr) => iterator(sr)
+          case r: Result[_] => Future.successful(r.map(_.toMap) map addParentData)
         }
-        case r: TresqlSingleRowResult => (List(r.map(_.toMap)) map addParentData).iterator
+        case r: TresqlSingleRowResult => iterator(r.map(_.toMap))
+        case HttpEntityResult(ent, dec) => objFromHttpEntity(ent, null, false, dec)(qr.as).flatMap(iterator)(qr.ec)
+        case CompatibleResult(HttpEntityResult(ent, dec), rf, isColl) =>
+          objFromHttpEntity(ent, Option(rf).map(_.name).orNull, isColl, dec)(qr.as).flatMap(iterator)(qr.ec)
         case CompatibleResult(r, _, _) => iterator(r) // TODO Execute to compatible map
         case x => sys.error(s"Not iterable result for foreach operation: $x")
       }
     }
     import qr.ec
-    doActionOp(op.initOp, data, env, context).map(iterator)
+    doActionOp(op.initOp, data, env, context).flatMap(iterator)
     .flatMap { mapIterator =>
       var idx = 0
       Future.traverse(mapIterator.toSeq) { itData =>
@@ -1341,6 +1348,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   }
 
   protected def doExtractEntity(
+    exe: Action.ExtractHttpEntity,
     data: Map[String, Any],
     env: Map[String, Any],
     context: ActionContext,
@@ -1350,8 +1358,21 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     as: ActorSystem,
     fs: FileStreamer,
     httpReq: HttpRequest,
-  ): Future[HttpEntityResult] = {
-    Future.successful(HttpEntityResult(httpReq.entity))
+  ): Future[DataResult] = {
+    Future.successful {
+      val res = HttpEntityResult(
+        httpReq.entity,
+        Option(exe.decoder)
+          .map(dn =>
+            requestDecoders.decoders
+              .getOrElse(dn, sys.error(s"Cannot decode http entity data. Request decoder '$dn' not found."))
+          )
+          .orNull
+      )
+      exe.conformTo
+        .map(comp_res(res, _))
+        .getOrElse(res)
+    }
   }
 
   protected def doDb(
@@ -1517,7 +1538,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case http: Action.Http => doHttp(http, data, env, context)
       case eh: Action.HttpHeader => doExtractHeader(eh, data, env, context)
       case exc: Action.Cookie => doExtractCookie(exc, data, env, context)
-      case Action.ExtractHttpEntity => doExtractEntity(data, env, context)
+      case exe: Action.ExtractHttpEntity => doExtractEntity(exe, data, env, context)
       case db: Action.Db => doDb(db, data, env, context)
       case block: Action.Block => doBlock(block, data, env, context)
       case c: Action.Conf => doConf(c, data, env, context)
@@ -1622,7 +1643,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
             .getOrElse(sys.error(s"Error parsing template result content type: $contentType"))
           (Source.single(ByteString(content)), fn, ct, Option(content.size))
       }
-      case HttpEntityResult(res) =>
+      case HttpEntityResult(res, _) =>
         ( res.dataBytes,
           null,
           res.contentType,
@@ -1673,8 +1694,12 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     }
   }
 
-  private def objFromHttpEntity(ent: HttpEntity, viewName: String, isCollection: Boolean)(implicit
-                                                                                          as: ActorSystem) = {
+  private def objFromHttpEntity(
+    ent: HttpEntity,
+    viewName: String,
+    isCollection: Boolean,
+    decoder: RequestDecoders.RequestDecoder,
+  )(implicit as: ActorSystem) = {
     import scala.concurrent.duration._
     implicit val ec = as.dispatcher
 
@@ -1686,7 +1711,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       else cborOrJsonDecoder.decodeToSeqOfMaps(bs, viewName)(viewNameToMapZero)
 
     ent.toStrict(1.second).map { se =>
-      if (ent.contentType == ContentTypes.`application/json`)
+      if (decoder != null) decoder(ent)(viewName)(isCollection)
+      else if (ent.contentType == ContentTypes.`application/json`)
         if (isCollection) decodeToSeqOfMaps(se.data) else decodeToMap(se.data)
       else se.data.decodeString("UTF-8")
     }
@@ -1731,7 +1757,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           case RedirectValue(value) => tresqlUri.uri(value).toString()
         }))
       case fi: FileInfoResult => fi.fileInfo.toMap
-      case fr: FileResult => fileHttpEntity(fr).map(objFromHttpEntity(_, null, false))
+      case fr: FileResult => fileHttpEntity(fr).map(objFromHttpEntity(_, null, false, null))
         .getOrElse(sys.error(s"File not found: ${fr.fileInfo}"))
       case rs: ResourceResult =>
         ResourceFile(classOf[AppQuerease].getResource(rs.resource))
@@ -1744,17 +1770,18 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case HttpResult(r) =>
         if (r.status.isRedirection())
           r.headers.find(_.is("location")).map(_.value()).getOrElse("")
-        else objFromHttpEntity(r.entity, null, false)
+        else objFromHttpEntity(r.entity, null, false, null)
+      case HttpEntityResult(r, d) => objFromHttpEntity(r, null, false, d)
       case NoResult => NoResult
       case CompatibleResult(r, filter, isCollection) => r match {
         case TresqlResult(r: Result[_]) =>
           val l = toCompatibleSeqOfMaps(r, v(filter.name)) // FIXME assumes that filter name matches view name, refactor!
           if (unwrapSingleValue) maybeUnwrapSingleVal(l) else l
         case r: TresqlSingleRowResult => r.map(toCompatibleMap(_, v(filter.name))) // FIXME assumes that filter name matches view name
-        case fr: FileResult => fileHttpEntity(fr).map(objFromHttpEntity(_, filter.name, isCollection)) // FIXME assumes that filter matches view name
+        case fr: FileResult => fileHttpEntity(fr).map(objFromHttpEntity(_, filter.name, isCollection, null)) // FIXME assumes that filter matches view name
           .getOrElse(sys.error(s"File not found: ${fr.fileInfo}"))
-        case HttpEntityResult(r) => objFromHttpEntity(r, filter.name, isCollection)  // FIXME assumes that filter name matches view name
-        case HttpResult(r) => objFromHttpEntity(r.entity, filter.name, isCollection) // FIXME assumes that filter name matches view name
+        case HttpEntityResult(r, d) => objFromHttpEntity(r, filter.name, isCollection, d)  // FIXME assumes that filter name matches view name
+        case HttpResult(r) => objFromHttpEntity(r.entity, filter.name, isCollection, null) // FIXME assumes that filter name matches view name
         case r => dataForNextStep(r, context, unwrapSingleValue)
       }
       case DbResult(dbr, cl) => dataForNextStep(dbr, context, unwrapSingleValue).andThen {
