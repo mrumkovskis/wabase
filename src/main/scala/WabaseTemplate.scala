@@ -49,7 +49,7 @@ class DefaultWabaseTemplate extends WabaseTemplate {
     factory[WabaseTemplateLoader]("app.template.loader")
   protected val renderer: WabaseTemplateRenderer =
     factory[WabaseTemplateRenderer]("app.template.renderer")
-  private def factory[T](propName: String): T = {
+  private def factory[T](propName: String)(implicit m: Manifest[T]): T = {
     getObjectOrNewInstance[T](config, propName, "template factory")
   }
 

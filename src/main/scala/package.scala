@@ -86,12 +86,16 @@ package object wabase extends Loggable {
     new HikariDataSource(hikariConfig)
   }
 
-  def getObjectOrNewInstance[T](cfg: Config, configPath: String, description: String): T = try {
+  def getObjectOrNewInstance[T](cfg: Config, configPath: String, description: String)(implicit m: Manifest[T]): T = try {
     val className = cfg.getString(configPath)
-    getObjectOrNewInstance(className, description).asInstanceOf[T]
+    val r = getObjectOrNewInstance(className, description)
+    if (m >:> Manifest.classType(r.getClass))
+      r.asInstanceOf[T]
+    else
+      sys.error(s"Incompatible class ${r.getClass.getName}, expecting $m")
   } catch {
     case util.control.NonFatal(ex) =>
-      throw new RuntimeException(s"Failed to get $description instance, please cofigure $configPath properly", ex)
+      throw new RuntimeException(s"Failed to get $description instance, please cofigure $configPath properly: ${ex.getMessage}", ex)
   }
 
   def getObjectOrNewInstance(className: String, description: String): AnyRef = {
