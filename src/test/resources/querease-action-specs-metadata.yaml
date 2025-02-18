@@ -1403,6 +1403,21 @@ insert:
 - http post '/extract_http_entity_test1' :extracted_entity
 
 
+name: extract_http_entity_test3
+decoder: none
+api: insert, update
+explicit db: true
+table:
+fields:
+- name
+insert:
+- foreach extract entity:
+  - name = {:name || ' ' || :name}
+update:
+- foreach as extract_http_entity_test3 * extract entity:
+  - name = {:name || '-' || :name}
+
+
 name: invocation_keep_result_test
 decoder: none
 api: insert

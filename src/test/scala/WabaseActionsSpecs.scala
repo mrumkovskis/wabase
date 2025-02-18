@@ -1476,7 +1476,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     }
   }
 
-  it should "extract entity and pass in http client request" in {
+  it should "extract entity" in {
     implicit val user: TestUsr = TestUsr(100)
     val route = service.crudAction
     Put("/extract_http_entity_test1",
@@ -1493,6 +1493,14 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       HttpEntity(ContentTypes.`text/plain(UTF-8)`, ByteString("Good evening!"))) ~> route ~> check {
       val r = entityAs[String]
       r shouldBe "Good evening!"
+    }
+    Post("/extract_http_entity_test3",
+      HttpEntity(ContentTypes.`application/json`, ByteString("""[{"name": "A"}, {"name": "B"}]"""))) ~> route ~> check {
+      jsonAssert(entityAs[String], List(Map("name" -> "A A"), Map("name" -> "B B")))
+    }
+    Put("/extract_http_entity_test3",
+      HttpEntity(ContentTypes.`application/json`, ByteString("""[{"name": "A"}, {"name": "B"}]"""))) ~> route ~> check {
+      jsonAssert(entityAs[String], List(Map("name" -> "A-A"), Map("name" -> "B-B")))
     }
   }
 
