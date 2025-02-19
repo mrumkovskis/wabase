@@ -17,12 +17,12 @@ object ComponentConf {
    * 3. Settings in props and application confs (application.*, reference.conf)
    */
   def getConfigs(
-    dedicatedConfResourceName: String,
     parentConfPath: String,
+    dedicatedConfResourceName: String = null,
     tunablePaths: Set[String] = null,
   ): Seq[(String, Config)] = {
 
-    val dedicLoad = ConfigFactory.parseResources(dedicatedConfResourceName)
+    val dedicLoad = ConfigFactory.parseResources(Option(dedicatedConfResourceName).getOrElse(s"$parentConfPath.conf"))
     val dedicConf = dedicLoad.resolve(ConfigResolveOptions.noSystem())
 
     val tunedConf = defaultOverrides
