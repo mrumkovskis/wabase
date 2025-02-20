@@ -9,15 +9,29 @@ case class ComponentConfs(
   children: Seq[(String, Config)],
 )
 
-object ComponentConf {
+trait ComponentConf {
+  def getConfigs(
+    parentConfPath: String,
+    dedicatedConfResourceName: String = null,
+    tunablePaths: Set[String] = null,
+  ): ComponentConfs
+}
+
+object ComponentConf extends ComponentConf {
 
   private lazy val defaultOverrides           = ConfigFactory.defaultOverrides()
   private lazy val defaultApplication         = ConfigFactory.defaultApplication()
   private lazy val defaultReferenceUnresolved = ConfigFactory.defaultReferenceUnresolved()
 
+  private val delegateClassSetting = "conf-loader-class"
+  private lazy val delegate: ComponentConf =
+    Option(defaultGetConfigs("component-conf", null, Set.empty).root)
+      .filter(_.hasPath(delegateClassSetting))
+      .map(getObjectOrNewInstance[ComponentConf](_, delegateClassSetting, "component configuration loader"))
+      .orNull
 
   /**
-   * Settings for child conf are prioritized over settings from parent conf.
+   * For default implementation, settings for child conf are prioritized over settings from parent conf.
    * 1. Tunable settings from props and confs (application.*, [dedicated conf], reference.conf)
    * 2. Settings in [dedicated conf] (if resource with requested name is in classpath)
    * 3. Settings in props and application confs (application.*, reference.conf)
@@ -26,6 +40,16 @@ object ComponentConf {
     parentConfPath: String,
     dedicatedConfResourceName: String = null,
     tunablePaths: Set[String] = null,
+  ): ComponentConfs = {
+    if (delegate == null || delegate == this)
+           defaultGetConfigs(parentConfPath, dedicatedConfResourceName, tunablePaths)
+    else delegate.getConfigs(parentConfPath, dedicatedConfResourceName, tunablePaths)
+  }
+
+  private def defaultGetConfigs(
+    parentConfPath: String,
+    dedicatedConfResourceName: String,
+    tunablePaths: Set[String],
   ): ComponentConfs = {
 
     val dedicLoad = ConfigFactory.parseResources(Option(dedicatedConfResourceName).getOrElse(s"$parentConfPath.conf"))
