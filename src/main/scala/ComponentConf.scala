@@ -38,15 +38,16 @@ object ComponentConf {
     val r_path    = parentConfPath
     val tunedCfgR =
       if (tunedConf.hasPath(r_path)) tunedConf.getConfig(r_path) else ConfigFactory.empty
-    val dedicCfgR = excludeTunable(
+    val dedicCfgR =
       if (dedicConf.hasPath(r_path)) dedicConf.getConfig(r_path) else ConfigFactory.empty
-    )
+    val dedicCfgRxT = excludeTunable(dedicCfgR)
+    val childConfsRoot = if (dedicConf.isEmpty) tunedCfgR else dedicCfgR
 
-    tunedCfgR.root().asScala
+    childConfsRoot.root().asScala
       .collect { case (n, v) if v.valueType() == ConfigValueType.OBJECT =>
         val childConf =
           excludeTunable(v.asInstanceOf[ConfigObject].toConfig)
-            .withFallback(dedicCfgR)
+            .withFallback(dedicCfgRxT)
             .withFallback(tunedCfgR.getConfig(n).withFallback(tunedCfgR))
         n -> childConf
       }.toSeq
