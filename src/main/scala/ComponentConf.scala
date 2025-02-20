@@ -4,11 +4,17 @@ import com.typesafe.config.{Config, ConfigFactory, ConfigObject, ConfigResolveOp
 
 import scala.jdk.CollectionConverters._
 
+case class ComponentConfs(
+  root: Config,
+  children: Seq[(String, Config)],
+)
+
 object ComponentConf {
 
   private lazy val defaultOverrides           = ConfigFactory.defaultOverrides()
   private lazy val defaultApplication         = ConfigFactory.defaultApplication()
   private lazy val defaultReferenceUnresolved = ConfigFactory.defaultReferenceUnresolved()
+
 
   /**
    * Settings for child conf are prioritized over settings from parent conf.
@@ -20,7 +26,7 @@ object ComponentConf {
     parentConfPath: String,
     dedicatedConfResourceName: String = null,
     tunablePaths: Set[String] = null,
-  ): Seq[(String, Config)] = {
+  ): ComponentConfs = {
 
     val dedicLoad = ConfigFactory.parseResources(Option(dedicatedConfResourceName).getOrElse(s"$parentConfPath.conf"))
     val dedicConf = dedicLoad.resolve(ConfigResolveOptions.noSystem())
@@ -43,7 +49,9 @@ object ComponentConf {
     val dedicCfgRxT = excludeTunable(dedicCfgR)
     val childConfsRoot = if (dedicConf.isEmpty) tunedCfgR else dedicCfgR
 
-    childConfsRoot.root().asScala
+    ComponentConfs(
+     dedicCfgRxT.withFallback(tunedCfgR),
+     childConfsRoot.root().asScala
       .collect { case (n, v) if v.valueType() == ConfigValueType.OBJECT =>
         val childConf =
           excludeTunable(v.asInstanceOf[ConfigObject].toConfig)
@@ -51,5 +59,6 @@ object ComponentConf {
             .withFallback(tunedCfgR.getConfig(n).withFallback(tunedCfgR))
         n -> childConf
       }.toSeq
+    )
   }
 }

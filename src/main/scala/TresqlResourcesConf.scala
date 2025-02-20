@@ -25,15 +25,10 @@ trait TresqlResourcesConf {
 
 object TresqlResourcesConf extends Loggable {
 
-  val config = ConfigFactory.parseResources("tresql-resources.conf").resolve(ConfigResolveOptions.noSystem())
-
-  val tunedConfig = ConfigFactory.defaultOverrides()
-      .withFallback(ConfigFactory.defaultApplication())
-      .withFallback(ConfigFactory.parseResources("tresql-resources.conf"))
-      .withFallback(ConfigFactory.defaultReferenceUnresolved())
-      .resolve()
-
   val wabaseConf = ConfigFactory.load
+
+  private val tunablePaths =
+    Set("query-timeout", "max-result-size", "fetch-size", "recursive-stack-depth", "cache-size")
 
   lazy val DefaultCpName: String =
     Option("tresql.default")
@@ -42,29 +37,20 @@ object TresqlResourcesConf extends Loggable {
       .getOrElse("main")
 
   lazy val confs: Map[String, TresqlResourcesConf] = {
-      val plainCfgR = if (     config.hasPath("tresql"))      config.getConfig("tresql") else ConfigFactory.empty
-      val tunedCfgR = if (tunedConfig.hasPath("tresql")) tunedConfig.getConfig("tresql") else ConfigFactory.empty
-      val cpConfs =  Option("jdbc.cp").filter(wabaseConf.hasPath).map(_ =>
+      val cpConfs =
        wabaseConf.getConfig("jdbc.cp").root().asScala.keys.map { cpName =>
           val n = if (cpName == DefaultCpName) null else cpName
           cpName ->
             // force db name here because plugin does not read application.conf when initializing aliasToDb
             ConfigFactory.parseString(s"db = ${Option(n).map("\"" + _ + "\"").orNull}")
         }.toMap
-      ).getOrElse(Map.empty)
 
-      val resConfs = plainCfgR.root().asScala
-        .collect { case e@(_, v) if v.valueType() == ConfigValueType.OBJECT => e }
-        .map { case (cpName, confValue) =>
-          cpName -> confValue.asInstanceOf[ConfigObject].toConfig
-        }.toMap
+      val resConfs = ComponentConf.getConfigs("tresql", "tresql-resources.conf", tunablePaths)
 
-      (cpConfs ++ resConfs)
+      (cpConfs ++ resConfs.children.toMap)
         .map { case (cpName, cpOrResConf) =>
-          val tunedConfForCp =
-            if (tunedCfgR.hasPath(cpName)) tunedCfgR.getConfig(cpName).withFallback(tunedCfgR) else tunedCfgR
           val n = if (cpName == DefaultCpName) null else cpName
-          n -> tresqlResourcesConf(n, tunedConfForCp, cpOrResConf.withFallback(plainCfgR))
+          n -> tresqlResourcesConf(n, cpOrResConf.withFallback(resConfs.root))
         }.toMap match {
           case m if m.isEmpty => Map((null, new TresqlResourcesConf {}))
           case m => m
@@ -85,15 +71,15 @@ object TresqlResourcesConf extends Loggable {
    *  - query-timeout
    *  - max-result-size
    *  - fetch-size
-   *  - resursive-stack-depth
+   *  - recursive-stack-depth
    *  - cache-size
    *  - db                    - db instance name where tables are defined.
    * */
   def tresqlResourcesConf(
-      cpName: String, tunedConfForCp: Config, plainConfForCp: Config): TresqlResourcesConf = {
+      cpName: String, tunedConfForCp: Config): TresqlResourcesConf = {
     val tresqlConfInstance =
-      if (plainConfForCp.hasPath("config-class"))
-        getObjectOrNewInstance[TresqlResourcesConf](plainConfForCp, "config-class", "tresql resources config")
+      if (tunedConfForCp.hasPath("config-class"))
+        getObjectOrNewInstance[TresqlResourcesConf](tunedConfForCp, "config-class", "tresql resources config")
       else new TresqlResourcesConf {}
 
     def tresqlConfFromConfig(cConf: Config, tunableOnly: Boolean) = {
@@ -126,7 +112,6 @@ object TresqlResourcesConf extends Loggable {
     val tresqlConfs = Seq(
       tresqlConfFromConfig(tunedConfForCp, tunableOnly = true),
       tresqlConfInstance,
-      tresqlConfFromConfig(plainConfForCp, tunableOnly = false),
       tresqlConfFromConfig(tunedConfForCp, tunableOnly = false),
     )
 

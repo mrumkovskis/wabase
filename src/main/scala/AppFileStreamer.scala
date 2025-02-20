@@ -324,6 +324,7 @@ class FileStreamer(
 object FileStreamerConfig {
   lazy val configs: Map[String, Config] =
     ComponentConf.getConfigs("file-streamer")
+      .children
       .toMap - "files" - "jdbc"
 }
 

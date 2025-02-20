@@ -15,6 +15,7 @@ object HttpClientConfig {
   val rootPath = "http-client"
   lazy val configs: Map[String, Config] =
     ComponentConf.getConfigs(rootPath)
+      .children
       .toMap - "ssl-config"
   def apply(name: String): Config =
     configs.getOrElse(name, sys.error(s"Http client config for '$name' is not found, please configure $rootPath.$name"))
