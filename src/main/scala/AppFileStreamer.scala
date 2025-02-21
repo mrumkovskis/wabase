@@ -322,7 +322,8 @@ class FileStreamer(
 }
 
 object FileStreamerConfig {
-  lazy val componentConfs = ComponentConf.getConfigs("file-streamer")
+  val fsConfigTunablePaths = Set("files.path", "jdbc.query-timeout")
+  lazy val componentConfs = ComponentConf.getConfigs("file-streamer", fsConfigTunablePaths)
   lazy val configs: Map[String, Config] = componentConfs.confs.toMap - "files" - "jdbc"
   lazy val fileStreamerFactory: FileStreamerFactory =
     getObjectOrNewInstance[FileStreamerFactory](componentConfs.root, "factory-class", "file streamer factory")
