@@ -323,7 +323,7 @@ class FileStreamer(
 
 object FileStreamerConfig {
   lazy val componentConfs = ComponentConf.getConfigs("file-streamer")
-  lazy val configs: Map[String, Config] = componentConfs.children.toMap - "files" - "jdbc"
+  lazy val configs: Map[String, Config] = componentConfs.confs.toMap - "files" - "jdbc"
   lazy val fileStreamerFactory: FileStreamerFactory =
     getObjectOrNewInstance[FileStreamerFactory](componentConfs.root, "factory-class", "file streamer factory")
 }

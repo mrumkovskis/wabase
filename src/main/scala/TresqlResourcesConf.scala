@@ -45,9 +45,9 @@ object TresqlResourcesConf extends Loggable {
             ConfigFactory.parseString(s"db = ${Option(n).map("\"" + _ + "\"").orNull}")
         }.toMap
 
-      val resConfs = ComponentConf.getConfigs("tresql", "tresql-resources.conf", tunablePaths)
+      val resConfs = ComponentConf.getConfigs("tresql", tunablePaths, "tresql-resources.conf")
 
-      (cpConfs ++ resConfs.children.toMap)
+      (cpConfs ++ resConfs.confs.toMap)
         .map { case (cpName, cpOrResConf) =>
           val n = if (cpName == DefaultCpName) null else cpName
           n -> tresqlResourcesConf(n, cpOrResConf.withFallback(resConfs.root))

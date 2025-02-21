@@ -14,7 +14,7 @@ trait HttpClient {
 object HttpClientConfig {
   val rootPath = "http-client"
   lazy val componentConfs = ComponentConf.getConfigs(rootPath)
-  lazy val configs: Map[String, Config] = componentConfs.children.toMap - "ssl-config"
+  lazy val configs: Map[String, Config] = componentConfs.confs.toMap - "ssl-config"
   lazy val httpClientFactory: HttpClientFactory =
     getObjectOrNewInstance[HttpClientFactory](componentConfs.root, "factory-class", "http client factory")
   def apply(name: String): Config =

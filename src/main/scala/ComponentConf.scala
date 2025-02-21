@@ -6,14 +6,14 @@ import scala.jdk.CollectionConverters._
 
 case class ComponentConfs(
   root: Config,
-  children: Seq[(String, Config)],
+  confs: Seq[(String, Config)],
 )
 
 trait ComponentConf {
   def getConfigs(
     parentConfPath: String,
-    dedicatedConfResourceName: String = null,
     tunablePaths: Set[String] = null,
+    dedicatedConfResourceName: String = null,
   ): ComponentConfs
 }
 
@@ -25,7 +25,7 @@ object ComponentConf extends ComponentConf {
 
   private val delegateClassSetting = "conf-loader-class"
   private lazy val delegate: ComponentConf =
-    Option(defaultGetConfigs("component-conf", null, Set.empty).root)
+    Option(defaultGetConfigs("component-conf", Set.empty).root)
       .filter(_.hasPath(delegateClassSetting))
       .map(getObjectOrNewInstance[ComponentConf](_, delegateClassSetting, "component configuration loader"))
       .orNull
@@ -38,18 +38,18 @@ object ComponentConf extends ComponentConf {
    */
   def getConfigs(
     parentConfPath: String,
-    dedicatedConfResourceName: String = null,
     tunablePaths: Set[String] = null,
+    dedicatedConfResourceName: String = null,
   ): ComponentConfs = {
     if (delegate == null || delegate == this)
-           defaultGetConfigs(parentConfPath, dedicatedConfResourceName, tunablePaths)
-    else delegate.getConfigs(parentConfPath, dedicatedConfResourceName, tunablePaths)
+           defaultGetConfigs(parentConfPath, tunablePaths, dedicatedConfResourceName)
+    else delegate.getConfigs(parentConfPath, tunablePaths, dedicatedConfResourceName)
   }
 
   private def defaultGetConfigs(
     parentConfPath: String,
-    dedicatedConfResourceName: String,
     tunablePaths: Set[String],
+    dedicatedConfResourceName: String = null,
   ): ComponentConfs = {
 
     val dedicLoad = ConfigFactory.parseResources(Option(dedicatedConfResourceName).getOrElse(s"$parentConfPath.conf"))
