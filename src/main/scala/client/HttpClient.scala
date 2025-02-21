@@ -13,10 +13,10 @@ trait HttpClient {
 
 object HttpClientConfig {
   val rootPath = "http-client"
-  lazy val configs: Map[String, Config] =
-    ComponentConf.getConfigs(rootPath)
-      .children
-      .toMap - "ssl-config"
+  lazy val componentConfs = ComponentConf.getConfigs(rootPath)
+  lazy val configs: Map[String, Config] = componentConfs.children.toMap - "ssl-config"
+  lazy val httpClientFactory: HttpClientFactory =
+    getObjectOrNewInstance[HttpClientFactory](componentConfs.root, "factory-class", "http client factory")
   def apply(name: String): Config =
     configs.getOrElse(name, sys.error(s"Http client config for '$name' is not found, please configure $rootPath.$name"))
 }
