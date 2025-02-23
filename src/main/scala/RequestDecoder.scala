@@ -1,19 +1,25 @@
 package org.wabase
 
+import com.typesafe.config.Config
+import org.apache.pekko.stream.scaladsl.Flow
+import org.apache.pekko.stream.connectors.csv.scaladsl.{CsvParsing, CsvToMap}
 import org.apache.pekko.util.ByteString
 import io.bullet.borer.compat.pekko.ByteStringProvider
 import io.bullet.borer.encodings.BaseEncoding
 import io.bullet.borer.{Cbor, Decoder, Input, Json, Tag, Target, DataItem => DI}
 import org.apache.pekko.http.scaladsl.model.HttpEntity
+import org.apache.pekko.NotUsed
 import org.mojoz.metadata.{Type, TypeDef, ViewDef}
 import org.wabase.BorerDatetimeDecoders._
 
 import java.io.InputStream
 import java.lang.{Boolean => JBoolean, Double => JDouble, Long => JLong}
 import java.math.{BigDecimal => JBigDecimal, BigInteger => JBigInteger}
+import java.nio.charset.Charset
 import java.time.{LocalDate, LocalDateTime, LocalTime}
 import scala.annotation.tailrec
 import scala.collection.immutable.{ListMap, Map, Seq}
+import scala.jdk.CollectionConverters._
 import scala.language.postfixOps
 import scala.reflect.ClassTag
 
@@ -285,6 +291,46 @@ class CborOrJsonAnyValueDecoder() {
   ): Seq[M] = {
     implicit val decoder: Decoder[M] = toMapDecoder(mapZero)
     toSeq(reader(data, decodeFrom).apply[Array[M]])
+  }
+}
+
+object CsvDecoderConfig {
+  lazy val componentConfs = ComponentConf.getConfigs("data-parsers-csv")
+  lazy val configs: Map[String, Config] = componentConfs.confs.toMap
+  lazy val csvDecoderFactory: CsvDecoderFactory =
+    getObjectOrNewInstance[CsvDecoderFactory](componentConfs.root, "factory-class", "csv decoder factory")
+}
+
+trait CsvDecoderFactory {
+  def createCsvStreamDecoders: Map[String, Flow[ByteString, Map[String, String], NotUsed]]
+}
+
+object CsvDecoderFactory extends CsvDecoderFactory {
+  def createCsvStreamDecoder(n: String, csvCfg: Config): Flow[ByteString, Map[String, String], NotUsed] = {
+    def getByte(setting: String) =
+      csvCfg.getString(setting) match {
+        case b if b.length == 1 => b.toCharArray.head.toByte
+        case x => throw new RuntimeException(s"Unsupported $setting for csv parser $n: '$x'. Expecting single byte")
+      }
+    val delimiter  = getByte("delimiter")
+    val quoteChar  = getByte("quote-char")
+    val escapeChar = getByte("escape-char")
+    val maxLineLen = csvCfg.getInt("maximum-line-length")
+    val charset    = Charset.forName(csvCfg.getString("charset"))
+    val headersOpt = Option("headers").filter(csvCfg.hasPath).map(csvCfg.getStringList).map(_.asScala.toSeq)
+    val toMapConverter = headersOpt match {
+      case Some(headers) => CsvToMap.withHeadersAsStrings(charset, headers: _*)
+      case None          => CsvToMap.toMapAsStrings(charset)
+    }
+    Flow[ByteString]
+      .via(CsvParsing.lineScanner(delimiter, quoteChar, escapeChar, maxLineLen))
+      .via(toMapConverter)
+  }
+
+  def createCsvStreamDecoders: Map[String, Flow[ByteString, Map[String, String], NotUsed]] = {
+    CsvDecoderConfig.configs.map { case (n, csvCfg) =>
+      n -> createCsvStreamDecoder(n, csvCfg)
+    }.toMap
   }
 }
 
