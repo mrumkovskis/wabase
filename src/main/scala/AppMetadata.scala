@@ -903,8 +903,8 @@ class OpParser(viewName: String, cache: OpParser.Cache)
   def extractPartsOp: MemParser[ExtractParts.type] =
     "extract\\s+parts".r ^^^ ExtractParts named "extract-parts"
   def extractEntityOp: MemParser[ExtractHttpEntity] =
-    (opt(opResultType) <~ "extract\\s+entity".r) ~ opt("using" ~> ident) ^^ {
-      case conformTo ~ decoder => ExtractHttpEntity(conformTo, decoder.orNull)
+    (opt(opResultType) <~ "extract\\s+entity".r) ~ opt("using" ~> ident) ~ opt(operation) ^^ {
+      case conformTo ~ decoder ~ op => ExtractHttpEntity(conformTo, decoder.orNull, op.orNull)
     } named "extract-entity"
   def thisOp: MemParser[This.type] = "this" ^^^ This
 
@@ -1191,7 +1191,7 @@ object AppMetadata extends Loggable {
                     httpClientName: String = null) extends CastableOp
     case class HttpHeader(name: String) extends Op
     case class Cookie(name: String) extends Op
-    case class ExtractHttpEntity(conformTo: Option[OpResultType] = None, decoder: String = null) extends Op
+    case class ExtractHttpEntity(conformTo: Option[OpResultType] = None, decoder: String = null, op: Op = null) extends Op
     case class Db(action: Action, doRollback: Boolean, dbs: List[DbAccessKey]) extends Op
     case class Conf(param: String, paramType: ConfType = null) extends Op
     case class JsonCodec(encode: Boolean, op: Op) extends Op
@@ -1228,7 +1228,7 @@ object AppMetadata extends Loggable {
       def traverse(state: T): PartialFunction[Op, T] = {
         case _: Tresql | _: RedirectToKey | _: Response |
              _: VariableTransforms | _: File | _: Conf | _: HttpHeader | _: Cookie |
-             _: ExtractHttpEntity | ExtractParts | This | _: Job | _: Resource | Commit | null => state
+             ExtractParts | This | _: Job | _: Resource | Commit | null => state
         case o: ViewCall => opTrav(state)(o.data)
         case Unique(o, _, _) => opTrav(state)(o)
         case Foreach(o, a) => traverseAction(a)(stepTrav)(opTrav(state)(o))
@@ -1243,6 +1243,7 @@ object AppMetadata extends Loggable {
         case Block(a) => traverseAction(a)(stepTrav)(state)
         case JsonCodec(_, o) => opTrav(state)(o)
         case i: Invocation => opTrav(state)(i.arg)
+        case ExtractHttpEntity(_, _, o) => opTrav(state)(o)
       }
       state => extractor(state) orElse traverse(state)
     }
@@ -1348,6 +1349,7 @@ object AppMetadata extends Loggable {
               if (isDynamic) us(state, nv(state.value)(Tresql(nameTresql)))
               else processJob(stepTresqlTrav)(state.copy(action = JobAct, name = nameTresql))
             case Invocation(_, _, o, _) => opTrTr(o)
+            case ExtractHttpEntity(_, _, o) => opTrTr(o)
           }
         }
         opTraverser(opTresqlTrav, stepTresqlTrav) { state => extractor(state) orElse traverse(state) }

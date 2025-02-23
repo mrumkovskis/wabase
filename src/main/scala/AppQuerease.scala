@@ -4,7 +4,7 @@ import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.model.HttpHeader.ParsingResult.{Error, Ok}
 import org.apache.pekko.http.scaladsl.model.headers.ContentDispositionTypes.attachment
 import org.apache.pekko.http.scaladsl.model.headers.{Cookie, HttpCookie, HttpCookiePair, `Content-Disposition`, `Set-Cookie`}
-import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes, ErrorInfo, HttpCharsets, HttpEntity, HttpHeader, HttpMethods, HttpRequest, HttpResponse, MediaTypes, Multipart, RequestEntity, StatusCodes, UniversalEntity}
+import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes, ErrorInfo, HttpCharsets, HttpEntity, HttpHeader, HttpMethods, HttpRequest, HttpResponse, MediaTypes, Multipart, StatusCodes, UniversalEntity}
 import org.apache.pekko.http.scaladsl.server.directives.ContentTypeResolver
 import org.apache.pekko.http.scaladsl.server.directives.FileAndResourceDirectives.ResourceFile
 import org.apache.pekko.stream.scaladsl.{Source, StreamConverters}
@@ -95,7 +95,7 @@ case class StringTemplateResult(content: String) extends TemplateResult
   { override def contentString: String = content }
 case class FileTemplateResult(filename: String, contentType: String, content: Array[Byte]) extends TemplateResult
   { override def contentString: String = new String(content, "UTF-8") }
-case class HttpEntityResult(entity: RequestEntity, decoder: RequestDecoders.RequestDecoder) extends DataResult
+case class HttpEntityResult(entity: HttpEntity, decoder: RequestDecoders.RequestDecoder) extends DataResult
 case class HttpResult(response: HttpResponse) extends DataResult
 case object NoResult extends QuereaseResult
 case class QuereaseResultWithCleanup(result: QuereaseCloseableResult, cleanup: Option[Throwable] => Unit)
@@ -756,7 +756,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         case n: java.lang.Number => NumberResult(n)
         case d: Dto => MapResult(d.toMap(this))
         case o: Option[Dto]@unchecked => o.map(d => MapResult(d.toMap(this))).getOrElse(notFound)
-        case e: RequestEntity => HttpEntityResult(e, null)
+        case e: HttpEntity => HttpEntityResult(e, null)
         case h: HttpResponse => HttpResult(h)
         case q: QuereaseResult => q
         // view compatible collections if not allow any
@@ -1141,7 +1141,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     ec: ExecutionContext,
     fss: WabaseFileStreamers): Future[DataResult] = {
     val fs = fss.fs(op.fileStreamerName)
-    val (id, sha) = Query(op.idShaTresql.tresql)(res.withParams(data ++ env)).unique[Long, String]
+    val (id, sha) = useResourcesConnOrEvaluator(implicitly[Resources],
+      r => Query(op.idShaTresql.tresql)(r.withParams(data ++ env)).unique[Long, String])
     val r = FileResult(fs.getFileInfo(id, sha).map(_.file_info).orNull, fs)
     Future.successful { op.conformTo.map(comp_res(r, _)).getOrElse(r) }
   }
@@ -1156,7 +1157,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     import qr._
     import resourcesFactory._
     val bindVars = data ++ env
-    def getVal(tr: Action.Tresql) = Query(tr.tresql)(resources.withParams(bindVars)).unique[String]
+    def getVal(tr: Action.Tresql) = useResourcesConnOrEvaluator(resources,
+      res => Query(tr.tresql)(res.withParams(bindVars)).unique[String])
     val fn = if (op.nameTresql != null) getVal(op.nameTresql) else "file"
     val contentType =
       if (op.contentTypeTresql != null) {
@@ -1352,27 +1354,31 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     data: Map[String, Any],
     env: Map[String, Any],
     context: ActionContext,
-  )(implicit
-    resFac: ResourcesFactory,
-    ec: ExecutionContext,
-    as: ActorSystem,
-    fs: FileStreamer,
-    httpReq: HttpRequest,
-  ): Future[DataResult] = {
-    Future.successful {
-      val res = HttpEntityResult(
-        httpReq.entity,
-        Option(exe.decoder)
-          .map(dn =>
-            requestDecoders.decoders
-              .getOrElse(dn, sys.error(s"Cannot decode http entity data. Request decoder '$dn' not found."))
-          )
-          .orNull
-      )
-      exe.conformTo
-        .map(comp_res(res, _))
-        .getOrElse(res)
-    }
+  )(implicit qr: QuereaseResources): Future[DataResult] = {
+    import qr._
+    Option(exe.op).map { op =>
+      doActionOp(op, data, env, context)
+        .map {
+          case HttpResult(response) => response.entity
+          case fr: FileResult => fileHttpEntity(fr)
+            .getOrElse(sys.error(s"Cannot find file data: ${fr.fileInfo}"))
+          case x => sys.error(s"Cannot extract entity from $x. Currently only HttpResult and FileResult are supported")
+        }
+    } .getOrElse(Future.successful(qr.httpReq.entity))
+      .map { ent =>
+        val res = HttpEntityResult(
+          ent,
+          Option(exe.decoder)
+            .map(dn =>
+              requestDecoders.decoders
+                .getOrElse(dn, sys.error(s"Cannot decode http entity data. Request decoder '$dn' not found."))
+            )
+            .orNull
+        )
+        exe.conformTo
+          .map(comp_res(res, _))
+          .getOrElse(res)
+      }
   }
 
   protected def doDb(

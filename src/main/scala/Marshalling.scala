@@ -325,7 +325,11 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
     }
 
   implicit val toEntityHttpEntityResultMarshaller:          ToEntityMarshaller[HttpEntityResult] =
-    Marshaller.combined(_.entity)
+    Marshaller.combined(e =>
+      e.entity.contentLengthOption
+        .map(l => HttpEntity(e.entity.contentType, l, e.entity.dataBytes))
+        .getOrElse(HttpEntity(e.entity.contentType, e.entity.dataBytes))
+    )
   implicit val toResponseHttpResultMarshaller:              ToResponseMarshaller[HttpResult] =
     Marshaller.combined(_.response)
 

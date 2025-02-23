@@ -335,12 +335,12 @@ object CsvDecoderFactory extends CsvDecoderFactory {
 }
 
 class RequestDecoders(qe: AppQuerease) {
-  // TODO create default csv decoder
+  // TODO support csv decoders
   def decoders: ListMap[String, RequestDecoders.RequestDecoder] = ListMap()
 }
 
 object RequestDecoders {
-  /** Decodes http entity according to view structure (optional). Boolean parameter indicates collection. */
+  /** Decodes http entity according to view structure (can be null). Boolean parameter indicates collection. */
   type RequestDecoder = HttpEntity => String => Boolean => Any
 }
 

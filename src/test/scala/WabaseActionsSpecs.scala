@@ -11,7 +11,6 @@ import org.apache.pekko.http.scaladsl.testkit.ScalatestRouteTest
 import org.apache.pekko.http.scaladsl.unmarshalling.Unmarshal
 import org.apache.pekko.stream.scaladsl.{Source, StreamConverters}
 import org.apache.pekko.util.ByteString
-import org.mojoz.metadata.ViewDef
 import org.mojoz.querease.{TresqlMetadata, ValidationException, ValidationResult}
 import org.mojoz.querease.ValueConverter.ClassOfJavaSqlDate
 import org.scalatest.flatspec.{AsyncFlatSpec, AsyncFlatSpecLike}
@@ -1501,6 +1500,18 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     Put("/extract_http_entity_test3",
       HttpEntity(ContentTypes.`application/json`, ByteString("""[{"name": "A"}, {"name": "B"}]"""))) ~> route ~> check {
       jsonAssert(entityAs[String], List(Map("name" -> "A-A"), Map("name" -> "B-B")))
+    }
+    Post("/extract_http_entity_test4", HttpEntity.Empty) ~> route ~> check {
+      jsonAssert(entityAs[String], List(
+        Map("name" -> "N1 N1", "surname" -> "S1 S1"),
+        Map("name" -> "N2 N2", "surname" -> "S2 S2"))
+      )
+    }
+    Put("/extract_http_entity_test4", HttpEntity.Empty) ~> route ~> check {
+      jsonAssert(entityAs[String], List(
+        Map("name" -> "N1-N1", "surname" -> "S1-S1"),
+        Map("name" -> "N2-N2", "surname" -> "S2-S2"))
+      )
     }
   }
 
