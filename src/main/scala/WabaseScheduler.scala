@@ -67,7 +67,7 @@ class WabaseScheduler(service: AppServiceBase[_]) extends Loggable {
         resourcesFactory, httpReq = null, qio = service.app.qio,
         fileStreamers = service.app.fileStreamers,
         httpClients = service.app.httpClients,
-        parameterFactory = service.app.injectionParametersFactory)
+        parameterProvider = service.app.injectionParametersProvider)
       .run
   }
 }

@@ -6,7 +6,7 @@ import org.mojoz.querease.{ValidationException, ValidationResult}
 import org.scalatest.flatspec.{AsyncFlatSpec, AsyncFlatSpecLike}
 import org.scalatest.matchers.should.Matchers
 import org.tresql.{Query, Resources, convLong}
-import org.wabase.AppQuerease.InjectionParametersFactory
+import org.wabase.AppQuerease.InjectionParametersProvider
 import org.wabase.QuereaseActionsDtos.Person
 
 import scala.concurrent.duration.DurationInt

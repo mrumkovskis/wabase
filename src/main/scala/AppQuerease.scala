@@ -18,7 +18,7 @@ import org.slf4j.LoggerFactory
 import org.wabase.AppFileStreamer.FileInfo
 import org.wabase.AppMetadata.Action.{VariableTransform, VariableTransforms}
 import org.wabase.AppMetadata.DbAccessKey
-import org.wabase.AppQuerease.{InjectionParametersContext, InjectionParametersFactory, listOfStringTuples}
+import org.wabase.AppQuerease.{InjectionParametersContext, InjectionParametersProvider, listOfStringTuples}
 import spray.json._
 
 import java.sql.Connection
@@ -45,7 +45,7 @@ case class QuereaseResources()(implicit
   val qio: AppQuereaseIo[Dto],
   val fileStreamers: WabaseFileStreamers,
   val httpClients: WabaseHttpClients,
-  val parametersFactory: InjectionParametersFactory,
+  val parametersProvider: InjectionParametersProvider,
 )
 
 case class ResourcesFactory(
@@ -316,7 +316,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       qio: AppQuereaseIo[Dto],
       fileStreamers: WabaseFileStreamers,
       httpClients: WabaseHttpClients,
-      parameterFactory: InjectionParametersFactory,
+      parameterProvider: InjectionParametersProvider,
     ): QuereaseAction[QuereaseResult] = {
         new QuereaseAction[QuereaseResult] {
           def run(implicit ec: ExecutionContext, as: ActorSystem) = {
@@ -327,7 +327,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
                 resourcesFactory.copy()(resources = resourcesFactory.initResources(poolName, extraDbs))
               }
             implicit val qr = new QuereaseResources()(resFac, ec, as, httpReq, qio, fileStreamers, httpClients,
-              parameterFactory)
+              parameterProvider)
             import resFac._
             def processResult(res: QuereaseResult, cleanup: Option[Throwable] => Unit): QuereaseResult = res match {
               case sr@ResponseResult(_, ResultValue(result), _, _) =>
@@ -718,7 +718,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         Future.successful(res)
       } else {
         val nqr = qr.copy()(resourcesFactory = resourcesFactory.focus(if (v.db != null) v.db else defaultCpName),
-          ec, as, httpReq, qio, fileStreamers, httpClients, parametersFactory)
+          ec, as, httpReq, qio, fileStreamers, httpClients, parametersProvider)
         do_action(viewName, method, callData, env, context.fieldFilter, context :: context.contextStack)(nqr)
       }
     }
@@ -737,7 +737,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       this.invokeFunction(className, function, params,
         InjectionParametersContext(httpReq, env, data),
         qr.copy()(resourcesFactory, ec, as, httpReq, qio, fileStreamers, httpClients,
-          parametersFactory = ipc => pf orElse qr.parametersFactory(ipc))
+          parametersProvider = ipc => pf orElse qr.parametersProvider(ipc))
       )
     }
 
@@ -1400,7 +1400,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       .focus(context.view.map(_.db).filter(_ != null).getOrElse(defaultCpName))
     logContext(context, env, newResFact)
     val closeRes = resourcesFactory.closeResources(newResFact.resources, op.doRollback, _)
-    val nqr = new QuereaseResources()(newResFact, ec, as, httpReq, qio, fileStreamers, httpClients, parametersFactory)
+    val nqr = new QuereaseResources()(newResFact, ec, as, httpReq, qio, fileStreamers, httpClients, parametersProvider)
     doSteps(op.action.steps, context.copy(stepName = "db"),
       Future.successful(data))(nqr).map {
       case DbResult(r, cl) => DbResult(r, cl.andThen(_ => closeRes(None)))
@@ -1834,7 +1834,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     )
     val default: PartialFunction[Class[_], Any] =
       { case c: Class[_] => org.wabase.invocationParameter(params ++ contextParams)(c) }
-    org.wabase.invokeFunction(className, function, parametersFactory(injectionContext) orElse default)
+    org.wabase.invokeFunction(className, function, parametersProvider(injectionContext) orElse default)
   }
 }
 
@@ -1966,7 +1966,15 @@ object AppQuerease {
     env: Map[String, Any] = Map(),	  // action env (application state)
     data: Map[String, Any] = Map(),	// action current step data
   )
-  type InjectionParametersFactory = InjectionParametersContext => PartialFunction[Class[_], Any]
+  type InjectionParametersProvider = InjectionParametersContext => PartialFunction[Class[_], Any]
+
+  trait InjectionParametersProviderFactory {
+    def createInjectionParametersProvider: InjectionParametersProvider
+  }
+
+  def injectionParametersProviderFactory: InjectionParametersProviderFactory =
+    getObjectOrNewInstance[InjectionParametersProviderFactory](
+      config, "app.wabase-injection-parameters-provider-factory", "injection parameters provider factory")
 
   def requestPartsToMap(parts: RequestPartResult)(
     implicit fs: FileStreamer, as: ActorSystem): Future[Map[String, Any]] = {
@@ -2003,4 +2011,8 @@ object AppQuerease {
     val pairs = listOfStringTuples(tresql.result).map(HttpCookiePair(_))
     Cookie(pairs).value
   }
+}
+
+object InjectionParametersProviderFactory extends AppQuerease.InjectionParametersProviderFactory {
+  def createInjectionParametersProvider: InjectionParametersProvider = _ => PartialFunction.empty
 }

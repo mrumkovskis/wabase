@@ -54,7 +54,8 @@ trait WabaseApp[User] {
     WabaseHttpClients(HttpClientConfig.httpClientFactory.createHttpClients)
   implicit lazy val fileStreamers: WabaseFileStreamers =
     WabaseFileStreamers(FileStreamerConfig.fileStreamerFactory.createFileStreamers(this))
-  def injectionParametersFactory: AppQuerease.InjectionParametersFactory = _ => PartialFunction.empty
+  lazy val injectionParametersProvider: AppQuerease.InjectionParametersProvider =
+    AppQuerease.injectionParametersProviderFactory.createInjectionParametersProvider
 
   case class AppActionContext(
     actionName: String,
@@ -143,7 +144,7 @@ trait WabaseApp[User] {
     import context._
     val rf = resourceFactory(context)
     qe.QuereaseAction(viewName, actionName, values, env, context.resultFilter)(
-        rf, httpReq, qio, fileStreamers, httpClients, injectionParametersFactory)
+        rf, httpReq, qio, fileStreamers, httpClients, injectionParametersProvider)
       .map(WabaseResult(context, _))
   }
 
@@ -187,7 +188,7 @@ trait WabaseApp[User] {
     }
     val rf = resourceFactory(context)
     qe.QuereaseAction(viewName, Action.Get, values, env,
-      context.resultFilter)(rf, httpReq, qio, fileStreamers, httpClients, injectionParametersFactory).map(oldVal)
+      context.resultFilter)(rf, httpReq, qio, fileStreamers, httpClients, injectionParametersProvider).map(oldVal)
   }
   protected def throwOldValueNotFound(message: String, locale: Locale): Nothing =
     throw new org.mojoz.querease.NotFoundException(translate(message)(locale))
@@ -214,7 +215,7 @@ trait WabaseApp[User] {
         this.customValidations(saveableContext)(state.locale)
         val rf = resourceFactory(context)
         qe.QuereaseAction(viewName, context.actionName, saveable, env, context.resultFilter)(rf,
-            httpReq, qio, fileStreamers, httpClients, injectionParametersFactory)
+            httpReq, qio, fileStreamers, httpClients, injectionParametersProvider)
           .map(WabaseResult(saveableContext, _))
           .recover { case ex => friendlyConstraintErrorMessage(viewDef, throw ex)(state.locale) }
       }
@@ -226,7 +227,7 @@ trait WabaseApp[User] {
       val richContext = context.copy(oldValue = oldValue)
       val rf = resourceFactory(richContext)
       qe.QuereaseAction(viewName, actionName, values, env, context.resultFilter)(
-          rf, httpReq, qio, fileStreamers, httpClients, injectionParametersFactory)
+          rf, httpReq, qio, fileStreamers, httpClients, injectionParametersProvider)
         .map(WabaseResult(richContext, _))
         .recover { case ex => friendlyConstraintErrorMessage(throw ex)(state.locale) }
     }
