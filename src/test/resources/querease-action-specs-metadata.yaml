@@ -106,6 +106,12 @@ columns:
 pk: key
 
 
+table: blob_data
+columns:
+  - id
+  - data bytes
+
+
 name: person
 api: save, get
 table: person
@@ -1494,3 +1500,14 @@ get:
       set_cookie(name = :name, value = :value, secure = false, http_only = :http_only,
         expires = {`date_add(timestamp '2025-02-05 09:37:40', interval 1 month)`})
       conf string conf.test.uri
+
+
+name: source_tresql_binding_test1
+api: insert
+decoder: none
+table:
+insert:
+- saved_file = to file (extract entity) 'source_tresql_binding_test1_ins'
+- as result file = resultWithQuereaseResources file {:saved_file.id, :saved_file.sha_256}
+- +blob_data { id = 1, data = :file }
+- org.wabase.QuereaseActionTestManagerObj.stringResultFromInputStream blob_data[id = 1]{data}

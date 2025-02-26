@@ -259,7 +259,7 @@ trait WabaseApp[User] {
       case _ =>
         def toTemplate(res: Resources) =
           ResourcesTemplate(
-            res.conn, res.metadata, res.dialect, res.idExpr, res.queryTimeout,
+            res.conn, res.metadata, res.dialect, res.toBindableValue, res.idExpr, res.queryTimeout,
             res.fetchSize, res.maxResultSize, res.recursiveStackDepth, res.params, res.extraResources,
             res.logger, res.cache, res.bindVarLogFilter)
         toTemplate(

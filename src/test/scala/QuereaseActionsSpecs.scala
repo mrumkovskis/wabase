@@ -2,6 +2,7 @@ package org.wabase
 
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.model.HttpRequest
+import org.apache.pekko.stream.scaladsl.StreamConverters
 import org.mojoz.querease.{ValidationException, ValidationResult}
 import org.scalatest.flatspec.{AsyncFlatSpec, AsyncFlatSpecLike}
 import org.scalatest.matchers.should.Matchers
@@ -9,6 +10,7 @@ import org.tresql.{Query, Resources, convLong}
 import org.wabase.AppQuerease.InjectionParametersProvider
 import org.wabase.QuereaseActionsDtos.Person
 
+import java.io.InputStream
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{ExecutionContext, Future}
 
@@ -549,4 +551,12 @@ object QuereaseActionTestManagerObj {
   }
   def stringArgument(s: String) = s + " " + s
   def httpResult(httpResult: HttpResult) = httpResult
+  def stringResultFromInputStream(tresqlResult: TresqlResult)(implicit qr: QuereaseResources) = {
+    import qr._
+    import org.tresql.convInputStream
+    StreamConverters
+      .fromInputStream(() => tresqlResult.result.unique[InputStream])
+      .runReduce(_ ++ _)
+      .map(_.utf8String)
+  }
 }

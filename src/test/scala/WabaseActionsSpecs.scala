@@ -1551,4 +1551,14 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       jsonAssert(entityAs[String], "http://wabase.org/")
     }
   }
+
+  it should "bind querease results to tresql" in {
+    implicit val user: TestUsr = TestUsr(100)
+    val route = service.crudAction
+    Post("/source_tresql_binding_test1",
+      HttpEntity(ContentTypes.`text/plain(UTF-8)`, ByteString("This is stream!"))) ~> route ~> check {
+      val r = entityAs[String]
+      r shouldBe "This is stream!"
+    }
+  }
 }

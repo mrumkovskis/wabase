@@ -24,7 +24,8 @@ import spray.json._
 import java.sql.Connection
 import scala.collection.immutable.Seq
 import scala.collection.mutable.ArrayBuffer
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.duration.DurationInt
+import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.jdk.CollectionConverters._
 import scala.util.{Failure, Try}
 import scala.util.control.NonFatal
@@ -97,6 +98,7 @@ case class FileTemplateResult(filename: String, contentType: String, content: Ar
   { override def contentString: String = new String(content, "UTF-8") }
 case class HttpEntityResult(entity: HttpEntity, decoder: RequestDecoders.RequestDecoder) extends DataResult
 case class HttpResult(response: HttpResponse) extends DataResult
+case class ResultWithQuereaseResources(result: QuereaseResult, qr: QuereaseResources) extends QuereaseResult
 case object NoResult extends QuereaseResult
 case class QuereaseResultWithCleanup(result: QuereaseCloseableResult, cleanup: Option[Throwable] => Unit)
   extends QuereaseResult {
@@ -1823,6 +1825,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   ): Any = {
     import qr._
     val contextParams = Seq[(Class[_], () => Any)](
+      (classOf[QuereaseResources], () => qr),
       (classOf[Resources], () => resourcesFactory.resources),
       (classOf[ResourcesFactory], () => resourcesFactory),
       (classOf[ExecutionContext], () => ec),
@@ -2011,6 +2014,31 @@ object AppQuerease {
     val pairs = listOfStringTuples(tresql.result).map(HttpCookiePair(_))
     Cookie(pairs).value
   }
+
+  def resultWithQuereaseResources(result: QuereaseResult)(
+    implicit qr: QuereaseResources): ResultWithQuereaseResources =
+    ResultWithQuereaseResources(result, qr)
+
+  def quereaseResultTresqlValueBinder: PartialFunction[Any, Any] = {
+    case ResultWithQuereaseResources(result, qr) =>
+      import qr._
+      result match {
+        case FileResult(fi, fs) => fs.getFileInfo(fi.id, fi.sha_256)
+          .map(f => f.source.runWith(StreamConverters.asInputStream()))
+          .getOrElse(
+            sys.error(s"Cannot bind FileResult value. File ${fi.filename} (sha_256 - ${fi.sha_256}) not found!"))
+        case HttpResult(response) => response.entity.dataBytes.runWith(StreamConverters.asInputStream())
+        case HttpEntityResult(ent, _) => ent.dataBytes.runWith(StreamConverters.asInputStream())
+        case RequestPartResult(parts) =>
+          Await.result(parts.runFold(ArrayBuffer[RequestPart]())(_ += _), 5.seconds) match {
+            case p if p.size == 1 => p.head.data.runWith(StreamConverters.asInputStream())
+            case ps => ps.map(p => (Option(p.name).getOrElse(p.filename), p.data)).toMap
+          }
+        case x => sys.error(s"Currently unable to bind querease result '$x' as tresql value")
+      }
+  }
+
+
 }
 
 object InjectionParametersProviderFactory extends AppQuerease.InjectionParametersProviderFactory {

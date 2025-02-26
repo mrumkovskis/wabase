@@ -4,8 +4,8 @@ val pekkoV    = "1.1.3"
 val pekkoHttpV= "1.1.0"
 
 val mojozV    = "5.4.0"
-val quereaseV = "7.1.0"
-val tresqlV   = "12.0.1"
+val quereaseV = "8.0.0-SNAPSHOT"
+val tresqlV   = "13.0.0-SNAPSHOT"
 
 javacOptions ++= Seq("-source", "11", "-target", "11", "-Xlint")
 initialize := {

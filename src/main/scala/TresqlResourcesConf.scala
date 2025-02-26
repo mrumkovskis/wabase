@@ -1,6 +1,6 @@
 package org.wabase
 
-import com.typesafe.config.{Config, ConfigFactory, ConfigObject, ConfigResolveOptions, ConfigValueType}
+import com.typesafe.config.{Config, ConfigFactory}
 import org.mojoz.querease.TresqlMetadata
 import org.tresql.{Cache, Dialect, Logging, Metadata, Resources, ResourcesTemplate, SimpleCache, dialects}
 
@@ -9,6 +9,7 @@ import scala.jdk.CollectionConverters._
 trait TresqlResourcesConf {
   def macrosClass: Class[_] = null
   def dialect: Dialect = null
+  def toBindableValue: PartialFunction[Any, Any] = null
   def idExpr: String => String = null
   def queryTimeout: Int = -1
   def maxResultSize: Int = -1
@@ -124,6 +125,7 @@ object TresqlResourcesConf extends Loggable {
       override val cacheSize:             Int = getInt(_.cacheSize)
       override val db:                 String = tresqlConfs.filter(_.isDbSet).headOption.map(_.db).getOrElse(cpName)
       override val dialect:           Dialect = getValue(_.dialect)
+      override val toBindableValue: PartialFunction[Any, Any] = getValue(_.toBindableValue)
       override val fetchSize:             Int = getInt(_.fetchSize)
       override val idExpr:   String => String = getValue(_.idExpr)
       override val macrosClass:      Class[_] = getValue(_.macrosClass)
@@ -180,6 +182,8 @@ object TresqlResourcesConf extends Loggable {
         if (conf.dialect != null) conf.dialect orElse vendor_dialect(dbVendor)
         else vendor_dialect(dbVendor)
       }
+      val toBindableValue: PartialFunction[Any, Any] =
+        Option(conf.toBindableValue).getOrElse(PartialFunction.empty) orElse AppQuerease.quereaseResultTresqlValueBinder
       val idExpr: String => String =
         if (conf.idExpr != null) conf.idExpr
         else vendor_id_expr(cpToVendor.getOrElse(cpName, null))
@@ -209,6 +213,7 @@ object TresqlResourcesConf extends Loggable {
         conn = null,
         metadata = metadata,
         dialect = dialect,
+        toBindableValue = toBindableValue,
         idExpr = idExpr,
         queryTimeout = queryTimeout,
         fetchSize: Int,
