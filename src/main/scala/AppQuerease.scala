@@ -2034,6 +2034,7 @@ object AppQuerease {
             case p if p.size == 1 => p.head.data.runWith(StreamConverters.asInputStream())
             case ps => ps.map(p => (Option(p.name).getOrElse(p.filename), p.data)).toMap
           }
+        case r: ResultWithQuereaseResources => quereaseResultTresqlValueBinder(r)
         case x => sys.error(s"Currently unable to bind querease result '$x' as tresql value")
       }
   }
