@@ -900,8 +900,10 @@ class OpParser(viewName: String, cache: OpParser.Cache)
     case "header" ~ h => HttpHeader(h)
     case _ ~ c => Cookie(c)
   } named "http-hoc-op"
-  def extractPartsOp: MemParser[ExtractParts.type] =
-    "extract\\s+parts".r ^^^ ExtractParts named "extract-parts"
+  def extractPartsOp: MemParser[ExtractParts] =
+    "extract\\s+parts".r ~> opt("[" ~> HttpClientFileStreamerNameRegex <~ "]") ^^ {
+      case fs => ExtractParts(fs.orNull)
+    } named "extract-parts"
   def extractEntityOp: MemParser[ExtractHttpEntity] =
     (opt(opResultType) <~ "extract\\s+entity".r) ~ opt("using" ~> ident) ~ opt(operation) ^^ {
       case conformTo ~ decoder ~ op => ExtractHttpEntity(conformTo, decoder.orNull, op.orNull)
@@ -1192,6 +1194,11 @@ object AppMetadata extends Loggable {
     case class HttpHeader(name: String) extends Op
     case class Cookie(name: String) extends Op
     case class ExtractHttpEntity(conformTo: Option[OpResultType] = None, decoder: String = null, op: Op = null) extends Op
+    /** This op can be used if view property 'decode request' is false, for multipart request it extracts parts,
+     * for simple request creates one part with body as a Source.
+     * File streamer name indicates which file streamer to use for parts serialization.
+     * */
+    case class ExtractParts(fileStreamerName: String = null) extends Op
     case class Db(action: Action, doRollback: Boolean, dbs: List[DbAccessKey]) extends Op
     case class Conf(param: String, paramType: ConfType = null) extends Op
     case class JsonCodec(encode: Boolean, op: Op) extends Op
@@ -1202,9 +1209,7 @@ object AppMetadata extends Loggable {
      * (not to be evaluated as tresql to get job name). */
     case class Job(nameTresql: String, isDynamic: Boolean) extends Op
     case object Commit extends Op
-    /** This op can be used if view property 'decode request' is false, for multipart request it extracts parts,
-     * for simple request creates one part with body as a Source. */
-    case object ExtractParts extends Op
+
     case object This extends Op
 
     /**
@@ -1228,7 +1233,7 @@ object AppMetadata extends Loggable {
       def traverse(state: T): PartialFunction[Op, T] = {
         case _: Tresql | _: RedirectToKey | _: Response |
              _: VariableTransforms | _: File | _: Conf | _: HttpHeader | _: Cookie |
-             ExtractParts | This | _: Job | _: Resource | Commit | null => state
+             _: ExtractParts | This | _: Job | _: Resource | Commit | null => state
         case o: ViewCall => opTrav(state)(o.data)
         case Unique(o, _, _) => opTrav(state)(o)
         case Foreach(o, a) => traverseAction(a)(stepTrav)(opTrav(state)(o))

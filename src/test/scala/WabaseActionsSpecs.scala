@@ -1368,6 +1368,10 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
   def decodeJs(js: String) = new CborOrJsonAnyValueDecoder().decode(ByteString(js))
   def jsonAssert(jsonStr: String, res: Any) =
     decodeJs(jsonStr) shouldBe res
+  def createEntity(content: String, ct: ContentType) = HttpEntity(ct, ByteString(content))
+  def concatForms(forms: Multipart.FormData*) = Multipart.FormData(
+    forms.foldLeft(Source.empty[Multipart.FormData.BodyPart])(_ ++ _.parts)
+  )
 
   it should "do wabase routes and return results" in {
     implicit val user: TestUsr = TestUsr(100)
@@ -1407,10 +1411,6 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         Map("id" -> 3, "name" -> "Ola", "sex" -> "F", "birthdate" -> "1988-10-09"),
       ))
     }
-    def createEntity(content: String, ct: ContentType) = HttpEntity(ct, ByteString(content))
-    def concatForms(forms: Multipart.FormData*) = Multipart.FormData(
-      forms.foldLeft(Source.empty[Multipart.FormData.BodyPart])(_ ++ _.parts)
-    )
     Post("/extract_parts_test", concatForms(
       WabaseHttpClient.fileUploadForm(createEntity("Field value1", ContentTypes.`text/plain(UTF-8)`), null, "field1"),
       WabaseHttpClient.fileUploadForm(createEntity("Field value2", ContentTypes.`text/plain(UTF-8)`), null, "field2"),
@@ -1559,6 +1559,14 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       HttpEntity(ContentTypes.`text/plain(UTF-8)`, ByteString("This is stream!"))) ~> route ~> check {
       val r = entityAs[String]
       r shouldBe "This is stream!"
+    }
+    Put("/source_tresql_binding_test1", concatForms(
+      WabaseHttpClient.fileUploadForm(createEntity("Stream field 1", ContentTypes.`text/plain(UTF-8)`), "file1", "f1"),
+      WabaseHttpClient.fileUploadForm(createEntity("Stream field 2", ContentTypes.`text/plain(UTF-8)`), "file2", "f2"),
+      WabaseHttpClient.fileUploadForm(createEntity("Stream field 3", ContentTypes.`text/plain(UTF-8)`), "file3", "f3"),
+    )) ~> route ~> check {
+      val r = entityAs[String]
+      jsonAssert(r, Seq("Stream field 1", "Stream field 2", "Stream field 3"))
     }
   }
 }

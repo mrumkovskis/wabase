@@ -24,8 +24,7 @@ import spray.json._
 import java.sql.Connection
 import scala.collection.immutable.Seq
 import scala.collection.mutable.ArrayBuffer
-import scala.concurrent.duration.DurationInt
-import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.concurrent.{ExecutionContext, Future}
 import scala.jdk.CollectionConverters._
 import scala.util.{Failure, Try}
 import scala.util.control.NonFatal
@@ -88,7 +87,7 @@ case class ResponseResult(code: Int, value: ResponseValue, headers: List[HttpHea
 case class ResourceResult(resource: String, contentType: ContentType, httpReq: HttpRequest) extends DataResult
 case class FileInfoResult(fileInfo: FileInfo) extends QuereaseResult
 case class FileResult(fileInfo: FileInfo, fileStreamer: FileStreamer) extends DataResult
-case class RequestPartResult(result: Source[RequestPart, Any]) extends DataResult
+case class RequestPartResult(result: Source[RequestPart, Any], fs: FileStreamer) extends DataResult
 case class RequestPart(name: String, contentType: ContentType, filename: String, data: Source[ByteString, Any])
 sealed trait TemplateResult extends QuereaseResult
   { def contentString: String }
@@ -406,8 +405,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     }
   }
 
-  def requestPartsToMap(result: RequestPartResult)(
-    implicit fs: FileStreamer, as: ActorSystem): Future[Map[String, Any]] =
+  def requestPartsToMap(result: RequestPartResult)(implicit as: ActorSystem): Future[Map[String, Any]] =
     AppQuerease.requestPartsToMap(result)
 
   def doAction(
@@ -483,7 +481,6 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
     import Action._
     import qr._
-    implicit val fs: FileStreamer = fileStreamers.fs(null)
     def updateCurRes(cr: Map[String, Any], key: Option[String], resF: Future[_]) = {
       def upd(d: Map[String, _], k: String, v: Any) = {
         def rec(m: Map[String, _], kp: List[String]): Map[String, _] = kp match {
@@ -1474,9 +1471,14 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       }
   }
 
-  protected def doExtractParts(data: Map[String, Any], env: Map[String, Any], context: ActionContext)(
-    implicit httpReq: HttpRequest, as: ActorSystem): Future[RequestPartResult] = {
+  protected def doExtractParts(
+    op: Action.ExtractParts,
+    data: Map[String, Any],
+    env: Map[String, Any], context: ActionContext
+  )(implicit qr: QuereaseResources): Future[RequestPartResult] = {
+    import qr._
     val entity = httpReq.entity
+    val fs = fileStreamers.fs(op.fileStreamerName)
     if (entity.contentType.mediaType.isMultipart) {
       import org.apache.pekko.http.scaladsl.unmarshalling.MultipartUnmarshallers._
       import org.apache.pekko.http.scaladsl.server.directives.MarshallingDirectives
@@ -1489,7 +1491,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           case dataPart =>
             RequestPart(dataPart.name, dataPart.entity.contentType, null, dataPart.entity.dataBytes)
         }
-        RequestPartResult(src)
+        RequestPartResult(src, fs)
       }
     } else {
       val filename = viewDefOption(context.viewName)
@@ -1500,7 +1502,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         RequestPartResult(
           Source.single(
             RequestPart(null, entity.contentType, if (filename.isEmpty) null else filename, entity.dataBytes)
-          )
+          ),
+          fs
         )
       )
     }
@@ -1552,7 +1555,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case c: Action.Conf => doConf(c, data, env, context)
       case j: Action.JsonCodec => doJsonCodec(j, data, env, context)
       case job: Action.Job => doJob(job, data, env, context)
-      case Action.ExtractParts => doExtractParts(data, env, context)
+      case ep: Action.ExtractParts => doExtractParts(ep, data, env, context)
       case Action.This => doThis(data, env, context)
       case VariableTransforms(vts) =>
         Future.successful(doVarsTransforms(vts, Map[String, Any](), data ++ env))
@@ -1727,7 +1730,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   }
 
   private def dataForNextStep(res: QuereaseResult, context: ActionContext,
-                              unwrapSingleValue: Boolean)(implicit fs: FileStreamer, as: ActorSystem): Future[_] = {
+                              unwrapSingleValue: Boolean)(implicit qr: QuereaseResources): Future[_] = {
+    import qr._
     def v(view: String) = viewDef(
       if (view == "this") context.view.map(_.name) getOrElse view
       else view
@@ -1979,14 +1983,30 @@ object AppQuerease {
     getObjectOrNewInstance[InjectionParametersProviderFactory](
       config, "app.wabase-injection-parameters-provider-factory", "injection parameters provider factory")
 
-  def requestPartsToMap(parts: RequestPartResult)(
-    implicit fs: FileStreamer, as: ActorSystem): Future[Map[String, Any]] = {
+  def requestPartsToMap(parts: RequestPartResult)(implicit as: ActorSystem): Future[Map[String, Any]] = {
     implicit val ec = as.dispatcher
     parts.result.mapAsync(1) {
       case p if p.filename != null =>
-        p.data.runWith(fs.fileSink(p.filename, p.contentType.toString))
+        p.data.runWith(parts.fs.fileSink(p.filename, p.contentType.toString))
           .map(_.toMap)
           .map(m => if (p.name == null) m else Map(p.name -> m))
+      case p => p.data.runFold(ByteString.empty)(_ ++ _).map(v => Map(p.name -> v.utf8String))
+    }.runFold(Map[String, Any]())(_ ++ _)
+  }
+
+  def requestPartsToBindableMap(parts: RequestPartResult)(implicit as: ActorSystem): Future[Map[String, Any]] = {
+    implicit val ec = as.dispatcher
+    parts.result.mapAsync(1) {
+      case p if p.filename != null =>
+        p.data.runWith(parts.fs.fileSink(p.filename, p.contentType.toString))
+          .map(fi => parts.fs.getFileInfo(fi.id, fi.sha_256))
+          .map { fiho =>
+            val n = Option(p.name).getOrElse(p.filename)
+            val in = fiho
+              .map(fih => fih.source.runWith(StreamConverters.asInputStream()))
+              .getOrElse(sys.error(s"Cannot find request part file: $n"))
+            Map(n -> in)
+          }
       case p => p.data.runFold(ByteString.empty)(_ ++ _).map(v => Map(p.name -> v.utf8String))
     }.runFold(Map[String, Any]())(_ ++ _)
   }
@@ -2029,17 +2049,10 @@ object AppQuerease {
             sys.error(s"Cannot bind FileResult value. File ${fi.filename} (sha_256 - ${fi.sha_256}) not found!"))
         case HttpResult(response) => response.entity.dataBytes.runWith(StreamConverters.asInputStream())
         case HttpEntityResult(ent, _) => ent.dataBytes.runWith(StreamConverters.asInputStream())
-        case RequestPartResult(parts) =>
-          Await.result(parts.runFold(ArrayBuffer[RequestPart]())(_ += _), 5.seconds) match {
-            case p if p.size == 1 => p.head.data.runWith(StreamConverters.asInputStream())
-            case ps => ps.map(p => (Option(p.name).getOrElse(p.filename), p.data)).toMap
-          }
         case r: ResultWithQuereaseResources => quereaseResultTresqlValueBinder(r)
         case x => sys.error(s"Currently unable to bind querease result '$x' as tresql value")
       }
   }
-
-
 }
 
 object InjectionParametersProviderFactory extends AppQuerease.InjectionParametersProviderFactory {

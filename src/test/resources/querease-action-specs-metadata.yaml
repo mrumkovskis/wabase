@@ -110,6 +110,8 @@ table: blob_data
 columns:
   - id
   - data bytes
+  - data2 bytes
+  - data3 bytes
 
 
 name: person
@@ -1503,7 +1505,7 @@ get:
 
 
 name: source_tresql_binding_test1
-api: insert
+api: insert, update
 decoder: none
 table:
 insert:
@@ -1511,3 +1513,7 @@ insert:
 - as result file = resultWithQuereaseResources file {:saved_file.id, :saved_file.sha_256}
 - +blob_data { id = 1, data = :file }
 - org.wabase.QuereaseActionTestManagerObj.stringResultFromInputStream blob_data[id = 1]{data}
+update:
+- saved_data = requestPartsToBindableMap extract parts [main]
+- =blob_data[id = 1] { data = :saved_data.f1, data2 = :saved_data.f2, data3 = :saved_data.f3 }
+- as any org.wabase.QuereaseActionTestManagerObj.stringResultsFromInputStreams blob_data[id = 1] {data, data2, data3}

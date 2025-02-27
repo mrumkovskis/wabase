@@ -7,7 +7,6 @@ import org.mojoz.querease.{ValidationException, ValidationResult}
 import org.scalatest.flatspec.{AsyncFlatSpec, AsyncFlatSpecLike}
 import org.scalatest.matchers.should.Matchers
 import org.tresql.{Query, Resources, convLong}
-import org.wabase.AppQuerease.InjectionParametersProvider
 import org.wabase.QuereaseActionsDtos.Person
 
 import java.io.InputStream
@@ -558,5 +557,15 @@ object QuereaseActionTestManagerObj {
       .fromInputStream(() => tresqlResult.result.unique[InputStream])
       .runReduce(_ ++ _)
       .map(_.utf8String)
+  }
+  def stringResultsFromInputStreams(tresqlResult: TresqlResult)(implicit qr: QuereaseResources) = {
+    import qr._
+    import org.tresql.convInputStream
+    Future.traverse(tresqlResult.result.unique[InputStream, InputStream, InputStream].productIterator.map { in =>
+      StreamConverters
+        .fromInputStream(() => in.asInstanceOf[InputStream])
+        .runReduce(_ ++ _)
+        .map(_.utf8String)
+    })(identity)
   }
 }
