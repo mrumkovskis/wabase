@@ -22,6 +22,7 @@ import scala.concurrent.duration.FiniteDuration
 import scala.jdk.CollectionConverters._
 import scala.language.reflectiveCalls
 import scala.util.Try
+import scala.util.control.NonFatal
 import scala.util.matching.Regex
 
 trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
@@ -768,7 +769,11 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       } else {
         import io.bullet.borer._
         import CacheIo.expCodec
-        val cache = Cbor.decode(res).to[Map[String, Exp]].value
+        val cache = try Cbor.decode(res).to[Map[String, Exp]].value catch {
+          case NonFatal(e) => throw new RuntimeException(
+            s"Error reading parsed view cache from /$AppQuereaseParserCacheName. " +
+              s"Please delete file explicitly or by calling 'sbt clean'", e)
+        }
         logger.debug(s"App querease parser cache loaded for ${cache.size} expressions")
         cache
       }
