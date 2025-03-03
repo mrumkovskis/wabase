@@ -48,6 +48,7 @@ lazy val wabase = (project in file("."))
       "org.apache.pekko"           %% "pekko-actor"           % pekkoV,
       "org.apache.pekko"           %% "pekko-actor-typed"     % pekkoV,
       "org.apache.pekko"           %% "pekko-connectors-csv"  % pekkoHttpV, //      % Optional?
+      "org.apache.pekko"           %% "pekko-connectors-xml"  % pekkoHttpV, //      % Optional?
       "org.apache.pekko"           %% "pekko-http-spray-json" % pekkoHttpV,
       "org.apache.pekko"           %% "pekko-slf4j"           % pekkoV,
       "org.apache.pekko"           %% "pekko-stream"          % pekkoV,

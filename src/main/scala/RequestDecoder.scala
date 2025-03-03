@@ -3,6 +3,7 @@ package org.wabase
 import com.typesafe.config.Config
 import org.apache.pekko.stream.scaladsl.Flow
 import org.apache.pekko.stream.connectors.csv.scaladsl.{CsvParsing, CsvToMap}
+import org.apache.pekko.stream.connectors.xml.scaladsl.XmlParsing
 import org.apache.pekko.util.ByteString
 import io.bullet.borer.compat.pekko.ByteStringProvider
 import io.bullet.borer.encodings.BaseEncoding
@@ -10,6 +11,7 @@ import io.bullet.borer.{Cbor, Decoder, Input, Json, Tag, Target, DataItem => DI}
 import org.apache.pekko.http.scaladsl.model.HttpEntity
 import org.apache.pekko.NotUsed
 import org.mojoz.metadata.{Type, TypeDef, ViewDef}
+import org.w3c.dom.{Element, Node, NodeList}
 import org.wabase.BorerDatetimeDecoders._
 
 import java.io.InputStream
@@ -330,6 +332,85 @@ object CsvDecoderFactory extends CsvDecoderFactory {
   def createCsvStreamDecoders: Map[String, Flow[ByteString, Map[String, String], NotUsed]] = {
     CsvDecoderConfig.configs.map { case (n, csvCfg) =>
       n -> createCsvStreamDecoder(n, csvCfg)
+    }.toMap
+  }
+}
+
+object XmlDecoderConfig {
+  lazy val componentConfs = ComponentConf.getConfigs("data-parsers-xml")
+  lazy val configs: Map[String, Config] = componentConfs.confs.toMap
+  lazy val xmlDecoderFactory: XmlDecoderFactory =
+    getObjectOrNewInstance[XmlDecoderFactory](componentConfs.root, "factory-class", "xml decoder factory")
+}
+
+trait XmlDecoderFactory {
+  def createXmlStreamDecoders: Map[String, Flow[ByteString, Map[String, Any], NotUsed]]
+}
+
+object XmlDecoderFactory extends XmlDecoderFactory {
+  def nodeListToMap(nodeList: NodeList): Map[String, Any] = {
+    val children = (0 until nodeList.getLength).map(nodeList.item)
+
+    // Concatenate all text nodes into a single string
+    val textContent = children
+      .filter(_.getNodeType == Node.TEXT_NODE)
+      .map(_.getTextContent)
+      .filter(_.trim.nonEmpty)  // Ignore whitespace-only text nodes
+      .mkString("")
+      .trim
+
+    // Filter out element children
+    val elementChildren = children.filter(_.getNodeType == Node.ELEMENT_NODE)
+
+    // Build a map from element children
+    val elementsMap = elementChildren.foldLeft(Map[String, Any]()) { (acc, node) =>
+      val elem = node.asInstanceOf[Element]
+      val name = elem.getTagName
+      val childMap = elementToMap(elem)
+      // Unwrap child element if it contains only "#text"
+      val childValue = if (childMap.size == 1 && childMap.contains("#text")) childMap("#text") else childMap
+
+      acc.get(name) match {
+        case Some(existing) =>
+          existing match {
+            case vector: Vector[_] =>
+              acc.updated(name, vector :+ childValue)
+            case _ =>
+              acc.updated(name, Vector(existing, childValue))
+          }
+        case None =>
+          acc + (name -> childValue)
+      }
+    }
+
+    // Include text content in the map if non-empty
+    if (textContent.nonEmpty) {
+      elementsMap + ("#text" -> textContent)
+    } else {
+      elementsMap
+    }
+  }
+  def attributesToMap(element: Element) =
+    element.getAttributes match {
+      case null => Map.empty[String, Any]
+      case attrs =>
+        (0 until attrs.getLength)
+          .map(attrs.item)
+          .map(attr => attr.getNodeName -> attr.getNodeValue)
+          .toMap
+    }
+  def elementToMap(element: Element): Map[String, Any] =
+    attributesToMap(element) ++ nodeListToMap(element.getChildNodes)
+  def createXmlStreamDecoder(n: String, xmlCfg: Config): Flow[ByteString, Map[String, Any], NotUsed] = {
+    val path = xmlCfg.getStringList("path").asScala.toVector
+    Flow[ByteString]
+      .via(XmlParsing.parser)
+      .via(XmlParsing.subtree(path))
+      .map(elementToMap)
+  }
+  def createXmlStreamDecoders: Map[String, Flow[ByteString, Map[String, Any], NotUsed]] = {
+    XmlDecoderConfig.configs.map { case (n, xmlCfg) =>
+      n -> createXmlStreamDecoder(n, xmlCfg)
     }.toMap
   }
 }
