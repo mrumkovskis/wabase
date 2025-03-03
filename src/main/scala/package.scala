@@ -99,16 +99,21 @@ package object wabase extends Loggable {
   }
 
   def getObjectOrNewInstance(className: String, description: String): AnyRef = {
-    if (className endsWith "$")
-      getObjectOrNewInstance(Class.forName(className), description)
-    else try Class.forName(className).getDeclaredConstructor().newInstance().asInstanceOf[AnyRef] catch {
-      case util.control.NonFatal(ex1) =>
-        try Class.forName(className + "$").getField("MODULE$").get(null) catch {
-          case util.control.NonFatal(ex2) =>
-            logger.error(s"Failed to get $description instance, tried both empty constructor and object", ex2)
-            throw new RuntimeException(s"Failed to get $description instance", ex1)
+    def obj_or_new(cn: String): AnyRef =
+      if (cn endsWith "$")
+        getObjectOrNewInstance(Class.forName(cn), description)
+      else try Class.forName(cn).getDeclaredConstructor().newInstance().asInstanceOf[AnyRef] catch {
+        case util.control.NonFatal(ex1) =>
+          try Class.forName(cn + "$").getField("MODULE$").get(null) catch {
+            case util.control.NonFatal(ex2) =>
+              val idx = cn.lastIndexOf('.')
+              if (idx == -1) {
+                logger.error(s"Failed to get $description instance of class $className, tried both empty constructor and object", ex2)
+                throw new RuntimeException(s"Failed to get $description instance of class $className", ex1)
+              } else obj_or_new(cn.substring(0, idx) + "$" + cn.substring(idx + 1, cn.length))
+          }
         }
-      }
+    obj_or_new(className)
   }
 
   def getObjectOrNewInstance(clazz: Class[_], description: String): AnyRef = {

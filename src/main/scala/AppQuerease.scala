@@ -1983,6 +1983,10 @@ object AppQuerease {
     getObjectOrNewInstance[InjectionParametersProviderFactory](
       config, "app.wabase-injection-parameters-provider-factory", "injection parameters provider factory")
 
+  object InjectionParametersProviderFactory extends AppQuerease.InjectionParametersProviderFactory {
+    def createInjectionParametersProvider: InjectionParametersProvider = _ => PartialFunction.empty
+  }
+
   def requestPartsToMap(parts: RequestPartResult)(implicit as: ActorSystem): Future[Map[String, Any]] = {
     implicit val ec = as.dispatcher
     parts.result.mapAsync(1) {
@@ -2053,8 +2057,4 @@ object AppQuerease {
         case x => sys.error(s"Currently unable to bind querease result '$x' as tresql value")
       }
   }
-}
-
-object InjectionParametersProviderFactory extends AppQuerease.InjectionParametersProviderFactory {
-  def createInjectionParametersProvider: InjectionParametersProvider = _ => PartialFunction.empty
 }
