@@ -1083,9 +1083,9 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           case r: Result[_] => Future.successful(r.map(_.toMap) map addParentData)
         }
         case r: TresqlSingleRowResult => iterator(r.map(_.toMap))
-        case HttpEntityResult(ent, dec) => objFromHttpEntity(ent, null, false, dec)(qr.as).flatMap(iterator)(qr.ec)
+        case HttpEntityResult(ent, dec) => decodeHttpEntity(ent, null, false, dec)(qr.as).flatMap(iterator)(qr.ec)
         case CompatibleResult(HttpEntityResult(ent, dec), rf, isColl) =>
-          objFromHttpEntity(ent, Option(rf).map(_.name).orNull, isColl, dec)(qr.as).flatMap(iterator)(qr.ec)
+          decodeHttpEntity(ent, Option(rf).map(_.name).orNull, isColl, dec)(qr.as).flatMap(iterator)(qr.ec)
         case CompatibleResult(r, _, _) => iterator(r) // TODO Execute to compatible map
         case x => sys.error(s"Not iterable result for foreach operation: $x")
       }
@@ -1705,7 +1705,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     }
   }
 
-  private def objFromHttpEntity(
+  private def decodeHttpEntity(
     ent: HttpEntity,
     viewName: String,
     isCollection: Boolean,
@@ -1720,10 +1720,17 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     def decodeToSeqOfMaps(bs: ByteString) =
       if (viewName == null) new CborOrJsonAnyValueDecoder().decode(bs)
       else cborOrJsonDecoder.decodeToSeqOfMaps(bs, viewName)(viewNameToMapZero)
+    def decodeUsingDecoder = decoder(viewName)(ent)
+      .runFold(ArrayBuffer[Any]()) { (res, data) => res += data }
+      .map {
+        case res if !isCollection && res.size == 1 => res.head
+        case res if isCollection => res.toVector
+        case res => sys.error(s"Decoded result must contain one element, got: $res")
+      }
 
-    ent.toStrict(1.second).map { se =>
-      if (decoder != null) decoder(ent)(viewName)(isCollection)
-      else if (ent.contentType == ContentTypes.`application/json`)
+    if (decoder != null) decodeUsingDecoder
+    else ent.toStrict(1.second).map { se =>
+      if (ent.contentType == ContentTypes.`application/json`)
         if (isCollection) decodeToSeqOfMaps(se.data) else decodeToMap(se.data)
       else se.data.decodeString("UTF-8")
     }
@@ -1769,7 +1776,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           case RedirectValue(value) => tresqlUri.uri(value).toString()
         }))
       case fi: FileInfoResult => fi.fileInfo.toMap
-      case fr: FileResult => fileHttpEntity(fr).map(objFromHttpEntity(_, null, false, null))
+      case fr: FileResult => fileHttpEntity(fr).map(decodeHttpEntity(_, null, false, null))
         .getOrElse(sys.error(s"File not found: ${fr.fileInfo}"))
       case rs: ResourceResult =>
         ResourceFile(classOf[AppQuerease].getResource(rs.resource))
@@ -1782,18 +1789,18 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case HttpResult(r) =>
         if (r.status.isRedirection())
           r.headers.find(_.is("location")).map(_.value()).getOrElse("")
-        else objFromHttpEntity(r.entity, null, false, null)
-      case HttpEntityResult(r, d) => objFromHttpEntity(r, null, false, d)
+        else decodeHttpEntity(r.entity, null, false, null)
+      case HttpEntityResult(r, d) => decodeHttpEntity(r, null, false, d)
       case NoResult => NoResult
       case CompatibleResult(r, filter, isCollection) => r match {
         case TresqlResult(r: Result[_]) =>
           val l = toCompatibleSeqOfMaps(r, v(filter.name)) // FIXME assumes that filter name matches view name, refactor!
           if (unwrapSingleValue) maybeUnwrapSingleVal(l) else l
         case r: TresqlSingleRowResult => r.map(toCompatibleMap(_, v(filter.name))) // FIXME assumes that filter name matches view name
-        case fr: FileResult => fileHttpEntity(fr).map(objFromHttpEntity(_, filter.name, isCollection, null)) // FIXME assumes that filter matches view name
+        case fr: FileResult => fileHttpEntity(fr).map(decodeHttpEntity(_, filter.name, isCollection, null)) // FIXME assumes that filter matches view name
           .getOrElse(sys.error(s"File not found: ${fr.fileInfo}"))
-        case HttpEntityResult(r, d) => objFromHttpEntity(r, filter.name, isCollection, d)  // FIXME assumes that filter name matches view name
-        case HttpResult(r) => objFromHttpEntity(r.entity, filter.name, isCollection, null) // FIXME assumes that filter name matches view name
+        case HttpEntityResult(r, d) => decodeHttpEntity(r, filter.name, isCollection, d)  // FIXME assumes that filter name matches view name
+        case HttpResult(r) => decodeHttpEntity(r.entity, filter.name, isCollection, null) // FIXME assumes that filter name matches view name
         case r => dataForNextStep(r, context, unwrapSingleValue)
       }
       case DbResult(dbr, cl) => dataForNextStep(dbr, context, unwrapSingleValue).andThen {

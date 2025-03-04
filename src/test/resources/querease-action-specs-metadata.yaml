@@ -1432,8 +1432,8 @@ api: insert, update, list
 explicit db: true
 table:
 fields:
-  - name
-  - surname
+  - name      : name            # define label for csv header rendering
+  - surname   : surname         # define label for csv header rendering
 list:
 - "{'N1' name, 'S1' surname} + {'N2', 'S2'}"      # yaml parser wants to put tresql in quotes
 insert:
@@ -1445,6 +1445,20 @@ update:
 - foreach extract entity file {:data_file.id, :data_file.sha_256}:
   - name = {:name || '-' || :name}
   - surname = {:surname || '-' || :surname}
+
+
+name: extract_csv_http_entity_test
+decoder: none
+api: insert, update
+explicit db: true
+table:
+fields:
+- name
+- surname
+insert:
+- foreach as any * extract entity using default_csv_decoder (http get '/extract_http_entity_test4' {'Accept', 'text/csv; charset=UTF-8'}):
+  - name = {:name || ' ' || :name}
+  - surname = {:surname || ' ' || :surname}
 
 
 name: invocation_keep_result_test

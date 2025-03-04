@@ -1513,6 +1513,12 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         Map("name" -> "N2-N2", "surname" -> "S2-S2"))
       )
     }
+    Post("/extract_csv_http_entity_test", HttpEntity.Empty) ~> route ~> check {
+      jsonAssert(entityAs[String], List(
+        Map("name" -> "N1 N1", "surname" -> "S1 S1"),
+        Map("name" -> "N2 N2", "surname" -> "S2 S2"))
+      )
+    }
   }
 
   it should "set response headers" in {

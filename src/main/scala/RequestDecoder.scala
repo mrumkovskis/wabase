@@ -1,7 +1,7 @@
 package org.wabase
 
 import com.typesafe.config.Config
-import org.apache.pekko.stream.scaladsl.Flow
+import org.apache.pekko.stream.scaladsl.{Flow, Source}
 import org.apache.pekko.stream.connectors.csv.scaladsl.{CsvParsing, CsvToMap}
 import org.apache.pekko.stream.connectors.xml.scaladsl.XmlParsing
 import org.apache.pekko.util.ByteString
@@ -22,7 +22,7 @@ import java.time.{LocalDate, LocalDateTime, LocalTime}
 import scala.annotation.tailrec
 import scala.collection.immutable.{ListMap, Map, Seq}
 import scala.jdk.CollectionConverters._
-import scala.language.postfixOps
+import scala.language.{higherKinds, postfixOps}
 import scala.reflect.ClassTag
 
 /** Decodes cbor or json according to view and type metadata */
@@ -416,13 +416,23 @@ object XmlDecoderFactory extends XmlDecoderFactory {
 }
 
 class RequestDecoders(qe: AppQuerease) {
-  // TODO support csv decoders
-  def decoders: ListMap[String, RequestDecoders.RequestDecoder] = ListMap()
+  def requestDecoder(qe: AppQuerease)(
+    transformer: Flow[ByteString, Map[String, Any], _]): RequestDecoders.RequestDecoder = {
+    viewName => httpEnt => {
+      val vd = Option(viewName).map(qe.viewDef).orNull
+      httpEnt.dataBytes.via(transformer)
+        .map(data => if (vd == null) data else qe.toCompatibleMap(data, vd))
+    }
+  }
+  val decoders: Map[String, RequestDecoders.RequestDecoder] = {
+    CsvDecoderFactory.createCsvStreamDecoders.map { case (n, d) => (n, requestDecoder(qe)(d)) } ++
+      XmlDecoderFactory.createXmlStreamDecoders.map { case (n, d) => (n, requestDecoder(qe)(d)) }
+  }
 }
 
 object RequestDecoders {
-  /** Decodes http entity according to view structure (can be null). Boolean parameter indicates collection. */
-  type RequestDecoder = HttpEntity => String => Boolean => Any
+  /** Decodes http entity according to view structure (can be null) */
+  type RequestDecoder = String => HttpEntity => Source[Any, _]
 }
 
 trait RequestDecodersFactory {

@@ -990,9 +990,9 @@ class OpParser(viewName: String, cache: OpParser.Cache)
     def noType: Parser[ResType] = "any" ^^^ NoType
     def viewType: Parser[ResType] = opt("`") ~> ViewNameRegex <~ opt("`") ^^ ViewType
 
-    "as" ~> (noType | ((opt("`") ~> viewType <~ opt("`")) ~ opt("*"))) ^^ {
-      case NoType => OpResultType(null)
-      case ViewType(typ) ~ (coll: Option[String]@unchecked) => OpResultType(typ, coll.nonEmpty)
+    "as" ~> ((noType | (opt("`") ~> viewType <~ opt("`"))) ~ opt("*")) ^^ {
+      case NoType ~ isColl => OpResultType(null, isColl.nonEmpty)
+      case ViewType(typ) ~ isColl => OpResultType(typ, isColl.nonEmpty)
       case x => sys.error(s"Knipis, unexpected op result type: $x")
     } named "op-result-type"
   }
