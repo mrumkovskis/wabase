@@ -1457,8 +1457,13 @@ fields:
 - surname
 insert:
 - foreach as any * extract entity using default_csv_decoder (http get '/extract_http_entity_test4' {'Accept', 'text/csv; charset=UTF-8'}):
-  - name = {:name || ' ' || :name}
-  - surname = {:surname || ' ' || :surname}
+  - name = :name || ' ' || :name
+  - surname = :surname || ' ' || :surname
+update:
+- data_file = to file [main] extract entity
+- foreach as extract_http_entity_test4 * extract entity using default_csv_decoder file [main] {:data_file.id, :data_file.sha_256}:
+  - name = :name || '-' || :name
+  - surname = :surname || '-' || :surname
 
 
 name: invocation_keep_result_test
