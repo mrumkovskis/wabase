@@ -1582,4 +1582,12 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       jsonAssert(r, Seq("Stream field 1", "Stream field 2", "Stream field 3"))
     }
   }
+
+  it should "foreach as an expression" in {
+    implicit val user: TestUsr = TestUsr(100)
+    val route = service.crudAction
+    Get("/count:foreach_test_3") ~> route ~> check {
+      jsonAssert(entityAs[String], Seq(2, 3, 4))
+    }
+  }
 }

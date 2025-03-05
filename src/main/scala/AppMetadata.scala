@@ -884,7 +884,7 @@ class OpParser(viewName: String, cache: OpParser.Cache)
     } named "http-op"
   }
   def dbOp: MemParser[Db] = (Action.DbUseKey | Action.TransactionKey) ~ opt("[" ~> ident <~ "]") ~ operation ^^ {
-    case op_type ~ db ~ op => Db(Action(Evaluation(None, Nil, op) :: Nil), op_type == Action.DbUseKey,
+    case op_type ~ db ~ op => Db(actionFromOp(op), op_type == Action.DbUseKey,
       db.map(AppMetadata.DbAccessKey).toList)
   } named "db-op"
   def jsonCodecOp: MemParser[JsonCodec] = """(from|to)""".r ~ "json" ~ operation ^^ {
@@ -913,6 +913,12 @@ class OpParser(viewName: String, cache: OpParser.Cache)
     (opt(opResultType) <~ "extract\\s+entity".r) ~ opt("using" ~> ident) ~ opt(operation) ^^ {
       case conformTo ~ decoder ~ op => ExtractHttpEntity(conformTo, decoder.orNull, op.orNull)
     } named "extract-entity"
+  def foreachOp: MemParser[Foreach] = ("foreach\\s+".r ~> (operation ~ operation)) ^^ {
+    case coll ~ op => Foreach(coll, actionFromOp(op))
+  } named "foreach-op"
+  def ifElseOp: MemParser[If] = ("if\\s+".r ~> (operation ~ operation ~ opt("else\\s+".r ~> operation))) ^^ {
+    case cond ~ ifOp ~ elseOp => If(cond, actionFromOp(ifOp), elseOp.map(actionFromOp).orNull)
+  } named "if-else-op"
   def thisOp: MemParser[This.type] = "this" ^^^ This
 
   def bracesOp: MemParser[Op] = "(" ~> operation <~ ")" named "braces-op"
@@ -979,7 +985,7 @@ class OpParser(viewName: String, cache: OpParser.Cache)
   def setHttpHeadersOps: MemParser[List[SetHttpHeadersOp]] =
     rep(setCookie | deleteCookie | setHttpHeaders | setUserAttributes) named "set-http-headers-ops"
   def operation: MemParser[Op] = (redirect | response | viewOp | jobOp | confOp | uniqueOp |
-    httpOp | dbOp | resourceOp | fileOp | toFileOp | templateOp | emailOp |
+    httpOp | dbOp | foreachOp | ifElseOp | resourceOp | fileOp | toFileOp | templateOp | emailOp |
     jsonCodecOp | httpHeaderOrCookieOp | extractPartsOp | extractEntityOp |
     thisOp | bracesOp | invocationOp | tresqlOp) named "operation"
 
@@ -996,6 +1002,7 @@ class OpParser(viewName: String, cache: OpParser.Cache)
       case x => sys.error(s"Knipis, unexpected op result type: $x")
     } named "op-result-type"
   }
+  private def actionFromOp(op: Op) = Action(Evaluation(None, Nil, op) :: Nil)
 }
 
 object OpParser extends Loggable {

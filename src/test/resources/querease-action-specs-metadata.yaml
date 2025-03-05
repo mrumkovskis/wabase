@@ -631,17 +631,14 @@ save:
     - =if_and_foreach_test[code = :code]{value = :value}
 - unique_opt if_and_foreach_test[code = :code]{code, value}
 get:
-- result = if {:code = 'true'}:
-  - unique { :code code, null parent, 'Value' value }
-- else:
-  - unique { :code code, null parent, 'Else value' value }
+- result =
+    if {:code = 'true'} unique { :code code, null parent, 'Value' value }
+    else unique { :code code, null parent, 'Else value' value }
 - :result
 delete:
 - result:
-  - if {:code = 'true'}:
-    - unique { :code code, null parent, 'Value delete' value }
-  - else:
-    - unique { :code code, null parent, 'Else value delete' value }
+  - if {:code = 'true'} unique { :code code, null parent, 'Value delete' value }
+    else unique { :code code, null parent, 'Else value delete' value }
 - :result
 
 
@@ -651,8 +648,7 @@ api: get, list
 fields:
 - value
 get:
-- res = if :value :
-  - null{'yes'} # somehow cannot use simply {'yes'} because yaml parser parses it as a Map - {yes=null} not simple value ?
+- res = if :value null{'yes'} # somehow cannot use simply {'yes'} because yaml parser parses it as a Map - {yes=null} not simple value ?
 - status ok :res
 list:
 - res = 'init'
@@ -696,13 +692,15 @@ save:
 
 name: foreach_test_3
 table:
-api: list
+api: list, count
 fields:
 - nr      int
 - value
 list:
 - foreach []({'value3' value} + {'value2'} + {'value1'}){value}#(1) :
     - nr = :__idx + 1
+count:
+- foreach (({1 value} + {2} + {3}){value}#(1)) :value + 1
 
 
 name:   insert_update_test_1
@@ -984,10 +982,8 @@ fields:
   - address
 get:
 - val = get owner
-- if if_defined_or_else(:val.name, true, false) :
-  - :val
-- else:
-  - status 404 {'not found'}
+- if if_defined_or_else(:val.name, true, false) :val
+  else status 404 {'not found'}
 
 
 name: extract_http_header_test

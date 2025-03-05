@@ -72,7 +72,7 @@ case class TresqlSingleRowResult(row: RowLike) extends QuereaseCloseableResult w
   def map[T](f: RowLike => T): T = try f(row) finally row.close()
 }
 case class MapResult(result: Map[String, Any]) extends DataResult
-case class IteratorResult(result: Iterator[Map[String, Any]]) extends QuereaseCloseableResult with DataResult
+case class IteratorResult(result: Iterator[Any]) extends QuereaseCloseableResult with DataResult
 case class LongResult(value: Long) extends QuereaseResult
 case class StringResult(value: String) extends QuereaseResult
 case class NumberResult(value: java.lang.Number) extends QuereaseResult
@@ -901,7 +901,10 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         try r.hasNext match {
           case true =>
             val v = r.next()
-            if (r.hasNext) sys.error("More than one row for unique result") else MapResult(v)
+            if (r.hasNext) sys.error("More than one row for unique result") else v match {
+              case m: Map[String@unchecked, _] => MapResult(m)
+              case x => AnyResult(x)
+            }
           case false => if (op.opt) notFound else throw new NoSuchElementException(s"No rows in result")
         } finally r match {
           case c: AutoCloseable => c.close()
@@ -1099,10 +1102,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         val dataWithIdx = if (itData.contains(IdxName)) itData else itData + (IdxName -> idx)
         idx += 1
         doSteps(op.action.steps, context.copy(stepName = "foreach"), Future.successful(dataWithIdx))
-          .flatMap {
-            case MapResult(r) => Future.successful(r)
-            case _ => Future.successful(dataWithIdx)
-          }
+          .flatMap(dataForNextStep(_, context, unwrapSingleValue = true))
       }
     }.map(it => IteratorResult(it.iterator))
   }
