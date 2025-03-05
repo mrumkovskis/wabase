@@ -637,8 +637,10 @@ get:
 - :result
 delete:
 - result:
-  - if {:code = 'true'} unique { :code code, null parent, 'Value delete' value }
-    else unique { :code code, null parent, 'Else value delete' value }
+  - if {:code = 'true'}:
+    - unique { :code code, null parent, 'Value delete' value }
+  - else:
+    - unique { :code code, null parent, 'Else value delete' value }
 - :result
 
 
