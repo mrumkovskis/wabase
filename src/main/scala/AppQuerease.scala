@@ -1088,7 +1088,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           case r: Result[_] => Future.successful(r.map(_.toMap) map addParentData)
         }
         case r: TresqlSingleRowResult => iterator(r.map(_.toMap))
-        case HttpEntityResult(ent, dec) => decodeHttpEntity(ent, null, false, dec)(qr.as).flatMap(iterator)(qr.ec)
+        case HttpEntityResult(ent, dec) => decodeHttpEntity(ent, null, true, dec)(qr.as).flatMap(iterator)(qr.ec)
         case CompatibleResult(HttpEntityResult(ent, dec), rf, isColl) =>
           decodeHttpEntity(ent, Option(rf).map(_.name).orNull, isColl, dec)(qr.as).flatMap(iterator)(qr.ec)
         case CompatibleResult(r, _, _) => iterator(r) // TODO Execute to compatible map
@@ -1106,7 +1106,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         doSteps(op.action.steps, context.copy(stepName = "foreach"), Future.successful(dataWithIdx))
           .flatMap(dataForNextStep(_, context, unwrapSingleValue = true))
       }
-    }.map(it => IteratorResult(it.iterator))
+    }.map { it => IteratorResult(it.iterator) }
   }
 
   protected def doResource(
