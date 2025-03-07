@@ -2,7 +2,7 @@ package org.wabase
 
 import org.apache.pekko.stream.scaladsl._
 import org.apache.pekko.http.scaladsl.coding.Coders.{Deflate, Gzip, NoCoding}
-import org.apache.pekko.http.scaladsl.marshalling.{Marshaller, ToEntityMarshaller}
+import org.apache.pekko.http.scaladsl.marshalling.ToEntityMarshaller
 import org.apache.pekko.http.scaladsl.model._
 import org.apache.pekko.http.scaladsl.model.headers._
 import org.apache.pekko.http.scaladsl.server._
@@ -24,13 +24,11 @@ import AppServiceBase._
 import Authentication.SessionUserExtractor
 import DeferredControl._
 import org.apache.pekko.actor.ActorSystem
-import org.apache.pekko.http.scaladsl.model.MediaTypes.`application/json`
 
 import java.util.Locale
 import org.apache.pekko.http.scaladsl.server.util.Tuple
-import org.apache.pekko.http.scaladsl.unmarshalling.{FromEntityUnmarshaller, FromRequestUnmarshaller, PredefinedFromEntityUnmarshallers}
+import org.apache.pekko.http.scaladsl.unmarshalling.{FromRequestUnmarshaller, PredefinedFromEntityUnmarshallers}
 import org.apache.pekko.util.ByteString
-import io.bullet.borer.Json
 import org.mojoz.querease.{ValidationException, ValidationResult}
 
 import java.lang.reflect.InvocationTargetException
@@ -334,10 +332,7 @@ trait AppServiceBase[User]
     }
 
   def filterPars(params: Map[String, List[String]]) =
-    params.get("filter")
-      .flatMap(_.headOption)
-      .map(_.parseJson.convertTo[Map[String, Any]])
-      .getOrElse(decodeParams(params))
+    AppServiceBase.filterParams(metadataConventions, namesForInts, escapeReflectedXss)(params)
 
   // OK to use deprecated getByIdPath, deletePath, updatePath here
   @annotation.nowarn("cat=deprecation")
@@ -673,6 +668,15 @@ object AppServiceBase {
   )(params: Map[String, List[String]]): Map[String, List[Any]] =
     params map { t => t._1 -> t._2.map(decodeParam(metadataConventions, namesForInts, escapeReflectedXss)(t._1, _)) }
 
+  def filterParams(
+    metadataConventions: AppMetadata.AppMdConventions,
+    namesForInts: Set[String],
+    escapeReflectedXss: String => String,
+  )(params: Map[String, List[String]]): Map[String, Any] =
+    params.get("filter")
+      .flatMap(_.headOption)
+      .map(f => new CborOrJsonAnyValueDecoder().decodeToMap[Map[String, Any]](ByteString(f)))
+      .getOrElse(decodeParams(metadataConventions, namesForInts, escapeReflectedXss)(params))
 
   trait AppStateExtractor { this: AppServiceBase[_] with QueryTimeoutExtractor with Execution =>
     val ApplicationStateCookiePrefix = AppServiceBase.ApplicationStateCookiePrefix

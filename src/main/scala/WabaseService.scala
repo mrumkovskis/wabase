@@ -5,9 +5,10 @@ import org.apache.pekko.http.scaladsl.model.Uri.Path
 import org.apache.pekko.http.scaladsl.model.Uri.Path.{Empty, Segment, SlashOrEmpty}
 import AppMetadata._
 import org.apache.pekko.actor.ActorSystem
-import org.apache.pekko.http.scaladsl.marshalling.ToResponseMarshallable
+import org.apache.pekko.http.scaladsl.marshalling.{Marshal, ToResponseMarshallable}
 import org.apache.pekko.http.scaladsl.model.headers.{Cookie, HttpCookie, `Set-Cookie`}
-import org.apache.pekko.http.scaladsl.model.{ContentType, DateTime, HttpHeader, HttpRequest, HttpResponse, Uri}
+import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes, DateTime, HttpHeader, HttpRequest, HttpResponse, Uri}
+import org.apache.pekko.http.scaladsl.unmarshalling.PredefinedFromEntityUnmarshallers
 import org.wabase.AppMetadata.{Action, RouteDef}
 import org.wabase.WabaseService.Wabase
 
@@ -48,10 +49,13 @@ class WabaseRouteException(message: String) extends Exception(message)
 class WabaseService extends Loggable {
   import WabaseService._
 
-  def handle(wabase: Wabase, deferredControl: WabaseDeferredControl)(req: HttpRequest)(
+  def handle(
+    wabase: Wabase,
+    deferredControl: WabaseDeferredControl,
+  )(req: HttpRequest)(
     implicit as: ActorSystem): Future[HttpResponse] = {
-    val ctx = findRoute(WabaseRequestContext(wabase, req, Deferred(deferredControl = deferredControl)))
-    doRoute(ctx)
+    val ctx = WabaseRequestContext(wabase, req, Deferred(deferredControl = deferredControl))
+    doRoute(findRoute(ctx))
   }
 
   protected def findRoute(ctx: WabaseRequestContext): WabaseRequestContext = {
@@ -59,6 +63,29 @@ class WabaseService extends Loggable {
     val route = ctx.wabase.qe.routeDefs.find(_.path.pattern.matcher(pathString).matches)
       .getOrElse(error(s"Route not found for path '$pathString'"))
     ctx.copy(route = route)
+  }
+
+  protected def doWabaseAction(reqCtx: WabaseRequestContext): Future[HttpResponse] = {
+    import reqCtx._
+    val params = AppServiceBase.filterParams(
+      wabase.qe.metadataConventions, AppServiceBase.NamesForInts, AppServiceBase.escapeReflectedXss
+    )(WabaseService.parameterMultiMap(req))
+    implicit val ec = as.dispatcher
+    val valuesF =
+      if (Set(Action.Insert, Action.Update, Action.Save).contains(action))
+        toMapEntityDecoder(reqCtx)
+      else  Future.successful(Map[String, Any]())
+    valuesF.flatMap { values =>
+      reqCtx.wabase.app.doWabaseAction(
+        actionName = action,
+        viewName = viewName,
+        keyValues = key,
+        params = params,
+        values = values,
+      )(user, applicationState, ec, as, req)
+    }.flatMap { result =>
+      Marshal(result).toResponseFor(req)(wabase.toResponseWabaseResultMarshaller, ec)
+    }
   }
 
   protected def doRoute(ctx: WabaseRequestContext)(implicit as: ActorSystem): Future[HttpResponse] = {
@@ -138,7 +165,7 @@ class WabaseService extends Loggable {
           error(s"If view name for route ${reqCtx.route.path} not specified, response transformer must be defined!")
         else invokeRespTransChain(reqCtx.route.responseTransformer, HttpResponse(), reqCtx)
       else {
-        val httpResponseF = Future.successful(HttpResponse()) // TODO invoke do wabase action
+        val httpResponseF = doWabaseAction(reqCtx)
         if (reqCtx.route.responseTransformer != null)
           httpResponseF.flatMap(invokeRespTransChain(reqCtx.route.responseTransformer, _, reqCtx))
         else httpResponseF
@@ -161,7 +188,7 @@ class WabaseService extends Loggable {
 
 object WabaseService {
 
-  type Wabase = WabaseApp[WabaseUser] with QuereaseProvider with I18n with DbAccess
+  type Wabase = WabaseApp[WabaseUser] with QuereaseProvider with I18n with DbAccess with Marshalling with AppProvider[WabaseUser]
 
   val CreateCountActionAndViewRegex = """(?U)(?:(count|create):)?(\w*)""".r
   val WabaseUserAttributeName = "wabase-user"
@@ -189,6 +216,8 @@ object WabaseService {
       case _               => None
     })
   }
+
+  def parameterMultiMap(req: HttpRequest): Map[String, List[String]] = req.uri.query().toMultiMap
 
   def setCookie(resp: HttpResponse)(first: HttpCookie, more: HttpCookie*): HttpResponse = {
     resp.mapHeaders(_ ++ (first :: more.toList).map(`Set-Cookie`(_)))
@@ -264,6 +293,37 @@ object WabaseService {
         case x        => error(s"Unsupported http method $x for request '${req.uri}'")
       }
       ctx.copy(viewName = view_name, action = action, key = key)
+    }
+  }
+
+  def toMapEntityDecoder(ctx: WabaseRequestContext): Future[Map[String, Any]] = {
+    import ctx._
+    implicit val mat = as
+    implicit val ec = as.dispatcher
+    val vd = wabase.qe.viewDef(viewName)
+    vd.decoder match {
+      case AppMetadata.DefaultDecoder =>
+        def defaultContent = wabase.toMapUnmarshallerForView(viewName)(req.entity)
+        req.entity.contentType match {
+          case ContentTypes.`application/json` => defaultContent
+          case ContentTypes.`application/x-www-form-urlencoded` =>
+            PredefinedFromEntityUnmarshallers.defaultUrlEncodedFormDataUnmarshaller(req.entity)
+              .map(fd => wabase.qe.toCompatibleMap(fd.fields.toMap, vd))
+          case _ => defaultContent
+        }
+      case AppMetadata.CustomDecoder(o, f) =>
+        invokeFunction(o, f,
+          Seq[(Class[_], () => Any)](
+            (classOf[HttpRequest], () => req),
+            (classOf[ActorSystem], () => as),
+            (classOf[ExecutionContext], () => ec)
+          )
+        ) match {
+          case f: Future[_] => f.mapTo[Map[String, Any]]
+          case m: Map[String, Any]@unchecked => Future.successful(m)
+          case x => throw new IllegalArgumentException(s"Custom decoder must return Map[String, Any], instead got: $x")
+        }
+      case AppMetadata.NoneDecoder => Future.successful(Map())
     }
   }
 
