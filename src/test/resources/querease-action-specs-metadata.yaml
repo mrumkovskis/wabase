@@ -1464,6 +1464,21 @@ update:
   - surname = :surname || '-' || :surname
 
 
+name: extract_xml_http_entity_test
+decoder: none
+api: insert
+explicit db: true
+table:
+fields:
+  - name
+  - surname
+insert:
+  - data_file = to file [main] extract entity
+  - foreach as extract_http_entity_test4 * extract entity using test_xml_decoder file [main] {:data_file.id, :data_file.sha_256}:
+      - name = :name || '-' || :name
+      - surname = :surname || '-' || :surname
+
+
 name: invocation_keep_result_test
 decoder: none
 api: insert
