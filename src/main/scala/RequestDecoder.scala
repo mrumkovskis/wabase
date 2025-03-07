@@ -415,30 +415,27 @@ object XmlDecoderFactory extends XmlDecoderFactory {
   }
 }
 
-class RequestDecoders(qe: AppQuerease) {
-  def requestDecoder(qe: AppQuerease)(
-    transformer: Flow[ByteString, Map[String, Any], _]): RequestDecoders.RequestDecoder = {
-    viewName => httpEnt => {
-      val vd = Option(viewName).map(qe.viewDef).orNull
-      httpEnt.dataBytes.via(transformer)
-        .map(data => if (vd == null) data else qe.toCompatibleMap(data, vd))
-    }
-  }
-  val decoders: Map[String, RequestDecoders.RequestDecoder] = {
-    CsvDecoderFactory.createCsvStreamDecoders.map { case (n, d) => (n, requestDecoder(qe)(d)) } ++
-      XmlDecoderFactory.createXmlStreamDecoders.map { case (n, d) => (n, requestDecoder(qe)(d)) }
-  }
-}
-
 object RequestDecoders {
   /** Decodes http entity according to view structure (can be null) */
   type RequestDecoder = String => HttpEntity => Source[Any, _]
+  type Decoders       = Map[String, RequestDecoder]
+  def decoders(qe: AppQuerease): Decoders = {
+    def requestDecoder(transformer: Flow[ByteString, Map[String, Any], _]): RequestDecoder = {
+      viewName => httpEnt => {
+        val vd = Option(viewName).map(qe.viewDef).orNull
+        httpEnt.dataBytes.via(transformer)
+          .map(data => if (vd == null) data else qe.toCompatibleMap(data, vd))
+      }
+    }
+    CsvDecoderFactory.createCsvStreamDecoders.map { case (n, d) => (n, requestDecoder(d)) } ++
+      XmlDecoderFactory.createXmlStreamDecoders.map { case (n, d) => (n, requestDecoder(d)) }
+  }
 }
 
 trait RequestDecodersFactory {
-  def createRequestDecoders(qe: AppQuerease): RequestDecoders
+  def createRequestDecoders(qe: AppQuerease): RequestDecoders.Decoders
 }
 
 object RequestDecodersFactory extends RequestDecodersFactory {
-  override def createRequestDecoders(qe: AppQuerease): RequestDecoders = new RequestDecoders(qe)
+  override def createRequestDecoders(qe: AppQuerease): RequestDecoders.Decoders = RequestDecoders.decoders(qe)
 }

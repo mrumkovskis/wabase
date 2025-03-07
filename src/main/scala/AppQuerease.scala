@@ -156,7 +156,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   val requestDecodersFactory = getObjectOrNewInstance[RequestDecodersFactory](
     config, "request-decoders.factory-class", "request decoders factory"
   )
-  val requestDecoders: RequestDecoders = requestDecodersFactory.createRequestDecoders(this)
+  val requestDecoders: RequestDecoders.Decoders = requestDecodersFactory.createRequestDecoders(this)
 
   val tresqlUri: TresqlUri = new TresqlUri()
   lazy val cborOrJsonDecoder = new CborOrJsonDecoder(typeDefs, nameToViewDef)
@@ -1374,8 +1374,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           ent,
           Option(exe.decoder)
             .map(dn =>
-              requestDecoders.decoders
-                .getOrElse(dn, sys.error(s"Cannot decode http entity data. Request decoder '$dn' not found."))
+              requestDecoders.getOrElse(dn,
+                sys.error(s"Cannot decode http entity data. Request decoder '$dn' not found."))
             )
             .orNull
         )
