@@ -595,7 +595,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
                                  params: Map[String, Any],
                                  view: ViewDef)(implicit res: Resources): Unit = {
     validationsQueryString(view, validations) foreach { vs =>
-      Query(dbkey.flatMap(k => Option(k.db)).map("|" + _ + ":").mkString("", "", vs), toSaveableMap(params, view))
+      useResourcesConnOrEvaluator(res, r =>
+        Query(dbkey.flatMap(k => Option(k.db)).map("|" + _ + ":").mkString("", "", vs), toSaveableMap(params, view))(r))
         .map(_.s("msg"))
         .filter(_ != null).filter(_ != "")
         .toList match {
@@ -860,9 +861,10 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     context: ActionContext,
   )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
     import qr._
-    import resourcesFactory._
     val jobName =
-      if (job.isDynamic) Query(job.nameTresql).unique[String] else job.nameTresql
+      if (job.isDynamic)
+        useResourcesConnOrEvaluator(resourcesFactory.resources, Query(job.nameTresql)(_).unique[String])
+      else job.nameTresql
     val ctx = ActionContext(jobName, JobAct, env, None, context.log,
       contextStack = context :: context.contextStack)
     val jd = jobDef(jobName)
@@ -955,8 +957,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       } else {
         if (statusMode) b match {
           case Action.Tresql(tresql, _, _) =>
-            val r = Query(tresql, data ++ env)(qr.resourcesFactory.resources)
-              .uniqueOption[String].map(v => ResultValue(StringResult(v))).orNull
+            val r = useResourcesConnOrEvaluator(qr.resourcesFactory.resources, res => Query(tresql, data ++ env)(res)
+              .uniqueOption[String].map(v => ResultValue(StringResult(v))).orNull)
             Future.successful(r)
           case x => sys.error(s"Status mode supports only tresql op, instead found: $x")
         } else doActionOp(b, data, env, context).map(ResultValue(_))
@@ -1116,10 +1118,11 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     res: Resources,
     httpReq: HttpRequest,
   ): Future[ResourceResult] = {
-    val resource = Query(op.nameTresql.tresql)(res.withParams(data ++ env)).unique[String]
+    val resource = useResourcesConnOrEvaluator(res,
+      r => Query(op.nameTresql.tresql)(r.withParams(data ++ env)).unique[String])
     val ct = Option(op.contentTypeTresql)
       .map { ctt =>
-        val ct = Query(ctt.tresql)(res.withParams(data ++ env)).unique[String]
+        val ct = useResourcesConnOrEvaluator(res, r => Query(ctt.tresql)(r.withParams(data ++ env)).unique[String])
         ContentType.parse(ct)
           .toOption
           .getOrElse(sys.error(s"Invalid content type: $ct"))
@@ -1183,7 +1186,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     import resourcesFactory._
     implicit val fs: FileStreamer = fileStreamers.fs(null)
     val bindVars = data ++ env
-    val template = Query(op.templateTresql.tresql)(resources.withParams(bindVars)).unique[String]
+    val template = useResourcesConnOrEvaluator(resources,
+      res => Query(op.templateTresql.tresql)(res.withParams(bindVars)).unique[String])
     val resF =
       if (op.dataOp == null) {
         templateEngine(template, bindVars)
@@ -1200,7 +1204,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           }
       }
     Option(op.filenameTresql)
-      .map(t => Query(t.tresql)(resources.withParams(bindVars)).unique[String])
+      .map(t => useResourcesConnOrEvaluator(resources,
+        res => Query(t.tresql)(res.withParams(bindVars)).unique[String]))
       .map { filename =>
         resF.map {
           case ft: FileTemplateResult => ft.copy(filename = filename)
@@ -1229,7 +1234,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     import resourcesFactory._
     val bindVars = data ++ env
     val emails = {
-      val r = Query(op.emailTresql.tresql)(resources.withParams(bindVars))
+      val r = Query(op.emailTresql.tresql)(resources.withParams(bindVars))  // email addressee list cannot be taken from evaluator db conn
       if (op.isBatch) r else (try r.uniqueOption catch {
         case _: TooManyRowsException => throw new TooManyRowsException(s"Tresql '${op.emailTresql.tresql}' returned more than one row. " +
           s"Use 'email batch' to send more than one email.")
