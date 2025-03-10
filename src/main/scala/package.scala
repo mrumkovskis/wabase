@@ -6,6 +6,7 @@ import org.tresql.SimpleCacheBase
 
 import java.lang.reflect.InvocationTargetException
 import javax.sql.DataSource
+import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration.{Duration, FiniteDuration}
 import scala.jdk.CollectionConverters._
 
@@ -135,9 +136,30 @@ package object wabase extends Loggable {
         availableParameters.map(_._1.getName).mkString(", ")
       })"))
 
-  def invokeFunction(className: String, function: String, getParameter: Class[_] => Any): Any = {
+  def invokeFunction(
+    className: String,
+    function: String, getParameter: Class[_] => Any,
+  )(implicit ec: ExecutionContext): Any = {
+    def getParams(m: java.lang.reflect.Method) = {
+      val params = m.getParameterTypes map (pt => getParameter(pt) -> pt)
+      if (params.exists { case (p, c) => p.isInstanceOf[Future[_]] && !classOf[Future[_]].isAssignableFrom(c) })
+        Future.traverse(params.map(_._1).toSeq) {
+          case f: Future[_] => f
+          case x => Future.successful(x)
+        }.map(_.toArray) else params.map(_._1)
+    }
     def call(o: Object, m: java.lang.reflect.Method) =
-      try m.invoke(o, (m.getParameterTypes map getParameter).asInstanceOf[Array[Object]]: _*) // cast is needed for scala 2.12.x
+      try {
+        getParams(m) match {
+          case fp: Future[_] => fp.flatMap { pars =>
+            m.invoke(o, pars.asInstanceOf[Array[Object]]: _*) match {
+              case f: Future[_] => f
+              case v => Future.successful(v)
+            }
+          }
+          case p => m.invoke(o, p.asInstanceOf[Array[Object]]: _*)
+        }
+      } // cast is needed for scala 2.12.x
       catch {
         case e: InvocationTargetException if e.getCause != null => throw e.getCause
       }
@@ -156,7 +178,10 @@ package object wabase extends Loggable {
     }
   }
 
-  def invokeFunction(className: String, function: String, availableParameters: Seq[(Class[_], () => Any)]): Any =
+  def invokeFunction(
+    className: String,
+    function: String, availableParameters: Seq[(Class[_], () => Any)],
+  )(implicit ec: ExecutionContext): Any =
     invokeFunction(className, function, invocationParameter(availableParameters)(_))
 
   case class PoolName(connectionPoolName: String)

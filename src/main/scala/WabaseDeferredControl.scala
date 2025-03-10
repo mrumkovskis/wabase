@@ -7,7 +7,7 @@ import org.apache.pekko.http.scaladsl.server.PathMatcher.Matched
 import org.apache.pekko.http.scaladsl.server.PathMatchers._
 import org.apache.pekko.util.ByteString
 import org.wabase.DeferredControl.`X-Deferred`
-import org.wabase.WabaseService.Wabase
+import org.wabase.WabaseService.{RequestHandler, Wabase}
 
 import scala.concurrent.Future
 
@@ -93,12 +93,10 @@ object WabaseDeferredControl extends WabaseDeferredControlFactory {
 
   /** Request mapper to enable deferred processing for route. NOTE: Request mappers are not processed in deferred
    * mode! */
-  def enableDeferred(ctx: WabaseRequestContext, req: HttpRequest): WabaseRequestContext = {
-    if (ctx.user != null && (isDeferredPath(req.uri) || hasDeferredHeader(req))) {
-      val timeout = extractTimeout(ctx, req)
-      ctx.copy(queryTimeout = timeout, deferred = ctx.deferred.copy(isDeferred = true))
-    }
-    else ctx
+  def maybeDeferred(innerHandler: RequestHandler): RequestHandler = ctx => {
+    if (ctx.user != null && (isDeferredPath(ctx.req.uri) || hasDeferredHeader(ctx.req))) {
+      doDeferred(innerHandler)(ctx)
+    } else innerHandler(ctx)
   }
 
   /** Request mapper to get deferred request result. WabaseRequestContext key field must be set to deferred result hash */
@@ -106,16 +104,18 @@ object WabaseDeferredControl extends WabaseDeferredControlFactory {
     ctx.deferred.deferredControl.deferredResult(ctx.key.mkString, ctx.user.name)
   }
 
-  def doDeferred(ctx: WabaseRequestContext, routeFun: WabaseRequestContext => Future[HttpResponse]): HttpResponse = {
+  def doDeferred(handler: RequestHandler): RequestHandler = ctx => {
     import EventBus._
-    val user = ctx.user.name
-    val hash = DeferredControl.requestHash(user, ctx.req, WabaseAuthentication.removeSessionInfoFromRequest)
-    val deferredCtx = DeferredControl.DeferredContext(user, hash, ctx, routeFun)
-    publish(Message(DeferredControl.DeferredRequestArrived(ctx.deferred.deferredModule), deferredCtx))
-    HttpResponse(
+    val timeout = extractTimeout(ctx, ctx.req)
+    val dctx = ctx.copy(queryTimeout = timeout)
+    val user = dctx.user.name
+    val hash = DeferredControl.requestHash(user, dctx.req, WabaseAuthentication.removeSessionInfoFromRequest)
+    val deferredCtx = DeferredControl.DeferredContext(user, hash, dctx, handler)
+    publish(Message(DeferredControl.DeferredRequestArrived(dctx.deferred.deferredModule), deferredCtx))
+    Future.successful(HttpResponse(
       entity = HttpEntity.Strict(ContentTypes.`application/json`,
         ByteString(Json.encode(Map("deferred" -> hash)).toUtf8String))
-    )
+    ))
   }
 }
 

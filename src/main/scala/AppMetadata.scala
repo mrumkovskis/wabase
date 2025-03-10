@@ -1505,8 +1505,7 @@ object AppMetadata extends Loggable {
 
   case class RouteDef(
     path: Regex,
-    requestMapper: Action.Invocation = null,
-    responseTransformer: Action.Invocation = null,
+    requestHandler: Action.Invocation,
     errorHandler: WabaseErrorHandler = null,
   )
 

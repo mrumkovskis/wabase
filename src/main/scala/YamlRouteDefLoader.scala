@@ -29,13 +29,11 @@ class YamlRouteDefLoader(
           .map(getObjectOrNewInstance(_, "wabase error handler").asInstanceOf[WabaseErrorHandler])
           .getOrElse(getObjectOrNewInstance[WabaseErrorHandler](config, "app.wabase-error-handler", "wabase error handler"))
       val path: Regex = new Regex(route)
-      val mapper = parseProperty("request-mapper")
-      val transformer = parseProperty("response-transformer")
+      val handler = Option(parseProperty("handler")).getOrElse(sys.error(s"Request handler missing"))
       val error = errorHandler(parseProperty("error-handler"))
       RouteDef(
         path = path,
-        requestMapper = mapper,
-        responseTransformer = transformer,
+        requestHandler = handler,
         errorHandler = error,
       )
     }.values.toList

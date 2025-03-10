@@ -40,7 +40,6 @@ case class WabaseRequestContext(
 
 case class Deferred(
   deferredControl: WabaseDeferredControl = null,
-  isDeferred: Boolean = false,
   deferredModule: String = WabaseDeferredControl.defaultModuleId
 )
 
@@ -65,91 +64,47 @@ class WabaseService extends Loggable {
     ctx.copy(route = route)
   }
 
-  protected def doWabaseAction(reqCtx: WabaseRequestContext): Future[HttpResponse] = {
-    import reqCtx._
-    val params = AppServiceBase.filterParams(
-      wabase.qe.metadataConventions, AppServiceBase.NamesForInts, AppServiceBase.escapeReflectedXss
-    )(WabaseService.parameterMultiMap(req))
-    implicit val ec = as.dispatcher
-    val valuesF =
-      if (Set(Action.Insert, Action.Update, Action.Save).contains(action))
-        toMapEntityDecoder(reqCtx)
-      else  Future.successful(Map[String, Any]())
-    valuesF.flatMap { values =>
-      reqCtx.wabase.app.doWabaseAction(
-        actionName = action,
-        viewName = viewName,
-        keyValues = key,
-        params = params,
-        values = values,
-      )(user, applicationState, ec, as, req)
-    }.flatMap { result =>
-      Marshal(result).toResponseFor(req)(wabase.toResponseWabaseResultMarshaller, ec)
-    }
-  }
-
   protected def doRoute(ctx: WabaseRequestContext)(implicit as: ActorSystem): Future[HttpResponse] = {
     implicit val ec: ExecutionContext = as.dispatcher
-    def invokeFunction(className: String, function: String, params: Seq[(Class[_], () => Any)]) = {
-      val contextParams = Seq[(Class[_], () => Any)](
-        (classOf[ExecutionContext], () => ec),
-      )
-      org.wabase.invokeFunction(className, function, params ++ contextParams)
-    }
 
-    def contextInjectableParameters(wrc: WabaseRequestContext): List[(Class[_], () => Any)] = List(
-      (classOf[WabaseRequestContext], () => wrc),
-      (classOf[HttpRequest], () => wrc.req),
-      (classOf[WabaseUser], () => wrc.user),
-      (classOf[ApplicationState], () => wrc.applicationState),
-    )
-
-    def invokeReqTransChain(inv: Action.Invocation, wrc: WabaseRequestContext): Future[WabaseRequestContext] = {
-      def invokeReqTrans(cn: String, fn: String, tctx: WabaseRequestContext): Future[WabaseRequestContext] = {
-        def processResult(r: Any): Future[WabaseRequestContext] = r match {
-          case c: WabaseRequestContext => Future.successful(c)
-          case req: HttpRequest => processResult(tctx.copy(req = req))
-          case st: ApplicationState => processResult(tctx.copy(applicationState = st))
-          case u: WabaseUser => processResult(tctx.copy(user = u))
-          case f: Future[_] => f.flatMap(processResult)
-          case x => error(s"Request transformer must return either WabaseRequestContext or HttpRequest or Future of them." +
-            s" Instead got: $x")
+    def invokeHandlerBuilderChain(inv: Action.Invocation, innerHandler: RequestHandler): RequestHandler = {
+      def buildHandler(cn: String, fn: String, ih: RequestHandler): RequestHandler = wrc => {
+        def missingHandlerError = sys.error(s"Handler argument missing for invocation: '$cn.$fn'")
+        def invokeHandlerBuilder = {
+          def processResult(r: Any): Future[Any] = r match {
+            case rh: Function[WabaseRequestContext@unchecked, Future[HttpResponse]@unchecked] => Future.successful(rh)
+            case c: WabaseRequestContext => Future.successful(c)
+            case req: HttpRequest => processResult(ctx.copy(req = req))
+            case st: ApplicationState => processResult(ctx.copy(applicationState = st))
+            case u: WabaseUser => processResult(ctx.copy(user = u))
+            case resp: HttpResponse => Future.successful(resp)
+            case f: Future[_] => f.flatMap(processResult)
+            case x => error(s"Request transformer must return either WabaseRequestContext or HttpRequest or Future of them." +
+              s" Instead got: $x")
+          }
+          processResult(org.wabase.invokeFunction(cn, fn, List(
+            (classOf[Uri], () => wrc.req.uri),
+            (classOf[WabaseRequestContext], () => wrc),
+            (classOf[HttpRequest], () => wrc.req),
+            (classOf[WabaseUser], () => wrc.user),
+            (classOf[ApplicationState], () => wrc.applicationState),
+            (classOf[HttpResponse], () => if (ih == null) missingHandlerError else ih(wrc)),
+            (classOf[Function[WabaseRequestContext, Future[HttpResponse]]], () => ih),
+            (classOf[ExecutionContext], () => ec),
+          )))
         }
 
-        processResult(invokeFunction(cn, fn,
-          (classOf[Uri], () => tctx.req.uri) ::
-            contextInjectableParameters(tctx)))
-      }
-      inv.arg match {
-        case null => invokeReqTrans(inv.className, inv.function, wrc)
-        case i: Action.Invocation => invokeReqTransChain(i, wrc)
-          .flatMap(invokeReqTrans(inv.className, inv.function, _))
-        case x => throw new IllegalArgumentException(s"Unrecognized request mapper argument $x, must be function call.")
-      }
-    }
-
-    def invokeRespTransChain(
-      inv: Action.Invocation,
-      httpResp: HttpResponse,
-      wrc: WabaseRequestContext
-    ): Future[HttpResponse] = {
-      def invokeRespTrans(cn: String, fn: String, resp: HttpResponse, tctx: WabaseRequestContext): Future[HttpResponse] = {
-        def processResult(r: Any): Future[HttpResponse] = r match {
-          case resp: HttpResponse => Future.successful(resp)
-          case f: Future[_] => f.flatMap(processResult)
-          case x => error(s"Response transformer must return either HttpResponse or Future of it." +
-            s" Instead got: $x")
+        invokeHandlerBuilder.flatMap {
+          case c: WabaseRequestContext => if (ih == null) missingHandlerError else ih(c)
+          case r: HttpResponse => Future.successful(r)
+          case h: Function[WabaseRequestContext@unchecked, Future[HttpResponse]@unchecked] => h(wrc)
         }
-
-        processResult(invokeFunction(cn, fn,
-          (classOf[HttpResponse], () => httpResp) :: contextInjectableParameters(tctx)
-        ))
       }
       inv.arg match {
-        case null => invokeRespTrans(inv.className, inv.function, httpResp, wrc)
-        case i: Action.Invocation => invokeRespTransChain(i, httpResp, wrc)
-          .flatMap(invokeRespTrans(inv.className, inv.function, _, wrc))
-        case x => throw new IllegalArgumentException(s"Unrecognized response transformer argument $x, must be function call.")
+        case null => buildHandler(inv.className, inv.function, innerHandler)
+        case i: Action.Invocation => buildHandler(inv.className, inv.function,
+          invokeHandlerBuilderChain(i, innerHandler))
+        case x => throw new IllegalArgumentException(s"Unrecognized request handler argument '$x', must be function call.")
       }
     }
 
@@ -159,37 +114,16 @@ class WabaseService extends Loggable {
       }
     }
 
-    def doRequest(reqCtx: WabaseRequestContext): Future[HttpResponse] = try {
-      (if (reqCtx.viewName == null || !reqCtx.wabase.qe.nameToViewDef.contains(reqCtx.viewName))
-        if (reqCtx.route.responseTransformer == null) {
-          if (reqCtx.viewName != null)
-            error(s"View '${reqCtx.viewName}' for route ${reqCtx.route.path} not found. Response transformer must be defined!")
-          else error(s"If view name for route ${reqCtx.route.path} not specified, response transformer must be defined!")
-        } else invokeRespTransChain(reqCtx.route.responseTransformer, HttpResponse(), reqCtx)
-      else {
-        val httpResponseF = doWabaseAction(reqCtx)
-        if (reqCtx.route.responseTransformer != null)
-          httpResponseF.flatMap(invokeRespTransChain(reqCtx.route.responseTransformer, _, reqCtx))
-        else httpResponseF
-      }).recoverWith(errorHandler(reqCtx))
-    } catch {
-      case NonFatal(e) => errorHandler(reqCtx)(e) // catch and handle exception if current thread throws exception
-    }
-
-    try Option(ctx.route.requestMapper)
-      .map(invokeReqTransChain(_, ctx))
-      .getOrElse(Future.successful(ctx)).flatMap { mappedCtx =>
-        val ctxWithView = if (mappedCtx.viewName == null) viewActionKey(mappedCtx) else mappedCtx
-        if (ctxWithView.deferred.isDeferred)
-          Future.successful(WabaseDeferredControl.doDeferred(ctxWithView, doRequest))
-        else doRequest(ctxWithView)
-      }.recoverWith(errorHandler(ctx)) // recover also here in the case request mapper fails
-    catch { case NonFatal(e) => errorHandler(ctx)(e) } // catch if request mapper (invokeReqTransChain) in current thread throws exception
+    try {
+      val handler = invokeHandlerBuilderChain(ctx.route.requestHandler, null)
+      handler(ctx).recoverWith(errorHandler(ctx))
+    } catch { case NonFatal(e) => errorHandler(ctx)(e) }
   }
 }
 
 object WabaseService {
 
+  type RequestHandler = WabaseRequestContext => Future[HttpResponse]
   type Wabase = WabaseApp[WabaseUser] with QuereaseProvider with I18n with DbAccess with Marshalling with AppProvider[WabaseUser]
 
   val CreateCountActionAndViewRegex = """(?U)(?:(count|create):)?(\w*)""".r
@@ -296,6 +230,43 @@ object WabaseService {
       }
       ctx.copy(viewName = view_name, action = action, key = key)
     }
+  }
+
+  def doAction(reqCtx: WabaseRequestContext): Future[HttpResponse] = {
+    def dwa(ctx: WabaseRequestContext) = {
+      import ctx._
+      if (viewName == null || !wabase.qe.nameToViewDef.contains(viewName))
+        if (viewName != null)
+          error(s"View '${viewName}' for route ${route.path} not found. Response transformer must be defined!")
+        else error(s"If view name for route ${route.path} not specified, response transformer must be defined!")
+      else {
+        val params = AppServiceBase.filterParams(
+          wabase.qe.metadataConventions, AppServiceBase.NamesForInts, AppServiceBase.escapeReflectedXss
+        )(WabaseService.parameterMultiMap(req))
+        implicit val ec = as.dispatcher
+        val valuesF =
+          if (Set(Action.Insert, Action.Update, Action.Save).contains(action))
+            toMapEntityDecoder(ctx)
+          else  Future.successful(Map[String, Any]())
+        valuesF.flatMap { values =>
+          ctx.wabase.app.doWabaseAction(
+            actionName = action,
+            viewName = viewName,
+            keyValues = key,
+            params = params,
+            values = values,
+          )(user, applicationState, ec, as, req)
+        }.flatMap { result =>
+          Marshal(result).toResponseFor(req)(wabase.toResponseWabaseResultMarshaller, ec)
+        }
+      }
+    }
+    val ctxWithView = if (reqCtx.viewName == null) viewActionKey(reqCtx) else reqCtx
+    val ctxWithViewAndState =
+      if (ctxWithView.applicationState == null)
+        ctxWithView.copy(applicationState = ApplicationStateExtractor.extractState(ctxWithView))
+      else ctxWithView
+    dwa(ctxWithViewAndState)
   }
 
   def toMapEntityDecoder(ctx: WabaseRequestContext): Future[Map[String, Any]] = {
