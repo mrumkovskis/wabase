@@ -132,7 +132,7 @@ trait WabaseApp[User] {
     import context.ec
     import context.as
     action(actionContext)
-      .run
+      .run(ec, as)
       .flatMap(maybeSerializeResult(context, _))
       .andThen {
         case Success(WabaseResult(ctx, res)) => this.afterWabaseAction(ctx, Success(res))

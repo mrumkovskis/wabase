@@ -294,15 +294,15 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
    ******** Querease actions ******
    ********************************/
   trait QuereaseAction[A] {
-    def run(implicit ec: ExecutionContext, as: ActorSystem): Future[A]
+    def run(ec: ExecutionContext, as: ActorSystem): Future[A]
     def map[B](f: A => B)(implicit ec: ExecutionContext, as: ActorSystem): QuereaseAction[B] =
-      (_: ExecutionContext, _: ActorSystem) => QuereaseAction.this.run.map(f)
+      (_: ExecutionContext, _: ActorSystem) => QuereaseAction.this.run(ec, as).map(f)(ec)
     def flatMap[B](f: A => QuereaseAction[B])(implicit ec: ExecutionContext, as: ActorSystem): QuereaseAction[B] =
-      (_: ExecutionContext, _: ActorSystem) => QuereaseAction.this.run.flatMap(f(_).run)
+      (_: ExecutionContext, _: ActorSystem) => QuereaseAction.this.run(ec, as).flatMap(f(_).run(ec, as))(ec)
     def andThen[U](pf: PartialFunction[Try[A], U])(implicit ec: ExecutionContext, as: ActorSystem): QuereaseAction[A] =
-      (_: ExecutionContext, _: ActorSystem) => QuereaseAction.this.run.andThen(pf)
+      (_: ExecutionContext, _: ActorSystem) => QuereaseAction.this.run(ec, as).andThen(pf)(ec)
     def recover[U >: A](pf: PartialFunction[Throwable, U])(implicit ec: ExecutionContext, as: ActorSystem): QuereaseAction[U] =
-      (_: ExecutionContext, _: ActorSystem) => QuereaseAction.this.run.recover(pf)
+      (_: ExecutionContext, _: ActorSystem) => QuereaseAction.this.run(ec, as).recover(pf)(ec)
   }
   object QuereaseAction {
     def apply(
@@ -320,7 +320,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       parameterProvider: InjectionParametersProvider,
     ): QuereaseAction[QuereaseResult] = {
         new QuereaseAction[QuereaseResult] {
-          def run(implicit ec: ExecutionContext, as: ActorSystem) = {
+          override def run(ec: ExecutionContext, as: ActorSystem) = {
             implicit val resFac =
               if (isExplicitDb(objName, actionName)) resourcesFactory
               else {
@@ -346,9 +346,9 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
             try {
               doAction(objName, actionName, data, env, fieldFilter).map {
                 processResult(_, closeResources(resources, false, _))
-              }.andThen {
+              }(ec).andThen {
                 case Failure(NonFatal(exception)) => closeResources(resources, true, Option(exception))
-              }
+              }(ec)
             } catch { // catch exception also here in the case doAction is not executed into separate thread
                 case NonFatal(e) =>
                   closeResources(resources, true, Option(e))
