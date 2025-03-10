@@ -161,9 +161,11 @@ class WabaseService extends Loggable {
 
     def doRequest(reqCtx: WabaseRequestContext): Future[HttpResponse] = try {
       (if (reqCtx.viewName == null || !reqCtx.wabase.qe.nameToViewDef.contains(reqCtx.viewName))
-        if (reqCtx.route.responseTransformer == null)
-          error(s"If view name for route ${reqCtx.route.path} not specified, response transformer must be defined!")
-        else invokeRespTransChain(reqCtx.route.responseTransformer, HttpResponse(), reqCtx)
+        if (reqCtx.route.responseTransformer == null) {
+          if (reqCtx.viewName != null)
+            error(s"View '${reqCtx.viewName}' for route ${reqCtx.route.path} not found. Response transformer must be defined!")
+          else error(s"If view name for route ${reqCtx.route.path} not specified, response transformer must be defined!")
+        } else invokeRespTransChain(reqCtx.route.responseTransformer, HttpResponse(), reqCtx)
       else {
         val httpResponseF = doWabaseAction(reqCtx)
         if (reqCtx.route.responseTransformer != null)
