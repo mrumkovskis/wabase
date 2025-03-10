@@ -1,0 +1,3 @@
+path: /hi
+request-mapper:
+  - org.wabase.WabaseServer.setViewName

@@ -18,8 +18,7 @@ initialize := {
 ThisBuild / versionScheme          := Some("semver-spec")
 ThisBuild / versionPolicyIntention := Compatibility.BinaryCompatible
 
-lazy val wabase = (project in file("."))
-  .settings(
+lazy val commonSettings = Seq(
   organization := "org.wabase",
   name := "wabase",
   scalaVersion := scalaV,
@@ -78,6 +77,11 @@ lazy val wabase = (project in file("."))
       "com.vladsch.flexmark"        % "flexmark-all"          % "0.64.8"  %     Test,
     )
   },
+)
+
+lazy val wabase = (project in file("."))
+  .settings(commonSettings: _*)
+  .settings(
   /*
   apiMappings ++= (Compile / fullClasspath map { fcp =>
     // fix bad api mappings,
@@ -187,6 +191,15 @@ lazy val wabase = (project in file("."))
           <url>https://github.com/janqis/</url>
         </developer>
       </developers>
+  )
+
+lazy val it = (project in file("src/it"))
+  .dependsOn(wabase % "compile -> compile; test -> test")
+  .settings(commonSettings: _*)
+  .settings(
+    publish / skip := true,
+    Compile / run / mainClass := Some("org.wabase.WabaseServer"),
+    Compile / resourceDirectory := baseDirectory.value / "resources",
   )
 
 Test            / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-h", "report")
