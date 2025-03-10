@@ -91,17 +91,16 @@ object WabaseDeferredControl extends WabaseDeferredControlFactory {
     } getOrElse(QueryTimeout(config.getDuration("jdbc.query-timeout").toSeconds.toInt))
   }
 
-  /** Request mapper to enable deferred processing for route. NOTE: Request mappers are not processed in deferred
-   * mode! */
+  /** Enable deferred processing for handler. */
   def maybeDeferred(innerHandler: RequestHandler): RequestHandler = ctx => {
     if (ctx.user != null && (isDeferredPath(ctx.req.uri) || hasDeferredHeader(ctx.req))) {
       doDeferred(innerHandler)(ctx)
     } else innerHandler(ctx)
   }
 
-  /** Request mapper to get deferred request result. WabaseRequestContext key field must be set to deferred result hash */
-  def deferredResult(ctx: WabaseRequestContext): HttpResponse = {
-    ctx.deferred.deferredControl.deferredResult(ctx.key.mkString, ctx.user.name)
+  /** Get deferred request result. WabaseRequestContext key field must be set to deferred result hash */
+  def deferredResult: RequestHandler = ctx => {
+    Future.successful(ctx.deferred.deferredControl.deferredResult(ctx.key.mkString, ctx.user.name))
   }
 
   def doDeferred(handler: RequestHandler): RequestHandler = ctx => {
