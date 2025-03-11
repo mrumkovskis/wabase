@@ -64,7 +64,7 @@ class WabaseService extends Loggable {
     ctx.copy(route = route)
   }
 
-  protected def doRoute(ctx: WabaseRequestContext)(implicit as: ActorSystem): Future[HttpResponse] = {
+  def doRoute(ctx: WabaseRequestContext)(implicit as: ActorSystem): Future[HttpResponse] = {
     implicit val ec: ExecutionContext = as.dispatcher
 
     def invokeHandlerBuilderChain(inv: Action.Invocation, innerHandler: RequestHandler): RequestHandler = {
@@ -72,7 +72,7 @@ class WabaseService extends Loggable {
         def missingHandlerError = sys.error(s"Handler argument missing for invocation: '$cn.$fn'")
         def invokeHandlerBuilder = {
           def processResult(r: Any): Future[Any] = r match {
-            case rh: Function[WabaseRequestContext@unchecked, Future[HttpResponse]@unchecked] => Future.successful(rh)
+            case rh: RequestHandler@unchecked => Future.successful(rh)
             case c: WabaseRequestContext => Future.successful(c)
             case req: HttpRequest => processResult(ctx.copy(req = req))
             case st: ApplicationState => processResult(ctx.copy(applicationState = st))
@@ -89,7 +89,7 @@ class WabaseService extends Loggable {
             (classOf[WabaseUser], () => wrc.user),
             (classOf[ApplicationState], () => wrc.applicationState),
             (classOf[HttpResponse], () => if (ih == null) missingHandlerError else ih(wrc)),
-            (classOf[Function[WabaseRequestContext, Future[HttpResponse]]], () => ih),
+            (classOf[RequestHandler], () => ih),
             (classOf[ExecutionContext], () => ec),
           )))
         }
@@ -97,7 +97,7 @@ class WabaseService extends Loggable {
         invokeHandlerBuilder.flatMap {
           case c: WabaseRequestContext => if (ih == null) missingHandlerError else ih(c)
           case r: HttpResponse => Future.successful(r)
-          case h: Function[WabaseRequestContext@unchecked, Future[HttpResponse]@unchecked] => h(wrc)
+          case h: RequestHandler@unchecked => h(wrc)
         }
       }
       inv.arg match {

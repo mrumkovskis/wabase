@@ -2,6 +2,7 @@ package org.wabase
 
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.Http
+import org.apache.pekko.http.scaladsl.model.HttpResponse
 import org.mojoz.metadata.in.YamlMd
 import org.wabase.config
 
@@ -57,6 +58,5 @@ object WabaseServer {
       .onComplete(_ => serverSystem.terminate()) // and shutdown when done
   }
 
-  /* Request mapper */
-  def setViewName(ctx: WabaseRequestContext): WabaseRequestContext = ctx.copy(viewName = "fakeViewName")
+  def hello(ctx: WabaseRequestContext): HttpResponse = HttpResponse(entity = "Hello from wabase!")
 }
