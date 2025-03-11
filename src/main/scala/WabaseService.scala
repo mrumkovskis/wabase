@@ -109,7 +109,9 @@ class WabaseService extends Loggable {
 
     def errorHandler(wrc: WabaseRequestContext): PartialFunction[Throwable, Future[HttpResponse]] = {
       wrc.route.errorHandler.errorHandler(ctx).orElse {
-        case NonFatal(e) => Future.failed(e)
+        case NonFatal(e) =>
+          logger.error("Internal server error, sending http 500", e)
+          Future.successful(HttpResponse(status = StatusCodes.InternalServerError))
       }
     }
 
