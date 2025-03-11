@@ -7,7 +7,7 @@ import AppMetadata._
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.marshalling.{Marshal, ToResponseMarshallable}
 import org.apache.pekko.http.scaladsl.model.headers.{Cookie, HttpCookie, `Set-Cookie`}
-import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes, DateTime, HttpHeader, HttpRequest, HttpResponse, Uri}
+import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes, DateTime, HttpHeader, HttpRequest, HttpResponse, StatusCodes, Uri}
 import org.apache.pekko.http.scaladsl.unmarshalling.PredefinedFromEntityUnmarshallers
 import org.wabase.AppMetadata.{Action, RouteDef}
 import org.wabase.WabaseService.Wabase
@@ -54,14 +54,13 @@ class WabaseService extends Loggable {
   )(req: HttpRequest)(
     implicit as: ActorSystem): Future[HttpResponse] = {
     val ctx = WabaseRequestContext(wabase, req, Deferred(deferredControl = deferredControl))
-    doRoute(findRoute(ctx))
+    findRoute(ctx).map(doRoute).getOrElse(Future.successful(HttpResponse(status = StatusCodes.NotFound)))
   }
 
-  protected def findRoute(ctx: WabaseRequestContext): WabaseRequestContext = {
+  protected def findRoute(ctx: WabaseRequestContext): Option[WabaseRequestContext] = {
     val pathString = ctx.req.uri.path.toString
-    val route = ctx.wabase.qe.routeDefs.find(_.path.pattern.matcher(pathString).matches)
-      .getOrElse(error(s"Route not found for path '$pathString'"))
-    ctx.copy(route = route)
+    ctx.wabase.qe.routeDefs.find(_.path.pattern.matcher(pathString).matches)
+      .map(r => ctx.copy(route = r))
   }
 
   def doRoute(ctx: WabaseRequestContext)(implicit as: ActorSystem): Future[HttpResponse] = {
