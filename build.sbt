@@ -3,7 +3,7 @@ val scalaV    = "2.13.16" // "3.3.5"
 val pekkoV    = "1.1.3"
 val pekkoHttpV= "1.1.0"
 
-val mojozV    = "5.4.0"
+val mojozV    = "5.5.0-SNAPSHOT"
 val quereaseV = "8.0.0-SNAPSHOT"
 val tresqlV   = "13.0.0-SNAPSHOT"
 

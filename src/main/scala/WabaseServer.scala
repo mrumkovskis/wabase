@@ -4,7 +4,7 @@ import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.Http
 import org.apache.pekko.http.scaladsl.model.HttpResponse
 import org.mojoz.metadata.in.YamlMd
-import org.wabase.config
+import scala.collection.immutable.Seq
 
 import scala.concurrent.ExecutionContext
 import scala.io.StdIn
@@ -41,7 +41,7 @@ object WabaseServer {
 
       // Members declared in org.wabase.QuereaseProvider
       override protected def initQuerease: AppQuerease = new AppQuerease {
-        override lazy val yamlMetadata = YamlMd.fromResource("/routes.yaml")
+        override lazy val yamlMetadata = YamlMd.fromPaths(Seq("jobs", "routes", "tables", "views"))
       }
     }
 
