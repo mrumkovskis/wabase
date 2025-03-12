@@ -38,11 +38,6 @@ object WabaseServer {
 
       // Members declared in org.wabase.JsonConverterProvider
       override protected def initJsonConverter: org.wabase.JsonConverter[?] = qio
-
-      // Members declared in org.wabase.QuereaseProvider
-      override protected def initQuerease: AppQuerease = new AppQuerease {
-        override lazy val yamlMetadata = YamlMd.fromPaths(Seq("jobs", "routes", "tables", "views"))
-      }
     }
 
     val deferredControl = new WabaseDeferredControl(wabase)
