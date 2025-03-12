@@ -1045,7 +1045,13 @@ object OpParser extends Loggable {
       if (config.hasPath(s"app.wabase-call-alias.$name"))
         classNameFunctionName(config.getString(s"app.wabase-call-alias.$name"))
       else (null, name)
-    else (name.substring(0, idx), name.substring(idx + 1))
+    else {
+      val cn = name.substring(0, idx)
+      val fn = name.substring(idx + 1)
+      // check function existence
+      getObjAndFunction(cn, fn)
+      (cn, fn)
+    }
   }
 }
 object AppMetadata extends Loggable {

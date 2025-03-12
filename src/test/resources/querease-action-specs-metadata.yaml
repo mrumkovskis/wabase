@@ -549,7 +549,7 @@ list:
 
 name: invocation_test_1
 table:
-api: get, save, count, delete, create
+api: get, save, count, create
 fields:
 - s1
 - s2
@@ -564,8 +564,6 @@ save:
 - n2 = 1.5
 - n3 = org.wabase.QuereaseActionTestManager.addNumbers
 - return (nr = :n3)
-delete:
-- org.wabase.QuereaseActionTestManager.ambiguousMethod
 count:
 - org.wabase.QuereaseActionTestManager.unitMethod
 - org.wabase.QuereaseActionTestManager.unitFutureMethod

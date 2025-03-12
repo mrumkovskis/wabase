@@ -128,6 +128,20 @@ package object wabase extends Loggable {
     }
   }
 
+  def getObjAndFunction(className: String, function: String): (AnyRef, java.lang.reflect.Method) =
+    functionInvocationCache.get(s"$className.$function").getOrElse {
+      val obj = getObjectOrNewInstance(className, s"function $function")
+      val clazz = obj.getClass
+      clazz.getMethods.filter(_.getName == function) match {
+        case Array(method) =>
+          val obj_fun = (obj, method)
+          functionInvocationCache.put(s"$className.$function", obj_fun)
+          obj_fun
+        case Array() => sys.error(s"Method $function not found in class $className")
+        case m => sys.error(s"Multiple methods '$function' found: (${m.toList}) in class $className")
+      }
+    }
+
   def invocationParameter(availableParameters: Seq[(Class[_], () => Any)])(parameterClass: Class[_]): Any =
     availableParameters.collectFirst {
       case (c, f) if parameterClass.isAssignableFrom(c) || c.isAssignableFrom(parameterClass) => f()
@@ -163,19 +177,8 @@ package object wabase extends Loggable {
       catch {
         case e: InvocationTargetException if e.getCause != null => throw e.getCause
       }
-    functionInvocationCache.get(s"$className.$function").map { case (obj, method) =>
-      call(obj, method)
-    }.getOrElse {
-      val obj = getObjectOrNewInstance(className, s"function $function")
-      val clazz = obj.getClass
-      clazz.getMethods.filter(_.getName == function) match {
-        case Array(method) =>
-          functionInvocationCache.put(s"$className.$function", obj -> method)
-          call(obj, method)
-        case Array() => sys.error(s"Method $function not found in class $className")
-        case m => sys.error(s"Multiple methods '$function' found: (${m.toList}) in class $className")
-      }
-    }
+    val (obj, method) = getObjAndFunction(className, function)
+    call(obj, method)
   }
 
   def invokeFunction(

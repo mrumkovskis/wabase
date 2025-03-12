@@ -691,10 +691,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       t2 <- doAction("save", "invocation_test_1", Map()).map {
         _ shouldBe MapResult(Map("nr" -> 2.5))
       }
-      t3 <- recoverToExceptionIf[Exception](doAction("delete", "invocation_test_1", Map())).map {
-        _.getMessage should include ("Multiple methods 'ambiguousMethod' found")
-      }
-      t4 <- doAction("count", "invocation_test_1", Map()).map {
+      t3 <- doAction("count", "invocation_test_1", Map()).map {
         _ shouldBe StringResult("0")
       }
       t4 <- doAction("get", "invocation_test_2", Map()).map {
