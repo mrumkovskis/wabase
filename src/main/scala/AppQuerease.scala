@@ -148,15 +148,15 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   override def convertToType(value: Any, targetClass: Class[_]): Any =
     Format.convertToType(value, targetClass)
 
-  val resultRenderersFactory = getObjectOrNewInstance[ResultRenderersFactory](
+  lazy val resultRenderersFactory = getObjectOrNewInstance[ResultRenderersFactory](
     config, "result-renderers.factory-class", "result renderers factory"
   )
-  val resultRenderers: ResultRenderers = resultRenderersFactory.createResultRenderers
+  lazy val resultRenderers: ResultRenderers = resultRenderersFactory.createResultRenderers
 
-  val requestDecodersFactory = getObjectOrNewInstance[RequestDecodersFactory](
+  lazy val requestDecodersFactory = getObjectOrNewInstance[RequestDecodersFactory](
     config, "request-decoders.factory-class", "request decoders factory"
   )
-  val requestDecoders: RequestDecoders.Decoders = requestDecodersFactory.createRequestDecoders(this)
+  lazy val requestDecoders: RequestDecoders.Decoders = requestDecodersFactory.createRequestDecoders(this)
 
   val tresqlUri: TresqlUri = new TresqlUri()
   lazy val cborOrJsonDecoder = new CborOrJsonDecoder(typeDefs, nameToViewDef)

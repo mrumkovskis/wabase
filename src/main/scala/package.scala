@@ -70,7 +70,7 @@ package object wabase extends Loggable {
   class FunctionInvocationCache(maxSize: Int)
     extends SimpleCacheBase[(Object, java.lang.reflect.Method)](maxSize, "function-invocation-cache")
 
-  private[wabase] val functionInvocationCache =
+  private[wabase] lazy val functionInvocationCache =
     new FunctionInvocationCache(config.getInt("app.function-invocation-cache-size"))
 
   //db connection pool configuration
