@@ -3,7 +3,6 @@ package org.wabase
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.Http
 import org.apache.pekko.http.scaladsl.model.HttpResponse
-import org.mojoz.metadata.in.YamlMd
 import scala.collection.immutable.Seq
 
 import scala.concurrent.ExecutionContext
