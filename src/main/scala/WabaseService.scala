@@ -88,6 +88,7 @@ class WabaseService extends Loggable {
             (classOf[WabaseUser], () => wrc.user),
             (classOf[ApplicationState], () => wrc.applicationState),
             (classOf[HttpResponse], () => if (ih == null) missingHandlerError else ih(wrc)),
+            (classOf[Future[HttpResponse]], () => if (ih == null) missingHandlerError else ih(wrc)),
             (classOf[RequestHandler], () => ih),
             (classOf[ExecutionContext], () => ec),
           )))
