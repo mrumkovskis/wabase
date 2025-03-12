@@ -143,9 +143,9 @@ package object wabase extends Loggable {
     def getParams(m: java.lang.reflect.Method) = {
       val params = m.getParameterTypes map (pt => getParameter(pt) -> pt)
       if (params.exists { case (p, c) => p.isInstanceOf[Future[_]] && !classOf[Future[_]].isAssignableFrom(c) })
-        Future.traverse(params.map(_._1).toSeq) {
-          case f: Future[_] => f
-          case x => Future.successful(x)
+        Future.traverse(params.toSeq) {
+          case (f: Future[_], c) if !classOf[Future[_]].isAssignableFrom(c) => f
+          case (x, _) => Future.successful(x)
         }.map(_.toArray) else params.map(_._1)
     }
     def call(o: Object, m: java.lang.reflect.Method) =
