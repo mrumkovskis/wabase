@@ -835,11 +835,11 @@ class OpParser(viewName: String, cache: OpParser.Cache)
       case e: NoSuccess => e
     }
   } named "invocation-op"
-  def resourceOp: MemParser[Resource] = "resource" ~> tresqlOp ~ opt(tresqlOp) ^^ {
+  def resourceOp: MemParser[Resource] = "resource\\s+".r ~> tresqlOp ~ opt(tresqlOp) ^^ {
     case nameTresql ~ ctTresql => Resource(nameTresql, ctTresql.orNull)
   } named "resource-op"
   def fileOp: MemParser[File] = opt(opResultType) ~
-    ("file" ~> opt("[" ~> HttpClientFileStreamerNameRegex <~ "]") ~ tresqlOp) ^^ {
+    ("file\\s+".r ~> opt("[" ~> HttpClientFileStreamerNameRegex <~ "]") ~ tresqlOp) ^^ {
     case conformTo ~ (fileStreamer ~ e) => File(e, conformTo, fileStreamer.orNull)
   } named "file-op"
   def toFileOp: MemParser[ToFile] = "to file" ~>
@@ -853,7 +853,7 @@ class OpParser(viewName: String, cache: OpParser.Cache)
     val args = Set(Data, Filename)
     def findArg(name: String, idx: Int, l: List[(String, Op)]) =
       l.find(_._1 == name).orElse(l.lift(idx).filter(_._1 == null)).map(_._2)
-    "template" ~> tresqlOp ~ namedOps(args) ^^ {
+    "template\\s+".r ~> tresqlOp ~ namedOps(args) ^^ {
       case templ ~ args =>
         args match {
           case Nil => Template(templ, null, null)
@@ -864,7 +864,7 @@ class OpParser(viewName: String, cache: OpParser.Cache)
         }
     } named "template-op"
   }
-  def emailOp: MemParser[Email] = "email" ~> opt("batch") ~ tresqlOp ~ operation ~ operation ~ rep(operation) ^^ {
+  def emailOp: MemParser[Email] = "email\\s+".r ~> opt("batch") ~ tresqlOp ~ operation ~ operation ~ rep(operation) ^^ {
     case batch ~ data ~ subj ~ body ~ att => Email(data, subj, body, att, batch.isDefined)
   } named "email-op"
   def httpOp: MemParser[Http] = {
@@ -880,7 +880,7 @@ class OpParser(viewName: String, cache: OpParser.Cache)
         case method ~ client ~ uri ~ op ~ headers =>
           Http(method, tu(uri), headers.orNull, op.orNull, httpClientName = client.orNull)
       } named "http-post-put-op"
-    opt(opResultType) ~ ("http" ~> (http_post_put | http_get_delete)) ^^ {
+    opt(opResultType) ~ ("http\\s+".r ~> (http_post_put | http_get_delete)) ^^ {
       case conformTo ~ http => http.copy(conformTo = conformTo)
     } named "http-op"
   }
@@ -888,8 +888,8 @@ class OpParser(viewName: String, cache: OpParser.Cache)
     case op_type ~ db ~ op => Db(actionFromOp(op), op_type == Action.DbUseKey,
       db.map(AppMetadata.DbAccessKey).toList)
   } named "db-op"
-  def jsonCodecOp: MemParser[JsonCodec] = """(from|to)""".r ~ "json" ~ operation ^^ {
-    case mode ~ _ ~ op => JsonCodec(mode == "to", op)
+  def jsonCodecOp: MemParser[JsonCodec] = "(from|to)\\s+".r ~ "json\\s+".r ~ operation ^^ {
+    case mode ~ _ ~ op => JsonCodec(mode.trim == "to", op)
   } named "json-op"
   def jobOp: MemParser[Job] = JobAct ~> expr ^^ {
     case ast.StringConst(value) => Job(value, false)
@@ -947,17 +947,20 @@ class OpParser(viewName: String, cache: OpParser.Cache)
   def redirect: MemParser[Response] = (RedirectOpRegex ~> setHttpHeadersOps ~ tresqlOp) ^^ {
     case hops ~ tr => Action.Response(303, true, hops, tr)
   } named "redirect-op"
-  def response: MemParser[Response] = (("status" | "response") ~ ("\\w+".r ~ setHttpHeadersOps ~ opt(operation))) ^? ({
-    case sor ~ (c ~ hops ~ body) if sor != "status" || body.isEmpty || body.exists(_.isInstanceOf[Tresql])  =>
-      val code = c match {
-        case "ok" => 200
-        case x if Try(x.toInt).toOption.isDefined => x.toInt
-        case x => throw new IllegalArgumentException(s"Status code must be 'ok' or integer, instead '$x' encountered in $viewName.")
-      }
-      Action.Response(code, sor == "status", hops, body.orNull)
-  }, {
-    case _ ~ (_ ~ _ ~ b) => sys.error(s"For status command, body operation must be tresql instead found: $b")
-  }) named "response-op"
+  def response: MemParser[Response] = {
+    val StResp = "(status|response)\\s+".r
+    (StResp ~ ("\\w+".r ~ setHttpHeadersOps ~ opt(operation))) ^? ({
+      case StResp(sor) ~ (c ~ hops ~ body) if sor != "status" || body.isEmpty || body.exists(_.isInstanceOf[Tresql])  =>
+        val code = c match {
+          case "ok" => 200
+          case x if Try(x.toInt).toOption.isDefined => x.toInt
+          case x => throw new IllegalArgumentException(s"Status code must be 'ok' or integer, instead '$x' encountered in $viewName.")
+        }
+        Action.Response(code, sor == "status", hops, body.orNull)
+    }, {
+      case _ ~ (_ ~ _ ~ b) => sys.error(s"For status command, body operation must be tresql instead found: $b")
+    }) named "response-op"
+  }
   /* Cannot be named mem parser since depends on parameter. */
   def setOrDeleteCookie(cmd: String, mandatoryPars: Set[String] = Set()): Parser[SetHttpHeadersOp] =
     ((cmd ~ "(") ~> namedOps(allowedCookiePars, mandatoryPars, ",") <~ ")") ^? ({

@@ -1,2 +1,14 @@
 path: /simple
 handler: simpleHandler
+
+path: /uri
+handler: urlTransformer uriValue
+
+path: /response-transformer
+handler: urlTransformer responseTransformer uriValue
+
+path: /echo
+handler: echo
+
+path: /handler-transformer
+handler: transformer echo

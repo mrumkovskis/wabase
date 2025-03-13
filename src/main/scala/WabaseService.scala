@@ -73,6 +73,7 @@ class WabaseService extends Loggable {
           def processResult(r: Any): Future[Any] = r match {
             case c: WabaseRequestContext => Future.successful(c)
             case req: HttpRequest => processResult(ctx.copy(req = req))
+            case uri: Uri => processResult(ctx.copy(req = ctx.req.withUri(uri)))
             case st: ApplicationState => processResult(ctx.copy(applicationState = st))
             case u: WabaseUser => processResult(ctx.copy(user = u))
             case resp: HttpResponse => Future.successful(resp)
@@ -90,6 +91,7 @@ class WabaseService extends Loggable {
             (classOf[HttpResponse], () => if (ih == null) missingHandlerError else ih(wrc)),
             (classOf[Future[HttpResponse]], () => if (ih == null) missingHandlerError else ih(wrc)),
             (classOf[RequestHandler], () => ih),
+            (classOf[ActorSystem], () => as),
             (classOf[ExecutionContext], () => ec),
           )))
         }
@@ -97,7 +99,7 @@ class WabaseService extends Loggable {
         invokeHandlerBuilder.flatMap {
           case c: WabaseRequestContext => if (ih == null) missingHandlerError else ih(c)
           case r: HttpResponse => Future.successful(r)
-          case h: RequestHandler@unchecked => println(s"XXXXX: '$h'"); h(wrc)
+          case h: RequestHandler@unchecked => h(wrc)
         }
       }
       inv.arg match {

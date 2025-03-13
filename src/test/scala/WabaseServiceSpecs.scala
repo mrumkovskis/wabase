@@ -1,12 +1,13 @@
 package org.wabase
 
-import org.apache.pekko.http.scaladsl.model.{HttpRequest, HttpResponse}
+import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.http.scaladsl.model.{HttpEntity, HttpMessage, HttpRequest, HttpResponse, RequestEntity, Uri}
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import org.wabase.WabaseService.Wabase
 
 import scala.concurrent.duration.DurationInt
-import scala.concurrent.{Await, Future}
+import scala.concurrent.{Await, ExecutionContext, Future}
 
 class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
 
@@ -20,18 +21,40 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
   protected val service = server.service
 
   protected def entityEquals(result: Future[HttpResponse], pattern: String) =
-    Await.result(result.flatMap(_.entity.toStrict(1.second).map(_.data.utf8String)), 1.second) shouldBe pattern
+    Await.result(result.map(WabaseTestHandlers.entity), 1.second) shouldBe pattern
 
-  protected def callRoute(url: String) =
-    service.handle(server.wabase, server.deferredControl)(HttpRequest(uri = url))
+  protected def callRoute(url: String, data: RequestEntity = HttpEntity.Empty) =
+    service.handle(server.wabase, server.deferredControl)(HttpRequest(uri = url, entity = data))
 
   it should "execute wabase service routes" in {
     entityEquals(callRoute("/simple"), "Simple handler response")
+    entityEquals(callRoute("/uri"), "/uri/added-segment")
+    entityEquals(callRoute("/response-transformer"), "/response-transformer/added-segment transformed response")
+    entityEquals(callRoute("/echo", "hi"), "hi")
+    entityEquals(callRoute("/handler-transformer", "hi"), "Request transformed hi response transformed")
   }
 }
 
 object WabaseTestHandlers {
-  def simpleHandler(ctx: WabaseRequestContext) = Future.successful {
-    HttpResponse(entity = "Simple handler response")
+  def simpleHandler(ctx: WabaseRequestContext) =
+    Future.successful { HttpResponse(entity = "Simple handler response") }
+
+  def urlTransformer(uri: Uri) = uri.withPath(uri.path ?/ "added-segment")
+
+  def uriValue(uri: Uri) = HttpResponse(entity = uri.toString())
+
+  def responseTransformer(resp: HttpResponse)(implicit ec: ExecutionContext, as: ActorSystem) =
+    resp.withEntity(entity(resp) + " transformed response")
+
+  def echo(req: HttpRequest)(implicit ec: ExecutionContext, as: ActorSystem) = HttpResponse(entity = entity(req))
+
+  def transformer(innerHandler: WabaseService.RequestHandler)(
+    implicit as: ActorSystem, ec: ExecutionContext): WabaseService.RequestHandler = { ctx =>
+    innerHandler(ctx.copy(req = ctx.req.withEntity("Request transformed " + entity(ctx.req))))
+      .map { resp => resp.withEntity(entity(resp) + " response transformed") }
   }
+
+  // helper function
+  def entity(msg: HttpMessage)(implicit ec: ExecutionContext, as: ActorSystem): String =
+    Await.result(msg.entity.toStrict(1.second).map(_.data.utf8String), 1.second)
 }
