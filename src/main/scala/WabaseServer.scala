@@ -15,7 +15,14 @@ class WabaseServer {
   implicit val ec: ExecutionContext = serverSystem.dispatcher
   val executionImpl = new ExecutionImpl()(serverSystem)
 
-  val wabase: WabaseService.Wabase = new WabaseApp[WabaseUser]
+  val wabase: WabaseService.Wabase = new WabaseServer.App(executionImpl)
+  val deferredControl = new WabaseDeferredControl(wabase)
+  val service         = new WabaseService
+}
+
+object WabaseServer {
+
+  class App(exec: Execution) extends WabaseApp[WabaseUser]
     with Execution
     with AppBase[WabaseUser]
     with NoAudit[WabaseUser]
@@ -26,23 +33,18 @@ class WabaseServer {
     with Marshalling
     with AppProvider[WabaseUser]
     with JsonConverterProvider
-  {
-    // Members declared in org.wabase.Execution
-    override protected def execution: org.wabase.Execution = executionImpl
+    {
+      // Members declared in org.wabase.Execution
+      override protected def execution: org.wabase.Execution = exec
 
-    // Members declared in org.wabase.AppProvider
-    override type App = AppBase[WabaseUser]
-    override protected def initApp: App = this
+      // Members declared in org.wabase.AppProvider
+      override type App = AppBase[WabaseUser]
+      override protected def initApp: App = this
 
-    // Members declared in org.wabase.JsonConverterProvider
-    override protected def initJsonConverter: org.wabase.JsonConverter[?] = qio
-  }
+      // Members declared in org.wabase.JsonConverterProvider
+      override protected def initJsonConverter: org.wabase.JsonConverter[?] = qio
+    }
 
-  val deferredControl = new WabaseDeferredControl(wabase)
-  val service         = new WabaseService
-}
-
-object WabaseServer {
   def main(args: Array[String]): Unit = {
     val server = new WabaseServer
     import server._

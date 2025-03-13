@@ -71,13 +71,13 @@ class WabaseService extends Loggable {
         def missingHandlerError = sys.error(s"Handler argument missing for invocation: '$cn.$fn'")
         def invokeHandlerBuilder = {
           def processResult(r: Any): Future[Any] = r match {
-            case rh: RequestHandler@unchecked => Future.successful(rh)
             case c: WabaseRequestContext => Future.successful(c)
             case req: HttpRequest => processResult(ctx.copy(req = req))
             case st: ApplicationState => processResult(ctx.copy(applicationState = st))
             case u: WabaseUser => processResult(ctx.copy(user = u))
             case resp: HttpResponse => Future.successful(resp)
             case f: Future[_] => f.flatMap(processResult)
+            case rh: RequestHandler@unchecked => Future.successful(rh)
             case x => error(s"Request transformer must return either WabaseRequestContext or HttpRequest or Future of them." +
               s" Instead got: $x")
           }
@@ -97,7 +97,7 @@ class WabaseService extends Loggable {
         invokeHandlerBuilder.flatMap {
           case c: WabaseRequestContext => if (ih == null) missingHandlerError else ih(c)
           case r: HttpResponse => Future.successful(r)
-          case h: RequestHandler@unchecked => h(wrc)
+          case h: RequestHandler@unchecked => println(s"XXXXX: '$h'"); h(wrc)
         }
       }
       inv.arg match {
