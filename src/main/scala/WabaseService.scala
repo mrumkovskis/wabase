@@ -72,10 +72,10 @@ class WabaseService extends Loggable {
         def invokeHandlerBuilder = {
           def processResult(r: Any): Future[Any] = r match {
             case c: WabaseRequestContext => Future.successful(c)
-            case req: HttpRequest => processResult(ctx.copy(req = req))
-            case uri: Uri => processResult(ctx.copy(req = ctx.req.withUri(uri)))
-            case st: ApplicationState => processResult(ctx.copy(applicationState = st))
-            case u: WabaseUser => processResult(ctx.copy(user = u))
+            case req: HttpRequest => processResult(wrc.copy(req = req))
+            case uri: Uri => processResult(wrc.copy(req = wrc.req.withUri(uri)))
+            case st: ApplicationState => processResult(wrc.copy(applicationState = st))
+            case u: WabaseUser => processResult(wrc.copy(user = u))
             case resp: HttpResponse => Future.successful(resp)
             case f: Future[_] => f.flatMap(processResult)
             case rh: RequestHandler@unchecked => Future.successful(rh)
@@ -111,7 +111,7 @@ class WabaseService extends Loggable {
     }
 
     def errorHandler(wrc: WabaseRequestContext): PartialFunction[Throwable, Future[HttpResponse]] = {
-      wrc.route.errorHandler.errorHandler(ctx).orElse {
+      wrc.route.errorHandler.errorHandler(wrc).orElse {
         case NonFatal(e) =>
           logger.error("Internal server error, sending http 500", e)
           Future.successful(HttpResponse(status = StatusCodes.InternalServerError))

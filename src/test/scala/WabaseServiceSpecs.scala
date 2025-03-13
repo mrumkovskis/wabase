@@ -32,6 +32,8 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
     entityEquals(callRoute("/response-transformer"), "/response-transformer/added-segment transformed response")
     entityEquals(callRoute("/echo", "hi"), "hi")
     entityEquals(callRoute("/handler-transformer", "hi"), "Request transformed hi response transformed")
+    entityEquals(callRoute("/user"), "Test user")
+    entityEquals(callRoute("/long-handler-chain"), "Data from Test user: /long-handler-chain/added-segment transformed response")
   }
 }
 
@@ -53,6 +55,14 @@ object WabaseTestHandlers {
     innerHandler(ctx.copy(req = ctx.req.withEntity("Request transformed " + entity(ctx.req))))
       .map { resp => resp.withEntity(entity(resp) + " response transformed") }
   }
+
+  def testAuth(ctx: WabaseRequestContext) =
+    ctx.copy(user = WabaseUser(Map("id" -> 111, "name" -> "Test user")))
+
+  def user(ctx: WabaseRequestContext) = HttpResponse(entity = ctx.user.name)
+
+  def addUserData(user: WabaseUser, resp: HttpResponse)(implicit ec: ExecutionContext, as: ActorSystem) =
+    resp.withEntity(s"Data from ${user.name}: " + entity(resp))
 
   // helper function
   def entity(msg: HttpMessage)(implicit ec: ExecutionContext, as: ActorSystem): String =
