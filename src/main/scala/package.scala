@@ -170,11 +170,15 @@ package object wabase extends Loggable {
               case f: Future[_] => f
               case v => Future.successful(v)
             }
+          }.recoverWith {
+            // unwrap invocation target exception
+            case e: InvocationTargetException if e.getCause != null => Future.failed(e.getCause)
           }
           case p => m.invoke(o, p.asInstanceOf[Array[Object]]: _*)
         }
       } // cast is needed for scala 2.12.x
       catch {
+        // unwrap invocation target exception
         case e: InvocationTargetException if e.getCause != null => throw e.getCause
       }
     val (obj, method) = getObjAndFunction(className, function)
