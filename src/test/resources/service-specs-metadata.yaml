@@ -1,3 +1,5 @@
+#################### routes ################
+
 path: /simple
 handler: simpleHandler
 
@@ -14,7 +16,30 @@ path: /handler-transformer
 handler: transformer echo
 
 path: /user
-handler: testAuth user
+handler: testAuth respondWithUserName
 
 path: /long-handler-chain
 handler: testAuth urlTransformer responseTransformer addUserData uriValue
+
+path: /greater/than-3/(\w+)
+handler: keyExtractor keyChecker
+error-handler: testErrorHandler
+
+path: /views/(\w+)(.*)
+handler: doAction
+
+
+################# views ###############
+
+name: view1
+api: get, insert
+explicit db: true
+table:
+key: id
+fields:
+- id
+- value
+get:
+- value = 'Value' || :id
+insert:
+- this

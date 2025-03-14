@@ -1516,7 +1516,7 @@ object AppMetadata extends Loggable {
   case class RouteDef(
     path: Regex,
     requestHandler: Action.Invocation,
-    errorHandler: WabaseErrorHandler = null,
+    errorHandler: Action.Invocation,
   )
 
   trait AppMdConventions extends MdConventions {

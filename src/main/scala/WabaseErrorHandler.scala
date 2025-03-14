@@ -11,11 +11,7 @@ import org.wabase.AppServiceBase.AppExceptionHandler.PostgresTimeoutExceptionHan
 
 import scala.concurrent.Future
 
-trait WabaseErrorHandler {
-  def errorHandler(ctx: WabaseRequestContext): PartialFunction[Throwable, Future[HttpResponse]]
-}
-
-object WabaseErrorHandler extends WabaseErrorHandler {
+object WabaseErrorHandler {
   val logger = Logger(LoggerFactory.getLogger("org.wabase.error"))
   def errorHandlerPF(ctx: WabaseRequestContext): PartialFunction[Throwable, HttpResponse] = {
     case e: EntityStreamSizeException => HttpResponse(status = StatusCodes.ContentTooLarge,
@@ -60,6 +56,6 @@ object WabaseErrorHandler extends WabaseErrorHandler {
       errorHandlerPF(ctx)(e.getCause)
   }
 
-  def errorHandler(ctx: WabaseRequestContext): PartialFunction[Throwable, Future[HttpResponse]] =
+  def errorHandler(ctx: WabaseRequestContext): WabaseService.ErrorHandler =
     errorHandlerPF(ctx).andThen(Future.successful(_))
 }

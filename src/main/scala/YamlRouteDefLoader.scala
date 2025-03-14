@@ -25,9 +25,10 @@ class YamlRouteDefLoader(
         }
 
       def errorHandler(inv: AppMetadata.Action.Invocation) =
-        Option(inv).map(inv => List(inv.className, inv.function).filter(_ != null).mkString("."))
-          .map(getObjectOrNewInstance(_, "wabase error handler").asInstanceOf[WabaseErrorHandler])
-          .getOrElse(getObjectOrNewInstance[WabaseErrorHandler](config, "app.wabase-error-handler", "wabase error handler"))
+        Option(inv).getOrElse {
+          val (cn, fn) = OpParser.classNameFunctionName(config.getString("app.wabase-error-handler"))
+          AppMetadata.Action.Invocation(cn, fn)
+        }
       val path: Regex = new Regex(route)
       val handler = Option(parseProperty("handler")).getOrElse(sys.error(s"Request handler missing"))
       val error = errorHandler(parseProperty("error-handler"))

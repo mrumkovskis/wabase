@@ -53,7 +53,7 @@ class WabaseService extends Loggable {
     deferredControl: WabaseDeferredControl,
   )(req: HttpRequest)(
     implicit as: ActorSystem): Future[HttpResponse] = {
-    val ctx = WabaseRequestContext(wabase, req, Deferred(deferredControl = deferredControl))
+    val ctx = WabaseRequestContext(wabase, req, Deferred(deferredControl = deferredControl), as = as)
     findRoute(ctx).map(doRoute).getOrElse(Future.successful(HttpResponse(status = StatusCodes.NotFound)))
   }
 
@@ -110,11 +110,17 @@ class WabaseService extends Loggable {
       }
     }
 
-    def errorHandler(wrc: WabaseRequestContext): PartialFunction[Throwable, Future[HttpResponse]] = {
-      wrc.route.errorHandler.errorHandler(wrc).orElse {
-        case NonFatal(e) =>
-          logger.error("Internal server error, sending http 500", e)
-          Future.successful(HttpResponse(status = StatusCodes.InternalServerError))
+    def errorHandler(wrc: WabaseRequestContext): WabaseService.ErrorHandler = {
+      val eh = wrc.route.errorHandler
+      invokeFunction(eh.className, eh.function, Seq((classOf[WabaseRequestContext], () => wrc))) match {
+        case h: PartialFunction[Throwable@unchecked, Future[HttpResponse]@unchecked] =>
+          h.orElse {
+            case NonFatal(e) =>
+              logger.error("Internal server error, sending http 500", e)
+              Future.successful(HttpResponse(status = StatusCodes.InternalServerError))
+          }
+        case x => sys.error(s"Error handler for route ${wrc.route.path} must return value of type:" +
+          s" WabaseService.ErrorHandler, instead got '$x' of type '${x.getClass}'")
       }
     }
 
@@ -128,6 +134,7 @@ class WabaseService extends Loggable {
 object WabaseService {
 
   type RequestHandler = WabaseRequestContext => Future[HttpResponse]
+  type ErrorHandler   = PartialFunction[Throwable, Future[HttpResponse]]
   type Wabase = WabaseApp[WabaseUser] with QuereaseProvider with I18n with DbAccess with Marshalling with AppProvider[WabaseUser]
 
   val CreateCountActionAndViewRegex = """(?U)(?:(count|create):)?(\w*)""".r
