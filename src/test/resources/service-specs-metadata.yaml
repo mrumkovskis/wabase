@@ -1,32 +1,32 @@
 #################### routes ################
 
 path: /simple
-handler: simpleHandler
+do: simpleHandler
 
 path: /uri
-handler: urlTransformer uriValue
+do: urlTransformer uriValue
 
 path: /response-transformer
-handler: urlTransformer responseTransformer uriValue
+do: urlTransformer responseTransformer uriValue
 
 path: /echo
-handler: echo
+do: echo
 
 path: /handler-transformer
-handler: transformer echo
+do: transformer echo
 
 path: /user
-handler: testAuth respondWithUserName
+do: testAuth respondWithUserName
 
 path: /long-handler-chain
-handler: testAuth urlTransformer responseTransformer addUserData uriValue
+do: testAuth urlTransformer responseTransformer addUserData uriValue
 
 path: /greater/than-3/(\w+)
-handler: keyExtractor keyChecker
-error-handler: testErrorHandler
+do: keyExtractor keyChecker
+recover: testErrorHandler
 
 path: /views/(\w+)(.*)
-handler: doAction
+do: doAction
 
 
 ################# views ###############

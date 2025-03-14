@@ -30,8 +30,8 @@ class YamlRouteDefLoader(
           AppMetadata.Action.Invocation(cn, fn)
         }
       val path: Regex = new Regex(route)
-      val handler = Option(parseProperty("handler")).getOrElse(sys.error(s"Request handler missing"))
-      val error = errorHandler(parseProperty("error-handler"))
+      val handler = Option(parseProperty("do")).getOrElse(sys.error(s"Request handler missing"))
+      val error = errorHandler(parseProperty("recover"))
       RouteDef(
         path = path,
         requestHandler = handler,
