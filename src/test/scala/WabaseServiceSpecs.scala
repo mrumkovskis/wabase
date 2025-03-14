@@ -43,7 +43,7 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
     encodeToJsonString(value)
   }
 
-  protected def decodeJs(js: String) = new CborOrJsonAnyValueDecoder().decode(ByteString(js))
+  protected def decodeJs(js: String) = CborOrJsonAnyValueDecoder.decode(ByteString(js))
 
   it should "execute wabase service routes" in {
     entityEquals(callRoute("/simple"), "Simple handler response")

@@ -22,7 +22,7 @@ object WabaseAuthentication extends Authentication[WabaseUser] with Execution {
 
   implicit val userCodec: Codec[WabaseUser] = {
     implicit val userMapDecoder: Decoder[Map[String, Any]] =
-      new CborOrJsonAnyValueDecoder().toMapDecoder(() => Map[String, Any]())
+      CborOrJsonAnyValueDecoder.toMapDecoder(() => Map[String, Any]())
     Codec.bimap[Map[String, Any], WabaseUser](_.properties, WabaseUser(_))
   }
   implicit val sessionCodec: Codec[Session] = deriveCodec[Session]

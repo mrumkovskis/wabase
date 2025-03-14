@@ -1462,7 +1462,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           implicit lazy val enc: JsValueEncoderPF = JsonEncoder.extendableJsValueEncoderPF(enc)(jsonValueEncoder)
           StringResult(encodeToJsonString(res))
         } else {
-          try new CborOrJsonAnyValueDecoder().decode(ByteString(String.valueOf(res))) match {
+          try CborOrJsonAnyValueDecoder.decode(ByteString(String.valueOf(res))) match {
             case m: Map[String@unchecked, _] => MapResult(m)
             case s: Seq[Map[String, _]@unchecked] => IteratorResult(s.iterator)
             case n: java.lang.Number => NumberResult(n)
@@ -1720,10 +1720,10 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     implicit val ec = as.dispatcher
 
     def decodeToMap(bs: ByteString) =
-      if (viewName == null) new CborOrJsonAnyValueDecoder().decode(bs)
+      if (viewName == null) CborOrJsonAnyValueDecoder.decode(bs)
       else cborOrJsonDecoder.decodeToMap(bs, viewName)(viewNameToMapZero)
     def decodeToSeqOfMaps(bs: ByteString) =
-      if (viewName == null) new CborOrJsonAnyValueDecoder().decode(bs)
+      if (viewName == null) CborOrJsonAnyValueDecoder.decode(bs)
       else cborOrJsonDecoder.decodeToSeqOfMaps(bs, viewName)(viewNameToMapZero)
     def decodeUsingDecoder = decoder(viewName)(ent)
       .runFold(ArrayBuffer[Any]()) { (res, data) => res += data }

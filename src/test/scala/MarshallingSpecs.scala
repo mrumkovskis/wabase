@@ -325,7 +325,7 @@ class MarshallingSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       Marshal(cr).to[HttpEntity]
         .flatMap(_.toStrict(1.second))
         .map(_.data)
-        .map (new CborOrJsonAnyValueDecoder().decode(_)),
+        .map (CborOrJsonAnyValueDecoder.decode(_)),
       1.second)
 
     def checkSelf(param: String, value: Any) =

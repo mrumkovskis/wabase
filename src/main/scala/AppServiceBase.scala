@@ -675,7 +675,7 @@ object AppServiceBase {
   )(params: Map[String, List[String]]): Map[String, Any] =
     params.get("filter")
       .flatMap(_.headOption)
-      .map(f => new CborOrJsonAnyValueDecoder().decodeToMap[Map[String, Any]](ByteString(f)))
+      .map(f => CborOrJsonAnyValueDecoder.decodeToMap[Map[String, Any]](ByteString(f)))
       .getOrElse(decodeParams(metadataConventions, namesForInts, escapeReflectedXss)(params))
 
   trait AppStateExtractor { this: AppServiceBase[_] with QueryTimeoutExtractor with Execution =>

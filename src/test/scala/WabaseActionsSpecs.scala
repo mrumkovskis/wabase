@@ -250,7 +250,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
             else Unmarshal(entity).to[Map[String, Any]]
           } else Future.successful {
             val in = entity.dataBytes.runWith(StreamConverters.asInputStream(1.second))
-            new CborOrJsonAnyValueDecoder().decodeFromInputStream(in)
+            CborOrJsonAnyValueDecoder.decodeFromInputStream(in)
           }
         }
         .map(r => if (removeIdsFlag) removeIds(r) else r)
@@ -263,7 +263,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     } else resp.entity.toStrict(1.second)
       .map(_.data)
       .map { d =>
-        Try(new CborOrJsonAnyValueDecoder().decode(d))
+        Try(CborOrJsonAnyValueDecoder.decode(d))
           .toOption
           .getOrElse(d.decodeString("UTF-8"))
       }
@@ -1362,7 +1362,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     } yield t1
   }
 
-  def decodeJs(js: String) = new CborOrJsonAnyValueDecoder().decode(ByteString(js))
+  def decodeJs(js: String) = CborOrJsonAnyValueDecoder.decode(ByteString(js))
   def jsonAssert(jsonStr: String, res: Any) =
     decodeJs(jsonStr) shouldBe res
   def createEntity(content: String, ct: ContentType) = HttpEntity(ct, ByteString(content))

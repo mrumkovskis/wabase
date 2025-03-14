@@ -80,7 +80,7 @@ class CborOrJsonDecoder(typeDefs: Seq[TypeDef], nameToViewDef: Map[String, ViewD
               implicit val decoder: Decoder[M] = toMapDecoder(field.type_.name, viewNameToMapZero)
               map.updated(key, if (field.isCollection) toSeq(r[Array[M]]) else r[M])
             } else if (field.type_.name == "json") {
-              implicit val decoder: Decoder[Any] = new CborOrJsonAnyValueDecoder().anyValueDecoder(() => anyJsonMapZero)
+              implicit val decoder: Decoder[Any] = CborOrJsonAnyValueDecoder.anyValueDecoder(() => anyJsonMapZero)
               map.updated(key,
                 (if (field.isCollection) toSeq(r[Array[Any]]) else r[Any]) match {
                   case s: String => spray.json.JsString(s).compactPrint
@@ -295,6 +295,8 @@ class CborOrJsonAnyValueDecoder() {
     toSeq(reader(data, decodeFrom).apply[Array[M]])
   }
 }
+
+object CborOrJsonAnyValueDecoder extends CborOrJsonAnyValueDecoder
 
 object CsvDecoderConfig {
   lazy val componentConfs = ComponentConf.getConfigs("data-parsers-csv")

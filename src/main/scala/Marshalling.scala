@@ -207,15 +207,15 @@ trait QuereaseMarshalling extends QuereaseResultMarshalling { this: AppProvider[
   }
   def toMapUnmarshaller: FromEntityUnmarshaller[Map[String, Any]] =
     Unmarshaller.byteStringUnmarshaller map { bytes =>
-      new CborOrJsonAnyValueDecoder().decodeToMap(bytes)
+      CborOrJsonAnyValueDecoder.decodeToMap(bytes)
     }
   def toSeqOfMapsUnmarshaller: FromEntityUnmarshaller[Seq[Map[String, Any]]] =
     Unmarshaller.byteStringUnmarshaller map { bytes =>
-      new CborOrJsonAnyValueDecoder().decodeToSeqOfMaps(bytes)
+      CborOrJsonAnyValueDecoder.decodeToSeqOfMaps(bytes)
     }
   def toSourceOfMapsUnmarshaller: FromEntityUnmarshaller[Source[Map[String, Any], NotUsed]] = {
     largeFrameJsonStreamUnmarshaller { bytes =>
-      new CborOrJsonAnyValueDecoder().decodeToMap(bytes)
+      CborOrJsonAnyValueDecoder.decodeToMap(bytes)
     }
   }
 }

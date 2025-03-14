@@ -17,7 +17,7 @@ class JsonDecoderSpecs extends FlatSpec with Matchers {
   import qio.MapJsonFormat
   val strictDecoder = new CborOrJsonDecoder(qe.typeDefs, qe.nameToViewDef)
   val lenientDecoder = new CborOrJsonLenientDecoder(qe.typeDefs, qe.nameToViewDef)
-  val anyValsDecoder = new CborOrJsonAnyValueDecoder()
+  val anyValsDecoder = CborOrJsonAnyValueDecoder
   def jsonRoundtrip(dto: Dto) =
     decodeToMap(
       ByteString(dto.toMap.toJson.prettyPrint),
