@@ -938,11 +938,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
   }
 
   it should "do json codec operation" in {
-    def enc(v: Any) = {
-      import ResultEncoder._
-      import JsonEncoder._
-      encodeToJsonString(v)
-    }
+    def enc(v: Any) = ResultEncoder.encodeAnyToJsonString(v)
     for {
       t1 <- doAction("get", "json_codec_1", Map("value" ->
         enc(Map("trees" -> "pine", "area" -> 23.5, "notes" -> null))))

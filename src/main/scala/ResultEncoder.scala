@@ -47,6 +47,16 @@ object ResultEncoder {
 
   def encodeToJsonString[T: Encoder](value: T): String = new String(encodeToJsonBytes(value), "UTF-8")
 
+  def encodeAnyToJsonBytes(value: Any): Array[Byte] = {
+    import JsonEncoder._
+    encodeToJsonBytes(value)
+  }
+
+  def encodeAnyToJsonString(value: Any): String = {
+    import JsonEncoder._
+    encodeToJsonString(value)
+  }
+
   object JsonEncoder {
     import scala.jdk.CollectionConverters._
     /**

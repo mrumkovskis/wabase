@@ -37,11 +37,7 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
   ) =
     service.handle(server.wabase, server.deferredControl)(HttpRequest(method = method, uri = url, entity = data))
 
-  protected def encodeJs(value: Any) = {
-    import ResultEncoder._
-    import JsonEncoder._
-    encodeToJsonString(value)
-  }
+  protected def encodeJs(value: Any) = ResultEncoder.encodeAnyToJsonString(value)
 
   protected def decodeJs(js: String) = CborOrJsonAnyValueDecoder.decode(ByteString(js))
 
