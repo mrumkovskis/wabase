@@ -20,7 +20,8 @@ import org.apache.pekko.pattern.ask
 
 import scala.concurrent.duration.FiniteDuration
 
-class WabaseHttpClient(clientCfg: Config) extends RestClient(clientCfg) with JsonConverterProvider with BasicJsonMarshalling with QuereaseProvider {
+class WabaseHttpClient(clientCfg: Config = HttpClientConfig.componentConfs.root)
+    extends RestClient(clientCfg) with JsonConverterProvider with BasicJsonMarshalling with QuereaseProvider {
 
   /** Override this method in subclass. Method usage instead of direct
   {{{val qe: AppQuerease}}} initialization ensures that this.qe and subclass qe

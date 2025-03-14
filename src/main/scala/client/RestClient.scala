@@ -32,7 +32,7 @@ object ClientException{
   def apply(message: String): ClientException = apply(message, null)
 }
 
-class RestClient(clientCfg: Config) extends HttpClient with Loggable {
+class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root) extends HttpClient with Loggable {
 
   import RestClient.{WsClosed, WsFailed}
   def actorSystemName   = clientCfg.getString("actor-system-name")
