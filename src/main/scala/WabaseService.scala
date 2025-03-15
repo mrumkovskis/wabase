@@ -248,8 +248,8 @@ object WabaseService {
       import ctx._
       if (viewName == null || !wabase.qe.nameToViewDef.contains(viewName))
         if (viewName != null)
-          error(s"View '${viewName}' for route ${route.path} not found. Response transformer must be defined!")
-        else error(s"If view name for route ${route.path} not specified, response transformer must be defined!")
+          error(s"Cannot handle route ${route.path}. View '$viewName' not found!")
+        else error(s"Cannot handle route: ${route.path}. View not found!")
       else {
         val params = AppServiceBase.filterParams(
           wabase.qe.metadataConventions, AppServiceBase.NamesForInts, AppServiceBase.escapeReflectedXss

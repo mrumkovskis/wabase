@@ -640,6 +640,8 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
           case s: String =>
             val namedStepRegex(keepResult, name, st) = s
             parseStringStep(Option(name), st, keepResult != null)
+          case n: java.lang.Number => parseStringStep(None, n.toString, false)
+          case null => parseStringStep(None, "null", keepResult = false)
           case jm: java.util.Map[String, Any]@unchecked if jm.size() == 1 =>
             val m = jm.asScala.toMap
             val nameWithKeepResultRegex = """(as\s+result\s+)?(.+)""".r

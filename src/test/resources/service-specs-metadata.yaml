@@ -25,14 +25,15 @@ path: /greater/than-3/(\w+)
 do: keyExtractor keyChecker
 recover: testErrorHandler
 
-path: /views/(\w+)(.*)
+# for view matching path first group must match [(create|count):]<view_name> (WabaseService.viewActionKey transformer)
+path: /views/([\w:]+)(.*)
 do: doAction
 
 
 ################# views ###############
 
 name: view1
-api: get, insert
+api: get, insert, update, delete, list, create, count
 explicit db: true
 table:
 key: id
@@ -43,3 +44,14 @@ get:
 - value = 'Value' || :id
 insert:
 - this
+update:
+- value = 'upd-' || :value
+- this
+delete:
+- "'deleted ' || :id"
+list:
+- null {'"' || :list_filter_param || '"'}     # escape syntax due to yaml parser - '"' || :list_filter_param || '"' does not work
+create:
+- null
+count:
+  - 1
