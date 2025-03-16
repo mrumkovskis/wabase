@@ -114,6 +114,20 @@ columns:
   - data3 bytes
 
 
+name: constants
+table:
+get:
+  - '"text"'
+list:
+  - null
+insert:
+  - 10
+update:
+  - 1.5
+delete:
+  - true
+
+
 name: person
 api: save, get
 table: person

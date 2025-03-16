@@ -6,7 +6,7 @@ import org.apache.pekko.stream.scaladsl.StreamConverters
 import org.mojoz.querease.{ValidationException, ValidationResult}
 import org.scalatest.flatspec.{AsyncFlatSpec, AsyncFlatSpecLike}
 import org.scalatest.matchers.should.Matchers
-import org.tresql.{Query, Resources, convLong}
+import org.tresql.{Query, Resources, convLong, convAny}
 import org.wabase.QuereaseActionsDtos.Person
 
 import java.io.InputStream
@@ -141,6 +141,38 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
           ((an, vn), a) shouldBe ((an, vn), Cbor.decode(enc_a).to[AppMetadata.Action].value)
       }
     )
+  }
+
+  behavior of "constants"
+
+  it should "return string constant" in {
+    querease.doAction("constants", "get", Map(), Map())
+      .mapTo[TresqlResult]
+      .flatMap(_.result.unique[Any] shouldBe "text")
+  }
+
+  it should "return integer constant" in {
+    querease.doAction("constants", "insert", Map(), Map())
+      .mapTo[TresqlResult]
+      .flatMap(_.result.unique[Any] shouldBe 10)
+  }
+
+  it should "return decimal constant" in {
+    querease.doAction("constants", "update", Map(), Map())
+      .mapTo[TresqlResult]
+      .flatMap(_.result.unique[Any] shouldBe 1.5)
+  }
+
+  it should "return boolean constant" in {
+    querease.doAction("constants", "delete", Map(), Map())
+      .mapTo[TresqlResult]
+      .flatMap(_.result.unique[Any] shouldBe true)
+  }
+
+  it should "return null constant" in {
+    querease.doAction("constants", "list", Map(), Map())
+      .mapTo[TresqlResult]
+      .flatMap(_.result.unique[Any] shouldBe (null :String))
   }
 
   behavior of "person save action"
