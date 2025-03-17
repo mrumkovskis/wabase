@@ -135,7 +135,7 @@ object WabaseService {
 
   type RequestHandler = WabaseRequestContext => Future[HttpResponse]
   type ErrorHandler   = PartialFunction[Throwable, Future[HttpResponse]]
-  type Wabase = WabaseApp[WabaseUser] with QuereaseProvider with I18n with DbAccess with Marshalling with AppProvider[WabaseUser]
+  type Wabase = WabaseApp[WabaseUser] with QuereaseProvider with I18n with DbAccess with Marshalling with AppProvider[WabaseUser] with Execution
 
   val CreateCountActionAndViewRegex = """(?U)(?:(count|create):)?(\w*)""".r
   val WabaseUserAttributeName = "wabase-user"

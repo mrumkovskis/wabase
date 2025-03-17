@@ -2,22 +2,18 @@ package org.wabase
 
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.Http
-import org.apache.pekko.http.scaladsl.model.HttpResponse
-import scala.collection.immutable.Seq
+import org.apache.pekko.http.scaladsl.model.{HttpRequest, HttpResponse}
 
+import scala.collection.immutable.Seq
 import scala.concurrent.ExecutionContext
 import scala.io.StdIn
 
-class WabaseServer {
+class WabaseServer(wabase: WabaseService.Wabase) {
   val port = config.getInt("port")
+  private val deferredControl = new WabaseDeferredControl(wabase)(wabase.system)
+  private val service         = new WabaseService
 
-  implicit val serverSystem: ActorSystem  = ActorSystem("wabase-server")
-  implicit val ec: ExecutionContext = serverSystem.dispatcher
-  val executionImpl = new ExecutionImpl()(serverSystem)
-
-  val wabase: WabaseService.Wabase = new WabaseServer.App(executionImpl)
-  val deferredControl = new WabaseDeferredControl(wabase)
-  val service         = new WabaseService
+  def handle(req: HttpRequest) = service.handle(wabase, deferredControl)(req)(wabase.system)
 }
 
 object WabaseServer {
@@ -46,10 +42,12 @@ object WabaseServer {
     }
 
   def main(args: Array[String]): Unit = {
-    val server = new WabaseServer
-    import server._
+    implicit val serverSystem: ActorSystem  = ActorSystem("wabase-server")
+    implicit val ec: ExecutionContext = serverSystem.dispatcher
+    val executionImpl = new ExecutionImpl()(serverSystem)
+    val server = new WabaseServer(new App(executionImpl))
     // TODO support TLS if configured
-    val bindingFuture = Http().newServerAt("0.0.0.0", port).bind(service.handle(wabase, deferredControl))
+    val bindingFuture = Http().newServerAt("0.0.0.0", server.port).bind(server.handle)
 
     println(s"Server now online. Please navigate to http://localhost:8080/hi\nPress RETURN to stop...")
     StdIn.readLine() // let it run until user presses return

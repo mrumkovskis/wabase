@@ -15,11 +15,10 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
   class WA(exec: Execution) extends WabaseServer.App(exec) {
     override def initQuerease: AppQuerease = new TestQuerease("/service-specs-metadata.yaml")
   }
-  protected val server = new WabaseServer {
-    override val wabase: Wabase = new WA(this.executionImpl)
-  }
-  import server._
-  protected val service = server.service
+  implicit val serverSystem: ActorSystem  = ActorSystem("wabase-server")
+  implicit val ec: ExecutionContext = serverSystem.dispatcher
+  val executionImpl = new ExecutionImpl()(serverSystem)
+  val server = new WabaseServer(new WA(executionImpl))
 
   DbDrivers.loadDrivers
 
@@ -34,8 +33,7 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
     url: String,
     data: RequestEntity = HttpEntity.Empty,
     method: HttpMethod = HttpMethods.GET,
-  ) =
-    service.handle(server.wabase, server.deferredControl)(HttpRequest(method = method, uri = url, entity = data))
+  ) = server.handle(HttpRequest(method = method, uri = url, entity = data))
 
   protected def encodeJs(value: Any) = ResultEncoder.encodeAnyToJsonString(value)
 
