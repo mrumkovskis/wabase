@@ -65,7 +65,7 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
       Map("id" -> 5, "value" -> "upd-Value5-ins"), decodeJs)
     entityEquals(callRoute("/views/view1/10", method = HttpMethods.DELETE), "deleted 10")
     entityEquals(callRoute("/views/view1?list_filter_param=val"), "val", decodeJs)
-    entityEquals(callRoute("/views/create:view1"), null, decodeJs)
+    entityEquals(callRoute("/views/create:view1?p1=111&p2=aaa"), Seq(111, "aaa"), decodeJs)
     entityEquals(callRoute("/views/count:view1"), 1, decodeJs)
   }
 

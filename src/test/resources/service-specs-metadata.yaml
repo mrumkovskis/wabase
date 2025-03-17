@@ -52,6 +52,6 @@ delete:
 list:
 - null {'"' || :list_filter_param || '"'}     # escape syntax due to yaml parser - '"' || :list_filter_param || '"' does not work
 create:
-- null
+- null {"[" || :p1 || ', "' || :p2 || '"]'}
 count:
   - 1
