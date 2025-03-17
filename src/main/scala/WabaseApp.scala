@@ -71,6 +71,7 @@ trait WabaseApp[User] {
     val state:    ApplicationState,
     val ec:       ExecutionContext,
     val as:       ActorSystem,
+    val rf:       ResourcesFactory,
     val httpReq:  HttpRequest,
   ) {
     lazy val env: Map[String, Any] = state ++ current_user_param(user)
@@ -111,9 +112,10 @@ trait WabaseApp[User] {
         httpReq
       }
     }.getOrElse(httpReq)
+    val rf = resourceFactory(viewName, actionName)
     doWabaseAction(
       AppActionContext(actionName, viewName, keyValues, params, values ++ params, resultFilter)(
-        user, state, ec, as, setMaxContentSize(setTimeout(httpReq))),
+        user, state, ec, as, rf, setMaxContentSize(setTimeout(httpReq))),
       doApiCheck)
   }
 
@@ -142,7 +144,6 @@ trait WabaseApp[User] {
 
   def simpleAction(context: AppActionContext): ActionHandlerResult = {
     import context._
-    val rf = resourceFactory(context)
     qe.QuereaseAction(viewName, actionName, values, env, context.resultFilter)(
         rf, httpReq, qio, fileStreamers, httpClients, injectionParametersProvider)
       .map(WabaseResult(context, _))
@@ -186,7 +187,6 @@ trait WabaseApp[User] {
       case x => throwUnexpectedResultClass(x)
 
     }
-    val rf = resourceFactory(context)
     qe.QuereaseAction(viewName, Action.Get, values, env,
       context.resultFilter)(rf, httpReq, qio, fileStreamers, httpClients, injectionParametersProvider).map(oldVal)
   }
@@ -213,7 +213,6 @@ trait WabaseApp[User] {
         val saveableContext = richContext.copy(values = saveable)
         validateFields(viewName, saveable)
         this.customValidations(saveableContext)(state.locale)
-        val rf = resourceFactory(context)
         qe.QuereaseAction(viewName, context.actionName, saveable, env, context.resultFilter)(rf,
             httpReq, qio, fileStreamers, httpClients, injectionParametersProvider)
           .map(WabaseResult(saveableContext, _))
@@ -225,7 +224,6 @@ trait WabaseApp[User] {
     import context._
     maybeGetOldValue(context).flatMap { oldValue =>
       val richContext = context.copy(oldValue = oldValue)
-      val rf = resourceFactory(richContext)
       qe.QuereaseAction(viewName, actionName, values, env, context.resultFilter)(
           rf, httpReq, qio, fileStreamers, httpClients, injectionParametersProvider)
         .map(WabaseResult(richContext, _))
@@ -244,10 +242,6 @@ trait WabaseApp[User] {
       case Action.Delete  => delete
       case x              => simpleAction
     }
-  }
-
-  def resourceFactory(context: AppActionContext): ResourcesFactory = {
-    resourceFactory(context.viewName, context.actionName)
   }
 
   def resourceFactory(viewName: String, actionName: String): ResourcesFactory = {

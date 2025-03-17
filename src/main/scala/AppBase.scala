@@ -589,6 +589,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
         implicit val fs: AppFileStreamer[User] = null
         implicit val httpReq: org.apache.pekko.http.scaladsl.model.HttpRequest = null
         implicit val httpClients: WabaseHttpClients = null
+        implicit val rf: ResourcesFactory = null
         dbUse {
           validateFields(instance)
           val ctx = AppActionContext(

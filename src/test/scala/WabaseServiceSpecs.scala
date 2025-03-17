@@ -5,7 +5,6 @@ import org.apache.pekko.http.scaladsl.model.{HttpEntity, HttpMessage, HttpMethod
 import org.apache.pekko.util.ByteString
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
-import org.wabase.WabaseService.Wabase
 
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{Await, ExecutionContext, Future}
