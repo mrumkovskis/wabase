@@ -260,13 +260,13 @@ object WabaseService {
             toMapEntityDecoder(ctx)
           else  Future.successful(Map[String, Any]())
         valuesF.flatMap { values =>
-          ctx.wabase.app.doWabaseAction(
+          ctx.wabase.app.doAction(
             actionName = action,
             viewName = viewName,
             keyValues = key,
             params = params,
             values = values,
-          )(user, applicationState, ec, as, req)
+          )(ctx)
         }.flatMap { result =>
           Marshal(result).toResponseFor(req)(wabase.toResponseWabaseResultMarshaller, ec)
         }

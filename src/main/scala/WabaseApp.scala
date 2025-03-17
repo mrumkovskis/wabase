@@ -97,27 +97,48 @@ trait WabaseApp[User] {
     state:    ApplicationState,
     ec:       ExecutionContext,
     as:       ActorSystem,
+    qt:       QueryTimeout,
     httpReq:  HttpRequest,
   ): Future[WabaseResult] = {
     val vdo = qe.viewDefOption(viewName)
-    def setMaxContentSize(httpReq: HttpRequest) = vdo.map { vd =>
-      if (vd.maxContentSize == null || httpReq == null) httpReq
-      else httpReq.withEntity(httpReq.entity.withSizeLimit(vd.maxContentSize))
-    }.getOrElse(httpReq)
-    def setTimeout(httpReq: HttpRequest) = vdo.map { vd =>
-      if(vd.timeout == null || httpReq == null) httpReq
-      else {
-        httpReq.header[`Timeout-Access`].map(_.timeoutAccess.updateTimeout(vd.timeout))
-          .getOrElse(logger.warn(s"request timeout is defined for view $viewName, however no request-timeout http header is set!"))
-        httpReq
-      }
-    }.getOrElse(httpReq)
-    val rf = resourceFactory(viewName, actionName)
+    val rf = resourceFactory(viewName, actionName, qt)
     doWabaseAction(
       AppActionContext(actionName, viewName, keyValues, params, values ++ params, resultFilter)(
-        user, state, ec, as, rf, setMaxContentSize(setTimeout(httpReq))),
+        user, state, ec, as, rf, setMaxContentSize(setTimeout(httpReq, vdo), vdo)),
       doApiCheck)
   }
+
+  def doAction(
+    actionName: String,
+    viewName:   String,
+    keyValues:  Seq[Any],
+    params:     Map[String, Any],
+    values:     Map[String, Any] = Map(),
+    resultFilter: ResultRenderer.ResultFilter = null,
+    doApiCheck: Boolean = true,
+  )(implicit wrctx: WabaseRequestContext): Future[WabaseResult] = {
+    val vdo = qe.viewDefOption(viewName)
+    val rf = resourceFactory(viewName, actionName, wrctx.queryTimeout)
+    doWabaseAction(
+      AppActionContext(actionName, viewName, keyValues, params, values ++ params, resultFilter)(
+        wrctx.user.asInstanceOf[User], wrctx.applicationState, wrctx.as.dispatcher, wrctx.as, rf,
+        setMaxContentSize(setTimeout(wrctx.req, vdo), vdo)),
+      doApiCheck)
+  }
+
+  private def setMaxContentSize(httpReq: HttpRequest, vdo: Option[ViewDef]) = vdo.map { vd =>
+    if (vd.maxContentSize == null || httpReq == null) httpReq
+    else httpReq.withEntity(httpReq.entity.withSizeLimit(vd.maxContentSize))
+  }.getOrElse(httpReq)
+
+  private def setTimeout(httpReq: HttpRequest, vdo: Option[ViewDef]) = vdo.map { vd =>
+    if(vd.timeout == null || httpReq == null) httpReq
+    else {
+      httpReq.header[`Timeout-Access`].map(_.timeoutAccess.updateTimeout(vd.timeout))
+        .getOrElse(logger.warn(s"request timeout is defined for view ${vd.name}, however no request-timeout http header is set!"))
+      httpReq
+    }
+  }.getOrElse(httpReq)
 
   protected def doWabaseAction(
     context:    AppActionContext,
@@ -244,7 +265,7 @@ trait WabaseApp[User] {
     }
   }
 
-  def resourceFactory(viewName: String, actionName: String): ResourcesFactory = {
+  def resourceFactory(viewName: String, actionName: String, qt: QueryTimeout): ResourcesFactory = {
     val vdo = viewDefOption(viewName)
     val poolName = vdo.flatMap(v => Option(v.db)).map(PoolName) getOrElse DefaultCp
     val resourcesTemplate: ResourcesTemplate = poolName match {
@@ -268,10 +289,13 @@ trait WabaseApp[User] {
       }
     val rt = Option(withDbAccessLogger(resourcesTemplate, s"$viewName.$actionName")).map { templ =>
       vdo.map { v =>
-        val timeout: jLong = if (v.sqlTimeout != null) v.sqlTimeout.toSeconds else if(v.timeout != null) {
-          val ts = v.timeout.toSeconds
-          if (ts < 2) ts else ts - 1  // reduce timeout to be a little less than http timeout
-        } else null
+        val timeout: jLong =
+          if (qt != null) qt.timeoutSeconds.toLong
+          else if (v.sqlTimeout != null) v.sqlTimeout.toSeconds
+          else if(v.timeout != null) {
+            val ts = v.timeout.toSeconds
+            if (ts < 2) ts else ts - 1  // reduce timeout to be a little less than http timeout
+          } else null
         if (timeout == null) templ else templ.copy(queryTimeout = timeout.toInt)
       }.getOrElse(templ)
     }.get
