@@ -98,11 +98,6 @@ object WabaseDeferredControl extends WabaseDeferredControlFactory {
     } else innerHandler(ctx)
   }
 
-  /** Get deferred request result. WabaseRequestContext key field must be set to deferred result hash */
-  def deferredResult: RequestHandler = ctx => {
-    Future.successful(ctx.deferred.deferredControl.deferredResult(ctx.key.mkString, ctx.user.name))
-  }
-
   def doDeferred(handler: RequestHandler): RequestHandler = ctx => {
     import EventBus._
     val timeout = extractTimeout(ctx, ctx.req)
@@ -115,6 +110,11 @@ object WabaseDeferredControl extends WabaseDeferredControlFactory {
       entity = HttpEntity.Strict(ContentTypes.`application/json`,
         ByteString(Json.encode(Map("deferred" -> hash)).toUtf8String))
     ))
+  }
+
+  /** Get deferred request result. WabaseRequestContext key field must be set to deferred result hash */
+  def deferredResult(ctx: WabaseRequestContext): Future[HttpResponse] = {
+    Future.successful(ctx.deferred.deferredControl.deferredResult(ctx.key.mkString, ctx.user.name))
   }
 }
 
