@@ -25,6 +25,9 @@
 
     <!-- <logger name="org.wabase.tresql" level="debug"/> -->
 
+    <!-- specific route logger, format - <http method>.<uri path with slashes replaced with dots> -->
+    <!-- logger name="post.data.purchase_save" level="debug"/ -->
+
     <!-- specific view logger -->
     <!-- logger name="purchase_get.get" level="debug"/ -->
 

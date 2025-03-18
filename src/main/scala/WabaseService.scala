@@ -4,11 +4,13 @@ import org.apache.pekko.http.scaladsl.model.HttpMethods._
 import org.apache.pekko.http.scaladsl.model.Uri.Path
 import org.apache.pekko.http.scaladsl.model.Uri.Path.{Empty, Segment, SlashOrEmpty}
 import AppMetadata._
+import com.typesafe.scalalogging.Logger
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.marshalling.{Marshal, ToResponseMarshallable}
 import org.apache.pekko.http.scaladsl.model.headers.{Cookie, HttpCookie, `Set-Cookie`}
 import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes, DateTime, HttpHeader, HttpRequest, HttpResponse, StatusCodes, Uri}
 import org.apache.pekko.http.scaladsl.unmarshalling.PredefinedFromEntityUnmarshallers
+import org.slf4j.LoggerFactory
 import org.wabase.AppMetadata.{Action, RouteDef}
 import org.wabase.WabaseService.Wabase
 
@@ -36,6 +38,7 @@ case class WabaseRequestContext(
   user: WabaseUser = null,
   queryTimeout: QueryTimeout = null,
   as: ActorSystem = null,
+  logger: Logger = null,
 )
 
 case class Deferred(
@@ -53,7 +56,9 @@ class WabaseService extends Loggable {
     deferredControl: WabaseDeferredControl,
   )(req: HttpRequest)(
     implicit as: ActorSystem): Future[HttpResponse] = {
-    val ctx = WabaseRequestContext(wabase, req, Deferred(deferredControl = deferredControl), as = as)
+    val loggerName = req.method.value.toLowerCase + req.uri.toString.replace('/', '.')
+    val logger = Logger(LoggerFactory.getLogger(loggerName))
+    val ctx = WabaseRequestContext(wabase, req, Deferred(deferredControl = deferredControl), as = as, logger = logger)
     findRoute(ctx).map(doRoute).getOrElse(Future.successful(HttpResponse(status = StatusCodes.NotFound)))
   }
 
@@ -68,6 +73,7 @@ class WabaseService extends Loggable {
 
     def invokeHandlerBuilderChain(inv: Action.Invocation, innerHandler: RequestHandler): RequestHandler = {
       def buildHandler(cn: String, fn: String, ih: RequestHandler): RequestHandler = wrc => {
+        ctx.logger.debug(s"Invoking handler $cn.$fn for request: ${wrc.req}")
         def missingHandlerError = sys.error(s"Handler argument missing for invocation: '$cn.$fn'")
         def invokeHandlerBuilder = {
           def processResult(r: Any): Future[Any] = r match {
