@@ -1,33 +1,36 @@
 #################### routes ################
 
-path: /simple
-do: simpleHandler
+path:     /simple
+do:       simpleHandler
 
-path: /uri
-do: urlTransformer uriValue
+path:     /uri
+do:       urlTransformer uriValue
 
-path: /response-transformer
-do: urlTransformer responseTransformer uriValue
+path:     /non-ascii-uri/glāžšķūņu rūķīši
+do:       urlTransformer uriValue
 
-path: /echo
-do: echo
+path:     /response-transformer
+do:       urlTransformer responseTransformer uriValue
 
-path: /handler-transformer
-do: transformer echo
+path:     /echo
+do:       echo
 
-path: /user
-do: testAuth respondWithUserName
+path:     /handler-transformer
+do:       transformer echo
 
-path: /long-handler-chain
-do: testAuth urlTransformer responseTransformer addUserData uriValue
+path:     /user
+do:       testAuth respondWithUserName
 
-path: /greater/than-3/(\w+)
-do: keyExtractor keyChecker
-recover: testErrorHandler
+path:     /long-handler-chain
+do:       testAuth urlTransformer responseTransformer addUserData uriValue
+
+path:     /greater/than-3/(\w+)
+do:       keyExtractor keyChecker
+recover:  testErrorHandler
 
 # for view matching path first group must match [(create|count):]<view_name> (WabaseService.viewActionKey transformer)
-path: /views/([\w:]+)(.*)
-do: doAction
+path:     /views/([\w:]+)(.*)
+do:       doAction
 
 
 ################# views ###############

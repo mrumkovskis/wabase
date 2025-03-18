@@ -21,12 +21,8 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
 
   DbDrivers.loadDrivers
 
-  protected def entityEquals(
-    result: Future[HttpResponse],
-    pattern: Any,
-    decoder: String => Any = identity
-  ) =
-    Await.result(result.map(WabaseTestHandlers.entity).map(decoder), 5.seconds) shouldBe pattern
+  protected def entity(result: Future[HttpResponse], decoder: String => Any = identity): Any =
+    Await.result(result.map(WabaseTestHandlers.entity).map(decoder), 5.seconds)
 
   protected def callRoute(
     url: String,
@@ -39,37 +35,40 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
   protected def decodeJs(js: String) = CborOrJsonAnyValueDecoder.decode(ByteString(js))
 
   it should "execute wabase service routes" in {
-    entityEquals(callRoute("/simple"), "Simple handler response")
-    entityEquals(callRoute("/uri"), "/uri/added-segment")
-    entityEquals(callRoute("/response-transformer"), "/response-transformer/added-segment transformed response")
-    entityEquals(callRoute("/echo", "hi"), "hi")
-    entityEquals(callRoute("/handler-transformer", "hi"), "Request transformed hi response transformed")
-    entityEquals(callRoute("/user"), "Test user")
-    entityEquals(callRoute("/long-handler-chain"), "Data from Test user: /long-handler-chain/added-segment transformed response")
+    entity(callRoute("/simple")) shouldBe "Simple handler response"
+    entity(callRoute("/uri")) shouldBe "/uri/added-segment"
+    WabaseService.toReadableString(
+      Uri.Path(entity(callRoute(Uri(path = Uri.Path("/non-ascii-uri/glāžšķūņu rūķīši")).toString)).toString)
+    ) shouldBe "/non-ascii-uri/glāžšķūņu rūķīši/added-segment"
+    entity(callRoute("/response-transformer")) shouldBe "/response-transformer/added-segment transformed response"
+    entity(callRoute("/echo", "hi")) shouldBe "hi"
+    entity(callRoute("/handler-transformer", "hi")) shouldBe "Request transformed hi response transformed"
+    entity(callRoute("/user")) shouldBe "Test user"
+    entity(callRoute("/long-handler-chain")) shouldBe "Data from Test user: /long-handler-chain/added-segment transformed response"
   }
 
   it should "process errors for wabase service routes" in {
-    entityEquals(callRoute("/greater/than-3/5"), "Key: 5")
-    entityEquals(callRoute("/greater/than-3/2"), "Key must be greater then 3, got: 2")
-    entityEquals(callRoute("/greater/than-3/fail"), """Key must be number instead got: For input string: "fail"""")
+    entity(callRoute("/greater/than-3/5")) shouldBe "Key: 5"
+    entity(callRoute("/greater/than-3/2")) shouldBe "Key must be greater then 3, got: 2"
+    entity(callRoute("/greater/than-3/fail")) shouldBe """Key must be number instead got: For input string: "fail""""
   }
 
   it should "execute wabase service routes for views" in {
-    entityEquals(callRoute("/views/view1/10"), Map("id" -> 10, "value" -> "Value10"), decodeJs)
-    entityEquals(callRoute("/views/view1/5", encodeJs(Map("value" -> "Value5-ins")), HttpMethods.POST),
-      Map("id" -> 5, "value" -> "Value5-ins"), decodeJs)
-    entityEquals(callRoute("/views/view1/5", encodeJs(Map("id" -> 5, "value" -> "Value5-ins")), HttpMethods.PUT),
-      Map("id" -> 5, "value" -> "upd-Value5-ins"), decodeJs)
-    entityEquals(callRoute("/views/view1/10", method = HttpMethods.DELETE), "deleted 10")
-    entityEquals(callRoute("/views/view1?list_filter_param=val"), "val", decodeJs)
-    entityEquals(callRoute("/views/create:view1?p1=111&p2=aaa"), Seq(111, "aaa"), decodeJs)
-    entityEquals(callRoute("/views/count:view1"), 1, decodeJs)
+    entity(callRoute("/views/view1/10"), decodeJs) shouldBe Map("id" -> 10, "value" -> "Value10")
+    entity(callRoute("/views/view1/5", encodeJs(Map("value" -> "Value5-ins")), HttpMethods.POST),
+      decodeJs) shouldBe Map("id" -> 5, "value" -> "Value5-ins")
+    entity(callRoute("/views/view1/5", encodeJs(Map("id" -> 5, "value" -> "Value5-ins")), HttpMethods.PUT),
+      decodeJs) shouldBe Map("id" -> 5, "value" -> "upd-Value5-ins")
+    entity(callRoute("/views/view1/10", method = HttpMethods.DELETE)) shouldBe "deleted 10"
+    entity(callRoute("/views/view1?list_filter_param=val"), decodeJs) shouldBe "val"
+    entity(callRoute("/views/create:view1?p1=111&p2=aaa"), decodeJs) shouldBe Seq(111, "aaa")
+    entity(callRoute("/views/count:view1"), decodeJs) shouldBe 1
   }
 
   val count = 1024
   it should s"execute $count wabase service routes" in {
     1 to count foreach { i =>
-      entityEquals(callRoute("/long-handler-chain"), "Data from Test user: /long-handler-chain/added-segment transformed response")
+      entity(callRoute("/long-handler-chain")) shouldBe "Data from Test user: /long-handler-chain/added-segment transformed response"
     }
   }
 }

@@ -15,6 +15,7 @@ import org.wabase.AppMetadata.{Action, RouteDef}
 import org.wabase.WabaseService.Wabase
 
 import java.util.Locale
+import scala.annotation.tailrec
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.control.NonFatal
 
@@ -63,7 +64,7 @@ class WabaseService extends Loggable {
   }
 
   protected def findRoute(ctx: WabaseRequestContext): Option[WabaseRequestContext] = {
-    val pathString = ctx.req.uri.path.toString
+    val pathString = WabaseService.toReadableString(ctx.req.uri.path)
     ctx.wabase.qe.routeDefs.find(_.path.pattern.matcher(pathString).matches)
       .map(r => ctx.copy(route = r))
   }
@@ -315,6 +316,14 @@ object WabaseService {
         }
       case AppMetadata.NoneDecoder => Future.successful(Map())
     }
+  }
+
+  def toReadableString(path: Path): String = {
+    @tailrec def trs(p: Path, sb: StringBuilder): String = p match {
+      case Path.Empty => sb.toString
+      case _: Path => trs(p.tail, sb.append(p.head))
+    }
+    trs(path, new StringBuilder())
   }
 
   def error(msg: String) = throw new WabaseRouteException(msg)
