@@ -3,6 +3,9 @@
 on:       /simple
 do:       simpleHandler
 
+on:       /no-param-handler
+do:       noParamHandler
+
 on:       /uri
 do:       urlTransformer uriValue
 

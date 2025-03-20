@@ -37,6 +37,7 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
 
   it should "do wabase service routes" in {
     callRoute("/simple") shouldBe "Simple handler response"
+    callRoute("/no-param-handler") shouldBe "No param handler"
     callRoute("/uri") shouldBe "/uri/added-segment"
     WabaseService.toReadableString(
       Uri.Path(callRoute(Uri(path = Uri.Path("/non-ascii-uri/glāžšķūņu rūķīši")).toString).toString)
@@ -86,6 +87,8 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
 object WabaseTestHandlers {
   def simpleHandler(ctx: WabaseRequestContext) =
     Future.successful { HttpResponse(entity = "Simple handler response") }
+
+  def noParamHandler = "No param handler"
 
   def urlTransformer(uri: Uri) = uri.withPath(uri.path ?/ "added-segment")
 
