@@ -56,5 +56,5 @@ object WabaseServer {
       .onComplete(_ => serverSystem.terminate()) // and shutdown when done
   }
 
-  def hello(ctx: WabaseRequestContext): HttpResponse = HttpResponse(entity = "Hello from wabase!")
+  def hello(ctx: WabaseRequestContext): String = "Hello from wabase!"
 }

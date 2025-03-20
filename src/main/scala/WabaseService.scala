@@ -57,7 +57,7 @@ class WabaseService extends Loggable {
     deferredControl: WabaseDeferredControl,
   )(req: HttpRequest)(
     implicit as: ActorSystem): Future[HttpResponse] = {
-    val loggerName = req.method.value.toLowerCase + req.uri.toString.replace('/', '.')
+    val loggerName = req.method.value.toLowerCase + WabaseService.toReadableString(req.uri.path).replace('/', '.')
     val logger = Logger(LoggerFactory.getLogger(loggerName))
     val ctx = WabaseRequestContext(wabase, req, Deferred(deferredControl = deferredControl), as = as, logger = logger)
     findRoute(ctx).map(doRoute).getOrElse(Future.successful(HttpResponse(status = StatusCodes.NotFound)))
