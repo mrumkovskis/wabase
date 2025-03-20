@@ -70,7 +70,8 @@ class WabaseService extends Loggable {
         rd.path.pattern.matcher(pathString).matches && (rd.method == null || rd.method == ctx.req.method)
       }
       .map { r =>
-        ctx.logger.debug(s"Route $r matched for request ${ctx.req.method} ${ctx.req.uri}")
+        ctx.logger.debug(s"Route '${Option(r.method).map(_.value + " ").mkString}${r.path}' matched for request '${
+          ctx.req.method.value} ${ctx.req.uri}'")
         ctx.copy(route = r)
       }
   }
