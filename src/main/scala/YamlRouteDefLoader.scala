@@ -1,6 +1,6 @@
 package org.wabase
 
-import org.apache.pekko.http.scaladsl.model.HttpMethods
+import org.apache.pekko.http.scaladsl.model.{HttpMethod, HttpMethods}
 import org.mojoz.metadata.in.YamlMd
 import org.wabase.AppMetadata.{Action, RouteDef}
 
@@ -25,7 +25,7 @@ class YamlRouteDefLoader(
     HttpMethods.TRACE.value     -> HttpMethods.TRACE,
   )
 
-  private val PathRegex = new Regex(s"((${httpMethods.keys.mkString("|")})\\s+)?(.+)")
+  private val PathRegex = new Regex(s"((?:(?:${httpMethods.keys.mkString("|")})\\s+)*)?(.+)")
 
   lazy val routeDefs: Seq[RouteDef] = {
     val ds = yamlMd.flatMap(_.parsed).filter(_ contains "on").map(s => s("on").toString -> s)
@@ -45,13 +45,13 @@ class YamlRouteDefLoader(
           val (cn, fn) = OpParser.classNameFunctionName(config.getString("app.wabase-error-handler"))
           AppMetadata.Action.Invocation(cn, fn)
         }
-      val PathRegex(_, m, p) = route
-      val method = httpMethods.getOrElse(m, null)
+      val PathRegex(m, p) = route
+      val method = if (m.trim.isEmpty) Set[HttpMethod]() else m.split("\\s+").map(httpMethods(_)).toSet
       val path: Regex = new Regex(p)
       val handler = Option(parseProperty("do")).getOrElse(sys.error(s"Request handler missing"))
       val error = errorHandler(parseProperty("recover"))
       RouteDef(
-        method = method,
+        methods = method,
         path = path,
         requestHandler = handler,
         errorHandler = error,

@@ -1518,7 +1518,7 @@ object AppMetadata extends Loggable {
   )
 
   case class RouteDef(
-    method: HttpMethod,
+    methods: Set[HttpMethod],
     path: Regex,
     requestHandler: Action.Invocation,
     errorHandler: Action.Invocation,

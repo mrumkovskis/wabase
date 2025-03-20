@@ -12,7 +12,7 @@ do:       urlTransformer uriValue
 on:       GET /method-dependent-path      # http method GET + path match
 do:       methodAndPathMatch
 
-on:       POST /method-dependent-path     # http method POST + path match
+on:       POST PUT /method-dependent-path  # http method POST PUT + path match
 do:       methodAndPathMatch
 
 on:       /method-dependent-path

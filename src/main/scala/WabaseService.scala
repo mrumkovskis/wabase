@@ -67,10 +67,10 @@ class WabaseService extends Loggable {
     val pathString = WabaseService.toReadableString(ctx.req.uri.path)
     ctx.wabase.qe.routeDefs
       .find { rd =>
-        rd.path.pattern.matcher(pathString).matches && (rd.method == null || rd.method == ctx.req.method)
+        rd.path.pattern.matcher(pathString).matches && (rd.methods.isEmpty || rd.methods(ctx.req.method))
       }
       .map { r =>
-        ctx.logger.debug(s"Route '${Option(r.method).map(_.value + " ").mkString}${r.path}' matched for request '${
+        ctx.logger.debug(s"Route '${r.methods.map(_.value + " ").mkString}${r.path}' matched for request '${
           ctx.req.method.value} ${ctx.req.uri}'")
         ctx.copy(route = r)
       }

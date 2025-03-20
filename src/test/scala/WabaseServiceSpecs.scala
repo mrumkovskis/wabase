@@ -52,7 +52,7 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
   it should "do http method dependant routes" in {
     callRoute("/method-dependent-path", method = HttpMethods.GET) shouldBe "Http method with path match: GET /method-dependent-path"
     callRoute("/method-dependent-path", method = HttpMethods.POST) shouldBe "Http method with path match: POST /method-dependent-path"
-    callRoute("/method-dependent-path", method = HttpMethods.PUT) shouldBe "PUT /method-dependent-path"
+    callRoute("/method-dependent-path", method = HttpMethods.PUT) shouldBe "Http method with path match: PUT /method-dependent-path"
     callRoute("/method-dependent-path", method = HttpMethods.DELETE) shouldBe "DELETE /method-dependent-path"
     callRoute("/method-dependent-path", method = HttpMethods.HEAD) shouldBe "HEAD /method-dependent-path"
     callRoute("/method-dependent-path", method = HttpMethods.OPTIONS) shouldBe "OPTIONS /method-dependent-path"
