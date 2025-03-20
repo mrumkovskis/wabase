@@ -65,8 +65,14 @@ class WabaseService extends Loggable {
 
   protected def findRoute(ctx: WabaseRequestContext): Option[WabaseRequestContext] = {
     val pathString = WabaseService.toReadableString(ctx.req.uri.path)
-    ctx.wabase.qe.routeDefs.find(_.path.pattern.matcher(pathString).matches)
-      .map(r => ctx.copy(route = r))
+    ctx.wabase.qe.routeDefs
+      .find { rd =>
+        rd.path.pattern.matcher(pathString).matches && (rd.method == null || rd.method == ctx.req.method)
+      }
+      .map { r =>
+        ctx.logger.debug(s"Route $r matched for request ${ctx.req.method} ${ctx.req.uri}")
+        ctx.copy(route = r)
+      }
   }
 
   def doRoute(ctx: WabaseRequestContext)(implicit as: ActorSystem): Future[HttpResponse] = {
@@ -84,6 +90,7 @@ class WabaseService extends Loggable {
             case st: ApplicationState => processResult(wrc.copy(applicationState = st))
             case u: WabaseUser => processResult(wrc.copy(user = u))
             case resp: HttpResponse => Future.successful(resp)
+            case s: String => Future.successful(HttpResponse(entity = s))
             case f: Future[_] => f.flatMap(processResult)
             case rh: RequestHandler@unchecked => Future.successful(rh)
             case x => error(s"Request transformer must return either WabaseRequestContext or HttpRequest or Future of them." +

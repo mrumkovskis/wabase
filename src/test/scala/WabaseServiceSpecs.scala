@@ -21,54 +21,64 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
 
   DbDrivers.loadDrivers
 
-  protected def entity(result: Future[HttpResponse], decoder: String => Any = identity): Any =
+  private def entity(result: Future[HttpResponse], decoder: String => Any = identity): Any =
     Await.result(result.map(WabaseTestHandlers.entity).map(decoder), 5.seconds)
 
   protected def callRoute(
     url: String,
     data: RequestEntity = HttpEntity.Empty,
     method: HttpMethod = HttpMethods.GET,
-  ) = server.handle(HttpRequest(method = method, uri = url, entity = data))
+    decoder: String => Any = identity,
+  ) = entity(server.handle(HttpRequest(method = method, uri = url, entity = data)), decoder)
 
   protected def encodeJs(value: Any) = ResultEncoder.encodeAnyToJsonString(value)
 
   protected def decodeJs(js: String) = CborOrJsonAnyValueDecoder.decode(ByteString(js))
 
-  it should "execute wabase service routes" in {
-    entity(callRoute("/simple")) shouldBe "Simple handler response"
-    entity(callRoute("/uri")) shouldBe "/uri/added-segment"
+  it should "do wabase service routes" in {
+    callRoute("/simple") shouldBe "Simple handler response"
+    callRoute("/uri") shouldBe "/uri/added-segment"
     WabaseService.toReadableString(
-      Uri.Path(entity(callRoute(Uri(path = Uri.Path("/non-ascii-uri/glāžšķūņu rūķīši")).toString)).toString)
+      Uri.Path(callRoute(Uri(path = Uri.Path("/non-ascii-uri/glāžšķūņu rūķīši")).toString).toString)
     ) shouldBe "/non-ascii-uri/glāžšķūņu rūķīši/added-segment"
-    entity(callRoute("/response-transformer")) shouldBe "/response-transformer/added-segment transformed response"
-    entity(callRoute("/echo", "hi")) shouldBe "hi"
-    entity(callRoute("/handler-transformer", "hi")) shouldBe "Request transformed hi response transformed"
-    entity(callRoute("/user")) shouldBe "Test user"
-    entity(callRoute("/long-handler-chain")) shouldBe "Data from Test user: /long-handler-chain/added-segment transformed response"
+    callRoute("/response-transformer") shouldBe "/response-transformer/added-segment transformed response"
+    callRoute("/echo", "hi") shouldBe "hi"
+    callRoute("/handler-transformer", "hi") shouldBe "Request transformed hi response transformed"
+    callRoute("/user") shouldBe "Test user"
+    callRoute("/long-handler-chain") shouldBe "Data from Test user: /long-handler-chain/added-segment transformed response"
+  }
+
+  it should "do http method dependant routes" in {
+    callRoute("/method-dependent-path", method = HttpMethods.GET) shouldBe "Http method with path match: GET /method-dependent-path"
+    callRoute("/method-dependent-path", method = HttpMethods.POST) shouldBe "Http method with path match: POST /method-dependent-path"
+    callRoute("/method-dependent-path", method = HttpMethods.PUT) shouldBe "PUT /method-dependent-path"
+    callRoute("/method-dependent-path", method = HttpMethods.DELETE) shouldBe "DELETE /method-dependent-path"
+    callRoute("/method-dependent-path", method = HttpMethods.HEAD) shouldBe "HEAD /method-dependent-path"
+    callRoute("/method-dependent-path", method = HttpMethods.OPTIONS) shouldBe "OPTIONS /method-dependent-path"
   }
 
   it should "process errors for wabase service routes" in {
-    entity(callRoute("/greater/than-3/5")) shouldBe "Key: 5"
-    entity(callRoute("/greater/than-3/2")) shouldBe "Key must be greater then 3, got: 2"
-    entity(callRoute("/greater/than-3/fail")) shouldBe """Key must be number instead got: For input string: "fail""""
+    callRoute("/greater/than-3/5") shouldBe "Key: 5"
+    callRoute("/greater/than-3/2") shouldBe "Key must be greater then 3, got: 2"
+    callRoute("/greater/than-3/fail") shouldBe """Key must be number instead got: For input string: "fail""""
   }
 
-  it should "execute wabase service routes for views" in {
-    entity(callRoute("/views/view1/10"), decodeJs) shouldBe Map("id" -> 10, "value" -> "Value10")
-    entity(callRoute("/views/view1/5", encodeJs(Map("value" -> "Value5-ins")), HttpMethods.POST),
-      decodeJs) shouldBe Map("id" -> 5, "value" -> "Value5-ins")
-    entity(callRoute("/views/view1/5", encodeJs(Map("id" -> 5, "value" -> "Value5-ins")), HttpMethods.PUT),
+  it should "do wabase service routes for views" in {
+    callRoute("/views/view1/10", decoder = decodeJs) shouldBe Map("id" -> 10, "value" -> "Value10")
+    callRoute("/views/view1/5", encodeJs(Map("value" -> "Value5-ins")), HttpMethods.POST, decodeJs) shouldBe
+      Map("id" -> 5, "value" -> "Value5-ins")
+    callRoute("/views/view1/5", encodeJs(Map("id" -> 5, "value" -> "Value5-ins")), HttpMethods.PUT,
       decodeJs) shouldBe Map("id" -> 5, "value" -> "upd-Value5-ins")
-    entity(callRoute("/views/view1/10", method = HttpMethods.DELETE)) shouldBe "deleted 10"
-    entity(callRoute("/views/view1?list_filter_param=val"), decodeJs) shouldBe "val"
-    entity(callRoute("/views/create:view1?p1=111&p2=aaa"), decodeJs) shouldBe Seq(111, "aaa")
-    entity(callRoute("/views/count:view1"), decodeJs) shouldBe 1
+    callRoute("/views/view1/10", method = HttpMethods.DELETE) shouldBe "deleted 10"
+    callRoute("/views/view1?list_filter_param=val", decoder = decodeJs) shouldBe "val"
+    callRoute("/views/create:view1?p1=111&p2=aaa", decoder = decodeJs) shouldBe Seq(111, "aaa")
+    callRoute("/views/count:view1", decoder = decodeJs) shouldBe 1
   }
 
   val count = 1024
-  it should s"execute $count wabase service routes" in {
-    1 to count foreach { i =>
-      entity(callRoute("/long-handler-chain")) shouldBe "Data from Test user: /long-handler-chain/added-segment transformed response"
+  it should s"do $count wabase service routes" in {
+    1 to count foreach { _ =>
+      callRoute("/long-handler-chain") shouldBe "Data from Test user: /long-handler-chain/added-segment transformed response"
     }
   }
 }
@@ -85,6 +95,10 @@ object WabaseTestHandlers {
     resp.withEntity(entity(resp) + " transformed response")
 
   def echo(req: HttpRequest)(implicit ec: ExecutionContext, as: ActorSystem) = HttpResponse(entity = entity(req))
+
+  def methodAndPathMatch(req: HttpRequest) = s"Http method with path match: ${req.method.value} ${req.uri.path}"
+
+  def methodAndPath(req: HttpRequest) = s"${req.method.value} ${req.uri.path}"
 
   def transformer(innerHandler: WabaseService.RequestHandler)(
     implicit as: ActorSystem, ec: ExecutionContext): WabaseService.RequestHandler = { ctx =>

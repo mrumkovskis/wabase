@@ -1,6 +1,7 @@
 package org.wabase
 
 import com.typesafe.config.ConfigFactory
+import org.apache.pekko.http.scaladsl.model.HttpMethod
 import org.mojoz.metadata.{FieldDef, Type, ViewDef}
 import org.mojoz.metadata.in._
 import org.mojoz.metadata.io.MdConventions
@@ -637,7 +638,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
             val removeVarStepRegex(ident, str_lit) = s
             val name = if (ident != null) ident else str_lit.substring(1, str_lit.length - 1)
             Action.RemoveVar(Some(name))
-          case s: String =>
+          case s: String if namedStepRegex.pattern.matcher(s).matches() =>
             val namedStepRegex(keepResult, name, st) = s
             parseStringStep(Option(name), st, keepResult != null)
           case n: java.lang.Number => parseStringStep(None, n.toString, keepResult = false)
@@ -691,7 +692,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
               }
             }
           case x =>
-            sys.error(s"'$objectName' parsing error, invalid value: $x")
+            sys.error(s"'$objectName' parsing error, invalid value: '$x'")
         }
       }
       parseStep(step)
@@ -1517,6 +1518,7 @@ object AppMetadata extends Loggable {
   )
 
   case class RouteDef(
+    method: HttpMethod,
     path: Regex,
     requestHandler: Action.Invocation,
     errorHandler: Action.Invocation,
