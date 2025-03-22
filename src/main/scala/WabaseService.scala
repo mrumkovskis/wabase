@@ -9,7 +9,7 @@ import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.marshalling.{Marshal, ToResponseMarshallable}
 import org.apache.pekko.http.scaladsl.model.headers.{Cookie, HttpCookie, `Set-Cookie`}
 import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes, DateTime, HttpHeader, HttpRequest, HttpResponse, StatusCodes, Uri}
-import org.apache.pekko.http.scaladsl.unmarshalling.PredefinedFromEntityUnmarshallers
+import org.apache.pekko.http.scaladsl.unmarshalling.Unmarshaller
 import org.slf4j.LoggerFactory
 import org.wabase.AppMetadata.{Action, RouteDef}
 import org.wabase.WabaseService.Wabase
@@ -105,9 +105,11 @@ class WabaseService extends Loggable {
             (classOf[ApplicationState], () => wrc.applicationState),
             (classOf[HttpResponse], () => if (ih == null) missingHandlerError else ih(wrc)),
             (classOf[Future[HttpResponse]], () => if (ih == null) missingHandlerError else ih(wrc)),
-            (classOf[RequestHandler], () => ih),
             (classOf[ActorSystem], () => as),
             (classOf[ExecutionContext], () => ec),
+            (classOf[RequestHandler], () => ih),
+            (classOf[Map[String, Any]], () => toMapEntityDecoder(wrc)), // map is function it comes after request handler
+            (classOf[Seq[Any]], () => toSeqEntityDecoder(wrc)), // seq is function it comes after request handler
           )))
         }
 
@@ -272,7 +274,7 @@ object WabaseService {
         implicit val ec = as.dispatcher
         val valuesF =
           if (Set(Action.Insert, Action.Update, Action.Save).contains(action))
-            toMapEntityDecoder(ctx)
+            toMapForViewEntityDecoder(ctx)
           else  Future.successful(Map[String, Any]())
         valuesF.flatMap { values =>
           ctx.wabase.app.doAction(
@@ -295,7 +297,7 @@ object WabaseService {
     dwa(ctxWithViewAndState)
   }
 
-  def toMapEntityDecoder(ctx: WabaseRequestContext): Future[Map[String, Any]] = {
+  def toMapForViewEntityDecoder(ctx: WabaseRequestContext): Future[Map[String, Any]] = {
     import ctx._
     implicit val mat = as
     implicit val ec = as.dispatcher
@@ -306,7 +308,7 @@ object WabaseService {
         req.entity.contentType match {
           case ContentTypes.`application/json` => defaultContent
           case ContentTypes.`application/x-www-form-urlencoded` =>
-            PredefinedFromEntityUnmarshallers.defaultUrlEncodedFormDataUnmarshaller(req.entity)
+            Unmarshaller.defaultUrlEncodedFormDataUnmarshaller(req.entity)
               .map(fd => wabase.qe.toCompatibleMap(fd.fields.toMap, vd))
           case _ => defaultContent
         }
@@ -323,6 +325,33 @@ object WabaseService {
           case x => throw new IllegalArgumentException(s"Custom decoder must return Map[String, Any], instead got: $x")
         }
       case AppMetadata.NoneDecoder => Future.successful(Map())
+    }
+  }
+
+  def toStringEntityDecoder(ctx: WabaseRequestContext): Future[String] = {
+    import ctx._
+    implicit val mat = as
+    implicit val ec = as.dispatcher
+    Unmarshaller.stringUnmarshaller(req.entity)
+  }
+
+  def toMapEntityDecoder(ctx: WabaseRequestContext): Future[Map[String, Any]] =
+    toAnyEntityDecoder(ctx).mapTo[Map[String, Any]]
+
+  def toSeqEntityDecoder(ctx: WabaseRequestContext): Future[Seq[Any]] =
+    toAnyEntityDecoder(ctx).mapTo[Seq[Any]]
+
+  private def toAnyEntityDecoder(ctx: WabaseRequestContext): Future[Any] = {
+    import ctx._
+    implicit val mat = as
+    implicit val ec = as.dispatcher
+    def decodeJs = Unmarshaller.byteStringUnmarshaller
+      .map { b => CborOrJsonAnyValueDecoder.decode(b) }
+    req.entity.contentType match {
+      case ContentTypes.`application/json` => decodeJs(req.entity)
+      case ContentTypes.`application/x-www-form-urlencoded` =>
+        Unmarshaller.defaultUrlEncodedFormDataUnmarshaller.map(_.fields.toMap)(req.entity)
+      case _ => decodeJs(req.entity)
     }
   }
 

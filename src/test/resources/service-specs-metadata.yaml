@@ -15,6 +15,12 @@ do:       methodAndPathMatch
 on:       POST PUT /method-dependent-path  # http method POST PUT + path match
 do:       methodAndPathMatch
 
+on:       POST PUT /decoded-map-entity
+do:       decodedMapEntity
+
+on:       POST PUT /decoded-seq-entity
+do:       decodedSeqEntity
+
 on:       /method-dependent-path
 do:       methodAndPath
 
