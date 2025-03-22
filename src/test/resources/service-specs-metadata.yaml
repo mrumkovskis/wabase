@@ -21,6 +21,9 @@ do:       decodedMapEntity
 on:       POST PUT /decoded-seq-entity
 do:       decodedSeqEntity
 
+on:       POST PUT /decoded-string-entity
+do:       decodedStringEntity
+
 on:       /method-dependent-path
 do:       methodAndPath
 

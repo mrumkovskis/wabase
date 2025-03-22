@@ -60,6 +60,7 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
       method = HttpMethods.POST, decoder = decodeJs) shouldBe Map("a" -> 1, "b" -> "x", "c" -> List(1, 2, 3))
     callRoute("/decoded-seq-entity", data = encodeJs(List(Map("a" -> 1), 2, true, "x", List(1, "y"))),
       method = HttpMethods.PUT, decoder = decodeJs) shouldBe List(Map("a" -> 1), 2, true, "x", List(1, "y"))
+    callRoute("/decoded-string-entity", data = HttpEntity("content"), method = HttpMethods.PUT) shouldBe "content"
   }
 
   it should "process errors for wabase service routes" in {
@@ -110,6 +111,8 @@ object WabaseTestHandlers {
   def decodedMapEntity(map: Map[String, Any]) = ResultEncoder.encodeAnyToJsonString(map)
 
   def decodedSeqEntity(seq: Seq[Any]) = ResultEncoder.encodeAnyToJsonString(seq)
+
+  def decodedStringEntity(str: String) = str
 
   def transformer(innerHandler: WabaseService.RequestHandler)(
     implicit as: ActorSystem, ec: ExecutionContext): WabaseService.RequestHandler = { ctx =>

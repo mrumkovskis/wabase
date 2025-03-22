@@ -110,6 +110,7 @@ class WabaseService extends Loggable {
             (classOf[RequestHandler], () => ih),
             (classOf[Map[String, Any]], () => toMapEntityDecoder(wrc)), // map is function it comes after request handler
             (classOf[Seq[Any]], () => toSeqEntityDecoder(wrc)), // seq is function it comes after request handler
+            (classOf[String], () => toStringEntityDecoder(ctx)),
           )))
         }
 
