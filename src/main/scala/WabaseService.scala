@@ -60,7 +60,7 @@ class WabaseService extends Loggable {
     val loggerName = req.method.value.toLowerCase + WabaseService.toReadableString(req.uri.path).replace('/', '.')
     val logger = Logger(LoggerFactory.getLogger(loggerName))
     val ctx = WabaseRequestContext(wabase, req, Deferred(deferredControl = deferredControl), as = as, logger = logger)
-    findRoute(ctx).map(doRoute).getOrElse(Future.successful(HttpResponse(status = StatusCodes.NotFound)))
+    findRoute(ctx).map(doRoute).getOrElse(WabaseService.notFound)
   }
 
   protected def findRoute(ctx: WabaseRequestContext): Option[WabaseRequestContext] = {
@@ -80,49 +80,9 @@ class WabaseService extends Loggable {
     implicit val ec: ExecutionContext = as.dispatcher
 
     def invokeHandlerBuilderChain(inv: Action.Invocation, innerHandler: RequestHandler): RequestHandler = {
-      def buildHandler(cn: String, fn: String, ih: RequestHandler): RequestHandler = wrc => {
-        ctx.logger.debug(s"Invoking handler $cn.$fn for request: ${wrc.req}")
-        def missingHandlerError = sys.error(s"Handler argument missing for invocation: '$cn.$fn'")
-        def invokeHandlerBuilder = {
-          def processResult(r: Any): Future[Any] = r match {
-            case c: WabaseRequestContext => Future.successful(c)
-            case req: HttpRequest => processResult(wrc.copy(req = req))
-            case uri: Uri => processResult(wrc.copy(req = wrc.req.withUri(uri)))
-            case st: ApplicationState => processResult(wrc.copy(applicationState = st))
-            case u: WabaseUser => processResult(wrc.copy(user = u))
-            case resp: HttpResponse => Future.successful(resp)
-            case s: String => Future.successful(HttpResponse(entity = s))
-            case f: Future[_] => f.flatMap(processResult)
-            case rh: RequestHandler@unchecked => Future.successful(rh)
-            case x => error(s"Request transformer must return either WabaseRequestContext or HttpRequest or Future of them." +
-              s" Instead got: $x")
-          }
-          processResult(org.wabase.invokeFunction(cn, fn, List(
-            (classOf[Uri], () => wrc.req.uri),
-            (classOf[WabaseRequestContext], () => wrc),
-            (classOf[HttpRequest], () => wrc.req),
-            (classOf[WabaseUser], () => wrc.user),
-            (classOf[ApplicationState], () => wrc.applicationState),
-            (classOf[HttpResponse], () => if (ih == null) missingHandlerError else ih(wrc)),
-            (classOf[Future[HttpResponse]], () => if (ih == null) missingHandlerError else ih(wrc)),
-            (classOf[ActorSystem], () => as),
-            (classOf[ExecutionContext], () => ec),
-            (classOf[RequestHandler], () => ih),
-            (classOf[Map[String, Any]], () => toMapEntityDecoder(wrc)), // map is function it comes after request handler
-            (classOf[Seq[Any]], () => toSeqEntityDecoder(wrc)), // seq is function it comes after request handler
-            (classOf[String], () => toStringEntityDecoder(ctx)),
-          )))
-        }
-
-        invokeHandlerBuilder.flatMap {
-          case c: WabaseRequestContext => if (ih == null) missingHandlerError else ih(c)
-          case r: HttpResponse => Future.successful(r)
-          case h: RequestHandler@unchecked => h(wrc)
-        }
-      }
       inv.arg match {
-        case null => buildHandler(inv.className, inv.function, innerHandler)
-        case i: Action.Invocation => buildHandler(inv.className, inv.function,
+        case null => buildRequestHandler(inv.className, inv.function, innerHandler)
+        case i: Action.Invocation => buildRequestHandler(inv.className, inv.function,
           invokeHandlerBuilderChain(i, innerHandler))
         case x => throw new IllegalArgumentException(s"Unrecognized request handler argument '$x', must be function call.")
       }
@@ -157,6 +117,8 @@ object WabaseService {
 
   val CreateCountActionAndViewRegex = """(?U)(?:(count|create):)?(\w*)""".r
   val WabaseUserAttributeName = "wabase-user"
+
+  val notFound: Future[HttpResponse] = Future.successful(HttpResponse(status = StatusCodes.NotFound))
 
   def optionalHttpHeaderValue[T](req: HttpRequest)(extractorF: HttpHeader => Option[T]): Option[T] = {
     req.headers.collectFirst(Function.unlift(extractorF))
@@ -215,10 +177,38 @@ object WabaseService {
     }
   }
 
+  def doRequest(ctx: WabaseRequestContext): Future[HttpResponse] = {
+    val pathString = toReadableString(ctx.req.uri.path)
+    ctx.route.path.unapplySeq(pathString).map {
+      case handlerName :: _ =>
+        val (cn, fn) = OpParser.classNameFunctionName(handlerName)
+        val key = WabaseService.key(ctx.req.uri.path, handlerName)
+        buildRequestHandler(cn, fn, null)(ctx.copy(key = key))
+      case _ => notFound
+    }.getOrElse(notFound)
+  }
+
+  /** Extract segments as list from path after segment matching prefix */
+  def key(path: Path, prefix: String): Seq[String] = {
+    def key_path(path: Path): Path = path match {
+      case Segment(head, tail) =>
+        if (head contains prefix) tail
+        else key_path(tail)
+      case p => key_path(p.tail)
+    }
+    val keyPath = key_path(path)
+    def key(path: Path): List[String] = path match {
+      case Segment(v, tail) => v :: key(tail)
+      case Empty => Nil
+      case p: SlashOrEmpty => key(p.tail)
+    }
+    key(keyPath)
+  }
+
   def viewActionKey(ctx: WabaseRequestContext): WabaseRequestContext = {
     import ctx._
     val viewDefs = wabase.qe.nameToViewDef
-    val pathString = req.uri.path.toString
+    val pathString = toReadableString(req.uri.path)
     val routeRegex = route.path
     val (viewNameAndActionStr, view_name, create_count_action) = routeRegex.unapplySeq(pathString).collect {
       case vna :: _ =>
@@ -229,22 +219,7 @@ object WabaseService {
 
     if (viewNameAndActionStr == null) ctx
     else {
-      val key = {
-        def key_path(path: Path): Path = path match {
-          case Segment(head, tail) =>
-            if (head contains viewNameAndActionStr) tail
-            else key_path(tail)
-          case p => key_path(p.tail)
-        }
-        val keyPath = key_path(req.uri.path)
-        def key(path: Path): List[String] = path match {
-          case Segment(v, tail) => v :: key(tail)
-          case Empty => Nil
-          case p: SlashOrEmpty => key(p.tail)
-        }
-        key(keyPath)
-      }
-
+      val key = WabaseService.key(req.uri.path, viewNameAndActionStr)
       val action = if (create_count_action != null) create_count_action else req.method match {
         case `GET`    =>
           if (key.nonEmpty || viewDefs.get(view_name)
@@ -281,7 +256,7 @@ object WabaseService {
           ctx.wabase.app.doAction(
             actionName = action,
             viewName = viewName,
-            keyValues = key,
+            keyValues = ctx.key,
             params = params,
             values = values,
           )(ctx)
@@ -362,6 +337,48 @@ object WabaseService {
       case _: Path => trs(p.tail, sb.append(p.head))
     }
     trs(path, new StringBuilder())
+  }
+
+  def buildRequestHandler(cn: String, fn: String, ih: RequestHandler): RequestHandler = wrc => {
+    wrc.logger.debug(s"Invoking handler $cn.$fn for request: ${wrc.req}")
+    implicit val ec: ExecutionContext = wrc.as.dispatcher
+    def missingHandlerError = sys.error(s"Handler argument missing for invocation: '$cn.$fn'")
+    def invokeHandlerBuilder = {
+      def processResult(r: Any): Future[Any] = r match {
+        case c: WabaseRequestContext => Future.successful(c)
+        case req: HttpRequest => processResult(wrc.copy(req = req))
+        case uri: Uri => processResult(wrc.copy(req = wrc.req.withUri(uri)))
+        case st: ApplicationState => processResult(wrc.copy(applicationState = st))
+        case u: WabaseUser => processResult(wrc.copy(user = u))
+        case resp: HttpResponse => Future.successful(resp)
+        case s: String => Future.successful(HttpResponse(entity = s))
+        case f: Future[_] => f.flatMap(processResult)
+        case rh: RequestHandler@unchecked => Future.successful(rh)
+        case x => error(s"Request transformer must return either WabaseRequestContext or HttpRequest or Future of them." +
+          s" Instead got: $x")
+      }
+      processResult(org.wabase.invokeFunction(cn, fn, List(
+        (classOf[Uri], () => wrc.req.uri),
+        (classOf[WabaseRequestContext], () => wrc),
+        (classOf[HttpRequest], () => wrc.req),
+        (classOf[WabaseUser], () => wrc.user),
+        (classOf[ApplicationState], () => wrc.applicationState),
+        (classOf[HttpResponse], () => if (ih == null) missingHandlerError else ih(wrc)),
+        (classOf[Future[HttpResponse]], () => if (ih == null) missingHandlerError else ih(wrc)),
+        (classOf[ActorSystem], () => wrc.as),
+        (classOf[ExecutionContext], () => ec),
+        (classOf[RequestHandler], () => ih),
+        (classOf[Map[String, Any]], () => toMapEntityDecoder(wrc)), // map is function so it comes after request handler
+        (classOf[Seq[Any]], () => toSeqEntityDecoder(wrc)), // seq is function so it comes after request handler
+        (classOf[String], () => toStringEntityDecoder(wrc)),
+      )))
+    }
+
+    invokeHandlerBuilder.flatMap {
+      case c: WabaseRequestContext => if (ih == null) missingHandlerError else ih(c)
+      case r: HttpResponse => Future.successful(r)
+      case h: RequestHandler@unchecked => h(wrc)
+    }
   }
 
   def error(msg: String) = throw new WabaseRouteException(msg)

@@ -49,6 +49,10 @@ on:       /greater/than-3/(\w+)
 do:       keyExtractor keyChecker
 recover:  testErrorHandler
 
+# for dynamic route handler matching path first group must match handler name
+on:       /do/(\w+).*
+do:       doRequest
+
 # for view matching path first group must match [(create|count):]<view_name> (WabaseService.viewActionKey transformer)
 on:       /views/([\w:]+)(.*)
 do:       doAction

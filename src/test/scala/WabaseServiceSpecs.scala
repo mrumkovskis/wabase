@@ -81,6 +81,10 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
     callRoute("/views/count:view1", decoder = decodeJs) shouldBe 1
   }
 
+  it should "do wabase service routes for handlers" in {
+    callRoute("/do/test_handler/val/1/2/3") shouldBe "Key: [val, 1, 2, 3]"
+  }
+
   val count = 1024
   it should s"do $count wabase service routes" in {
     1 to count foreach { _ =>
@@ -140,6 +144,8 @@ object WabaseTestHandlers {
       if (nr > 3) HttpResponse(entity = s"Key: $nr") else throw BusinessException(s"Key must be greater then 3, got: $nr")
     case x => sys.error(s"Wrong key: $x")
   }
+
+  def testHandler(ctx: WabaseRequestContext) = s"Key: [${ctx.key.mkString(", ")}]"
 
   def errorHandler(ctx: WabaseRequestContext): WabaseService.ErrorHandler = {
     val eh: WabaseService.ErrorHandler = {
