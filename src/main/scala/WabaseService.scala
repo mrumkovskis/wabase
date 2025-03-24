@@ -343,38 +343,35 @@ object WabaseService {
     wrc.logger.debug(s"Invoking handler $cn.$fn for request: ${wrc.req}")
     implicit val ec: ExecutionContext = wrc.as.dispatcher
     def missingHandlerError = sys.error(s"Handler argument missing for invocation: '$cn.$fn'")
-    def invokeHandlerBuilder = {
-      def processResult(r: Any): Future[Any] = r match {
-        case c: WabaseRequestContext => Future.successful(c)
-        case req: HttpRequest => processResult(wrc.copy(req = req))
-        case uri: Uri => processResult(wrc.copy(req = wrc.req.withUri(uri)))
-        case st: ApplicationState => processResult(wrc.copy(applicationState = st))
-        case u: WabaseUser => processResult(wrc.copy(user = u))
-        case resp: HttpResponse => Future.successful(resp)
-        case s: String => Future.successful(HttpResponse(entity = s))
-        case f: Future[_] => f.flatMap(processResult)
-        case rh: RequestHandler@unchecked => Future.successful(rh)
-        case x => error(s"Request transformer must return either WabaseRequestContext or HttpRequest or Future of them." +
-          s" Instead got: $x")
-      }
-      processResult(org.wabase.invokeFunction(cn, fn, List(
-        (classOf[Uri], () => wrc.req.uri),
-        (classOf[WabaseRequestContext], () => wrc),
-        (classOf[HttpRequest], () => wrc.req),
-        (classOf[WabaseUser], () => wrc.user),
-        (classOf[ApplicationState], () => wrc.applicationState),
-        (classOf[HttpResponse], () => if (ih == null) missingHandlerError else ih(wrc)),
-        (classOf[Future[HttpResponse]], () => if (ih == null) missingHandlerError else ih(wrc)),
-        (classOf[ActorSystem], () => wrc.as),
-        (classOf[ExecutionContext], () => ec),
-        (classOf[RequestHandler], () => ih),
-        (classOf[Map[String, Any]], () => toMapEntityDecoder(wrc)), // map is function so it comes after request handler
-        (classOf[Seq[Any]], () => toSeqEntityDecoder(wrc)), // seq is function so it comes after request handler
-        (classOf[String], () => toStringEntityDecoder(wrc)),
-      )))
+    def processResult(r: Any): Future[Any] = r match {
+      case c: WabaseRequestContext => Future.successful(c)
+      case req: HttpRequest => processResult(wrc.copy(req = req))
+      case uri: Uri => processResult(wrc.copy(req = wrc.req.withUri(uri)))
+      case st: ApplicationState => processResult(wrc.copy(applicationState = st))
+      case u: WabaseUser => processResult(wrc.copy(user = u))
+      case resp: HttpResponse => Future.successful(resp)
+      case s: String => Future.successful(HttpResponse(entity = s))
+      case f: Future[_] => f.flatMap(processResult)
+      case rh: RequestHandler@unchecked => Future.successful(rh)
+      case x => error(s"Request transformer must return either WabaseRequestContext or HttpRequest or Future of them." +
+        s" Instead got: $x")
     }
-
-    invokeHandlerBuilder.flatMap {
+    val result = org.wabase.invokeFunction(cn, fn, List(
+      (classOf[Uri], () => wrc.req.uri),
+      (classOf[WabaseRequestContext], () => wrc),
+      (classOf[HttpRequest], () => wrc.req),
+      (classOf[WabaseUser], () => wrc.user),
+      (classOf[ApplicationState], () => wrc.applicationState),
+      (classOf[HttpResponse], () => if (ih == null) missingHandlerError else ih(wrc)),
+      (classOf[Future[HttpResponse]], () => if (ih == null) missingHandlerError else ih(wrc)),
+      (classOf[ActorSystem], () => wrc.as),
+      (classOf[ExecutionContext], () => ec),
+      (classOf[RequestHandler], () => ih),
+      (classOf[Map[String, Any]], () => toMapEntityDecoder(wrc)), // map is function so it comes after request handler
+      (classOf[Seq[Any]], () => toSeqEntityDecoder(wrc)), // seq is function so it comes after request handler
+      (classOf[String], () => toStringEntityDecoder(wrc)),
+    ))
+    processResult(result).flatMap {
       case c: WabaseRequestContext => if (ih == null) missingHandlerError else ih(c)
       case r: HttpResponse => Future.successful(r)
       case h: RequestHandler@unchecked => h(wrc)
