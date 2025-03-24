@@ -21,6 +21,7 @@ import org.wabase.AppMetadata.DbAccessKey
 import org.wabase.AppQuerease.{InjectionParametersContext, InjectionParametersProvider, listOfStringTuples}
 import spray.json._
 
+import java.lang.reflect.Parameter
 import java.sql.Connection
 import scala.collection.immutable.Seq
 import scala.collection.mutable.ArrayBuffer
@@ -733,7 +734,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     import op._
     import qr._
     def invokeFunction(className: String, function: String,
-                       params: Seq[(Class[_], () => Any)], pf: PartialFunction[Class[_], Any]): Any = {
+                       params: Seq[(Class[_], () => Any)], pf: PartialFunction[Parameter, Any]): Any = {
       this.invokeFunction(className, function, params,
         InjectionParametersContext(httpReq, env, data),
         qr.copy()(resourcesFactory, ec, as, httpReq, qio, fileStreamers, httpClients,
@@ -809,17 +810,17 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           (classOf[java.util.Map[_, _]], () => invocationData.asJava),
           (classOf[MapResult], () => MapResult(invocationData)),
         ),
-        { case parClass if classOf[Dto].isAssignableFrom(parClass) =>
+        { case par if classOf[Dto].isAssignableFrom(par.getType) =>
             import qio.MapJsonFormat
-            val mf = Manifest.classType[Dto](parClass)      // somehow need to specify method type parameter Dto for not to fail in runtime on next line??
+            val mf = Manifest.classType[Dto](par.getType)    // somehow need to specify method type parameter Dto for not to fail in runtime on next line??
             qio.fill(invocationData.toJson.asJsObject)(mf)  // specify manifest explicitly so it is not Nothing
         }
       )
     } else {
       doActionOp(op.arg, data, env, context).flatMap { opRes =>
         val tresqlResult = opRes match { case TresqlResult(result) => result case _ => null }
-        val pf1: PartialFunction[Class[_], String] = {
-          case clazz if tresqlResult != null => scala.reflect.Manifest.classType(clazz).toString()
+        val pf1: PartialFunction[Parameter, String] = {
+          case par if tresqlResult != null => scala.reflect.Manifest.classType(par.getType).toString()
         }
         val pf2: PartialFunction[String, Any] = {
           case mf if tresqlResult.typedPf(0).isDefinedAt(mf) =>
@@ -828,19 +829,21 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
               tresqlResult.typedPf(0)(mf)
             } else null finally tresqlResult.close()
         }
-        val pf3 = new PartialFunction[Class[_], Any] {
-          override def isDefinedAt(clazz: Class[_]): Boolean =
-            pf1.isDefinedAt(clazz) && pf2.isDefinedAt(pf1(clazz))
-          override def apply(clazz: Class[_]): Any = pf2(pf1(clazz))
+        val pf3 = new PartialFunction[Parameter, Any] {
+          override def isDefinedAt(par: Parameter): Boolean =
+            pf1.isDefinedAt(par) && pf2.isDefinedAt(pf1(par))
+          override def apply(par: Parameter): Any = pf2(pf1(par))
+        }
+
+        val unwrappedVal = opRes match {
+          case TresqlResult(SingleValueResult(qr: QuereaseResult)) => qr // unwrap bind variable value
+          case x => x
         }
 
         invokeFunction(
           className,
           function,
-          Seq((classOf[QuereaseResult], () => opRes match {
-            case TresqlResult(SingleValueResult(qr: QuereaseResult)) => qr // unwrap bind variable value
-            case x => x
-          })),
+          Seq((unwrappedVal.getClass, () => unwrappedVal)),
           // if opRes is tresql result and function parameter is of primitive value use typedPf function to get the value.
           pf3 // cannot use pf1 andThen pf2 on scala 2.12
         ) match {
@@ -1851,8 +1854,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       (classOf[AppQuereaseIo[Dto]], () => qio),
       (classOf[WabaseHttpClients], () => httpClients),
     )
-    val default: PartialFunction[Class[_], Any] =
-      { case c: Class[_] => org.wabase.invocationParameter(params ++ contextParams)(c) }
+    val default: PartialFunction[Parameter, Any] =
+      { case p: Parameter => org.wabase.invocationParameter(params ++ contextParams)(p) }
     org.wabase.invokeFunction(className, function, parametersProvider(injectionContext) orElse default)
   }
 }
@@ -1985,7 +1988,7 @@ object AppQuerease {
     env: Map[String, Any] = Map(),	  // action env (application state)
     data: Map[String, Any] = Map(),	// action current step data
   )
-  type InjectionParametersProvider = InjectionParametersContext => PartialFunction[Class[_], Any]
+  type InjectionParametersProvider = InjectionParametersContext => PartialFunction[Parameter, Any]
 
   trait InjectionParametersProviderFactory {
     def createInjectionParametersProvider: InjectionParametersProvider

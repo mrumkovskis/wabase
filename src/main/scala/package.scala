@@ -4,7 +4,7 @@ import java.util.concurrent.TimeUnit.MILLISECONDS
 import com.zaxxer.hikari.{HikariConfig, HikariDataSource}
 import org.tresql.SimpleCacheBase
 
-import java.lang.reflect.InvocationTargetException
+import java.lang.reflect.{InvocationTargetException, Parameter}
 import javax.sql.DataSource
 import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration.{Duration, FiniteDuration}
@@ -142,25 +142,25 @@ package object wabase extends Loggable {
       }
     }
 
-  def invocationParameter(availableParameters: Seq[(Class[_], () => Any)])(parameterClass: Class[_]): Any =
+  def invocationParameter(availableParameters: Seq[(Class[_], () => Any)])(parameter: Parameter): Any = {
+    val parameterClass = parameter.getType
     availableParameters.collectFirst {
       case (c, f) if parameterClass.isAssignableFrom(c) => f()
-    }.getOrElse(availableParameters.collectFirst {
-      case (c, f) if parameterClass.isAssignableFrom(c) || c.isAssignableFrom(parameterClass) => f()
-    }.getOrElse(throw new IllegalArgumentException(s"Cannot find value for function parameter. " +
-      s"Unsupported parameter type: $parameterClass\nAllowed parameters are of type: (${
+    }.getOrElse(throw new IllegalArgumentException(s"Cannot find value for function parameter '${
+      parameter.getName}: ${parameterClass.getName}'.\nAvailable parameters are of type: (${
         availableParameters.map(_._1.getName).mkString(", ")
-      })")))
+      })"))
+  }
 
   def invokeFunction(
     className: String,
-    function: String, getParameter: Class[_] => Any,
+    function: String, getParameter: Parameter => Any,
   )(implicit ec: ExecutionContext): Any = {
     def getParams(m: java.lang.reflect.Method) = {
-      val params = m.getParameterTypes map (pt => getParameter(pt) -> pt)
-      if (params.exists { case (p, c) => p.isInstanceOf[Future[_]] && !classOf[Future[_]].isAssignableFrom(c) })
+      val params = m.getParameters map (pt => getParameter(pt) -> pt)
+      if (params.exists { case (v, p) => v.isInstanceOf[Future[_]] && !classOf[Future[_]].isAssignableFrom(p.getType) })
         Future.traverse(params.toSeq) {
-          case (f: Future[_], c) if !classOf[Future[_]].isAssignableFrom(c) => f
+          case (f: Future[_], p) if !classOf[Future[_]].isAssignableFrom(p.getType) => f
           case (x, _) => Future.successful(x)
         }.map(_.toArray) else params.map(_._1)
     }
