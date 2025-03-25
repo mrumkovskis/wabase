@@ -1264,7 +1264,7 @@ count:
 
 name: invocation_test_3
 table:
-api: get, list, delete, create, count, insert
+api: get, list, delete, create, count, insert, update
 key: name
 fields:
   - name
@@ -1280,6 +1280,8 @@ count:
 - as any org.wabase.QuereaseActionTestManagerObj.person_dtos_list # no special type
 insert:
 - org.wabase.QuereaseActionTestManagerObj.businessException
+update:
+- org.wabase.QuereaseActionTestManagerObj.unsupportedParamMethod
 
 
 name: extract_parts_test

@@ -1338,6 +1338,10 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         .map {
           _.getMessage shouldBe "Invocation error"
         }
+      t8 <- recoverToExceptionIf[IllegalArgumentException](doAction("update", "invocation_test_3", Map()))
+        .map {
+          _.getMessage should include (": java.lang.String") // cannot test 'str: java.lang.String' because for scala 3 parameter name is arg0
+        }
     } yield t1
   }
 

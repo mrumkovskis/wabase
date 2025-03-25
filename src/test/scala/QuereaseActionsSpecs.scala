@@ -563,6 +563,8 @@ object QuereaseActionTestManagerObj {
   def businessException(data: Map[String, Any]) = {
     throw new BusinessException("Invocation error")
   }
+  /* Must throw IllegalArgumentException when called from view action */
+  def unsupportedParamMethod(str: String) = str
   def processRequestParts(res: RequestPartResult)(implicit as: ActorSystem, ec: ExecutionContext) =
     res.result.mapAsync(1) { part =>
       part.data.runWith(AppFileStreamer.sha256sink).map(sha => Map("file" -> part.filename, "sha_256" -> sha))
