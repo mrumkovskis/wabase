@@ -193,6 +193,18 @@ package object wabase extends Loggable {
   )(implicit ec: ExecutionContext): Any =
     invokeFunction(className, function, invocationParameter(availableParameters)(_))
 
+  def invokeFunction(
+    className: String,
+    function: String,
+    fallbackParameters: Seq[(Class[_], () => Any)],
+    parameterFun: PartialFunction[Parameter, Any],
+  )(implicit ec: ExecutionContext): Any = {
+    val default: PartialFunction[Parameter, Any] = {
+      case p => invocationParameter(fallbackParameters)(p)
+    }
+    invokeFunction(className, function, parameterFun orElse default)
+  }
+
   case class PoolName(connectionPoolName: String)
   lazy val DEFAULT_CP = {
     val dcp = PoolName(TresqlResourcesConf.DefaultCpName)

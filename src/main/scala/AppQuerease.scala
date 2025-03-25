@@ -803,18 +803,14 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     }
 
     (if (op.arg == null) {
-      val invocationData = data ++ env
+      val invocationData = () => data ++ env
       invokeFunction(className, function,
         Seq(
-          (classOf[scala.collection.immutable.Map[_, _]], () => invocationData),
-          (classOf[java.util.Map[_, _]], () => invocationData.asJava),
-          (classOf[MapResult], () => MapResult(invocationData)),
+          (classOf[scala.collection.immutable.Map[_, _]], invocationData),
+          (classOf[java.util.Map[_, _]], () => invocationData().asJava),
+          (classOf[MapResult], () => MapResult(invocationData())),
         ),
-        { case par if classOf[Dto].isAssignableFrom(par.getType) =>
-            import qio.MapJsonFormat
-            val mf = Manifest.classType[Dto](par.getType)    // somehow need to specify method type parameter Dto for not to fail in runtime on next line??
-            qio.fill(invocationData.toJson.asJsObject)(mf)  // specify manifest explicitly so it is not Nothing
-        }
+        AppQuerease.dtoParameterFromMap(invocationData)(qio),
       )
     } else {
       doActionOp(op.arg, data, env, context).flatMap { opRes =>
@@ -1854,9 +1850,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       (classOf[AppQuereaseIo[Dto]], () => qio),
       (classOf[WabaseHttpClients], () => httpClients),
     )
-    val default: PartialFunction[Parameter, Any] =
-      { case p: Parameter => org.wabase.invocationParameter(params ++ contextParams)(p) }
-    org.wabase.invokeFunction(className, function, parametersProvider(injectionContext) orElse default)
+    org.wabase.invokeFunction(className, function, params ++ contextParams, parametersProvider(injectionContext))
   }
 }
 
@@ -2071,5 +2065,17 @@ object AppQuerease {
         case r: ResultWithQuereaseResources => quereaseResultTresqlValueBinder(r)
         case x => sys.error(s"Currently unable to bind querease result '$x' as tresql value")
       }
+  }
+
+  def dtoParameterFromMap(data: () => Map[String, Any])(qio: AppQuereaseIo[Dto]): PartialFunction[Parameter, Dto] = {
+    case par if classOf[Dto].isAssignableFrom(par.getType) =>
+      import qio.MapJsonFormat
+      val mf = Manifest.classType[Dto](par.getType)    // somehow need to specify method type parameter Dto for not to fail in runtime on next line??
+      qio.fill(data().toJson.asJsObject)(mf)             // specify manifest explicitly so it is not Nothing
+  }
+
+  def dtoParameterFromMapF(data: () => Future[Map[String, Any]])(
+    qio: AppQuereaseIo[Dto])(implicit ec: ExecutionContext): PartialFunction[Parameter, Future[Dto]] = {
+    case par if classOf[Dto].isAssignableFrom(par.getType) => data().map(m => dtoParameterFromMap(() => m)(qio)(par))
   }
 }

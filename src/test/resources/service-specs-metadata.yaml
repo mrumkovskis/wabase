@@ -24,6 +24,9 @@ do:       decodedSeqEntity
 on:       POST PUT /decoded-string-entity
 do:       decodedStringEntity
 
+on:       POST PUT /decoded-dto-entity
+do:       decodedDtoEntity
+
 on:       /method-dependent-path
 do:       methodAndPath
 

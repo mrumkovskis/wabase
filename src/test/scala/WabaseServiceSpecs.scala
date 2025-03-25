@@ -61,6 +61,8 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
     callRoute("/decoded-seq-entity", data = encodeJs(List(Map("a" -> 1), 2, true, "x", List(1, "y"))),
       method = HttpMethods.PUT, decoder = decodeJs) shouldBe List(Map("a" -> 1), 2, true, "x", List(1, "y"))
     callRoute("/decoded-string-entity", data = HttpEntity("content"), method = HttpMethods.PUT) shouldBe "content"
+    callRoute("/decoded-dto-entity", data = encodeJs(Map("id" -> 1, "name" -> "View1")),
+      method = HttpMethods.POST) shouldBe "1:View1"
   }
 
   it should "process errors for wabase service routes" in {
@@ -93,7 +95,13 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
   }
 }
 
+class View1 extends Dto {
+  var id: Long = _
+  var name: String = _
+}
+
 object WabaseTestHandlers {
+
   def simpleHandler(ctx: WabaseRequestContext) =
     Future.successful { HttpResponse(entity = "Simple handler response") }
 
@@ -117,6 +125,8 @@ object WabaseTestHandlers {
   def decodedSeqEntity(seq: Seq[Any]) = ResultEncoder.encodeAnyToJsonString(seq)
 
   def decodedStringEntity(str: String) = str
+
+  def decodedDtoEntity(dto: View1) = s"${dto.id}:${dto.name}"
 
   def transformer(innerHandler: WabaseService.RequestHandler)(
     implicit as: ActorSystem, ec: ExecutionContext): WabaseService.RequestHandler = { ctx =>

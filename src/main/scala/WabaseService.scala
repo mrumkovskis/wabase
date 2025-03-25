@@ -370,7 +370,7 @@ object WabaseService {
       (classOf[Map[String, Any]], () => toMapEntityDecoder(wrc)), // map is function so it comes after request handler
       (classOf[Seq[Any]], () => toSeqEntityDecoder(wrc)), // seq is function so it comes after request handler
       (classOf[String], () => toStringEntityDecoder(wrc)),
-    ))
+    ), AppQuerease.dtoParameterFromMapF(() => toMapEntityDecoder(wrc))(wrc.wabase.qio))
     processResult(result).flatMap {
       case c: WabaseRequestContext => if (ih == null) missingHandlerError else ih(c)
       case r: HttpResponse => Future.successful(r)
