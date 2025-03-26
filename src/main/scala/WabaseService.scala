@@ -8,15 +8,17 @@ import com.typesafe.scalalogging.Logger
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.marshalling.{Marshal, ToResponseMarshallable}
 import org.apache.pekko.http.scaladsl.model.headers.{Cookie, HttpCookie, `Set-Cookie`}
-import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes, DateTime, HttpHeader, HttpRequest, HttpResponse, StatusCodes, Uri}
+import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes, DateTime, HttpEntity, HttpHeader, HttpRequest, HttpResponse, MediaTypes, StatusCodes, Uri}
 import org.apache.pekko.http.scaladsl.unmarshalling.Unmarshaller
 import org.slf4j.LoggerFactory
 import org.wabase.AppMetadata.{Action, RouteDef}
 import org.wabase.WabaseService.Wabase
 
+import java.lang.reflect.Parameter
 import java.util.Locale
 import scala.annotation.tailrec
 import scala.concurrent.{ExecutionContext, Future}
+import scala.jdk.CollectionConverters._
 import scala.util.control.NonFatal
 
 case class WabaseUser(properties: Map[String, Any]) {
@@ -343,6 +345,44 @@ object WabaseService {
     wrc.logger.debug(s"Invoking handler $cn.$fn for request: ${wrc.req}")
     implicit val ec: ExecutionContext = wrc.as.dispatcher
     def missingHandlerError = sys.error(s"Handler argument missing for invocation: '$cn.$fn'")
+    val (paramList, paramFunction) = handlerParameters(wrc, ih, missingHandlerError)
+    val result = org.wabase.invokeFunction(cn, fn, paramList, paramFunction)
+    handlerResult(wrc, result).flatMap {
+      case c: WabaseRequestContext => if (ih == null) missingHandlerError else ih(c)
+      case r: HttpResponse => Future.successful(r)
+      case h: RequestHandler@unchecked => h(wrc)
+    }
+  }
+
+  def handlerParameters(
+    wrc: WabaseRequestContext,
+    innerHandler: RequestHandler,
+    missingHandlerError: => Nothing,
+  ): (Seq[(Class[_], () => Any)], PartialFunction[Parameter, Any]) = {
+    implicit val ec: ExecutionContext = wrc.as.dispatcher
+    val paramList = List(
+      (classOf[Uri], () => wrc.req.uri),
+      (classOf[WabaseRequestContext], () => wrc),
+      (classOf[HttpRequest], () => wrc.req),
+      (classOf[WabaseUser], () => wrc.user),
+      (classOf[ApplicationState], () => wrc.applicationState),
+      (classOf[HttpResponse], () => if (innerHandler == null) missingHandlerError else innerHandler(wrc)),
+      (classOf[Future[HttpResponse]], () => if (innerHandler == null) missingHandlerError else innerHandler(wrc)),
+      (classOf[ActorSystem], () => wrc.as),
+      (classOf[ExecutionContext], () => ec),
+      (classOf[RequestHandler], () => innerHandler),
+      (classOf[Map[String, Any]], () => toMapEntityDecoder(wrc)), // map is function so it comes after request handler
+      (classOf[Seq[Any]], () => toSeqEntityDecoder(wrc)), // seq is function so it comes after request handler
+      (classOf[java.util.Map[_, _]], () => toMapEntityDecoder(wrc).map(_.asJava)),
+      (classOf[java.util.List[_]], () => toSeqEntityDecoder(wrc).map(_.asJava)),
+      (classOf[String], () => toStringEntityDecoder(wrc)),
+    )
+    val paramFunction = AppQuerease.dtoParameterFromMapF(() => toMapEntityDecoder(wrc))(wrc.wabase.qio)
+    (paramList, paramFunction)
+  }
+
+  def handlerResult(wrc: WabaseRequestContext, res: Any): Future[Any] = {
+    implicit val ec: ExecutionContext = wrc.as.dispatcher
     def processResult(r: Any): Future[Any] = r match {
       case c: WabaseRequestContext => Future.successful(c)
       case req: HttpRequest => processResult(wrc.copy(req = req))
@@ -351,32 +391,19 @@ object WabaseService {
       case u: WabaseUser => processResult(wrc.copy(user = u))
       case resp: HttpResponse => Future.successful(resp)
       case s: String => Future.successful(HttpResponse(entity = s))
+      case m: Map[_, _] => Future.successful(jsonResponse(m))
+      case d: Dto => Future.successful(jsonResponse(d.toMap(wrc.wabase.qe)))
+      case s: Seq[_] => Future.successful(jsonResponse(s.map { case e: Dto => e.toMap(wrc.wabase.qe) case x => x }))
       case f: Future[_] => f.flatMap(processResult)
       case rh: RequestHandler@unchecked => Future.successful(rh)
       case x => error(s"Request transformer must return either WabaseRequestContext or HttpRequest or Future of them." +
         s" Instead got: $x")
     }
-    val result = org.wabase.invokeFunction(cn, fn, List(
-      (classOf[Uri], () => wrc.req.uri),
-      (classOf[WabaseRequestContext], () => wrc),
-      (classOf[HttpRequest], () => wrc.req),
-      (classOf[WabaseUser], () => wrc.user),
-      (classOf[ApplicationState], () => wrc.applicationState),
-      (classOf[HttpResponse], () => if (ih == null) missingHandlerError else ih(wrc)),
-      (classOf[Future[HttpResponse]], () => if (ih == null) missingHandlerError else ih(wrc)),
-      (classOf[ActorSystem], () => wrc.as),
-      (classOf[ExecutionContext], () => ec),
-      (classOf[RequestHandler], () => ih),
-      (classOf[Map[String, Any]], () => toMapEntityDecoder(wrc)), // map is function so it comes after request handler
-      (classOf[Seq[Any]], () => toSeqEntityDecoder(wrc)), // seq is function so it comes after request handler
-      (classOf[String], () => toStringEntityDecoder(wrc)),
-    ), AppQuerease.dtoParameterFromMapF(() => toMapEntityDecoder(wrc))(wrc.wabase.qio))
-    processResult(result).flatMap {
-      case c: WabaseRequestContext => if (ih == null) missingHandlerError else ih(c)
-      case r: HttpResponse => Future.successful(r)
-      case h: RequestHandler@unchecked => h(wrc)
-    }
+    processResult(res)
   }
+
+  def jsonResponse(resp: Any): HttpResponse =
+    HttpResponse(entity = HttpEntity(MediaTypes.`application/json`, ResultEncoder.encodeAnyToJsonString(resp)))
 
   def error(msg: String) = throw new WabaseRouteException(msg)
 }

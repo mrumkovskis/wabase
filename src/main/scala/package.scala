@@ -114,6 +114,7 @@ package object wabase extends Loggable {
               } else obj_or_new(cn.substring(0, idx) + "$" + cn.substring(idx + 1, cn.length))
           }
         }
+    require(className != null, "Class name cannot be null, cannot instantiate class")
     obj_or_new(className)
   }
 

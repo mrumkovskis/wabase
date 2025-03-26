@@ -85,6 +85,11 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
 
   it should "do wabase service routes for handlers" in {
     callRoute("/do/test_handler/val/1/2/3") shouldBe "Key: [val, 1, 2, 3]"
+    callRoute("/do/map_handler?par1=1.5&par2=abc&par3=true", decoder = decodeJs) shouldBe Map("par1" -> "1.5", "par2" -> "abc", "par3" -> "true")
+    callRoute("/do/seq_handler/a/b/c", decoder = decodeJs) shouldBe Seq("a", "b", "c")
+    callRoute("/do/dto_handler?id=123&name=ABC", decoder = decodeJs) shouldBe Map("id" -> 123, "name" -> "ABC")
+    callRoute("/do/org.wabase.WabaseTestHandlers.dto_seq_handler?id=1&id=2&id=3&name=A&name=B&name=C",
+      decoder = decodeJs) shouldBe List(Map("name" -> "A", "id" -> 1), Map("name" -> "B", "id" -> 2), Map("name" -> "C", "id" -> 3))
   }
 
   val count = 1024
@@ -156,6 +161,17 @@ object WabaseTestHandlers {
   }
 
   def testHandler(ctx: WabaseRequestContext) = s"Key: [${ctx.key.mkString(", ")}]"
+  def map_handler(uri: Uri) = uri.query().toMap
+  def seq_handler(ctx: WabaseRequestContext) = ctx.key
+  def dto_handler(ctx: WabaseRequestContext) = ctx.wabase.qio.fill[View1](ctx.req.uri.query().toMap)
+  def dto_seq_handler(ctx: WabaseRequestContext) = {
+    import scala.language.existentials
+    val List(l1: List[(String, Any)], l2: List[(String, Any)]) =
+      ctx.req.uri.query().toMultiMap.map { case (k, v) => v.map(k -> _) }
+    l1.zip(l2)
+      .map(_.productIterator.asInstanceOf[Iterator[(String, Any)]].toMap)
+      .map(m => ctx.wabase.qio.fill[View1](m))
+  }
 
   def errorHandler(ctx: WabaseRequestContext): WabaseService.ErrorHandler = {
     val eh: WabaseService.ErrorHandler = {
