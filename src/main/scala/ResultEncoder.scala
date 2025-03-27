@@ -76,8 +76,8 @@ object ResultEncoder {
       w => {
         val structuresEncoder: JsValueEncoderPF = w => {
             case v: Map[Any@unchecked, Any@unchecked] => w.writeMap(v)(borerEncoder, borerEncoder)
-            case v: java.util.Map[Any@unchecked, Any@unchecked] =>
-              w.writeMap(v.asScala.toMap)(borerEncoder, borerEncoder)
+            case v: scala.collection.mutable.Map[_, _] => borerEncoder.write(w, v.toMap)
+            case v: java.util.Map[_, _] => borerEncoder.write(w, v.asScala)
             case v: Iterable[Any@unchecked] => w.writeIterator(v.iterator)(borerEncoder)
             case v: Iterator[Any@unchecked] => w.writeIterator(v)(borerEncoder)
             case v: java.lang.Iterable[Any@unchecked] => w.writeIterator(v.iterator.asScala)(borerEncoder)

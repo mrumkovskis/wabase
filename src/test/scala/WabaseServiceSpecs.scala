@@ -90,6 +90,10 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
     callRoute("/do/dto_handler?id=123&name=ABC", decoder = decodeJs) shouldBe Map("id" -> 123, "name" -> "ABC")
     callRoute("/do/org.wabase.WabaseTestHandlers.dto_seq_handler?id=1&id=2&id=3&name=A&name=B&name=C",
       decoder = decodeJs) shouldBe List(Map("name" -> "A", "id" -> 1), Map("name" -> "B", "id" -> 2), Map("name" -> "C", "id" -> 3))
+    callRoute("/do/test.QuereaseActionJavaManager.java_map_handler", data = encodeJs(Map("a" -> 1, "b" -> "x", "c" -> List(1,2,3))),
+      method = HttpMethods.POST, decoder = decodeJs) shouldBe Map("a" -> 1, "b" -> "x", "c" -> List(1, 2, 3))
+    callRoute("/do/test.QuereaseActionJavaManager.java_seq_handler", data = encodeJs(List(Map("a" -> 1), 2, true, "x", List(1, "y"))),
+      method = HttpMethods.PUT, decoder = decodeJs) shouldBe List(Map("a" -> 1), 2, true, "x", List(1, "y"))
   }
 
   val count = 1024

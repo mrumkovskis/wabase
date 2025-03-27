@@ -361,16 +361,16 @@ object WabaseService {
   ): (Seq[(Class[_], () => Any)], PartialFunction[Parameter, Any]) = {
     implicit val ec: ExecutionContext = wrc.as.dispatcher
     val paramList = List(
-      (classOf[Uri], () => wrc.req.uri),
       (classOf[WabaseRequestContext], () => wrc),
       (classOf[HttpRequest], () => wrc.req),
-      (classOf[WabaseUser], () => wrc.user),
-      (classOf[ApplicationState], () => wrc.applicationState),
       (classOf[HttpResponse], () => if (innerHandler == null) missingHandlerError else innerHandler(wrc)),
       (classOf[Future[HttpResponse]], () => if (innerHandler == null) missingHandlerError else innerHandler(wrc)),
       (classOf[ActorSystem], () => wrc.as),
       (classOf[ExecutionContext], () => ec),
       (classOf[RequestHandler], () => innerHandler),
+      (classOf[WabaseUser], () => wrc.user),
+      (classOf[ApplicationState], () => wrc.applicationState),
+      (classOf[Uri], () => wrc.req.uri),
       (classOf[Map[String, Any]], () => toMapEntityDecoder(wrc)), // map is function so it comes after request handler
       (classOf[Seq[Any]], () => toSeqEntityDecoder(wrc)), // seq is function so it comes after request handler
       (classOf[java.util.Map[_, _]], () => toMapEntityDecoder(wrc).map(_.asJava)),
@@ -386,16 +386,18 @@ object WabaseService {
     def processResult(r: Any): Future[Any] = r match {
       case c: WabaseRequestContext => Future.successful(c)
       case req: HttpRequest => processResult(wrc.copy(req = req))
+      case resp: HttpResponse => Future.successful(resp)
+      case f: Future[_] => f.flatMap(processResult)
+      case s: String => Future.successful(HttpResponse(entity = s))
+      case _: Map[_, _] | _: scala.collection.mutable.Map[_, _] => Future.successful(jsonResponse(r))
+      case s: Iterable[_] => Future.successful(jsonResponse(s.map { case e: Dto => e.toMap(wrc.wabase.qe) case x => x }))
+      case rh: RequestHandler@unchecked => Future.successful(rh)
+      case d: Dto => Future.successful(jsonResponse(d.toMap(wrc.wabase.qe)))
+      case m: java.util.Map[_, _] => processResult(m.asScala)
+      case s: java.util.List[_] => processResult(s.asScala)
       case uri: Uri => processResult(wrc.copy(req = wrc.req.withUri(uri)))
       case st: ApplicationState => processResult(wrc.copy(applicationState = st))
       case u: WabaseUser => processResult(wrc.copy(user = u))
-      case resp: HttpResponse => Future.successful(resp)
-      case s: String => Future.successful(HttpResponse(entity = s))
-      case m: Map[_, _] => Future.successful(jsonResponse(m))
-      case d: Dto => Future.successful(jsonResponse(d.toMap(wrc.wabase.qe)))
-      case s: Seq[_] => Future.successful(jsonResponse(s.map { case e: Dto => e.toMap(wrc.wabase.qe) case x => x }))
-      case f: Future[_] => f.flatMap(processResult)
-      case rh: RequestHandler@unchecked => Future.successful(rh)
       case x => error(s"Request transformer must return either WabaseRequestContext or HttpRequest or Future of them." +
         s" Instead got: $x")
     }
