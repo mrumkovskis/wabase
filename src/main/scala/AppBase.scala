@@ -987,7 +987,10 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
     * Option(user).map(u => Map("current_user_id" -> u.id)) getOrElse Map.empty
     * }}}
     */
-  def current_user_param(user: User): Map[String,Any] = Map.empty
+  def current_user_param(user: User): Map[String,Any] = user match {
+    case WabaseUser(attrs) => attrs
+    case _ => Map.empty
+  }
 
   def filterByHasRole(someRoles: Set[String], user: User): Set[String] =
     someRoles.filter(role => hasRole(user, Set(role)))
