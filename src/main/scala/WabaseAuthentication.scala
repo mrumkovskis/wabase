@@ -8,7 +8,7 @@ import org.apache.pekko.http.scaladsl.server.directives.AuthenticationDirective
 import io.bullet.borer.compat.pekko._
 import org.apache.pekko.http.scaladsl.model.RemoteAddress.Unknown
 import org.apache.pekko.http.scaladsl.model.{AttributeKey, AttributeKeys, HttpRequest, HttpResponse, RemoteAddress}
-import org.apache.pekko.http.scaladsl.model.headers.{HttpCookie, SameSite, `Remote-Address`, `User-Agent`, `X-Forwarded-For`, `X-Real-Ip`}
+import org.apache.pekko.http.scaladsl.model.headers.{HttpCookie, HttpCredentials, SameSite, `Remote-Address`, `User-Agent`, `X-Forwarded-For`, `X-Real-Ip`}
 import org.apache.pekko.util.ByteString
 
 import scala.util.Try
@@ -91,6 +91,10 @@ object WabaseAuthentication extends Authentication[WabaseUser] with Execution {
   /* Response transformer */
   def removeSessionCookie(resp: HttpResponse): HttpResponse =
     WabaseService.deleteCookie(resp)(SessionCookieName, path = "/")
+
+  def httpCredentials: HttpRequest => Option[HttpCredentials] = WabaseService.optionalHttpHeaderValuePF(_) {
+    case org.apache.pekko.http.scaladsl.model.headers.Authorization(credentials) => credentials
+  }
 
   override def signInUser: AuthenticationDirective[WabaseUser] = ???
   override protected def execution: Execution = ???
