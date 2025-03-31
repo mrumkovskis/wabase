@@ -5,7 +5,7 @@ import org.apache.pekko.http.scaladsl.Http
 import org.apache.pekko.http.scaladsl.model.{HttpRequest, HttpResponse}
 
 import scala.collection.immutable.Seq
-import scala.concurrent.ExecutionContext
+import scala.concurrent.{ExecutionContext, Future}
 import scala.io.StdIn
 
 class WabaseServer(wabase: WabaseService.Wabase) {
@@ -13,7 +13,8 @@ class WabaseServer(wabase: WabaseService.Wabase) {
   private val deferredControl = new WabaseDeferredControl(wabase)(wabase.system)
   private val service         = new WabaseService
 
-  def handle(req: HttpRequest) = service.handle(wabase, deferredControl)(req)(wabase.system)
+  def handle(req: HttpRequest): Future[HttpResponse] =
+    service.handle(wabase, deferredControl)(req)(wabase.system)
 }
 
 object WabaseServer {
@@ -49,7 +50,7 @@ object WabaseServer {
     // TODO support TLS if configured
     val bindingFuture = Http().newServerAt("0.0.0.0", server.port).bind(server.handle)
 
-    println(s"Server now online. Please navigate to http://localhost:8080/hi\nPress RETURN to stop...")
+    println(s"Server now online. Please navigate to http://localhost:${server.port}/hi\nPress RETURN to stop...")
     StdIn.readLine() // let it run until user presses return
     bindingFuture
       .flatMap(_.unbind()) // trigger unbinding from the port
