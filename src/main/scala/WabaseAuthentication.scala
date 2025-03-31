@@ -16,7 +16,7 @@ import scala.util.Try
 
 class AuthenticationException(msg: String) extends Exception(msg)
 
-object WabaseAuthentication extends Authentication[WabaseUser] with Execution {
+object WabaseAuthentication extends Authentication[WabaseUser] {
 
   type Session = Authentication.Session[WabaseUser]
 
@@ -27,9 +27,11 @@ object WabaseAuthentication extends Authentication[WabaseUser] with Execution {
   }
   implicit val sessionCodec: Codec[Session] = deriveCodec[Session]
 
-  override def userInfo(implicit user: WabaseUser): String = user.toString
+  override def userInfo(implicit user: WabaseUser): String = Json.encode(user).toUtf8String
   override def encodeSession(session: Session): String = Json.encode(session).toUtf8String
   override def decodeSession(session: String): Session = Json.decode(ByteString(session)).to[Session].value
+
+  def userPrincipal(user: WabaseUser) = userInfo(user)
 
   def extractSession(req: HttpRequest): Option[Session] = {
     WabaseService.optionalCookie(req)(SessionCookieName).flatMap { sessionCookie =>
@@ -97,5 +99,4 @@ object WabaseAuthentication extends Authentication[WabaseUser] with Execution {
   }
 
   override def signInUser: AuthenticationDirective[WabaseUser] = ???
-  override protected def execution: Execution = ???
 }

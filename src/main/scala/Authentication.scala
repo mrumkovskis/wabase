@@ -1,6 +1,5 @@
 package org.wabase
 
-import java.security.SecureRandom
 import java.util.Locale
 
 import org.apache.pekko.http.scaladsl.model._
@@ -23,7 +22,7 @@ import Authentication.SessionUserExtractor
 
 import scala.collection.immutable
 
-trait Authentication[User] extends SecurityDirectives with SessionInfoRemover with SessionUserExtractor[User] { this: Execution =>
+trait Authentication[User] extends SecurityDirectives with SessionInfoRemover with SessionUserExtractor[User] {
 
   import Authentication._
 
@@ -330,7 +329,7 @@ object Authentication {
     }
   }
 
-  trait BasicAuth[User] extends Authentication[User] { this: Execution =>
+  trait BasicAuth[User] extends Authentication[User] {
 
     def authenticateUser(username: String, password: String): Future[Option[User]]
 

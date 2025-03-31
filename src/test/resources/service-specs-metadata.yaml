@@ -45,6 +45,9 @@ do:       transformer echo
 on:       /user
 do:       testAuth respondWithUserName
 
+on:       /user-info
+do:       testAuth org.wabase.WabaseAuthentication.userPrincipal
+
 on:       /long-handler-chain
 do:       testAuth urlTransformer responseTransformer addUserData uriValue
 
