@@ -605,4 +605,5 @@ object WabaseAppConfig extends AppBase.AppConfig {
   val SerializationBufferSize: Int = appConfig.getBytes("serialization-buffer-size").toInt
   val SerializationBufferMaxFileSize: Long = MarshallingConfig.dbDataFileMaxSize
   val SerializationBufferMaxFileSizes: Map[String, Long] = MarshallingConfig.customDataFileMaxSizes
+  val CurrentUserParameterName = appConfig.getString("current-user-key-name")
 }

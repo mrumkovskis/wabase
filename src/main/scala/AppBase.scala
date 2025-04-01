@@ -988,7 +988,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Loggable with QuereasePro
     * }}}
     */
   def current_user_param(user: User): Map[String,Any] = user match {
-    case WabaseUser(attrs) => attrs
+    case WabaseUser(attrs) => Map(WabaseAppConfig.CurrentUserParameterName -> attrs)
     case _ => Map.empty
   }
 
