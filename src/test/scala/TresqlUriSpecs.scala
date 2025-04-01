@@ -28,12 +28,21 @@ class TresqlUriSpecs extends AnyFlatSpec with Matchers {
         Map("path2" -> "path2", "path3" -> "path3"),
         TresqlUri.Uri(Seq("path2", "path3"), Nil, ListMap()),
         "path2/path3",
-      )
+      ),
+      ("{ 'glāžšķūņu rūķīši', 'rūķīši', :path3?, '?', 'āīū' žčņ, 'ēšģ' ķļŗ }",
+        Map(),
+        TresqlUri.Uri(Seq("glāžšķūņu rūķīši", "rūķīši"), Nil, ListMap("žčņ" -> "āīū", "ķļŗ" -> "ēšģ")),
+        "glāžšķūņu rūķīši/rūķīši?žčņ=āīū&ķļŗ=ēšģ",
+      ),
     )
     tresql_uris foreach { case (uriTresql, bind_vars, truri, uri) =>
       val turi = new TresqlUri().tresqlUriValue(TresqlUri.Tresql(uriTresql))(TresqlQuery, bind_vars, res)
       turi shouldBe truri
-      new TresqlUri().uri(turi).toString() shouldBe uri
+      val url = new TresqlUri().uri(turi)
+      WabaseService.toReadableString(url.path) + {
+        val q = url.query().map { case (k, v) => s"$k=$v"}.mkString("&")
+        if (q.isEmpty) "" else s"?$q"
+      } shouldBe uri
     }
   }
 }
