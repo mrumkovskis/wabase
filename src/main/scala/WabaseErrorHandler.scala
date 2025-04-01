@@ -1,7 +1,7 @@
 package org.wabase
 
 import com.typesafe.scalalogging.Logger
-import org.apache.pekko.http.scaladsl.model.StatusCodes.{BadRequest, InternalServerError, NotFound, UnprocessableContent}
+import org.apache.pekko.http.scaladsl.model.StatusCodes.{BadRequest, InternalServerError, NotFound, Unauthorized, UnprocessableContent}
 import org.apache.pekko.http.scaladsl.model.{EntityStreamSizeException, HttpResponse, StatusCodes}
 import org.mojoz.querease.{ValidationException, ValidationResult}
 import org.slf4j.LoggerFactory
@@ -14,6 +14,9 @@ import scala.concurrent.Future
 object WabaseErrorHandler {
   val logger = Logger(LoggerFactory.getLogger("org.wabase.error"))
   def errorHandlerPF(ctx: WabaseRequestContext): PartialFunction[Throwable, HttpResponse] = {
+    case e: AuthenticationException =>
+      logger.debug(e.getMessage)
+      HttpResponse(status = Unauthorized)
     case e: EntityStreamSizeException => HttpResponse(status = StatusCodes.ContentTooLarge,
       entity = s"Content too large: actual size - ${e.actualSize.getOrElse("<unknown>")}, limit - ${e.limit}")
     case e: UnprocessableEntityException =>
