@@ -8,7 +8,7 @@ import org.apache.pekko.http.scaladsl.server.directives.AuthenticationDirective
 import io.bullet.borer.compat.pekko._
 import org.apache.pekko.http.scaladsl.model.RemoteAddress.Unknown
 import org.apache.pekko.http.scaladsl.model.{AttributeKey, AttributeKeys, HttpRequest, HttpResponse, RemoteAddress}
-import org.apache.pekko.http.scaladsl.model.headers.{HttpCookie, HttpCredentials, SameSite, `Remote-Address`, `User-Agent`, `X-Forwarded-For`, `X-Real-Ip`}
+import org.apache.pekko.http.scaladsl.model.headers.{BasicHttpCredentials, HttpCookie, HttpCredentials, SameSite, `Remote-Address`, `User-Agent`, `X-Forwarded-For`, `X-Real-Ip`}
 import org.apache.pekko.util.ByteString
 
 import scala.util.Try
@@ -54,19 +54,14 @@ object WabaseAuthentication extends Authentication[WabaseUser] {
 
   def encryptedSession(req: HttpRequest, user: WabaseUser): String = {
     if (user == null) throw new AuthenticationException(s"User not found in session")
-    val ip = extractClientIP(req) match {
-      case ra: RemoteAddress.IP => remoteAddressToString(ra)
-      case RemoteAddress.Unknown => null
-    }
-    if (ip == null)
-      throw new BusinessException(s"Client IP http header not found, ensure pekko.http.server.remote-address-attribute = on")
+    val ip = remoteAddressToString(extractClientIP(req))
     val userAgent = extractUserAgent(req)
     val expirationTime = currentTime + sessionTimeOut
     encryptSession(encodeSession(Authentication.Session(user, ip, expirationTime, userAgent)))
   }
 
   /* Request mapper */
-  def authenticate(req: HttpRequest): WabaseUser = {
+  def appAuthenticate(req: HttpRequest): WabaseUser = {
     val (session, ip, userAgent) = (extractSession(req), extractClientIP(req), extractUserAgent(req))
     session.filter(validateSession(_, ip, userAgent))
       .map(_.user)
@@ -74,7 +69,8 @@ object WabaseAuthentication extends Authentication[WabaseUser] {
   }
 
   /* Response transformer */
-  def setSessionCookie(req: HttpRequest, user: WabaseUser, resp: HttpResponse): HttpResponse = {
+  // cannot name setSessionCookie because setSessionCookie from super trait appears from reflection to be member of this object
+  def setAppSessionCookie(req: HttpRequest, user: WabaseUser, resp: HttpResponse): HttpResponse = {
     // remove null values, update rest
     val usr = resp.attribute(AttributeKey[WabaseUser](WabaseService.WabaseUserAttributeName)).map { u =>
       val (rp, cp) = u.properties.partition(_._2 == null)
@@ -91,12 +87,17 @@ object WabaseAuthentication extends Authentication[WabaseUser] {
   }
 
   /* Response transformer */
-  def removeSessionCookie(resp: HttpResponse): HttpResponse =
+  def removeAppSessionCookie(resp: HttpResponse): HttpResponse =
     WabaseService.deleteCookie(resp)(SessionCookieName, path = "/")
 
   def httpCredentials: HttpRequest => Option[HttpCredentials] = WabaseService.optionalHttpHeaderValuePF(_) {
     case org.apache.pekko.http.scaladsl.model.headers.Authorization(credentials) => credentials
   }
+
+  def extractBasicHttpCredentials(req: HttpRequest): WabaseUser = WabaseService.optionalHttpHeaderValuePF(req) {
+    case org.apache.pekko.http.scaladsl.model.headers.Authorization(BasicHttpCredentials(usr, pwd)) =>
+      WabaseUser(Map("username" -> usr, "password" -> pwd))
+  }.getOrElse(throw new AuthenticationException("Credentials required"))
 
   override def signInUser: AuthenticationDirective[WabaseUser] = ???
 }

@@ -133,13 +133,16 @@ package object wabase extends Loggable {
     functionInvocationCache.get(s"$className.$function").getOrElse {
       val obj = getObjectOrNewInstance(className, s"function $function")
       val clazz = obj.getClass
-      clazz.getMethods.filter(_.getName == function) match {
-        case Array(method) =>
-          val obj_fun = (obj, method)
-          functionInvocationCache.put(s"$className.$function", obj_fun)
-          obj_fun
+      def objAndFun(m: java.lang.reflect.Method) = {
+        val obj_fun = (obj, m)
+        functionInvocationCache.put(s"$className.$function", obj_fun)
+        obj_fun
+      }
+      clazz.getMethods.filter(m => m.getName == function && m.getDeclaringClass == clazz) match {
+        case Array(method) => objAndFun(method)
         case Array() => sys.error(s"Method $function not found in class $className")
-        case m => sys.error(s"Multiple methods '$function' found: (${m.toList}) in class $className")
+        case m =>
+          sys.error(s"Multiple methods '$function' found: (${m.toList}) in class $className")
       }
     }
 

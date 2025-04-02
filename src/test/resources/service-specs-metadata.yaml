@@ -60,9 +60,14 @@ on:       /do/([\w\.]+).*
 do:       doRequest
 
 # for view matching path first group must match [(create|count):]<view_name> (WabaseService.viewActionKey transformer)
-on:       /views/([\w:]+)(.*)
+on:       /public/([\w:]+)(.*)
 do:       doAction
 
+on:       /(login)
+do:       extractBasicHttpCredentials setSessionCookie doAction
+
+on:       /restricted/([\w:]+)(.*)
+do:       authenticate setSessionCookie doAction
 
 ################# views ###############
 
@@ -89,3 +94,26 @@ create:
 - null {"[" || :p1 || ', "' || :p2 || '"]'}
 count:
   - 1
+
+
+name: login
+api: get
+explicit db: true
+table:
+get:
+- if :current_user.username = 'Gunza' & :current_user.password = 'good'
+    (status ok
+       user_attrs({'password', null} /*reset user value*/)
+       user_attrs({'id', 10})
+       user_attrs({'roles', 'guest, admin'})
+    )
+  else status 401
+
+
+name: restricted_view
+api: get
+explicit db: true
+table:
+get:
+- pwd = if_defined_or_else(:current_user.password, 'wrong', '<not available>')
+- as any unique {:current_user.id 'id', :current_user.username 'name', :pwd 'pwd'}

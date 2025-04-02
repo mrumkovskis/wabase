@@ -1,7 +1,8 @@
 package org.wabase
 
 import org.apache.pekko.actor.ActorSystem
-import org.apache.pekko.http.scaladsl.model.{HttpEntity, HttpMessage, HttpMethod, HttpMethods, HttpRequest, HttpResponse, RequestEntity, Uri}
+import org.apache.pekko.http.scaladsl.model.headers.{BasicHttpCredentials, Cookie, HttpCookiePair, `Set-Cookie`}
+import org.apache.pekko.http.scaladsl.model.{HttpEntity, HttpMessage, HttpMethod, HttpMethods, HttpRequest, HttpResponse, RequestEntity, StatusCodes, Uri}
 import org.apache.pekko.util.ByteString
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
@@ -21,15 +22,20 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
 
   DbDrivers.loadDrivers
 
+  private def response(result: Future[HttpResponse]) = Await.result(result, 5.seconds)
+
   private def entity(result: Future[HttpResponse], decoder: String => Any = identity): Any =
-    Await.result(result.map(WabaseTestHandlers.entity).map(decoder), 5.seconds)
+    decoder(WabaseTestHandlers.entity(response(result)))
 
   protected def callRoute(
     url: String,
     data: RequestEntity = HttpEntity.Empty,
     method: HttpMethod = HttpMethods.GET,
     decoder: String => Any = identity,
-  ) = entity(server.handle(HttpRequest(method = method, uri = url, entity = data)), decoder)
+  ) = callRequest(HttpRequest(method = method, uri = url, entity = data), decoder)
+
+  protected def callRequest(req: HttpRequest, decoder: String => Any = identity) =
+    entity(server.handle(req), decoder)
 
   protected def encodeJs(value: Any) = ResultEncoder.encodeAnyToJsonString(value)
 
@@ -72,16 +78,47 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
     callRoute("/greater/than-3/fail") shouldBe """Key must be number instead got: For input string: "fail""""
   }
 
-  it should "do wabase service routes for views" in {
-    callRoute("/views/view1/10", decoder = decodeJs) shouldBe Map("id" -> 10, "value" -> "Value10")
-    callRoute("/views/view1/5", encodeJs(Map("value" -> "Value5-ins")), HttpMethods.POST, decodeJs) shouldBe
+  it should "do wabase service routes for public views" in {
+    callRoute("/public/view1/10", decoder = decodeJs) shouldBe Map("id" -> 10, "value" -> "Value10")
+    callRoute("/public/view1/5", encodeJs(Map("value" -> "Value5-ins")), HttpMethods.POST, decodeJs) shouldBe
       Map("id" -> 5, "value" -> "Value5-ins")
-    callRoute("/views/view1/5", encodeJs(Map("id" -> 5, "value" -> "Value5-ins")), HttpMethods.PUT,
+    callRoute("/public/view1/5", encodeJs(Map("id" -> 5, "value" -> "Value5-ins")), HttpMethods.PUT,
       decodeJs) shouldBe Map("id" -> 5, "value" -> "upd-Value5-ins")
-    callRoute("/views/view1/10", method = HttpMethods.DELETE) shouldBe "deleted 10"
-    callRoute("/views/view1?list_filter_param=val", decoder = decodeJs) shouldBe "val"
-    callRoute("/views/create:view1?p1=111&p2=aaa", decoder = decodeJs) shouldBe Seq(111, "aaa")
-    callRoute("/views/count:view1", decoder = decodeJs) shouldBe 1
+    callRoute("/public/view1/10", method = HttpMethods.DELETE) shouldBe "deleted 10"
+    callRoute("/public/view1?list_filter_param=val", decoder = decodeJs) shouldBe "val"
+    callRoute("/public/create:view1?p1=111&p2=aaa", decoder = decodeJs) shouldBe Seq(111, "aaa")
+    callRoute("/public/count:view1", decoder = decodeJs) shouldBe 1
+  }
+
+  it should "do login and authenticated requests" in {
+
+    def doBasicAuthReq(usr: String, pwd: String) =
+      response(server.handle(HttpRequest(
+        uri = Uri("/login"),
+        headers = List(org.apache.pekko.http.scaladsl.model.headers.Authorization(BasicHttpCredentials(usr, pwd)))
+      )))
+
+    var resp = doBasicAuthReq("Gunza", "good")
+    resp.status shouldBe StatusCodes.OK
+    val enc_session =  WabaseService.optionalHttpHeaderValuePF(resp) {
+      case `Set-Cookie`(c) if c.name == WabaseAuthentication.SessionCookieName => c.value
+    }.get
+    WabaseAuthentication
+      .decodeSession(WabaseAuthentication.decryptSession(enc_session))
+      .user shouldBe WabaseUser(Map("username" -> "Gunza", "id" -> 10, "roles" -> "guest, admin"))
+
+    resp = response(server.handle(HttpRequest(
+      uri = Uri("/restricted/restricted_view"),
+      headers = List(Cookie(List(HttpCookiePair(WabaseAuthentication.SessionCookieName, enc_session))))
+    )))
+
+    decodeJs(WabaseTestHandlers.entity(resp)) shouldBe Map("id" -> "10", "name" -> "Gunza", "pwd" -> "<not available>")
+
+    resp = doBasicAuthReq("Gunza", "bad")
+    resp.status shouldBe StatusCodes.Unauthorized
+
+    resp = response(server.handle(HttpRequest(uri = "/restricted/restricted_view")))
+    resp.status shouldBe StatusCodes.Unauthorized
   }
 
   it should "do wabase service routes for handlers" in {

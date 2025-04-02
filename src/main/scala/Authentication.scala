@@ -203,7 +203,7 @@ object Authentication {
   import com.lambdaworks.crypto.SCryptUtil
   import java.security.MessageDigest
 
-  case class Session[User](user: User, ip: String, expirationTime: Long, userAgent: Option[String])
+  case class Session[User](user: User, ip: String = null, expirationTime: Long, userAgent: Option[String])
 
   /** Removes session info from request, used by [[org.wabase.DeferredControl]]
     * to calculate stable request hash */

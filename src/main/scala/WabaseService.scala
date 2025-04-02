@@ -8,7 +8,7 @@ import com.typesafe.scalalogging.Logger
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.marshalling.{Marshal, ToResponseMarshallable}
 import org.apache.pekko.http.scaladsl.model.headers.{Cookie, HttpCookie, `Set-Cookie`}
-import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes, DateTime, HttpEntity, HttpHeader, HttpRequest, HttpResponse, MediaTypes, StatusCodes, Uri}
+import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes, DateTime, HttpEntity, HttpHeader, HttpMessage, HttpRequest, HttpResponse, MediaTypes, StatusCodes, Uri}
 import org.apache.pekko.http.scaladsl.unmarshalling.Unmarshaller
 import org.slf4j.LoggerFactory
 import org.wabase.AppMetadata.{Action, RouteDef}
@@ -122,16 +122,16 @@ object WabaseService {
 
   val notFound: Future[HttpResponse] = Future.successful(HttpResponse(status = StatusCodes.NotFound))
 
-  def optionalHttpHeaderValue[T](req: HttpRequest)(extractorF: HttpHeader => Option[T]): Option[T] = {
-    req.headers.collectFirst(Function.unlift(extractorF))
+  def optionalHttpHeaderValue[T](msg: HttpMessage)(extractorF: HttpHeader => Option[T]): Option[T] = {
+    msg.headers.collectFirst(Function.unlift(extractorF))
   }
 
-  def optionalHttpHeaderValueByName(req: HttpRequest)(name: String): Option[String] = {
-    optionalHttpHeaderValue(req)(optionalHttpHeaderValueExtractor(name.toLowerCase))
+  def optionalHttpHeaderValueByName(msg: HttpMessage)(name: String): Option[String] = {
+    optionalHttpHeaderValue(msg)(optionalHttpHeaderValueExtractor(name.toLowerCase))
   }
 
-  def optionalHttpHeaderValuePF[T](req: HttpRequest)(extractorPF: PartialFunction[HttpHeader, T]): Option[T] = {
-    optionalHttpHeaderValue(req)(extractorPF.lift)
+  def optionalHttpHeaderValuePF[T](msg: HttpMessage)(extractorPF: PartialFunction[HttpHeader, T]): Option[T] = {
+    optionalHttpHeaderValue(msg)(extractorPF.lift)
   }
 
   def optionalHttpHeaderValueExtractor(lowerCaseName: String): HttpHeader => Option[String] = {
