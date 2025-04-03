@@ -71,20 +71,27 @@ object WabaseAuthentication extends Authentication[WabaseUser] {
   /* Response transformer */
   // cannot name setSessionCookie because setSessionCookie from super trait appears from reflection to be member of this object
   def setAppSessionCookie(req: HttpRequest, user: WabaseUser, resp: HttpResponse): HttpResponse = {
-    // remove null values, update rest
-    val usr = resp.attribute(AttributeKey[WabaseUser](WabaseService.WabaseUserAttributeName)).map { u =>
+    WabaseService.setCookie(resp)(sessionCookie(encryptedSession(req, mergeReqRespUserData(user, resp))))
+  }
+
+  def optUserFromRespAttributes(resp: HttpResponse): Option[WabaseUser] =
+    resp.attribute(AttributeKey[WabaseUser](WabaseService.WabaseUserAttributeName))
+
+  def mergeReqRespUserData(reqUser: WabaseUser, resp: HttpResponse) =
+    optUserFromRespAttributes(resp).map { u =>
       val (rp, cp) = u.properties.partition(_._2 == null)
-      WabaseUser(user.properties -- rp.keys ++ cp)
-    }.getOrElse(user)
-    val enc_session = encryptedSession(req, usr)
-    WabaseService.setCookie(resp)(HttpCookie(
+      // remove null values, update rest
+      WabaseUser(reqUser.properties -- rp.keys ++ cp)
+    }.getOrElse(reqUser)
+
+  def sessionCookie(encryptedSession: String): HttpCookie =
+    HttpCookie(
       SessionCookieName,
-      value = enc_session,
+      value = encryptedSession,
       path = Some("/"),
       httpOnly= httpOnlyCookies,
       secure = secureCookies
-    ).withSameSite(SameSite.Lax))
-  }
+    ).withSameSite(SameSite.Lax)
 
   /* Response transformer */
   def removeAppSessionCookie(resp: HttpResponse): HttpResponse =
