@@ -1623,4 +1623,15 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       jsonAssert(entityAs[String], Seq(2, 3, 4))
     }
   }
+
+  it should "return array" in {
+    for {
+      t1 <- doAction("get", "array_test1", Map())
+        .map(_ shouldBe List(1, 2, 3))
+      t2 <- doAction("list", "array_test1", Map())
+        .map(_ shouldBe List("EnvTestName", "EnvTestName", "Mika", "Mr. Gunza", "Mr. Mario"))
+      t3 <- doAction("insert", "array_test1", Map())
+        .map(_ shouldBe List("a", "b", "c"))
+    } yield t1
+  }
 }

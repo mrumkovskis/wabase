@@ -1565,3 +1565,16 @@ update:
 - saved_data = requestPartsToBindableMap extract parts [main]
 - =blob_data[id = 1] { data = :saved_data.f1, data2 = :saved_data.f2, data3 = :saved_data.f3 }
 - as any org.wabase.QuereaseActionTestManagerObj.stringResultsFromInputStreams blob_data[id = 1] {data, data2, data3}
+
+
+name: array_test1
+api: get, list, insert
+table:
+get:
+- arr = array ({1} + {2} + {3})#(1)
+- as any :arr
+list:
+- as any array person{name}#(1)
+insert:
+- arr = array ({'a'} + {'b'} + {'c'})#(1)
+- as any array :arr
