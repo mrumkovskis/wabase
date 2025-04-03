@@ -110,10 +110,9 @@ get:
   else status 401
 
 
-name: restricted_view
+name: user_principal
 api: get
 explicit db: true
 table:
 get:
-- pwd = if_defined_or_else(:current_user.password, 'wrong', '<not available>')
-- as any unique {:current_user.id 'id', :current_user.username 'name', :pwd 'pwd'}
+- as any :current_user

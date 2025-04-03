@@ -108,16 +108,16 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
       .user shouldBe WabaseUser(Map("username" -> "Gunza", "id" -> 10, "roles" -> "guest, admin"))
 
     resp = response(server.handle(HttpRequest(
-      uri = Uri("/restricted/restricted_view"),
+      uri = Uri("/restricted/user_principal"),
       headers = List(Cookie(List(HttpCookiePair(WabaseAuthentication.SessionCookieName, enc_session))))
     )))
 
-    decodeJs(WabaseTestHandlers.entity(resp)) shouldBe Map("id" -> "10", "name" -> "Gunza", "pwd" -> "<not available>")
+    decodeJs(WabaseTestHandlers.entity(resp)) shouldBe Map("username" -> "Gunza", "id" -> 10, "roles" -> "guest, admin")
 
     resp = doBasicAuthReq("Gunza", "bad")
     resp.status shouldBe StatusCodes.Unauthorized
 
-    resp = response(server.handle(HttpRequest(uri = "/restricted/restricted_view")))
+    resp = response(server.handle(HttpRequest(uri = "/restricted/user_principal")))
     resp.status shouldBe StatusCodes.Unauthorized
   }
 
