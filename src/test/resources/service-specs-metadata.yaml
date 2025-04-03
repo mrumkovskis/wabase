@@ -101,11 +101,12 @@ api: get
 explicit db: true
 table:
 get:
+- roles = array ({trim('guest')} + {trim('admin')} + {trim('operator')})#(1)
 - if :current_user.username = 'Gunza' & :current_user.password = 'good'
     (status ok
        user_attrs({'password', null} /*reset user value*/)
        user_attrs({'id', 10})
-       user_attrs({'roles', 'guest, admin'})
+       user_attrs({'roles', |:'roles'})
     )
   else status 401
 
