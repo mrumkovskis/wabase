@@ -97,22 +97,25 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
         uri = Uri("/login"),
         headers = List(org.apache.pekko.http.scaladsl.model.headers.Authorization(BasicHttpCredentials(usr, pwd)))
       )))
+    def encryptedSession(resp: HttpResponse) = WabaseService.optionalHttpHeaderValuePF(resp) {
+      case `Set-Cookie`(c) if c.name == WabaseAuthentication.SessionCookieName => c.value
+    }.get
+    def authReq(session: String, req: HttpRequest) =
+      req.mapHeaders(_ ++ List(Cookie(List(HttpCookiePair(WabaseAuthentication.SessionCookieName, session)))))
+    def decSes(ses: String) = WabaseAuthentication.decodeSession(WabaseAuthentication.decryptSession(ses))
 
     var resp = doBasicAuthReq("Gunza", "good")
     resp.status shouldBe StatusCodes.OK
-    val enc_session =  WabaseService.optionalHttpHeaderValuePF(resp) {
-      case `Set-Cookie`(c) if c.name == WabaseAuthentication.SessionCookieName => c.value
-    }.get
-    WabaseAuthentication
-      .decodeSession(WabaseAuthentication.decryptSession(enc_session))
-      .user shouldBe WabaseUser(Map("username" -> "Gunza", "id" -> 10, "roles" -> "guest, admin"))
 
-    resp = response(server.handle(HttpRequest(
-      uri = Uri("/restricted/user_principal"),
-      headers = List(Cookie(List(HttpCookiePair(WabaseAuthentication.SessionCookieName, enc_session))))
-    )))
+    val enc_session = encryptedSession(resp)
+    decSes(enc_session).user shouldBe WabaseUser(Map("username" -> "Gunza", "id" -> 10, "roles" -> "guest, admin"))
 
-    decodeJs(WabaseTestHandlers.entity(resp)) shouldBe Map("username" -> "Gunza", "id" -> 10, "roles" -> "guest, admin")
+    val x = (1 to 3).scanLeft(enc_session) { (enc_ses, _) =>
+      Thread.sleep(10) // ensure that session expiration time changes
+      resp = response(server.handle(authReq(enc_ses, HttpRequest(uri = Uri("/restricted/user_principal")))))
+      decodeJs(WabaseTestHandlers.entity(resp)) shouldBe Map("username" -> "Gunza", "id" -> 10, "roles" -> "guest, admin")
+      encryptedSession(resp)
+    }.reduce {(s1, s2) => decSes(s1).expirationTime should be < decSes(s2).expirationTime; s2}
 
     resp = doBasicAuthReq("Gunza", "bad")
     resp.status shouldBe StatusCodes.Unauthorized
