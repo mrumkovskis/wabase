@@ -822,9 +822,6 @@ class OpParser(viewName: String, cache: OpParser.Cache)
     val dbs = traverser(dbExtractor)(Nil)(e)
     Tresql(te.tresql, dbs, rt)
   } named "tresql-op"
-  def arrOp: MemParser[Arr] = opt(opResultType) ~ ("array" ~> tresqlOp) ^^ {
-    case rt ~ e => Arr(e, rt)
-  } named "arr-op"
   def viewOp: MemParser[ViewCall] = ActionRegex ~ ViewNameRegex ~ opt(operation) ^^ {
     case action ~ view ~ op =>
       ViewCall(action.trim /* trim ending whitespace */, view, op.orNull)
@@ -995,7 +992,7 @@ class OpParser(viewName: String, cache: OpParser.Cache)
   } named "set-user-attributes-op"
   def setHttpHeadersOps: MemParser[List[SetHttpHeadersOp]] =
     rep(setCookie | deleteCookie | setHttpHeaders | setUserAttributes) named "set-http-headers-ops"
-  def operation: MemParser[Op] = (redirect | response | viewOp | jobOp | confOp | uniqueOp | arrOp |
+  def operation: MemParser[Op] = (redirect | response | viewOp | jobOp | confOp | uniqueOp |
     httpOp | dbOp | foreachOp | ifElseOp | resourceOp | fileOp | toFileOp | templateOp | emailOp |
     jsonCodecOp | httpHeaderOrCookieOp | extractPartsOp | extractEntityOp |
     thisOp | bracesOp | invocationOp | tresqlOp) named "operation"
@@ -1184,7 +1181,6 @@ object AppMetadata extends Loggable {
     case class Tresql(tresql: String,
                       dbs: List[ast.Db] = Nil,
                       conformTo: Option[OpResultType] = None) extends CastableOp
-    case class Arr(tresql: Tresql, conformTo: Option[OpResultType] = None) extends Op
     case class ViewCall(method: String, view: String, data: Op = null) extends Op
     case class RedirectToKey(name: String) extends Op
     case class Unique(innerOp: Op, opt: Boolean, conformTo: Option[OpResultType] = None) extends CastableOp
@@ -1261,7 +1257,7 @@ object AppMetadata extends Loggable {
     def opTraverser[T](opTrav: => OpTraverser[T], stepTrav: => StepTraverser[T])(
         extractor: OpTraverser[T]): OpTraverser[T] = {
       def traverse(state: T): PartialFunction[Op, T] = {
-        case _: Tresql | _: Arr | _: RedirectToKey | _: Response |
+        case _: Tresql | _: RedirectToKey | _: Response |
              _: VariableTransforms | _: File | _: Conf | _: HttpHeader | _: Cookie |
              _: ExtractParts | This | _: Job | _: Resource | Commit | null => state
         case o: ViewCall => opTrav(state)(o.data)
@@ -1351,7 +1347,6 @@ object AppMetadata extends Loggable {
           def us(s: State[T], v: T) = { s.copy(value = v) }
           {
             case t: Tresql => us(state, nv(state.value)(t))
-            case a: Arr => opTrTr(a.tresql)
             case Response(_, _, hops, body) =>
               hops.foldLeft(opTrTr(body)){ (resSt, hdop) =>
                 us(resSt, nv(resSt.value)(hdop.tresql))

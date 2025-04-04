@@ -1568,13 +1568,10 @@ update:
 
 
 name: array_test1
-api: get, list, insert
+api: get, list
 table:
 get:
-- arr = array ({1} + {2} + {3})#(1)
+- arr = [({1} + {2} + {3})#(1)]
 - as any :arr
 list:
-- as any array person{name}#(1)
-insert:
-- arr = array ({'a'} + {'b'} + {'c'})#(1)
-- as any array :arr
+- as any [person{name}#(1)]

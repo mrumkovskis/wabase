@@ -1630,8 +1630,6 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         .map(_ shouldBe List(1, 2, 3))
       t2 <- doAction("list", "array_test1", Map())
         .map(_ shouldBe List("EnvTestName", "EnvTestName", "Mika", "Mr. Gunza", "Mr. Mario"))
-      t3 <- doAction("insert", "array_test1", Map())
-        .map(_ shouldBe List("a", "b", "c"))
     } yield t1
   }
 }

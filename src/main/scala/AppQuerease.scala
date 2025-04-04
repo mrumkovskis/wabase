@@ -622,43 +622,13 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         val r = sel.toListOfMaps
         if (r.size == 1 && r.head.size == 1) TresqlResult(SingleValueResult(r.head.head._2))
         else IteratorResult(r.iterator)
+      case arraySel: DynamicArraySelectResult =>
+        if (resources.conn == null) IteratorResult(arraySel.elIterator.toSeq.iterator)
+        else IteratorResult(arraySel.elIterator)
       case r => TresqlResult(r)
      }
     )
     tresql.conformTo.map(comp_res(result, _)).getOrElse(result)
-  }
-
-  def doArray(
-    op: Action.Arr,
-    bindVars: Map[String, Any],
-    context: ActionContext
-  )(implicit
-    resources: Resources
-  ): DataResult = {
-    def it_from_sel_result(r: Result[RowLike]) = {
-      if (r.columnCount > 1) sys.error(s"array result must contain only one column, instead found ${r.columnCount}")
-      else r.map(_(0))
-    }
-    val result = useResourcesConnOrEvaluator (resources, res =>
-      (doTresql(op.tresql, bindVars, context)(res) match {
-        case i: IteratorResult => i.result
-        case TresqlResult(tr) => tr match {
-          case SingleValueResult(sr) => sr match {
-            case i: Iterator[_] => i
-            case i: Iterable[_] => i.iterator
-            case x => Iterator(x)
-          }
-          case a: ArrayResult[_] => a.values.iterator
-          case s: Result[RowLike] =>
-            val it = it_from_sel_result(s)
-            // consume iterator if evaluator conn is used to ensure it is closed
-            if (resources.conn == null) it.toSeq.iterator
-            else it
-        }
-        case x => sys.error(s"Unable to create array from result: '$x'. Only TresqlResult or IteratorResult are accepted.")
-      }) match { case it => IteratorResult(it) }
-    )
-    op.conformTo.map(comp_res(result, _)).getOrElse(result)
   }
 
   protected def doViewCall(
@@ -1561,7 +1531,6 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     implicit val fs: FileStreamer = fileStreamers.fs(null)
     op match {
       case to: Action.Tresql => Future.successful(doTresql(to, data ++ env, context))
-      case op: Action.Arr => Future.successful(doArray(op, data ++ env, context))
       case Action.ViewCall(method, view, viewOp) => doViewCall(method, view, viewOp, data, env, context)
       case op: Action.Unique => doUnique(op, data, env, context)
       case inv: Action.Invocation => doInvocation(inv, data, env, context)

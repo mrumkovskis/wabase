@@ -104,7 +104,7 @@ api: get
 explicit db: true
 table:
 get:
-- roles = array ({trim('guest')} + {trim('admin')} + {trim('operator')})#(1)      # trim values for hsqldb to avoid space padding
+- roles = [({trim('guest')} + {trim('admin')} + {trim('operator')})#(1)]      # trim values for hsqldb to avoid space padding
 - if :current_user.credentials.username = 'Gunza' & :current_user.credentials.password = 'good'
     (status ok
        user_attrs({'id', 10})
