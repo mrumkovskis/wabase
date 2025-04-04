@@ -524,7 +524,8 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       })
 
     val state = State[Seq[DbAccessKey]](action, name, viewDefs, jobDefs,
-      tresqlExtractor = dbKeys => tresql => dbKeys ++ tresql.dbs.map(DbAccessKey),
+      tresqlExtractor = dbKeys => tresql => dbKeys ++ tresql.dbs
+        .filter(_.db != null).map(d => DbAccessKey(d.db)),
       viewExtractor = dbkeys => vd =>
         dbkeys ++ (if (vd.db != null) Seq(DbAccessKey(vd.db)) else Nil),
       jobExtractor = dbkeys => jd =>
@@ -1181,7 +1182,7 @@ object AppMetadata extends Loggable {
     case class OpResultType(viewName: String = null, isCollection: Boolean = false)
 
     case class Tresql(tresql: String,
-                      dbs: List[String] = Nil,
+                      dbs: List[ast.Db] = Nil,
                       conformTo: Option[OpResultType] = None) extends CastableOp
     case class Arr(tresql: Tresql, conformTo: Option[OpResultType] = None) extends Op
     case class ViewCall(method: String, view: String, data: Op = null) extends Op
