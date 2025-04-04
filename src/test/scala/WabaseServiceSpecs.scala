@@ -108,12 +108,12 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
     resp.status shouldBe StatusCodes.OK
 
     val enc_session = encryptedSession(resp)
-    decSes(enc_session).user shouldBe WabaseUser(Map("username" -> "Gunza", "id" -> 10, "roles" ->  List("admin", "guest", "operator")))
+    decSes(enc_session).user shouldBe WabaseUser(Map("id" -> 10, "roles" ->  List("admin", "guest", "operator")))
 
     val x = (1 to 3).scanLeft(enc_session) { (enc_ses, _) =>
       Thread.sleep(10) // ensure that session expiration time changes
       resp = response(server.handle(authReq(enc_ses, HttpRequest(uri = Uri("/restricted/user_principal")))))
-      decodeJs(WabaseTestHandlers.entity(resp)) shouldBe Map("username" -> "Gunza", "id" -> 10, "roles" ->  List("admin", "guest", "operator"))
+      decodeJs(WabaseTestHandlers.entity(resp)) shouldBe Map("id" -> 10, "roles" ->  List("admin", "guest", "operator"))
       encryptedSession(resp)
     }.reduce {(s1, s2) => decSes(s1).expirationTime should be < decSes(s2).expirationTime; s2}
 

@@ -23,7 +23,10 @@ object WabaseAuthentication extends Authentication[WabaseUser] {
   implicit val userCodec: Codec[WabaseUser] = {
     implicit val userMapDecoder: Decoder[Map[String, Any]] =
       CborOrJsonAnyValueDecoder.toMapDecoder(() => Map[String, Any]())
-    Codec.bimap[Map[String, Any], WabaseUser](_.properties, WabaseUser(_))
+    Codec.bimap[Map[String, Any], WabaseUser](
+      _.properties - WabaseAppConfig.UserCredentialsParameterName,
+      WabaseUser(_)
+    )
   }
   implicit val sessionCodec: Codec[Session] = deriveCodec[Session]
 
@@ -103,7 +106,7 @@ object WabaseAuthentication extends Authentication[WabaseUser] {
 
   def extractBasicHttpCredentials(req: HttpRequest): WabaseUser = WabaseService.optionalHttpHeaderValuePF(req) {
     case org.apache.pekko.http.scaladsl.model.headers.Authorization(BasicHttpCredentials(usr, pwd)) =>
-      WabaseUser(Map("username" -> usr, "password" -> pwd))
+      WabaseUser(Map(WabaseAppConfig.UserCredentialsParameterName -> Map("username" -> usr, "password" -> pwd)))
   }.getOrElse(throw new AuthenticationException("Credentials required"))
 
   override def signInUser: AuthenticationDirective[WabaseUser] = ???

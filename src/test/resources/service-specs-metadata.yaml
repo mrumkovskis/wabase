@@ -101,10 +101,9 @@ api: get
 explicit db: true
 table:
 get:
-- roles = array ({trim('guest')} + {trim('admin')} + {trim('operator')})#(1)
-- if :current_user.username = 'Gunza' & :current_user.password = 'good'
+- roles = array ({trim('guest')} + {trim('admin')} + {trim('operator')})#(1)      # trim values for hsqldb to avoid space padding
+- if :current_user.credentials.username = 'Gunza' & :current_user.credentials.password = 'good'
     (status ok
-       user_attrs({'password', null} /*reset user value*/)
        user_attrs({'id', 10})
        user_attrs({'roles', |:'roles'})
     )
