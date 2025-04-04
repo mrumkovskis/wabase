@@ -69,6 +69,9 @@ do:       extractBasicHttpCredentials setSessionCookie doAction
 on:       /restricted/([\w:]+)(.*)
 do:       authenticate setSessionCookie doAction
 
+on:       /(user_data_merge)
+do:       testAuth mergeUserData doAction
+
 ################# views ###############
 
 name: view1
@@ -116,3 +119,13 @@ explicit db: true
 table:
 get:
 - as any :current_user
+
+
+name: user_data_merge
+api: get
+explicit db: true
+table:
+get:
+- status ok
+    user_attrs({'password', null} /*remove attribute*/)
+    user_attrs({'session_id', 'abcdefgh'})

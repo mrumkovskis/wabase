@@ -52,7 +52,8 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
     callRoute("/echo", "hi") shouldBe "hi"
     callRoute("/handler-transformer", "hi") shouldBe "Request transformed hi response transformed"
     callRoute("/user") shouldBe "Test user"
-    callRoute("/user-info", decoder = decodeJs) shouldBe Map("id" -> 111, "name" -> "Test user")
+    callRoute("/user-info", decoder = decodeJs) shouldBe Map("id" -> 111, "name" -> "Test user", "password" -> "password")
+    callRoute("/user_data_merge", decoder = decodeJs) shouldBe Map("id" -> 111, "name" -> "Test user", "session_id" -> "abcdefgh")
     callRoute("/long-handler-chain") shouldBe "Data from Test user: /long-handler-chain/added-segment transformed response"
   }
 
@@ -185,9 +186,12 @@ object WabaseTestHandlers {
   }
 
   def testAuth(ctx: WabaseRequestContext) =
-    ctx.copy(user = WabaseUser(Map("id" -> 111, "name" -> "Test user")))
+    ctx.copy(user = WabaseUser(Map("id" -> 111, "name" -> "Test user", "password" -> "password")))
 
   def respondWithUserName(ctx: WabaseRequestContext) = HttpResponse(entity = ctx.user.name)
+
+  def mergeUserData(user: WabaseUser, resp: HttpResponse) =
+    WabaseAuthentication.userPrincipal(WabaseAuthentication.mergeReqRespUserData(user, resp))
 
   def addUserData(user: WabaseUser, resp: HttpResponse)(implicit ec: ExecutionContext, as: ActorSystem) =
     resp.withEntity(s"Data from ${user.name}: " + entity(resp))
