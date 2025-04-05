@@ -129,3 +129,4 @@ get:
 - status ok
     user_attrs({'password', null} /*remove attribute*/)
     user_attrs({'session_id', 'abcdefgh'})
+    user_attrs({'roles', |[({trim('guest')} + {trim('admin')} + {trim('operator')})#(1)]} /*array query as child*/)

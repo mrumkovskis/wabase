@@ -1568,10 +1568,13 @@ update:
 
 
 name: array_test1
-api: get, list
+api: get, list, insert
 table:
 get:
 - arr = [({1} + {2} + {3})#(1)]
 - as any :arr
 list:
 - as any [person{name}#(1)]
+insert:
+- arr = {'jasmine' name, |[({'guest'} + {'admin'})#(1)] 'roles'} # alias roles must be put in quotes so it is not taken for table name
+- as any :arr

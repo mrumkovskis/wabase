@@ -1045,7 +1045,15 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   )(implicit qr: QuereaseResources): WabaseUser = {
     useResourcesConnOrEvaluator(qr.resourcesFactory.resources, implicit res => {
       val params = data ++ env
-      WabaseUser(Query.list[String, Any](op.tresql.tresql, params).toMap)
+      WabaseUser(
+        Query.list[String, Any](op.tresql.tresql, params)
+          .map {
+            case (x, r: DynamicArraySelectResult) => (x, r.elIterator.toSeq)
+            case (x, r: Result[_]) => (x, r.toListOfMaps)
+            case x => x
+          }
+          .toMap
+      )
     })
   }
 

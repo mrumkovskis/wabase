@@ -53,7 +53,7 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
     callRoute("/handler-transformer", "hi") shouldBe "Request transformed hi response transformed"
     callRoute("/user") shouldBe "Test user"
     callRoute("/user-info", decoder = decodeJs) shouldBe Map("id" -> 111, "name" -> "Test user", "password" -> "password")
-    callRoute("/user_data_merge", decoder = decodeJs) shouldBe Map("id" -> 111, "name" -> "Test user", "session_id" -> "abcdefgh")
+    callRoute("/user_data_merge", decoder = decodeJs) shouldBe Map("id" -> 111, "name" -> "Test user", "session_id" -> "abcdefgh", "roles" -> List("admin", "guest", "operator"))
     callRoute("/long-handler-chain") shouldBe "Data from Test user: /long-handler-chain/added-segment transformed response"
   }
 
