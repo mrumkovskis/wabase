@@ -65,6 +65,8 @@ lazy val commonSettings = Seq(
       "io.bullet"                  %% "borer-derivation"      % borerV,
       "org.bouncycastle"            % "bcprov-jdk18on"        % "1.80"              % Optional,
       "org.bouncycastle"            % "bcpkix-jdk18on"        % "1.80"              % Optional,
+      "com.github.jwt-scala"       %% "jwt-core"              % "10.0.4"            % Optional,
+      "com.github.jwt-scala"       %% "jwt-json-common"       % "10.0.4"            % Optional,
       "io.github.samueleresca"     %% "pekko-quartz-scheduler"% "1.3.0-pekko-1.1.x" % Optional,
       "org.xhtmlrenderer"           % "flying-saucer-pdf"     % "9.11.2"            % Optional,
       "org.simplejavamail"          % "simple-java-mail"      % "8.12.4"            % Optional,

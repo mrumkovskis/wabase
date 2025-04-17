@@ -8,7 +8,10 @@ import org.apache.pekko.http.scaladsl.server.directives.AuthenticationDirective
 import io.bullet.borer.compat.pekko._
 import org.apache.pekko.http.scaladsl.model.RemoteAddress.Unknown
 import org.apache.pekko.http.scaladsl.model.{AttributeKey, AttributeKeys, HttpRequest, HttpResponse, RemoteAddress}
-import org.apache.pekko.http.scaladsl.model.headers.{BasicHttpCredentials, HttpCookie, HttpCredentials, SameSite, `Remote-Address`, `User-Agent`, `X-Forwarded-For`, `X-Real-Ip`}
+import org.apache.pekko.http.scaladsl.model.headers.{
+  BasicHttpCredentials, HttpCookie, HttpCredentials, OAuth2BearerToken,
+  SameSite, `Remote-Address`, `User-Agent`, `X-Forwarded-For`, `X-Real-Ip`
+}
 import org.apache.pekko.util.ByteString
 
 import scala.util.Try
@@ -107,6 +110,12 @@ object WabaseAuthentication extends Authentication[WabaseUser] {
   def extractBasicHttpCredentials(req: HttpRequest): WabaseUser = WabaseService.optionalHttpHeaderValuePF(req) {
     case org.apache.pekko.http.scaladsl.model.headers.Authorization(BasicHttpCredentials(usr, pwd)) =>
       WabaseUser(Map(WabaseAppConfig.UserCredentialsParameterName -> Map("username" -> usr, "password" -> pwd)))
+  }.getOrElse(throw new AuthenticationException("Credentials required"))
+
+  lazy val jwtDecoder = new JwtDecoder(config.getConfig("jwt-decoder"))
+  def extractJwtTokenCredentials(req: HttpRequest): WabaseUser = WabaseService.optionalHttpHeaderValuePF(req) {
+    case org.apache.pekko.http.scaladsl.model.headers.Authorization(OAuth2BearerToken(jwtToken: String)) =>
+      WabaseUser(Map(WabaseAppConfig.UserCredentialsParameterName -> jwtDecoder.decodeToMap(jwtToken)))
   }.getOrElse(throw new AuthenticationException("Credentials required"))
 
   override def signInUser: AuthenticationDirective[WabaseUser] = ???
