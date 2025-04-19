@@ -26,13 +26,14 @@ trait TresqlResourcesConf {
 
 object TresqlResourcesConf extends Loggable {
 
-  val wabaseConf = ConfigFactory.load
-
   private val tunablePaths =
     Set("query-timeout", "max-result-size", "fetch-size", "recursive-stack-depth", "cache-size")
+  private val resConfs = ComponentConf.getConfigs("tresql", tunablePaths, "tresql-resources.conf")
+  private val config   = resConfs.root
+  val wabaseConf = ConfigFactory.load
 
   lazy val DefaultCpName: String =
-    Option("tresql.default")
+    Option("default")
       .filter(config.hasPathOrNull)
       .map(n => if (config.getIsNull(n)) null else config.getString(n))
       .getOrElse("main")
@@ -45,8 +46,6 @@ object TresqlResourcesConf extends Loggable {
             // force db name here because plugin does not read application.conf when initializing aliasToDb
             ConfigFactory.parseString(s"db = ${Option(n).map("\"" + _ + "\"").orNull}")
         }.toMap
-
-      val resConfs = ComponentConf.getConfigs("tresql", tunablePaths, "tresql-resources.conf")
 
       (cpConfs ++ resConfs.confs.toMap)
         .map { case (cpName, cpOrResConf) =>
