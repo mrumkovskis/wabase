@@ -22,9 +22,12 @@ import scala.util.{Failure, Success, Try}
 case class WabaseHttpClients(httpClients: Map[String, InjectionParametersContext => HttpRequest => Future[HttpResponse]])
 case class WabaseFileStreamers(fileStreamers: Map[String, FileStreamer]) {
   def fs(name: String): FileStreamer = {
-    val n = Option(name).getOrElse("main")
-    fileStreamers.getOrElse(n, sys.error(s"Filestreamer '$n' not found. " +
-      s"Available names: '${fileStreamers.keys.mkString(", ")}'"))
+    Option(name).map { n =>
+      fileStreamers.getOrElse(n, sys.error(s"Filestreamer '$n' not found. " +
+        s"Available names: [${fileStreamers.keys.toSeq.sorted.mkString(", ")}]"))
+    }.getOrElse {
+      fileStreamers.getOrElse("main", null)
+    }
   }
 }
 
