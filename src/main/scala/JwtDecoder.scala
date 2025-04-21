@@ -129,24 +129,22 @@ class JwtDecoder(config: Config) extends Loggable {
         val audValid = audienceOpt.forall(aud => jwtParser.extractAudience(claim).contains(aud))
         if (issValid && audValid) {
           // Handle claims that can have multiple values (e.g., RFC 7519 audience, RFC 8693 scope)
-          val processedMap = claim.map {
+          claim.map {
             case (k, v) if k == "aud" =>
-              k -> (v match {
+              claimMappings.getOrElse(k, k) -> (v match {
                 case s: String => Seq(s)            // Convert single string to Seq
                 case seq: Seq[_] => seq             // Keep existing Seq
                 case _ => Seq.empty                 // Handle invalid types
               })
             case (k, v) if k == "scope" =>
-              k -> (v match {
+              claimMappings.getOrElse(k, k) -> (v match {
                 case s: String => s.split("\\s+").filter(_ != "").toSeq // Convert single string to Seq (scopes are space separated)
                 case seq: Seq[_] => seq             // Keep existing Seq
                 case _ => Seq.empty                 // Handle invalid types
               })
-            case (k, v) => k -> v
+            case (k, v) =>
+              claimMappings.getOrElse(k, k) -> v
           }
-
-          // Apply claim mappings
-          processedMap.map { case (k, v) => claimMappings.getOrElse(k, k) -> v }
         } else {
           Map.empty[String, Any]
         }
