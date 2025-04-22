@@ -92,6 +92,24 @@ class JwtDecoder(config: Config) extends Loggable {
       )
   }
 
+  private def keyTypeForToken(token: String): String = {
+    if (chooseKeyType) {
+      val algorithmOpt = extractAlgorithm(token)
+      algorithmOpt match {
+        case Some(a: JwtHmacAlgorithm) =>
+          "hmac"
+        case Some(a: JwtAsymmetricAlgorithm) =>
+          "asymmetric"
+        case _ =>
+          null
+      }
+    } else if (allowedHmacAlgorithms.nonEmpty) {
+      "hmac"
+    } else {
+      "asymmetric"
+    }
+  }
+
   /**
    * Decodes a JWT token and returns a map of claims.
    * @param token The JWT token string to decode
@@ -99,28 +117,14 @@ class JwtDecoder(config: Config) extends Loggable {
    */
   def decodeToMap(token: String): Map[String, Any] = {
     Try {
-      val keyType =
-        if (chooseKeyType) {
-          val algorithmOpt = extractAlgorithm(token)
-          algorithmOpt match {
-            case Some(a: JwtHmacAlgorithm) =>
-              "hmac"
-            case Some(a: JwtAsymmetricAlgorithm) =>
-              "asymmetric"
-            case _ =>
-              Failure(new JwtValidationException("Invalid algorithm"))
-          }
-        } else if (allowedHmacAlgorithms.nonEmpty) {
-          "hmac"
-        } else {
-          "asymmetric"
-        }
       // Decode based on keyType, passing the appropriate set of algorithms
-      keyType match {
+      keyTypeForToken(token) match {
         case "hmac" =>
           jwtParser.decodeJson(token, secretKeyOpt.get, allowedHmacAlgorithms, jwtOptions)
         case "asymmetric" =>
           jwtParser.decodeJson(token, publicKeyOpt.get, allowedAsymmetricAlgorithms, jwtOptions)
+        case _ =>
+          Failure(new JwtValidationException("Invalid algorithm"))
       }
     }.flatten match {
       case Success(claim) =>
@@ -151,6 +155,22 @@ class JwtDecoder(config: Config) extends Loggable {
       case Failure(ex) =>
         logger.debug("Failed to decode or validate token", ex)
         Map.empty[String, Any]
+    }
+  }
+
+  /**
+   * Validates a JWT token - will throw exception if there are any errors. This method does not check issuer and audience.
+   * @param token The JWT token string to validate
+   */
+  def validate(token: String): Unit = {
+    // Decode based on keyType, passing the appropriate set of algorithms
+    keyTypeForToken(token) match {
+      case "hmac" =>
+        jwtParser.validate(token, secretKeyOpt.get, allowedHmacAlgorithms, jwtOptions)
+      case "asymmetric" =>
+        jwtParser.validate(token, publicKeyOpt.get, allowedAsymmetricAlgorithms, jwtOptions)
+      case _ =>
+        throw new JwtValidationException("Invalid algorithm")
     }
   }
 }
