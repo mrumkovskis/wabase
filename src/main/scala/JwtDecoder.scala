@@ -1,6 +1,6 @@
 package org.wabase
 
-import com.typesafe.config.Config
+import com.typesafe.config.{Config, ConfigFactory}
 import org.apache.pekko.util.ByteString
 import pdi.jwt._
 import pdi.jwt.algorithms.{JwtAsymmetricAlgorithm, JwtHmacAlgorithm}
@@ -18,7 +18,10 @@ import scala.jdk.CollectionConverters._
 class JwtDecoder(config: Config) extends Loggable {
   // Claim mappings from short names to descriptive names
   private val claimMappings: Map[String, String] = {
-    val mappingsConfig = config.getConfig("claim-mappings")
+    val mappingsConfig =
+      if (config.hasPath("claim-mappings"))
+        config.getConfig("claim-mappings")
+      else ConfigFactory.empty
     mappingsConfig.entrySet.asScala.map { entry =>
       entry.getKey -> entry.getValue.unwrapped.toString
     }.toMap
