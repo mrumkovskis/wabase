@@ -133,7 +133,7 @@ class JwtDecoder(config: Config) extends Loggable {
       case Success(claim) =>
         // Validate issuer and audience if specified
         val issValid =   issuerOpt.forall(iss => claim.get("iss").contains(iss))
-        val audValid = audienceOpt.forall(aud => jwtParser.extractAudience(claim).contains(aud))
+        val audValid = audienceOpt.forall(aud => jwtParser.extractAudience(claim).exists(_.contains(aud)))
         if (issValid && audValid) {
           // Handle claims that can have multiple values (e.g., RFC 7519 audience, RFC 8693 scope)
           claim.map {
