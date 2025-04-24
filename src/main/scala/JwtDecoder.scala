@@ -4,7 +4,7 @@ import com.typesafe.config.{Config, ConfigFactory}
 import org.apache.pekko.util.ByteString
 import pdi.jwt._
 import pdi.jwt.algorithms.{JwtAsymmetricAlgorithm, JwtHmacAlgorithm}
-import pdi.jwt.exceptions.{JwtLengthException, JwtNonNumberException, JwtNonStringException, JwtNonStringSetOrStringException, JwtValidationException}
+import pdi.jwt.exceptions._
 import scala.util.{Failure, Success, Try}
 
 import java.security.spec.X509EncodedKeySpec
@@ -127,7 +127,7 @@ class JwtDecoder(config: Config) extends Loggable {
         case "asymmetric" =>
           jwtParser.decodeJson(token, publicKeyOpt.get, allowedAsymmetricAlgorithms, jwtOptions)
         case _ =>
-          Failure(new JwtValidationException("Invalid algorithm"))
+          Failure(new JwtNonSupportedAlgorithm(extractAlgorithm(token).map(_.name).orNull))
       }
     }.flatten match {
       case Success(claim) =>
@@ -162,18 +162,32 @@ class JwtDecoder(config: Config) extends Loggable {
   }
 
   /**
-   * Validates a JWT token - will throw exception if there are any errors. This method does not check issuer and audience.
+   * Validates a JWT token - will throw exception if there are any errors.
    * @param token The JWT token string to validate
+   * @param doExtraChecks Should issuer and audience be checked, defaults to false
    */
-  def validate(token: String): Unit = {
-    // Decode based on keyType, passing the appropriate set of algorithms
-    keyTypeForToken(token) match {
-      case "hmac" =>
-        jwtParser.validate(token, secretKeyOpt.get, allowedHmacAlgorithms, jwtOptions)
-      case "asymmetric" =>
-        jwtParser.validate(token, publicKeyOpt.get, allowedAsymmetricAlgorithms, jwtOptions)
-      case _ =>
-        throw new JwtValidationException("Invalid algorithm")
+  def validate(token: String, doExtraChecks: Boolean = false): Unit = {
+    // Validate based on keyType, passing the appropriate set of algorithms
+    Try {
+      keyTypeForToken(token) match {
+        case "hmac" =>
+          jwtParser.decode(token, secretKeyOpt.get, allowedHmacAlgorithms, jwtOptions)
+        case "asymmetric" =>
+          jwtParser.decode(token, publicKeyOpt.get, allowedAsymmetricAlgorithms, jwtOptions)
+        case _ =>
+          Failure(new JwtNonSupportedAlgorithm(extractAlgorithm(token).map(_.name).orNull))
+      }
+    }.flatten match {
+      case Success(claim) =>
+        if (doExtraChecks) {
+          if (!acceptedIssuerOpt.forall(iss => claim.issuer.contains(iss)))
+            throw new JwtValidationException(
+              s"""Invalid issuer - expecting "${acceptedIssuerOpt.get}" got ${claim.issuer.map(ResultEncoder.encodeAnyToJsonString).orNull}""")
+          if (!acceptedAudienceOpt.forall(aud => claim.audience.exists(_.contains(aud))))
+            throw new JwtValidationException(
+              s"""Invalid audience - expecting "${acceptedAudienceOpt.get}" got ${claim.audience.map(ResultEncoder.encodeAnyToJsonString).orNull}""")
+        }
+      case Failure(ex) => throw ex
     }
   }
 }
