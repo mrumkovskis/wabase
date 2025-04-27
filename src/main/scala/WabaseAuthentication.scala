@@ -4,16 +4,20 @@ import io.bullet.borer.{Codec, Decoder, Json}
 import io.bullet.borer.derivation.MapBasedCodecs._
 import ResultEncoder._
 import JsonEncoder._
-import org.apache.pekko.http.scaladsl.server.directives.AuthenticationDirective
 import io.bullet.borer.compat.pekko._
+import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.model.RemoteAddress.Unknown
-import org.apache.pekko.http.scaladsl.model.{AttributeKey, AttributeKeys, HttpRequest, HttpResponse, RemoteAddress}
+import org.apache.pekko.http.scaladsl.model.{AttributeKey, AttributeKeys, HttpEntity, HttpRequest, HttpResponse, RemoteAddress}
+import org.apache.pekko.http.scaladsl.server.directives.AuthenticationDirective
+import org.apache.pekko.http.scaladsl.unmarshalling.Unmarshal
 import org.apache.pekko.http.scaladsl.model.headers.{
   BasicHttpCredentials, HttpCookie, HttpCredentials, OAuth2BearerToken,
   SameSite, `Remote-Address`, `User-Agent`, `X-Forwarded-For`, `X-Real-Ip`
 }
 import org.apache.pekko.util.ByteString
+import org.wabase.WabaseUnmarshallers.mapUnmarshaller
 
+import scala.concurrent.{Future, ExecutionContext}
 import scala.util.Try
 
 
@@ -111,6 +115,11 @@ object WabaseAuthentication extends Authentication[WabaseUser] {
     case org.apache.pekko.http.scaladsl.model.headers.Authorization(BasicHttpCredentials(usr, pwd)) =>
       WabaseUser(Map(WabaseAppConfig.UserCredentialsParameterName -> Map("username" -> usr, "password" -> pwd)))
   }.getOrElse(throw new AuthenticationException("Credentials required"))
+
+  def extractFormDataCredentials(entity: HttpEntity)(implicit ec: ExecutionContext, as: ActorSystem): Future[WabaseUser] =
+    Unmarshal(entity).to[Map[String, Any]].map { formData =>
+      WabaseUser(Map(WabaseAppConfig.UserCredentialsParameterName -> formData))
+    }
 
   lazy val jwtDecoder = new JwtDecoder(config.getConfig("jwt-decoder"))
   def extractJwtTokenCredentials(req: HttpRequest): WabaseUser = WabaseService.optionalHttpHeaderValuePF(req) {

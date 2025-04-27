@@ -107,17 +107,20 @@ trait AppServiceBase[User]
             case Failure(x) => throw x
           }
         }
+        def mappedContent = extractRequestContext.flatMap { ctx =>
+          import ctx.materializer
+          val um = toMapUnmarshaller
+          onComplete(um(ctx.request.entity)) flatMap {
+            case Success(m) => provide(app.qe.toCompatibleMap(m, app.qe.viewDef(viewName)))
+            case Failure(x) => throw x
+          }
+        }
         extractRequestEntity.map(_.contentType).flatMap {
           case ContentTypes.`application/json` => defaultContent
           case ContentTypes.`application/x-www-form-urlencoded` =>
-            extractRequestContext.flatMap { ctx =>
-              import ctx.materializer
-              onComplete(PredefinedFromEntityUnmarshallers
-                .defaultUrlEncodedFormDataUnmarshaller(ctx.request.entity)) flatMap {
-                case Success(value) => provide(app.qe.toCompatibleMap(value.fields.toMap, app.qe.viewDef(viewName)))
-                case Failure(x) => throw x
-              }
-            }
+            mappedContent
+          case multipartFormData if WabaseUnmarshallers.isMultipartFormData(multipartFormData.mediaType) =>
+            mappedContent
           case _ => defaultContent
         }
       case AppMetadata.CustomDecoder(o, f) =>

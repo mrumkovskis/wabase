@@ -283,11 +283,13 @@ object WabaseService {
     vd.decoder match {
       case AppMetadata.DefaultDecoder =>
         def defaultContent = wabase.toMapUnmarshallerForView(viewName)(req.entity)
+        def mappedContent  = wabase.toMapUnmarshaller(req.entity).map(m => wabase.qe.toCompatibleMap(m, vd))
         req.entity.contentType match {
           case ContentTypes.`application/json` => defaultContent
           case ContentTypes.`application/x-www-form-urlencoded` =>
-            Unmarshaller.defaultUrlEncodedFormDataUnmarshaller(req.entity)
-              .map(fd => wabase.qe.toCompatibleMap(fd.fields.toMap, vd))
+            mappedContent
+          case multipartFormData if WabaseUnmarshallers.isMultipartFormData(multipartFormData.mediaType) =>
+            mappedContent
           case _ => defaultContent
         }
       case AppMetadata.CustomDecoder(o, f) =>
@@ -328,7 +330,9 @@ object WabaseService {
     req.entity.contentType match {
       case ContentTypes.`application/json` => decodeJs(req.entity)
       case ContentTypes.`application/x-www-form-urlencoded` =>
-        Unmarshaller.defaultUrlEncodedFormDataUnmarshaller.map(_.fields.toMap)(req.entity)
+        wabase.toMapUnmarshaller(req.entity)
+      case multipartFormData if WabaseUnmarshallers.isMultipartFormData(multipartFormData.mediaType) =>
+        wabase.toMapUnmarshaller(req.entity)
       case _ => decodeJs(req.entity)
     }
   }

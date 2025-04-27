@@ -3,10 +3,12 @@ package org.wabase
 import org.apache.pekko.http.scaladsl.common.{EntityStreamingSupport, JsonEntityStreamingSupport}
 import org.apache.pekko.http.scaladsl.marshalling._
 import org.apache.pekko.http.scaladsl.model._
-import org.apache.pekko.http.scaladsl.model.MediaTypes._
 import org.apache.pekko.http.scaladsl.model.headers.ContentDispositionTypes.attachment
+import org.apache.pekko.http.scaladsl.model.MediaTypes._
+import org.apache.pekko.http.scaladsl.unmarshalling.Unmarshal
 import org.apache.pekko.http.scaladsl.util.FastFuture
 import org.apache.pekko.NotUsed
+import org.apache.pekko.stream.Materializer
 
 import java.net.URLEncoder
 import java.text.Normalizer
@@ -14,7 +16,7 @@ import scala.concurrent.{ExecutionContext, Future}
 import org.apache.pekko.http.scaladsl.model.headers.{ContentDispositionType, ContentDispositionTypes, Location, RawHeader, `Content-Disposition`}
 import org.apache.pekko.http.scaladsl.server.directives.FileAndResourceDirectives.ResourceFile
 import org.apache.pekko.http.scaladsl.unmarshalling.{FromEntityUnmarshaller, FromResponseUnmarshaller, Unmarshaller}
-import org.apache.pekko.stream.scaladsl.{Flow, Keep, Source, StreamConverters}
+import org.apache.pekko.stream.scaladsl.{Flow, Keep, Sink, Source, StreamConverters}
 import org.apache.pekko.util.ByteString
 import io.bullet.borer.compat.pekko.ByteStringProvider
 import org.mojoz.querease.QuereaseIteratorResult
@@ -147,7 +149,7 @@ trait DtoMarshalling extends QuereaseMarshalling { this: AppProvider[_] with Exe
     }
 }
 
-trait QuereaseMarshalling extends QuereaseResultMarshalling { this: AppProvider[_] with Execution with OptionMarshalling =>
+trait QuereaseMarshalling extends QuereaseResultMarshalling with WabaseUnmarshallers { this: AppProvider[_] with Execution with OptionMarshalling =>
   import app.qe
   implicit val mapForViewMarshaller: ToEntityMarshaller[(Map[String, Any], String, ResultRenderer.ResultFilter)] = {
     def marsh(viewName: String, resFilter: ResultRenderer.ResultFilter)(implicit ec: ExecutionContext): ToEntityMarshaller[Map[String, Any]] =
@@ -171,6 +173,22 @@ trait QuereaseMarshalling extends QuereaseResultMarshalling { this: AppProvider[
     Marshaller { ec => seqOfMapsAndView => marsh(seqOfMapsAndView._2, seqOfMapsAndView._3)(ec)(seqOfMapsAndView._1) }
   }
 
+  def toMapUnmarshallerForView(viewName: String): FromEntityUnmarshaller[Map[String, Any]] =
+    Unmarshaller.byteStringUnmarshaller map { bytes =>
+      app.qe.cborOrJsonDecoder.decodeToMap(bytes, viewName)(app.qe.viewNameToMapZero)
+    }
+  def toSeqOfMapsUnmarshallerForView(viewName: String): FromEntityUnmarshaller[Seq[Map[String, Any]]] =
+    Unmarshaller.byteStringUnmarshaller map { bytes =>
+      app.qe.cborOrJsonDecoder.decodeToSeqOfMaps(bytes, viewName)(app.qe.viewNameToMapZero)
+    }
+  def toSourceOfMapsUnmarshallerForView(viewName: String): FromEntityUnmarshaller[Source[Map[String, Any], NotUsed]] = {
+    largeFrameJsonStreamUnmarshaller { bytes =>
+      app.qe.cborOrJsonDecoder.decodeToMap(bytes, viewName)(app.qe.viewNameToMapZero)
+    }
+  }
+}
+
+trait WabaseUnmarshallers {
   def streamUnmarshaller[T](ess: EntityStreamingSupport, unmarshalSync: ByteString => T): FromEntityUnmarshaller[Source[T, NotUsed]] = {
     Unmarshaller.withMaterializer { implicit ec => implicit mat =>
       val unmarshallingFlow =
@@ -192,22 +210,61 @@ trait QuereaseMarshalling extends QuereaseResultMarshalling { this: AppProvider[
     // https://github.com/akka/akka/issues/31569
     streamUnmarshaller(new JsonEntityStreamingSupport(maxObjectSize = 8 * 1024 * 1024), unmarshalSync)
 
-  def toMapUnmarshallerForView(viewName: String): FromEntityUnmarshaller[Map[String, Any]] =
-    Unmarshaller.byteStringUnmarshaller map { bytes =>
-      app.qe.cborOrJsonDecoder.decodeToMap(bytes, viewName)(app.qe.viewNameToMapZero)
-    }
-  def toSeqOfMapsUnmarshallerForView(viewName: String): FromEntityUnmarshaller[Seq[Map[String, Any]]] =
-    Unmarshaller.byteStringUnmarshaller map { bytes =>
-      app.qe.cborOrJsonDecoder.decodeToSeqOfMaps(bytes, viewName)(app.qe.viewNameToMapZero)
-    }
-  def toSourceOfMapsUnmarshallerForView(viewName: String): FromEntityUnmarshaller[Source[Map[String, Any], NotUsed]] = {
-    largeFrameJsonStreamUnmarshaller { bytes =>
-      app.qe.cborOrJsonDecoder.decodeToMap(bytes, viewName)(app.qe.viewNameToMapZero)
-    }
-  }
+  def isMultipartFormData(mediaType: MediaType) =
+    mediaType.mainType == MediaTypes.`multipart/form-data`.mainType &&
+    mediaType.subType  == MediaTypes.`multipart/form-data`.subType
+
   def toMapUnmarshaller: FromEntityUnmarshaller[Map[String, Any]] =
-    Unmarshaller.byteStringUnmarshaller map { bytes =>
-      CborOrJsonAnyValueDecoder.decodeToMap(bytes)
+    Unmarshaller.withMaterializer { implicit ec: ExecutionContext => implicit mat: Materializer => entity =>
+      entity.contentType match {
+        // application/json
+        case ContentTypes.`application/json` =>
+          Unmarshal(entity).to[ByteString].map { bytes =>
+            CborOrJsonAnyValueDecoder.decodeToMap(bytes)
+          }
+
+        // application/x-www-form-urlencoded
+        case ContentTypes.`application/x-www-form-urlencoded` =>
+          Unmarshal(entity).to[FormData].map { formData =>
+            formData.fields.groupBy(_._1).map {
+              case (key, values) if values.size == 1 => key -> values.head._2.asInstanceOf[Any]
+              case (key, values) => key -> values.map(_._2).toVector.asInstanceOf[Any]
+            }
+          }
+
+        // multipart/form-data
+        case multipartFormData if isMultipartFormData(multipartFormData.mediaType) =>
+          Unmarshal(entity).to[Multipart.FormData].flatMap { formData =>
+            formData.parts.foldAsync(Map.empty[String, Vector[Any]]) { (map, part) =>
+              val name = part.name
+              val valueFuture = part.filename match {
+                // File upload part
+                case Some(filename) =>
+                  Unmarshal(part.entity).to[ByteString].map { bytes => Map(
+                    "filename" -> filename,
+                    "content_type" -> part.entity.contentType.toString, // .mediaType.value,
+                    "content" -> bytes
+                  )}
+                // Form field part
+                case None =>
+                  Unmarshal(part.entity).to[ByteString].map(_.utf8String)
+              }
+              valueFuture.map { value =>
+                val current = map.getOrElse(name, Vector.empty)
+                map.updated(name, current :+ value)
+              }
+            }.runWith(Sink.head).map { m =>
+              m.map {
+                case (k, v) if v.size == 1 => k -> v.head
+                case (k, v) => k -> v
+              }
+            }
+          }
+
+        // unsupported content type
+        case x =>
+          Future.failed(new Exception(s"Unsupported content type: $x"))
+      }
     }
   def toSeqOfMapsUnmarshaller: FromEntityUnmarshaller[Seq[Map[String, Any]]] =
     Unmarshaller.byteStringUnmarshaller map { bytes =>
@@ -218,6 +275,12 @@ trait QuereaseMarshalling extends QuereaseResultMarshalling { this: AppProvider[
       CborOrJsonAnyValueDecoder.decodeToMap(bytes)
     }
   }
+}
+
+object WabaseUnmarshallers extends WabaseUnmarshallers {
+  implicit val mapUnmarshaller:          FromEntityUnmarshaller[Map[String, Any]]                  = toMapUnmarshaller
+  implicit val seqOfMapsUnmarshaller:    FromEntityUnmarshaller[Seq[Map[String, Any]]]             = toSeqOfMapsUnmarshaller
+  implicit val sourceOfMapsUnmarshaller: FromEntityUnmarshaller[Source[Map[String, Any], NotUsed]] = toSourceOfMapsUnmarshaller
 }
 
 trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with QuereaseMarshalling with OptionMarshalling =>
