@@ -376,7 +376,7 @@ object DeferredControl extends Loggable with AppConfig {
     publisher: DeferredStatusPublisher,
     workerCount: Int
   )(implicit as: ActorSystem) = {
-    logger.info(s"Starting deferred request processor$name, worker count - ($workerCount)")
+    logger.info(s"Starting deferred request processor $name, worker count - ($workerCount)")
     Source.actorRef[DeferredContext](PartialFunction.empty, PartialFunction.empty, 8, OverflowStrategy.dropTail)
       .to(deferredSink(name, storage, publisher, workerCount))
       .mapMaterializedValue(
