@@ -8,7 +8,7 @@ import org.apache.pekko.http.scaladsl.server.Directives._
 import org.apache.pekko.stream._
 import org.apache.pekko.stream.stage.{GraphStage, GraphStageLogic, InHandler, OutHandler}
 import org.apache.pekko.stream.scaladsl.{Flow, GraphDSL, Sink, Source}
-import org.apache.pekko.actor.{Actor, ActorSystem, Props}
+import org.apache.pekko.actor.{ActorSystem, Props, Timers}
 
 import scala.util.{Either, Left, Right, Success, Try}
 import scala.concurrent.{ExecutionContext, Future}
@@ -389,14 +389,13 @@ object DeferredControl extends Loggable with AppConfig {
       }).run()
   }
 
-  class DeferredCleanup(storage: DeferredStorage) extends Actor {
+  class DeferredCleanup(storage: DeferredStorage) extends Timers {
     var processedCount = 0L
     override def preStart() = {
       val fd = FiniteDuration(
         deferredCleanupInterval.length,
         deferredCleanupInterval.unit)
-      context.system.scheduler.scheduleAtFixedRate(fd, fd, self, RunDeferredCleanup)(
-        context.system.dispatcher)
+      timers.startTimerWithFixedDelay(self, RunDeferredCleanup, fd, fd)
       logger.info(s"Deferred request cleanup job started with frequency $fd")
     }
 
