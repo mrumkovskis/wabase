@@ -66,7 +66,7 @@ do:       doAction
 on:       /(login)
 do:       extractBasicHttpCredentials setSessionCookie doAction
 
-on:       /restricted/([\w:]+)(.*)
+on:       /restricted/(?<viewname>[\w:]+)(.*)
 do:       authenticate setSessionCookie doAction
 
 on:       /(user_data_merge)
