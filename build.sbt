@@ -136,7 +136,6 @@ lazy val wabase = (project in file("."))
         Seq(sharedSourceDir / "scala-2")
       else Nil
     },
-    Test / unmanagedSourceDirectories += baseDirectory.value / "src" / "it" / "scala",
   )
   .settings(
     Compile / doc / scalacOptions ++= (baseDirectory map { bd =>
@@ -202,8 +201,12 @@ lazy val it = (project in file("src/it"))
   .settings(commonSettings: _*)
   .settings(
     publish / skip := true,
-    Compile / run / mainClass := Some("org.wabase.WabaseServer"),
     Compile / resourceDirectory := baseDirectory.value / "resources",
+    Test / javaOptions := Seq("-Xmx2G"),
+    Test / parallelExecution := false,
+    Test / resourceDirectory := baseDirectory.value / "resources",
+    Test / scalaSource       := baseDirectory.value / "scala",
+    Test / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-h", name.value + "-it-report"),
   )
 
 Test            / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-h", "report")

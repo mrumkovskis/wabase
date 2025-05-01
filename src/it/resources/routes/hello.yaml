@@ -1,0 +1,2 @@
+on: /hello
+do: org.wabase.WabaseServer.hello

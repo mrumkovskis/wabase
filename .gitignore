@@ -23,6 +23,7 @@ wabase.iml
 # scalatest reports
 report/
 it-report/
+wabase-it-report/
 
 #ensime plugin files
 .ensime
