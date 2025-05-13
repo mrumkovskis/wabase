@@ -117,7 +117,7 @@ object WabaseService {
   type ErrorHandler   = PartialFunction[Throwable, Future[HttpResponse]]
   type Wabase = WabaseApp[WabaseUser] with QuereaseProvider with I18n with DbAccess with Marshalling with AppProvider[WabaseUser] with Execution
 
-  val CreateCountActionAndViewRegex = """(?U)(?:(count|create):)?(\w*)""".r
+  val CreateCountActionAndViewRegex = """(?U)(?:(count|create):)?([_\p{IsLatin}][\-\w]*)""".r
   val WabaseUserAttributeName = "wabase-user"
 
   val notFound: Future[HttpResponse] = Future.successful(HttpResponse(status = StatusCodes.NotFound))
@@ -214,9 +214,14 @@ object WabaseService {
     val routeRegex = route.path
     val (viewNameAndActionStr, view_name, create_count_action) = routeRegex.unapplySeq(pathString).collect {
       case vna :: _ =>
+       try {
         val CreateCountActionAndViewRegex(cca, vn) = vna
         if (viewDefs.contains(vn)) (vna, vn, cca)
         else (null, null, null)
+       } catch {
+        case ex: scala.MatchError =>
+          throw new RuntimeException(s"Unsupported view_name: $vna", ex)
+       }
     }.getOrElse((null, null, null))
 
     if (viewNameAndActionStr == null) ctx
