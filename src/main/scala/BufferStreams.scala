@@ -23,7 +23,7 @@ object FileBufferedFlow {
   def create(bufferSize: Int,
              maxFileSize: Long,
              outBufferSize: Int = 1024 * 8): Graph[FlowShape[ByteString, ByteString], Future[IOResult]] =
-    Flow.fromGraph(new FileBufferedFlow(bufferSize, maxFileSize, outBufferSize)).async
+    Flow.fromGraph(new FileBufferedFlow(bufferSize, maxFileSize, outBufferSize))
 }
 
 /** Creates flow with non blocking pulling from upstream regardless of downstream demand.
@@ -36,7 +36,9 @@ class FileBufferedFlow private (bufferSize: Int, maxFileSize: Long, outBufferSiz
   private val in = Inlet[ByteString]("in")
   private val out = Outlet[ByteString]("out")
   override val shape = FlowShape(in, out)
-
+  async
+  addAttributes(Attributes(ActorAttributes.IODispatcher))
+  
   override def createLogicAndMaterializedValue(attrs: Attributes) = {
     val completionPromise = Promise[IOResult]()
     new GraphStageLogic(shape) with StageLogging {
