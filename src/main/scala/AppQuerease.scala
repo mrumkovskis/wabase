@@ -1235,8 +1235,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     def subj_body(bv: Map[String, Any]) = {
       def stringContent(qr: QuereaseResult) = qr match {
         case TresqlResult(r) => Future.successful(r.unique[String])
-        case _ => renderedResult(qr, null, null, Option(false))
-          ._1.runReduce(_ ++ _).map(_.decodeString("UTF8"))
+        case _ => renderedResult(qr, null, null, Option(false), context)
+          .flatMap(_._1.runReduce(_ ++ _).map(_.decodeString("UTF8")))
       }
       Future.traverse(List(op.subject, op.body))(doActionOp(_, bv, env, context).flatMap(stringContent))
     }
@@ -1261,8 +1261,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         subj_body(opData).flatMap { sb =>
           val List(subject, body) = sb
           Future.traverse(op.attachmentsOp)(doActionOp(_, opData, env, context)
-            .map(
-              renderedResult(_, null, null, Option(false)) match {
+            .flatMap(
+              renderedResult(_, null, null, Option(false), context).map {
                 case (src, fn, ct, _) => EmailAttachment(fn, ct.value, src)
               }
             )
@@ -1587,7 +1587,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
    )(implicit qr: QuereaseResources): Future[(Source[ByteString, _], ContentType, Option[Long])] = {
     import qr._
     doActionOp(op, data, env, context)
-      .map(renderedResult(_, contentType, null, None))
+      .flatMap(renderedResult(_, contentType, null, None, context))
       .map { case (src, _, ct, l) => (src, ct, l) }
   }
 
@@ -1596,25 +1596,34 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     contentType: ContentType,
     resFil: ResultRenderer.ResultFilter,
     isCollection: Option[Boolean],
-  ): (Source[ByteString, _], String, ContentType, Option[Long]) = {
+    context: ActionContext,
+  )(implicit
+    as: ActorSystem,
+    ec: ExecutionContext,
+  ): Future[(Source[ByteString, _], String, ContentType, Option[Long])] = {
     val ct: ContentType = if (contentType == null) MediaTypes.`application/json` else contentType
 
-    def encodeJson(data: Any): (Source[ByteString, _], String, ContentType, Option[Long]) = {
+    def encodeJson(data: Any): Future[(Source[ByteString, _], String, ContentType, Option[Long])] = {
       import ResultEncoder._
       implicit lazy val enc: JsValueEncoderPF = JsonEncoder.extendableJsValueEncoderPF(enc)(jsonValueEncoder)
       val res = encodeToJsonBytes(data)
-      (Source.single(ByteString.fromArrayUnsafe(res)), null, ct, Option(res.length))
+      Future.successful((Source.single(ByteString.fromArrayUnsafe(res)), null, ct, Option(res.length)))
     }
-
     def encodePrimitive(
        v: Any,
        pct: ContentType = ContentTypes.`text/plain(UTF-8)`
-    ): (Source[ByteString, _], String, ContentType, Option[Long]) = {
+    ): Future[(Source[ByteString, _], String, ContentType, Option[Long])] = {
       val b = String.valueOf(v).getBytes("UTF8")
-      (Source.single(ByteString(b)), null,
+      Future.successful((Source.single(ByteString(b)), null,
         pct,
         Option(b.length)
-      )
+      ))
+    }
+    def encodeStructure(data: Any, isColl: Boolean) = {
+      renderedSource(data, ct, resFil, isColl)(
+        WabaseAppConfig.SerializationBufferSize,
+        WabaseAppConfig.viewSerializationBufferMaxFileSize(context.viewName)
+      ).map { case (src, l) => (src, null, ct, l) }
     }
 
     res match {
@@ -1626,68 +1635,105 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         case _ => encodePrimitive(v)
       }
       case AnyResult(v) => encodeJson(v)
-      case MapResult(data) =>
-        (renderedSource(DataSerializer.source(() => Seq(data).iterator), resFil, false, ct),
-          null, ct, None)
-      case IteratorResult(data) =>
-        (renderedSource(DataSerializer.source(() => data), resFil, true, ct), null, ct, None)
+      case MapResult(data) => encodeStructure(Seq(data).iterator, false)
+      case IteratorResult(data) => encodeStructure(data, true)
       case TresqlResult(tr) => tr match {
-        case SingleValueResult(r: Iterable[_]) =>
-          (renderedSource(DataSerializer.source(() => r.iterator), resFil, isCollection.getOrElse(true), ct),
-            null, ct, None)
+        case SingleValueResult(r: Iterable[_]) => encodeStructure(r.iterator, isCollection.getOrElse(true))
         case SingleValueResult(s: String) => encodePrimitive(s, ct)
         // single value can be querease result if action step keepResult is set like 'as result variable = ...'
-        case SingleValueResult(qr: QuereaseResult) => renderedResult(qr, contentType, resFil, isCollection)
-        case SingleValueResult(r) =>
-          (renderedSource(DataSerializer.source(() => Iterator(r)), resFil, isCollection.getOrElse(false), ct),
-            null, ct, None)
-        case r =>
-          (renderedSource(TresqlResultSerializer.source(() => r), resFil, isCollection.getOrElse(true), ct),
-            null, ct, None)
+        case SingleValueResult(qr: QuereaseResult) => renderedResult(qr, contentType, resFil, isCollection, context)
+        case SingleValueResult(r) => encodeStructure(Iterator(r), isCollection.getOrElse(false))
+        case r => encodeStructure(r, isCollection.getOrElse(true))
       }
-      case TresqlSingleRowResult(row) =>
-        (renderedSource(TresqlResultSerializer.rowSource(() => row), resFil, isCollection.getOrElse(false), ct),
-          null, ct, None)
+      case TresqlSingleRowResult(row) => encodeStructure(row, isCollection.getOrElse(false))
       case fileResult: FileResult =>
         fileHttpEntity(fileResult)
-          .map(e => (e.dataBytes, fileResult.fileInfo.filename, e.contentType, e.contentLengthOption))
+          .map(e => Future
+            .successful((e.dataBytes, fileResult.fileInfo.filename, e.contentType, e.contentLengthOption)))
           .getOrElse(sys.error(s"File not found: ${fileResult.fileInfo}"))
       case resourceResult: ResourceResult =>
         ResourceFile(classOf[AppQuerease].getResource(resourceResult.resource)).map { rf =>
-          ( StreamConverters.fromInputStream(() => rf.url.openStream()),
+          Future.successful(( StreamConverters.fromInputStream(() => rf.url.openStream()),
             null,
             if (contentType == null) resourceResult.contentType else contentType,
             Some(rf.length)
-          )
+          ))
         }.getOrElse(sys.error(s"Resource not found: ${resourceResult.resource}"))
       case templateResult: TemplateResult => templateResult match {
         case StringTemplateResult(content) =>
           val data = ByteString(content)
-          (Source.single(data), null, ContentTypes.`text/plain(UTF-8)`, Option(data.size))
+          Future.successful((Source.single(data), null, ContentTypes.`text/plain(UTF-8)`, Option(data.size)))
         case FileTemplateResult(fn, contentType, content) =>
           val ct = ContentType.parse(contentType).toOption
             .getOrElse(sys.error(s"Error parsing template result content type: $contentType"))
-          (Source.single(ByteString(content)), fn, ct, Option(content.size))
+          Future.successful((Source.single(ByteString(content)), fn, ct, Option(content.size)))
       }
       case HttpEntityResult(res, _) =>
-        ( res.dataBytes,
+        Future.successful((res.dataBytes,
           null,
           res.contentType,
           res.contentLengthOption
-        )
+        ))
       case HttpResult(res) =>
-        ( res.entity.dataBytes,
+        Future.successful(( res.entity.dataBytes,
           res.header[`Content-Disposition`]
             .filter(_.dispositionType == attachment)
             .flatMap(_.params.get("filename"))
             .orNull,
           res.entity.contentType,
           res.entity.contentLengthOption
-        )
-      case CompatibleResult(r, fil, isCollection) => renderedResult(r, ct, fil, Option(isCollection))
+        ))
+      case CompatibleResult(r, fil, isCollection) => renderedResult(r, ct, fil, Option(isCollection), context)
       case NoResult => encodePrimitive("")
       case x => sys.error(s"Currently unable to create rendered source from result: $x")
     }
+  }
+
+  /**
+   * Render data into source in format specified by content type.
+   * @return formatted source, optional length of data (if [[CompleteResult]] is returned from serialization)
+   * Params:
+   * @param data - data to be rendered, accepted types are [[org.tresql.Result]], [[org.tresql.RowLike]], [[Iterator]]
+   * @param contentType - required result format - must be supported [[AppQuerease#resultRenderers]]
+   * @param resultFilter - one for [[ResultRenderer.ResultFilter]]
+   * @param isCollection - is used in case of application/json format requiring single element list to unwrap from array tags
+   * @param bufferSize - memory buffer size to store data in the case of slower downstream
+   * @param maxFileSize - max file size for data storage in the case of slower downstream
+   * @param as - [[ActorSystem]]
+   * @param ec - [[ExecutionContext]]
+   * */
+  def renderedSource(
+    data: Any,
+    contentType: ContentType,
+    resultFilter: ResultRenderer.ResultFilter,
+    isCollection: Boolean,
+  )(
+    bufferSize: Int,
+    maxFileSize: Long,
+  )(implicit
+    as: ActorSystem,
+    ec: ExecutionContext,
+  ): Future[(Source[ByteString, _], Option[Long])] = {
+    val dataSource = data match {
+      case r: Result[_]   =>
+        if (isCollection) TresqlResultSerializer.source(() => r)
+        else TresqlResultSerializer.rowSource(() => r)
+      case r: RowLike     => TresqlResultSerializer.rowSource(() => r)
+      case r: Iterator[_] => DataSerializer.source(() => r)
+      case x              => sys.error(s"Unable to render data: '$x'. Only tresql Result, RowLike or Iterator allowed")
+    }
+    val viewDef = if (resultFilter == null) null else nameToViewDef(resultFilter.name)
+    val renderer =
+      resultRenderers.renderers.get(contentType)
+        .map(_ (isCollection, resultFilter, viewDef))
+        .getOrElse(sys.error(s"Renderer not found for content type: $contentType"))
+    val renderedSource = dataSource.via(BorerNestedArraysTransformer.flow(renderer))
+    ResultSerializer.serializeResult(bufferSize, maxFileSize, renderedSource)
+      .map(_.head)
+      .map {
+        case CompleteResult(bytes) => (Source.single(bytes), Option(bytes.length))
+        case IncompleteResultSource(result) => (result, None)
+      }
   }
 
   protected def doHttpRequest(
@@ -1695,21 +1741,9 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     responseMaxSize: jLong,
     req: HttpRequest,
   )(implicit ec: ExecutionContext): Future[HttpResponse] = {
-      httpClient(req).map {
-        res => if (responseMaxSize == null) res else res.withEntity(res.entity.withSizeLimit(responseMaxSize))
-      }
+    httpClient(req).map {
+      res => if (responseMaxSize == null) res else res.withEntity(res.entity.withSizeLimit(responseMaxSize))
     }
-
-  private def renderedSource(serializedSource: Source[ByteString, _],
-                             resFilter: ResultRenderer.ResultFilter,
-                             isCollection: Boolean,
-                             contentType: ContentType): Source[ByteString, _] = {
-    val viewDef = if (resFilter == null) null else nameToViewDef(resFilter.name)
-    val renderer =
-      resultRenderers.renderers.get(contentType)
-        .map(_ (isCollection, resFilter, viewDef))
-        .getOrElse(sys.error(s"Renderer not found for content type: $contentType"))
-    serializedSource.via(BorerNestedArraysTransformer.flow(renderer))
   }
 
   def fileHttpEntity(fileResult: FileResult): Option[UniversalEntity] = {

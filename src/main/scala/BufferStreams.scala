@@ -11,34 +11,36 @@ import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 import java.nio.file.StandardOpenOption
 import org.apache.pekko.Done
+import scala.collection.immutable.Seq
 
 import scala.util.{Failure, Success, Try}
 
 case class InsufficientStorageException(msg: String) extends Exception(msg)
 
-/** Creates {{{FileBufferedFlowStage}}} and sets async boundary around. This is necessary so upstream can
-  * bet consumed asynchronously.
-  * */
+/** Creates [[FileBufferedFlow]] graph stage and sets async boundary around. This is necessary so upstream can
+ * bet consumed asynchronously.
+ * To enable stage debuging use {{{<logger name = "org.wabase.FileBufferedFlow" level="debug"/>}}}
+ **/
 object FileBufferedFlow {
   def create(bufferSize: Int,
              maxFileSize: Long,
              outBufferSize: Int = 1024 * 8): Graph[FlowShape[ByteString, ByteString], Future[IOResult]] =
     Flow.fromGraph(new FileBufferedFlow(bufferSize, maxFileSize, outBufferSize))
+      .async
+      .addAttributes(Attributes(ActorAttributes.IODispatcher))
 }
 
 /** Creates flow with non blocking pulling from upstream regardless of downstream demand.
-  * Pulled data are stored in buffer of {{{bufferSize}}}. If buffer is full and there is no downstream demand
-  * data are stored in file. If file size exceeds {{{maxFileSize}}} {{{InsufficientStorageException}}} is thrown.
-  * Flow materializes to {{{Future[IOResult]}}} which completes when upstream is finished.
+  * Pulled data are stored in buffer of bufferSize. If buffer is full and there is no downstream demand
+  * data are stored in file. If file size exceeds maxFileSize [[InsufficientStorageException]] is thrown.
+  * Flow materializes to Future[IOResult] which completes when upstream is finished.
   * */
 class FileBufferedFlow private (bufferSize: Int, maxFileSize: Long, outBufferSize: Int)
   extends GraphStageWithMaterializedValue[FlowShape[ByteString, ByteString], Future[IOResult]] {
   private val in = Inlet[ByteString]("in")
   private val out = Outlet[ByteString]("out")
   override val shape = FlowShape(in, out)
-  async
-  addAttributes(Attributes(ActorAttributes.IODispatcher))
-  
+
   override def createLogicAndMaterializedValue(attrs: Attributes) = {
     val completionPromise = Promise[IOResult]()
     new GraphStageLogic(shape) with StageLogging {

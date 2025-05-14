@@ -3,8 +3,7 @@ package org.wabase
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.model.{HttpRequest, HttpResponse, StatusCodes}
 import org.apache.pekko.http.scaladsl.model.headers.`Timeout-Access`
-import org.apache.pekko.stream.Materializer
-import org.apache.pekko.stream.scaladsl.{Keep, Source}
+import org.apache.pekko.stream.scaladsl.Source
 import org.apache.pekko.util.ByteString
 import org.mojoz.metadata.{FieldDef, ViewDef}
 import org.mojoz.querease.TresqlMetadata
@@ -12,7 +11,7 @@ import org.tresql.{Resources, ResourcesTemplate, SingleValueResult}
 import org.wabase.AppMetadata.{Action, AugmentedAppFieldDef, AugmentedAppViewDef}
 import org.wabase.AppMetadata.Action.{LimitKey, OffsetKey, OrderKey}
 import org.wabase.AppQuerease.InjectionParametersContext
-import org.wabase.client.{HttpClientConfig, HttpClientFactory}
+import org.wabase.client.HttpClientConfig
 
 import java.util.Locale
 import scala.concurrent.{ExecutionContext, Future}
@@ -305,32 +304,6 @@ trait WabaseApp[User] {
     ResourcesFactory(initResources(rt), closeResources)(rt)
   }
 
-  /** Runs {{{src}}} via {{{FileBufferedFlow}}} of {{{bufferSize}}} with {{{maxFileSize}}} to {{{CheckCompletedSink}}}
-    * On FileBufferedFlow upstream finish calss cleanup function.
-    * */
-  def serializeResult(
-    bufferSize: Int,
-    maxFileSize: Long,
-    result: Source[ByteString, _],
-    cleanupFun: Option[Throwable] => Unit = null,
-    resultCount: Int = 1,
-  )(implicit
-    ec: ExecutionContext,
-    mat: Materializer,
-  ): Future[Seq[SerializedResult]] = {
-    val (cleanupF, resultF) =
-      result
-        .viaMat(FileBufferedFlow.create(bufferSize, maxFileSize))(Keep.right) // keep flow's materialized value
-        .toMat(new ResultCompletionSink(resultCount))(Keep.both)
-        .run()
-    if (cleanupFun != null)
-      cleanupF.onComplete { // materialized future of file buffered flow completes when flow's upstream finishes, then call cleanup fun
-        case Failure(ex) => cleanupFun(Some(ex))
-        case _ => cleanupFun(None)
-      }
-    resultF
-  }
-
   def maybeSerializeResult(context: AppActionContext, wr: WabaseResult): Future[WabaseResult] = wr match {
     case wr@WabaseResult(_, sr@ResponseResult(_, ResultValue(r), _, _)) =>
       maybeSerializeResult(context, wr.copy(result = r))
@@ -368,7 +341,7 @@ trait WabaseApp[User] {
         case SourceRes(resultSource, filter, isCollection) =>
           import context._
           val addResultToContext = shouldAddResultToContext(context)
-          serializeResult(SerializationBufferSize, viewSerializationBufferMaxFileSize(ac.viewName),
+          ResultSerializer.serializeResult(SerializationBufferSize, viewSerializationBufferMaxFileSize(ac.viewName),
             resultSource, cleanup, if (addResultToContext) 2 else 1)
             .map { srs =>
               val qsr = QuereaseSerializedResult(srs.head, filter, isCollection)
@@ -608,6 +581,8 @@ object WabaseAppConfig extends AppBase.AppConfig {
   val SerializationBufferSize: Int = appConfig.getBytes("serialization-buffer-size").toInt
   val SerializationBufferMaxFileSize: Long = MarshallingConfig.dbDataFileMaxSize
   val SerializationBufferMaxFileSizes: Map[String, Long] = MarshallingConfig.customDataFileMaxSizes
+  def viewSerializationBufferMaxFileSize(viewName: String): Long =
+    SerializationBufferMaxFileSizes.getOrElse(viewName, SerializationBufferMaxFileSize)
   val CurrentUserParameterName = appConfig.getString("current-user-key-name")
   val UserCredentialsParameterName = appConfig.getString("user-credentials-key-name")
 }

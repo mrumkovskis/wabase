@@ -12,7 +12,7 @@ class FileBufferedDataFlowTest extends AsyncFlatSpec {
   import scala.language.postfixOps
   def testBufferedFlow(n: Int, bufferSize: Int, maxFileSize: Long, outBufSize: Int = 1024 * 8) = {
     val buffer = FileBufferedFlow.create(bufferSize, maxFileSize, outBufSize)
-    Source.fromIterator(() => 1 to n iterator).map{ b => ByteString(b.toByte) }.viaMat(buffer)(Keep.right).async
+    Source.fromIterator(() => 1 to n iterator).map{ b => ByteString(b.toByte) }.async.viaMat(buffer)(Keep.right)
   }
 
   import StreamsEnv._
@@ -21,13 +21,13 @@ class FileBufferedDataFlowTest extends AsyncFlatSpec {
   val pattern = ByteString(1 to size map (_.toByte) toArray)
   val source = testBufferedFlow(size, 10, 100, 10)
   it should "buffer bytes flow with fixed downstream timeout" in {
-    source.map {x => Thread.sleep(10); x}.async runReduce { _ ++ _ } map { b => assert(pattern == b) }
+    source.map {x => Thread.sleep(10); x} runReduce { _ ++ _ } map { b => assert(pattern == b) }
   }
   it should "buffer bytes flow with no downstream timeout" in {
     source.runReduce { _ ++ _ } map { b => assert(pattern == b) }
   }
   it should "buffer bytes flow with variable downstream timeout" in {
-    source.map {x => Thread.sleep(Random.nextInt(101)); x}.async runReduce { _ ++ _ } map { b => assert(pattern == b) }
+    source.map {x => Thread.sleep(Random.nextInt(101)); x} runReduce { _ ++ _ } map { b => assert(pattern == b) }
   }
   it should "return correct IOResult" in {
     source.to(Sink.ignore).run().map(r => assert(r.count == size))
@@ -50,7 +50,7 @@ class FileBufferedDataFlowTest extends AsyncFlatSpec {
         }
         b
       }.async
-      .via(buffer).async
+      .via(buffer)
       .map { b =>
         val r = size / fileSize
         if ((r > 0.25 && r < 0.5) || r > 0.75) {

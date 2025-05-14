@@ -155,7 +155,7 @@ trait QuereaseMarshalling extends QuereaseResultMarshalling with WabaseUnmarshal
     def marsh(viewName: String, resFilter: ResultRenderer.ResultFilter)(implicit ec: ExecutionContext): ToEntityMarshaller[Map[String, Any]] =
       Marshaller.combined { (map: Map[String, Any]) =>
         // TODO transcode directly
-        app.serializeResult(app.SerializationBufferSize, app.viewSerializationBufferMaxFileSize(viewName),
+        ResultSerializer.serializeResult(app.SerializationBufferSize, app.viewSerializationBufferMaxFileSize(viewName),
           DataSerializer.source(() => Seq(map).iterator)).map(_.head)
           .map(QuereaseSerializedResult(_, resFilter, isCollection = false))
       } (GenericMarshallers.futureMarshaller(toEntityQuereaseSerializedResultMarshaller(viewName, null)))
@@ -166,7 +166,7 @@ trait QuereaseMarshalling extends QuereaseResultMarshalling with WabaseUnmarshal
     def marsh(viewName: String, resFilter: ResultRenderer.ResultFilter)(implicit ec: ExecutionContext): ToEntityMarshaller[Seq[Map[String, Any]]] =
       Marshaller.combined { (seqOfMaps: Seq[Map[String, Any]]) =>
         // TODO transcode directly
-        app.serializeResult(app.SerializationBufferSize, app.viewSerializationBufferMaxFileSize(viewName),
+        ResultSerializer.serializeResult(app.SerializationBufferSize, app.viewSerializationBufferMaxFileSize(viewName),
           DataSerializer.source(() => seqOfMaps.iterator)).map(_.head)
           .map(QuereaseSerializedResult(_, resFilter, isCollection = true))
       } (GenericMarshallers.futureMarshaller(toEntityQuereaseSerializedResultMarshaller(viewName, null)))
@@ -504,7 +504,7 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
   implicit val toResponseQuereaseIteratorMarshaller: ToResponseMarshaller[QuereaseIteratorResult[Dto]] = {
     def marsh(viewName: String)(implicit ec: ExecutionContext): ToResponseMarshaller[QuereaseIteratorResult[Dto]] =
       Marshaller.combined { (qir: QuereaseIteratorResult[Dto]) =>
-        app.serializeResult(app.SerializationBufferSize, app.viewSerializationBufferMaxFileSize(viewName),
+        ResultSerializer.serializeResult(app.SerializationBufferSize, app.viewSerializationBufferMaxFileSize(viewName),
           DataSerializer.source(() => qir.map(_.toMap))).map(_.head)
           .map(QuereaseSerializedResult(_, null, isCollection = true))
       } (GenericMarshallers.futureMarshaller(toEntityQuereaseSerializedResultMarshaller(viewName, null)))
@@ -514,7 +514,7 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
 
   implicit def toResponseTresqlResultMarshaller(implicit res: Resources): ToEntityMarshaller[RowLike] =
     Marshaller { _ => tresqlResult =>
-      val sr = app.serializeResult(app.SerializationBufferSize, app.SerializationBufferMaxFileSize,
+      val sr = ResultSerializer.serializeResult(app.SerializationBufferSize, app.SerializationBufferMaxFileSize,
         tresqlResult match {
           case result: Result[_] => TresqlResultSerializer.source(() => result)
           case row:    RowLike   => TresqlResultSerializer.rowSource(() => row)

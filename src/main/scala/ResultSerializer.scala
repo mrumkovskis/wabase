@@ -1,11 +1,10 @@
 package org.wabase
 
 import org.apache.pekko.{Done, NotUsed}
-import org.apache.pekko.stream.scaladsl.{Flow, Source, StreamConverters}
+import org.apache.pekko.stream.scaladsl.{Flow, Keep, Source, StreamConverters}
 import org.apache.pekko.stream.stage.{GraphStage, GraphStageLogic, InHandler, OutHandler}
 import org.apache.pekko.stream.{Attributes, FlowShape, Inlet, Materializer, Outlet, SourceShape}
 import org.apache.pekko.util.{ByteString, ByteStringBuilder}
-
 import org.mojoz.querease.ValueConverter
 
 import java.io.{InputStream, OutputStream}
@@ -14,7 +13,7 @@ import java.math.{BigDecimal => JBigDecimal, BigInteger => JBigInteger}
 import java.nio.{ByteBuffer, CharBuffer}
 import java.nio.charset.{Charset, CharsetEncoder, CodingErrorAction}
 import java.nio.charset.StandardCharsets.UTF_8
-import java.time.{Instant, LocalDate, LocalDateTime, LocalTime, OffsetDateTime, ZonedDateTime, ZoneId}
+import java.time.{Instant, LocalDate, LocalDateTime, LocalTime, OffsetDateTime, ZoneId, ZonedDateTime}
 import java.time.format.DateTimeFormatter
 import ResultEncoder._
 import com.typesafe.scalalogging.Logger
@@ -86,6 +85,33 @@ object ResultSerializer {
     bufferSizeHint:   Int = 1024,
   ): Source[ByteString, NotUsed] = {
     Source.fromGraph(new ResultSerializer(createEncodable, createEncoder, bufferSizeHint))
+  }
+
+  /** Runs result source via [[FileBufferedFlow]] of bufferSize with maxFileSize to [[ResultCompletionSink]]
+   * On [[FileBufferedFlow]] upstream finish calls cleanup function.
+   * */
+  def serializeResult(
+    bufferSize: Int,
+    maxFileSize: Long,
+    result: Source[ByteString, _],
+    cleanupFun: Option[Throwable] => Unit = null,
+    resultCount: Int = 1,
+  )(implicit
+    ec: ExecutionContext,
+    mat: Materializer,
+  ): Future[Seq[SerializedResult]] = {
+    val (cleanupF, resultF) =
+      result
+        .async
+        .viaMat(FileBufferedFlow.create(bufferSize, maxFileSize))(Keep.right) // keep flow's materialized value
+        .toMat(new ResultCompletionSink(resultCount))(Keep.both)
+        .run()
+    if (cleanupFun != null)
+      cleanupF.onComplete { // materialized future of file buffered flow completes when flow's upstream finishes, then call cleanup fun
+        case Failure(ex) => cleanupFun(Some(ex))
+        case _ => cleanupFun(None)
+      }
+    resultF
   }
 }
 
