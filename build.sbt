@@ -202,6 +202,7 @@ lazy val it = (project in file("src/it"))
   .settings(
     publish / skip := true,
     Compile / resourceDirectory := baseDirectory.value / "resources",
+    Test / fork := true,
     Test / javaOptions := Seq("-Xmx2G"),
     Test / parallelExecution := false,
     Test / resourceDirectory := baseDirectory.value / "resources",

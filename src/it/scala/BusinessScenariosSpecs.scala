@@ -6,6 +6,7 @@ import scala.util.Random
 
 class BusinessScenariosSpecs extends BusinessScenariosBaseSpecs("http_tests") {
   lazy val server = new RunningServer
+  override def resourcePath = "resources/"
   override def initHttpClient = server
   override def beforeAll() = {
   }
