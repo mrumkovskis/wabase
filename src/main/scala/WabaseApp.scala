@@ -76,7 +76,11 @@ trait WabaseApp[User] {
     val rf:       ResourcesFactory,
     val httpReq:  HttpRequest,
   ) {
-    lazy val env: Map[String, Any] = state ++ current_user_param(user)
+    lazy val env: Map[String, Any] = state ++
+      Option(httpReq)
+        .flatMap(WabaseAuthentication.session)
+        .map(sid => Seq(WabaseAuthentication.SessionCookieName -> sid))
+        .getOrElse(Nil) ++ current_user_param(user)
     def withResultFilter(resFil: ResultRenderer.ResultFilter): AppActionContext =
       copy(resultFilter = resFil)
   }

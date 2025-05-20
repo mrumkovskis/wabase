@@ -84,6 +84,14 @@ object WabaseAuthentication extends Authentication[WabaseUser] {
     WabaseService.setCookie(resp)(sessionCookie(encryptedSession(req, mergeReqRespUserData(user, resp))))
   }
 
+  def session(req: HttpRequest): Option[String] = WabaseService.optionalCookie(req)(SessionCookieName)
+
+  def setAnonSessionCookie(resp: HttpResponse): HttpResponse = {
+    WabaseService.setCookie(resp)(sessionCookie(sessionId))
+  }
+
+  def sessionId: String = java.util.UUID.randomUUID().toString
+
   def optUserFromRespAttributes(resp: HttpResponse): Option[WabaseUser] =
     resp.attribute(AttributeKey[WabaseUser](WabaseService.WabaseUserAttributeName))
 
