@@ -775,7 +775,7 @@ object DataSerializer {
   }
 }
 
-import org.tresql.{Result, RowLike}
+import org.tresql.{DynamicArraySelectResult, Result, RowLike}
 object TresqlResultSerializer {
   /** Tresql Result wrapper for serialization - returns column iterator instead of self */
   private class TresqlRowsIterator(
@@ -805,6 +805,7 @@ object TresqlResultSerializer {
         false
       }
     override def next(): Any = cols.next() match {
+      case arr: DynamicArraySelectResult => arr.elIterator
       case rows: Result[_] => new TresqlRowsIterator(rows, includeHeaders)
       case value => value
     }

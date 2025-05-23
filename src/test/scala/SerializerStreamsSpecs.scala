@@ -150,6 +150,16 @@ class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseIni
     ).mkString(",")
   }
 
+  it should "serialize tresql result with array to json" in {
+    val queryString = """null{'jasmine' name,|[(null{'admin'} + null{'guest'})#(1)] "roles"}"""
+    def test(includeHeaders: Boolean, wrap: Boolean) =
+      serializeTresqlResult(queryString, Json, includeHeaders, 1024, wrap)
+    test(false, false) shouldBe  """["jasmine",["admin","guest"]]"""
+    test(false, true ) shouldBe """[["jasmine",["admin","guest"]]]"""
+    test(true,  false) shouldBe  """["name","roles"],["jasmine",["admin","guest"]]"""
+    test(true,  true ) shouldBe """[["name","roles"],["jasmine",["admin","guest"]]]"""
+  }
+
   it should "serialize dto result as arrays to json" in {
     def test(dtos: Seq[Dto], includeHeaders: Boolean) =
       serializeDtoResult(dtos, Json, includeHeaders)

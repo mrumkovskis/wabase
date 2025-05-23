@@ -1,0 +1,4 @@
+path:     /user-with-roles-array
+response:
+  name: jasmine
+  roles: ["admin", "guest"]
