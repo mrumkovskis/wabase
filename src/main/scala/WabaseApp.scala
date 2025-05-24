@@ -547,7 +547,7 @@ trait WabaseApp[User] {
              Action.Update => view.apiMethodToRoles.get(Action.Save)
         case x => None
       })
-      if hasRole(user, roles)
+      if qe.isPublicView(viewName) || roles.contains(qe.publicApiRoleName) || hasRole(user, roles)
     } yield true).getOrElse(
       throw noApiException(viewName, method, user)
     )

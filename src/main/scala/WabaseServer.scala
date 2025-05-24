@@ -25,7 +25,6 @@ object WabaseServer {
     with AppBase[WabaseUser]
     with NoAudit[WabaseUser]
     with DbAccess
-    with NoAuthorization[WabaseUser]
     with NoCustomConstraintMessage
     with NoValidation
     with Marshalling

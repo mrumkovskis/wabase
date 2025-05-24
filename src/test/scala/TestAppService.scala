@@ -12,12 +12,15 @@ object TestDbAccess extends DbAccess with Loggable {
 }
 
 trait TestApp extends AppBase[TestUsr] with NoAudit[TestUsr] with PostgreSqlConstraintMessage
-  with DbAccessDelegate with NoAuthorization[TestUsr] with AppFileStreamer[TestUsr] with AppConfig
+  with DbAccessDelegate with AppFileStreamer[TestUsr] with AppConfig
   with DefaultValidationEngine {
   override protected def initQuerease = new TestQuerease("/no-metadata.yaml")
   override def dbAccessDelegate: DbAccess = TestDbAccess
   override val I18nResourceName = "test"
   override def useLegacyFlow(viewName: String, actionName: String): Boolean = viewName endsWith "_legacy_flow"
+  override def check[C <: RequestContext[_]](ctx: C, clazz: Class[_]): Unit = {}
+  override def relevant[C <: RequestContext[_]](ctx: C, clazz: Class[_]) = ctx
+  override def hasRole(user: TestUsr, roles: Set[String]): Boolean = true
 }
 
 object TestApp extends TestApp

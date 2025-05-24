@@ -10,10 +10,10 @@ trait Authorization[User] {
       config, "app.wabase-authorization-factory", "wabase authorization factory"
     ).initialize()
 
-  /** performs authorization, on failure throws UnauthorizedException, otherwise returns */
-  def check[C <: RequestContext[_]](ctx: C, clazz: Class[_]): Unit
-  /** adds authZ information regarding result to context, i.e is result editable, etc... */
-  def relevant[C <: RequestContext[_]](ctx: C, clazz: Class[_]): C
+  /** legacy flow - performs authorization, on failure throws Exception, otherwise returns */
+  def check[C <: RequestContext[_]](ctx: C, clazz: Class[_]): Unit = ???
+  /** legacy flow - adds authZ information regarding result to context, i.e is result editable, etc... */
+  def relevant[C <: RequestContext[_]](ctx: C, clazz: Class[_]): C = ???
   /** Override with something useful, like:
     * {{{
     * qe.list(classOf[HasRoleHelper], Map("current_user_id" -> user.id, "role" -> role))
@@ -40,14 +40,5 @@ class WabaseAuthorization {
 }
 
 object Authorization extends WabaseAuthorizationFactory {
-  class UnauthorizedException(msg: String) extends BusinessException(msg)
-
   override def initialize(): WabaseAuthorization = new WabaseAuthorization
-
-  trait NoAuthorization[User] extends Authorization[User] {
-    this: AppBase[User] with Audit[User] with DbAccess with ValidationEngine with DbConstraintMessage =>
-    override def check[C <: RequestContext[_]](ctx: C, clazz: Class[_]): Unit = {}
-    override def relevant[C <: RequestContext[_]](ctx: C, clazz: Class[_]) = ctx
-    override def hasRole(user: User, roles: Set[String]): Boolean = true
-  }
 }

@@ -11,7 +11,7 @@ import scala.math.Ordering
 class FieldOrderingSpecs extends FlatSpec with Matchers {
   behavior of "FieldOrderingSpecs"
 
-  object FieldOrderingTestApp extends AppBase[TestUsr] with NoAudit[TestUsr] with NoAuthorization[TestUsr]
+  object FieldOrderingTestApp extends AppBase[TestUsr] with NoAudit[TestUsr]
       with NoValidation with DbAccess with PostgreSqlConstraintMessage {
     object FieldOrdTestQuerease extends TestQuerease("/constraint-message-spec.yaml")
 

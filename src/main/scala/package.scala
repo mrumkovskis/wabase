@@ -44,7 +44,6 @@ package object wabase extends Loggable {
   type DefaultWsInitialEventsPublisher = ServerNotifications.DefaultInitialEventsPublisher
 
   type NoAudit[User] = Audit.NoAudit[User]
-  type NoAuthorization[User] = Authorization.NoAuthorization[User]
   type NoCustomConstraintMessage = DbConstraintMessage.NoCustomConstraintMessage
   type NoServerStatistics = ServerStatistics.NoServerStatistics
   type NoWsInitialEvents = ServerNotifications.NoInitialEvents
