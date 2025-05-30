@@ -80,7 +80,7 @@ trait Authentication[User] extends SecurityDirectives with SessionInfoRemover wi
   val SignInPath = "/sign-in"
   val SignedInDefaultPath = "/"
   val SignedOutPath = "/"
-  val SessionCookieName = "session-id"
+  val SessionCookieName = config.getString("session.cookie.name")
   val RequestedUriCookieName = "requested-uri"
 
   lazy val HttpChallengeRealm = "APP"
@@ -262,8 +262,7 @@ object Authentication {
     lazy val cryptoKey = secretKey("auth.crypto.key")
     lazy val macKey = secretKey("auth.mac.key")
 
-    lazy val secureCookies: Boolean =
-      if(config.hasPath("session.cookie.secure")) config.getBoolean("session.cookie.secure") else false
+    lazy val secureCookies: Boolean = config.getBoolean("session.cookie.secure")
     def uniqueSessionId = new Random(new SecureRandom).alphanumeric.take(100).mkString
 
     def secretKey(name: String) = Option(decodeBytes(config.getString(name)))
