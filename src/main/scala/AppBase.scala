@@ -1006,7 +1006,11 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
     JsObject(TreeMap[String, JsValue]() ++
       views
         .filter(_.apiMethodToRoles != null)
-        .map(v => v -> v.apiMethodToRoles.filter { case (method, roles) => roles.exists(relevantRoles.contains) })
+        .map(v => v -> v.apiMethodToRoles.filter { case (method, roles) =>
+          qe.isPublicView(v.name) ||
+          roles.contains(qe.publicApiRoleName) ||
+          roles.exists(relevantRoles.contains)
+        })
         .filter(_._2.nonEmpty)
         .map { case (v, methodsToRoles) => v.name -> JsArray(methodsToRoles.keys.toSeq.map(JsString(_)): _*) }
     )

@@ -10,11 +10,14 @@ import org.tresql.{Dialect, LogTopic, Logging, QueryBuilder, Resources, Resource
 
 import java.text.SimpleDateFormat
 import java.util.Date
+import scala.collection.immutable.Seq
 
-class TestQuerease(val metadataFile: String, mdFilter: YamlMd => Boolean = _ => true) extends AppQuerease {
+class TestQuerease(val metadataFiles: Seq[String], mdFilter: YamlMd => Boolean = _ => true) extends AppQuerease {
+  def this(metadataFile: String) = this(Seq(metadataFile))
+  def this(metadataFile: String, mdFilter: YamlMd => Boolean) = this(Seq(metadataFile), mdFilter)
   override lazy val defaultCpName = "wabase_db"
   override lazy val aliasToDb: Map[String, String] = Map(defaultCpName -> null)
-  override lazy val yamlMetadata = YamlMd.fromResource(metadataFile).filter(mdFilter)
+  override lazy val yamlMetadata = YamlMd.fromPaths(metadataFiles).filter(mdFilter)
   override lazy val viewNameToClassMap = Map[String, Class[_ <: Dto]]()
   def persistenceMetadata(viewName: String) = nameToPersistenceMetadata(viewName)
 }

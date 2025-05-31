@@ -19,6 +19,7 @@ import org.scalatest.matchers.should.Matchers
 import org.tresql.{convInt, DMLResult, Query, ThreadLocalResources, dialects}
 import spray.json._
 
+import scala.collection.immutable.Seq
 import scala.concurrent.{ExecutionContextExecutor, Future}
 
 class CrudTestService(system: ActorSystem, testApp: TestApp) extends TestAppService(system) {
@@ -108,7 +109,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
 
   override def dbNamePrefix: String = "main"
   override def beforeAll(): Unit = {
-    querease    = new TestQuerease("/crud-service-specs-metadata.yaml") {
+    querease    = new TestQuerease(Seq("/crud-service-specs-metadata.yaml", "/roles-test-metadata.yaml")) {
       override lazy val defaultCpName = "main"
       override lazy val viewNameToClassMap = CrudServiceSpecsDtos.viewNameToClass
     }
@@ -856,6 +857,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       apiMap("by_id_view_1") shouldBe Seq("count", "create", "delete", "get", "save", "list")
       apiMap("by_hidden_key_view_2") shouldBe Seq("count", "create", "delete", "get", "save")
       apiMap.get("no_api_view") shouldBe None
+      apiMap.get("roles_test") shouldBe Some(Seq("list"))
     }
   }
 

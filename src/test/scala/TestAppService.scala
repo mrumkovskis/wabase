@@ -20,7 +20,8 @@ trait TestApp extends AppBase[TestUsr] with NoAudit[TestUsr] with PostgreSqlCons
   override def useLegacyFlow(viewName: String, actionName: String): Boolean = viewName endsWith "_legacy_flow"
   override def check[C <: RequestContext[_]](ctx: C, clazz: Class[_]): Unit = {}
   override def relevant[C <: RequestContext[_]](ctx: C, clazz: Class[_]) = ctx
-  override def hasRole(user: TestUsr, roles: Set[String]): Boolean = true
+  override def hasRole(user: TestUsr, roles: Set[String]): Boolean =
+    user != null && roles.exists(_.equalsIgnoreCase("private"))
 }
 
 object TestApp extends TestApp
