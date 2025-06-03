@@ -24,6 +24,7 @@
 
     <logger name="com.zaxxer.hikari" level="warn"/>
     <logger name="org.apache.pekko.stream.scaladsl.RestartWithBackoffSource" level="error"/>
+    <logger name="wabase.app.BusinessScenariosSpecs" level="info"/>
 
     <!-- <logger name="org.wabase.tresql" level="debug"/> -->
 
