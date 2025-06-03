@@ -1,0 +1,9 @@
+path:       /data/person?fields=code
+response: [
+  {
+    "code": "p1"
+  },
+  {
+    "code": "p2"
+  }
+]

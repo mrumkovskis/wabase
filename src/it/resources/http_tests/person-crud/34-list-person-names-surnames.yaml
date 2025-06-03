@@ -1,0 +1,11 @@
+path:       /data/person?fields=name,surname
+response: [
+  {
+    "name": "John",
+    "surname": "Doe"
+  },
+  {
+    "name": "Jane",
+    "surname": "Doe"
+  }
+]

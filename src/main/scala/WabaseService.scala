@@ -10,6 +10,7 @@ import org.apache.pekko.http.scaladsl.marshalling.{Marshal, ToResponseMarshallab
 import org.apache.pekko.http.scaladsl.model.headers.{Cookie, HttpCookie, `Set-Cookie`}
 import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes, DateTime, HttpEntity, HttpHeader, HttpMessage, HttpRequest, HttpResponse, MediaTypes, StatusCodes, Uri}
 import org.apache.pekko.http.scaladsl.unmarshalling.Unmarshaller
+import org.mojoz.metadata.ViewDef
 import org.slf4j.LoggerFactory
 import org.wabase.AppMetadata.{Action, RouteDef}
 import org.wabase.WabaseService.Wabase
@@ -42,7 +43,11 @@ case class WabaseRequestContext(
   queryTimeout: QueryTimeout = null,
   as: ActorSystem = null,
   logger: Logger = null,
-)
+  resultFilter: ResultRenderer.ResultFilter = null,
+) {
+  def withResultFilter(resFil: ResultRenderer.ResultFilter): WabaseRequestContext =
+    copy(resultFilter = resFil)
+}
 
 case class Deferred(
   deferredControl: WabaseDeferredControl = null,
@@ -267,17 +272,49 @@ object WabaseService {
     }
   }
 
+  private val fieldFilterParameterNameOpt =
+    Option("app.field-filter-parameter-name").filter(config.hasPath).map(config.getString)
+
+  def addResultFilter(context: WabaseRequestContext, params: Map[String, Any]): WabaseRequestContext = {
+    if (context.resultFilter != null) context
+    else context.action match {
+      case Action.Get | Action.List | Action.Create =>
+        val allowed = fieldFilterParameterNameOpt.flatMap(params.get).map {
+          case null => null
+          case seq: Seq[_] => seq.map(_.toString).toSet
+          case cols => s"$cols".split(",").map(_.trim).toSet
+        }.orNull
+        context.logger.debug(s"Adding result filter. allowed: ${allowed}")
+        if (allowed != null) {
+          class ColsFilter(viewName: String, nameToViewDef: Map[String, ViewDef])
+            extends ResultRenderer.ViewFieldFilter(viewName, nameToViewDef) {
+            override def shouldInclude(field: String) =
+              allowed.contains(field) && super.shouldInclude(field)
+            override def childFilter(field: String) = viewDef.fieldOpt(field)
+              .map(_.type_.name)
+              .map(new ColsFilter(_, nameToViewDef))
+              .orNull
+          }
+          context.withResultFilter(new ColsFilter(context.viewName, context.wabase.qe.nameToViewDef))
+        } else context
+      case _ => context
+    }
+  }
+
   def doAction(reqCtx: WabaseRequestContext): Future[HttpResponse] = {
-    def dwa(ctx: WabaseRequestContext) = {
+    def extractParams(ctx: WabaseRequestContext) = {
+      import ctx._
+      AppServiceBase.filterParams(
+        wabase.qe.metadataConventions, AppServiceBase.NamesForInts, AppServiceBase.escapeReflectedXss
+      )(WabaseService.parameterMultiMap(req))
+    }
+    def dwa(ctx: WabaseRequestContext, params: Map[String, Any]) = {
       import ctx._
       if (viewName == null || !wabase.qe.nameToViewDef.contains(viewName))
         if (viewName != null)
           error(s"Cannot handle route ${route.path}. View '$viewName' not found!")
         else error(s"Cannot handle route: ${route.path}. View not found!")
       else {
-        val params = AppServiceBase.filterParams(
-          wabase.qe.metadataConventions, AppServiceBase.NamesForInts, AppServiceBase.escapeReflectedXss
-        )(WabaseService.parameterMultiMap(req))
         implicit val ec = as.dispatcher
         val valuesF =
           if (Set(Action.Insert, Action.Update, Action.Save).contains(action))
@@ -290,6 +327,7 @@ object WabaseService {
             keyValues = ctx.key,
             params = params,
             values = values,
+            resultFilter = resultFilter,
           )(ctx)
         }.flatMap { result =>
           Marshal(result).toResponseFor(req)(wabase.toResponseWabaseResultMarshaller, ec)
@@ -301,7 +339,12 @@ object WabaseService {
       if (ctxWithView.applicationState == null)
         ctxWithView.copy(applicationState = ApplicationStateExtractor.extractState(ctxWithView))
       else ctxWithView
-    dwa(ctxWithViewAndState)
+    val params = extractParams(ctxWithViewAndState)
+    val ctxWithViewAndStateAndFilter =
+      if (ctxWithViewAndState.resultFilter == null)
+        addResultFilter(ctxWithViewAndState, params)
+      else ctxWithViewAndState
+    dwa(ctxWithViewAndStateAndFilter, params)
   }
 
   def toMapForViewEntityDecoder(ctx: WabaseRequestContext): Future[Map[String, Any]] = {
