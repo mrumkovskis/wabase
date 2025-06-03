@@ -207,6 +207,30 @@ object WabaseService {
     key(keyPath)
   }
 
+  /** Enables alternative URI where row key is in special query string */
+  def keyFromQueryToPath(request: HttpRequest): HttpRequest = {
+    def decode(s: String) = java.net.URLDecoder.decode(s, "UTF-8")
+    request.uri.rawQueryString match {
+      case Some(rawQ) if rawQ startsWith "/" =>
+        val (p, q) = rawQ.indexOf('?') match {
+          case -1 => (rawQ, null)
+          case i  => (rawQ.substring(0, i), rawQ.substring(i + 1))
+        }
+        @annotation.tailrec
+        def toPath(path: Uri.Path, p: String): Uri.Path = p.indexOf('/', 1) match {
+          case -1 => path / decode(p.substring(1))
+          case i  => toPath(path / decode(p.substring(1, i)), p.substring(i))
+        }
+        val uriWithPath   = request.uri.withPath(toPath(request.uri.path, p))
+        val uri =
+          if (q == null)
+               uriWithPath.withQuery(Uri.Query.Empty)
+          else uriWithPath.withRawQueryString(q)
+        request.withUri(uri)
+      case _ => request
+    }
+  }
+
   def viewActionKey(ctx: WabaseRequestContext): WabaseRequestContext = {
     import ctx._
     val viewDefs = wabase.qe.nameToViewDef

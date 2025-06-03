@@ -1,0 +1,6 @@
+path:       /data/person?/p2
+method:     POST
+request:
+  name:     Jane
+  surname:  Doe
+response:

@@ -1,0 +1,10 @@
+name:   person
+table:  person
+api:    get, list, save, delete
+key:    code
+fields:
+- code
+- name
+- surname
+order:
+- code

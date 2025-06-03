@@ -1,0 +1,13 @@
+path:       /data/person
+response: [
+  {
+    "code": "p1",
+    "name": "John",
+    "surname": "Doe"
+  },
+  {
+    "code": "p2",
+    "name": "Jane",
+    "surname": "Doe"
+  }
+]

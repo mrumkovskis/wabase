@@ -1,0 +1,5 @@
+path:       /data/person?/p1
+response:
+  code:     p1
+  name:     John
+  surname:  Doe

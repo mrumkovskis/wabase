@@ -1,0 +1,7 @@
+table:   person
+columns:
+- code  !   12
+- name      80
+- surname   80
+pk:
+- code
