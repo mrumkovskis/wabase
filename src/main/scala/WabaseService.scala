@@ -10,6 +10,7 @@ import org.apache.pekko.http.scaladsl.marshalling.{Marshal, ToResponseMarshallab
 import org.apache.pekko.http.scaladsl.model.headers.{Cookie, HttpCookie, `Set-Cookie`}
 import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes, DateTime, HttpEntity, HttpHeader, HttpMessage, HttpRequest, HttpResponse, MediaTypes, StatusCodes, Uri}
 import org.apache.pekko.http.scaladsl.unmarshalling.Unmarshaller
+import org.apache.pekko.util.ByteString
 import org.mojoz.metadata.ViewDef
 import org.slf4j.LoggerFactory
 import org.wabase.AppMetadata.{Action, RouteDef}
@@ -193,6 +194,11 @@ object WabaseService {
         buildRequestHandler(cn, fn, null)(ctx.copy(key = key))
       case _ => notFound
     }.getOrElse(notFound)
+  }
+
+  def api(ctx: WabaseRequestContext): HttpResponse = {
+    val json = ctx.wabase._api(ctx.user)
+    HttpResponse(entity = HttpEntity.Strict(ContentTypes.`application/json`, ByteString(json.compactPrint)))
   }
 
   /** Extract segments as list from path after segment matching prefix */

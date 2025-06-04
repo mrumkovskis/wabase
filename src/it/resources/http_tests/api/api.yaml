@@ -1,0 +1,12 @@
+path:     /api
+response: {
+  "person": [
+    "get",
+    "list",
+    "save",
+    "delete"
+  ],
+  "user-with-roles-array": [
+    "get"
+  ]
+}

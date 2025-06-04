@@ -132,6 +132,8 @@ trait WabaseApp[User] {
       doApiCheck)
   }
 
+  def _api(implicit user: User) = api
+
   private def setMaxContentSize(httpReq: HttpRequest, vdo: Option[ViewDef]) = vdo.map { vd =>
     if (vd.maxContentSize == null || httpReq == null) httpReq
     else httpReq.withEntity(httpReq.entity.withSizeLimit(vd.maxContentSize))
