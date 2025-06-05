@@ -22,20 +22,22 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
 
   DbDrivers.loadDrivers
 
-  private def response(result: Future[HttpResponse]) = Await.result(result, 5.seconds)
-
-  private def entity(result: Future[HttpResponse], decoder: String => Any = identity): Any =
-    decoder(WabaseTestHandlers.entity(response(result)))
+  private def response(req: HttpRequest) = Await.result(server.handle(req), 5.seconds)
 
   protected def callRoute(
     url: String,
     data: RequestEntity = HttpEntity.Empty,
     method: HttpMethod = HttpMethods.GET,
     decoder: String => Any = identity,
-  ) = callRequest(HttpRequest(method = method, uri = url, entity = data), decoder)
+  ) = entityForRequest(HttpRequest(method = method, uri = url, entity = data), decoder)
 
-  protected def callRequest(req: HttpRequest, decoder: String => Any = identity) =
-    entity(server.handle(req), decoder)
+  protected def entityForRequest(req: HttpRequest, decoder: String => Any = identity) =
+    decoder(WabaseTestHandlers.entity(response(req)))
+
+  protected def statusAndEntityForRequest(req: HttpRequest, decoder: String => Any = identity) = {
+    val resp = response(req)
+    (resp.status, decoder(WabaseTestHandlers.entity(resp)))
+  }
 
   protected def encodeJs(value: Any) = ResultEncoder.encodeAnyToJsonString(value)
 
@@ -91,13 +93,32 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
     callRoute("/public/count:view1", decoder = decodeJs) shouldBe 1
   }
 
+  it should "process request decoder errors" in {
+    statusAndEntityForRequest(HttpRequest(
+      method = HttpMethods.POST,
+      uri = "/public/view1/5",
+      entity = encodeJs(Seq(Map("value" -> "Value5-ins")))
+    )) match { case (code, resp) =>
+      code shouldBe StatusCodes.BadRequest
+      String.valueOf(resp) should startWith("Failed to read to map for view1")
+    }
+    statusAndEntityForRequest(HttpRequest(
+      method = HttpMethods.PUT,
+      uri = "/public/view1/5",
+      entity = encodeJs(Seq(Map("id" -> 5, "value" -> "Value5-ins")))
+    ))  match { case (code, resp) =>
+      code shouldBe StatusCodes.BadRequest
+      String.valueOf(resp) should startWith("Failed to read to map for view1")
+    }
+  }
+
   it should "do login and authenticated requests" in {
 
     def doBasicAuthReq(usr: String, pwd: String) =
-      response(server.handle(HttpRequest(
+      response(HttpRequest(
         uri = Uri("/login"),
         headers = List(org.apache.pekko.http.scaladsl.model.headers.Authorization(BasicHttpCredentials(usr, pwd)))
-      )))
+      ))
     def encryptedSession(resp: HttpResponse) = WabaseService.optionalHttpHeaderValuePF(resp) {
       case `Set-Cookie`(c) if c.name == WabaseAuthentication.SessionCookieName => c.value
     }.get
@@ -113,7 +134,7 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
 
     val x = (1 to 3).scanLeft(enc_session) { (enc_ses, _) =>
       Thread.sleep(10) // ensure that session expiration time changes
-      resp = response(server.handle(authReq(enc_ses, HttpRequest(uri = Uri("/restricted/user_principal")))))
+      resp = response(authReq(enc_ses, HttpRequest(uri = Uri("/restricted/user_principal"))))
       decodeJs(WabaseTestHandlers.entity(resp)) shouldBe Map("id" -> 10, "roles" ->  List("admin", "guest", "operator"))
       encryptedSession(resp)
     }.reduce {(s1, s2) => decSes(s1).expirationTime should be < decSes(s2).expirationTime; s2}
@@ -121,7 +142,7 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
     resp = doBasicAuthReq("Gunza", "bad")
     resp.status shouldBe StatusCodes.Unauthorized
 
-    resp = response(server.handle(HttpRequest(uri = "/restricted/user_principal")))
+    resp = response(HttpRequest(uri = "/restricted/user_principal"))
     resp.status shouldBe StatusCodes.Unauthorized
   }
 
