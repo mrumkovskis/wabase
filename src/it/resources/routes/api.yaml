@@ -1,2 +1,5 @@
 on: /api
 do: api
+
+on: /metadata/(.+)
+do: metadata

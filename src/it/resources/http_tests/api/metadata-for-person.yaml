@@ -1,0 +1,63 @@
+path:     /metadata/person
+response: {
+  "name": "person",
+  "key": [
+    "code"
+  ],
+  "fields": [
+    {
+      "name": "code",
+      "type": "string",
+      "isCollection": false,
+      "isComplexType": false,
+      "nullable": false,
+      "required": false,
+      "sortable": true,
+      "label": "Code",
+      "visible": true,
+      "insertable": true,
+      "updatable": false,
+      "enum": null,
+      "refViewName": null,
+      "comments": null,
+      "jsonType": "string",
+      "length": 12
+    },
+    {
+      "name": "name",
+      "type": "string",
+      "isCollection": false,
+      "isComplexType": false,
+      "nullable": true,
+      "required": false,
+      "sortable": false,
+      "label": "Name",
+      "visible": true,
+      "insertable": true,
+      "updatable": true,
+      "enum": null,
+      "refViewName": null,
+      "comments": null,
+      "jsonType": "string",
+      "length": 80
+    },
+    {
+      "name": "surname",
+      "type": "string",
+      "isCollection": false,
+      "isComplexType": false,
+      "nullable": true,
+      "required": false,
+      "sortable": false,
+      "label": "Surname",
+      "visible": true,
+      "insertable": true,
+      "updatable": true,
+      "enum": null,
+      "refViewName": null,
+      "comments": null,
+      "jsonType": "string",
+      "length": 80
+    }
+  ]
+}

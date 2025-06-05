@@ -133,6 +133,8 @@ trait WabaseApp[User] {
   }
 
   def _api(implicit user: User) = api
+  def _apiMetadata(implicit user: User, state: ApplicationState) = apiMetadata
+  def _metadata(viewName: String)(implicit user: User, state: ApplicationState) = metadata(viewName)
 
   private def setMaxContentSize(httpReq: HttpRequest, vdo: Option[ViewDef]) = vdo.map { vd =>
     if (vd.maxContentSize == null || httpReq == null) httpReq

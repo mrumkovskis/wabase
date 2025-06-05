@@ -201,6 +201,20 @@ object WabaseService {
     HttpResponse(entity = HttpEntity.Strict(ContentTypes.`application/json`, ByteString(json.compactPrint)))
   }
 
+  def metadata(ctx: WabaseRequestContext): HttpResponse = {
+    // TODO ETag for metadata for new flow
+    // respondWithHeader(ETag(EntityTag(app.metadataVersionString))) {
+    //   conditional(EntityTag(app.metadataVersionString), DateTime.now) {
+    implicit val user:  WabaseUser       = ctx.user
+    implicit val state: ApplicationState = ctx.applicationState
+    import ctx._
+    val pathString = toReadableString(req.uri.path)
+    val routeRegex = route.path
+    val viewName   = routeRegex.unapplySeq(pathString).flatMap(_.headOption).orNull
+    val json = if (viewName == "*") wabase._apiMetadata else wabase._metadata(viewName)
+    HttpResponse(entity = HttpEntity.Strict(ContentTypes.`application/json`, ByteString(json.compactPrint)))
+  }
+
   /** Extract segments as list from path after segment matching prefix */
   def key(path: Path, prefix: String): Seq[String] = {
     def key_path(path: Path): Path = path match {
