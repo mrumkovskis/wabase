@@ -678,6 +678,17 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         doAction("list", "status_test_4", Map("id" -> null)).map {
           _ shouldBe ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq(null), List(), ListMap())))
         }
+      t16 <-
+        doAction("delete", "status_test_4", Map("id" -> null))
+          .mapTo[ResponseResult]
+          .map(_.value)
+          .mapTo[ResultValue]
+          .map(_.value)
+          .mapTo[StringResult]
+          .map(_.value)
+          .map(decodeJs).map {
+          _ shouldBe List(Map("a" -> "a value", "b" -> "b value"))
+        }
     } yield {
       t15
     }

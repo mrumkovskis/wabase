@@ -959,8 +959,14 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       } else {
         if (statusMode) b match {
           case Action.Tresql(tresql, _, _) =>
-            val r = useResourcesConnOrEvaluator(qr.resourcesFactory.resources, res => Query(tresql, data ++ env)(res)
-              .uniqueOption[String].map(v => ResultValue(StringResult(v))).orNull)
+            val r = useResourcesConnOrEvaluator(
+              qr.resourcesFactory.resources, res => Query(tresql, data ++ env)(res) match {
+                case SingleValueResult(null) => ResultValue(StringResult(null))
+                case SingleValueResult(v: String) => ResultValue(StringResult(v))
+                case SingleValueResult(v) => ResultValue(StringResult(ResultEncoder.encodeAnyToJsonString(v)))
+                case r => r.uniqueOption[String].map(v => ResultValue(StringResult(v))).orNull
+              }
+            )
             Future.successful(r)
           case x => sys.error(s"Status mode supports only tresql op, instead found: $x")
         } else doActionOp(b, data, env, context).map(ResultValue(_))
