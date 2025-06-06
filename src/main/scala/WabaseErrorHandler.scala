@@ -1,10 +1,8 @@
 package org.wabase
 
-import com.typesafe.scalalogging.Logger
 import org.apache.pekko.http.scaladsl.model.StatusCodes.{BadRequest, InternalServerError, NotFound, Unauthorized, UnprocessableContent}
 import org.apache.pekko.http.scaladsl.model.{EntityStreamSizeException, HttpEntity, HttpResponse, StatusCodes}
 import org.mojoz.querease.{ValidationException, ValidationResult}
-import org.slf4j.LoggerFactory
 import org.tresql.MissingBindVariableException
 import org.wabase.AppServiceBase.AppExceptionHandler.PostgresTimeoutExceptionHandler
 import org.wabase.AppServiceBase.AppExceptionHandler.PostgresTimeoutExceptionHandler.{TimeoutFriendlyMessage, TimeoutSignature}
