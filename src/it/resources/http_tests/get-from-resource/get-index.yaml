@@ -1,0 +1,16 @@
+path:     /index.html
+response_headers:
+  Content-Type: text/html; charset=UTF-8
+response: |
+  <!DOCTYPE html>
+  <html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hello</title>
+  </head>
+  <body>
+    <button id="helloButton">Click Me</button>
+    <script src="scripts/hello.js"></script>
+  </body>
+  </html>

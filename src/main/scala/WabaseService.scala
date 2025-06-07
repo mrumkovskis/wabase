@@ -9,7 +9,10 @@ import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.marshalling.{Marshal, ToResponseMarshallable}
 import org.apache.pekko.http.scaladsl.model.headers.{Cookie, HttpCookie, `Set-Cookie`}
 import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes, DateTime, HttpEntity, HttpHeader, HttpMessage, HttpRequest, HttpResponse, MediaTypes, StatusCodes, Uri}
+import org.apache.pekko.http.scaladsl.server.directives.ContentTypeResolver
+import org.apache.pekko.http.scaladsl.server.directives.FileAndResourceDirectives.ResourceFile
 import org.apache.pekko.http.scaladsl.unmarshalling.Unmarshaller
+import org.apache.pekko.stream.scaladsl.StreamConverters
 import org.apache.pekko.util.ByteString
 import org.mojoz.metadata.ViewDef
 import org.slf4j.LoggerFactory
@@ -213,6 +216,29 @@ object WabaseService {
     val viewName   = routeRegex.unapplySeq(pathString).flatMap(_.headOption).orNull
     val json = if (viewName == "*") wabase._apiMetadata else wabase._metadata(viewName)
     HttpResponse(entity = HttpEntity.Strict(ContentTypes.`application/json`, ByteString(json.compactPrint)))
+  }
+
+  private val webResourcesPath = config.getString("app.web-resources-path")
+  private val classLoader = this.getClass.getClassLoader
+  def getFromResource(ctx: WabaseRequestContext): HttpResponse = {
+    val resourceName = s"${webResourcesPath}${ctx.req.uri.path}"
+    val contentType = ContentTypeResolver.Default(resourceName)
+    if (!resourceName.endsWith("/"))
+        Option(classLoader.getResource(resourceName)).flatMap(ResourceFile.apply) match {
+          case Some(ResourceFile(url, length, lastModified)) =>
+            // TODO conditionalFor(length, lastModified) {
+              if (length > 0) {
+                // TODO withRangeSupportAndPrecompressedMediaTypeSupport {
+                  HttpResponse(entity =
+                    HttpEntity.Default(contentType, length,
+                      StreamConverters.fromInputStream(() => url.openStream()))
+                // }
+                  )
+              } else HttpResponse(entity = HttpEntity.Empty)
+            // }
+          case _ => HttpResponse(StatusCodes.NotFound) // not found or directory
+        }
+    else HttpResponse(StatusCodes.NotFound)
   }
 
   /** Extract segments as list from path after segment matching prefix */

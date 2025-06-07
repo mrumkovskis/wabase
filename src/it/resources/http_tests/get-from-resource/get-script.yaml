@@ -1,0 +1,7 @@
+path:     /scripts/hello.js
+response_headers:
+  Content-Type: application/javascript; charset=UTF-8
+response: |
+  document.getElementById('helloButton').addEventListener('click', function() {
+    alert('hello');
+  });
