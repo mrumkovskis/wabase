@@ -29,6 +29,9 @@ class BusinessScenariosSpecs extends BusinessScenariosBaseSpecs("http_tests") {
     server.unbind() // unbind for cross-scala tests
   }
 
+  override def scenariosAutoLogin  = false
+  override def scenariosAutoLogout = false
+
   override def checkTestCase(
     scenario: File, testCase: File, context: Map[String, Any], map: Map[String, Any], retriesLeft: Int
   ): Map[String, Any] = {

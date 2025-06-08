@@ -437,11 +437,15 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
     result
   }
 
+  protected def scenariosAutoLogin  = true
+  protected def scenariosAutoLogout = true
   def ckeckAllTestCases =
     scenarios.sortBy(_.getCanonicalPath).foreach{scenario =>
       behavior of scenario.getName
       var context = Map.empty[String, Any]
-      it should "login" in login()
+      if (scenariosAutoLogin) {
+        it should "login" in login()
+      }
       scenario.listFiles.filter(isTestCaseFile).sortBy(_.getName).foreach{testCase =>
         it should "handle "+testCase.getName in {
           val (newValuesInContext, map) = applyContext(readPojoMap(testCase, getTemplatePath), context)
@@ -449,7 +453,9 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
           context ++= checkTestCase(scenario, testCase, context, map)
         }
       }
-      it should "logout" in clearCookies
+      if (scenariosAutoLogout) {
+        it should "logout" in clearCookies
+      }
     }
 
   ckeckAllTestCases
