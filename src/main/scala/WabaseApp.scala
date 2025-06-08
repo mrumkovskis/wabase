@@ -276,40 +276,7 @@ trait WabaseApp[User] {
   }
 
   def resourceFactory(viewName: String, actionName: String, qt: QueryTimeout): ResourcesFactory = {
-    val vdo = viewDefOption(viewName)
-    val poolName = vdo.flatMap(v => Option(v.db)).map(PoolName) getOrElse DefaultCp
-    val resourcesTemplate: ResourcesTemplate = poolName match {
-      case DefaultCp =>
-        tresqlResources.resourcesTemplate
-      case _ =>
-        def toTemplate(res: Resources) =
-          ResourcesTemplate(
-            res.conn, res.metadata, res.dialect, res.toBindableValue, res.idExpr, res.queryTimeout,
-            res.fetchSize, res.maxResultSize, res.recursiveStackDepth, res.params, res.extraResources,
-            res.logger, res.cache, res.bindVarLogFilter)
-        toTemplate(
-          tresqlResources.resourcesTemplate.extraResources.getOrElse(poolName.connectionPoolName,
-            sys.error(s"Resource key '${poolName.connectionPoolName}' not found in resources template")
-          )
-            .withExtraResources(
-              tresqlResources.resourcesTemplate.extraResources +
-              (DefaultCp.connectionPoolName -> tresqlResources.resourcesTemplate)
-            )
-        )
-      }
-    val rt = Option(withDbAccessLogger(resourcesTemplate, s"$viewName.$actionName")).map { templ =>
-      vdo.map { v =>
-        val timeout: jLong =
-          if (qt != null) qt.timeoutSeconds.toLong
-          else if (v.sqlTimeout != null) v.sqlTimeout.toSeconds
-          else if(v.timeout != null) {
-            val ts = v.timeout.toSeconds
-            if (ts < 2) ts else ts - 1  // reduce timeout to be a little less than http timeout
-          } else null
-        if (timeout == null) templ else templ.copy(queryTimeout = timeout.toInt)
-      }.getOrElse(templ)
-    }.get
-    ResourcesFactory(initResources(rt), closeResources)(rt)
+    resourceFactory(viewDefOption(viewName).orNull, s"$viewName.$actionName", qt)
   }
 
   def maybeSerializeResult(context: AppActionContext, wr: WabaseResult): Future[WabaseResult] = wr match {
