@@ -91,9 +91,9 @@ class WabaseService extends Loggable {
     implicit val ec: ExecutionContext = as.dispatcher
 
     def invokeHandlerBuilderChain(inv: Action.Invocation, innerHandler: RequestHandler): RequestHandler = {
-      inv.arg match {
-        case null => buildRequestHandler(inv.className, inv.function, innerHandler)
-        case i: Action.Invocation => buildRequestHandler(inv.className, inv.function,
+      inv.args match {
+        case Nil => buildRequestHandler(inv.className, inv.function, innerHandler)
+        case List(i: Action.Invocation) => buildRequestHandler(inv.className, inv.function,
           invokeHandlerBuilderChain(i, innerHandler))
         case x => throw new IllegalArgumentException(s"Unrecognized request handler argument '$x', must be function call.")
       }

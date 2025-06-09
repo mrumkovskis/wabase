@@ -805,7 +805,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       conformTo.map(createCompatibleResult(qr, _)).getOrElse(qr)
     }
 
-    (if (op.arg == null) {
+    (if (op.args.isEmpty) {
       val invocationData = () => data ++ env
       invokeFunction(className, function,
         Seq(
@@ -816,7 +816,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         AppQuerease.dtoParameterFromMap(invocationData)(qio),
       )
     } else {
-      doActionOp(op.arg, data, env, context).flatMap { opRes =>
+      doActionOp(op.args.head, data, env, context).flatMap { opRes =>
         val tresqlResult = opRes match { case TresqlResult(result) => result case _ => null }
         val pf1: PartialFunction[Parameter, String] = {
           case par if tresqlResult != null => scala.reflect.Manifest.classType(par.getType).toString()

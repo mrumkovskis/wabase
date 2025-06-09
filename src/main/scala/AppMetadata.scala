@@ -840,12 +840,13 @@ class OpParser(viewName: String, cache: OpParser.Cache)
     case rt ~ (mode ~ op) => Unique(op, mode == "unique_opt", rt)
   } named "unique-op"
   def invocationOp: MemParser[Invocation] = Parser { in =>
-    val p = opt(opResultType) ~ OpParser.InvocationRegex ~ opt(operation)
+    val p = opt(opResultType) ~ OpParser.InvocationRegex ~
+      opt("(" ~> rep1sep(operation, ",") <~ ")") ~ opt(operation)
     p(in) match {
-      case Success(rt ~ res ~ arg, next) =>
+      case Success(rt ~ res ~ args ~ arg, next) =>
         val (cn, fn) = OpParser.classNameFunctionName(res)
         if (cn == null) Failure(s"Class name not found for function '$fn'", next)
-        else Success(Action.Invocation(cn, fn, arg.orNull, rt), next)
+        else Success(Action.Invocation(cn, fn, args.getOrElse(Nil) ++ arg.toList, rt), next)
       case e: NoSuccess => e
     }
   } named "invocation-op"
@@ -1196,7 +1197,7 @@ object AppMetadata extends Loggable {
     case class Unique(innerOp: Op, opt: Boolean, conformTo: Option[OpResultType] = None) extends CastableOp
     case class Invocation(className: String,
                           function: String,
-                          arg: Op = null,
+                          args: List[Op] = Nil,
                           conformTo: Option[OpResultType] = None) extends CastableOp
     case class Response(
       code: Int,
@@ -1283,7 +1284,7 @@ object AppMetadata extends Loggable {
         case Db(a, _, _) => traverseAction(a)(stepTrav)(state)
         case Block(a) => traverseAction(a)(stepTrav)(state)
         case JsonCodec(_, o) => opTrav(state)(o)
-        case i: Invocation => opTrav(state)(i.arg)
+        case i: Invocation => i.args.foldLeft(state)(opTrav(_)(_))
         case ExtractHttpEntity(_, _, o) => opTrav(state)(o)
       }
       state => extractor(state) orElse traverse(state)
@@ -1389,7 +1390,7 @@ object AppMetadata extends Loggable {
             case Job(nameTresql, isDynamic) =>
               if (isDynamic) us(state, nv(state.value)(Tresql(nameTresql)))
               else processJob(stepTresqlTrav)(state.copy(action = JobAct, name = nameTresql))
-            case Invocation(_, _, o, _) => opTrTr(o)
+            case Invocation(_, _, o, _) => o.foldLeft(state)(opTresqlTrav(_)(_))
             case ExtractHttpEntity(_, _, o) => opTrTr(o)
           }
         }
