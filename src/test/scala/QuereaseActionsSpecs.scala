@@ -581,6 +581,11 @@ object QuereaseActionTestManagerObj {
     httpClient(null)(HttpRequest(uri = data("uri").toString))
   }
   def stringArgument(s: String) = s + " " + s
+  def multipleStringArguments(s1: String, s2: String, s3: String) = s1 + " " + s2 + " " + s3
+  def multipleArguments(s1: String, result: TresqlResult, s2: String, vars: Map[String, Any])(implicit res: Resources) = {
+    import org.tresql.CoreTypes.convString // scala 3 peculiarity
+    s1 + " " + Query(result.result.unique[String], vars).unique[String] + " " + s2
+  }
   def httpResult(httpResult: HttpResult) = httpResult
   def stringResultFromInputStream(tresqlResult: TresqlResult)(implicit qr: QuereaseResources) = {
     import qr._

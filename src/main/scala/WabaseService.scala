@@ -468,7 +468,7 @@ object WabaseService {
     implicit val ec: ExecutionContext = wrc.as.dispatcher
     def missingHandlerError = sys.error(s"Handler argument missing for invocation: '$cn.$fn'")
     val (paramList, paramFunction) = handlerParameters(wrc, ih, missingHandlerError)
-    val result = org.wabase.invokeFunction(cn, fn, paramList, paramFunction)
+    val result = invokeFunction(cn, fn, paramList, paramFunction)
     handlerResult(wrc, result).flatMap {
       case c: WabaseRequestContext => if (ih == null) missingHandlerError else ih(c)
       case r: HttpResponse => Future.successful(r)
@@ -480,7 +480,7 @@ object WabaseService {
     wrc: WabaseRequestContext,
     innerHandler: RequestHandler,
     missingHandlerError: => Nothing,
-  ): (Seq[(Class[_], () => Any)], PartialFunction[Parameter, Any]) = {
+  ): (Seq[(Class[_], () => Any)], InvocationParameterFun) = {
     implicit val ec: ExecutionContext = wrc.as.dispatcher
     val paramList = List(
       (classOf[WabaseRequestContext], () => wrc),

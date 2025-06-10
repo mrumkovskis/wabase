@@ -53,6 +53,9 @@ package object wabase extends Loggable {
   type SimpleExceptionHandler = AppServiceBase.AppExceptionHandler.SimpleExceptionHandler
   type Statistics = ServerStatistics.Statistics
 
+  type InvocationParameter = (Parameter, Int)
+  type InvocationParameterFun = PartialFunction[InvocationParameter, Any]
+
   @deprecated("use reference.conf and toFiniteDuration(config.getDuration(path))", "6.0")
   def durationConfig(path: String, defaultDuration: FiniteDuration) =
     Option(path).filter(config.hasPath).map(config.getDuration).map(toFiniteDuration).getOrElse(defaultDuration)
@@ -145,22 +148,23 @@ package object wabase extends Loggable {
       }
     }
 
-  def invocationParameter(availableParameters: Seq[(Class[_], () => Any)])(parameter: Parameter): Any = {
-    val parameterClass = parameter.getType
-    availableParameters.collectFirst {
+  def invocationParameter(parameters: Seq[(Class[_], () => Any)])(parameter: InvocationParameter): Any = {
+    val (par, _) = parameter
+    val parameterClass = par.getType
+    parameters.collectFirst {
       case (c, f) if parameterClass.isAssignableFrom(c) => f()
     }.getOrElse(throw new IllegalArgumentException(s"Cannot find value for function parameter '${
-      parameter.getName}: ${parameterClass.getName}'.\nAvailable parameters are of type: (${
-        availableParameters.map(_._1.getName).mkString(", ")
+      par.getName}: ${parameterClass.getName}'.\nAvailable parameters are of type: (${
+        parameters.map(_._1.getName).mkString(", ")
       })"))
   }
 
   def invokeFunction(
     className: String,
-    function: String, getParameter: Parameter => Any,
+    function: String, getParameter: InvocationParameter => Any,
   )(implicit ec: ExecutionContext): Any = {
     def getParams(m: java.lang.reflect.Method) = {
-      val params = m.getParameters map (pt => getParameter(pt) -> pt)
+      val params = m.getParameters.zipWithIndex map { case (pt, idx) => getParameter(pt -> idx) -> pt }
       if (params.exists { case (v, p) => v.isInstanceOf[Future[_]] && !classOf[Future[_]].isAssignableFrom(p.getType) })
         Future.traverse(params.toSeq) {
           case (f: Future[_], p) if !classOf[Future[_]].isAssignableFrom(p.getType) => f
@@ -191,18 +195,19 @@ package object wabase extends Loggable {
   }
 
   def invokeFunction(
-    className: String,
-    function: String, availableParameters: Seq[(Class[_], () => Any)],
+     className: String,
+     function: String,
+     parameters: Seq[(Class[_], () => Any)],
   )(implicit ec: ExecutionContext): Any =
-    invokeFunction(className, function, invocationParameter(availableParameters)(_))
+    invokeFunction(className, function, invocationParameter(parameters)(_))
 
   def invokeFunction(
     className: String,
     function: String,
     fallbackParameters: Seq[(Class[_], () => Any)],
-    parameterFun: PartialFunction[Parameter, Any],
+    parameterFun: InvocationParameterFun,
   )(implicit ec: ExecutionContext): Any = {
-    val default: PartialFunction[Parameter, Any] = {
+    val default: InvocationParameterFun = {
       case p => invocationParameter(fallbackParameters)(p)
     }
     invokeFunction(className, function, parameterFun orElse default)

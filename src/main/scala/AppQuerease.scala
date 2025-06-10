@@ -736,13 +736,10 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
     import op._
     import qr._
-    def invokeFunction(className: String, function: String,
-                       params: Seq[(Class[_], () => Any)], pf: PartialFunction[Parameter, Any]): Any = {
-      this.invokeFunction(className, function, params,
-        InjectionParametersContext(httpReq, env, data),
-        qr.copy()(resourcesFactory, ec, as, httpReq, qio, fileStreamers, httpClients,
-          parametersProvider = ipc => pf orElse qr.parametersProvider(ipc))
-      )
+    val invocationData = data ++ env
+    def invokeFunction(className: String, function: String, pf: InvocationParameterFun): Any = {
+      this.invokeFunction(className, function, invocationData, pf,
+        InjectionParametersContext(httpReq, env, data), qr)
     }
 
     def wrongRes(x: Any) =
@@ -806,46 +803,18 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     }
 
     (if (op.args.isEmpty) {
-      val invocationData = () => data ++ env
-      invokeFunction(className, function,
-        Seq(
-          (classOf[scala.collection.immutable.Map[_, _]], invocationData),
-          (classOf[java.util.Map[_, _]], () => invocationData().asJava),
-          (classOf[MapResult], () => MapResult(invocationData())),
-        ),
-        AppQuerease.dtoParameterFromMap(invocationData)(qio),
-      )
+      invokeFunction(className, function, AppQuerease.dtoParameterFromMap(() => invocationData)(qio))
     } else {
-      doActionOp(op.args.head, data, env, context).flatMap { opRes =>
-        val tresqlResult = opRes match { case TresqlResult(result) => result case _ => null }
-        val pf1: PartialFunction[Parameter, String] = {
-          case par if tresqlResult != null => scala.reflect.Manifest.classType(par.getType).toString()
+      def unwrappedVal(qres: QuereaseResult) = qres match {
+        case TresqlResult(SingleValueResult(qr: QuereaseResult)) => qr // unwrap bind variable value
+        case x => x
+      }
+      Future.sequence(op.args.map(doActionOp(_, data, env, context))).flatMap { opResults =>
+        val valFuns = opResults.zipWithIndex.map { case (opRes, idx) =>
+          AppQuerease.orderedInvocationParameter(unwrappedVal(opRes), idx)
         }
-        val pf2: PartialFunction[String, Any] = {
-          case mf if tresqlResult.typedPf(0).isDefinedAt(mf) =>
-            try if (tresqlResult.hasNext) {
-              tresqlResult.next()
-              tresqlResult.typedPf(0)(mf)
-            } else null finally tresqlResult.close()
-        }
-        val pf3 = new PartialFunction[Parameter, Any] {
-          override def isDefinedAt(par: Parameter): Boolean =
-            pf1.isDefinedAt(par) && pf2.isDefinedAt(pf1(par))
-          override def apply(par: Parameter): Any = pf2(pf1(par))
-        }
-
-        val unwrappedVal = opRes match {
-          case TresqlResult(SingleValueResult(qr: QuereaseResult)) => qr // unwrap bind variable value
-          case x => x
-        }
-
-        invokeFunction(
-          className,
-          function,
-          Seq((unwrappedVal.getClass, () => unwrappedVal)),
-          // if opRes is tresql result and function parameter is of primitive value use typedPf function to get the value.
-          pf3 // cannot use pf1 andThen pf2 on scala 2.12
-        ) match {
+        invokeFunction(className, function,
+          valFuns.reduce(_ orElse _) orElse AppQuerease.dtoParameterFromMap(() => invocationData)(qio)) match {
           case f: Future[_] => f
           case x => Future.successful(x)
         }
@@ -1885,11 +1854,18 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   private def invokeFunction(
     className: String,
     function: String,
-    params: Seq[(Class[_], () => Any)],
+    stepData: Map[String, Any],
+    parameterFun: InvocationParameterFun,
     injectionContext: InjectionParametersContext,
     qr: QuereaseResources,
   ): Any = {
     import qr._
+    val stepParameters = Seq(
+      (classOf[scala.collection.immutable.Map[_, _]], () => stepData),
+      (classOf[java.util.Map[_, _]], () => stepData.asJava),
+      (classOf[MapResult], () => MapResult(stepData)),
+    )
+
     val contextParams = Seq[(Class[_], () => Any)](
       (classOf[QuereaseResources], () => qr),
       (classOf[Resources], () => resourcesFactory.resources),
@@ -1901,7 +1877,13 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       (classOf[AppQuereaseIo[Dto]], () => qio),
       (classOf[WabaseHttpClients], () => httpClients),
     )
-    org.wabase.invokeFunction(className, function, params ++ contextParams, parametersProvider(injectionContext))
+    val pp = parametersProvider(injectionContext)
+    val providerFun = new InvocationParameterFun {
+      override def isDefinedAt(x: (Parameter, Int)): Boolean = pp.isDefinedAt(x._1)
+      override def apply(v: InvocationParameter): Any = pp(v._1)
+    }
+    org.wabase.invokeFunction(className, function, stepParameters ++ contextParams,
+      parameterFun orElse providerFun)
   }
 }
 
@@ -2118,15 +2100,39 @@ object AppQuerease {
       }
   }
 
-  def dtoParameterFromMap(data: () => Map[String, Any])(qio: AppQuereaseIo[Dto]): PartialFunction[Parameter, Dto] = {
-    case par if classOf[Dto].isAssignableFrom(par.getType) =>
+  def dtoParameterFromMap(data: () => Map[String, Any])(
+    qio: AppQuereaseIo[Dto]): PartialFunction[InvocationParameter, Dto] = {
+    case (par, _) if classOf[Dto].isAssignableFrom(par.getType) =>
       import qio.MapJsonFormat
       val mf = Manifest.classType[Dto](par.getType)    // somehow need to specify method type parameter Dto for not to fail in runtime on next line??
       qio.fill(data().toJson.asJsObject)(mf)             // specify manifest explicitly so it is not Nothing
   }
 
   def dtoParameterFromMapF(data: () => Future[Map[String, Any]])(
-    qio: AppQuereaseIo[Dto])(implicit ec: ExecutionContext): PartialFunction[Parameter, Future[Dto]] = {
-    case par if classOf[Dto].isAssignableFrom(par.getType) => data().map(m => dtoParameterFromMap(() => m)(qio)(par))
+    qio: AppQuereaseIo[Dto])(implicit ec: ExecutionContext): PartialFunction[InvocationParameter, Future[Dto]] = {
+    case (par, idx) if classOf[Dto].isAssignableFrom(par.getType) =>
+      data().map(m => dtoParameterFromMap(() => m)(qio)(par -> idx))
+  }
+  /** Returns partial function which is defined if qr is tresql result and unique primitive value of
+   *  parameter type passed as an argument to that function can be obtained. */
+  def orderedInvocationParameter(qr: QuereaseResult, idx: Int): InvocationParameterFun = {
+    val tresqlResult = qr match { case TresqlResult(result) => result case _ => null }
+    val pf1: PartialFunction[InvocationParameter, String] = {
+      case (par, i) if tresqlResult != null && i == idx => scala.reflect.Manifest.classType(par.getType).toString()
+    }
+    val pf2: PartialFunction[String, Any] = {
+      case mf if tresqlResult.typedPf(0).isDefinedAt(mf) =>
+        try if (tresqlResult.hasNext) {
+          tresqlResult.next()
+          tresqlResult.typedPf(0)(mf)
+        } else null finally tresqlResult.close()
+    }
+    new InvocationParameterFun {
+      override def isDefinedAt(par: InvocationParameter): Boolean =
+        pf1.isDefinedAt(par) && pf2.isDefinedAt(pf1(par))
+      override def apply(par: InvocationParameter): Any = pf2(pf1(par))
+    } orElse {
+      case (par, i) if i == idx && par.getType.isAssignableFrom(qr.getClass) => qr
+    }
   }
 }

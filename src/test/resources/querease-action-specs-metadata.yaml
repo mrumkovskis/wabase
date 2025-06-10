@@ -629,6 +629,15 @@ list:
     []({ 'N1' name, 'S1' surname } + { 'N2', 'S2' } + { 'N3', 'S3' }){name, surname}#(1,2)  #query must begin with [] to indicate tresql instead of op in braces
 
 
+name: multi_argument_invocation
+table:
+api: get, save
+get:
+- multipleStringArguments({'a'}, {'b'}) {'c'}
+insert:
+- multipleArguments({'0'}, '{:value}') {'2'}
+
+
 name: if_test_1
 table: if_and_foreach_test
 api: save, get, delete

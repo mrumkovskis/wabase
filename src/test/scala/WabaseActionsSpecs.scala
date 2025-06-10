@@ -730,6 +730,19 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     }
   }
 
+  it should "do invocations with multiple arguments" in {
+    for {
+      t1 <- doAction("get", "multi_argument_invocation", Map()).map {
+        _ shouldBe StringResult("a b c")
+      }
+      t2 <- doAction("insert", "multi_argument_invocation", Map("value" -> 1)).map {
+        _ shouldBe StringResult("0 1 2")
+      }
+    } yield {
+      t1
+    }
+  }
+
   it should "execute actions" in {
     for {
       t1 <- doAction("insert", "insert_update_test_1", Map("id" -> 42)).map {
