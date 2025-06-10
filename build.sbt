@@ -197,11 +197,13 @@ lazy val wabase = (project in file("."))
   )
 
 lazy val it = (project in file("src/it"))
-  .dependsOn(wabase % "compile -> compile; test -> test")
+  .dependsOn(wabase)
   .settings(commonSettings: _*)
   .settings(
+    libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.19",
     publish / skip := true,
-    Compile / resourceDirectory := baseDirectory.value / "resources",
+    Compile / unmanagedSources  += baseDirectory.value / ".." / "test" / "scala" / "BusinessScenariosBaseSpecs.scala",
+    Compile / unmanagedSources  += baseDirectory.value / ".." / "test" / "scala" / "TemplateUtil.scala",
     Test / fork := true,
     Test / javaOptions := Seq("-Xmx2G"),
     Test / parallelExecution := false,

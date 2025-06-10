@@ -59,5 +59,6 @@ response: {
       "jsonType": "string",
       "length": 80
     }
-  ]
+  ],
+  "filter": []
 }

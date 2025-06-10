@@ -956,8 +956,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
         }
     } else Nil
   }
-  lazy val viewNameToFilterMetadata = qe.viewNameToClassMap.keys.toList.sorted
-    .map(viewName => viewName -> filterParameters(qe.viewDef(viewName))).toMap
+  lazy val viewNameToFilterMetadata = qe.nameToViewDef.mapValues(filterParameters)
 
   def apiMetadata(implicit user: User, state: ApplicationState) = {
     // TODO duplicate code, just filter differs

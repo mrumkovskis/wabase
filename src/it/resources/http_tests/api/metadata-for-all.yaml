@@ -60,11 +60,13 @@ response: {
         "jsonType": "string",
         "length": 80
       }
-    ]
+    ],
+    "filter": []
   },
   "user-with-roles-array": {
     "name": "user-with-roles-array",
     "key": [],
-    "fields": []
+    "fields": [],
+    "filter": []
   }
 }
