@@ -1,4 +1,4 @@
-val scalaV    = "2.13.16" // "3.3.5"
+val scalaV    = "2.13.16" // "3.3.6"
 
 val pekkoV    = "1.1.3"
 val pekkoHttpV= "1.1.0"
@@ -23,7 +23,7 @@ lazy val commonSettings = Seq(
   name := "wabase",
   scalaVersion := scalaV,
   crossScalaVersions := Seq(
-    "3.3.5",
+    "3.3.6",
     "2.13.16",
     "2.12.20",
   ),
