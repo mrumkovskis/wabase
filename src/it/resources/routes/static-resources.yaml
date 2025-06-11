@@ -1,2 +1,2 @@
-on: /.+\.(css|gif|html|jpeg|jpg|js|png|svg|ttf|woff|woff2)
-do: getFromResource
+on: (/.+\.(?:css|gif|html|jpeg|jpg|js|png|svg|ttf|woff|woff2))
+do: getFromResource('web', $1)

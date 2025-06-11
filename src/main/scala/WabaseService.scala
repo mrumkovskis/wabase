@@ -224,10 +224,9 @@ object WabaseService {
     HttpResponse(entity = HttpEntity.Strict(ContentTypes.`application/json`, ByteString(json.compactPrint)))
   }
 
-  private val webResourcesPath = config.getString("app.web-resources-path")
   private val classLoader = this.getClass.getClassLoader
-  def getFromResource(ctx: WabaseRequestContext): HttpResponse = {
-    val resourceName = s"${webResourcesPath}${ctx.req.uri.path}"
+  def getFromResource(resourcesRootPath: String, resourcePathAndName: String, ctx: WabaseRequestContext): HttpResponse = {
+    val resourceName = s"${resourcesRootPath}${resourcePathAndName}"
     val contentType = ContentTypeResolver.Default(resourceName)
     if (!resourceName.endsWith("/"))
         Option(classLoader.getResource(resourceName)).flatMap(ResourceFile.apply) match {
