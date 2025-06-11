@@ -16,6 +16,7 @@ import org.apache.pekko.stream.scaladsl.StreamConverters
 import org.apache.pekko.util.ByteString
 import org.mojoz.metadata.ViewDef
 import org.slf4j.LoggerFactory
+import org.tresql.parsing.QueryParsers
 import org.wabase.AppMetadata.{Action, RouteDef}
 import org.wabase.WabaseService.Wabase
 
@@ -25,6 +26,7 @@ import scala.annotation.tailrec
 import scala.concurrent.{ExecutionContext, Future}
 import scala.jdk.CollectionConverters._
 import scala.util.control.NonFatal
+import scala.util.parsing.input.CharSequenceReader
 
 case class WabaseUser(properties: Map[String, Any]) {
   val id: Long      = properties.get("id").collect { case x: Number => x.longValue }.getOrElse(-1)
@@ -92,10 +94,13 @@ class WabaseService extends Loggable {
 
     def invokeHandlerBuilderChain(inv: Action.Invocation, innerHandler: RequestHandler): RequestHandler = {
       inv.args match {
-        case Nil => buildRequestHandler(inv.className, inv.function, innerHandler)
-        case List(i: Action.Invocation) => buildRequestHandler(inv.className, inv.function,
-          invokeHandlerBuilderChain(i, innerHandler))
-        case x => throw new IllegalArgumentException(s"Unrecognized request handler argument '$x', must be function call.")
+        case inv_args => inv_args.splitAt(inv_args.size - 1) match {
+          case (args, List(innerInv: Action.Invocation)) =>
+            buildRequestHandler(inv.className, inv.function, HandlerArgsParser.argValues(args),
+              invokeHandlerBuilderChain(innerInv, innerHandler))
+          case _ =>
+            buildRequestHandler(inv.className, inv.function, HandlerArgsParser.argValues(inv_args), innerHandler)
+        }
       }
     }
 
@@ -189,14 +194,17 @@ object WabaseService {
   }
 
   def doRequest(ctx: WabaseRequestContext): Future[HttpResponse] = {
-    val pathString = toReadableString(ctx.req.uri.path)
-    ctx.route.path.unapplySeq(pathString).map {
+    pathMatchedGroups(ctx).map {
       case handlerName :: _ =>
         val (cn, fn) = OpParser.classNameFunctionName(handlerName)
         val key = WabaseService.key(ctx.req.uri.path, handlerName)
-        buildRequestHandler(cn, fn, null)(ctx.copy(key = key))
+        buildRequestHandler(cn, fn, Nil, null)(ctx.copy(key = key))
       case _ => notFound
     }.getOrElse(notFound)
+  }
+
+  def pathMatchedGroups(ctx: WabaseRequestContext): Option[List[String]] = {
+    ctx.route.path.unapplySeq(toReadableString(ctx.req.uri.path))
   }
 
   def api(ctx: WabaseRequestContext): HttpResponse = {
@@ -211,9 +219,7 @@ object WabaseService {
     implicit val user:  WabaseUser       = ctx.user
     implicit val state: ApplicationState = ctx.applicationState
     import ctx._
-    val pathString = toReadableString(req.uri.path)
-    val routeRegex = route.path
-    val viewName   = routeRegex.unapplySeq(pathString).flatMap(_.headOption).orNull
+    val viewName   = pathMatchedGroups(ctx).flatMap(_.headOption).orNull
     val json = if (viewName == "*") wabase._apiMetadata else wabase._metadata(viewName)
     HttpResponse(entity = HttpEntity.Strict(ContentTypes.`application/json`, ByteString(json.compactPrint)))
   }
@@ -285,9 +291,7 @@ object WabaseService {
   def viewActionKey(ctx: WabaseRequestContext): WabaseRequestContext = {
     import ctx._
     val viewDefs = wabase.qe.nameToViewDef
-    val pathString = toReadableString(req.uri.path)
-    val routeRegex = route.path
-    val (viewNameAndActionStr, view_name, create_count_action) = routeRegex.unapplySeq(pathString).collect {
+    val (viewNameAndActionStr, view_name, create_count_action) = pathMatchedGroups(ctx).collect {
       case vna :: _ =>
        try {
         val CreateCountActionAndViewRegex(cca, vn) = vna
@@ -463,11 +467,13 @@ object WabaseService {
     trs(path, new StringBuilder())
   }
 
-  def buildRequestHandler(cn: String, fn: String, ih: RequestHandler): RequestHandler = wrc => {
+  def buildRequestHandler(cn: String, fn: String,
+                          invocationArgs: List[HandlerArgsParser.HandlerArg],
+                          ih: RequestHandler): RequestHandler = wrc => {
     wrc.logger.debug(s"Invoking handler $cn.$fn for request: ${wrc.req}")
     implicit val ec: ExecutionContext = wrc.as.dispatcher
     def missingHandlerError = sys.error(s"Handler argument missing for invocation: '$cn.$fn'")
-    val (paramList, paramFunction) = handlerParameters(wrc, ih, missingHandlerError)
+    val (paramList, paramFunction) = handlerParameters(wrc, ih, invocationArgs, missingHandlerError)
     val result = invokeFunction(cn, fn, paramList, paramFunction)
     handlerResult(wrc, result).flatMap {
       case c: WabaseRequestContext => if (ih == null) missingHandlerError else ih(c)
@@ -479,6 +485,7 @@ object WabaseService {
   def handlerParameters(
     wrc: WabaseRequestContext,
     innerHandler: RequestHandler,
+    invocationArgs: List[HandlerArgsParser.HandlerArg],
     missingHandlerError: => Nothing,
   ): (Seq[(Class[_], () => Any)], InvocationParameterFun) = {
     implicit val ec: ExecutionContext = wrc.as.dispatcher
@@ -499,7 +506,18 @@ object WabaseService {
       (classOf[java.util.List[_]], () => toSeqEntityDecoder(wrc).map(_.asJava)),
       (classOf[String], () => toStringEntityDecoder(wrc)),
     )
-    val paramFunction = AppQuerease.dtoParameterFromMapF(() => toMapEntityDecoder(wrc))(wrc.wabase.qio)
+
+    val paramFunction = invocationArgs.map {
+      case HandlerArgsParser.StringArg(s) => s
+      case HandlerArgsParser.RegexGroupRef(nr) =>
+        pathMatchedGroups(wrc).flatMap(_.lift(nr - 1))
+          .getOrElse(sys.error(
+              s"Group nr '$nr' not found in route '${wrc.route.path}' for path '${wrc.req.uri.path}'"))
+    }.zipWithIndex.map { case (value, idx) =>
+      { case (par, i) if idx == i && par.getType.isAssignableFrom(value.getClass) => value }:InvocationParameterFun
+    }.foldLeft(PartialFunction.empty[InvocationParameter, Any])(_ orElse _) orElse
+      AppQuerease.dtoParameterFromMapF(() => toMapEntityDecoder(wrc))(wrc.wabase.qio)
+
     (paramList, paramFunction)
   }
 
@@ -552,5 +570,26 @@ object ApplicationStateExtractor {
       I18nService.currentLangFromHeader(ctx.req)
         .map(l => ApplicationState(state + (langKey -> l), new Locale(l)))
         .getOrElse(ApplicationState(state))
+  }
+}
+
+object HandlerArgsParser extends QueryParsers {
+  trait HandlerArg
+  case class RegexGroupRef(nr: Int) extends HandlerArg
+  case class StringArg(str: String) extends HandlerArg
+  def groupRef: MemParser[RegexGroupRef] = "\\$(\\d+)".r ^^ {
+    case gr => RegexGroupRef(gr.substring(1).toInt)
+  } named "regex-group-arg"
+  def stringArg: MemParser[StringArg] = stringLiteral ^^ StringArg named "string-arg"
+  def arg: MemParser[HandlerArg] = stringArg | groupRef
+  def parsArg(value: String): HandlerArg = {
+    phrase(arg)(new CharSequenceReader(value)) match {
+      case Success(r, _) => r
+      case x => sys.error(x.toString)
+    }
+  }
+  def argValues(args: List[Action.Op]): List[HandlerArg] = args.map {
+    case t: Action.Tresql => parsArg(t.tresql)
+    case x => sys.error(s"Invalid handler arg: '$x'. Only string constants or regexp group refs allowed")
   }
 }

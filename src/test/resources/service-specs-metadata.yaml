@@ -72,6 +72,10 @@ do:       authenticate setSessionCookie doAction
 on:       /(user_data_merge)
 do:       testAuth mergeUserData doAction
 
+# route with additional parameters - string constant, url matched group (numbering starts with 1)
+on:       /static_resources/(.*\.txt)
+do:       staticResources('static_resources', $1)
+
 ################# views ###############
 
 name: view1

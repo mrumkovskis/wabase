@@ -159,10 +159,15 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
       method = HttpMethods.PUT, decoder = decodeJs) shouldBe List(Map("a" -> 1), 2, true, "x", List(1, "y"))
   }
 
+  it should "do routes with additional args" in {
+    callRoute("/static_resources/file.txt") shouldBe "Resource: static_resources/file.txt from uri: /static_resources/file.txt"
+  }
+
   val count = 1024
   it should s"do $count wabase service routes" in {
     1 to count foreach { _ =>
       callRoute("/long-handler-chain") shouldBe "Data from Test user: /long-handler-chain/added-segment transformed response"
+      callRoute("/static_resources/file.txt") shouldBe "Resource: static_resources/file.txt from uri: /static_resources/file.txt"
     }
   }
 }
@@ -242,6 +247,8 @@ object WabaseTestHandlers {
       .map(_.productIterator.asInstanceOf[Iterator[(String, Any)]].toMap)
       .map(m => ctx.wabase.qio.fill[View1](m))
   }
+
+  def staticResources(dir: String, file: String)(uri: Uri) = s"Resource: $dir/$file from uri: ${uri.path}"
 
   def errorHandler(ctx: WabaseRequestContext): WabaseService.ErrorHandler = {
     val eh: WabaseService.ErrorHandler = {

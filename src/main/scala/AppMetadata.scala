@@ -1,6 +1,6 @@
 package org.wabase
 
-import com.typesafe.config.ConfigFactory
+import com.typesafe.config.{ConfigException, ConfigFactory}
 import org.apache.pekko.http.scaladsl.model.HttpMethod
 import org.mojoz.metadata.{FieldDef, Type, ViewDef}
 import org.mojoz.metadata.in._
@@ -1060,9 +1060,9 @@ object OpParser extends Loggable {
   def classNameFunctionName(name: String): (String, String) = {
     val idx = name.lastIndexOf('.')
     if (idx == -1)
-      if (config.hasPath(s"app.wabase-call-alias.$name"))
+      try if (config.hasPath(s"app.wabase-call-alias.$name"))
         classNameFunctionName(config.getString(s"app.wabase-call-alias.$name"))
-      else (null, name)
+      else (null, name) catch { case _: ConfigException.BadPath => (null, name) } // may throw exception if not property format not matched
     else {
       val cn = name.substring(0, idx)
       val fn = name.substring(idx + 1)
