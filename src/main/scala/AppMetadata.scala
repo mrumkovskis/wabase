@@ -57,7 +57,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   override lazy val nameToViewDef: Map[String, ViewDef] =
     toAppViewDefs(viewDefLoader.nameToViewDef)
 
-  val publicApiRoleName = config.getString("app.public-api.role-name").toUpperCase
+  val publicApiRoleName = config.getString("app.public-api.role-name")
   private val publicViewsLocationPattern = config.getString("app.public-views.location-pattern").r
   private lazy val publicViewNames: Set[String] = {
     yamlMetadata
@@ -275,9 +275,9 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
                 sys.error(s"Duplicate API method definition: ${viewDef.name}.$x")
           else (apiToRoles + (x -> roles), roles, true)
         else if (canReset)
-          (apiToRoles, Set(x.toUpperCase), false)
+          (apiToRoles, Set(x), false)
         else
-          (apiToRoles, roles + x.toUpperCase, false)
+          (apiToRoles, roles + x, false)
     }._1
 
     val limit = getIntExtra(Limit, viewDef) getOrElse 100
