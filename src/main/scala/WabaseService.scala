@@ -579,7 +579,7 @@ object HandlerArgsParser extends QueryParsers {
   case class RegexGroupRef(nr: Int) extends HandlerArg
   case class StringArg(str: String) extends HandlerArg
   def groupRef: MemParser[RegexGroupRef] = "\\$(\\d+)".r ^^ {
-    case gr => RegexGroupRef(gr.substring(1).toInt)
+    gr => RegexGroupRef(gr.substring(1).toInt)
   } named "regex-group-arg"
   def stringArg: MemParser[StringArg] = stringLiteral ^^ StringArg named "string-arg"
   def arg: MemParser[HandlerArg] = stringArg | groupRef
