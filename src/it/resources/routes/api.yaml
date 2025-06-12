@@ -2,4 +2,4 @@ on: /api
 do: api
 
 on: /metadata/(.+)
-do: metadata
+do: metadata $1

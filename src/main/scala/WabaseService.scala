@@ -193,14 +193,10 @@ object WabaseService {
     }
   }
 
-  def doRequest(ctx: WabaseRequestContext): Future[HttpResponse] = {
-    pathMatchedGroups(ctx).map {
-      case handlerName :: _ =>
-        val (cn, fn) = OpParser.classNameFunctionName(handlerName)
-        val key = WabaseService.key(ctx.req.uri.path, handlerName)
-        buildRequestHandler(cn, fn, Nil, null)(ctx.copy(key = key))
-      case _ => notFound
-    }.getOrElse(notFound)
+  def doRequest(handlerName: String, ctx: WabaseRequestContext): Future[HttpResponse] = {
+    val (cn, fn) = OpParser.classNameFunctionName(handlerName)
+    val key = WabaseService.key(ctx.req.uri.path, handlerName)
+    buildRequestHandler(cn, fn, Nil, null)(ctx.copy(key = key))
   }
 
   def pathMatchedGroups(ctx: WabaseRequestContext): Option[List[String]] = {
@@ -212,14 +208,13 @@ object WabaseService {
     HttpResponse(entity = HttpEntity.Strict(ContentTypes.`application/json`, ByteString(json.compactPrint)))
   }
 
-  def metadata(ctx: WabaseRequestContext): HttpResponse = {
+  def metadata(viewName: String, ctx: WabaseRequestContext): HttpResponse = {
     // TODO ETag for metadata for new flow
     // respondWithHeader(ETag(EntityTag(app.metadataVersionString))) {
     //   conditional(EntityTag(app.metadataVersionString), DateTime.now) {
     implicit val user:  WabaseUser       = ctx.user
     implicit val state: ApplicationState = ctx.applicationState
-    import ctx._
-    val viewName   = pathMatchedGroups(ctx).flatMap(_.headOption).orNull
+    import ctx.wabase
     val json = if (viewName == "*") wabase._apiMetadata else wabase._metadata(viewName)
     HttpResponse(entity = HttpEntity.Strict(ContentTypes.`application/json`, ByteString(json.compactPrint)))
   }
@@ -287,20 +282,17 @@ object WabaseService {
     }
   }
 
-  def viewActionKey(ctx: WabaseRequestContext): WabaseRequestContext = {
+  def viewActionKey(view_action: String, ctx: WabaseRequestContext): WabaseRequestContext = {
     import ctx._
     val viewDefs = wabase.qe.nameToViewDef
-    val (viewNameAndActionStr, view_name, create_count_action) = pathMatchedGroups(ctx).collect {
-      case vna :: _ =>
-       try {
-        val CreateCountActionAndViewRegex(cca, vn) = vna
-        if (viewDefs.contains(vn)) (vna, vn, cca)
-        else (null, null, null)
-       } catch {
-        case ex: scala.MatchError =>
-          throw new RuntimeException(s"Unsupported view_name: $vna", ex)
-       }
-    }.getOrElse((null, null, null))
+    val (viewNameAndActionStr, view_name, create_count_action) = try {
+      val CreateCountActionAndViewRegex(cca, vn) = view_action
+      if (viewDefs.contains(vn)) (view_action, vn, cca)
+      else (null, null, null)
+     } catch {
+      case ex: scala.MatchError =>
+        throw new RuntimeException(s"Unsupported view_name: $view_action", ex)
+     }
 
     if (viewNameAndActionStr == null) ctx
     else {
@@ -350,7 +342,7 @@ object WabaseService {
     }
   }
 
-  def doAction(reqCtx: WabaseRequestContext): Future[HttpResponse] = {
+  def doAction(view_action: String, reqCtx: WabaseRequestContext): Future[HttpResponse] = {
     def extractParams(ctx: WabaseRequestContext) = {
       import ctx._
       AppServiceBase.filterParams(
@@ -383,7 +375,7 @@ object WabaseService {
         }
       }
     }
-    val ctxWithView = if (reqCtx.viewName == null) viewActionKey(reqCtx) else reqCtx
+    val ctxWithView = if (reqCtx.viewName == null) viewActionKey(view_action, reqCtx) else reqCtx
     val ctxWithViewAndState =
       if (ctxWithView.applicationState == null)
         ctxWithView.copy(applicationState = ApplicationStateExtractor.extractState(ctxWithView))

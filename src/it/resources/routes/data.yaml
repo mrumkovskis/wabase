@@ -1,2 +1,2 @@
 on: /data/(\w+).*
-do: keyFromQueryToPath doAction
+do: keyFromQueryToPath doAction $1

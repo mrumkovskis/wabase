@@ -1,2 +1,2 @@
 on: GET /(user-with-roles-array)
-do: doAction
+do: doAction $1

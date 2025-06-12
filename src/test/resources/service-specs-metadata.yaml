@@ -57,20 +57,20 @@ recover:  testErrorHandler
 
 # for dynamic route handler matching path first group must match handler name
 on:       /do/([\w\.]+).*
-do:       doRequest
+do:       doRequest $1
 
 # for view matching path first group must match [(create|count):]<view_name> (WabaseService.viewActionKey transformer)
 on:       /public/([\w:]+)(.*)
-do:       doAction
+do:       doAction $1
 
 on:       /(login)
-do:       extractBasicHttpCredentials setSessionCookie doAction
+do:       extractBasicHttpCredentials setSessionCookie doAction $1
 
 on:       /restricted/(?<viewname>[\w:]+)(.*)
-do:       authenticate setSessionCookie doAction
+do:       authenticate setSessionCookie doAction $1
 
 on:       /(user_data_merge)
-do:       testAuth mergeUserData doAction
+do:       testAuth mergeUserData doAction $1
 
 # route with additional parameters - string constant, url matched group (numbering starts with 1)
 on:       /static_resources/(.*\.txt)?
