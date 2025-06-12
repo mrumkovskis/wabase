@@ -1,6 +1,6 @@
 package org.wabase
 
-import org.apache.pekko.http.scaladsl.model.StatusCodes.{BadRequest, InternalServerError, NotFound, Unauthorized, UnprocessableContent}
+import org.apache.pekko.http.scaladsl.model.StatusCodes.{BadRequest, Forbidden, InternalServerError, NotFound, Unauthorized, UnprocessableContent}
 import org.apache.pekko.http.scaladsl.model.{EntityStreamSizeException, HttpEntity, HttpResponse, StatusCodes}
 import org.mojoz.querease.{ValidationException, ValidationResult}
 import org.tresql.MissingBindVariableException
@@ -14,6 +14,9 @@ object WabaseErrorHandler {
     case e: AuthenticationException =>
       ctx.logger.debug(e.getMessage)
       HttpResponse(status = Unauthorized)
+    case e: AuthorizationException =>
+      ctx.logger.debug(e.getMessage)
+      HttpResponse(status = Forbidden)
     case e: EntityStreamSizeException => HttpResponse(status = StatusCodes.ContentTooLarge,
       entity = s"Content too large: actual size - ${e.actualSize.getOrElse("<unknown>")}, limit - ${e.limit}")
     case e: UnprocessableEntityException =>

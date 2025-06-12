@@ -1,0 +1,5 @@
+path:       /data/user/1
+method:     POST
+request:
+  name:     john
+response:

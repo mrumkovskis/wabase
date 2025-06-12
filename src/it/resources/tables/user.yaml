@@ -1,0 +1,12 @@
+table:    user_role
+columns:
+- user.id
+- role
+pk:
+- user_id, role
+
+
+table:    user
+columns:
+- id    !   12
+- name      80

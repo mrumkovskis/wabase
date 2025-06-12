@@ -670,7 +670,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       }
 
       if (context.view.exists(_.name == viewName) && isThisMethod(context.actionName, method)) {
-        lazy val idName = viewNameToIdName(viewName)
+        lazy val idName = viewNameToIdName.getOrElse(viewName, null)
 
         def int(name: String) = tryOp(callData.get(name).map {
           case x: Int => x

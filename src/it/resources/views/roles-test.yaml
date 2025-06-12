@@ -1,0 +1,10 @@
+name:   person_with_access_control
+table:  person
+api:    manager get
+key:    code
+fields:
+- code
+- name
+- surname
+order:
+- code

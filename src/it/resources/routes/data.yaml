@@ -1,2 +1,2 @@
 on: /data/(\w+).*
-do: keyFromQueryToPath doAction $1
+do: keyFromQueryToPath authenticateOpt doAction $1

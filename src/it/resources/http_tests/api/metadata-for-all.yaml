@@ -1,5 +1,104 @@
 path:     /metadata/*
 response: {
+  "current_user": {
+    "name": "current_user",
+    "key": [],
+    "fields": [
+      {
+        "name": "user_id",
+        "type": "long",
+        "isCollection": false,
+        "isComplexType": false,
+        "nullable": true,
+        "required": false,
+        "sortable": false,
+        "label": "User id",
+        "visible": true,
+        "insertable": true,
+        "updatable": true,
+        "enum": null,
+        "refViewName": null,
+        "comments": null,
+        "jsonType": "number"
+      },
+      {
+        "name": "name",
+        "type": "string",
+        "isCollection": false,
+        "isComplexType": false,
+        "nullable": true,
+        "required": false,
+        "sortable": false,
+        "label": "Name",
+        "visible": true,
+        "insertable": true,
+        "updatable": true,
+        "enum": null,
+        "refViewName": null,
+        "comments": null,
+        "jsonType": "string"
+      },
+      {
+        "name": "roles",
+        "type": "string",
+        "isCollection": true,
+        "isComplexType": false,
+        "nullable": true,
+        "required": false,
+        "sortable": false,
+        "label": "Roles",
+        "visible": true,
+        "insertable": true,
+        "updatable": true,
+        "enum": null,
+        "refViewName": null,
+        "comments": null,
+        "jsonType": "string"
+      }
+    ],
+    "filter": []
+  },
+  "login_using_json_or_urlencoded": {
+    "name": "login_using_json_or_urlencoded",
+    "key": [],
+    "fields": [
+      {
+        "name": "name",
+        "type": "string",
+        "isCollection": false,
+        "isComplexType": false,
+        "nullable": true,
+        "required": false,
+        "sortable": false,
+        "label": "Name",
+        "visible": true,
+        "insertable": true,
+        "updatable": true,
+        "enum": null,
+        "refViewName": null,
+        "comments": null,
+        "jsonType": "string"
+      },
+      {
+        "name": "password",
+        "type": "string",
+        "isCollection": false,
+        "isComplexType": false,
+        "nullable": true,
+        "required": false,
+        "sortable": false,
+        "label": "Password",
+        "visible": true,
+        "insertable": true,
+        "updatable": true,
+        "enum": null,
+        "refViewName": null,
+        "comments": null,
+        "jsonType": "string"
+      }
+    ],
+    "filter": []
+  },
   "person": {
     "name": "person",
     "key": [
@@ -63,10 +162,163 @@ response: {
     ],
     "filter": []
   },
+  "person_with_access_control": {
+    "name": "person_with_access_control",
+    "key": [
+      "code"
+    ],
+    "fields": [
+      {
+        "name": "code",
+        "type": "string",
+        "isCollection": false,
+        "isComplexType": false,
+        "nullable": false,
+        "required": false,
+        "sortable": true,
+        "label": "Code",
+        "visible": true,
+        "insertable": true,
+        "updatable": false,
+        "enum": null,
+        "refViewName": null,
+        "comments": null,
+        "jsonType": "string",
+        "length": 12
+      },
+      {
+        "name": "name",
+        "type": "string",
+        "isCollection": false,
+        "isComplexType": false,
+        "nullable": true,
+        "required": false,
+        "sortable": false,
+        "label": "Name",
+        "visible": true,
+        "insertable": true,
+        "updatable": true,
+        "enum": null,
+        "refViewName": null,
+        "comments": null,
+        "jsonType": "string",
+        "length": 80
+      },
+      {
+        "name": "surname",
+        "type": "string",
+        "isCollection": false,
+        "isComplexType": false,
+        "nullable": true,
+        "required": false,
+        "sortable": false,
+        "label": "Surname",
+        "visible": true,
+        "insertable": true,
+        "updatable": true,
+        "enum": null,
+        "refViewName": null,
+        "comments": null,
+        "jsonType": "string",
+        "length": 80
+      }
+    ],
+    "filter": []
+  },
+  "user": {
+    "name": "user",
+    "key": [
+      "id"
+    ],
+    "fields": [
+      {
+        "name": "id",
+        "type": "long",
+        "isCollection": false,
+        "isComplexType": false,
+        "nullable": false,
+        "required": false,
+        "sortable": true,
+        "label": "Id",
+        "visible": true,
+        "insertable": true,
+        "updatable": false,
+        "enum": null,
+        "refViewName": null,
+        "comments": null,
+        "jsonType": "number",
+        "length": 12
+      },
+      {
+        "name": "name",
+        "type": "string",
+        "isCollection": false,
+        "isComplexType": false,
+        "nullable": true,
+        "required": false,
+        "sortable": false,
+        "label": "Name",
+        "visible": true,
+        "insertable": true,
+        "updatable": true,
+        "enum": null,
+        "refViewName": null,
+        "comments": null,
+        "jsonType": "string",
+        "length": 80
+      }
+    ],
+    "filter": []
+  },
   "user-with-roles-array": {
     "name": "user-with-roles-array",
     "key": [],
     "fields": [],
+    "filter": []
+  },
+  "user_role": {
+    "name": "user_role",
+    "key": [
+      "user_id",
+      "role"
+    ],
+    "fields": [
+      {
+        "name": "user_id",
+        "type": "long",
+        "isCollection": false,
+        "isComplexType": false,
+        "nullable": true,
+        "required": false,
+        "sortable": true,
+        "label": "User id",
+        "visible": true,
+        "insertable": true,
+        "updatable": true,
+        "enum": null,
+        "refViewName": null,
+        "comments": null,
+        "jsonType": "number",
+        "length": 12
+      },
+      {
+        "name": "role",
+        "type": "string",
+        "isCollection": false,
+        "isComplexType": false,
+        "nullable": false,
+        "required": false,
+        "sortable": false,
+        "label": "Role",
+        "visible": true,
+        "insertable": true,
+        "updatable": true,
+        "enum": null,
+        "refViewName": null,
+        "comments": null,
+        "jsonType": "string"
+      }
+    ],
     "filter": []
   }
 }

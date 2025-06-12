@@ -1,0 +1,17 @@
+name:   login_using_json_or_urlencoded
+table:
+api:    insert
+fields:
+- name
+- password
+insert:
+- if exists(user[name = :current_user.credentials.name] {id}) & :current_user.credentials.password = 'secret':
+  - user_id = user[name = :current_user.credentials.name] {id}
+  - roles   = [user_role[user_id = :user_id] {role}]
+  - (status ok
+      user_attrs({'id', :user_id})
+      user_attrs({'name', :current_user.credentials.name})
+      user_attrs({'roles', |:'roles'})
+    )
+- else:
+  - status 401

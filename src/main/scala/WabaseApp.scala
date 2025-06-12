@@ -510,6 +510,10 @@ trait WabaseApp[User] {
     if (validViewNameRegex.pattern.matcher(viewName).matches())
          new BusinessException(s"$viewName.$method is not a part of this API")
     else new BusinessException(s"Strange name.$method is not a part of this API")
+  protected def apiUnauthorizedException(viewName: String, method: String, user: User): Exception =
+    if  (user == null)
+         new AuthenticationException("Unauthorized")
+    else new AuthorizationException("Forbidden")
   def checkApi[F](viewName: String, method: String, user: User, keyValues: Seq[Any]): Unit = {
     (for {
       view <- viewDefOption(viewName)
@@ -518,8 +522,11 @@ trait WabaseApp[User] {
              Action.Update => view.apiMethodToRoles.get(Action.Save)
         case x => None
       })
-      if qe.isPublicView(viewName) || roles.contains(qe.publicApiRoleName) || hasRole(user, roles)
-    } yield true).getOrElse(
+      result <-
+        if (qe.isPublicView(viewName) || roles.contains(qe.publicApiRoleName) || hasRole(user, roles))
+          Option(true)
+        else throw apiUnauthorizedException(viewName, method, user)
+    } yield result).getOrElse(
       throw noApiException(viewName, method, user)
     )
   }

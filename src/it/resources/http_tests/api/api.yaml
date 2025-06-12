@@ -1,12 +1,26 @@
 path:     /api
 response: {
+  "current_user": [
+    "get"
+  ],
+  "login_using_json_or_urlencoded": [
+    "insert"
+  ],
   "person": [
     "get",
     "list",
     "save",
     "delete"
   ],
+  "user": [
+    "get",
+    "save"
+  ],
   "user-with-roles-array": [
     "get"
+  ],
+  "user_role": [
+    "get",
+    "save"
   ]
 }

@@ -1,0 +1,38 @@
+name: user-with-roles-array
+table:
+api: get
+fields:
+get:
+- as any unique {'jasmine' name, |[({'admin'} + {'guest'})#(1)] 'roles'}
+
+
+name:     user
+table:    user
+api:      get, save
+fields:
+- id
+- name
+
+
+name:     user_role
+table:    user_role
+api:      get, save
+key:      user_id, role
+fields:
+- user_id
+- role
+
+
+name:     current_user
+table:
+api:      get
+fields:
+- user_id
+- name
+- roles *
+get:
+- if if_defined(:current_user.id?, true) :
+  # unique { :current_user.id user_id, :current_user.name name, |:'current_user'.'roles' roles }
+  - return (user_id = :current_user.id) + :current_user
+- else:
+  - status 401

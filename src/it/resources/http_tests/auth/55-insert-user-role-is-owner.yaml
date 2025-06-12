@@ -1,0 +1,6 @@
+path:       /data/user_role
+method:     POST
+request:
+  user_id:  1
+  role:     owner
+response:

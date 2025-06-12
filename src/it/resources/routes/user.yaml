@@ -1,0 +1,6 @@
+on: GET /(user-with-roles-array)
+do: doAction $1
+
+
+on: GET /current-user
+do: authenticate doAction('current_user')

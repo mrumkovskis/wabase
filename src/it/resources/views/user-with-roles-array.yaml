@@ -1,6 +1,0 @@
-name: user-with-roles-array
-table:
-api: get
-fields:
-get:
-- as any unique {'jasmine' name, |[({'admin'} + {'guest'})#(1)] 'roles'}

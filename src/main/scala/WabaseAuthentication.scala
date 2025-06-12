@@ -22,6 +22,7 @@ import scala.util.Try
 
 
 class AuthenticationException(msg: String) extends Exception(msg)
+class AuthorizationException(msg: String) extends Exception(msg)
 
 object WabaseAuthentication extends Authentication[WabaseUser] {
 
@@ -78,6 +79,14 @@ object WabaseAuthentication extends Authentication[WabaseUser] {
       .getOrElse(throw new AuthenticationException("Unauthorized"))
   }
 
+  def appAuthenticateOpt(ctx: WabaseRequestContext): WabaseRequestContext = {
+    import ctx.req
+    val (session, ip, userAgent) = (extractSession(req), extractClientIP(req), extractUserAgent(req))
+    session.filter(validateSession(_, ip, userAgent))
+      .map(session => ctx.copy(user = session.user))
+      .getOrElse(ctx)
+  }
+
   /* Response transformer */
   // cannot name setSessionCookie because setSessionCookie from super trait appears from reflection to be member of this object
   def setAppSessionCookie(req: HttpRequest, user: WabaseUser, resp: HttpResponse): HttpResponse = {
@@ -124,8 +133,8 @@ object WabaseAuthentication extends Authentication[WabaseUser] {
       WabaseUser(Map(WabaseAppConfig.UserCredentialsParameterName -> Map("username" -> usr, "password" -> pwd)))
   }.getOrElse(throw new AuthenticationException("Credentials required"))
 
-  def extractFormDataCredentials(entity: HttpEntity)(implicit ec: ExecutionContext, as: ActorSystem): Future[WabaseUser] =
-    Unmarshal(entity).to[Map[String, Any]].map { formData =>
+  def extractFormDataCredentials(req: HttpRequest)(implicit ec: ExecutionContext, as: ActorSystem): Future[WabaseUser] =
+    Unmarshal(req.entity).to[Map[String, Any]].map { formData =>
       WabaseUser(Map(WabaseAppConfig.UserCredentialsParameterName -> formData))
     }
 

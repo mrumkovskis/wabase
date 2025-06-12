@@ -247,6 +247,7 @@ object WabaseService {
       case Segment(head, tail) =>
         if (head contains prefix) tail
         else key_path(tail)
+      case Empty => Empty
       case p => key_path(p.tail)
     }
     val keyPath = key_path(path)

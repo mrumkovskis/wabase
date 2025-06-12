@@ -1,0 +1,2 @@
+on: /(login_using_json_or_urlencoded)
+do: extractFormDataCredentials setSessionCookie doAction $1
