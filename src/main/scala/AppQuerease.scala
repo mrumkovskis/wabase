@@ -2127,15 +2127,14 @@ object AppQuerease {
           tresqlResult.typedPf(0)(mf)
         } else null finally tresqlResult.close()
     }
-    val sv_fun: InvocationParameterFun = { case (par, i)
-      if i == idx && par.getType == classOf[String] && qr.getClass == classOf[StringResult] =>
-      qr.asInstanceOf[StringResult].value
-    }
     new InvocationParameterFun {
       override def isDefinedAt(par: InvocationParameter): Boolean =
         pf1.isDefinedAt(par) && pf2.isDefinedAt(pf1(par))
       override def apply(par: InvocationParameter): Any = pf2(pf1(par))
-    } orElse sv_fun orElse {
+    } orElse ({ case (par, i)
+      if i == idx && par.getType == classOf[String] && qr.getClass == classOf[StringResult] =>
+      qr.asInstanceOf[StringResult].value
+    }: InvocationParameterFun) orElse {
       case (par, i) if i == idx && par.getType.isAssignableFrom(qr.getClass) => qr
     }
   }

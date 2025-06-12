@@ -161,10 +161,11 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
 
   it should "do routes with additional args" in {
     callRoute("/static_resources/file.txt") shouldBe "Resource: static_resources/file.txt from uri: /static_resources/file.txt"
+    callRoute("/static_resources/") shouldBe "Resource: static_resources/null from uri: /static_resources/"
   }
 
   val count = 1024
-  it should s"do $count wabase service routes" in {
+  it should s"do ${count * 2} wabase service routes" in {
     1 to count foreach { _ =>
       callRoute("/long-handler-chain") shouldBe "Data from Test user: /long-handler-chain/added-segment transformed response"
       callRoute("/static_resources/file.txt") shouldBe "Resource: static_resources/file.txt from uri: /static_resources/file.txt"

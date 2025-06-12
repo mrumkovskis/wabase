@@ -513,7 +513,9 @@ object WabaseService {
           .getOrElse(sys.error(
               s"Group nr '$nr' not found in route '${wrc.route.path}' for path '${wrc.req.uri.path}'"))
     }.zipWithIndex.map { case (value, idx) =>
-      { case (par, i) if idx == i && par.getType.isAssignableFrom(value.getClass) => value }:InvocationParameterFun
+      { case (par, i) if idx == i && (value == null || par.getType.isAssignableFrom(value.getClass)) =>
+        value
+      }:InvocationParameterFun
     }.foldLeft(PartialFunction.empty[InvocationParameter, Any])(_ orElse _) orElse
       AppQuerease.dtoParameterFromMapF(() => toMapEntityDecoder(wrc))(wrc.wabase.qio)
 
