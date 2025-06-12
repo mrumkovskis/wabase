@@ -7,6 +7,7 @@ import org.apache.pekko.util.ByteString
 import org.scalatest.concurrent.ScalaFutures
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
+import org.scalatest.time.{Second, Span}
 import org.wabase.WabaseUnmarshallers.mapUnmarshaller
 
 import scala.concurrent.{ExecutionContextExecutor, Future}
@@ -14,6 +15,7 @@ import scala.concurrent.{ExecutionContextExecutor, Future}
 class UnmarshallingSpecs extends AnyFlatSpec with Matchers with ScalaFutures {
   implicit val system: ActorSystem = ActorSystem("wabase-test")
   implicit val executor: ExecutionContextExecutor = system.dispatcher
+  implicit val defaultPatience: PatienceConfig = PatienceConfig(timeout = Span(1, Second))
 
   "FormDecoder.extractFormDataToMap" should "handle URL-encoded form data with multiple fields" in {
     val entity = HttpEntity(ContentTypes.`application/x-www-form-urlencoded`, "key1=value1&key2=value2")
