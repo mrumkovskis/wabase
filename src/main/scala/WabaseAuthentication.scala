@@ -21,7 +21,7 @@ import scala.concurrent.{Future, ExecutionContext}
 import scala.util.Try
 
 
-class AuthenticationException(msg: String) extends Exception(msg)
+class AuthenticationException(msg: String, cause: Throwable = null) extends Exception(msg, cause)
 class AuthorizationException(msg: String) extends Exception(msg)
 
 object WabaseAuthentication extends Authentication[WabaseUser] {

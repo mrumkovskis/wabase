@@ -228,7 +228,7 @@ object Authentication {
       SCryptUtil.check(password, storedPasswordHash)
     } catch {
       case e: Exception =>
-        throw new BusinessException("Unauthorized", e)
+        throw new AuthenticationException("Unauthorized", e)
     }
   }
 
