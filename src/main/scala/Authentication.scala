@@ -224,19 +224,8 @@ object Authentication {
     SCryptUtil.scrypt(password, n, r, p)
   }
   def checkPassword(password: String, storedPasswordHash: String) = {
-    def md5(s: String) =
-      MessageDigest.getInstance("MD5").digest(s.getBytes)
-        .map("%02X".format(_)).mkString.toLowerCase
     try {
-      if (storedPasswordHash.length == 32) {
-        if (md5(password) == storedPasswordHash.toLowerCase) {
-          /*
-          val saferPasswordHash = passwordHash(password)
-          */
-          // TODO update legacy md5 stored hash to scrypt!
-          true
-        } else false
-      } else SCryptUtil.check(password, storedPasswordHash)
+      SCryptUtil.check(password, storedPasswordHash)
     } catch {
       case e: Exception =>
         throw new BusinessException("Unauthorized", e)
