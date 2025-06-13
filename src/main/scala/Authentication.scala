@@ -223,10 +223,13 @@ object Authentication {
     val (n, r, p) = (16384, 8, 1)
     SCryptUtil.scrypt(password, n, r, p)
   }
-  def checkPassword(password: String, storedPasswordHash: String) = {
+  def checkPassword(password: String, storedPasswordHash: String): Unit = {
     try {
-      SCryptUtil.check(password, storedPasswordHash)
+      if (!SCryptUtil.check(password, storedPasswordHash))
+        throw new AuthenticationException("Unauthorized")
     } catch {
+      case e: AuthenticationException =>
+        throw e
       case e: Exception =>
         throw new AuthenticationException("Unauthorized", e)
     }
