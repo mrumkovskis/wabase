@@ -10,3 +10,4 @@ table:    user
 columns:
 - id    !   12
 - name      80
+- password  90

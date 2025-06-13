@@ -12,6 +12,7 @@ api:      get, save
 fields:
 - id
 - name
+- password
 
 
 name:     user_role

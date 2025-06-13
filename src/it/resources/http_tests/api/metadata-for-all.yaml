@@ -266,6 +266,24 @@ response: {
         "comments": null,
         "jsonType": "string",
         "length": 80
+      },
+      {
+        "name": "password",
+        "type": "string",
+        "isCollection": false,
+        "isComplexType": false,
+        "nullable": true,
+        "required": false,
+        "sortable": false,
+        "label": "Password",
+        "visible": true,
+        "insertable": true,
+        "updatable": true,
+        "enum": null,
+        "refViewName": null,
+        "comments": null,
+        "jsonType": "string",
+        "length": 90
       }
     ],
     "filter": []
