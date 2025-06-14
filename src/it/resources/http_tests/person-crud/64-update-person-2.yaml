@@ -1,0 +1,6 @@
+path:       /data/person?/p2
+method:     PUT
+request:
+  name:     Jacqueline
+  surname:  Chan
+response:

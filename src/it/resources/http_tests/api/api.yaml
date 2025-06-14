@@ -7,10 +7,12 @@ response: {
     "insert"
   ],
   "person": [
+    "count",
+    "create",
+    "delete",
     "get",
-    "list",
     "save",
-    "delete"
+    "list"
   ],
   "user": [
     "get",

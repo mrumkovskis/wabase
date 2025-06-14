@@ -1,0 +1,6 @@
+path:       /data/person?/p2
+method:     PUT
+request:
+  name:     Jacqueline
+  surname:  Chane
+error:      404 Not Found

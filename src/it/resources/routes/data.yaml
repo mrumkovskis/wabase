@@ -1,2 +1,2 @@
-on: /data/(\w+).*
+on: /data/((?:create:|count:)?\w+)(/.+)?
 do: keyFromQueryToPath authenticateOpt doAction $1
