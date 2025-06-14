@@ -202,6 +202,8 @@ lazy val it = (project in file("src/it"))
   .settings(
     libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.19",
     publish / skip := true,
+    Compile / resourceDirectory := baseDirectory.value / "resources",
+    Compile / run / mainClass   := Some("org.wabase.WabaseServer"),
     Compile / unmanagedSources  += baseDirectory.value / ".." / "test" / "scala" / "BusinessScenariosBaseSpecs.scala",
     Compile / unmanagedSources  += baseDirectory.value / ".." / "test" / "scala" / "TemplateUtil.scala",
     Test / fork := true,
