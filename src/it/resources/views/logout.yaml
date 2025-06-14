@@ -1,0 +1,6 @@
+name:   logout
+table:
+api:    insert
+fields:
+insert:
+- status ok

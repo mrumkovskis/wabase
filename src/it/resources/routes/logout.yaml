@@ -1,0 +1,2 @@
+on: POST /logout
+do: removeSessionCookie doAction('logout')

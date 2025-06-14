@@ -99,6 +99,12 @@ response: {
     ],
     "filter": []
   },
+  "logout": {
+    "name": "logout",
+    "key": [],
+    "fields": [],
+    "filter": []
+  },
   "person": {
     "name": "person",
     "key": [

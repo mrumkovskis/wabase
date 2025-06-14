@@ -6,6 +6,9 @@ response: {
   "login_using_json_or_urlencoded": [
     "insert"
   ],
+  "logout": [
+    "insert"
+  ],
   "person": [
     "count",
     "create",
