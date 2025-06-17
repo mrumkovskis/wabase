@@ -1,6 +1,150 @@
 package org.wabase
+import scala.annotation.tailrec
 
 object MapUtils {
+
+  sealed trait TailRec[+A] {
+    @tailrec final def run: A = this match {
+      case Done(a) => a
+      case Call(thunk) => thunk().run
+    }
+
+    def map[B](f: A => B): TailRec[B] = this match {
+      case Done(a) => Done(f(a))
+      case Call(thunk) => Call(() => thunk().map(f))
+    }
+
+    def flatMap[B](f: A => TailRec[B]): TailRec[B] = this match {
+      case Done(a) => f(a)
+      case Call(thunk) => Call(() => thunk().flatMap(f))
+    }
+  }
+
+  case class Done[+A](a: A) extends TailRec[A]
+  case class Call[+A](thunk: () => TailRec[A]) extends TailRec[A]
+
+  def done[A](a: A): TailRec[A] = Done(a)
+  def call[A](thunk: () => TailRec[A]): TailRec[A] = Call(thunk)
+
+  def sequence[A](list: List[TailRec[A]]): TailRec[List[A]] =
+    list.foldRight(Done(List.empty[A]): TailRec[List[A]]) { (currentTrampoline, accTrampoline) =>
+      for {
+        currentResult <- currentTrampoline
+        accumulatedResults <- accTrampoline
+      } yield currentResult :: accumulatedResults
+    }
+
+  def traverse[A, B](list: List[A])(f: A => TailRec[B]): TailRec[List[B]] = {
+    list.foldRight(done(List.empty[B])) { (item, accTailRecList) =>
+      for {
+        b <- f(item)
+        bs <- accTailRecList
+      } yield b :: bs
+    }
+  }
+
+  def transform_ss(path: String, transformVal: Any => Any, map: Map[String, Any]): Map[String, Any] = {
+
+    def transformMapEntriesT(
+                              remainingIterator: Iterator[(String, Any)],
+                              currentPathPrefix: String,
+                              acc: List[(String, Any)] // must be List to avoid Map's recursive additions
+                            ): TailRec[Map[String, Any]] = call(() => {
+      if (remainingIterator.hasNext) {
+        val (k, v) = remainingIterator.next()
+        val fullKeyPath = s"$currentPathPrefix/$k"
+
+        val valueTransformation: TailRec[Any] =
+          if (path == fullKeyPath.stripPrefix("/")) {
+            done(transformVal(v))
+          } else {
+            transformAnyT(v, fullKeyPath)
+          }
+        valueTransformation.flatMap { transformedV =>
+          transformMapEntriesT(
+            remainingIterator,
+            currentPathPrefix,
+            (k -> transformedV) :: acc
+          )
+        }
+      } else {
+        done(acc.reverse.toMap)
+      }
+    })
+
+    def transformAnyT(currentValue: Any, currentPathPrefix: String): TailRec[Any] = call(() => {
+      // The `call` here ensures -- body is evaluated lazily.
+      currentValue match {
+        case m: Map[String, Any] @unchecked =>
+          transformMapEntriesT(m.iterator, currentPathPrefix, List.empty[(String, Any)])
+
+        case l: List[Map[String, Any] @unchecked] =>
+          // Use 'traverse' to process each inner map in the list in a stack-safe manner.
+          traverse(l) { innerMap =>
+            transformAnyT(innerMap, currentPathPrefix).map(_.asInstanceOf[Map[String, Any]])
+          }
+
+        case other =>
+          // If it's not a Map or List[Map], return the value wrapped in Done.
+          done(other)
+      }
+    })
+
+    transformAnyT(map, "").run.asInstanceOf[Map[String, Any]]
+  }
+
+  def flattenTree_ss(map: Map[String, Any], keyFields: List[String] = Nil): Map[List[Any], Any] = {
+
+    def getKey(v: Any, index: Int): Any = v match {
+      case m: Map[String, Any] @unchecked if keyFields.exists(m.contains) =>
+        keyFields.find(m.contains).map(s => m(s)).get
+      case _ if keyFields.contains("#index") => index
+      case a => a.hashCode
+    }
+
+    def flatenMapEntriesAccumulatorT(
+                                      remainingIterator: Iterator[(String, Any)],
+                                      accMaps: List[Map[List[Any], Any]]
+                                    ): TailRec[Map[List[Any], Any]] = call(() => {
+      if (remainingIterator.hasNext) {
+        val (k, v) = remainingIterator.next()
+        flatenValueT(v).flatMap { innerFlattenedMap =>
+          val transformedInner = innerFlattenedMap.map { case (path, value) =>
+            (k :: path, value)
+          }
+          flatenMapEntriesAccumulatorT(remainingIterator, transformedInner :: accMaps)
+        }
+      } else {
+        Done(accMaps.flatMap(identity).toMap)
+      }
+    })
+
+    def flatenValueT(v: Any): TailRec[Map[List[Any], Any]] = call(() => {
+      v match {
+        case m: Map[String, Any] @unchecked =>
+          // For maps, use the `flatenMapEntriesAccumulatorT` to process entries stack-safely.
+          flatenMapEntriesAccumulatorT(m.iterator, List.empty)
+
+        case l: List[Any] @unchecked =>
+          // For lists, use the general `traverse` function for stack-safe iteration.
+          traverse(l.zipWithIndex.toList) { case (item, idx) =>
+            val itemKey = getKey(item, idx)
+            flatenValueT(item).map { innerFlattenedMap =>
+              innerFlattenedMap.map { case (path, value) =>
+                (itemKey :: path, value)
+              }
+            }
+          }.map { listOfMaps =>
+            listOfMaps.flatMap(identity).toMap
+          }
+
+        case a => done(Map(Nil -> a))
+      }
+    })
+
+    flatenValueT(map).run
+  }
+
   def transform(path: String, transformVal: Any => Any, map: Map[String, Any]): Map[String, Any] = {
     def transform(
         path: String,
