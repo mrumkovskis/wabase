@@ -805,13 +805,13 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     (if (op.args.isEmpty) {
       invokeFunction(className, function, AppQuerease.dtoParameterFromMap(() => invocationData)(qio))
     } else {
-      def unwrappedVal(qres: QuereaseResult) = qres match {
-        case TresqlResult(SingleValueResult(qr: QuereaseResult)) => qr // unwrap bind variable value
-        case x => x
-      }
       Future.sequence(op.args.map(doActionOp(_, data, env, context))).flatMap { opResults =>
         val valFuns = opResults.zipWithIndex.map { case (opRes, idx) =>
-          AppQuerease.orderedInvocationParameter(unwrappedVal(opRes), idx)
+          def unwrappedVal(qres: QuereaseResult) = qres match {
+            case TresqlResult(SingleValueResult(qr: QuereaseResult)) => qr // unwrap bind variable value
+            case x => x
+          }
+          AppQuerease.orderedInvocationParameter(unwrappedVal(opRes), idx, function)
         }
         invokeFunction(className, function,
           valFuns.reduce(_ orElse _) orElse AppQuerease.dtoParameterFromMap(() => invocationData)(qio)) match {
@@ -2115,10 +2115,16 @@ object AppQuerease {
   }
   /** Returns partial function which is defined if qr is tresql result and unique primitive value of
    *  parameter type passed as an argument to that function can be obtained. */
-  def orderedInvocationParameter(qr: QuereaseResult, idx: Int): InvocationParameterFun = {
+  def orderedInvocationParameter(qr: QuereaseResult, idx: Int, function: String): InvocationParameterFun = {
     val tresqlResult = qr match { case TresqlResult(result) => result case _ => null }
+    def maybeParCompatibleResult(clazz: Class[_], r: Result[_]) = r != null && (r match {
+      case SingleValueResult(null) => !clazz.isPrimitive
+      case SingleValueResult(v) => clazz.isAssignableFrom(v.getClass)
+      case _ => true
+    })
     val pf1: PartialFunction[InvocationParameter, String] = {
-      case (par, i) if tresqlResult != null && i == idx => scala.reflect.Manifest.classType(par.getType).toString()
+      case (par, i) if i == idx && maybeParCompatibleResult(par.getType, tresqlResult) =>
+        scala.reflect.Manifest.classType(par.getType).toString()
     }
     val pf2: PartialFunction[String, Any] = {
       case mf if tresqlResult.typedPf(0).isDefinedAt(mf) =>
@@ -2134,8 +2140,12 @@ object AppQuerease {
     } orElse ({ case (par, i)
       if i == idx && par.getType == classOf[String] && qr.getClass == classOf[StringResult] =>
       qr.asInstanceOf[StringResult].value
-    }: InvocationParameterFun) orElse {
+    }: InvocationParameterFun) orElse ({
       case (par, i) if i == idx && par.getType.isAssignableFrom(qr.getClass) => qr
+    }: InvocationParameterFun) orElse {
+      case (par, i) if i == idx => throw new IllegalArgumentException(
+        s"Cannot find value for function's $function ${idx + 1} parameter '${par.getName}: ${
+          par.getType.getName}'.\nInstead got: '$qr'")
     }
   }
 }
