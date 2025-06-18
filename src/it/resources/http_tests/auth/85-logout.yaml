@@ -1,0 +1,3 @@
+path:       /logout
+method:     POST
+response:
