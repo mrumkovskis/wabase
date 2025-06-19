@@ -1327,7 +1327,7 @@ object AppMetadata extends Loggable {
               val newVal = s.viewExtractor(initVal)(vd)
               vd.fields
                 .collect { case f if f.type_.isComplexType => f.type_.name }
-                .foldLeft(newVal -> Set(vn)) {
+                .foldLeft(newVal -> (processed + vn)) {
                   case ((res, pr), fName) => process(fName, res, pr) -> (pr + fName)
                 }._1
             }
