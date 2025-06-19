@@ -920,8 +920,10 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       if (code.isRedirection()) {
         b match {
           case Action.Tresql(tresql, _, _) =>
-            val truri = tresqlUri.tresqlUriValue(TresqlUri.Tresql(tresql))(
-              Query, data ++ env, qr.resourcesFactory.resources)
+            val truri = useResourcesConnOrEvaluator(
+              qr.resourcesFactory.resources,
+              res => tresqlUri.tresqlUriValue(TresqlUri.Tresql(tresql))(Query, data ++ env, res)
+            )
             Future.successful(RedirectValue(truri))
           case _ => sys.error(s"Redirect operation body must be tresql returning single row, instead found: '$b'")
         }
