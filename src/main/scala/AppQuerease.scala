@@ -547,10 +547,10 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
                   val idName = viewNameToIdName.getOrElse(context.viewName, null)
                   curData.map(keyResult(IdResult(id, idName), context.viewName, _))
                 }.getOrElse {
-                  if (hasExplicitKey(viewDef(context.viewName)))
-                    curData.map(keyResult(IdResult(null, null), context.viewName, _))
-                  else
-                    Future.successful(NoResult)
+                  viewDefOption(context.viewName)
+                    .filter(hasExplicitKey)
+                    .map(_ => curData.map(keyResult(IdResult(null, null), context.viewName, _)))
+                    .getOrElse(Future.successful(NoResult))
                 }
               case _: DeleteResult =>
                 Future.successful(QuereaseDeleteResult(r.count.getOrElse(0)))

@@ -1219,6 +1219,11 @@ action:
 - unique { 'Hello ' || coalesce(if_defined(:name?, :name || ' '), '') || 'from test_job1!' greeting }
 
 
+job: test_job_insert
+action:
+- +simple_table {id = nextval('seq'), value = 'ABC'}
+
+
 name: job_call_test1
 table:
 api: get, list
@@ -1227,6 +1232,8 @@ fields:
 get:
   - job_res = job test_job1
   - status ok :job_res.greeting
+list:
+  - as any * simple_table[value = :name] {value}
 
 
 name: resource_test1

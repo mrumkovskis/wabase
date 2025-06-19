@@ -136,6 +136,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
   var app: TestApp = _
   var marshallers: AppProvider[TestUsr] with QuereaseMarshalling with Execution = _
   var service: WabaseActionsService = _
+  var wabaseScheduler: WabaseScheduler = _
 
   override def beforeAll(): Unit = {
     querease = new TestQuerease("/querease-action-specs-metadata.yaml") {
@@ -197,6 +198,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     service = new WabaseActionsService(as) {
       override def initApp = myApp
     }
+    wabaseScheduler = new WabaseScheduler(app, as)
   }
 
   override def afterAll(): Unit = {
@@ -230,6 +232,10 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     app.doWabaseAction(action, view, keyValues, params, values)
       .map(_.result)
       .flatMap(processResult(_, view, removeIdsFlag))
+  }
+
+  protected def doJob(jobName: String): Future[Any] = {
+    wabaseScheduler.doJob(app.qe.jobDef(jobName))
   }
 
   protected def processResult(r: QuereaseResult, view: String, removeIdsFlag: Boolean): Future[Any] = r match {
@@ -1312,6 +1318,9 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       t2 <-
         doAction("get", "job_call_test1", Map("name" -> "John"))
           .map(_ shouldBe ResponseResult(200, ResultValue(StringResult("Hello John from test_job1!"))))
+      t3 <- doJob("test_job_insert").map(_ shouldBe NoResult)
+      t4 <- doAction("list", "job_call_test1", Map("name" -> "ABC"))
+        .map(_ shouldBe List(Map("value" -> "ABC")))
     } yield t1
   }
 

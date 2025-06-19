@@ -13,16 +13,15 @@ import scala.util.control.NonFatal
 import scala.util.{Failure, Success}
 
 
-class WabaseScheduler(service: AppServiceBase[_]) extends Loggable {
-  protected lazy val system = ActorSystem("wabase-cron-jobs")
+class WabaseScheduler(wabase: AppBase[_], system: ActorSystem) extends Loggable {
   protected lazy val scheduler = QuartzSchedulerExtension(system)
   protected lazy val jobActorClass = try Class.forName(config.getString("app.job.actor")) catch {
     case NonFatal(ex) => throw new RuntimeException(s"Failed to get job actor class", ex)
   }
-  protected lazy val wabaseJobActor = system.actorOf(Props(jobActorClass, service))
+  protected lazy val wabaseJobActor = system.actorOf(Props(jobActorClass, wabase))
 
   def init(): Future[QuereaseResult] = {
-    WabaseJobStatusController.init(service.app.dbAccess)
+    WabaseJobStatusController.init(wabase.dbAccess)
     if (config.hasPath("pekko.quartz.schedules")) {
       config
         .getConfig("pekko.quartz.schedules")
@@ -33,7 +32,7 @@ class WabaseScheduler(service: AppServiceBase[_]) extends Loggable {
     }
 
     if (config.hasPath("app.init.job")) {
-      val jobDef = service.app.qe.jobDef(config.getString("app.init.job"))
+      val jobDef = wabase.qe.jobDef(config.getString("app.init.job"))
       doJob(jobDef)
     } else Future.successful(NoResult)
   }
@@ -42,7 +41,7 @@ class WabaseScheduler(service: AppServiceBase[_]) extends Loggable {
     scheduler: QuartzSchedulerExtension,
     wabaseJobActor: ActorRef
   ): Unit = {
-    service.app.qe.jobDefOption(jobName).map { job =>
+    wabase.qe.jobDefOption(jobName).map { job =>
       scheduler.schedule(jobName, wabaseJobActor, Tick(job, this))
     }.getOrElse {
       logger.warn(s"Job definition for schedule $jobName not found." +
@@ -51,8 +50,8 @@ class WabaseScheduler(service: AppServiceBase[_]) extends Loggable {
   }
 
   def doJob(job: JobDef): Future[QuereaseResult] = {
-    val qe = service.app.qe
-    val dbAccess = service.app.dbAccess
+    val qe = wabase.qe
+    val dbAccess = wabase.dbAccess
 
     val resourcesFactory: ResourcesFactory = {
       val resTempl = dbAccess
@@ -60,14 +59,14 @@ class WabaseScheduler(service: AppServiceBase[_]) extends Loggable {
       val initRes = dbAccess.initResources(resTempl)
         ResourcesFactory(initRes, dbAccess.closeResources)(resTempl)
     }
-    implicit val executionContext: ExecutionContext = service.asInstanceOf[Execution].executor
-    implicit val actorSystem: ActorSystem = service.asInstanceOf[Execution].system
+    implicit val executionContext: ExecutionContext = system.dispatcher
+    implicit val actorSystem: ActorSystem = system
 
     qe.QuereaseAction(job.name, JobAct, Map(), Map(), doCleanup = true)(
-        resourcesFactory, httpReq = null, qio = service.app.qio,
-        fileStreamers = service.app.fileStreamers,
-        httpClients = service.app.httpClients,
-        parameterProvider = service.app.injectionParametersProvider)
+        resourcesFactory, httpReq = null, qio = wabase.qio,
+        fileStreamers = wabase.fileStreamers,
+        httpClients = wabase.httpClients,
+        parameterProvider = wabase.injectionParametersProvider)
       .run(executionContext, actorSystem)
   }
 }
@@ -76,12 +75,12 @@ object WabaseScheduler {
   case class Tick(job: JobDef, executor: WabaseScheduler)
 }
 
-class WabaseJobActor(service: AppServiceBase[_]) extends Actor {
+class WabaseJobActor(wabase: AppBase[_]) extends Actor {
   override def receive: Receive = {
     case Tick(jd, scheduler) =>
       val s = sender()
       val jobName = jd.name
-      val dbAccess = service.app.dbAccess
+      val dbAccess = wabase.dbAccess
 
       try {
         if (WabaseJobStatusController.acquireIsRunnningLock(jobName)(dbAccess)) {
