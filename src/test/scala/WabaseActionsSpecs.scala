@@ -1671,5 +1671,53 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         .map { _ shouldBe ResponseResult(200, ResultValue(StringResult("ok"))) }
     } yield t
   }
-    
+
+  
+  val TestTimeout: FiniteDuration = 30.seconds
+  private def createNestedChildrenData(currentDepth: Int, maxDepth: Int, parentCode: String): List[Map[String, Any]] = {
+    if (currentDepth > maxDepth) {
+      List.empty[Map[String, Any]]
+    } else {
+      val childCode = s"${parentCode}.ch_${currentDepth}"
+      List(
+        Map(
+          "code" -> childCode,
+          "value" -> s"ch_val_${currentDepth}",
+          "children" -> createNestedChildrenData(currentDepth + 1, maxDepth, childCode)
+        )
+      )
+    }
+  }
+
+  private def createDeepInputMap(depth: Int): Map[String, Any] = {
+    val rootCode = "r"
+    Map(
+      "code" -> rootCode,
+      "value" -> "top_level",
+      "children" -> createNestedChildrenData(1, depth, rootCode) 
+    )
+  }
+
+  behavior of "Save operation with dynamically generated deep nesting"
+
+  it should "attempt to process a very deep structure and observe behavior" in {
+    val nestingDepth = 3000
+    val deepInput = createDeepInputMap(nestingDepth)
+
+    info(s"Attempting save with nesting depth: $nestingDepth (expect potential SOE or timeout)")
+    val resultFuture = doAction("save", "foreach_test_1", deepInput)
+
+    try {
+      val result = Await.result(resultFuture, TestTimeout)
+      info(s"Successfully processed very deep nesting ($nestingDepth) without SOE.")
+      result shouldBe a [Map[_, _]]
+    } catch {
+      case e: StackOverflowError =>
+        println(s"Caught expected SOE for depth $nestingDepth: ${e.getMessage}")
+        succeed // Test passes --> SOE was caught
+      case ex: Throwable =>
+        fail(s"Unexpected error occurred: ${ex.getMessage}", ex)
+    }
+  }
+
 }

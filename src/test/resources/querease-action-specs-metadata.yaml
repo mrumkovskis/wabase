@@ -82,8 +82,8 @@ columns:
 
 table: if_and_foreach_test
 columns:
-- code                ! 40
-- parent                40
+- code                ! 90000
+- parent                90000
 - value                 64
 
 table: simple_table
