@@ -161,6 +161,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
 
   val tresqlUri: TresqlUri = new TresqlUri()
   lazy val cborOrJsonDecoder = new CborOrJsonDecoder(typeDefs, nameToViewDef)
+
+  protected val maxStackDepth: Int = config.getInt("wabase.call-max-stack-depth")
   /** Override this to override default scala value (like String, Number, Boolean, null, Iterable, Map) json encoding.
     * Default implementation is {{{Writer => PartialFunction.empty}}}
     * */
@@ -372,6 +374,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     contextStack: List[ActionContext] = Nil,
   ) {
     val name = s"$viewName.$actionName" + Option(stepName).map(s => s".$s").getOrElse("")
+    def stackStr: String = (name :: contextStack.map(_.name)).mkString("[", ",", "]")
   }
 
   private[wabase] def quereaseActionOpt(objectName: String, actionName: String) = {
@@ -480,6 +483,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     context: ActionContext,
     curData: Future[Map[String, Any]],
   )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
+    if (context.contextStack.size > maxStackDepth)
+      throw new StackOverflowError(s"Action call stack depth exceeds $maxStackDepth. Stack - ${context.stackStr}")
     import Action._
     import qr._
     def updateCurRes(cr: Map[String, Any], key: Option[String], resF: Future[_]) = {
