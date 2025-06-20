@@ -883,7 +883,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         }
       }
   }
-
+  
   it should "remove field from data set" in {
     for {
       t1 <- doAction("insert", "remove_var_test", Map("var1" -> "data1", "var2" -> "data2"))
@@ -1664,4 +1664,12 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         .map(_ shouldBe List(Map("name" -> "jasmine", "roles" -> List("admin", "guest"))))
     } yield t1
   }
+  
+  it should "handle cycles in prcessView correctly" in {
+    for {
+      t <- doAction("insert", "exploit_trigger", Map())
+        .map { _ shouldBe ResponseResult(200, ResultValue(StringResult("ok"))) }
+    } yield t
+  }
+    
 }
