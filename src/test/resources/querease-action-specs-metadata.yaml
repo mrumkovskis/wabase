@@ -1593,3 +1593,42 @@ list:
 insert:
 - arr = {'jasmine' name, |[({'guest'} + {'admin'})#(1)] 'roles'} # alias roles must be put in quotes so it is not taken for table name
 - as any :arr
+
+  # YAML designed to bypass processView cycle detection by alternating action names
+name: view_cycle_A
+table:
+api: save, get
+fields:
+  - id_a
+  - data_a
+save:
+  - insert view_cycle_B
+get:
+  - update view_cycle_B
+
+name: view_cycle_B
+table:
+api: insert, update
+fields:
+  - id_b
+  - data_b
+insert:
+  - get view_cycle_A
+update:
+  - save view_cycle_A
+
+name: exploit_trigger
+table:
+api: get, list, save
+fields:
+- trigger_status
+get:
+  - unique {:id id_a, :data data_a}
+list:
+- res = http '/view_cycle_A'
+- status ok :res
+insert:
+- res = http post [default-wabase-http-client] '/view_cycle_A'
+         unique { 'start_id' id_a, 'trigger_data' data_a }
+         []
+- status ok :res
