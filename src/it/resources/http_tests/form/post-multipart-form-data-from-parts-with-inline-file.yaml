@@ -1,0 +1,20 @@
+path:       /request-info
+method:     POST
+request-parts:
+  - name:  name
+    value: john
+  - name:  password
+    value: secret
+  - name:     file
+    filename: file.txt
+    value:    text in file
+response:
+  content-type: multipart/form-data
+  content-type-parameters: -> _
+  data:
+    name: john
+    password: secret
+    file:
+      filename: file.txt
+      content_type: text/plain; charset=UTF-8
+      content: text in file

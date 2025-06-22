@@ -1,9 +1,11 @@
 package org.wabase
 
 import java.io.File
-import org.apache.pekko.http.scaladsl.model.{ContentTypes, HttpEntity, HttpHeader, HttpMethods, HttpResponse, Multipart}
+import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes, HttpEntity, HttpHeader, HttpMethod, HttpMethods, HttpResponse, MediaType, MediaTypes, Multipart, RequestEntity}
 import org.apache.pekko.http.scaladsl.model.headers.`Content-Type`
 import org.apache.pekko.http.scaladsl.model.headers.RawHeader
+import org.apache.pekko.http.scaladsl.model.Uri
+import org.apache.pekko.http.scaladsl.server.directives.ContentTypeResolver
 import com.typesafe.config.{Config, ConfigFactory}
 import org.mojoz.querease.TresqlMetadata
 import org.scalatest.BeforeAndAfterAll
@@ -23,6 +25,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
        extends FlatSpec with Matchers with BeforeAndAfterAll
           with TemplateUtil with QuereaseProvider with JsonConverterProvider with Loggable {
 
+  import jsonConverter.ListJsonFormat
   import jsonConverter.MapJsonFormat
   val db = new DbAccess with Loggable {
     override protected def tresqlMetadata: TresqlMetadata = null
@@ -203,6 +206,10 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
     (newValues, result)
   }
 
+  protected def isMultipartFormData(mediaType: MediaType) =
+    mediaType.mainType == MediaTypes.`multipart/form-data`.mainType &&
+    mediaType.subType  == MediaTypes.`multipart/form-data`.subType
+
   case class RequestInfo(
     headers: Seq[HttpHeader],
     requestBytes: Array[Byte],
@@ -212,17 +219,36 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
   )
 
   def extractRequestInfo(map: Map[String, Any], method: String): RequestInfo = {
+    extractRequestInfo(map, method, "request", "request-body-file", "request-parts")
+  }
+  def extractRequestInfo(map: Map[String, Any], method: String, bodyKey: String, fileKey: String, partsKey: String): RequestInfo = {
     val headers = map.m("headers")
-    val requestBytes = Try(map.s("request-body-file")).toOption.map(readFileBytes).orNull
-    val requestParts = Try(map.a("request-parts")).toOption.orNull
+    val requestBytes = Try(map.s(fileKey)).toOption.map(readFileBytes).orNull
+    val requestParts = Try(map.a(partsKey)).toOption.orNull
+    val valueAsMap   = Try(map.md(bodyKey, null)).toOption.orNull
+
+    val parsedHeaders: Seq[HttpHeader] = headers.map {
+      case ("Content-Type", value) => // Content-Type is not accepted as valid RawHeader
+        `Content-Type`.parseFromValueString(value.toString).toOption.get
+      case (name, value) =>
+        RawHeader(name, value.toString)
+    }.toList
+
+    val forcedContentTypeHeaderOpt = parsedHeaders.collectFirst { case cth: `Content-Type` => cth }
+    val fileContentTypeOpt =
+      if  (forcedContentTypeHeaderOpt.isEmpty && requestBytes != null)
+           Some(ContentTypeResolver.Default(map.s(fileKey)))
+            .flatMap(ct => `Content-Type`.parseFromValueString(ct.toString).toOption)
+      else None
+
     val bodyParts =
       if (requestParts != null) {
         requestParts map { partMap =>
-          val partInfo = extractRequestInfo(partMap, method)
-          val fieldName = Try(partMap.s("fieldname")).toOption.getOrElse("file")
+          val partInfo = extractRequestInfo(partMap, method, "value", "file", "parts")
+          val fieldName = Try(partMap.s("name")).toOption.getOrElse("file")
           val fileName = Try(partMap.s("filename")).toOption
-            .orElse(Try(map.s("request-body-file")).toOption.map(path => (new File(path)).getName))
-            .getOrElse("file")
+            .orElse(Try(partMap.s("file")).toOption.map(path => (new File(path)).getName))
+            .orNull
           val bodyEntity = Option((partInfo.requestMap, partInfo.requestString, partInfo.requestBytes) match {
             case ( map, null,   null) => HttpEntity(ContentTypes.`application/json`,         map.toJson.prettyPrint)
             case (null, string, null) => HttpEntity(ContentTypes.`text/plain(UTF-8)`,        string)
@@ -232,27 +258,46 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
             partInfo.headers.find(_.isInstanceOf[`Content-Type`])
               .map(ct => bodyEntity.withContentType(ct.asInstanceOf[`Content-Type`].contentType)).getOrElse(bodyEntity)
           }.get
+          val additionalDispositionParams =
+            Map(
+              "filename" -> fileName,
+            ).filter(_._2 != null)
           Multipart.FormData.BodyPart(
             fieldName,
             bodyEntity,
-            Map("filename" -> fileName),
+            additionalDispositionParams,
             partInfo.headers.filterNot(_.isInstanceOf[`Content-Type`]))
         }
+      } else if (valueAsMap != null && forcedContentTypeHeaderOpt.exists(cth => isMultipartFormData(cth.contentType.mediaType))) {
+        valueAsMap.map { case (k, v) =>
+          val bodyEntity = v match {
+            case map: Map[String @unchecked, Any @unchecked] => HttpEntity(ContentTypes.`application/json`,  map.toJson.prettyPrint)
+            case seq: Seq[Any]                               => HttpEntity(ContentTypes.`application/json`,  seq.toList.toJson.prettyPrint)
+            case x                                           => HttpEntity(ContentTypes.`text/plain(UTF-8)`, s"$x")
+          }
+          Multipart.FormData.BodyPart(k, bodyEntity, Map.empty, Nil)
+        }.toSeq
       } else {
         null
       }
     val requestFormData = Option(bodyParts).map(Multipart.FormData(_: _*)).orNull
-    val defaultRequestMap: Map[String, Any] =
-      if (requestBytes != null || requestParts != null || method == "GET" || method == "DELETE") null else Map.empty
-    val requestMap = Try(map.md("request", defaultValue = defaultRequestMap)).toOption.orNull
-    val requestString = Try(map.s("request")).toOption.orNull
-    val parsedHeaders: Seq[HttpHeader] = headers.map {
-      case ("Content-Type", value) => // Content-Type is not accepted as valid RawHeader
-        `Content-Type`.parseFromValueString(value.toString).toOption.get
-      case (name, value) =>
-        RawHeader(name, value.toString)
-    }.toList
-    RequestInfo(parsedHeaders, requestBytes, requestMap, requestString, requestFormData)
+    val requestString = Try(map.s(bodyKey)).toOption.getOrElse {
+      if (valueAsMap != null && forcedContentTypeHeaderOpt.exists(_.contentType.mediaType == MediaTypes.`application/x-www-form-urlencoded`)) {
+        val valueAsMapOfStrings = valueAsMap.transform {
+          case (_, map: Map[String @unchecked, Any @unchecked]) => map.toJson.prettyPrint
+          case (_, seq: Seq[Any])                               => seq.toList.toJson.prettyPrint
+          case (_, v)                                           => s"$v"
+        }.toMap
+        Uri.Query(valueAsMapOfStrings).toString
+      } else null
+    }
+    val requestMap =
+      if (bodyParts == null && requestString == null) {
+        val defaultRequestMap: Map[String, Any] =
+          if (requestBytes != null || requestParts != null || method == "GET" || method == "DELETE") null else Map.empty
+        Try(map.md(bodyKey, defaultValue = defaultRequestMap)).toOption.orNull
+      } else null
+    RequestInfo(parsedHeaders ++ fileContentTypeOpt.toSeq, requestBytes, requestMap, requestString, requestFormData)
   }
 
   def logScenarioRequestInfo(
@@ -357,18 +402,31 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
       tresqlRow, tresqlList, tresqlTransaction, options,
     )
 
+    def httpPostAwaitMultipartFormData(method: HttpMethod, path: String, formData: Multipart.FormData, headers: Seq[HttpHeader]) = {
+      val boundaryOpt =
+        headers.collectFirst { case cth: `Content-Type` => cth }
+          .map(_.contentType.mediaType)
+          .filter(isMultipartFormData)
+          .flatMap(_.params.get("boundary"))
+      val (entity, requestHeaders) = boundaryOpt match {
+        case Some(boundary) =>
+          (formData.toEntity(boundary), headers)
+        case None =>
+          (formData.toEntity, headers.filterNot(_.isInstanceOf[`Content-Type`]))
+      }
+      httpPostAwait[RequestEntity, HttpResponse](HttpMethods.PUT, path, entity, requestHeaders)
+    }
+
     def doRequest: HttpResponse  = (method, requestMap, requestString, requestBytes, requestFormData) match {
       case ("GET",   null, null,   null, null) => httpGetAwait [HttpResponse](path, params, headers)
       case ("POST",   map, null,   null, null) => httpPostAwait[JsValue,     HttpResponse](HttpMethods.POST,   path, map.toJson, headers)
       case ("POST",  null, string, null, null) => httpPostAwait[String,      HttpResponse](HttpMethods.POST,   path, string,     headers)
       case ("POST",  null, null,  bytes, null) => httpPostAwait[Array[Byte], HttpResponse](HttpMethods.POST,   path, bytes,      headers)
-      case ("POST",  null, null,   null, form) => httpPostAwait[
-        Multipart.FormData, HttpResponse](HttpMethods.POST,   path, form,       headers)
+      case ("POST",  null, null,   null, form) => httpPostAwaitMultipartFormData          (HttpMethods.POST,   path, form,       headers)
       case ("PUT",    map, null,   null, null) => httpPostAwait[JsValue,     HttpResponse](HttpMethods.PUT,    path, map.toJson, headers)
       case ("PUT",   null, string, null, null) => httpPostAwait[String,      HttpResponse](HttpMethods.PUT,    path, string,     headers)
       case ("PUT",   null, null,  bytes, null) => httpPostAwait[Array[Byte], HttpResponse](HttpMethods.PUT,    path, bytes,      headers)
-      case ("PUT",   null, null,   null, form) => httpPostAwait[
-        Multipart.FormData, HttpResponse](HttpMethods.PUT,    path, form,       headers)
+      case ("PUT",   null, null,   null, form) => httpPostAwaitMultipartFormData          (HttpMethods.PUT,    path, form,       headers)
       case ("DELETE", null, null,  null, null) => httpPostAwait[String,      HttpResponse](HttpMethods.DELETE, path, "",         headers)
       case r => sys.error("Unsupported request type: "+r)
     }

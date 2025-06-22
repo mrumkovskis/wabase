@@ -1,0 +1,13 @@
+path:       /request-info
+method:     POST
+headers:
+  Content-Type: multipart/form-data
+request:
+  name: john
+  password: secret
+response:
+  content-type: multipart/form-data
+  content-type-parameters: -> _
+  data:
+    name: john
+    password: secret

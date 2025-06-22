@@ -1,0 +1,10 @@
+path:       /request-info
+method:     POST
+headers:
+  Content-Type: application/x-www-form-urlencoded
+request: name=john&password=secret
+response:
+  content-type: application/x-www-form-urlencoded
+  data:
+    name: john
+    password: secret

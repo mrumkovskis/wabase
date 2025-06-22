@@ -1,0 +1,2 @@
+on: /request-info
+do: wabase.app.BusinessScenariosSpecs.requestInfo

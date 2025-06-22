@@ -1,12 +1,18 @@
 package wabase.app
 
-import org.apache.pekko.http.scaladsl.model.Uri
+import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.http.scaladsl.model.{HttpRequest, Uri}
+import org.apache.pekko.http.scaladsl.unmarshalling.Unmarshal
+import org.apache.pekko.util.ByteString
 import org.mojoz.metadata.out.DdlGenerator
 import org.wabase._
+import org.wabase.WabaseUnmarshallers.mapUnmarshaller
 
 import java.io.File
+import scala.concurrent.duration.DurationInt
+import scala.concurrent.{ExecutionContext, Future}
 import scala.language.reflectiveCalls
-import scala.util.Random
+import scala.util.Try
 
 object BusinessScenariosSpecs {
   def executeStatements(statements: String*): Unit = {
@@ -15,6 +21,22 @@ object BusinessScenariosSpecs {
       val statement = conn.createStatement
       try statements foreach { statement.execute } finally statement.close()
     } finally conn.close()
+  }
+
+  def requestInfo(req: HttpRequest)(implicit as: ActorSystem, ec: ExecutionContext): Future[Map[String, Any]] = {
+    Unmarshal(req.entity).to[Map[String, Any]].map { map =>
+      val contentType     = req.entity.contentType
+      val contentTypeName = s"${contentType.mediaType.mainType}/${contentType.mediaType.subType}"
+      def transformFileContentToString(map: Map[String, Any]) =
+        MapUtils.transform("file/content", _.asInstanceOf[ByteString].utf8String, map)
+      val contentTypeParameters =
+        Try(contentType.toString.drop(contentTypeName.length + 1).trim).toOption.filter(_ != "").orNull
+      Map(
+        "content-type" -> contentTypeName,
+        "content-type-parameters" -> contentTypeParameters,
+        "data" -> transformFileContentToString(map),
+      ).filter(_._2 != null).toMap
+    }
   }
 }
 

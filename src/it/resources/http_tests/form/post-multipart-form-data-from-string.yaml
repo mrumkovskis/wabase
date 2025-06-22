@@ -1,0 +1,20 @@
+path:       /request-info
+method:     POST
+headers:
+  Content-Type: multipart/form-data; boundary=simpleboundary
+request: |
+  --simpleboundary
+  Content-Disposition: form-data; name="name"
+
+  john
+  --simpleboundary
+  Content-Disposition: form-data; name="password"
+
+  secret
+  --simpleboundary--
+response:
+  content-type: multipart/form-data
+  content-type-parameters: boundary=simpleboundary
+  data:
+    name: john
+    password: secret
