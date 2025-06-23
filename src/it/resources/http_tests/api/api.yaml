@@ -17,6 +17,9 @@ response: {
     "save",
     "list"
   ],
+  "save_person_email": [
+    "save"
+  ],
   "user": [
     "get",
     "save"

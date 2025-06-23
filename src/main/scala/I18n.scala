@@ -123,12 +123,10 @@ object I18nService {
   val ApplicationLanguageCookiePostfix = config.getString("app.language-cookie-postfix")
   val I18nPathPrefix = config.getString("app.i18n-path-prefix")
 
-  def setLanguage(req: HttpRequest, resp: HttpResponse): HttpResponse = {
+  def setLanguage(lang: String, resp: HttpResponse): HttpResponse = {
     WabaseService.setCookie(resp)(
       HttpCookie(AppServiceBase.ApplicationStateCookiePrefix + ApplicationLanguageCookiePostfix,
-        value = req.uri.path.reverse.head match {
-          case lang: String => lang
-          case x => sys.error(s"Uri path must end with string to set language instead got: $x") },
+        value = lang,
         path = Some("/")
       ).withSameSite(SameSite.Lax)
     )

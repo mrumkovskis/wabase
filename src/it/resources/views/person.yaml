@@ -8,3 +8,12 @@ fields:
 - surname
 order:
 - code
+
+
+name:   save_person_email
+table:  person
+api:    save
+key:    code
+fields:
+- code
+- email
