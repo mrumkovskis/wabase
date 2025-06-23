@@ -1,2 +1,2 @@
 on: /set-language/(\w+)
-do: setLanguage($1) org.wabase.WabaseServer.hello
+do: setLanguage($1) ok
