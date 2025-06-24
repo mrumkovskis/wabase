@@ -9,10 +9,10 @@ class CSRFException(message: String) extends Exception(message)
 
 object CSRFDefence extends AppConfig with CSRFDefence {
 
-  // request mappers:         checkSameOrigin, checkCSRFToken
+  // request mappers:         checkSameOriginForRequest, checkCSRFToken
   // response transformers:   setCSRFCookie, deleteCSRFCookie
 
-  def checkSameOrigin(req: HttpRequest): HttpRequest = {
+  def checkSameOriginForRequest(req: HttpRequest): HttpRequest = {
     val targetOrigins = Option(List(targetOrigin)).orElse {
         WabaseService.optionalHttpHeaderValueByName(req)("X-Forwarded-Host")
           .map(Host.parseFromValueString)

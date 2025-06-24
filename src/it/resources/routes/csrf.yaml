@@ -1,0 +1,2 @@
+on: /check-same-origin
+do: checkSameOrigin ok
