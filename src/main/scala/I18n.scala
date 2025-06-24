@@ -4,12 +4,13 @@ import io.bullet.borer.Json
 import org.apache.pekko.http.scaladsl.marshalling.{Marshaller, ToEntityMarshaller, ToResponseMarshallable}
 import org.apache.pekko.http.scaladsl.model.MediaTypes.`application/json`
 import org.apache.pekko.http.scaladsl.model.headers.{HttpCookie, SameSite}
-import org.apache.pekko.http.scaladsl.model.{HttpEntity, HttpRequest, HttpResponse}
+import org.apache.pekko.http.scaladsl.model.{HttpEntity, HttpRequest, HttpResponse, Uri}
 import org.apache.pekko.http.scaladsl.server.{LanguageNegotiator, PathMatcher}
 import org.apache.pekko.http.scaladsl.server.PathMatchers._
 import org.apache.pekko.http.scaladsl.model.StatusCodes
 import org.apache.pekko.http.scaladsl.model.Uri.Path
 
+import java.nio.charset.StandardCharsets
 import java.util.{Collections, Locale, PropertyResourceBundle, ResourceBundle}
 import scala.concurrent.Future
 import scala.jdk.CollectionConverters._
@@ -121,7 +122,6 @@ trait I18n {
 
 object I18nService {
   val ApplicationLanguageCookiePostfix = config.getString("app.language-cookie-postfix")
-  val I18nPathPrefix = config.getString("app.i18n-path-prefix")
 
   def setLanguage(lang: String, resp: HttpResponse): HttpResponse = {
     WabaseService.setCookie(resp)(
@@ -132,15 +132,11 @@ object I18nService {
     )
   }
 
-  def i18nTranslate(ctx: WabaseRequestContext): Future[HttpResponse] = {
+  def i18nTranslate(name: String, key: String, params: String, ctx: WabaseRequestContext): Future[HttpResponse] = {
     implicit val locale = applicationLocale(ctx.applicationState)
-    val pm = Slash.? ~ PathMatcher(Path(I18nPathPrefix), ()) / Segment / Segment / RemainingPath
-    pm(ctx.req.uri.path) match {
-      case PathMatcher.Matched(_, (name, key, params)) =>
-        val translation = ctx.wabase.translateFromBundle(name, key, WabaseService.pathSegments(params): _*)
-        WabaseService.complete(ctx, translation)
-      case PathMatcher.Unmatched => Future.successful(HttpResponse(status = StatusCodes.NotFound))
-    }
+    val paramsSeq   = Option(params).map(Uri.Path.apply(_, StandardCharsets.UTF_8)).map(WabaseService.pathSegments).getOrElse(Nil)
+    val translation = ctx.wabase.translateFromBundle(name, key, paramsSeq: _*)
+    WabaseService.complete(ctx, translation)
   }
 
   def i18nResources(ctx: WabaseRequestContext): Future[HttpResponse] = {
@@ -149,15 +145,10 @@ object I18nService {
     WabaseService.complete(ctx, res)
   }
 
-  def i18nResourcesFromBundle(ctx: WabaseRequestContext): Future[HttpResponse] = {
+  def i18nResourcesFromBundle(bundleName: String, ctx: WabaseRequestContext): Future[HttpResponse] = {
     implicit val locale = applicationLocale(ctx.applicationState)
-    val pm = Slash.? ~ PathMatcher(Path(I18nPathPrefix), ()) / Segment ~ Slash.?
-    pm(ctx.req.uri.path) match {
-      case PathMatcher.Matched(_, Tuple1(resourcePath)) =>
-        val translation = ctx.wabase.i18nResourcesFromBundle(resourcePath)
-        WabaseService.complete(ctx, translation)
-      case PathMatcher.Unmatched => Future.successful(HttpResponse(status = StatusCodes.NotFound))
-    }
+    val translation = ctx.wabase.i18nResourcesFromBundle(bundleName)
+    WabaseService.complete(ctx, translation)
   }
 
   def currentLangFromHeader(request: HttpRequest): Option[String] = {

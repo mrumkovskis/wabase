@@ -548,8 +548,8 @@ object WabaseService {
 
 object ApplicationStateExtractor {
   def extractState(ctx: WabaseRequestContext): ApplicationState =
-    extractState(ctx, AppServiceBase.ApplicationStateCookiePrefix)
-  def extractState(ctx: WabaseRequestContext, prefix: String): ApplicationState = {
+    extractStateForPrefix(AppServiceBase.ApplicationStateCookiePrefix, ctx)
+  def extractStateForPrefix(prefix: String, ctx: WabaseRequestContext): ApplicationState = {
     val state = ctx.req.headers.flatMap {
       case c: Cookie => c.cookies.filter(_.name.startsWith(prefix))
       case _ => Nil
