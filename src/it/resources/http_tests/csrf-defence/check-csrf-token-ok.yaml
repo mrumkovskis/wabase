@@ -1,0 +1,4 @@
+path:     /check-csrf-token
+#headers:
+#  X-XSRF-TOKEN: ...    # X-XSRF-TOKEN header added automatically based on XSRF-TOKEN cookie value
+response:

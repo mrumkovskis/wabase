@@ -9,8 +9,8 @@ class CSRFException(message: String) extends Exception(message)
 
 object CSRFDefence extends AppConfig with CSRFDefence {
 
-  // request mappers:         checkSameOriginForRequest, checkCSRFToken
-  // response transformers:   setCSRFCookie, deleteCSRFCookie
+  // request mappers:         checkSameOriginForRequest, checkCsrfToken
+  // response transformers:   setCsrfCookie, deleteCSRFCookie
 
   def checkSameOriginForRequest(req: HttpRequest): HttpRequest = {
     val targetOrigins = Option(List(targetOrigin)).orElse {
@@ -39,7 +39,7 @@ object CSRFDefence extends AppConfig with CSRFDefence {
     }
   }
 
-  def checkCSRFToken(req: HttpRequest): HttpRequest = {
+  def checkCsrfToken(req: HttpRequest): HttpRequest = {
     val csrfCookie = WabaseService.optionalCookie(req)(CSRFCookieName)
       .getOrElse(error(s"$CSRFCookieName cookie not found.", req.uri))
     val csrfHeader = WabaseService.optionalHttpHeaderValueByName(req)(CSRFHeaderName)
@@ -49,7 +49,7 @@ object CSRFDefence extends AppConfig with CSRFDefence {
       s"$csrfCookie != $csrfHeader", req.uri)
   }
 
-  def setCSRFCookie(resp: HttpResponse): HttpResponse = {
+  def setCsrfCookie(resp: HttpResponse): HttpResponse = {
     val cookie = csrfCookieTransformer(
       HttpCookie(
         CSRFCookieName,

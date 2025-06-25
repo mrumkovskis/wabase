@@ -1,2 +1,10 @@
+on: /check-csrf-token
+do: checkCsrfToken ok
+
+
 on: /check-same-origin
 do: checkSameOrigin ok
+
+
+on: /set-csrf-cookie
+do: setCsrfCookie ok

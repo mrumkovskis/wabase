@@ -1,0 +1,4 @@
+path:     /check-csrf-token
+headers:
+  X-XSRF-TOKEN: abc
+error:    400 Bad Request
