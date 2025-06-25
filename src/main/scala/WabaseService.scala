@@ -171,7 +171,7 @@ object WabaseService {
   def deleteCookie(resp: HttpResponse)(name: String, domain: String = "", path: String = ""): HttpResponse = {
     val cookie = HttpCookie(name, "",
       domain = Option(domain).filter(_.nonEmpty), path = Option(path).filter(_.nonEmpty))
-    resp.mapHeaders(_ ++ Seq(`Set-Cookie`(cookie.withValue("deleted").withExpires(DateTime.MinValue))))
+    resp.mapHeaders(_ ++ Seq(`Set-Cookie`(cookie.withValue("").withExpires(DateTime.MinValue))))
   }
 
   def pathSegments(path: Path): List[String] = path match {

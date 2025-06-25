@@ -1,3 +1,5 @@
 path:       /logout
 method:     POST
+response_headers:
+  Set-Cookie: session-id=; Expires=Wed, 01 Jan 1800 00:00:00 GMT; Path=/
 response:

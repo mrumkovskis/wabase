@@ -961,13 +961,14 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     require(op.isInstanceOf[Action.SetCookie] || op.isInstanceOf[Action.DeleteCookie])
     useResourcesConnOrEvaluator(qr.resourcesFactory.resources, implicit res => {
       val params = data ++ env
-      val cookieRes = Query(op.tresql.tresql, params)
-      val (nameValueCols, restCols) = cookieRes.columns.partition(c => c.name == "name" || c.name == "value")
-      cookieRes.map { cookieRow =>
-        restCols.foldLeft(HttpCookie(
-          name = cookieRes.s("name"),
-          value = if (nameValueCols.exists(_.name == "value")) cookieRes.s("value") else "deleted")
-        ) { (cookie, col) => col.name match {
+      val cookieResult = Query(op.tresql.tresql, params)
+      val (nameValueCols, otherCols) = cookieResult.columns.partition(c => c.name == "name" || c.name == "value")
+      cookieResult.map { cookieRow =>
+        otherCols.foldLeft(HttpCookie(
+          name = cookieRow.s("name"),
+          value = if (nameValueCols.exists(_.name == "value")) cookieRow.s("value") else "",
+          expires = if (nameValueCols.exists(_.name == "value")) None else Some(org.apache.pekko.http.scaladsl.model.DateTime.MinValue),
+        )) { (cookie, col) => col.name match {
           case "expires" =>
             val d = convertToType(cookieRow.t("expires"), ValueConverter.ClassOfString).toString.replace(" ", "T")
             cookie.withExpires(org.apache.pekko.http.scaladsl.model.DateTime.fromIsoDateTimeString(d).get)

@@ -1606,7 +1606,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     Get("/set_headers_test1") ~> route ~> check {
       headers.collect { case `Set-Cookie`(c) => (c.name, (c.value, c.path, c.expires.map(_.toString()))) }
         .toMap shouldBe Map(
-          "deleme" -> ("deleted", Some("test_path"), Some("1800-01-01T00:00:00")),
+          "deleme" -> ("", Some("test_path"), Some("1800-01-01T00:00:00")),
           "test" ->   ("test_val", None, Some("2025-02-02T23:10:05"))
         )
       header("header1") shouldBe Some(HttpHeader.parse("header1", "value1").asInstanceOf[Ok].header)
@@ -1617,7 +1617,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       headers.collect {
         case `Set-Cookie`(c) => (c.name, (c.value, c.secure, c.httpOnly, c.maxAge, c.expires.map(_.toString()), c.domain))
       }.toMap shouldBe Map(
-        "x" -> ("deleted", false, false, None, Some("1800-01-01T00:00:00"), Some("abc.com")),
+        "x" -> ("", false, false, None, Some("1800-01-01T00:00:00"), Some("abc.com")),
         "test" -> ("test_val", true, true, Some(1000), None, None),
         "test1" -> ("test_val1", false, false, None, Some("2025-04-03T13:30:25"), None)
       )

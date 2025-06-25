@@ -77,10 +77,14 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root) exten
 
     def getCookies = if(map.isEmpty) Nil else iSeq(Cookie(map.map(c=> c._2.pair).toList))
     def setCookiesFromHeaders(headers: iSeq[HttpHeader]): Unit = {
-      map ++= headers.flatMap{
-        case `Set-Cookie`(cookie) => List(cookie)
-        case _ => Nil
-      }.map(c => c.name -> c)
+      headers.foreach {
+        case `Set-Cookie`(cookie) =>
+          if ((cookie.maxAge.isEmpty  || cookie.maxAge.get > 0) &&
+              (cookie.expires.isEmpty || cookie.expires.get.clicks > System.currentTimeMillis))
+               map += (cookie.name -> cookie)
+          else map -=  cookie.name
+        case _ =>
+      }
     }
     def setCookies(cookiesToSet: Map[String, Any], cookieStorage: CookieMap = cookiesThreadLocal.get()): Unit = {
       map ++= cookiesToSet.map(c => c._1 -> HttpCookie(c._1, c._2.toString))
