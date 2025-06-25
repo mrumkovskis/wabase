@@ -10,7 +10,7 @@ class CSRFException(message: String) extends Exception(message)
 object CSRFDefence extends AppConfig with CSRFDefence {
 
   // request mappers:         checkSameOriginForRequest, checkCsrfToken
-  // response transformers:   setCsrfCookie, deleteCSRFCookie
+  // response transformers:   setCsrfCookie, deleteCsrfCookie
 
   def checkSameOriginForRequest(req: HttpRequest): HttpRequest = {
     val targetOrigins = Option(List(targetOrigin)).orElse {
@@ -60,7 +60,7 @@ object CSRFDefence extends AppConfig with CSRFDefence {
     WabaseService.setCookie(resp)(cookie)
   }
 
-  def deleteCSRFCookie(resp: HttpResponse): HttpResponse =
+  def deleteCsrfCookie(resp: HttpResponse): HttpResponse =
     WabaseService.deleteCookie(resp)(CSRFCookieName)
 }
 

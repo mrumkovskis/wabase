@@ -6,5 +6,9 @@ on: /check-same-origin
 do: checkSameOrigin ok
 
 
+on: /delete-csrf-cookie
+do: deleteCsrfCookie ok
+
+
 on: /set-csrf-cookie
 do: setCsrfCookie ok
