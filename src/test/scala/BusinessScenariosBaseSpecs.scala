@@ -227,7 +227,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
     val requestParts = Try(map.a(partsKey)).toOption.orNull
     val valueAsMap   = Try(map.md(bodyKey, null)).toOption.orNull
 
-    val parsedHeaders: Seq[HttpHeader] = headers.map {
+    val parsedHeaders: Seq[HttpHeader] = Option(headers).getOrElse(Map.empty).map {
       case ("Content-Type", value) => // Content-Type is not accepted as valid RawHeader
         `Content-Type`.parseFromValueString(value.toString).toOption.get
       case (name, value) =>
