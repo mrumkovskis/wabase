@@ -112,9 +112,9 @@ object WabaseDeferredControl extends WabaseDeferredControlFactory {
     ))
   }
 
-  /** Get deferred request result. WabaseRequestContext key field must be set to deferred result hash */
-  def deferredResult(ctx: WabaseRequestContext): Future[HttpResponse] = {
-    Future.successful(ctx.deferred.deferredControl.deferredResult(ctx.key.mkString, ctx.user.name))
+  /** Get deferred request result */
+  def deferredResult(deferred_id: String, ctx: WabaseRequestContext): Future[HttpResponse] = {
+    Future.successful(ctx.deferred.deferredControl.deferredResult(deferred_id, ctx.user.name))
   }
 }
 

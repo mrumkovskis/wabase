@@ -1,0 +1,3 @@
+path:       /slow-respond
+response:
+  deferred: -> deferred_id

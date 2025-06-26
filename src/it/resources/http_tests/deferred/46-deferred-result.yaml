@@ -1,0 +1,3 @@
+sleep:      100 ms
+path:       /deferred-result/{{deferred_id}}
+response:   fast done

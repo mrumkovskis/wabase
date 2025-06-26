@@ -1,0 +1,10 @@
+on: /deferred-result/(.+)
+do: authenticateOpt deferredResult($1)
+
+
+on: /slow-respond
+do: authenticateOpt maybeDeferred sleep('500') response('200', 'slow done')
+
+
+on: /fast-respond
+do: authenticateOpt maybeDeferred sleep('005') response('200', 'fast done')

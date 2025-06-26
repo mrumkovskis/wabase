@@ -1,0 +1,4 @@
+sleep:      300 ms
+retries:    3
+path:       /deferred-result/{{deferred_id}}
+response:   slow done

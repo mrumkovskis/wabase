@@ -1,7 +1,7 @@
 package wabase.app
 
 import org.apache.pekko.actor.ActorSystem
-import org.apache.pekko.http.scaladsl.model.{HttpRequest, Uri}
+import org.apache.pekko.http.scaladsl.model.{HttpRequest, HttpResponse, Uri}
 import org.apache.pekko.http.scaladsl.unmarshalling.Unmarshal
 import org.apache.pekko.util.ByteString
 import org.mojoz.metadata.out.DdlGenerator
@@ -38,6 +38,11 @@ object BusinessScenariosSpecs {
       ).filter(_._2 != null).toMap
     }
   }
+
+  def sleep(millis: String, response: HttpResponse)(implicit ec: ExecutionContext): Future[HttpResponse] = Future {
+    Thread.sleep(millis.toLong)
+    response
+  }
 }
 
 class BusinessScenariosSpecs extends BusinessScenariosBaseSpecs("http_tests") {
@@ -59,11 +64,21 @@ class BusinessScenariosSpecs extends BusinessScenariosBaseSpecs("http_tests") {
   ): Map[String, Any] = {
     val path   = map.s("path")
     val method = map.sd("method", "GET")
-    if (path.startsWith("/backdoor/create-table/")) {
+    if (path.startsWith("/backdoor/create-sequence/")) {
+      val seqName   = path.substring("/backdoor/create-sequence/".length)
+      val statement = s"create sequence $seqName;"
+      executeStatements(statement)
+      context
+    } else if (path.startsWith("/backdoor/create-table/")) {
       val tableName = path.substring("/backdoor/create-table/".length)
       val tableDef  = qe.tableMetadata.tableDef(tableName, null)
       val generator = DdlGenerator.hsqldb()
       val statement = generator.table(tableDef)
+      executeStatements(statement)
+      context
+    } else if (path.startsWith("/backdoor/drop-sequence/")) {
+      val seqName   = path.substring("/backdoor/drop-sequence/".length)
+      val statement = s"drop sequence $seqName;"
       executeStatements(statement)
       context
     } else if (path.startsWith("/backdoor/drop-table/")) {

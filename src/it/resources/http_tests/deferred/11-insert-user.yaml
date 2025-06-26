@@ -1,0 +1,6 @@
+path:       /data/user/1
+method:     POST
+request:
+  name:     john
+  password: $s0$e0801$TGjFLCsGoe+cy8xxOh+VJQ==$W+KP7YQBJrSJxebhQPBHh9zrQc+JCLlavciy5gMHxG0=
+response:

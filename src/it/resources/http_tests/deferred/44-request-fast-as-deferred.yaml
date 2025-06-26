@@ -1,0 +1,5 @@
+path:       /fast-respond
+headers:
+  X-Deferred: 1s
+response:
+  deferred: -> deferred_id
