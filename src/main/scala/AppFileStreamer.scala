@@ -187,7 +187,10 @@ class FileStreamer(
   def createTempFile = {
     val tempPath = new File(rootPath + "/" + "tmp")
     tempPath.mkdirs
-    File.createTempFile("tmp", null, tempPath)
+    try File.createTempFile("tmp", null, tempPath) catch {
+      case util.control.NonFatal(ex) =>
+        throw new RuntimeException(s"Failed to create temporary file in $tempPath", ex)
+    }
   }
 
   def fileSink(
