@@ -77,9 +77,6 @@ class DeferredTests extends AnyFlatSpec with Matchers with TestQuereaseInitializ
       override def initApp: App = appl
       override def initFileStreamer = appl
       override lazy val defaultTimeout = FiniteDuration(60, SECONDS)
-      override lazy val deferredUris = Set("long-req")
-      override lazy val deferredTimeouts = Map("long-req" -> FiniteDuration(300, SECONDS))
-      override lazy val deferredWorkerCount = 3
 
       override def listOrGetAction(viewName: String)(
         implicit user: TestUsr, state: ApplicationState, timeout: QueryTimeout): Route =
@@ -109,13 +106,13 @@ class DeferredTests extends AnyFlatSpec with Matchers with TestQuereaseInitializ
     val route = service.isDeferredPath(service.extractTimeout {
       timeout => complete(s"defered-timeout:${timeout.timeoutSeconds}")})
 
-    Get("/long-req") ~> route ~> check {
+    Get("/slow-req") ~> route ~> check {
       responseAs[String] shouldEqual "defered-timeout:300"
     }
-    Get("/long-req/") ~> route ~> check {
+    Get("/slow-req/") ~> route ~> check {
       handled shouldBe true
     }
-    Get("/long-req/123") ~> route ~> check {
+    Get("/slow-req/123") ~> route ~> check {
       handled shouldBe true
     }
   }
@@ -258,21 +255,21 @@ class DeferredTests extends AnyFlatSpec with Matchers with TestQuereaseInitializ
       results += (parseDeferredRequestId(responseAs[String]) -> "fault")
       handled shouldBe true
     }
-    // no need of X-Deferred header as long-req is in deferredTimeouts
-    Get("/data/long-req") ~> route ~> check {
-      results += (parseDeferredRequestId(responseAs[String]) -> "long-req:300")
+    // no need of X-Deferred header as slow-req is in deferredTimeouts
+    Get("/data/slow-req") ~> route ~> check {
+      results += (parseDeferredRequestId(responseAs[String]) -> "slow-req:300")
       handled shouldBe true
     }
-    Get("/data/long-req1") ~> RawHeader("X-Deferred", "30s") ~> route ~> check {
-      results += (parseDeferredRequestId(responseAs[String]) -> "long-req1:30")
+    Get("/data/slow-req1") ~> RawHeader("X-Deferred", "30s") ~> route ~> check {
+      results += (parseDeferredRequestId(responseAs[String]) -> "slow-req1:30")
       handled shouldBe true
     }
-    Get("/data/long-req1") ~> RawHeader("X-Deferred", "100s") ~> route ~> check {
+    Get("/data/slow-req1") ~> RawHeader("X-Deferred", "100s") ~> route ~> check {
       results += (parseDeferredRequestId(responseAs[String]) -> "Max request timeout exceeded: 100 > 60")
       handled shouldBe true
     }
-    Get("/data/long-req1") ~> RawHeader("X-Deferred", "true") ~> route ~> check {
-      results += (parseDeferredRequestId(responseAs[String]) -> "long-req1:60")
+    Get("/data/slow-req1") ~> RawHeader("X-Deferred", "true") ~> route ~> check {
+      results += (parseDeferredRequestId(responseAs[String]) -> "slow-req1:60")
       handled shouldBe true
     }
 

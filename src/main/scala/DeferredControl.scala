@@ -1,5 +1,6 @@
 package org.wabase
 
+import com.typesafe.config.ConfigValueType
 import org.apache.pekko.http.scaladsl.server.PathMatchers.{Remaining, Segment}
 import org.apache.pekko.http.scaladsl.server.{Directive, Route}
 import org.apache.pekko.http.scaladsl.model.{HttpEntity, HttpRequest, HttpResponse, MediaType, StatusCodes}
@@ -201,7 +202,11 @@ object DeferredControl extends Loggable with AppConfig {
 
   lazy val defaultTimeout      = toFiniteDuration(appConfig.getDuration("deferred-requests.default-timeout"))
   lazy val deferredWorkerCount = appConfig.getInt("deferred-requests.worker-count")
-  lazy val deferredUris        = appConfig.getString("deferred-requests.requests").split("[\\s,]+").filter(_ != "").toSet
+  lazy val deferredUris        = appConfig.getValue("deferred-requests.requests").valueType match {
+    case ConfigValueType.STRING => appConfig.getString("deferred-requests.requests").split("[\\s,]+").filter(_ != "").toSet
+    case _                      => appConfig.getStringList("deferred-requests.requests").asScala.toSet
+  }
+
   lazy val deferredTimeouts =
     deferredUris.map(_ -> defaultTimeout).toMap ++ {
       val tc = appConfig.getConfig("deferred-requests.timeouts")
