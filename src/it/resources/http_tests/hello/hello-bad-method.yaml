@@ -1,0 +1,3 @@
+path:     /hello
+method:   PUT
+error:    405 Method Not Allowed

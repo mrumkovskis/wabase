@@ -137,6 +137,8 @@ object WabaseService {
   val notFound: Future[HttpResponse] = Future.successful(HttpResponse(status = StatusCodes.NotFound))
 
   val okResponse: HttpResponse = HttpResponse(StatusCodes.OK)
+  def statusResponse(statusCode: String): HttpResponse = HttpResponse(statusCode.toInt)
+  def statusAndTextResponse(statusCode: String, text: String): HttpResponse = HttpResponse(statusCode.toInt, entity = ByteString(text))
 
   def optionalHttpHeaderValue[T](msg: HttpMessage)(extractorF: HttpHeader => Option[T]): Option[T] = {
     msg.headers.collectFirst(Function.unlift(extractorF))

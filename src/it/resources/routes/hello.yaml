@@ -1,2 +1,6 @@
+on: GET /hello
+do: response('200', 'Hello from wabase!')
+
+
 on: /hello
-do: org.wabase.WabaseServer.hello
+do: status('405')   # Method Not Allowed
