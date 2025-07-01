@@ -7,6 +7,7 @@ import org.snakeyaml.engine.v2.common.FlowStyle
 import scala.jdk.CollectionConverters._
 import scala.io.{Codec, Source}
 import scala.language.{implicitConversions, reflectiveCalls}
+import scala.util.Try
 import spray.json._
 import MapRecursiveExtensions._
 
@@ -55,7 +56,13 @@ trait TemplateUtil { this: JsonConverterProvider with QuereaseProvider =>
 
   def pojoFromTemplate[T <: Dto](viewClass: Class[T], fileName: String) =
     viewClass.getConstructor().newInstance().fill(readPojoMap(new File(resourcePath + fileName), getTemplatePath).toJson.asJsObject)
-  def readFileBytes(fileName: String): Array[Byte] = Files.readAllBytes(Paths.get(fileName))
+  def readFileBytes(fileName: String): Array[Byte] =
+    try Files.readAllBytes(Paths.get(fileName)) catch {
+      case util.control.NonFatal(ex) =>
+        val fullFilename = Try(Paths.get(fileName).toAbsolutePath.toString).toOption.getOrElse(fileName)
+        if (fileName == fullFilename) throw ex
+        else throw new RuntimeException(s"Failed to read file bytes from: $fullFilename", ex)
+    }
 
   def mergeTemplate(template : MapTemplate, extras: MapTemplate): MapTemplate = template.zipWithMap(extras, nullObject = NotDefined) map {
     case (k, (v, NotDefined)) => k -> v
