@@ -20,7 +20,6 @@ import org.tresql.parsing.QueryParsers
 import org.wabase.AppMetadata.{Action, RouteDef}
 import org.wabase.WabaseService.Wabase
 
-import java.lang.reflect.Parameter
 import java.util.Locale
 import scala.annotation.tailrec
 import scala.concurrent.{ExecutionContext, Future}
@@ -137,8 +136,8 @@ object WabaseService {
   val notFound: Future[HttpResponse] = Future.successful(HttpResponse(status = StatusCodes.NotFound))
 
   val okResponse: HttpResponse = HttpResponse(StatusCodes.OK)
-  def statusResponse(statusCode: String): HttpResponse = HttpResponse(statusCode.toInt)
-  def statusAndTextResponse(statusCode: String, text: String): HttpResponse = HttpResponse(statusCode.toInt, entity = ByteString(text))
+  def statusResponse(statusCode: Int): HttpResponse = HttpResponse(statusCode)
+  def statusAndTextResponse(statusCode: Int, text: String): HttpResponse = HttpResponse(statusCode, entity = ByteString(text))
 
   def optionalHttpHeaderValue[T](msg: HttpMessage)(extractorF: HttpHeader => Option[T]): Option[T] = {
     msg.headers.collectFirst(Function.unlift(extractorF))
@@ -509,10 +508,9 @@ object WabaseService {
         pathMatchedGroups(wrc).flatMap(_.lift(nr - 1))
           .getOrElse(sys.error(
               s"Group nr '$nr' not found in route '${wrc.route.path}' for path '${wrc.req.uri.path}'"))
+      case HandlerArgsParser.NumberArg(n) => n
     }.zipWithIndex.map { case (value, idx) =>
-      { case (par, i) if idx == i && (value == null || par.getType.isAssignableFrom(value.getClass)) =>
-        value
-      }:InvocationParameterFun
+      { case (par, i) if idx == i => wrc.wabase.qe.convertToType(value, par.getType) }:InvocationParameterFun
     }.foldLeft(PartialFunction.empty[InvocationParameter, Any])(_ orElse _) orElse
       AppQuerease.dtoParameterFromMapF(() => toMapEntityDecoder(wrc))(wrc.wabase.qio)
 
@@ -575,11 +573,13 @@ object HandlerArgsParser extends QueryParsers {
   trait HandlerArg
   case class RegexGroupRef(nr: Int) extends HandlerArg
   case class StringArg(str: String) extends HandlerArg
+  case class NumberArg(value: Long) extends HandlerArg
   def groupRef: MemParser[RegexGroupRef] = "\\$(\\d+)".r ^^ {
     gr => RegexGroupRef(gr.substring(1).toInt)
   } named "regex-group-arg"
   def stringArg: MemParser[StringArg] = stringLiteral ^^ StringArg named "string-arg"
-  def arg: MemParser[HandlerArg] = stringArg | groupRef
+  def numberArg: MemParser[NumberArg] = "\\d+".r ^^ (v => NumberArg(v.toLong)) named "number-arg"
+  def arg: MemParser[HandlerArg] = stringArg | groupRef | numberArg
   def parsArg(value: String): HandlerArg = {
     phrase(arg)(new CharSequenceReader(value)) match {
       case Success(r, _) => r

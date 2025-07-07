@@ -39,8 +39,8 @@ object BusinessScenariosSpecs {
     }
   }
 
-  def sleep(millis: String, response: HttpResponse)(implicit ec: ExecutionContext): Future[HttpResponse] = Future {
-    Thread.sleep(millis.toLong)
+  def sleep(millis: Long, response: HttpResponse)(implicit ec: ExecutionContext): Future[HttpResponse] = Future {
+    Thread.sleep(millis)
     response
   }
 }

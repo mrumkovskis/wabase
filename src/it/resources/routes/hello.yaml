@@ -1,6 +1,6 @@
 on: GET /hello
-do: response('200', 'Hello from wabase!')
+do: response(200, 'Hello from wabase!')
 
 
 on: /hello
-do: status('405')   # Method Not Allowed
+do: status(405)   # Method Not Allowed
