@@ -816,7 +816,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
             case TresqlResult(SingleValueResult(qr: QuereaseResult)) => qr // unwrap bind variable value
             case x => x
           }
-          AppQuerease.orderedInvocationParameter(unwrappedVal(opRes), idx, function)
+          AppQuerease.orderedInvocationParameter(unwrappedVal(opRes), idx, function)(AppQuerease.this)
         }
         invokeFunction(className, function,
           valFuns.reduce(_ orElse _) orElse AppQuerease.dtoParameterFromMap(() => invocationData)(qio)) match {
@@ -2121,31 +2121,22 @@ object AppQuerease {
     case (par, idx) if classOf[Dto].isAssignableFrom(par.getType) =>
       data().map(m => dtoParameterFromMap(() => m)(qio)(par -> idx))
   }
-  /** Returns partial function which is defined if qr is tresql result and unique primitive value of
-   *  parameter type passed as an argument to that function can be obtained. */
-  def orderedInvocationParameter(qr: QuereaseResult, idx: Int, function: String): InvocationParameterFun = {
+  /** Returns [[InvocationParameterFun]] which is defined if parameter index matches and
+   * [[QuereaseResult]] can be conformed to function parameter type
+   * */
+  def orderedInvocationParameter(qr: QuereaseResult, idx: Int, function: String)(qe: AppQuerease): InvocationParameterFun = {
     val tresqlResult = qr match { case TresqlResult(result) => result case _ => null }
-    def maybeParCompatibleResult(clazz: Class[_], r: Result[_]) = r != null && (r match {
-      case SingleValueResult(null) => !clazz.isPrimitive
-      case SingleValueResult(v) => clazz.isAssignableFrom(v.getClass)
-      case _ => true
-    })
-    val pf1: PartialFunction[InvocationParameter, String] = {
-      case (par, i) if i == idx && maybeParCompatibleResult(par.getType, tresqlResult) =>
-        scala.reflect.Manifest.classType(par.getType).toString()
-    }
-    val pf2: PartialFunction[String, Any] = {
-      case mf if tresqlResult.typedPf(0).isDefinedAt(mf) =>
-        try if (tresqlResult.hasNext) {
-          tresqlResult.next()
-          tresqlResult.typedPf(0)(mf)
-        } else null finally tresqlResult.close()
-    }
-    new InvocationParameterFun {
-      override def isDefinedAt(par: InvocationParameter): Boolean =
-        pf1.isDefinedAt(par) && pf2.isDefinedAt(pf1(par))
-      override def apply(par: InvocationParameter): Any = pf2(pf1(par))
-    } orElse ({ case (par, i)
+    ({
+      case (par, i) if i == idx && tresqlResult != null &&
+        tresqlResult.typedPf(0).isDefinedAt(scala.reflect.Manifest.classType(par.getType).toString()) =>
+        tresqlResult match {
+          case SingleValueResult(v) => qe.convertToType(v, par.getType)
+          case r => try if (r.hasNext) {
+            r.next()
+            r.typedPf(0)(scala.reflect.Manifest.classType(par.getType).toString())
+          } else null finally r.close()
+        }
+    }: InvocationParameterFun) orElse ({ case (par, i)
       if i == idx && par.getType == classOf[String] && qr.getClass == classOf[StringResult] =>
       qr.asInstanceOf[StringResult].value
     }: InvocationParameterFun) orElse ({
