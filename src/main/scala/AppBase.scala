@@ -1072,25 +1072,30 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
   }
 
   def validateFields(viewName: String, instance: Map[String, Any])(implicit state: ApplicationState): Unit = {
-    val viewDef = qe.viewDef(viewName)
-    // TODO ensure field ordering
-    val errorMessages = viewDef.fields
-      .filterNot(_.api.readonly)
-      .map(fld =>
-        validationErrorMessage(viewName, fld, instance.getOrElse(fld.fieldName, null))(state.locale))
-      .filter(_.isDefined)
-      .map(_.get)
-      .filter(_ != null)
-    if (errorMessages.nonEmpty)
-      throw new BusinessException(errorMessages.mkString("\n"))
+    import scala.collection.mutable
+    val stack: mutable.Queue[(String, Map[String, Any])] = mutable.Queue((viewName, instance))
+    while (stack.nonEmpty) {
+      val (vn, inst) = stack.dequeue()
+      val viewDef = qe.viewDef(vn)
+      // TODO ensure field ordering
+      val errorMessages = viewDef.fields
+        .filterNot(_.api.readonly)
+        .map(fld =>
+          validationErrorMessage(vn, fld, inst.getOrElse(fld.fieldName, null))(state.locale))
+        .filter(_.isDefined)
+        .map(_.get)
+        .filter(_ != null)
+      if (errorMessages.nonEmpty)
+        throw new BusinessException(errorMessages.mkString("\n"))
 
-    // TODO merge all errorMessages?
-    val complexFields = viewDef.fields.filter(_.type_.isComplexType).map(fld => fld.fieldName -> fld.type_.name)
-    complexFields.foreach { case (fieldName, typeName) =>
-      instance.getOrElse(fieldName, null) match {
-        case m: Map[String, Any] @unchecked => validateFields(typeName, m)
-        case l: Seq[Map[String, Any]] @unchecked => l.foreach(validateFields(typeName, _))
-        case null =>
+      // TODO merge all errorMessages?
+      val complexFields = viewDef.fields.filter(_.type_.isComplexType).map(fld => fld.fieldName -> fld.type_.name)
+      complexFields.foreach { case (fieldName, typeName) =>
+        inst.getOrElse(fieldName, null) match {
+          case m: Map[String, Any] @unchecked => stack.enqueue((typeName, m))
+          case l: Seq[Map[String, Any]] @unchecked => l.foreach(m => stack.enqueue((typeName, m)))
+          case null =>
+        }
       }
     }
   }

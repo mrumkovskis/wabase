@@ -484,7 +484,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     curData: Future[Map[String, Any]],
   )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
     if (context.contextStack.size > maxStackDepth)
-      throw new StackOverflowError(s"Action call stack depth exceeds $maxStackDepth. Stack - ${context.stackStr}")
+      throw new IllegalStateException(s"Action call stack depth exceeds $maxStackDepth. Stack - ${context.stackStr}")
     import Action._
     import qr._
     def updateCurRes(cr: Map[String, Any], key: Option[String], resF: Future[_]) = {
