@@ -1071,11 +1071,10 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
     else None
   }
 
+  private val maxStackDepth = config.getInt("wabase.max-stack-depth")
   def validateFields(viewName: String, instance: Map[String, Any])(implicit state: ApplicationState): Unit = {
-    import scala.collection.mutable
-    val stack: mutable.Queue[(String, Map[String, Any])] = mutable.Queue((viewName, instance))
-    while (stack.nonEmpty) {
-      val (vn, inst) = stack.dequeue()
+    def valFields(vn: String, inst: Map[String, Any], depth: Int): Unit = {
+      if (depth > maxStackDepth) throw new IllegalStateException(s"Structure depth exceeds $maxStackDepth (consider configuration parameter wabase.max-stack-depth)")
       val viewDef = qe.viewDef(vn)
       // TODO ensure field ordering
       val errorMessages = viewDef.fields
@@ -1092,12 +1091,13 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
       val complexFields = viewDef.fields.filter(_.type_.isComplexType).map(fld => fld.fieldName -> fld.type_.name)
       complexFields.foreach { case (fieldName, typeName) =>
         inst.getOrElse(fieldName, null) match {
-          case m: Map[String, Any] @unchecked => stack.enqueue((typeName, m))
-          case l: Seq[Map[String, Any]] @unchecked => l.foreach(m => stack.enqueue((typeName, m)))
+          case m: Map[String, Any] @unchecked => valFields(typeName, m, depth + 1)
+          case l: Seq[Map[String, Any]] @unchecked => l.foreach(valFields(typeName, _, depth + 1))
           case null =>
         }
       }
     }
+    valFields(viewName, instance, 1)
   }
 
   def validateFields(instance: Dto)(implicit state: ApplicationState): Unit = {

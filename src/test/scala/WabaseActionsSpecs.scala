@@ -1673,4 +1673,35 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         .map(_ shouldBe List(Map("name" -> "jasmine", "roles" -> List("admin", "guest"))))
     } yield t1
   }
+
+  behavior of "Save operation with dynamically generated deep nesting"
+
+  it should "attempt to process a very deep structure and observe behavior" in {
+    val nestingDepth = 3000
+    def createDeepInputMap(depth: Int): Map[String, Any] = {
+      Map(
+        "code" -> "root",
+        "value" -> "top_level",
+        "children" -> createNestedChildrenData(1, depth)
+      )
+    }
+    def createNestedChildrenData(currentDepth: Int, maxDepth: Int): List[Map[String, Any]] = {
+      if (currentDepth > maxDepth) {
+        List.empty[Map[String, Any]]
+      } else {
+        val childCode = s"code$currentDepth"
+        List(
+          Map(
+            "code" -> childCode,
+            "value" -> s"ch_val_$currentDepth",
+            "children" -> createNestedChildrenData(currentDepth + 1, maxDepth)
+          )
+        )
+      }
+    }
+    val deepInput = createDeepInputMap(nestingDepth)
+    recoverToExceptionIf[IllegalStateException] {
+      doAction("save", "foreach_test_1", deepInput)
+    }.map(_.getMessage should startWith("Structure depth exceeds"))
+  }
 }
