@@ -164,6 +164,20 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
     callRoute("/static_resources/") shouldBe "Resource: static_resources/null from uri: /static_resources/"
   }
 
+  it should "handle deep nested structures" in {
+    def deepNestedData(depth: Int) =
+      (1 to depth).foldLeft(Map[String, Any]("code" -> depth, "children" -> Nil)) { (r, i) =>
+        Map("code" -> (depth - i), "children" -> List(r))
+      }
+    // borer does not support more than 64 Array/Object nesting levels
+    val depth = 30
+    val data = deepNestedData(depth)
+    callRoute("/deep-nested-view/nested_view",
+      data = encodeJs(data), method = HttpMethods.POST, decoder = decodeJs) shouldBe data
+    callRoute("/deep-nested-data",
+      data = encodeJs(data), method = HttpMethods.POST, decoder = decodeJs) shouldBe data
+  }
+
   val count = 1024
   it should s"do ${count * 2} wabase service routes" in {
     1 to count foreach { _ =>

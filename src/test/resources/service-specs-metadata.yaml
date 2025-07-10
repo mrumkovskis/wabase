@@ -76,6 +76,13 @@ do:       testAuth mergeUserData doAction $1
 on:       /static_resources/(.*\.txt)?
 do:       staticResources('static_resources', $1)
 
+# deep nested structure decoding for view
+on:       POST PUT /deep-nested-view/(.+)
+do:       org.wabase.WabaseService.viewActionKey($1) org.wabase.WabaseService.toMapForViewEntityDecoder
+
+on:       POST PUT /deep-nested-data
+do:       org.wabase.WabaseService.toMapEntityDecoder
+
 ################# views ###############
 
 name: view1
@@ -134,3 +141,12 @@ get:
     user_attrs({'password', null} /*remove attribute*/)
     user_attrs({'session_id', 'abcdefgh'})
     user_attrs({'roles', |[({trim('guest')} + {trim('admin')} + {trim('operator')})#(1)]} /*array query as child*/)
+
+
+name: nested_view
+api: insert, update
+explicit db: true
+table:
+fields:
+- code int
+- children * nested_view
