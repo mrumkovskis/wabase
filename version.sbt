@@ -1,1 +1,1 @@
-version := "8.0.0-RC8-SNAPSHOT"
+version := "8.0.0-RC9-SNAPSHOT"

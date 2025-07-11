@@ -18,7 +18,12 @@ import scala.collection.immutable.Seq
 import scala.concurrent.{ExecutionContext, Future}
 
 
-case class EmailAttachment(filename: String, content_type: String, content: Source[ByteString, _])
+case class EmailAttachment(
+  filename: String,
+  content_type: String,
+  content: Source[ByteString, _],
+  isEmbeddedImage: Boolean = false,
+)
 
 trait WabaseEmail {
   def sendMail(
@@ -101,7 +106,10 @@ class DefaultWabaseEmailSender extends WabaseEmail with Loggable {
         override def getName()          = filename
         override def getOutputStream()  = ???
       }
-      builder.withAttachment(filename, dataSource)
+      if (attachment.isEmbeddedImage)
+        builder.withEmbeddedImage(filename, dataSource)
+      else
+        builder.withAttachment(filename, dataSource)
     }
     val email = builder.buildEmail
     // // TODO (when scala 2.12 no longer supported):
