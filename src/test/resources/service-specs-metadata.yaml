@@ -83,6 +83,10 @@ do:       org.wabase.WabaseService.viewActionKey($1) org.wabase.WabaseService.to
 on:       POST PUT /deep-nested-data
 do:       org.wabase.WabaseService.toMapEntityDecoder
 
+# default error processing
+on:       /error
+do:       org.wabase.WabaseTestHandlers.error
+
 ################# views ###############
 
 name: view1

@@ -78,7 +78,7 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
   it should "process errors for wabase service routes" in {
     callRoute("/greater/than-3/5") shouldBe "Key: 5"
     callRoute("/greater/than-3/2") shouldBe "Key must be greater then 3, got: 2"
-    callRoute("/greater/than-3/fail") shouldBe """Key must be number instead got: For input string: "fail""""
+    callRoute("/greater/than-3/fail") shouldBe """[/greater/than-3/fail] Key must be number instead got: For input string: "fail""""
   }
 
   it should "do wabase service routes for public views" in {
@@ -110,6 +110,11 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
       code shouldBe StatusCodes.BadRequest
       String.valueOf(resp) should startWith("Failed to read to map for view1")
     }
+  }
+
+  it should "invoke default error handler" in {
+    val (st, _) = statusAndEntityForRequest(HttpRequest(uri = "/error"))
+    st shouldBe StatusCodes.InternalServerError
   }
 
   it should "do login and authenticated requests" in {
@@ -268,10 +273,17 @@ object WabaseTestHandlers {
   def errorHandler(ctx: WabaseRequestContext): WabaseService.ErrorHandler = {
     val eh: WabaseService.ErrorHandler = {
       case e: NumberFormatException =>
-        Future.successful(HttpResponse(entity = s"Key must be number instead got: ${e.getMessage}"))
+        Future.successful(
+          HttpResponse(
+            status = StatusCodes.BadRequest,
+            entity = s"[${WabaseErrorHandler.ctxDebugInfo(ctx)}] Key must be number instead got: ${e.getMessage}"
+          )
+        )
     }
     eh orElse WabaseErrorHandler.errorHandler(ctx)
   }
+
+  def error = throw new IllegalArgumentException("Error")
 
   // helper function
   def entity(msg: HttpMessage)(implicit ec: ExecutionContext, as: ActorSystem): String =

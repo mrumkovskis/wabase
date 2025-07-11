@@ -109,7 +109,7 @@ class WabaseService extends Loggable {
         case h: PartialFunction[Throwable@unchecked, Future[HttpResponse]@unchecked] =>
           h.orElse {
             case NonFatal(e) =>
-              logger.error("Internal server error, sending http 500", e)
+              logger.error(s"[${WabaseErrorHandler.ctxDebugInfo(wrc)}] Internal server error, sending http 500", e)
               Future.successful(HttpResponse(status = StatusCodes.InternalServerError))
           }
         case x => sys.error(s"Error handler for route ${wrc.route.path} must return value of type:" +
