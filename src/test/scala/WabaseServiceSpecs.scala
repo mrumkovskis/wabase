@@ -91,6 +91,15 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
     callRoute("/public/view1?list_filter_param=val", decoder = decodeJs) shouldBe "val"
     callRoute("/public/create:view1?p1=111&p2=aaa", decoder = decodeJs) shouldBe Seq(111, "aaa")
     callRoute("/public/count:view1", decoder = decodeJs) shouldBe 1
+    response(HttpRequest(uri = "/public/querease_action_exception")).status shouldBe StatusCodes.InternalServerError
+    response(HttpRequest(
+      method = HttpMethods.POST,
+      uri = "/public/querease_action_exception")
+    ).status shouldBe StatusCodes.Unauthorized
+    response(HttpRequest(
+      method = HttpMethods.PUT,
+      uri = "/public/querease_action_exception")
+    ).status shouldBe StatusCodes.BadRequest
   }
 
   it should "process request decoder errors" in {
@@ -284,6 +293,8 @@ object WabaseTestHandlers {
   }
 
   def error = throw new IllegalArgumentException("Error")
+  def authError = throw new AuthenticationException("bad")
+  def csrfException = throw new CSRFException("bad")
 
   // helper function
   def entity(msg: HttpMessage)(implicit ec: ExecutionContext, as: ActorSystem): String =

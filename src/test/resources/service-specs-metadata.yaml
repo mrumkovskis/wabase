@@ -154,3 +154,16 @@ table:
 fields:
 - code int
 - children * nested_view
+
+
+name: querease_action_exception
+api: get, insert, update
+explicit db: true
+decoder: none
+table:
+get:
+- org.wabase.WabaseTestHandlers.error
+insert:
+- org.wabase.WabaseTestHandlers.authError
+update:
+- org.wabase.WabaseTestHandlers.csrfException

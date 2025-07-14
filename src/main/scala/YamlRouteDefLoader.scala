@@ -36,7 +36,7 @@ class YamlRouteDefLoader(
       def parseProperty(property: String) =
         parser(property)(rdMap).steps match {
           case Nil => null
-          case List(Action.Evaluation(_, _, op: Action.Invocation, _)) => op
+          case List((Action.Evaluation(_, _, op: Action.Invocation, _), _)) => op
           case x => sys.error(s"Error parsing route $route $property, expected invocation call, got: $x")
         }
 

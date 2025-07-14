@@ -120,8 +120,8 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
 
   it should "have correct data" in {
     val pVd = querease.viewDef("person")
-    pVd.actions("save").steps(2).isInstanceOf[Action.Validations] should be (true)
-    pVd.actions("save").steps(2).asInstanceOf[Action.Validations].validations.head should be {
+    pVd.actions("save").steps(2)._1.isInstanceOf[Action.Validations] should be (true)
+    pVd.actions("save").steps(2)._1.asInstanceOf[Action.Validations].validations.head should be {
       "build cursors"
     }
   }

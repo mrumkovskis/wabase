@@ -60,6 +60,11 @@ object WabaseErrorHandler {
       case e: org.tresql.TresqlException if e.getCause.isInstanceOf[org.postgresql.util.PSQLException] &&
         e.getCause.getMessage == PostgresTimeoutExceptionHandler.TimeoutSignature =>
         errorHandlerPF(ctx)(e.getCause)
+      case e: QuereaseActionException =>
+        (errorHandlerPF(ctx) orElse { case _ =>
+          ctx.logger.error(s"[${WabaseErrorHandler.ctxDebugInfo(ctx)}] ${e.getMessage}", e.getCause)
+          HttpResponse(status = StatusCodes.InternalServerError)
+        }:PartialFunction[Throwable, HttpResponse])(e.getCause)
     }
   }
 

@@ -38,6 +38,8 @@ trait QuereaseProvider {
   protected def initQuereaseIo: AppQuereaseIo[Dto] = new AppQuereaseIo[Dto](qe)
 }
 
+class QuereaseActionException(message: String, cause: Throwable) extends Exception(message, cause)
+
 case class QuereaseResources()(implicit
   val resourcesFactory: ResourcesFactory,
   val ec: ExecutionContext,
@@ -368,12 +370,16 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     actionName: String,
     env: Map[String, Any],
     view: Option[ViewDef],
-    log: (=> String) => Unit,
+    logger: Logger,
     fieldFilter: FieldFilter = null,
     stepName: String = null,
     contextStack: List[ActionContext] = Nil,
   ) {
     val name = s"$viewName.$actionName" + Option(stepName).map(s => s".$s").getOrElse("")
+    def log(msg: String) = {
+      logger.debug(msg)
+      if(!logger.underlying.isDebugEnabled()) AppQuerease.this.logger.debug(msg)
+    }
     def stackStr: String = (name :: contextStack.map(_.name)).mkString("[", ",", "]")
   }
 
@@ -411,6 +417,20 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
 
   def requestPartsToMap(result: RequestPartResult)(implicit as: ActorSystem): Future[Map[String, Any]] =
     AppQuerease.requestPartsToMap(result)
+
+  def exceptionHandler(e: Throwable, src: String, context: ActionContext): Throwable = e match {
+    case e: BusinessException => e
+    case e: ValidationException => e
+    case e: MissingBindVariableException => e
+    case e: QuereaseEnvException => e
+    case e: org.mojoz.querease.ViewNotFoundException => e
+    case e: org.mojoz.querease.NotFoundException => e
+    case e: QuereaseActionException => e
+    case e: AuthenticationException => e
+    case e: AuthorizationException => e
+    case x => new QuereaseActionException(
+      s"Action: ${context.viewName}.${context.actionName}, step - '$src'", x)
+  }
 
   def doAction(
     view: String,
@@ -460,26 +480,19 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     fieldFilter: FieldFilter = null,
     contextStack: List[ActionContext] = Nil,
   )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
-    val ctx = ActionContext(view, actionName, env, viewDefOption(view), quereaseActionLogger(s"$view.$actionName.ctx"),
+    val loggerName = s"$view.$actionName.ctx"
+    val ctx = ActionContext(view, actionName, env, viewDefOption(view), Logger(LoggerFactory.getLogger(loggerName)),
       fieldFilter, null, contextStack)
     logContext(ctx, env, qr.resourcesFactory)
     val steps =
       quereaseActionOpt(view, actionName)
         .map(_.steps)
-        .getOrElse(List(Action.Return(None, Nil, Action.ViewCall(actionName, view, null))))
+        .getOrElse(List(Action.Return(None, Nil, Action.ViewCall(actionName, view, null)) -> ""))
     doSteps(steps, ctx, Future.successful(data))
   }
 
-  def quereaseActionLogger(name: String): (=>String) => Unit = {
-    val logger = Logger(LoggerFactory.getLogger(name))
-    msg => {
-      logger.debug(msg)
-      if(!logger.underlying.isDebugEnabled()) this.logger.debug(msg)
-    }
-  }
-
   def doSteps(
-    steps: List[Action.Step],
+    steps: List[(Action.Step, String)],
     context: ActionContext,
     curData: Future[Map[String, Any]],
   )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
@@ -509,10 +522,10 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         case r => key.map(k => upd(cr, k, r)).getOrElse(cr)
       }
     }
-    def doStep(step: Step, stepDataF: Future[Map[String, Any]]): Future[QuereaseResult] = {
+    def doStep(step: Step, stepDataF: Future[Map[String, Any]], src: String): Future[QuereaseResult] = {
       import resourcesFactory._
       stepDataF flatMap { stepData =>
-        context.log(s"Doing action '${context.name}' step '$step'.")
+        context.log(s"Doing action '${context.name}' step '$src'.")
         context.log(s"Step data: {${loggable(resourcesFactory.resources, stepData)}}")
         step match {
           case Evaluation(_, vts, op, _) =>
@@ -530,13 +543,13 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
               new RuntimeException(s"Validation cannot be performed without view in context -" +
                 s"(${context.name})")))
         }
-      }
+      } transform(identity, exceptionHandler(_, src, context))
     }
 
     steps match {
       case Nil => curData map MapResult
-      case s :: Nil =>
-        doStep(s, curData) flatMap {
+      case (s, src) :: Nil =>
+        doStep(s, curData, src) flatMap {
           case ir: IdResult =>
             curData.map(keyResult(ir, context.viewName, _))
           case kr: KeyResult =>
@@ -567,8 +580,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
             .map(MapResult)
           case _ => Future.successful(res)
         }}
-      case s :: tail =>
-        doStep(s, curData) flatMap { stepRes =>
+      case (s, src) :: tail =>
+        doStep(s, curData, src) flatMap { stepRes =>
           s match {
             case e: Evaluation =>
               doSteps(tail, context, curData
@@ -841,7 +854,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       if (job.isDynamic)
         useResourcesConnOrEvaluator(resourcesFactory.resources, Query(job.nameTresql)(_).unique[String])
       else job.nameTresql
-    val ctx = ActionContext(jobName, JobAct, env, None, context.log,
+    val ctx = ActionContext(jobName, JobAct, env, None, context.logger,
       contextStack = context :: context.contextStack)
     val jd = jobDef(jobName)
     doSteps(jd.action.steps, ctx, Future.successful(data))

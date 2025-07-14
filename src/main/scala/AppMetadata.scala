@@ -610,7 +610,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
           opParser.parseOperation(st)
         }
       }
-      def parseStringStep(name: Option[String], statement: String, keepResult: Boolean): Action.Step = {
+      def parseStringStep(name: Option[String], statement: String, keepResult: Boolean): (Action.Step, String) = {
         def parseSt(st: String, varTrs: List[VariableTransform]) = {
           def setEnvOrRetStep(createStep: Action.Op => Action.Step, stepRegex: Regex): Action.Step = {
             val stepRegex(opStr) = st
@@ -632,23 +632,24 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
             Action.Evaluation(name, varTrs, parseOp(st), keepResult)
           }
         }
-
-        if (statement.contains("->")) {
-          val p = parser.asInstanceOf[AppQuereaseDefaultParser] // FIXME get rid of typecast
-          Try(p.parseWithParser(p.stepWithVarsTransform)(statement))
-            .map { case (vtrs, st) => parseSt(st, vtrs) }
-            .toOption
-            .getOrElse(parseSt(statement, Nil))
-        } else {
-          parseSt(statement, Nil)
-        }
+        val st =
+          if (statement.contains("->")) {
+            val p = parser.asInstanceOf[AppQuereaseDefaultParser] // FIXME get rid of typecast
+            Try(p.parseWithParser(p.stepWithVarsTransform)(statement))
+              .map { case (vtrs, st) => parseSt(st, vtrs) }
+              .toOption
+              .getOrElse(parseSt(statement, Nil))
+          } else {
+            parseSt(statement, Nil)
+          }
+        (st, statement)
       }
-      def parseStep(anyStep: Any): Action.Step = {
+      def parseStep(anyStep: Any): (Action.Step, String) = {
         anyStep match {
           case s: String if removeVarStepRegex.pattern.matcher(s).matches() =>
             val removeVarStepRegex(ident, str_lit) = s
             val name = if (ident != null) ident else str_lit.substring(1, str_lit.length - 1)
-            Action.RemoveVar(Some(name))
+            (Action.RemoveVar(Some(name)), s)
           case s: String if namedStepRegex.pattern.matcher(s).matches() =>
             val namedStepRegex(keepResult, name, st) = s
             parseStringStep(Option(name), st, keepResult != null)
@@ -663,18 +664,19 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
             if (validationRegex.pattern.matcher(name).matches()) {
               val validationRegex(vn, db, cp) = name
               val validations = getSeq(name, m).map(_.toString)
-              Action.Validations(
+              (Action.Validations(
                 Option(vn),
                 validations,
                 if (db == null) None else Option(DbAccessKey(db))
-              )
+              ), "validation" + Option(vn).map(n => s" [$n]").mkString)
             } else {
               value match {
                 case jm: java.util.Map[String@unchecked, _] =>
                   // may be 'if', 'foreach', 'db ...' step
                   parseStep(jm) match {
-                    case e: Action.Evaluation => e.copy(name = Option(name), keepResult = keepResult != null)
-                    case x => sys.error(s"Invalid step '$name' value here: ($x), expected Evaluation step.")
+                    case (e: Action.Evaluation, src) =>
+                      (e.copy(name = Option(name), keepResult = keepResult != null), src)
+                    case (x, _) => sys.error(s"Invalid step '$name' value here: ($x), expected Evaluation step.")
                   }
                 case al: java.util.ArrayList[_] if name != null =>
                   // 'if', 'foreach', 'db ...' step
@@ -698,7 +700,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
                     case _: Action.Block => name
                     case _ => varName
                   }
-                  Action.Evaluation(Option(eval_var_name), Nil, op, keepResult != null)
+                  (Action.Evaluation(Option(eval_var_name), Nil, op, keepResult != null), opStr)
                 case x => parseStringStep(Option(name), x.toString, keepResult != null)
               }
             }
@@ -710,14 +712,14 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     }.toList
     //coalesce else op into if
     val coalescedSteps = if (steps.isEmpty) Nil else
-      (steps.tail.foldLeft(steps.head -> List[Action.Step]()) { case ((p, r), s) =>
+      (steps.tail.foldLeft(steps.head -> List[(Action.Step, String)]()) { case (((p, psrc), r), (s, src)) =>
         s match {
           case Action.Evaluation(_, _, elseOp: Action.Else, _) => p match {
             case ifEv@Action.Evaluation(_, _, ifOp: Action.If, _) =>
-              (null, ifEv.copy(op = ifOp.copy(elseAct = elseOp.action)) :: r)
+              (null, (ifEv.copy(op = ifOp.copy(elseAct = elseOp.action)), psrc) :: r)
             case _ => sys.error(s"else statement must follow if statement, instead found '$p'")
           }
-          case _ => (s, if (p != null) p :: r else r)
+          case _ => ((s, src), if (p != null) (p, psrc) :: r else r)
         }
       } match {
         case (null, r) => r
@@ -1021,7 +1023,7 @@ class OpParser(viewName: String, cache: OpParser.Cache)
       case x => sys.error(s"Knipis, unexpected op result type: $x")
     } named "op-result-type"
   }
-  private def actionFromOp(op: Op) = Action(Evaluation(None, Nil, op) :: Nil)
+  private def actionFromOp(op: Op) = Action((Evaluation(None, Nil, op), "") :: Nil)
 }
 
 object OpParser extends Loggable {
@@ -1301,7 +1303,7 @@ object AppMetadata extends Loggable {
     }
 
     def traverseAction[T](action: Action)(stepTraverser: StepTraverser[T]): T => T =
-      action.steps.foldLeft(_) { stepTraverser(_)(_) }
+      action.steps.map(_._1).foldLeft(_) { stepTraverser(_)(_) }
 
     object TresqlExtraction {
       type ViewExtractor[T] = T => ViewDef => T
@@ -1413,7 +1415,7 @@ object AppMetadata extends Loggable {
     }
   }
 
-  case class Action(steps: List[Action.Step])
+  case class Action(steps: List[(Action.Step, String)])
 
   /** Database name (as used in mojoz metadata) and corresponding connection pool name */
   case class DbAccessKey(
