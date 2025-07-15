@@ -55,6 +55,10 @@ on:       /greater/than-3/(\w+)
 do:       keyExtractor keyChecker
 recover:  testErrorHandler
 
+on:       /(key_in_action)(.*)
+do:       doAction $1
+recover:  testErrorHandler
+
 # for dynamic route handler matching path first group must match handler name
 on:       /do/([\w\.]+).*
 do:       doRequest $1
@@ -167,3 +171,11 @@ insert:
 - org.wabase.WabaseTestHandlers.authError
 update:
 - org.wabase.WabaseTestHandlers.csrfException
+
+
+name: key_in_action
+api: get
+explicit db: true
+table:
+get:
+- org.wabase.WabaseTestHandlers.keyInAction :code

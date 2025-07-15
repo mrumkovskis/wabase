@@ -47,8 +47,8 @@ case class WabaseRequestContext(
   user: WabaseUser = null,
   queryTimeout: QueryTimeout = null,
   as: ActorSystem = null,
-  logger: Logger = null,
   resultFilter: ResultRenderer.ResultFilter = null,
+  logger: Logger = null,
 ) {
   def withResultFilter(resFil: ResultRenderer.ResultFilter): WabaseRequestContext =
     copy(resultFilter = resFil)
@@ -103,19 +103,11 @@ class WabaseService extends Loggable {
       }
     }
 
-    def errorHandler(wrc: WabaseRequestContext): WabaseService.ErrorHandler = {
-      val eh = wrc.route.errorHandler
-      invokeFunction(eh.className, eh.function, Seq((classOf[WabaseRequestContext], () => wrc))) match {
-        case h: PartialFunction[Throwable@unchecked, Future[HttpResponse]@unchecked] =>
-          h.orElse {
-            case NonFatal(e) =>
-              logger.error(s"[${WabaseErrorHandler.ctxDebugInfo(wrc)}] Internal server error, sending http 500", e)
-              Future.successful(HttpResponse(status = StatusCodes.InternalServerError))
-          }
-        case x => sys.error(s"Error handler for route ${wrc.route.path} must return value of type:" +
-          s" WabaseService.ErrorHandler, instead got '$x' of type '${x.getClass}'")
-      }
-    }
+    def errorHandler(wrc: WabaseRequestContext): WabaseService.ErrorHandler =
+      WabaseService.errorHandler(wrc) orElse ({ case NonFatal(e) =>
+        wrc.logger.error(s"[${WabaseErrorHandler.ctxDebugInfo(wrc)}] Internal server error, sending http 500", e)
+        Future.successful(HttpResponse(status = StatusCodes.InternalServerError))
+    }: WabaseService.ErrorHandler)
 
     try {
       val handler = invokeHandlerBuilderChain(ctx.route.requestHandler, null)
@@ -542,6 +534,16 @@ object WabaseService {
 
   def jsonResponse(resp: Any): HttpResponse =
     HttpResponse(entity = HttpEntity(MediaTypes.`application/json`, ResultEncoder.encodeAnyToJsonString(resp)))
+
+  def errorHandler(wrc: WabaseRequestContext): WabaseService.ErrorHandler = {
+    implicit val ec: ExecutionContext = wrc.as.dispatcher
+    val eh = wrc.route.errorHandler
+    invokeFunction(eh.className, eh.function, Seq((classOf[WabaseRequestContext], () => wrc))) match {
+      case h: WabaseService.ErrorHandler@unchecked => h
+      case x => sys.error(s"Error handler for route ${wrc.route.path} must return value of type:" +
+        s" WabaseService.ErrorHandler, instead got '$x' of type '${x.getClass}'")
+    }
+  }
 
   def error(msg: String) = throw new WabaseRouteException(msg)
 }

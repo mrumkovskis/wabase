@@ -10,12 +10,12 @@ import org.wabase.AppServiceBase.AppExceptionHandler.PostgresTimeoutExceptionHan
 import scala.concurrent.Future
 
 object WabaseErrorHandler {
-  def errorHandlerPF(ctx: WabaseRequestContext): PartialFunction[Throwable, HttpResponse] = {
+  def errorHandler(ctx: WabaseRequestContext): WabaseService.ErrorHandler = {
     def debug(msg: String, e: Throwable = null) = {
       val m = s"[${ctxDebugInfo(ctx)}] $msg"
       if (e == null) ctx.logger.debug(m) else ctx.logger.debug(m, e)
     }
-    {
+    val eh: PartialFunction[Throwable, HttpResponse] = {
       case e: AuthenticationException =>
         debug(e.getMessage)
         HttpResponse(status = Unauthorized)
@@ -57,19 +57,18 @@ object WabaseErrorHandler {
         ctx.logger.error(msg)
         HttpResponse(InternalServerError,
           entity = ctx.wabase.translate(TimeoutFriendlyMessage)(I18nService.applicationLocale(ctx.applicationState)))
+    }
+    eh.andThen(Future.successful(_)) orElse {
       case e: org.tresql.TresqlException if e.getCause.isInstanceOf[org.postgresql.util.PSQLException] &&
         e.getCause.getMessage == PostgresTimeoutExceptionHandler.TimeoutSignature =>
-        errorHandlerPF(ctx)(e.getCause)
+        WabaseService.errorHandler(ctx)(e.getCause)
       case e: QuereaseActionException =>
-        (errorHandlerPF(ctx) orElse { case _ =>
+        (WabaseService.errorHandler(ctx) orElse { case _ =>
           ctx.logger.error(s"[${WabaseErrorHandler.ctxDebugInfo(ctx)}] ${e.getMessage}", e.getCause)
-          HttpResponse(status = StatusCodes.InternalServerError)
-        }:PartialFunction[Throwable, HttpResponse])(e.getCause)
+          Future.successful(HttpResponse(status = StatusCodes.InternalServerError))
+        }:WabaseService.ErrorHandler)(e.getCause)
     }
   }
-
-  def errorHandler(ctx: WabaseRequestContext): WabaseService.ErrorHandler =
-    errorHandlerPF(ctx).andThen(Future.successful(_))
 
   def badRequestMsg(msg: String, content: HttpEntity): String = {
     val payload = content match {

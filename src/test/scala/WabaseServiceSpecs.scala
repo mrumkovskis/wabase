@@ -79,6 +79,8 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
     callRoute("/greater/than-3/5") shouldBe "Key: 5"
     callRoute("/greater/than-3/2") shouldBe "Key must be greater then 3, got: 2"
     callRoute("/greater/than-3/fail") shouldBe """[/greater/than-3/fail] Key must be number instead got: For input string: "fail""""
+    callRoute("/key_in_action?code=1") shouldBe "1"
+    callRoute("/key_in_action?code=x") shouldBe """[/key_in_action?code=x] Key must be number instead got: For input string: "x""""
   }
 
   it should "do wabase service routes for public views" in {
@@ -264,6 +266,8 @@ object WabaseTestHandlers {
     case x => sys.error(s"Wrong key: $x")
   }
 
+  def keyInAction(key: String) = key.toInt
+
   def testHandler(ctx: WabaseRequestContext) = s"Key: [${ctx.key.mkString(", ")}]"
   def map_handler(uri: Uri) = uri.query().toMap
   def seq_handler(ctx: WabaseRequestContext) = ctx.key
@@ -280,16 +284,13 @@ object WabaseTestHandlers {
   def staticResources(dir: String, file: String)(uri: Uri) = s"Resource: $dir/$file from uri: ${uri.path}"
 
   def errorHandler(ctx: WabaseRequestContext): WabaseService.ErrorHandler = {
-    val eh: WabaseService.ErrorHandler = {
+    ({
       case e: NumberFormatException =>
-        Future.successful(
-          HttpResponse(
-            status = StatusCodes.BadRequest,
-            entity = s"[${WabaseErrorHandler.ctxDebugInfo(ctx)}] Key must be number instead got: ${e.getMessage}"
-          )
-        )
-    }
-    eh orElse WabaseErrorHandler.errorHandler(ctx)
+        Future.successful(HttpResponse(
+          status = StatusCodes.BadRequest,
+          entity = s"[${WabaseErrorHandler.ctxDebugInfo(ctx)}] Key must be number instead got: ${e.getMessage}"
+        ))
+    }: WabaseService.ErrorHandler) orElse WabaseErrorHandler.errorHandler(ctx)
   }
 
   def error = throw new IllegalArgumentException("Error")
