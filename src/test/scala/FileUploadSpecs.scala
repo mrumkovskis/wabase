@@ -64,7 +64,7 @@ class FileUploadSpecs extends AnyFlatSpec with TestQuereaseInitializer with Scal
     service = new TestAppService(system) {
       override def initApp: App = appl
       override def initFileStreamer = appl
-      override val appExceptionHandler =
+      override lazy val appExceptionHandler =
         entityStreamSizeExceptionHandler(this.logger)
     }
   }

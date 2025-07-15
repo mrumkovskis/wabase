@@ -724,7 +724,7 @@ object AppServiceBase {
   }
 
   trait AppExceptionHandler {
-    val appExceptionHandler: ExceptionHandler
+    def appExceptionHandler: ExceptionHandler
   }
 
   object AppExceptionHandler{
@@ -798,6 +798,10 @@ object AppServiceBase {
       }
     }
 
+    def quereaseActionExceptionHandler(innerHandler: => ExceptionHandler) = ExceptionHandler {
+      case e: QuereaseActionException => innerHandler(e.getCause)
+    }
+
     /** Handles and logs PostgreSQL timeout exceptions */
     trait PostgresTimeoutExceptionHandler[User] extends AppExceptionHandler {
       this: AppStateExtractor
@@ -808,7 +812,7 @@ object AppServiceBase {
        with ServerStatistics
        with DeferredCheck
        with AppI18nService =>
-      override val appExceptionHandler = PostgresTimeoutExceptionHandler(this)
+      override lazy val appExceptionHandler = PostgresTimeoutExceptionHandler(this)
     }
 
     object PostgresTimeoutExceptionHandler {
@@ -853,7 +857,7 @@ object AppServiceBase {
       * [[org.mojoz.querease.ViewNotFoundException]]*/
     trait SimpleExceptionHandler extends AppExceptionHandler { this: Loggable =>
       def bindVariableExceptionResponseMessage(e: MissingBindVariableException): String = e.getMessage
-      override val appExceptionHandler =
+      override lazy val appExceptionHandler =
         unprocessableEntityExceptionHandler(this.logger)
           .withFallback(businessExceptionHandler(this.logger))
           .withFallback(bindVariableExceptionHandler(this.logger, this.bindVariableExceptionResponseMessage))
@@ -861,6 +865,7 @@ object AppServiceBase {
           .withFallback(viewNotFoundExceptionHandler)
           .withFallback(rowNotFoundExceptionHandler)
           .withFallback(csrfExceptionHandler)
+          .withFallback(quereaseActionExceptionHandler(appExceptionHandler))
     }
 
     trait DefaultAppExceptionHandler[User] extends SimpleExceptionHandler with PostgresTimeoutExceptionHandler[User] {
@@ -874,7 +879,7 @@ object AppServiceBase {
         with DeferredCheck
         with BasicJsonMarshalling
         with AppI18nService =>
-      override val appExceptionHandler =
+      override lazy val appExceptionHandler =
         unprocessableEntityExceptionHandler(this.logger)
           .withFallback(businessExceptionHandler(this.logger))
           .withFallback(validationExceptionHandler(this.logger))
@@ -886,6 +891,7 @@ object AppServiceBase {
           .withFallback(viewNotFoundExceptionHandler)
           .withFallback(rowNotFoundExceptionHandler)
           .withFallback(csrfExceptionHandler)
+          .withFallback(quereaseActionExceptionHandler(appExceptionHandler))
     }
   }
 

@@ -232,6 +232,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     app.doWabaseAction(action, view, keyValues, params, values)
       .map(_.result)
       .flatMap(processResult(_, view, removeIdsFlag))
+      .transform(identity, { case e: QuereaseActionException => e.getCause case e => e })
   }
 
   protected def doJob(jobName: String): Future[Any] = {
@@ -930,8 +931,8 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         .flatMap {
           case KeyResult(_, _, key) => doAction("get", "owner", Map(), keyValues = key)
         }.map { _ shouldBe MapResult(Map("name" -> "Pedro", "address" -> "Morocco")) }
-      t2 <- recoverToExceptionIf[QuereaseActionException](doAction("list", "owner", Map()))
-        .map(_.getCause.getMessage shouldBe "Connection not found in environment." )
+      t2 <- recoverToExceptionIf[NullPointerException](doAction("list", "owner", Map()))
+        .map(_.getMessage shouldBe "Connection not found in environment." )
     } yield {
       t1
     }
@@ -1377,9 +1378,9 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         .map {
           _.getMessage shouldBe "Invocation error"
         }
-      t8 <- recoverToExceptionIf[QuereaseActionException](doAction("update", "invocation_test_3", Map()))
+      t8 <- recoverToExceptionIf[IllegalArgumentException](doAction("update", "invocation_test_3", Map()))
         .map {
-          _.getCause.getMessage should include (": java.lang.String") // cannot test 'str: java.lang.String' because for scala 3 parameter name is arg0
+          _.getMessage should include (": java.lang.String") // cannot test 'str: java.lang.String' because for scala 3 parameter name is arg0
         }
     } yield t1
   }

@@ -89,7 +89,7 @@ class DeferredTests extends AnyFlatSpec with Matchers with TestQuereaseInitializ
         override protected def logDeferredResultMarshallingException(e: Throwable): Unit =
           logger.debug(deferredResultMarshallingExceptionMessage(e), e)
       }
-      override val appExceptionHandler =
+      override lazy val appExceptionHandler =
         deferredTestExceptionHandler(this.logger)
           .withFallback(businessExceptionHandler(this.logger))
     }

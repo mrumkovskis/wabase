@@ -116,6 +116,12 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
       WabaseFileStreamers(Map("main" -> null)), null, _ => PartialFunction.empty)
   }
 
+  def doAction(view: String, action: String, data: Map[String, Any], env: Map[String, Any]) = {
+    querease.doAction(view, action, data, env).transform(identity, {
+      case e: QuereaseActionException => e.getCause case e => e
+    })
+  }
+
   behavior of "metadata"
 
   it should "have correct data" in {
@@ -146,31 +152,31 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
   behavior of "constants"
 
   it should "return string constant" in {
-    querease.doAction("constants", "get", Map(), Map())
+    doAction("constants", "get", Map(), Map())
       .mapTo[TresqlResult]
       .flatMap(_.result.unique[Any] shouldBe "text")
   }
 
   it should "return integer constant" in {
-    querease.doAction("constants", "insert", Map(), Map())
+    doAction("constants", "insert", Map(), Map())
       .mapTo[TresqlResult]
       .flatMap(_.result.unique[Any] shouldBe 10)
   }
 
   it should "return decimal constant" in {
-    querease.doAction("constants", "update", Map(), Map())
+    doAction("constants", "update", Map(), Map())
       .mapTo[TresqlResult]
       .flatMap(_.result.unique[Any] shouldBe 1.5)
   }
 
   it should "return boolean constant" in {
-    querease.doAction("constants", "delete", Map(), Map())
+    doAction("constants", "delete", Map(), Map())
       .mapTo[TresqlResult]
       .flatMap(_.result.unique[Any] shouldBe true)
   }
 
   it should "return null constant" in {
-    querease.doAction("constants", "list", Map(), Map())
+    doAction("constants", "list", Map(), Map())
       .mapTo[TresqlResult]
       .flatMap(_.result.unique[Any] shouldBe (null :String))
   }
@@ -183,7 +189,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
     val pa = List(new PersonAccounts, new PersonAccounts, new PersonAccounts, new PersonAccounts)
     p.accounts = pa
     recoverToExceptionIf[ValidationException] {
-      querease.doAction("person", "save", p.toMap(querease), Map())
+      doAction("person", "save", p.toMap(querease), Map())
     }.map(_.details should be(List(ValidationResult(Nil,
       List(
         "person cannot have more than 3 accounts, got '4'",
@@ -193,7 +199,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
     )))).flatMap { _ =>
       p.accounts = Nil
       recoverToExceptionIf[ValidationException] {
-        querease.doAction("person", "save", p.toMap(querease), Map())
+        doAction("person", "save", p.toMap(querease), Map())
       }.map(_.details should be(List(ValidationResult(Nil,
         List("person must have at least one account")
       ))))
@@ -207,7 +213,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
     pa.balance = 10
     p.accounts = List(new PersonAccounts, new PersonAccounts, pa)
     recoverToExceptionIf[ValidationException] {
-      querease.doAction("person", "save", p.toMap(querease), Map())
+      doAction("person", "save", p.toMap(querease), Map())
     }.map(_.details should be(List(ValidationResult(Nil,
       List("Wrong balance for accounts 'AAA(10.00 != 0.00)'")
     )))).flatMap { _ =>
@@ -216,7 +222,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
       pa1.balance = 2
       p.accounts = List(new PersonAccounts, pa, pa1)
       recoverToExceptionIf[ValidationException] {
-        querease.doAction("person", "save", p.toMap(querease), Map())
+        doAction("person", "save", p.toMap(querease), Map())
       }.map(_.details should be(List(ValidationResult(Nil,
         List("Wrong balance for accounts 'AAA(10.00 != 0.00),BBB(2.00 != 0.00)'")
       ))))
@@ -234,7 +240,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
     pa.balance = 0
     pa.last_modified = java.sql.Timestamp.valueOf("2021-06-17 17:16:00")
     p.accounts = List(pa)
-    querease.doAction("person", "save", p.toMap(querease), Map()).map {
+    doAction("person", "save", p.toMap(querease), Map()).map {
       case CompatibleResult(r: TresqlSingleRowResult, _, _) =>
         removeIds(r.map(querease.toCompatibleMap(_, querease.viewDef("person")))) should be {
         Map("name" -> "Mr. Kalis", "surname" -> "Calis", "sex" -> "M",
@@ -252,7 +258,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
       pa.balance = 0
       pa.last_modified = java.sql.Timestamp.valueOf("2021-06-19 00:15:00")
       p.accounts = List(pa)
-      querease.doAction("person", "save", p.toMap(querease), Map()).map {
+      doAction("person", "save", p.toMap(querease), Map()).map {
         case CompatibleResult(r: TresqlSingleRowResult, _, _) =>
           removeIds(r.map(querease.toCompatibleMap(_, querease.viewDef("person")))) should be {
           Map("main_account" -> null, "name" -> "Ms. Zina", "surname" -> "Mina", "sex" -> "F",
@@ -272,14 +278,14 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
     p.amount = 0
     p.beneficiary = "AAA"
     recoverToExceptionIf[ValidationException] {
-      querease.doAction("payment", "save", p.toMap(querease), Map())
+      doAction("payment", "save", p.toMap(querease), Map())
     }.map(_.details should be(List(ValidationResult(Nil,
       List("Wrong amount 0. Amount must be greater than 0")
     )))).flatMap { _ =>
       p.originator = "BBB"
       p.amount = 10
       recoverToExceptionIf[ValidationException] {
-        querease.doAction("payment", "save", p.toMap(querease), Map())
+        doAction("payment", "save", p.toMap(querease), Map())
       }.map(_.details should be(List(ValidationResult(Nil,
         List("Insufficient funds for account 'BBB'")
       ))))
@@ -290,11 +296,11 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
     val p = new Payment
     p.amount = 10
     p.beneficiary = "AAA"
-    querease.doAction("payment", "save", p.toMap(querease), Map()).flatMap { _ =>
+    doAction("payment", "save", p.toMap(querease), Map()).flatMap { _ =>
       p.originator = "AAA"
       p.beneficiary = "BBB"
       p.amount = 2
-      querease.doAction("payment", "save", p.toMap(querease), Map()).map { res =>
+      doAction("payment", "save", p.toMap(querease), Map()).map { res =>
         res.getClass.getName should be ("org.wabase.TresqlResult")
       }
     }.map { _ =>
@@ -307,7 +313,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
   behavior of "person list"
 
   it should "return person list with count" in {
-    querease.doAction("person_list", "list", Map(), Map("sort" -> "~name")).map {
+    doAction("person_list", "list", Map(), Map("sort" -> "~name")).map {
       case MapResult(res) => removeIds(res) should be (
         Map("count" -> 2, "data" ->
           List(Map("name" -> "Ms. Zina", "surname" -> "Mina", "sex" -> "F", "birthdate" -> java.sql.Date.valueOf("1982-12-14")),
@@ -315,7 +321,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
       )
       case x => sys.error("Unexpected action result class: " + Option(x).map(_.getClass.getName).orNull)
     }.flatMap { _ =>
-      querease.doAction("person_list", "list", Map("name" -> "Ms", "sort" -> "name"), Map()).map {
+      doAction("person_list", "list", Map("name" -> "Ms", "sort" -> "name"), Map()).map {
         case MapResult(res) => removeIds(res) should be (
           Map("count" -> 1, "data" ->
             List(Map("name" -> "Ms. Zina", "surname" -> "Mina", "sex" -> "F", "birthdate" -> java.sql.Date.valueOf("1982-12-14")))
@@ -324,7 +330,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
         case x => sys.error("Unexpected action result class: " + Option(x).map(_.getClass.getName).orNull)
       }
     }.flatMap { _ =>
-      querease.doAction("person_list", "list", Map("name" -> "Ms"), Map("sort" -> "name")).map {
+      doAction("person_list", "list", Map("name" -> "Ms"), Map("sort" -> "name")).map {
         case MapResult(res) => removeIds(res) should be (
           Map("count" -> 1, "data" ->
             List(Map("name" -> "Ms. Zina", "surname" -> "Mina", "sex" -> "F", "birthdate" -> java.sql.Date.valueOf("1982-12-14"))))
@@ -340,7 +346,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
     implicit val res = qr.resourcesFactory.resources
     val name = "Kalis"
     val id = Query("person[name %~~% ?] {id}", name).unique[Long]
-    querease.doAction("person_with_main_account", "get", Map("id" -> id), Map()).map {
+    doAction("person_with_main_account", "get", Map("id" -> id), Map()).map {
       case MapResult(res) => removeKeys(res, Set("id", "last_modified")) should be (Map(
         "main_account" -> "<no main account>",
         "name" -> "Mr. Kalis",
@@ -352,7 +358,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
     }.flatMap { _ =>
       //set main account
       Query("=person[id = ?] {main_account_id = account[number = 'AAA' & person_id = ?]{id}}", id, id)
-      querease.doAction("person_with_main_account", "get", Map("id" -> id), Map()).map {
+      doAction("person_with_main_account", "get", Map("id" -> id), Map()).map {
         case MapResult(res) => removeKeys(res, Set("id", "last_modified")) should be (Map(
           "main_account" -> "AAA(8.00)",
           "name" -> "Mr. Kalis",
@@ -368,7 +374,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
   behavior of "variable transformations"
 
   it should "transform variables" in {
-    querease.doAction("variable_transform_test", "get", Map(), Map()).map {
+    doAction("variable_transform_test", "get", Map(), Map()).map {
       _ shouldBe MapResult(Map("name" -> "Gunzis", "job" -> "Developer"))
     }
   }
@@ -382,13 +388,13 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
     ph.had_virus = null
     ph.manipulation_date = java.sql.Date.valueOf("2021-06-05")
     recoverToExceptionIf[ValidationException] {
-      querease.doAction("person_health", "save", ph.toMap(querease), Map())
+      doAction("person_health", "save", ph.toMap(querease), Map())
     }.map(_.details should be (List(ValidationResult(Nil, List("Person 'Gunza' must be registered")))))
 
     val m =
       Map("current_person" -> "Gunzagi", "vaccine" -> "AstraZeneca", "manipulation_date" -> java.sql.Date.valueOf("2021-06-05"))
     recoverToExceptionIf[ValidationException] {
-      querease.doAction("person_health_priv", "save", m, Map())
+      doAction("person_health_priv", "save", m, Map())
     }.map(_.details should be (List(ValidationResult(Nil, List("Person 'Gunzagi' must be registered")))))
   }
 
@@ -407,14 +413,14 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
     )
     def saveData(view: String, data: List[Map[String, Any]])(implicit res: Resources) =
       data.foldLeft(Future.successful[QuereaseResult](LongResult(0))) { (r, d) =>
-        r.flatMap(_ => querease.doAction(view, "save", d, Map()))
+        r.flatMap(_ => doAction(view, "save", d, Map()))
       }
 
     saveData("person_simple", persons)
       .flatMap(_ => saveData("person_health", vaccines))
       .flatMap(_ => saveData("person_health_priv", vaccines_priv))
       .flatMap { _ =>
-        querease.doAction("person_with_health_data", "list", Map("names" -> List("Mario", "Gunzagi")), Map()).map {
+        doAction("person_with_health_data", "list", Map("names" -> List("Mario", "Gunzagi")), Map()).map {
           case CompatibleResult(TresqlResult(res), _, _) =>
             res.toListOfMaps.map(m => (new PersonWithHealthData).fill(m)(querease).toMap(querease)).toList should be (
               List(
@@ -436,7 +442,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
 
   it should "switch db context when calling action on another view" in {
     recoverToExceptionIf[ValidationException] {
-      querease.doAction("db_context_person", "update", Map("id" -> 0), Map())
+      doAction("db_context_person", "update", Map("id" -> 0), Map())
     }.map(_.details should be (List(ValidationResult(Nil, List("Person health record to be updated must exist")))))
   }
 
@@ -444,10 +450,10 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
   behavior of "config"
 
   it should "process config" in {
-    querease.doAction("conf_test", "get", Map(), Map()).map {
+    doAction("conf_test", "get", Map(), Map()).map {
       case r => r should be (ResponseResult(200, ResultValue(StringResult("http://wabase.org/about"))))
     }.flatMap { _ =>
-      querease.doAction("conf_test", "list", Map(), Map()).map {
+      doAction("conf_test", "list", Map(), Map()).map {
         case r => r should be(
           ConfResult("conf.test", Map("uri" -> "http://wabase.org/", "list" -> List(1, 2, 3))))
       }
@@ -457,9 +463,9 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
   behavior of "escape syntax"
 
   it should "use tresql instead of view call - escape syntax" in {
-    querease.doAction("escape_syntax", "insert", Map("key" -> "k", "value" -> "v"), Map())
+    doAction("escape_syntax", "insert", Map("key" -> "k", "value" -> "v"), Map())
       .flatMap { _ =>
-        querease.doAction("escape_syntax", "list", Map(), Map())
+        doAction("escape_syntax", "list", Map(), Map())
       }
       .mapTo[TresqlResult]
       .map {

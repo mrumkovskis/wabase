@@ -419,17 +419,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     AppQuerease.requestPartsToMap(result)
 
   def exceptionHandler(e: Throwable, src: String, context: ActionContext): Throwable = e match {
-    case e: BusinessException => e
-    case e: ValidationException => e
-    case e: MissingBindVariableException => e
-    case e: QuereaseEnvException => e
-    case e: org.mojoz.querease.ViewNotFoundException => e
-    case e: org.mojoz.querease.NotFoundException => e
     case e: QuereaseActionException => e
-    case e: AuthenticationException => e
-    case e: AuthorizationException => e
-    case x => new QuereaseActionException(
-      s"Action: ${context.viewName}.${context.actionName}, step - '$src'", x)
+    case e => new QuereaseActionException(s"Action: ${context.viewName}.${context.actionName}, step - '$src'", e)
   }
 
   def doAction(
