@@ -276,7 +276,7 @@ trait WabaseApp[User] {
   }
 
   def resourceFactory(viewName: String, actionName: String, qt: QueryTimeout): ResourcesFactory = {
-    resourceFactory(viewDefOption(viewName).orNull, s"$viewName.$actionName", qt)
+    resourceFactory(viewDefOption(viewName).orNull, s"$actionName", qt)
   }
 
   def maybeSerializeResult(context: AppActionContext, wr: WabaseResult): Future[WabaseResult] = wr match {
