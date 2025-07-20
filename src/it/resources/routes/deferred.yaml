@@ -1,4 +1,4 @@
-on: /deferred-result/(.+)
+on: /deferred-result/{deferred_id}
 do: authenticateOpt deferredResult($1)
 
 

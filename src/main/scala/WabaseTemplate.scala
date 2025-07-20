@@ -20,30 +20,6 @@ trait WabaseTemplate {
   ): Future[TemplateResult]
 }
 
-object WabaseTemplate {
-  def mapToJavaMap(map: Map[String, _]):java.util.Map[String, _] = {
-    val result = map.map { (entry: (String, _)) =>
-      (entry._1,
-        entry._2 match {
-          case l: Seq[_] => seqToJavaList(l)
-          case m: Map[String@unchecked, _] => mapToJavaMap(m)
-          case r => r
-        }
-      )
-    }
-    result.asInstanceOf[Map[String, _]].asJava
-  }
-
-  def  seqToJavaList(seq: Seq[_]): java.util.List[_] = {
-    val result = seq.toList.map {
-      case l: Seq[_] => seqToJavaList(l)
-      case m: Map[String @unchecked, _] => mapToJavaMap(m)
-      case r => r
-    }
-    result.asJava
-  }
-}
-
 class DefaultWabaseTemplate extends WabaseTemplate {
   protected val loader: WabaseTemplateLoader =
     factory[WabaseTemplateLoader]("app.template.loader")
@@ -135,8 +111,6 @@ class MustacheTemplateCache(maxSize: Int)
  * See http://mustache.github.io/mustache.5.html
  * */
 class MustacheTemplateRenderer extends WabaseTemplateRenderer {
-  import WabaseTemplate._
-
   protected val cache: Option[MustacheTemplateCache] =
     Some(new MustacheTemplateCache(256))
   override def apply(templateName: String, template: Array[Byte], data: Iterable[_]): Future[TemplateResult] = {
@@ -149,7 +123,7 @@ class MustacheTemplateRenderer extends WabaseTemplateRenderer {
     render(templateName, templateString, data)
   }
   def render(templateName: String, templateString: String, data: Iterable[_]): String = {
-    val context = mapToJavaMap(data match {
+    val context = MapUtils.mapToJavaMap(data match {
       case m: Map[String@unchecked, _]      => m
       case s: Seq[Map[String, _]@unchecked] => s.headOption.getOrElse(Map.empty) + ("items" -> data)
       case x =>

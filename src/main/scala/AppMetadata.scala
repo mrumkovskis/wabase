@@ -1535,6 +1535,8 @@ object AppMetadata extends Loggable {
     path: Regex,
     requestHandler: Action.Invocation,
     errorHandler: Action.Invocation,
+    pathParameterNames: Seq[String],
+    extras: Map[String, Any],
   )
 
   trait AppMdConventions extends MdConventions {

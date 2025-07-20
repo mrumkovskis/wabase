@@ -1,5 +1,7 @@
 package org.wabase
 
+import scala.jdk.CollectionConverters._
+
 object MapUtils {
   def transform(path: String, transformVal: Any => Any, map: Map[String, Any]): Map[String, Any] = {
     def transform(
@@ -47,6 +49,50 @@ object MapUtils {
     implicit def orderLists[A <: List[Any]]: Ordering[A] = Ordering.by(l => l.toString)
     implicit def orderDifs[A <: (List[Any], (Any, Any))]: Ordering[A] = Ordering.by(_._1)
     map.toList.sorted.map(x => Map("path"-> x._1, "old_value"-> x._2._1, "new_value"-> x._2._2))
+  }
+
+  def mapToJavaMap(map: Map[String, _]):java.util.Map[String, _] = {
+    val result = map.map { (entry: (String, _)) =>
+      (entry._1,
+        entry._2 match {
+          case l: Seq[_] => seqToJavaList(l)
+          case m: Map[String@unchecked, _] => mapToJavaMap(m)
+          case r => r
+        }
+      )
+    }
+    result.asInstanceOf[Map[String, _]].asJava
+  }
+
+  def  seqToJavaList(seq: Seq[_]): java.util.List[_] = {
+    val result = seq.toList.map {
+      case l: Seq[_] => seqToJavaList(l)
+      case m: Map[String @unchecked, _] => mapToJavaMap(m)
+      case r => r
+    }
+    result.asJava
+  }
+
+  def javaMapToMap(map: java.util.Map[String, _]):Map[String, _] = {
+    val result = map.asScala.map(entry=>
+      ( entry._1,
+        entry._2 match{
+          case l: java.util.List[_] => javaListToList(l)
+          case m: java.util.Map[String @unchecked, _] => javaMapToMap(m)
+          case r => r
+        }
+        )
+    ).toMap
+    result.asInstanceOf[Map[String, _]]
+  }
+
+  def  javaListToList(list: java.util.List[_]): List[_] = {
+    val result = list.asScala.toList.map {
+      case l: java.util.List[_] => javaListToList(l)
+      case m: java.util.Map[String @unchecked, _] => javaMapToMap(m)
+      case r => r
+    }
+    result
   }
 }
 

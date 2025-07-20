@@ -201,28 +201,8 @@ trait TemplateUtil { this: JsonConverterProvider with QuereaseProvider =>
   }
 
 
-  def mapToJavaMap(map: Map[String, _]):java.util.Map[String, _] = WabaseTemplate.mapToJavaMap(map)
-  def listToJavaList(list: List[_]): java.util.List[_]           = WabaseTemplate.seqToJavaList(list)
-
-  def javaMapToMap(map: java.util.Map[String, _]):Map[String, _] = {
-    val result = map.asScala.map(entry=>
-      ( entry._1,
-        entry._2 match{
-          case l: java.util.List[_] => javaListToList(l)
-          case m: java.util.Map[String @unchecked, _] => javaMapToMap(m)
-          case r => r
-        }
-        )
-    ).toMap
-    result.asInstanceOf[Map[String, _]]
-  }
-
-  def  javaListToList(list: java.util.List[_]): List[_] = {
-    val result = list.asScala.toList.map {
-      case l: java.util.List[_] => javaListToList(l)
-      case m: java.util.Map[String @unchecked, _] => javaMapToMap(m)
-      case r => r
-    }
-    result
-  }
+  def mapToJavaMap(map: Map[String, _]):java.util.Map[String, _] = MapUtils.mapToJavaMap(map)
+  def listToJavaList(list: List[_]): java.util.List[_]           = MapUtils.seqToJavaList(list)
+  def javaMapToMap(map: java.util.Map[String, _]):Map[String, _] = MapUtils.javaMapToMap(map)
+  def javaListToList(list: java.util.List[_]): List[_]           = MapUtils.javaListToList(list)
 }
