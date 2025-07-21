@@ -44,10 +44,22 @@ class YamlRouteDefLoader(
 
       val parser = actionParser(route)
 
-      def parseProperty(property: String) =
+      def parseProperty(property: String, pathParams: Seq[String]) =
         parser(property)(rdMap).steps match {
           case Nil => null
-          case List((Action.Evaluation(_, _, op: Action.Invocation, _), _)) => op
+          case List((Action.Evaluation(_, _, op: Action.Invocation, _), _)) =>
+            //transform named params to regex group index params
+            val NamedParamRegex = """\$([^\d][^\s]*)""".r
+            def transform(o: Action.Op): Action.Op = o match {
+              case t: Action.Tresql if NamedParamRegex.pattern.matcher(t.tresql).matches() =>
+                val NamedParamRegex(paramName) = t.tresql
+                val idx = pathParams.indexOf(paramName)
+                if (idx == -1) sys.error(s"Error parsing route $route $property: unknown parameter name $paramName")
+                else t.copy(tresql = "$" + (idx + 1))
+              case i: Action.Invocation => i.copy(args = i.args map transform)
+              case x => x
+            }
+            transform(op).asInstanceOf[Action.Invocation]
           case x => sys.error(s"Error parsing route $route $property, expected invocation call, got: $x")
         }
 
@@ -59,8 +71,8 @@ class YamlRouteDefLoader(
       val PathRegex(m, p) = route
       val method = if (m.trim.isEmpty) Set[HttpMethod]() else m.split("\\s+").map(httpMethods(_)).toSet
       val (path, pathParameterNames): (Regex, Seq[String]) = regexAndPathParameterNames(p, rdMap)
-      val handler = Option(parseProperty("do")).getOrElse(sys.error(s"Request handler missing"))
-      val error = errorHandler(parseProperty("recover"))
+      val handler = Option(parseProperty("do", pathParameterNames)).getOrElse(sys.error(s"Request handler missing"))
+      val error = errorHandler(parseProperty("recover", pathParameterNames))
       val extras = rdMap - "on" - "do" - "recover"
       RouteDef(
         methods = method,

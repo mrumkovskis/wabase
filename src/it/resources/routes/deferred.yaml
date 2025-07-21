@@ -1,5 +1,5 @@
 on: /deferred-result/{deferred_id}
-do: authenticateOpt deferredResult($1)
+do: authenticateOpt deferredResult($deferred_id)
 
 
 on: /slow-respond
