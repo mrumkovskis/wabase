@@ -72,7 +72,11 @@ class WabaseService extends Loggable {
     val loggerName = req.method.value.toLowerCase + WabaseService.toReadableString(req.uri.path).replace('/', '.')
     val logger = Logger(LoggerFactory.getLogger(loggerName))
     val ctx = WabaseRequestContext(wabase, req, Deferred(deferredControl = deferredControl), as = as, logger = logger)
-    findRoute(ctx).map(doRoute).getOrElse(WabaseService.notFound)
+    ctx.logger.debug(s"Matching route for path: ${req.uri.path}")
+    findRoute(ctx).map(doRoute).getOrElse {
+      ctx.logger.debug(s"Route not found for path: ${req.uri.path}")
+      WabaseService.notFound
+    }
   }
 
   protected def findRoute(ctx: WabaseRequestContext): Option[WabaseRequestContext] = {
