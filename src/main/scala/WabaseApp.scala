@@ -127,8 +127,7 @@ trait WabaseApp[User] {
     val rf = resourceFactory(viewName, actionName, wrctx.queryTimeout)
     doWabaseAction(
       AppActionContext(actionName, viewName, keyValues, params, values ++ params, resultFilter)(
-        wrctx.user.asInstanceOf[User], wrctx.applicationState, wrctx.as.dispatcher, wrctx.as, rf,
-        setMaxContentSize(setTimeout(wrctx.req, vdo), vdo)),
+        wrctx.user.asInstanceOf[User], wrctx.applicationState, wrctx.as.dispatcher, wrctx.as, rf, wrctx.req),
       doApiCheck)
   }
 

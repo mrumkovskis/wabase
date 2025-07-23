@@ -18,7 +18,8 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
   implicit val serverSystem: ActorSystem  = ActorSystem("wabase-server")
   implicit val ec: ExecutionContext = serverSystem.dispatcher
   val executionImpl = new ExecutionImpl()(serverSystem)
-  val server = new WabaseServer(new WA(executionImpl))
+  val wabase = new WA(executionImpl)
+  val server = new WabaseServer(wabase)
 
   DbDrivers.loadDrivers
 
@@ -192,6 +193,18 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
       data = encodeJs(data), method = HttpMethods.POST, decoder = decodeJs) shouldBe data
     callRoute("/deep-nested-data",
       data = encodeJs(data), method = HttpMethods.POST, decoder = decodeJs) shouldBe data
+  }
+
+  it should "control request size limit" in {
+    val uri = "/public/entity_size_limit"
+    callRoute(uri, data = encodeJs(Map("id" -> 1, "name" -> "John")),
+      method = HttpMethods.POST, decoder = decodeJs) shouldBe Map("id" -> 1, "name" -> "John")
+    val result = response(HttpRequest(
+      method = HttpMethods.POST, uri = uri,
+      entity = encodeJs(Map("id" -> 1, "name" -> "John John John John John John John John John John John John John"))
+    ))
+    result.status shouldBe StatusCodes.ContentTooLarge
+    WabaseTestHandlers.entity(result) shouldBe "Content too large: actual size - 82, limit - 64"
   }
 
   val count = 1024

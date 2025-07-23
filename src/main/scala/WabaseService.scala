@@ -7,7 +7,7 @@ import AppMetadata._
 import com.typesafe.scalalogging.Logger
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.marshalling.{Marshal, ToResponseMarshallable}
-import org.apache.pekko.http.scaladsl.model.headers.{Cookie, HttpCookie, `Set-Cookie`}
+import org.apache.pekko.http.scaladsl.model.headers.{Cookie, HttpCookie, `Set-Cookie`, `Timeout-Access`}
 import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes, DateTime, HttpEntity, HttpHeader, HttpMessage, HttpRequest, HttpResponse, MediaTypes, StatusCodes, Uri}
 import org.apache.pekko.http.scaladsl.server.directives.ContentTypeResolver
 import org.apache.pekko.http.scaladsl.server.directives.FileAndResourceDirectives.ResourceFile
@@ -350,28 +350,29 @@ object WabaseService {
       )(WabaseService.parameterMultiMap(req))
     }
     def dwa(ctx: WabaseRequestContext, params: Map[String, Any]) = {
-      import ctx._
-      if (viewName == null || !wabase.qe.nameToViewDef.contains(viewName))
-        if (viewName != null)
-          error(s"Cannot handle route ${route.path}. View '$viewName' not found!")
-        else error(s"Cannot handle route: ${route.path}. View not found!")
+      if (ctx.viewName == null || !ctx.wabase.qe.nameToViewDef.contains(ctx.viewName))
+        if (ctx.viewName != null)
+          error(s"Cannot handle route ${ctx.route.path}. View '${ctx.viewName}' not found!")
+        else error(s"Cannot handle route: ${ctx.route.path}. View not found!")
       else {
+        val updatedCtx = withReqTimeout(withReqMaxContentSize(ctx))
+        import updatedCtx._
         implicit val ec = as.dispatcher
         val valuesF =
           if (Set(Action.Insert, Action.Update, Action.Save).contains(action))
-            toMapForViewEntityDecoder(ctx)
+            toMapForViewEntityDecoder(updatedCtx)
           else  Future.successful(Map[String, Any]())
         valuesF.flatMap { values =>
-          ctx.wabase.app.doAction(
+          updatedCtx.wabase.app.doAction(
             actionName = action,
             viewName = viewName,
-            keyValues = ctx.key,
+            keyValues = updatedCtx.key,
             params = params,
             values = values,
             resultFilter = resultFilter,
-          )(ctx)
+          )(updatedCtx)
         }.flatMap { result =>
-          Marshal(result).toResponseFor(req)(wabase.toResponseWabaseResultMarshaller, ec)
+          Marshal(result).toResponseFor(updatedCtx.req)(wabase.toResponseWabaseResultMarshaller, ec)
         }
       }
     }
@@ -386,6 +387,27 @@ object WabaseService {
         addResultFilter(ctxWithViewAndState, params)
       else ctxWithViewAndState
     dwa(ctxWithViewAndStateAndFilter, params)
+  }
+
+  def withReqMaxContentSize(ctx: WabaseRequestContext): WabaseRequestContext = {
+    if (ctx.viewName == null) ctx else {
+      val vd = ctx.wabase.qe.viewDef(ctx.viewName)
+      if (vd.maxContentSize == null) ctx else {
+        val req = ctx.req.withEntity(ctx.req.entity.withSizeLimit(vd.maxContentSize))
+        ctx.copy(req = req)
+      }
+    }
+  }
+
+  def withReqTimeout(ctx: WabaseRequestContext): WabaseRequestContext = {
+    if (ctx.viewName == null) ctx else {
+      val vd = ctx.wabase.qe.viewDef(ctx.viewName)
+      if(vd.timeout == null) ctx else {
+        ctx.req.header[`Timeout-Access`].map(_.timeoutAccess.updateTimeout(vd.timeout))
+          .getOrElse(ctx.logger.warn(s"request timeout is defined for view ${vd.name}, however no request-timeout http header is set!"))
+        ctx
+      }
+    }
   }
 
   def toMapForViewEntityDecoder(ctx: WabaseRequestContext): Future[Map[String, Any]] = {

@@ -179,3 +179,15 @@ explicit db: true
 table:
 get:
 - org.wabase.WabaseTestHandlers.keyInAction :code
+
+
+name: entity_size_limit
+api: insert
+decoder: default 64b
+explicit db: true
+table:
+fields:
+- id
+- name
+insert:
+- this
