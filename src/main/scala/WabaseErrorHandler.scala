@@ -16,6 +16,9 @@ object WabaseErrorHandler {
       if (e == null) ctx.logger.debug(m) else ctx.logger.debug(m, e)
     }
     val eh: PartialFunction[Throwable, HttpResponse] = {
+      case e: HttpException =>
+        debug(e.getMessage)
+        HttpResponse(status = e.status, entity = e.getMessage)
       case e: AuthenticationException =>
         debug(e.getMessage)
         HttpResponse(status = Unauthorized)

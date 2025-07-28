@@ -8,7 +8,7 @@ import com.typesafe.scalalogging.Logger
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.marshalling.{Marshal, ToResponseMarshallable}
 import org.apache.pekko.http.scaladsl.model.headers.{Cookie, HttpCookie, `Set-Cookie`, `Timeout-Access`}
-import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes, DateTime, HttpEntity, HttpHeader, HttpMessage, HttpRequest, HttpResponse, MediaTypes, StatusCodes, Uri}
+import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes, DateTime, HttpEntity, HttpHeader, HttpMessage, HttpRequest, HttpResponse, MediaTypes, StatusCode, StatusCodes, Uri}
 import org.apache.pekko.http.scaladsl.server.directives.ContentTypeResolver
 import org.apache.pekko.http.scaladsl.server.directives.FileAndResourceDirectives.ResourceFile
 import org.apache.pekko.http.scaladsl.unmarshalling.Unmarshaller
@@ -59,7 +59,7 @@ case class Deferred(
   deferredModule: String = WabaseDeferredControl.defaultModuleId
 )
 
-class WabaseRouteException(message: String) extends Exception(message)
+class HttpException(val status: StatusCode, message: String) extends Exception(message)
 
 class WabaseService extends Loggable {
   import WabaseService._
@@ -307,7 +307,7 @@ object WabaseService {
         case `POST`   => Action.Insert
         case `PUT`    => Action.Update
         case `DELETE` => Action.Delete
-        case x        => error(s"Unsupported http method $x for request '${req.uri}'")
+        case x        => error(StatusCodes.MethodNotAllowed, s"Unsupported http method $x for request '${req.uri}'")
       }
       ctx.copy(viewName = view_name, action = action, key = key)
     }
@@ -352,8 +352,8 @@ object WabaseService {
     def dwa(ctx: WabaseRequestContext, params: Map[String, Any]) = {
       if (ctx.viewName == null || !ctx.wabase.qe.nameToViewDef.contains(ctx.viewName))
         if (ctx.viewName != null)
-          error(s"Cannot handle route ${ctx.route.path}. View '${ctx.viewName}' not found!")
-        else error(s"Cannot handle route: ${ctx.route.path}. View not found!")
+          error(StatusCodes.NotFound, s"Cannot handle route ${ctx.route.path}. View '${ctx.viewName}' not found!")
+        else error(StatusCodes.NotFound, s"Cannot handle route: ${ctx.route.path}. View not found!")
       else {
         val updatedCtx = withReqTimeout(withReqMaxContentSize(ctx))
         import updatedCtx._
@@ -552,7 +552,7 @@ object WabaseService {
       case uri: Uri => processResult(wrc.copy(req = wrc.req.withUri(uri)))
       case st: ApplicationState => processResult(wrc.copy(applicationState = st))
       case u: WabaseUser => processResult(wrc.copy(user = u))
-      case x => error(s"Request transformer must return either WabaseRequestContext or HttpRequest or Future of them." +
+      case x => sys.error(s"Request transformer must return either WabaseRequestContext or HttpRequest or Future of them." +
         s" Instead got: $x")
     }
     processResult(res)
@@ -571,7 +571,7 @@ object WabaseService {
     }
   }
 
-  def error(msg: String) = throw new WabaseRouteException(msg)
+  def error(status: StatusCode, msg: String) = throw new HttpException(status, msg)
 }
 
 object ApplicationStateExtractor {
