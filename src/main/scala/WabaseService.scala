@@ -259,7 +259,8 @@ object WabaseService {
   }
 
   /** Enables alternative URI where row key is in special query string */
-  def keyFromQueryToPath(request: HttpRequest): HttpRequest = {
+  def keyFromQueryToPath(ctx: WabaseRequestContext): WabaseRequestContext = {
+    val request = ctx.req
     def decode(s: String) = java.net.URLDecoder.decode(s, "UTF-8")
     request.uri.rawQueryString match {
       case Some(rawQ) if rawQ startsWith "/" =>
@@ -277,8 +278,8 @@ object WabaseService {
           if (q == null)
                uriWithPath.withQuery(Uri.Query.Empty)
           else uriWithPath.withRawQueryString(q)
-        request.withUri(uri)
-      case _ => request
+        ctx.copy(req = request.withUri(uri))
+      case _ => ctx
     }
   }
 
@@ -387,6 +388,10 @@ object WabaseService {
         addResultFilter(ctxWithViewAndState, params)
       else ctxWithViewAndState
     dwa(ctxWithViewAndStateAndFilter, params)
+  }
+
+  def doActionWithKeyToPath(view_action: String, reqCtx: WabaseRequestContext): Future[HttpResponse] = {
+    doAction(view_action, keyFromQueryToPath(reqCtx))
   }
 
   def withReqMaxContentSize(ctx: WabaseRequestContext): WabaseRequestContext = {
