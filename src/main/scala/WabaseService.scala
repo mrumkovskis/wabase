@@ -352,8 +352,8 @@ object WabaseService {
     def dwa(ctx: WabaseRequestContext, params: Map[String, Any]) = {
       if (ctx.viewName == null || !ctx.wabase.qe.nameToViewDef.contains(ctx.viewName))
         if (ctx.viewName != null)
-          error(StatusCodes.NotFound, s"Cannot handle route ${ctx.route.path}. View '${ctx.viewName}' not found!")
-        else error(StatusCodes.NotFound, s"Cannot handle route: ${ctx.route.path}. View not found!")
+          error(StatusCodes.NotFound, s"View '${ctx.wabase.sanitizedViewName(ctx.viewName)}' not found!")
+        else error(StatusCodes.NotFound, s"View not found!")
       else {
         val updatedCtx = withReqTimeout(withReqMaxContentSize(ctx))
         import updatedCtx._

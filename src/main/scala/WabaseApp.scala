@@ -505,10 +505,10 @@ trait WabaseApp[User] {
   private val qualifiedIdent = s"$ident(\\.$ident)*"
   private val qualifiedIdentRegex = s"^$qualifiedIdent$$".r
   private val validViewNameRegex = s"^$qualifiedIdent$$".r
+  def sanitizedViewName(viewName: String) =
+    if (validViewNameRegex.pattern.matcher(viewName).matches()) viewName else "Strange name"
   protected def noApiException(viewName: String, method: String, user: User): Exception =
-    if (validViewNameRegex.pattern.matcher(viewName).matches())
-         new BusinessException(s"$viewName.$method is not a part of this API")
-    else new BusinessException(s"Strange name.$method is not a part of this API")
+    new BusinessException(s"${sanitizedViewName(viewName)}.$method is not a part of this API")
   protected def apiUnauthorizedException(viewName: String, method: String, user: User): Exception =
     if  (user == null)
          new AuthenticationException("Unauthorized")
