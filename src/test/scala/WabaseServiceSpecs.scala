@@ -199,12 +199,12 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
     val uri = "/public/entity_size_limit"
     callRoute(uri, data = encodeJs(Map("id" -> 1, "name" -> "John")),
       method = HttpMethods.POST, decoder = decodeJs) shouldBe Map("id" -> 1, "name" -> "John")
-    val result = response(HttpRequest(
+    val (status, result) = statusAndEntityForRequest(HttpRequest(
       method = HttpMethods.POST, uri = uri,
       entity = encodeJs(Map("id" -> 1, "name" -> "John John John John John John John John John John John John John"))
     ))
-    result.status shouldBe StatusCodes.ContentTooLarge
-    WabaseTestHandlers.entity(result) shouldBe "Content too large: actual size - 82, limit - 64"
+    status shouldBe StatusCodes.ContentTooLarge
+    result shouldBe "Content too large: actual size - 82, limit - 64"
   }
 
   val count = 1024
