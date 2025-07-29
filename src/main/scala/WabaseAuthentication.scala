@@ -7,17 +7,15 @@ import JsonEncoder._
 import io.bullet.borer.compat.pekko._
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.model.RemoteAddress.Unknown
-import org.apache.pekko.http.scaladsl.model.{AttributeKey, AttributeKeys, HttpEntity, HttpRequest, HttpResponse, RemoteAddress}
+import org.apache.pekko.http.scaladsl.model.{AttributeKey, AttributeKeys, HttpRequest, HttpResponse, RemoteAddress}
 import org.apache.pekko.http.scaladsl.server.directives.AuthenticationDirective
 import org.apache.pekko.http.scaladsl.unmarshalling.Unmarshal
-import org.apache.pekko.http.scaladsl.model.headers.{
-  BasicHttpCredentials, HttpCookie, HttpCredentials, OAuth2BearerToken,
-  SameSite, `Remote-Address`, `User-Agent`, `X-Forwarded-For`, `X-Real-Ip`
-}
+import org.apache.pekko.http.scaladsl.model.headers.{BasicHttpCredentials, HttpCookie, HttpCredentials, OAuth2BearerToken, SameSite, `Remote-Address`, `User-Agent`, `X-Forwarded-For`, `X-Real-Ip`}
 import org.apache.pekko.util.ByteString
+import org.wabase.WabaseService.RequestHandler
 import org.wabase.WabaseUnmarshallers.mapUnmarshaller
 
-import scala.concurrent.{Future, ExecutionContext}
+import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Try
 
 
@@ -93,6 +91,23 @@ object WabaseAuthentication extends Authentication[WabaseUser] {
    if (resp.status.isSuccess)
     WabaseService.setCookie(resp)(sessionCookie(encryptedSession(req, mergeReqRespUserData(user, resp))))
    else resp
+  }
+
+  def setAppSessionCookieOpt(req: HttpRequest, user: WabaseUser, resp: HttpResponse): HttpResponse = {
+    if (resp.status.isSuccess && user != null)
+      WabaseService.setCookie(resp)(sessionCookie(encryptedSession(req, mergeReqRespUserData(user, resp))))
+    else resp
+  }
+
+  def authenticatePlusSession(innerHandler: RequestHandler): RequestHandler = ctx => {
+    val user = appAuthenticate(ctx.req)
+    innerHandler(ctx.copy(user = user)).map(setAppSessionCookie(ctx.req, user, _))(ctx.as.dispatcher)
+  }
+
+  def authenticatePlusSessionOpt(innerHandler: RequestHandler): RequestHandler = ctx => {
+    val ctxWithUser = appAuthenticateOpt(ctx)
+    innerHandler(ctxWithUser)
+      .map(setAppSessionCookieOpt(ctx.req, ctxWithUser.user, _))(ctxWithUser.as.dispatcher)
   }
 
   def session(req: HttpRequest): Option[String] = WabaseService.optionalCookie(req)(SessionCookieName)

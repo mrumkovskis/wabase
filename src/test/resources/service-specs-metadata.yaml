@@ -65,13 +65,13 @@ do:       doRequest $1
 
 # for view matching path first group must match [(create|count):]<view_name> (WabaseService.viewActionKey transformer)
 on:       /public/([\w:]+)(.*)
-do:       doAction $1
+do:       authenticateOpt doAction $1
 
 on:       /(login)
 do:       extractBasicHttpCredentials setSessionCookie doAction $1
 
 on:       /restricted/(?<viewname>[\w:]+)(.*)
-do:       authenticate setSessionCookie doAction $1
+do:       authenticate doAction $1
 
 on:       /(user_data_merge)
 do:       testAuth mergeUserData doAction $1
