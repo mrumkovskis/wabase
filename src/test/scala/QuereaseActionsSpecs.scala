@@ -6,7 +6,7 @@ import org.apache.pekko.stream.scaladsl.StreamConverters
 import org.mojoz.querease.{ValidationException, ValidationResult}
 import org.scalatest.flatspec.{AsyncFlatSpec, AsyncFlatSpecLike}
 import org.scalatest.matchers.should.Matchers
-import org.tresql.{Query, Resources, convLong, convAny}
+import org.tresql.{Query, Resources, Result, convAny, convLong}
 import org.wabase.QuereaseActionsDtos.Person
 
 import java.io.InputStream
@@ -601,6 +601,8 @@ object QuereaseActionTestManagerObj {
       .runReduce(_ ++ _)
       .map(_.utf8String)
   }
+  def tresqlResult(res: Result[_]) = res.toListOfMaps
+  def listOfMaps(res: Seq[Map[String, Any]]) = res
   def stringResultsFromInputStreams(tresqlResult: TresqlResult)(implicit qr: QuereaseResources) = {
     import qr._
     import org.tresql.convInputStream
