@@ -1,78 +1,57 @@
 package org.wabase
 
 import org.apache.pekko.http.scaladsl.server.directives.WebSocketDirectives
-import org.apache.pekko.http.scaladsl.model.ws.TextMessage
+import org.apache.pekko.http.scaladsl.model.ws.{Message, TextMessage}
 import org.apache.pekko.stream.{ActorAttributes, OverflowStrategy, Supervision}
 import org.apache.pekko.stream.scaladsl.{Flow, Sink, Source}
-import org.apache.pekko.actor.{Actor, ActorRef, Props, Terminated}
+import org.apache.pekko.actor.{Actor, ActorNotFound, ActorRef, ActorSystem, Props, Terminated}
 import spray.json._
 import DefaultJsonProtocol._
 import DeferredControl._
 import org.apache.pekko.http.scaladsl.marshalling.sse.EventStreamMarshalling
+import org.apache.pekko.http.scaladsl.model.{AttributeKeys, HttpRequest, HttpResponse}
 import org.apache.pekko.http.scaladsl.model.sse.ServerSentEvent
 import org.apache.pekko.http.scaladsl.server.{Directives, Route}
+
+import scala.concurrent.Await
+import scala.concurrent.duration.DurationInt
+import scala.util.{Failure, Success}
 
 trait ServerNotifications extends EventStreamMarshalling with WebSocketDirectives {
   this: ServerNotifications.InitialEventsPublisher
     with Execution
-    with Loggable
-    with JsonConverterProvider =>
+    with Loggable =>
 
-  import jsonConverter.MapJsonFormat
+    // start event subscriber watcher actor
+    system
+      .actorSelection(system / ServerNotifications.SubscriberWatcherActorName)
+      .resolveOne(1.second)
+      .onComplete {
+        case Success(_) => logger.info(s"Subscriber watcher already exists")
+        case Failure(_: ActorNotFound) =>
+          system.actorOf(Props(classOf[ServerNotifications.EventSubscriberWatcher]),
+            ServerNotifications.SubscriberWatcherActorName)
+        case Failure(e) => logger.error("Unable to start subscriber watcher actor", e)
+      }
 
-  protected val eventSubscriberWatcherActor = system.actorOf(
-    Props(classOf[ServerNotifications.EventSubscriberWatcher], this))
-
-  protected val serverEventsSource =
-    Source.actorRef[Any](PartialFunction.empty, PartialFunction.empty, 16, OverflowStrategy.dropTail)
-
-  protected val wsNotificationGraph = {
-    Flow.fromSinkAndSourceCoupledMat(
-      Sink.ignore, // ignore incoming messages from client
-      serverEventsSource
-    ) ((_, actor) => actor)
-      .map(m => TextMessage.Strict(createServerEvent(m).data))
-        .withAttributes(ActorAttributes.supervisionStrategy{
-        case ex: Exception =>
-          logger.error("WsNotificationGraph crashed", ex)
-          Supervision.Stop
-      })
-    }
-
-    protected def subscribeToUserEvents(actor: ActorRef, userIdString: String) =
-      eventSubscriberWatcherActor ! ServerNotifications.EventSubscriberActorMsg(actor, userIdString)
-
-    protected def createServerEvent(event: Any): ServerSentEvent = event match {
-      case ctx: DeferredContext => notifyDeferredStatus(ctx)
-      case x => notifyUserEvent(x)
-    }
     /* ***********************
     *** Event notification ***
     **************************/
     def serverSideEventAction(userIdString: String): Route = Directives.complete {
-      serverEventsSource
-        .map(createServerEvent)
-        .mapMaterializedValue(subscribeToUserEvents(_, userIdString))
+      ServerNotifications.subscribeToEvents(
+        bus => act => bus.subscribe(act, ServerNotifications.UserAddresseeMsg(userIdString)),
+        _ => publishInitialEvents(userIdString)
+      )(system)
     }
     /**
       * Consider [[serverSideEventAction]] instead
       * */
     def wsNotificationsAction(userIdString: String) = {
-      handleWebSocketMessages(wsNotificationGraph.mapMaterializedValue(subscribeToUserEvents(_, userIdString)))
+      handleWebSocketMessages(ServerNotifications.subscribeToWsMessages(
+        bus => act => bus.subscribe(act, ServerNotifications.UserAddresseeMsg(userIdString)),
+        _ => publishInitialEvents(userIdString)
+      )(system))
     }
-    private def notifyDeferredStatus(ctx: DeferredContext): ServerSentEvent =
-      new ServerSentEvent(Map(ctx.hash -> Map(
-        "status" -> ctx.status,
-        "time" -> Option(ctx.responseTime).getOrElse(ctx.requestTime)))
-        .asInstanceOf[Map[String, Any]]
-        .toJson
-        .compactPrint
-      )
-    private def notifyUserEvent(event: Any): ServerSentEvent = new ServerSentEvent(event match {
-      case m: Map[String, Any]@unchecked => m.toJson.compactPrint
-      case j: JsValue => j.compactPrint
-      case x => String valueOf x
-    })
     def publishUserEvents(user: String, events: Iterable[Any]) = {
       events.foreach(publishUserEvent(user, _))
     }
@@ -88,6 +67,95 @@ trait ServerNotifications extends EventStreamMarshalling with WebSocketDirective
 }
 
 object ServerNotifications extends Loggable {
+
+  def createServerEvent(event: Any): ServerSentEvent = event match {
+    case ctx: DeferredContext =>
+      val data =
+        Map(ctx.hash -> Map("status" -> ctx.status, "time" -> Option(ctx.responseTime).getOrElse(ctx.requestTime)))
+      new ServerSentEvent(data = ResultEncoder.encodeAnyToJsonString(data))
+    case x =>
+      val data = x match {
+        case s: String => s
+        case x => ResultEncoder.encodeAnyToJsonString(x)
+      }
+      new ServerSentEvent(data = data)
+  }
+
+  private val ServerEventFunction =
+    OpParser.classNameFunctionName(config.getString("app.server-event-function"))
+  val SubscriberWatcherActorName = config.getString("app.server-event-subscriber-watcher-actor-name")
+
+  private def invokeCreateServerEventFunction(event: Any)(as: ActorSystem) = {
+    val (cn, fn) = ServerEventFunction
+    invokeFunction(cn, fn,
+      Seq((classOf[ActorSystem], () => as)),
+      { case (_, idx) if idx == 0 => event }
+    )(as.dispatcher) match {
+      case e: ServerSentEvent => e
+      case x => sys.error(s"ServerSentEvent type expected but got: '$x' of type ${x.getClass}")
+    }
+  }
+
+  protected def serverEventsSource(as: ActorSystem): Source[ServerSentEvent, ActorRef] =
+    Source
+      .actorRef[Any](PartialFunction.empty, PartialFunction.empty, 16, OverflowStrategy.dropTail)
+      .map(invokeCreateServerEventFunction(_)(as))
+
+  protected def wsNotificationGraph(as: ActorSystem): Flow[Message, Message, ActorRef] = {
+    Flow.fromSinkAndSourceCoupledMat(
+        Sink.ignore, // ignore incoming messages from the client
+        serverEventsSource(as)
+      ) ((_, actor) => actor)
+      .map(e => TextMessage.Strict(e.data))
+      .withAttributes(ActorAttributes.supervisionStrategy{
+        case ex: Exception =>
+          logger.error("WsNotificationGraph crashed", ex)
+          Supervision.Stop
+      })
+  }
+
+  private def subscribe(
+    act: ActorRef,
+    subscriptionFun: EventBus => ActorRef => Unit,
+    initialPublications: EventBus => Unit,
+  )(as: ActorSystem) = {
+    // wait for the result here since this function is called in mapMaterializedValue and materialized failure
+    // probably will be silently omitted
+    val watcher = Await.result(
+      as.actorSelection(as / SubscriberWatcherActorName).resolveOne(1.second),
+      1.second
+    )
+    watcher ! ServerNotifications.EventSubscriberActorMsg(
+      act, subscriptionFun, initialPublications)
+  }
+
+
+  def subscribeToEvents(
+    subscriptionFun: EventBus => ActorRef => Unit,
+    initialPublications: EventBus => Unit,
+  )(as: ActorSystem): Source[ServerSentEvent, Any] = {
+    serverEventsSource(as).mapMaterializedValue {
+      subscribe(_, subscriptionFun, initialPublications)(as)
+    }
+  }
+
+  def subscribeToWsMessages(
+    subscriptionFun: EventBus => ActorRef => Unit,
+    initialPublications: EventBus => Unit,
+  )(as: ActorSystem): Flow[Message, Message, Any] = {
+     wsNotificationGraph(as).mapMaterializedValue(subscribe(_, subscriptionFun, initialPublications)(as))
+  }
+
+  def subscribeToWsMessagesAndUpgrade(
+    subscriptionFun: EventBus => ActorRef => Unit,
+    initialPublications: EventBus => Unit,
+  )(req: HttpRequest, as: ActorSystem): HttpResponse = {
+    val upgrade = req.attribute(AttributeKeys.webSocketUpgrade)
+      .getOrElse(sys.error("Expected web request web socket upgrade"))
+    upgrade.handleMessages(
+      subscribeToWsMessages(subscriptionFun, initialPublications)(as)
+    )
+  }
 
   /** Publishes events to newly created websocket */
   trait InitialEventsPublisher {
@@ -115,17 +183,21 @@ object ServerNotifications extends Loggable {
 
   trait Addressee
   case class UserAddresseeMsg(user: String) extends Addressee
-  case class EventSubscriberActorMsg(actor: ActorRef, user: String)
+  case class EventSubscriberActorMsg(
+    actor: ActorRef,
+    subscriptions: EventBus => ActorRef => Unit,
+    initialPublications: EventBus => Unit,
+  )
 
-  class EventSubscriberWatcher(publisher: InitialEventsPublisher) extends Actor with org.apache.pekko.actor.ActorLogging {
+  class EventSubscriberWatcher extends Actor with org.apache.pekko.actor.ActorLogging {
     override def preStart() = {
       logger.info(s"EventSubscriberWatcher actor started")
     }
     override def receive = {
-      case EventSubscriberActorMsg(actor, user: String) =>
+      case EventSubscriberActorMsg(actor, subscriptions, initialPublications) =>
         context watch actor
-        EventBus.subscribe(actor, UserAddresseeMsg(user))
-        publisher.publishInitialEvents(user)
+        subscriptions(EventBus)(actor)
+        initialPublications(EventBus)
       case Terminated(actor) =>
         EventBus.unsubscribe(actor)
         context unwatch actor

@@ -1,6 +1,6 @@
 package org.wabase
 
-import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.actor.{ActorSystem, Props}
 import org.apache.pekko.http.scaladsl.Http
 import org.apache.pekko.http.scaladsl.model.{HttpRequest, HttpResponse}
 
@@ -11,6 +11,9 @@ import scala.io.StdIn
 
 class WabaseServer(wabase: WabaseService.Wabase) {
   val port = WabaseServer.port
+  // start server event subscriber watcher actor
+  wabase.system.actorOf(Props(classOf[ServerNotifications.EventSubscriberWatcher]),
+    ServerNotifications.SubscriberWatcherActorName)
   private val deferredControl = new WabaseDeferredControl(wabase)(wabase.system)
   private val service         = new WabaseService
 
