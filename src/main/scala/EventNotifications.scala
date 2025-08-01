@@ -8,12 +8,13 @@ import org.apache.pekko.actor.{Actor, ActorNotFound, ActorRef, ActorSystem, Prop
 import spray.json._
 import DefaultJsonProtocol._
 import DeferredControl._
+import org.apache.pekko.http.scaladsl.marshalling.Marshal
 import org.apache.pekko.http.scaladsl.marshalling.sse.EventStreamMarshalling
 import org.apache.pekko.http.scaladsl.model.{AttributeKeys, HttpRequest, HttpResponse}
 import org.apache.pekko.http.scaladsl.model.sse.ServerSentEvent
 import org.apache.pekko.http.scaladsl.server.{Directives, Route}
 
-import scala.concurrent.Await
+import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.concurrent.duration.DurationInt
 import scala.util.{Failure, Success}
 
@@ -66,7 +67,7 @@ trait ServerNotifications extends EventStreamMarshalling with WebSocketDirective
     /* End of event notification */
 }
 
-object ServerNotifications extends Loggable {
+object ServerNotifications extends EventStreamMarshalling with Loggable {
 
   def createServerEvent(event: Any): ServerSentEvent = event match {
     case ctx: DeferredContext =>
@@ -119,8 +120,8 @@ object ServerNotifications extends Loggable {
     subscriptionFun: EventBus => ActorRef => Unit,
     initialPublications: EventBus => Unit,
   )(as: ActorSystem) = {
-    // wait for the result here since this function is called in mapMaterializedValue and materialized failure
-    // probably will be silently omitted
+    // wait for the result here since this function is called in mapMaterializedValue and in the case of
+    // Failure it will probably be silently omitted
     val watcher = Await.result(
       as.actorSelection(as / SubscriberWatcherActorName).resolveOne(1.second),
       1.second
@@ -139,6 +140,15 @@ object ServerNotifications extends Loggable {
     }
   }
 
+  def subscribeToEventsAndListen(
+    subscriptionFun: EventBus => ActorRef => Unit,
+    initialPublications: EventBus => Unit,
+  )(as: ActorSystem, req: HttpRequest): Future[HttpResponse] = {
+    val dataSrc = subscribeToEvents(subscriptionFun, initialPublications)(as)
+    implicit val ec: ExecutionContext = as.dispatcher
+    Marshal(dataSrc).toResponseFor(req)
+  }
+
   def subscribeToWsMessages(
     subscriptionFun: EventBus => ActorRef => Unit,
     initialPublications: EventBus => Unit,
@@ -146,7 +156,7 @@ object ServerNotifications extends Loggable {
      wsNotificationGraph(as).mapMaterializedValue(subscribe(_, subscriptionFun, initialPublications)(as))
   }
 
-  def subscribeToWsMessagesAndUpgrade(
+  def subscribeToWsMessagesAndListen(
     subscriptionFun: EventBus => ActorRef => Unit,
     initialPublications: EventBus => Unit,
   )(req: HttpRequest, as: ActorSystem): HttpResponse = {
@@ -155,6 +165,10 @@ object ServerNotifications extends Loggable {
     upgrade.handleMessages(
       subscribeToWsMessages(subscriptionFun, initialPublications)(as)
     )
+  }
+
+  def publish(publicationFun: EventBus => Unit): Unit = {
+    publicationFun(EventBus)
   }
 
   /** Publishes events to newly created websocket */
