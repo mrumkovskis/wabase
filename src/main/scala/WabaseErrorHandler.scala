@@ -2,18 +2,32 @@ package org.wabase
 
 import org.apache.pekko.http.scaladsl.model.StatusCodes.{BadRequest, Forbidden, InternalServerError, NotFound, Unauthorized, UnprocessableContent}
 import org.apache.pekko.http.scaladsl.model.{EntityStreamSizeException, HttpEntity, HttpResponse, StatusCodes}
+import org.mojoz.metadata.ViewDef
 import org.mojoz.querease.{ValidationException, ValidationResult}
 import org.tresql.MissingBindVariableException
 import org.wabase.AppServiceBase.AppExceptionHandler.PostgresTimeoutExceptionHandler
 import org.wabase.AppServiceBase.AppExceptionHandler.PostgresTimeoutExceptionHandler.{TimeoutFriendlyMessage, TimeoutSignature}
 
+import java.sql.SQLException
+import java.util.Locale
 import scala.concurrent.Future
 
 object WabaseErrorHandler {
+  private val dbConstraintMessageBuilder = DbConstraintMessage.PostgreSqlConstraintMessageBuilder
   def errorHandler(ctx: WabaseRequestContext): WabaseService.ErrorHandler = {
     def debug(msg: String, e: Throwable = null) = {
       val m = s"[${ctxDebugInfo(ctx)}] $msg"
       if (e == null) ctx.logger.debug(m) else ctx.logger.debug(m, e)
+    }
+    def friendlyConstraintErrorMessageResponse(exception: Throwable, sqlCause: SQLException, viewDefOpt: Option[ViewDef], tableName: String) = {
+      import ctx.wabase.qe.tableMetadata
+      dbConstraintMessageBuilder.friendlyMessageAndDetails(exception, sqlCause, viewDefOpt, tableName, tableMetadata.tableDefOption) match {
+        case (friendlyMessage, details) =>
+          val locale: Locale = I18nService.applicationLocale(ctx.applicationState)
+          val translated = ctx.wabase.translate(friendlyMessage, details)(locale)
+          debug(badRequestMsg(exception.getMessage, ctx.req.entity), exception)
+          HttpResponse(BadRequest, entity = translated)
+      }
     }
     val eh: PartialFunction[Throwable, HttpResponse] = {
       case e: HttpException =>
@@ -60,6 +74,20 @@ object WabaseErrorHandler {
         ctx.logger.error(msg)
         HttpResponse(InternalServerError,
           entity = ctx.wabase.translate(TimeoutFriendlyMessage)(I18nService.applicationLocale(ctx.applicationState)))
+      case e: SQLException if dbConstraintMessageBuilder.nameAndViolation(e)._1 != null =>
+        val viewDefOpt = ctx.wabase.qe.viewDefOption(ctx.viewName)
+        val tableName  = viewDefOpt.map(_.table).orNull
+        friendlyConstraintErrorMessageResponse(e, e, viewDefOpt, tableName)
+      case util.control.NonFatal(e) if dbConstraintMessageBuilder.nameAndViolation(dbConstraintMessageBuilder.getSqlCauseAndContext(e)._1)._1 != null =>
+        dbConstraintMessageBuilder.getSqlCauseAndContext(e) match {
+          case (sqe, ce) =>
+            val viewDefOpt = ctx.wabase.qe.viewDefOption(ctx.viewName)
+            val tableName =
+              Option(ce).map(_.name).filter(_ != null)
+                .orElse(viewDefOpt.map(_.table))
+                .orNull
+            friendlyConstraintErrorMessageResponse(e, sqe, viewDefOpt, tableName)
+        }
     }
     eh.andThen(Future.successful(_)) orElse {
       case e: org.tresql.TresqlException if e.getCause.isInstanceOf[org.postgresql.util.PSQLException] &&
