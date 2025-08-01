@@ -2141,14 +2141,14 @@ object AppQuerease {
           } else null finally r.close()
         }
     }: InvocationParameterFun) orElse ({
+      case (par, i) if i == idx && tresqlResult != null && par.getType.isAssignableFrom(classOf[Result[_]]) =>
+        tresqlResult
+    }: InvocationParameterFun) orElse ({
       case (par, i) if i == idx && tresqlResult != null && par.getType.isAssignableFrom(classOf[Map[_, _]]) =>
         tresqlResult.toListOfMaps.headOption.getOrElse(s"Empty result, expected one row")
     }: InvocationParameterFun) orElse ({
       case (par, i) if i == idx && tresqlResult != null && par.getType.isAssignableFrom(classOf[List[_]]) =>
         tresqlResult.toListOfMaps
-    }: InvocationParameterFun) orElse ({
-      case (par, i) if i == idx && tresqlResult != null && par.getType.isAssignableFrom(classOf[Result[_]]) =>
-        tresqlResult
     }: InvocationParameterFun) orElse ({ case (par, i)
       if i == idx && par.getType == classOf[String] && qr.getClass == classOf[StringResult] =>
       qr.asInstanceOf[StringResult].value
