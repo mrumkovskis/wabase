@@ -26,7 +26,18 @@ class WabaseScheduler(wabase: AppBase[_], system: ActorSystem) extends Loggable 
       config
         .getConfig("pekko.quartz.schedules")
         .root().asScala.keys
-        .foreach { jobName => schedule(jobName)(scheduler, wabaseJobActor) }
+        .foreach { jobName =>
+          val enabled =
+            Option(s"pekko.quartz.schedules.$jobName.enabled")
+              .filter(config.hasPath).map(config.getBoolean)
+              .getOrElse(true)
+          if (enabled) {
+            logger.debug(s"Scheduling job '$jobName'")
+            schedule(jobName)(scheduler, wabaseJobActor)
+          } else {
+            logger.info(s"Job '$jobName' is disabled in configuration, will not be scheduled")
+          }
+        }
     } else {
       logger.debug(s"No schedules found for background jobs.")
     }
