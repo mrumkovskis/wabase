@@ -1,10 +1,17 @@
 package org.wabase
 
-import org.apache.pekko.actor.{ActorSystem, Props}
-import org.apache.pekko.http.scaladsl.Http
-import org.apache.pekko.http.scaladsl.model.{HttpRequest, HttpResponse}
+import com.typesafe.config.ConfigFactory
+import com.typesafe.scalalogging.Logger
+import com.typesafe.sslconfig
+import com.typesafe.sslconfig.ssl.{ConfigSSLContextBuilder, SSLConfigFactory}
+import com.typesafe.sslconfig.ssl.{DefaultKeyManagerFactoryWrapper, DefaultTrustManagerFactoryWrapper}
+import com.typesafe.sslconfig.util.NoDepsLogger
 
-import scala.collection.immutable.Seq
+import org.apache.pekko.actor.{ActorSystem, Props}
+import org.apache.pekko.http.scaladsl.{ConnectionContext, Http}
+import org.apache.pekko.http.scaladsl.model.{HttpRequest, HttpResponse}
+import org.slf4j.LoggerFactory
+
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success}
 import scala.io.StdIn
@@ -45,7 +52,30 @@ object WabaseServer {
       override protected def initJsonConverter: org.wabase.JsonConverter[?] = qio
     }
 
+  class SslConfigLogger(delegate: Logger) extends NoDepsLogger {
+    def isDebugEnabled: Boolean = {
+      var enabled = false
+      delegate.whenDebugEnabled {
+        enabled = true
+      }
+      enabled
+    }
+    def debug(msg: String): Unit = delegate.debug(msg)
+    def info(msg:  String): Unit = delegate.info(msg)
+    def warn(msg:  String): Unit = delegate.warn(msg)
+    def error(msg: String): Unit = delegate.error(msg)
+    def error(msg: String, throwable: Throwable): Unit = delegate.error(msg)
+  }
+
+  object SslConfigLoggerFactory extends sslconfig.util.LoggerFactory {
+    def apply(name: String):    NoDepsLogger = new SslConfigLogger(Logger(name))
+    def apply(clazz: Class[_]): NoDepsLogger = new SslConfigLogger(Logger(clazz))
+  }
+
   val port = config.getInt("port")
+  lazy val isSslEnabled =
+    Option("app.server.ssl.enabled").filter(config.hasPath).map(config.getBoolean)
+      .getOrElse(config.hasPath("app.server.ssl-config"))
 
   lazy val shutdownOnKeyPressEnter = config.getBoolean("app.server.shutdown-on-keypress-enter")
   lazy val shutdownOnBindFailed    = config.getBoolean("app.server.shutdown-on-bind-failed")
@@ -56,9 +86,27 @@ object WabaseServer {
     val executionImpl = new ExecutionImpl()(serverSystem)
     val app = new App(executionImpl)
     val server = new WabaseServer(app)
-    val hostPortString = s"http://localhost:${server.port}"
-    // TODO support TLS if configured
-    val bindingFuture = Http().newServerAt("0.0.0.0", server.port).bind(server.handle)
+    val protocol        = if (isSslEnabled) "https" else "http"
+    val hostPortString  = s"$protocol://localhost:${server.port}"
+    val bindAddress     = config.getString("app.server.bind-address")
+    val bindingFuture =
+      if (isSslEnabled) {
+        val sslConfigSettings = SSLConfigFactory.parse(
+          Option("app.server.ssl-config").filter(config.hasPath).map(config.getConfig).getOrElse(ConfigFactory.empty)
+            .withFallback(Option("ssl-config").filter(config.hasPath).map(config.getConfig).getOrElse(ConfigFactory.empty)))
+        val sslContext =
+          new ConfigSSLContextBuilder(
+            SslConfigLoggerFactory,
+            sslConfigSettings,
+            new DefaultKeyManagerFactoryWrapper(sslConfigSettings.keyManagerConfig.algorithm),
+            new DefaultTrustManagerFactoryWrapper(sslConfigSettings.trustManagerConfig.algorithm),
+          ).build()
+        val httpsServerConnectionContext =
+          ConnectionContext.httpsServer(sslContext)
+        Http().newServerAt(bindAddress, server.port).enableHttps(httpsServerConnectionContext).bind(server.handle)
+      } else {
+        Http().newServerAt(bindAddress, server.port).bind(server.handle)
+      }
     bindingFuture.onComplete {
       case Success(_) =>
         println(
