@@ -1,0 +1,4 @@
+path:     /scripts/hello.js
+headers:
+  If-Modified-Since: Sat, 14 Jun 2025 12:10:59 GMT
+error: 304 Not Modified

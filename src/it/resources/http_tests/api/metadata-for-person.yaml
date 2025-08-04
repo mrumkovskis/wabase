@@ -1,4 +1,6 @@
 path:     /metadata/person
+response_headers:
+  ETag: '"5du_uaPgqw17JnjHqMVtuw=="'
 response: {
   "name": "person",
   "key": [

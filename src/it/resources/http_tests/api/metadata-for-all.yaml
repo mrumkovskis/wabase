@@ -1,4 +1,6 @@
 path:     /metadata/*
+response_headers:
+  ETag: '"5du_uaPgqw17JnjHqMVtuw=="'
 response: {
   "current_user": {
     "name": "current_user",

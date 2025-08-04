@@ -7,7 +7,7 @@ import AppMetadata._
 import com.typesafe.scalalogging.Logger
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.marshalling.{Marshal, ToResponseMarshallable}
-import org.apache.pekko.http.scaladsl.model.headers.{Cookie, HttpCookie, `Set-Cookie`, `Timeout-Access`}
+import org.apache.pekko.http.scaladsl.model.headers.{Cookie, EntityTag, HttpCookie, `Set-Cookie`, `Timeout-Access`}
 import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes, DateTime, HttpEntity, HttpHeader, HttpMessage, HttpRequest, HttpResponse, MediaTypes, StatusCode, StatusCodes, Uri}
 import org.apache.pekko.http.scaladsl.server.directives.ContentTypeResolver
 import org.apache.pekko.http.scaladsl.server.directives.FileAndResourceDirectives.ResourceFile
@@ -19,6 +19,7 @@ import org.slf4j.LoggerFactory
 import org.tresql.parsing.QueryParsers
 import org.wabase.AppMetadata.{Action, RouteDef}
 import org.wabase.WabaseService.Wabase
+import org.wabase.CacheConditionHandlers._
 
 import java.util.Locale
 import scala.annotation.tailrec
@@ -207,37 +208,47 @@ object WabaseService {
     HttpResponse(entity = HttpEntity.Strict(ContentTypes.`application/json`, ByteString(json.compactPrint)))
   }
 
-  def metadata(viewName: String, ctx: WabaseRequestContext): HttpResponse = {
-    // TODO ETag for metadata for new flow
-    // respondWithHeader(ETag(EntityTag(app.metadataVersionString))) {
-    //   conditional(EntityTag(app.metadataVersionString), DateTime.now) {
-    implicit val user:  WabaseUser       = ctx.user
-    implicit val state: ApplicationState = ctx.applicationState
-    import ctx.wabase
-    val json = if (viewName == "*") wabase._apiMetadata else wabase._metadata(viewName)
-    HttpResponse(entity = HttpEntity.Strict(ContentTypes.`application/json`, ByteString(json.compactPrint)))
+  def metadata(viewName: String, ctx: WabaseRequestContext): RequestHandler = {
+    conditional(EntityTag(ctx.wabase.app.metadataVersionString), DateTime(ctx.wabase.app.startupTimeMillis), _ => {
+      implicit val user:  WabaseUser       = ctx.user
+      implicit val state: ApplicationState = ctx.applicationState
+      import ctx.wabase
+      val json = if (viewName == "*") wabase._apiMetadata else wabase._metadata(viewName)
+      Future.successful(
+        HttpResponse(entity = HttpEntity.Strict(ContentTypes.`application/json`, ByteString(json.compactPrint)))
+      )
+    })
   }
 
+  private def conditionalFor(length: Long, lastModified: Long, innerHandler: RequestHandler): RequestHandler = {
+    // extractSettings.flatMap(settings =>
+      // if (settings.fileGetConditional) {
+        val tag = java.lang.Long.toHexString(lastModified ^ java.lang.Long.reverse(length))
+        val lastModifiedDateTime = DateTime(math.min(lastModified, System.currentTimeMillis))
+        conditional(EntityTag(tag), lastModifiedDateTime, innerHandler)
+      // } else pass)
+  }
   private val classLoader = this.getClass.getClassLoader
-  def getFromResource(resourcesRootPath: String, resourcePathAndName: String, ctx: WabaseRequestContext): HttpResponse = {
+  def getFromResource(resourcesRootPath: String, resourcePathAndName: String): RequestHandler = {
     val resourceName = s"${resourcesRootPath}${resourcePathAndName}"
     val contentType = ContentTypeResolver.Default(resourceName)
     if (!resourceName.endsWith("/"))
         Option(classLoader.getResource(resourceName)).flatMap(ResourceFile.apply) match {
           case Some(ResourceFile(url, length, lastModified)) =>
-            // TODO conditionalFor(length, lastModified) {
+            conditionalFor(length, lastModified, _ => {
               if (length > 0) {
                 // TODO withRangeSupportAndPrecompressedMediaTypeSupport {
+                Future.successful(
                   HttpResponse(entity =
                     HttpEntity.Default(contentType, length,
                       StreamConverters.fromInputStream(() => url.openStream()))
-                // }
                   )
-              } else HttpResponse(entity = HttpEntity.Empty)
-            // }
-          case _ => HttpResponse(StatusCodes.NotFound) // not found or directory
+                )
+              } else Future.successful(HttpResponse(entity = HttpEntity.Empty))
+            })
+          case _ => (_: WabaseRequestContext) => Future.successful(HttpResponse(StatusCodes.NotFound)) // not found or directory
         }
-    else HttpResponse(StatusCodes.NotFound)
+    else (_: WabaseRequestContext) => Future.successful(HttpResponse(StatusCodes.NotFound))
   }
 
   /** Extract segments as list from path after segment matching prefix */

@@ -1,6 +1,8 @@
 path:     /scripts/hello.js
 response_headers:
   Content-Type: application/javascript; charset=UTF-8
+  # ETag:        '"260001976e59a90f"'
+  # Last-Modified: Sat, 14 Jun 2025 12:10:59 GMT
 response: |
   document.getElementById('helloButton').addEventListener('click', function() {
     alert('hello');

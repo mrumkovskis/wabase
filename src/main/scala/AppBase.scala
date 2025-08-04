@@ -48,6 +48,8 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
 
   override def dbAccess = this
 
+  val startupTimeMillis = System.currentTimeMillis
+
   import qe.{viewDef, viewDefOption, classToViewNameMap, viewNameToClassMap}
 
   protected def isQuereaseActionDefined(viewName: String, actionName: String) =
@@ -683,8 +685,14 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
   def createSaveResult[T <: Dto](ctx: SaveContext[T]) = ctx.result
   def createDeleteResult[T <: DtoWithId](ctx: RemoveContext[T]) = ctx.result
 
-  lazy val metadataVersionString = java.util.Base64.getUrlEncoder.encodeToString(
-    java.security.MessageDigest.getInstance("MD5").digest(qe.collectViews{ case v => v }.toList.toString.getBytes))
+  lazy val metadataVersionString = {
+    java.util.Base64.getUrlEncoder.encodeToString(
+      java.security.MessageDigest.getInstance("MD5").digest(
+        qe.collectViews{ case v => v }.toList.toString
+          .replace("HashMap", "Map") // XXX Because of tests + scala 2.12
+          .getBytes("UTF-8"))
+    )
+  }
 
   def metadata(viewName: String)(implicit user: User, state: ApplicationState): JsObject = {
     metadata(viewDef(viewName))

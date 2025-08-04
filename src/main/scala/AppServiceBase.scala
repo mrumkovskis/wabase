@@ -393,7 +393,7 @@ trait AppServiceBase[User]
   def apiAction(implicit user: User) = complete(app.api)
   def metadataAction(viewName: String)(implicit user: User, state: ApplicationState) =
     respondWithHeader(ETag(EntityTag(app.metadataVersionString))) {
-      conditional(EntityTag(app.metadataVersionString), DateTime.now) {
+      conditional(EntityTag(app.metadataVersionString), DateTime(app.startupTimeMillis)) {
         val obj = if (viewName == "*") app.apiMetadata else app.metadata(viewName)
         complete(obj)
       }

@@ -1,0 +1,4 @@
+path:     /scripts/hello.js
+headers:
+  If-None-Match: '"ABC", "260001976e59a90f"'
+error: 304 Not Modified
