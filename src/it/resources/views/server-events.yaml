@@ -1,0 +1,11 @@
+name: server_events
+api: get save
+decoder: none
+table:
+fields:
+- topic
+- value
+get:
+- wabase.app.EventsFunctions.subscribeToEvent :topic
+insert:
+- wabase.app.EventsFunctions.publishEvent(:topic, :value)

@@ -20,6 +20,10 @@ response: {
   "save_person_email": [
     "save"
   ],
+  "server_events": [
+    "get",
+    "save"
+  ],
   "user": [
     "get",
     "save"

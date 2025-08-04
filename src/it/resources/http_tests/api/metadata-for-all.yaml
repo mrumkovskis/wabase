@@ -276,6 +276,47 @@ response: {
     ],
     "filter": []
   },
+  "server_events": {
+    "name": "server_events",
+    "key": [],
+    "fields": [
+      {
+        "name": "topic",
+        "type": "string",
+        "isCollection": false,
+        "isComplexType": false,
+        "nullable": true,
+        "required": false,
+        "sortable": false,
+        "label": "Topic",
+        "visible": true,
+        "insertable": true,
+        "updatable": true,
+        "enum": null,
+        "refViewName": null,
+        "comments": null,
+        "jsonType": "string"
+      },
+      {
+        "name": "value",
+        "type": "string",
+        "isCollection": false,
+        "isComplexType": false,
+        "nullable": true,
+        "required": false,
+        "sortable": false,
+        "label": "Value",
+        "visible": true,
+        "insertable": true,
+        "updatable": true,
+        "enum": null,
+        "refViewName": null,
+        "comments": null,
+        "jsonType": "string"
+      }
+    ],
+    "filter": []
+  },
   "user": {
     "name": "user",
     "key": [

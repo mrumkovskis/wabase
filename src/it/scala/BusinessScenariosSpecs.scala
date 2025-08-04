@@ -1,8 +1,13 @@
 package wabase.app
 
+import org.apache.pekko.NotUsed
 import org.apache.pekko.actor.ActorSystem
-import org.apache.pekko.http.scaladsl.model.{HttpRequest, HttpResponse, Uri}
+import org.apache.pekko.http.scaladsl.Http
+import org.apache.pekko.http.scaladsl.client.RequestBuilding.{Get, Post}
+import org.apache.pekko.http.scaladsl.model.sse.ServerSentEvent
+import org.apache.pekko.http.scaladsl.model.{HttpRequest, HttpResponse}
 import org.apache.pekko.http.scaladsl.unmarshalling.Unmarshal
+import org.apache.pekko.stream.scaladsl.Source
 import org.apache.pekko.util.ByteString
 import org.mojoz.metadata.out.DdlGenerator
 import org.wabase._
@@ -10,7 +15,7 @@ import org.wabase.WabaseUnmarshallers.mapUnmarshaller
 
 import java.io.File
 import scala.concurrent.duration.DurationInt
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.language.reflectiveCalls
 import scala.util.Try
 
@@ -42,6 +47,16 @@ object BusinessScenariosSpecs {
   def sleep(millis: Long, response: HttpResponse)(implicit ec: ExecutionContext): Future[HttpResponse] = Future {
     Thread.sleep(millis)
     response
+  }
+}
+
+object EventsFunctions {
+  def subscribeToEvent(topic: String)(as: ActorSystem, req: HttpRequest) = {
+    ServerNotifications.subscribeToEventsAndListen(b => a => b.subscribe(a, topic), _ => ())(as, req)
+  }
+
+  def publishEvent(topic: String, value: String) = {
+    ServerNotifications.publish { _.publish(EventMessage(topic, value)) }
   }
 }
 
@@ -88,5 +103,25 @@ class BusinessScenariosSpecs extends BusinessScenariosBaseSpecs("http_tests") {
     } else {
       super.checkTestCase(scenario, testCase, context, map, retriesLeft)
     }
+  }
+
+  behavior of "server notifications"
+  it should "read server events" in {
+    val port = config.getString("port")
+    import org.apache.pekko.http.scaladsl.unmarshalling.sse.EventStreamUnmarshalling._
+    implicit val as: ActorSystem = ActorSystem("test-server-events-client")
+    implicit val ec: ExecutionContext = as.dispatcher
+    val resF = Http()
+      .singleRequest(Get(s"http://localhost:$port/data/server_events?topic=test_topic"))
+      .flatMap { Unmarshal(_).to[Source[ServerSentEvent, NotUsed]] }
+      .flatMap { src =>
+        Future.traverse(List("value1", "value2", "value3")) { value =>
+          Http()
+            .singleRequest(Post(s"http://localhost:$port/data/server_events?topic=test_topic&value=$value"))
+        }.flatMap(_ => Future.successful(src))
+      }
+      .flatMap(_.take(3).runFold(List[String]()){ (res, ev) => ev.data :: res })
+    val res = Await.result(resF, 3.seconds)
+    res.sorted shouldBe List("value1", "value2", "value3")
   }
 }
