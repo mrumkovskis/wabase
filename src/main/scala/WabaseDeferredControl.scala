@@ -29,9 +29,9 @@ class WabaseDeferredControl(
 
   def publishUserDeferredStatuses(user: String): Unit = {
     val deferredRequests = deferredStorage.getUserDeferredStatuses(user)
-    import EventBus._
     deferredRequests.foreach { ctx =>
-      if (ctx.userIdString == user) publish(Message(ServerNotifications.UserAddresseeMsg(user), ctx))
+      if (ctx.userIdString == user)
+        ServerNotifications.publishMessages(EventMessage(ServerNotifications.UserAddresseeMsg(user), ctx))
     }
   }
 
@@ -99,13 +99,13 @@ object WabaseDeferredControl extends WabaseDeferredControlFactory {
   }
 
   def doDeferred(handler: RequestHandler): RequestHandler = ctx => {
-    import EventBus._
     val timeout = extractTimeout(ctx, ctx.req)
     val dctx = ctx.copy(queryTimeout = timeout)
     val user = dctx.user.name
     val hash = DeferredControl.requestHash(user, dctx.req, WabaseAuthentication.removeSessionInfoFromRequest)
     val deferredCtx = DeferredControl.DeferredContext(user, hash, dctx, handler)
-    publish(Message(DeferredControl.DeferredRequestArrived(dctx.deferred.deferredModule), deferredCtx))
+    ServerNotifications
+      .publishMessages(EventMessage(DeferredControl.DeferredRequestArrived(dctx.deferred.deferredModule), deferredCtx))
     Future.successful(HttpResponse(
       entity = HttpEntity.Strict(ContentTypes.`application/json`,
         ByteString(Json.encode(Map("deferred" -> hash)).toUtf8String))

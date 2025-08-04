@@ -59,7 +59,7 @@ trait ServerNotifications extends EventStreamMarshalling with WebSocketDirective
     def publishUserEvent(user: String, event: Any) = {
       import ServerNotifications._
       val addressee = UserAddresseeMsg(user)
-      EventBus.publish(EventBus.Message(addressee, event))
+      EventBus.publish(EventMessage(addressee, event))
     }
     /** Return all actual user events client through web socket should be notified about.
     Is called when web socket connection is established. Must be overrided by subclasses. */
@@ -115,7 +115,7 @@ object ServerNotifications extends EventStreamMarshalling with Loggable {
       })
   }
 
-  private def subscribe(
+  def subscribe(
     act: ActorRef,
     subscriptionFun: EventBus => ActorRef => Unit,
     initialPublications: EventBus => Unit,
@@ -169,6 +169,10 @@ object ServerNotifications extends EventStreamMarshalling with Loggable {
 
   def publish(publicationFun: EventBus => Unit): Unit = {
     publicationFun(EventBus)
+  }
+
+  def publishMessages(messages: EventMessage*): Unit = {
+    publish(bus => messages.foreach(bus.publish))
   }
 
   /** Publishes events to newly created websocket */

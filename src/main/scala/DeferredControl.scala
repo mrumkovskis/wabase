@@ -69,9 +69,9 @@ trait DeferredControl
 
   def publishUserDeferredStatuses(user: String): Unit = {
     val deferredRequests = deferredStorage.getUserDeferredStatuses(user)
-    import EventBus._
     deferredRequests.foreach { ctx =>
-      if (ctx.userIdString == user) publish(Message(ServerNotifications.UserAddresseeMsg(user), ctx))
+      if (ctx.userIdString == user)
+        ServerNotifications.publishMessages(EventMessage(ServerNotifications.UserAddresseeMsg(user), ctx))
     }
   }
   /* end of deferred phases */
@@ -123,10 +123,9 @@ trait DeferredControl
         Route.toFunction { requestContext =>
           wrappedRoute(requestContext.withUnmatchedPath(ctx.unmatchedPath))
         }.compose[WabaseRequestContext](_.req)
-      import EventBus._
       val hash = requestHash(user, ctx.request)
       val deferredCtx = DeferredContext(user, hash, WabaseRequestContext(null, ctx.request), requestProcessor)
-      publish(Message(if (module == null) DeferredRequestArrived(moduleId) else
+      ServerNotifications.publishMessages(EventMessage(if (module == null) DeferredRequestArrived(moduleId) else
         DeferredControl.DeferredRequestArrived(module),
         deferredCtx))
       respondWithHeader(`X-Deferred-Hash`(hash))(_ =>
@@ -186,8 +185,7 @@ object DeferredControl extends Loggable with AppConfig {
   }
   trait DeferredStatusPublisher {
     def publishDeferredStatus(ctx: DeferredContext) = {
-      import EventBus._
-      publish(Message(ServerNotifications.UserAddresseeMsg(ctx.userIdString), ctx))
+      ServerNotifications.publishMessages(EventMessage(ServerNotifications.UserAddresseeMsg(ctx.userIdString), ctx))
     }
     /** Publish user deferred request status info to user websocket */
     def publishUserDeferredStatuses(userIdString: String): Unit
@@ -384,8 +382,9 @@ object DeferredControl extends Loggable with AppConfig {
     logger.info(s"Starting deferred request processor $name, worker count - ($workerCount)")
     Source.actorRef[DeferredContext](PartialFunction.empty, PartialFunction.empty, 8, OverflowStrategy.dropTail)
       .to(deferredSink(name, storage, publisher, workerCount))
-      .mapMaterializedValue(
-        EventBus.subscribe(_, DeferredRequestArrived(name)))
+      .mapMaterializedValue(actorRef =>
+        ServerNotifications.subscribe(actorRef,
+          b => a => b.subscribe(a, DeferredRequestArrived(name)), _ => ())(as))
       .withAttributes(ActorAttributes.supervisionStrategy {
         case ex: Exception =>
           logger.error("DeferredGraph crashed", ex)
