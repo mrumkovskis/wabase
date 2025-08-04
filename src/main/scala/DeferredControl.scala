@@ -382,9 +382,11 @@ object DeferredControl extends Loggable with AppConfig {
     logger.info(s"Starting deferred request processor $name, worker count - ($workerCount)")
     Source.actorRef[DeferredContext](PartialFunction.empty, PartialFunction.empty, 8, OverflowStrategy.dropTail)
       .to(deferredSink(name, storage, publisher, workerCount))
-      .mapMaterializedValue(actorRef =>
+      .mapMaterializedValue(/*actorRef =>
         ServerNotifications.subscribe(actorRef,
-          b => a => b.subscribe(a, DeferredRequestArrived(name)), _ => ())(as))
+          b => a => b.subscribe(a, DeferredRequestArrived(name)), _ => ())(as)*/
+        EventBus.subscribe(_, DeferredRequestArrived(name))
+      )
       .withAttributes(ActorAttributes.supervisionStrategy {
         case ex: Exception =>
           logger.error("DeferredGraph crashed", ex)
