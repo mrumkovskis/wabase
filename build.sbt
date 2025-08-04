@@ -1,7 +1,8 @@
 val scalaV    = "2.13.16" // "3.3.6"
 
 val pekkoV    = "1.1.5"
-val pekkoHttpV= "1.1.0"
+val pekkoConnV= "1.1.0"
+val pekkoHttpV= "1.2.0"
 
 val mojozV    = "6.0.0-RC1-SNAPSHOT"
 val quereaseV = "8.0.0-RC3-SNAPSHOT"
@@ -46,8 +47,9 @@ lazy val commonSettings = Seq(
       "com.samskivert"              % "jmustache"             % "1.16",
       "org.apache.pekko"           %% "pekko-actor"           % pekkoV,
       "org.apache.pekko"           %% "pekko-actor-typed"     % pekkoV,
-      "org.apache.pekko"           %% "pekko-connectors-csv"  % pekkoHttpV, //      % Optional?
-      "org.apache.pekko"           %% "pekko-connectors-xml"  % pekkoHttpV, //      % Optional?
+      "org.apache.pekko"           %% "pekko-http"            % pekkoHttpV,
+      "org.apache.pekko"           %% "pekko-connectors-csv"  % pekkoConnV, //      % Optional?
+      "org.apache.pekko"           %% "pekko-connectors-xml"  % pekkoConnV, //      % Optional?
       "org.apache.pekko"           %% "pekko-http-spray-json" % pekkoHttpV,
       "org.apache.pekko"           %% "pekko-slf4j"           % pekkoV,
       "org.apache.pekko"           %% "pekko-stream"          % pekkoV,
