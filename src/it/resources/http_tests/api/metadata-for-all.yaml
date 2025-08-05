@@ -278,7 +278,7 @@ response: {
   },
   "server_events": {
     "name": "server_events",
-    "key": [],
+    "key": ["topic"],
     "fields": [
       {
         "name": "topic",

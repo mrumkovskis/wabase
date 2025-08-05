@@ -5,9 +5,10 @@ import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.Http
 import org.apache.pekko.http.scaladsl.client.RequestBuilding.{Get, Post}
 import org.apache.pekko.http.scaladsl.model.sse.ServerSentEvent
-import org.apache.pekko.http.scaladsl.model.{HttpRequest, HttpResponse}
+import org.apache.pekko.http.scaladsl.model.ws.{Message, TextMessage, WebSocketRequest}
+import org.apache.pekko.http.scaladsl.model.{HttpRequest, HttpResponse, StatusCodes}
 import org.apache.pekko.http.scaladsl.unmarshalling.Unmarshal
-import org.apache.pekko.stream.scaladsl.Source
+import org.apache.pekko.stream.scaladsl.{Flow, Keep, Sink, Source}
 import org.apache.pekko.util.ByteString
 import org.mojoz.metadata.out.DdlGenerator
 import org.wabase._
@@ -57,6 +58,10 @@ object EventsFunctions {
 
   def publishEvent(topic: String, value: String) = {
     ServerNotifications.publish { _.publish(EventMessage(topic, value)) }
+  }
+
+  def subscribeToWsMessages(topic: String)(as: ActorSystem, req: HttpRequest) = {
+    ServerNotifications.subscribeToWsMessagesAndListen(b => a => b.subscribe(a, topic), _ => ())(as, req)
   }
 }
 
@@ -111,17 +116,52 @@ class BusinessScenariosSpecs extends BusinessScenariosBaseSpecs("http_tests") {
     import org.apache.pekko.http.scaladsl.unmarshalling.sse.EventStreamUnmarshalling._
     implicit val as: ActorSystem = ActorSystem("test-server-events-client")
     implicit val ec: ExecutionContext = as.dispatcher
+
+    val topic = "test_topic"
+
     val resF = Http()
-      .singleRequest(Get(s"http://localhost:$port/data/server_events?topic=test_topic"))
+      .singleRequest(Get(s"http://localhost:$port/data/server_events/$topic"))
       .flatMap { Unmarshal(_).to[Source[ServerSentEvent, NotUsed]] }
       .flatMap { src =>
         Future.traverse(List("value1", "value2", "value3")) { value =>
           Http()
-            .singleRequest(Post(s"http://localhost:$port/data/server_events?topic=test_topic&value=$value"))
+            .singleRequest(Post(s"http://localhost:$port/data/server_events?topic=$topic&value=$value"))
         }.flatMap(_ => Future.successful(src))
       }
       .flatMap(_.take(3).runFold(List[String]()){ (res, ev) => ev.data :: res })
     val res = Await.result(resF, 3.seconds)
     res.sorted shouldBe List("value1", "value2", "value3")
+  }
+
+  it should "read web socket messages" in {
+    val port = config.getString("port")
+    implicit val as: ActorSystem = ActorSystem("test-server-ws-messages-client")
+    implicit val ec: ExecutionContext = as.dispatcher
+
+    val topic = "test_topic"
+
+    val sink =
+      Sink.takeLast[Message](3).mapMaterializedValue(_.map(_.map {
+        case message: TextMessage.Strict => message.text
+        case _ => ""
+      }))
+
+    val flow = Flow.fromSinkAndSourceMat(sink,
+      Source.maybe[Message]/*keep web socket alive until promise is completed*/)(Keep.both)
+
+    val (upgradeResponse, (resF, close)) =
+      Http().singleWebSocketRequest(WebSocketRequest(s"ws://localhost:$port/data/server_events?topic=$topic"), flow)
+    val upgrade = Await.result(upgradeResponse, 2.seconds)
+    upgrade.response.status shouldBe StatusCodes.SwitchingProtocols
+    Future.traverse(List("ws_value1", "ws_value2", "ws_value3")) { value =>
+      Http()
+        .singleRequest(Post(s"http://localhost:$port/data/server_events?topic=$topic&value=$value"))
+    }.flatMap(_ => resF)
+    // wait until all messages are arrived in the sink
+    Thread.sleep(1000)
+    // close the connection
+    close.success(None)
+    val res = Await.result(resF, 1.second)
+    res.sorted shouldBe List("ws_value1", "ws_value2", "ws_value3")
   }
 }

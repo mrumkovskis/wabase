@@ -3,7 +3,7 @@ package org.wabase
 import org.apache.pekko.http.scaladsl.server.directives.WebSocketDirectives
 import org.apache.pekko.http.scaladsl.model.ws.{Message, TextMessage}
 import org.apache.pekko.stream.{ActorAttributes, OverflowStrategy, Supervision}
-import org.apache.pekko.stream.scaladsl.{Flow, Sink, Source}
+import org.apache.pekko.stream.scaladsl.{Flow, Keep, Sink, Source}
 import org.apache.pekko.actor.{Actor, ActorNotFound, ActorRef, ActorSystem, Props, Terminated}
 import spray.json._
 import DefaultJsonProtocol._
@@ -97,17 +97,18 @@ object ServerNotifications extends EventStreamMarshalling with Loggable {
     }
   }
 
-  protected def serverEventsSource(as: ActorSystem): Source[ServerSentEvent, ActorRef] =
+  protected def serverEventsSource(as: ActorSystem): Source[ServerSentEvent, ActorRef] = {
     Source
       .actorRef[Any](PartialFunction.empty, PartialFunction.empty, 16, OverflowStrategy.dropTail)
       .map(invokeCreateServerEventFunction(_)(as))
+  }
 
   protected def wsNotificationGraph(as: ActorSystem): Flow[Message, Message, ActorRef] = {
     Flow.fromSinkAndSourceCoupledMat(
         Sink.ignore, // ignore incoming messages from the client
         serverEventsSource(as)
-      ) ((_, actor) => actor)
-      .map(e => TextMessage.Strict(e.data))
+      ) (Keep.right)
+      .map { e => TextMessage.Strict(e.data) }
       .withAttributes(ActorAttributes.supervisionStrategy{
         case ex: Exception =>
           logger.error("WsNotificationGraph crashed", ex)
@@ -159,7 +160,7 @@ object ServerNotifications extends EventStreamMarshalling with Loggable {
   def subscribeToWsMessagesAndListen(
     subscriptionFun: EventBus => ActorRef => Unit,
     initialPublications: EventBus => Unit,
-  )(req: HttpRequest, as: ActorSystem): HttpResponse = {
+  )(as: ActorSystem, req: HttpRequest): HttpResponse = {
     val upgrade = req.attribute(AttributeKeys.webSocketUpgrade)
       .getOrElse(sys.error("Expected web request web socket upgrade"))
     upgrade.handleMessages(
