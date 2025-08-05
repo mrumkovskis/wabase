@@ -56,6 +56,9 @@ trait BasicJsonMarshalling extends org.apache.pekko.http.scaladsl.marshallers.sp
 }
 
 trait OptionMarshalling {
+  // why this is not the method in Marshaller, like it has composeWithEC and wrapWithEC ???
+  def combinedWithEC[A, B, C](marshal: ExecutionContext => A => B)(implicit m2: Marshaller[B, C]): Marshaller[A, C] =
+    Marshaller[A, C] { ec => a => m2.composeWithEC(marshal).apply(a)(ec) }
   implicit def fromResponseOptionUnmarshaller[T](implicit unm: FromResponseUnmarshaller[T]): FromResponseUnmarshaller[Option[T]] =
     Unmarshaller.withMaterializer{implicit ec => implicit mat => entity =>
       if (entity.status == StatusCodes.NotFound || entity.status == StatusCodes.NoContent) Future.successful(None) else unm(entity).map(r => Option(r))
@@ -67,11 +70,6 @@ trait OptionMarshalling {
 }
 
 trait BasicMarshalling extends OptionMarshalling {
-
-  // why this is not the method in Marshaller, like it has composeWithEC and wrapWithEC ???
-  def combinedWithEC[A, B, C](marshal: ExecutionContext => A => B)(implicit m2: Marshaller[B, C]): Marshaller[A, C] =
-    Marshaller[A, C] { ec => a => m2.composeWithEC(marshal).apply(a)(ec) }
-
   implicit def TupleUnmarshaller[A, B, P](implicit ma: Unmarshaller[P, A], mb: Unmarshaller[P, B]): Unmarshaller[P, (A, B)] =
     Unmarshaller.withMaterializer { implicit ec => implicit mat => resp =>
       val resA = ma(resp)
@@ -343,7 +341,8 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
       HttpResponse(status = StatusCodes.OK, entity = ent)
     }.getOrElse(HttpResponse(status = StatusCodes.NotFound))
   }
-  implicit val toResponseResourceResultMarshaller:          ToResponseMarshaller[ResourceResult] = Marshaller.combined {
+
+  implicit val toResponseResourceResultMarshaller: ToResponseMarshaller[ResourceResult] = combinedWithEC(
     /*
     rr => FileAndResourceDirectives
       .getFromResource(rr.resource, rr.contentType)(rr.httpCtx)
@@ -352,11 +351,17 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
         case _: Rejected => HttpResponse(status = StatusCodes.NotFound)
       }
     */
-    rr =>
+    ec => rr =>
       if (!rr.resource.endsWith("/"))
         Option(this.getClass.getResource(rr.resource)) flatMap ResourceFile.apply match {
           case Some(ResourceFile(url, length, lastModified)) =>
-          //conditionalFor(length, lastModified) { // TODO
+            def conditionalFor(length: Long, lastModified: Long, innerHandler: => HttpResponse): Future[HttpResponse] = {
+              val (eTagOpt, lastModifiedOpt) = WabaseService.conditionsFor(length, lastModified)
+              if (eTagOpt.nonEmpty || lastModifiedOpt.nonEmpty)
+                   CacheConditionHandlers.conditional(eTagOpt, lastModifiedOpt, rr.httpReq, _ => Future.successful(innerHandler), ec)
+              else Future.successful(innerHandler)
+            }
+            conditionalFor(length, lastModified, {
               if (length > 0) {
               //withRangeSupportAndPrecompressedMediaTypeSupport { // TODO
                   HttpResponse(entity =
@@ -364,11 +369,11 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
                   )
               //}
               } else HttpResponse(entity = HttpEntity.Empty)
-          //}
-          case _ => HttpResponse(status = StatusCodes.NotFound) // not found or directory
+            })
+          case _ => Future.successful(HttpResponse(status = StatusCodes.NotFound)) // not found or directory
         }
-      else HttpResponse(status = StatusCodes.NotFound) // don't serve the content of resource "directories"
-  }
+      else Future.successful(HttpResponse(status = StatusCodes.NotFound)) // don't serve the content of resource "directories"
+  )
   implicit val toResponseTemplateResultMarshaller:          ToResponseMarshaller[TemplateResult] =
     Marshaller.combined {
       case StringTemplateResult(content) =>

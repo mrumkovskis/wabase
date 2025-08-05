@@ -14,7 +14,7 @@ import StatusCodes._
 import EntityTag._
 import WabaseService.RequestHandler
 
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
 
 /**
  * Copied from apache pekko CacheConditionDirectives and modified for WabaseService types
@@ -74,7 +74,13 @@ trait CacheConditionHandlers {
    * it on the *outside* of the `withRangeSupport(...)` directive, i.e. `withRangeSupport(...)`
    * must be on a deeper level in your route structure in order to function correctly.
    */
-  def conditional(eTag: Option[EntityTag], lastModified: Option[DateTime], innerHandler: RequestHandler): RequestHandler = ctx => {
+  def conditional(eTag: Option[EntityTag], lastModified: Option[DateTime], innerHandler: RequestHandler): RequestHandler = ctx =>
+    conditional(eTag, lastModified, ctx.req, request => innerHandler(ctx.copy(req = request)), ctx.as.dispatcher)
+
+  def conditional(eTag: Option[EntityTag], lastModified: Option[DateTime],
+      request: HttpRequest, innerHandler: HttpRequest => Future[HttpResponse],
+      ec: ExecutionContext,
+  ): Future[HttpResponse] = {
     def addResponseHeaders(response: HttpResponse): HttpResponse =
       response.withDefaultHeaders(eTag.map(ETag(_)).toList ++ lastModified.map(`Last-Modified`(_)).toList)
 
@@ -82,12 +88,10 @@ trait CacheConditionHandlers {
     def complete304() = Future.successful(addResponseHeaders(HttpResponse(NotModified)))
     def complete412() = Future.successful(HttpResponse(PreconditionFailed))
 
-    import ctx.req._
-    def innerRouteWithRangeHeaderFilteredOut: Future[HttpResponse] = {
-      val ctxWithoutRange = ctx.copy(req = ctx.req.mapHeaders(_.filterNot(_.isInstanceOf[Range])))
-      innerHandler(ctxWithoutRange)
-        .map(addResponseHeaders)(ctxWithoutRange.as.dispatcher)
-    }
+    import request._
+    def innerRouteWithRangeHeaderFilteredOut: Future[HttpResponse] =
+      innerHandler(request.mapHeaders(_.filterNot(_.isInstanceOf[Range])))
+        .map(addResponseHeaders)(ec)
 
     def isGetOrHead = method == HEAD || method == GET
     def unmodified(ifModifiedSince: DateTime) =
@@ -130,7 +134,7 @@ trait CacheConditionHandlers {
         }
       else step6()
     def step6(): Future[HttpResponse] =
-      innerHandler(ctx).map(addResponseHeaders)(ctx.as.dispatcher)
+      innerHandler(request).map(addResponseHeaders)(ec)
 
     step1()
   }

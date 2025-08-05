@@ -220,13 +220,19 @@ object WabaseService {
     })
   }
 
-  private def conditionalFor(length: Long, lastModified: Long, innerHandler: RequestHandler): RequestHandler = {
+  def conditionsFor(length: Long, lastModified: Long): (Option[EntityTag], Option[DateTime]) = {
     // extractSettings.flatMap(settings =>
       // if (settings.fileGetConditional) {
         val tag = java.lang.Long.toHexString(lastModified ^ java.lang.Long.reverse(length))
         val lastModifiedDateTime = DateTime(math.min(lastModified, System.currentTimeMillis))
-        conditional(EntityTag(tag), lastModifiedDateTime, innerHandler)
-      // } else pass)
+        (Some(EntityTag(tag)), Some(lastModifiedDateTime))
+      // } else (None, None))
+  }
+  private def conditionalFor(length: Long, lastModified: Long, innerHandler: RequestHandler): RequestHandler = {
+    val (eTagOpt, lastModifiedOpt) = conditionsFor(length, lastModified)
+    if (eTagOpt.nonEmpty || lastModifiedOpt.nonEmpty)
+         conditional(eTagOpt, lastModifiedOpt, innerHandler)
+    else innerHandler
   }
   private val classLoader = this.getClass.getClassLoader
   def getFromResource(resourcesRootPath: String, resourcePathAndName: String): RequestHandler = {
