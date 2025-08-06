@@ -474,7 +474,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
   }
 }
 
-class QuereaseActionTestManager extends Loggable {
+class QuereaseActionTestPersonManager {
   def personSaveBizMethod(data: Map[String, Any]) = {
     if (data("sex") == "F")
       data + ("name" -> s"Ms. ${data("name")}")
@@ -492,6 +492,9 @@ class QuereaseActionTestManager extends Loggable {
   def personSaveJavaMapBizMethod(data: java.util.Map[String, Any]) = {
     data
   }
+}
+
+class QuereaseActionTestManager extends QuereaseActionTestPersonManager with Loggable {
 
   def sendNotifications(data: Map[String, Any]): Unit = {
     logger.info("Person data change notifications sender called")

@@ -140,7 +140,7 @@ package object wabase extends Loggable {
         functionInvocationCache.put(s"$className.$function", obj_fun)
         obj_fun
       }
-      clazz.getMethods.filter(m => m.getName == function && m.getDeclaringClass == clazz) match {
+      clazz.getMethods.filter(m => m.getName == function) match {
         case Array(method) => objAndFun(method)
         case Array() => sys.error(s"Method $function not found in class $className")
         case m =>
