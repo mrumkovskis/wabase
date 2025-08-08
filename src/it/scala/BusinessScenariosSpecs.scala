@@ -6,7 +6,7 @@ import org.apache.pekko.http.scaladsl.Http
 import org.apache.pekko.http.scaladsl.client.RequestBuilding.{Get, Post}
 import org.apache.pekko.http.scaladsl.model.sse.ServerSentEvent
 import org.apache.pekko.http.scaladsl.model.ws.{Message, TextMessage, WebSocketRequest}
-import org.apache.pekko.http.scaladsl.model.{HttpRequest, HttpResponse, StatusCodes}
+import org.apache.pekko.http.scaladsl.model.{ContentTypes, HttpEntity, HttpRequest, HttpResponse, StatusCodes}
 import org.apache.pekko.http.scaladsl.unmarshalling.Unmarshal
 import org.apache.pekko.stream.scaladsl.{Flow, Keep, Sink, Source}
 import org.apache.pekko.util.ByteString
@@ -20,6 +20,7 @@ import scala.concurrent.duration.DurationInt
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.language.reflectiveCalls
 import scala.util.Try
+import scala.util.control.NonFatal
 
 object BusinessScenariosSpecs {
   def executeStatements(statements: String*): Unit = {
@@ -74,6 +75,27 @@ object Guidelines {
       h.fill(row)(qio.qe)
     }.filter(d => d.code == "code2" && d.category == filterCond.category)
   }
+
+  def qeCall(ctx: WabaseRequestContext) = {
+    val cp = ctx.wabase.DefaultCp
+    val initRf = ctx.wabase.resourceFactory("guideline_calculation_helper", "list", ctx.queryTimeout)
+    val rf = initRf.copy()(resources = initRf.initResources(cp, Nil))
+    import rf.resources
+    implicit val qio: AppQuereaseIo[Dto] = ctx.wabase.qio
+    val res =
+      try ctx.wabase.qe.list[dto.guideline_calculation_helper](Map[String, Any]())
+      catch {
+        case NonFatal(e) =>
+          rf.closeResources(rf.resources, true, Some(e))
+          throw e
+      } finally rf.closeResources(rf.resources, false, None)
+    HttpResponse(
+      status = StatusCodes.OK,
+      entity = HttpEntity(ContentTypes.`application/json`,
+        ResultEncoder.encodeAnyToJsonBytes(res.map(_.toMap(ctx.wabase.qe))))
+    )
+  }
+
 }
 
 class BusinessScenariosSpecs extends BusinessScenariosBaseSpecs("http_tests") {

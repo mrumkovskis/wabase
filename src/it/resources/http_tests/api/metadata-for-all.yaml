@@ -62,24 +62,27 @@ response: {
   },
   "guideline_calculation_helper": {
     "name": "guideline_calculation_helper",
-    "key": [],
+    "key": [
+      "code"
+    ],
     "fields": [
       {
         "name": "code",
         "type": "string",
         "isCollection": false,
         "isComplexType": false,
-        "nullable": true,
+        "nullable": false,
         "required": false,
-        "sortable": false,
+        "sortable": true,
         "label": "Code",
         "visible": true,
         "insertable": true,
-        "updatable": true,
+        "updatable": false,
         "enum": null,
         "refViewName": null,
         "comments": null,
-        "jsonType": "string"
+        "jsonType": "string",
+        "length": 12
       },
       {
         "name": "category",
@@ -96,7 +99,8 @@ response: {
         "enum": null,
         "refViewName": null,
         "comments": null,
-        "jsonType": "string"
+        "jsonType": "string",
+        "length": 40
       },
       {
         "name": "description",
@@ -113,7 +117,8 @@ response: {
         "enum": null,
         "refViewName": null,
         "comments": null,
-        "jsonType": "string"
+        "jsonType": "string",
+        "length": 80
       }
     ],
     "filter": []

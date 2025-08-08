@@ -1,0 +1,6 @@
+path:       /data/guideline_calculation_helper?/c1
+method:     POST
+request:
+  category:     guideline_cat
+  description:  guideline desc
+response:

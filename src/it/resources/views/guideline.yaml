@@ -9,8 +9,8 @@ insert:
 
 
 name: guideline_calculation_helper
-api: list
-table:
+api: list insert get
+table: guideline
 fields:
 - code
 - category

@@ -1,2 +1,5 @@
 on: /data/((?:create:|count:)?\w+)(/.+)?
 do: authenticateOpt doAction $1
+
+on: /qe_call/guideline_calculation_helper
+do: authenticateOpt wabase.app.Guidelines.qeCall

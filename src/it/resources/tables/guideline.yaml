@@ -1,0 +1,7 @@
+table:   guideline
+columns:
+  - code  !     12
+  - category    40
+  - description 80
+pk:
+  - code

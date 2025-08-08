@@ -1,0 +1,8 @@
+path: /qe_call/guideline_calculation_helper
+response: [
+  {
+    "code": "c1",
+    "category": "guideline_cat",
+    "description": "guideline desc"
+  }
+]

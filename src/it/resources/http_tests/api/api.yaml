@@ -4,7 +4,9 @@ response: {
     "get"
   ],
   "guideline_calculation_helper": [
-    "list"
+    "list",
+    "insert",
+    "get"
   ],
   "login_using_json_or_urlencoded": [
     "insert"
