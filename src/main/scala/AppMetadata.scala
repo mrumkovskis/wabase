@@ -31,6 +31,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   import AppMetadata._
 
   val knownApiMethods = Set("create", "count", "get", "list", "insert", "update", "save", "delete")
+  private val fullKeyOps = Set("get", "insert", "update", "save", "delete")
   override lazy val yamlMetadata = YamlMd.fromPaths(Seq("jobs", "routes", "tables", "views"))
   override lazy val uninheritableExtras: Seq[String] = Seq("api")
   lazy val knownViewExtras = KnownViewExtras()
@@ -314,6 +315,22 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       val a = parseAction(s"${viewDef.name}.$actionName", getSeq(actionName, viewDef.extras), opParser)
       if (a.steps.nonEmpty) res + (actionName -> a) else res
     }
+    val maxKeySize            = viewDef.keyFieldNames.size
+    val hasFullKeyOps         = fullKeyOps.exists(viewDef.apiMethodToRoles.contains)
+    val (minKeySizeForList, maxKeySizeForList) =
+      if  (!hasFullKeyOps || viewDef.minSearchKeyFieldCount != maxKeySize)
+           (viewDef.minSearchKeyFieldCount,
+            if (hasFullKeyOps) math.max(0, maxKeySize - 1) else maxKeySize)
+      else (0, 0)
+    val expectedKeySizeDescr = {
+      val MaxKeySize = maxKeySize
+      val MaxKeySizeMinus1 = maxKeySize - 1
+      minKeySizeForList match {
+        case MaxKeySize       => s"$MaxKeySize"
+        case MaxKeySizeMinus1 => s"$minKeySizeForList or $MaxKeySize"
+        case _                => s"$minKeySizeForList to $MaxKeySize"
+      }
+    }
 
     val extras =
       Option(viewDef.extras)
@@ -335,7 +352,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       comments, appFields, viewDef.saveTo, extras)
       .updateWabaseExtras(_ =>
         AppViewDef(limit, segments, explicitDb, decoder, maxContentSize, timeout, sqlTimeout,
-          auth, apiToRoles, actions, Map.empty))
+          auth, apiToRoles, actions, Map.empty, minKeySizeForList, maxKeySizeForList, expectedKeySizeDescr))
   }
 
   protected def transformAppViewDefs(viewDefs: Map[String, ViewDef]): Map[String, ViewDef] =
@@ -1441,6 +1458,9 @@ object AppMetadata extends Loggable {
     val apiMethodToRoles: Map[String, Set[String]]
     val actions: Map[String, Action]
     val actionToDbAccessKeys: Map[String, Seq[DbAccessKey]]
+    val minKeySizeForList     : Int
+    val maxKeySizeForList     : Int
+    val expectedKeySizeDescr  : String
   }
 
   private [wabase] case class AppViewDef(
@@ -1455,6 +1475,9 @@ object AppMetadata extends Loggable {
     apiMethodToRoles: Map[String, Set[String]] = Map(),
     actions: Map[String, Action] = Map(),
     actionToDbAccessKeys: Map[String, Seq[DbAccessKey]] = Map.empty,
+    minKeySizeForList   : Int = 0,
+    maxKeySizeForList   : Int = 0,
+    expectedKeySizeDescr: String = null,
   ) extends AppViewDefExtras
 
   case class FieldApiOps(
@@ -1499,6 +1522,9 @@ object AppMetadata extends Loggable {
     override val apiMethodToRoles = appExtras.apiMethodToRoles
     override val actions = appExtras.actions
     override val actionToDbAccessKeys = appExtras.actionToDbAccessKeys
+    override val minKeySizeForList    = appExtras.minKeySizeForList
+    override val maxKeySizeForList    = appExtras.maxKeySizeForList
+    override val expectedKeySizeDescr = appExtras.expectedKeySizeDescr
     def updateWabaseExtras(updater: AppViewDef => AppViewDef): ViewDef =
       updateExtras(WabaseViewExtrasKey, updater, defaultExtras)
 
