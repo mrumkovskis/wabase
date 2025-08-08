@@ -316,7 +316,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       if (a.steps.nonEmpty) res + (actionName -> a) else res
     }
     val maxKeySize            = viewDef.keyFieldNames.size
-    val hasFullKeyOps         = fullKeyOps.exists(viewDef.apiMethodToRoles.contains)
+    val hasFullKeyOps         = fullKeyOps.exists(apiToRoles.contains)
     val (minKeySizeForList, maxKeySizeForList) =
       if  (!hasFullKeyOps || viewDef.minSearchKeyFieldCount != maxKeySize)
            (viewDef.minSearchKeyFieldCount,
