@@ -1,6 +1,6 @@
 path:     /metadata/*
-response_headers:
-  ETag: '"7Fbn0zb1wvRZXGNvTGagsw=="'
+#response_headers:
+#  ETag: '"7Fbn0zb1wvRZXGNvTGagsw=="'
 response: {
   "current_user": {
     "name": "current_user",
