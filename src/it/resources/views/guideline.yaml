@@ -1,0 +1,30 @@
+name: request_calculation_view
+api: insert
+table:
+fields:
+- category
+insert:
+- as response_calculation_view * wabase.app.Guidelines.requestCalculation
+    (list guideline_calculation_helper)
+
+
+name: guideline_calculation_helper
+api: list
+table:
+fields:
+- code
+- category
+- description
+list:
+- "[]({ 'code1' code, :category category, 'c1 description' description } +
+   { 'code2' code, :category category, 'c2 description' description })
+  {code, category, description}#(1)"
+
+
+name: response_calculation_view
+api: list
+table:
+fields:
+- code
+- category
+- description

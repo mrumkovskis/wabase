@@ -1,6 +1,6 @@
 path:     /metadata/*
 response_headers:
-  ETag: '"0l8t1IWiUM_IauZrJO1HbQ=="'
+  ETag: '"7Fbn0zb1wvRZXGNvTGagsw=="'
 response: {
   "current_user": {
     "name": "current_user",
@@ -49,6 +49,64 @@ response: {
         "required": false,
         "sortable": false,
         "label": "Roles",
+        "visible": true,
+        "insertable": true,
+        "updatable": true,
+        "enum": null,
+        "refViewName": null,
+        "comments": null,
+        "jsonType": "string"
+      }
+    ],
+    "filter": []
+  },
+  "guideline_calculation_helper": {
+    "name": "guideline_calculation_helper",
+    "key": [],
+    "fields": [
+      {
+        "name": "code",
+        "type": "string",
+        "isCollection": false,
+        "isComplexType": false,
+        "nullable": true,
+        "required": false,
+        "sortable": false,
+        "label": "Code",
+        "visible": true,
+        "insertable": true,
+        "updatable": true,
+        "enum": null,
+        "refViewName": null,
+        "comments": null,
+        "jsonType": "string"
+      },
+      {
+        "name": "category",
+        "type": "string",
+        "isCollection": false,
+        "isComplexType": false,
+        "nullable": true,
+        "required": false,
+        "sortable": false,
+        "label": "Category",
+        "visible": true,
+        "insertable": true,
+        "updatable": true,
+        "enum": null,
+        "refViewName": null,
+        "comments": null,
+        "jsonType": "string"
+      },
+      {
+        "name": "description",
+        "type": "string",
+        "isCollection": false,
+        "isComplexType": false,
+        "nullable": true,
+        "required": false,
+        "sortable": false,
+        "label": "Description",
         "visible": true,
         "insertable": true,
         "updatable": true,
@@ -233,6 +291,88 @@ response: {
     ],
     "filter": []
   },
+  "request_calculation_view": {
+    "name": "request_calculation_view",
+    "key": [],
+    "fields": [
+      {
+        "name": "category",
+        "type": "string",
+        "isCollection": false,
+        "isComplexType": false,
+        "nullable": true,
+        "required": false,
+        "sortable": false,
+        "label": "Category",
+        "visible": true,
+        "insertable": true,
+        "updatable": true,
+        "enum": null,
+        "refViewName": null,
+        "comments": null,
+        "jsonType": "string"
+      }
+    ],
+    "filter": []
+  },
+  "response_calculation_view": {
+    "name": "response_calculation_view",
+    "key": [],
+    "fields": [
+      {
+        "name": "code",
+        "type": "string",
+        "isCollection": false,
+        "isComplexType": false,
+        "nullable": true,
+        "required": false,
+        "sortable": false,
+        "label": "Code",
+        "visible": true,
+        "insertable": true,
+        "updatable": true,
+        "enum": null,
+        "refViewName": null,
+        "comments": null,
+        "jsonType": "string"
+      },
+      {
+        "name": "category",
+        "type": "string",
+        "isCollection": false,
+        "isComplexType": false,
+        "nullable": true,
+        "required": false,
+        "sortable": false,
+        "label": "Category",
+        "visible": true,
+        "insertable": true,
+        "updatable": true,
+        "enum": null,
+        "refViewName": null,
+        "comments": null,
+        "jsonType": "string"
+      },
+      {
+        "name": "description",
+        "type": "string",
+        "isCollection": false,
+        "isComplexType": false,
+        "nullable": true,
+        "required": false,
+        "sortable": false,
+        "label": "Description",
+        "visible": true,
+        "insertable": true,
+        "updatable": true,
+        "enum": null,
+        "refViewName": null,
+        "comments": null,
+        "jsonType": "string"
+      }
+    ],
+    "filter": []
+  },
   "save_person_email": {
     "name": "save_person_email",
     "key": [
@@ -280,7 +420,9 @@ response: {
   },
   "server_events": {
     "name": "server_events",
-    "key": ["topic"],
+    "key": [
+      "topic"
+    ],
     "fields": [
       {
         "name": "topic",

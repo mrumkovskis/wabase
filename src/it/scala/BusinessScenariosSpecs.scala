@@ -11,6 +11,7 @@ import org.apache.pekko.http.scaladsl.unmarshalling.Unmarshal
 import org.apache.pekko.stream.scaladsl.{Flow, Keep, Sink, Source}
 import org.apache.pekko.util.ByteString
 import org.mojoz.metadata.out.DdlGenerator
+import org.tresql.{Result, RowLike}
 import org.wabase._
 import org.wabase.WabaseUnmarshallers.mapUnmarshaller
 
@@ -62,6 +63,16 @@ object EventsFunctions {
 
   def subscribeToWsMessages(topic: String)(as: ActorSystem, req: HttpRequest) = {
     ServerNotifications.subscribeToWsMessagesAndListen(b => a => b.subscribe(a, topic), _ => ())(as, req)
+  }
+}
+
+object Guidelines {
+  def requestCalculation(result: Result[RowLike], filterCond: dto.request_calculation_view)(
+    implicit qio: AppQuereaseIo[Dto]) = {
+    result.map { row =>
+      val h = new dto.response_calculation_view
+      h.fill(row)(qio.qe)
+    }.filter(d => d.code == "code2" && d.category == filterCond.category)
   }
 }
 

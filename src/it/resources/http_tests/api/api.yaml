@@ -3,6 +3,9 @@ response: {
   "current_user": [
     "get"
   ],
+  "guideline_calculation_helper": [
+    "list"
+  ],
   "login_using_json_or_urlencoded": [
     "insert"
   ],
@@ -15,6 +18,12 @@ response: {
     "delete",
     "get",
     "save",
+    "list"
+  ],
+  "request_calculation_view": [
+    "insert"
+  ],
+  "response_calculation_view": [
     "list"
   ],
   "save_person_email": [

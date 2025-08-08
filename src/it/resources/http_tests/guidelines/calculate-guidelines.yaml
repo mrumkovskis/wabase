@@ -1,0 +1,11 @@
+path:       /data/request_calculation_view
+method:     POST
+request:
+  category:  cat1
+response: [
+  {
+    "code": "code2",
+    "category": "cat1",
+    "description": "c2 description"
+  }
+]
