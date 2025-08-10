@@ -1014,7 +1014,7 @@ fields:
 - address
 get:
 - val = get owner
-- unique_opt null[if_defined(:val.name?, true) | false]{ :val.name? name, :val.address? address, :val.code? code }
+- unique_opt null[if_defined(:val.name?, true) | false]{ :val.name? name, :val.address? address, :val? code }
 
 
 name: not_found_test_2

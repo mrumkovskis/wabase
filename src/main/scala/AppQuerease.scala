@@ -696,7 +696,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
               val keyColNames = viewNameToKeyColNames(viewName)
               val fieldFilter: FieldFilter = context.fieldFilter
               get(v, keyValues, keyColNames, null, callData, fieldFilter)
-                .map(TresqlSingleRowResult) getOrElse notFound
+                .map(TresqlSingleRowResult) getOrElse NoResult
             case Action.List =>
               TresqlResult(rowsResult(v, callData, int(OffsetKey).getOrElse(0), int(LimitKey).getOrElse(0),
                 string(OrderKey).orNull, null, Map(), context.fieldFilter))
@@ -765,7 +765,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         case s: String => StringResult(s)
         case n: java.lang.Number => NumberResult(n)
         case d: Dto => MapResult(d.toMap(this))
-        case o: Option[Dto]@unchecked => o.map(d => MapResult(d.toMap(this))).getOrElse(notFound)
+        case o: Option[Dto]@unchecked => o.map(d => MapResult(d.toMap(this))).getOrElse(NoResult)
         case e: HttpEntity => HttpEntityResult(e, null)
         case h: HttpResponse => HttpResult(h)
         case q: QuereaseResult => q
@@ -877,7 +877,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     import qr.ec
     def createGetResult(res: QuereaseResult): QuereaseResult = res match {
       case TresqlResult(r) if !r.isInstanceOf[DMLResult] =>
-        if (op.opt) r.uniqueOption map TresqlSingleRowResult getOrElse notFound
+        if (op.opt) r.uniqueOption map TresqlSingleRowResult getOrElse NoResult
         else TresqlSingleRowResult(r.unique)
       case IteratorResult(r) =>
         try r.hasNext match {
@@ -887,7 +887,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
               case m: Map[String@unchecked, _] => MapResult(m)
               case x => AnyResult(x)
             }
-          case false => if (op.opt) notFound else throw new NoSuchElementException(s"No rows in result")
+          case false => if (op.opt) NoResult else throw new NoSuchElementException(s"No rows in result")
         } finally r match {
           case c: AutoCloseable => c.close()
           case _ =>
@@ -1860,8 +1860,6 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         ResultRenderer.NoFilter,
       conformTo.isCollection
     )
-
-  private def notFound = ResponseResult(StatusCodes.NotFound.intValue, ResultValue(StringResult("not found")))
 
   private def invokeFunction(
     className: String,

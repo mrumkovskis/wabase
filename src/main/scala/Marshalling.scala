@@ -332,8 +332,8 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
       setUserAttrs(setHeaders(response)).withStatus(str.code)
     }
   }
-  implicit val toEntityQuereaseNoResultMarshaller:          ToEntityMarshaller  [NoResult.type]  =
-    Marshaller.combined(_ => "")
+  implicit val toEntityQuereaseNoResultMarshaller:          ToResponseMarshaller  [NoResult.type]  =
+    Marshaller.combined(_ => HttpResponse(status = StatusCodes.NotFound))
   implicit val toEntityQuereaseDeleteResultMarshaller:      ToEntityMarshaller[QuereaseDeleteResult] =
     Marshaller.combined(_.count.toString)
   implicit val toResponseFileResultMarshaller:              ToResponseMarshaller[FileResult] = Marshaller.combined {

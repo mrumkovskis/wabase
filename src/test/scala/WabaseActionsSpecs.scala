@@ -1053,7 +1053,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
   it should "process not found properly" in {
     for {
       t1 <- doAction("get", "not_found_test", Map("name" -> "Zizo"))
-        .map { _ shouldBe ResponseResult(404, ResultValue(StringResult("not found"))) }
+        .map { _ shouldBe NoResult }
       t2 <- doAction("get", "not_found_test", Map("name" -> "Pedro"))
         .map {
           _ shouldBe Map("name" -> "Pedro", "address" -> "Morocco")
