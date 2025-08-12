@@ -509,7 +509,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           key
             .map(k => upd(cr, k, ir.id))
             .getOrElse(cr ++ ir.toMap)
-        case NoResult => key.map(k => if (cr.contains(k)) cr else upd(cr, k, null)).getOrElse(cr)
+        case NoResult => key.map(upd(cr, _, null)).getOrElse(cr)
         case r => key.map(k => upd(cr, k, r)).getOrElse(cr)
       }
     }

@@ -805,7 +805,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         _ shouldBe ResponseResult(200, ResultValue(StringResult("yes")))
       }
       t6 <- doAction("list", "if_test_2", Map("value" -> false)).map {
-        _ shouldBe ResponseResult(200, ResultValue(StringResult("init")))
+        _ shouldBe ResponseResult(200, ResultValue(StringResult(null)))
       }
       t7 <- doAction("get", "if_test_1", Map("code" -> "true")).map {
         _ shouldBe MapResult(ListMap("code" -> "true", "parent" -> null, "value" -> "Value"))
