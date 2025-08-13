@@ -56,10 +56,8 @@ case class ResourcesFactory(
   closeResources: (Resources, Boolean, Option[Throwable]) => Unit,
 )(implicit val resources: Resources)
 {
-  def focus(name: String): ResourcesFactory =
-    if (resources.extraResources.contains(name))
-      copy()(resources.extraResources(name).withExtraResources(resources.extraResources))
-    else this
+  def focus(name: String, defaultName: String): ResourcesFactory =
+    copy()(resources = AppQuerease.focusResource(name, defaultName)(resources))
 }
 
 sealed trait ResponseValue
@@ -730,7 +728,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           }
         Future.successful(res)
       } else {
-        val nqr = qr.copy()(resourcesFactory = resourcesFactory.focus(if (v.db != null) v.db else defaultCpName),
+        val nqr = qr.copy()(resourcesFactory = resourcesFactory
+          .focus(if (v.db != null) v.db else defaultCpName, defaultCpName),
           ec, as, httpReq, qio, fileStreamers, httpClients, parametersProvider)
         do_action(viewName, method, callData, env, context.fieldFilter, context :: context.contextStack)(nqr)
       }
@@ -1397,8 +1396,9 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         may_be_add_extra(PoolName(op.dbs.head.db), op.dbs.tail)
       }
       else dbResourceNames(context.viewName, context.actionName)
-    val newResFact = resourcesFactory.copy()(resources = resourcesFactory.initResources(poolName, extraDbs))
-      .focus(context.view.map(_.db).filter(_ != null).getOrElse(defaultCpName))
+    val newResFact = resourcesFactory
+       .focus(poolName.connectionPoolName, defaultCpName)
+       .copy()(resources = resourcesFactory.initResources(poolName, extraDbs))
     logContext(context, env, newResFact)
     val closeRes = resourcesFactory.closeResources(newResFact.resources, op.doRollback, _)
     val nqr = new QuereaseResources()(newResFact, ec, as, httpReq, qio, fileStreamers, httpClients, parametersProvider)
@@ -2157,5 +2157,17 @@ object AppQuerease {
         s"Cannot find value for function's $function ${idx + 1} parameter '${par.getName}: ${
           par.getType.getName}'.\nInstead got: '$qr'")
     }
+  }
+
+  def focusResource(name: String, defaultName: String)(res: Resources): Resources = {
+    if (res.extraResources.contains(name)) {
+      val resWithDefault =
+        if (name != defaultName && !res.extraResources.contains(defaultName)) {
+          res.withExtraResources(res.extraResources + (defaultName -> res.withExtraResources(Map())))
+        } else res
+      resWithDefault.extraResources(name).withExtraResources(resWithDefault.extraResources)
+    } else if (res.extraResources.contains(defaultName)) {
+      res.extraResources(defaultName).withExtraResources(res.extraResources)
+    } else res
   }
 }

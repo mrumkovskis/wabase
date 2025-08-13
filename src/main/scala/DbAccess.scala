@@ -111,26 +111,6 @@ trait DbAccess { this: Loggable =>
   def resourceFactory(viewDef: ViewDef, actionName: String, qt: QueryTimeout = null): ResourcesFactory = {
     val vdo      = Option(viewDef)
     val viewName = vdo.map(_.name).getOrElse("null")
-    val poolName = vdo.flatMap(v => Option(v.db)).map(PoolName) getOrElse DefaultCp
-    val resourcesTemplate: ResourcesTemplate = poolName match {
-      case DefaultCp =>
-        tresqlResources.resourcesTemplate
-      case _ =>
-        def toTemplate(res: Resources) =
-          ResourcesTemplate(
-            res.conn, res.metadata, res.dialect, res.toBindableValue, res.idExpr, res.queryTimeout,
-            res.fetchSize, res.maxResultSize, res.recursiveStackDepth, res.params, res.extraResources,
-            res.logger, res.cache, res.bindVarLogFilter)
-        toTemplate(
-          tresqlResources.resourcesTemplate.extraResources.getOrElse(poolName.connectionPoolName,
-            sys.error(s"Resource key '${poolName.connectionPoolName}' not found in resources template")
-          )
-            .withExtraResources(
-              tresqlResources.resourcesTemplate.extraResources +
-              (DefaultCp.connectionPoolName -> tresqlResources.resourcesTemplate)
-            )
-        )
-      }
     val loggerPrefix = s"$viewName.$actionName"
     val rt = Option(withDbAccessLogger(resourcesTemplate, loggerPrefix)).map { templ =>
       vdo.map { v =>
@@ -144,12 +124,16 @@ trait DbAccess { this: Loggable =>
         if (timeout == null) templ else templ.copy(queryTimeout = timeout.toInt)
       }.getOrElse(templ)
     }.get
-    ResourcesFactory(initResources(rt), closeResources)(rt)
+    val resFactory = ResourcesFactory(initResources(rt), closeResources)(rt)
+    vdo.flatMap(v => Option(v.db)).map(PoolName) getOrElse DefaultCp match {
+      case DefaultCp => resFactory
+      case PoolName(cp) => resFactory.focus(cp, DefaultCp.connectionPoolName)
+    }
   }
 
   def withConn[A](
     poolName: PoolName = DEFAULT_CP,
-    template: Resources = tresqlResources.resourcesTemplate,
+    template: Resources = resourcesTemplate,
     extraDb:  Seq[DbAccessKey] = Nil,
   )(f: Resources => A): A =
     DbAccess.withConn(poolName, template, extraDb)(f)
@@ -162,7 +146,7 @@ trait DbAccess { this: Loggable =>
 
   def withRollbackConn[A](
     poolName: PoolName = DEFAULT_CP,
-    template: Resources = tresqlResources.resourcesTemplate,
+    template: Resources = resourcesTemplate,
     extraDb:  Seq[DbAccessKey] = Nil,
   )(f: Resources => A): A =
     DbAccess.withRollbackConn(poolName, template, extraDb)(f)
@@ -175,7 +159,7 @@ trait DbAccess { this: Loggable =>
 
   def newTransaction[A](
     poolName: PoolName = DEFAULT_CP,
-    template: Resources = tresqlResources.resourcesTemplate,
+    template: Resources = resourcesTemplate,
     extraDb:  Seq[DbAccessKey] = Nil,
   )(f: Resources => A): A =
     DbAccess.newTransaction(poolName, template, extraDb)(f)
@@ -363,18 +347,18 @@ object DbAccess extends Loggable {
     dsFactory: () => DataSource,
     dsExtraFactories: Map[String, () => DataSource]
   ): Resources = {
+    val focusPool = poolName.connectionPoolName
     val dbConn = dsFactory().getConnection
     var extraConns = List[Connection]()
     try {
       val initRes = initialResources.withConn(dbConn)
-      if (dsExtraFactories.isEmpty) initRes
+      if (dsExtraFactories.isEmpty)
+        if (initRes.extraResources.contains(focusPool))
+          initRes.withUpdatedExtra(focusPool)(_.withConn(dbConn))
+        else initRes
       else dsExtraFactories.foldLeft(initRes) { case (res, (db, fac)) =>
         if (res.extraResources.contains(db)) {
-          val extraConn =
-            if (db == poolName.connectionPoolName)
-              dbConn
-            else
-              fac().getConnection
+          val extraConn = if (db == focusPool) dbConn else fac().getConnection
           extraConns ::= extraConn
           res.withUpdatedExtra(db)(_.withConn(extraConns.head))
         } else res
