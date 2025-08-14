@@ -574,6 +574,7 @@ object WabaseService {
       case uri: Uri => processResult(wrc.copy(req = wrc.req.withUri(uri)))
       case st: ApplicationState => processResult(wrc.copy(applicationState = st))
       case u: WabaseUser => processResult(wrc.copy(user = u))
+      case o: Option[_] => o.map(processResult).getOrElse(Future.successful(HttpResponse(StatusCodes.NotFound)))
       case x => sys.error(s"Request transformer must return either WabaseRequestContext or HttpRequest or Future of them." +
         s" Instead got: $x")
     }

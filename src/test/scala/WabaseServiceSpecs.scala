@@ -174,6 +174,9 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
       method = HttpMethods.POST, decoder = decodeJs) shouldBe Map("a" -> 1, "b" -> "x", "c" -> List(1, 2, 3))
     callRoute("/do/test.QuereaseActionJavaManager.java_seq_handler", data = encodeJs(List(Map("a" -> 1), 2, true, "x", List(1, "y"))),
       method = HttpMethods.PUT, decoder = decodeJs) shouldBe List(Map("a" -> 1), 2, true, "x", List(1, "y"))
+    callRoute("/do/org.wabase.WabaseTestHandlers.optionHandler?key=true") shouldBe "yes"
+    response(HttpRequest(uri = "/do/org.wabase.WabaseTestHandlers.optionHandler?key=false"))
+      .status shouldBe StatusCodes.NotFound
   }
 
   it should "do routes with additional args" in {
@@ -253,6 +256,10 @@ object WabaseTestHandlers {
     implicit as: ActorSystem, ec: ExecutionContext): WabaseService.RequestHandler = { ctx =>
     innerHandler(ctx.copy(req = ctx.req.withEntity("Request transformed " + entity(ctx.req))))
       .map { resp => resp.withEntity(entity(resp) + " response transformed") }
+  }
+
+  def optionHandler(ctx: WabaseRequestContext) = {
+    ctx.req.uri.query().toMap.get("key").filter(_ == "true").map(_ => "yes")
   }
 
   def testAuth(ctx: WabaseRequestContext) =
