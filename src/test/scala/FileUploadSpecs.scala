@@ -36,10 +36,12 @@ class FileUploadSpecs extends AnyFlatSpec with TestQuereaseInitializer with Scal
     }
     super.beforeAll()
 
-    val db = new DbAccess with Loggable {
+    val db = new DbAccess with QuereaseProvider with Loggable {
       override val DefaultCp: PoolName = PoolName(uploadTestsDb)
       override val tresqlResources  = FileUploadSpecs.this.tresqlThreadLocalResources
       override protected def tresqlMetadata = querease.tresqlMetadata
+      override protected def initQuerease: AppQuerease = querease
+      override protected def initQuereaseIo: AppQuereaseIo[Dto] = new AppQuereaseIo[Dto](querease)
     }
 
     val appl = new TestApp {

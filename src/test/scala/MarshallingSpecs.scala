@@ -25,9 +25,11 @@ class MarshallingSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     querease = new TestQuerease("/json-decoder-specs-metadata.yaml") {
       override lazy val viewNameToClassMap = JsonDecoderSpecs.viewNameToClass
     }
-    val db = new DbAccess with Loggable {
+    val db = new DbAccess with QuereaseProvider with Loggable {
       override val tresqlResources = null
       override protected def tresqlMetadata = querease.tresqlMetadata
+      override protected def initQuerease: AppQuerease = querease
+      override protected def initQuereaseIo: AppQuereaseIo[Dto] = new AppQuereaseIo[Dto](querease)
     }
 
     super.beforeAll()

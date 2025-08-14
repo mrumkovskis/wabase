@@ -326,8 +326,10 @@ object FileCleanupSpecsHelper {
   implicit val queryTimeout: QueryTimeout = QueryTimeout(10)
 
   DbDrivers.loadDrivers
-  val db: DbAccess = new DbAccess with Loggable { self =>
+  val db: DbAccess = new DbAccess with QuereaseProvider with Loggable { self =>
     override protected def tresqlMetadata = FileCleanupSpecsQuerease.tresqlMetadata
+    override protected def initQuerease: AppQuerease = FileCleanupSpecsQuerease
+    override protected def initQuereaseIo: AppQuereaseIo[Dto] = new AppQuereaseIo[Dto](FileCleanupSpecsQuerease)
   }
   import db._
 

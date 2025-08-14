@@ -11,12 +11,13 @@ import org.apache.pekko.http.scaladsl.settings.{ParserSettings, RoutingSettings}
 import org.apache.pekko.http.scaladsl.testkit.ScalatestRouteTest
 import org.apache.pekko.stream.Materializer
 import org.apache.pekko.util.ByteString
-import java.time.{LocalDate, LocalTime, LocalDateTime}
+
+import java.time.{LocalDate, LocalDateTime, LocalTime}
 import java.time.format.DateTimeFormatter
-import org.mojoz.querease.{QuereaseMetadata, ValueConverter}
+import org.mojoz.querease.{QuereaseMetadata, TresqlMetadata, ValueConverter}
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
-import org.tresql.{convInt, DMLResult, Query, ThreadLocalResources, dialects}
+import org.tresql.{DMLResult, Query, ThreadLocalResources, convInt, dialects}
 import spray.json._
 
 import scala.collection.immutable.Seq
@@ -115,9 +116,11 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     }
     qio         = new AppQuereaseIo[Dto](querease)
     super.beforeAll()
-    dbAccess    = new DbAccess with Loggable {
+    dbAccess    = new DbAccess with QuereaseProvider with Loggable {
       override val tresqlResources = CrudServiceSpecs.this.tresqlThreadLocalResources
       override protected def tresqlMetadata = querease.tresqlMetadata
+      override protected def initQuerease: AppQuerease = querease
+      override protected def initQuereaseIo: AppQuereaseIo[Dto] = new AppQuereaseIo[Dto](querease)
     }
     val testApp = new TestApp with NoValidation {
       override protected def initQuerease = querease

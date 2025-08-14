@@ -77,25 +77,16 @@ object Guidelines {
   }
 
   def qeCall(ctx: WabaseRequestContext) = {
-    val cp = ctx.wabase.DefaultCp
-    val initRf = ctx.wabase.resourceFactory("guideline_calculation_helper", "list", ctx.queryTimeout)
-    val rf = initRf.copy()(resources = initRf.initResources(cp, Nil))
-    import rf.resources
-    implicit val qio: AppQuereaseIo[Dto] = ctx.wabase.qio
-    val res =
-      try ctx.wabase.qe.list[dto.guideline_calculation_helper](Map[String, Any]())
-      catch {
-        case NonFatal(e) =>
-          rf.closeResources(rf.resources, true, Some(e))
-          throw e
-      } finally rf.closeResources(rf.resources, false, None)
+    val result = ctx.wabase.withConn("guideline_calculation_helper", "list", ctx.queryTimeout) { implicit res =>
+      implicit val qio: AppQuereaseIo[Dto] = ctx.wabase.qio
+      ctx.wabase.qe.list[dto.guideline_calculation_helper](Map[String, Any]())
+    }
     HttpResponse(
       status = StatusCodes.OK,
       entity = HttpEntity(ContentTypes.`application/json`,
-        ResultEncoder.encodeAnyToJsonBytes(res.map(_.toMap(ctx.wabase.qe))))
+        ResultEncoder.encodeAnyToJsonBytes(result.map(_.toMap(ctx.wabase.qe))))
     )
   }
-
 }
 
 class BusinessScenariosSpecs extends BusinessScenariosBaseSpecs("http_tests") {

@@ -7,7 +7,7 @@ case class TestUsr(id: Long) {
   def toMap: Map[String, Any] = Map("id" -> id)
 }
 
-object TestDbAccess extends DbAccess with Loggable {
+object TestDbAccess extends DbAccess with QuereaseProvider with Loggable {
   override protected def tresqlMetadata = DefaultAppQuerease.tresqlMetadata
 }
 

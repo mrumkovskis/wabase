@@ -13,11 +13,13 @@ class MultiPoolTest extends FlatSpec with Matchers with ScalatestRouteTest with 
 
   implicit val queryTimeout: QueryTimeout = QueryTimeout(10)
 
-  val db = new DbAccess with Loggable {
+  val db = new DbAccess with QuereaseProvider with Loggable {
     override implicit val tresqlResources: ThreadLocalResources = new ThreadLocalResources {
       override def initResourcesTemplate = super.initResourcesTemplate
     }
     override protected def tresqlMetadata: TresqlMetadata = null
+    override protected def initQuerease: AppQuerease = null
+    override protected def initQuereaseIo: AppQuereaseIo[Dto] = null
   }
 
   import db._

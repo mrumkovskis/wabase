@@ -10,14 +10,14 @@ import org.mojoz.metadata.ViewDef
 import org.tresql.{Cache, Dialect, Expr, LogTopic, Logging, QueryBuilder, Resources, ResourcesTemplate, SimpleCache, ThreadLocalResources}
 import org.wabase.AppMetadata.{AugmentedAppViewDef, DbAccessKey}
 
-import scala.language.postfixOps
+import scala.language.{existentials, postfixOps}
 import scala.util.control.NonFatal
 
 trait DbAccessProvider {
   def dbAccess: DbAccess
 }
 
-trait DbAccess { this: Loggable =>
+trait DbAccess { this: QuereaseProvider with Loggable =>
 
   val DefaultCp: PoolName = WabaseAppConfig.DefaultCp
 
@@ -72,13 +72,6 @@ trait DbAccess { this: Loggable =>
   def withDbAccessLogger(rt: ResourcesTemplate, loggerPrefix: String): ResourcesTemplate =
     DbAccess.withLogger(rt, loggerPrefix)
 
-  private def dbResourceNames(viewDef: ViewDef, actionName: String): (PoolName, collection.immutable.Seq[DbAccessKey]) = {
-    val vdo      = Option(viewDef)
-    val poolName = vdo.flatMap(v => Option(v.db)).map(PoolName) getOrElse DefaultCp
-    val extraDbs = vdo.map(_.actionToDbAccessKeys(actionName).filter(_.db != null).toList).getOrElse(Nil)
-    (poolName, extraDbs)
-  }
-
   private val currentPool = new ThreadLocal[PoolName]
   // TODO do not call nested dbUse with extraDb parameter set to avoid connection leaks
   def dbUse[A](a: => A)(implicit timeout: QueryTimeout = defaultQueryTimeout,
@@ -132,41 +125,41 @@ trait DbAccess { this: Loggable =>
   }
 
   def withConn[A](
-    poolName: PoolName = DEFAULT_CP,
+    poolName: PoolName = DefaultCp,
     template: Resources = resourcesTemplate,
     extraDb:  Seq[DbAccessKey] = Nil,
   )(f: Resources => A): A =
-    DbAccess.withConn(poolName, template, extraDb)(f)
+    DbAccess.withConn(poolName, DefaultCp, template, extraDb)(f)
 
-  def withConn[A](viewDef: ViewDef, actionName: String, qt: QueryTimeout)(f: Resources => A): A = {
-    val (poolName, extraDbs) = dbResourceNames(viewDef, actionName)
-    val resources = resourceFactory(viewDef, actionName, qt).initResources(poolName, extraDbs)
+  def withConn[A](viewName: String, actionName: String, qt: QueryTimeout)(f: Resources => A): A = {
+    val (poolName, extraDbs) = qe.dbResourceNames(viewName, actionName)
+    val resources = resourceFactory(qe.viewDef(viewName), actionName, qt).initResources(poolName, extraDbs)
     try f(resources) finally closeConns(DbAccess.closeConnection)(resources)
   }
 
   def withRollbackConn[A](
-    poolName: PoolName = DEFAULT_CP,
+    poolName: PoolName = DefaultCp,
     template: Resources = resourcesTemplate,
     extraDb:  Seq[DbAccessKey] = Nil,
   )(f: Resources => A): A =
-    DbAccess.withRollbackConn(poolName, template, extraDb)(f)
+    DbAccess.withRollbackConn(poolName, DefaultCp, template, extraDb)(f)
 
-  def withRollbackConn[A](viewDef: ViewDef, actionName: String, qt: QueryTimeout)(f: Resources => A): A = {
-    val (poolName, extraDbs) = dbResourceNames(viewDef, actionName)
-    val resources = resourceFactory(viewDef, actionName, qt).initResources(poolName, extraDbs)
+  def withRollbackConn[A](viewName: String, actionName: String, qt: QueryTimeout)(f: Resources => A): A = {
+    val (poolName, extraDbs) = qe.dbResourceNames(viewName, actionName)
+    val resources = resourceFactory(qe.viewDef(viewName), actionName, qt).initResources(poolName, extraDbs)
     try f(resources) finally closeConns(DbAccess.rollbackAndCloseConnection)(resources)
   }
 
   def newTransaction[A](
-    poolName: PoolName = DEFAULT_CP,
+    poolName: PoolName = DefaultCp,
     template: Resources = resourcesTemplate,
     extraDb:  Seq[DbAccessKey] = Nil,
   )(f: Resources => A): A =
-    DbAccess.newTransaction(poolName, template, extraDb)(f)
+    DbAccess.newTransaction(poolName, DefaultCp, template, extraDb)(f)
 
-  def newTransaction[A](viewDef: ViewDef, actionName: String, qt: QueryTimeout)(f: Resources => A): A = {
-    val (poolName, extraDbs) = dbResourceNames(viewDef, actionName)
-    val resources = resourceFactory(viewDef, actionName, qt).initResources(poolName, extraDbs)
+  def newTransaction[A](viewName: String, actionName: String, qt: QueryTimeout)(f: Resources => A): A = {
+    val (poolName, extraDbs) = qe.dbResourceNames(viewName, actionName)
+    val resources = resourceFactory(qe.viewDef(viewName), actionName, qt).initResources(poolName, extraDbs)
     DbAccess.newTransaction(resources)(f)
   }
 
@@ -373,28 +366,37 @@ object DbAccess extends Loggable {
     if (err.isEmpty && !doRollback) closeConns(commitAndCloseConnection)(res)
     else closeConns(rollbackAndCloseConnection)(res)
   }
+
+  private def initRes(poolName: PoolName, defaultPool: PoolName, extraDb: Seq[DbAccessKey])(res: Resources) =
+    initResources(
+      AppQuerease.focusResource(poolName.connectionPoolName, defaultPool.connectionPoolName)(res)
+    )(poolName, extraDb)
+
   def withConn[A](
     poolName: PoolName,
+    defaultPool: PoolName,
     template: Resources,
     extraDb:  Seq[DbAccessKey] = Nil,
   )(f: Resources => A): A = {
-    val res = initResources(template)(poolName, extraDb)
+    val res = initRes(poolName, defaultPool, extraDb)(template)
     try f(res) finally closeConns(closeConnection)(res)
   }
   def withRollbackConn[A](
     poolName: PoolName,
+    defaultPool: PoolName,
     template: Resources,
     extraDb:  Seq[DbAccessKey] = Nil,
   )(f: Resources => A): A = {
-    val res = initResources(template)(poolName, extraDb)
+    val res = initRes(poolName, defaultPool, extraDb)(template)
     try f(res) finally closeConns(rollbackAndCloseConnection)(res)
   }
   def newTransaction[A](
     poolName: PoolName,
+    defaultPool: PoolName,
     template: Resources,
     extraDb:  Seq[DbAccessKey] = Nil,
   )(f: Resources => A): A = {
-    val res = initResources(template)(poolName, extraDb)
+    val res = initRes(poolName, defaultPool, extraDb)(template)
     newTransaction(res)(f)
   }
   private def newTransaction[A](
@@ -420,7 +422,7 @@ object DbAccess extends Loggable {
   }
 }
 
-trait DbAccessDelegate extends DbAccess { this: Loggable =>
+trait DbAccessDelegate extends DbAccess { this: QuereaseProvider with Loggable =>
 
   def dbAccessDelegate: DbAccess
 
@@ -437,16 +439,16 @@ trait DbAccessDelegate extends DbAccess { this: Loggable =>
     dbAccessDelegate.resourceFactory(viewDef, actionName, qt)
   override def withConn[A](poolName: PoolName, template: Resources, extraDb: Seq[DbAccessKey])(f: Resources => A): A =
     dbAccessDelegate.withConn(poolName, template, extraDb)(f)
-  override def withConn[A](viewDef: ViewDef, actionName: String, qt: QueryTimeout)(f: Resources => A): A =
-    dbAccessDelegate.withConn(viewDef, actionName, qt)(f)
+  override def withConn[A](viewName: String, actionName: String, qt: QueryTimeout)(f: Resources => A): A =
+    dbAccessDelegate.withConn(viewName, actionName, qt)(f)
   override def withRollbackConn[A](poolName: PoolName, template: Resources, extraDb: Seq[DbAccessKey])(f: Resources => A): A =
     dbAccessDelegate.withRollbackConn(poolName, template, extraDb)(f)
-  override def withRollbackConn[A](viewDef: ViewDef, actionName: String, qt: QueryTimeout)(f: Resources => A): A =
-    dbAccessDelegate.withRollbackConn(viewDef, actionName, qt)(f)
+  override def withRollbackConn[A](viewName: String, actionName: String, qt: QueryTimeout)(f: Resources => A): A =
+    dbAccessDelegate.withRollbackConn(viewName, actionName, qt)(f)
   override def newTransaction[A](poolName: PoolName, template: Resources, extraDb: Seq[DbAccessKey])(f: Resources => A): A =
     dbAccessDelegate.newTransaction(poolName, template, extraDb)(f)
-  override def newTransaction[A](viewDef: ViewDef, actionName: String, qt: QueryTimeout)(f: Resources => A): A =
-    dbAccessDelegate.newTransaction(viewDef, actionName, qt)(f)
+  override def newTransaction[A](viewName: String, actionName: String, qt: QueryTimeout)(f: Resources => A): A =
+    dbAccessDelegate.newTransaction(viewName, actionName, qt)(f)
 
   override def dbUse[A](a: => A)(implicit timeout: QueryTimeout = defaultQueryTimeout,
                                  pool: PoolName = DEFAULT_CP,

@@ -27,8 +27,10 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
 
   import jsonConverter.ListJsonFormat
   import jsonConverter.MapJsonFormat
-  val db = new DbAccess with Loggable {
+  val db = new DbAccess with QuereaseProvider with Loggable {
     override protected def tresqlMetadata: TresqlMetadata = null
+    override protected def initQuerease: AppQuerease = null
+    override protected def initQuereaseIo: AppQuereaseIo[Dto] = null
   }
   import db._
 
