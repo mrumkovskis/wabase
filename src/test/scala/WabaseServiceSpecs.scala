@@ -184,6 +184,19 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
     callRoute("/static_resources/") shouldBe "Resource: static_resources/null from uri: /static_resources/"
   }
 
+  it should "extract application state" in {
+    def res(cookies: HttpCookiePair *) = entityForRequest(
+      HttpRequest(
+        uri = "/public/state_extractor",
+        headers = if (cookies.isEmpty) Nil else List(Cookie(cookies.head, cookies.drop(1): _*))
+      ),
+      decoder = decodeJs)
+    res(HttpCookiePair("current_name", "Ann"), HttpCookiePair("current_dept", "Sales")) shouldBe
+      Map("name" -> "Ann", "dept" -> "Sales")
+    res(HttpCookiePair("current_name", "Ann")) shouldBe  Map("name" -> "Ann", "dept" -> null)
+    res() shouldBe Map("name" -> null, "dept" -> null)
+  }
+
   it should "handle deep nested structures" in {
     def deepNestedData(depth: Int) =
       (1 to depth).foldLeft(Map[String, Any]("code" -> depth, "children" -> Nil)) { (r, i) =>

@@ -191,3 +191,13 @@ fields:
 - name
 insert:
 - this
+
+
+name: state_extractor
+api: get
+explicit db: true
+table:
+fields:
+get:
+- as any unique_opt { if_defined_or_else(:current_name?, :current_name, null) name,
+    if_defined_or_else(:current_dept?, :current_dept, null) dept }
