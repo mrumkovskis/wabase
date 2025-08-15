@@ -19,11 +19,12 @@ object WabaseErrorHandler {
       val m = s"[${ctxDebugInfo(ctx)}] $msg"
       if (e == null) ctx.logger.debug(m) else ctx.logger.debug(m, e)
     }
+    def applicationLocale = I18nService.applicationLocale(ApplicationStateExtractor.extractState(ctx))
     def friendlyConstraintErrorMessageResponse(exception: Throwable, sqlCause: SQLException, viewDefOpt: Option[ViewDef], tableName: String) = {
       import ctx.wabase.qe.tableMetadata
       dbConstraintMessageBuilder.friendlyMessageAndDetails(exception, sqlCause, viewDefOpt, tableName, tableMetadata.tableDefOption) match {
         case (friendlyMessage, details) =>
-          val locale: Locale = I18nService.applicationLocale(ctx.applicationState)
+          val locale: Locale = applicationLocale
           val translated = ctx.wabase.translate(friendlyMessage, details)(locale)
           debug(badRequestMsg(exception.getMessage, ctx.req.entity), exception)
           HttpResponse(BadRequest, entity = translated)
@@ -73,7 +74,7 @@ object WabaseErrorHandler {
         val msg = s"JDBC timeout, statement cancelled - ${ctx.req.method} ${ctx.req.uri}, state - $state, user - $user"
         ctx.logger.error(msg)
         HttpResponse(InternalServerError,
-          entity = ctx.wabase.translate(TimeoutFriendlyMessage)(I18nService.applicationLocale(ctx.applicationState)))
+          entity = ctx.wabase.translate(TimeoutFriendlyMessage)(applicationLocale))
       case e: SQLException if dbConstraintMessageBuilder.nameAndViolation(e)._1 != null =>
         val viewDefOpt = ctx.wabase.qe.viewDefOption(ctx.viewName)
         val tableName  = viewDefOpt.map(_.table).orNull
