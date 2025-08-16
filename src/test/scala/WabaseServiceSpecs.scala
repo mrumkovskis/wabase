@@ -19,7 +19,7 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
   implicit val ec: ExecutionContext = serverSystem.dispatcher
   val executionImpl = new ExecutionImpl()(serverSystem)
   val wabase = new WA(executionImpl)
-  val server = new WabaseServer(wabase)
+  val server = new WabaseServer(wabase, enableServerNotifications = false, enableDeferredRequests = false)
 
   DbDrivers.loadDrivers
 

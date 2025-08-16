@@ -99,6 +99,7 @@ object WabaseDeferredControl extends WabaseDeferredControlFactory {
   }
 
   def doDeferred(handler: RequestHandler): RequestHandler = ctx => {
+    require(ctx.deferred.deferredControl != null, "Cannot do deferred request. Deferred module not initialized.")
     val timeout = extractTimeout(ctx, ctx.req)
     val dctx = ctx.copy(queryTimeout = timeout)
     val user = dctx.user.name
@@ -114,6 +115,8 @@ object WabaseDeferredControl extends WabaseDeferredControlFactory {
 
   /** Get deferred request result */
   def deferredResult(deferred_id: String, ctx: WabaseRequestContext): Future[HttpResponse] = {
+    require(ctx.deferred.deferredControl != null,
+      s"Cannot retrieve deferred result $deferred_id, deferred module not initialized.")
     Future.successful(ctx.deferred.deferredControl.deferredResult(deferred_id, ctx.user.name))
   }
 }

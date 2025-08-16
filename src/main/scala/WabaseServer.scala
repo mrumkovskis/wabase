@@ -10,18 +10,24 @@ import com.typesafe.sslconfig.util.NoDepsLogger
 import org.apache.pekko.actor.{ActorSystem, Props}
 import org.apache.pekko.http.scaladsl.{ConnectionContext, Http}
 import org.apache.pekko.http.scaladsl.model.{HttpRequest, HttpResponse}
-import org.slf4j.LoggerFactory
 
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success}
 import scala.io.StdIn
 
-class WabaseServer(wabase: WabaseService.Wabase) {
+class WabaseServer(
+  wabase: WabaseService.Wabase,
+  enableServerNotifications: Boolean,
+  enableDeferredRequests: Boolean,
+) {
   val port = WabaseServer.port
-  // start server event subscriber watcher actor
-  wabase.system.actorOf(Props(classOf[ServerNotifications.EventSubscriberWatcher]),
-    ServerNotifications.SubscriberWatcherActorName)
-  private val deferredControl = new WabaseDeferredControl(wabase)(wabase.system)
+  if (enableDeferredRequests)   // start server event subscriber watcher actor
+    wabase.system.actorOf(Props(classOf[ServerNotifications.EventSubscriberWatcher]),
+      ServerNotifications.SubscriberWatcherActorName)
+  private val deferredControl =
+    if (enableDeferredRequests)
+      new WabaseDeferredControl(wabase)(wabase.system)
+    else null
   private val service         = new WabaseService
 
   def handle(req: HttpRequest): Future[HttpResponse] =
@@ -85,7 +91,12 @@ object WabaseServer {
     implicit val ec: ExecutionContext = serverSystem.dispatcher
     val executionImpl = new ExecutionImpl()(serverSystem)
     val app = new App(executionImpl)
-    val server = new WabaseServer(app)
+    val server = new WabaseServer(app,
+      enableServerNotifications =
+        !config.hasPath("app.enable-server-notifications") || config.getBoolean("app.enable-server-notifications"),
+      enableDeferredRequests =
+        !config.hasPath("app.enable-deferred-requests") || config.getBoolean("app.enable-deferred-requests"),
+    )
     val protocol        = if (isSslEnabled) "https" else "http"
     val hostPortString  = s"$protocol://localhost:${server.port}"
     val bindAddress     = config.getString("app.server.bind-address")
