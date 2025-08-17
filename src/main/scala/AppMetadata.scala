@@ -6,9 +6,10 @@ import org.mojoz.metadata.{FieldDef, Type, ViewDef}
 import org.mojoz.metadata.in._
 import org.mojoz.metadata.io.MdConventions
 import org.mojoz.metadata.out.DdlGenerator.SimpleConstraintNamingRules
+import org.mojoz.querease.FilterType._
 import org.mojoz.querease.QuereaseExpressions.DefaultParser
 import org.mojoz.querease.QueryStringBuilder.CompilationUnit
-import org.mojoz.querease.{QuereaseExpressions, QuereaseMetadata, TresqlJoinsParser, TresqlMetadata}
+import org.mojoz.querease.{FilterType, QuereaseExpressions, QuereaseMetadata, TresqlJoinsParser, TresqlMetadata}
 import org.tresql.{Cache, MacroResourcesImpl, QueryParser, SimpleCache, SimpleCacheBase, ast}
 import org.tresql.ast.{Exp, Variable}
 import org.tresql.parsing.QueryParsers
@@ -54,6 +55,8 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       TresqlMetadata(tableMetadata.tableDefs, typeDefs, macrosClass, resourceLoader, aliasToDb),
       createJoinsParserCache(_)
     )
+  private lazy val macrosInstance = Option(macrosClass).map(getObjectOrNewInstance(_, "metadata macros")).orNull
+  lazy val macroResources = new MacroResourcesImpl(macrosInstance, tresqlMetadata)
   override lazy val metadataConventions: AppMdConventions = new DefaultAppMdConventions(resourceLoader)()
   override lazy val nameToViewDef: Map[String, ViewDef] =
     toAppViewDefs(viewDefLoader.nameToViewDef)
@@ -818,6 +821,170 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     Some(cache)
   }
   override val parser: QuereaseExpressions.Parser = this.AppQuereaseDefaultParser
+
+  private val vname = "[_\\p{IsLatin}][_\\p{IsLatin}0-9]*"
+  private val ContainsOpFilterDef = s"^.*%~+%\\s*:($vname)\\??$$".r
+  private val EndsWithOpFilterDef = s"^.*%~+\\s*:($vname)\\??$$".r
+  private val StartsWithOpFilterDef = s"^.*~+%\\s*:($vname)\\??$$".r
+  def filterFieldLabel(name: String, colLabel: String, filterType: FilterType): FilterLabel = {
+    import org.mojoz.querease.FilterType._
+    filterType match {
+      case ComparisonFilter(col, op, name, opt) =>
+        op match {
+          // TODO more operators?
+          case "%~~~%" | "%~~%" | "%~%" => FilterLabel(colLabel, "contains")
+          case "%~~~" | "%~~" | "%~" => FilterLabel(colLabel, "ends with")
+          case "~~~%" | "~~%" | "~%" => FilterLabel(colLabel, "begins with")
+          case _ => FilterLabel(colLabel, null)
+        }
+      case IntervalFilter(nameFrom, optFrom, opFrom, col, opTo, nameTo, optTo) =>
+        if (name == nameFrom) FilterLabel(colLabel.replace(" from", ""), "from")
+        else if (name == nameTo) FilterLabel(colLabel.replace(" to", ""), "to")
+        else FilterLabel(colLabel, null)
+      case OtherFilter(fExpr) => fExpr match {
+        case ContainsOpFilterDef(vName) if vName == name => FilterLabel(colLabel, "contains")
+        case EndsWithOpFilterDef(vName) if vName == name => FilterLabel(colLabel, "ends with")
+        case StartsWithOpFilterDef(vName) if vName == name => FilterLabel(colLabel, "begins with")
+        case _ => FilterLabel(colLabel, null)
+      }
+      case _ => FilterLabel(colLabel, null)
+    }
+  }
+  def filterToParameterNamesAndCols(filter: FilterType): Seq[(String, String)] = filter match {
+    case BooleanFilter(b) =>
+      Nil
+    case IdentFilter(col, name, opt) =>
+      Seq(name -> col)
+    case ComparisonFilter(col, op, name, opt) =>
+      Seq(name -> col)
+    case IntervalFilter(nameFrom, optFrom, opFrom, col, opTo, nameTo, optTo) =>
+      Seq(nameFrom -> col, nameTo -> col)
+    case RefFilter(col, name, opt, refViewName, refFieldName, refCol) =>
+      Seq(name -> col)
+    case OtherFilter(_) =>
+      Nil
+    case _ =>
+      Nil
+  }
+  def filterToParameterNames(filter: FilterType): Seq[String] = filter match {
+    case BooleanFilter(b) =>
+      Nil
+    case IdentFilter(col, name, opt) =>
+      Seq(name)
+    case ComparisonFilter(col, op, name, opt) =>
+      Seq(name)
+    case IntervalFilter(nameFrom, optFrom, opFrom, col, opTo, nameTo, optTo) =>
+      Seq(nameFrom, nameTo)
+    case RefFilter(col, name, opt, refViewName, refFieldName, refCol) =>
+      Seq(name)
+    case OtherFilter(fExpr) =>
+      parser.extractVariables(fExpr)
+        .map(_.variable)
+    case _ =>
+      Nil
+  }
+  private val filterParametersParserCache = new SimpleCache(parserCacheSize)
+  def filterParameters(view: ViewDef): Seq[FilterParameter] = {
+    def fieldNameToLabel(n: String) =
+      n.replace("_", " ").capitalize
+    val v = view
+    if (v.apiMethodToRoles != null && v.apiMethodToRoles.nonEmpty && (v.table != null || v.joins != null && v.joins.nonEmpty)) {
+      val filters =
+        Option(v.filter).getOrElse(Nil) flatMap { f =>
+          analyzeFilter(f, v, v.tableAlias)
+        }
+
+      // TODO duplicate code, reuse querease code!
+      def simpleName(name: String) = if (name == null) null else name.lastIndexOf('.') match {
+        case -1 => name
+        case  i => name.substring(i + 1)
+      }
+      def tailists[B](l: List[B]): List[List[B]] =
+        if (l.isEmpty) Nil else l :: tailists(l.tail)
+      val (needsBaseTable, parsedJoins) =
+        Option(v.joins)
+          .map(joins =>
+            Try(joinsParser(v.db, null, joins)).toOption
+              .map(joins => (false, joins))
+              .getOrElse((true, joinsParser(v.db, tableAndAlias(v), joins))))
+          .getOrElse((false, Nil))
+      val joinAliasToTables: Map[String, Set[String]] =
+        parsedJoins.map(j => Option(j.alias).getOrElse(j.table) -> j.table).toSet
+          .filter(_._1 != null)
+          .flatMap { case (n, t) => tailists(n.split("\\.").toList).map(_.mkString(".") -> t) }
+          .groupBy(_._1)
+          .map { kkv => kkv._1 -> kkv._2.map(_._2).toSet }
+      val baseQualifier = baseFieldsQualifier(view)
+      val aliasToTable = collection.mutable.Map[String, String]()
+      if (baseQualifier != null) {
+        if (view.table != null)
+          // FIXME exclude clashing simple names from different qualified names!
+          aliasToTable += (baseQualifier -> view.table)
+          aliasToTable += (simpleName(baseQualifier) -> view.table)
+      }
+      aliasToTable ++= joinAliasToTables.filter(_._2.size == 1).map { case (n, t) => n -> t.head }
+      // -----------------------------------------
+
+      val parameterNameToCol =
+        filters.flatMap(filterToParameterNamesAndCols).toMap
+      val parameterNameToFilterType =
+        filters.flatMap(filter => filterToParameterNames(filter).map(_ -> filter)).toMap
+      val allVariables =
+        viewNameToQueryVariablesCache.getOrElse(v.name, {
+          val q = queryStringAndParams(v, Map.empty)._1
+          new QueryParser(macroResources, filterParametersParserCache).extractVariables(q)
+        })
+      // TODO? fromAndPathToAlias(v): (String, Map[List[String], String])
+      allVariables
+        .distinct // FIXME aggregate v.opt!
+        .map { v =>
+          val colQName = parameterNameToCol.getOrElse(v.variable, "")
+          val filterType = parameterNameToFilterType.get(v.variable).orNull
+          val refViewName = Option(filterType).map {
+            case RefFilter(col, name, opt, refViewName, refFieldName, refCol) => refViewName
+            case _ => null
+          }.orNull
+          val tableAlias =
+            if (colQName.indexOf(".") > 0)
+              colQName.substring(0, colQName.indexOf("."))
+            else Option(view.tableAlias).getOrElse(view.table)
+          val colName =
+            if (colQName.indexOf(".") > 0)
+              colQName.substring(colQName.indexOf(".") + 1)
+            else colQName
+          val col = aliasToTable
+            .get(tableAlias)
+            .map(tableName => tableMetadata.tableDefOption(tableName, view.db).map(_.cols) getOrElse Nil)
+            .flatMap(_.find(_.name == colName))
+            .orNull
+          val name = v.variable
+          val conventionsType =
+            metadataConventions.typeFromExternal(name, None)
+          val table = aliasToTable.getOrElse(tableAlias, null)
+          val label = Option(col)
+            .map(_.comments)
+            .filter(_ != null)
+            .filter(_ != "")
+            .map(splitToLabelAndComments(_)._1)
+            .filter(_ != null)
+            .orElse(Option(fieldNameToLabel(name)))
+            .map(filterFieldLabel(name, _, filterType))
+            .orNull
+          val nullable = v.opt
+          val required = !v.opt
+          val type_ = Option(col)
+            .filter { col =>
+              filterType.isInstanceOf[IdentFilter] ||
+              filterType.isInstanceOf[ComparisonFilter] ||
+              filterType.isInstanceOf[IntervalFilter]
+            }
+            .map(_.type_)
+            .getOrElse(conventionsType)
+          val enum_ = Option(col).map(_.enum_).orNull
+          FilterParameter(name, table, label, nullable, required, type_, enum_, refViewName, filterType)
+        }
+    } else Nil
+  }
 }
 
 class OpParser(viewName: String, cache: OpParser.Cache)
@@ -1104,6 +1271,14 @@ object AppMetadata extends Loggable {
     forInsert: Seq[String],
     forUpdate: Seq[String],
     forDelete: Seq[String]
+  )
+
+  case class FilterLabel(fieldName: String, filterName: String)
+  case class FilterParameter(
+    name: String, table: String, label: FilterLabel,
+    nullable: Boolean, required: Boolean,
+    type_ : Type, enum_ : Seq[String],
+    refViewName: String, filterType: FilterType,
   )
 
   val AuthEmpty = AuthFilters(Nil, Nil, Nil, Nil, Nil)

@@ -8,7 +8,9 @@ import com.typesafe.scalalogging.Logger
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.marshalling.{Marshal, ToResponseMarshallable}
 import org.apache.pekko.http.scaladsl.model.headers.{Cookie, EntityTag, HttpCookie, `Set-Cookie`, `Timeout-Access`}
-import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes, DateTime, HttpEntity, HttpHeader, HttpMessage, HttpRequest, HttpResponse, MediaTypes, StatusCode, StatusCodes, Uri}
+import org.apache.pekko.http.scaladsl.model.HttpCharsets.`UTF-8`
+import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes, DateTime, HttpEntity, HttpHeader, HttpMessage, HttpRequest, HttpResponse, StatusCode, StatusCodes, Uri}
+import org.apache.pekko.http.scaladsl.model.{MediaType => PekkoMediaType}
 import org.apache.pekko.http.scaladsl.server.directives.ContentTypeResolver
 import org.apache.pekko.http.scaladsl.server.directives.FileAndResourceDirectives.ResourceFile
 import org.apache.pekko.http.scaladsl.unmarshalling.Unmarshaller
@@ -18,8 +20,9 @@ import org.mojoz.metadata.ViewDef
 import org.slf4j.LoggerFactory
 import org.tresql.parsing.QueryParsers
 import org.wabase.AppMetadata.{Action, RouteDef}
-import org.wabase.WabaseService.Wabase
 import org.wabase.CacheConditionHandlers._
+import org.wabase.swagger.WabaseSwaggerGenerator
+import org.wabase.WabaseService.Wabase
 
 import java.util.Locale
 import scala.annotation.tailrec
@@ -123,6 +126,13 @@ class WabaseService extends Loggable {
 
 object WabaseService {
 
+  object MediaTypes {
+    val `application/json`: PekkoMediaType.WithFixedCharset =
+      org.apache.pekko.http.scaladsl.model.MediaTypes.`application/json`
+    val `application/yaml`: PekkoMediaType.WithFixedCharset =
+      PekkoMediaType.applicationWithFixedCharset("yaml", `UTF-8`, "yaml")
+  }
+
   type RequestHandler = WabaseRequestContext => Future[HttpResponse]
   type ErrorHandler   = PartialFunction[Throwable, Future[HttpResponse]]
   type Wabase = WabaseApp[WabaseUser] with QuereaseProvider with I18n with DbAccess with Marshalling with AppProvider[WabaseUser] with Execution
@@ -217,6 +227,34 @@ object WabaseService {
       Future.successful(
         HttpResponse(entity = HttpEntity.Strict(ContentTypes.`application/json`, ByteString(json.compactPrint)))
       )
+    })
+  }
+
+  def generateSwaggerJson(ctx: WabaseRequestContext): RequestHandler = {
+    conditional(EntityTag(ctx.wabase.app.metadataVersionString), DateTime(ctx.wabase.app.startupTimeMillis), _ => {
+      Future.successful {
+        val generator = new WabaseSwaggerGenerator(Seq(ctx.wabase.qe), config.getString("app.host")) {
+          override def getQueryParameters(method: String, viewDef: ViewDef, keySize: Int = 99): Seq[FilterParameter] = {
+            super.getQueryParameters(method, viewDef, keySize)
+              .filterNot(p => ctx.wabase.app.isInternalParameter(viewDef, p.name))
+          }
+        }
+        HttpResponse(entity = HttpEntity(MediaTypes.`application/json`, generator.generateSwaggerJson))
+      }
+    })
+  }
+
+  def generateSwaggerYaml(ctx: WabaseRequestContext): RequestHandler = {
+    conditional(EntityTag(ctx.wabase.app.metadataVersionString), DateTime(ctx.wabase.app.startupTimeMillis), _ => {
+      Future.successful {
+        val generator = new WabaseSwaggerGenerator(Seq(ctx.wabase.qe), config.getString("app.host")) {
+          override def getQueryParameters(method: String, viewDef: ViewDef, keySize: Int = 99): Seq[FilterParameter] = {
+            super.getQueryParameters(method, viewDef, keySize)
+              .filterNot(p => ctx.wabase.app.isInternalParameter(viewDef, p.name))
+          }
+        }
+        HttpResponse(entity = HttpEntity(MediaTypes.`application/yaml`, generator.generateSwaggerYaml))
+      }
     })
   }
 

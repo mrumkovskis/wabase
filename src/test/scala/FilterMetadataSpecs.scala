@@ -6,7 +6,7 @@ import org.mojoz.querease.FilterType._
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers
 import org.tresql._
-import org.wabase.AppBase.{FilterLabel, FilterParameter}
+import org.wabase.AppMetadata.{FilterLabel, FilterParameter}
 
 import scala.concurrent.ExecutionContextExecutor
 

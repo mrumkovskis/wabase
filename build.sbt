@@ -70,6 +70,7 @@ lazy val commonSettings = Seq(
       "com.github.jwt-scala"       %% "jwt-core"              % "10.0.4"            % Optional,
       "com.github.jwt-scala"       %% "jwt-json-common"       % "10.0.4"            % Optional,
       "io.github.samueleresca"     %% "pekko-quartz-scheduler"% "1.3.0-pekko-1.1.x" % Optional,
+      "io.swagger.core.v3"          % "swagger-jaxrs2-jakarta"% "2.2.35"            % Optional,
       "org.xhtmlrenderer"           % "flying-saucer-pdf"     % "9.11.2"            % Optional,
       "org.simplejavamail"          % "simple-java-mail"      % "8.12.4"            % Optional,
       "org.graalvm.js"              % "js"                    % "22.3.5"            % Optional,

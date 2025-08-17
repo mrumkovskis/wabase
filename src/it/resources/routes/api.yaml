@@ -3,3 +3,9 @@ do: api
 
 on: /metadata/(.+)
 do: metadata $1
+
+on: /swagger.json
+do: swaggerJson
+
+on: /swagger.yaml
+do: swaggerYaml

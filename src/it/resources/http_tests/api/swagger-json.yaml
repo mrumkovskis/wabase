@@ -1,0 +1,1110 @@
+path:     /swagger.json
+response_headers:
+  Content-Type: application/json
+# ETag: '"..."'
+response: {
+  "openapi" : "3.1.0",
+  "info" : {
+    "title" : "",
+    "description" : "",
+    "termsOfService" : "",
+    "version" : ""
+  },
+  "servers" : [ {
+    "url" : "http://127.0.0.1"
+  } ],
+  "security" : [ ],
+  "paths" : {
+    "/current_user" : {
+      "get" : {
+        "summary" : "Get 'current_user'",
+        "description" : "",
+        "responses" : {
+          "200" : {
+            "description" : "",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/current_user"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Bad request"
+          },
+          "403" : {
+            "description" : "Forbidden"
+          },
+          "404" : {
+            "description" : "Not Found"
+          },
+          "500" : {
+            "description" : "Internal server error"
+          },
+          "503" : {
+            "description" : "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/guideline_calculation_helper" : {
+      "get" : {
+        "summary" : "Get 'guideline_calculation_helper'",
+        "description" : "",
+        "responses" : {
+          "200" : {
+            "description" : "",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/guideline_calculation_helper"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Bad request"
+          },
+          "403" : {
+            "description" : "Forbidden"
+          },
+          "404" : {
+            "description" : "Not Found"
+          },
+          "500" : {
+            "description" : "Internal server error"
+          },
+          "503" : {
+            "description" : "Service Unavailable"
+          }
+        }
+      },
+      "post" : {
+        "summary" : "Insert 'guideline_calculation_helper'",
+        "description" : "",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/guideline_calculation_helper"
+              }
+            }
+          }
+        },
+        "responses" : {
+          "200" : {
+            "description" : "",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/guideline_calculation_helper"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Bad request"
+          },
+          "500" : {
+            "description" : "Internal server error"
+          },
+          "503" : {
+            "description" : "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/login_using_json_or_urlencoded" : {
+      "post" : {
+        "summary" : "Insert 'login_using_json_or_urlencoded'",
+        "description" : "",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/login_using_json_or_urlencoded"
+              }
+            }
+          }
+        },
+        "responses" : {
+          "200" : {
+            "description" : "",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/login_using_json_or_urlencoded"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Bad request"
+          },
+          "500" : {
+            "description" : "Internal server error"
+          },
+          "503" : {
+            "description" : "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/logout" : {
+      "post" : {
+        "summary" : "Insert 'logout'",
+        "description" : "",
+        "responses" : {
+          "200" : {
+            "description" : ""
+          },
+          "400" : {
+            "description" : "Bad request"
+          },
+          "500" : {
+            "description" : "Internal server error"
+          },
+          "503" : {
+            "description" : "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/person" : {
+      "get" : {
+        "summary" : "List 'person'",
+        "description" : "",
+        "responses" : {
+          "200" : {
+            "description" : "",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/person"
+                  }
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Bad request"
+          },
+          "403" : {
+            "description" : "Forbidden"
+          },
+          "500" : {
+            "description" : "Internal server error"
+          },
+          "503" : {
+            "description" : "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/person/{code}" : {
+      "get" : {
+        "summary" : "Get 'person' by 'code'",
+        "description" : "",
+        "parameters" : [ {
+          "name" : "code",
+          "in" : "path",
+          "description" : "Code",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "maxLength" : 12
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/person"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Bad request"
+          },
+          "403" : {
+            "description" : "Forbidden"
+          },
+          "404" : {
+            "description" : "Not Found"
+          },
+          "500" : {
+            "description" : "Internal server error"
+          },
+          "503" : {
+            "description" : "Service Unavailable"
+          }
+        }
+      },
+      "put" : {
+        "summary" : "Save 'person' by 'code'",
+        "description" : "",
+        "parameters" : [ {
+          "name" : "code",
+          "in" : "path",
+          "description" : "Code",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "maxLength" : 12
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/person"
+              }
+            }
+          }
+        },
+        "responses" : {
+          "200" : {
+            "description" : "",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/person"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Bad request"
+          },
+          "500" : {
+            "description" : "Internal server error"
+          },
+          "503" : {
+            "description" : "Service Unavailable"
+          }
+        }
+      },
+      "delete" : {
+        "summary" : "Delete 'person' by 'code'",
+        "description" : "",
+        "parameters" : [ {
+          "name" : "code",
+          "in" : "path",
+          "description" : "Code",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "maxLength" : 12
+          }
+        } ],
+        "responses" : {
+          "404" : {
+            "description" : "Not Found"
+          },
+          "500" : {
+            "description" : "Internal server error"
+          }
+        }
+      }
+    },
+    "/person:count/{code}" : {
+      "get" : {
+        "summary" : "Count 'person' by 'code'",
+        "description" : "",
+        "parameters" : [ {
+          "name" : "code",
+          "in" : "path",
+          "description" : "Code",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "maxLength" : 12
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Count",
+            "content" : {
+              "text/plain" : {
+                "schema" : {
+                  "type" : "integer",
+                  "format" : "int32"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Bad request"
+          },
+          "403" : {
+            "description" : "Forbidden"
+          },
+          "404" : {
+            "description" : "Not Found"
+          },
+          "500" : {
+            "description" : "Internal server error"
+          },
+          "503" : {
+            "description" : "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/person:create/{code}" : {
+      "get" : {
+        "summary" : "Create 'person' by 'code'",
+        "description" : "",
+        "parameters" : [ {
+          "name" : "code",
+          "in" : "path",
+          "description" : "Code",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "maxLength" : 12
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/person"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Bad request"
+          },
+          "403" : {
+            "description" : "Forbidden"
+          },
+          "404" : {
+            "description" : "Not Found"
+          },
+          "500" : {
+            "description" : "Internal server error"
+          },
+          "503" : {
+            "description" : "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/person_with_access_control/{code}" : {
+      "get" : {
+        "summary" : "Get 'person_with_access_control' by 'code'",
+        "description" : "",
+        "parameters" : [ {
+          "name" : "code",
+          "in" : "path",
+          "description" : "Code",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "maxLength" : 12
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/person_with_access_control"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Bad request"
+          },
+          "403" : {
+            "description" : "Forbidden"
+          },
+          "404" : {
+            "description" : "Not Found"
+          },
+          "500" : {
+            "description" : "Internal server error"
+          },
+          "503" : {
+            "description" : "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/request_calculation_view" : {
+      "post" : {
+        "summary" : "Insert 'request_calculation_view'",
+        "description" : "",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/request_calculation_view"
+              }
+            }
+          }
+        },
+        "responses" : {
+          "200" : {
+            "description" : "",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/request_calculation_view"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Bad request"
+          },
+          "500" : {
+            "description" : "Internal server error"
+          },
+          "503" : {
+            "description" : "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/response_calculation_view" : {
+      "get" : {
+        "summary" : "List 'response_calculation_view'",
+        "description" : "",
+        "responses" : {
+          "200" : {
+            "description" : "",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/response_calculation_view"
+                  }
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Bad request"
+          },
+          "403" : {
+            "description" : "Forbidden"
+          },
+          "500" : {
+            "description" : "Internal server error"
+          },
+          "503" : {
+            "description" : "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/save_person_email/{code}" : {
+      "put" : {
+        "summary" : "Save 'save_person_email' by 'code'",
+        "description" : "",
+        "parameters" : [ {
+          "name" : "code",
+          "in" : "path",
+          "description" : "Code",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "maxLength" : 12
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/save_person_email"
+              }
+            }
+          }
+        },
+        "responses" : {
+          "200" : {
+            "description" : "",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/save_person_email"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Bad request"
+          },
+          "500" : {
+            "description" : "Internal server error"
+          },
+          "503" : {
+            "description" : "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/server_events" : {
+      "get" : {
+        "summary" : "List 'server_events'",
+        "description" : "",
+        "responses" : {
+          "200" : {
+            "description" : "",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/server_events"
+                  }
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Bad request"
+          },
+          "403" : {
+            "description" : "Forbidden"
+          },
+          "500" : {
+            "description" : "Internal server error"
+          },
+          "503" : {
+            "description" : "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/server_events/{topic}" : {
+      "get" : {
+        "summary" : "Get 'server_events' by 'topic'",
+        "description" : "",
+        "parameters" : [ {
+          "name" : "topic",
+          "in" : "path",
+          "description" : "Topic",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/server_events"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Bad request"
+          },
+          "403" : {
+            "description" : "Forbidden"
+          },
+          "404" : {
+            "description" : "Not Found"
+          },
+          "500" : {
+            "description" : "Internal server error"
+          },
+          "503" : {
+            "description" : "Service Unavailable"
+          }
+        }
+      },
+      "put" : {
+        "summary" : "Save 'server_events' by 'topic'",
+        "description" : "",
+        "parameters" : [ {
+          "name" : "topic",
+          "in" : "path",
+          "description" : "Topic",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/server_events"
+              }
+            }
+          }
+        },
+        "responses" : {
+          "200" : {
+            "description" : "",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/server_events"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Bad request"
+          },
+          "500" : {
+            "description" : "Internal server error"
+          },
+          "503" : {
+            "description" : "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/user" : {
+      "get" : {
+        "summary" : "Get 'user'",
+        "description" : "",
+        "responses" : {
+          "200" : {
+            "description" : "",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/user"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Bad request"
+          },
+          "403" : {
+            "description" : "Forbidden"
+          },
+          "404" : {
+            "description" : "Not Found"
+          },
+          "500" : {
+            "description" : "Internal server error"
+          },
+          "503" : {
+            "description" : "Service Unavailable"
+          }
+        }
+      },
+      "put" : {
+        "summary" : "Save 'user'",
+        "description" : "",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/user"
+              }
+            }
+          }
+        },
+        "responses" : {
+          "200" : {
+            "description" : "",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/user"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Bad request"
+          },
+          "500" : {
+            "description" : "Internal server error"
+          },
+          "503" : {
+            "description" : "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/user-with-roles-array" : {
+      "get" : {
+        "summary" : "Get 'user-with-roles-array'",
+        "description" : "",
+        "responses" : {
+          "200" : {
+            "description" : ""
+          },
+          "400" : {
+            "description" : "Bad request"
+          },
+          "403" : {
+            "description" : "Forbidden"
+          },
+          "404" : {
+            "description" : "Not Found"
+          },
+          "500" : {
+            "description" : "Internal server error"
+          },
+          "503" : {
+            "description" : "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/user_role/{user_id}/{role}" : {
+      "get" : {
+        "summary" : "Get 'user_role' by 'user_id' and 'role'",
+        "description" : "",
+        "parameters" : [ {
+          "name" : "user_id",
+          "in" : "path",
+          "description" : "User id",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        }, {
+          "name" : "role",
+          "in" : "path",
+          "description" : "Role",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/user_role"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Bad request"
+          },
+          "403" : {
+            "description" : "Forbidden"
+          },
+          "404" : {
+            "description" : "Not Found"
+          },
+          "500" : {
+            "description" : "Internal server error"
+          },
+          "503" : {
+            "description" : "Service Unavailable"
+          }
+        }
+      },
+      "put" : {
+        "summary" : "Save 'user_role' by 'user_id' and 'role'",
+        "description" : "",
+        "parameters" : [ {
+          "name" : "user_id",
+          "in" : "path",
+          "description" : "User id",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        }, {
+          "name" : "role",
+          "in" : "path",
+          "description" : "Role",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/user_role"
+              }
+            }
+          }
+        },
+        "responses" : {
+          "200" : {
+            "description" : "",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/user_role"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Bad request"
+          },
+          "500" : {
+            "description" : "Internal server error"
+          },
+          "503" : {
+            "description" : "Service Unavailable"
+          }
+        }
+      }
+    }
+  },
+  "components" : {
+    "schemas" : {
+      "current_user" : {
+        "type" : "object",
+        "properties" : {
+          "user_id" : {
+            "type" : "integer",
+            "format" : "int64",
+            "description" : "User id",
+            "readOnly" : false
+          },
+          "name" : {
+            "type" : "string",
+            "description" : "Name",
+            "readOnly" : false
+          },
+          "roles" : {
+            "type" : "array",
+            "description" : "Roles",
+            "items" : {
+              "type" : "string"
+            },
+            "readOnly" : false
+          }
+        },
+        "required" : [ ]
+      },
+      "guideline_calculation_helper" : {
+        "type" : "object",
+        "properties" : {
+          "code" : {
+            "type" : "string",
+            "description" : "Code",
+            "maxLength" : 12,
+            "readOnly" : false
+          },
+          "category" : {
+            "type" : "string",
+            "description" : "Category",
+            "maxLength" : 40,
+            "readOnly" : false
+          },
+          "description" : {
+            "type" : "string",
+            "description" : "Description",
+            "maxLength" : 80,
+            "readOnly" : false
+          }
+        },
+        "required" : [ "code" ]
+      },
+      "login_using_json_or_urlencoded" : {
+        "type" : "object",
+        "properties" : {
+          "name" : {
+            "type" : "string",
+            "description" : "Name",
+            "readOnly" : false
+          },
+          "password" : {
+            "type" : "string",
+            "description" : "Password",
+            "readOnly" : false
+          }
+        },
+        "required" : [ ]
+      },
+      "logout" : {
+        "type" : "object",
+        "properties" : { },
+        "required" : [ ]
+      },
+      "person" : {
+        "type" : "object",
+        "properties" : {
+          "code" : {
+            "type" : "string",
+            "description" : "Code",
+            "maxLength" : 12,
+            "readOnly" : false
+          },
+          "name" : {
+            "type" : "string",
+            "description" : "Name",
+            "maxLength" : 80,
+            "readOnly" : false
+          },
+          "surname" : {
+            "type" : "string",
+            "description" : "Surname",
+            "maxLength" : 80,
+            "readOnly" : false
+          }
+        },
+        "required" : [ "code" ]
+      },
+      "person_with_access_control" : {
+        "type" : "object",
+        "properties" : {
+          "code" : {
+            "type" : "string",
+            "description" : "Code",
+            "maxLength" : 12,
+            "readOnly" : false
+          },
+          "name" : {
+            "type" : "string",
+            "description" : "Name",
+            "maxLength" : 80,
+            "readOnly" : false
+          },
+          "surname" : {
+            "type" : "string",
+            "description" : "Surname",
+            "maxLength" : 80,
+            "readOnly" : false
+          }
+        },
+        "required" : [ "code" ]
+      },
+      "request_calculation_view" : {
+        "type" : "object",
+        "properties" : {
+          "category" : {
+            "type" : "string",
+            "description" : "Category",
+            "readOnly" : false
+          }
+        },
+        "required" : [ ]
+      },
+      "response_calculation_view" : {
+        "type" : "object",
+        "properties" : {
+          "code" : {
+            "type" : "string",
+            "description" : "Code",
+            "readOnly" : false
+          },
+          "category" : {
+            "type" : "string",
+            "description" : "Category",
+            "readOnly" : false
+          },
+          "description" : {
+            "type" : "string",
+            "description" : "Description",
+            "readOnly" : false
+          }
+        },
+        "required" : [ ]
+      },
+      "save_person_email" : {
+        "type" : "object",
+        "properties" : {
+          "code" : {
+            "type" : "string",
+            "description" : "Code",
+            "maxLength" : 12,
+            "readOnly" : false
+          },
+          "email" : {
+            "type" : "string",
+            "description" : "Email",
+            "maxLength" : 80,
+            "readOnly" : false
+          }
+        },
+        "required" : [ "code" ]
+      },
+      "server_events" : {
+        "type" : "object",
+        "properties" : {
+          "topic" : {
+            "type" : "string",
+            "description" : "Topic",
+            "readOnly" : false
+          },
+          "value" : {
+            "type" : "string",
+            "description" : "Value",
+            "readOnly" : false
+          }
+        },
+        "required" : [ ]
+      },
+      "user" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "integer",
+            "format" : "int64",
+            "description" : "Id",
+            "readOnly" : false
+          },
+          "name" : {
+            "type" : "string",
+            "description" : "Name",
+            "maxLength" : 80,
+            "readOnly" : false
+          },
+          "password" : {
+            "type" : "string",
+            "description" : "Password",
+            "maxLength" : 90,
+            "readOnly" : false
+          }
+        },
+        "required" : [ "id" ]
+      },
+      "user-with-roles-array" : {
+        "type" : "object",
+        "properties" : { },
+        "required" : [ ]
+      },
+      "user_role" : {
+        "type" : "object",
+        "properties" : {
+          "user_id" : {
+            "type" : "integer",
+            "format" : "int64",
+            "description" : "User id",
+            "readOnly" : false
+          },
+          "role" : {
+            "type" : "string",
+            "description" : "Role",
+            "readOnly" : false
+          }
+        },
+        "required" : [ "role" ]
+      }
+    }
+  }
+}
