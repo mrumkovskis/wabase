@@ -1,6 +1,8 @@
 package org.wabase
 
 import com.oracle.truffle.js.scriptengine.GraalJSScriptEngine
+import org.graalvm.polyglot.HostAccess.Export
+
 import javax.script.ScriptEngine
 import org.graalvm.polyglot.{Context, Engine, HostAccess}
 import org.tresql.Query
@@ -49,7 +51,7 @@ trait DefaultValidationEngine extends ValidationEngine with Loggable {
         .option("engine.WarnInterpreterOnly", "false")
         .build(),
       Context.newBuilder().allowExperimentalOptions(true)
-        .allowHostAccess(HostAccess.ALL)
+        .allowHostAccess(HostAccess.EXPLICIT)
         .option("js.nashorn-compat", "true"),
     )
   def getEngine(viewName: String, instance: Map[String, Any]): ScriptEngine = {
@@ -121,6 +123,7 @@ trait NoValidation extends ValidationEngine {
 
 object ValidationEngine {
   trait CustomValidationFunctions {
+   @Export
    def current_date = {
      import java.util.Calendar
      val d = new java.util.Date
@@ -132,7 +135,9 @@ object ValidationEngine {
      cal.set(Calendar.MILLISECOND, 0)
      new java.sql.Date(cal.getTime.getTime)
    }
+   @Export
    def now = new java.sql.Timestamp(currentTime)
+   @Export
    def is_valid_email(email: String): Boolean =
      org.apache.commons.validator.routines.EmailValidator.getInstance.isValid(email)
   }
