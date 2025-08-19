@@ -3,7 +3,7 @@ package org.wabase
 import scala.collection.immutable.Set
 
 trait Authorization[User] {
-  this: AppBase[User] with Audit[User] with DbAccess with ValidationEngine with DbConstraintMessage =>
+  this: AppBase[User] with Audit[User] with DbAccess with DbConstraintMessage =>
 
   private val wabaseAuth =
     getObjectOrNewInstance[WabaseAuthorizationFactory](

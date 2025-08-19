@@ -12,7 +12,7 @@ class FieldOrderingSpecs extends FlatSpec with Matchers {
   behavior of "FieldOrderingSpecs"
 
   object FieldOrderingTestApp extends AppBase[TestUsr] with NoAudit[TestUsr]
-      with NoValidation with DbAccess with PostgreSqlConstraintMessage {
+      with DbAccess with PostgreSqlConstraintMessage {
     object FieldOrdTestQuerease extends TestQuerease("/constraint-message-spec.yaml")
 
     override protected def initQuerease = FieldOrdTestQuerease

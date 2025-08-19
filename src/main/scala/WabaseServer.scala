@@ -42,7 +42,6 @@ object WabaseServer {
     with NoAudit[WabaseUser]
     with DbAccess
     with NoCustomConstraintMessage
-    with NoValidation
     with Marshalling
     with AppProvider[WabaseUser]
     with JsonConverterProvider

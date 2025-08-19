@@ -17,7 +17,7 @@ class PostgreSqlConstraintMessageSpec extends FlatSpec with Matchers {
 
   behavior of "PostgreSqlConstraintMessage"
 
-  object ConstraintTestApp extends AppBase[TestUsr] with NoAudit[TestUsr] with DbAccess with PostgreSqlConstraintMessage with NoValidation {
+  object ConstraintTestApp extends AppBase[TestUsr] with NoAudit[TestUsr] with DbAccess with PostgreSqlConstraintMessage {
     object PgTestQuerease extends TestQuerease("/constraint-message-spec.yaml")
 
     override protected def initQuerease = PgTestQuerease

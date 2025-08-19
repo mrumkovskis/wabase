@@ -122,7 +122,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       override protected def initQuerease: AppQuerease = querease
       override protected def initQuereaseIo: AppQuereaseIo[Dto] = new AppQuereaseIo[Dto](querease)
     }
-    val testApp = new TestApp with NoValidation {
+    val testApp = new TestApp {
       override protected def initQuerease = querease
       override def dbAccessDelegate = CrudServiceSpecs.this.dbAccess
     }

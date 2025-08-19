@@ -33,7 +33,6 @@ import AppBase._
 trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with Loggable with QuereaseProvider with DbAccessProvider with I18n with RowWriters {
   this: DbAccess
     with Authorization[User]
-    with ValidationEngine
     with DbConstraintMessage
     with Audit[User] =>
 
@@ -950,7 +949,6 @@ trait WabaseAppCompat[User] extends WabaseApp[User] {
     with DbAccess
     with Audit[User]
     with Authorization[User]
-    with ValidationEngine
     with DbConstraintMessage =>
 
   override protected def afterWabaseAction(context: AppActionContext, result: Try[QuereaseResult]): Unit = {
