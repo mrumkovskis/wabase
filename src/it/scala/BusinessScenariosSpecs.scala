@@ -12,6 +12,7 @@ import org.apache.pekko.stream.scaladsl.{Flow, Keep, Sink, Source}
 import org.apache.pekko.util.ByteString
 import org.mojoz.metadata.out.DdlGenerator
 import org.tresql.{Result, RowLike}
+import org.wabase.WabaseScriptValidation.Validation
 import org.wabase._
 import org.wabase.WabaseUnmarshallers.mapUnmarshaller
 
@@ -50,6 +51,15 @@ object BusinessScenariosSpecs {
   def sleep(millis: Long, response: HttpResponse)(implicit ec: ExecutionContext): Future[HttpResponse] = Future {
     Thread.sleep(millis)
     response
+  }
+
+  def loadValidations(viewName: String, actionName: String) = {
+    if (viewName == "save_person_email") {
+      val v = new Validation
+      v.expression = "email && email.length <= 75"
+      v.message = "'Email value exceeds 75 symbols - ' + email"
+      List(v)
+    } else Nil
   }
 }
 
