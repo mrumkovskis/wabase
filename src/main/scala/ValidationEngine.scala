@@ -6,7 +6,6 @@ import org.graalvm.polyglot.HostAccess.Export
 import javax.script.ScriptEngine
 import org.graalvm.polyglot.{Context, Engine, HostAccess}
 import org.tresql.Query
-import spray.json._
 
 import java.util.Locale
 import scala.util.control.NonFatal
@@ -21,8 +20,6 @@ trait DefaultValidationEngine extends ValidationEngine with Loggable {
     with DbAccess =>
 
   import ValidationEngine._
-  import qe.{viewDef, classToViewNameMap}
-  import qio.MapJsonFormat
 
   class Validation extends org.wabase.DtoWithId {
     var id: java.lang.Long = null
@@ -58,11 +55,8 @@ trait DefaultValidationEngine extends ValidationEngine with Loggable {
     val engine = getScriptEngine
     val instancePropsToVars =
       instance
-        .toJson
-        .asInstanceOf[JsObject]
-        .fields
         .map {
-          case (k, v) => s"var $k = $v;"
+          case (k, v) => s"var $k = ${ResultEncoder.encodeAnyToJsonString(v)};"
         }.mkString("\n")
     engine.put("CustomFunctions", customFunctions)
     engine.eval(createGlobalCustomFunctions)
