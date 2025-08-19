@@ -29,8 +29,6 @@ package object wabase extends Loggable {
   val FALSE = java.lang.Boolean.FALSE
   def currentTime = System.currentTimeMillis
 
-  val CommonFunctions = ValidationEngine.CustomValidationFunctions
-
   type AppConfig = AppBase.AppConfig
   type AppMdConventions = AppMetadata.AppMdConventions
   type AppVersion = AppServiceBase.AppVersion
@@ -48,7 +46,6 @@ package object wabase extends Loggable {
   type NoServerStatistics = ServerStatistics.NoServerStatistics
   type NoWsInitialEvents = ServerNotifications.NoInitialEvents
 
-  type CustomValidationFunctions = ValidationEngine.CustomValidationFunctions
   type LdapAuthentication = Authentication.LdapAuthentication
   type SimpleExceptionHandler = AppServiceBase.AppExceptionHandler.SimpleExceptionHandler
   type Statistics = ServerStatistics.Statistics

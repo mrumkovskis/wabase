@@ -7,7 +7,7 @@ import org.apache.pekko.stream.scaladsl.Source
 import org.apache.pekko.util.ByteString
 import org.mojoz.metadata.{FieldDef, ViewDef}
 import org.mojoz.querease.TresqlMetadata
-import org.tresql.{Resources, ResourcesTemplate, SingleValueResult}
+import org.tresql.SingleValueResult
 import org.wabase.AppMetadata.{Action, AugmentedAppFieldDef, AugmentedAppViewDef}
 import org.wabase.AppMetadata.Action.{LimitKey, OffsetKey, OrderKey}
 import org.wabase.AppQuerease.InjectionParametersContext
@@ -36,7 +36,6 @@ trait WabaseApp[User] {
     with DbAccess
     with Authorization[User]
     with DbConstraintMessage
-    with ValidationEngine
     =>
 
   import qe.viewDefOption
@@ -242,7 +241,7 @@ trait WabaseApp[User] {
         val saveable = applyReadonlyValues(viewDef, oldValue, values)
         val saveableContext = richContext.copy(values = saveable)
         validateFields(viewName, saveable)
-        this.customValidations(saveableContext)(state.locale)
+        this.scriptValidations(saveableContext)(state.locale)
         qe.QuereaseAction(viewName, context.actionName, saveable, env, context.resultFilter)(rf,
             httpReq, qio, fileStreamers, httpClients, injectionParametersProvider)
           .map(WabaseResult(saveableContext, _))
@@ -554,7 +553,16 @@ trait WabaseApp[User] {
         throw new BusinessException(s"Not sortable: ${viewDef.name} by " + notSortableSafe.mkString(", "), null)
     }
   }
-  protected def customValidations(ctx: AppActionContext)(implicit locale: Locale): Unit = {}
+  private val scriptValidationEnabled: Boolean = config.getBoolean("app.script-validations.enabled")
+  protected def isScriptValidationEnabled: Boolean = scriptValidationEnabled
+  protected def scriptValidations(ctx: AppActionContext)(implicit locale: Locale): Unit = {
+    if (isScriptValidationEnabled) {
+      val (cn, fn) = OpParser.classNameFunctionName(config.getString("app.script-validations.init"))
+      val module = invokeFunction(cn, fn, Seq((classOf[DbAccess], () => this), (classOf[AppQuerease], () => qe)))(ctx.ec)
+        .asInstanceOf[ScriptValidation]
+      module.validate(ctx.viewName, ctx.actionName, ctx.values ++ ctx.env)
+    }
+  }
 }
 
 object WabaseAppConfig extends AppBase.AppConfig {

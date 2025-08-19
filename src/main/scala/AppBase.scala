@@ -1,13 +1,9 @@
 package org.wabase
 
 import java.util.Locale
-import org.mojoz.metadata.Type
 import org.mojoz.metadata.{FieldDef, ViewDef}
-import org.mojoz.querease.FilterType
-import org.mojoz.querease.FilterType._
 import org.mojoz.querease.NotFoundException
 import org.mojoz.querease.QuereaseIteratorResult
-import org.tresql._
 import spray.json._
 import com.typesafe.config.Config
 
@@ -19,7 +15,7 @@ import scala.reflect.ManifestFactory
 import scala.util.Try
 import org.tresql.{Resources, RowLike}
 import AppMetadata._
-import ValidationEngine.CustomValidationFunctions.is_valid_email
+import CustomScriptValidationFunctions.is_valid_email
 import org.apache.pekko.actor.ActorSystem
 
 import java.sql.Connection
@@ -341,7 +337,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
       val implicitProps = viewDef.fields
        .map(_.name)
        .filter(autoTimeFieldNames)
-       .map(_ -> CommonFunctions.now).toMap
+       .map(_ -> CustomScriptValidationFunctions.now).toMap
       obj.id = qe.save(
         obj,
         Option(extraPropsToSave).getOrElse(Map.empty) ++ implicitProps,
@@ -596,7 +592,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
             params = params,
             values = qio.toMap(instance) ++ params
           )
-          customValidations(ctx)(state.locale)
+          scriptValidations(ctx)(state.locale)
           idOpt.flatMap { id =>
             rest(ViewContext[DtoWithId](viewName, id, params, user, state)).result
           }.orNull
@@ -957,9 +953,6 @@ trait WabaseAppCompat[User] extends WabaseApp[User] {
     with ValidationEngine
     with DbConstraintMessage =>
 
-  override protected def customValidations(ctx: AppActionContext)(implicit locale: Locale): Unit = {
-    validate(ctx.viewName, ctx.actionName, ctx.values ++ ctx.env)
-  }
   override protected def afterWabaseAction(context: AppActionContext, result: Try[QuereaseResult]): Unit = {
     audit(context, result)
   }

@@ -4,6 +4,9 @@ import java.util.Locale
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers
 import org.wabase.AppMetadata.Action
+import org.wabase.WabaseScriptValidation.Validation
+
+import scala.concurrent.ExecutionContext
 
 class ValidationEngineTestDto extends Dto {
   var expression: String = null
@@ -14,8 +17,10 @@ class ValidationEngineTestDto extends Dto {
 }
 
 object TestValidationEngine extends org.wabase.TestApp {
+  val validationModule = new WabaseScriptValidation(this, qe)(ExecutionContext.global)
   private val threadLocalValidations = new ThreadLocal[List[Validation]]
-  override def validations(viewName: String, actionName: String) = threadLocalValidations.get
+  override protected def isScriptValidationEnabled: Boolean = true
+  def loadValidations(viewName: String, actionName: String) = threadLocalValidations.get
   def validations(instance: org.wabase.Dto) =  {
     val v = new Validation
     val test = instance.asInstanceOf[ValidationEngineTestDto]
@@ -25,7 +30,7 @@ object TestValidationEngine extends org.wabase.TestApp {
   }
   def validate(instance: org.wabase.Dto)(implicit locale: Locale): Unit = {
     threadLocalValidations.set(validations(instance))
-    validate("fake-view", Action.Save, instance.toMap(qe))
+    validationModule.validate("fake-view", Action.Save, instance.toMap(qe))
   }
 }
 
