@@ -10,17 +10,13 @@ import org.apache.pekko.http.scaladsl.model.HttpEntity.{Chunk, Chunked, Default}
 import org.apache.pekko.http.scaladsl.server.Directives.{complete, handleExceptions}
 import org.apache.pekko.http.scaladsl.server.ExceptionHandler
 import org.apache.pekko.http.scaladsl.testkit.{RouteTestTimeout, ScalatestRouteTest}
-import org.apache.pekko.http.scaladsl.unmarshalling.FromResponseUnmarshaller
 import org.apache.pekko.stream.scaladsl.Source
 import org.apache.pekko.util.ByteString
 import org.scalatest.flatspec.AnyFlatSpec
-import org.tresql.Resources
-import spray.json.{JsObject, JsString}
 import org.wabase.client.WabaseHttpClient
 
 import scala.concurrent.duration
 import scala.concurrent.duration.{Duration, FiniteDuration}
-import scala.reflect.ClassTag
 
 class FileUploadSpecs extends AnyFlatSpec with TestQuereaseInitializer with ScalatestRouteTest {
 
@@ -91,9 +87,9 @@ class FileUploadSpecs extends AnyFlatSpec with TestQuereaseInitializer with Scal
     val route = service.uploadPath { _ => service.uploadAction(None)(usr, ApplicationState(Map()))}
     val entity = Default(ContentTypes.`text/plain(UTF-8)`, content.length, source)
     Post(uploadPath, entity) ~> route ~> check {
-      implicit val m = service.jsObjectUnmarshaller(service.sprayJsValueUnmarshaller)
-      val res = responseAs[JsObject](implicitly[FromResponseUnmarshaller[JsObject]], implicitly[ClassTag[JsObject]], implicitly[Duration])
-      assertResult(res.fields.get("sha_256"))(Some(JsString("718004c597c5343242b7d4f8bfca6f08c57bf424014605fa0691f2cec05488d0")))
+      implicit val m = service.toMapUnmarshaller
+      val res = responseAs[Map[String, Any]]
+      assertResult(res.get("sha_256"))(Some("718004c597c5343242b7d4f8bfca6f08c57bf424014605fa0691f2cec05488d0"))
     }
   }
 
@@ -103,9 +99,9 @@ class FileUploadSpecs extends AnyFlatSpec with TestQuereaseInitializer with Scal
 
     val route = service.uploadPath { _ => service.uploadAction(None)(usr, ApplicationState(Map()))}
     Post(uploadPath, multipartForm) ~> route ~> check {
-      implicit val m = service.jsObjectUnmarshaller(service.sprayJsValueUnmarshaller)
-      val res = responseAs[JsObject]
-      assertResult(res.fields.get("sha_256"))(Some(JsString("718004c597c5343242b7d4f8bfca6f08c57bf424014605fa0691f2cec05488d0")))
+      implicit val m = service.toMapUnmarshaller
+      val res = responseAs[Map[String, Any]]
+      assertResult(res.get("sha_256"))(Some("718004c597c5343242b7d4f8bfca6f08c57bf424014605fa0691f2cec05488d0"))
     }
   }
 
