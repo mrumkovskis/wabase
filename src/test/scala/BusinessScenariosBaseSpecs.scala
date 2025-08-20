@@ -89,7 +89,11 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
 
   val scenarios = for {
     scenarioPath <- scenarioPaths
-    scenario <- recursiveListDirectories(new File(resourcePath + scenarioPath))
+    scenario <- {
+      val scenariosDirectory = new File(resourcePath + scenarioPath)
+      logger.info(s"Looking for scenarios in ${scenariosDirectory.getAbsolutePath}")
+      recursiveListDirectories(scenariosDirectory)
+    }
     if shouldTestScenario(scenario)
   } yield scenario
 
