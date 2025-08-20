@@ -579,5 +579,85 @@ response: {
       }
     ],
     "filter": []
+  },
+  "validation": {
+    "name": "validation",
+    "key": [
+      "id"
+    ],
+    "fields": [
+      {
+        "name": "id",
+        "type": "long",
+        "isCollection": false,
+        "isComplexType": false,
+        "nullable": false,
+        "required": false,
+        "sortable": true,
+        "label": "Id",
+        "visible": true,
+        "insertable": true,
+        "updatable": false,
+        "enum": null,
+        "refViewName": null,
+        "comments": null,
+        "jsonType": "number"
+      },
+      {
+        "name": "context",
+        "type": "string",
+        "isCollection": false,
+        "isComplexType": false,
+        "nullable": false,
+        "required": false,
+        "sortable": false,
+        "label": "Name of the view",
+        "visible": true,
+        "insertable": true,
+        "updatable": true,
+        "enum": null,
+        "refViewName": null,
+        "comments": null,
+        "jsonType": "string",
+        "length": 100
+      },
+      {
+        "name": "expression",
+        "type": "string",
+        "isCollection": false,
+        "isComplexType": false,
+        "nullable": false,
+        "required": false,
+        "sortable": false,
+        "label": "Sript validation boolean expression",
+        "visible": true,
+        "insertable": true,
+        "updatable": true,
+        "enum": null,
+        "refViewName": null,
+        "comments": null,
+        "jsonType": "string",
+        "length": 500
+      },
+      {
+        "name": "message",
+        "type": "string",
+        "isCollection": false,
+        "isComplexType": false,
+        "nullable": false,
+        "required": false,
+        "sortable": false,
+        "label": "Error message if expression evaluates to false",
+        "visible": true,
+        "insertable": true,
+        "updatable": true,
+        "enum": null,
+        "refViewName": null,
+        "comments": null,
+        "jsonType": "string",
+        "length": 500
+      }
+    ],
+    "filter": []
   }
 }

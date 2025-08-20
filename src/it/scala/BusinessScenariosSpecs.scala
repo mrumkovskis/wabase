@@ -53,12 +53,9 @@ object BusinessScenariosSpecs {
     response
   }
 
-  def loadValidations(viewName: String, actionName: String) = {
+  def loadValidations(viewName: String, actionName: String, dbAccess: DbAccess)(implicit qe: AppQuerease) = {
     if (viewName == "save_person_email") {
-      val v = new Validation
-      v.expression = "email && email.length <= 75"
-      v.message = "'Email value exceeds 75 symbols - ' + email"
-      List(v)
+      WabaseScriptValidation.loadValidations(viewName, actionName, dbAccess)
     } else Nil
   }
 }

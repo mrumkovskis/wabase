@@ -1,0 +1,7 @@
+table:   validation
+comments: Validation scripts for views
+columns:
+  - id
+  - context              ! 100 : Name of the view
+  - expression           ! 500 : Sript validation boolean expression
+  - message              ! 500 : Error message if expression evaluates to false

@@ -573,6 +573,48 @@ response: |+
             description: Internal server error
           "503":
             description: Service Unavailable
+    /validation:
+      get:
+        summary: Get 'validation'
+        description: Validation scripts for views
+        responses:
+          "200":
+            description: ""
+            content:
+              application/json:
+                schema:
+                  $ref: "#/components/schemas/validation"
+          "400":
+            description: Bad request
+          "403":
+            description: Forbidden
+          "404":
+            description: Not Found
+          "500":
+            description: Internal server error
+          "503":
+            description: Service Unavailable
+      put:
+        summary: Save 'validation'
+        description: Validation scripts for views
+        requestBody:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/validation"
+        responses:
+          "200":
+            description: ""
+            content:
+              application/json:
+                schema:
+                  $ref: "#/components/schemas/validation"
+          "400":
+            description: Bad request
+          "500":
+            description: Internal server error
+          "503":
+            description: Service Unavailable
   components:
     schemas:
       current_user:
@@ -759,3 +801,32 @@ response: |+
             readOnly: false
         required:
         - role
+      validation:
+        type: object
+        description: Validation scripts for views
+        properties:
+          id:
+            type: integer
+            format: int64
+            description: Id
+            readOnly: false
+          context:
+            type: string
+            description: Name of the view
+            maxLength: 100
+            readOnly: false
+          expression:
+            type: string
+            description: Sript validation boolean expression
+            maxLength: 500
+            readOnly: false
+          message:
+            type: string
+            description: Error message if expression evaluates to false
+            maxLength: 500
+            readOnly: false
+        required:
+        - id
+        - context
+        - expression
+        - message
