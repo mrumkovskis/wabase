@@ -297,10 +297,15 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
     Marshaller.combined(_.toString)
   implicit def toResponseQuereaseKeyResultMarshaller:     ToResponseMarshaller[KeyResult]      =
     Marshaller { ec => kr =>
-      val sr = ResponseResult(
-        StatusCodes.SeeOther.intValue,
-        RedirectValue(TresqlUri.Uri(Seq(s"/${config.getString("app.rest-path-base")}/${kr.viewName}"), kr.key))
-      )
+      import AppMetadata._
+      val sr =
+        if (qe.viewDef(kr.viewName).apiMethodToRoles.contains(Action.Get))
+          ResponseResult(
+            StatusCodes.SeeOther.intValue,
+            RedirectValue(TresqlUri.Uri(
+              Seq(s"/${config.getString("app.rest-path-base")}/${kr.viewName}"), kr.key))
+          )
+        else ResponseResult(StatusCodes.OK.intValue, ResultValue(NoResult))
       toResponseQuereaseResponseResultMarshaller(app.WabaseResult(null, sr))(ec)(sr)
     }
   implicit def toResponseQuereaseResponseResultMarshaller(wr: app.WabaseResult)(implicit ec: ExecutionContext):  ToResponseMarshaller[ResponseResult] = {

@@ -1,6 +1,6 @@
 name:   validation
 table:  validation
-api:    save, get
+api:    save
 fields:
 - id
 - context

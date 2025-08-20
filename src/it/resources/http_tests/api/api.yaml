@@ -48,7 +48,6 @@ response: {
     "save"
   ],
   "validation": [
-    "save",
-    "get"
+    "save"
   ]
 }
