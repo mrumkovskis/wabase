@@ -9,7 +9,7 @@ import org.apache.pekko.http.scaladsl.model.ws.TextMessage
 import org.apache.pekko.http.scaladsl.unmarshalling._
 import org.apache.pekko.stream.scaladsl.Source
 import org.apache.pekko.util.Timeout
-import spray.json.{JsArray, JsObject, JsString, JsValue}
+import spray.json.{JsObject, JsString}
 
 import scala.concurrent.Future
 import scala.collection.immutable.{Seq => iSeq}
@@ -19,9 +19,10 @@ import org.apache.pekko.http.scaladsl.marshalling.Marshaller
 import org.apache.pekko.pattern.ask
 
 import scala.concurrent.duration.FiniteDuration
+import WabaseUnmarshallers._
 
 class WabaseHttpClient(clientCfg: Config = HttpClientConfig.componentConfs.root)
-    extends RestClient(clientCfg) with JsonConverterProvider with BasicJsonMarshalling with QuereaseProvider {
+    extends RestClient(clientCfg) with BasicJsonMarshalling with QuereaseProvider {
 
   /** Override this method in subclass. Method usage instead of direct
   {{{val qe: AppQuerease}}} initialization ensures that this.qe and subclass qe
@@ -31,7 +32,6 @@ class WabaseHttpClient(clientCfg: Config = HttpClientConfig.componentConfs.root)
   import qe.classToViewNameMap
   import org.wabase.{Dto, DtoWithId}
   import WabaseHttpClient._
-  import jsonConverter.MapJsonFormat
 
   private val originUri = Uri(config.getString("app.host"))
   private val originHeader = Origin(HttpOrigin(originUri.scheme, Host(originUri.authority.host, originUri.authority.port)))
@@ -51,17 +51,16 @@ class WabaseHttpClient(clientCfg: Config = HttpClientConfig.componentConfs.root)
     httpGetAwait[String]("api", headers = iSeq(AuthorizationHeader(BasicHttpCredentials(username, password))))
   }
 
-  // TODO use marshallers to convert from json to dto
   def save[T <: DtoWithId](dto: T): T = {
-    val response = httpPostAwait[JsValue, JsValue](if(dto.id == null) HttpMethods.POST else HttpMethods.PUT, pathForDto(dto.getClass, dto.id),
-      dto.toMap.toJson)
+    val response = httpPostAwait[Map[String, Any], Map[String, Any]](if(dto.id == null) HttpMethods.POST else HttpMethods.PUT, pathForDto(dto.getClass, dto.id),
+      dto.toMap)
     getDtoFromJson(dto.getClass, response)
   }
 
   def delete[T <: Dto](viewClass: Class[T], id: Long): Unit = httpPostAwait[String, Unit](HttpMethods.DELETE, pathForDto(viewClass, id), "")
-  def get[T <: Dto](viewClass: Class[T], id: Long, params: Map[String, Any] = Map.empty): T = getDtoFromJson(viewClass, httpGetAwait[JsValue](pathForDto(viewClass, id), params))
+  def get[T <: Dto](viewClass: Class[T], id: Long, params: Map[String, Any] = Map.empty): T = getDtoFromJson(viewClass, httpGetAwait[Map[String, Any]](pathForDto(viewClass, id), params))
   def list[T <: Dto](viewClass: Class[T], params: Map[String, Any]): List[T] =
-    getDtoListFromJson(viewClass, httpGetAwait[JsValue](pathForDto(viewClass, null), params))
+    getDtoListFromJson(viewClass, httpGetAwait[iSeq[Map[String, Any]]](pathForDto(viewClass, null), params))
   def count[T <: Dto](viewClass: Class[T], params: Map[String, Any]): Int =
     httpGetAwait[String](pathForDtoCount(viewClass), params).toInt
   def listRaw[T <: Dto](viewClass: Class[T], params: Map[String, Any]): String = httpGetAwait[String](pathForDto(viewClass, null), params) /*in case response is not JSON*/
@@ -75,12 +74,10 @@ class WabaseHttpClient(clientCfg: Config = HttpClientConfig.componentConfs.root)
                                   (implicit marshaller: Marshaller[T, MessageEntity], unmarshaller: FromResponseUnmarshaller[R]): Future[R] =
     super.httpPost(method, path, content, headers ++ getDefaultApiHeaders(cookieStorage), cookieStorage, timeout)(marshaller = marshaller, unmarshaller = unmarshaller)
 
-  def getDtoListFromJson[T <: Dto](viewClass: Class[T], jsValue: JsValue): List[T] = jsValue match{
-    case JsArray(elements) => elements.map(getDtoFromJson(viewClass, _)).toList
-    case _ => sys.error("Invalid response "+jsValue)
-  }
+  def getDtoListFromJson[T <: Dto](viewClass: Class[T], elements: Seq[Map[String, Any]]): List[T] =
+    elements.map(getDtoFromJson(viewClass, _)).toList
 
-  def getDtoFromJson[T <: Dto](viewClass: Class[T], value: JsValue): T = viewClass.getConstructor().newInstance().fill(value.asJsObject)
+  def getDtoFromJson[T <: Dto](viewClass: Class[T], value: Map[String, Any]): T = viewClass.getConstructor().newInstance().fill(value)
 
   def pathForDto[T <: Dto](clzz: Class[T], id: jLong) = "data/" + urlEncoder(classToViewNameMap(clzz)) + Option(id).map("/" + _).getOrElse("")
   def pathForDtoCount[T <: Dto](clzz: Class[T]) = "count/"+urlEncoder(classToViewNameMap(clzz))
@@ -109,8 +106,6 @@ class WabaseHttpClient(clientCfg: Config = HttpClientConfig.componentConfs.root)
       case `X-Deferred-Hash`(hash) => iSeq(hash)
       case _ => iSeq()
     }.headOption
-
-  override protected def initJsonConverter: JsonConverter[_] = qio
 }
 
 object WabaseHttpClient{

@@ -11,7 +11,6 @@ import StatusCodes._
 
 import scala.language.postfixOps
 import scala.util.matching.Regex
-import spray.json._
 import org.mojoz.querease.ValueConverter.{ClassOfJavaSqlDate, ClassOfJavaSqlTimestamp}
 import org.slf4j.LoggerFactory
 import org.tresql.MissingBindVariableException
@@ -46,14 +45,12 @@ trait AppProvider[User] {
 trait AppServiceBase[User]
   extends AppProvider[User]
   with AppStateExtractor
-  with JsonConverterProvider
   with DbAccessProvider
   with AppI18nService
   with Marshalling {
   this: QueryTimeoutExtractor with Execution =>
 
   import app.qe.metadataConventions
-  import app.qio.MapJsonFormat
 
   private implicit lazy val fs: AppFileStreamer[User] = this match {
     case fsb: AppFileServiceBase[User@unchecked] => fsb.fileStreamer
@@ -236,8 +233,8 @@ trait AppServiceBase[User]
     else
       extractUri { requestUri =>
         parameterMultiMap { params =>
-          entityOrException(as[JsValue]) { data =>
-            app.save(viewName, data.asInstanceOf[JsObject], filterPars(params))
+          entityAsMapOrException(viewName) { data =>
+            app.save(viewName, data, filterPars(params))
             redirect(Uri(path = requestUri.path), StatusCodes.SeeOther)
           }
         }
@@ -314,9 +311,9 @@ trait AppServiceBase[User]
             }
           }
         } else {
-          entityOrException(as[JsValue]) { data =>
+          entityAsMapOrException(viewName) { data =>
             val keyAsMap = if (keyValues.nonEmpty) app.prepareKey(viewName, keyValues, "insert") else Map.empty
-            val id = app.save(viewName, data.asInstanceOf[JsObject], filterPars(params) ++ keyAsMap)
+            val id = app.save(viewName, data, filterPars(params) ++ keyAsMap)
             redirect(Uri(path = requestUri.path / id.toString), StatusCodes.SeeOther)
           }
         }
@@ -417,7 +414,6 @@ trait AppServiceBase[User]
   def escapeReflectedXss(msg: String) = AppServiceBase.escapeReflectedXss(msg)
   def decodeParam(key: String, value: String) =
     AppServiceBase.decodeParam(metadataConventions, namesForInts, escapeReflectedXss)(key, value)
-  override protected def initJsonConverter = app.qio
   override def dbAccess = app.dbAccess
 
   protected def fileStreamerConfigs: Seq[AppFileStreamerConfig] = {
@@ -434,7 +430,7 @@ trait AppServiceBase[User]
 }
 
 trait AppFileServiceBase[User] {
-    this: AppProvider[User] with JsonConverterProvider with BasicJsonMarshalling
+    this: AppProvider[User] with BasicJsonMarshalling
           { type App <: AppBase[User] with Audit[User] } =>
   val fileStreamer: AppFileStreamer[User] = initFileStreamer
   /** Override this method in subclass. Method usage instead of direct
@@ -779,14 +775,12 @@ object AppServiceBase {
         complete(HttpResponse(BadRequest, entity = e.getMessage))
     }
 
-    def validationExceptionPathsHandler(logger: com.typesafe.scalalogging.Logger,
-                                        jsonConverter: JsonConverter[_]) = ExceptionHandler {
+    def validationExceptionPathsHandler(logger: com.typesafe.scalalogging.Logger) = ExceptionHandler {
       case e: ValidationException =>
         logger.trace(e.getMessage, e)
-        import spray.json.DefaultJsonProtocol.{ jsonFormat2, listFormat, StringJsonFormat }
-        import jsonConverter._
-        implicit val f02: RootJsonFormat[ValidationResult] = jsonFormat2(ValidationResult)
-        complete(HttpResponse(BadRequest, entity = e.details.toJson.compactPrint))
+        import io.bullet.borer._, io.bullet.borer.derivation.MapBasedCodecs._, ResultEncoder._, JsonEncoder._
+        implicit val enc = deriveEncoder[ValidationResult]
+        complete(HttpResponse(BadRequest, entity = Json.encode(e.details).toUtf8String))
     }
 
     def csrfExceptionHandler = {

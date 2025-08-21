@@ -214,7 +214,6 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     super.afterAll()
   }
 
-  import spray.json._
   private implicit val user: TestUsr = TestUsr(100)
   private implicit val timeout: QueryTimeout = QueryTimeout(10)
   private implicit val defaultCp: PoolName = PoolName(dbNamePrefix)
@@ -298,7 +297,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       "item" -> "sword",
       "amount" -> 100
     )
-    val id = app.save("purchase", purchase.toJson(app.qio.MapJsonFormat).asJsObject)
+    val id = app.save("purchase", purchase)
     app.get("purchase", id).map(_.asInstanceOf[Dto].toMap(app.qe)).map(removeIds) should be {
       Some(Map(
         "customer" -> "Ravus",

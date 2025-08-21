@@ -1,19 +1,19 @@
 package org.wabase
 
 import java.io.File
-import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes, HttpEntity, HttpHeader, HttpMethod, HttpMethods, HttpResponse, MediaType, MediaTypes, Multipart, RequestEntity}
+import org.apache.pekko.http.scaladsl.model.{ContentTypes, HttpEntity, HttpHeader, HttpMethod, HttpMethods, HttpResponse, MediaType, MediaTypes, Multipart, RequestEntity}
 import org.apache.pekko.http.scaladsl.model.headers.`Content-Type`
 import org.apache.pekko.http.scaladsl.model.headers.RawHeader
 import org.apache.pekko.http.scaladsl.model.Uri
 import org.apache.pekko.http.scaladsl.server.directives.ContentTypeResolver
-import com.typesafe.config.{Config, ConfigFactory}
+import com.typesafe.config.ConfigFactory
+import org.apache.pekko.util.ByteString
 import org.mojoz.querease.TresqlMetadata
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers
-import org.tresql.{Query, ThreadLocalResources}
+import org.tresql.Query
 import org.wabase.AppMetadata.DbAccessKey
-import spray.json._
 
 import scala.collection.immutable.{Map, Seq}
 import scala.concurrent.Await
@@ -23,10 +23,8 @@ import org.wabase.client.{ClientException, HttpClientConfig, WabaseHttpClient}
 
 abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
        extends FlatSpec with Matchers with BeforeAndAfterAll
-          with TemplateUtil with QuereaseProvider with JsonConverterProvider with Loggable {
+          with TemplateUtil with QuereaseProvider with Loggable {
 
-  import jsonConverter.ListJsonFormat
-  import jsonConverter.MapJsonFormat
   val db = new DbAccess with QuereaseProvider with Loggable {
     override protected def tresqlMetadata: TresqlMetadata = null
     override protected def initQuerease: AppQuerease = null
@@ -58,10 +56,8 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
   }
 
   override protected def initQuerease: AppQuerease           = DefaultAppQuerease
-  override protected def initJsonConverter: JsonConverter[_] = qio
   def initHttpClient: WabaseHttpClient = new WabaseHttpClient(HttpClientConfig("test")) {
     override protected def initQuerease: AppQuerease           = qe
-    override protected def initJsonConverter: JsonConverter[_] = qio
   }
   final lazy val httpClient = initHttpClient
   import httpClient._
@@ -256,7 +252,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
             .orElse(Try(partMap.s("file")).toOption.map(path => (new File(path)).getName))
             .orNull
           val bodyEntity = Option((partInfo.requestMap, partInfo.requestString, partInfo.requestBytes) match {
-            case ( map, null,   null) => HttpEntity(ContentTypes.`application/json`,         map.toJson.prettyPrint)
+            case ( map, null,   null) => HttpEntity(ContentTypes.`application/json`,         ResultEncoder.encodeAnyToJsonString(map))
             case (null, string, null) => HttpEntity(ContentTypes.`text/plain(UTF-8)`,        string)
             case (null, null,  bytes) => HttpEntity(ContentTypes.`application/octet-stream`, bytes)
             case r => sys.error("Unsupported multipart request part type: " + r)
@@ -277,8 +273,8 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
       } else if (valueAsMap != null && forcedContentTypeHeaderOpt.exists(cth => isMultipartFormData(cth.contentType.mediaType))) {
         valueAsMap.map { case (k, v) =>
           val bodyEntity = v match {
-            case map: Map[String @unchecked, Any @unchecked] => HttpEntity(ContentTypes.`application/json`,  map.toJson.prettyPrint)
-            case seq: Seq[Any]                               => HttpEntity(ContentTypes.`application/json`,  seq.toList.toJson.prettyPrint)
+            case map: Map[String @unchecked, Any @unchecked] => HttpEntity(ContentTypes.`application/json`,  ResultEncoder.encodeAnyToJsonString(map))
+            case seq: Seq[Any]                               => HttpEntity(ContentTypes.`application/json`,  ResultEncoder.encodeAnyToJsonString(seq))
             case x                                           => HttpEntity(ContentTypes.`text/plain(UTF-8)`, s"$x")
           }
           Multipart.FormData.BodyPart(k, bodyEntity, Map.empty, Nil)
@@ -290,8 +286,8 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
     val requestString = Try(map.s(bodyKey)).toOption.getOrElse {
       if (valueAsMap != null && forcedContentTypeHeaderOpt.exists(_.contentType.mediaType == MediaTypes.`application/x-www-form-urlencoded`)) {
         val valueAsMapOfStrings = valueAsMap.transform {
-          case (_, map: Map[String @unchecked, Any @unchecked]) => map.toJson.prettyPrint
-          case (_, seq: Seq[Any])                               => seq.toList.toJson.prettyPrint
+          case (_, map: Map[String @unchecked, Any @unchecked]) => ResultEncoder.encodeAnyToJsonString(map)
+          case (_, seq: Seq[Any])                               => ResultEncoder.encodeAnyToJsonString(seq)
           case (_, v)                                           => s"$v"
         }.toMap
         Uri.Query(valueAsMapOfStrings).toString
@@ -322,7 +318,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
       "params:             " + Option(params).filter(_.nonEmpty),
       "headers:            " + Option(headers).filter(_.nonEmpty)
                                  .map(_.map(_.toString).toSeq.sorted.mkString(", ")).getOrElse(""),
-      "request json        " + Option(requestMap).map(_.toJson.compactPrint).getOrElse(""),
+      "request json        " + Option(requestMap).map(ResultEncoder.encodeAnyToJsonString(_)).getOrElse(""),
       "request string:     " + Option(requestString).getOrElse(""),
       "expected headers:   " + Option(expectedHeaders).filter(_.nonEmpty)
                                  .map(_.map(_.toString).toSeq.sorted.mkString(", ")).getOrElse(""),
@@ -425,11 +421,11 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
 
     def doRequest: HttpResponse  = (method, requestMap, requestString, requestBytes, requestFormData) match {
       case ("GET",   null, null,   null, null) => httpGetAwait [HttpResponse](path, params, headers)
-      case ("POST",   map, null,   null, null) => httpPostAwait[JsValue,     HttpResponse](HttpMethods.POST,   path, map.toJson, headers)
+      case ("POST",   map, null,   null, null) => httpPostAwait[Map[String, Any],     HttpResponse](HttpMethods.POST,path, map, headers)
       case ("POST",  null, string, null, null) => httpPostAwait[String,      HttpResponse](HttpMethods.POST,   path, string,     headers)
       case ("POST",  null, null,  bytes, null) => httpPostAwait[Array[Byte], HttpResponse](HttpMethods.POST,   path, bytes,      headers)
       case ("POST",  null, null,   null, form) => httpPostAwaitMultipartFormData          (HttpMethods.POST,   path, form,       headers)
-      case ("PUT",    map, null,   null, null) => httpPostAwait[JsValue,     HttpResponse](HttpMethods.PUT,    path, map.toJson, headers)
+      case ("PUT",    map, null,   null, null) => httpPostAwait[Map[String, Any],     HttpResponse](HttpMethods.PUT, path, map, headers)
       case ("PUT",   null, string, null, null) => httpPostAwait[String,      HttpResponse](HttpMethods.PUT,    path, string,     headers)
       case ("PUT",   null, null,  bytes, null) => httpPostAwait[Array[Byte], HttpResponse](HttpMethods.PUT,    path, bytes,      headers)
       case ("PUT",   null, null,   null, form) => httpPostAwaitMultipartFormData          (HttpMethods.PUT,    path, form,       headers)
@@ -456,7 +452,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
     val (rawResponse, response) = unprocessedResponse match {
       case httpResponse: HttpResponse =>
         val resString = Await.result(httpResponse.entity.toStrict(awaitTimeout), awaitTimeout).data.utf8String
-        Try(JsonToAny(resString.parseJson)).toOption.map((resString, _)).getOrElse((resString, resString))
+        Try(CborOrJsonAnyValueDecoder.decode(ByteString(resString))).toOption.map((resString, _)).getOrElse((resString, resString))
       case _ => (unprocessedResponse, unprocessedResponse)
     }
 

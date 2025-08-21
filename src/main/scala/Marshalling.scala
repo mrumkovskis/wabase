@@ -26,33 +26,21 @@ import scala.collection.immutable.Seq
 import scala.language.implicitConversions
 import scala.language.reflectiveCalls
 
-trait Marshalling extends
-       BasicJsonMarshalling
+trait Marshalling
+  extends BasicJsonMarshalling
   with BasicMarshalling
   with QuereaseMarshalling
-  with DtoMarshalling
-  { this: AppProvider[_] with JsonConverterProvider with Execution => }
+  with DtoMarshalling { this: AppProvider[_] with Execution => }
 
 trait BasicJsonMarshalling extends org.apache.pekko.http.scaladsl.marshallers.sprayjson.SprayJsonSupport with BasicMarshalling {
-  this: JsonConverterProvider =>
 
-  import spray.json._
-  import DefaultJsonProtocol._
-  import jsonConverter._
+  implicit val mapMarshaller: ToEntityMarshaller[Map[String, Any]] = Marshaller.combined { map =>
+    HttpEntity(ContentTypes.`application/json`, ByteString(ResultEncoder.encodeAnyToJsonBytes(map)))
+  }
 
-  implicit val mapMarshaller: ToEntityMarshaller[Map[String, Any]] = Marshaller.combined(_.toJson)
-
-  implicit val listOfMapsMarshaller: ToEntityMarshaller[List[Map[String, Any]]] = Marshaller.combined(_.toJson)
-
-  implicit def futureMapMarshaller: ToEntityMarshaller[Future[Map[String, Any]]] =
-    combinedWithEC(ec => mapF => mapF.map(_.toJson)(ec))
-
-  def mapUnmarshaller(implicit jsonUnmarshaller: FromEntityUnmarshaller[JsValue]): FromEntityUnmarshaller[Map[String, Any]] =
-    jsonUnmarshaller.map(_.convertTo[Map[String, Any]])
-
-  implicit def jsObjectUnmarshaller(
-    implicit jsonUnmarshaller: FromEntityUnmarshaller[JsValue]
-  ): Unmarshaller[HttpEntity, JsObject] = jsonUnmarshaller.map(_.asJsObject)
+  implicit val listOfMapsMarshaller: ToEntityMarshaller[List[Map[String, Any]]] = Marshaller.combined { map =>
+    HttpEntity(ContentTypes.`application/json`, ByteString(ResultEncoder.encodeAnyToJsonBytes(map)))
+  }
 }
 
 trait OptionMarshalling {

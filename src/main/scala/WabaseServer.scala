@@ -43,18 +43,13 @@ object WabaseServer {
     with DbAccess
     with NoCustomConstraintMessage
     with Marshalling
-    with AppProvider[WabaseUser]
-    with JsonConverterProvider
-    {
+    with AppProvider[WabaseUser] {
       // Members declared in org.wabase.Execution
       override protected def execution: org.wabase.Execution = exec
 
       // Members declared in org.wabase.AppProvider
       override type App = AppBase[WabaseUser]
       override protected def initApp: App = this
-
-      // Members declared in org.wabase.JsonConverterProvider
-      override protected def initJsonConverter: org.wabase.JsonConverter[?] = qio
     }
 
   class SslConfigLogger(delegate: Logger) extends NoDepsLogger {

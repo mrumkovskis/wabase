@@ -7,7 +7,7 @@ import org.wabase.client.{HttpClientConfig, WabaseHttpClient}
 
 abstract class DataBaseSpecs[User]
        extends FlatSpec with Matchers with BeforeAndAfterAll
-          with TemplateUtil with QuereaseProvider with JsonConverterProvider {
+          with TemplateUtil with QuereaseProvider {
 
   import AppMetadata._
   val ApplicationStateCookiePrefix = "current_"
@@ -20,10 +20,8 @@ abstract class DataBaseSpecs[User]
   def listTest(clzz: Class[_ <: Dto], name: String, params: Map[String, Any]): Unit = createListTest(clzz, name, params)
 
   override protected def initQuerease: AppQuerease           = DefaultAppQuerease
-  override protected def initJsonConverter: JsonConverter[_] = qio
   def initHttpClient: WabaseHttpClient = new WabaseHttpClient(HttpClientConfig("test")) {
     override protected def initQuerease: AppQuerease           = qe
-    override protected def initJsonConverter: JsonConverter[_] = qio
   }
   final lazy val httpClient = initHttpClient
   import httpClient._

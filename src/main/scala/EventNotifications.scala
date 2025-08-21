@@ -5,8 +5,6 @@ import org.apache.pekko.http.scaladsl.model.ws.{Message, TextMessage}
 import org.apache.pekko.stream.{ActorAttributes, OverflowStrategy, Supervision}
 import org.apache.pekko.stream.scaladsl.{Flow, Keep, Sink, Source}
 import org.apache.pekko.actor.{Actor, ActorNotFound, ActorRef, ActorSystem, Props, Terminated}
-import spray.json._
-import DefaultJsonProtocol._
 import DeferredControl._
 import org.apache.pekko.http.scaladsl.marshalling.Marshal
 import org.apache.pekko.http.scaladsl.marshalling.sse.EventStreamMarshalling
@@ -191,10 +189,9 @@ object ServerNotifications extends EventStreamMarshalling with Loggable {
      with AppVersion
      with DeferredStatusPublisher
      with Execution
-     with JsonConverterProvider
      with Loggable =>
     def publishInitialEvents(user: String): Unit = {
-      publishUserEvent(user, Map("version" -> appVersion).toJson.compactPrint)
+      publishUserEvent(user, ResultEncoder.encodeAnyToJsonString(Map("version" -> appVersion)))
       publishUserDeferredStatuses(user)
       publishUserEvents(user, getActualUserEvents(user))
     }
@@ -227,11 +224,11 @@ object ServerNotifications extends EventStreamMarshalling with Loggable {
   }
 
   case class MsgEnvelope(topic: String, payload: Any)
-  case class DeferredNotification(value: JsValue)
+  case class DeferredNotification(value: Any)
 
   def publish(msgEnvelope: MsgEnvelope)(implicit serverNotif: ServerNotifications): Unit = {
     serverNotif.publishUserEvent(msgEnvelope.topic, msgEnvelope.payload match {
-      case DeferredNotification(value) => value.compactPrint
+      case DeferredNotification(value) => ResultEncoder.encodeAnyToJsonString(value)
       case x => x
     })
   }

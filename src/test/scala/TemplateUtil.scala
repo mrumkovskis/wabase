@@ -8,12 +8,9 @@ import scala.jdk.CollectionConverters._
 import scala.io.{Codec, Source}
 import scala.language.{implicitConversions, reflectiveCalls}
 import scala.util.Try
-import spray.json._
 import MapRecursiveExtensions._
 
-trait TemplateUtil { this: JsonConverterProvider with QuereaseProvider =>
-
-  import jsonConverter.MapJsonFormat
+trait TemplateUtil { this: QuereaseProvider =>
 
   val DEL = ".del"
 
@@ -55,7 +52,7 @@ trait TemplateUtil { this: JsonConverterProvider with QuereaseProvider =>
   }
 
   def pojoFromTemplate[T <: Dto](viewClass: Class[T], fileName: String) =
-    viewClass.getConstructor().newInstance().fill(readPojoMap(new File(resourcePath + fileName), getTemplatePath).toJson.asJsObject)
+    viewClass.getConstructor().newInstance().fill(readPojoMap(new File(resourcePath + fileName), getTemplatePath))
   def readFileBytes(fileName: String): Array[Byte] =
     try Files.readAllBytes(Paths.get(fileName)) catch {
       case util.control.NonFatal(ex) =>

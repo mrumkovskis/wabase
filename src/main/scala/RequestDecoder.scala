@@ -83,7 +83,7 @@ class CborOrJsonDecoder(typeDefs: Seq[TypeDef], nameToViewDef: Map[String, ViewD
               implicit val decoder: Decoder[Any] = CborOrJsonAnyValueDecoder.anyValueDecoder(() => anyJsonMapZero)
               map.updated(key,
                 (if (field.isCollection) toSeq(r[Array[Any]]) else r[Any]) match {
-                  case s: String => spray.json.JsString(s).compactPrint
+                  case s: String => Json.encode(s).toUtf8String
                   case x => x
                 }
               )

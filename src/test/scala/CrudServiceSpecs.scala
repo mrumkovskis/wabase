@@ -14,10 +14,10 @@ import org.apache.pekko.util.ByteString
 
 import java.time.{LocalDate, LocalDateTime, LocalTime}
 import java.time.format.DateTimeFormatter
-import org.mojoz.querease.{QuereaseMetadata, TresqlMetadata, ValueConverter}
+import org.mojoz.querease.{QuereaseMetadata, ValueConverter}
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
-import org.tresql.{DMLResult, Query, ThreadLocalResources, convInt, dialects}
+import org.tresql.{DMLResult, Query, convInt}
 import spray.json._
 
 import scala.collection.immutable.Seq
@@ -1027,7 +1027,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       }
 
       val obj2 = new json_test_types
-      obj2.fill(json.parseJson.asJsObject, emptyStringsToNull = false)
+      obj2.fill(CborOrJsonAnyValueDecoder.decode(ByteString(json)).asInstanceOf[Map[String, Any]], emptyStringsToNull = false)
       if (obj.child == null)
         obj2.child shouldBe null
       else {

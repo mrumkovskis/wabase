@@ -4,7 +4,7 @@ import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.model.HttpHeader.ParsingResult.{Error, Ok}
 import org.apache.pekko.http.scaladsl.model.headers.ContentDispositionTypes.attachment
 import org.apache.pekko.http.scaladsl.model.headers.{Cookie, HttpCookie, HttpCookiePair, `Content-Disposition`, `Set-Cookie`}
-import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes, ErrorInfo, HttpCharsets, HttpEntity, HttpHeader, HttpMethods, HttpRequest, HttpResponse, MediaTypes, Multipart, StatusCodes, UniversalEntity}
+import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes, ErrorInfo, HttpCharsets, HttpEntity, HttpHeader, HttpMethods, HttpRequest, HttpResponse, MediaTypes, Multipart, UniversalEntity}
 import org.apache.pekko.http.scaladsl.server.directives.ContentTypeResolver
 import org.apache.pekko.http.scaladsl.server.directives.FileAndResourceDirectives.ResourceFile
 import org.apache.pekko.stream.scaladsl.{Source, StreamConverters}
@@ -19,7 +19,6 @@ import org.wabase.AppFileStreamer.FileInfo
 import org.wabase.AppMetadata.Action.{VariableTransform, VariableTransforms}
 import org.wabase.AppMetadata.DbAccessKey
 import org.wabase.AppQuerease.{InjectionParametersContext, InjectionParametersProvider, listOfStringTuples}
-import spray.json._
 
 import java.lang.reflect.Parameter
 import java.sql.Connection
@@ -126,10 +125,6 @@ case class ConfResult(param: String, result: Any) extends QuereaseResult
 
 class AppQuereaseIo[DTO <: Dto](val qe: QuereaseMetadata with QuereaseResolvers with ValueTransformer)
   extends ScalaDtoQuereaseIo[DTO](qe) with JsonConverter[DTO] {
-
-  def fill[B <: DTO: Manifest](jsObject: JsObject): B = {
-    implicitly[Manifest[B]].runtimeClass.getConstructor().newInstance().asInstanceOf[B].fill(jsObject)(qe)
-  }
   def fill[B <: DTO: Manifest](values: Map[String, Any]): B = {
     implicitly[Manifest[B]].runtimeClass.getConstructor().newInstance().asInstanceOf[B].fill(values)(qe)
   }
@@ -1921,97 +1916,6 @@ trait Dto extends org.mojoz.querease.Dto { self =>
       "Illegal value or unsupported type conversion from %s to %s - failed to populate %s", cause,
        value.getClass.getName, targetType.toString, s"${getClass.getName}.$fieldName")
   }
-
-  protected def convertJsValueTypeForField(
-    fieldName: String,
-    emptyStringsToNull: Boolean
-  )(implicit qe: QuereaseMetadata with ValueConverter): PartialFunction[JsValue, Any] = {
-    import scala.language.existentials
-    val (typ, parType) = setters(fieldName) match {
-      case DtoSetter(_, met, mOpt, mSeq, mDto, mOth) =>
-        (if (mSeq != null) mSeq else if (mDto != null) mDto else mOth,
-         if (mSeq == null) null else if (mDto != null) mDto else mOth,
-        )
-    }
-    val parseFunc: PartialFunction[JsValue, Any] = {
-      case v: JsString =>
-        if (typ.runtimeClass == classOf[String])
-          if (emptyStringsToNull && v.value.trim == "")
-            null
-          else v.value
-        else
-        try qe.convertToType(v.value, typ.runtimeClass) catch {
-          case util.control.NonFatal(ex) =>
-            throwUnsupportedConversion(v, typ, fieldName, ex)
-        }
-      case v: JsNumber =>
-        try qe.convertToType(v.value, typ.runtimeClass) catch {
-          case util.control.NonFatal(ex) =>
-            throwUnsupportedConversion(v, typ, fieldName, ex)
-        }
-      case v: JsBoolean =>
-        try qe.convertToType(v.value, typ.runtimeClass) catch {
-          case util.control.NonFatal(ex) =>
-            throwUnsupportedConversion(v, typ, fieldName, ex)
-        }
-      case v: JsObject if typ.runtimeClass.isAssignableFrom(classOf[JsObject]) => v
-      case v: JsArray if typ.runtimeClass.isAssignableFrom(classOf[JsArray]) => v
-      case v: JsObject =>
-        if (classOf[Dto].isAssignableFrom(typ.runtimeClass)) {
-          typ.runtimeClass.getConstructor().newInstance().asInstanceOf[QDto].fill(v, emptyStringsToNull)
-        } else try qe.convertToType(v.compactPrint, typ.runtimeClass) catch {
-          case util.control.NonFatal(ex) =>
-            throwUnsupportedConversion(v, typ, fieldName, ex)
-        }
-      case v: JsArray =>
-        val c = typ.runtimeClass
-        val isList = c.isAssignableFrom(classOf[List[_]])
-        val isVector = c.isAssignableFrom(classOf[Vector[_]])
-        if (classOf[Seq[_]].isAssignableFrom(c) && (isList || isVector) &&
-          parType != null && classOf[Dto].isAssignableFrom(parType.runtimeClass)) {
-          val chClass = parType.runtimeClass
-          val res = v.elements
-            .map(o => chClass.getConstructor().newInstance().asInstanceOf[QDto]
-              .fill(o.asInstanceOf[JsObject], emptyStringsToNull))
-          if(isList) res.toList else res
-        } else if (parType != null &&
-          classOf[Seq[_]].isAssignableFrom(c) && (isList || isVector) )  {
-          val parTypeClass = parType.runtimeClass
-          try { val res =
-            v.elements.map {
-              case v: JsString  => qe.convertToType(v.value, parTypeClass)
-              case v: JsNumber  => qe.convertToType(v.value, parTypeClass)
-              case v: JsBoolean => qe.convertToType(v.value, parTypeClass)
-              case    JsNull    => null
-              case x            => throwUnsupportedConversion(x, parType, fieldName)
-            }
-            if(isList) res.toList else res
-          } catch {
-            case util.control.NonFatal(ex) =>
-              throwUnsupportedConversion(v, typ, fieldName, ex)
-          }
-        } else try qe.convertToType(v.compactPrint, typ.runtimeClass) catch {
-          case util.control.NonFatal(ex) =>
-            throwUnsupportedConversion(v, typ, fieldName, ex)
-        }
-      case JsNull => null
-    }
-    parseFunc
-  }
-
-  //creating dto from JsObject
-  def fill(js: JsObject)(implicit qe: QuereaseMetadata with ValueConverter): this.type = fill(js, emptyStringsToNull = true)(qe)
-  def fill(js: JsObject, emptyStringsToNull: Boolean)(implicit qe: QuereaseMetadata with ValueConverter): this.type = {
-    js.fields foreach { case (name, value) =>
-      setters.get(name).map { case s =>
-        val converted = convertJsValueTypeForField(name, emptyStringsToNull)(qe)(value).asInstanceOf[Object]
-        if  (s.mfOpt == null)
-             s.method.invoke(this, converted)
-        else s.method invoke(this, Some(converted))
-      }
-    }
-    this
-  }
 }
 
 trait DtoWithId extends Dto with org.mojoz.querease.DtoWithId
@@ -2113,9 +2017,8 @@ object AppQuerease {
   def dtoParameterFromMap(data: () => Map[String, Any])(
     qio: AppQuereaseIo[Dto]): PartialFunction[InvocationParameter, Dto] = {
     case (par, _) if classOf[Dto].isAssignableFrom(par.getType) =>
-      import qio.MapJsonFormat
       val mf = Manifest.classType[Dto](par.getType)    // somehow need to specify method type parameter Dto for not to fail in runtime on next line??
-      qio.fill(data().toJson.asJsObject)(mf)             // specify manifest explicitly so it is not Nothing
+      qio.fill(data())(mf)                             // specify manifest explicitly so it is not Nothing
   }
 
   def dtoParameterFromMapF(data: () => Future[Map[String, Any]])(
