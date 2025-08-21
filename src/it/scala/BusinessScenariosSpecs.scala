@@ -52,12 +52,6 @@ object BusinessScenariosSpecs {
     Thread.sleep(millis)
     response
   }
-
-  def loadValidations(viewName: String, actionName: String, dbAccess: DbAccess)(implicit qe: AppQuerease) = {
-    if (viewName == "save_person_email") {
-      WabaseScriptValidation.loadValidations(viewName, actionName, dbAccess)
-    } else Nil
-  }
 }
 
 object EventsFunctions {
@@ -71,6 +65,14 @@ object EventsFunctions {
 
   def subscribeToWsMessages(topic: String)(as: ActorSystem, req: HttpRequest) = {
     ServerNotifications.subscribeToWsMessagesAndListen(b => a => b.subscribe(a, topic), _ => ())(as, req)
+  }
+}
+
+object ScriptValidations {
+  def loadValidations(viewName: String, actionName: String, dbAccess: DbAccess)(implicit qe: AppQuerease) = {
+    if (viewName == "save_person_email") {
+      WabaseScriptValidation.loadValidations(viewName, actionName, dbAccess)
+    } else Nil
   }
 }
 
