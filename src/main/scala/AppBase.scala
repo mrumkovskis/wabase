@@ -4,7 +4,6 @@ import java.util.Locale
 import org.mojoz.metadata.{FieldDef, ViewDef}
 import org.mojoz.querease.NotFoundException
 import org.mojoz.querease.QuereaseIteratorResult
-import spray.json._
 import com.typesafe.config.Config
 
 import scala.concurrent.Promise
@@ -684,31 +683,29 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
     )
   }
 
-  def metadata(viewName: String)(implicit user: User, state: ApplicationState): JsObject = {
+  def metadata(viewName: String)(implicit user: User, state: ApplicationState): Map[String, Any] = {
     metadata(viewDef(viewName))
   }
 
-  def metadata(viewDef: ViewDef)(implicit user: User, state: ApplicationState): JsObject = {
+  def metadata(viewDef: ViewDef)(implicit user: User, state: ApplicationState): Map[String, Any] = {
     import qe.{ FieldRefRegexp_ => FieldRefRegexp }
-    JsObject(ListMap(
-      "name" -> JsString(viewDef.name),
-      "key"  -> JsArray(
-        qe.viewNameToKeyFields.get(viewDef.name).filter(_ != null).getOrElse(Nil)
+    ListMap(
+      "name" -> viewDef.name,
+      "key"  -> qe.viewNameToKeyFields.get(viewDef.name).filter(_ != null).getOrElse(Nil)
         .filterNot(_.api.excluded)
-        .map(_.fieldName)
-        .map(JsString(_)).toVector),
-      "fields" -> JsArray(viewDef.fields.filterNot(_.api.excluded).map(f => JsObject(ListMap(
-        "name" -> JsString(f.fieldName),
-        "type" -> JsString(f.type_.name),
-        "isCollection" -> JsBoolean(f.isCollection),
-        "isComplexType" -> JsBoolean(f.type_.isComplexType),
-        "nullable" -> JsBoolean(f.nullable),
-        "required" -> JsBoolean(f.required),
-        "sortable" -> JsBoolean(f.sortable),
-        "label" -> Option(f.label).map(JsString(_)).getOrElse(JsNull),
-        "visible" -> JsBoolean(f.visible),
-        "insertable" -> JsBoolean(f.api.insertable && !(f.isExpression && f.resolver == null && f.saveTo == null)),
-        "updatable" ->  JsBoolean(f.api.updatable  && !(f.isExpression && f.resolver == null && f.saveTo == null)),
+        .map(_.fieldName).toVector,
+      "fields" -> viewDef.fields.filterNot(_.api.excluded).map(f => ListMap(
+        "name" -> f.fieldName,
+        "type" -> f.type_.name,
+        "isCollection" -> f.isCollection,
+        "isComplexType" -> f.type_.isComplexType,
+        "nullable" -> f.nullable,
+        "required" -> f.required,
+        "sortable" -> f.sortable,
+        "label" -> f.label,
+        "visible" -> f.visible,
+        "insertable" -> (f.api.insertable && !(f.isExpression && f.resolver == null && f.saveTo == null)),
+        "updatable" ->  (f.api.updatable  && !(f.isExpression && f.resolver == null && f.saveTo == null)),
         "enum" -> Option(f)
           .filterNot(_.type_.isComplexType)
           .map(_.enum_)
@@ -719,60 +716,53 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
             .map(_ => qe.tableMetadata.columnDef(viewDef, f))
             .map(_.enum_)
             .filter(_ != null)
-          )
-          .map(e => JsArray(e.map(JsString(_)): _*)).getOrElse(JsNull),
+          ).orNull,
         "refViewName" -> Option(f.expression)
            .filter(FieldRefRegexp.pattern.matcher(_).matches)
            .map {
              case FieldRefRegexp(refViewName, refFieldName, _, _) => refViewName
-           }.map(JsString(_)).getOrElse(JsNull),
-        "comments" -> Option(f.comments).map(JsString(_)).getOrElse(JsNull),
-        "jsonType" -> JsString(
-          qe.typeDefs
-            .find(_.name == f.type_.name)
-            .flatMap(_.targetNames.get("json"))
-            .getOrElse("string")
-        ))
+           }.orNull,
+        "comments" -> f.comments,
+        "jsonType" -> qe.typeDefs
+          .find(_.name == f.type_.name)
+          .flatMap(_.targetNames.get("json"))
+          .getOrElse("string")
+        )
         ++
         ListMap(
           "length" -> f.type_.length,
           "totalDigits" -> f.type_.totalDigits,
           "fractionDigits" -> f.type_.fractionDigits)
         .filter(_._2.isDefined)
-        .map(x => x._1 -> JsNumber(x._2.get))
+        .map(x => x._1 -> x._2.get)
         ++
-        extraMetadata(f)
-      )): _*)) ++
+        extraMetadata(f))) ++
       filterMetadata(viewDef) ++
-      extraMetadata(viewDef))
+      extraMetadata(viewDef)
   }
-  def extraMetadata(fieldDef: FieldDef)(implicit user: User): Map[String, JsValue] = Map.empty
-  def extraMetadata(viewDef: ViewDef)(implicit user: User): Map[String, JsValue] = Map.empty
-  def extraMetadata(filter: FilterParameter)(implicit user: User): Map[String, JsValue] = Map.empty
-
-  def filterMetadata(view: ViewDef)(implicit user: User, state: ApplicationState): Map[String, JsValue] =
-    Option(view.name).filter(viewNameToFilterMetadata.contains(_)).map(viewName => //bi reports isn't presented in viewNameToFilterMetadata
+  def extraMetadata(fieldDef: FieldDef)(implicit user: User): Map[String, Any] = Map.empty
+  def extraMetadata(viewDef: ViewDef)(implicit user: User): Map[String, Any] = Map.empty
+  def extraMetadata(filter: FilterParameter)(implicit user: User): Map[String, Any] = Map.empty
+  def filterMetadata(view: ViewDef)(implicit user: User, state: ApplicationState): Map[String, Any] =
+    Option(view.name).filter(viewNameToFilterMetadata.contains).map(viewName => //bi reports isn't presented in viewNameToFilterMetadata
       ListMap(
-        "filter" -> JsArray(viewNameToFilterMetadata(viewName).map(f => JsObject(ListMap(
-          "name" -> JsString(f.name),
-          "type" -> JsString(f.type_.name),
-          "nullable" -> JsBoolean(f.nullable),
-          "required" -> JsBoolean(f.required),
-          "label" -> Option(f.label).map(fl => JsString(fl.fieldName +
+        "filter" -> viewNameToFilterMetadata(viewName).map(f => ListMap(
+          "name" -> f.name,
+          "type" -> f.type_.name,
+          "nullable" -> f.nullable,
+          "required" -> f.required,
+          "label" -> Option(f.label).map(fl => fl.fieldName +
               Option(fl.filterName).map(fn => s" (${translate(fn)(state.locale)})").getOrElse("")
-            )).getOrElse(JsNull),
+            ).orNull,
           "enum" -> Option(f)
             .map(_.enum_)
             .filter(_ != null)
-            .map(e => JsArray(e.map(JsString(_)): _*)).getOrElse(JsNull),
-          "refViewName" -> Option(f.refViewName).map(JsString(_)).getOrElse(JsNull),
-          "jsonType" ->
-            JsString(
-              qe.typeDefs
-                .find(_.name == f.type_.name)
-                .flatMap(_.targetNames.get("json"))
-                .getOrElse("string")
-            )
+            .orNull,
+          "refViewName" -> f.refViewName,
+          "jsonType" -> qe.typeDefs
+             .find(_.name == f.type_.name)
+             .flatMap(_.targetNames.get("json"))
+             .getOrElse("string")
           )
           ++
           ListMap(
@@ -780,17 +770,17 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
             "totalDigits" -> f.type_.totalDigits,
             "fractionDigits" -> f.type_.fractionDigits)
           .filter(_._2.isDefined)
-          .map(x => x._1 -> JsNumber(x._2.get))
+          .map(x => x._1 -> x._2.get)
           ++
           extraMetadata(f)
-        )): _*)
+        )
       )).getOrElse(Map.empty)
 
   def currentUserParamNames: Set[String] = Set.empty
   private lazy val current_user_param_names = currentUserParamNames
   def isInternalParameter(view: ViewDef, parameterName: String) =
     current_user_param_names.contains(parameterName) ||
-      view.fieldOpt(parameterName).map(_.api.excluded).getOrElse(false)
+      view.fieldOpt(parameterName).exists(_.api.excluded)
   def filterParameters(view: ViewDef): Seq[FilterParameter] = {
     qe.filterParameters(view)
       .filterNot(p => isInternalParameter(view, p.name))
@@ -810,7 +800,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
           q += viewDef(f.type_.name)
       }
     }
-    JsObject(TreeMap[String, JsValue]() ++ names.toSeq.sorted.map(n => n -> metadata(n)))
+    TreeMap[String, Any]() ++ names.toSeq.sorted.map(n => n -> metadata(n))
   }
 
   def auth[C <: RequestContext[_]](ctx: C, clazz: Class[_])(action: => C) = {
@@ -841,7 +831,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
         .flatMap(identity).filter(_ != null)
         .toSet
     val relevantRoles = filterByHasRole(allApiRelatedRoles, user)
-    JsObject(TreeMap[String, JsValue]() ++
+    TreeMap[String, Any]() ++
       views
         .filter(_.apiMethodToRoles != null)
         .map(v => v -> v.apiMethodToRoles.filter { case (method, roles) =>
@@ -850,8 +840,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
           roles.exists(relevantRoles.contains)
         })
         .filter(_._2.nonEmpty)
-        .map { case (v, methodsToRoles) => v.name -> JsArray(methodsToRoles.keys.toSeq.map(JsString(_)): _*) }
-    )
+        .map { case (v, methodsToRoles) => v.name -> methodsToRoles.keys.toSeq }
   }
 
   def impliedIdForGetOverList[F](viewName: String): Option[Long] =
