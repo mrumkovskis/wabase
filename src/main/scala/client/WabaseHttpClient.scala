@@ -8,12 +8,10 @@ import org.apache.pekko.http.scaladsl.model.headers.{BasicHttpCredentials, Host,
 import org.apache.pekko.http.scaladsl.model.ws.TextMessage
 import org.apache.pekko.http.scaladsl.unmarshalling._
 import org.apache.pekko.stream.scaladsl.Source
-import org.apache.pekko.util.Timeout
-import spray.json.{JsObject, JsString}
+import org.apache.pekko.util.{ByteString, Timeout}
 
 import scala.concurrent.Future
 import scala.collection.immutable.{Seq => iSeq}
-import spray.json._
 import DeferredControl.`X-Deferred-Hash`
 import org.apache.pekko.http.scaladsl.marshalling.Marshaller
 import org.apache.pekko.pattern.ask
@@ -93,9 +91,9 @@ class WabaseHttpClient(clientCfg: Config = HttpClientConfig.componentConfs.root)
       case Some(hash) =>
         implicit val askTimeout = Timeout(requestTimeout)
         cookieStorage.setCookiesFromHeaders(headers)
-        (deferredActor ? GetDeferred(hash)).map{deferredResult => deferredResult.asInstanceOf[JsObject].fields("status") match{
-          case JsString(DeferredControl.DEFERRED_OK) => // OK
-          case JsString(DeferredControl.DEFERRED_ERR) => // ERR
+        (deferredActor ? GetDeferred(hash)).map{deferredResult => deferredResult.asInstanceOf[Map[String, Any]]("status") match {
+          case DeferredControl.DEFERRED_OK => // OK
+          case DeferredControl.DEFERRED_ERR => // ERR
           case _ => throw ClientException(s"Received error while processing deferred request: \n$deferredResult")
         }}.flatMap(_ => httpGet[R](deferredResultUri(hash), cookieStorage = cookieStorage))
     }
@@ -116,14 +114,14 @@ object WabaseHttpClient{
     val completeStatuses = Set(DeferredControl.DEFERRED_ERR, DeferredControl.DEFERRED_OK)
     override def receive = queueResults(Map.empty, Map.empty)
 
-    def queueResults(receivedMessages: Map[String, JsObject], subscribers: Map[String, ActorRef]): Receive = {
+    def queueResults(receivedMessages: Map[String, Any], subscribers: Map[String, ActorRef]): Receive = {
       case TextMessage.Strict(text) => try{
-        val newMap = text.parseJson.asJsObject.fields
+        val newMap = CborOrJsonAnyValueDecoder.decode(ByteString(text)).asInstanceOf[Map[String, Any]]
           .filter { _._1 != "version" }
           .map {
-            case (k, v) => (k, v.asJsObject)
-          }.filter(_._2.fields("status") match {
-            case JsString(status) if completeStatuses(status) => true
+            case (k, v) => (k, v.asInstanceOf[Map[String, Any]])
+          }.filter(_._2("status") match {
+            case status: String if completeStatuses(status) => true
             case _ => false
           })
         for {

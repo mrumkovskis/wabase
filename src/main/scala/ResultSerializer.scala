@@ -11,10 +11,9 @@ import java.io.{InputStream, OutputStream}
 import java.lang.{Boolean => JBoolean, Byte => JByte, Double => JDouble, Float => JFloat, Long => JLong, Short => JShort}
 import java.math.{BigDecimal => JBigDecimal, BigInteger => JBigInteger}
 import java.nio.{ByteBuffer, CharBuffer}
-import java.nio.charset.{Charset, CharsetEncoder, CodingErrorAction}
+import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets.UTF_8
-import java.time.{Instant, LocalDate, LocalDateTime, LocalTime, OffsetDateTime, ZoneId, ZonedDateTime}
-import java.time.format.DateTimeFormatter
+import java.time.{Instant, LocalDate, LocalDateTime, LocalTime, OffsetDateTime, ZonedDateTime}
 import ResultEncoder._
 import com.typesafe.scalalogging.Logger
 
@@ -112,6 +111,11 @@ object ResultSerializer {
         case _ => cleanupFun(None)
       }
     resultF
+  }
+
+  import io.bullet.borer.Writer
+  val anyToStringValueEncoder: Writer => PartialFunction[Any, Writer] = w => {
+    case x => w writeString x.toString
   }
 }
 
@@ -266,10 +270,10 @@ object BorerDatetimeEncoders {
 
 class BorerValueEncoder(w: Writer) {
   import BorerDatetimeEncoders._
-  protected lazy val knownValueEncoder: PartialFunction[Any, Writer] =
+  lazy val knownValueEncoder: PartialFunction[Any, Writer] =
     initValueEncoder
   lazy val valueEncoder: PartialFunction[Any, Writer] = {
-    knownValueEncoder orElse anyValueEncoder
+    knownValueEncoder orElse ResultSerializer.anyToStringValueEncoder(w)
   }
   protected def initValueEncoder: PartialFunction[Any, Writer] = {
     case null               => w.writeNull()
@@ -304,9 +308,6 @@ class BorerValueEncoder(w: Writer) {
     case value: Instant       => w ~ value
     case value: OffsetDateTime=> w ~ value
     case value: ZonedDateTime => w ~ value
-  }
-  private val anyValueEncoder: PartialFunction[Any, Writer] = {
-    case x                  => w writeString x.toString
   }
   def writeValue(value: Any): Boolean = {
     valueEncoder(value)

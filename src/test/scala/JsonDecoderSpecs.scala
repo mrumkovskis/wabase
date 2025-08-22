@@ -20,7 +20,7 @@ class JsonDecoderSpecs extends FlatSpec with Matchers {
   val anyValsDecoder = CborOrJsonAnyValueDecoder
   def jsonRoundtrip(dto: Dto) =
     decodeToMap(
-      ByteString(dto.toMap.toJson.prettyPrint),
+      ByteString(ResultEncoder.encodeAnyToJsonString(dto.toMap)),
       classToViewName(dto.getClass),
     )
   def decodeToMap(bytes: ByteString, viewName: String, decoder: CborOrJsonDecoder = strictDecoder) =

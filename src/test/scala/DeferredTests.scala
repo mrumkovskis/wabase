@@ -15,8 +15,6 @@ import org.apache.pekko.stream.scaladsl.Source
 import org.apache.pekko.util.ByteString
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
-import org.tresql.Resources
-import org.wabase.AppMetadata.DbAccessKey
 import org.wabase.AppServiceBase.AppExceptionHandler._
 
 import scala.collection.mutable.ArrayBuffer
@@ -168,7 +166,6 @@ class DeferredTests extends AnyFlatSpec with Matchers with TestQuereaseInitializ
 
     WS("/ws", wsClient.flow) ~> route ~> check {
       Future {
-        import spray.json._
         var receiveNotifications = true
         while(receiveNotifications) {
           val message = wsClient.expectMessage()
@@ -177,17 +174,18 @@ class DeferredTests extends AnyFlatSpec with Matchers with TestQuereaseInitializ
               receiveNotifications = false
             case TextMessage.Strict(msg) =>
               try {
-                msg.parseJson match {
-                  case JsObject(obj) if JsString("OK") ==
-                    obj.values.headOption
-                      .filter(_.isInstanceOf[JsObject])
-                      .flatMap(_.asJsObject.fields.get("status")).orNull =>
+                CborOrJsonAnyValueDecoder.decode(ByteString(msg)) match {
+                  case obj: Map[String, Any]@unchecked if "OK" == obj.values.headOption
+                      .flatMap {
+                        case m: Map[String, Any]@unchecked => m.get("status")
+                        case _ => None
+                      }.orNull =>
                     processedCount += 1
                   case _ =>
                 }
               } catch {
                 case ex: Exception =>
-                  ex.printStackTrace
+                  ex.printStackTrace()
               }
             case _ =>
           }
@@ -210,11 +208,8 @@ class DeferredTests extends AnyFlatSpec with Matchers with TestQuereaseInitializ
     processedCount shouldEqual reqCount
   }
 
-  import spray.json._
-  import DefaultJsonProtocol._
-
   def parseDeferredRequestId(resp: String): String = {
-    resp.parseJson.convertTo[Map[String, String]].apply("deferred")
+    CborOrJsonAnyValueDecoder.decode(ByteString(resp)).asInstanceOf[Map[String, String]].apply("deferred")
   }
 
   "The enableDeferred directive" should "work" in {
@@ -283,10 +278,10 @@ class DeferredTests extends AnyFlatSpec with Matchers with TestQuereaseInitializ
     Try {
       while(true) {
         val TextMessage.Strict(msg) = wsClient.expectMessage()
-        msg.parseJson.asJsObject.fields.toList match {
-          case List(("version", JsString(version))) => version shouldBe service.appVersion
-          case List((hash, JsObject(statusObj))) =>
-            val JsString(status) = statusObj("status")
+        CborOrJsonAnyValueDecoder.decode(ByteString(msg)).asInstanceOf[Map[String, Any]].toList match {
+          case List(("version", version)) => version shouldBe service.appVersion
+          case List((hash, statusObj: Map[String@unchecked, _])) =>
+            val status = statusObj("status")
             status match {
               case "EXE" =>
                 executedRequests ::= hash
@@ -349,7 +344,7 @@ class DeferredTests extends AnyFlatSpec with Matchers with TestQuereaseInitializ
 
     requests.foreach { req_hash =>
       Get("/results") ~> service.deferredRequest(req_hash, user) ~> check {
-        responseAs[String].parseJson.convertTo[Map[String, String]].apply("status") shouldBe "ERR"
+        CborOrJsonAnyValueDecoder.decode(ByteString(responseAs[String])).asInstanceOf[Map[String, Any]].apply("status") shouldBe "ERR"
       }
     }
   }

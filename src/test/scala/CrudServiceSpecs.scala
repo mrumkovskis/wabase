@@ -18,7 +18,6 @@ import org.mojoz.querease.{QuereaseMetadata, ValueConverter}
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import org.tresql.{DMLResult, Query, convInt}
-import spray.json._
 
 import scala.collection.immutable.Seq
 import scala.concurrent.{ExecutionContextExecutor, Future}
@@ -114,13 +113,11 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       override lazy val defaultCpName = "main"
       override lazy val viewNameToClassMap = CrudServiceSpecsDtos.viewNameToClass
     }
-    qio         = new AppQuereaseIo[Dto](querease)
     super.beforeAll()
     dbAccess    = new DbAccess with QuereaseProvider with Loggable {
       override val tresqlResources = CrudServiceSpecs.this.tresqlThreadLocalResources
       override protected def tresqlMetadata = querease.tresqlMetadata
       override protected def initQuerease: AppQuerease = querease
-      override protected def initQuereaseIo: AppQuereaseIo[Dto] = new AppQuereaseIo[Dto](querease)
     }
     val testApp = new TestApp {
       override protected def initQuerease = querease
@@ -852,11 +849,9 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
 
   // api -----------------------------------------------------//
   it should "serve api metadata" in {
-    val io = qio
-    import io._
     Get("/api") ~> route ~> check {
       status shouldEqual StatusCodes.OK
-      val apiMap =  responseAs[String].parseJson.convertTo[Map[String, Any]]
+      val apiMap =  CborOrJsonAnyValueDecoder.decode(ByteString(responseAs[String])).asInstanceOf[Map[String, Any]]
       apiMap("by_id_view_1") shouldBe Seq("count", "create", "delete", "get", "save", "list")
       apiMap("by_hidden_key_view_2") shouldBe Seq("count", "create", "delete", "get", "save")
       apiMap.get("no_api_view") shouldBe None
@@ -867,16 +862,14 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
   // metadata ------------------------------------------------//
   it should "serve metadata" in {
     // TODO test full metadata and various aspects
-    val io = qio
-    import io._
     Get("/metadata/by_key_view_1") ~> route ~> check {
       status shouldEqual StatusCodes.OK
-      val mdMap =  responseAs[String].parseJson.convertTo[Map[String, Any]]
+      val mdMap =  CborOrJsonAnyValueDecoder.decode(ByteString(responseAs[String])).asInstanceOf[Map[String, Any]]
       mdMap("key") shouldBe Seq("name", "surname")
     }
     Get("/metadata/by_hidden_key_view_1") ~> route ~> check {
       status shouldEqual StatusCodes.OK
-      val mdMap =  responseAs[String].parseJson.convertTo[Map[String, Any]]
+      val mdMap =  CborOrJsonAnyValueDecoder.decode(ByteString(responseAs[String])).asInstanceOf[Map[String, Any]]
       mdMap("key") shouldBe Seq("surname")
     }
   }
@@ -987,11 +980,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     def checkDtoRoundtrip(obj: json_test_types): Unit = {
       def comparable(s: String) =
         s.replace("E+", "E") // compact exponent
-      val json = comparable(obj.toMap.toJson.compactPrint)
-      import ResultEncoder.jsValEncoder
-      import ResultEncoder.JsonEncoder.jsValueEncoderPF
-      val json2: String = ResultEncoder.encodeToJsonString(obj.toMap)
-      json shouldBe json2
+      val json = comparable(ResultEncoder.encodeAnyToJsonString(obj.toMap))
 
       Put(s"/data/json_test_types?/$id", json) ~> route ~> check {
         status shouldEqual StatusCodes.SeeOther
@@ -1138,7 +1127,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     obj.child = child
     obj.child shouldBe child
     obj.toMap.get("child").get.getClass.getName shouldBe "scala.collection.immutable.TreeMap"
-    obj.toMap.toJson.compactPrint should startWith(s"""{"id":$id,"child":{"id":null""")
+    ResultEncoder.encodeAnyToJsonString(obj.toMap) should startWith(s"""{"id":$id,"child":{"id":null""")
 
     // strings
     child.string = "Rūķīši-X-123"

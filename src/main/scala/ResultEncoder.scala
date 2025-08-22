@@ -84,8 +84,8 @@ object ResultEncoder {
             case v: java.util.Iterator[Any@unchecked] => w.writeIterator(v.asScala)(borerEncoder)
             case v: Array[_] => borerEncoder.write(w, v.iterator)
           }
-        val valueEncoder = new BorerValueEncoder(w).valueEncoder
-        customEncoder(w) orElse structuresEncoder(w) orElse valueEncoder
+        customEncoder(w) orElse new BorerValueEncoder(w).knownValueEncoder orElse
+          structuresEncoder(w) orElse ResultSerializer.anyToStringValueEncoder(w)
       }
     }
   }
