@@ -303,7 +303,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
           viewDef.fieldOpt(name).map(_.type_)
             .orElse(viewDef.table match {
               case null  => Some(conventionsType)
-              case table => tableMetadata.col(table, name, viewDef.db).map(_.type_)
+              case table => tableMetadata.columnDefOption(table, name, viewDef.db).map(_.type_)
             })
             .getOrElse(conventionsType)
       Segment(name, isOptional, type_)
@@ -350,7 +350,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
         s"Unknown properties for viewDef ${viewDef.name}: ${unknownKeys.mkString(", ")}")
 
 
-    ViewDef(name, db, table, tableAlias, joins, filter,
+    ViewDef(name, db, table, tableAlias, column, distinct, joins, filter,
       viewDef.groupBy, viewDef.having, orderBy, extends_,
       comments, appFields, viewDef.saveTo, extras)
       .updateWabaseExtras(_ =>

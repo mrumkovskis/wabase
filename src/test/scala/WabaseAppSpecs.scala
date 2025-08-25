@@ -41,7 +41,7 @@ class WabaseAppSpecs extends FlatSpec with Matchers {
 
   it should "compose stable orderBy" in {
     def v(orderBy: String*) =
-      ViewDef("test", null, null, null, Nil, Nil, Nil, Nil, orderBy.toVector, null, null, Nil, Nil, Map.empty)
+      ViewDef("test", null, null, null, null, null, Nil, Nil, Nil, Nil, orderBy.toVector, null, null, Nil, Nil, Map.empty)
     stableOrderBy(v(), null)                          shouldBe null
     stableOrderBy(v(), "a")                           shouldBe "a"
     stableOrderBy(v(), "a, b")                        shouldBe "a, b"
@@ -85,7 +85,7 @@ class WabaseAppSpecs extends FlatSpec with Matchers {
       new FieldDef_(name).copy(orderBy = orderBy)
     }
     def v(orderBy: String*) =
-      ViewDef("test", null, null, null, Nil, Nil, Nil, Nil, orderBy.toVector, null, null, fieldsWithOrderBy, Nil, Map.empty)
+      ViewDef("test", null, null, null, null, null, Nil, Nil, Nil, Nil, orderBy.toVector, null, null, fieldsWithOrderBy, Nil, Map.empty)
     stableOrderBy(v(), "v")                                 shouldBe "major, minor, fix"
     stableOrderBy(v(), "~v")                                shouldBe "~major, ~minor, ~fix"
     stableOrderBy(v(), "v null")                            shouldBe "major null, minor null, fix null"
