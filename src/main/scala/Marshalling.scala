@@ -35,11 +35,11 @@ trait Marshalling
 trait BasicJsonMarshalling extends org.apache.pekko.http.scaladsl.marshallers.sprayjson.SprayJsonSupport with BasicMarshalling {
 
   implicit val mapMarshaller: ToEntityMarshaller[Map[String, Any]] = Marshaller.combined { map =>
-    HttpEntity(ContentTypes.`application/json`, ByteString(ResultEncoder.encodeAnyToJsonBytes(map)))
+    HttpEntity(ContentTypes.`application/json`, ResultEncoder.encodeAnyToJsonByteString(map))
   }
 
   implicit val listOfMapsMarshaller: ToEntityMarshaller[List[Map[String, Any]]] = Marshaller.combined { map =>
-    HttpEntity(ContentTypes.`application/json`, ByteString(ResultEncoder.encodeAnyToJsonBytes(map)))
+    HttpEntity(ContentTypes.`application/json`, ResultEncoder.encodeAnyToJsonByteString(map))
   }
 }
 

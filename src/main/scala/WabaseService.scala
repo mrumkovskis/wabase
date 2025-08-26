@@ -215,7 +215,7 @@ object WabaseService {
 
   def api(ctx: WabaseRequestContext): HttpResponse = {
     val json = ctx.wabase._api(ctx.user)
-    HttpResponse(entity = HttpEntity(ContentTypes.`application/json`, ResultEncoder.encodeAnyToJsonBytes(json)))
+    HttpResponse(entity = HttpEntity(ContentTypes.`application/json`, ResultEncoder.encodeAnyToJsonByteString(json)))
   }
 
   def metadata(viewName: String, ctx: WabaseRequestContext): RequestHandler = {
@@ -225,7 +225,7 @@ object WabaseService {
       import ctx.wabase
       val json = if (viewName == "*") wabase._apiMetadata else wabase._metadata(viewName)
       Future.successful(
-        HttpResponse(entity = HttpEntity(ContentTypes.`application/json`, ResultEncoder.encodeAnyToJsonBytes(json)))
+        HttpResponse(entity = HttpEntity(ContentTypes.`application/json`, ResultEncoder.encodeAnyToJsonByteString(json)))
       )
     })
   }

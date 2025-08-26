@@ -93,7 +93,7 @@ object Guidelines {
     HttpResponse(
       status = StatusCodes.OK,
       entity = HttpEntity(ContentTypes.`application/json`,
-        ResultEncoder.encodeAnyToJsonBytes(result.map(_.toMap(ctx.wabase.qe))))
+        ResultEncoder.encodeAnyToJsonByteString(result.map(_.toMap(ctx.wabase.qe))))
     )
   }
 }

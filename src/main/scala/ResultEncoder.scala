@@ -52,6 +52,11 @@ object ResultEncoder {
     encodeToJsonBytes(value)
   }
 
+  def encodeAnyToJsonByteString(value: Any): ByteString = {
+    import JsonEncoder._
+    ByteString.fromArrayUnsafe(encodeToJsonBytes(value))
+  }
+
   def encodeAnyToJsonString(value: Any): String = {
     import JsonEncoder._
     encodeToJsonString(value)
