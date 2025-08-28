@@ -88,7 +88,7 @@ case class ResourceResult(resource: String, contentType: ContentType, httpReq: H
 case class FileInfoResult(fileInfo: FileInfo) extends QuereaseResult
 case class FileResult(fileInfo: FileInfo, fileStreamer: FileStreamer) extends DataResult
 case class RequestPartResult(result: Source[RequestPart, Any], fs: FileStreamer) extends DataResult
-case class RequestPart(name: String, contentType: ContentType, filename: String, data: Source[ByteString, Any])
+case class RequestPart(name: String, filename: String, entity: HttpEntity)
 sealed trait TemplateResult extends QuereaseResult
   { def contentString: String }
 case class StringTemplateResult(content: String) extends TemplateResult
@@ -407,8 +407,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     }
   }
 
-  def requestPartsToMap(result: RequestPartResult)(implicit as: ActorSystem): Future[Map[String, Any]] =
-    AppQuerease.requestPartsToMap(result)
+  def saveRequestParts(result: RequestPartResult)(implicit as: ActorSystem): Future[Map[String, Any]] =
+    AppQuerease.saveRequestParts(result)
 
   def exceptionHandler(e: Throwable, src: String, context: ActionContext): Throwable = e match {
     case e: QuereaseActionException => e
@@ -1079,6 +1079,11 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         }
         case r: TresqlSingleRowResult => iterator(r.map(_.toMap))
         case HttpEntityResult(ent, dec) => decodeHttpEntity(ent, null, true, dec)(qr.as).flatMap(iterator)(qr.ec)
+        case RequestPartResult(parts, fs) =>
+          import qr._
+          parts.mapAsync(1)(AppQuerease.saveRequestPart(_, fs))
+            .runFold(scala.collection.mutable.ArrayBuffer[Map[String, Any]]())(_ += _)
+            .map(_.iterator)
         case CompatibleResult(HttpEntityResult(ent, dec), rf, isColl) =>
           decodeHttpEntity(ent, Option(rf).map(_.name).orNull, isColl, dec)(qr.as).flatMap(iterator)(qr.ec)
         case CompatibleResult(r, _, _) => iterator(r) // TODO Execute to compatible map
@@ -1488,9 +1493,9 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       um(httpReq).map { formdata =>
         val src = formdata.parts.map {
           case filePart if filePart.filename.isDefined =>
-            RequestPart(filePart.name, filePart.entity.contentType, filePart.filename.get, filePart.entity.dataBytes)
+            RequestPart(filePart.name, filePart.filename.get, filePart.entity)
           case dataPart =>
-            RequestPart(dataPart.name, dataPart.entity.contentType, null, dataPart.entity.dataBytes)
+            RequestPart(dataPart.name, null, dataPart.entity)
         }
         RequestPartResult(src, fs)
       }
@@ -1502,7 +1507,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       Future.successful(
         RequestPartResult(
           Source.single(
-            RequestPart(null, entity.contentType, if (filename.isEmpty) null else filename, entity.dataBytes)
+            RequestPart(null, if (filename.isEmpty) null else filename, entity)
           ),
           fs
         )
@@ -1788,21 +1793,21 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         case dml: DMLResult =>
           dml.id.map(IdResult(_, null)) orElse dml.count getOrElse 0
         case SingleValueResult(v) => v
-        case ar: ArrayResult[_] => ar.values.toList
+        case ar: ArrayResult[_] => ar.values.toVector
         case r: Result[_] =>
           val l = r.toListOfMaps
           if (unwrapSingleValue) maybeUnwrapSingleVal(l) else l
       }
       case srr: TresqlSingleRowResult => srr.map(_.toMap)
       case MapResult(mr) => mr
-      case IteratorResult(ir) => ir.toList
+      case IteratorResult(ir) => ir.toVector
       case LongResult(nr) => nr
       case NumberResult(nr) => nr
       case StringResult(str) => str
       case id: IdResult => id
       case kr: KeyResult => kr.ir
       case AnyResult(ar) => ar match {
-        case v: Iterator[_] => v.toList
+        case v: Iterator[_] => v.toVector
         case v => v // TODO may be need to convert java collections to scala?
       }
       case ResponseResult(code, value, _, _) => Map("code" -> code, "value" ->
@@ -1844,7 +1849,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         case r => cl(r.failed.toOption) // close db resources
       } (as.dispatcher)
       case ConfResult(_, r) => r
-      case r: RequestPartResult => requestPartsToMap(r)
+      case r: RequestPartResult => saveRequestParts(r)
       case x => sys.error(s"${x.getClass.getName} not expected here!")
     }) match {
       case f: Future[_] => f
@@ -1949,32 +1954,24 @@ object AppQuerease {
     def createInjectionParametersProvider: InjectionParametersProvider = _ => PartialFunction.empty
   }
 
-  def requestPartsToMap(parts: RequestPartResult)(implicit as: ActorSystem): Future[Map[String, Any]] = {
+  def saveRequestParts(parts: RequestPartResult)(implicit as: ActorSystem): Future[Map[String, Any]] = {
     implicit val ec = as.dispatcher
     parts.result.mapAsync(1) {
       case p if p.filename != null =>
-        p.data.runWith(parts.fs.fileSink(p.filename, p.contentType.toString))
+        p.entity.dataBytes.runWith(parts.fs.fileSink(p.filename, p.entity.contentType.toString))
           .map(_.toMap)
           .map(m => if (p.name == null) m else Map(p.name -> m))
-      case p => p.data.runFold(ByteString.empty)(_ ++ _).map(v => Map(p.name -> v.utf8String))
+      case p => p.entity.dataBytes.runFold(ByteString.empty)(_ ++ _).map(v => Map(p.name -> v.utf8String))
     }.runFold(Map[String, Any]())(_ ++ _)
   }
 
-  def requestPartsToBindableMap(parts: RequestPartResult)(implicit as: ActorSystem): Future[Map[String, Any]] = {
+  def saveRequestPart(part: RequestPart, fs: FileStreamer)(implicit as: ActorSystem): Future[Map[String, Any]] = {
     implicit val ec = as.dispatcher
-    parts.result.mapAsync(1) {
-      case p if p.filename != null =>
-        p.data.runWith(parts.fs.fileSink(p.filename, p.contentType.toString))
-          .map(fi => parts.fs.getFileInfo(fi.id, fi.sha_256))
-          .map { fiho =>
-            val n = Option(p.name).getOrElse(p.filename)
-            val in = fiho
-              .map(fih => fih.source.runWith(StreamConverters.asInputStream()))
-              .getOrElse(sys.error(s"Cannot find request part file: $n"))
-            Map(n -> in)
-          }
-      case p => p.data.runFold(ByteString.empty)(_ ++ _).map(v => Map(p.name -> v.utf8String))
-    }.runFold(Map[String, Any]())(_ ++ _)
+    if (part.filename != null)
+      part.entity.dataBytes.runWith(fs.fileSink(part.filename, part.entity.contentType.toString))
+        .map(_.toMap)
+        .map(m => if (part.name == null) m else m + ("name" -> part.name))
+    else part.entity.dataBytes.runFold(ByteString.empty)(_ ++ _).map(v => Map(part.name -> v.utf8String))
   }
 
   /** Function used for http headers construction.

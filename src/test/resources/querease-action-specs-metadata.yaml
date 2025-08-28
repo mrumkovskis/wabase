@@ -1607,8 +1607,8 @@ insert:
 - +blob_data { id = 1, data = :file }
 - org.wabase.QuereaseActionTestManagerObj.stringResultFromInputStream blob_data[id = 1]{data}
 update:
-- saved_data = requestPartsToBindableMap extract parts [main]
-- =blob_data[id = 1] { data = :saved_data.f1, data2 = :saved_data.f2, data3 = :saved_data.f3 }
+- saved_data = foreach (extract parts [main]) file {:id, :sha_256}
+- =blob_data[id = 1] { data = :saved_data.0, data2 = :saved_data.1, data3 = :saved_data.2 }
 - as any org.wabase.QuereaseActionTestManagerObj.stringResultsFromInputStreams blob_data[id = 1] {data, data2, data3}
 
 

@@ -576,7 +576,7 @@ object QuereaseActionTestManagerObj {
   def unsupportedParamMethod(str: String) = str
   def processRequestParts(res: RequestPartResult)(implicit as: ActorSystem, ec: ExecutionContext) =
     res.result.mapAsync(1) { part =>
-      part.data.runWith(AppFileStreamer.sha256sink).map(sha => Map("file" -> part.filename, "sha_256" -> sha))
+      part.entity.dataBytes.runWith(AppFileStreamer.sha256sink).map(sha => Map("file" -> part.filename, "sha_256" -> sha))
     }.runFold(List[Map[String, Any]]())(_ :+ _)
 
   def customDecoder(req: HttpRequest)(implicit as: ActorSystem, ec: ExecutionContext): Future[Map[String, Any]] = {
