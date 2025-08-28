@@ -163,5 +163,5 @@ object WabaseServer {
     }
   }
 
-  def hello(ctx: WabaseRequestContext): String = "Hello from wabase!"
+  def hello(ctx: WabaseRequestContext): String = "Hello from wabase!\n"
 }
