@@ -181,8 +181,7 @@ object TresqlResourcesConf extends Loggable {
         if (conf.dialect != null) conf.dialect orElse vendor_dialect(dbVendor)
         else vendor_dialect(dbVendor)
       }
-      val toBindableValue: PartialFunction[Any, Any] =
-        Option(conf.toBindableValue).getOrElse(PartialFunction.empty) orElse AppQuerease.quereaseResultTresqlValueBinder
+      val toBindableValue: PartialFunction[Any, Any] = Option(conf.toBindableValue).getOrElse(PartialFunction.empty)
       val idExpr: String => String =
         if (conf.idExpr != null) conf.idExpr
         else vendor_id_expr(cpToVendor.getOrElse(cpName, null))

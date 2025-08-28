@@ -1603,7 +1603,7 @@ decoder: none
 table:
 insert:
 - saved_file = to file (extract entity) 'source_tresql_binding_test1_ins'
-- as result file = resultWithQuereaseResources file {:saved_file.id, :saved_file.sha_256}
+- file = file {:saved_file.id, :saved_file.sha_256}
 - +blob_data { id = 1, data = :file }
 - org.wabase.QuereaseActionTestManagerObj.stringResultFromInputStream blob_data[id = 1]{data}
 update:

@@ -97,7 +97,6 @@ case class FileTemplateResult(filename: String, contentType: String, content: Ar
   { override def contentString: String = new String(content, "UTF-8") }
 case class HttpEntityResult(entity: HttpEntity, decoder: RequestDecoders.RequestDecoder) extends DataResult
 case class HttpResult(response: HttpResponse) extends DataResult
-case class ResultWithQuereaseResources(result: QuereaseResult, qr: QuereaseResources) extends QuereaseResult
 case object NoResult extends QuereaseResult
 case class QuereaseResultWithCleanup(result: QuereaseCloseableResult, cleanup: Option[Throwable] => Unit)
   extends QuereaseResult {
@@ -2000,25 +1999,6 @@ object AppQuerease {
   def buildCookieHeaderValue(tresql: TresqlResult): String = {
     val pairs = listOfStringTuples(tresql.result).map(HttpCookiePair(_))
     Cookie(pairs).value
-  }
-
-  def resultWithQuereaseResources(result: QuereaseResult)(
-    implicit qr: QuereaseResources): ResultWithQuereaseResources =
-    ResultWithQuereaseResources(result, qr)
-
-  def quereaseResultTresqlValueBinder: PartialFunction[Any, Any] = {
-    case ResultWithQuereaseResources(result, qr) =>
-      import qr._
-      result match {
-        case FileResult(fi, fs) => fs.getFileInfo(fi.id, fi.sha_256)
-          .map(f => f.source.runWith(StreamConverters.asInputStream()))
-          .getOrElse(
-            sys.error(s"Cannot bind FileResult value. File ${fi.filename} (sha_256 - ${fi.sha_256}) not found!"))
-        case HttpResult(response) => response.entity.dataBytes.runWith(StreamConverters.asInputStream())
-        case HttpEntityResult(ent, _) => ent.dataBytes.runWith(StreamConverters.asInputStream())
-        case r: ResultWithQuereaseResources => quereaseResultTresqlValueBinder(r)
-        case x => sys.error(s"Currently unable to bind querease result '$x' as tresql value")
-      }
   }
 
   def dtoParameterFromMap(data: () => Map[String, Any])(

@@ -489,7 +489,6 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
       case cr: CompatibleResult => (toResponseCompatibleResultMarshaller(wr): ToResponseMarshaller[CompatibleResult])(cr)
       case cr: ConfResult     => (toEntityConfResultMarshaller:               ToResponseMarshaller[ConfResult]    )(cr)
       case pr: RequestPartResult => (toEntityRequestPartResultMarshaller(wr.ctx): ToResponseMarshaller[RequestPartResult])(pr)
-      case ResultWithQuereaseResources(r, _) => toResponseWabaseResultMarshaller(ec)(wr.copy(result = r))
       case tq: TresqlResult   => sys.error("TresqlResult must be serialized before marshalling.")
       case rr: TresqlSingleRr => sys.error("TresqlSingleRowResult must be serialized before marshalling.")
       case it: IteratorResult => sys.error("IteratorResult must be serialized before marshalling.")
