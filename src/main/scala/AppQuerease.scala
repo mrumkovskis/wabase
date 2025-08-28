@@ -1454,13 +1454,18 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           implicit lazy val enc: JsValueEncoderPF = JsonEncoder.extendableJsValueEncoderPF(enc)(jsonValueEncoder)
           StringResult(encodeToJsonString(res))
         } else {
-          try CborOrJsonAnyValueDecoder.decode(ByteString(String.valueOf(res))) match {
-            case m: Map[String@unchecked, _] => MapResult(m)
-            case s: Seq[Map[String, _]@unchecked] => IteratorResult(s.iterator)
-            case n: java.lang.Number => NumberResult(n)
-            case s: String => StringResult(s)
-            case null => NoResult
-            case x => AnyResult(x)
+          try {
+            (res match {
+              case in: java.io.InputStream => CborOrJsonAnyValueDecoder.decodeFromInputStream(in)
+              case _ => CborOrJsonAnyValueDecoder.decode(ByteString(String.valueOf(res)))
+            }) match {
+              case m: Map[String@unchecked, _] => MapResult(m)
+              case s: Seq[Map[String, _]@unchecked] => IteratorResult(s.iterator)
+              case n: java.lang.Number => NumberResult(n)
+              case s: String => StringResult(s)
+              case null => NoResult
+              case x => AnyResult(x)
+            }
           } catch {
             case NonFatal(e) => throw new RuntimeException(s"ERROR decoding result: $res", e)
           }
@@ -1807,8 +1812,10 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           case RedirectValue(value) => tresqlUri.uri(value).toString()
         }))
       case fi: FileInfoResult => fi.fileInfo.toMap
-      case fr: FileResult => fileHttpEntity(fr).map(decodeHttpEntity(_, null, false, null))
-        .getOrElse(sys.error(s"File not found: ${fr.fileInfo}"))
+      case FileResult(fi, fs) => fs.getFileInfo(fi.id, fi.sha_256)
+        .map(f => f.source.runWith(StreamConverters.asInputStream()))
+        .getOrElse(
+          sys.error(s"Cannot bind FileResult value. File ${fi.filename} (sha_256 - ${fi.sha_256}) not found!"))
       case rs: ResourceResult =>
         ResourceFile(classOf[AppQuerease].getResource(rs.resource))
           .map(rf => StreamConverters.fromInputStream(() => rf.url.openStream()).runReduce(_ ++ _))
@@ -1820,7 +1827,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case HttpResult(r) =>
         if (r.status.isRedirection())
           r.headers.find(_.is("location")).map(_.value()).getOrElse("")
-        else decodeHttpEntity(r.entity, null, false, null)
+        else r.entity.dataBytes.runWith(StreamConverters.asInputStream())
       case HttpEntityResult(r, d) => decodeHttpEntity(r, null, false, d)
       case NoResult => NoResult
       case CompatibleResult(r, filter, isCollection) => r match {

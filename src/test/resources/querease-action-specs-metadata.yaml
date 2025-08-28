@@ -845,11 +845,11 @@ list:
 - conf conf.test
 insert:
 - file = to file conf conf.test 'inserted'
-- res = file {:file.id, :file.sha_256}
+- res = as any file {:file.id, :file.sha_256}
 - :res
 update:
 - file = to file conf string conf.test.uri 'updated'
-- res = file [main] {:file.id, :file.sha_256}         # use named file streamer
+- res = as any file [main] {:file.id, :file.sha_256}         # use named file streamer
 - :res
 
 
@@ -859,7 +859,7 @@ api: get, delete
 get:
 - http '/invocation_test_1'
 delete:
-- res = http '/count:invocation_test_1'
+- res = as any http '/count:invocation_test_1'
 - :res
 
 
@@ -875,8 +875,7 @@ fields:
 get:
 - unique {:name name, :manipulation_date::date manipulation_date, :vaccine vaccine, :id::long id}
 list:
-- res = http '/invocation_test_1'
-- status ok :res
+- http '/invocation_test_1'
 insert:
   # http post ends with empty array explicitly indicating no headers
 - res = http post [default-wabase-http-client] '/person_health'
@@ -931,7 +930,7 @@ fields:
 get:
 - unique { :nr nr, :owner owner, :area::decimal area, :trees trees }
 update:
-- forest = http { '/forest', :nr, :xx? }  # optional variable (xx) in url must work
+- forest = as forest http { '/forest', :nr, :xx? }  # optional variable (xx) in url must work
 - :forest + :_ /* all data reference */ -> http put {'/forest', :nr } get http_forest
 
 
@@ -952,6 +951,14 @@ insert:
 - forest = from json :value
 - http post '/forest' to json
     unique { :forest.nr nr, :forest.owner owner, :forest.trees trees, :forest.area::decimal area }
+
+
+name: json_codec_2
+api: get
+table:
+fields:
+get:
+- from json http get { '/http_forest', '?', 'Nr1' nr, 'Owner5' owner, 12.4 area, 'Fig' trees }
 
 
 name: last_step_assignment_test
@@ -1041,10 +1048,10 @@ get:
 - status ok { :h1 || ' ' || :h2 }
 list:
 - h3 = extract header Test-Header3
-- h1_h2 = http get { '/extract_http_header_test', '1' }
+- h1_h2 = as any http get { '/extract_http_header_test', '1' }
     ({ 'Test-Header1', 'header1_value'} + { 'Test-Header2', 'header2_value'}) # headers
 - h = { 'Test-Header1', 'header1_value'} + { 'Test-Header2', 'header2_value'} # headers as variable to avoid db usage in http op
-- h_var = http get { '/extract_http_header_test', '1' } :h
+- h_var = as any http get { '/extract_http_header_test', '1' } :h
 - return :h1_h2 + :h_var + (h3 = :h3)   # (h3 = :h3) indicates variable transformation rather than tresql
 
 
@@ -1061,9 +1068,9 @@ get:
 list:
   - no_cookie = extract cookie no-cookie
   - cookie = buildCookieHeaderValue ({ 'current_lang', 'lv' } + { 'current_user', 'dzidzis' })
-  - lang_user = http get { '/extract_http_cookie_test', '1' } ({ 'Cookie', :cookie }) # cookies
+  - lang_user = as any http get { '/extract_http_cookie_test', '1' } ({ 'Cookie', :cookie }) # cookies
   - c = { 'Cookie', :cookie } # cookies as variable to avoid db usage in http op
-  - c_var = http get { '/extract_http_cookie_test', '1' } :c
+  - c_var = as any http get { '/extract_http_cookie_test', '1' } :c
   - return :lang_user + :c_var + (no_cookie = :no_cookie) # (no_cookie = :no_cookie) indicates variable transformation rather than tresql
 
 
@@ -1139,7 +1146,7 @@ insert:
 - status ok { if_defined_or_else(:name?, 'error', 'ok') }
 update:
 - res =
-    http post { '/not_decode_request_insert_test' }
+    as any http post { '/not_decode_request_insert_test' }
       http get {'/not_decode_request_insert_test', '?', 'value' name }
 - :res
 
@@ -1154,7 +1161,7 @@ get:
   - unique { :name name }
 insert:
   - res =
-      http put { '/not_decode_request_update_test' }
+      as any http put { '/not_decode_request_update_test' }
         http get {'/not_decode_request_update_test', '?', 'value' name }
   - :res
 update:
@@ -1169,7 +1176,7 @@ fields:
   - surname
 get:
   - res =
-      http post
+      as any http post
         {'/form_urlencoded_test'}
         { :name name, :surname surname }
         { 'Content-Type', 'application/x-www-form-urlencoded' }
@@ -1186,8 +1193,10 @@ fields:
   - name
   - surname
 get:
-  - res =
-      http post { '/form_urlencoded_' || 'test' } { :name name, :surname surname } { 'Content-Type', 'application/x-www-form-urlencoded' }
+  - res = as any http post
+      { '/form_urlencoded_' || 'test' }
+      { :name name, :surname surname }
+      { 'Content-Type', 'application/x-www-form-urlencoded' }
   - :res
 
 
@@ -1199,7 +1208,7 @@ fields:
   - name
   - surname
 get:
-  - res = http post { '/form_urlencoded_test' } '' { 'Content-Type', 'application/x-www-form-urlencoded' }
+  - res = as any http post { '/form_urlencoded_test' } '' { 'Content-Type', 'application/x-www-form-urlencoded' }
   - :res
 
 
@@ -1212,7 +1221,7 @@ fields:
 list:
 - "[build_cursors(this, :books)]books { title, year }"   # quotes used to get around yaml parser bug
 get:
-- forests = http {'/forest'}
+- forests = as any http {'/forest'}
 - unique_opt [build_cursors(forest, :forests)]forests{group_concat('(' || nr || ', ' || owner || ')')#(1) title}
 
 
@@ -1270,7 +1279,7 @@ insert:
         as `result_render_test` unique
         { 'text' string_field, '2024-01-31'::date date_field, 'x' filtered_field }
     ) 'rendered_results' 'application/json'
-- res = file {:res_map.id, :res_map.sha_256}
+- res = as any file {:res_map.id, :res_map.sha_256}
 - :res
 get:
 - res_map =
@@ -1279,14 +1288,14 @@ get:
       ({ 'text1' string_field, 'x' filtered_field } ++
       { 'text2' string_field, 'y' filtered_field }){string_field, filtered_field}#(1)
   ) 'rendered_results1' 'application/json'
-- res = file {:res_map.id, :res_map.sha_256}
+- res = as any file {:res_map.id, :res_map.sha_256}
 - :res
 update:
 - res_map =
   to file
     (as `result_render_test`* org.wabase.QuereaseActionTestManagerObj.result_render_test)
     'rendered_list_results' 'application/json'
-- res = file {:res_map.id, :res_map.sha_256}
+- res = as any file {:res_map.id, :res_map.sha_256}
 - :res
 delete:
 - as any
@@ -1404,7 +1413,7 @@ table:
 fields:
 - uri
 get:
-- res = org.wabase.QuereaseActionTestManagerObj.httpRequest
+- as result res = org.wabase.QuereaseActionTestManagerObj.httpRequest
 - :res
 
 

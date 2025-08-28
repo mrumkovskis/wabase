@@ -293,6 +293,7 @@ trait WabaseApp[User] {
             if (filter == ResultRenderer.NoFilter) StrictRes(AnyResult(m))
             else StrictRes(MapResult(m)) // return strict since structure may not conform to tresql result so serialization might fail
           case s: Seq[Map[String, _]@unchecked] => SourceRes(DataSerializer.source(() => s.iterator), filter, true) // serialization might fail if data does not conform to tresql result table structure
+          case qr: QuereaseResult => res(qr, filter)
           case x => StrictRes(StringResult(String.valueOf(x)))
         }
         r match {

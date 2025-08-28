@@ -262,6 +262,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
           }
         }
         .map(r => if (removeIdsFlag) removeIds(r) else r)
+    case HttpResult(resp) => unmarshalResponse(resp)
     case r => Future.successful(r)
   }
 
@@ -951,33 +952,28 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
   it should "do http operations" in {
     for {
       t1 <- doAction("get", "http_test_1", Map())
-        .mapTo[HttpResult]
-        .flatMap(res => unmarshalResponse(res.response))
         .map { _ shouldBe "val1 val2" }
       t2 <- doAction("list", "http_test_2", Map())
-        .map { _ shouldBe ResponseResult(200, ResultValue(StringResult("val1 val2"))) }
+        .map { _ shouldBe "val1 val2" }
       t3 <- doAction("insert", "http_test_2", Map())
         .map {
           _ shouldBe ResponseResult(200, ResultValue(StringResult("person_health?/Mr.%20Mario/2022-04-11?par1=val1&par2=val2")))
         }
       t4 <- doAction("update", "http_test_2", Map("name" -> "Mr. Gunza",
         "manipulation_date" -> "2022-09-10", "vaccine" -> "Pfizer"))
-        .mapTo[HttpResult]
-        .flatMap{res => unmarshalResponse(res.response)}
         .map { _ shouldBe "person_health?/Mr.%20Gunza/2022-09-10?par1=val1&par2=val2" }
       t5 <- doAction("insert", "forest", Map("nr" -> "OF1", "owner" -> "Pedro",
         "area" -> 1000, "trees" -> "oaks"))
         .map { case KeyResult(_, _, key) => key shouldBe List("OF1") }
       t6 <- doAction("update", "http_forest", Map("area" -> 20.5), keyValues = List("OF1"))
-        .mapTo[HttpResult]
-        .map { _.response.status shouldBe StatusCodes.SeeOther }
+        .map { _ shouldBe "/data/forest?/OF1" }
       t7 <- doAction("get", "forest", Map(), keyValues = List("OF1"))
         .map { _ shouldBe Map("nr" -> "OF1", "owner" -> "Pedro", "area" -> 20.5, "trees" -> "oaks") }
       t8 <- doAction("delete", "http_test_1", Map()). map {
         _ shouldBe StringResult("/count:invocation_test_1 = 0")
       }
       t9 <- doAction("get", "http_client_test", Map("uri" -> "/invocation_test_1")).map {
-        _ shouldBe StringResult("val1 val2")
+        _ shouldBe "val1 val2"
       }
     } yield {
       t1
@@ -992,10 +988,11 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         .map { _ shouldBe MapResult(Map("trees" -> "pine", "area" -> 23.5, "notes" -> null)) }
       t2 <- doAction("insert", "json_codec_1", Map("value" ->
         enc(Map("trees" -> "pine", "area" -> 23.5, "owner" -> "Pedro", "nr" -> "OF2"))))
-        .mapTo[HttpResult]
-        .map { _.response.status shouldBe StatusCodes.SeeOther }
+        .map { _ shouldBe "/data/forest?/OF2" }
       t3 <- doAction("get", "forest", Map(), keyValues = List("OF2"))
         .map { _ shouldBe Map("trees" -> "pine", "area" -> 23.5, "owner" -> "Pedro", "nr" -> "OF2") }
+      t4 <- doAction("get", "json_codec_2", Map())
+        .map { _ shouldBe MapResult(Map("nr" -> "Nr1", "owner" -> "Owner5", "area" -> 12.4, "trees" -> "Fig")) }
     } yield {
       t1
     }
