@@ -757,6 +757,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         case l: Long => LongResult(l)
         case s: String => StringResult(s)
         case n: java.lang.Number => NumberResult(n)
+        case b: Boolean => AnyResult(b)
         case d: Dto => MapResult(d.toMap(this))
         case o: Option[Dto]@unchecked => o.map(d => MapResult(d.toMap(this))).getOrElse(NoResult)
         case e: HttpEntity => HttpEntityResult(e, null)
@@ -813,7 +814,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
             case TresqlResult(SingleValueResult(qr: QuereaseResult)) => qr // unwrap bind variable value
             case x => x
           }
-          AppQuerease.orderedInvocationParameter(unwrappedVal(opRes), idx, function)(AppQuerease.this)
+          AppQuerease.orderedInvocationParameter(unwrappedVal(opRes), idx, function)(
+            AppQuerease.this, dataForNextStep(_, context, unwrapSingleValue = false))
         }
         invokeFunction(className, function,
           valFuns.reduce(_ orElse _) orElse AppQuerease.dtoParameterFromMap(() => invocationData)(qio)) match {
@@ -1891,6 +1893,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       (classOf[WabaseFileStreamers], () => fileStreamers),
       (classOf[HttpRequest], () => httpReq),
       (classOf[AppQuereaseIo[Dto]], () => qio),
+      (classOf[AppQuerease], () => AppQuerease.this),
       (classOf[WabaseHttpClients], () => httpClients),
     )
     val pp = parametersProvider(injectionContext)
@@ -2013,9 +2016,12 @@ object AppQuerease {
   /** Returns [[InvocationParameterFun]] which is defined if parameter index matches and
    * [[QuereaseResult]] can be conformed to function parameter type
    * */
-  def orderedInvocationParameter(qr: QuereaseResult, idx: Int, function: String)(qe: AppQuerease): InvocationParameterFun = {
+  def orderedInvocationParameter(qr: QuereaseResult, idx: Int, function: String)(
+    qe: AppQuerease,
+    qrToAny: QuereaseResult => Future[_],
+  )(implicit resources: QuereaseResources): InvocationParameterFun = {
     val tresqlResult = qr match { case TresqlResult(result) => result case _ => null }
-    ({
+    ({ // convert TresqlResult to primitive value
       case (par, i) if i == idx && tresqlResult != null &&
         tresqlResult.typedPf(0).isDefinedAt(scala.reflect.Manifest.classType(par.getType).toString()) =>
         tresqlResult match {
@@ -2025,24 +2031,38 @@ object AppQuerease {
             r.typedPf(0)(scala.reflect.Manifest.classType(par.getType).toString())
           } else null finally r.close()
         }
-    }: InvocationParameterFun) orElse ({
+    }: InvocationParameterFun) orElse ({ // convert TresqlResult to org.tresql.Result
       case (par, i) if i == idx && tresqlResult != null && par.getType.isAssignableFrom(classOf[Result[_]]) =>
         tresqlResult
-    }: InvocationParameterFun) orElse ({
-      case (par, i) if i == idx && tresqlResult != null && par.getType.isAssignableFrom(classOf[Map[_, _]]) =>
-        tresqlResult.toListOfMaps.headOption.getOrElse(s"Empty result, expected one row")
-    }: InvocationParameterFun) orElse ({
-      case (par, i) if i == idx && tresqlResult != null && par.getType.isAssignableFrom(classOf[List[_]]) =>
-        tresqlResult.toListOfMaps
-    }: InvocationParameterFun) orElse ({ case (par, i)
-      if i == idx && par.getType == classOf[String] && qr.getClass == classOf[StringResult] =>
-      qr.asInstanceOf[StringResult].value
-    }: InvocationParameterFun) orElse ({
-      case (par, i) if i == idx && par.getType.isAssignableFrom(qr.getClass) => qr
     }: InvocationParameterFun) orElse {
-      case (par, i) if i == idx => throw new IllegalArgumentException(
-        s"Cannot find value for function's $function ${idx + 1} parameter '${par.getName}: ${
-          par.getType.getName}'.\nInstead got: '$qr'")
+      case (par, i) if i == idx => convertResultToParType(par.getType, qr)(
+        qrToAny, () => throw new IllegalArgumentException(
+          s"Cannot find value for function's '$function' ${idx + 1} parameter '${par.getName}: ${
+            par.getType.getName}'.\nInstead got: '$qr'"))
+    }
+  }
+
+  def convertResultToParType(parType: Class[_], qr: QuereaseResult)(
+    qrToAny: QuereaseResult => Future[_], error: () => Nothing)(
+    implicit resources: QuereaseResources): Any = {
+    if (parType.isAssignableFrom(qr.getClass)) qr
+    else {
+      import resources._
+      def cf(r: Any): Any = r match {
+        case x if parType.isAssignableFrom(x.getClass) => x
+        case m: Map[String, Any]@unchecked =>
+          if (classOf[Dto].isAssignableFrom(parType)) qio.fill(m)(Manifest.classType[Dto](parType))
+          else error()
+        case l: Seq[Map[String, Any]@unchecked] =>
+          val elType = parType.getComponentType
+          if (elType != null && classOf[Dto].isAssignableFrom(elType)) {
+            val mf = Manifest.classType[Dto](elType)
+            l.map(qio.fill(_)(mf)).toArray(mf)
+          } else error()
+        case in: java.io.InputStream => cf(CborOrJsonAnyValueDecoder.decodeFromInputStream(in))
+        case _ => error()
+      }
+      qrToAny(qr) map cf
     }
   }
 

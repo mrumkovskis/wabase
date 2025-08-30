@@ -590,7 +590,7 @@ create:
 - s1 = 'val1'
 - s2 = 'val2'
 delete:
-- org.wabase.QuereaseActionTestManager.addNumbers {:n1 n1, :n2 n2}
+- org.wabase.QuereaseActionTestManager.addNumbers unique {:n1 n1, :n2 n2}
 
 
 name: invocation_test_2
@@ -1548,6 +1548,35 @@ table:
 insert:
 - as result res = http post '/extract_http_entity_test1' extract entity
 - org.wabase.QuereaseActionTestManagerObj.httpResult :res
+
+
+name: invocation_type_conversion_test
+decoder: none
+api: get, list, insert, update
+table:
+key: k    # define key to make url distinction between get and list api calls
+get:
+- as person_with_health_data_health unique { '2025-08-30' manipulation_date, 'TicoVac' vaccine, false had_virus }
+list:
+- as person_with_health_data_health * [](
+    { '2025-08-30' manipulation_date, 'IXIARO' vaccine, false had_virus } +
+    { '2025-08-31' manipulation_date, 'Encepur N' vaccine, true had_virus }
+  ) {manipulation_date, vaccine, had_virus}#(1,2,3)
+insert:
+- vaccine = to file http get '/invocation_type_conversion_test/1'
+- vaccines = to file http get '/invocation_type_conversion_test'
+- org.wabase.QuereaseActionTestPersonManager.multipleArgConversions(
+    file {:vaccine.id, :vaccine.sha_256}, http get '/invocation_type_conversion_test/1',
+    http get '/invocation_type_conversion_test', file {:vaccines.id, :vaccines.sha_256}
+  )
+update:
+- org.wabase.QuereaseActionTestPersonManager.multipleArgConversions(
+    http get '/invocation_type_conversion_test/1', unique { '2025-08-30' manipulation_date, 'TicoVac' vaccine, false had_virus },
+    http get '/invocation_type_conversion_test', [](
+        { '2025-08-30' manipulation_date, 'IXIARO' vaccine, false had_virus } +
+        { '2025-08-31' manipulation_date, 'Encepur N' vaccine, true had_virus }
+      ) {manipulation_date, vaccine, had_virus}#(1,2,3)
+  )
 
 
 name: set_headers_test1

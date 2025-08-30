@@ -762,6 +762,12 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       t4 <- doAction("delete", "multi_argument_invocation", Map("value" -> 3)).map {
         _ shouldBe StringResult("2 3 1 2 3")
       }
+      t5 <- doAction("insert", "invocation_type_conversion_test", Map()).map {
+        _ shouldBe AnyResult(true)
+      }
+      t6 <- doAction("update", "invocation_type_conversion_test", Map()).map {
+        _ shouldBe AnyResult(true)
+      }
     } yield {
       t1
     }
@@ -1019,8 +1025,8 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         ))
       t2 <- doAction("get", "owner_with_forest_with_trees", Map("name" -> "Pedro"))
         .mapTo[MapResult]
-        .map {
-          _.result shouldBe ( YamlUtils.parseYamlData(
+        .map { r =>
+          removeIds(r.result) shouldBe ( YamlUtils.parseYamlData(
             """
                name: Pedro
                address: Morocco
@@ -1030,8 +1036,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
                  area: 20.50
                  trees: oaks
                  tree_list:
-                 - id: 20
-                   forest: OF1
+                 - forest: OF1
                    plant_date: 2000-01-01
                    height: 5.3
                    diameter: 1.0

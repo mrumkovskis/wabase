@@ -7,7 +7,7 @@ import org.mojoz.querease.{ValidationException, ValidationResult}
 import org.scalatest.flatspec.{AsyncFlatSpec, AsyncFlatSpecLike}
 import org.scalatest.matchers.should.Matchers
 import org.tresql.{Query, Resources, Result, convAny, convLong}
-import org.wabase.QuereaseActionsDtos.Person
+import org.wabase.QuereaseActionsDtos.{Person, PersonWithHealthDataHealth}
 
 import java.io.InputStream
 import scala.concurrent.duration.DurationInt
@@ -491,6 +491,13 @@ class QuereaseActionTestPersonManager {
 
   def personSaveJavaMapBizMethod(data: java.util.Map[String, Any]) = {
     data
+  }
+
+  def multipleArgConversions(data: Map[String, Any], dto: PersonWithHealthDataHealth,
+                             list: Seq[Map[String, Any]], arr: Array[PersonWithHealthDataHealth],
+                            )(implicit qe: AppQuerease, qio: AppQuereaseIo[Dto]): Boolean = {
+    qio.fill[PersonWithHealthDataHealth](data).toMap == dto.toMap &&
+      list.map(qio.fill[PersonWithHealthDataHealth](_).toMap) == arr.map(_.toMap).toSeq
   }
 }
 

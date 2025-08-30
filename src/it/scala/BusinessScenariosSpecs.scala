@@ -77,12 +77,9 @@ object ScriptValidations {
 }
 
 object Guidelines {
-  def requestCalculation(result: Result[RowLike], filterCond: dto.request_calculation_view)(
-    implicit qio: AppQuereaseIo[Dto]) = {
-    result.map { row =>
-      val h = new dto.response_calculation_view
-      h.fill(row)(qio.qe)
-    }.filter(d => d.code == "code2" && d.category == filterCond.category)
+  def requestCalculation(result: Array[dto.response_calculation_view],
+                         filterCond: dto.request_calculation_view) = {
+    result.filter(d => d.code == "code2" && d.category == filterCond.category)
   }
 
   def qeCall(ctx: WabaseRequestContext) = {
