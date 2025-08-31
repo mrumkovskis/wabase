@@ -45,6 +45,8 @@ object ResultEncoder {
 
   def encodeToJsonBytes[T: Encoder](value: T): Array[Byte] = Json.encode(value).toByteArray
 
+  def encodeToJsonByteString[T: Encoder](value: T): ByteString = ByteString.fromArrayUnsafe(encodeToJsonBytes(value))
+
   def encodeToJsonString[T: Encoder](value: T): String = new String(encodeToJsonBytes(value), "UTF-8")
 
   def encodeAnyToJsonBytes(value: Any): Array[Byte] = {

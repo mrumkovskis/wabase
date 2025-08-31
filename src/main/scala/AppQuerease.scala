@@ -1599,8 +1599,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     def encodeJson(data: Any): Future[(Source[ByteString, _], String, ContentType, Option[Long])] = {
       import ResultEncoder._
       implicit lazy val enc: JsValueEncoderPF = JsonEncoder.extendableJsValueEncoderPF(enc)(jsonValueEncoder)
-      val res = encodeToJsonBytes(data)
-      Future.successful((Source.single(ByteString.fromArrayUnsafe(res)), null, ct, Option(res.length)))
+      val res = encodeToJsonByteString(data)
+      Future.successful((Source.single(res), null, ct, Option(res.length)))
     }
     def encodePrimitive(
        v: Any,
