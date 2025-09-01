@@ -1081,6 +1081,9 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         }
         case r: TresqlSingleRowResult => iterator(r.map(_.toMap))
         case HttpEntityResult(ent, dec) => decodeHttpEntity(ent, null, true, dec)(qr.as).flatMap(iterator)(qr.ec)
+        case fr: FileResult => iterator(HttpEntityResult(fileHttpEntity(fr)
+          .getOrElse(sys.error(s"Cannot find file data: ${fr.fileInfo}")), null))
+        case HttpResult(resp) => iterator(HttpEntityResult(resp.entity, null))
         case RequestPartResult(parts, fs) =>
           import qr._
           parts.mapAsync(1)(AppQuerease.saveRequestPart(_, fs))

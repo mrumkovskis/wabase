@@ -1494,12 +1494,12 @@ fields:
 list:
 - "{'N1' name, 'S1' surname} + {'N2', 'S2'}"      # yaml parser wants to put tresql in quotes
 insert:
-- foreach extract entity http get '/extract_http_entity_test4':
+- foreach http get '/extract_http_entity_test4':
   - name = {:name || ' ' || :name}
   - surname = {:surname || ' ' || :surname}
 update:
 - data_file = to file (http get '/extract_http_entity_test4')
-- foreach extract entity file {:data_file.id, :data_file.sha_256}:
+- foreach file {:data_file.id, :data_file.sha_256}:
   - name = {:name || '-' || :name}
   - surname = {:surname || '-' || :surname}
 
