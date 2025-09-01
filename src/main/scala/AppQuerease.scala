@@ -1066,37 +1066,35 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     env: Map[String, Any],
     context: ActionContext,
   )(implicit qr: QuereaseResources): Future[IteratorResult] = {
-    def iterator(res: Any): Future[Iterator[Map[String, Any]]] = {
+    def iterator(res: Any, vd: ViewDef): Future[Iterator[Map[String, Any]]] = {
       def addParentData(map: Map[String, Any]) = {
         var key = ".."
         //      while (map.contains(key)) key += "_" + key // hopefully no .. key is in data map
-        map + (key -> data)
+        Option(vd).map(toCompatibleMap(map, _)).getOrElse(map) + (key -> data)
       }
       res match {
         case s: Seq[Map[String, _]@unchecked] => Future.successful((s map addParentData).iterator)
         case m: Map[String@unchecked, _] => Future.successful((List(m) map addParentData).iterator)
         case TresqlResult(tr) => tr match {
-          case SingleValueResult(sr) => iterator(sr)
+          case SingleValueResult(sr) => iterator(sr, vd)
           case r: Result[_] => Future.successful(r.map(_.toMap) map addParentData)
         }
-        case r: TresqlSingleRowResult => iterator(r.map(_.toMap))
-        case HttpEntityResult(ent, dec) => decodeHttpEntity(ent, null, true, dec)(qr.as).flatMap(iterator)(qr.ec)
+        case r: TresqlSingleRowResult => iterator(r.map(_.toMap), vd)
+        case HttpEntityResult(ent, dec) => decodeHttpEntity(ent, null, true, dec)(qr.as).flatMap(iterator(_, vd))(qr.ec)
         case fr: FileResult => iterator(HttpEntityResult(fileHttpEntity(fr)
-          .getOrElse(sys.error(s"Cannot find file data: ${fr.fileInfo}")), null))
-        case HttpResult(resp) => iterator(HttpEntityResult(resp.entity, null))
+          .getOrElse(sys.error(s"Cannot find file data: ${fr.fileInfo}")), null), vd)
+        case HttpResult(resp) => iterator(HttpEntityResult(resp.entity, null), vd)
         case RequestPartResult(parts, fs) =>
           import qr._
           parts.mapAsync(1)(AppQuerease.saveRequestPart(_, fs))
             .runFold(scala.collection.mutable.ArrayBuffer[Map[String, Any]]())(_ += _)
             .map(_.iterator)
-        case CompatibleResult(HttpEntityResult(ent, dec), rf, isColl) =>
-          decodeHttpEntity(ent, Option(rf).map(_.name).orNull, isColl, dec)(qr.as).flatMap(iterator)(qr.ec)
-        case CompatibleResult(r, _, _) => iterator(r) // TODO Execute to compatible map
+        case CompatibleResult(r, rf, _) => iterator(r, Option(rf).flatMap(f => viewDefOption(f.name)).orNull)
         case x => sys.error(s"Not iterable result for foreach operation: $x")
       }
     }
     import qr.ec
-    doActionOp(op.initOp, data, env, context).flatMap(iterator)
+    doActionOp(op.initOp, data, env, context).flatMap(iterator(_, null))
     .flatMap { mapIterator =>
       var idx = 0
       Future.traverse(mapIterator.toSeq) { itData =>
