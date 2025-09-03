@@ -6,6 +6,7 @@ import org.apache.pekko.http.scaladsl.model.{HttpEntity, HttpMessage, HttpMethod
 import org.apache.pekko.util.ByteString
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
+import org.wabase.WabaseService.MediaTypes
 
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{Await, ExecutionContext, Future}
@@ -134,7 +135,11 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
     def doBasicAuthReq(usr: String, pwd: String) =
       response(HttpRequest(
         uri = Uri("/login"),
-        headers = List(org.apache.pekko.http.scaladsl.model.headers.Authorization(BasicHttpCredentials(usr, pwd)))
+        headers = List(
+          org.apache.pekko.http.scaladsl.model.headers.Authorization(BasicHttpCredentials(usr, pwd)),
+          // set this header to see if marshalling content negotiation is passed
+          org.apache.pekko.http.scaladsl.model.headers.Accept(MediaTypes.`application/json`)
+        )
       ))
     def encryptedSession(resp: HttpResponse) = WabaseService.optionalHttpHeaderValuePF(resp) {
       case `Set-Cookie`(c) if c.name == WabaseAuthentication.SessionCookieName => c.value

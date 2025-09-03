@@ -272,17 +272,22 @@ object WabaseUnmarshallers extends WabaseUnmarshallers {
 trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with QuereaseMarshalling with OptionMarshalling =>
   import app.qe
   import ResultEncoder.EncoderFactory
+
+  /* Is used instead of predefined StringMarshaller to pass content negotiation if accept headers do not match */
+  private def opaqueStringMarshaller: ToResponseMarshaller[String] =
+    Marshaller.opaque(sr => HttpResponse(status = StatusCodes.OK, entity = HttpEntity(Option(sr).getOrElse(""))))
+
   implicit def toEntityQuereaseMapResultMarshaller (viewName: String,
                                                     resFilter: ResultRenderer.ResultFilter):  ToEntityMarshaller[MapResult]  =
     Marshaller.combined((mr:  MapResult) => (mr.result, viewName, resFilter))
-  implicit val toEntityQuereaseLongResultMarshaller:      ToEntityMarshaller  [LongResult]   =
-    Marshaller.combined("" + _.value)
-  implicit val toEntityQuereaseStringResultMarshaller:    ToEntityMarshaller  [StringResult]     =
-    Marshaller.combined(sr => Option(sr.value).getOrElse(""))
-  implicit val toEntityQuereaseNumberResultMarshaller:    ToEntityMarshaller  [NumberResult]     =
-    Marshaller.combined(_.value.toString)
-  implicit val toEntityQuereaseIdResultMarshaller:        ToEntityMarshaller  [IdResult]       =
-    Marshaller.combined(_.toString)
+  implicit val toEntityQuereaseLongResultMarshaller:      ToResponseMarshaller  [LongResult]   =
+    Marshaller { _ => (lr: LongResult) => opaqueStringMarshaller("" + lr.value) }
+  implicit val toEntityQuereaseStringResultMarshaller:    ToResponseMarshaller  [StringResult]     =
+    Marshaller { _ => (lr: StringResult) => opaqueStringMarshaller(lr.value) }
+  implicit val toEntityQuereaseNumberResultMarshaller:    ToResponseMarshaller  [NumberResult]     =
+    Marshaller { _ => (nr: NumberResult) => opaqueStringMarshaller(String.valueOf(nr.value))}
+  implicit val toEntityQuereaseIdResultMarshaller:        ToResponseMarshaller  [IdResult]       =
+    Marshaller { _ => (id: IdResult) => opaqueStringMarshaller(id.toString) }
   implicit def toResponseQuereaseKeyResultMarshaller:     ToResponseMarshaller[KeyResult]      =
     Marshaller { ec => kr =>
       import AppMetadata._
@@ -308,7 +313,7 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
         case ResultValue(value) => Marshaller { _ => _ =>
            toResponseWabaseResultMarshaller(ec)(wr.copy(result = value))
         }
-        case null => Marshaller.combined(_ => "")
+        case null => Marshaller.opaque(_ => HttpResponse(StatusCodes.OK))
       }
     responseMarshaller.map { response =>
       def setHeaders(resp: HttpResponse) = {
@@ -327,8 +332,8 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
   }
   implicit val toEntityQuereaseNoResultMarshaller:          ToResponseMarshaller  [NoResult.type]  =
     Marshaller.combined(_ => HttpResponse(status = StatusCodes.NotFound))
-  implicit val toEntityQuereaseDeleteResultMarshaller:      ToEntityMarshaller[QuereaseDeleteResult] =
-    Marshaller.combined(_.count.toString)
+  implicit val toEntityQuereaseDeleteResultMarshaller:      ToResponseMarshaller[QuereaseDeleteResult] =
+    Marshaller { _ => (dr: QuereaseDeleteResult) => opaqueStringMarshaller(dr.count.toString) }
   implicit val toResponseFileResultMarshaller:              ToResponseMarshaller[FileResult] = Marshaller.combined {
     fr => app.qe.fileHttpEntity(fr).map { ent =>
       HttpResponse(status = StatusCodes.OK, entity = ent)

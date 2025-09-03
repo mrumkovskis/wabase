@@ -140,12 +140,12 @@ class MarshallingSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
   it should "marshal number result" in {
     val svc = service
     import svc.toEntityQuereaseLongResultMarshaller
-    var entity: MessageEntity = null
-    var entityFuture: Future[MessageEntity] = null
+    var entity: HttpEntity = null
+    var response: Future[HttpResponse] = null
 
     val result = new LongResult(42)
-    entityFuture = Marshal(result).to[MessageEntity]
-    entity = Await.result(entityFuture, 1.second)
+    response = Marshal(result).to[HttpResponse]
+    entity = Await.result(response, 1.second).entity
     entity.contentType shouldEqual ContentTypes.`text/plain(UTF-8)`
     Await.result(entity.toStrict(1.second), 1.second).data.decodeString("UTF-8") shouldEqual "42"
   }
