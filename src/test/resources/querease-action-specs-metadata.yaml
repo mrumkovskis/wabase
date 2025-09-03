@@ -1032,8 +1032,7 @@ fields:
   - address
 get:
 - val = get owner
-- if if_defined_or_else(:val.name, true, false) :val
-  else status 404 {'not found'}
+- if is_defined(:val.name) :val else status 404 {'not found'}
 
 
 name: extract_http_header_test
