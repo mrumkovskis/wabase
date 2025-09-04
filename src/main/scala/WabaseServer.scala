@@ -21,7 +21,7 @@ class WabaseServer(
   enableDeferredRequests: Boolean,
 ) {
   val port = WabaseServer.port
-  if (enableDeferredRequests)   // start server event subscriber watcher actor
+  if (enableServerNotifications)   // start server event subscriber watcher actor
     wabase.system.actorOf(Props(classOf[ServerNotifications.EventSubscriberWatcher]),
       ServerNotifications.SubscriberWatcherActorName)
   private val deferredControl =
