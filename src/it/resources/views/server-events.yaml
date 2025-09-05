@@ -1,7 +1,6 @@
 name: server_events
 api: get list save
 decoder: none
-table:
 key: topic
 fields:
 - topic

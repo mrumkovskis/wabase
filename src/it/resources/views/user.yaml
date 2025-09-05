@@ -1,5 +1,4 @@
 name: user-with-roles-array
-table:
 api: get
 fields:
 get:
@@ -25,7 +24,6 @@ fields:
 
 
 name:     current_user
-table:
 api:      get
 fields:
 - user_id

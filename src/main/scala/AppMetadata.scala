@@ -58,6 +58,12 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   private lazy val macrosInstance = Option(macrosClass).map(getObjectOrNewInstance(_, "metadata macros")).orNull
   lazy val macroResources = new MacroResourcesImpl(macrosInstance, tresqlMetadata)
   override lazy val metadataConventions: AppMdConventions = new DefaultAppMdConventions(resourceLoader)()
+  override lazy val viewDefLoader: YamlViewDefLoader =
+    new YamlViewDefLoader(tableMetadata, yamlMetadata, joinsParser, metadataConventions, uninheritableExtras, typeDefs) {
+      override protected def isViewDef(m: Map[String, _]) = {
+        !m.contains("columns") && !m.contains("job") && !m.contains("on") && !m.contains("type")
+      }
+    }
   override lazy val nameToViewDef: Map[String, ViewDef] =
     toAppViewDefs(viewDefLoader.nameToViewDef)
 

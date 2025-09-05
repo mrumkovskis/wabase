@@ -1,5 +1,4 @@
 name:   login_using_json_or_urlencoded
-table:
 api:    insert
 fields:
 - name

@@ -1,5 +1,4 @@
 name:   logout
-table:
 api:    insert
 fields:
 insert:

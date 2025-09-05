@@ -1,5 +1,4 @@
 name:   roles_test
-table:
 api:    public list, private get, other delete
 fields:
 - id

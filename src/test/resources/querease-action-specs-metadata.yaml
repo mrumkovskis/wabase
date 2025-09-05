@@ -115,7 +115,6 @@ columns:
 
 
 name: constants
-table:
 get:
   - '"text"'
 list:
@@ -244,7 +243,6 @@ list:
 
 
 name: person_with_main_account
-table:
 fields:
 - id
 get:
@@ -256,7 +254,6 @@ get:
 
 
 name: variable_transform_test
-table:
 fields:
 get:
 - v1.n = 'Gunzis'
@@ -376,13 +373,11 @@ fields:
 - name
 - birthdate
 - purchases * = :
-    table:
     fields:
     - purchase_time
     - item
     - amount
 - vaccines * = :
-    table:
     fields:
     - manipulation_date
     - vaccine
@@ -504,7 +499,6 @@ fields:
 
 
 name:   status_test_1
-table:
 api:    get, save, list, count
 fields:
 - status =
@@ -519,7 +513,6 @@ list:
 
 
 name:   status_test_2
-table:
 api:    get, save, list, count
 fields:
   - id
@@ -534,7 +527,6 @@ list:
 
 
 name:   status_test_3
-table:
 api:    get, save, list, count
 fields:
   - id
@@ -549,7 +541,6 @@ count:
 
 
 name:   status_test_4
-table:
 api:    get, save, list, count, delete
 fields:
   - id
@@ -565,7 +556,6 @@ delete:
 
 
 name: invocation_test_1
-table:
 api: get, save, count, create, delete
 fields:
 - s1
@@ -594,7 +584,6 @@ delete:
 
 
 name: invocation_test_2
-table:
 api: get, list, save, delete, count
 key: key
 fields:
@@ -622,7 +611,6 @@ count:
 
 
 name: invocation_test_4
-table:
 api: list, save
 fields:
 - key
@@ -634,7 +622,6 @@ insert:
 
 
 name: invocation_result_mapper_test
-table:
 api: list
 fields:
 - person_name
@@ -644,7 +631,6 @@ list:
 
 
 name: multi_argument_invocation
-table:
 api: get, save, delete
 get:
 - multipleStringArguments({'a'}, {'b'}) {'c'}
@@ -686,7 +672,6 @@ delete:
 
 
 name: if_test_2
-table:
 api: get, list
 fields:
 - value
@@ -734,7 +719,6 @@ save:
 
 
 name: foreach_test_3
-table:
 api: list, count
 fields:
 - nr      int
@@ -786,7 +770,6 @@ get:
 
 
 name: remove_var_test
-table:
 api: insert, update
 fields:
 - var1
@@ -828,7 +811,6 @@ list:
 
 
 name: to_file_test3
-table:
 api: list
 list:
   - file = to file |shop_db:purchase{customer, item}#(1,2) 'purchases'
@@ -836,7 +818,6 @@ list:
 
 
 name: conf_test
-table:
 api: list, get, insert, update
 get:
 - uri = conf string conf.test.uri
@@ -854,7 +835,6 @@ update:
 
 
 name: http_test_1
-table:
 api: get, delete
 get:
 - http '/invocation_test_1'
@@ -864,7 +844,6 @@ delete:
 
 
 name: http_test_2
-table:
 key: name
 api: get, list, save
 fields:
@@ -921,7 +900,6 @@ save:
 name: http_forest
 api: get, update
 key: nr
-table:
 fields:
 - nr [!]  # not updatable to ensure that appears in http url
 - owner
@@ -936,7 +914,6 @@ update:
 
 name: json_codec_1
 api: get, insert
-table:
 fields:
 - nr
 - owner
@@ -955,7 +932,6 @@ insert:
 
 name: json_codec_2
 api: get
-table:
 fields:
 get:
 - from json http get { '/http_forest', '?', 'Nr1' nr, 'Owner5' owner, 12.4 area, 'Fig' trees }
@@ -963,7 +939,6 @@ get:
 
 name: last_step_assignment_test
 api: get
-table:
 fields:
 - nr
 - value
@@ -990,7 +965,6 @@ name: forest_with_trees
 extends: forest
 fields:
 - tree_list * = :
-    table:
     fields:
     - id
     - plant_date  date
@@ -1014,7 +988,6 @@ get:
 
 
 name: not_found_test
-table:
 api: get
 fields:
 - name
@@ -1025,7 +998,6 @@ get:
 
 
 name: not_found_test_2
-table:
 api: get
 fields:
   - name
@@ -1036,7 +1008,6 @@ get:
 
 
 name: extract_http_header_test
-table:
 api: get, list
 key: id
 fields:
@@ -1055,7 +1026,6 @@ list:
 
 
 name: extract_http_cookie_test
-table:
 api: get, list
 key: id
 fields:
@@ -1074,16 +1044,13 @@ list:
 
 
 name: variable_path_test
-table:
 api: get
 fields:
 - f1
 - f2:
-    table:
     fields:
     - c1
     - c2:
-        table:
         fields:
         - gc1
 get:
@@ -1093,7 +1060,6 @@ get:
 
 
 name: template_test1
-table:
 api: get, list, insert, update, delete
 fields:
 - name
@@ -1110,7 +1076,6 @@ delete:
 
 
 name: email_test1
-table:
 api: get, insert
 fields:
 - attachment
@@ -1134,7 +1099,6 @@ insert:
 
 
 name: not_decode_request_insert_test
-table:
 decoder: none
 api: insert, update, get
 fields:
@@ -1151,7 +1115,6 @@ update:
 
 
 name: not_decode_request_update_test
-table:
 decoder: none
 api: insert, update, get
 fields:
@@ -1168,7 +1131,6 @@ update:
 
 
 name: form_urlencoded_test
-table:
 api: insert, get
 fields:
   - name
@@ -1185,7 +1147,6 @@ insert:
 
 
 name: form_urlencoded_with_evaluator_test
-table:
 api: insert, get
 explicit db: true
 fields:
@@ -1200,7 +1161,6 @@ get:
 
 
 name: form_urlencoded_empty_status_test
-table:
 api: insert, get
 explicit db: true
 fields:
@@ -1212,7 +1172,6 @@ get:
 
 
 name: build_cursors_test
-table:
 api: list, get
 fields:
 - title
@@ -1247,7 +1206,6 @@ action:
 
 
 name: job_call_test1
-table:
 api: get, list
 fields:
   - name
@@ -1259,14 +1217,12 @@ list:
 
 
 name: resource_test1
-table:
 api: get
 get:
 - resource '/resource.txt'
 
 
 name: result_render_test
-table:
 api: insert, update, get, delete, count
 fields:
 - string_field
@@ -1307,7 +1263,6 @@ count:
 
 
 name: invocation_test_3
-table:
 api: get, list, delete, create, count, insert, update
 key: name
 fields:
@@ -1330,7 +1285,6 @@ update:
 
 name: extract_parts_test
 decoder: none
-table:
 segments: filename?
 api: insert, update
 insert:
@@ -1347,14 +1301,12 @@ update:
 
 name: extract_parts_test2
 decoder: none ${small-file.upload.size-limit} # second parameter denotes reference to configuration property with content size limit
-table:
 api: insert
 insert:
   - as any org.wabase.QuereaseActionTestManagerObj.processRequestParts extract parts
 
 
 name: fake_key_test
-table:
 key: id, sha_256
 api: get
 get:
@@ -1363,7 +1315,6 @@ get:
 
 name: upload_test
 decoder: none
-table:
 key: filename
 api: insert
 insert:
@@ -1371,7 +1322,6 @@ insert:
 
 
 name: download_test
-table:
 key: id, sha_256
 api: get
 get:
@@ -1380,7 +1330,6 @@ get:
 
 name: http_with_limit_test
 decoder: none 8 # second parameter denotes content size limit for request and for pekko client response
-table:
 key: id, sha_256
 api: get
 get:
@@ -1390,7 +1339,6 @@ get:
 name: custom_decoder_test
 decoder: org.wabase.QuereaseActionTestManagerObj.customDecoder
 api: insert
-table:
 save:
 - as any {:id id, :value value}
 
@@ -1398,7 +1346,6 @@ save:
 name: default_decoder_test
 decoder: default 1k         # default decoder needs to be specified if additionally max content size limit is necessary
 api: insert
-table:
 fields:                     # fields must be defined since default json decoder checks against view structure
 - id string
 - value
@@ -1408,7 +1355,6 @@ insert:
 
 name: http_client_test
 api: get
-table:
 fields:
 - uri
 get:
@@ -1418,7 +1364,6 @@ get:
 
 name: this_test1
 api: get
-table:
 fields:
 - name
 - surname
@@ -1431,13 +1376,11 @@ get:
 name: evaluator_db_test
 api: get
 explicit db: true
-table:
 get:
 - null{'Hello' || ' ' || 'from' || ' ' || 'wabase!'}
 
 
 name: evaluator_db_test1
-table:
 api: get
 explicit db: true
 get:
@@ -1450,7 +1393,6 @@ name: extract_http_entity_test1
 decoder: none
 api: insert, update
 explicit db: true
-table:
 update:
 - http post '/extract_http_entity_test1' extract entity
 insert:
@@ -1461,7 +1403,6 @@ name: extract_http_entity_test2
 decoder: none
 api: insert, update
 explicit db: true
-table:
 insert:
 - as result extracted_entity = extract entity               # keep result feature, step result not converted to bindable values
 - http post '/extract_http_entity_test1' :extracted_entity
@@ -1471,7 +1412,6 @@ name: extract_http_entity_test3
 decoder: none
 api: insert, update
 explicit db: true
-table:
 fields:
 - name
 insert:
@@ -1486,7 +1426,6 @@ name: extract_http_entity_test4
 decoder: none
 api: insert, update, list
 explicit db: true
-table:
 fields:
   - name      : name            # define label for csv header rendering
   - surname   : surname         # define label for csv header rendering
@@ -1507,7 +1446,6 @@ name: extract_csv_http_entity_test
 decoder: none
 api: insert, update
 explicit db: true
-table:
 fields:
 - name
 - surname
@@ -1526,7 +1464,6 @@ name: extract_xml_http_entity_test
 decoder: none
 api: insert, update
 explicit db: true
-table:
 fields:
   - name
   - surname
@@ -1543,7 +1480,6 @@ name: invocation_keep_result_test
 decoder: none
 api: insert
 explicit db: true
-table:
 insert:
 - as result res = http post '/extract_http_entity_test1' extract entity
 - org.wabase.QuereaseActionTestManagerObj.httpResult :res
@@ -1552,7 +1488,6 @@ insert:
 name: invocation_type_conversion_test
 decoder: none
 api: get, list, insert, update
-table:
 key: k    # define key to make url distinction between get and list api calls
 get:
 - as person_with_health_data_health unique { '2025-08-30' manipulation_date, 'TicoVac' vaccine, false had_virus }
@@ -1580,7 +1515,6 @@ update:
 
 name: set_headers_test1
 api: get
-table:
 get:
 - status ok
     set_cookie(name = 'test', value = 'test_val', expires = '2025-02-02 23:10:05')
@@ -1591,7 +1525,6 @@ get:
 
 name: set_headers_test2
 api: get
-table:
 get:
   - redirect
       set_headers({'h1', 'v1'} + {'h2', 'v2'})
@@ -1603,7 +1536,6 @@ get:
 
 name: set_headers_test3
 api: get
-table:
 get:
   - hn = 'response_header_name'
   - hv = 'response_header_value'
@@ -1614,7 +1546,6 @@ get:
 
 name: set_headers_test4
 api: get
-table:
 get:
   - name = 'my_cookie'
   - value = 'my_cookie_value'
@@ -1628,7 +1559,6 @@ get:
 name: source_tresql_binding_test1
 api: insert, update
 decoder: none
-table:
 insert:
 - saved_file = to file (extract entity) 'source_tresql_binding_test1_ins'
 - file = file {:saved_file.id, :saved_file.sha_256}
@@ -1642,7 +1572,6 @@ update:
 
 name: array_test1
 api: get, list, insert
-table:
 get:
 - arr = [({1} + {2} + {3})#(1)]
 - as any :arr

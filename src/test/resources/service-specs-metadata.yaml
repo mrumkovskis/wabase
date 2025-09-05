@@ -96,7 +96,6 @@ do:       org.wabase.WabaseTestHandlers.error
 name: view1
 api: get, insert, update, delete, list, create, count
 explicit db: true
-table:
 key: id
 fields:
 - id
@@ -121,7 +120,6 @@ count:
 name: login
 api: get
 explicit db: true
-table:
 get:
 - roles = [({trim('guest')} + {trim('admin')} + {trim('operator')})#(1)]      # trim values for hsqldb to avoid space padding
 - if :current_user.credentials.username = 'Gunza' & :current_user.credentials.password = 'good'
@@ -136,7 +134,6 @@ get:
 name: user_principal
 api: get
 explicit db: true
-table:
 get:
 - as any :current_user
 
@@ -144,7 +141,6 @@ get:
 name: user_data_merge
 api: get
 explicit db: true
-table:
 get:
 - status ok
     user_attrs({'password', null} /*remove attribute*/)
@@ -155,7 +151,6 @@ get:
 name: nested_view
 api: insert, update
 explicit db: true
-table:
 fields:
 - code int
 - children * nested_view
@@ -165,7 +160,6 @@ name: querease_action_exception
 api: get, insert, update
 explicit db: true
 decoder: none
-table:
 get:
 - org.wabase.WabaseTestHandlers.error
 insert:
@@ -177,7 +171,6 @@ update:
 name: key_in_action
 api: get
 explicit db: true
-table:
 get:
 - org.wabase.WabaseTestHandlers.keyInAction :code
 
@@ -186,7 +179,6 @@ name: entity_size_limit
 api: insert
 decoder: default 64b
 explicit db: true
-table:
 fields:
 - id
 - name
@@ -197,7 +189,6 @@ insert:
 name: state_extractor
 api: get
 explicit db: true
-table:
 fields:
 get:
 - as any unique_opt { if_defined_or_else(:current_name?, :current_name, null) name,

@@ -1,6 +1,5 @@
 name: request_calculation_view
 api: insert
-table:
 fields:
 - category
 insert:
@@ -23,7 +22,6 @@ list:
 
 name: response_calculation_view
 api: list
-table:
 fields:
 - code
 - category

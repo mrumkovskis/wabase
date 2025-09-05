@@ -55,23 +55,19 @@ idx:
 
 
 name:   api_roles_test_1
-table:
 api:    create, count, get, list, insert, update, save, delete
 
 
 name:   api_roles_test_2
-table:
 api:    count, USER get, list, MANAGER create, save, MANAGER, BIG_BROTHER delete
 
 
 name:   api_roles_test_3
-table:
 api:
 - USER get, list, MANAGER_1, MANAGER_2 create, save, delete
 
 
 name:   api_roles_test_4
-table:
 api:
 - count: ACCOUNTANT
 - get, list: USER, MANAGER
@@ -79,17 +75,14 @@ api:
 
 
 name:   api_roles_test_5
-table:
 api:    # get, list
 
 
 name:   api_roles_test_6
-table:
 api:
 
 
 name:   api_roles_test_7
-table:
 
 
 name: sys_role_choice

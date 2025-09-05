@@ -235,7 +235,6 @@ key:    id
 fields:
 - id
 - child = value :
-    table:
     fields:
     - id
     - long              long
@@ -292,12 +291,10 @@ fields:
 
 # used only for metadata loading to verify that a StackOverflowError does not occur
 name: pers
-table:
 api: insert
 fields:
 - name
 - children:
-  table:
   fields:
   - mother pers
   - father pers

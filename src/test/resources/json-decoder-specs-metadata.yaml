@@ -1,5 +1,4 @@
 name:   decoder_test
-table:
 fields:
 - id
 - string            string
@@ -30,7 +29,6 @@ fields:
 
 
 name:   decoder_test_child
-table:
 fields:
 - id
 - name              string
