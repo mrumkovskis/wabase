@@ -1,63 +1,37 @@
 package org.wabase
 
 import org.apache.pekko.actor.{Actor, ActorRef, ActorSystem, Props}
-import org.apache.pekko.extension.quartz.QuartzSchedulerExtension
-import org.wabase.WabaseScheduler.Tick
+import org.wabase.WabaseScheduler.{JobRunning, JobStarted, Tick}
 import org.tresql._
 import org.wabase.AppMetadata.{JobAct, JobDef}
 
 import scala.concurrent.{ExecutionContext, Future}
-import scala.jdk.CollectionConverters._
 import scala.language.existentials
 import scala.util.control.NonFatal
 import scala.util.{Failure, Success}
 
-
 class WabaseScheduler(wabase: AppBase[_], system: ActorSystem) extends Loggable {
-  protected lazy val scheduler = QuartzSchedulerExtension(system)
-  protected lazy val jobActorClass = try Class.forName(config.getString("app.job.actor")) catch {
-    case NonFatal(ex) => throw new RuntimeException(s"Failed to get job actor class", ex)
-  }
-  protected lazy val wabaseJobActor = system.actorOf(Props(jobActorClass, wabase))
-
   def init(): Future[QuereaseResult] = {
-    WabaseJobStatusController.init(wabase.dbAccess)
-    if (config.hasPath("pekko.quartz.schedules")) {
-      config
-        .getConfig("pekko.quartz.schedules")
-        .root().asScala.keys
-        .foreach { jobName =>
-          val enabled =
-            Option(s"pekko.quartz.schedules.$jobName.enabled")
-              .filter(config.hasPath).map(config.getBoolean)
-              .getOrElse(true)
-          if (enabled) {
-            logger.debug(s"Scheduling job '$jobName'")
-            schedule(jobName)(scheduler, wabaseJobActor)
-          } else {
-            logger.info(s"Job '$jobName' is disabled in configuration, will not be scheduled")
-          }
-        }
-    } else {
-      logger.debug(s"No schedules found for background jobs.")
+    val wabaseJobActor = if (config.getIsNull("app.job.actor")) null else try {
+      val jobActorClass = Class.forName(config.getString("app.job.actor"))
+      system.actorOf(Props(jobActorClass, wabase, this), config.getString("app.job.actor-name"))
+    } catch {
+      case NonFatal(ex) => throw new RuntimeException(s"Failed to start job actor", ex)
     }
-
-    if (config.hasPath("app.init.job")) {
-      val jobDef = wabase.qe.jobDef(config.getString("app.init.job"))
+    if (!config.getIsNull("app.job.scheduler-initializer")) {
+      if (wabaseJobActor != null) {
+        val (clazz, initFun) = OpParser.classNameFunctionName(config.getString("app.job.scheduler-initializer"))
+        invokeFunction(clazz, initFun, Seq(
+          (classOf[AppBase[_]], () => wabase),
+          (classOf[ActorSystem], () => system),
+          (classOf[ActorRef], () => wabaseJobActor),
+        ))(system.dispatcher)
+      } else logger.warn("Cannot schedule jobs, see that parameter app.job.actor is not null")
+    }
+    if (!config.getIsNull("app.job.on-start-job")) {
+      val jobDef = wabase.qe.jobDef(config.getString("app.job.on-start-job"))
       doJob(jobDef)
     } else Future.successful(NoResult)
-  }
-
-  protected def schedule(jobName: String)(
-    scheduler: QuartzSchedulerExtension,
-    wabaseJobActor: ActorRef
-  ): Unit = {
-    wabase.qe.jobDefOption(jobName).map { job =>
-      scheduler.schedule(jobName, wabaseJobActor, Tick(job, this))
-    }.getOrElse {
-      logger.warn(s"Job definition for schedule $jobName not found." +
-        s"If you would like to schedule please override this method or define wabase job.")
-    }
   }
 
   def doJob(job: JobDef): Future[QuereaseResult] = {
@@ -83,21 +57,27 @@ class WabaseScheduler(wabase: AppBase[_], system: ActorSystem) extends Loggable 
 }
 
 object WabaseScheduler {
-  case class Tick(job: JobDef, executor: WabaseScheduler)
+  /** Message sent to WabaseJobActor to ask to start job execution */
+  case class Tick(job: JobDef)
+  /** message to inform sender that job has been started */
+  case object JobStarted
+  /** message to inform sender that job could not be started because it is already running */
+  case object JobRunning
 }
 
-class WabaseJobActor(wabase: AppBase[_]) extends Actor {
+class WabaseJobActor(wabase: AppBase[_], scheduler: WabaseScheduler) extends Actor {
+  override def preStart(): Unit = {
+    context.system.log.info(s"Wabase job control actor started...")
+  }
   override def receive: Receive = {
-    case Tick(jd, scheduler) =>
-      val s = sender()
+    case Tick(jd) =>
       val jobName = jd.name
       val dbAccess = wabase.dbAccess
-
       try {
         if (WabaseJobStatusController.acquireIsRunnningLock(jobName)(dbAccess)) {
           context.system.log.info(jobName + " started")
           scheduler.doJob(jd).onComplete {
-            case Success(r) =>
+            case Success(_) =>
               WabaseJobStatusController.updateCronJobStatus(jobName, "SUCC")(dbAccess)
               context.system.log.info(jobName + " ended")
             case Failure(e) =>
@@ -105,11 +85,16 @@ class WabaseJobActor(wabase: AppBase[_]) extends Actor {
               WabaseJobStatusController.updateCronJobStatus(jobName, "ERR")(dbAccess)
               context.system.log.info(jobName + " ended with error")
           }(context.dispatcher)
-        }
+          sender() ! JobStarted
+        } else sender() ! JobRunning
       } catch {
         case NonFatal(e) =>
           throw e
       }
+  }
+
+  override def postStop(): Unit = {
+    context.system.log.info(s"Wabase job control actor stopped")
   }
 }
 
@@ -117,10 +102,6 @@ object WabaseJobStatusController {
 
   val job_max_time = config.getString("app.job.max-time")
   val jobStatusCp  = PoolName(config.getString("app.job.job-status-cp"))
-
-  def init(dbAccess: DbAccess) = dbAccess.newTransaction(jobStatusCp) { implicit res =>
-    Query("-cron_job_status[status != 'RUN']")
-  }
 
   def updateCronJobStatus(name: String, status: String)(dbAccess: DbAccess): Unit = dbAccess.newTransaction(jobStatusCp) {
     implicit res => status match {
@@ -149,7 +130,7 @@ object WabaseJobStatusController {
     // Because of multiple nodes and shutdowns - ignore 'RUN' lock held for too long:
     if (Query(s"""=cron_job_status[
                     cron_name = ? &
-                    (status != 'RUN' | report_time < now() - '$job_max_time'::interval)
+                    (status != 'RUN' | report_time < now() - `$job_max_time`)
                   ] {status, report_time, up_count} ['RUN', now(), up_count + 1]""", name)
       .affectedRowCount > 0)
       true

@@ -76,6 +76,10 @@ object ScriptValidations {
   }
 }
 
+object JobUtils {
+  def sleep(millis: Long) = Thread.sleep(millis)
+}
+
 object Guidelines {
   def requestCalculation(result: Array[dto.response_calculation_view],
                          filterCond: dto.request_calculation_view) = {
@@ -101,6 +105,7 @@ class BusinessScenariosSpecs extends BusinessScenariosBaseSpecs("http_tests") {
   override def resourcePath = "resources/"
   override def initHttpClient = server
   override def beforeAll() = {
+    server
   }
   override def afterAll() = {
     server.unbind() // unbind for cross-scala tests

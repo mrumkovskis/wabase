@@ -15,7 +15,7 @@ import org.apache.pekko.http.scaladsl.server.directives.ContentTypeResolver
 import org.apache.pekko.http.scaladsl.server.directives.FileAndResourceDirectives.ResourceFile
 import org.apache.pekko.http.scaladsl.unmarshalling.Unmarshaller
 import org.apache.pekko.stream.scaladsl.StreamConverters
-import org.apache.pekko.util.ByteString
+import org.apache.pekko.util.{ByteString, Timeout}
 import org.mojoz.metadata.ViewDef
 import org.slf4j.LoggerFactory
 import org.tresql.parsing.QueryParsers
@@ -26,6 +26,7 @@ import org.wabase.WabaseService.Wabase
 
 import java.util.Locale
 import scala.annotation.tailrec
+import scala.concurrent.duration.DurationInt
 import scala.concurrent.{ExecutionContext, Future}
 import scala.jdk.CollectionConverters._
 import scala.util.control.NonFatal
@@ -447,6 +448,26 @@ object WabaseService {
 
   def doActionWithKeyToPath(view_action: String, reqCtx: WabaseRequestContext): Future[HttpResponse] = {
     doAction(view_action, keyFromQueryToPath(reqCtx))
+  }
+
+  def startJob(jobName: String, ctx: WabaseRequestContext): Future[HttpResponse] = {
+    ctx.wabase.qe.jobDefOption(jobName).map { job =>
+      implicit val ec: ExecutionContext = ctx.as.dispatcher
+      val jobControlActorName = config.getString("app.job.actor-name")
+      ctx.as.actorSelection(ctx.as / jobControlActorName).resolveOne(1.second).flatMap { jobControActor =>
+        import org.apache.pekko.pattern.ask
+        implicit val timeout: Timeout = 1.second
+        jobControActor ? WabaseScheduler.Tick(job) map {
+          case WabaseScheduler.JobStarted => okResponse
+          case WabaseScheduler.JobRunning => HttpResponse(status = StatusCodes.Conflict,
+            entity = HttpEntity(s"Job '$jobName' is already running."))
+          case x => throw sys.error(s"Unknown message from scheduler '$x' for job '$jobName'")
+        }
+      }
+    }.getOrElse {
+      Future.successful(HttpResponse(status = StatusCodes.NotFound,
+        entity = HttpEntity(s"Job not found: '${ctx.wabase.sanitizedViewName(jobName)}'")))
+    }
   }
 
   def withReqMaxContentSize(ctx: WabaseRequestContext): WabaseRequestContext = {

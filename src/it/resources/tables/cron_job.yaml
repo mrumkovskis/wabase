@@ -1,0 +1,13 @@
+table: cron_job_status
+comments: Automatic process status control
+columns:
+  - id
+  - cron_name       ! 50
+  - status          ! 5 (RUN, ERR, SUCC)
+  - report_time     !
+  - up_count        ! int = 0
+  - succ_down_count ! int = 0
+  - err_down_count  ! int = 0
+  - collision_count ! int = 0
+uk:
+  - cron_name

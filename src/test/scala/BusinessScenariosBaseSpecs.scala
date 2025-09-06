@@ -373,8 +373,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
     import requestInfo._
     val fullCompare   = map.bd("full_compare", isFullCompareByDefault)
     val mergeResponse = map.b("merge_response")
-    val debugResponse = map.get("debug_response")
-      .map { case false => false case _ => true }.getOrElse(true)
+    val debugResponse = map.get("debug_response").forall { case false => false case _ => true }
     val expectedError = map.sd("error", null)
     val expectedResponse = (map.getOrElse("response", null), requestMap) match{
       case (resp, _) if !mergeResponse => resp

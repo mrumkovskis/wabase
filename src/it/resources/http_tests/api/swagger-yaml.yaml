@@ -13,6 +13,30 @@ response: |+
   - url: http://127.0.0.1
   security: []
   paths:
+    /check_person/{code}:
+      get:
+        summary: Get 'check_person' by 'code'
+        description: ""
+        parameters:
+        - name: code
+          in: path
+          description: code
+          required: true
+          schema:
+            type: string
+        responses:
+          "200":
+            description: ""
+          "400":
+            description: Bad request
+          "403":
+            description: Forbidden
+          "404":
+            description: Not Found
+          "500":
+            description: Internal server error
+          "503":
+            description: Service Unavailable
     /current_user:
       get:
         summary: Get 'current_user'
@@ -597,6 +621,10 @@ response: |+
             description: Service Unavailable
   components:
     schemas:
+      check_person:
+        type: object
+        properties: {}
+        required: []
       current_user:
         type: object
         properties:

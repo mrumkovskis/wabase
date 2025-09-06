@@ -28,6 +28,7 @@ class WabaseServer(
     if (enableDeferredRequests)
       new WabaseDeferredControl(wabase)(wabase.system)
     else null
+  new WabaseScheduler(wabase.app, wabase.system).init()
   private val service         = new WabaseService
 
   def handle(req: HttpRequest): Future[HttpResponse] =
