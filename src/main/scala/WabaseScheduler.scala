@@ -12,6 +12,8 @@ import scala.util.{Failure, Success}
 
 class WabaseScheduler(wabase: AppBase[_], system: ActorSystem) extends Loggable {
   def init(): Future[QuereaseResult] = {
+    if (config.getBoolean("app.job.clean-jobs-on-start"))
+      WabaseJobStatusController.init(wabase.dbAccess)
     val wabaseJobActor = if (config.getIsNull("app.job.actor")) null else try {
       val jobActorClass = Class.forName(config.getString("app.job.actor"))
       system.actorOf(Props(jobActorClass, wabase, this), config.getString("app.job.actor-name"))
@@ -102,6 +104,10 @@ object WabaseJobStatusController {
 
   val job_max_time = config.getString("app.job.max-time")
   val jobStatusCp  = PoolName(config.getString("app.job.job-status-cp"))
+
+  def init(dbAccess: DbAccess): Unit = dbAccess.newTransaction(jobStatusCp) { implicit res =>
+    Query("-cron_job_status[status != 'RUN']")
+  }
 
   def updateCronJobStatus(name: String, status: String)(dbAccess: DbAccess): Unit = dbAccess.newTransaction(jobStatusCp) {
     implicit res => status match {
