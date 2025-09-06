@@ -333,51 +333,40 @@ trait WabaseApp[User] {
     case wr => Future.successful(wr)
   }
 
+  def checkKeySize(viewDef: ViewDef, keySize: Int, actionName: String): Unit = actionName match {
+    case Action.List | Action.Count =>
+      if (keySize < viewDef.minKeySizeForList || keySize > viewDef.maxKeySizeForList) {
+        throw new BusinessException(
+          s"Invalid key size for $actionName of '${viewDef.name}'. " +
+            s"Expecting ${viewDef.expectedKeySizeDescr}, got $keySize")
+      }
+    case _ =>
+      val expectedKeySize = qe.viewNameToKeyFields(viewDef.name).count(!_.api.excluded)
+      if (keySize != expectedKeySize) {
+        throw new BusinessException(
+          s"Invalid key size for $actionName of '${viewDef.name}'. " +
+            s"Expecting $expectedKeySize, got $keySize")
+
+      }
+  }
+
   /** Converts key value from uri representation to appropriate type.
     * Default implementation also converts "null" to null.
     */
   def prepareKeyValue(field: FieldDef, value: Any): Any =
     if (value == "null") null else qe.convertToType(value, field.type_)
   def prepareKey(viewName: String, keyValues: Seq[Any], actionName: String): Map[String, Any] = {
-    qe.viewNameToPathSegments.get(viewName) match {
-      case Some(segments) =>
-        prepareSegments(viewName, segments, keyValues, actionName)
-      case _ =>
         val keyFields = qe.viewNameToKeyFields(viewName).filterNot(_.api.excluded)
         prepareKey(viewName, keyFields, keyValues, actionName)
-    }
   }
   def prepareKey(viewName: String, keyFields: Seq[FieldDef], keyValues: Seq[Any], actionName: String): Map[String, Any] = {
     if (keyValues.nonEmpty) {
-      if (keyValues.length != keyFields.length)
-        throw new BusinessException(
-          s"Unexpected key length for $actionName of $viewName - expecting ${keyFields.length}, got ${keyValues.length}")
-      else
+        checkKeySize(qe.nameToViewDef(viewName), keyValues.length, actionName)
         keyFields.zip(keyValues).map { case (f, v) =>
           try f.fieldName -> prepareKeyValue(f, v)
           catch {
             case util.control.NonFatal(ex) => throw new BusinessException(
               s"Failed to convert value for key field ${f.name} to type ${f.type_.name}", ex)
-          }
-        }.toMap
-    } else Map.empty
-  }
-  def prepareSegments(viewName: String, segments: Seq[AppMetadata.Segment], keyValues: Seq[Any], actionName: String): Map[String, Any] = {
-    def throwBadKeySize(expectedSize: Int) =
-      throw new BusinessException(
-        s"Unexpected key length for $actionName of $viewName - expecting ${expectedSize}, got ${keyValues.length}")
-    val minKeySize = segments.count(!_.isOptional)
-    if (keyValues.nonEmpty) {
-      if (keyValues.length < minKeySize)
-        throwBadKeySize(expectedSize = minKeySize)
-      else if (keyValues.length > segments.length)
-        throwBadKeySize(expectedSize = segments.length)
-      else
-        segments.zip(keyValues).map { case (s, v) =>
-          try s.name -> qe.convertToType(v, s.type_)
-          catch {
-            case util.control.NonFatal(ex) => throw new BusinessException(
-              s"Failed to convert value for key segment ${s.name} to type ${s.type_.name}", ex)
           }
         }.toMap
     } else Map.empty

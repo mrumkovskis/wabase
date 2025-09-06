@@ -1285,7 +1285,7 @@ update:
 
 name: extract_parts_test
 decoder: none
-segments: filename?
+key:    (filename)
 api: insert, update
 insert:
 - res = extract parts

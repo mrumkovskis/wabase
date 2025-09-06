@@ -292,28 +292,6 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
     val limit = getIntExtra(Limit, viewDef) getOrElse 100
 
-    val segments = getStringExtra(Segments, viewDef).map(_.split(""",\s+""").toList.map { s =>
-      val (segAndOpt, typeOpt) =
-        s.trim.split("::", 2).toList match {
-          case Seq(s)           => (s.trim, None)
-          case Seq(s, typeName) => (s.trim, Some(new Type(typeName.trim)))
-          case _ => sys.error(s"Failed to parse segments for ${viewDef.name}") // unexpected
-        }
-      val name       = if (segAndOpt.endsWith("?")) segAndOpt.dropRight(1) else segAndOpt
-      val isOptional = segAndOpt endsWith "?"
-      lazy val conventionsType = metadataConventions.typeFromExternal(name, typeOpt)
-      val type_ =
-        if (typeOpt.isDefined)
-          conventionsType
-        else
-          viewDef.fieldOpt(name).map(_.type_)
-            .orElse(viewDef.table match {
-              case null  => Some(conventionsType)
-              case table => tableMetadata.columnDefOption(table, name, viewDef.db).map(_.type_)
-            })
-            .getOrElse(conventionsType)
-      Segment(name, isOptional, type_)
-    }).orNull
     val explicitDb = getBooleanExtra(ExplicitDb, viewDef)
     val (decoder, maxContentSize) = getStringExtra(Decoder, viewDef)
       .map(parseDecoder(viewDef.name, _)).getOrElse((DefaultDecoder, null))
@@ -360,7 +338,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       viewDef.groupBy, viewDef.having, orderBy, extends_,
       comments, appFields, viewDef.saveTo, extras)
       .updateWabaseExtras(_ =>
-        AppViewDef(limit, segments, explicitDb, decoder, maxContentSize, timeout, sqlTimeout,
+        AppViewDef(limit, explicitDb, decoder, maxContentSize, timeout, sqlTimeout,
           auth, apiToRoles, actions, Map.empty, minKeySizeForList, maxKeySizeForList, expectedKeySizeDescr))
   }
 
@@ -1620,16 +1598,8 @@ object AppMetadata extends Loggable {
     db: String,
   )
 
-  /** Uri path segment definition for rest api */
-  case class Segment(
-    name: String,
-    isOptional: Boolean,
-    type_ : Type,
-  )
-
   trait AppViewDefExtras {
     val limit: Int
-    val segments: Seq[Segment]
     val explicitDb: Boolean
     val decoder: RequestDecoder
     val maxContentSize: jLong
@@ -1646,7 +1616,6 @@ object AppMetadata extends Loggable {
 
   private [wabase] case class AppViewDef(
     limit: Int = 1000,
-    segments: Seq[Segment] = null,
     explicitDb: Boolean = false,
     decoder: RequestDecoder = DefaultDecoder,
     maxContentSize: jLong = null,
@@ -1693,7 +1662,6 @@ object AppMetadata extends Loggable {
     private val defaultExtras = AppViewDef()
     private val appExtras = extras(WabaseViewExtrasKey, defaultExtras)
     override val limit = appExtras.limit
-    override val segments = appExtras.segments
     override val explicitDb = appExtras.explicitDb
     override val decoder = appExtras.decoder
     override val maxContentSize = appExtras.maxContentSize
@@ -1790,7 +1758,6 @@ object AppMetadata extends Loggable {
     val Auth = "auth"
     val Key   = "key"
     val Limit = "limit"
-    val Segments = "segments"
     val Validations = "validations"
     val ExplicitDb = "explicit db"
     val Decoder = "decoder"
@@ -1799,7 +1766,7 @@ object AppMetadata extends Loggable {
     val QuereaseViewExtrasKey = QuereaseMetadata.QuereaseViewExtrasKey
     val WabaseViewExtrasKey = AppMetadata.WabaseViewExtrasKey
     def apply() =
-      Set(Api, Auth, Key, Limit, Segments, Validations, ExplicitDb,
+      Set(Api, Auth, Key, Limit, Validations, ExplicitDb,
           Decoder, Timeout, SqlTimeout, QuereaseViewExtrasKey, WabaseViewExtrasKey,
       ) ++
         Action()
