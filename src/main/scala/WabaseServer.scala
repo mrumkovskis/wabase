@@ -19,7 +19,7 @@ class WabaseServer(
   wabase: WabaseService.Wabase,
   enableServerNotifications: Boolean,
   enableDeferredRequests: Boolean,
-) {
+) extends Loggable {
   val port = WabaseServer.port
   if (enableServerNotifications)   // start server event subscriber watcher actor
     wabase.system.actorOf(Props(classOf[ServerNotifications.EventSubscriberWatcher]),
@@ -28,7 +28,9 @@ class WabaseServer(
     if (enableDeferredRequests)
       new WabaseDeferredControl(wabase)(wabase.system)
     else null
-  new WabaseScheduler(wabase.app, wabase.system).init()
+  new WabaseScheduler(wabase.app, wabase.system).init().failed.foreach {
+    logger.error(s"Error occured initializing wabase scheduler", _)
+  }(wabase.system.dispatcher)
   private val service         = new WabaseService
 
   def handle(req: HttpRequest): Future[HttpResponse] =
