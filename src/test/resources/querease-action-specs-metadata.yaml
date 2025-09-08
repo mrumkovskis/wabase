@@ -188,6 +188,12 @@ fields:
 - birthdate
 
 
+name: person_choice
+table: person p
+fields:
+- name = p.name || ' ' || case(p.surname = null, '<no surname>', p.surname)
+
+
 name: person_accounts_details
 table: person
 fields:
@@ -208,11 +214,15 @@ joins:
 fields:
 - id
 - originator  = originator.number  -> = account [number = _] { id }
+- beneficiary_name =
 - beneficiary = beneficiary.number -> = account [number = _] { id }
 - amount
 - date_time -> = :time :
   - initial: now()
 save:
+- validations beneficiary:
+  - exists(^person_choice[^name = :beneficiary_name]{1}), "Beneficiary not found - '" ||
+      concat_ws('', :beneficiary_name, "'")
 - validations amount:
   - :amount > 0, 'Wrong amount ' || :amount || '. Amount must be greater than 0'
 - validations balance:

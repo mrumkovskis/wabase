@@ -355,6 +355,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
 
   it should "make purchase" in {
     val payment = Map(
+      "beneficiary_name" -> "Mr. Gunza <no surname>",
       "beneficiary" -> "GGGG",
       "originator" -> null,
       "amount" -> 100
@@ -404,6 +405,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       "manipulation_date" -> java.sql.Date.valueOf("2021-08-15")
     )
     val payment = Map(
+      "beneficiary_name" -> "Mr. Mario <no surname>",
       "beneficiary" -> "MMMM",
       "originator" -> null,
       "amount" -> 20

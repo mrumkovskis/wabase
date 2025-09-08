@@ -40,6 +40,7 @@ object QuereaseActionsDtos {
   class Payment extends DtoWithId {
     var id: java.lang.Long = null
     var originator: String = null
+    var beneficiary_name: String = null
     var beneficiary: String = null
     var amount: BigDecimal = null
     var date_time: java.sql.Timestamp = null
@@ -276,6 +277,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
   it should "fail amount validation" in {
     val p = new Payment
     p.amount = 0
+    p.beneficiary_name = "Mr. Kalis Calis"
     p.beneficiary = "AAA"
     recoverToExceptionIf[ValidationException] {
       doAction("payment", "save", p.toMap(querease), Map())
@@ -295,6 +297,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
   it should "register payments" in {
     val p = new Payment
     p.amount = 10
+    p.beneficiary_name = "Mr. Kalis Calis"
     p.beneficiary = "AAA"
     doAction("payment", "save", p.toMap(querease), Map()).flatMap { _ =>
       p.originator = "AAA"
