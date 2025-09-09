@@ -1096,7 +1096,7 @@ class OpParser(viewName: String, cache: OpParser.Cache)
   def ifElseOp: MemParser[If] = ("if\\s+".r ~> (operation ~ operation ~ opt("else\\s+".r ~> operation))) ^^ {
     case cond ~ ifOp ~ elseOp => If(cond, actionFromOp(ifOp), elseOp.map(actionFromOp).orNull)
   } named "if-else-op"
-  def thisOp: MemParser[This.type] = "this" ^^^ This
+  def thisOp: MemParser[This.type] = "this" ^^^ This named "this-op"
 
   def bracesOp: MemParser[Op] = "(" ~> operation <~ ")" named "braces-op"
   def bracesTresql: MemParser[Exp] = (("(" ~> expr <~ ")") | expr) named "braces-tresql-op"
