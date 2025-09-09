@@ -597,7 +597,6 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     }
     val setEnvRegex = """setenv\s+(.+)""".r //dot matches new line as well
     val returnRegex = """return\s+(.+)""".r //dot matches new line as well
-    val redirectToKeyOpRegex = """redirect\s+([_\p{IsLatin}][_\p{IsLatin}0-9]*)""".r
     val commitOpRegex = """commit""".r
     val ifOpRegex = """if\s+(.+)""".r
     val elseOpRegex = """else""".r
@@ -605,10 +604,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     import ViewDefExtrasUtils._
     val steps = stepData.map { step =>
       def parseOp(st: String): Action.Op = {
-        if (redirectToKeyOpRegex.pattern.matcher(st).matches()) {
-          val redirectToKeyOpRegex(name) = st
-          Action.RedirectToKey(name)
-        } else if (commitOpRegex.pattern.matcher(st).matches()) {
+        if (commitOpRegex.pattern.matcher(st).matches()) {
           Action.Commit
         } else {
           opParser.parseOperation(st)
@@ -983,6 +979,7 @@ class OpParser(viewName: String, cache: OpParser.Cache)
   val ConfPropRegex = """\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*(?:\.\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*+)*""".r
   val HttpClientFileStreamerNameRegex = """\w+(-\w+)*""".r
   val RedirectOpRegex = """redirect\s+""".r
+  val RedirectToKeyRegex = """[_\p{IsLatin}][_\p{IsLatin}0-9]*$""".r
 
   def parseOperation(op: String): Op = cache.get(op).getOrElse {
     val parsedOp = phrase(operation)(new scala.util.parsing.input.CharSequenceReader(op)) match {
@@ -1129,9 +1126,11 @@ class OpParser(viewName: String, cache: OpParser.Cache)
         l.map(_._1).mkString(",")}), ")
     })
   } named "named-ops"
-  def redirect: MemParser[Response] = (RedirectOpRegex ~> setHttpHeadersOps ~ tresqlOp) ^^ {
-    case hops ~ tr => Action.Response(303, true, hops, tr)
-  } named "redirect-op"
+  def redirect: MemParser[Op] = {
+    (RedirectOpRegex ~> ((RedirectToKeyRegex ^^ (s => RedirectToKey(s))) | ((setHttpHeadersOps ~ tresqlOp) ^^ {
+      case hops ~ tr => Response(303, true, hops, tr)
+    }))) named "redirect-op"
+  }
   def response: MemParser[Response] = {
     val StResp = "(status|response)\\s+".r
     (StResp ~ ("\\w+".r ~ setHttpHeadersOps ~ opt(operation))) ^? ({
