@@ -603,13 +603,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val foreachOpRegex = """foreach\s+(.+)""".r
     import ViewDefExtrasUtils._
     val steps = stepData.map { step =>
-      def parseOp(st: String): Action.Op = {
-        if (commitOpRegex.pattern.matcher(st).matches()) {
-          Action.Commit
-        } else {
-          opParser.parseOperation(st)
-        }
-      }
+      def parseOp(st: String): Action.Op = opParser.parseOperation(st)
       def parseStringStep(name: Option[String], statement: String, keepResult: Boolean): (Action.Step, String) = {
         def parseSt(st: String, varTrs: List[VariableTransform]) = {
           def setEnvOrRetStep(createStep: Action.Op => Action.Step, stepRegex: Regex): Action.Step = {
@@ -1172,7 +1166,8 @@ class OpParser(viewName: String, cache: OpParser.Cache)
   } named "set-user-attributes-op"
   def setHttpHeadersOps: MemParser[List[SetHttpHeadersOp]] =
     rep(setCookie | deleteCookie | setHttpHeaders | setUserAttributes) named "set-http-headers-ops"
-  def operation: MemParser[Op] = (redirect | response | viewOp | jobOp | confOp | uniqueOp |
+  def commit: MemParser[Commit.type] = "commit$".r ^^^ Commit named "commit-op"
+  def operation: MemParser[Op] = (commit | redirect | response | viewOp | jobOp | confOp | uniqueOp |
     httpOp | dbOp | foreachOp | ifElseOp | resourceOp | fileOp | toFileOp | templateOp | emailOp |
     jsonCodecOp | httpHeaderOrCookieOp | extractPartsOp | extractEntityOp |
     thisOp | bracesOp | invocationOp | tresqlOp) named "operation"
