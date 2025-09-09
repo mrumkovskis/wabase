@@ -597,7 +597,6 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     }
     val setEnvRegex = """setenv\s+(.+)""".r //dot matches new line as well
     val returnRegex = """return\s+(.+)""".r //dot matches new line as well
-    val commitOpRegex = """commit""".r
     val ifOpRegex = """if\s+(.+)""".r
     val elseOpRegex = """else""".r
     val foreachOpRegex = """foreach\s+(.+)""".r
