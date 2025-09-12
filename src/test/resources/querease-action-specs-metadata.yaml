@@ -1032,7 +1032,7 @@ list:
     ({ 'Test-Header1', 'header1_value'} + { 'Test-Header2', 'header2_value'}) # headers
 - h = { 'Test-Header1', 'header1_value'} + { 'Test-Header2', 'header2_value'} # headers as variable to avoid db usage in http op
 - h_var = as any http get { '/extract_http_header_test', '1' } :h
-- return :h1_h2 + :h_var + (h3 = :h3)   # (h3 = :h3) indicates variable transformation rather than tresql
+- return :h1_h2 + :h_var + :h3
 
 
 name: extract_http_cookie_test
@@ -1050,7 +1050,7 @@ list:
   - lang_user = as any http get { '/extract_http_cookie_test', '1' } ({ 'Cookie', :cookie }) # cookies
   - c = { 'Cookie', :cookie } # cookies as variable to avoid db usage in http op
   - c_var = as any http get { '/extract_http_cookie_test', '1' } :c
-  - return :lang_user + :c_var + (no_cookie = :no_cookie) # (no_cookie = :no_cookie) indicates variable transformation rather than tresql
+  - return :lang_user + :c_var + :no_cookie
 
 
 name: variable_path_test

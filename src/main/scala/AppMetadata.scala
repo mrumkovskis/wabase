@@ -91,17 +91,17 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   lazy val routeDefs: Seq[RouteDef] = routeDefLoader.routeDefs
 
 
-  protected lazy val actionOpCache: scala.collection.concurrent.Map[String, OpParser.Cache] = {
-    val m = new java.util.concurrent.ConcurrentHashMap[String, OpParser.Cache]
+  protected lazy val actionCache: scala.collection.concurrent.Map[String, OpParser.Caches] = {
+    val m = new java.util.concurrent.ConcurrentHashMap[String, OpParser.Caches]
     m.putAll(OpParser.loadSerializedOpCaches(resourceLoader).transform { (_, data) =>
       OpParser.createOpParserCache(data, parserCacheSize)
     }.asJava)
     m.asScala
   }
 
-  protected def opParserCache(name: String) = actionOpCache.getOrElseUpdate(
+  protected def opParserCache(name: String) = actionCache.getOrElseUpdate(
     name,
-    OpParser.createOpParserCache(Map(), parserCacheSize)
+    OpParser.createOpParserCache(OpParser.SerializedCaches(Map(), Map()), parserCacheSize)
   )
   protected lazy val joinsParserCache: Map[String, Map[String, Exp]] =
     loadJoinsParserCache(resourceLoader)
@@ -490,7 +490,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   override protected def clearAllCaches(): Unit = {
     super.clearAllCaches()
     viewNameToQueryVariablesCompilerCache.clear()
-    actionOpCache.clear()
+    actionCache.clear()
   }
 
   override protected def serializedCaches: Map[String, Array[Byte]] = {
@@ -513,7 +513,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
     super.serializedCaches ++
       serializedQeParserCache ++
-      OpParser.serializeOpCaches(actionOpCache) ++
+      OpParser.serializeOpCaches(actionCache) ++
       serializedJoins ++
       serializedVars
   }
@@ -590,65 +590,18 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val validationRegex = new Regex(s"(?U)${Action.ValidationsKey}(?:\\s+(\\w+))?(?:\\s+\\[(?:\\s*(\\w+)?\\s*(?::\\s*(\\w+)\\s*)?)\\])?")
     val arr_regex = "(?:\\s+\\[([^\\[^\\]]+)\\])?"
     val db_use_or_transaction_regex = new Regex(s"(${Action.DbUseKey}|${Action.TransactionKey})$arr_regex")
-    val removeVarStepRegex = {
-      val ident = """\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*"""
-      val str_lit = """"[^"]*+"|'[^']*+'"""
-      s"""(?U)(?:(?:($ident)|($str_lit))\\s*-=\\s*)""".r
-    }
-    val setEnvRegex = """setenv\s+(.+)""".r //dot matches new line as well
-    val returnRegex = """return\s+(.+)""".r //dot matches new line as well
     val ifOpRegex = """if\s+(.+)""".r
     val elseOpRegex = """else""".r
     val foreachOpRegex = """foreach\s+(.+)""".r
     import ViewDefExtrasUtils._
     val steps = stepData.map { step =>
       def parseOp(st: String): Action.Op = opParser.parseOperation(st)
-      def parseStringStep(name: Option[String], statement: String, keepResult: Boolean): (Action.Step, String) = {
-        def parseSt(st: String, varTrs: List[VariableTransform]) = {
-          def setEnvOrRetStep(createStep: Action.Op => Action.Step, stepRegex: Regex): Action.Step = {
-            val stepRegex(opStr) = st
-            val op =
-              if (opStr.contains("="))
-                Try {
-                  val p = parser.asInstanceOf[AppQuereaseDefaultParser] // FIXME get rid of typecast
-                  p.parseWithParser(p.varsTransforms)(opStr)
-                }.toOption.getOrElse(parseOp(opStr))
-              else parseOp(opStr)
-            createStep(op)
-          }
-
-          if (setEnvRegex.pattern.matcher(st).matches()) {
-            setEnvOrRetStep(Action.SetEnv(name, varTrs, _), setEnvRegex)
-          } else if (returnRegex.pattern.matcher(st).matches) {
-            setEnvOrRetStep(Action.Return(name, varTrs, _), returnRegex)
-          } else {
-            Action.Evaluation(name, varTrs, parseOp(st), keepResult)
-          }
-        }
-        val st =
-          if (statement.contains("->")) {
-            val p = parser.asInstanceOf[AppQuereaseDefaultParser] // FIXME get rid of typecast
-            Try(p.parseWithParser(p.stepWithVarsTransform)(statement))
-              .map { case (vtrs, st) => parseSt(st, vtrs) }
-              .toOption
-              .getOrElse(parseSt(statement, Nil))
-          } else {
-            parseSt(statement, Nil)
-          }
-        (st, statement)
-      }
       def parseStep(anyStep: Any): (Action.Step, String) = {
         anyStep match {
-          case s: String if removeVarStepRegex.pattern.matcher(s).matches() =>
-            val removeVarStepRegex(ident, str_lit) = s
-            val name = if (ident != null) ident else str_lit.substring(1, str_lit.length - 1)
-            (Action.RemoveVar(Some(name)), s)
-          case s: String if namedStepRegex.pattern.matcher(s).matches() =>
-            val namedStepRegex(keepResult, name, st) = s
-            parseStringStep(Option(name), st, keepResult != null)
-          case n: java.lang.Number => parseStringStep(None, n.toString, keepResult = false)
-          case b: java.lang.Boolean => parseStringStep(None, b.toString, keepResult = false)
-          case null => parseStringStep(None, "null", keepResult = false)
+          case s: String => (opParser.parseStep(s), s)
+          case n: java.lang.Number => (opParser.parseStep(n.toString), n.toString)
+          case b: java.lang.Boolean => (opParser.parseStep(b.toString), b.toString)
+          case null => (opParser.parseStep("null"), "null")
           case jm: java.util.Map[String, Any]@unchecked if jm.size() == 1 =>
             val m = jm.asScala.toMap
             val nameWithKeepResultRegex = """(as\s+result\s+)?(.+)""".r
@@ -663,14 +616,15 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
                 if (db == null) None else Option(DbAccessKey(db))
               ), "validation" + Option(vn).map(n => s" [$n]").mkString)
             } else {
+              def fillInEvalStep(st: Action.Step) = st match {
+                case e: Action.Evaluation =>
+                  e.copy(name = Option(name), keepResult = keepResult != null)
+                case x => x
+              }
               value match {
                 case jm: java.util.Map[String@unchecked, _] =>
                   // may be 'if', 'foreach', 'db ...' step
-                  parseStep(jm) match {
-                    case (e: Action.Evaluation, src) =>
-                      (e.copy(name = Option(name), keepResult = keepResult != null), src)
-                    case (x, _) => sys.error(s"Invalid step '$name' value here: ($x), expected Evaluation step.")
-                  }
+                  parseStep(jm) match { case (st, src) => (fillInEvalStep(st), src) }
                 case al: java.util.ArrayList[_] if name != null =>
                   // 'if', 'foreach', 'db ...' step
                   val namedStepRegex(_, varName, opStr) = name
@@ -694,7 +648,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
                     case _ => varName
                   }
                   (Action.Evaluation(Option(eval_var_name), Nil, op, keepResult != null), opStr)
-                case x => parseStringStep(Option(name), x.toString, keepResult != null)
+                case x => (fillInEvalStep(opParser.parseStep(x.toString)), x.toString)
               }
             }
           case x =>
@@ -750,26 +704,6 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     }
   }
 
-  abstract class AppQuereaseDefaultParser(cache: Option[Cache]) extends DefaultParser(cache) {
-    private def varsTransform: MemParser[VariableTransform] = {
-      def v2s(v: Variable) = (v.variable :: v.members) mkString "."
-      (variable | ("(" ~> ident ~ "=" ~ variable <~ ")")) ^^ {
-        case v: Variable => VariableTransform(v2s(v), None)
-        case (v1: String) ~ _ ~ (v2: Variable) => VariableTransform(v2s(v2), Option(v1))
-      }
-    }
-    def varsTransforms: MemParser[VariableTransforms] = {
-      rep1sep(varsTransform, "+") ^^ (VariableTransforms) named "var-transforms"
-    }
-    def stepWithVarsTransform: MemParser[(List[VariableTransform], String)] = {
-      (varsTransforms ~ ("->" ~> "(?s).*".r)) ^^ {
-        case VariableTransforms(vts) ~ step => vts -> step
-      } named "step-with-vars-transform"
-    }
-  }
-
-  object AppQuereaseDefaultParser extends AppQuereaseDefaultParser(createParserCache)
-
   val AppQuereaseParserCacheName  = "app-querease-parser-cache.cbor"
   override protected def createParserCache: Option[Cache] = {
     def loadAppQuereaseParserCache(getResourceAsStream: String => InputStream): Map[String, Exp] = {
@@ -793,7 +727,6 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     cache.load(loadAppQuereaseParserCache(resourceLoader))
     Some(cache)
   }
-  override val parser: QuereaseExpressions.Parser = this.AppQuereaseDefaultParser
 
   private val vname = "[_\\p{IsLatin}][_\\p{IsLatin}0-9]*"
   private val ContainsOpFilterDef = s"^.*%~+%\\s*:($vname)\\??$$".r
@@ -960,7 +893,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   }
 }
 
-class OpParser(viewName: String, cache: OpParser.Cache)
+class OpParser(viewName: String, caches: OpParser.Caches)
   extends QueryParsers { self =>
   import AppMetadata.Action._
   import AppMetadata.Action
@@ -974,15 +907,68 @@ class OpParser(viewName: String, cache: OpParser.Cache)
   val RedirectOpRegex = """redirect\s+""".r
   val RedirectToKeyRegex = """[_\p{IsLatin}][_\p{IsLatin}0-9]*$""".r
 
-  def parseOperation(op: String): Op = cache.get(op).getOrElse {
+  def parseStep(step: String): Step = caches.stepCache.get(step).getOrElse {
+    val parsedStep = phrase(this.step)(new scala.util.parsing.input.CharSequenceReader(step)) match {
+      case Success(r, _) => r
+      case x => sys.error(x.toString)
+    }
+    caches.stepCache.put(step, parsedStep)
+    parsedStep
+  }
+
+  def step: MemParser[Step] = {
+    def opWithOptVarTransforms: MemParser[(List[VariableTransform], Op)] = {
+      def varTransform: MemParser[(Option[String], Variable)] = {
+        (variable | ("(" ~> ident ~ "=" ~ variable <~ ")")) ^^ {
+          case v: Variable => (None, v)
+          case (v1: String) ~ _ ~ (v2: Variable) => (Option(v1), v2)
+        }
+      } named "vars-transform"
+      def tupleToVarTransform(t: (Option[String], Variable)) =
+        VariableTransform(t._2.tresql.substring(1) /*drop colon*/, t._1)
+      def varsTransformsOrVar: MemParser[Op] = rep1sep(varTransform, "+") <~
+        "$".r /*end of input*/ ^^ {
+          case (None, v) :: Nil => Tresql(v.tresql)
+          case vts => VariableTransforms(vts map tupleToVarTransform)
+        } named "vt-or-v"
+      def opWithVarsTransforms: MemParser[(List[VariableTransform], Op)] = {
+        def varsTransforms: MemParser[VariableTransforms] =
+          rep1sep(varTransform, "+") ^^
+            (vts => VariableTransforms(vts map tupleToVarTransform)) named "vars-transforms"
+        ((varsTransforms <~ "->") ~ operation) ^^ {
+          case ovts ~ op => ovts.transforms -> op
+        } named "op-with-vars-transforms"
+      }
+      (opWithVarsTransforms |
+        ((varsTransformsOrVar | operation) ^^ (Nil -> _))) named "op-with-opt-vts"
+    }
+    def setEnvOrReturn: MemParser[Step] =
+      ((("setenv" | "return") ~ opWithOptVarTransforms) ^^ {
+        case cmd ~ step =>
+          val (transforms, op) = step
+          if (cmd == "setenv") SetEnv(None, transforms, op) else Return(None, transforms, op)
+      }) named "set-env-or-return"
+    def removeVar: MemParser[RemoveVar] = ((ident | stringLiteral) <~ "-=") ^^ {
+      v => RemoveVar(Option(v))
+    } named "remove-var"
+    def evaluation: MemParser[Evaluation] =
+      (opt("as" ~ "result") ~ opt(qualifiedIdent <~ "=") ~ opWithOptVarTransforms) ^^ {
+        case keepResult ~ variable ~ tr_op =>
+          Evaluation(variable.map(_.tresql), tr_op._1, tr_op._2, keepResult = keepResult.isDefined)
+      } named "evaluation"
+    (removeVar | setEnvOrReturn | evaluation) named "step"
+  }
+
+  def parseOperation(op: String): Op = caches.opCache.get(op).getOrElse {
     val parsedOp = phrase(operation)(new scala.util.parsing.input.CharSequenceReader(op)) match {
       case Success(r, _) => r
       case x => sys.error(x.toString)
     }
-    cache.put(op, parsedOp)
+    caches.opCache.put(op, parsedOp)
     parsedOp
   }
 
+  // operation parsers
   def tresqlOp: MemParser[Tresql] = opt(opResultType) ~ expr ^^ { case rt ~ e =>
     val te = transformer {
       case f@ast.Fun("build_cursors",
@@ -1190,35 +1176,41 @@ class OpParser(viewName: String, cache: OpParser.Cache)
 object OpParser extends Loggable {
   val InvocationRegex = """(?U)\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*(\.\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*)*""".r
 
-  class Cache(maxSize: Int) extends SimpleCacheBase[Action.Op](maxSize, "OpParser cache")
+  case class SerializedCaches(stepCache: Map[String, Action.Step], opCache: Map[String, Action.Op])
+  case class Caches(stepCache: SimpleCacheBase[Action.Step], opCache: SimpleCacheBase[Action.Op])
 
-  val QuereaseActionOpCacheName = "querease-action-op-cache.cbor"
-  def loadSerializedOpCaches(getResourceAsStream: String => InputStream): Map[String, Map[String, Action.Op]] = {
-    val res = getResourceAsStream(s"/$QuereaseActionOpCacheName")
+  val QuereaseActionCacheName = "querease-action-cache.cbor"
+  import io.bullet.borer._
+  import io.bullet.borer.derivation.MapBasedCodecs._
+  import CacheIo.{stepCodec, opCodec}
+  private implicit lazy val serializedCachesCodec: Codec[SerializedCaches] = deriveCodec[SerializedCaches]
+
+  def loadSerializedOpCaches(getResourceAsStream: String => InputStream): Map[String, SerializedCaches] = {
+    val res = getResourceAsStream(s"/$QuereaseActionCacheName")
     if (res == null) {
-      logger.debug(s"No querease view action op cache resource - '/$QuereaseActionOpCacheName' found")
+      logger.debug(s"No querease view action cache resource - '/$QuereaseActionCacheName' found")
       Map()
     } else {
-      import io.bullet.borer._
-      import CacheIo.opCodec
       val cache =
-        Cbor.decode(res).to[Map[String, Map[String, Action.Op]]].value
-      logger.debug(s"Querease action op cache loaded for ${cache.size} views.")
+        Cbor.decode(res).to[Map[String, SerializedCaches]].value
+      logger.debug(s"Querease action cache loaded for ${cache.size} views.")
       cache
     }
   }
 
-  def serializeOpCaches(caches: scala.collection.mutable.Map[String, Cache]): Map[String, Array[Byte]] = {
-    import io.bullet.borer._
-    import CacheIo.opCodec
-    val actionOpData = caches.map { case (n, c) => (n, c.toMap) }.toMap
-    Map(QuereaseActionOpCacheName -> Cbor.encode(actionOpData).toByteArray)
+  def serializeOpCaches(caches: scala.collection.mutable.Map[String, Caches]): Map[String, Array[Byte]] = {
+    val actionOpData = caches
+      .map { case (n, c) => (n, SerializedCaches(c.stepCache.toMap, c.opCache.toMap)) }
+      .toMap
+    Map(QuereaseActionCacheName -> Cbor.encode(actionOpData).toByteArray)
   }
 
-  def createOpParserCache(initData: Map[String, Action.Op], maxSize: Int): Cache = {
-    val c = new Cache(maxSize)
-    c.load(initData)
-    c
+  def createOpParserCache(initData: SerializedCaches, maxSize: Int): Caches = {
+    val stepCache = new SimpleCacheBase[Action.Step](maxSize, "OpParser step cache")
+    stepCache.load(initData.stepCache)
+    val opCache = new SimpleCacheBase[Action.Op](maxSize, "OpParser op cache")
+    opCache.load(initData.opCache)
+    Caches(stepCache, opCache)
   }
   def classNameFunctionName(name: String): (String, String) = {
     val idx = name.lastIndexOf('.')
