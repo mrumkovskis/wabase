@@ -900,7 +900,7 @@ class OpParser(viewName: String, caches: OpParser.Caches)
 
   /** View action must be end with whitespace regexp so that no match is if space(s) is omitted between action and
     * view name since spaces are eliminated at the beginning of input before applying parser */
-  val ActionRegex = new Regex(Action().mkString("(?U)(", "|", """)\s+"""))
+  val ActionRegex = new Regex(Action().mkString("(?U)(", "|", """)(?=\s+)"""))
   val ViewNameRegex = "(?U)\\w+".r
   val ConfPropRegex = """\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*(?:\.\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*+)*""".r
   val HttpClientFileStreamerNameRegex = """\w+(-\w+)*""".r
@@ -942,17 +942,22 @@ class OpParser(viewName: String, caches: OpParser.Caches)
       (opWithVarsTransforms |
         ((varsTransformsOrVar | operation) ^^ (Nil -> _))) named "op-with-opt-vts"
     }
-    def setEnvOrReturn: MemParser[Step] =
-      ((("setenv" | "return") ~ opWithOptVarTransforms) ^^ {
+    def setEnvOrReturn: MemParser[Step] = {
+      // setenv or return regexp ends with zero width positive lookahead group
+      // so that no symbol - non word character - [^\w] or space
+      // is consumed but rather left to the next parser
+      (("(setenv|return)(?=\\s+|[^\\w])?".r ~ opWithOptVarTransforms) ^^ {
         case cmd ~ step =>
           val (transforms, op) = step
           if (cmd == "setenv") SetEnv(None, transforms, op) else Return(None, transforms, op)
       }) named "set-env-or-return"
+    }
+
     def removeVar: MemParser[RemoveVar] = ((ident | stringLiteral) <~ "-=") ^^ {
       v => RemoveVar(Option(v))
     } named "remove-var"
     def evaluation: MemParser[Evaluation] =
-      (opt("as" ~ "result") ~ opt(qualifiedIdent <~ "=") ~ opWithOptVarTransforms) ^^ {
+      (opt("as\\s+result\\s+".r) ~ opt(qualifiedIdent <~ "=") ~ opWithOptVarTransforms) ^^ {
         case keepResult ~ variable ~ tr_op =>
           Evaluation(variable.map(_.tresql), tr_op._1, tr_op._2, keepResult = keepResult.isDefined)
       } named "evaluation"
@@ -980,7 +985,7 @@ class OpParser(viewName: String, caches: OpParser.Caches)
   } named "tresql-op"
   def viewOp: MemParser[ViewCall] = ActionRegex ~ ViewNameRegex ~ opt(operation) ^^ {
     case action ~ view ~ op =>
-      ViewCall(action.trim /* trim ending whitespace */, view, op.orNull)
+      ViewCall(action, view, op.orNull)
   }  named "view-op"
   def uniqueOp: MemParser[Unique] = opt(opResultType) ~ (("unique_opt" | "unique") ~ operation) ^^ {
     case rt ~ (mode ~ op) => Unique(op, mode == "unique_opt", rt)
@@ -1049,8 +1054,8 @@ class OpParser(viewName: String, caches: OpParser.Caches)
     case op_type ~ db ~ op => Db(actionFromOp(op), op_type == Action.DbUseKey,
       db.map(AppMetadata.DbAccessKey).toList)
   } named "db-op"
-  def jsonCodecOp: MemParser[JsonCodec] = "(from|to)\\s+".r ~ "json\\s+".r ~ operation ^^ {
-    case mode ~ _ ~ op => JsonCodec(mode.trim == "to", op)
+  def jsonCodecOp: MemParser[JsonCodec] = "(from|to)(?=\\s+)".r ~ "json\\s+".r ~ operation ^^ {
+    case mode ~ _ ~ op => JsonCodec(mode == "to", op)
   } named "json-op"
   def jobOp: MemParser[Job] = JobAct ~> expr ^^ {
     case ast.StringConst(value) => Job(value, false)

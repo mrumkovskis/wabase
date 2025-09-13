@@ -580,7 +580,7 @@ save:
 - n1 = 1
 - n2 = 1.5
 - n3 = org.wabase.QuereaseActionTestManager.addNumbers
-- return (nr = :n3)
+- return(nr = :n3)
 count:
 - org.wabase.QuereaseActionTestManager.unitMethod
 - org.wabase.QuereaseActionTestManager.unitFutureMethod
@@ -990,7 +990,7 @@ fields:
 get:
 - res = db use:     # assign db data to variable so that during http request db connection is closed
   - get this
-- setenv :res
+- setenv:res
 - forests = foreach :forests :
   - tree_list = as tree * http { '/tree', '?', :nr nr }
   - "'..'-="  # remove super data for easier assertion
