@@ -7,15 +7,14 @@ import org.mojoz.metadata.in._
 import org.mojoz.metadata.io.MdConventions
 import org.mojoz.metadata.out.DdlGenerator.SimpleConstraintNamingRules
 import org.mojoz.querease.FilterType._
-import org.mojoz.querease.QuereaseExpressions.DefaultParser
 import org.mojoz.querease.QueryStringBuilder.CompilationUnit
-import org.mojoz.querease.{FilterType, QuereaseExpressions, QuereaseMetadata, TresqlJoinsParser, TresqlMetadata}
+import org.mojoz.querease.{FilterType, QuereaseMetadata, TresqlJoinsParser, TresqlMetadata}
 import org.tresql.{Cache, MacroResourcesImpl, QueryParser, SimpleCache, SimpleCacheBase, ast}
 import org.tresql.ast.{Exp, Variable}
 import org.tresql.parsing.QueryParsers
 import org.wabase.AppMetadata.{Action, JobAct}
 import org.wabase.AppMetadata.Action.TresqlExtraction.{OpTresqlTraverser, State, StepTresqlTraverser, opTresqlTraverser, stepTresqlTraverser}
-import org.wabase.AppMetadata.Action.{Validations, VariableTransform, VariableTransforms, ViewCall, traverseAction}
+import org.wabase.AppMetadata.Action.{Validations, ViewCall, traverseAction}
 
 import java.io.InputStream
 import java.util.concurrent.{ConcurrentHashMap, TimeUnit}
