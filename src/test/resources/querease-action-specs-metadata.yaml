@@ -249,7 +249,7 @@ filter:
 list:
 - c: count this   # named step supports also colon notation
 - d: list  this   # named step supports also colon notation
-- return (count = :c) + (data = :d)
+- (count = :c) + (data = :d) # return is optional
 
 
 name: person_with_main_account
@@ -1032,7 +1032,8 @@ list:
     ({ 'Test-Header1', 'header1_value'} + { 'Test-Header2', 'header2_value'}) # headers
 - h = { 'Test-Header1', 'header1_value'} + { 'Test-Header2', 'header2_value'} # headers as variable to avoid db usage in http op
 - h_var = as any http get { '/extract_http_header_test', '1' } :h
-- return :h1_h2 + :h_var + :h3
+- :h1_h2
+    + :h_var + :h3  # variable transformations not tresql, return is optional
 
 
 name: extract_http_cookie_test
@@ -1380,7 +1381,7 @@ fields:
 get:
 - name = 'John'
 - surname = 'Telos'
-- return this
+- this
 
 
 name: evaluator_db_test
