@@ -9,6 +9,9 @@ lib/
 tmp
 wabase.iml
 
+# business tests failed responses
+*.received
+
 # eclipse conf file
 .eclipse
 .settings

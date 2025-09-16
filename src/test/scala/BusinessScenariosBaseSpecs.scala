@@ -1,6 +1,6 @@
 package org.wabase
 
-import java.io.File
+import java.io.{File, PrintWriter}
 import org.apache.pekko.http.scaladsl.model.{ContentTypes, HttpEntity, HttpHeader, HttpMethod, HttpMethods, HttpResponse, MediaType, MediaTypes, Multipart, RequestEntity}
 import org.apache.pekko.http.scaladsl.model.headers.`Content-Type`
 import org.apache.pekko.http.scaladsl.model.headers.RawHeader
@@ -347,13 +347,36 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
     ).mkString("\n", "\n", ""))
   }
 
+  def createSiblingTextFile(original: File, suffix: String, content: String): Unit = {
+    val parentDir   = original.getParent
+    val newFileName = original.getName + suffix
+    val newFile =
+      if  (parentDir != null)
+           new File(parentDir, newFileName)
+      else new File(newFileName)
+    val writer = new PrintWriter(newFile, "UTF-8")
+    try writer.write(content) finally writer.close()
+  }
+  def shouldDumpResponseToFile(scenario: File, testCase: File, rawResponse: Any) =
+    s"$rawResponse".length > 1000
+  def dumpResponseToFile(scenario: File, testCase: File, rawResponse: Any) =
+    createSiblingTextFile(testCase, ".received", s"$rawResponse")
+  private def trimString(s: String, maxLength: Int): String = {
+    if (s.length <= maxLength) s else s.substring(0, maxLength) + "..."
+  }
   def logScenarioResponseInfoOnFailure(
     scenario: File, testCase: File, context: Map[String, Any], exception: Throwable,
     debugResponse: Boolean, rawResponse: Any, response: Any,
   ): Unit = {
     if (debugResponse) {
       val fullTestName = s"${scenario.getName}/${testCase.getName}"
-      logger.info(s"\n**** Response causing $fullTestName to fail with '${exception.getMessage}':\n$rawResponse\n****")
+      val trimmedMessage = trimString(exception.getMessage, 200)
+      if (shouldDumpResponseToFile(scenario, testCase, rawResponse)) {
+        dumpResponseToFile(scenario, testCase, rawResponse)
+        logger.info(s"\n**** Response causing $fullTestName to fail with '$trimmedMessage' dumped to file\n****")
+      } else {
+        logger.info(s"\n**** Response causing $fullTestName to fail with '$trimmedMessage':\n$rawResponse\n****")
+      }
     }
   }
 
