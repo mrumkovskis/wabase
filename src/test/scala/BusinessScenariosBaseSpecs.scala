@@ -347,7 +347,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
     ).mkString("\n", "\n", ""))
   }
 
-  def createSiblingTextFile(original: File, suffix: String, content: String): Unit = {
+  def createSiblingTextFile(original: File, suffix: String, content: String): File = {
     val parentDir   = original.getParent
     val newFileName = original.getName + suffix
     val newFile =
@@ -356,6 +356,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
       else new File(newFileName)
     val writer = new PrintWriter(newFile, "UTF-8")
     try writer.write(content) finally writer.close()
+    newFile
   }
   def shouldDumpResponseToFile(scenario: File, testCase: File, rawResponse: Any) =
     s"$rawResponse".length > 1000
@@ -371,10 +372,19 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
     if (debugResponse) {
       val fullTestName = s"${scenario.getName}/${testCase.getName}"
       val trimmedMessage = trimString(exception.getMessage, 200)
-      if (shouldDumpResponseToFile(scenario, testCase, rawResponse)) {
-        dumpResponseToFile(scenario, testCase, rawResponse)
-        logger.info(s"\n**** Response causing $fullTestName to fail with '$trimmedMessage' dumped to file\n****")
-      } else {
+      val dumpedToFile =
+        if (shouldDumpResponseToFile(scenario, testCase, rawResponse)) {
+          try {
+            val targetFile = dumpResponseToFile(scenario, testCase, rawResponse)
+            logger.info(s"\n**** Response causing $fullTestName to fail with '$trimmedMessage' dumped to file ${targetFile.getAbsolutePath}\n****")
+            true
+          } catch {
+            case util.control.NonFatal(ex) =>
+              logger.warn(s"\n**** Failed to dump response causing $fullTestName to fail to file: ${ex.getMessage}")
+              false
+          }
+        } else false
+      if (!dumpedToFile) {
         logger.info(s"\n**** Response causing $fullTestName to fail with '$trimmedMessage':\n$rawResponse\n****")
       }
     }
