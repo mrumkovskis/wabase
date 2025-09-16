@@ -589,9 +589,9 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val validationRegex = new Regex(s"(?U)${Action.ValidationsKey}(?:\\s+(\\w+))?(?:\\s+\\[(?:\\s*(\\w+)?\\s*(?::\\s*(\\w+)\\s*)?)\\])?")
     val arr_regex = "(?:\\s+\\[([^\\[^\\]]+)\\])?"
     val db_use_or_transaction_regex = new Regex(s"(${Action.DbUseKey}|${Action.TransactionKey})$arr_regex")
-    val ifOpRegex = """if\s+(.+)""".r
+    val ifOpRegex = """if(?=\s+|[^\w])(.+)""".r
     val elseOpRegex = """else""".r
-    val foreachOpRegex = """foreach\s+(.+)""".r
+    val foreachOpRegex = """foreach(?=\s+|[^\w])(.+)""".r
     import ViewDefExtrasUtils._
     val steps = stepData.map { step =>
       def parseOp(st: String): Action.Op = opParser.parseOperation(st)
@@ -1079,12 +1079,13 @@ class OpParser(viewName: String, caches: OpParser.Caches)
     (opt(opResultType) <~ "extract\\s+entity".r) ~ opt("using" ~> ident) ~ opt(operation) ^^ {
       case conformTo ~ decoder ~ op => ExtractHttpEntity(conformTo, decoder.orNull, op.orNull)
     } named "extract-entity"
-  def foreachOp: MemParser[Foreach] = ("foreach\\s+".r ~> (operation ~ operation)) ^^ {
+  def foreachOp: MemParser[Foreach] = ("foreach(?=\\s+|[^\\w])".r ~> (operation ~ operation)) ^^ {
     case coll ~ op => Foreach(coll, actionFromOp(op))
   } named "foreach-op"
-  def ifElseOp: MemParser[If] = ("if\\s+".r ~> (operation ~ operation ~ opt("else\\s+".r ~> operation))) ^^ {
-    case cond ~ ifOp ~ elseOp => If(cond, actionFromOp(ifOp), elseOp.map(actionFromOp).orNull)
-  } named "if-else-op"
+  def ifElseOp: MemParser[If] = ("if(?=\\s+|[^\\w])".r ~>
+    (operation ~ operation ~ opt("else(?=\\s+|[^\\w])".r ~> operation))) ^^ {
+      case cond ~ ifOp ~ elseOp => If(cond, actionFromOp(ifOp), elseOp.map(actionFromOp).orNull)
+    } named "if-else-op"
   def thisOp: MemParser[This.type] = "this" ^^^ This named "this-op"
 
   def bracesOp: MemParser[Op] = "(" ~> operation <~ ")" named "braces-op"
@@ -1155,7 +1156,7 @@ class OpParser(viewName: String, caches: OpParser.Caches)
   } named "set-user-attributes-op"
   def setHttpHeadersOps: MemParser[List[SetHttpHeadersOp]] =
     rep(setCookie | deleteCookie | setHttpHeaders | setUserAttributes) named "set-http-headers-ops"
-  def commit: MemParser[Commit.type] = "commit$".r ^^^ Commit named "commit-op"
+  def commit: MemParser[Commit.type] = "commit\\s*$".r ^^^ Commit named "commit-op"
   def operation: MemParser[Op] = (commit | redirect | response | viewOp | jobOp | confOp | uniqueOp |
     httpOp | dbOp | foreachOp | ifElseOp | resourceOp | fileOp | toFileOp | templateOp | emailOp |
     jsonCodecOp | httpHeaderOrCookieOp | extractPartsOp | extractEntityOp |
