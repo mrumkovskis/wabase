@@ -3,3 +3,6 @@ api:    insert
 fields:
 insert:
 - status ok
+swagger:
+  responses = :
+    '200': {}

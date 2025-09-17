@@ -1,2 +1,4 @@
 path:     /hello
+# FIXME response_headers:
+#   Content-Type: text/plain
 response: "Hello from wabase!"

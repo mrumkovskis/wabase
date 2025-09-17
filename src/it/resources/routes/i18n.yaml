@@ -1,14 +1,35 @@
-on: /i18n
+on: GET /i18n
 do: extractState i18nResources
+swagger:
+  '200':
+    content:
+      application/json:
+        type: array
+        items:
+          type: object
 
 
-on: /i18n/([^/]+)(?:/(.*))?
+on: GET /i18n/(?<key>[^/]+)(?:/(?<parameters>.*))?
 do: extractState i18nTranslate('wabase', $1, $2)
+swagger:
+  '200':
+    content:
+      text/plain: {}
 
 
-on: /i18n-bundle/(\w+)
+on: GET /i18n-bundle/(\w+)
 do: extractState i18nResourcesFromBundle $1
+swagger:
+  '200':
+    content:
+      application/json:
+        type: array
+        items:
+          type: object
 
 
-on: /set-language/(\w+)
+on: POST /set-language/(\w+)
 do: setLanguage($1) ok
+swagger:
+  responses = :
+    '200': {}

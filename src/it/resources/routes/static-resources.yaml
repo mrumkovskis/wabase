@@ -1,5 +1,5 @@
 on: GET /
 do: getFromResource('web', '/index.html')
 
-on: GET (/.+\.(?:css|gif|html|jpeg|jpg|js|png|svg|ttf|woff|woff2))
+on: GET (?<filename>/.+\.(?:css|gif|html|jpeg|jpg|js|png|svg|ttf|woff|woff2))
 do: getFromResource('web', $1)

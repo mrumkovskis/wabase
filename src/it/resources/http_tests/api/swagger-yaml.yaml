@@ -13,6 +13,30 @@ response: |+
   - url: http://127.0.0.1
   security: []
   paths:
+    /:
+      get:
+        responses:
+          "200":
+            description: OK
+    /api:
+      get:
+        responses:
+          "200":
+            description: OK
+    /check-csrf-token:
+      get:
+        responses:
+          "200":
+            description: OK
+          "400":
+            description: Bad Request
+    /check-same-origin:
+      get:
+        responses:
+          "200":
+            description: OK
+          "400":
+            description: Bad Request
     /check_person/{code}:
       get:
         summary: Get 'check_person' by 'code'
@@ -26,57 +50,72 @@ response: |+
             type: string
         responses:
           "200":
-            description: ""
+            description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: "#/components/schemas/person"
           "400":
-            description: Bad request
+            description: Bad Request
           "403":
             description: Forbidden
           "404":
             description: Not Found
-          "500":
-            description: Internal server error
           "503":
             description: Service Unavailable
-    /current_user:
+    /current-user:
       get:
-        summary: Get 'current_user'
-        description: ""
+        summary: Get current user
+        description: Returns current user info
         responses:
           "200":
-            description: ""
+            description: OK
             content:
               application/json:
                 schema:
                   $ref: "#/components/schemas/current_user"
-          "400":
-            description: Bad request
-          "403":
-            description: Forbidden
-          "404":
-            description: Not Found
-          "500":
-            description: Internal server error
-          "503":
-            description: Service Unavailable
+    /deferred-result/{deferred_id}:
+      get:
+        parameters:
+        - name: deferred_id
+          in: path
+          required: true
+          schema:
+            type: string
+        responses:
+          "200":
+            description: OK
+    /delete-csrf-cookie:
+      post:
+        responses:
+          "200":
+            description: OK
+    /fast-respond:
+      get:
+        responses:
+          "200":
+            description: OK
+            content:
+              text/plain:
+                schema:
+                  type: string
     /guideline_calculation_helper:
       get:
         summary: Get 'guideline_calculation_helper'
         description: ""
         responses:
           "200":
-            description: ""
+            description: OK
             content:
               application/json:
                 schema:
                   $ref: "#/components/schemas/guideline_calculation_helper"
           "400":
-            description: Bad request
+            description: Bad Request
           "403":
             description: Forbidden
           "404":
             description: Not Found
-          "500":
-            description: Internal server error
           "503":
             description: Service Unavailable
       post:
@@ -89,17 +128,86 @@ response: |+
                 $ref: "#/components/schemas/guideline_calculation_helper"
         responses:
           "200":
-            description: ""
+            description: OK
             content:
               application/json:
                 schema:
                   $ref: "#/components/schemas/guideline_calculation_helper"
           "400":
-            description: Bad request
-          "500":
-            description: Internal server error
+            description: Bad Request
           "503":
             description: Service Unavailable
+    /hello:
+      get:
+        responses:
+          "200":
+            description: OK
+            content:
+              text/plain:
+                schema:
+                  type: string
+    /i18n:
+      get:
+        responses:
+          "200":
+            description: OK
+            content:
+              application/json:
+                schema:
+                  type: array
+                  items:
+                    type: object
+    /i18n-bundle/{p1}:
+      get:
+        parameters:
+        - name: p1
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^\w+$
+        responses:
+          "200":
+            description: OK
+            content:
+              application/json:
+                schema:
+                  type: array
+                  items:
+                    type: object
+    /i18n/{key}:
+      get:
+        parameters:
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^[^/]+$"
+        responses:
+          "200":
+            description: OK
+            content:
+              text/plain: {}
+    /i18n/{key}/{parameters}:
+      get:
+        parameters:
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^[^/]+$"
+        - name: parameters
+          in: path
+          required: true
+          schema:
+            type: string
+        responses:
+          "200":
+            description: OK
+            content:
+              text/plain: {}
     /login_using_json_or_urlencoded:
       post:
         summary: Insert 'login_using_json_or_urlencoded'
@@ -111,37 +219,35 @@ response: |+
                 $ref: "#/components/schemas/login_using_json_or_urlencoded"
         responses:
           "200":
-            description: ""
-            content:
-              application/json:
-                schema:
-                  $ref: "#/components/schemas/login_using_json_or_urlencoded"
-          "400":
-            description: Bad request
-          "500":
-            description: Internal server error
-          "503":
-            description: Service Unavailable
+            description: OK
+          "401":
+            description: Unauthorized
     /logout:
       post:
         summary: Insert 'logout'
         description: ""
         responses:
           "200":
-            description: ""
-          "400":
-            description: Bad request
-          "500":
-            description: Internal server error
-          "503":
-            description: Service Unavailable
+            description: OK
+    /metadata/{p1}:
+      get:
+        parameters:
+        - name: p1
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^.+$
+        responses:
+          "200":
+            description: OK
     /person:
       get:
         summary: List 'person'
         description: ""
         responses:
           "200":
-            description: ""
+            description: OK
             content:
               application/json:
                 schema:
@@ -149,11 +255,9 @@ response: |+
                   items:
                     $ref: "#/components/schemas/person"
           "400":
-            description: Bad request
+            description: Bad Request
           "403":
             description: Forbidden
-          "500":
-            description: Internal server error
           "503":
             description: Service Unavailable
     /person/{code}:
@@ -170,19 +274,17 @@ response: |+
             maxLength: 12
         responses:
           "200":
-            description: ""
+            description: OK
             content:
               application/json:
                 schema:
                   $ref: "#/components/schemas/person"
           "400":
-            description: Bad request
+            description: Bad Request
           "403":
             description: Forbidden
           "404":
             description: Not Found
-          "500":
-            description: Internal server error
           "503":
             description: Service Unavailable
       put:
@@ -203,20 +305,17 @@ response: |+
                 $ref: "#/components/schemas/person"
         responses:
           "200":
-            description: ""
+            description: OK
             content:
               application/json:
                 schema:
                   $ref: "#/components/schemas/person"
           "400":
-            description: Bad request
-          "500":
-            description: Internal server error
+            description: Bad Request
           "503":
             description: Service Unavailable
       delete:
         summary: Delete 'person' by 'code'
-        description: ""
         parameters:
         - name: code
           in: path
@@ -228,8 +327,6 @@ response: |+
         responses:
           "404":
             description: Not Found
-          "500":
-            description: Internal server error
     /person:count/{code}:
       get:
         summary: Count 'person' by 'code'
@@ -251,13 +348,11 @@ response: |+
                   type: integer
                   format: int32
           "400":
-            description: Bad request
+            description: Bad Request
           "403":
             description: Forbidden
           "404":
             description: Not Found
-          "500":
-            description: Internal server error
           "503":
             description: Service Unavailable
     /person:create/{code}:
@@ -274,19 +369,17 @@ response: |+
             maxLength: 12
         responses:
           "200":
-            description: ""
+            description: OK
             content:
               application/json:
                 schema:
                   $ref: "#/components/schemas/person"
           "400":
-            description: Bad request
+            description: Bad Request
           "403":
             description: Forbidden
           "404":
             description: Not Found
-          "500":
-            description: Internal server error
           "503":
             description: Service Unavailable
     /person_with_access_control/{code}:
@@ -303,21 +396,59 @@ response: |+
             maxLength: 12
         responses:
           "200":
-            description: ""
+            description: OK
             content:
               application/json:
                 schema:
                   $ref: "#/components/schemas/person_with_access_control"
           "400":
-            description: Bad request
+            description: Bad Request
           "403":
             description: Forbidden
           "404":
             description: Not Found
-          "500":
-            description: Internal server error
           "503":
             description: Service Unavailable
+    /qe_call/guideline_calculation_helper:
+      get:
+        responses:
+          "200":
+            description: OK
+            content:
+              application/json:
+                schema:
+                  type: object
+    /request-info:
+      put:
+        responses:
+          "200":
+            description: OK
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    data:
+                      type: object
+                    content-type-parameters:
+                      type: string
+                    content-type:
+                      type: string
+      post:
+        responses:
+          "200":
+            description: OK
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    data:
+                      type: object
+                    content-type-parameters:
+                      type: string
+                    content-type:
+                      type: string
     /request_calculation_view:
       post:
         summary: Insert 'request_calculation_view'
@@ -329,15 +460,13 @@ response: |+
                 $ref: "#/components/schemas/request_calculation_view"
         responses:
           "200":
-            description: ""
+            description: OK
             content:
               application/json:
                 schema:
                   $ref: "#/components/schemas/request_calculation_view"
           "400":
-            description: Bad request
-          "500":
-            description: Internal server error
+            description: Bad Request
           "503":
             description: Service Unavailable
     /response_calculation_view:
@@ -346,7 +475,7 @@ response: |+
         description: ""
         responses:
           "200":
-            description: ""
+            description: OK
             content:
               application/json:
                 schema:
@@ -354,11 +483,9 @@ response: |+
                   items:
                     $ref: "#/components/schemas/response_calculation_view"
           "400":
-            description: Bad request
+            description: Bad Request
           "403":
             description: Forbidden
-          "500":
-            description: Internal server error
           "503":
             description: Service Unavailable
     /save_person_email/{code}:
@@ -380,15 +507,13 @@ response: |+
                 $ref: "#/components/schemas/save_person_email"
         responses:
           "200":
-            description: ""
+            description: OK
             content:
               application/json:
                 schema:
                   $ref: "#/components/schemas/save_person_email"
           "400":
-            description: Bad request
-          "500":
-            description: Internal server error
+            description: Bad Request
           "503":
             description: Service Unavailable
     /server_events:
@@ -397,7 +522,7 @@ response: |+
         description: ""
         responses:
           "200":
-            description: ""
+            description: OK
             content:
               application/json:
                 schema:
@@ -405,11 +530,9 @@ response: |+
                   items:
                     $ref: "#/components/schemas/server_events"
           "400":
-            description: Bad request
+            description: Bad Request
           "403":
             description: Forbidden
-          "500":
-            description: Internal server error
           "503":
             description: Service Unavailable
     /server_events/{topic}:
@@ -425,19 +548,17 @@ response: |+
             type: string
         responses:
           "200":
-            description: ""
+            description: OK
             content:
               application/json:
                 schema:
                   $ref: "#/components/schemas/server_events"
           "400":
-            description: Bad request
+            description: Bad Request
           "403":
             description: Forbidden
           "404":
             description: Not Found
-          "500":
-            description: Internal server error
           "503":
             description: Service Unavailable
       put:
@@ -457,36 +578,95 @@ response: |+
                 $ref: "#/components/schemas/server_events"
         responses:
           "200":
-            description: ""
+            description: OK
             content:
               application/json:
                 schema:
                   $ref: "#/components/schemas/server_events"
           "400":
-            description: Bad request
-          "500":
-            description: Internal server error
+            description: Bad Request
           "503":
             description: Service Unavailable
+    /set-csrf-cookie:
+      post:
+        responses:
+          "200":
+            description: OK
+    /set-language/{p1}:
+      post:
+        parameters:
+        - name: p1
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^\w+$
+        responses:
+          "200":
+            description: OK
+    /slow-respond:
+      get:
+        responses:
+          "200":
+            description: OK
+            content:
+              text/plain:
+                schema:
+                  type: string
+    /start-job/{jobname}:
+      post:
+        parameters:
+        - name: jobname
+          in: path
+          required: true
+          schema:
+            type: string
+        responses:
+          "200":
+            description: Job started
+          "404":
+            description: Job not found
+          "409":
+            description: Job is already running
+    /swagger.json:
+      get:
+        summary: Get swagger json
+        description: Returns swagger.json file
+        responses:
+          "200":
+            description: OK
+            content:
+              application/json:
+                schema:
+                  type: object
+    /swagger.yaml:
+      get:
+        summary: Get swagger yaml
+        description: Returns swagger.yaml file
+        responses:
+          "200":
+            description: OK
+            content:
+              application/yaml:
+                schema:
+                  type: object
     /user:
       get:
         summary: Get 'user'
         description: ""
         responses:
           "200":
-            description: ""
+            description: OK
             content:
               application/json:
                 schema:
                   $ref: "#/components/schemas/user"
           "400":
-            description: Bad request
+            description: Bad Request
           "403":
             description: Forbidden
           "404":
             description: Not Found
-          "500":
-            description: Internal server error
           "503":
             description: Service Unavailable
       put:
@@ -499,15 +679,13 @@ response: |+
                 $ref: "#/components/schemas/user"
         responses:
           "200":
-            description: ""
+            description: OK
             content:
               application/json:
                 schema:
                   $ref: "#/components/schemas/user"
           "400":
-            description: Bad request
-          "500":
-            description: Internal server error
+            description: Bad Request
           "503":
             description: Service Unavailable
     /user-with-roles-array:
@@ -516,15 +694,13 @@ response: |+
         description: ""
         responses:
           "200":
-            description: ""
+            description: OK
           "400":
-            description: Bad request
+            description: Bad Request
           "403":
             description: Forbidden
           "404":
             description: Not Found
-          "500":
-            description: Internal server error
           "503":
             description: Service Unavailable
     /user_role/{user_id}/{role}:
@@ -547,19 +723,17 @@ response: |+
             type: string
         responses:
           "200":
-            description: ""
+            description: OK
             content:
               application/json:
                 schema:
                   $ref: "#/components/schemas/user_role"
           "400":
-            description: Bad request
+            description: Bad Request
           "403":
             description: Forbidden
           "404":
             description: Not Found
-          "500":
-            description: Internal server error
           "503":
             description: Service Unavailable
       put:
@@ -586,15 +760,13 @@ response: |+
                 $ref: "#/components/schemas/user_role"
         responses:
           "200":
-            description: ""
+            description: OK
             content:
               application/json:
                 schema:
                   $ref: "#/components/schemas/user_role"
           "400":
-            description: Bad request
-          "500":
-            description: Internal server error
+            description: Bad Request
           "503":
             description: Service Unavailable
     /validation:
@@ -608,23 +780,32 @@ response: |+
                 $ref: "#/components/schemas/validation"
         responses:
           "200":
-            description: ""
+            description: OK
             content:
               application/json:
                 schema:
                   $ref: "#/components/schemas/validation"
           "400":
-            description: Bad request
-          "500":
-            description: Internal server error
+            description: Bad Request
           "503":
             description: Service Unavailable
+    /{filename}:
+      get:
+        parameters:
+        - name: filename
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^.+\.(?:css|gif|html|jpeg|jpg|js|png|svg|ttf|woff|woff2)$
+        responses:
+          "200":
+            description: OK
   components:
     schemas:
       check_person:
         type: object
         properties: {}
-        required: []
       current_user:
         type: object
         properties:
@@ -643,7 +824,6 @@ response: |+
             items:
               type: string
             readOnly: false
-        required: []
       guideline_calculation_helper:
         type: object
         properties:
@@ -675,11 +855,9 @@ response: |+
             type: string
             description: Password
             readOnly: false
-        required: []
       logout:
         type: object
         properties: {}
-        required: []
       person:
         type: object
         properties:
@@ -727,7 +905,6 @@ response: |+
             type: string
             description: Category
             readOnly: false
-        required: []
       response_calculation_view:
         type: object
         properties:
@@ -743,7 +920,6 @@ response: |+
             type: string
             description: Description
             readOnly: false
-        required: []
       save_person_email:
         type: object
         properties:
@@ -770,7 +946,6 @@ response: |+
             type: string
             description: Value
             readOnly: false
-        required: []
       user:
         type: object
         properties:
@@ -794,7 +969,6 @@ response: |+
       user-with-roles-array:
         type: object
         properties: {}
-        required: []
       user_role:
         type: object
         properties:

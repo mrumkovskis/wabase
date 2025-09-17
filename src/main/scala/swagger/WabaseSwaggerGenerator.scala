@@ -1,27 +1,35 @@
 package org.wabase.swagger
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import io.swagger.v3.core.util.{Json, Json31, Yaml, Yaml31}
 import io.swagger.v3.oas.models._
+import io.swagger.v3.oas.models.callbacks.Callback
+import io.swagger.v3.oas.models.examples.Example
+import io.swagger.v3.oas.models.headers.Header
 import io.swagger.v3.oas.models.info.Info
+import io.swagger.v3.oas.models.links.Link
 import io.swagger.v3.oas.models.media._
-import io.swagger.v3.oas.models.parameters.{PathParameter, QueryParameter, RequestBody}
+import io.swagger.v3.oas.models.parameters.{Parameter, PathParameter, QueryParameter, RequestBody}
 import io.swagger.v3.oas.models.responses.{ApiResponse, ApiResponses}
 import io.swagger.v3.oas.models.security.{SecurityRequirement, SecurityScheme}
 import io.swagger.v3.oas.models.servers.Server
 import org.apache.commons.lang3.StringUtils
-import org.mojoz.metadata.{FieldDef, ViewDef}
+import org.apache.pekko.http.scaladsl.model.{HttpMethod, HttpMethods, StatusCodes}
+import org.mojoz.metadata.{FieldDef, Type, ViewDef}
 import org.mojoz.querease.FilterType.{ComparisonFilter, OtherFilter}
 import org.mojoz.querease.Querease
 import org.wabase.AppMetadata.Action.{Evaluation, Validations, ViewCall}
-import org.wabase.AppMetadata.{AugmentedAppFieldDef, AugmentedAppViewDef, FilterParameter, RouteDef}
-import org.wabase.{AppQuerease, Loggable}
+import org.wabase.AppMetadata.{AugmentedAppFieldDef, AugmentedAppViewDef, FilterParameter, PathNameAndParameters, RouteDef}
+import org.wabase.{AppMetadata, AppQuerease, Loggable, MapUtils}
 
 import java.net.URI
+import java.util.{List => JList, Map => JMap}
 import scala.collection.immutable.{Map, TreeMap}
 import scala.collection.mutable
 import scala.jdk.CollectionConverters._
 import scala.language.existentials
 import scala.util.control.NonFatal
+import scala.util.Try
 
 class WabaseSwaggerGenerator(
   qes: Seq[Querease],
@@ -98,6 +106,7 @@ class WabaseSwaggerGenerator(
     case "dateTime" => new DateTimeSchema
     case "timestamp" => new DateTimeSchema
     case "timeuuid" => new StringSchema
+    case "object" => new ObjectSchema
     case "string" =>
       val s = new StringSchema
       type_.length.foreach(l => s.maxLength(l))
@@ -106,6 +115,14 @@ class WabaseSwaggerGenerator(
     case "yaml" => new StringSchema
     case n if n.endsWith("String") => new StringSchema
     case n => (new ObjectSchema).`type`(n)
+  }
+
+  def typeNameToSchema(typeName: String): Schema[_] = {
+    schemaFromType(
+      new Type(typeName).copy(
+        isComplexType = qes.exists(_.nameToViewDef.contains(typeName)),
+      )
+    )
   }
 
   def getReadOnly(viewdefs: Map[String, ViewDef])(field: FieldDef) = {
@@ -141,7 +158,7 @@ class WabaseSwaggerGenerator(
     !f.api.excluded
 
   def shouldIncludeSchemaForView(v: ViewDef): Boolean = true
-  def schemasFromViewDefs: Map[String, Schema[_]] = {
+  def schemasFromViewDefs(viewDefMap: Map[String, ViewDef]): Map[String, Schema[_]] = {
     viewDefMap.view.filter { case (_, v) => shouldIncludeSchemaForView(v) }.map { case (key, viewDef) =>
       val filteredFields = viewDef.fields.filter(isApiField)
       val fields: TreeMap[String, Schema[_]] =
@@ -154,11 +171,13 @@ class WabaseSwaggerGenerator(
         .name{viewDef.name}
         .description(viewDef.comments)
         .properties(fieldsAsJava)
-        .required(requiredFields.asJava): (String, Schema[_]) /* cast for scala 2.12 */
+        .required(Option(requiredFields).filter(_.nonEmpty).map(_.asJava).orNull): (String, Schema[_]) /* cast for scala 2.12 */
     }.toMap - "count" // no object schema for "count" service
   }
 
-  def refFromViewName(viewName: String) = s"#/components/schemas/$viewName"
+  val schemaRefPrefix = "#/components/schemas/"
+  def refFromViewName(viewName: String) = s"${schemaRefPrefix}${viewName}"
+  def viewNameFromRef(ref: String) = if (ref.startsWith(schemaRefPrefix)) ref.substring(schemaRefPrefix.length) else ref
 
   def fileContent(view: String): Content = {
     val content = new Content
@@ -242,6 +261,25 @@ class WabaseSwaggerGenerator(
     op
   }
 
+  def addPathParameter(op: Operation, pathParameter: AppMetadata.PathParameter): Operation = {
+    val p = new PathParameter
+    p.name(pathParameter.name)
+    val schema =
+      if  (pathParameter.typeName == null)
+           new StringSchema
+      else schemaFromType(new Type(pathParameter.typeName))
+    if (pathParameter.pattern != null && pathParameter.pattern != "^.*$")
+      schema.setPattern(pathParameter.pattern)
+    p.setSchema(schema)
+    op.addParametersItem(p)
+    op
+  }
+
+  def addPathParameters(op: Operation, pathInfo: PathNameAndParameters): Operation = {
+    pathInfo.parameters.foreach(addPathParameter(op, _))
+    op
+  }
+
   def getQueryParameters(method: String, viewDef: ViewDef, keySize: Int = 99): Seq[FilterParameter] = {
     if (method == "list") {
       viewNameToQe(viewDef.name) match {
@@ -295,6 +333,10 @@ class WabaseSwaggerGenerator(
     addCookieParameters(op, method, viewDef, keySize)
   }
 
+  def addParameters(op: Operation, pathInfo: PathNameAndParameters): Operation = {
+    addPathParameters  (op, pathInfo)
+  }
+
   def getResponses(op: Operation): ApiResponses =
     if (op.getResponses == null) {
       val r = new ApiResponses
@@ -319,23 +361,27 @@ class WabaseSwaggerGenerator(
   def addSuccessResponse(op: Operation, view: String, code: String = "200", array: Boolean = false): Operation = {
     val responses = getResponses(op)
     val response = new ApiResponse
-    response.description("")
     if (hasApiFields(view))
       response.content(responseContent(view, array))
     responses.addApiResponse(code, response)
     op
   }
 
+  def addSuccessResponse(op: Operation, method: HttpMethod): Operation = method match {
+    case HttpMethods.DELETE => addSuccessResponse(op, null, "204")
+    case HttpMethods.POST   => addSuccessResponse(op, null, "201")
+    case _                  => addSuccessResponse(op, null, "200")
+  }
+
   def addSuccessPlaintextResponse(op: Operation, view: String, code: String = "200"): Operation = {
     val responses = getResponses(op)
     val response = new ApiResponse
-    response.description("")
     response.content(plaintextContent(view))
     responses.addApiResponse(code, response)
     op
   }
 
-  def addErrorResponse(op: Operation, code: String, description: String, content: Content = null): Operation = {
+  def addErrorResponse(op: Operation, code: String, description: String = null, content: Content = null): Operation = {
     val responses = getResponses(op)
     val response = new ApiResponse
     response.description(description)
@@ -344,11 +390,11 @@ class WabaseSwaggerGenerator(
     op
   }
 
-  def addBadRequestResponse(op: Operation)     = addErrorResponse(op, "400", "Bad request")
-  def addForbiddenResponse(op: Operation, viewDef: ViewDef) = addErrorResponse(op, "403", "Forbidden")
-  def addNotFoundResponse(op: Operation)       = addErrorResponse(op, "404", "Not Found")
-  def addInternalServerError(op: Operation)    = addErrorResponse(op, "500", "Internal server error")
-  def addServiceUnavailabeError(op: Operation) = addErrorResponse(op, "503", "Service Unavailable")
+  def addBadRequestResponse(op: Operation)     = addErrorResponse(op, "400")
+  def addForbiddenResponse(op: Operation, viewDef: ViewDef) = addErrorResponse(op, "403")
+  def addNotFoundResponse(op: Operation)       = addErrorResponse(op, "404")
+  def addInternalServerError(op: Operation)    = addErrorResponse(op, "500")
+  def addServiceUnavailabeError(op: Operation) = addErrorResponse(op, "503")
 
   def hasApiFields(view: String) =
     viewDefMap.get(view).exists(_.fields.exists(isApiField))
@@ -390,6 +436,12 @@ class WabaseSwaggerGenerator(
           delegate.addPathParameter(op, field)
     def addPathParameters(method: String, viewDef: ViewDef, keySize: Int = 99): Operation =
           delegate.addPathParameters(op, method, viewDef, keySize)
+    def addParameters(pathInfo: PathNameAndParameters): Operation =
+          delegate.addParameters(op, pathInfo)
+    def addPathParameter(pathParameter: AppMetadata.PathParameter): Operation =
+          delegate.addPathParameter(op, pathParameter)
+    def addPathParameters(pathInfo: PathNameAndParameters): Operation =
+          delegate.addPathParameters(op, pathInfo)
     def addQueryParameter(param: FilterParameter): Operation =
           delegate.addQueryParameter(op, param)
     def addQueryParameters(method: String, viewDef: ViewDef, keySize: Int = 99): Operation =
@@ -400,6 +452,8 @@ class WabaseSwaggerGenerator(
           delegate.addSuccessPlaintextResponse(op, view, code)
     def addSuccessResponse(view: String, code: String = "200", array: Boolean = false): Operation =
           delegate.addSuccessResponse(op, view, code, array)
+    def addSuccessResponse(method: HttpMethod): Operation =
+          delegate.addSuccessResponse(op, method)
     def getResponses: ApiResponses = delegate.getResponses(op)
   }
 
@@ -433,7 +487,7 @@ class WabaseSwaggerGenerator(
 
   def description(method: String, viewDef: ViewDef, keySize: Int = 99): String = {
     method match {
-      case "delete" => ""
+      case "delete" => null
       case _        => Option(viewDef.comments).getOrElse("")
     }
   }
@@ -461,7 +515,6 @@ class WabaseSwaggerGenerator(
       .addBadRequestResponse
       .addForbiddenResponse(viewDef)
       .addNotFoundResponse
-      .addInternalServerError
       .addServiceUnavailabeError
 
   def operationForCount(viewDef: ViewDef): Operation =
@@ -471,7 +524,6 @@ class WabaseSwaggerGenerator(
       .addBadRequestResponse
       .addForbiddenResponse(viewDef)
       .addNotFoundResponse
-      .addInternalServerError
       .addServiceUnavailabeError
 
   def operationForGet(viewDef: ViewDef): Operation =
@@ -481,7 +533,6 @@ class WabaseSwaggerGenerator(
       .addBadRequestResponse
       .addForbiddenResponse(viewDef)
       .addNotFoundResponse
-      .addInternalServerError
       .addServiceUnavailabeError
 
   def operationForList(viewDef: ViewDef, keySize: Int = 99): Operation = {
@@ -490,7 +541,6 @@ class WabaseSwaggerGenerator(
       .addSuccessResponse(view = viewDef.name, array = true)
       .addBadRequestResponse
       .addForbiddenResponse(viewDef)
-      .addInternalServerError
       .addServiceUnavailabeError
   }
 
@@ -500,7 +550,6 @@ class WabaseSwaggerGenerator(
       .addSuccessResponse(view = viewDef.name)
       .addRequestBody(view = viewDef.name, isArrayRequest(viewDef, "insert"))
       .addBadRequestResponse
-      .addInternalServerError
       .addServiceUnavailabeError
   }
 
@@ -510,7 +559,6 @@ class WabaseSwaggerGenerator(
       .addSuccessResponse(view = viewDef.name)
       .addRequestBody(view = viewDef.name, isArrayRequest(viewDef, "update"))
       .addBadRequestResponse
-      .addInternalServerError
       .addServiceUnavailabeError
   }
 
@@ -520,7 +568,6 @@ class WabaseSwaggerGenerator(
       .addSuccessResponse(view = viewDef.name)
       .addRequestBody(view = viewDef.name, isArrayRequest(viewDef, "save"))
       .addBadRequestResponse
-      .addInternalServerError
       .addServiceUnavailabeError
   }
 
@@ -528,22 +575,54 @@ class WabaseSwaggerGenerator(
     createOperation("delete", viewDef)
       .addParameters("delete", viewDef)
       .addNotFoundResponse
-      .addInternalServerError
   }
 
-  def ungroupedOperations(method: String, viewDef: ViewDef): Seq[(String, String, Operation)] =
+  def operationForDelete (pathInfo: PathNameAndParameters): Operation = new Operation().addParameters(pathInfo).addSuccessResponse(HttpMethods.DELETE)
+  def operationForGet    (pathInfo: PathNameAndParameters): Operation = new Operation().addParameters(pathInfo).addSuccessResponse(HttpMethods.GET)
+  def operationForHead   (pathInfo: PathNameAndParameters): Operation = new Operation().addParameters(pathInfo).addSuccessResponse(HttpMethods.HEAD)
+  def operationForOptions(pathInfo: PathNameAndParameters): Operation = new Operation().addParameters(pathInfo).addSuccessResponse(HttpMethods.OPTIONS)
+  def operationForPatch  (pathInfo: PathNameAndParameters): Operation = new Operation().addParameters(pathInfo).addSuccessResponse(HttpMethods.PATCH)
+  def operationForPost   (pathInfo: PathNameAndParameters): Operation = new Operation().addParameters(pathInfo).addSuccessResponse(HttpMethods.POST)
+  def operationForPut    (pathInfo: PathNameAndParameters): Operation = new Operation().addParameters(pathInfo).addSuccessResponse(HttpMethods.PUT)
+  def operationForTrace  (pathInfo: PathNameAndParameters): Operation = new Operation().addParameters(pathInfo).addSuccessResponse(HttpMethods.TRACE)
+
+  private val allSupportedHttpMethods = Set(
+    HttpMethods.DELETE,
+    HttpMethods.GET,
+    HttpMethods.HEAD,
+    HttpMethods.OPTIONS,
+    HttpMethods.PATCH,
+    HttpMethods.POST,
+    HttpMethods.PUT,
+    HttpMethods.TRACE,
+  )
+  def defaultHttpMethodsForRoute: Set[HttpMethod] = allSupportedHttpMethods
+
+  def setOperation(pathItem: PathItem, method: HttpMethod, operation: Operation): PathItem = method match {
+    case HttpMethods.DELETE  => pathItem.delete (operation)
+    case HttpMethods.GET     => pathItem.get    (operation)
+    case HttpMethods.HEAD    => pathItem.head   (operation)
+    case HttpMethods.OPTIONS => pathItem.options(operation)
+    case HttpMethods.PATCH   => pathItem.patch  (operation)
+    case HttpMethods.POST    => pathItem.post   (operation)
+    case HttpMethods.PUT     => pathItem.put    (operation)
+    case HttpMethods.TRACE   => pathItem.trace  (operation)
+    case x => throw new RuntimeException(s"Http method not supported by swagger generator: $x") // not expected
+  }
+
+  def ungroupedOperations(method: String, viewDef: ViewDef): Seq[(String, HttpMethod, Operation)] =
     method match {
-      case "create" => Seq((pathWithKey(method, viewDef), "GET",    operationForCreate(viewDef)))
-      case "count"  => Seq((pathWithKey(method, viewDef), "GET",    operationForCount(viewDef)))
-      case "get"    => Seq((pathWithKey(method, viewDef), "GET",    operationForGet(viewDef)))
+      case "create" => Seq((pathWithKey(method, viewDef), HttpMethods.GET,    operationForCreate(viewDef)))
+      case "count"  => Seq((pathWithKey(method, viewDef), HttpMethods.GET,    operationForCount(viewDef)))
+      case "get"    => Seq((pathWithKey(method, viewDef), HttpMethods.GET,    operationForGet(viewDef)))
       case "list"   =>
         (viewDef.minKeySizeForList to viewDef.maxKeySizeForList).map { keySize =>
-          (pathWithKey(method, viewDef, keySize),         "GET",    operationForList(viewDef, keySize)
+          (pathWithKey(method, viewDef, keySize),         HttpMethods.GET,    operationForList(viewDef, keySize)
         )}
-      case "insert" => Seq((pathWithKey(method, viewDef), "POST",   operationForInsert(viewDef)))
-      case "update" => Seq((pathWithKey(method, viewDef), "PUT",    operationForUpdate(viewDef)))
-      case "save"   => Seq((pathWithKey(method, viewDef), "PUT",    operationForSave(viewDef)))
-      case "delete" => Seq((pathWithKey(method, viewDef), "DELETE", operationForDelete(viewDef)))
+      case "insert" => Seq((pathWithKey(method, viewDef), HttpMethods.POST,   operationForInsert(viewDef)))
+      case "update" => Seq((pathWithKey(method, viewDef), HttpMethods.PUT,    operationForUpdate(viewDef)))
+      case "save"   => Seq((pathWithKey(method, viewDef), HttpMethods.PUT,    operationForSave(viewDef))) // POST ???   
+      case "delete" => Seq((pathWithKey(method, viewDef), HttpMethods.DELETE, operationForDelete(viewDef)))
       case _        =>
         logger.warn(
           s"Unsupported api method '$method'. View ${viewDef.name}, " +
@@ -551,25 +630,78 @@ class WabaseSwaggerGenerator(
         Nil
     }
 
-  def ungroupedOperations: Seq[(String, String, Operation)] =
-    viewdefs.flatMap { viewDef =>
-      viewDef.apiMethodToRoles.keys.toList.flatMap { method =>
-        ungroupedOperations(method, viewDef)
-      }
-    }
+  def swaggerOverridesKey = "swagger"
 
   def pathsFromViewDefs: Seq[(String, PathItem)] = {
-    ungroupedOperations.groupBy(_._1).map { case (key, listOfOperations) =>
-      val pi = new PathItem
-      listOfOperations.foreach { case (_, operationKey, operation) =>
-        operationKey match {
-          case "GET" => pi.setGet(operation)
-          case "PUT" => pi.setPut(operation)
-          case "POST" => pi.setPost(operation)
-          case "DELETE" => pi.setDelete(operation)
+    viewdefs.flatMap { viewDef =>
+      val pathsAndMethodsAndOps =
+        viewDef.apiMethodToRoles.keys.toList.flatMap { method =>
+            ungroupedOperations(method, viewDef)
         }
-      }
-      key -> pi
+      val defaultPaths =
+        pathsAndMethodsAndOps.groupBy(_._1).map { case (key, listOfOperations) =>
+          val pi = new PathItem
+          listOfOperations.foreach { case (_, method, operation) =>
+            setOperation(pi, method, operation)
+          }
+          key -> pi
+        }.toSeq
+      val pathsOverrides =
+        viewDef.extras.get(swaggerOverridesKey).map {
+          case m: Map[String @unchecked, _] => m
+          case x =>
+            throw new RuntimeException(
+              s"Unexpected class for value of $swaggerOverridesKey in ${viewDef.name}." +
+              s" Expecting map, got ${Option(x).map(_.getClass.getName).orNull}")
+        }.getOrElse(Map.empty)
+      SwaggerMerger.mergePaths(
+        defaultPaths,
+        MapUtils.mapToJavaMap(pathsOverrides).asInstanceOf[JMap[String, Object]],
+        typeNameToSchema,
+      )
+    }
+  }.sortBy(_._1)
+
+  def getPaths(pathsMap: JMap[String, _]): Map[String, PathItem] = {
+    val mapper = new ObjectMapper()
+    pathsMap.asScala.map { case (key, value) =>
+      key -> mapper.convertValue(value, classOf[PathItem])
+    }.toMap
+  }
+
+  def pathsFromRouteDefs: Seq[(String, PathItem)] = {
+    qes.collect { case q: AppQuerease => q }.flatMap(_.routeDefs).filter(isRelevantRoute).flatMap { rd =>
+      val defaultPaths =
+        rd.pathNamesAndParameters.map { pathInfo =>
+          val pi = new PathItem
+          Option(rd.methods).filter(_.nonEmpty).getOrElse(defaultHttpMethodsForRoute).collect {
+            case method @ HttpMethods.DELETE  => setOperation(pi, method, operationForDelete (pathInfo))
+            case method @ HttpMethods.GET     => setOperation(pi, method, operationForGet    (pathInfo))
+            case method @ HttpMethods.HEAD    => setOperation(pi, method, operationForHead   (pathInfo))
+            case method @ HttpMethods.OPTIONS => setOperation(pi, method, operationForOptions(pathInfo))
+            case method @ HttpMethods.PATCH   => setOperation(pi, method, operationForPatch  (pathInfo))
+            case method @ HttpMethods.POST    => setOperation(pi, method, operationForPost   (pathInfo))
+            case method @ HttpMethods.PUT     => setOperation(pi, method, operationForPut    (pathInfo))
+            case method @ HttpMethods.TRACE   => setOperation(pi, method, operationForTrace  (pathInfo))
+          }
+          pathInfo.name -> pi
+        }.toSeq
+      val pathsOverrides =
+        rd.extras.get(swaggerOverridesKey).map {
+          case m: Map[String @unchecked, _] => m
+          case x =>
+            throw new RuntimeException(
+              s"Unexpected class for value of $swaggerOverridesKey." +
+              s" Expecting map, got ${Option(x).map(_.getClass.getName).orNull}")
+        }.getOrElse(Map.empty)
+      if (pathsOverrides.isEmpty)
+        defaultPaths
+      else
+        SwaggerMerger.mergePaths(
+          defaultPaths,
+          MapUtils.mapToJavaMap(pathsOverrides).asInstanceOf[JMap[String, Object]],
+          typeNameToSchema,
+        )
     }.toSeq
   }.sortBy(_._1)
 
@@ -591,6 +723,113 @@ class WabaseSwaggerGenerator(
     views.filter(v => relevantViewNamesSet(v.name))
   }
 
+  def collectRefs(pathItem: PathItem): Set[String] = {
+    val refs = mutable.Set[String]()
+    extractRefs(pathItem, refs)
+    refs.toSet
+  }
+
+  private def extractRefs(obj: Any, refs: mutable.Set[String]): Unit = {
+    if (obj == null) return
+    obj match {
+      case p: PathItem =>
+        if (p.get$ref != null) refs += p.get$ref
+        if (p.getParameters != null) p.getParameters.asScala.foreach(extractRefs(_, refs))
+        if (p.getServers != null) p.getServers.asScala.foreach(extractRefs(_, refs))
+        extractRefs(p.getGet, refs)
+        extractRefs(p.getPost, refs)
+        extractRefs(p.getPut, refs)
+        extractRefs(p.getDelete, refs)
+        extractRefs(p.getOptions, refs)
+        extractRefs(p.getHead, refs)
+        extractRefs(p.getPatch, refs)
+        extractRefs(p.getTrace, refs)
+      case o: Operation =>
+        if (o.getParameters != null) o.getParameters.asScala.foreach(extractRefs(_, refs))
+        extractRefs(o.getRequestBody, refs)
+        extractRefs(o.getResponses, refs)
+        if (o.getCallbacks != null) o.getCallbacks.values.asScala.foreach(extractRefs(_, refs))
+        if (o.getServers != null) o.getServers.asScala.foreach(extractRefs(_, refs))
+      case param: Parameter =>
+        if (param.get$ref != null) refs += param.get$ref
+        extractRefs(param.getSchema, refs)
+        extractRefs(param.getContent, refs)
+      case rb: RequestBody =>
+        if (rb.get$ref != null) refs += rb.get$ref
+        extractRefs(rb.getContent, refs)
+      case responses: ApiResponses =>
+        if (responses != null) responses.values.asScala.foreach(extractRefs(_, refs))
+      case response: ApiResponse =>
+        if (response.get$ref != null) refs += response.get$ref
+        extractRefs(response.getContent, refs)
+        if (response.getHeaders != null) response.getHeaders.values.asScala.foreach(extractRefs(_, refs))
+        if (response.getLinks != null) response.getLinks.values.asScala.foreach(extractRefs(_, refs))
+      case content: Content =>
+        if (content != null) content.values.asScala.foreach(extractRefs(_, refs))
+      case mt: io.swagger.v3.oas.models.media.MediaType =>
+        extractRefs(mt.getSchema, refs)
+        if (mt.getExamples != null) mt.getExamples.values.asScala.foreach(extractRefs(_, refs))
+        if (mt.getEncoding != null) mt.getEncoding.values.asScala.foreach(extractRefs(_, refs))
+      case schema: Schema[_] =>
+        if (schema.get$ref != null) refs += schema.get$ref
+        extractRefs(schema.getNot, refs)
+        if (schema.getProperties != null) schema.getProperties.values.asScala.foreach(extractRefs(_, refs))
+        extractRefs(schema.getAdditionalProperties, refs)
+        extractRefs(schema.getItems, refs)
+        if (schema.getAllOf != null) schema.getAllOf.asScala.foreach(extractRefs(_, refs))
+        if (schema.getAnyOf != null) schema.getAnyOf.asScala.foreach(extractRefs(_, refs))
+        if (schema.getOneOf != null) schema.getOneOf.asScala.foreach(extractRefs(_, refs))
+      case header: Header =>
+        if (header.get$ref != null) refs += header.get$ref
+        extractRefs(header.getSchema, refs)
+        extractRefs(header.getContent, refs)
+      case link: Link =>
+        if (link.get$ref != null) refs += link.get$ref
+      case example: Example =>
+        if (example.get$ref != null) refs += example.get$ref
+      case callback: Callback =>
+        callback.values.asScala.foreach(extractRefs(_, refs))
+      case l: JList[_] =>
+        l.asScala.foreach(extractRefs(_, refs))
+      case m: JMap[_, _] =>
+        m.values.asScala.foreach(extractRefs(_, refs))
+      case _ => // ignore
+    }
+  }
+
+  def addResponseDescriptions(pathItem: PathItem): PathItem = {
+    if (pathItem != null) {
+      val operations = pathItem.readOperations().asScala
+      operations.foreach { (op: Operation) =>
+        val responses: ApiResponses = op.getResponses
+        if (responses != null) {
+          responses.asScala.foreach { case (codeStr: String, resp: ApiResponse) =>
+            if (resp != null && (resp.getDescription == null || resp.getDescription.trim.isEmpty)) {
+              val description = codeStr match {
+                case "default" => "Default response"
+                case c if c.length == 3 && c.toLowerCase.endsWith("xx") =>
+                  c.charAt(0) match {
+                    case '1' => "Informational response"
+                    case '2' => "Successful response"
+                    case '3' => "Redirection response"
+                    case '4' => "Client error response"
+                    case '5' => "Server error response"
+                    case _ => "Unknown response"
+                  }
+                case c =>
+                  Try(c.toInt).toOption
+                    .flatMap(code => StatusCodes.getForKey(code).map(_.reason()))
+                    .getOrElse("Unknown status code")
+              }
+              resp.setDescription(description)
+            }
+          }
+        }
+      }
+    }
+    pathItem
+  }
+
   def swaggerDocument: OpenAPI = {
     val openapi = swaggerConfig
     val paths = if (openapi.getPaths == null) {
@@ -598,8 +837,15 @@ class WabaseSwaggerGenerator(
       openapi.setPaths(p)
       p
     } else openapi.getPaths
-    pathsFromViewDefs.foreach { i =>
-      paths.addPathItem(i._1, i._2)
+    val pathNamesAndItems =
+      Seq(
+        pathsFromRouteDefs,
+        pathsFromViewDefs,
+      )
+        .flatMap(identity)
+        .sortBy(_._1)
+    pathNamesAndItems.foreach { case (pathName, pathItem) =>
+      paths.addPathItem(pathName, addResponseDescriptions(pathItem))
     }
     val components = if (openapi.getComponents == null) {
       val p = new Components
@@ -607,7 +853,12 @@ class WabaseSwaggerGenerator(
       p
     } else openapi.getComponents
 
-    schemasFromViewDefs.toSeq.sortBy(_._1).foreach { i =>
+    val refs = pathNamesAndItems.map(_._2).flatMap(collectRefs).toSet
+    val viewNamesFromRefs = refs.map(viewNameFromRef)
+    val referencedViews = viewNamesFromRefs.flatMap { v =>
+      qes.map(_.nameToViewDef.get(v)).filter(_.nonEmpty).headOption.map(_.get).toSeq
+    }
+    schemasFromViewDefs(viewDefMap ++ referencedViews.map { v => v.name -> v}).toSeq.sortBy(_._1).foreach { i =>
       components.addSchemas(i._1, i._2)
     }
 

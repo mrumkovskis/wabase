@@ -322,6 +322,14 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       Option(viewDef.extras)
         .map(_ -- handledViewExtras)
         .map(_.filterNot(e => knownPrefixes.exists(e._1 startsWith _ + " "))) // auth can be used as prefix, too
+        .map { x =>
+          val normalizedSwagger =
+            viewDef.extras.get(Swagger).map {
+              case m: java.util.Map[String @unchecked, _] => Map(Swagger -> MapUtils.javaMapToMap(m))
+              case x => Map(Swagger -> x)
+            }.getOrElse(Map.empty)
+          x ++ normalizedSwagger
+        }
         .orNull
     val unknownKeys =
       Option(extras)
@@ -331,7 +339,6 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     if (unknownKeys != null)
       sys.error(
         s"Unknown properties for viewDef ${viewDef.name}: ${unknownKeys.mkString(", ")}")
-
 
     ViewDef(name, db, table, tableAlias, column, distinct, joins, filter,
       viewDef.groupBy, viewDef.having, orderBy, extends_,
@@ -1695,12 +1702,23 @@ object AppMetadata extends Loggable {
     dbAccessKeys: Seq[DbAccessKey] = Nil,
   )
 
+  case class PathNameAndParameters(
+    name: String,
+    parameters: Seq[PathParameter]
+  )
+
+  case class PathParameter(
+    name: String,
+    typeName: String,
+    pattern: String,
+  )
+
   case class RouteDef(
     methods: Set[HttpMethod],
     path: Regex,
     requestHandler: Action.Invocation,
     errorHandler: Action.Invocation,
-    pathParameterNames: Seq[String],
+    pathNamesAndParameters: Seq[PathNameAndParameters],
     extras: Map[String, Any],
   )
 
@@ -1753,11 +1771,12 @@ object AppMetadata extends Loggable {
     val Decoder = "decoder"
     val Timeout = "timeout"
     val SqlTimeout = "sql-timeout"
+    val Swagger = "swagger"
     val QuereaseViewExtrasKey = QuereaseMetadata.QuereaseViewExtrasKey
     val WabaseViewExtrasKey = AppMetadata.WabaseViewExtrasKey
     def apply() =
       Set(Api, Auth, Key, Limit, Validations, ExplicitDb,
-          Decoder, Timeout, SqlTimeout, QuereaseViewExtrasKey, WabaseViewExtrasKey,
+          Decoder, Timeout, SqlTimeout, Swagger, QuereaseViewExtrasKey, WabaseViewExtrasKey,
       ) ++
         Action()
   }

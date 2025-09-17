@@ -1,6 +1,34 @@
 on: GET /(user-with-roles-array)
 do: doAction $1
+swagger:
+  get:
+    summary: Get user with roles
+    description: Returns user info
+    responses:
+      '200':
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: John
+                roles:
+                  type: array
+                  example: [admin, guest]
+                  items:
+                    type: string
 
 
 on: GET /current-user
 do: authenticate doAction('current_user')
+swagger:
+  get:
+    summary: Get current user
+    description: Returns current user info
+    responses:
+      '200':
+        content:
+          application/json:
+            type: current_user

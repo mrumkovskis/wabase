@@ -1,14 +1,28 @@
-on: /check-csrf-token
+on: GET /check-csrf-token
 do: checkCsrfToken ok
+swagger:
+  responses:
+    '200': {}
+    '400': {}
 
 
-on: /check-same-origin
+on: GET /check-same-origin
 do: checkSameOrigin ok
+swagger:
+  responses:
+    '200': {}
+    '400': {}
 
 
-on: /delete-csrf-cookie
+on: POST /delete-csrf-cookie
 do: deleteCsrfCookie ok
+swagger:
+  responses =:
+    '200': {}
 
 
-on: /set-csrf-cookie
+on: POST /set-csrf-cookie
 do: setCsrfCookie ok
+swagger:
+  responses =:
+    '200': {}

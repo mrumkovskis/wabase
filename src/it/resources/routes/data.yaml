@@ -1,5 +1,12 @@
 on: /data/((?:create:|count:)?\w+)(/.+)?
 do: authenticateOpt doAction $1
+swagger:
+  paths = : {}    # skip here - derived from views
 
-on: /qe_call/guideline_calculation_helper
+on: GET /qe_call/guideline_calculation_helper
 do: authenticateOpt wabase.app.Guidelines.qeCall
+swagger:
+  '200':
+    content:
+      application/json:
+        type: object

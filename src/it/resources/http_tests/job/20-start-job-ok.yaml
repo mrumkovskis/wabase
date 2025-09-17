@@ -1,2 +1,3 @@
-path:       /job/create_person
+path:       /start-job/create_person
+method:     POST
 response:

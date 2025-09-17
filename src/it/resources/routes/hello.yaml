@@ -1,6 +1,13 @@
 on: GET /hello
 do: response(200, 'Hello from wabase!')
+swagger:
+  '200':
+    content:
+      text/plain:
+        type: string
 
 
 on: /hello
 do: status(405)   # Method Not Allowed
+swagger:
+  paths = : {}    # No need for apidoc if not allowed

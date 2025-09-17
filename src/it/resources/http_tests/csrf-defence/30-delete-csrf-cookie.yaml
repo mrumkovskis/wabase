@@ -1,4 +1,5 @@
 path:     /delete-csrf-cookie
+method:   POST
 response_headers:
   Set-Cookie: XSRF-TOKEN=; Expires=Wed, 01 Jan 1800 00:00:00 GMT
 response:

@@ -16,3 +16,7 @@ insert:
     )
 - else:
   - status 401
+swagger:
+  responses = :
+    '200': {}
+    '401': {}

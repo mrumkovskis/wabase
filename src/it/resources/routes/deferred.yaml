@@ -1,10 +1,20 @@
-on: /deferred-result/{deferred_id}
+on: GET /deferred-result/{deferred_id}
 do: authenticateOpt deferredResult($deferred_id)
 
 
-on: /slow-respond
+on: GET /slow-respond
 do: authenticateOpt maybeDeferred sleep(500) response(200, 'slow done')
+swagger:
+  '200':
+    content:
+      text/plain:
+        type: string
 
 
-on: /fast-respond
+on: GET /fast-respond
 do: authenticateOpt maybeDeferred sleep(005) response(200, 'fast done')
+swagger:
+  '200':
+    content:
+      text/plain:
+        type: string

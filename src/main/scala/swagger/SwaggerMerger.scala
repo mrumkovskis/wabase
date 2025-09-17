@@ -1,0 +1,257 @@
+package org.wabase.swagger
+
+import io.swagger.v3.core.util.Json
+import io.swagger.v3.oas.models.PathItem
+import io.swagger.v3.oas.models.media.Schema
+import java.util.{ArrayList, HashMap, List => JList, Map => JMap}
+import scala.jdk.CollectionConverters._
+
+object SwaggerMerger {
+
+  private val mapper = Json.mapper()
+
+  private val typeSet = Set("boolean", "integer", "number", "string", "array", "object", "null")
+
+  private val schemaKeys = Set("schema", "items", "additionalProperties", "not")
+
+  private val listSchemaKeys = Set("allOf", "anyOf", "oneOf")
+
+  private val httpMethods = Set("get", "post", "put", "delete", "options", "head", "patch", "trace")
+
+  private def trimmedKey(k: String): String = if (k.endsWith(" =")) k.substring(0, k.length - 2).trim else k
+
+  private def isMediaTypeKey(k: String): Boolean = k.contains("/") && !k.startsWith("/")
+
+  /**
+   * Merges base Swagger paths with overrides.
+   *
+   * The overrides are applied based on their structure, detecting levels such as "paths", individual paths ("/path"),
+   * methods, responses, or deeper. Keys ending with ' =' are trimmed and used to replace the subtree; otherwise, they are merged.
+   *
+   * @param basePaths The base paths as a sequence of (path string, PathItem)
+   * @param overrides The overrides as a Java Map loaded from YAML (via SnakeYAML)
+   * @param typeNameToSchema Optional function to resolve custom type names to specific Schema subclasses
+   * @return The merged paths as a sequence of (path string, PathItem)
+   */
+  def mergePaths(basePaths: Seq[(String, PathItem)], overrides: JMap[String, Object], typeNameToSchema: String => Schema[_] = null): Seq[(String, PathItem)] = {
+    if (overrides.isEmpty) basePaths else mergePaths_(basePaths, overrides, typeNameToSchema)
+  }
+
+  private def mergePaths_(basePaths: Seq[(String, PathItem)], overrides: JMap[String, Object], typeNameToSchema: String => Schema[_]): Seq[(String, PathItem)] = {
+    val baseMap = new HashMap[String, JMap[String, Object]]()
+    for ((path, item) <- basePaths) {
+      baseMap.put(path, mapper.convertValue(item, classOf[JMap[String, Object]]))
+    }
+
+    def isPathKey(k: String): Boolean = trimmedKey(k).startsWith("/")
+
+    def isMethodKey(k: String): Boolean = httpMethods.contains(trimmedKey(k).toLowerCase())
+
+    def isResponseKey(k: String): Boolean = {
+      val tk = trimmedKey(k)
+      tk == "default" || tk.matches("""\d{3}""") || (tk.length == 3 && tk.charAt(0).isDigit && tk.substring(1).toLowerCase == "xx")
+    }
+
+    val hasPaths = overrides.keySet.asScala.exists { k =>
+      trimmedKey(k) == "paths"
+    }
+
+    val mergedMap: JMap[String, JMap[String, Object]] = if (hasPaths) {
+      val outerBase = new HashMap[String, Object]()
+      outerBase.put("paths", baseMap)
+      val mergedOuter = merge(outerBase, overrides, typeNameToSchema)
+      mergedOuter.getOrDefault("paths", new HashMap[String, JMap[String, Object]]()).asInstanceOf[JMap[String, JMap[String, Object]]]
+    } else {
+      val overrideMap = overrides.asInstanceOf[JMap[String, Object]]
+      val isPathLevel = overrideMap.keySet.asScala.exists(isPathKey)
+      val isMethodLevel = !isPathLevel && overrideMap.keySet.asScala.exists(isMethodKey)
+      val isResponseLevel = !isPathLevel && !isMethodLevel && overrideMap.keySet.asScala.exists(isResponseKey)
+      if (isPathLevel) {
+        merge(baseMap.asInstanceOf[JMap[String, Object]], overrideMap, typeNameToSchema).asInstanceOf[JMap[String, JMap[String, Object]]]
+      } else if (isMethodLevel) {
+        val newMap = new HashMap[String, JMap[String, Object]](baseMap)
+        for (entry <- newMap.entrySet.asScala) {
+          val pMap = entry.getValue.asInstanceOf[JMap[String, Object]]
+          val mergedP = merge(pMap, overrideMap, typeNameToSchema)
+          entry.setValue(mergedP)
+        }
+        newMap
+      } else if (isResponseLevel) {
+        val newMap = new HashMap[String, JMap[String, Object]](baseMap)
+        for (entry <- newMap.entrySet.asScala) {
+          val pMap = entry.getValue.asInstanceOf[JMap[String, Object]]
+          for (method <- httpMethods) {
+            if (pMap.containsKey(method)) {
+              val opMap = pMap.get(method).asInstanceOf[JMap[String, Object]]
+              val responses = if (opMap.containsKey("responses")) {
+                opMap.get("responses").asInstanceOf[JMap[String, Object]]
+              } else {
+                val newResponses = new HashMap[String, Object]()
+                opMap.put("responses", newResponses)
+                newResponses
+              }
+              val mergedResponses = merge(responses, overrideMap, typeNameToSchema)
+              opMap.put("responses", mergedResponses)
+            }
+          }
+        }
+        newMap
+      } else {
+        val newMap = new HashMap[String, JMap[String, Object]](baseMap)
+        for (entry <- newMap.entrySet.asScala) {
+          val pMap = entry.getValue.asInstanceOf[JMap[String, Object]]
+          for (method <- httpMethods) {
+            if (pMap.containsKey(method)) {
+              val opMap = pMap.get(method).asInstanceOf[JMap[String, Object]]
+              val mergedOp = merge(opMap, overrideMap, typeNameToSchema)
+              pMap.put(method, mergedOp)
+            }
+          }
+        }
+        newMap
+      }
+    }
+
+    for (pathMap <- mergedMap.values.asScala) {
+      sortResponses(pathMap.asInstanceOf[JMap[String, Object]])
+    }
+
+    val keys = mergedMap.keySet.asScala.toList.sorted
+    keys.map { path =>
+      val pathMap = mergedMap.get(path)
+      val pathItem = mapper.readValue(mapper.writeValueAsBytes(pathMap), classOf[PathItem])
+      (path, pathItem)
+    }
+  }
+
+  private def sortResponses(map: JMap[String, Object]): Unit = {
+    if (map.containsKey("responses")) {
+      val responses = map.get("responses").asInstanceOf[JMap[String, Object]]
+      val sortedResponses = new java.util.LinkedHashMap[String, Object]()
+      responses.keySet.asScala.toList.sorted.foreach { k =>
+        sortedResponses.put(k, responses.get(k))
+      }
+      map.put("responses", sortedResponses)
+    }
+    map.values.asScala.foreach {
+      case subMap: JMap[_, _] => sortResponses(subMap.asInstanceOf[JMap[String, Object]])
+      case _ =>
+    }
+  }
+
+  private def merge(base: JMap[String, Object], ovr: JMap[String, Object], typeNameToSchema: String => Schema[_], isSchemaValues: Boolean = false, isSchemaMap: Boolean = false): JMap[String, Object] = {
+    val result = new HashMap[String, Object](base)
+    for ((key, value) <- ovr.asScala) {
+      val (realKey, isReplace) = if (key.endsWith(" =")) {
+        (key.substring(0, key.length - 2).trim, true)
+      } else {
+        (key, false)
+      }
+
+      val newVal: Object = if (isReplace) {
+        processValue(realKey, value, isSchemaValues, typeNameToSchema)
+      } else if (result.containsKey(realKey)) {
+        val baseVal = result.get(realKey)
+        (baseVal, value) match {
+          case (bMap: JMap[_, _], oMap: JMap[_, _]) if isMediaTypeKey(realKey) && oMap.asInstanceOf[JMap[String, Object]].keySet.asScala.exists(k => trimmedKey(k) == "type") =>
+            val schemaMerged = merge(new HashMap[String, Object](), oMap.asInstanceOf[JMap[String, Object]], typeNameToSchema, false, true)
+            val mediaOverride = new HashMap[String, Object]()
+            mediaOverride.put("schema", schemaMerged)
+            merge(bMap.asInstanceOf[JMap[String, Object]], mediaOverride, typeNameToSchema)
+          case (bMap: JMap[_, _], oMap: JMap[_, _]) =>
+            val subSchemaValues = (realKey == "properties")
+            merge(bMap.asInstanceOf[JMap[String, Object]], oMap.asInstanceOf[JMap[String, Object]], typeNameToSchema, subSchemaValues, schemaKeys.contains(realKey) || isSchemaValues)
+          case (bMap: JMap[_, _], oStr: String) if (schemaKeys.contains(realKey) || isSchemaValues) =>
+            if (typeSet.contains(oStr)) createSchemaMap(oStr)
+            else if (typeNameToSchema != null) mapper.convertValue(typeNameToSchema(oStr), classOf[JMap[String, Object]])
+            else throw new IllegalArgumentException(s"Invalid schema type '$oStr'")
+          case (bList: JList[_], oList: JList[_]) =>
+            val newList = new ArrayList[Object](bList.asInstanceOf[JList[Object]])
+            val processedOList = processList(realKey, oList.asInstanceOf[JList[Object]], typeNameToSchema)
+            newList.addAll(processedOList)
+            newList
+          case _ => processValue(realKey, value, isSchemaValues, typeNameToSchema)
+        }
+      } else {
+        processValue(realKey, value, isSchemaValues, typeNameToSchema)
+      }
+      result.put(realKey, newVal)
+    }
+    if (isSchemaMap) {
+      val typ = result.get("type")
+      if (typ != null && typ.isInstanceOf[String]) {
+        val s = typ.asInstanceOf[String]
+        if (!typeSet.contains(s)) {
+          if (typeNameToSchema != null) {
+            val schemaMap = mapper.convertValue(typeNameToSchema(s), classOf[JMap[String, Object]])
+            result.remove("type")
+            schemaMap.putAll(result)
+            return schemaMap
+          } else {
+            throw new IllegalArgumentException(s"Invalid schema type '$s'")
+          }
+        }
+      }
+    }
+    result
+  }
+
+  private def processValue(realKey: String, value: Object, isSchemaValues: Boolean, typeNameToSchema: String => Schema[_]): Object = {
+    val isSchemaPosition = schemaKeys.contains(realKey) || isSchemaValues
+    value match {
+      case oStr: String if isSchemaPosition =>
+        if (typeSet.contains(oStr)) createSchemaMap(oStr)
+        else if (typeNameToSchema != null) mapper.convertValue(typeNameToSchema(oStr), classOf[JMap[String, Object]])
+        else throw new IllegalArgumentException(s"Invalid schema type '$oStr'")
+      case m: JMap[_, _] =>
+        if (isMediaTypeKey(realKey) && m.asInstanceOf[JMap[String, Object]].keySet.asScala.exists(k => trimmedKey(k) == "type")) {
+          val schemaMerged = merge(new HashMap[String, Object](), m.asInstanceOf[JMap[String, Object]], typeNameToSchema, false, true)
+          val mediaMap = new HashMap[String, Object]()
+          mediaMap.put("schema", schemaMerged)
+          mediaMap
+        } else {
+          val subSchemaValues = (realKey == "properties")
+          val isSchemaMapHere = isSchemaPosition
+          merge(new HashMap[String, Object](), m.asInstanceOf[JMap[String, Object]], typeNameToSchema, subSchemaValues, isSchemaMapHere)
+        }
+      case l: JList[_] =>
+        processList(realKey, l.asInstanceOf[JList[Object]], typeNameToSchema)
+      case other => other
+    }
+  }
+
+  private def processList(realKey: String, l: JList[Object], typeNameToSchema: String => Schema[_]): JList[Object] = {
+    val newList = new ArrayList[Object]()
+    val isSchemaList = listSchemaKeys.contains(realKey)
+    for (item <- l.asScala) {
+      val processed = if (isSchemaList) {
+        item match {
+          case oStr: String =>
+            if (typeSet.contains(oStr)) createSchemaMap(oStr)
+            else if (typeNameToSchema != null) mapper.convertValue(typeNameToSchema(oStr), classOf[JMap[String, Object]])
+            else throw new IllegalArgumentException(s"Invalid schema type '$oStr'")
+          case im: JMap[_, _] => merge(new HashMap[String, Object](), im.asInstanceOf[JMap[String, Object]], typeNameToSchema, false, true)
+          case other => other
+        }
+      } else {
+        item match {
+          case im: JMap[_, _] => merge(new HashMap[String, Object](), im.asInstanceOf[JMap[String, Object]], typeNameToSchema)
+          case other => other
+        }
+      }
+      newList.add(processed)
+    }
+    newList
+  }
+
+  private def createSchemaMap(t: String): JMap[String, Object] = {
+    val m = new HashMap[String, Object]()
+    m.put("type", t)
+    if (t == "array") {
+      val items = new HashMap[String, Object]()
+      items.put("type", "object")
+      m.put("items", items)
+    }
+    m
+  }
+}

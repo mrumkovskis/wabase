@@ -1,2 +1,12 @@
-on: /request-info
+on: POST PUT /request-info
 do: wabase.app.BusinessScenariosSpecs.requestInfo
+swagger:
+  responses = :
+    '200':
+      content:
+        application/json:
+          type: object
+          properties:
+            content-type: string
+            content-type-parameters: string
+            data: object

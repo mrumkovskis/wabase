@@ -9,3 +9,8 @@ key: code
 get:
 - wabase.app.JobUtils.sleep 200
 - get person
+swagger:
+  '200':
+    content:
+      application/json:
+        type: person

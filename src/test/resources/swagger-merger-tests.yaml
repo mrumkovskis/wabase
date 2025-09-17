@@ -1,0 +1,363 @@
+---
+should: Add summary and description to get operation
+paths:
+  /user:
+    get: {}
+overrides:
+  get:
+    summary: Get user
+    description: Returns user info
+expected:
+  /user:
+    get:
+      summary: Get user
+      description: Returns user info
+---
+should: Replace description
+paths:
+  /user:
+    get:
+      description: Old desc
+overrides:
+  get:
+    description: New desc
+expected:
+  /user:
+    get:
+      description: New desc
+---
+should: Method level override
+paths:
+  /user1:
+    get: {}
+  /user2:
+    get: {}
+overrides:
+  get:
+    summary: Get entity
+expected:
+  /user1:
+    get:
+      summary: Get entity
+  /user2:
+    get:
+      summary: Get entity
+---
+should: Path level override
+paths:
+  /user:
+    get: {}
+overrides:
+  /user:
+    get:
+      summary: Get user
+expected:
+  /user:
+    get:
+      summary: Get user
+---
+should: Paths level replace
+paths:
+  /old:
+    get: {}
+overrides:
+  "paths =":
+    /new:
+      get:
+        summary: New path
+expected:
+  /new:
+    get:
+      summary: New path
+---
+should: Response level override
+paths:
+  /user:
+    get:
+      responses: {}
+overrides:
+  "200":
+    description: OK
+expected:
+  /user:
+    get:
+      responses:
+        "200":
+          description: OK
+---
+should: Inline type mapping
+paths:
+  /user:
+    get:
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: {}
+overrides:
+  "200":
+    content:
+      application/json:
+        type: user
+type_to_schema:
+  user:
+    type: object
+    properties:
+      name:
+        type: string
+expected:
+  /user:
+    get:
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name:
+                    type: string
+---
+should: Ref type mapping
+paths:
+  /user:
+    get:
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: {}
+overrides:
+  "200":
+    content:
+      application/json:
+        type: user
+type_to_schema:
+  user:
+    $ref: "#/components/schemas/User"
+expected:
+  /user:
+    get:
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+---
+should: Short type string
+paths:
+  /hello:
+    get:
+      responses:
+        "200":
+          content:
+            text/plain:
+              schema: {}
+overrides:
+  "200":
+    content:
+      text/plain:
+        type: string
+expected:
+  /hello:
+    get:
+      responses:
+        "200":
+          content:
+            text/plain:
+              schema:
+                type: string
+---
+should: Array with items
+paths:
+  /user-with-roles-array:
+    get: {}
+overrides:
+  get:
+    summary: Get user with roles
+    responses:
+      "200":
+        content:
+          application/json:
+            type: object
+            properties:
+              roles:
+                type: array
+                items: string
+                example: [admin, guest]
+              name:
+                type: string
+                example: John
+    description: Returns user info
+expected:
+  /user-with-roles-array:
+    get:
+      summary: Get user with roles
+      description: Returns user info
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  roles:
+                    type: array
+                    items:
+                      type: string
+                    example: [admin, guest]
+                  name:
+                    type: string
+                    example: John
+---
+should: Merge schema properties
+paths:
+  /user:
+    get:
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+overrides:
+  "200":
+    content:
+      application/json:
+        schema:
+          properties:
+            name: string
+expected:
+  /user:
+    get:
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  name:
+                    type: string
+---
+should: Replace schema
+paths:
+  /user:
+    get:
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+overrides:
+  "200":
+    content:
+      application/json:
+        "schema =":
+          type: string
+expected:
+  /user:
+    get:
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: string
+---
+should: Responses replace
+paths:
+  /user:
+    get:
+      responses:
+        "200":
+          description: Old OK
+        "404":
+          description: Old Not Found
+overrides:
+  get:
+    "responses =":
+      "200":
+        description: New OK
+expected:
+  /user:
+    get:
+      responses:
+        "200":
+          description: New OK
+---
+should: Response replace
+paths:
+  /user:
+    get:
+      responses:
+        "200":
+          description: Old OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "404":
+          description: Old Not Found
+overrides:
+  "200 =":
+    description: New OK
+    content:
+      text/plain:
+        type: string
+expected:
+  /user:
+    get:
+      responses:
+        "200":
+          description: New OK
+          content:
+            text/plain:
+              schema:
+                type: string
+        "404":
+          description: Old Not Found
+---
+should: Type replace with inline complex type
+paths:
+  /user:
+    get:
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: string
+overrides:
+  "200":
+    content:
+      application/json:
+        "type =": object
+        properties:
+          name: string
+          age: integer
+expected:
+  /user:
+    get:
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  age:
+                    type: integer
+---

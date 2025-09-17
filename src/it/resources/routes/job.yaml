@@ -1,2 +1,10 @@
-on: /job/(.*)
+on: POST /start-job/(?<jobname>.*)
 do: startJob $1
+swagger:
+  responses = :
+    '200':
+      description: Job started
+    '404':
+      description: Job not found
+    '409':
+      description: Job is already running
