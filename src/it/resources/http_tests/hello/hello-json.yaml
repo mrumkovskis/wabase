@@ -1,0 +1,4 @@
+path:     /hello_json
+response_headers:
+  Content-Type: application/json
+response: "Hello from wabase!"

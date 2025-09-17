@@ -1,4 +1,4 @@
 path:     /hello
-# FIXME response_headers:
-#   Content-Type: text/plain
+response_headers:
+  Content-Type: text/plain; charset=UTF-8
 response: "Hello from wabase!"

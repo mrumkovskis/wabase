@@ -145,7 +145,15 @@ object WabaseService {
 
   val okResponse: HttpResponse = HttpResponse(StatusCodes.OK)
   def statusResponse(statusCode: Int): HttpResponse = HttpResponse(statusCode)
-  def statusAndTextResponse(statusCode: Int, text: String): HttpResponse = HttpResponse(statusCode, entity = ByteString(text))
+  def statusAndTextResponse(statusCode: Int, text: String): HttpResponse = HttpResponse(statusCode, entity = text)
+  def responseWithContentType(statusCode: Int, contentType: String, content: String): HttpResponse = {
+    val ent = ContentType.parse(contentType)
+      .toOption.getOrElse(sys.error(s"Invalid content type: $contentType")) match {
+      case ct: ContentType.NonBinary => HttpEntity(contentType = ct, string = content)
+      case ct => HttpEntity(contentType = ct, data = ByteString(content))
+    }
+    HttpResponse(statusCode, entity = ent)
+  }
 
   def optionalHttpHeaderValue[T](msg: HttpMessage)(extractorF: HttpHeader => Option[T]): Option[T] = {
     msg.headers.collectFirst(Function.unlift(extractorF))

@@ -146,6 +146,15 @@ response: |+
               text/plain:
                 schema:
                   type: string
+    /hello_json:
+      get:
+        responses:
+          "200":
+            description: OK
+            content:
+              application/json:
+                schema:
+                  type: string
     /i18n:
       get:
         responses:

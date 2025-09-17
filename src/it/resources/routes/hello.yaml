@@ -11,3 +11,12 @@ on: /hello
 do: status(405)   # Method Not Allowed
 swagger:
   paths = : {}    # No need for apidoc if not allowed
+
+
+on: GET /hello_json
+do: responseWithContentType(200, 'application/json', '"Hello from wabase!"')
+swagger:
+  '200':
+    content:
+      application/json:
+        type: string
