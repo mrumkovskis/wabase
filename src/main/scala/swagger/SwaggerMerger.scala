@@ -4,6 +4,7 @@ import io.swagger.v3.core.util.Json
 import io.swagger.v3.oas.models.PathItem
 import io.swagger.v3.oas.models.media.Schema
 import java.util.{ArrayList, HashMap, List => JList, Map => JMap}
+import scala.collection.mutable.ListBuffer
 import scala.jdk.CollectionConverters._
 
 object SwaggerMerger {
@@ -253,5 +254,55 @@ object SwaggerMerger {
       m.put("items", items)
     }
     m
+  }
+
+  def mergePathItems(pathItems: Seq[PathItem]): Seq[PathItem] = {
+    if (pathItems.isEmpty) Seq()
+    else {
+      val result = ListBuffer[PathItem]()
+      var current = pathItems.head
+      for (next <- pathItems.tail) {
+        if (hasPathItemConflict(current, next)) {
+          result += current
+          current = next
+        } else {
+          current = mergePathItem(current, next)
+        }
+      }
+      result += current
+      result.toSeq
+    }
+  }
+
+  private def hasPathItemConflict(a: PathItem, b: PathItem): Boolean = {
+    val aMap = mapper.convertValue(a, classOf[JMap[String, Object]])
+    val bMap = mapper.convertValue(b, classOf[JMap[String, Object]])
+    val allKeys = aMap.keySet.asScala ++ bMap.keySet.asScala
+    allKeys.exists { k =>
+      hasConflict(aMap.get(k), bMap.get(k))
+    }
+  }
+
+  private def mergePathItem(a: PathItem, b: PathItem): PathItem = {
+    val aMap = mapper.convertValue(a, classOf[JMap[String, Object]])
+    val bMap = mapper.convertValue(b, classOf[JMap[String, Object]])
+    val mergedMap = new HashMap[String, Object](aMap)
+    for ((k, v) <- bMap.asScala) {
+      mergedMap.put(k, mergeObjects(mergedMap.get(k), v))
+    }
+    mapper.convertValue(mergedMap, classOf[PathItem])
+  }
+
+  private def hasConflict(a: Object, b: Object): Boolean = {
+    if (a == null || b == null) false
+    else if (a.isInstanceOf[String] || a.isInstanceOf[Number] || a.isInstanceOf[Boolean]) {
+      !a.equals(b)
+    } else true  // complex or list or map
+  }
+
+  private def mergeObjects(a: Object, b: Object): Object = {
+    if (a == null) b
+    else if (b == null) a
+    else a // since equal or error, but checked
   }
 }

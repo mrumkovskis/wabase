@@ -639,12 +639,12 @@ class WabaseSwaggerGenerator(
             ungroupedOperations(method, viewDef)
         }
       val defaultPaths =
-        pathsAndMethodsAndOps.groupBy(_._1).map { case (key, listOfOperations) =>
+        pathsAndMethodsAndOps.groupBy(_._1).map { case (pathName, listOfOperations) =>
           val pi = new PathItem
           listOfOperations.foreach { case (_, method, operation) =>
             setOperation(pi, method, operation)
           }
-          key -> pi
+          pathName -> pi
         }.toSeq
       val pathsOverrides =
         viewDef.extras.get(swaggerOverridesKey).map {
@@ -843,9 +843,11 @@ class WabaseSwaggerGenerator(
         pathsFromViewDefs,
       )
         .flatMap(identity)
-        .sortBy(_._1)
-    pathNamesAndItems.foreach { case (pathName, pathItem) =>
-      paths.addPathItem(pathName, addResponseDescriptions(pathItem))
+    pathNamesAndItems.groupBy(_._1).toSeq.sortBy(_._1).map { case (pathName, items) =>
+      val mergedItems = SwaggerMerger.mergePathItems(items.map(_._2))
+      mergedItems.foreach { pathItem =>
+        paths.addPathItem(pathName, addResponseDescriptions(pathItem))
+      }
     }
     val components = if (openapi.getComponents == null) {
       val p = new Components
