@@ -78,23 +78,30 @@ class WabaseService extends Loggable {
     val logger = Logger(LoggerFactory.getLogger(loggerName))
     val ctx = WabaseRequestContext(wabase, req, Deferred(deferredControl = deferredControl), as = as, logger = logger)
     ctx.logger.debug(s"Matching route for path: ${req.uri.path}")
-    findRoute(ctx).map(doRoute).getOrElse {
-      ctx.logger.debug(s"Route not found for path: ${req.uri.path}")
-      WabaseService.notFound
-    }
+    findRoute(ctx).fold(
+      resp => {
+        ctx.logger.debug(s"Route not found for path: ${req.uri.path}, error code: ${resp.status}")
+        Future.successful(resp)
+      },
+      route => {
+        ctx.logger.debug(s"Route '${route.methods.map(_.value + " ").mkString}${route.path}' matched for request '${
+          ctx.req.method.value} ${ctx.req.uri}'")
+        doRoute(ctx.copy(route = route))
+      }
+    )
   }
 
-  protected def findRoute(ctx: WabaseRequestContext): Option[WabaseRequestContext] = {
+  /* If route found return Right(route) else Left(http client error) */
+  protected def findRoute(ctx: WabaseRequestContext): Either[HttpResponse, RouteDef] = {
     val pathString = WabaseService.toReadableString(ctx.req.uri.path)
-    ctx.wabase.qe.routeDefs
-      .find { rd =>
-        rd.path.pattern.matcher(pathString).matches && (rd.methods.isEmpty || rd.methods(ctx.req.method))
+    val matchedPaths = ctx.wabase.qe.routeDefs
+      .collect {
+        case rd if rd.path.pattern.matcher(pathString).matches =>
+          if (rd.methods.isEmpty || rd.methods(ctx.req.method)) Right(rd)
+          else Left(HttpResponse(StatusCodes.MethodNotAllowed))
       }
-      .map { r =>
-        ctx.logger.debug(s"Route '${r.methods.map(_.value + " ").mkString}${r.path}' matched for request '${
-          ctx.req.method.value} ${ctx.req.uri}'")
-        ctx.copy(route = r)
-      }
+    (matchedPaths.find(_.isInstanceOf[Right[_, _]]) orElse matchedPaths.headOption)
+      .getOrElse(Left(notFound))
   }
 
   def doRoute(ctx: WabaseRequestContext)(implicit as: ActorSystem): Future[HttpResponse] = {
@@ -141,9 +148,8 @@ object WabaseService {
   val CreateCountActionAndViewRegex = """(?U)(?:(count|create):)?([_\p{IsLatin}][\-\w]*)""".r
   val WabaseUserAttributeName = "wabase-user"
 
-  val notFound: Future[HttpResponse] = Future.successful(HttpResponse(status = StatusCodes.NotFound))
-
   val okResponse: HttpResponse = HttpResponse(StatusCodes.OK)
+  val notFound: HttpResponse = HttpResponse(status = StatusCodes.NotFound)
   def statusResponse(statusCode: Int): HttpResponse = HttpResponse(statusCode)
   def statusAndTextResponse(statusCode: Int, text: String): HttpResponse = HttpResponse(statusCode, entity = text)
   def responseWithContentType(statusCode: Int, contentType: String, content: String): HttpResponse = {
