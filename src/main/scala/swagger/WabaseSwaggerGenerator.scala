@@ -610,7 +610,7 @@ class WabaseSwaggerGenerator(
     case x => throw new RuntimeException(s"Http method not supported by swagger generator: $x") // not expected
   }
 
-  def ungroupedOperations(method: String, viewDef: ViewDef): Seq[(String, HttpMethod, Operation)] =
+  def pathsAndOperations(method: String, viewDef: ViewDef): Seq[(String, HttpMethod, Operation)] =
     method match {
       case "create" => Seq((pathWithKey(method, viewDef), HttpMethods.GET,    operationForCreate(viewDef)))
       case "count"  => Seq((pathWithKey(method, viewDef), HttpMethods.GET,    operationForCount(viewDef)))
@@ -636,7 +636,7 @@ class WabaseSwaggerGenerator(
     viewdefs.flatMap { viewDef =>
       val pathsAndMethodsAndOps =
         viewDef.apiMethodToRoles.keys.toList.flatMap { method =>
-            ungroupedOperations(method, viewDef)
+            pathsAndOperations(method, viewDef)
         }
       val defaultPaths =
         pathsAndMethodsAndOps.groupBy(_._1).map { case (pathName, listOfOperations) =>
