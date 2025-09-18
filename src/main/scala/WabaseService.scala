@@ -94,14 +94,15 @@ class WabaseService extends Loggable {
   /* If route found return Right(route) else Left(http client error) */
   protected def findRoute(ctx: WabaseRequestContext): Either[HttpResponse, RouteDef] = {
     val pathString = WabaseService.toReadableString(ctx.req.uri.path)
-    val matchedPaths = ctx.wabase.qe.routeDefs
-      .collect {
-        case rd if rd.path.pattern.matcher(pathString).matches =>
-          if (rd.methods.isEmpty || rd.methods(ctx.req.method)) Right(rd)
-          else Left(HttpResponse(StatusCodes.MethodNotAllowed))
-      }
-    (matchedPaths.find(_.isInstanceOf[Right[_, _]]) orElse matchedPaths.headOption)
-      .getOrElse(Left(notFound))
+    var notAllowed: Left[HttpResponse, RouteDef] = null
+    ctx.wabase.qe.routeDefs.find { rd =>
+      rd.path.pattern.matcher(pathString).matches &&
+        (rd.methods.isEmpty || rd.methods(ctx.req.method) || {
+          notAllowed = Left(HttpResponse(StatusCodes.MethodNotAllowed))
+          false
+        })
+    }.map(Right[HttpResponse, RouteDef])
+      .orElse(Option(notAllowed)).getOrElse(Left(notFound))
   }
 
   def doRoute(ctx: WabaseRequestContext)(implicit as: ActorSystem): Future[HttpResponse] = {
