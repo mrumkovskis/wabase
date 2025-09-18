@@ -333,7 +333,12 @@ trait WabaseApp[User] {
     case wr => Future.successful(wr)
   }
 
-  def checkKeySize(viewDef: ViewDef, keySize: Int, actionName: String): Unit = actionName match {
+  def checkKeySize(viewDef: ViewDef, keySize: Int, actionName: String): Unit = {
+    val expectedKeySize = qe.viewNameToApiKeyFields.get(viewDef.name).map(_.size).getOrElse(-1)
+    checkKeySize(viewDef, expectedKeySize, keySize, actionName)
+  }
+
+  def checkKeySize(viewDef: ViewDef, expectedKeySize: Int, keySize: Int, actionName: String): Unit = actionName match {
     case Action.List | Action.Count =>
       if (keySize < viewDef.minKeySizeForList || keySize > viewDef.maxKeySizeForList) {
         throw new BusinessException(
@@ -341,12 +346,10 @@ trait WabaseApp[User] {
             s"Expecting ${viewDef.expectedKeySizeDescr}, got $keySize")
       }
     case _ =>
-      val expectedKeySize = qe.viewNameToKeyFields(viewDef.name).count(!_.api.excluded)
       if (keySize != expectedKeySize) {
         throw new BusinessException(
           s"Invalid key size for $actionName of '${viewDef.name}'. " +
             s"Expecting $expectedKeySize, got $keySize")
-
       }
   }
 
@@ -356,12 +359,12 @@ trait WabaseApp[User] {
   def prepareKeyValue(field: FieldDef, value: Any): Any =
     if (value == "null") null else qe.convertToType(value, field.type_)
   def prepareKey(viewName: String, keyValues: Seq[Any], actionName: String): Map[String, Any] = {
-        val keyFields = qe.viewNameToKeyFields(viewName).filterNot(_.api.excluded)
+        val keyFields = qe.viewNameToApiKeyFields(viewName)
         prepareKey(viewName, keyFields, keyValues, actionName)
   }
   def prepareKey(viewName: String, keyFields: Seq[FieldDef], keyValues: Seq[Any], actionName: String): Map[String, Any] = {
     if (keyValues.nonEmpty) {
-        checkKeySize(qe.nameToViewDef(viewName), keyValues.length, actionName)
+        checkKeySize(qe.nameToViewDef(viewName), keyFields.size, keyValues.length, actionName)
         keyFields.zip(keyValues).map { case (f, v) =>
           try f.fieldName -> prepareKeyValue(f, v)
           catch {

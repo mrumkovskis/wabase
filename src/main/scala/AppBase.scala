@@ -691,8 +691,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
     import qe.{ FieldRefRegexp_ => FieldRefRegexp }
     ListMap(
       "name" -> viewDef.name,
-      "key"  -> qe.viewNameToKeyFields.get(viewDef.name).filter(_ != null).getOrElse(Nil)
-        .filterNot(_.api.excluded)
+      "key"  -> qe.viewNameToApiKeyFields.get(viewDef.name).filter(_ != null).getOrElse(Nil)
         .map(_.fieldName).toVector,
       "fields" -> viewDef.fields.filterNot(_.api.excluded).map(f => ListMap(
         "name" -> f.fieldName,
