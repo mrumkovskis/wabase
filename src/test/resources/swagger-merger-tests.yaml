@@ -307,12 +307,17 @@ paths:
             application/json:
               schema:
                 type: object
+            text/plain:
+              schema:
+                type: string
         "404":
           description: Old Not Found
 overrides:
   "200 =":
     description: New OK
     content:
+      application/json:
+        type: object
       text/plain:
         type: string
 expected:
@@ -322,6 +327,9 @@ expected:
         "200":
           description: New OK
           content:
+            application/json:
+              schema:
+                type: object
             text/plain:
               schema:
                 type: string
@@ -360,4 +368,234 @@ expected:
                     type: string
                   age:
                     type: integer
+---
+should: Append new parameter from array
+paths:
+  /user:
+    get:
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+overrides:
+  get:
+    parameters:
+      - name: limit
+        in: query
+        schema:
+          type: integer
+expected:
+  /user:
+    get:
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+---
+should: Merge/replace existing parameter from array
+paths:
+  /user:
+    get:
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+          description: Old desc
+overrides:
+  get:
+    parameters:
+      - name: limit
+        in: query
+        description: New desc
+expected:
+  /user:
+    get:
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+          description: New desc
+---
+should: Replace all parameters with = from array
+paths:
+  /user:
+    get:
+      parameters:
+        - name: id
+          in: path
+          required: true
+overrides:
+  get:
+    "parameters =":
+      - name: newParam
+        in: query
+        schema:
+          type: string
+expected:
+  /user:
+    get:
+      parameters:
+        - name: newParam
+          in: query
+          schema:
+            type: string
+---
+should: Append new parameter from map
+paths:
+  /user:
+    get:
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+overrides:
+  get:
+    parameters:
+      limit:
+        in: query
+        schema:
+          type: integer
+expected:
+  /user:
+    get:
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+---
+should: Merge/replace existing parameter from map
+paths:
+  /user:
+    get:
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+          description: Old desc
+overrides:
+  get:
+    parameters:
+      limit:
+        in: query
+        description: New desc
+expected:
+  /user:
+    get:
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+          description: New desc
+---
+should: Replace all parameters with = from map
+paths:
+  /user:
+    get:
+      parameters:
+        - name: id
+          in: path
+          required: true
+overrides:
+  get:
+    "parameters =":
+      newParam:
+        in: query
+        schema:
+          type: string
+expected:
+  /user:
+    get:
+      parameters:
+        - name: newParam
+          in: query
+          schema:
+            type: string
+---
+should: Path level parameters merge
+paths:
+  /user/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get: {}
+overrides:
+  /user/{id}:
+    parameters:
+      - name: limit
+        in: query
+        schema:
+          type: integer
+expected:
+  /user/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: limit
+        in: query
+        schema:
+          type: integer
+    get: {}
+---
+should: Operation level overrides path level parameters
+paths:
+  /user/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+          description: Old limit
+overrides:
+  get:
+    parameters:
+      limit:
+        description: New limit
+expected:
+  /user/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+          description: New limit
 ---

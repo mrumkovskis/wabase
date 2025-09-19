@@ -1,8 +1,8 @@
 package org.wabase.swagger
 
 import io.swagger.v3.core.util.Json
-import io.swagger.v3.oas.models.PathItem
 import io.swagger.v3.oas.models.media.Schema
+import io.swagger.v3.oas.models.PathItem
 import java.util.{ArrayList, HashMap, List => JList, Map => JMap}
 import scala.collection.mutable.ListBuffer
 import scala.jdk.CollectionConverters._
@@ -149,34 +149,41 @@ object SwaggerMerger {
         (key, false)
       }
 
-      val newVal: Object = if (isReplace) {
-        processValue(realKey, value, isSchemaValues, typeNameToSchema)
-      } else if (result.containsKey(realKey)) {
-        val baseVal = result.get(realKey)
-        (baseVal, value) match {
-          case (bMap: JMap[_, _], oMap: JMap[_, _]) if isMediaTypeKey(realKey) && oMap.asInstanceOf[JMap[String, Object]].keySet.asScala.exists(k => trimmedKey(k) == "type") =>
-            val schemaMerged = merge(new HashMap[String, Object](), oMap.asInstanceOf[JMap[String, Object]], typeNameToSchema, false, true)
-            val mediaOverride = new HashMap[String, Object]()
-            mediaOverride.put("schema", schemaMerged)
-            merge(bMap.asInstanceOf[JMap[String, Object]], mediaOverride, typeNameToSchema)
-          case (bMap: JMap[_, _], oMap: JMap[_, _]) =>
-            val subSchemaValues = (realKey == "properties")
-            merge(bMap.asInstanceOf[JMap[String, Object]], oMap.asInstanceOf[JMap[String, Object]], typeNameToSchema, subSchemaValues, schemaKeys.contains(realKey) || isSchemaValues)
-          case (bMap: JMap[_, _], oStr: String) if (schemaKeys.contains(realKey) || isSchemaValues) =>
-            if (typeSet.contains(oStr)) createSchemaMap(oStr)
-            else if (typeNameToSchema != null) mapper.convertValue(typeNameToSchema(oStr), classOf[JMap[String, Object]])
-            else throw new IllegalArgumentException(s"Invalid schema type '$oStr'")
-          case (bList: JList[_], oList: JList[_]) =>
-            val newList = new ArrayList[Object](bList.asInstanceOf[JList[Object]])
-            val processedOList = processList(realKey, oList.asInstanceOf[JList[Object]], typeNameToSchema)
-            newList.addAll(processedOList)
-            newList
-          case _ => processValue(realKey, value, isSchemaValues, typeNameToSchema)
-        }
+      if (realKey == "parameters") {
+        val baseParams = if (result.containsKey("parameters")) result.get("parameters").asInstanceOf[JList[Object]] else new ArrayList[Object]()
+        val ovrParams = normalizeParameters(value)
+        val mergedParams = if (isReplace) ovrParams else mergeParameters(baseParams, ovrParams, typeNameToSchema)
+        result.put("parameters", mergedParams)
       } else {
-        processValue(realKey, value, isSchemaValues, typeNameToSchema)
+        val newVal: Object = if (isReplace) {
+          processValue(realKey, value, isSchemaValues, typeNameToSchema)
+        } else if (result.containsKey(realKey)) {
+          val baseVal = result.get(realKey)
+          (baseVal, value) match {
+            case (bMap: JMap[_, _], oMap: JMap[_, _]) if isMediaTypeKey(realKey) && oMap.asInstanceOf[JMap[String, Object]].keySet.asScala.exists(k => trimmedKey(k) == "type") =>
+              val schemaMerged = merge(new HashMap[String, Object](), oMap.asInstanceOf[JMap[String, Object]], typeNameToSchema, false, true)
+              val mediaOverride = new HashMap[String, Object]()
+              mediaOverride.put("schema", schemaMerged)
+              merge(bMap.asInstanceOf[JMap[String, Object]], mediaOverride, typeNameToSchema)
+            case (bMap: JMap[_, _], oMap: JMap[_, _]) =>
+              val subSchemaValues = (realKey == "properties")
+              merge(bMap.asInstanceOf[JMap[String, Object]], oMap.asInstanceOf[JMap[String, Object]], typeNameToSchema, subSchemaValues, schemaKeys.contains(realKey) || isSchemaValues)
+            case (bMap: JMap[_, _], oStr: String) if (schemaKeys.contains(realKey) || isSchemaValues) =>
+              if (typeSet.contains(oStr)) createSchemaMap(oStr)
+              else if (typeNameToSchema != null) mapper.convertValue(typeNameToSchema(oStr), classOf[JMap[String, Object]])
+              else throw new IllegalArgumentException(s"Invalid schema type '$oStr'")
+            case (bList: JList[_], oList: JList[_]) =>
+              val newList = new ArrayList[Object](bList.asInstanceOf[JList[Object]])
+              val processedOList = processList(realKey, oList.asInstanceOf[JList[Object]], typeNameToSchema)
+              newList.addAll(processedOList)
+              newList
+            case _ => processValue(realKey, value, isSchemaValues, typeNameToSchema)
+          }
+        } else {
+          processValue(realKey, value, isSchemaValues, typeNameToSchema)
+        }
+        result.put(realKey, newVal)
       }
-      result.put(realKey, newVal)
     }
     if (isSchemaMap) {
       val typ = result.get("type")
@@ -195,6 +202,49 @@ object SwaggerMerger {
       }
     }
     result
+  }
+
+  private def normalizeParameters(value: Object): JList[Object] = {
+    value match {
+      case l: JList[_] => new ArrayList[Object](l.asInstanceOf[JList[Object]])
+      case m: JMap[_, _] =>
+        val list = new ArrayList[Object]()
+        for ((k, v) <- m.asScala) {
+          val paramMap = v.asInstanceOf[JMap[String, Object]]
+          if (!paramMap.containsKey("name")) {
+            paramMap.put("name", k.asInstanceOf[String])
+          }
+          if (!paramMap.containsKey("in")) {
+            paramMap.put("in", "query") // default
+          }
+          list.add(paramMap)
+        }
+        list
+      case _ => new ArrayList[Object]()
+    }
+  }
+
+  private def mergeParameters(baseParams: JList[Object], ovrParams: JList[Object], typeNameToSchema: String => Schema[_]): JList[Object] = {
+    val merged = new ArrayList[Object](baseParams)
+    for (ovrParam <- ovrParams.asScala) {
+      val ovrMap = ovrParam.asInstanceOf[JMap[String, Object]]
+      val ovrName = ovrMap.get("name").asInstanceOf[String]
+      val ovrIn = ovrMap.getOrDefault("in", "query").asInstanceOf[String]
+      val foundIndex = merged.asScala.indexWhere { p =>
+        val pMap = p.asInstanceOf[JMap[String, Object]]
+        val pName = pMap.get("name").asInstanceOf[String]
+        val pIn = pMap.getOrDefault("in", "query").asInstanceOf[String]
+        pName == ovrName && pIn == ovrIn
+      }
+      if (foundIndex >= 0) {
+        val baseParamMap = merged.get(foundIndex).asInstanceOf[JMap[String, Object]]
+        val mergedParam = merge(baseParamMap, ovrMap, typeNameToSchema)
+        merged.set(foundIndex, mergedParam)
+      } else {
+        merged.add(ovrParam)
+      }
+    }
+    merged
   }
 
   private def processValue(realKey: String, value: Object, isSchemaValues: Boolean, typeNameToSchema: String => Schema[_]): Object = {
