@@ -33,6 +33,20 @@ class JsonDecoderSpecs extends FlatSpec with Matchers {
     map.updated("bytes",     Option(map("bytes")).map(_.asInstanceOf[Array[Byte]]).map(encodeBytes).orNull)
        .updated("bytes_seq", Option(map("bytes_seq")).map(_.asInstanceOf[List[Array[Byte]]].map(encodeBytes)).orNull)
 
+  it should "fail to decode non-json" in {
+    intercept[BusinessException] {
+      anyValsDecoder.decode(ByteString("456789abcdef"))
+    }.getMessage shouldBe "Failed to decode data: Expected end of input but got 'a' (input position 6)"
+    val obj = new decoder_test
+    val viewName = classToViewName(obj.getClass)
+    intercept[BusinessException] {
+      decodeToMap(ByteString("{}456789abcdef"), viewName, strictDecoder)
+    }.getMessage shouldBe "Failed to decode data: Expected end of input but got '4' (input position 2)"
+    intercept[BusinessException] {
+      decodeToMap(ByteString("{}456789abcdef"), viewName, lenientDecoder)
+    }.getMessage shouldBe "Failed to decode data: Expected end of input but got '4' (input position 2)"
+  }
+
   it should "decode json to compatible map ignoring unknown and adding missing keys" in {
     val obj = new decoder_test_child
     val viewName = classToViewName(obj.getClass)
