@@ -546,8 +546,7 @@ overrides:
     parameters:
       - name: limit
         in: query
-        schema:
-          type: integer
+        type: integer
 expected:
   /user/{id}:
     parameters:
@@ -598,4 +597,32 @@ expected:
           schema:
             type: integer
           description: New limit
+---
+should: Append new parameter from map, ops level
+paths:
+  /user:
+    get:
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+overrides:
+  parameters:
+    limit:
+      type: integer
+expected:
+  /user:
+    get:
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
 ---

@@ -206,7 +206,19 @@ object SwaggerMerger {
 
   private def normalizeParameters(value: Object): JList[Object] = {
     value match {
-      case l: JList[_] => new ArrayList[Object](l.asInstanceOf[JList[Object]])
+      case l: JList[_] => {
+        val newList = new ArrayList[Object]()
+        for (p <- l.asScala) {
+          val paramMap = p.asInstanceOf[JMap[String, Object]]
+          if (paramMap.containsKey("type") && !paramMap.containsKey("schema")) {
+            val schemaMap = createSchemaMap(paramMap.get("type").asInstanceOf[String])
+            paramMap.put("schema", schemaMap)
+            paramMap.remove("type")
+          }
+          newList.add(paramMap)
+        }
+        newList
+      }
       case m: JMap[_, _] =>
         val list = new ArrayList[Object]()
         for ((k, v) <- m.asScala) {
@@ -216,6 +228,11 @@ object SwaggerMerger {
           }
           if (!paramMap.containsKey("in")) {
             paramMap.put("in", "query") // default
+          }
+          if (paramMap.containsKey("type") && !paramMap.containsKey("schema")) {
+            val schemaMap = createSchemaMap(paramMap.get("type").asInstanceOf[String])
+            paramMap.put("schema", schemaMap)
+            paramMap.remove("type")
           }
           list.add(paramMap)
         }
