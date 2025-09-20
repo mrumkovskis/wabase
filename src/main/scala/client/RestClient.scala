@@ -213,17 +213,26 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root) exten
   }
 
   protected def requestFailed(
-      message: String, cause: Throwable,
-      status: StatusCode = null, content: String = null, request: HttpRequest = null): Nothing = {
+    message: String,
+    cause: Throwable,
+    status: StatusCode = null,
+    content: String = null,
+    request: HttpRequest = null
+  ): Nothing = {
     val verboseMessage =
       if (request != null)
         s"Request ${Option(request.method).map(_.value).orNull} ${request.uri} failed: $message"
       else message
-    val causeStatus = cause match {
-      case ce: ClientException => ce.status
-      case _ => status
+    cause match {
+      case ce: ClientException => requestFailed(
+        Option(message).getOrElse(ce.getMessage),
+        ce.getCause,
+        Option(status).getOrElse(ce.status),
+        Option(content).getOrElse(ce.responseContent),
+        Option(request).getOrElse(ce.request),
+      )
+      case _ => throw new ClientException(verboseMessage, cause, status, content, request)
     }
-    throw new ClientException(verboseMessage, cause, causeStatus, content, request)
   }
 
   def listenToWs(actor: ActorRef) = {
