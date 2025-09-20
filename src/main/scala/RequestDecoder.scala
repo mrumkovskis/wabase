@@ -7,7 +7,7 @@ import org.apache.pekko.stream.connectors.xml.scaladsl.XmlParsing
 import org.apache.pekko.util.ByteString
 import io.bullet.borer.compat.pekko.ByteStringProvider
 import io.bullet.borer.encodings.BaseEncoding
-import io.bullet.borer.{Borer, Cbor, Decoder, Input, Json, Tag, Target, DataItem => DI}
+import io.bullet.borer.{Borer, Cbor, Decoder, DecodingSetup, Input, Json, Tag, Target, DataItem => DI}
 import org.apache.pekko.http.scaladsl.model.HttpEntity
 import org.apache.pekko.NotUsed
 import org.mojoz.metadata.{Type, TypeDef, ViewDef}
@@ -119,20 +119,21 @@ class CborOrJsonDecoder(typeDefs: Seq[TypeDef], nameToViewDef: Map[String, ViewD
       throw new BusinessException(s"Failed to read to map for $viewName: ${ex.getMessage}", ex)
   }}
 
-  protected def reader(data: ByteString, decodeFrom: Target) = decodeFrom match {
+  protected def decoding(data: ByteString, decodeFrom: Target): DecodingSetup.Api[_] = decodeFrom match {
     case _: Cbor.type => Cbor.decode(data)
     case _: Json.type => Json.decode(data).withConfig(Json.DecodingConfig.default.copy(
       maxNumberAbsExponent = 308, // to accept up to Double.MaxValue
     ))
   }
 
-  protected def handleExceptions[T](f: => T) = try f catch {
-    case boer: Borer.Error[_] => boer.getCause match {
-      case biex: BusinessException => throw biex
-      case _ => throw new BusinessException(s"Failed to decode data: ${boer.getMessage}", boer)
+  protected def to[T: Decoder](decoding: DecodingSetup.Api[_]): T =
+    try decoding.to[T].value catch {
+      case boer: Borer.Error[_] => boer.getCause match {
+        case biex: BusinessException => throw biex
+        case _ => throw new BusinessException(s"Failed to decode data: ${boer.getMessage}", boer)
+      }
+      case util.control.NonFatal(ex) => throw ex
     }
-    case util.control.NonFatal(ex) => throw ex
-  }
 
   def decodeToMap[M <: Map[String, Any] : ClassTag](
     data:       ByteString,
@@ -140,7 +141,7 @@ class CborOrJsonDecoder(typeDefs: Seq[TypeDef], nameToViewDef: Map[String, ViewD
     decodeFrom: Target = Json,
   )(viewNameToMapZero: String => M): M = {
     implicit val decoder: Decoder[M] = toMapDecoder(viewName, viewNameToMapZero)
-    handleExceptions(reader(data, decodeFrom).to[M].value)
+    to[M](decoding(data, decodeFrom))
   }
 
   def decodeToSeqOfMaps[M <: Map[String, Any] : ClassTag](
@@ -149,12 +150,7 @@ class CborOrJsonDecoder(typeDefs: Seq[TypeDef], nameToViewDef: Map[String, ViewD
     decodeFrom: Target = Json,
   )(viewNameToMapZero: String => M): Seq[M] = {
     implicit val decoder: Decoder[M] = toMapDecoder(viewName, viewNameToMapZero)
-    try {
-      toSeq(handleExceptions(reader(data, decodeFrom).to[Array[M]].value))
-    } catch {
-      case util.control.NonFatal(ex) =>
-        throw new BusinessException(s"Failed to read array for $viewName: ${ex.getMessage}", ex)
-    }
+    toSeq(to[Array[M]](decoding(data, decodeFrom)))
   }
 }
 
@@ -260,20 +256,21 @@ class CborOrJsonAnyValueDecoder() {
     } else r.unexpectedDataItem(expected = "Map")
   }
 
-  protected def reader[T: Input.Provider](data: T, decodeFrom: Target) = decodeFrom match {
+  protected def decoding[T: Input.Provider](data: T, decodeFrom: Target) = decodeFrom match {
     case _: Cbor.type => Cbor.decode(data)
     case _: Json.type => Json.decode(data).withConfig(Json.DecodingConfig.default.copy(
       maxNumberAbsExponent = 308, // to accept up to Double.MaxValue
     ))
   }
 
-  protected def handleExceptions[T](f: => T) = try f catch {
-    case boer: Borer.Error[_] => boer.getCause match {
-      case biex: BusinessException => throw biex
-      case _ => throw new BusinessException(s"Failed to decode data: ${boer.getMessage}", boer)
+  protected def to[T: Decoder](decoding: DecodingSetup.Api[_]): T =
+    try decoding.to[T].value catch {
+      case boer: Borer.Error[_] => boer.getCause match {
+        case biex: BusinessException => throw biex
+        case _ => throw new BusinessException(s"Failed to decode data: ${boer.getMessage}", boer)
+      }
+      case util.control.NonFatal(ex) => throw ex
     }
-    case util.control.NonFatal(ex) => throw ex
-  }
 
   def decode[M <: Map[String, Any] : ClassTag](
     data:       ByteString,
@@ -281,7 +278,7 @@ class CborOrJsonAnyValueDecoder() {
     mapZero:    () => M = () => Map.empty[String, Any],
   ): Any = {
     implicit val decoder: Decoder[Any] = anyValueDecoder(mapZero)
-    handleExceptions(reader(data, decodeFrom).to[Any].value)
+    to[Any](decoding(data, decodeFrom))
   }
 
   def decodeFromInputStream[M <: Map[String, Any] : ClassTag](
@@ -290,7 +287,7 @@ class CborOrJsonAnyValueDecoder() {
     mapZero:    () => M = () => Map.empty[String, Any],
   ): Any = {
     implicit val decoder: Decoder[Any] = anyValueDecoder(mapZero)
-    handleExceptions(reader(data, decodeFrom).to[Any].value)
+    to[Any](decoding(data, decodeFrom))
   }
 
   def decodeToMap[M <: Map[String, Any] : ClassTag](
@@ -299,7 +296,7 @@ class CborOrJsonAnyValueDecoder() {
     mapZero:    () => M = () => Map.empty[String, Any],
   ): M = {
     implicit val decoder: Decoder[M] = toMapDecoder(mapZero)
-    handleExceptions(reader(data, decodeFrom).to[M].value)
+    to[M](decoding(data, decodeFrom))
   }
 
   def decodeToSeqOfMaps[M <: Map[String, Any] : ClassTag](
@@ -308,7 +305,7 @@ class CborOrJsonAnyValueDecoder() {
     mapZero:    () => M = () => Map.empty[String, Any],
   ): Seq[M] = {
     implicit val decoder: Decoder[M] = toMapDecoder(mapZero)
-    toSeq(handleExceptions(reader(data, decodeFrom).to[Array[M]].value))
+    toSeq(to[Array[M]](decoding(data, decodeFrom)))
   }
 }
 
