@@ -240,7 +240,17 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
             knownPrefixes.exists(k startsWith _ + " ")) // auth can be used as prefix, too
         else handledFieldExtras
       val extras =
-        Option(f.extras).map(_ -- handledExtras).orNull
+        Option(f.extras)
+          .map(_ -- handledExtras)
+          .map { x =>
+            val normalizedSwagger =
+              f.extras.get(KnownViewExtras.Swagger).map {
+                case m: java.util.Map[String @unchecked, _] => Map(KnownViewExtras.Swagger -> MapUtils.javaMapToMap(m))
+                case x => Map(KnownViewExtras.Swagger -> x)
+              }.getOrElse(Map.empty)
+            x ++ normalizedSwagger
+          }
+          .orNull
       val unknownKeys =
         Option(extras)
           .map(_ -- knownExtras)
@@ -324,9 +334,9 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
         .map(_.filterNot(e => knownPrefixes.exists(e._1 startsWith _ + " "))) // auth can be used as prefix, too
         .map { x =>
           val normalizedSwagger =
-            viewDef.extras.get(Swagger).map {
-              case m: java.util.Map[String @unchecked, _] => Map(Swagger -> MapUtils.javaMapToMap(m))
-              case x => Map(Swagger -> x)
+            viewDef.extras.get(KnownFieldExtras.Swagger).map {
+              case m: java.util.Map[String @unchecked, _] => Map(KnownFieldExtras.Swagger -> MapUtils.javaMapToMap(m))
+              case x => Map(KnownFieldExtras.Swagger -> x)
             }.getOrElse(Map.empty)
           x ++ normalizedSwagger
         }
@@ -1795,11 +1805,12 @@ object AppMetadata extends Loggable {
     val Hidden = "hidden"
     val Visible = "visible"
     val Initial = "initial"
+    val Swagger = "swagger"
     val QuereaseFieldExtrasKey = QuereaseMetadata.QuereaseFieldExtrasKey
     val WabaseFieldExtrasKey = AppMetadata.WabaseFieldExtrasKey
     def apply() = Set(
       Domain, Hidden, Sortable, Visible, Required,
-      FieldApi, Initial, QuereaseFieldExtrasKey, WabaseFieldExtrasKey)
+      FieldApi, Initial, Swagger, QuereaseFieldExtrasKey, WabaseFieldExtrasKey)
   }
 
 

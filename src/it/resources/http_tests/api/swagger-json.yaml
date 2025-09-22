@@ -1467,6 +1467,7 @@ response: {
           "password" : {
             "type" : "string",
             "description" : "Password",
+            "example" : "password",
             "maxLength" : 90,
             "readOnly" : false
           }
@@ -1489,6 +1490,7 @@ response: {
           "role" : {
             "type" : "string",
             "description" : "Role",
+            "example" : "admin",
             "readOnly" : false
           }
         },

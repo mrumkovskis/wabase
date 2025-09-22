@@ -11,7 +11,9 @@ api:      get, save
 fields:
 - id
 - name
-- password
+- password:
+    swagger:
+      example: password
 
 
 name:     user_role
@@ -20,7 +22,9 @@ api:      get, save
 key:      user_id, role
 fields:
 - user_id
-- role
+- role:
+  swagger:
+    example: admin
 
 
 name:     current_user

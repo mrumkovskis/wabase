@@ -148,10 +148,23 @@ class WabaseSwaggerGenerator(
     } else schemaFromType(field.type_)
     addEnumIfNeeded(field.enum_, maybeArraySchema)
     val fieldName = field.fieldName
-    fieldName -> maybeArraySchema
+    val defaultSchema = maybeArraySchema
       .name(fieldName)
       .readOnly(getReadOnly(viewdefs)(field))
       .description(Option(field.comments).getOrElse(field.label))
+    val fieldSchemaOverrides =
+      field.extras.get(swaggerOverridesKey).map {
+        case m: Map[String @unchecked, _] => m
+        case x =>
+          throw new RuntimeException(
+            s"Unexpected class for value of $swaggerOverridesKey in field ${field.fieldName}." +
+            s" Expecting map, got ${Option(x).map(_.getClass.getName).orNull}")
+      }.getOrElse(Map.empty)
+    fieldName -> SwaggerMerger.mergeSchema(
+      defaultSchema,
+      MapUtils.mapToJavaMap(fieldSchemaOverrides).asInstanceOf[JMap[String, Object]],
+      typeNameToSchema,
+    )
   }
 
   def isApiField(f: FieldDef): Boolean =

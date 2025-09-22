@@ -151,7 +151,7 @@ object SwaggerMerger {
 
       if (realKey == "parameters") {
         val baseParams = if (result.containsKey("parameters")) result.get("parameters").asInstanceOf[JList[Object]] else new ArrayList[Object]()
-        val ovrParams = normalizeParameters(value)
+        val ovrParams = normalizeParameters(value, typeNameToSchema)
         val mergedParams = if (isReplace) ovrParams else mergeParameters(baseParams, ovrParams, typeNameToSchema)
         result.put("parameters", mergedParams)
       } else {
@@ -204,41 +204,40 @@ object SwaggerMerger {
     result
   }
 
-  private def normalizeParameters(value: Object): JList[Object] = {
-    value match {
-      case l: JList[_] => {
-        val newList = new ArrayList[Object]()
-        for (p <- l.asScala) {
-          val paramMap = p.asInstanceOf[JMap[String, Object]]
-          if (paramMap.containsKey("type") && !paramMap.containsKey("schema")) {
-            val schemaMap = createSchemaMap(paramMap.get("type").asInstanceOf[String])
-            paramMap.put("schema", schemaMap)
-            paramMap.remove("type")
-          }
-          newList.add(paramMap)
-        }
-        newList
-      }
+  private def normalizeParameters(value: Object, typeNameToSchema: String => Schema[_]): JList[Object] = {
+    val rawList = value match {
+      case l: JList[_] => l.asInstanceOf[JList[Object]]
       case m: JMap[_, _] =>
         val list = new ArrayList[Object]()
         for ((k, v) <- m.asScala) {
-          val paramMap = v.asInstanceOf[JMap[String, Object]]
-          if (!paramMap.containsKey("name")) {
-            paramMap.put("name", k.asInstanceOf[String])
-          }
-          if (!paramMap.containsKey("in")) {
-            paramMap.put("in", "query") // default
-          }
-          if (paramMap.containsKey("type") && !paramMap.containsKey("schema")) {
-            val schemaMap = createSchemaMap(paramMap.get("type").asInstanceOf[String])
-            paramMap.put("schema", schemaMap)
-            paramMap.remove("type")
+          val paramMap = new HashMap[String, Object]()
+          paramMap.put("name", k.asInstanceOf[String])
+          paramMap.put("in", "query") // default
+          v match {
+            case vm: JMap[_, _] =>
+              paramMap.putAll(vm.asInstanceOf[JMap[String, Object]])
+            case vs: String =>
+              val schemaMap = processValue("schema", vs, true, typeNameToSchema).asInstanceOf[JMap[String, Object]]
+              paramMap.put("schema", schemaMap)
+            case _ =>
           }
           list.add(paramMap)
         }
         list
       case _ => new ArrayList[Object]()
     }
+    val processedList = new ArrayList[Object]()
+    for (param <- rawList.asScala) {
+      val paramMap = param.asInstanceOf[JMap[String, Object]]
+      if (paramMap.containsKey("type") && !paramMap.containsKey("schema")) {
+        val typeVal = paramMap.remove("type")
+        val schemaMap = new HashMap[String, Object]()
+        schemaMap.put("type", typeVal)
+        paramMap.put("schema", schemaMap)
+      }
+      processedList.add(paramMap)
+    }
+    processedList
   }
 
   private def mergeParameters(baseParams: JList[Object], ovrParams: JList[Object], typeNameToSchema: String => Schema[_]): JList[Object] = {
@@ -321,6 +320,15 @@ object SwaggerMerger {
       m.put("items", items)
     }
     m
+  }
+
+  def mergeSchema(schema: Schema[_], overrides: JMap[String, Object], typeNameToSchema: String => Schema[_] = null): Schema[_] = {
+    if (overrides.isEmpty) schema
+    else {
+      val schemaMap = mapper.convertValue(schema, classOf[JMap[String, Object]])
+      val mergedMap = merge(schemaMap, overrides, typeNameToSchema, false, true)
+      mapper.convertValue(mergedMap, classOf[Schema[_]])
+    }
   }
 
   def mergePathItems(pathItems: Seq[PathItem]): Seq[PathItem] = {
