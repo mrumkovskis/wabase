@@ -1894,13 +1894,9 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       (classOf[AppQuerease], () => AppQuerease.this),
       (classOf[WabaseHttpClients], () => httpClients),
     )
-    val pp = parametersProvider(injectionContext)
-    val providerFun = new InvocationParameterFun {
-      override def isDefinedAt(x: (Parameter, Int)): Boolean = pp.isDefinedAt(x._1)
-      override def apply(v: InvocationParameter): Any = pp(v._1)
-    }
+    val providerFun = parametersProvider(injectionContext)
     org.wabase.invokeFunction(className, function, stepParameters ++ contextParams,
-      parameterFun orElse providerFun)
+      parameterFun orElse { case (p, _) if providerFun.isDefinedAt(p) => providerFun(p) })
   }
 }
 
