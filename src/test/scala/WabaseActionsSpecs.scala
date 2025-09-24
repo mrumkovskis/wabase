@@ -639,7 +639,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         }
       t3 <-
         doAction("count", "status_test_1", Map("status" -> "ok")).map {
-          _ shouldBe ResponseResult(200, null)
+          _ shouldBe ResponseResult(200, ResultValue(AnyResult(NoResult)))
         }
       t4 <-
         doAction("list", "status_test_1", Map("status" -> "redirect")).map {
@@ -695,11 +695,11 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
           .map(_.value)
           .mapTo[ResultValue]
           .map(_.value)
-          .mapTo[StringResult]
-          .map(_.value)
-          .map(decodeJs).map {
-          _ shouldBe List(Map("a" -> "a value", "b" -> "b value"))
-        }
+          .mapTo[AnyResult]
+          .map(_.result)
+          .map {
+            _ shouldBe List(Map("a" -> "a value", "b" -> "b value"))
+          }
     } yield {
       t15
     }

@@ -929,19 +929,16 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           case _ => sys.error(s"Redirect operation body must be tresql returning single row, instead found: '$b'")
         }
       } else {
-        if (statusMode) b match {
-          case Action.Tresql(tresql, _, _) =>
-            val r = useResourcesConnOrEvaluator(
-              qr.resourcesFactory.resources, res => Query(tresql, data ++ env)(res) match {
-                case SingleValueResult(null) => ResultValue(StringResult(null))
-                case SingleValueResult(v: String) => ResultValue(StringResult(v))
-                case SingleValueResult(v) => ResultValue(StringResult(ResultEncoder.encodeAnyToJsonString(v)))
-                case r => r.uniqueOption[String].map(v => ResultValue(StringResult(v))).orNull
+        doActionOp(b, data, env, context)
+          .flatMap(r =>
+            if (statusMode) dataForNextStep(r, context, true)
+              .map { // for status mode return string result so that content is marshalled as text/plain not json
+                case null => StringResult(null)
+                case s: String => StringResult(s)
+                case x => AnyResult(x)
               }
-            )
-            Future.successful(r)
-          case x => sys.error(s"Status mode supports only tresql op, instead found: $x")
-        } else doActionOp(b, data, env, context).map(ResultValue(_))
+            else Future.successful(r))
+          .map(ResultValue(_))
       }
     }
       .map(_.map(ResponseResult(code, _, headers, user)))

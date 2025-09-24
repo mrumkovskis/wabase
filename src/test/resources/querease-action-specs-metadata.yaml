@@ -517,7 +517,7 @@ get:
 save:
 - status ok :status
 count:
-- status ok {:status}[false]  # should return 200 with no message in response
+- status ok unique_opt {:status}[false]  # should return 200 with no message in response
 list:
 - status 303 { '/data', '?/', 'path', :status }
 

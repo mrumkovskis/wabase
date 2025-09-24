@@ -1135,15 +1135,13 @@ class OpParser(viewName: String, caches: OpParser.Caches)
   def response: MemParser[Response] = {
     val StResp = "(status|response)\\s+".r
     (StResp ~ ("\\w+".r ~ setHttpHeadersOps ~ opt(operation))) ^? ({
-      case StResp(sor) ~ (c ~ hops ~ body) if sor != "status" || body.isEmpty || body.exists(_.isInstanceOf[Tresql])  =>
+      case StResp(sor) ~ (c ~ hops ~ body) =>
         val code = c match {
           case "ok" => 200
           case x if Try(x.toInt).toOption.isDefined => x.toInt
           case x => throw new IllegalArgumentException(s"Status code must be 'ok' or integer, instead '$x' encountered in $viewName.")
         }
         Action.Response(code, sor == "status", hops, body.orNull)
-    }, {
-      case _ ~ (_ ~ _ ~ b) => sys.error(s"For status command, body operation must be tresql instead found: $b")
     }) named "response-op"
   }
   /* Cannot be named mem parser since depends on parameter. */
