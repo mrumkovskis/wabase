@@ -802,8 +802,9 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       conformTo.map(createCompatibleResult(qr, _)).getOrElse(qr)
     }
 
+    val dtoParamFun = AppQuerease.dtoParameterFromMap(() => invocationData)(qio)
     (if (op.args.isEmpty) {
-      invokeFunction(className, function, AppQuerease.dtoParameterFromMap(() => invocationData)(qio))
+      invokeFunction(className, function, dtoParamFun)
     } else {
       Future.sequence(op.args.map(doActionOp(_, data, env, context))).flatMap { opResults =>
         val valFuns = opResults.zipWithIndex.map { case (opRes, idx) =>
@@ -811,11 +812,10 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
             case TresqlResult(SingleValueResult(qr: QuereaseResult)) => qr // unwrap bind variable value
             case x => x
           }
-          AppQuerease.orderedInvocationParameter(unwrappedVal(opRes), idx, function)(
+          AppQuerease.explicitInvocationParameter(unwrappedVal(opRes), idx, function)(
             AppQuerease.this, dataForNextStep(_, context, unwrapSingleValue = false))
         }
-        invokeFunction(className, function,
-          valFuns.reduce(_ orElse _) orElse AppQuerease.dtoParameterFromMap(() => invocationData)(qio)) match {
+        invokeFunction(className, function, valFuns.reduce(_ orElse _) orElse dtoParamFun) match {
           case f: Future[_] => f
           case x => Future.successful(x)
         }
@@ -2010,7 +2010,7 @@ object AppQuerease {
   /** Returns [[InvocationParameterFun]] which is defined if parameter index matches and
    * [[QuereaseResult]] can be conformed to function parameter type
    * */
-  def orderedInvocationParameter(qr: QuereaseResult, idx: Int, function: String)(
+  def explicitInvocationParameter(qr: QuereaseResult, idx: Int, function: String)(
     qe: AppQuerease,
     qrToAny: QuereaseResult => Future[_],
   )(implicit resources: QuereaseResources): InvocationParameterFun = {
