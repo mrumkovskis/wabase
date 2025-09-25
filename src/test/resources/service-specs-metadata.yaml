@@ -132,10 +132,13 @@ get:
 
 
 name: user_principal
-api: get
+api: get, insert
+decoder: none
 explicit db: true
 get:
 - as any :current_user
+insert:
+- status ok currentUser
 
 
 name: user_data_merge

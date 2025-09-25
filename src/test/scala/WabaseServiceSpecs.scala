@@ -161,6 +161,10 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
       encryptedSession(resp)
     }.reduce {(s1, s2) => decSes(s1).expirationTime should be < decSes(s2).expirationTime; s2}
 
+    entityForRequest(
+      authReq(enc_session, HttpRequest(method = HttpMethods.POST, uri = "/restricted/user_principal"))
+    ) shouldBe "10"
+
     resp = doBasicAuthReq("Gunza", "bad")
     resp.status shouldBe StatusCodes.Unauthorized
 
@@ -242,6 +246,13 @@ class View1 extends Dto {
   var name: String = _
 }
 
+object UserParameterProviderFactory extends AppQuerease.InjectionParametersProviderFactory {
+  def createInjectionParametersProvider: AppQuerease.InjectionParametersProvider = ctx => {
+    case par if par.getType.isAssignableFrom(classOf[WabaseUser]) =>
+      WabaseUser(ctx.env("current_user").asInstanceOf[Map[String, Any]])
+  }
+}
+
 object WabaseTestHandlers {
 
   def simpleHandler(ctx: WabaseRequestContext) =
@@ -290,6 +301,8 @@ object WabaseTestHandlers {
 
   def addUserData(user: WabaseUser, resp: HttpResponse)(implicit ec: ExecutionContext, as: ActorSystem) =
     resp.withEntity(s"Data from ${user.name}: " + entity(resp))
+
+  def currentUser(user: WabaseUser) = user.name
 
   def keyExtractor(ctx: WabaseRequestContext, uri: Uri) = {
     val R = ctx.route.path
