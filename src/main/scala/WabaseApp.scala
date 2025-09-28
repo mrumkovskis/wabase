@@ -333,12 +333,7 @@ trait WabaseApp[User] {
     case wr => Future.successful(wr)
   }
 
-  def checkKeySize(viewDef: ViewDef, keySize: Int, actionName: String): Unit = {
-    val expectedKeySize = qe.viewNameToApiKeyFields.get(viewDef.name).map(_.size).getOrElse(-1)
-    checkKeySize(viewDef, expectedKeySize, keySize, actionName)
-  }
-
-  def checkKeySize(viewDef: ViewDef, expectedKeySize: Int, keySize: Int, actionName: String): Unit = actionName match {
+  def checkKeySize(viewDef: ViewDef, keySize: Int, actionName: String): Unit = actionName match {
     case Action.List | Action.Count =>
       if (keySize < viewDef.minKeySizeForList || keySize > viewDef.maxKeySizeForList) {
         throw new BusinessException(
@@ -346,11 +341,16 @@ trait WabaseApp[User] {
             s"Expecting ${viewDef.expectedKeySizeDescr}, got $keySize")
       }
     case _ =>
-      if (keySize != expectedKeySize) {
-        throw new BusinessException(
-          s"Invalid key size for $actionName of '${viewDef.name}'. " +
-            s"Expecting $expectedKeySize, got $keySize")
-      }
+      val expectedKeySize = qe.viewNameToApiKeyFields.get(viewDef.name).map(_.size).getOrElse(-1)
+      checkKeySize(viewDef, expectedKeySize, keySize, actionName)
+  }
+
+  def checkKeySize(viewDef: ViewDef, expectedKeySize: Int, keySize: Int, actionName: String): Unit = {
+    if (keySize != expectedKeySize) {
+      throw new BusinessException(
+        s"Invalid key size for $actionName of '${viewDef.name}'. " +
+          s"Expecting $expectedKeySize, got $keySize")
+    }
   }
 
   /** Converts key value from uri representation to appropriate type.
@@ -359,8 +359,11 @@ trait WabaseApp[User] {
   def prepareKeyValue(field: FieldDef, value: Any): Any =
     if (value == "null") null else qe.convertToType(value, field.type_)
   def prepareKey(viewName: String, keyValues: Seq[Any], actionName: String): Map[String, Any] = {
-        val keyFields = qe.viewNameToApiKeyFields(viewName)
+    if (keyValues.nonEmpty) {
+        checkKeySize(qe.nameToViewDef(viewName), keyValues.length, actionName)
+        val keyFields = qe.viewNameToApiKeyFields(viewName).take(keyValues.length)
         prepareKey(viewName, keyFields, keyValues, actionName)
+    } else Map.empty
   }
   def prepareKey(viewName: String, keyFields: Seq[FieldDef], keyValues: Seq[Any], actionName: String): Map[String, Any] = {
     if (keyValues.nonEmpty) {
