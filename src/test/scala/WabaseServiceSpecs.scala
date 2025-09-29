@@ -15,6 +15,8 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
 
   class WA(exec: Execution) extends WabaseServer.App(exec) {
     override def initQuerease: AppQuerease = new TestQuerease("/service-specs-metadata.yaml")
+    override implicit lazy val httpClients: WabaseHttpClients =
+      WabaseHttpClients(Map("default-wabase-http-client" -> (_ => server.handle)))
   }
   implicit val serverSystem: ActorSystem  = ActorSystem("wabase-server")
   implicit val ec: ExecutionContext = serverSystem.dispatcher
@@ -230,6 +232,10 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
     ))
     status shouldBe StatusCodes.ContentTooLarge
     result shouldBe "Content too large: actual size - 82, limit - 64"
+  }
+
+  it should "handle http head method" in {
+    callRoute("/head") shouldBe "Mon, 29 Sep 2025 22:18:54 EET"
   }
 
   val count = 1024

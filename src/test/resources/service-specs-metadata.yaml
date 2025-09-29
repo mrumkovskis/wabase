@@ -91,6 +91,10 @@ do:       org.wabase.WabaseService.toMapEntityDecoder
 on:       /error
 do:       org.wabase.WabaseTestHandlers.error
 
+# head method test
+on:       GET HEAD /(head)
+do:       doAction $1
+
 ################# views ###############
 
 name: view1
@@ -196,3 +200,12 @@ fields:
 get:
 - as any unique_opt { if_defined_or_else(:current_name?, :current_name, null) name,
     if_defined_or_else(:current_dept?, :current_dept, null) dept }
+
+
+name: head
+api: head, get
+explicit db: true
+head:
+- response ok set_headers({'Last-Modified', 'Mon, 29 Sep 2025 22:18:54 EET'})
+get:
+- extract header Last-Modified http head {'/head'}

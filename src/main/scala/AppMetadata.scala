@@ -30,7 +30,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
   import AppMetadata._
 
-  val knownApiMethods = Set("create", "count", "get", "list", "insert", "update", "save", "delete")
+  val knownApiMethods = Set("create", "count", "get", "list", "insert", "update", "save", "delete", "head", "options")
   private val fullKeyOps = Set("get", "insert", "update", "save", "delete")
   override lazy val yamlMetadata = YamlMd.fromPaths(Seq("jobs", "routes", "tables", "views"))
   override lazy val uninheritableExtras: Seq[String] = Seq("api")
@@ -1052,17 +1052,17 @@ class OpParser(viewName: String, caches: OpParser.Caches)
   def httpOp: MemParser[Http] = {
     def tu(uri: Exp) = TresqlUri.Tresql(uri.tresql)
     def http_cln = opt("[" ~> HttpClientFileStreamerNameRegex <~ "]")
-    def http_get_delete: MemParser[Http] =
-      opt("get" | "delete") ~ http_cln ~ bracesTresql ~ opt(tresqlOp) ^^ {
+    def http_no_entity: MemParser[Http] =
+      opt("get" | "delete" | "head" | "options" | "trace" | "connect") ~ http_cln ~ bracesTresql ~ opt(tresqlOp) ^^ {
         case method ~ client ~ uri ~ headers =>
           Http(method.getOrElse("get"), tu(uri), headers.orNull, body = null, httpClientName = client.orNull)
       } named "http-get-delete-op"
-    def http_post_put: MemParser[Http] =
-      ("post" | "put") ~ http_cln ~ bracesTresql ~ opt(operation) ~ opt(tresqlOp) ^^ {
+    def http_with_entity: MemParser[Http] =
+      ("post" | "put" | "patch") ~ http_cln ~ bracesTresql ~ opt(operation) ~ opt(tresqlOp) ^^ {
         case method ~ client ~ uri ~ op ~ headers =>
           Http(method, tu(uri), headers.orNull, op.orNull, httpClientName = client.orNull)
       } named "http-post-put-op"
-    opt(opResultType) ~ ("http\\s+".r ~> (http_post_put | http_get_delete)) ^^ {
+    opt(opResultType) ~ ("http\\s+".r ~> (http_with_entity | http_no_entity)) ^^ {
       case conformTo ~ http => http.copy(conformTo = conformTo)
     } named "http-op"
   }
@@ -1084,10 +1084,10 @@ class OpParser(viewName: String, caches: OpParser.Caches)
       case pt ~ param => Conf(param, ConfTypes.parse(pt.orNull))
     }
   } named "conf-op"
-  def httpHeaderOrCookieOp: MemParser[Op] = "extract" ~> ("header" | "cookie") ~ ".*".r ^^ {
-    case "header" ~ h => HttpHeader(h)
-    case _ ~ c => Cookie(c)
-  } named "http-hoc-op"
+  def httpHeaderOp: MemParser[Op] = ("extract" ~ "header") ~> "[^:\\s]+".r ~ opt(httpOp) ^^ {
+    case h ~ httpOp => HttpHeader(h, httpOp.orNull)
+  } named "http-hop"
+  def httpCookieOp: MemParser[Op] = ("extract" ~ "cookie") ~> ".*".r ^^ (Cookie(_)) named "http-cop"
   def extractPartsOp: MemParser[ExtractParts] =
     "extract\\s+parts".r ~> opt("[" ~> HttpClientFileStreamerNameRegex <~ "]") ^^ {
       case fs => ExtractParts(fs.orNull)
@@ -1174,7 +1174,7 @@ class OpParser(viewName: String, caches: OpParser.Caches)
   def commit: MemParser[Commit.type] = "commit\\s*$".r ^^^ Commit named "commit-op"
   def operation: MemParser[Op] = (commit | redirect | response | viewOp | jobOp | confOp | uniqueOp |
     httpOp | dbOp | foreachOp | ifElseOp | resourceOp | fileOp | toFileOp | templateOp | emailOp |
-    jsonCodecOp | httpHeaderOrCookieOp | extractPartsOp | extractEntityOp |
+    jsonCodecOp | httpHeaderOp | httpCookieOp | extractPartsOp | extractEntityOp |
     thisOp | bracesOp | invocationOp | tresqlOp) named "operation"
 
   private def opResultType: MemParser[OpResultType] = {
@@ -1328,8 +1328,10 @@ object AppMetadata extends Loggable {
     val Delete = "delete"
     val Create = "create"
     val Count  = "count"
+    val Head   = "head"
+    val Options = "options"
     def apply() =
-      Set(Get, List, Save, Insert, Update, Upsert, Delete, Create, Count)
+      Set(Get, List, Save, Insert, Update, Upsert, Delete, Create, Count, Head, Options)
 
     val ValidationsKey = "validations"
     val DbUseKey = "db use"
@@ -1411,7 +1413,7 @@ object AppMetadata extends Loggable {
                     body: Op = null,
                     conformTo: Option[OpResultType] = None,
                     httpClientName: String = null) extends CastableOp
-    case class HttpHeader(name: String) extends Op
+    case class HttpHeader(name: String, httpOp: Http = null) extends Op
     case class Cookie(name: String) extends Op
     case class ExtractHttpEntity(conformTo: Option[OpResultType] = None, decoder: String = null, op: Op = null) extends Op
     /** This op can be used if view property 'decode request' is false, for multipart request it extracts parts,
@@ -1452,7 +1454,7 @@ object AppMetadata extends Loggable {
         extractor: OpTraverser[T]): OpTraverser[T] = {
       def traverse(state: T): PartialFunction[Op, T] = {
         case _: Tresql | _: RedirectToKey | _: Response |
-             _: VariableTransforms | _: File | _: Conf | _: HttpHeader | _: Cookie |
+             _: VariableTransforms | _: File | _: Conf | _: Cookie |
              _: ExtractParts | This | _: Job | _: Resource | Commit | null => state
         case o: ViewCall => opTrav(state)(o.data)
         case Unique(o, _, _) => opTrav(state)(o)
@@ -1464,6 +1466,7 @@ object AppMetadata extends Loggable {
         case o: Template => opTrav(state)(o.dataOp)
         case Email(_, s, b, a, _) => a.foldLeft(opTrav(opTrav(state)(s))(b))(opTrav(_)(_))
         case o: Http => opTrav(state)(o.body)
+        case h: HttpHeader => if (h.httpOp == null) state else opTrav(state)(h.httpOp.body)
         case Db(a, _, _) => traverseAction(a)(stepTrav)(state)
         case Block(a) => traverseAction(a)(stepTrav)(state)
         case JsonCodec(_, o) => opTrav(state)(o)
@@ -1566,6 +1569,7 @@ object AppMetadata extends Loggable {
               val s1 = us(state, nv(state.value)(Tresql(uriTresql.uriTresql)))
               val s2 = us(s1, nv(s1.value)(headerTresql))
               opTresqlTrav(s2)(body)
+            case HttpHeader(_, httpOp) => opTresqlTrav(state)(httpOp)
             case ViewCall(method, view, data) =>
               val vn = if (view == "this") state.name else view
               val ns = opTrTr(data)

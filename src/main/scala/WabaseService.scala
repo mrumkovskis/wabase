@@ -379,6 +379,8 @@ object WabaseService {
         case `POST`   => Action.Insert
         case `PUT`    => Action.Update
         case `DELETE` => Action.Delete
+        case `HEAD`   => Action.Head
+        case `OPTIONS`=> Action.Options
         case x        => error(StatusCodes.MethodNotAllowed, s"Unsupported http method $x for request '${req.uri}'")
       }
       ctx.copy(viewName = view_name, action = action, key = key)

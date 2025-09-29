@@ -22,6 +22,7 @@ import org.wabase.AppQuerease.{InjectionParametersContext, InjectionParametersPr
 
 import java.lang.reflect.Parameter
 import java.sql.Connection
+import scala.annotation.tailrec
 import scala.collection.immutable.Seq
 import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.{ExecutionContext, Future}
@@ -1314,17 +1315,21 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     data: Map[String, Any],
     env: Map[String, Any],
     context: ActionContext,
-  )(implicit
-    resFac: ResourcesFactory,
-    ec: ExecutionContext,
-    as: ActorSystem,
-    fs: FileStreamer,
-    httpReq: HttpRequest,
-  ): Future[QuereaseResult] = {
-    val headerVal = Option(httpReq).map(_.headers).flatMap(_.collectFirst {
-      case h if h.is(op.name.toLowerCase) => StringResult(h.value())
-    }).getOrElse(NoResult)
-    Future.successful(headerVal)
+  )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
+    import qr._
+    @tailrec def httpRes(qr: QuereaseResult): HttpResponse = (qr: @unchecked) match {
+      case HttpResult(response) =>
+        response.entity.discardBytes(as) // discard bytes since we are interested only in http header
+        response
+      case cr: CompatibleResult => httpRes(cr.result)
+    }
+    Option(op.httpOp)
+      .map(doHttp(_, data, env, context))
+      .map(_.map(httpRes))
+      .getOrElse(Future.successful(httpReq))
+      .map { msg => Option(msg).flatMap(_.headers.collectFirst {
+        case h if h.is(op.name.toLowerCase) => StringResult(h.value())
+      }).getOrElse(NoResult) }
   }
 
   protected def doExtractCookie(
