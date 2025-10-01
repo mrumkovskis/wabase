@@ -1215,32 +1215,38 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     context: ActionContext,
   )(implicit qr: QuereaseResources): Future[LongResult] = {
     import qr._
-    def subj_body(bv: Map[String, Any]) = {
-      def stringContent(qr: QuereaseResult) = qr match {
-        case TresqlResult(r) => Future.successful(r.unique[String])
-        case _ => renderedResult(qr, null, null, Option(false), context)
-          .flatMap(_._1.runReduce(_ ++ _).map(_.decodeString("UTF8")))
-      }
-      Future.traverse(List(op.subject, op.body))(doActionOp(_, bv, env, context).flatMap(stringContent))
-    }
-    def s(v: Any): String = if (v == null) null else String.valueOf(v)
-    import resourcesFactory._
     val bindVars = data ++ env
-    val emails = {
-      val r = Query(op.emailTresql.tresql)(resources.withParams(bindVars))  // email addressee list cannot be taken from evaluator db conn
-      if (op.isBatch) r else (try r.uniqueOption catch {
-        case _: TooManyRowsException => throw new TooManyRowsException(s"Tresql '${op.emailTresql.tresql}' returned more than one row. " +
-          s"Use 'email batch' to send more than one email.")
-      }).iterator
+    @tailrec
+    def recipients(qr: QuereaseResult, vn: String): Source[Map[String, Any], _] = qr match {
+      case TresqlResult(result) => Source.fromIterator(() => result.map(_.toMap))
+      case HttpEntityResult(ent, decoder) if decoder != null => decoder(vn)(ent)
+        .map {
+          case m: Map[String, Any]@unchecked => m
+          case x => sys.error(s"Email recipient has to be of type Map[String, Any], instead got '$x'")
+        }
+      case CompatibleResult(r, f, _) => recipients(r, Option(f).map(_.name).orNull)
+      case x => sys.error(s"Cannot extract email recipients from '$x'. " +
+        s"Supported types are tresql and extract entity operations.")
     }
-    val count = emails.foldLeft(Future.successful(0)) { (c, row) =>
-        val email = row.toMap
+    doActionOp(op.recipients, data, env, context)
+      .map(recipients(_, null))
+      .map { rec => if (op.isBatch) rec else rec.limit(1) }
+      .flatMap(_.runFoldAsync(0) { (c, email) =>
+        def s(v: Any): String = if (v == null) null else String.valueOf(v)
         val to = s(email.getOrElse("to", sys.error(s"""Missing "to" address - email can not be sent""")))
         val cc = s(email.getOrElse("cc", null))
         val bcc = s(email.getOrElse("bcc", null))
         val from = s(email.getOrElse("from", null))
         val replyTo = s(email.getOrElse("replyTo", null))
         val opData = bindVars ++ email
+        def subj_body(bv: Map[String, Any]) = {
+          def stringContent(qr: QuereaseResult) = qr match {
+            case TresqlResult(r) => Future.successful(r.unique[String])
+            case _ => renderedResult(qr, null, null, Option(false), context)
+              .flatMap(_._1.runReduce(_ ++ _).map(_.decodeString("UTF8")))
+          }
+          Future.traverse(List(op.subject, op.body))(doActionOp(_, bv, env, context).flatMap(stringContent))
+        }
         subj_body(opData).flatMap { sb =>
           val List(subject, body) = sb
           Future.traverse(op.attachmentsOp)(doActionOp(_, opData, env, context)
@@ -1252,9 +1258,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           ).flatMap { att =>
             emailSender.sendMail(to, subject, body, att, cc, bcc, from, replyTo)
           }
-        }.flatMap(_ => c.map(_ + 1))
-      }
-    count.map(LongResult(_))
+        }.map(_ => c + 1)
+      }).map(LongResult(_))
   }
 
   protected def doHttp(

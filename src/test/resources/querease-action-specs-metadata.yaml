@@ -1095,8 +1095,10 @@ get:
 - :attachment
 insert:
 - file = to file {'attachment from file' attachment} 'file_attachment'
+- recipients = to file ({ 'a@a.a' 'to', 'Hannah' name } + { 'b@b.b' 'to', 'Baiba' name })
+    content_type = 'text/csv; charset=UTF-8'
 - email batch
-    ({ 'a@a.a' 'to', 'Hannah' name } + { 'b@b.b' 'to', 'Baiba' name })
+    extract entity using default_csv_decoder file {:recipients.id, :recipients.sha_256}
     (template 'Subject for {{name}}!')
     (template 'Content for {{recipient}}.' {trim(:name) recipient})
     (http { '/email_test1', '?', :name name })

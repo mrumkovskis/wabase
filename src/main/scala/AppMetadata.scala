@@ -1024,17 +1024,21 @@ class OpParser(viewName: String, caches: OpParser.Caches)
     ("file\\s+".r ~> opt("[" ~> HttpClientFileStreamerNameRegex <~ "]") ~ tresqlOp) ^^ {
     case conformTo ~ (fileStreamer ~ e) => File(e, conformTo, fileStreamer.orNull)
   } named "file-op"
-  def toFileOp: MemParser[ToFile] = "to file" ~>
-    opt("[" ~> HttpClientFileStreamerNameRegex <~ "]") ~ operation ~ opt(tresqlOp) ~ opt(tresqlOp) ^^ {
-    case fileStreamer ~ op ~ fileName ~ contentType =>
-      ToFile(op, fileName.orNull, contentType.orNull, fileStreamer.orNull)
-  } named "to-file-op"
+  def toFileOp: MemParser[ToFile] = {
+    val Filename = "filename"
+    val ContentType = "content_type"
+    val args = Set(Filename, ContentType)
+    "to file" ~>
+      opt("[" ~> HttpClientFileStreamerNameRegex <~ "]") ~ operation ~ namedOps(args) ^^ {
+      case fileStreamer ~ op ~ args =>
+        ToFile(op, findArg(Filename, 0, args).map(_.asInstanceOf[Tresql]).orNull,
+          findArg(ContentType, 1, args).map(_.asInstanceOf[Tresql]).orNull, fileStreamer.orNull)
+    } named "to-file-op"
+  }
   def templateOp: MemParser[Template] = {
     val Data = "data"
     val Filename = "filename"
     val args = Set(Data, Filename)
-    def findArg(name: String, idx: Int, l: List[(String, Op)]) =
-      l.find(_._1 == name).orElse(l.lift(idx).filter(_._1 == null)).map(_._2)
     "template\\s+".r ~> tresqlOp ~ namedOps(args) ^^ {
       case templ ~ args =>
         args match {
@@ -1046,9 +1050,12 @@ class OpParser(viewName: String, caches: OpParser.Caches)
         }
     } named "template-op"
   }
-  def emailOp: MemParser[Email] = "email\\s+".r ~> opt("batch") ~ tresqlOp ~ operation ~ operation ~ rep(operation) ^^ {
-    case batch ~ data ~ subj ~ body ~ att => Email(data, subj, body, att, batch.isDefined)
-  } named "email-op"
+  def emailOp: MemParser[Email] = {
+    def dataOp = extractEntityOp | tresqlOp
+    "email\\s+".r ~> opt("batch") ~ dataOp ~ operation ~ operation ~ rep(operation) ^^ {
+      case batch ~ data ~ subj ~ body ~ att => Email(data, subj, body, att, batch.isDefined)
+    } named "email-op"
+  }
   def httpOp: MemParser[Http] = {
     def tu(uri: Exp) = TresqlUri.Tresql(uri.tresql)
     def http_cln = opt("[" ~> HttpClientFileStreamerNameRegex <~ "]")
@@ -1107,26 +1114,7 @@ class OpParser(viewName: String, caches: OpParser.Caches)
 
   def bracesOp: MemParser[Op] = "(" ~> operation <~ ")" named "braces-op"
   def bracesTresql: MemParser[Exp] = (("(" ~> expr <~ ")") | expr) named "braces-tresql-op"
-  def namedOps(
-    allowedNames: Set[String],
-    mandatoryNames: Set[String] = Set(),
-    separator: String = null
-  ): Parser[List[(String, Op)]] = { // do not make mem parser since name may depend on parameters
-    val namedOp: Parser[(String, Op)] =
-      opt(ident <~ "=") ~ operation ^? ( {
-        case Some(name) ~ op if allowedNames(name) || allowedNames.isEmpty => (name, op)
-        case _ ~ op => (null, op)
-      }, {
-        case n ~ _ => s"Illegal argument name - $n, allowed arguments - $allowedNames"
-      }) named "named-op"
-    (if (separator == null) rep(namedOp) else repsep(namedOp, separator)) ^? ({
-      case l if mandatoryNames.isEmpty ||
-        l.size - (l.map(_._1).toSet -- mandatoryNames).size == mandatoryNames.size => l
-    } , {
-      case l => sys.error(s"Not all mandatory parameters (${mandatoryNames.mkString(",")}) specified - (${
-        l.map(_._1).mkString(",")}), ")
-    })
-  } named "named-ops"
+
   def redirect: MemParser[Op] = {
     (RedirectOpRegex ~> ((RedirectToKeyRegex ^^ (s => RedirectToKey(s))) | ((setHttpHeadersOps ~ tresqlOp) ^^ {
       case hops ~ tr => Response(303, true, hops, tr)
@@ -1190,6 +1178,30 @@ class OpParser(viewName: String, caches: OpParser.Caches)
       case x => sys.error(s"Knipis, unexpected op result type: $x")
     } named "op-result-type"
   }
+  private def namedOps(
+    allowedNames: Set[String],
+    mandatoryNames: Set[String] = Set(),
+    separator: String = null
+  ): Parser[List[(String, Op)]] = { // do not make mem parser since name may depend on parameters
+    val namedOp: Parser[(String, Op)] =
+      opt(ident <~ "=") ~ operation ^? ( {
+        case Some(name) ~ op if allowedNames(name) || allowedNames.isEmpty => (name, op)
+        case _ ~ op => (null, op)
+      }, {
+        case n ~ _ => s"Illegal argument name - $n, allowed arguments - $allowedNames"
+      }) named "named-op"
+    (if (separator == null) rep(namedOp) else repsep(namedOp, separator)) ^? ({
+      case l if mandatoryNames.isEmpty ||
+        l.size - (l.map(_._1).toSet -- mandatoryNames).size == mandatoryNames.size => l
+    } , {
+      case l => sys.error(s"Not all mandatory parameters (${mandatoryNames.mkString(",")}) specified - (${
+        l.map(_._1).mkString(",")}), ")
+    })
+  } named "named-ops"
+
+  private def findArg(name: String, idx: Int, l: List[(String, Op)]) =
+    l.find(_._1 == name).orElse(l.lift(idx).filter(_._1 == null)).map(_._2)
+
   private def actionFromOp(op: Op) = Action((Evaluation(None, Nil, op), "") :: Nil)
 }
 
@@ -1406,7 +1418,7 @@ object AppMetadata extends Loggable {
       fileStreamerName: String = null,
     ) extends Op
     case class Template(templateTresql: Tresql, dataOp: Op = null, filenameTresql: Tresql = null) extends Op
-    case class Email(emailTresql: Tresql, subject: Op, body: Op, attachmentsOp: List[Op] = Nil, isBatch: Boolean = false) extends Op
+    case class Email(recipients: Op, subject: Op, body: Op, attachmentsOp: List[Op] = Nil, isBatch: Boolean = false) extends Op
     case class Http(method: String,
                     uriTresql: TresqlUri.Tresql,
                     headerTresql: Tresql = null,
@@ -1464,7 +1476,7 @@ object AppMetadata extends Loggable {
           if (e == null) r else traverseAction(e)(stepTrav)(r)
         case o: ToFile => opTrav(state)(o.contentOp)
         case o: Template => opTrav(state)(o.dataOp)
-        case Email(_, s, b, a, _) => a.foldLeft(opTrav(opTrav(state)(s))(b))(opTrav(_)(_))
+        case Email(r, s, b, a, _) => a.foldLeft(opTrav(opTrav(opTrav(state)(r))(s))(b))(opTrav(_)(_))
         case o: Http => opTrav(state)(o.body)
         case h: HttpHeader => if (h.httpOp == null) state else opTrav(state)(h.httpOp.body)
         case Db(a, _, _) => traverseAction(a)(stepTrav)(state)
@@ -1559,11 +1571,9 @@ object AppMetadata extends Loggable {
             case Template(templateTresql, dataOp, filenameTresql) =>
               val s = opTresqlTrav(us(state, nv(state.value)(templateTresql)))(dataOp)
               us(s, nv(s.value)(filenameTresql))
-            case Email(emailTresql, s, b, a, _) =>
+            case Email(r, s, b, a, _) =>
               a.foldLeft(
-                opTresqlTrav(
-                  opTresqlTrav(us(state, nv(state.value)(emailTresql))
-                )(s))(b)
+                opTresqlTrav(opTresqlTrav(opTresqlTrav(state)(r))(s))(b)
               )(opTresqlTrav(_)(_))
             case Http(_, uriTresql, headerTresql, body, _, _) =>
               val s1 = us(state, nv(state.value)(Tresql(uriTresql.uriTresql)))
