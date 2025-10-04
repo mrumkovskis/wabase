@@ -110,7 +110,7 @@ trait TemplateUtil { this: QuereaseProvider =>
 
   def readPojoMap(file: File, templateDir: File): MapTemplate = {
     def readTemplate(file: String) = readPojoMap(new File(templateDir.getAbsolutePath + "/" + file), templateDir)
-    def process(m: MapTemplate): MapTemplate = (m.get("template") match {
+    def process(m: MapTemplate): MapTemplate = if (m == null) null else (m.get("template") match {
       case None => m
       case Some(s: String) => mergeTemplate(readTemplate(s), m)
       case Some(s: List[String] @unchecked) => mergeTemplate(s.map(readTemplate).foldLeft(Map.empty: MapTemplate)(mergeTemplate), m)
