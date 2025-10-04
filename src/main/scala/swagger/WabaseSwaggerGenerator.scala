@@ -587,6 +587,7 @@ class WabaseSwaggerGenerator(
   def operationForDelete(viewDef: ViewDef): Operation = {
     createOperation("delete", viewDef)
       .addParameters("delete", viewDef)
+      .addSuccessResponse(HttpMethods.DELETE)
       .addNotFoundResponse
   }
 
