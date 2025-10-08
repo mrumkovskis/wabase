@@ -89,7 +89,7 @@ object WabaseAuthentication extends Authentication[WabaseUser] {
   // cannot name setSessionCookie because setSessionCookie from super trait appears from reflection to be member of this object
   def setAppSessionCookie(req: HttpRequest, user: WabaseUser, resp: HttpResponse): HttpResponse = {
    if (resp.status.isSuccess)
-    WabaseService.setCookie(resp)(sessionCookie(encryptedSession(req, mergeReqRespUserData(user, resp))))
+     WabaseService.setCookie(resp)(sessionCookie(encryptedSession(req, mergeReqRespUserData(user, resp))))
    else resp
   }
 

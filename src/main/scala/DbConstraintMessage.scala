@@ -137,84 +137,83 @@ object DbConstraintMessage {
   ): (String, String) = {
     val (name, violation) = nameAndViolation(sqlCause) // constraint name or column name
     if (name == null) {
-     (null, null)
+      (null, null)
     } else {
-     Option(sqlCause.getMessage).foreach { dbMsg =>
-      logger.info(dbMsg)
-     }
-     val (customMessage, details) = {
-      if (violation == Nn){
-        import AppMetadata._
-        def viewLabel = for{
-          vd <- viewDefOpt
-          if vd.table == tableName
-          field <- vd.fields.find(f => f.name == name || f.saveTo == name)
-          label = field.label
-          if label != null
-        } yield label
-
-        def tableLabel = for{
-          tableDef <- tableDefOption(tableName, viewDefOpt.map(_.db).orNull)
-          column <- tableDef.cols.find(_.name == name)
-          label = column.comments
-          if label != null
-        } yield label
-
-        viewLabel.orElse(tableLabel).map(s => (postgreSqlConstraintGenericMessage(violation, s), s))
-      } else {
-        if (violation == FkIns)
-          getConstraintTranslation(name, "insert").map((_, name))
-        else getConstraintTranslation(name).map((_, name))
+      Option(sqlCause.getMessage).foreach { dbMsg =>
+       logger.info(dbMsg)
       }
-     }.map { case (msg, details) => (Some(msg), details) }
-      .getOrElse(None, name)
+      val (customMessage, details) = {
+        if (violation == Nn) {
+          import AppMetadata._
+          def viewLabel = for{
+            vd <- viewDefOpt
+            if vd.table == tableName
+            field <- vd.fields.find(f => f.name == name || f.saveTo == name)
+            label = field.label
+            if label != null
+          } yield label
 
-     (customMessage getOrElse postgreSqlConstraintGenericMessage(violation, details), details)
+          def tableLabel = for{
+            tableDef <- tableDefOption(tableName, viewDefOpt.map(_.db).orNull)
+            column <- tableDef.cols.find(_.name == name)
+            label = column.comments
+            if label != null
+          } yield label
+
+          viewLabel.orElse(tableLabel).map(s => (postgreSqlConstraintGenericMessage(violation, s), s))
+        } else {
+          if (violation == FkIns)
+            getConstraintTranslation(name, "insert").map((_, name))
+          else getConstraintTranslation(name).map((_, name))
+        }
+      }.map { case (msg, details) => (Some(msg), details) }
+       .getOrElse(None, name)
+
+      (customMessage getOrElse postgreSqlConstraintGenericMessage(violation, details), details)
     }
   }
 
   def getSqlCauseAndContext(e: Throwable): (SQLException, ChildSaveException) =
     getSqlCauseAndContext(e, e match { case ce: ChildSaveException => ce case _ => null})
 
-  def getSqlCauseAndContext(e: Throwable, ce: ChildSaveException): (SQLException, ChildSaveException) = {
-      e.getCause match {
-        case ee: SQLException                   => (ee, ce)
-        case ee: ChildSaveException if ee != e  => getSqlCauseAndContext(ee, ee)
-        case ee: Throwable          if ee != e  => getSqlCauseAndContext(ee, ce)
-        case _                                  => (null, ce)
-      }
-  }
+  def getSqlCauseAndContext(e: Throwable, ce: ChildSaveException): (SQLException, ChildSaveException) =
+    e.getCause match {
+      case ee: SQLException                   => (ee, ce)
+      case ee: ChildSaveException if ee != e  => getSqlCauseAndContext(ee, ee)
+      case ee: Throwable          if ee != e  => getSqlCauseAndContext(ee, ce)
+      case _                                  => (null, ce)
+    }
  }
 
  object PostgreSqlConstraintMessageBuilder extends PostgreSqlConstraintMessageBuilder
 
- trait PostgreSqlConstraintMessage extends PostgreSqlConstraintMessageBuilder with DbConstraintMessage with QuereaseProvider { this: I18n =>
+  trait PostgreSqlConstraintMessage extends PostgreSqlConstraintMessageBuilder with DbConstraintMessage with QuereaseProvider { this: I18n =>
 
-  def raiseFriendlyConstraintErrorMessage(
-    exception: Throwable, sqlCause: SQLException, viewDef: ViewDef)(implicit locale: Locale): Nothing =
-    raiseFriendlyConstraintErrorMessage(exception, sqlCause, viewDef, Option(viewDef).map(_.table).orNull)
+    def raiseFriendlyConstraintErrorMessage(
+      exception: Throwable, sqlCause: SQLException, viewDef: ViewDef)(implicit locale: Locale): Nothing =
+      raiseFriendlyConstraintErrorMessage(exception, sqlCause, viewDef, Option(viewDef).map(_.table).orNull)
 
-  def raiseFriendlyConstraintErrorMessage(
-    exception: Throwable, sqlCause: SQLException, viewDef: ViewDef, tableName: String)(implicit locale: Locale): Nothing =
-    friendlyMessageAndDetails(exception, sqlCause, Option(viewDef), tableName, qe.tableMetadata.tableDefOption) match {
-      case (null, _) =>
-        throw exception
-      case (friendlyMessage, details) =>
-        val translated = translate(friendlyMessage, details)
-        throw new BusinessException(translated, exception, details)
-    }
+    def raiseFriendlyConstraintErrorMessage(
+      exception: Throwable, sqlCause: SQLException, viewDef: ViewDef, tableName: String)(implicit locale: Locale): Nothing =
+      friendlyMessageAndDetails(exception, sqlCause, Option(viewDef), tableName, qe.tableMetadata.tableDefOption) match {
+        case (null, _) =>
+          throw exception
+        case (friendlyMessage, details) =>
+          val translated = translate(friendlyMessage, details)
+          throw new BusinessException(translated, exception, details)
+      }
 
-  override def friendlyConstraintErrorMessage[T](viewDef: ViewDef, f: => T)(implicit locale: Locale): T = {
-    try f catch {
-      case e: SQLException => raiseFriendlyConstraintErrorMessage(e, e, viewDef)
-      case NonFatal(e) => getSqlCauseAndContext(e) match {
-        case (null, _) => throw e
-        case (sqe, ce) =>
-          Option(ce).map(_.name).filter(_ != null)
-            .map(raiseFriendlyConstraintErrorMessage(e, sqe, viewDef, _))
-            .getOrElse(raiseFriendlyConstraintErrorMessage(e, sqe, viewDef))
+    override def friendlyConstraintErrorMessage[T](viewDef: ViewDef, f: => T)(implicit locale: Locale): T = {
+      try f catch {
+        case e: SQLException => raiseFriendlyConstraintErrorMessage(e, e, viewDef)
+        case NonFatal(e) => getSqlCauseAndContext(e) match {
+          case (null, _) => throw e
+          case (sqe, ce) =>
+            Option(ce).map(_.name).filter(_ != null)
+              .map(raiseFriendlyConstraintErrorMessage(e, sqe, viewDef, _))
+              .getOrElse(raiseFriendlyConstraintErrorMessage(e, sqe, viewDef))
+        }
       }
     }
   }
- }
 }
