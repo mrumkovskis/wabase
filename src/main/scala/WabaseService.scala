@@ -660,13 +660,30 @@ object WabaseService {
   def jsonResponse(resp: Any): HttpResponse =
     HttpResponse(entity = HttpEntity(MediaTypes.`application/json`, ResultEncoder.encodeAnyToJsonString(resp)))
 
+  private val ERR_AND_THEN_PARAM = "app.wabase-error-handler-and-then"
+  private val error_and_then_cn_fn =
+    if (!config.getIsNull(ERR_AND_THEN_PARAM))
+      OpParser.classNameFunctionName(config.getString(ERR_AND_THEN_PARAM))
+    else null
   def errorHandler(wrc: WabaseRequestContext): WabaseService.ErrorHandler = {
     implicit val ec: ExecutionContext = wrc.as.dispatcher
     val eh = wrc.route.errorHandler
-    invokeFunction(eh.className, eh.function, Seq((classOf[WabaseRequestContext], () => wrc))) match {
-      case h: WabaseService.ErrorHandler@unchecked => h
-      case x => sys.error(s"Error handler for route ${wrc.route.path} must return value of type:" +
-        s" WabaseService.ErrorHandler, instead got '$x' of type '${x.getClass}'")
+    val errorHandler = invokeFunction(
+      eh.className, eh.function, Seq((classOf[WabaseRequestContext], () => wrc))
+    ) match {
+        case h: WabaseService.ErrorHandler@unchecked => h
+        case x => sys.error(s"Error handler for route ${wrc.route.path} must return value of type:" +
+          s" WabaseService.ErrorHandler, instead got '$x' of type '${x.getClass}'")
+      }
+    if (error_and_then_cn_fn == null) errorHandler
+    else {
+      val (cn, fn) = error_and_then_cn_fn
+      val andThen = invokeFunction(cn, fn, Seq((classOf[WabaseRequestContext], () => wrc))) match {
+        case f: Function[HttpResponse, Future[HttpResponse]]@unchecked => f
+        case x => sys.error(s"Error handler and then function must return value of type:" +
+          s" HttpResponse => Future[HttpResponse], instead got '$x' of type '${x.getClass}'")
+      }
+      errorHandler.andThen(_.flatMap(andThen))
     }
   }
 
