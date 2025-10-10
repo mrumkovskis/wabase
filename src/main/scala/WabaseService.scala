@@ -66,14 +66,32 @@ case class Deferred(
 
 class HttpException(val status: StatusCode, message: String) extends Exception(message)
 
-class WabaseService extends Loggable {
-  import WabaseService._
+class WabaseService {
+  def handle(
+    wabase: Wabase,
+    deferredControl: WabaseDeferredControl,
+  )(req: HttpRequest)(implicit as: ActorSystem): Future[HttpResponse] = {
+    WabaseService.handle(wabase, deferredControl)(req)
+  }
+}
+
+object WabaseService {
+
+  object MediaTypes {
+    val `application/json`: PekkoMediaType.WithFixedCharset =
+      org.apache.pekko.http.scaladsl.model.MediaTypes.`application/json`
+    val `application/yaml`: PekkoMediaType.WithFixedCharset =
+      PekkoMediaType.applicationWithFixedCharset("yaml", `UTF-8`, "yaml")
+  }
+
+  type RequestHandler = WabaseRequestContext => Future[HttpResponse]
+  type ErrorHandler   = PartialFunction[Throwable, Future[HttpResponse]]
+  type Wabase = WabaseApp[WabaseUser] with QuereaseProvider with I18n with DbAccess with Marshalling with AppProvider[WabaseUser] with Execution
 
   def handle(
     wabase: Wabase,
     deferredControl: WabaseDeferredControl,
-  )(req: HttpRequest)(
-    implicit as: ActorSystem): Future[HttpResponse] = {
+  )(req: HttpRequest)(implicit as: ActorSystem): Future[HttpResponse] = {
     val loggerName = req.method.value.toLowerCase + WabaseService.toReadableString(req.uri.path).replace('/', '.')
     val logger = Logger(LoggerFactory.getLogger(loggerName))
     val ctx = WabaseRequestContext(wabase, req, Deferred(deferredControl = deferredControl), as = as, logger = logger)
@@ -92,59 +110,27 @@ class WabaseService extends Loggable {
   }
 
   /* If route found return Right(route) else Left(http client error) */
-  protected def findRoute(ctx: WabaseRequestContext): Either[HttpResponse, RouteDef] = {
+  def findRoute(ctx: WabaseRequestContext): Either[HttpResponse, RouteDef] = {
     val pathString = WabaseService.toReadableString(ctx.req.uri.path)
     var notAllowed: Left[HttpResponse, RouteDef] = null
     ctx.wabase.qe.routeDefs.find { rd =>
-      rd.path.pattern.matcher(pathString).matches &&
-        (rd.methods.isEmpty || rd.methods(ctx.req.method) || {
-          notAllowed = Left(HttpResponse(StatusCodes.MethodNotAllowed))
-          false
-        })
-    }.map(Right[HttpResponse, RouteDef])
+        rd.path.pattern.matcher(pathString).matches &&
+          (rd.methods.isEmpty || rd.methods(ctx.req.method) || {
+            notAllowed = Left(HttpResponse(StatusCodes.MethodNotAllowed))
+            false
+          })
+      }.map(Right[HttpResponse, RouteDef])
       .orElse(Option(notAllowed)).getOrElse(Left(notFound))
   }
 
   def doRoute(ctx: WabaseRequestContext)(implicit as: ActorSystem): Future[HttpResponse] = {
     implicit val ec: ExecutionContext = as.dispatcher
-
-    def invokeHandlerBuilderChain(inv: Action.Invocation, innerHandler: RequestHandler): RequestHandler = {
-      inv.args match {
-        case inv_args => inv_args.splitAt(inv_args.size - 1) match {
-          case (args, List(innerInv: Action.Invocation)) =>
-            buildRequestHandler(inv.className, inv.function, HandlerArgsParser.argValues(args),
-              invokeHandlerBuilderChain(innerInv, innerHandler))
-          case _ =>
-            buildRequestHandler(inv.className, inv.function, HandlerArgsParser.argValues(inv_args), innerHandler)
-        }
-      }
-    }
-
-    def errorHandler(wrc: WabaseRequestContext): WabaseService.ErrorHandler =
-      WabaseService.errorHandler(wrc) orElse ({ case NonFatal(e) =>
-        wrc.logger.error(s"[${WabaseErrorHandler.ctxDebugInfo(wrc)}] Internal server error, sending http 500", e)
-        Future.successful(HttpResponse(status = StatusCodes.InternalServerError))
-    }: WabaseService.ErrorHandler)
-
+    val errorHandler = WabaseService.sealedErrorHandler(WabaseService.errorHandler(ctx))(ctx)
     try {
-      val handler = invokeHandlerBuilderChain(ctx.route.requestHandler, null)
-      handler(ctx).recoverWith(errorHandler(ctx))
-    } catch { case NonFatal(e) => errorHandler(ctx)(e) }
+      val handler = buildRequestHandlerChain(ctx.route.requestHandler, null)
+      handler(ctx).recoverWith(errorHandler)
+    } catch { case NonFatal(e) => errorHandler(e) }
   }
-}
-
-object WabaseService {
-
-  object MediaTypes {
-    val `application/json`: PekkoMediaType.WithFixedCharset =
-      org.apache.pekko.http.scaladsl.model.MediaTypes.`application/json`
-    val `application/yaml`: PekkoMediaType.WithFixedCharset =
-      PekkoMediaType.applicationWithFixedCharset("yaml", `UTF-8`, "yaml")
-  }
-
-  type RequestHandler = WabaseRequestContext => Future[HttpResponse]
-  type ErrorHandler   = PartialFunction[Throwable, Future[HttpResponse]]
-  type Wabase = WabaseApp[WabaseUser] with QuereaseProvider with I18n with DbAccess with Marshalling with AppProvider[WabaseUser] with Execution
 
   val CreateCountActionAndViewRegex = """(?U)(?:(count|create):)?([_\p{IsLatin}][\-\w]*)""".r
   val WabaseUserAttributeName = "wabase-user"
@@ -578,6 +564,18 @@ object WabaseService {
     trs(path, new StringBuilder())
   }
 
+  def buildRequestHandlerChain(inv: Action.Invocation, innerHandler: RequestHandler): RequestHandler = {
+    inv.args match {
+      case inv_args => inv_args.splitAt(inv_args.size - 1) match {
+        case (args, List(innerInv: Action.Invocation)) =>
+          buildRequestHandler(inv.className, inv.function, HandlerArgsParser.argValues(args),
+            buildRequestHandlerChain(innerInv, innerHandler))
+        case _ =>
+          buildRequestHandler(inv.className, inv.function, HandlerArgsParser.argValues(inv_args), innerHandler)
+      }
+    }
+  }
+
   def buildRequestHandler(cn: String, fn: String,
                           invocationArgs: List[HandlerArgsParser.HandlerArg],
                           ih: RequestHandler): RequestHandler = wrc => {
@@ -665,13 +663,13 @@ object WabaseService {
     if (!config.getIsNull(ERR_AND_THEN_PARAM))
       OpParser.classNameFunctionName(config.getString(ERR_AND_THEN_PARAM))
     else null
-  def errorHandler(wrc: WabaseRequestContext): WabaseService.ErrorHandler = {
+  def errorHandler(wrc: WabaseRequestContext): ErrorHandler = {
     implicit val ec: ExecutionContext = wrc.as.dispatcher
     val eh = wrc.route.errorHandler
     val errorHandler = invokeFunction(
       eh.className, eh.function, Seq((classOf[WabaseRequestContext], () => wrc))
     ) match {
-        case h: WabaseService.ErrorHandler@unchecked => h
+        case h: ErrorHandler@unchecked => h
         case x => sys.error(s"Error handler for route ${wrc.route.path} must return value of type:" +
           s" WabaseService.ErrorHandler, instead got '$x' of type '${x.getClass}'")
       }
@@ -685,6 +683,13 @@ object WabaseService {
       }
       errorHandler.andThen(_.flatMap(andThen))
     }
+  }
+
+  def sealedErrorHandler(eh: ErrorHandler)(wrc: WabaseRequestContext): ErrorHandler = {
+    eh orElse ({ case NonFatal(e) =>
+      wrc.logger.error(s"[${WabaseErrorHandler.ctxDebugInfo(wrc)}] Internal server error, sending http 500", e)
+      Future.successful(HttpResponse(status = StatusCodes.InternalServerError))
+    }: ErrorHandler)
   }
 
   def error(status: StatusCode, msg: String) = throw new HttpException(status, msg)
