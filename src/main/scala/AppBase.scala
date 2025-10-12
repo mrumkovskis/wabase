@@ -750,8 +750,8 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
           "type" -> f.type_.name,
           "nullable" -> f.nullable,
           "required" -> f.required,
-          "label" -> Option(f.label).map(fl => fl.fieldName +
-              Option(fl.filterName).map(fn => s" (${translate(fn)(state.locale)})").getOrElse("")
+          "label" -> Option(f.label).map(fl => s"${fl.fieldName}${
+              Option(fl.filterName).map(fn => s" (${translate(fn)(Option(state).map(_.locale).orNull)})").getOrElse("")}"
             ).orNull,
           "enum" -> Option(f)
             .map(_.enum_)
