@@ -1,0 +1,554 @@
+sleep:    1s # wait for audit
+retries:  10
+path:     /data/audit
+params:
+  request_time_from: <- person_crud_start_time
+  request_time_to:   <- person_crud_end_time
+response: [
+  {
+    "request_time": "-> _",
+    "request": {
+      "uri": "http://localhost:8080/data/count:person",
+      "method": "GET",
+      "headers": [
+        "Host: localhost:8080",
+        "X-Requested-With: XMLHttpRequest",
+        "Origin: http://127.0.0.1",
+        "Cookie: current_lang=lv",
+        "User-Agent: pekko-http/1.2.0"
+      ],
+      "ct_type": "none/none",
+      "content": "",
+      "protocol": "HTTP/1.1"
+    },
+    "user": {
+      "name": ""
+    },
+    "response": {
+      "code": 200,
+      "headers": [],
+      "ct_type": "text/plain; charset=UTF-8",
+      "content": "0",
+      "protocol": "HTTP/1.1"
+    }
+  },
+  {
+    "request_time": "-> _",
+    "request": {
+      "uri": "http://localhost:8080/data/create:person",
+      "method": "GET",
+      "headers": [
+        "Host: localhost:8080",
+        "X-Requested-With: XMLHttpRequest",
+        "Origin: http://127.0.0.1",
+        "Cookie: current_lang=lv",
+        "User-Agent: pekko-http/1.2.0"
+      ],
+      "ct_type": "none/none",
+      "content": "",
+      "protocol": "HTTP/1.1"
+    },
+    "user": {
+      "name": ""
+    },
+    "response": {
+      "code": 200,
+      "headers": [],
+      "ct_type": "application/json",
+      "content": "{\"code\":null,\"name\":null,\"surname\":null}",
+      "protocol": "HTTP/1.1"
+    }
+  },
+  {
+    "request_time": "-> _",
+    "request": {
+      "uri": "http://localhost:8080/data/person?/p1",
+      "method": "POST",
+      "headers": [
+        "Host: localhost:8080",
+        "X-Requested-With: XMLHttpRequest",
+        "Origin: http://127.0.0.1",
+        "Cookie: current_lang=lv",
+        "User-Agent: pekko-http/1.2.0"
+      ],
+      "ct_type": "application/json",
+      "content": "{\"name\":\"John\",\"surname\":\"Doe\"}",
+      "protocol": "HTTP/1.1"
+    },
+    "user": {
+      "name": ""
+    },
+    "response": {
+      "code": 303,
+      "headers": [
+        "Location: /data/person?/p1"
+      ],
+      "ct_type": "none/none",
+      "content": "",
+      "protocol": "HTTP/1.1"
+    }
+  },
+  {
+    "request_time": "-> _",
+    "request": {
+      "uri": "http://localhost:8080/data/person?/p1",
+      "method": "GET",
+      "headers": [
+        "Host: localhost:8080",
+        "X-Requested-With: XMLHttpRequest",
+        "Origin: http://127.0.0.1",
+        "Cookie: current_lang=lv",
+        "User-Agent: pekko-http/1.2.0"
+      ],
+      "ct_type": "none/none",
+      "content": "",
+      "protocol": "HTTP/1.1"
+    },
+    "user": {
+      "name": ""
+    },
+    "response": {
+      "code": 200,
+      "headers": [],
+      "ct_type": "application/json",
+      "content": "{\"code\":\"p1\",\"name\":\"John\",\"surname\":\"Doe\"}",
+      "protocol": "HTTP/1.1"
+    }
+  },
+  {
+    "request_time": "-> _",
+    "request": {
+      "uri": "http://localhost:8080/data/person?/p2",
+      "method": "POST",
+      "headers": [
+        "Host: localhost:8080",
+        "X-Requested-With: XMLHttpRequest",
+        "Origin: http://127.0.0.1",
+        "Cookie: current_lang=lv",
+        "User-Agent: pekko-http/1.2.0"
+      ],
+      "ct_type": "application/json",
+      "content": "{\"name\":\"Jane\",\"surname\":\"Doe\"}",
+      "protocol": "HTTP/1.1"
+    },
+    "user": {
+      "name": ""
+    },
+    "response": {
+      "code": 303,
+      "headers": [
+        "Location: /data/person?/p2"
+      ],
+      "ct_type": "none/none",
+      "content": "",
+      "protocol": "HTTP/1.1"
+    }
+  },
+  {
+    "request_time": "-> _",
+    "request": {
+      "uri": "http://localhost:8080/data/person?/p2",
+      "method": "GET",
+      "headers": [
+        "Host: localhost:8080",
+        "X-Requested-With: XMLHttpRequest",
+        "Origin: http://127.0.0.1",
+        "Cookie: current_lang=lv",
+        "User-Agent: pekko-http/1.2.0"
+      ],
+      "ct_type": "none/none",
+      "content": "",
+      "protocol": "HTTP/1.1"
+    },
+    "user": {
+      "name": ""
+    },
+    "response": {
+      "code": 200,
+      "headers": [],
+      "ct_type": "application/json",
+      "content": "{\"code\":\"p2\",\"name\":\"Jane\",\"surname\":\"Doe\"}",
+      "protocol": "HTTP/1.1"
+    }
+  },
+  {
+    "request_time": "-> _",
+    "request": {
+      "uri": "http://localhost:8080/data/count:person",
+      "method": "GET",
+      "headers": [
+        "Host: localhost:8080",
+        "X-Requested-With: XMLHttpRequest",
+        "Origin: http://127.0.0.1",
+        "Cookie: current_lang=lv",
+        "User-Agent: pekko-http/1.2.0"
+      ],
+      "ct_type": "none/none",
+      "content": "",
+      "protocol": "HTTP/1.1"
+    },
+    "user": {
+      "name": ""
+    },
+    "response": {
+      "code": 200,
+      "headers": [],
+      "ct_type": "text/plain; charset=UTF-8",
+      "content": "2",
+      "protocol": "HTTP/1.1"
+    }
+  },
+  {
+    "request_time": "-> _",
+    "request": {
+      "uri": "http://localhost:8080/data/person",
+      "method": "GET",
+      "headers": [
+        "Host: localhost:8080",
+        "X-Requested-With: XMLHttpRequest",
+        "Origin: http://127.0.0.1",
+        "Cookie: current_lang=lv",
+        "User-Agent: pekko-http/1.2.0"
+      ],
+      "ct_type": "none/none",
+      "content": "",
+      "protocol": "HTTP/1.1"
+    },
+    "user": {
+      "name": ""
+    },
+    "response": {
+      "code": 200,
+      "headers": [],
+      "ct_type": "application/json",
+      "content": "[{\"code\":\"p1\",\"name\":\"John\",\"surname\":\"Doe\"},{\"code\":\"p2\",\"name\":\"Jane\",\"surname\":\"Doe\"}]",
+      "protocol": "HTTP/1.1"
+    }
+  },
+  {
+    "request_time": "-> _",
+    "request": {
+      "uri": "http://localhost:8080/data/person?fields=code",
+      "method": "GET",
+      "headers": [
+        "Host: localhost:8080",
+        "X-Requested-With: XMLHttpRequest",
+        "Origin: http://127.0.0.1",
+        "Cookie: current_lang=lv",
+        "User-Agent: pekko-http/1.2.0"
+      ],
+      "ct_type": "none/none",
+      "content": "",
+      "protocol": "HTTP/1.1"
+    },
+    "user": {
+      "name": ""
+    },
+    "response": {
+      "code": 200,
+      "headers": [],
+      "ct_type": "application/json",
+      "content": "[{\"code\":\"p1\"},{\"code\":\"p2\"}]",
+      "protocol": "HTTP/1.1"
+    }
+  },
+  {
+    "request_time": "-> _",
+    "request": {
+      "uri": "http://localhost:8080/data/person?fields=name,surname",
+      "method": "GET",
+      "headers": [
+        "Host: localhost:8080",
+        "X-Requested-With: XMLHttpRequest",
+        "Origin: http://127.0.0.1",
+        "Cookie: current_lang=lv",
+        "User-Agent: pekko-http/1.2.0"
+      ],
+      "ct_type": "none/none",
+      "content": "",
+      "protocol": "HTTP/1.1"
+    },
+    "user": {
+      "name": ""
+    },
+    "response": {
+      "code": 200,
+      "headers": [],
+      "ct_type": "application/json",
+      "content": "[{\"name\":\"John\",\"surname\":\"Doe\"},{\"name\":\"Jane\",\"surname\":\"Doe\"}]",
+      "protocol": "HTTP/1.1"
+    }
+  },
+  {
+    "request_time": "-> _",
+    "request": {
+      "uri": "http://localhost:8080/data/person?/p1",
+      "method": "GET",
+      "headers": [
+        "Host: localhost:8080",
+        "X-Requested-With: XMLHttpRequest",
+        "Origin: http://127.0.0.1",
+        "Cookie: current_lang=lv",
+        "User-Agent: pekko-http/1.2.0"
+      ],
+      "ct_type": "none/none",
+      "content": "",
+      "protocol": "HTTP/1.1"
+    },
+    "user": {
+      "name": ""
+    },
+    "response": {
+      "code": 200,
+      "headers": [],
+      "ct_type": "application/json",
+      "content": "{\"code\":\"p1\",\"name\":\"John\",\"surname\":\"Doe\"}",
+      "protocol": "HTTP/1.1"
+    }
+  },
+  {
+    "request_time": "-> _",
+    "request": {
+      "uri": "http://localhost:8080/data/person?/p2",
+      "method": "GET",
+      "headers": [
+        "Host: localhost:8080",
+        "X-Requested-With: XMLHttpRequest",
+        "Origin: http://127.0.0.1",
+        "Cookie: current_lang=lv",
+        "User-Agent: pekko-http/1.2.0"
+      ],
+      "ct_type": "none/none",
+      "content": "",
+      "protocol": "HTTP/1.1"
+    },
+    "user": {
+      "name": ""
+    },
+    "response": {
+      "code": 200,
+      "headers": [],
+      "ct_type": "application/json",
+      "content": "{\"code\":\"p2\",\"name\":\"Jane\",\"surname\":\"Doe\"}",
+      "protocol": "HTTP/1.1"
+    }
+  },
+  {
+    "request_time": "-> _",
+    "request": {
+      "uri": "http://localhost:8080/data/person?/p1",
+      "method": "DELETE",
+      "headers": [
+        "Host: localhost:8080",
+        "X-Requested-With: XMLHttpRequest",
+        "Origin: http://127.0.0.1",
+        "Cookie: current_lang=lv",
+        "User-Agent: pekko-http/1.2.0"
+      ],
+      "ct_type": "text/plain; charset=UTF-8",
+      "content": "",
+      "protocol": "HTTP/1.1"
+    },
+    "user": {
+      "name": ""
+    },
+    "response": {
+      "code": 200,
+      "headers": [],
+      "ct_type": "text/plain; charset=UTF-8",
+      "content": "1",
+      "protocol": "HTTP/1.1"
+    }
+  },
+  {
+    "request_time": "-> _",
+    "request": {
+      "uri": "http://localhost:8080/data/person?/p1",
+      "method": "GET",
+      "headers": [
+        "Host: localhost:8080",
+        "X-Requested-With: XMLHttpRequest",
+        "Origin: http://127.0.0.1",
+        "Cookie: current_lang=lv",
+        "User-Agent: pekko-http/1.2.0"
+      ],
+      "ct_type": "none/none",
+      "content": "",
+      "protocol": "HTTP/1.1"
+    },
+    "user": {
+      "name": ""
+    },
+    "response": {
+      "code": 404,
+      "headers": [],
+      "ct_type": "none/none",
+      "content": "",
+      "protocol": "HTTP/1.1"
+    }
+  },
+  {
+    "request_time": "-> _",
+    "request": {
+      "uri": "http://localhost:8080/data/person?/p2",
+      "method": "GET",
+      "headers": [
+        "Host: localhost:8080",
+        "X-Requested-With: XMLHttpRequest",
+        "Origin: http://127.0.0.1",
+        "Cookie: current_lang=lv",
+        "User-Agent: pekko-http/1.2.0"
+      ],
+      "ct_type": "none/none",
+      "content": "",
+      "protocol": "HTTP/1.1"
+    },
+    "user": {
+      "name": ""
+    },
+    "response": {
+      "code": 200,
+      "headers": [],
+      "ct_type": "application/json",
+      "content": "{\"code\":\"p2\",\"name\":\"Jane\",\"surname\":\"Doe\"}",
+      "protocol": "HTTP/1.1"
+    }
+  },
+  {
+    "request_time": "-> _",
+    "request": {
+      "uri": "http://localhost:8080/data/person?/p2",
+      "method": "PUT",
+      "headers": [
+        "Host: localhost:8080",
+        "X-Requested-With: XMLHttpRequest",
+        "Origin: http://127.0.0.1",
+        "Cookie: current_lang=lv",
+        "User-Agent: pekko-http/1.2.0"
+      ],
+      "ct_type": "application/json",
+      "content": "{\"name\":\"Jacqueline\",\"surname\":\"Chan\"}",
+      "protocol": "HTTP/1.1"
+    },
+    "user": {
+      "name": ""
+    },
+    "response": {
+      "code": 303,
+      "headers": [
+        "Location: /data/person?/p2"
+      ],
+      "ct_type": "none/none",
+      "content": "",
+      "protocol": "HTTP/1.1"
+    }
+  },
+  {
+    "request_time": "-> _",
+    "request": {
+      "uri": "http://localhost:8080/data/person?/p2",
+      "method": "GET",
+      "headers": [
+        "Host: localhost:8080",
+        "X-Requested-With: XMLHttpRequest",
+        "Origin: http://127.0.0.1",
+        "Cookie: current_lang=lv",
+        "User-Agent: pekko-http/1.2.0"
+      ],
+      "ct_type": "none/none",
+      "content": "",
+      "protocol": "HTTP/1.1"
+    },
+    "user": {
+      "name": ""
+    },
+    "response": {
+      "code": 200,
+      "headers": [],
+      "ct_type": "application/json",
+      "content": "{\"code\":\"p2\",\"name\":\"Jacqueline\",\"surname\":\"Chan\"}",
+      "protocol": "HTTP/1.1"
+    }
+  },
+  {
+    "request_time": "-> _",
+    "request": {
+      "uri": "http://localhost:8080/data/person?/p2",
+      "method": "GET",
+      "headers": [
+        "Host: localhost:8080",
+        "X-Requested-With: XMLHttpRequest",
+        "Origin: http://127.0.0.1",
+        "Cookie: current_lang=lv",
+        "User-Agent: pekko-http/1.2.0"
+      ],
+      "ct_type": "none/none",
+      "content": "",
+      "protocol": "HTTP/1.1"
+    },
+    "user": {
+      "name": ""
+    },
+    "response": {
+      "code": 200,
+      "headers": [],
+      "ct_type": "application/json",
+      "content": "{\"code\":\"p2\",\"name\":\"Jacqueline\",\"surname\":\"Chan\"}",
+      "protocol": "HTTP/1.1"
+    }
+  },
+  {
+    "request_time": "-> _",
+    "request": {
+      "uri": "http://localhost:8080/data/person?/p2",
+      "method": "DELETE",
+      "headers": [
+        "Host: localhost:8080",
+        "X-Requested-With: XMLHttpRequest",
+        "Origin: http://127.0.0.1",
+        "Cookie: current_lang=lv",
+        "User-Agent: pekko-http/1.2.0"
+      ],
+      "ct_type": "text/plain; charset=UTF-8",
+      "content": "",
+      "protocol": "HTTP/1.1"
+    },
+    "user": {
+      "name": ""
+    },
+    "response": {
+      "code": 200,
+      "headers": [],
+      "ct_type": "text/plain; charset=UTF-8",
+      "content": "1",
+      "protocol": "HTTP/1.1"
+    }
+  },
+  {
+    "request_time": "-> _",
+    "request": {
+      "uri": "http://localhost:8080/data/person?/p2",
+      "method": "GET",
+      "headers": [
+        "Host: localhost:8080",
+        "X-Requested-With: XMLHttpRequest",
+        "Origin: http://127.0.0.1",
+        "Cookie: current_lang=lv",
+        "User-Agent: pekko-http/1.2.0"
+      ],
+      "ct_type": "none/none",
+      "content": "",
+      "protocol": "HTTP/1.1"
+    },
+    "user": {
+      "name": ""
+    },
+    "response": {
+      "code": 404,
+      "headers": [],
+      "ct_type": "none/none",
+      "content": "",
+      "protocol": "HTTP/1.1"
+    }
+  }
+]

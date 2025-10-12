@@ -1,0 +1,27 @@
+name:     audit
+table:    audit
+api:      list
+fields:
+- request_time
+- request:
+  fields:
+  - uri
+  - method
+  - headers *
+  - ct_type
+  - content
+  - protocol
+- user:
+  fields:
+  - name
+- response:
+  fields:
+  - code    int
+  - headers *
+  - ct_type
+  - content
+  - protocol
+order:
+- request_time
+filter:
+- <= request_time <=

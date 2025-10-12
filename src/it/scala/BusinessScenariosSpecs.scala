@@ -17,6 +17,7 @@ import org.wabase._
 import org.wabase.WabaseUnmarshallers.mapUnmarshaller
 
 import java.io.File
+import java.time.Instant
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.language.reflectiveCalls
@@ -140,6 +141,10 @@ class BusinessScenariosSpecs extends BusinessScenariosBaseSpecs("http_tests") {
       val tableName = path.substring("/backdoor/drop-table/".length)
       executeStatements(s"drop table $tableName;")
       context
+    } else if (path == "backdoor/get_current_time") {
+      val response = Map("current_time" -> Instant.now().toString)
+      val fullCompare = map.bd("full_compare", isFullCompareByDefault)
+      context ++ assertResponse(response, map("response"), "[ROOT]", fullCompare)
     } else {
       super.checkTestCase(scenario, testCase, context, map, retriesLeft)
     }

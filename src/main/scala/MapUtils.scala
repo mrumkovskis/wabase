@@ -74,7 +74,7 @@ object MapUtils {
   }
 
   def javaMapToMap(map: java.util.Map[String, _]):Map[String, _] = {
-    val result = map.asScala.map(entry=>
+    val result = scala.collection.immutable.ListMap(map.asScala.toSeq.map(entry=>
       ( entry._1,
         entry._2 match{
           case l: java.util.List[_] => javaListToList(l)
@@ -82,7 +82,7 @@ object MapUtils {
           case r => r
         }
         )
-    ).toMap
+    ): _*)
     result.asInstanceOf[Map[String, _]]
   }
 

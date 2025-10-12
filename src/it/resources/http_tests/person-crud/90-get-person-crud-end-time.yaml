@@ -1,0 +1,3 @@
+path: backdoor/get_current_time
+response:
+  current_time: -> person_crud_end_time
