@@ -1223,7 +1223,7 @@ api: get, list
 fields:
   - name
 get:
-  - job_res = job test_job1
+  - job_res = call test_job1
   - status ok :job_res.greeting
 list:
   - as any * simple_table[value = :name] {value}

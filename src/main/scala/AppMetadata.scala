@@ -1080,7 +1080,7 @@ class OpParser(viewName: String, caches: OpParser.Caches)
   def jsonCodecOp: MemParser[JsonCodec] = "(from|to)(?=\\s+)".r ~ "json\\s+".r ~ operation ^^ {
     case mode ~ _ ~ op => JsonCodec(mode == "to", op)
   } named "json-op"
-  def jobOp: MemParser[Job] = JobAct ~> expr ^^ {
+  def jobOp: MemParser[Job] = "call(?=\\s+)".r ~> expr ^^ {
     case ast.StringConst(value) => Job(value, false)
     case ast.Obj(i: ast.Ident, _, _, _, _) => Job(i.tresql, false)
     case e => Job(e.tresql, true)
