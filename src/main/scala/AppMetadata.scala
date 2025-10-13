@@ -1541,10 +1541,12 @@ object AppMetadata extends Loggable {
       }
 
       def processJob[T](stepTresqlTrav: => StepTresqlTraverser[T])(s: State[T]): State[T] = {
-        val jd = s.jobDefs(s.name)
-        val newVal = s.jobExtractor(s.value)(jd)
-        val s1 = s.copy(value = newVal, processed = s.processed + (s.action -> s.name))
-        traverseAction(jd.action)(stepTresqlTrav)(s1)
+        if (s.processed(s.action -> s.name)) s else {
+          val jd = s.jobDefs(s.name)
+          val newVal = s.jobExtractor(s.value)(jd)
+          val s1 = s.copy(value = newVal, processed = s.processed + (s.action -> s.name))
+          traverseAction(jd.action)(stepTresqlTrav)(s1)
+        }
       }
 
       def opTresqlTraverser[T](opTresqlTrav: => OpTresqlTraverser[T],
