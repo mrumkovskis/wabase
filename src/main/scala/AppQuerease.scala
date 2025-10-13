@@ -833,15 +833,16 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     env: Map[String, Any],
     context: ActionContext,
   )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
-    import qr._
-    val jobName =
-      if (job.isDynamic)
-        useResourcesConnOrEvaluator(resourcesFactory.resources, Query(job.nameTresql)(_).unique[String])
-      else job.nameTresql
-    val ctx = ActionContext(jobName, JobAct, env, None, context.logger,
+    val jd = jobDef(job.name)
+    val ctx = ActionContext(job.name, JobAct, env, None, context.logger,
       contextStack = context :: context.contextStack)
-    val jd = jobDef(jobName)
-    doSteps(jd.action.steps, ctx, Future.successful(data))
+    import qr.ec
+    val jobData = if (job.data == null) Future.successful(data) else {
+      doActionOp(job.data, data, env, context).flatMap(dataForNextStep(_, context, false))
+        .mapTo[Map[String, Any]]
+    }
+    val result = doSteps(jd.action.steps, ctx, jobData)
+    job.conformTo.map(ct => result.mapTo[DataResult].map(comp_res(_, ct))).getOrElse(result)
   }
 
   protected def doVarsTransforms(transforms: List[VariableTransform],

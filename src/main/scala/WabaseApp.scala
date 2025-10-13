@@ -290,8 +290,8 @@ trait WabaseApp[User] {
       def res(r: QuereaseResult, filter: ResultRenderer.ResultFilter): Res = {
         def single_res(sr: SingleValueResult[_]) = sr.value match {
           case m: Map[String@unchecked, _] =>
-            if (filter == ResultRenderer.NoFilter) StrictRes(AnyResult(m))
-            else StrictRes(MapResult(m)) // return strict since structure may not conform to tresql result so serialization might fail
+            if (filter == ResultRenderer.NoFilter) StrictRes(AnyResult(m)) // do not apply any filter in marshalling
+            else if (filter == null) StrictRes(MapResult(m)) else StrictRes(CompatibleResult(MapResult(m), filter))
           case s: Seq[Map[String, _]@unchecked] => SourceRes(DataSerializer.source(() => s.iterator), filter, true) // serialization might fail if data does not conform to tresql result table structure
           case qr: QuereaseResult => res(qr, filter)
           case x => StrictRes(StringResult(Option(x).map(String.valueOf).orNull))

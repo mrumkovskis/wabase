@@ -263,6 +263,10 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         }
         .map(r => if (removeIdsFlag) removeIds(r) else r)
     case HttpResult(resp) => unmarshalResponse(resp)
+    case CompatibleResult(m: MapResult, f, _) => Future.successful {
+      if (f != null) MapResult(app.qe.toCompatibleMap(m.result, app.qe.viewDef(f.name)))
+      else m
+    }
     case r => Future.successful(r)
   }
 
@@ -1336,6 +1340,26 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       t3 <- doJob("test_job_insert").map(_ shouldBe NoResult)
       t4 <- doAction("list", "job_call_test1", Map("name" -> "ABC"))
         .map(_ shouldBe List(Map("value" -> "ABC")))
+      t5 <- doAction("insert", "job_call_test1",
+        Map("id" -> 1, "ch" ->
+          List(
+            Map("id" -> 2, "ch" -> List(Map("id" -> 4, "ch" -> Nil))),
+            Map("id" -> 3, "ch" -> Nil)
+          )
+        )
+      )
+        .map(_ shouldBe MapResult(
+          Map("id" -> 2, "ch" ->
+            List(
+              Map("id" -> 3, "ch" -> List(Map("id" -> 5, "ch" -> Nil))),
+              Map("id" -> 4, "ch" -> Nil)
+            )
+          )
+        ))
+      t6 <- doAction("update", "job_call_test1",
+        Map("data" -> Map("id" -> 1, "ch" -> List(Map("id" -> 2, "ch" -> Nil))))
+      )
+        .map(_ shouldBe MapResult(Map("id" -> 2, "ch" -> List(Map("id" -> 3, "ch" -> Nil)))))
     } yield t1
   }
 

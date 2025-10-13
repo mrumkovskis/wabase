@@ -1218,8 +1218,21 @@ action:
 - +simple_table {id = nextval('seq'), value = 'ABC'}
 
 
+job: recursive_job
+action:
+  - id = :id + 1
+  - ch = foreach :ch call recursive_job
+  - this
+
+
+name: recursive_job_structure
+fields:
+- id
+- ch * recursive_job_structure
+
+
 name: job_call_test1
-api: get, list
+api: get, list, insert, update
 fields:
   - name
 get:
@@ -1227,6 +1240,10 @@ get:
   - status ok :job_res.greeting
 list:
   - as any * simple_table[value = :name] {value}
+insert:
+  - as recursive_job_structure call recursive_job
+update:
+  - as recursive_job_structure call recursive_job :data
 
 
 name: resource_test1

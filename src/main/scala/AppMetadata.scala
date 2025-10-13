@@ -1080,10 +1080,15 @@ class OpParser(viewName: String, caches: OpParser.Caches)
   def jsonCodecOp: MemParser[JsonCodec] = "(from|to)(?=\\s+)".r ~ "json\\s+".r ~ operation ^^ {
     case mode ~ _ ~ op => JsonCodec(mode == "to", op)
   } named "json-op"
-  def jobOp: MemParser[Job] = "call(?=\\s+)".r ~> expr ^^ {
-    case ast.StringConst(value) => Job(value, false)
-    case ast.Obj(i: ast.Ident, _, _, _, _) => Job(i.tresql, false)
-    case e => Job(e.tresql, true)
+  def jobOp: MemParser[Job] = opt(opResultType) ~ ("call(?=\\s+)".r ~> (stringLiteral | qualifiedIdent) ~ opt(operation)) ^^ {
+    case conformTo ~ job_op => job_op match {
+      case job ~ op =>
+        val jobName = job match {
+          case s: String => s
+          case i: ast.Ident => i.tresql
+        }
+        Job(jobName, conformTo, op.orNull)
+    }
   } named "job-op"
   def confOp: MemParser[Conf] = {
     val parType = new Regex(ConfTypes.types.map(_.name).mkString("|"))
@@ -1439,9 +1444,8 @@ object AppMetadata extends Loggable {
     /** This operation exists only in parsing stage for if operation */
     case class Else(action: Action) extends Op
     case class Block(action: Action) extends Op
-    /** if isDynamic is false, nameTresql parameter is expected to be indentifier or string constant
-     * (not to be evaluated as tresql to get job name). */
-    case class Job(nameTresql: String, isDynamic: Boolean) extends Op
+    /** name parameter is expected to be identifier or string constant */
+    case class Job(name: String, conformTo: Option[OpResultType] = None, data: Op = null) extends Op
     case object Commit extends Op
 
     case object This extends Op
@@ -1586,9 +1590,9 @@ object AppMetadata extends Loggable {
               val vn = if (view == "this") state.name else view
               val ns = opTrTr(data)
               processView(stepTresqlTrav)(ns.copy(action = method, name = vn))
-            case Job(nameTresql, isDynamic) =>
-              if (isDynamic) us(state, nv(state.value)(Tresql(nameTresql)))
-              else processJob(stepTresqlTrav)(state.copy(action = JobAct, name = nameTresql))
+            case Job(name, _, op) =>
+              val ns = opTrTr(op)
+              processJob(stepTresqlTrav)(ns.copy(action = JobAct, name = name))
             case Invocation(_, _, o, _) => o.foldLeft(state)(opTresqlTrav(_)(_))
             case ExtractHttpEntity(_, _, o) => opTrTr(o)
           }
