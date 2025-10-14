@@ -25,6 +25,9 @@ object Audit extends Loggable {
   /* Key to store request start time for auditing. If not set, audit method entry time will be used */
   val AuditTimestampKey = AttributeKey[Instant]("audit-timestamp")
 
+  /* Key to store captured entity for auditing. */
+  val AuditEntityKey = AttributeKey[HttpEntity.Strict]("audit-entity")
+
   implicit val auditPoolName: PoolName = PoolName("wabase_it_audit_cp")
 
   // Ensure AuditRecord (req + resp + etc) fits within bufferedAudit.reader.maxRecordSize!
@@ -91,6 +94,17 @@ object Audit extends Loggable {
   private def renderHeader(header: HttpHeader): String =
     s"${header.name}: ${header.value}"
 
+  private def largeContentReplacementForAuditing(contentLength: Long): ByteString =
+    ByteString(s"[large content: $contentLength bytes]")
+
+  private def contentForAuditing(entity: HttpEntity): String = entity match {
+    case strict: HttpEntity.Strict =>
+      if  (strict.contentLength > maxContentSizeToAudit)
+           largeContentReplacementForAuditing(strict.contentLength).utf8String
+      else strict.data.utf8String
+    case other => s"[STREAM? ${other.getClass.getName}]"
+  }
+
   def createAuditRecord(ctx: WabaseRequestContext, response: HttpResponse): AuditRecord = {
     val ts = ctx.req.getAttribute(AuditTimestampKey).orElse(Instant.now)
     AuditRecord(
@@ -102,10 +116,8 @@ object Audit extends Loggable {
           method  = ctx.req.method.name,
           headers = ctx.req.headers.filter(_.renderInRequests()).map(renderHeader),
           ct_type = ctx.req.entity.contentType.toString,
-          content = ctx.req.entity match {
-            case strict: HttpEntity.Strict => strict.data.utf8String
-            case other => s"[STREAM? ${other.getClass.getName}]"
-          },
+          content = contentForAuditing(
+            Option(ctx.req.getAttribute(AuditEntityKey).orElse(null)).getOrElse(ctx.req.entity)),
           protocol= ctx.req.protocol.value,
         ),
       user =
@@ -117,10 +129,8 @@ object Audit extends Loggable {
           code    = response.status.intValue,
           headers = response.headers.filter(_.renderInResponses()).map(renderHeader),
           ct_type = response.entity.contentType.toString,
-          content = response.entity match {
-            case strict: HttpEntity.Strict => strict.data.utf8String
-            case other => s"[STREAM? ${other.getClass.getName}]"
-          },
+          content = contentForAuditing(
+            Option(response.getAttribute(AuditEntityKey).orElse(null)).getOrElse(response.entity)),
           protocol= response.protocol.value,
         ),
     )
@@ -135,7 +145,7 @@ object Audit extends Loggable {
     val promise = Promise[ByteString]()
     contentLengthOption match {
       case Some(len) if len > maxContentSizeToAudit =>
-        promise.success(ByteString(s"[large content: $len bytes]"))
+        promise.success(largeContentReplacementForAuditing(len))
         (false, promise)
       case Some(0) =>
         promise.success(ByteString.empty)
@@ -160,11 +170,16 @@ object Audit extends Loggable {
       }
     }.mapMaterializedValue { fut =>
       fut.foreach { case (size, content) =>
-        val bs = if (size > maxContentSizeToAudit) ByteString(s"[large content: $size bytes]") else content
+        val bs = if (size > maxContentSizeToAudit) largeContentReplacementForAuditing(size) else content
         promise.success(bs)
       }
       NotUsed
     }
+  }
+
+  def audit(ctx: WabaseRequestContext, response: HttpResponse): Unit = {
+    val record = createAuditRecord(ctx, response)
+    bufferedAuditWriteRecord(record)
   }
 
   def audit(innerHandler: RequestHandler): RequestHandler = ctx => {
@@ -190,7 +205,7 @@ object Audit extends Loggable {
 
     val innerCtx = ctx.copy(req = modRequest)
 
-    innerHandler(innerCtx).transform {
+    innerHandler(innerCtx).transformWith {
       case Success(response) =>
         val (attachRespCapture, respPromise) = shouldCaptureAndPromise(response.entity.contentLengthOption)
 
@@ -213,22 +228,29 @@ object Audit extends Loggable {
           reqC <- reqPromise.future
           respC <- respPromise.future
         } yield {
-          val auditReq = ctx.req.withEntity(HttpEntity.Strict(ctx.req.entity.contentType, reqC))
-          val auditRes = response.withEntity(HttpEntity.Strict(response.entity.contentType, respC))
-          val auditCtx = ctx.copy(req = auditReq)
-          val record   = createAuditRecord(auditCtx, auditRes)
-          bufferedAuditWriteRecord(record)
+          ctx.req.addAttribute(AuditEntityKey, HttpEntity.Strict(ctx.req.entity.contentType, reqC))
+          response.addAttribute(AuditEntityKey, HttpEntity.Strict(response.entity.contentType, respC))
+          audit(ctx, response)
         }
 
         auditF.failed.foreach { ex =>
           logger.error("Failed to audit", ex)
         }
 
-        Success(modResponse)
+        Future.successful(modResponse)
+
       case Failure(ex) =>
-        // Do nothing here. Use error handler to produce response and call audit from there.
-        // TODO use captured request body somehow!
-        Failure(ex)
+        // Do not audit here. Use error handler to produce response and call audit from there.
+        reqPromise.future.transform {
+          case Success(reqC) =>
+            ctx.req.addAttribute(AuditEntityKey, HttpEntity.Strict(ctx.req.entity.contentType, reqC))
+            throw ex
+          case Failure(ex2) =>
+            logger.error("Failed to capture request entity for auditing", ex2)
+            throw ex
+        }
     }
   }
+
+  def handleAuditing(innerHandler: RequestHandler): RequestHandler = audit(innerHandler)
 }
