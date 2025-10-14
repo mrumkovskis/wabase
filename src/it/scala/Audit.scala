@@ -6,7 +6,7 @@ import io.bullet.borer.derivation.MapBasedCodecs._
 import io.bullet.borer.{Encoder, Json}
 import org.apache.pekko.NotUsed
 import org.apache.pekko.actor.ActorSystem
-import org.apache.pekko.http.scaladsl.model.{HttpEntity, HttpHeader, HttpResponse}
+import org.apache.pekko.http.scaladsl.model.{AttributeKey, HttpEntity, HttpHeader, HttpResponse}
 import org.apache.pekko.stream.scaladsl._
 import org.apache.pekko.util.ByteString
 import org.mojoz.querease.{QuereaseIo, SaveMethod}
@@ -21,6 +21,10 @@ import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.util.{Failure, Success}
 
 object Audit extends Loggable {
+
+  /* Key to store request start time for auditing. If not set, audit method entry time will be used */
+  val AuditTimestampKey = AttributeKey[Instant]("audit-timestamp")
+
   implicit val auditPoolName: PoolName = PoolName("wabase_it_audit_cp")
 
   // Ensure AuditRecord (req + resp + etc) fits within bufferedAudit.reader.maxRecordSize!
@@ -87,7 +91,8 @@ object Audit extends Loggable {
   private def renderHeader(header: HttpHeader): String =
     s"${header.name}: ${header.value}"
 
-  def createAuditRecord(ts: Instant, ctx: WabaseRequestContext, response: HttpResponse): AuditRecord = {
+  def createAuditRecord(ctx: WabaseRequestContext, response: HttpResponse): AuditRecord = {
+    val ts = ctx.req.getAttribute(AuditTimestampKey).orElse(Instant.now)
     AuditRecord(
       request_time =
         Instant.now.toString,
@@ -163,7 +168,9 @@ object Audit extends Loggable {
   }
 
   def audit(innerHandler: RequestHandler): RequestHandler = ctx => {
-    val ts = Instant.now
+    if (!ctx.req.getAttribute(AuditTimestampKey).isPresent) {
+      ctx.req.addAttribute(AuditTimestampKey, Instant.now)
+    }
     val (attachReqCapture, reqPromise) = shouldCaptureAndPromise(ctx.req.entity.contentLengthOption)
 
     val reqDataBytes = if (attachReqCapture) {
@@ -209,7 +216,7 @@ object Audit extends Loggable {
           val auditReq = ctx.req.withEntity(HttpEntity.Strict(ctx.req.entity.contentType, reqC))
           val auditRes = response.withEntity(HttpEntity.Strict(response.entity.contentType, respC))
           val auditCtx = ctx.copy(req = auditReq)
-          val record   = createAuditRecord(ts, auditCtx, auditRes)
+          val record   = createAuditRecord(auditCtx, auditRes)
           bufferedAuditWriteRecord(record)
         }
 
