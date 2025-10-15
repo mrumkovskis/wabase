@@ -1700,6 +1700,13 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     Get("/count:foreach_test_3") ~> route ~> check {
       jsonAssert(entityAs[String], Seq(2, 3, 4))
     }
+    Post("/foreach_test_3") ~> route ~> check {
+      jsonAssert(entityAs[String], List(
+        "foreach_test_1 top_upd", "foreach_test_1.ch_1 child1_upd",
+        "foreach_test_1.ch_2 child2_upd", "foreach_test_2 old",
+        "foreach_test_2.1 new", "foreach_test_2.1.ch_2 new child", "if_test_1 no_value"
+      ))
+    }
   }
 
   it should "return array" in {

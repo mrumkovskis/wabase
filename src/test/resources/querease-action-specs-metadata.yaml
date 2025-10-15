@@ -729,7 +729,8 @@ save:
 
 
 name: foreach_test_3
-api: list, count
+api: list, count, insert
+decoder: none
 fields:
 - nr      int
 - value
@@ -738,6 +739,8 @@ list:
     - nr = :__idx + 1
 count:
 - foreach(({1 value} + {2} + {3}){value}#(1)) :value + 1
+insert:
+- foreach if_and_foreach_test{code, value}#(1,2) :code || ' ' || :value
 
 
 name:   insert_update_test_1
