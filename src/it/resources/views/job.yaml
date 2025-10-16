@@ -1,5 +1,5 @@
-job: create_person
-action:
+name: create_person
+job:
 - wabase.app.JobUtils.sleep 100
 - +person{code = 'pk10', name = 'Kurtis', surname = 'Vaidelotis'}
 

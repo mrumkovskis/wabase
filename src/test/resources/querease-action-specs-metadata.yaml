@@ -1211,21 +1211,21 @@ get:
 - gets {key, value}#(key)         # must throw exception during compile time or runtime not parsing time, like view 's' not found
 
 
-job: test_job1
-action:
+name: test_job1
+job:
 - unique { 'Hello ' || coalesce(if_defined(:name?, :name || ' '), '') || 'from test_job1!' greeting }
 
 
-job: test_job_insert
-action:
+name: test_job_insert
+job:
 - +simple_table {id = nextval('seq'), value = 'ABC'}
 
 
-job: recursive_job
-action:
-  - id = :id + 1
-  - ch = foreach :ch call recursive_job
-  - this
+name: recursive_job
+job:
+- id = :id + 1
+- ch = foreach :ch call recursive_job
+- this
 
 
 name: recursive_job_structure

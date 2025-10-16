@@ -474,7 +474,7 @@ class WabaseSwaggerGenerator(
     val steps = viewDef.actions.get(action).map(_.steps).getOrElse(Nil)
     val res = steps.flatMap {
       case (Validations(Some(name), _, _), _) => List(name)
-      case (Evaluation(_, _, ViewCall(method, view, data), _), _) if view != viewDef.name =>
+      case (Evaluation(_, _, ViewCall(method, view, _, _), _), _) if view != viewDef.name =>
         viewNameToQe(view).nameToViewDef.get(view).map(subView =>
           getErrorCodesForView(subView, method)
         ).getOrElse(Nil)

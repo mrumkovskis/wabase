@@ -12,7 +12,7 @@ import org.mojoz.querease.{FilterType, QuereaseMetadata, TresqlJoinsParser, Tres
 import org.tresql.{Cache, MacroResourcesImpl, QueryParser, SimpleCache, SimpleCacheBase, ast}
 import org.tresql.ast.{Exp, Variable}
 import org.tresql.parsing.QueryParsers
-import org.wabase.AppMetadata.{Action, JobAct}
+import org.wabase.AppMetadata.{Action, JobCall}
 import org.wabase.AppMetadata.Action.TresqlExtraction.{OpTresqlTraverser, State, StepTresqlTraverser, opTresqlTraverser, stepTresqlTraverser}
 import org.wabase.AppMetadata.Action.{Validations, ViewCall, traverseAction}
 
@@ -60,7 +60,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   override lazy val viewDefLoader: YamlViewDefLoader =
     new YamlViewDefLoader(tableMetadata, yamlMetadata, joinsParser, metadataConventions, uninheritableExtras, typeDefs) {
       override protected def isViewDef(m: Map[String, _]) = {
-        !m.contains("columns") && !m.contains("job") && !m.contains("on") && !m.contains("type")
+        !m.contains("columns") && !m.contains("on") && !m.contains("type")
       }
     }
   override lazy val nameToViewDef: Map[String, ViewDef] =
@@ -81,9 +81,6 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       val opParser = new OpParser(objectName, opParserCache(objectName))
       parseAction(objectName, ViewDefExtrasUtils.getSeq(dataKey, dataMap), opParser)
     }
-
-  lazy val jobDefLoader = new YamlJobDefLoader(yamlMetadata, actionParser)
-  lazy val nameToJobDef: Map[String, JobDef] = transformJobDefs(jobDefLoader.nameToJobDef)
 
   lazy val routeDefLoader =
     new YamlRouteDefLoader(yamlMetadata, actionParser)
@@ -107,12 +104,6 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   lazy val viewNameToQueryVariablesCache: Map[String, Seq[ast.Variable]] =
     loadViewNameToQueryVariablesCache(resourceLoader)
 
-
-  def jobDefOption(jobName: String): Option[JobDef] = nameToJobDef.get(jobName)
-  def jobDef(jobName: String): JobDef = jobDefOption(jobName)
-    .getOrElse(sys.error(s"Job definition for $jobName not found"))
-
-
   def toAppViewDefs(mojozViewDefs: Map[String, ViewDef]) = transformAppViewDefs {
     val inlineViewDefNames =
       mojozViewDefs.values.flatMap { viewDef =>
@@ -123,6 +114,12 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       }.toSet
     mojozViewDefs.transform { (_, v) => toAppViewDef(v, isInline = inlineViewDefNames.contains(v.name)) }
   }
+
+  protected def transformAppViewDefs(viewDefs: Map[String, ViewDef]): Map[String, ViewDef] =
+    Option(viewDefs)
+      .map(resolveViewDbAccessKeys)
+      .orNull
+
   override def viewNameFromMf[T <: AnyRef](implicit mf: Manifest[T]): String =
     classToViewNameMap.getOrElse(mf.runtimeClass, mf.runtimeClass.getSimpleName)
 
@@ -358,16 +355,6 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
           auth, apiToRoles, actions, Map.empty, minKeySizeForList, maxKeySizeForList, expectedKeySizeDescr))
   }
 
-  protected def transformAppViewDefs(viewDefs: Map[String, ViewDef]): Map[String, ViewDef] =
-    Option(viewDefs)
-      .map(resolveViewDbAccessKeys(_, jobDefLoader.nameToJobDef))
-      .orNull
-
-  protected def transformJobDefs(jobDefs: Map[String, JobDef]) =
-    Option(jobDefs)
-      .map(resolveJobDbAccessKeys(nameToViewDef, _))
-      .orNull
-
   /* Sets field options to horizontal auth statements if such are defined for child view, so that during ort auth
    * for child views are applied.
    */
@@ -401,8 +388,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
             st.copy(value = st.value.copy(dbStack = dbk.db :: st.value.dbStack))
           )
           st
-        case ViewCall(_, _, data) => opTresqlTrav(st)(data) // do not go to process view call since all views are compiled
-        case _: Action.Job => st // do not go to process job call since all jobs are compiled in a loop
+        case ViewCall(_, _, data, _) => opTresqlTrav(st)(data) // do not go to process view call since all views are compiled
       })
     lazy val stepTresqlTrav: StepTresqlTraverser[QueriesState] =
       stepTresqlTraverser(opTresqlTrav)(st => {
@@ -417,14 +403,13 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
           }.getOrElse(st)
       })
     val state = State[QueriesState](
-      actionName, objName, Map(), Map(),
+      actionName, objName, Map(),
       tresqlExtractor = cq => tresql => {
         val tresqlString = tresql.tresql
         cq.queries += (cq.dbStack.headOption.orNull -> tresqlString)
         cq
       },
       viewExtractor = v => _ => v,
-      jobExtractor = v => _ => v,
       processed = Set(), value = QueriesState(Nil, scala.collection.mutable.Set[(String, String)]())
     )
     traverseAction(action)(stepTresqlTrav)(state).value.queries.toSet
@@ -435,18 +420,6 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       actionQueries(actionName, objName, action)
         .map(compilationUnit("action-queries", s"$objName.$actionName", viewDef.db, _))
     }
-  }
-
-  override protected def generateQueriesForCompilation(log: => String => Unit): Seq[CompilationUnit] = {
-    val viewQueries = super.generateQueriesForCompilation(log)
-    log(s"Generating queries to be compiled for ${nameToJobDef.size} jobs")
-    val startTime = System.currentTimeMillis
-    val jobQueries = nameToJobDef.flatMap { case (jobName, job) =>
-      actionQueries(JobAct, jobName, job.action).map(compilationUnit("action-queries", s"$jobName.$JobAct", job.db, _))
-    }
-    val endTime = System.currentTimeMillis
-    log(s"Query generation done in ${endTime - startTime} ms, ${jobQueries.size} queries generated")
-    viewQueries ++ jobQueries
   }
 
   private def compilationUnit(category: String, source: String, defaultDb: String, query: (String, String)) = {
@@ -539,7 +512,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
   private def resolveDbAccessKeys(
     action: String, name: String,
-    viewDefs: Map[String, ViewDef], jobDefs: Map[String, JobDef],
+    viewDefs: Map[String, ViewDef],
     fun: (=>StepTresqlTraverser[Seq[DbAccessKey]]) => State[Seq[DbAccessKey]] => State[Seq[DbAccessKey]]
   ): State[Seq[DbAccessKey]] = {
     lazy val opTresqlTrav: OpTresqlTraverser[Seq[DbAccessKey]] =
@@ -553,13 +526,11 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
         case Validations(_, _, dbkey) => state.copy(value = state.value ++ dbkey.toList)
       })
 
-    val state = State[Seq[DbAccessKey]](action, name, viewDefs, jobDefs,
+    val state = State[Seq[DbAccessKey]](action, name, viewDefs,
       tresqlExtractor = dbKeys => tresql => dbKeys ++ tresql.dbs
         .filter(_.db != null).map(d => DbAccessKey(d.db)),
       viewExtractor = dbkeys => vd =>
         dbkeys ++ (if (vd.db != null) Seq(DbAccessKey(vd.db)) else Nil),
-      jobExtractor = dbkeys => jd =>
-        dbkeys ++ Option(jd.db).map(db => Seq(DbAccessKey(db))).getOrElse(Nil),
       processed = Set(), value = Nil
     )
     fun(stepTresqlTrav)(state)
@@ -567,7 +538,6 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
   protected def resolveViewDbAccessKeys(
     viewDefs: Map[String, ViewDef],
-    jobDefs: Map[String, JobDef],
   ): Map[String, ViewDef] = {
     viewDefs.transform { case (viewName, viewDef) =>
       import Action._
@@ -579,24 +549,11 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
           case _ =>
             action
         })
-        val st = resolveDbAccessKeys(action_, viewName, viewDefs, jobDefs, processView[Seq[DbAccessKey]])
+        val st = resolveDbAccessKeys(action_, viewName, viewDefs, processView[Seq[DbAccessKey]])
         val dbkeys = st.value.distinct
         (action, dbkeys)
       }.toMap
       viewDef.updateWabaseExtras(_.copy(actionToDbAccessKeys = actionToDbAccessKeys))
-    }
-  }
-
-  protected def resolveJobDbAccessKeys(
-    viewDefs: Map[String, ViewDef],
-    jobDefs: Map[String, JobDef],
-  ): Map[String, JobDef] = {
-    jobDefs.transform { case (jobName, jobDef) =>
-      import Action._
-      import TresqlExtraction._
-      val st = resolveDbAccessKeys(JobAct, jobName, viewDefs, jobDefs, processJob[Seq[DbAccessKey]])
-      val dbkeys = st.value.distinct
-      jobDef.copy(dbAccessKeys = dbkeys)
     }
   }
 
@@ -916,7 +873,8 @@ class OpParser(viewName: String, caches: OpParser.Caches)
 
   /** View action must be end with whitespace regexp so that no match is if space(s) is omitted between action and
     * view name since spaces are eliminated at the beginning of input before applying parser */
-  val ActionRegex = new Regex(Action().mkString("(?U)(", "|", """)(?=\s+)"""))
+  val ActionRegex = new Regex(Action().map(a => if (a == Action.Job) JobCall else a)
+    .mkString("(?U)(", "|", """)(?=\s+)"""))
   val ViewNameRegex = "(?U)\\w+".r
   val ConfPropRegex = """\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*(?:\.\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*+)*""".r
   val HttpClientFileStreamerNameRegex = """\w+(-\w+)*""".r
@@ -999,9 +957,8 @@ class OpParser(viewName: String, caches: OpParser.Caches)
     val dbs = traverser(dbExtractor)(Nil)(e)
     Tresql(te.tresql, dbs, rt)
   } named "tresql-op"
-  def viewOp: MemParser[ViewCall] = ActionRegex ~ ViewNameRegex ~ opt(operation) ^^ {
-    case action ~ view ~ op =>
-      ViewCall(action, view, op.orNull)
+  def viewOp: MemParser[ViewCall] = opt(opResultType) ~ ActionRegex ~ ViewNameRegex ~ opt(operation) ^^ {
+    case rt ~ action ~ view ~ op => ViewCall(action, view, op.orNull, rt)
   }  named "view-op"
   def uniqueOp: MemParser[Unique] = opt(opResultType) ~ (("unique_opt" | "unique") ~ operation) ^^ {
     case rt ~ (mode ~ op) => Unique(op, mode == "unique_opt", rt)
@@ -1080,16 +1037,6 @@ class OpParser(viewName: String, caches: OpParser.Caches)
   def jsonCodecOp: MemParser[JsonCodec] = "(from|to)(?=\\s+)".r ~ "json\\s+".r ~ operation ^^ {
     case mode ~ _ ~ op => JsonCodec(mode == "to", op)
   } named "json-op"
-  def jobOp: MemParser[Job] = opt(opResultType) ~ ("call(?=\\s+)".r ~> (stringLiteral | qualifiedIdent) ~ opt(operation)) ^^ {
-    case conformTo ~ job_op => job_op match {
-      case job ~ op =>
-        val jobName = job match {
-          case s: String => s
-          case i: ast.Ident => i.tresql
-        }
-        Job(jobName, conformTo, op.orNull)
-    }
-  } named "job-op"
   def confOp: MemParser[Conf] = {
     val parType = new Regex(ConfTypes.types.map(_.name).mkString("|"))
     "conf" ~> opt(parType) ~ ConfPropRegex ^^ {
@@ -1165,7 +1112,7 @@ class OpParser(viewName: String, caches: OpParser.Caches)
   def setHttpHeadersOps: MemParser[List[SetHttpHeadersOp]] =
     rep(setCookie | deleteCookie | setHttpHeaders | setUserAttributes) named "set-http-headers-ops"
   def commit: MemParser[Commit.type] = "commit\\s*$".r ^^^ Commit named "commit-op"
-  def operation: MemParser[Op] = (commit | redirect | response | viewOp | jobOp | confOp | uniqueOp |
+  def operation: MemParser[Op] = (commit | redirect | response | viewOp | confOp | uniqueOp |
     httpOp | dbOp | foreachOp | ifElseOp | resourceOp | fileOp | toFileOp | templateOp | emailOp |
     jsonCodecOp | httpHeaderOp | httpCookieOp | extractPartsOp | extractEntityOp |
     thisOp | bracesOp | invocationOp | tresqlOp) named "operation"
@@ -1177,7 +1124,7 @@ class OpParser(viewName: String, caches: OpParser.Caches)
     def noType: Parser[ResType] = "any" ^^^ NoType
     def viewType: Parser[ResType] = opt("`") ~> ViewNameRegex <~ opt("`") ^^ ViewType
 
-    "as" ~> ((noType | (opt("`") ~> viewType <~ opt("`"))) ~ opt("*")) ^^ {
+    "as" ~> ((noType | viewType) ~ opt("*")) ^^ {
       case NoType ~ isColl => OpResultType(null, isColl.nonEmpty)
       case ViewType(typ) ~ isColl => OpResultType(typ, isColl.nonEmpty)
       case x => sys.error(s"Knipis, unexpected op result type: $x")
@@ -1333,7 +1280,7 @@ object AppMetadata extends Loggable {
   def joinsParserCacheFactory(getResourceAsStream: String => InputStream, cacheSize: Int)(db: String): Option[Cache] =
     joinsParserCacheFactory(loadJoinsParserCache(getResourceAsStream), cacheSize)(db)
 
-  val JobAct = "job"
+  val JobCall = "call"
 
   object Action {
     val Get    = "get"
@@ -1345,10 +1292,11 @@ object AppMetadata extends Loggable {
     val Delete = "delete"
     val Create = "create"
     val Count  = "count"
+    val Job   = "job"
     val Head   = "head"
     val Options = "options"
     def apply() =
-      Set(Get, List, Save, Insert, Update, Upsert, Delete, Create, Count, Head, Options)
+      Set(Get, List, Save, Insert, Update, Upsert, Delete, Create, Count, Job, Head, Options)
 
     val ValidationsKey = "validations"
     val DbUseKey = "db use"
@@ -1394,7 +1342,7 @@ object AppMetadata extends Loggable {
     case class Tresql(tresql: String,
                       dbs: List[ast.Db] = Nil,
                       conformTo: Option[OpResultType] = None) extends CastableOp
-    case class ViewCall(method: String, view: String, data: Op = null) extends Op
+    case class ViewCall(method: String, view: String, data: Op = null, conformTo: Option[OpResultType] = None) extends Op
     case class RedirectToKey(name: String) extends Op
     case class Unique(innerOp: Op, opt: Boolean, conformTo: Option[OpResultType] = None) extends CastableOp
     case class Invocation(className: String,
@@ -1444,8 +1392,6 @@ object AppMetadata extends Loggable {
     /** This operation exists only in parsing stage for if operation */
     case class Else(action: Action) extends Op
     case class Block(action: Action) extends Op
-    /** name parameter is expected to be identifier or string constant */
-    case class Job(name: String, conformTo: Option[OpResultType] = None, data: Op = null) extends Op
     case object Commit extends Op
 
     case object This extends Op
@@ -1471,7 +1417,7 @@ object AppMetadata extends Loggable {
       def traverse(state: T): PartialFunction[Op, T] = {
         case _: Tresql | _: RedirectToKey | _: Response |
              _: VariableTransforms | _: File | _: Conf | _: Cookie |
-             _: ExtractParts | This | _: Job | _: Resource | Commit | null => state
+             _: ExtractParts | This | _: Resource | Commit | null => state
         case o: ViewCall => opTrav(state)(o.data)
         case Unique(o, _, _) => opTrav(state)(o)
         case Foreach(o, a) => traverseAction(a)(stepTrav)(opTrav(state)(o))
@@ -1507,16 +1453,15 @@ object AppMetadata extends Loggable {
 
     object TresqlExtraction {
       type ViewExtractor[T] = T => ViewDef => T
-      type JobExtractor[T] = T => JobDef => T
       type TresqlExtractor[T] = T => Tresql => T
       type StepTresqlTraverser[T] = StepTraverser[State[T]]
       type OpTresqlTraverser[T] = OpTraverser[State[T]]
 
       case class State[T](
         action: String, name: String,
-        viewDefs: Map[String, ViewDef], jobDefs: Map[String, JobDef],
+        viewDefs: Map[String, ViewDef],
         tresqlExtractor: TresqlExtractor[T],
-        viewExtractor: ViewExtractor[T], jobExtractor: JobExtractor[T],
+        viewExtractor: ViewExtractor[T],
         processed: Set[(String, String)],
         value: T
       )
@@ -1541,15 +1486,6 @@ object AppMetadata extends Loggable {
           vd.actions.get(s1.action).map { a =>
             traverseAction(a)(stepTresqlTrav)(s1)
           }.getOrElse(s1)
-        }
-      }
-
-      def processJob[T](stepTresqlTrav: => StepTresqlTraverser[T])(s: State[T]): State[T] = {
-        if (s.processed(s.action -> s.name)) s else {
-          val jd = s.jobDefs(s.name)
-          val newVal = s.jobExtractor(s.value)(jd)
-          val s1 = s.copy(value = newVal, processed = s.processed + (s.action -> s.name))
-          traverseAction(jd.action)(stepTresqlTrav)(s1)
         }
       }
 
@@ -1586,13 +1522,10 @@ object AppMetadata extends Loggable {
               val s2 = us(s1, nv(s1.value)(headerTresql))
               opTresqlTrav(s2)(body)
             case HttpHeader(_, httpOp) => opTresqlTrav(state)(httpOp)
-            case ViewCall(method, view, data) =>
+            case ViewCall(method, view, data, _) =>
               val vn = if (view == "this") state.name else view
               val ns = opTrTr(data)
               processView(stepTresqlTrav)(ns.copy(action = method, name = vn))
-            case Job(name, _, op) =>
-              val ns = opTrTr(op)
-              processJob(stepTresqlTrav)(ns.copy(action = JobAct, name = name))
             case Invocation(_, _, o, _) => o.foldLeft(state)(opTresqlTrav(_)(_))
             case ExtractHttpEntity(_, _, o) => opTrTr(o)
           }
@@ -1721,14 +1654,6 @@ object AppMetadata extends Loggable {
     override protected def updateExtrasMap(extras: Map[String, Any]): Any = fieldDef.copy(extras = extras)
     override protected def extrasMap = fieldDef.extras
   }
-
-  case class JobDef(
-    name: String,
-    action: Action,
-    db: String = null,
-    explicitDb: Boolean = false,
-    dbAccessKeys: Seq[DbAccessKey] = Nil,
-  )
 
   case class PathNameAndParameters(
     name: String,

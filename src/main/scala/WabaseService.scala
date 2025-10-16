@@ -454,7 +454,7 @@ object WabaseService {
   }
 
   def startJob(jobName: String, ctx: WabaseRequestContext): Future[HttpResponse] = {
-    ctx.wabase.qe.jobDefOption(jobName).map { job =>
+    ctx.wabase.qe.viewDefOption(jobName).map { job =>
       implicit val ec: ExecutionContext = ctx.as.dispatcher
       val jobControlActorName = config.getString("app.job.actor-name")
       ctx.as.actorSelection(ctx.as / jobControlActorName).resolveOne(1.second).flatMap { jobControActor =>

@@ -237,7 +237,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
   }
 
   protected def doJob(jobName: String): Future[Any] = {
-    wabaseScheduler.doJob(app.qe.jobDef(jobName))
+    wabaseScheduler.doJob(app.qe.viewDef(jobName))
   }
 
   protected def processResult(r: QuereaseResult, view: String, removeIdsFlag: Boolean): Future[Any] = r match {

@@ -1,9 +1,10 @@
 package org.wabase
 
 import org.apache.pekko.actor.{Actor, ActorRef, ActorSystem, Props}
+import org.mojoz.metadata.ViewDef
 import org.wabase.WabaseScheduler.{JobRunning, JobStarted, Tick}
 import org.tresql._
-import org.wabase.AppMetadata.{JobAct, JobDef}
+import org.wabase.AppMetadata.Action
 
 import scala.concurrent.{ExecutionContext, Future}
 import scala.language.existentials
@@ -31,12 +32,12 @@ class WabaseScheduler(wabase: AppBase[_], system: ActorSystem) extends Loggable 
       } else logger.warn("Cannot schedule jobs, see that parameter app.job.actor is not null")
     }
     if (!config.getIsNull("app.job.on-start-job")) {
-      val jobDef = wabase.qe.jobDef(config.getString("app.job.on-start-job"))
+      val jobDef = wabase.qe.viewDef(config.getString("app.job.on-start-job"))
       doJob(jobDef)
     } else Future.successful(NoResult)
   }
 
-  def doJob(job: JobDef): Future[QuereaseResult] = {
+  def doJob(job: ViewDef): Future[QuereaseResult] = {
     val qe = wabase.qe
     val dbAccess = wabase.dbAccess
 
@@ -49,7 +50,7 @@ class WabaseScheduler(wabase: AppBase[_], system: ActorSystem) extends Loggable 
     implicit val executionContext: ExecutionContext = system.dispatcher
     implicit val actorSystem: ActorSystem = system
 
-    qe.QuereaseAction(job.name, JobAct, Map(), Map(), doCleanup = true)(
+    qe.QuereaseAction(job.name, Action.Job, Map(), Map(), doCleanup = true)(
         resourcesFactory, httpReq = null, qio = wabase.qio,
         fileStreamers = wabase.fileStreamers,
         httpClients = wabase.httpClients,
@@ -60,7 +61,7 @@ class WabaseScheduler(wabase: AppBase[_], system: ActorSystem) extends Loggable 
 
 object WabaseScheduler {
   /** Message sent to WabaseJobActor to ask to start job execution */
-  case class Tick(job: JobDef)
+  case class Tick(job: ViewDef)
   /** message to inform sender that job has been started */
   case object JobStarted
   /** message to inform sender that job could not be started because it is already running */

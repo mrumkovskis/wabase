@@ -374,35 +374,24 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   }
 
   private[wabase] def quereaseActionOpt(objectName: String, actionName: String) = {
-    if (actionName == JobAct) Option(jobDef(objectName).action)
-    else {
-      val vd = viewDef(objectName)
-      vd.actions.get(actionName)
-        .orElse(actionName match {
-          case Action.Insert | Action.Update | Action.Upsert =>
-            vd.actions.get(Action.Save)
-          case _ => None
-        })
-    }
+    val vd = viewDef(objectName)
+    vd.actions.get(actionName)
+      .orElse(actionName match {
+        case Action.Insert | Action.Update | Action.Upsert =>
+          vd.actions.get(Action.Save)
+        case _ => None
+      })
   }
 
   private def isExplicitDb(objectName: String, actionName: String) = {
-    if (actionName == JobAct) jobDef(objectName).explicitDb
-    else viewDef(objectName).explicitDb
+    viewDef(objectName).explicitDb
   }
 
   def dbResourceNames(objectName: String, actionName: String): (PoolName, Seq[DbAccessKey]) = {
-    if (actionName == JobAct) {
-      val jdo = jobDefOption(objectName)
-      val poolName = jdo.flatMap(j => Option(j.db)).map(PoolName) getOrElse PoolName(defaultCpName)
-      val extraDbs = jdo.map(_.dbAccessKeys.filter(_.db != null)).getOrElse(Nil)
-      (poolName, extraDbs)
-    } else {
-      val vdo = viewDefOption(objectName)
-      val poolName = vdo.flatMap(v => Option(v.db)).map(PoolName) getOrElse PoolName(defaultCpName)
-      val extraDbs = vdo.map(_.actionToDbAccessKeys(actionName).filter(_.db != null).toList).getOrElse(Nil)
-      (poolName, extraDbs)
-    }
+    val vdo = viewDefOption(objectName)
+    val poolName = vdo.flatMap(v => Option(v.db)).map(PoolName) getOrElse PoolName(defaultCpName)
+    val extraDbs = vdo.map(_.actionToDbAccessKeys(actionName).filter(_.db != null).toList).getOrElse(Nil)
+    (poolName, extraDbs)
   }
 
   def saveRequestParts(result: RequestPartResult)(implicit as: ActorSystem): Future[Map[String, Any]] =
@@ -506,7 +495,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     def doStep(step: Step, stepDataF: Future[Map[String, Any]], src: String): Future[QuereaseResult] = {
       import resourcesFactory._
       stepDataF flatMap { stepData =>
-        context.log(s"Doing action '${context.name}' step '$src'.")
+        context.log(s"Doing action '${context.name}' step '$src', $step.")
         context.log(s"Step data: {${loggable(resourcesFactory.resources, stepData)}}")
         step match {
           case Evaluation(_, vts, op, _) =>
@@ -631,9 +620,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   }
 
   protected def doViewCall(
-    method: String,
-    view: String,
-    viewOp: Action.Op,
+    op: Action.ViewCall,
     data: Map[String, Any],
     env: Map[String, Any],
     context: ActionContext,
@@ -643,12 +630,12 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     import resourcesFactory._
     implicit val fs: FileStreamer = fileStreamers.fs(null)
     val v = viewDef(
-      if (view == "this") context.view.map(_.name) getOrElse view
-      else                view
+      if (op.view == "this") context.view.map(_.name) getOrElse op.view
+      else                op.view
     )
     val viewName = v.name
     val callDataF =
-      if (viewOp == null) Future.successful(data ++ env)
+      if (op.data == null) Future.successful(data ++ env)
       else {
         def unwrapSingleRow(d: Any): Map[String, _] = d match {
           case r: Map[String@unchecked, _] => r ++ env
@@ -656,7 +643,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           case NoResult => env
           case x => sys.error(s"Invalid view op result. Currently unable to create Map[String, _] from $x")
         }
-        doActionOp(viewOp, data, env, context).flatMap(dataForNextStep(_, context, false))
+        doActionOp(op.data, data, env, context).flatMap(dataForNextStep(_, context, false))
           .map(unwrapSingleRow)
       }
     callDataF.flatMap { callData =>
@@ -668,7 +655,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           !v.actions.contains(thisMethod)
       }
 
-      if (context.view.exists(_.name == viewName) && isThisMethod(context.actionName, method)) {
+      if (context.view.exists(_.name == viewName) && isThisMethod(context.actionName, op.method)) {
         lazy val idName = viewNameToIdName.getOrElse(viewName, null)
 
         def int(name: String) = tryOp(callData.get(name).map {
@@ -679,8 +666,19 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         }, callData)
 
         def string(name: String) = callData.get(name) map String.valueOf
+        def castedResult(qr: QuereaseResult): QuereaseResult = qr match {
+          case r: TresqlSingleRowResult => op.conformTo
+            .orElse(Option(Action.OpResultType(viewName, isCollection = false)))
+            .map(comp_res(r, _))
+            .get
+          case r: DataResult => op.conformTo
+            .orElse(Option(Action.OpResultType(viewName, isCollection = true)))
+            .map(comp_res(r, _))
+            .get
+          case r => r
+        }
         val res =
-          (method match {
+          (op.method match {
             case Get =>
               val keyValues = getKeyValues(viewName, callData)
               val keyColNames = viewNameToKeyColNames(viewName)
@@ -711,21 +709,28 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
               TresqlSingleRowResult(create(v, callData))
             case Count =>
               LongResult(countAll_(v, callData))
+            case JobCall =>
+              quereaseActionOpt(viewName, Job)
+                .map(a => doSteps(a.steps, context, callDataF))
+                .getOrElse(NoResult)
             case x =>
               sys.error(s"Unknown view action $x")
           }) match {
-            case r: TresqlSingleRowResult => comp_res(r, Action.OpResultType(viewName, false))
-            case r: DataResult => comp_res(r, Action.OpResultType(viewName, true))
-            case r => r
+            case f: Future[QuereaseResult@unchecked] => f // job call, do not cast, may be casted at the end
+            case r: QuereaseResult => Future.successful(castedResult(r))
           }
-        Future.successful(res)
+        res
       } else {
         val nqr = qr.copy()(resourcesFactory = resourcesFactory
           .focus(if (v.db != null) v.db else defaultCpName, defaultCpName),
           ec, as, httpReq, qio, fileStreamers, httpClients, parametersProvider)
-        do_action(viewName, method, callData, env, context.fieldFilter, context :: context.contextStack)(nqr)
+        do_action(viewName, op.method, callData, env, context.fieldFilter, context :: context.contextStack)(nqr)
       }
     }
+      .map {
+        case result: DataResult => op.conformTo.map(comp_res(result, _)).getOrElse(result)
+        case r => r
+      }
   }
 
   protected def doInvocation(
@@ -825,24 +830,6 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case f: Future[_] => f map comp_q_result
       case x => Future.successful(comp_q_result(x))
     }
-  }
-
-  protected def doJob(
-    job: Action.Job,
-    data: Map[String, Any],
-    env: Map[String, Any],
-    context: ActionContext,
-  )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
-    val jd = jobDef(job.name)
-    val ctx = ActionContext(job.name, JobAct, env, None, context.logger,
-      contextStack = context :: context.contextStack)
-    import qr.ec
-    val jobData = if (job.data == null) Future.successful(data) else {
-      doActionOp(job.data, data, env, context).flatMap(dataForNextStep(_, context, false))
-        .mapTo[Map[String, Any]]
-    }
-    val result = doSteps(jd.action.steps, ctx, jobData)
-    job.conformTo.map(ct => result.mapTo[DataResult].map(comp_res(_, ct))).getOrElse(result)
   }
 
   protected def doVarsTransforms(transforms: List[VariableTransform],
@@ -1538,7 +1525,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     implicit val fs: FileStreamer = fileStreamers.fs(null)
     op match {
       case to: Action.Tresql => Future.successful(doTresql(to, data ++ env, context))
-      case Action.ViewCall(method, view, viewOp) => doViewCall(method, view, viewOp, data, env, context)
+      case vc: Action.ViewCall => doViewCall(vc, data, env, context)
       case op: Action.Unique => doUnique(op, data, env, context)
       case inv: Action.Invocation => doInvocation(inv, data, env, context)
       case Action.RedirectToKey(name) =>
@@ -1568,7 +1555,6 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case block: Action.Block => doBlock(block, data, env, context)
       case c: Action.Conf => doConf(c, data, env, context)
       case j: Action.JsonCodec => doJsonCodec(j, data, env, context)
-      case job: Action.Job => doJob(job, data, env, context)
       case ep: Action.ExtractParts => doExtractParts(ep, data, env, context)
       case Action.This => doThis(data, env, context)
       case VariableTransforms(vts) =>

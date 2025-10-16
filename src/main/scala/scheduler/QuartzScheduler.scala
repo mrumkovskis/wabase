@@ -14,7 +14,7 @@ object QuartzScheduler extends Loggable {
       scheduler: QuartzSchedulerExtension,
       wabaseJobActor: ActorRef
     ): Unit = {
-      wabase.qe.jobDefOption(jobName).map { job =>
+      wabase.qe.viewDefOption(jobName).map { job =>
         scheduler.schedule(jobName, wabaseJobActor, Tick(job))
       }.getOrElse {
         logger.warn(s"Job definition for schedule $jobName not found." +
