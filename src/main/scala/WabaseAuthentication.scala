@@ -125,7 +125,7 @@ object WabaseAuthentication extends Authentication[WabaseUser] {
     optUserFromRespAttributes(resp).map { u =>
       val (rp, cp) = u.properties.partition(_._2 == null)
       // remove null values, update rest
-      WabaseUser(reqUser.properties -- rp.keys ++ cp)
+      WabaseUser(Option(reqUser).map(_.properties).getOrElse(Map()) -- rp.keys ++ cp)
     }.getOrElse(reqUser)
 
   def sessionCookie(encryptedSession: String): HttpCookie =
