@@ -18,7 +18,7 @@ import org.slf4j.LoggerFactory
 import org.wabase.AppFileStreamer.FileInfo
 import org.wabase.AppMetadata.Action.{VariableTransform, VariableTransforms}
 import org.wabase.AppMetadata.DbAccessKey
-import org.wabase.AppQuerease.{InjectionParametersContext, InjectionParametersProvider, listOfStringTuples}
+import org.wabase.AppQuerease.{InjectionParametersContext, InjectionParametersProvider, configValueAsScala, listOfStringTuples}
 
 import java.lang.reflect.Parameter
 import java.sql.Connection
@@ -1429,12 +1429,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case Action.BooleanConf => config.getBoolean(op.param)
       case _ => config.getValue(op.param).unwrapped()
     }
-    def scalaType(value: Any): Any = value match {
-      case m: java.util.Map[_, _] => m.asScala.map { case (k, v) => String.valueOf(k) -> scalaType(v) }.toMap
-      case l: java.util.List[_] => l.asScala.map(scalaType).toList
-      case v => v
-    }
-    Future.successful(ConfResult(op.param, scalaType(value)))
+    Future.successful(ConfResult(op.param, configValueAsScala(value)))
   }
 
   protected def doJsonCodec(
@@ -2064,5 +2059,11 @@ object AppQuerease {
     } else if (res.extraResources.contains(defaultName)) {
       res.extraResources(defaultName).withExtraResources(res.extraResources)
     } else res
+  }
+
+  def configValueAsScala(value: Any): Any = value match {
+    case m: java.util.Map[_, _] => m.asScala.map { case (k, v) => String.valueOf(k) -> configValueAsScala(v) }.toMap
+    case l: java.util.List[_] => l.asScala.map(configValueAsScala).toList
+    case v => v
   }
 }

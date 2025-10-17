@@ -33,11 +33,11 @@ class WabaseScheduler(wabase: AppBase[_], system: ActorSystem) extends Loggable 
     }
     if (!config.getIsNull("app.job.on-start-job")) {
       val jobDef = wabase.qe.viewDef(config.getString("app.job.on-start-job"))
-      doJob(jobDef)
+      doJob(jobDef, Map())
     } else Future.successful(NoResult)
   }
 
-  def doJob(job: ViewDef): Future[QuereaseResult] = {
+  def doJob(job: ViewDef, params: Map[String, Any]): Future[QuereaseResult] = {
     val qe = wabase.qe
     val dbAccess = wabase.dbAccess
 
@@ -50,7 +50,7 @@ class WabaseScheduler(wabase: AppBase[_], system: ActorSystem) extends Loggable 
     implicit val executionContext: ExecutionContext = system.dispatcher
     implicit val actorSystem: ActorSystem = system
 
-    qe.QuereaseAction(job.name, Action.Job, Map(), Map(), doCleanup = true)(
+    qe.QuereaseAction(job.name, Action.Job, params, Map(), doCleanup = true)(
         resourcesFactory, httpReq = null, qio = wabase.qio,
         fileStreamers = wabase.fileStreamers,
         httpClients = wabase.httpClients,
@@ -61,7 +61,7 @@ class WabaseScheduler(wabase: AppBase[_], system: ActorSystem) extends Loggable 
 
 object WabaseScheduler {
   /** Message sent to WabaseJobActor to ask to start job execution */
-  case class Tick(job: ViewDef)
+  case class Tick(job: ViewDef, params: Map[String, Any])
   /** message to inform sender that job has been started */
   case object JobStarted
   /** message to inform sender that job could not be started because it is already running */
@@ -73,13 +73,13 @@ class WabaseJobActor(wabase: AppBase[_], scheduler: WabaseScheduler) extends Act
     context.system.log.info(s"Wabase job control actor started...")
   }
   override def receive: Receive = {
-    case Tick(jd) =>
+    case Tick(jd, params) =>
       val jobName = jd.name
       val dbAccess = wabase.dbAccess
       try {
         if (WabaseJobStatusController.acquireIsRunnningLock(jobName)(dbAccess)) {
           context.system.log.info(jobName + " started")
-          scheduler.doJob(jd).onComplete {
+          scheduler.doJob(jd, params).onComplete {
             case Success(_) =>
               WabaseJobStatusController.updateCronJobStatus(jobName, "SUCC")(dbAccess)
               context.system.log.info(jobName + " ended")

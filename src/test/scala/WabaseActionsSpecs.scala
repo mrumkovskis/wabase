@@ -236,8 +236,8 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       .transform(identity, { case e: QuereaseActionException => e.getCause case e => e })
   }
 
-  protected def doJob(jobName: String): Future[Any] = {
-    wabaseScheduler.doJob(app.qe.viewDef(jobName))
+  protected def doJob(jobName: String, params: Map[String, Any]): Future[Any] = {
+    wabaseScheduler.doJob(app.qe.viewDef(jobName), params)
   }
 
   protected def processResult(r: QuereaseResult, view: String, removeIdsFlag: Boolean): Future[Any] = r match {
@@ -1337,7 +1337,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       t2 <-
         doAction("get", "job_call_test1", Map("name" -> "John"))
           .map(_ shouldBe ResponseResult(200, ResultValue(StringResult("Hello John from test_job1!"))))
-      t3 <- doJob("test_job_insert").map(_ shouldBe NoResult)
+      t3 <- doJob("test_job_insert", Map()).map(_ shouldBe NoResult)
       t4 <- doAction("list", "job_call_test1", Map("name" -> "ABC"))
         .map(_ shouldBe List(Map("value" -> "ABC")))
       t5 <- doAction("insert", "job_call_test1",

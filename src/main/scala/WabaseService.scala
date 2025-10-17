@@ -9,8 +9,7 @@ import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.marshalling.{Marshal, ToResponseMarshallable}
 import org.apache.pekko.http.scaladsl.model.headers.{Cookie, EntityTag, HttpCookie, `Set-Cookie`, `Timeout-Access`}
 import org.apache.pekko.http.scaladsl.model.HttpCharsets.`UTF-8`
-import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes, DateTime, HttpEntity, HttpHeader, HttpMessage, HttpRequest, HttpResponse, StatusCode, StatusCodes, Uri}
-import org.apache.pekko.http.scaladsl.model.{MediaType => PekkoMediaType}
+import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes, DateTime, HttpEntity, HttpHeader, HttpMessage, HttpMethods, HttpRequest, HttpResponse, StatusCode, StatusCodes, Uri, MediaType => PekkoMediaType}
 import org.apache.pekko.http.scaladsl.server.directives.ContentTypeResolver
 import org.apache.pekko.http.scaladsl.server.directives.FileAndResourceDirectives.ResourceFile
 import org.apache.pekko.http.scaladsl.unmarshalling.Unmarshaller
@@ -460,7 +459,13 @@ object WabaseService {
       ctx.as.actorSelection(ctx.as / jobControlActorName).resolveOne(1.second).flatMap { jobControActor =>
         import org.apache.pekko.pattern.ask
         implicit val timeout: Timeout = 1.second
-        jobControActor ? WabaseScheduler.Tick(job) map {
+        for {
+          params <- if (!ctx.req.entity.isKnownEmpty() &&
+            (ctx.req.method == HttpMethods.POST || ctx.req.method == HttpMethods.PUT)) {
+            toMapEntityDecoder(ctx)
+          } else Future.successful(Map[String, Any]())
+          msg <- jobControActor ? WabaseScheduler.Tick(job, params)
+        } yield msg match {
           case WabaseScheduler.JobStarted => okResponse
           case WabaseScheduler.JobRunning => HttpResponse(status = StatusCodes.Conflict,
             entity = HttpEntity(s"Job '$jobName' is already running."))
