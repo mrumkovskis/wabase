@@ -463,7 +463,7 @@ object WabaseService {
           params <- if (!ctx.req.entity.isKnownEmpty() &&
             (ctx.req.method == HttpMethods.POST || ctx.req.method == HttpMethods.PUT)) {
             toMapEntityDecoder(ctx)
-          } else Future.successful(Map[String, Any]())
+          } else Future.successful(ctx.req.uri.query().toMap)
           msg <- jobControActor ? WabaseScheduler.Tick(job, params)
         } yield msg match {
           case WabaseScheduler.JobStarted => okResponse
