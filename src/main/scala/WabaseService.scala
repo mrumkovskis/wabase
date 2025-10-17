@@ -456,21 +456,20 @@ object WabaseService {
     ctx.wabase.qe.viewDefOption(jobName).map { job =>
       implicit val ec: ExecutionContext = ctx.as.dispatcher
       val jobControlActorName = config.getString("app.job.actor-name")
-      ctx.as.actorSelection(ctx.as / jobControlActorName).resolveOne(1.second).flatMap { jobControActor =>
-        import org.apache.pekko.pattern.ask
-        implicit val timeout: Timeout = 1.second
-        for {
-          params <- if (!ctx.req.entity.isKnownEmpty() &&
-            (ctx.req.method == HttpMethods.POST || ctx.req.method == HttpMethods.PUT)) {
-            toMapEntityDecoder(ctx)
-          } else Future.successful(ctx.req.uri.query().toMap)
-          msg <- jobControActor ? WabaseScheduler.Tick(job, params)
-        } yield msg match {
-          case WabaseScheduler.JobStarted => okResponse
-          case WabaseScheduler.JobRunning => HttpResponse(status = StatusCodes.Conflict,
-            entity = HttpEntity(s"Job '$jobName' is already running."))
-          case x => throw sys.error(s"Unknown message from scheduler '$x' for job '$jobName'")
-        }
+      import org.apache.pekko.pattern.ask
+      implicit val timeout: Timeout = 1.second
+      for {
+        jobControActor <- ctx.as.actorSelection(ctx.as / jobControlActorName).resolveOne(1.second)
+        params <- if (!ctx.req.entity.isKnownEmpty() &&
+          (ctx.req.method == HttpMethods.POST || ctx.req.method == HttpMethods.PUT)) {
+          toMapEntityDecoder(ctx)
+        } else Future.successful(ctx.req.uri.query().toMap)
+        msg <- jobControActor ? WabaseScheduler.Tick(job, params)
+      } yield msg match {
+        case WabaseScheduler.JobStarted => okResponse
+        case WabaseScheduler.JobRunning => HttpResponse(status = StatusCodes.Conflict,
+          entity = HttpEntity(s"Job '$jobName' is already running."))
+        case x => throw sys.error(s"Unknown message from scheduler '$x' for job '$jobName'")
       }
     }.getOrElse {
       Future.successful(HttpResponse(status = StatusCodes.NotFound,
