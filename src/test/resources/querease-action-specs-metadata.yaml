@@ -1222,16 +1222,13 @@ job:
 
 
 name: recursive_job
+fields:
+- id
+- ch * recursive_job
 job:
 - id = :id + 1
 - ch = foreach :ch call this
 - this
-
-
-name: recursive_job_structure
-fields:
-- id
-- ch * recursive_job_structure
 
 
 name: job_call_test1
@@ -1244,9 +1241,9 @@ get:
 list:
   - as any * simple_table[value = :name] {value}
 insert:
-  - as recursive_job_structure call recursive_job
+  - as recursive_job call recursive_job
 update:
-  - as recursive_job_structure call recursive_job :data
+  - as recursive_job call recursive_job :data
 
 
 name: resource_test1
