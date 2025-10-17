@@ -1224,7 +1224,7 @@ job:
 name: recursive_job
 job:
 - id = :id + 1
-- ch = foreach :ch call recursive_job
+- ch = foreach :ch call this
 - this
 
 
