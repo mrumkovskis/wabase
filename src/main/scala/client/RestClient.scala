@@ -174,7 +174,7 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root) exten
   override def doRequest(req: HttpRequest): Future[HttpResponse] =
     doRequest(req, new CookieMap, requestTimeout)
 
-  private val defaultSuccessStatusCodes = Set(200, 201, 204, 206)
+  private val defaultSuccessStatusCodes = Set(200, 201, 202, 204, 206)
   protected def isSuccess(response: HttpResponse) =
     defaultSuccessStatusCodes.contains(response.status.intValue)
 
