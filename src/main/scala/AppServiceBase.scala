@@ -131,7 +131,8 @@ trait AppServiceBase[User]
           ) match {
             case f: Future[_] => f.mapTo[Map[String, Any]]
             case m: Map[String, Any]@unchecked => Future.successful(m)
-            case x => throw new IllegalArgumentException(s"Custom decoder must return Map[String, Any], instead got: $x")
+            case x => throw new IllegalArgumentException(
+              s"Custom decoder must return Map[String, Any], instead got: ${Option(x).map(_.getClass.getName).orNull}")
           }
           onComplete(value) flatMap {
             case Success(v) => provide(v)
