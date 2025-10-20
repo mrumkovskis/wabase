@@ -108,6 +108,7 @@ object WabaseDeferredControl extends WabaseDeferredControlFactory {
     ServerNotifications
       .publishMessages(EventMessage(DeferredControl.DeferredRequestArrived(dctx.deferred.deferredModule), deferredCtx))
     Future.successful(HttpResponse(
+      status = StatusCodes.Accepted,
       entity = HttpEntity.Strict(ContentTypes.`application/json`,
         ByteString(Json.encode(Map("deferred" -> hash)).toUtf8String))
     ))
