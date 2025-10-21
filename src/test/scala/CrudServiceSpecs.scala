@@ -300,7 +300,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
   it should "insert by id" in {
     hasPerson("Sia") shouldBe false
     Post("/data/by_id_view_1", """{"name": "Sia"}""") ~> route ~> check {
-      status shouldEqual StatusCodes.SeeOther
+      status shouldEqual StatusCodes.OK
       val location = header[Location].get.uri.toString
       location should startWith ("/data/by_id_view_1?/")
       (location.substring(location.lastIndexOf("/") + 1).toLong > 0) shouldBe true
@@ -311,14 +311,14 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
   it should "insert by key" in {
     hasPerson("Jane") shouldBe false
     Post("/data/by_key_view_1", """{"name": "Jane"}""") ~> route ~> check {
-      status shouldEqual StatusCodes.SeeOther
+      status shouldEqual StatusCodes.OK
       val location = header[Location].get.uri.toString
       location shouldBe "/data/by_key_view_1?/Jane/null"
     }
     hasPerson("Jane") shouldBe true
     hasPerson("Bruce") shouldBe false
     Post("/data/by_key_view_1", """{"name": "Bruce", "surname": "Fur"}""") ~> route ~> check {
-      status shouldEqual StatusCodes.SeeOther
+      status shouldEqual StatusCodes.OK
       val location = header[Location].get.uri.toString
       location shouldBe "/data/by_key_view_1?/Bruce/Fur"
     }
@@ -335,14 +335,14 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       status shouldEqual StatusCodes.NotFound
     }
     Put(s"/data/by_id_view_1/$id", s"""{"id": $id,"name": "Pete"}""") ~> route ~> check {
-      status shouldEqual StatusCodes.SeeOther
+      status shouldEqual StatusCodes.OK
       val location = header[Location].get.uri.toString
       location shouldBe s"/data/by_id_view_1?/$id"
     }
     hasPerson("Peter") shouldBe false
     hasPerson("Pete")  shouldBe true
     Put(s"/data/by_id_view_1?/$id", s"""{"id": $id,"name": "P"}""") ~> route ~> check {
-      status shouldEqual StatusCodes.SeeOther
+      status shouldEqual StatusCodes.OK
       val location = header[Location].get.uri.toString
       location shouldBe s"/data/by_id_view_1?/$id"
     }
@@ -358,7 +358,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       status shouldEqual StatusCodes.NotFound
     }
     Put(s"/data/by_key_view_2/KeyName", s"""{"name": "KeyName", "surname": "NewSurname"}""") ~> route ~> check {
-      status shouldEqual StatusCodes.SeeOther
+      status shouldEqual StatusCodes.OK
       val location = header[Location].get.uri.toString
       location shouldBe "/data/by_key_view_2?/KeyName"
     }
@@ -366,12 +366,12 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     hasPerson("KeyName", "NewSurname") shouldBe true
     // do not redirect to helper view
     Put(s"/data/by_key_view_3/KeyName", s"""{"name": "KeyName", "surname": "NewSurname"}""") ~> route ~> check {
-      status shouldEqual StatusCodes.SeeOther
+      status shouldEqual StatusCodes.OK
       val location = header[Location].get.uri.toString
       location shouldBe "/data/by_key_view_3?/KeyName"
     }
     Put(s"/data/by_key_view_3?/KeyName", s"""{"name": "KeyName2", "surname": "NewSurname"}""") ~> route ~> check {
-      status shouldEqual StatusCodes.SeeOther
+      status shouldEqual StatusCodes.OK
       val location = header[Location].get.uri.toString
       location shouldBe "/data/by_key_view_3?/KeyName2"
     }
@@ -380,7 +380,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     createPerson("02220", "OldSurname")
     hasPerson("02220", "OldSurname") shouldBe true
     Put(s"/data/by_key_view_2/02220", s"""{"name": "02221", "surname": "NewSurname"}""") ~> route ~> check {
-      status shouldEqual StatusCodes.SeeOther
+      status shouldEqual StatusCodes.OK
       val location = header[Location].get.uri.toString
       location shouldBe "/data/by_key_view_2?/02221"
     }
@@ -394,12 +394,12 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     hasPerson("Winnie") shouldBe true
     hasPerson("Bear")   shouldBe false
     Put(s"/data/by_key_view_1?/Winnie/Pooh", s"""{"name": "Greedy", "surname": "Pooh"}""") ~> route ~> check {
-      status shouldEqual StatusCodes.SeeOther
+      status shouldEqual StatusCodes.OK
       val location = header[Location].get.uri.toString
       location shouldBe "/data/by_key_view_1?/Greedy/Pooh"
     }
     Put(s"/data/by_key_view_1/Greedy/Pooh", s"""{"name": "Bear", "surname": "Pooh"}""") ~> route ~> check {
-      status shouldEqual StatusCodes.SeeOther
+      status shouldEqual StatusCodes.OK
       val location = header[Location].get.uri.toString
       location shouldBe "/data/by_key_view_1?/Bear/Pooh"
     }
@@ -412,7 +412,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     hasPerson("MagicUpd") shouldBe false
     hasPerson("NotMagic") shouldBe false
     Post("/data/by_magic_key_view_1", """{"name": "NotMagic"}""") ~> route ~> check {
-      status shouldEqual StatusCodes.SeeOther
+      status shouldEqual StatusCodes.OK
       val location = header[Location].get.uri.toString
       location shouldBe "/data/by_magic_key_view_1?/MagicIns"
     }
@@ -420,7 +420,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     hasPerson("MagicUpd") shouldBe false
     hasPerson("NotMagic") shouldBe false
     Put(s"/data/by_magic_key_view_1/MagicIns", s"""{"name": "NotMagic"}""") ~> route ~> check {
-      status shouldEqual StatusCodes.SeeOther
+      status shouldEqual StatusCodes.OK
       val location = header[Location].get.uri.toString
       location shouldBe "/data/by_magic_key_view_1?/MagicUpd"
     }
@@ -433,7 +433,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     hasPerson("MagicUpd") shouldBe false
     hasPerson("NotMagic") shouldBe false
     Post("/data/by_magic_key_view_2", """{"name": "NotMagic"}""") ~> route ~> check {
-      status shouldEqual StatusCodes.SeeOther
+      status shouldEqual StatusCodes.OK
       val location = header[Location].get.uri.toString
       location shouldBe "/data/by_magic_key_view_2?/MagicIns"
     }
@@ -441,7 +441,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     hasPerson("MagicUpd") shouldBe false
     hasPerson("NotMagic") shouldBe false
     Put(s"/data/by_magic_key_view_2/MagicIns", s"""{"name": "NotMagic"}""") ~> route ~> check {
-      status shouldEqual StatusCodes.SeeOther
+      status shouldEqual StatusCodes.OK
       val location = header[Location].get.uri.toString
       location shouldBe "/data/by_magic_key_view_2?/MagicUpd"
     }
@@ -457,14 +457,14 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     hasPerson("RoName") shouldBe true
     hasPerson("RwName") shouldBe false
     Put(s"/data/by_readonly_key_view_1/RoName", s"""{"name": "RwName", "surname": null}""") ~> route ~> check {
-      status shouldEqual StatusCodes.SeeOther
+      status shouldEqual StatusCodes.OK
       val location = header[Location].get.uri.toString
       location shouldBe "/data/by_readonly_key_view_1?/RoName"
     }
     hasPerson("RoName") shouldBe true
     hasPerson("RwName") shouldBe false
     Put(s"/data/by_readonly_key_view_1?/RoName", s"""{"name": "RwName", "surname": null}""") ~> route ~> check {
-      status shouldEqual StatusCodes.SeeOther
+      status shouldEqual StatusCodes.OK
       val location = header[Location].get.uri.toString
       location shouldBe "/data/by_readonly_key_view_1?/RoName"
     }
@@ -517,27 +517,27 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     hasPerson("RediName") shouldBe false
     // on insert redirect to this explicitly
     Post("/data/by_key_redirect_view_1", """{"name": "RediName"}""") ~> route ~> check {
-      status shouldEqual StatusCodes.SeeOther
+      status shouldEqual StatusCodes.OK
       val location = header[Location].get.uri.toString
       location shouldBe "/data/by_key_redirect_view_1?/RediName"
     }
     // on update redirect to this explicitly
     Put(s"/data/by_key_redirect_view_1/RediName", s"""{"name": "RediNameUpd"}""") ~> route ~> check {
-      status shouldEqual StatusCodes.SeeOther
+      status shouldEqual StatusCodes.OK
       val location = header[Location].get.uri.toString
       location shouldBe "/data/by_key_redirect_view_1?/RediNameUpd"
     }
     hasPerson("RediOther") shouldBe false
     // on insert redirect to another view explicitly
     Post("/data/by_key_redirect_view_2", """{"name": "RediOther", "surname": "Surnm"}""") ~> route ~> check {
-      status shouldEqual StatusCodes.SeeOther
+      status shouldEqual StatusCodes.OK
       val location = header[Location].get.uri.toString
       location shouldBe "/data/by_key_view_1?/RediOther/Surnm"
     }
     // on update redirect to another view explicitly
     Put(s"/data/by_key_redirect_view_2/RediOther",
         s"""{"name": "RediOther", "surname": "SurnmUpd"}""") ~> route ~> check {
-      status shouldEqual StatusCodes.SeeOther
+      status shouldEqual StatusCodes.OK
       val location = header[Location].get.uri.toString
       location shouldBe "/data/by_key_view_1?/RediOther/SurnmUpd"
     }
@@ -547,13 +547,13 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     // half key hidden
     hasPerson("Hidden-1") shouldBe false
     Post("/data/by_hidden_key_view_1", """{"surname": "MeHidden"}""") ~> route ~> check {
-      status shouldEqual StatusCodes.SeeOther
+      status shouldEqual StatusCodes.OK
       val location = header[Location].get.uri.toString
       location shouldBe "/data/by_hidden_key_view_1?/MeHidden"
     }
     hasPerson("Hidden-1") shouldBe true
     Put("/data/by_hidden_key_view_1/MeHidden", """{"surname": "MeHiddenUpd"}""") ~> route ~> check {
-      status shouldEqual StatusCodes.SeeOther
+      status shouldEqual StatusCodes.OK
       val location = header[Location].get.uri.toString
       location shouldBe "/data/by_hidden_key_view_1?/MeHiddenUpd"
     }
@@ -579,7 +579,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       entityAs[String].toInt shouldBe 0
     }
     Post("/data/by_hidden_key_view_2", """{"surname": "MeHidden"}""") ~> route ~> check {
-      status shouldEqual StatusCodes.SeeOther
+      status shouldEqual StatusCodes.OK
       val location = header[Location].get.uri.path.toString
       location shouldBe "/data/by_hidden_key_view_2"
     }
@@ -587,7 +587,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     deletePerson("Hidden-2")
     hasPerson("Hidden-2", "MeHidden") shouldBe false
     Post("/data/by_hidden_key_view_2/", """{"surname": "MeHidden"}""") ~> route ~> check {
-      status shouldEqual StatusCodes.SeeOther
+      status shouldEqual StatusCodes.OK
       val location = header[Location].get.uri.path.toString
       location shouldBe "/data/by_hidden_key_view_2"
     }
@@ -601,13 +601,13 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       entityAs[String].toInt shouldBe 1
     }
     Put("/data/by_hidden_key_view_2/", """{"surname": "MeHiddenUpd0"}""") ~> route ~> check {
-      status shouldEqual StatusCodes.SeeOther
+      status shouldEqual StatusCodes.OK
       val location = header[Location].get.uri.path.toString
       location shouldBe "/data/by_hidden_key_view_2"
     }
     hasPerson("Hidden-2", "MeHiddenUpd0") shouldBe true
     Put("/data/by_hidden_key_view_2", """{"surname": "MeHiddenUpd"}""") ~> route ~> check {
-      status shouldEqual StatusCodes.SeeOther
+      status shouldEqual StatusCodes.OK
       val location = header[Location].get.uri.path.toString
       location shouldBe "/data/by_hidden_key_view_2"
     }
@@ -625,13 +625,13 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     // half key hidden, upsert, redirect
     hasPerson("Hidden-3") shouldBe false
     Post("/data/by_hidden_key_view_3", """{"surname": "MeHidden", "d": "2022-08-10"}""") ~> route ~> check {
-      status shouldEqual StatusCodes.SeeOther
+      status shouldEqual StatusCodes.OK
       val location = header[Location].get.uri.toString
       location shouldBe "/data/by_hidden_key_view_3?/MeHidden"
     }
     hasPerson("Hidden-3") shouldBe true
     Put("/data/by_hidden_key_view_3?/MeHidden", """{"surname": "MeHidden", "d": "2022-08-11"}""") ~> route ~> check {
-      status shouldEqual StatusCodes.SeeOther
+      status shouldEqual StatusCodes.OK
       val location = header[Location].get.uri.toString
       location shouldBe "/data/by_hidden_key_view_3?/MeHidden"
     }
@@ -647,7 +647,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     hasPerson("DateIns") shouldBe false
     hasPerson("DateUpd") shouldBe false
     Post("/data/by_date_key_view", """{"name": "DateIns", "birthdate": "2022-08-02"}""") ~> route ~> check {
-      status shouldEqual StatusCodes.SeeOther
+      status shouldEqual StatusCodes.OK
       val location = header[Location].get.uri.toString
       location shouldBe "/data/by_date_key_view?/2022-08-02"
     }
@@ -658,7 +658,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       entityAs[String] shouldBe s"""{"birthdate":"2022-08-02","name":"DateIns"}"""
     }
     Put("/data/by_date_key_view/2022-08-02", s"""{"name": "DateUpd"}""") ~> route ~> check {
-      status shouldEqual StatusCodes.SeeOther
+      status shouldEqual StatusCodes.OK
       val location = header[Location].get.uri.toString
       location shouldBe "/data/by_date_key_view?/2022-08-02"
     }
@@ -676,7 +676,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     hasPerson("DtTmUpd") shouldBe false
     Post("/data/by_datetime_key_view",
         """{"name": "DtTmIns", "date_time": "2022-08-02 05:45:00"}""") ~> route ~> check {
-      status shouldEqual StatusCodes.SeeOther
+      status shouldEqual StatusCodes.OK
       val location = header[Location].get.uri.toString
       location shouldBe "/data/by_datetime_key_view?/2022-08-02_05:45:00"
     }
@@ -717,7 +717,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       status shouldEqual StatusCodes.OK
     }
     Put("/data/by_datetime_key_view/2022-08-02_05:45:00", s"""{"name": "DtTmUpd"}""") ~> route ~> check {
-      status shouldEqual StatusCodes.SeeOther
+      status shouldEqual StatusCodes.OK
       val location = header[Location].get.uri.toString
       location shouldBe "/data/by_datetime_key_view?/2022-08-02_05:45:00"
     }
@@ -729,7 +729,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     hasPerson("DtTmUpd") shouldBe false
     Post("/data/by_datetime_key_view",
         """{"name": "DtTmIns", "date_time": "2022-08-02 05:45:01.234"}""") ~> route ~> check {
-      status shouldEqual StatusCodes.SeeOther
+      status shouldEqual StatusCodes.OK
       val location = header[Location].get.uri.toString
       location shouldBe "/data/by_datetime_key_view?/2022-08-02_05:45:01.234"
     }
@@ -741,7 +741,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     // local datetime
     Post("/data/by_local_datetime_key_view",
         """{"name": "DtTmIns", "l_date_time": "2022-08-02 05:45:00"}""") ~> route ~> check {
-      status shouldEqual StatusCodes.SeeOther
+      status shouldEqual StatusCodes.OK
       val location = header[Location].get.uri.toString
       location shouldBe "/data/by_local_datetime_key_view?/2022-08-02_05:45:00"
     }
@@ -782,7 +782,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       status shouldEqual StatusCodes.OK
     }
     Put("/data/by_local_datetime_key_view/2022-08-02_05:45:00", s"""{"name": "DtTmUpd"}""") ~> route ~> check {
-      status shouldEqual StatusCodes.SeeOther
+      status shouldEqual StatusCodes.OK
       val location = header[Location].get.uri.toString
       location shouldBe "/data/by_local_datetime_key_view?/2022-08-02_05:45:00"
     }
@@ -794,7 +794,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     hasPerson("DtTmUpd") shouldBe false
     Post("/data/by_local_datetime_key_view",
         """{"name": "DtTmIns", "l_date_time": "2022-08-02 05:45:01.234"}""") ~> route ~> check {
-      status shouldEqual StatusCodes.SeeOther
+      status shouldEqual StatusCodes.OK
       val location = header[Location].get.uri.toString
       location shouldBe "/data/by_local_datetime_key_view?/2022-08-02_05:45:01.234"
     }
@@ -952,7 +952,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     )
 
     Post("/data/json_test_any", """{}""") ~> route ~> check {
-      status shouldEqual StatusCodes.SeeOther
+      status shouldEqual StatusCodes.OK
       val location = header[Location].get.uri.toString
       location should startWith ("/data/json_test_any?/")
       id = location.substring(location.lastIndexOf("/") + 1).toLong
@@ -964,7 +964,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
 
     for (value <- jsons) yield {
       Put(s"/data/json_test_any?/$id", s"""{"value":$value}""") ~> route ~> check {
-        status shouldEqual StatusCodes.SeeOther
+        status shouldEqual StatusCodes.OK
       }
       Get(s"/data/json_test_any?/$id") ~> route ~> check {
         status shouldEqual StatusCodes.OK
@@ -983,7 +983,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       val json = comparable(ResultEncoder.encodeAnyToJsonString(obj.toMap))
 
       Put(s"/data/json_test_types?/$id", json) ~> route ~> check {
-        status shouldEqual StatusCodes.SeeOther
+        status shouldEqual StatusCodes.OK
       }
       Get(s"/data/json_test_any?/$id") ~> route ~> check {
         status shouldEqual StatusCodes.OK

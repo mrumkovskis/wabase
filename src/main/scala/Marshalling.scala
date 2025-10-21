@@ -22,7 +22,7 @@ import io.bullet.borer.compat.pekko.ByteStringProvider
 import org.mojoz.querease.QuereaseIteratorResult
 import org.tresql.{Resources, Result, RowLike}
 
-import scala.collection.immutable.Seq
+import scala.collection.immutable.{ListMap, Seq}
 import scala.language.implicitConversions
 import scala.language.reflectiveCalls
 
@@ -290,14 +290,19 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
     Marshaller { _ => (id: IdResult) => opaqueStringMarshaller(id.toString) }
   implicit def toResponseQuereaseKeyResultMarshaller:     ToResponseMarshaller[KeyResult]      =
     Marshaller { ec => kr =>
+      def redirectTresqlUri = TresqlUri.Uri(Seq(s"/${config.getString("app.rest-path-base")}/${kr.viewName}"), kr.key)
       import AppMetadata._
       val sr =
-        if (qe.viewDef(kr.viewName).apiMethodToRoles.contains(Action.Get))
-          ResponseResult(
-            StatusCodes.SeeOther.intValue,
-            RedirectValue(TresqlUri.Uri(
-              Seq(s"/${config.getString("app.rest-path-base")}/${kr.viewName}"), kr.key))
+        if (config.getBoolean("app.marshal_key_as_json")) {
+          ResponseResult(StatusCodes.OK.intValue,
+            ResultValue(
+              AnyResult((ListMap.newBuilder ++=
+                qe.viewNameToApiKeyFieldNames(kr.viewName).zip(kr.key)).result())
+            ),
+            List(Location(app.qe.tresqlUri.uri(redirectTresqlUri)))
           )
+        } else if (qe.viewDef(kr.viewName).apiMethodToRoles.contains(Action.Get))
+          ResponseResult(StatusCodes.SeeOther.intValue, RedirectValue(redirectTresqlUri))
         else ResponseResult(StatusCodes.OK.intValue, ResultValue(NoResult))
       toResponseQuereaseResponseResultMarshaller(app.WabaseResult(null, sr))(ec)(sr)
     }

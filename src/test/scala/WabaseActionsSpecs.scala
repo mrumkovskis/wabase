@@ -978,7 +978,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         "area" -> 1000, "trees" -> "oaks"))
         .map { case KeyResult(_, _, key) => key shouldBe List("OF1") }
       t6 <- doAction("update", "http_forest", Map("area" -> 20.5), keyValues = List("OF1"))
-        .map { _ shouldBe "/data/forest?/OF1" }
+        .map { _ shouldBe Map("nr" -> "OF1") }
       t7 <- doAction("get", "forest", Map(), keyValues = List("OF1"))
         .map { _ shouldBe Map("nr" -> "OF1", "owner" -> "Pedro", "area" -> 20.5, "trees" -> "oaks") }
       t8 <- doAction("delete", "http_test_1", Map()). map {
@@ -1000,7 +1000,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         .map { _ shouldBe MapResult(Map("trees" -> "pine", "area" -> 23.5, "notes" -> null)) }
       t2 <- doAction("insert", "json_codec_1", Map("value" ->
         enc(Map("trees" -> "pine", "area" -> 23.5, "owner" -> "Pedro", "nr" -> "OF2"))))
-        .map { _ shouldBe "/data/forest?/OF2" }
+        .map { _ shouldBe Map("nr" -> "OF2") }
       t3 <- doAction("get", "forest", Map(), keyValues = List("OF2"))
         .map { _ shouldBe Map("trees" -> "pine", "area" -> 23.5, "owner" -> "Pedro", "nr" -> "OF2") }
       t4 <- doAction("get", "json_codec_2", Map())
