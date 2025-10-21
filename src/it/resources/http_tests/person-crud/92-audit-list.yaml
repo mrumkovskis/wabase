@@ -79,39 +79,12 @@ response: [
       "name": ""
     },
     "response": {
-      "code": 303,
+      "code": 200,
       "headers": [
         "Location: /data/person?/p1"
       ],
-      "ct_type": "none/none",
-      "content": "",
-      "protocol": "HTTP/1.1"
-    }
-  },
-  {
-    "request_time": "-> _",
-    "request": {
-      "uri": "http://localhost:8080/data/person?/p1",
-      "method": "GET",
-      "headers": [
-        "Host: localhost:8080",
-        "X-Requested-With: XMLHttpRequest",
-        "Origin: http://127.0.0.1",
-        "Cookie: current_lang=lv",
-        "User-Agent: pekko-http/1.2.0"
-      ],
-      "ct_type": "none/none",
-      "content": "",
-      "protocol": "HTTP/1.1"
-    },
-    "user": {
-      "name": ""
-    },
-    "response": {
-      "code": 200,
-      "headers": [],
       "ct_type": "application/json",
-      "content": "{\"code\":\"p1\",\"name\":\"John\",\"surname\":\"Doe\"}",
+      "content": "{\"code\":\"p1\"}",
       "protocol": "HTTP/1.1"
     }
   },
@@ -135,39 +108,12 @@ response: [
       "name": ""
     },
     "response": {
-      "code": 303,
+      "code": 200,
       "headers": [
         "Location: /data/person?/p2"
       ],
-      "ct_type": "none/none",
-      "content": "",
-      "protocol": "HTTP/1.1"
-    }
-  },
-  {
-    "request_time": "-> _",
-    "request": {
-      "uri": "http://localhost:8080/data/person?/p2",
-      "method": "GET",
-      "headers": [
-        "Host: localhost:8080",
-        "X-Requested-With: XMLHttpRequest",
-        "Origin: http://127.0.0.1",
-        "Cookie: current_lang=lv",
-        "User-Agent: pekko-http/1.2.0"
-      ],
-      "ct_type": "none/none",
-      "content": "",
-      "protocol": "HTTP/1.1"
-    },
-    "user": {
-      "name": ""
-    },
-    "response": {
-      "code": 200,
-      "headers": [],
       "ct_type": "application/json",
-      "content": "{\"code\":\"p2\",\"name\":\"Jane\",\"surname\":\"Doe\"}",
+      "content": "{\"code\":\"p2\"}",
       "protocol": "HTTP/1.1"
     }
   },
@@ -434,39 +380,12 @@ response: [
       "name": ""
     },
     "response": {
-      "code": 303,
+      "code": 200,
       "headers": [
         "Location: /data/person?/p2"
       ],
-      "ct_type": "none/none",
-      "content": "",
-      "protocol": "HTTP/1.1"
-    }
-  },
-  {
-    "request_time": "-> _",
-    "request": {
-      "uri": "http://localhost:8080/data/person?/p2",
-      "method": "GET",
-      "headers": [
-        "Host: localhost:8080",
-        "X-Requested-With: XMLHttpRequest",
-        "Origin: http://127.0.0.1",
-        "Cookie: current_lang=lv",
-        "User-Agent: pekko-http/1.2.0"
-      ],
-      "ct_type": "none/none",
-      "content": "",
-      "protocol": "HTTP/1.1"
-    },
-    "user": {
-      "name": ""
-    },
-    "response": {
-      "code": 200,
-      "headers": [],
       "ct_type": "application/json",
-      "content": "{\"code\":\"p2\",\"name\":\"Jacqueline\",\"surname\":\"Chan\"}",
+      "content": "{\"code\":\"p2\"}",
       "protocol": "HTTP/1.1"
     }
   },
