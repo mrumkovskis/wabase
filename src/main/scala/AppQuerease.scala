@@ -1505,8 +1505,13 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     }
   }
 
-  protected def doThis(data: Map[String, Any], env: Map[String, Any], context: ActionContext): Future[MapResult] = {
-    Future.successful(MapResult(data))
+  protected def doThis(
+    op: Action.This,
+    data: Map[String, Any],
+    env: Map[String, Any],
+    context: ActionContext
+  ): Future[QuereaseResult] = {
+    Future.successful(op.conformTo.map(comp_res(MapResult(data), _)).getOrElse(MapResult(data)))
   }
 
   protected def doActionOp(
@@ -1551,7 +1556,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case c: Action.Conf => doConf(c, data, env, context)
       case j: Action.JsonCodec => doJsonCodec(j, data, env, context)
       case ep: Action.ExtractParts => doExtractParts(ep, data, env, context)
-      case Action.This => doThis(data, env, context)
+      case th: Action.This => doThis(th, data, env, context)
       case VariableTransforms(vts) =>
         Future.successful(doVarsTransforms(vts, Map[String, Any](), data ++ env))
       case _: Action.Else => sys.error(s"Integrity error. Else operation cannot be here, must be coalesced into if operation")
@@ -1618,6 +1623,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case MapResult(data) => encodeStructure(Seq(data).iterator, false)
       case IteratorResult(data) => encodeStructure(data, true)
       case TresqlResult(tr) => tr match {
+        case SingleValueResult(m: Map[_, _]) => encodeStructure(Seq(m).iterator, false)
         case SingleValueResult(r: Iterable[_]) => encodeStructure(r.iterator, isCollection.getOrElse(true))
         case SingleValueResult(s: String) => encodePrimitive(s, ct)
         // single value can be querease result if action step keepResult is set like 'as result variable = ...'

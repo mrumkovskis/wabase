@@ -1062,7 +1062,7 @@ class OpParser(viewName: String, caches: OpParser.Caches)
     (operation ~ operation ~ opt("else(?=\\s+|[^\\w])".r ~> operation))) ^^ {
       case cond ~ ifOp ~ elseOp => If(cond, actionFromOp(ifOp), elseOp.map(actionFromOp).orNull)
     } named "if-else-op"
-  def thisOp: MemParser[This.type] = "this" ^^^ This named "this-op"
+  def thisOp: MemParser[This] = opt(opResultType) <~ "this" ^^ This named "this-op"
 
   def bracesOp: MemParser[Op] = "(" ~> operation <~ ")" named "braces-op"
   def bracesTresql: MemParser[Exp] = (("(" ~> expr <~ ")") | expr) named "braces-tresql-op"
@@ -1394,8 +1394,7 @@ object AppMetadata extends Loggable {
     case class Block(action: Action) extends Op
     case object Commit extends Op
 
-    case object This extends Op
-
+    case class This(conformTo: Option[OpResultType] = None) extends Op
     /**
      * @param name - optional variable name i.e. variable = ...
      * @param varTrans - variable transformation for operation
@@ -1417,7 +1416,7 @@ object AppMetadata extends Loggable {
       def traverse(state: T): PartialFunction[Op, T] = {
         case _: Tresql | _: RedirectToKey | _: Response |
              _: VariableTransforms | _: File | _: Conf | _: Cookie |
-             _: ExtractParts | This | _: Resource | Commit | null => state
+             _: ExtractParts | _: This | _: Resource | Commit | null => state
         case o: ViewCall => opTrav(state)(o.data)
         case Unique(o, _, _) => opTrav(state)(o)
         case Foreach(o, a) => traverseAction(a)(stepTrav)(opTrav(state)(o))
