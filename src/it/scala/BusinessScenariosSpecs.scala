@@ -117,23 +117,24 @@ class BusinessScenariosSpecs extends BusinessScenariosBaseSpecs("http_tests") {
 
   override def backdoorAction(requestInfo: RequestInfo, context: Map[String, Any], map: Map[String, Any]): Any = {
     import requestInfo._
-    if (path.startsWith("/backdoor/create-sequence/")) {
-      val seqName   = path.substring("/backdoor/create-sequence/".length)
-      val statement = s"create sequence $seqName;"
-      executeStatements(statement)
-    } else if (path.startsWith("/backdoor/create-table/")) {
-      val tableName = path.substring("/backdoor/create-table/".length)
-      val tableDef  = qe.tableMetadata.tableDef(tableName, null)
-      val generator = DdlGenerator.hsqldb()
-      val statement = generator.table(tableDef)
-      executeStatements(statement)
-    } else if (path.startsWith("/backdoor/drop-sequence/")) {
-      val seqName   = path.substring("/backdoor/drop-sequence/".length)
-      val statement = s"drop sequence $seqName;"
-      executeStatements(statement)
-    } else if (path.startsWith("/backdoor/drop-table/")) {
-      val tableName = path.substring("/backdoor/drop-table/".length)
-      executeStatements(s"drop table $tableName;")
+    if (path.startsWith("/backdoor/create-sequences/")) {
+      val seqNames   = path.substring("/backdoor/create-sequences/".length).split(",").toSeq
+      val statements = seqNames.map { seqName => s"create sequence $seqName;" }
+      executeStatements(statements: _*)
+    } else if (path.startsWith("/backdoor/create-tables/")) {
+      val tableNames = path.substring("/backdoor/create-tables/".length).split(",").toSeq
+      val tableDefs  = tableNames.map { tableName => qe.tableMetadata.tableDef(tableName, null) }
+      val generator  = DdlGenerator.hsqldb()
+      val statements = tableDefs.map { tableDef => generator.table(tableDef) }
+      executeStatements(statements: _*)
+    } else if (path.startsWith("/backdoor/drop-sequences/")) {
+      val seqNames   = path.substring("/backdoor/drop-sequences/".length).split(",").toSeq
+      val statements = seqNames.map { seqName => s"drop sequence $seqName;" }
+      executeStatements(statements: _*)
+    } else if (path.startsWith("/backdoor/drop-tables/")) {
+      val tableNames = path.substring("/backdoor/drop-tables/".length).split(",").toSeq
+      val statements = tableNames.map { tableName => s"drop table $tableName;" }
+      executeStatements(statements: _*)
     } else if (path == "/backdoor/current_time") {
       Map("current_time" -> Instant.now().toString)
     } else {
