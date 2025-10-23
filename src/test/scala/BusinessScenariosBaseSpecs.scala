@@ -122,6 +122,11 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
     }
   }
 
+  def assertResponseStatus(response: HttpResponse, expectedStatus: String) = {
+    if (response.status.toString != expectedStatus)
+      sys.error(s"Unexpected response status: ${response.status.toString}. Expected: $expectedStatus.")
+  }
+
   def assertResponseHeaders(response: HttpResponse, expectedHeaders: Seq[HttpHeader]) = {
     val received = (response.headers.toSet + s"Content-Type: ${response.entity.contentType}").map(_.toString)
     expectedHeaders foreach { expectedHeader =>
@@ -314,7 +319,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
   def logScenarioRequestInfo(
     scenario: File, testCase: File, context: Map[String, Any], map: Map[String, Any],
     requestInfo: RequestInfo,
-    expectedHeaders: Seq[HttpHeader], expectedResponse: Any, expectedError: String,
+    expectedStatus: String, expectedHeaders: Seq[HttpHeader], expectedResponse: Any, expectedError: String,
     options: Seq[String],
   ): Unit = logger.whenDebugEnabled {
     import requestInfo._
@@ -329,6 +334,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
                                  .map(_.map(_.toString).toSeq.sorted.mkString(", ")).getOrElse(""),
       "request json        " + Option(requestMap).map(ResultEncoder.encodeAnyToJsonString(_)).getOrElse(""),
       "request string:     " + Option(requestString).getOrElse(""),
+      "expected status:    " + Option(expectedStatus).getOrElse(""),
       "expected headers:   " + Option(expectedHeaders).filter(_.nonEmpty)
                                  .map(_.map(_.toString).toSeq.sorted.mkString(", ")).getOrElse(""),
       "expected response:  " + Option(expectedResponse).getOrElse(""),
@@ -429,6 +435,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
     val mergeResponse = map.b("merge_response")
     val debugResponse = map.get("debug_response").forall { case false => false case _ => true }
     val expectedError = map.sd("error", null)
+    val expectedStatus= map.sd("response_status", null)
     val expectedResponse = (map.getOrElse("response", null), requestMap) match{
       case (resp, _) if !mergeResponse => resp
       case (resp, null) => resp
@@ -450,7 +457,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
     logScenarioRequestInfo(
       scenario, testCase, context, map,
       requestInfo,
-      expectedHeaders, expectedResponse, expectedError,
+      expectedStatus, expectedHeaders, expectedResponse, expectedError,
       options,
     )
 
@@ -502,6 +509,13 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
     }
 
     logScenarioResponseInfo(debugResponse, response)
+
+    if (expectedStatus != null)
+      unprocessedResponse match {
+        case httpResponse: HttpResponse =>
+          assertResponseStatus(httpResponse, expectedStatus)
+        case x => sys.error(s"Unexpected response class for status tests: ${x.getClass.getName}")
+      }
 
     if (expectedHeaders.nonEmpty)
       unprocessedResponse match {

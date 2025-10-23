@@ -1,5 +1,6 @@
 path:       /fast-respond
 headers:
   X-Deferred: 1s
+response_status: 202 Accepted
 response:
   deferred: -> deferred_id

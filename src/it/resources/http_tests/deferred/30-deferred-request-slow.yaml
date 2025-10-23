@@ -1,3 +1,4 @@
 path:       /slow-respond
+response_status: 202 Accepted
 response:
   deferred: -> deferred_id
