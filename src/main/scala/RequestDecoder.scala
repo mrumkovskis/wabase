@@ -10,6 +10,7 @@ import io.bullet.borer.encodings.BaseEncoding
 import io.bullet.borer.{Borer, Cbor, Decoder, DecodingSetup, Input, Json, Tag, Target, DataItem => DI}
 import org.apache.pekko.http.scaladsl.model.HttpEntity
 import org.apache.pekko.NotUsed
+import org.apache.pekko.http.scaladsl.common.JsonEntityStreamingSupport
 import org.mojoz.metadata.{Type, TypeDef, ViewDef}
 import org.w3c.dom.{Element, Node, NodeList}
 import org.wabase.BorerDatetimeDecoders._
@@ -351,6 +352,31 @@ object CsvDecoderFactory extends CsvDecoderFactory {
   }
 }
 
+object JsonDecoderConfig {
+  lazy val componentConfs: ComponentConfs = ComponentConf.getConfigs("data-parsers-json")
+  lazy val configs: Map[String, Config] = componentConfs.confs.toMap
+  lazy val jsonDecoderFactory: JsonDecoderFactory =
+    getObjectOrNewInstance[JsonDecoderFactory](componentConfs.root, "factory-class", "json decoder factory")
+}
+
+trait JsonDecoderFactory {
+  def createJsonStreamDecoders: Map[String, Flow[ByteString, Map[String, Any], NotUsed]]
+}
+
+object JsonDecoderFactory extends JsonDecoderFactory {
+  def createJsonStreamDecoder(n: String, jsonCfg: Config): Flow[ByteString, Map[String, Any], NotUsed] = {
+    val maxObjectSize = jsonCfg.getInt("max-object-size")
+    val ess = new JsonEntityStreamingSupport(maxObjectSize = maxObjectSize)
+    Flow[ByteString].via(ess.framingDecoder).map(CborOrJsonAnyValueDecoder.decodeToMap(_))
+  }
+
+  def createJsonStreamDecoders: Map[String, Flow[ByteString, Map[String, Any], NotUsed]] = {
+    JsonDecoderConfig.configs.map { case (n, jsonCfg) =>
+      n -> createJsonStreamDecoder(n, jsonCfg)
+    }.toMap
+  }
+}
+
 object XmlDecoderConfig {
   lazy val componentConfs = ComponentConf.getConfigs("data-parsers-xml")
   lazy val configs: Map[String, Config] = componentConfs.confs.toMap
@@ -443,6 +469,7 @@ object RequestDecoders {
       }
     }
     CsvDecoderFactory.createCsvStreamDecoders.map { case (n, d) => (n, requestDecoder(d)) } ++
+      JsonDecoderFactory.createJsonStreamDecoders.map { case (n, d) => (n, requestDecoder(d)) } ++
       XmlDecoderFactory.createXmlStreamDecoders.map { case (n, d) => (n, requestDecoder(d)) }
   }
 }
