@@ -15,6 +15,7 @@ import org.scalatest.matchers.should.Matchers
 import org.tresql.Query
 import org.wabase.AppMetadata.DbAccessKey
 
+import java.time.Instant
 import scala.collection.immutable.{Map, Seq}
 import scala.concurrent.Await
 import scala.language.reflectiveCalls
@@ -213,6 +214,9 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
     mediaType.subType  == MediaTypes.`multipart/form-data`.subType
 
   case class RequestInfo(
+    method:  String,
+    path:    String,
+    params:  Map[String, Any],
     headers: Seq[HttpHeader],
     requestBytes: Array[Byte],
     requestMap: Map[String, Any],
@@ -220,10 +224,12 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
     requestFormData: Multipart.FormData,
   )
 
-  def extractRequestInfo(map: Map[String, Any], method: String): RequestInfo = {
-    extractRequestInfo(map, method, "request", "request-body-file", "request-parts")
+  def extractRequestInfo(map: Map[String, Any]): RequestInfo = {
+    extractRequestInfo(map, map.sd("method", "GET"), "request", "request-body-file", "request-parts")
   }
   def extractRequestInfo(map: Map[String, Any], method: String, bodyKey: String, fileKey: String, partsKey: String): RequestInfo = {
+    val path    = map.sd("path", null)
+    val params  = map.m("params")
     val headers = map.m("headers")
     val requestBytes = Try(map.s(fileKey)).toOption.map(readFileBytes).orNull
     val requestParts = Try(map.a(partsKey)).toOption.orNull
@@ -299,14 +305,17 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
           if (requestBytes != null || requestParts != null || method == "GET" || method == "DELETE") null else Map.empty
         Try(map.md(bodyKey, defaultValue = defaultRequestMap)).toOption.orNull
       } else null
-    RequestInfo(parsedHeaders ++ fileContentTypeOpt.toSeq, requestBytes, requestMap, requestString, requestFormData)
+    RequestInfo(
+      method, path, params,
+      parsedHeaders ++ fileContentTypeOpt.toSeq,
+      requestBytes, requestMap, requestString, requestFormData)
   }
 
   def logScenarioRequestInfo(
     scenario: File, testCase: File, context: Map[String, Any], map: Map[String, Any],
-    path: String, method: String, params: Map[String, Any], requestInfo: RequestInfo,
+    requestInfo: RequestInfo,
     expectedHeaders: Seq[HttpHeader], expectedResponse: Any, expectedError: String,
-    tresqlRow: String, tresqlList: String, tresqlTransaction: String, options: Seq[String],
+    options: Seq[String],
   ): Unit = logger.whenDebugEnabled {
     import requestInfo._
     logger.debug(Seq(
@@ -325,9 +334,6 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
       "expected response:  " + Option(expectedResponse).getOrElse(""),
       "expected error:     " + Option(expectedError).getOrElse(""),
       "response options:   " + Option(options).map(_.mkString(", ")).getOrElse(""),
-      "tresql row:         " + Option(tresqlRow).getOrElse(""),
-      "tresql list:        " + Option(tresqlList).getOrElse(""),
-      "tresql transaction: " + Option(tresqlTransaction).getOrElse(""),
       "raw test case data: " + Option(map).getOrElse(""),
       "context:            " + Option(context).filter(_.nonEmpty)
                                  .map(_.map { case (k, v) => s"$k=$v" }.toSeq.sorted.mkString(", ")).getOrElse(""),
@@ -398,11 +404,26 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
     case x => x
   }
 
+  def isBackdoorPath(path: String) = path.startsWith("/backdoor/")
+  def backdoorAction(requestInfo: RequestInfo, context: Map[String, Any], map: Map[String, Any]): Any = {
+    import requestInfo._
+    path match {
+      case "/backdoor/current_time" =>
+        Map("current_time" -> Instant.now().toString)
+      case "/backdoor/tresql_row" =>
+        transformToStringValues(dbUse(Query(requestString, context).toListOfMaps.headOption.getOrElse(Map())))
+      case "/backdoor/tresql_list" =>
+        transformToStringValues(dbUse(Query(requestString, context).toListOfMaps))
+      case "/backdoor/tresql_transaction" =>
+        transaction(Query(requestString, context))
+        Map("result" -> "ok")
+      case _ =>
+        throw new IllegalArgumentException(s"Unexpected path: $path")
+    }
+  }
+
   def checkTestCase(scenario: File, testCase: File, context: Map[String, Any], map: Map[String, Any], retriesLeft: Int): Map[String, Any] = {
-    val path = map.s("path")
-    val method = map.sd("method", "GET")
-    val params = map.m("params")
-    val requestInfo = extractRequestInfo(cleanupTemplate(map), method)
+    val requestInfo = extractRequestInfo(cleanupTemplate(map))
     import requestInfo._
     val fullCompare   = map.bd("full_compare", isFullCompareByDefault)
     val mergeResponse = map.b("merge_response")
@@ -420,9 +441,6 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
       case (name, value) =>
         RawHeader(name, value.toString)
     }.toList
-    val tresqlRow = map.sd("tresql_row", null)
-    val tresqlList = map.sd("tresql_list", null)
-    val tresqlTransaction = map.sd("tresql_transaction", null)
     val options = Seq(
       if (fullCompare)      "full compare" else "partial compare",
       if (mergeResponse)    "merge"        else "no merge",
@@ -431,9 +449,9 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
     ).filter(_ != "")
     logScenarioRequestInfo(
       scenario, testCase, context, map,
-      path, method, params, requestInfo,
+      requestInfo,
       expectedHeaders, expectedResponse, expectedError,
-      tresqlRow, tresqlList, tresqlTransaction, options,
+      options,
     )
 
     def httpPostAwaitMultipartFormData(method: HttpMethod, path: String, formData: Multipart.FormData, headers: Seq[HttpHeader]) = {
@@ -466,13 +484,8 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
     }
 
     val unprocessedResponse =
-      if (tresqlRow != null)
-        transformToStringValues(dbUse(Query(tresqlRow, context).toListOfMaps.headOption.getOrElse(Map())))
-      else if (tresqlList != null)
-        transformToStringValues(dbUse(Query(tresqlList, context).toListOfMaps))
-      else if (tresqlTransaction != null) {
-        transaction(Query(tresqlTransaction, context))
-        Map("result" -> "ok")
+      if (isBackdoorPath(path)) {
+        backdoorAction(requestInfo, context, map)
       } else if (expectedError == null) {
         doRequest
       } else {

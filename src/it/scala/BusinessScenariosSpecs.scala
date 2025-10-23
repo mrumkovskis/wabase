@@ -115,38 +115,29 @@ class BusinessScenariosSpecs extends BusinessScenariosBaseSpecs("http_tests") {
   override def scenariosAutoLogin  = false
   override def scenariosAutoLogout = false
 
-  override def checkTestCase(
-    scenario: File, testCase: File, context: Map[String, Any], map: Map[String, Any], retriesLeft: Int
-  ): Map[String, Any] = {
-    val path   = map.s("path")
-    val method = map.sd("method", "GET")
+  override def backdoorAction(requestInfo: RequestInfo, context: Map[String, Any], map: Map[String, Any]): Any = {
+    import requestInfo._
     if (path.startsWith("/backdoor/create-sequence/")) {
       val seqName   = path.substring("/backdoor/create-sequence/".length)
       val statement = s"create sequence $seqName;"
       executeStatements(statement)
-      context
     } else if (path.startsWith("/backdoor/create-table/")) {
       val tableName = path.substring("/backdoor/create-table/".length)
       val tableDef  = qe.tableMetadata.tableDef(tableName, null)
       val generator = DdlGenerator.hsqldb()
       val statement = generator.table(tableDef)
       executeStatements(statement)
-      context
     } else if (path.startsWith("/backdoor/drop-sequence/")) {
       val seqName   = path.substring("/backdoor/drop-sequence/".length)
       val statement = s"drop sequence $seqName;"
       executeStatements(statement)
-      context
     } else if (path.startsWith("/backdoor/drop-table/")) {
       val tableName = path.substring("/backdoor/drop-table/".length)
       executeStatements(s"drop table $tableName;")
-      context
-    } else if (path == "backdoor/get_current_time") {
-      val response = Map("current_time" -> Instant.now().toString)
-      val fullCompare = map.bd("full_compare", isFullCompareByDefault)
-      context ++ assertResponse(response, map("response"), "[ROOT]", fullCompare)
+    } else if (path == "/backdoor/current_time") {
+      Map("current_time" -> Instant.now().toString)
     } else {
-      super.checkTestCase(scenario, testCase, context, map, retriesLeft)
+      throw new IllegalArgumentException(s"Unexpected path: $path")
     }
   }
 
