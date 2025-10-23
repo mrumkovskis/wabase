@@ -468,9 +468,9 @@ object RequestDecoders {
           .map(data => if (vd == null) data else qe.toCompatibleMap(data, vd))
       }
     }
-    CsvDecoderFactory.createCsvStreamDecoders.map { case (n, d) => (n, requestDecoder(d)) } ++
-      JsonDecoderFactory.createJsonStreamDecoders.map { case (n, d) => (n, requestDecoder(d)) } ++
-      XmlDecoderFactory.createXmlStreamDecoders.map { case (n, d) => (n, requestDecoder(d)) }
+    CsvDecoderConfig.csvDecoderFactory.createCsvStreamDecoders.map { case (n, d) => (n, requestDecoder(d)) } ++
+      JsonDecoderConfig.jsonDecoderFactory.createJsonStreamDecoders.map { case (n, d) => (n, requestDecoder(d)) } ++
+      XmlDecoderConfig.xmlDecoderFactory.createXmlStreamDecoders.map { case (n, d) => (n, requestDecoder(d)) }
   }
 }
 
