@@ -49,6 +49,10 @@ object BusinessScenariosSpecs {
     }
   }
 
+  def echo(req: HttpRequest)(implicit as: ActorSystem, ec: ExecutionContext): HttpResponse = {
+    HttpResponse(StatusCodes.OK, entity = req.entity)
+  }
+
   def sleep(millis: Long, response: HttpResponse)(implicit ec: ExecutionContext): Future[HttpResponse] = Future {
     Thread.sleep(millis)
     response

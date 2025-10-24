@@ -122,6 +122,11 @@ response: |+
         responses:
           "200":
             description: OK
+    /echo:
+      post:
+        responses:
+          "200":
+            description: OK
     /fast-respond:
       get:
         responses:

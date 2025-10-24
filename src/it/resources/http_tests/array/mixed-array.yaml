@@ -1,0 +1,6 @@
+path:       /echo
+method:     POST
+request:    [1, 2, 42, "a", {}, [{}], {"x": "y"}]
+response_headers:
+  Content-Type: application/json
+response:   [1, 2, 42, "a", {}, [{}], {"x": "y"}]

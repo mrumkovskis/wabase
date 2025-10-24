@@ -1,3 +1,10 @@
+on: POST /echo
+do: wabase.app.BusinessScenariosSpecs.echo
+swagger:
+  responses = :
+    '200': {}
+
+
 on: POST PUT /request-info
 do: wabase.app.BusinessScenariosSpecs.requestInfo
 swagger:

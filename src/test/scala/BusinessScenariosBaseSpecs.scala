@@ -7,6 +7,7 @@ import org.apache.pekko.http.scaladsl.model.headers.RawHeader
 import org.apache.pekko.http.scaladsl.model.Uri
 import org.apache.pekko.http.scaladsl.server.directives.ContentTypeResolver
 import com.typesafe.config.ConfigFactory
+import org.apache.pekko.http.scaladsl.marshalling.{Marshaller, ToEntityMarshaller}
 import org.apache.pekko.util.ByteString
 import org.mojoz.querease.TresqlMetadata
 import org.scalatest.BeforeAndAfterAll
@@ -225,6 +226,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
     headers: Seq[HttpHeader],
     requestBytes: Array[Byte],
     requestMap: Map[String, Any],
+    requestSeq: Seq[Any],
     requestString: String,
     requestFormData: Multipart.FormData,
   )
@@ -239,6 +241,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
     val requestBytes = Try(map.s(fileKey)).toOption.map(readFileBytes).orNull
     val requestParts = Try(map.a(partsKey)).toOption.orNull
     val valueAsMap   = Try(map.md(bodyKey, null)).toOption.orNull
+    val valueAsSeq   = Try(map(bodyKey).asInstanceOf[Seq[Any]]).toOption.orNull
 
     val parsedHeaders: Seq[HttpHeader] = Option(headers).getOrElse(Map.empty).map {
       case ("Content-Type", value) => // Content-Type is not accepted as valid RawHeader
@@ -310,10 +313,11 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
           if (requestBytes != null || requestParts != null || method == "GET" || method == "DELETE") null else Map.empty
         Try(map.md(bodyKey, defaultValue = defaultRequestMap)).toOption.orNull
       } else null
+    val requestSeq = valueAsSeq
     RequestInfo(
       method, path, params,
       parsedHeaders ++ fileContentTypeOpt.toSeq,
-      requestBytes, requestMap, requestString, requestFormData)
+      requestBytes, requestMap, requestSeq, requestString, requestFormData)
   }
 
   def logScenarioRequestInfo(
@@ -428,6 +432,9 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
     }
   }
 
+  private implicit val seqOfAnyMarshaller: ToEntityMarshaller[Seq[Any]] = Marshaller.combined { item =>
+    HttpEntity(ContentTypes.`application/json`, ResultEncoder.encodeAnyToJsonByteString(item))
+  }
   def checkTestCase(scenario: File, testCase: File, context: Map[String, Any], map: Map[String, Any], retriesLeft: Int): Map[String, Any] = {
     val requestInfo = extractRequestInfo(cleanupTemplate(map))
     import requestInfo._
@@ -476,17 +483,19 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
       httpPostAwait[RequestEntity, HttpResponse](HttpMethods.PUT, path, entity, requestHeaders)
     }
 
-    def doRequest: HttpResponse  = (method, requestMap, requestString, requestBytes, requestFormData) match {
-      case ("GET",   null, null,   null, null) => httpGetAwait [HttpResponse](path, params, headers)
-      case ("POST",   map, null,   null, null) => httpPostAwait[Map[String, Any],     HttpResponse](HttpMethods.POST,path, map, headers)
-      case ("POST",  null, string, null, null) => httpPostAwait[String,      HttpResponse](HttpMethods.POST,   path, string,     headers)
-      case ("POST",  null, null,  bytes, null) => httpPostAwait[Array[Byte], HttpResponse](HttpMethods.POST,   path, bytes,      headers)
-      case ("POST",  null, null,   null, form) => httpPostAwaitMultipartFormData          (HttpMethods.POST,   path, form,       headers)
-      case ("PUT",    map, null,   null, null) => httpPostAwait[Map[String, Any],     HttpResponse](HttpMethods.PUT, path, map, headers)
-      case ("PUT",   null, string, null, null) => httpPostAwait[String,      HttpResponse](HttpMethods.PUT,    path, string,     headers)
-      case ("PUT",   null, null,  bytes, null) => httpPostAwait[Array[Byte], HttpResponse](HttpMethods.PUT,    path, bytes,      headers)
-      case ("PUT",   null, null,   null, form) => httpPostAwaitMultipartFormData          (HttpMethods.PUT,    path, form,       headers)
-      case ("DELETE", null, null,  null, null) => httpPostAwait[String,      HttpResponse](HttpMethods.DELETE, path, "",         headers)
+    def doRequest: HttpResponse  = (method, requestMap, requestSeq, requestString, requestBytes, requestFormData) match {
+      case ("GET",   null, null, null,   null, null) => httpGetAwait [HttpResponse](path, params, headers)
+      case ("POST",   map, null, null,   null, null) => httpPostAwait[Map[String, Any],     HttpResponse](HttpMethods.POST,path, map, headers)
+      case ("POST",  null,  seq, null,   null, null) => httpPostAwait[Seq[Any],    HttpResponse](HttpMethods.POST,   path, seq,       headers)
+      case ("POST",  null, null, string, null, null) => httpPostAwait[String,      HttpResponse](HttpMethods.POST,   path, string,    headers)
+      case ("POST",  null, null, null,  bytes, null) => httpPostAwait[Array[Byte], HttpResponse](HttpMethods.POST,   path, bytes,     headers)
+      case ("POST",  null, null, null,   null, form) => httpPostAwaitMultipartFormData          (HttpMethods.POST,   path, form,      headers)
+      case ("PUT",    map, null, null,   null, null) => httpPostAwait[Map[String, Any],     HttpResponse](HttpMethods.PUT, path, map, headers)
+      case ("PUT",   null,  seq, null,   null, null) => httpPostAwait[Seq[Any],    HttpResponse](HttpMethods.PUT,    path, seq,       headers)
+      case ("PUT",   null, null, string, null, null) => httpPostAwait[String,      HttpResponse](HttpMethods.PUT,    path, string,    headers)
+      case ("PUT",   null, null, null,  bytes, null) => httpPostAwait[Array[Byte], HttpResponse](HttpMethods.PUT,    path, bytes,     headers)
+      case ("PUT",   null, null, null,   null, form) => httpPostAwaitMultipartFormData          (HttpMethods.PUT,    path, form,      headers)
+      case ("DELETE",null, null, null,   null, null) => httpPostAwait[String,      HttpResponse](HttpMethods.DELETE, path, "",        headers)
       case r => sys.error("Unsupported request type: "+r)
     }
 
