@@ -995,6 +995,10 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         Map("f1" -> "F1", "f2" -> "F2", "m1" -> Map("f1" -> "A", "f2" -> "B"))).map {
         _ shouldBe Map("f1" -> "F1", "f2" -> "F2", "m1" -> Map("f1" -> "A", "f2" -> "B"))
       }
+      t12 <- doAction("delete", "http_test_3",
+        Map("f1" -> "FD1", "f2" -> "FD2", "m1" -> Map("f1" -> "AD", "f2" -> "BD"))).map {
+        _ shouldBe Map("f1" -> "FD1", "f2" -> "FD2", "m1" -> Map("f1" -> "AD", "f2" -> "BD"))
+      }
     } yield {
       t1
     }
