@@ -59,7 +59,7 @@ lazy val commonSettings = Seq(
       "ch.qos.logback"              % "logback-classic"       % "1.5.20",
       "org.mojoz"                  %% "mojoz"                 % mojozV,
       "org.mojoz"                  %% "querease"              % quereaseV,
-      "commons-validator"           % "commons-validator"     % "1.9.0",
+      "commons-validator"           % "commons-validator"     % "1.10.0",
       "org.postgresql"              % "postgresql"            % "42.7.5",
       "com.lambdaworks"             % "scrypt"                % "1.4.0",
       "org.tresql"                 %% "tresql"                % tresqlV,
