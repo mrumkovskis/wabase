@@ -4,7 +4,7 @@ val pekkoV    = "1.2.1"
 val pekkoConnV= "1.2.0"
 val pekkoHttpV= "1.2.0"
 
-val mojozV    = "6.0.0-RC4-SNAPSHOT"
+val mojozV    = "6.0.0"
 val quereaseV = "8.0.0-RC6-SNAPSHOT"
 val tresqlV   = "13.0.0-RC3-SNAPSHOT"
 
