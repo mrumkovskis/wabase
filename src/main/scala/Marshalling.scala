@@ -273,6 +273,11 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
   import app.qe
   import ResultEncoder.EncoderFactory
 
+  private val crudRedirectsPrefix =
+    Option("app.crud-redirects-prefix").filter(config.hasPath).map(config.getString).getOrElse("")
+  def redirectTresqlUri(kr: KeyResult): TresqlUri.Uri =
+    TresqlUri.Uri(Seq(s"${crudRedirectsPrefix}${kr.viewName}"), kr.key)
+
   /* Is used instead of predefined StringMarshaller to pass content negotiation if accept headers do not match */
   private def opaqueStringMarshaller: ToResponseMarshaller[String] =
     Marshaller.opaque(sr => HttpResponse(status = StatusCodes.OK, entity = HttpEntity(Option(sr).getOrElse(""))))
@@ -290,7 +295,6 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
     Marshaller { _ => (id: IdResult) => opaqueStringMarshaller(id.toString) }
   implicit def toResponseQuereaseKeyResultMarshaller:     ToResponseMarshaller[KeyResult]      =
     Marshaller { ec => kr =>
-      def redirectTresqlUri = TresqlUri.Uri(Seq(s"/${config.getString("app.rest-path-base")}/${kr.viewName}"), kr.key)
       import AppMetadata._
       val sr =
         if (config.getBoolean("app.marshal_key_as_json")) {
@@ -299,10 +303,10 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
               AnyResult((ListMap.newBuilder ++=
                 qe.viewNameToApiKeyFieldNames(kr.viewName).zip(kr.key)).result())
             ),
-            List(Location(app.qe.tresqlUri.uri(redirectTresqlUri)))
+            List(Location(app.qe.tresqlUri.uri(redirectTresqlUri(kr))))
           )
         } else if (qe.viewDef(kr.viewName).apiMethodToRoles.contains(Action.Get))
-          ResponseResult(StatusCodes.SeeOther.intValue, RedirectValue(redirectTresqlUri))
+          ResponseResult(StatusCodes.SeeOther.intValue, RedirectValue(redirectTresqlUri(kr)))
         else ResponseResult(StatusCodes.OK.intValue, ResultValue(NoResult))
       toResponseQuereaseResponseResultMarshaller(app.WabaseResult(null, sr))(ec)(sr)
     }
