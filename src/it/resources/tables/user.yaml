@@ -1,7 +1,7 @@
 table:    user_role
 columns:
 - user.id
-- role
+- role      10
 pk:
 - user_id, role
 

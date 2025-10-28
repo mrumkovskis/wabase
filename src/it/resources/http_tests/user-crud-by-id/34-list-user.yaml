@@ -1,0 +1,13 @@
+path:       /data/user
+response: [
+  {
+    "id": 2,
+    "name": "jane",
+    "password": null
+  },
+  {
+    "id": 3,
+    "name": "claudia",
+    "password": null
+  }
+]

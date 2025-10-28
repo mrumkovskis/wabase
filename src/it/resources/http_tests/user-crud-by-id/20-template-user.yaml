@@ -1,0 +1,6 @@
+path:       /data/create:user
+response: {
+  "id": null,
+  "name": null,
+  "password": null
+}

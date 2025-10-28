@@ -827,7 +827,8 @@ response: {
       "enum": null,
       "refViewName": null,
       "comments": null,
-      "jsonType": "string"
+      "jsonType": "string",
+      "length": 10
     }],
     "filter": []
   },

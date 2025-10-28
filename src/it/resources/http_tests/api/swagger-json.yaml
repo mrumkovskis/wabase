@@ -481,6 +481,37 @@ response: {
             "description" : "Service Unavailable"
           }
         }
+      },
+      "post" : {
+        "summary" : "Insert 'person'",
+        "description" : "",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/person"
+              }
+            }
+          }
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/person"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Bad Request"
+          },
+          "503" : {
+            "description" : "Service Unavailable"
+          }
+        }
       }
     },
     "/person/{code}" : {
@@ -523,7 +554,7 @@ response: {
         }
       },
       "put" : {
-        "summary" : "Save 'person' by 'code'",
+        "summary" : "Update 'person' by 'code'",
         "description" : "",
         "parameters" : [ {
           "name" : "code",
@@ -837,9 +868,42 @@ response: {
         }
       }
     },
+    "/save_person_email" : {
+      "post" : {
+        "summary" : "Insert 'save_person_email'",
+        "description" : "",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/save_person_email"
+              }
+            }
+          }
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/save_person_email"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Bad Request"
+          },
+          "503" : {
+            "description" : "Service Unavailable"
+          }
+        }
+      }
+    },
     "/save_person_email/{code}" : {
       "put" : {
-        "summary" : "Save 'save_person_email' by 'code'",
+        "summary" : "Update 'save_person_email' by 'code'",
         "description" : "",
         "parameters" : [ {
           "name" : "code",
@@ -908,6 +972,37 @@ response: {
             "description" : "Service Unavailable"
           }
         }
+      },
+      "post" : {
+        "summary" : "Insert 'server_events'",
+        "description" : "",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/server_events"
+              }
+            }
+          }
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/server_events"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Bad Request"
+          },
+          "503" : {
+            "description" : "Service Unavailable"
+          }
+        }
       }
     },
     "/server_events/{topic}" : {
@@ -949,7 +1044,7 @@ response: {
         }
       },
       "put" : {
-        "summary" : "Save 'server_events' by 'topic'",
+        "summary" : "Update 'server_events' by 'topic'",
         "description" : "",
         "parameters" : [ {
           "name" : "topic",
@@ -1093,7 +1188,7 @@ response: {
     },
     "/user" : {
       "get" : {
-        "summary" : "Get 'user'",
+        "summary" : "List 'user'",
         "description" : "",
         "responses" : {
           "200" : {
@@ -1101,7 +1196,10 @@ response: {
             "content" : {
               "application/json" : {
                 "schema" : {
-                  "$ref" : "#/components/schemas/user"
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/user"
+                  }
                 }
               }
             }
@@ -1112,15 +1210,12 @@ response: {
           "403" : {
             "description" : "Forbidden"
           },
-          "404" : {
-            "description" : "Not Found"
-          },
           "503" : {
             "description" : "Service Unavailable"
           }
         }
       },
-      "put" : {
+      "post" : {
         "summary" : "Save 'user'",
         "description" : "",
         "requestBody" : {
@@ -1150,6 +1245,17 @@ response: {
             "description" : "Service Unavailable"
           }
         }
+      },
+      "delete" : {
+        "summary" : "Delete 'user'",
+        "responses" : {
+          "204" : {
+            "description" : "No Content"
+          },
+          "404" : {
+            "description" : "Not Found"
+          }
+        }
       }
     },
     "/user-with-roles-array" : {
@@ -1168,6 +1274,100 @@ response: {
           },
           "404" : {
             "description" : "Not Found"
+          },
+          "503" : {
+            "description" : "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/user:count" : {
+      "get" : {
+        "summary" : "Count 'user'",
+        "description" : "",
+        "responses" : {
+          "200" : {
+            "description" : "Count",
+            "content" : {
+              "text/plain" : {
+                "schema" : {
+                  "type" : "integer",
+                  "format" : "int32"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Bad Request"
+          },
+          "403" : {
+            "description" : "Forbidden"
+          },
+          "404" : {
+            "description" : "Not Found"
+          },
+          "503" : {
+            "description" : "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/user:create" : {
+      "get" : {
+        "summary" : "Create 'user'",
+        "description" : "",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/user"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Bad Request"
+          },
+          "403" : {
+            "description" : "Forbidden"
+          },
+          "404" : {
+            "description" : "Not Found"
+          },
+          "503" : {
+            "description" : "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/user_role" : {
+      "post" : {
+        "summary" : "Insert 'user_role'",
+        "description" : "",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/user_role"
+              }
+            }
+          }
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/user_role"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Bad Request"
           },
           "503" : {
             "description" : "Service Unavailable"
@@ -1194,7 +1394,8 @@ response: {
           "description" : "Role",
           "required" : true,
           "schema" : {
-            "type" : "string"
+            "type" : "string",
+            "maxLength" : 10
           }
         } ],
         "responses" : {
@@ -1223,7 +1424,7 @@ response: {
         }
       },
       "put" : {
-        "summary" : "Save 'user_role' by 'user_id' and 'role'",
+        "summary" : "Update 'user_role' by 'user_id' and 'role'",
         "description" : "",
         "parameters" : [ {
           "name" : "user_id",
@@ -1240,7 +1441,8 @@ response: {
           "description" : "Role",
           "required" : true,
           "schema" : {
-            "type" : "string"
+            "type" : "string",
+            "maxLength" : 10
           }
         } ],
         "requestBody" : {
@@ -1273,7 +1475,7 @@ response: {
       }
     },
     "/validation" : {
-      "put" : {
+      "post" : {
         "summary" : "Save 'validation'",
         "description" : "Validation scripts for views",
         "requestBody" : {
@@ -1658,6 +1860,7 @@ response: {
             "type" : "string",
             "description" : "Role",
             "example" : "admin",
+            "maxLength" : 10,
             "readOnly" : false
           }
         },

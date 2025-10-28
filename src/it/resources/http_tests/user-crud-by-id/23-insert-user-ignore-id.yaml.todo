@@ -1,0 +1,6 @@
+path:       /data/user
+method:     POST
+request:
+  id:       33
+  name:     john
+response:   { "id": 1 }

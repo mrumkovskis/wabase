@@ -7,14 +7,15 @@ get:
 
 name:     user
 table:    user
-api:      get, save
+api:      count, create, get, list, save, delete
 fields:
 - id
 - name
 - password:
     swagger:
       example: password
-
+order:
+- id
 
 name:     user_role
 table:    user_role

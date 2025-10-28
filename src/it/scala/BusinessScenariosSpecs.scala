@@ -24,12 +24,19 @@ import scala.language.reflectiveCalls
 import scala.util.Try
 import scala.util.control.NonFatal
 
-object BusinessScenariosSpecs {
+object BusinessScenariosSpecs extends Loggable {
   def executeStatements(statements: String*): Unit = {
     val conn = ConnectionPools(TresqlResourcesConf.DefaultCpName).getConnection()
     try {
       val statement = conn.createStatement
-      try statements foreach { statement.execute } finally statement.close()
+      try statements foreach { st =>
+        logger.debug(st)
+        try statement.execute(st) catch {
+          case util.control.NonFatal(ex) =>
+            logger.error(s"Failed to execute statement: $st")
+            throw ex
+        }
+      } finally statement.close()
     } finally conn.close()
   }
 
@@ -123,13 +130,13 @@ class BusinessScenariosSpecs extends BusinessScenariosBaseSpecs("http_tests") {
     import requestInfo._
     if (path.startsWith("/backdoor/create-sequences/")) {
       val seqNames   = path.substring("/backdoor/create-sequences/".length).split(",").toSeq
-      val statements = seqNames.map { seqName => s"create sequence $seqName;" }
+      val statements = seqNames.map { seqName => s"create sequence $seqName start with 1;" }
       executeStatements(statements: _*)
     } else if (path.startsWith("/backdoor/create-tables/")) {
       val tableNames = path.substring("/backdoor/create-tables/".length).split(",").toSeq
-      val tableDefs  = tableNames.map { tableName => qe.tableMetadata.tableDef(tableName, null) }
+      val tableDefs  = tableNames.map { tableName => qe.tableMetadata.tableDef(tableName, null) }.toVector
       val generator  = DdlGenerator.hsqldb()
-      val statements = tableDefs.map { tableDef => generator.table(tableDef) }
+      val statements = generator.schema(tableDefs).split(";[\r\n]+").toSeq
       executeStatements(statements: _*)
     } else if (path.startsWith("/backdoor/drop-sequences/")) {
       val seqNames   = path.substring("/backdoor/drop-sequences/".length).split(",").toSeq

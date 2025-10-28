@@ -521,75 +521,70 @@ class WabaseSwaggerGenerator(
 
   def isArrayRequest(viewDef: ViewDef, method: String) = false
 
-  def operationForCreate(viewDef: ViewDef): Operation =
-    createOperation("create", viewDef)
-      .addParameters("create", viewDef)
+  def operationForCreate(viewDef: ViewDef, keySize: Int = 99): Operation =
+    createOperation("create", viewDef, keySize)
+      .addParameters("create", viewDef, keySize)
       .addSuccessResponse(view = viewDef.name)
       .addBadRequestResponse
       .addForbiddenResponse(viewDef)
       .addNotFoundResponse
       .addServiceUnavailabeError
 
-  def operationForCount(viewDef: ViewDef): Operation =
-    createOperation("count", viewDef)
-      .addParameters("count", viewDef)
+  def operationForCount(viewDef: ViewDef, keySize: Int = 99): Operation =
+    createOperation("count", viewDef, keySize)
+      .addParameters("count", viewDef, keySize)
       .addIntegerResponse("Count")
       .addBadRequestResponse
       .addForbiddenResponse(viewDef)
       .addNotFoundResponse
       .addServiceUnavailabeError
 
-  def operationForGet(viewDef: ViewDef): Operation =
-    createOperation("get", viewDef)
-      .addParameters("get", viewDef)
+  def operationForGet(viewDef: ViewDef, keySize: Int = 99): Operation =
+    createOperation("get", viewDef, keySize)
+      .addParameters("get", viewDef, keySize)
       .addSuccessResponse(view = viewDef.name)
       .addBadRequestResponse
       .addForbiddenResponse(viewDef)
       .addNotFoundResponse
       .addServiceUnavailabeError
 
-  def operationForList(viewDef: ViewDef, keySize: Int = 99): Operation = {
+  def operationForList(viewDef: ViewDef, keySize: Int = 99): Operation =
     createOperation("list", viewDef, keySize)
       .addParameters("list", viewDef, keySize)
       .addSuccessResponse(view = viewDef.name, array = true)
       .addBadRequestResponse
       .addForbiddenResponse(viewDef)
       .addServiceUnavailabeError
-  }
 
-  def operationForInsert(viewDef: ViewDef): Operation = {
-    createOperation("insert", viewDef)
-      .addParameters("insert", viewDef)
+  def operationForInsert(viewDef: ViewDef, keySize: Int = 99): Operation =
+    createOperation("insert", viewDef, keySize)
+      .addParameters("insert", viewDef, keySize)
       .addSuccessResponse(view = viewDef.name)
       .addRequestBody(view = viewDef.name, isArrayRequest(viewDef, "insert"))
       .addBadRequestResponse
       .addServiceUnavailabeError
-  }
 
-  def operationForUpdate(viewDef: ViewDef): Operation = {
-    createOperation("update", viewDef)
-      .addParameters("update", viewDef)
+  def operationForUpdate(viewDef: ViewDef, keySize: Int = 99): Operation =
+    createOperation("update", viewDef, keySize)
+      .addParameters("update", viewDef, keySize)
       .addSuccessResponse(view = viewDef.name)
       .addRequestBody(view = viewDef.name, isArrayRequest(viewDef, "update"))
       .addBadRequestResponse
       .addServiceUnavailabeError
-  }
 
-  def operationForSave(viewDef: ViewDef): Operation = {
-    createOperation("save", viewDef)
-      .addParameters("save", viewDef)
+  def operationForSave(viewDef: ViewDef, keySize: Int = 99): Operation =
+    createOperation("save", viewDef, keySize)
+      .addParameters("save", viewDef, keySize)
       .addSuccessResponse(view = viewDef.name)
       .addRequestBody(view = viewDef.name, isArrayRequest(viewDef, "save"))
       .addBadRequestResponse
       .addServiceUnavailabeError
-  }
 
-  def operationForDelete(viewDef: ViewDef): Operation = {
-    createOperation("delete", viewDef)
-      .addParameters("delete", viewDef)
+  def operationForDelete(viewDef: ViewDef, keySize: Int = 99): Operation =
+    createOperation("delete", viewDef, keySize)
+      .addParameters("delete", viewDef, keySize)
       .addSuccessResponse(HttpMethods.DELETE)
       .addNotFoundResponse
-  }
 
   def operationForDelete (pathInfo: PathNameAndParameters): Operation = new Operation().addParameters(pathInfo).addSuccessResponse(HttpMethods.DELETE)
   def operationForGet    (pathInfo: PathNameAndParameters): Operation = new Operation().addParameters(pathInfo).addSuccessResponse(HttpMethods.GET)
@@ -635,7 +630,11 @@ class WabaseSwaggerGenerator(
         )}
       case "insert" => Seq((pathWithKey(method, viewDef), HttpMethods.POST,   operationForInsert(viewDef)))
       case "update" => Seq((pathWithKey(method, viewDef), HttpMethods.PUT,    operationForUpdate(viewDef)))
-      case "save"   => Seq((pathWithKey(method, viewDef), HttpMethods.PUT,    operationForSave(viewDef))) // POST ???   
+      case "save"   =>
+                if  (viewDef.keyFieldNames.isEmpty)
+                       Seq((pathWithKey(method, viewDef),    HttpMethods.POST, operationForSave(viewDef)))
+                else   Seq((pathWithKey(method, viewDef, 0), HttpMethods.POST, operationForInsert(viewDef, 0)),
+                           (pathWithKey(method, viewDef),    HttpMethods.PUT,  operationForUpdate(viewDef)))
       case "delete" => Seq((pathWithKey(method, viewDef), HttpMethods.DELETE, operationForDelete(viewDef)))
       case _        =>
         logger.warn(
