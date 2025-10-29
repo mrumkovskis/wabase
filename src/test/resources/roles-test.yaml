@@ -1,0 +1,5 @@
+name: restricted_view
+api: admin get
+explicit db: true
+get:
+- status ok

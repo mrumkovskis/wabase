@@ -14,7 +14,7 @@ import scala.concurrent.{Await, ExecutionContext, Future}
 class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
 
   class WA(exec: Execution) extends WabaseServer.App(exec) {
-    override def initQuerease: AppQuerease = new TestQuerease("/service-specs-metadata.yaml")
+    override def initQuerease: AppQuerease = new TestQuerease(List("/service-specs-metadata.yaml", "/roles-test.yaml"))
     override implicit lazy val httpClients: WabaseHttpClients =
       WabaseHttpClients(Map("default-wabase-http-client" -> (_ => server.handle)))
   }
@@ -166,6 +166,10 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
     entityForRequest(
       authReq(enc_session, HttpRequest(method = HttpMethods.POST, uri = "/restricted/user_principal"))
     ) shouldBe "10"
+
+    response(
+      authReq(enc_session, HttpRequest(method = HttpMethods.GET, uri = "/restricted/restricted_view"))
+    ).status shouldBe StatusCodes.OK
 
     resp = doBasicAuthReq("Gunza", "bad")
     resp.status shouldBe StatusCodes.Unauthorized

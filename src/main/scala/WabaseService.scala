@@ -28,11 +28,15 @@ import scala.annotation.tailrec
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{ExecutionContext, Future}
 import scala.jdk.CollectionConverters._
+import scala.util.Try
 import scala.util.control.NonFatal
 import scala.util.parsing.input.CharSequenceReader
 
 case class WabaseUser(properties: Map[String, Any]) {
-  val id: Long      = properties.get("id").collect { case x: Number => x.longValue }.getOrElse(-1)
+  val id: Long      = properties.get("id").collect {
+    case x: Number => x.longValue
+    case s: String => Try(s.toLong).getOrElse(-1L)
+  }.getOrElse(-1)
   val name: String  = properties.get("name").map(String.valueOf)
     .orElse(Option(id).filter(_ != -1).map(_.toString)).orNull
   val roles: Set[String] = properties.get("roles")

@@ -6,9 +6,9 @@ trait Authorization[User] {
   this: AppBase[User] with Audit[User] with DbAccess with DbConstraintMessage =>
 
   private val wabaseAuth =
-    getObjectOrNewInstance[WabaseAuthorizationFactory](
-      config, "app.wabase-authorization-factory", "wabase authorization factory"
-    ).initialize()
+    getObjectOrNewInstance[WabaseAuthorization](
+      config, "app.wabase-authorization", "wabase authorization"
+    )
 
   /** legacy flow - performs authorization, on failure throws Exception, otherwise returns */
   def check[C <: RequestContext[_]](ctx: C, clazz: Class[_]): Unit = ???
@@ -27,18 +27,14 @@ trait Authorization[User] {
   }
 }
 
-trait WabaseAuthorizationFactory {
-  def initialize(): WabaseAuthorization
+trait WabaseAuthorization {
+  def hasRole(wabase: WabaseService.Wabase, user: WabaseUser, roles: Set[String]): Boolean
 }
 
-class WabaseAuthorization {
+class DefaultWabaseAuthorization extends WabaseAuthorization {
   def hasRole(
     wabase: WabaseService.Wabase,
     user: WabaseUser,
     roles: Set[String],
   ): Boolean = user.roles.intersect(roles).nonEmpty
-}
-
-object Authorization extends WabaseAuthorizationFactory {
-  override def initialize(): WabaseAuthorization = new WabaseAuthorization
 }
