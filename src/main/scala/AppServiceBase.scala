@@ -65,15 +65,11 @@ trait AppServiceBase[User]
   // @deprecated("Use viewWithKeyPath. This method will be removed", "6.0.3")
   def viewWithIdPath = path(Segment / LongNumber)
   def viewWithKeyPath = path(Segment / Segments) | path(Segment ~ PathEnd) & provide(Nil: List[String])
-  @deprecated("Use key without field name. This method will be removed", "6.0")
-  def viewWithNamePath = path(Segment / Segment / Segment)
   def createPath = (path("create" / Segment) | pathPrefix("create:") & rawPathPrefix(Segment)) & get
   def viewWithoutIdPath = path(Segment ~ (PathEnd | Slash))
   // @deprecated("Use getByKeyPath. This method will be removed", "6.0.3")
   def getByIdPath = viewWithIdPath & get
   def getByKeyPath = viewWithKeyPath & get
-  @deprecated("Use key without field name. This method will be removed", "6.0")
-  def getByNamePath = viewWithNamePath & get
   // @deprecated("Use deleteByKeyPath. This method will be removed", "6.0.3")
   def deletePath = viewWithIdPath & delete
   def deleteByKeyPath = viewWithKeyPath & delete
@@ -173,19 +169,6 @@ trait AppServiceBase[User]
       } else {
         val keyAsMap = app.prepareKey(viewName, keyValues, "get")
         complete(app.get(viewName, -1, filterPars(params) ++ keyAsMap))
-      }
-    }
-
-  @deprecated("Use key without field name. This method will be removed", "6.0")
-  def getByNameAction(viewName: String, name: String, value: String)(
-    implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
-    parameterMultiMap { params =>
-      if (useActions(viewName, Action.Get)) {
-        extractRequest { implicit httpReq =>
-          complete(app.doWabaseAction(Action.Get, viewName, Seq(value), filterPars(params) + (name -> value)))
-        }
-      } else {
-        complete(app.get(viewName, -1, filterPars(params) + (name -> value)))
       }
     }
 
