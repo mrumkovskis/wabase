@@ -1,6 +1,7 @@
 package org.wabase
 
 import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.http.scaladsl.client.RequestBuilding.Get
 import org.apache.pekko.http.scaladsl.model.headers.{BasicHttpCredentials, Cookie, HttpCookiePair, `Set-Cookie`}
 import org.apache.pekko.http.scaladsl.model.{HttpEntity, HttpMessage, HttpMethod, HttpMethods, HttpRequest, HttpResponse, RequestEntity, StatusCodes, Uri}
 import org.apache.pekko.util.ByteString
@@ -170,6 +171,8 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
     response(
       authReq(enc_session, HttpRequest(method = HttpMethods.GET, uri = "/restricted/restricted_view"))
     ).status shouldBe StatusCodes.OK
+
+    response(Get("/restricted/restricted_view")).status shouldBe StatusCodes.Unauthorized
 
     resp = doBasicAuthReq("Gunza", "bad")
     resp.status shouldBe StatusCodes.Unauthorized
