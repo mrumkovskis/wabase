@@ -1,7 +1,7 @@
 package org.wabase
 
 import org.apache.pekko.actor.ActorSystem
-import org.apache.pekko.http.scaladsl.client.RequestBuilding.Get
+import org.apache.pekko.http.scaladsl.client.RequestBuilding.{Get, Post, Put}
 import org.apache.pekko.http.scaladsl.model.headers.{BasicHttpCredentials, Cookie, HttpCookiePair, `Set-Cookie`}
 import org.apache.pekko.http.scaladsl.model.{HttpEntity, HttpMessage, HttpMethod, HttpMethods, HttpRequest, HttpResponse, RequestEntity, StatusCodes, Uri}
 import org.apache.pekko.util.ByteString
@@ -98,30 +98,20 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
     callRoute("/public/view1?list_filter_param=val", decoder = decodeJs) shouldBe "val"
     callRoute("/public/create:view1?p1=111&p2=aaa", decoder = decodeJs) shouldBe Seq(111, "aaa")
     callRoute("/public/count:view1", decoder = decodeJs) shouldBe 1
-    response(HttpRequest(uri = "/public/querease_action_exception")).status shouldBe StatusCodes.InternalServerError
-    response(HttpRequest(
-      method = HttpMethods.POST,
-      uri = "/public/querease_action_exception")
-    ).status shouldBe StatusCodes.Unauthorized
-    response(HttpRequest(
-      method = HttpMethods.PUT,
-      uri = "/public/querease_action_exception")
-    ).status shouldBe StatusCodes.BadRequest
+    response(Get("/public/querease_action_exception")).status shouldBe StatusCodes.InternalServerError
+    response(Post("/public/querease_action_exception")).status shouldBe StatusCodes.Unauthorized
+    response(Put("/public/querease_action_exception")).status shouldBe StatusCodes.BadRequest
   }
 
   it should "process request decoder errors" in {
-    statusAndEntityForRequest(HttpRequest(
-      method = HttpMethods.POST,
-      uri = "/public/view1/5",
-      entity = encodeJs(Seq(Map("value" -> "Value5-ins")))
-    )) match { case (code, resp) =>
-      code shouldBe StatusCodes.BadRequest
-      String.valueOf(resp) should startWith("Failed to read to map for view1")
+    statusAndEntityForRequest(Post("/public/view1/5", encodeJs(Seq(Map("value" -> "Value5-ins"))))) match {
+      case (code, resp) =>
+        code shouldBe StatusCodes.BadRequest
+        String.valueOf(resp) should startWith("Failed to read to map for view1")
     }
-    statusAndEntityForRequest(HttpRequest(
-      method = HttpMethods.PUT,
-      uri = "/public/view1/5",
-      entity = encodeJs(Seq(Map("id" -> 5, "value" -> "Value5-ins")))
+    statusAndEntityForRequest(Post(
+      "/public/view1/5",
+      encodeJs(Seq(Map("id" -> 5, "value" -> "Value5-ins")))
     ))  match { case (code, resp) =>
       code shouldBe StatusCodes.BadRequest
       String.valueOf(resp) should startWith("Failed to read to map for view1")
@@ -129,7 +119,7 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
   }
 
   it should "invoke default error handler" in {
-    val (st, _) = statusAndEntityForRequest(HttpRequest(uri = "/error"))
+    val (st, _) = statusAndEntityForRequest(Get("/error"))
     st shouldBe StatusCodes.InternalServerError
   }
 
@@ -159,17 +149,17 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
 
     val x = (1 to 3).scanLeft(enc_session) { (enc_ses, _) =>
       Thread.sleep(10) // ensure that session expiration time changes
-      resp = response(authReq(enc_ses, HttpRequest(uri = Uri("/restricted/user_principal"))))
+      resp = response(authReq(enc_ses, Get("/restricted/user_principal")))
       decodeJs(WabaseTestHandlers.entity(resp)) shouldBe Map("id" -> 10, "roles" ->  List("admin", "guest", "operator"))
       encryptedSession(resp)
     }.reduce {(s1, s2) => decSes(s1).expirationTime should be < decSes(s2).expirationTime; s2}
 
     entityForRequest(
-      authReq(enc_session, HttpRequest(method = HttpMethods.POST, uri = "/restricted/user_principal"))
+      authReq(enc_session, Post("/restricted/user_principal"))
     ) shouldBe "10"
 
     response(
-      authReq(enc_session, HttpRequest(method = HttpMethods.GET, uri = "/restricted/restricted_view"))
+      authReq(enc_session, Get("/restricted/restricted_view"))
     ).status shouldBe StatusCodes.OK
 
     response(Get("/restricted/restricted_view")).status shouldBe StatusCodes.Unauthorized
@@ -177,7 +167,7 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
     resp = doBasicAuthReq("Gunza", "bad")
     resp.status shouldBe StatusCodes.Unauthorized
 
-    resp = response(HttpRequest(uri = "/restricted/user_principal"))
+    resp = response(Get("/restricted/user_principal"))
     resp.status shouldBe StatusCodes.Unauthorized
   }
 
@@ -193,7 +183,7 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
     callRoute("/do/test.QuereaseActionJavaManager.java_seq_handler", data = encodeJs(List(Map("a" -> 1), 2, true, "x", List(1, "y"))),
       method = HttpMethods.PUT, decoder = decodeJs) shouldBe List(Map("a" -> 1), 2, true, "x", List(1, "y"))
     callRoute("/do/org.wabase.WabaseTestHandlers.optionHandler?key=true") shouldBe "yes"
-    response(HttpRequest(uri = "/do/org.wabase.WabaseTestHandlers.optionHandler?key=false"))
+    response(Get("/do/org.wabase.WabaseTestHandlers.optionHandler?key=false"))
       .status shouldBe StatusCodes.NotFound
   }
 
@@ -233,9 +223,8 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
     val uri = "/public/entity_size_limit"
     callRoute(uri, data = encodeJs(Map("id" -> 1, "name" -> "John")),
       method = HttpMethods.POST, decoder = decodeJs) shouldBe Map("id" -> 1, "name" -> "John")
-    val (status, result) = statusAndEntityForRequest(HttpRequest(
-      method = HttpMethods.POST, uri = uri,
-      entity = encodeJs(Map("id" -> 1, "name" -> "John John John John John John John John John John John John John"))
+    val (status, result) = statusAndEntityForRequest(Post(
+      uri, encodeJs(Map("id" -> 1, "name" -> "John John John John John John John John John John John John John"))
     ))
     status shouldBe StatusCodes.ContentTooLarge
     result shouldBe "Content too large: actual size - 82, limit - 64"
