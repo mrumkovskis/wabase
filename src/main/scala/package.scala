@@ -53,10 +53,6 @@ package object wabase extends Loggable {
   type InvocationParameter = (Parameter, Int)
   type InvocationParameterFun = PartialFunction[InvocationParameter, Any]
 
-  @deprecated("use reference.conf and toFiniteDuration(config.getDuration(path))", "6.0")
-  def durationConfig(path: String, defaultDuration: FiniteDuration) =
-    Option(path).filter(config.hasPath).map(config.getDuration).map(toFiniteDuration).getOrElse(defaultDuration)
-
   implicit def toFiniteDuration(d: java.time.Duration): FiniteDuration = Duration.fromNanos(d.toNanos)
 
   /** Timeout is wrapped into case class so it can be used as implicit parameter */
