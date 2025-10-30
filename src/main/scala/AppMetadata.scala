@@ -355,24 +355,6 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
           auth, apiToRoles, actions, Map.empty, minKeySizeForList, maxKeySizeForList, expectedKeySizeDescr))
   }
 
-  /* Sets field options to horizontal auth statements if such are defined for child view, so that during ort auth
-   * for child views are applied.
-   */
-  @deprecated("Results of this method are not used and this method will be removed", "6.0")
-  protected def resolveAuth(viewDefs: Map[String, ViewDef]): Map[String, ViewDef] = viewDefs.map { case (name, viewDef) =>
-    name -> viewDef.copy(fields = viewDef.fields.map { field =>
-      viewDefs.get(field.type_.name)
-        .filter(v => !field.isExpression && field.type_.isComplexType &&
-          (v.auth.forInsert.nonEmpty || v.auth.forDelete.nonEmpty || v.auth.forUpdate.nonEmpty))
-        .map { v =>
-          def tresql(filter: Seq[String]) =
-            if (filter.isEmpty) "null" else filter.map(a => s"($a)").mkString(" & ")
-          field.copy(options = field.options + s"|${
-            tresql(v.auth.forInsert)}, ${tresql(v.auth.forDelete)}, ${tresql(v.auth.forUpdate)}")
-        }.getOrElse(field)
-    })
-  }
-
   private lazy val viewNameToQueryVariablesCompilerCache = {
     val cache = new ConcurrentHashMap[String, Seq[ast.Variable]]
     cache.putAll(viewNameToQueryVariablesCache.asJava)
