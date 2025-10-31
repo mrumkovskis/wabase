@@ -235,13 +235,16 @@ object Authentication {
     }
   }
 
-  object Crypto {
+  object Crypto extends Crypto(
+    config.getString("auth.crypto.key"),
+    config.getString("auth.mac.key"),
+  )
+
+  class Crypto(cryptoKeyStr: String, macKeyStr: String) {
 
     import javax.crypto.{ Cipher, KeyGenerator, Mac }
     import javax.crypto.spec.{ IvParameterSpec, SecretKeySpec }
-    import System.currentTimeMillis
     import java.util.Base64
-    import org.wabase.config
 
     val cryptoAlgoritm = "AES/CBC/PKCS5Padding"
     val macAlgoritm = "HmacSHA256"
@@ -251,13 +254,13 @@ object Authentication {
       override def initialValue = new SecureRandom
     }
 
-    lazy val cryptoKey = secretKey("auth.crypto.key")
-    lazy val macKey = secretKey("auth.mac.key")
+    lazy val cryptoKey = secretKey(cryptoKeyStr)
+    lazy val macKey = secretKey(macKeyStr)
 
     lazy val secureCookies: Boolean = config.getBoolean("session.cookie.secure")
     def uniqueSessionId = new Random(new SecureRandom).alphanumeric.take(100).mkString
 
-    def secretKey(name: String) = Option(decodeBytes(config.getString(name)))
+    def secretKey(keyStr: String) = Option(decodeBytes(keyStr))
       .filter(_.length >= 16)
       //take whole number of power of 2 bytes, i.e. 16, 32, ...
       .map(a => a.take(Math.pow(2, (Math.log(a.length) / Math.log(2)).toInt).toInt))
