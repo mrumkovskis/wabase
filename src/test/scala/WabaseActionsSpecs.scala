@@ -1128,6 +1128,13 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     }
   }
 
+  it should "define variable in the block" in {
+    for {
+      t1 <- doAction("get", "variable_definition_block_test", Map())
+        .map (_ shouldBe MapResult(Map("a" -> "a", "b" -> "b", "c" -> Map("d" -> "d", "e" -> "e"))))
+    } yield t1
+  }
+
   it should "apply column filter to optional columns for get" in  {
     val person = Map(
       "birthdate" -> Format.convertToType("1988-09-20", ClassOfJavaSqlDate),

@@ -1096,6 +1096,25 @@ get:
 - f2.c2.gc1 = 'gc1 val'
 
 
+name: variable_definition_block_test
+api: get
+fields:
+- a
+- b
+- c:
+  fields:
+  - d
+  - e
+get:
+- res:
+  - a = 'a'
+  - b = 'b'
+  - c:
+    - d = 'd'
+    - e = 'e'
+- as variable_definition_block_test :res
+
+
 name: template_test1
 api: get, list, insert, update, delete
 fields:
