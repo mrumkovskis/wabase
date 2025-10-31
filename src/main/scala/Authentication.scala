@@ -67,7 +67,9 @@ trait Authentication[User] extends SecurityDirectives with SessionInfoRemover wi
   def authFailureRoute: Route = redirect(SignInPath, StatusCodes.SeeOther)
   /** Checks whether expiration time greater than current time and session ip and user agent matches with those of request */
   def validateSession(session: Session[User], ip: RemoteAddress, userAgent: Option[String]): Boolean =
-    session.expirationTime > currentTime && session.ip == remoteAddressToString(ip) && session.userAgent == userAgent
+    session.expirationTime > currentTime &&
+      (session.ip == null || session.ip == remoteAddressToString(ip)) &&
+      session.userAgent == userAgent
 
   /** For session debugging, override to disable encryption but ensure session is cookie-compatible:
     * {{{ session.replace(",", "~").replace("\"", "'") }}}
