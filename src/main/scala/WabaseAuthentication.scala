@@ -17,6 +17,7 @@ import org.wabase.WabaseUnmarshallers.mapUnmarshaller
 
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Try
+import scala.util.control.NonFatal
 
 
 class AuthenticationException(msg: String, cause: Throwable = null) extends Exception(msg, cause)
@@ -43,8 +44,10 @@ object WabaseAuthentication extends Authentication[WabaseUser] {
   def userPrincipal(user: WabaseUser) = userInfo(user)
 
   def extractSession(req: HttpRequest): Option[Session] = {
-    WabaseService.optionalCookie(req)(SessionCookieName).flatMap { sessionCookie =>
-      Try(decodeSession(decryptSession(sessionCookie))).toOption
+    WabaseService.optionalCookie(req)(SessionCookieName).map { sessionCookie =>
+      try decodeSession(decryptSession(sessionCookie)) catch {
+        case NonFatal(e) => throw new AuthenticationException("Unable to decode session", e)
+      }
     }
   }
 

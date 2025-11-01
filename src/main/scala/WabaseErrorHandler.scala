@@ -35,7 +35,7 @@ object WabaseErrorHandler {
         debug(e.getMessage)
         HttpResponse(status = e.status, entity = e.getMessage)
       case e: AuthenticationException =>
-        debug(e.getMessage)
+        debug(e.getMessage, e.getCause)
         HttpResponse(status = Unauthorized)
       case e: AuthorizationException =>
         debug(e.getMessage)

@@ -164,6 +164,14 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
 
     response(Get("/restricted/restricted_view")).status shouldBe StatusCodes.Unauthorized
 
+    // invalid session, throws AuthenticationException with cause, which can be logged in debug mode with
+    // logger in logback-test.xml:
+    // <logger name="get.restricted.restricted_view" level="debug"/>
+    response(
+      authReq("abc", Get("/restricted/restricted_view"))
+    ).status shouldBe StatusCodes.Unauthorized
+
+
     resp = doBasicAuthReq("Gunza", "bad")
     resp.status shouldBe StatusCodes.Unauthorized
 
