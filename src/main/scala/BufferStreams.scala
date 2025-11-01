@@ -39,9 +39,9 @@ class FileBufferedFlow private (bufferSize: Int, maxFileSize: Long, outBufferSiz
   extends GraphStageWithMaterializedValue[FlowShape[ByteString, ByteString], Future[IOResult]] {
   private val in = Inlet[ByteString]("in")
   private val out = Outlet[ByteString]("out")
-  override val shape = FlowShape(in, out)
+  override val shape: FlowShape[ByteString,ByteString] = FlowShape(in, out)
 
-  override def createLogicAndMaterializedValue(attrs: Attributes) = {
+  override def createLogicAndMaterializedValue(attrs: Attributes): (GraphStageLogic with StageLogging, Future[IOResult]) = {
     val completionPromise = Promise[IOResult]()
     new GraphStageLogic(shape) with StageLogging {
       private var file: File = _
@@ -187,9 +187,9 @@ case class IncompleteResultSource[Mat](result: Source[ByteString, Mat]) extends 
 class ResultCompletionSink(resultCount: Int = 1)(implicit ec: scala.concurrent.ExecutionContext)
   extends GraphStageWithMaterializedValue[SinkShape[ByteString], Future[Seq[SerializedResult]]] {
   require(resultCount > 0, s"Result count must be greater than zero. ($resultCount < 1)")
-  val in = Inlet[ByteString]("in")
-  override val shape = SinkShape(in)
-  override def createLogicAndMaterializedValue(attrs: Attributes) = {
+  val in: Inlet[ByteString] = Inlet[ByteString]("in")
+  override val shape: SinkShape[ByteString] = SinkShape(in)
+  override def createLogicAndMaterializedValue(attrs: Attributes): (GraphStageLogic, Future[Seq[SerializedResult]]) = {
     val result = Promise[Seq[SerializedResult]]()
     new GraphStageLogic(shape) {
       private var byteString: ByteString = _

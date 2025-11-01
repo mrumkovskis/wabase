@@ -132,7 +132,7 @@ trait WabaseApp[User] {
 
   def _api(implicit user: User) = api
   def _apiMetadata(implicit user: User, state: ApplicationState) = apiMetadata
-  def _metadata(viewName: String)(implicit user: User, state: ApplicationState) = metadata(viewName)
+  def _metadata(viewName: String)(implicit user: User, state: ApplicationState): Map[String,Any] = metadata(viewName)
 
   private def setMaxContentSize(httpReq: HttpRequest, vdo: Option[ViewDef]) = vdo.map { vd =>
     if (vd.maxContentSize == null || httpReq == null) httpReq
@@ -500,7 +500,7 @@ trait WabaseApp[User] {
   private val qualifiedIdent = s"$ident(\\.$ident)*"
   private val qualifiedIdentRegex = s"^$qualifiedIdent$$".r
   private val validViewNameRegex = s"^$qualifiedIdent$$".r
-  def sanitizedViewName(viewName: String) =
+  def sanitizedViewName(viewName: String): String =
     if (validViewNameRegex.pattern.matcher(viewName).matches()) viewName else "Strange name"
   protected def noApiException(viewName: String, method: String, user: User): Exception =
     new BusinessException(s"${sanitizedViewName(viewName)}.$method is not a part of this API")
@@ -572,6 +572,6 @@ object WabaseAppConfig extends AppBase.AppConfig {
   val SerializationBufferMaxFileSizes: Map[String, Long] = MarshallingConfig.customDataFileMaxSizes
   def viewSerializationBufferMaxFileSize(viewName: String): Long =
     SerializationBufferMaxFileSizes.getOrElse(viewName, SerializationBufferMaxFileSize)
-  val CurrentUserParameterName = appConfig.getString("current-user-key-name")
-  val UserCredentialsParameterName = appConfig.getString("user-credentials-key-name")
+  val CurrentUserParameterName: String = appConfig.getString("current-user-key-name")
+  val UserCredentialsParameterName: String = appConfig.getString("user-credentials-key-name")
 }

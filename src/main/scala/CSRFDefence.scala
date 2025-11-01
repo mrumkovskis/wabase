@@ -4,6 +4,7 @@ import org.apache.pekko.http.scaladsl.server.Directives._
 import org.apache.pekko.http.scaladsl.server.{Directive0, Directive1}
 import org.apache.pekko.http.scaladsl.model.{HttpRequest, HttpResponse, Uri}
 import org.apache.pekko.http.scaladsl.model.headers.{Host, HttpCookie, HttpOrigin, HttpOriginRange, Origin, Referer, SameSite}
+import org.apache.pekko.http.scaladsl.server.Directive
 
 class CSRFException(message: String) extends Exception(message)
 
@@ -69,15 +70,15 @@ trait CSRFDefence { this: AppConfig =>
   lazy val CSRFCookieName = "XSRF-TOKEN"
   lazy val CSRFHeaderName = "X-XSRF-TOKEN"
 
-  def csrfCheck = checkSameOrigin & checkCSRFToken
+  def csrfCheck: Directive[Unit] = checkSameOrigin & checkCSRFToken
 
-  protected val targetOrigin =
+  protected val targetOrigin: HttpOrigin =
     if (appConfig.hasPath("host")) Uri(appConfig.getString("host")) match {
       case u => HttpOrigin(u.scheme, Host(u.authority.host, u.authority.port))
     } else null
 
   private val schemas = List("http", "https")
-  protected def fullOriginList(h: Host) =
+  protected def fullOriginList(h: Host): List[HttpOrigin] =
     schemas
     .filterNot {
       case "https" => h.port == 80
@@ -97,7 +98,7 @@ trait CSRFDefence { this: AppConfig =>
           }).recover(_ => error(s"Either 'Host' or 'X-Forwarded-Host' http header must be set.", uri))
     }
 
-  protected def normalizePort(origin: HttpOrigin) = {
+  protected def normalizePort(origin: HttpOrigin): HttpOrigin = {
     if (origin.host.port == 0)
       origin.scheme match {
         case "http" => origin.copy(host = origin.host.copy(port = 80))
@@ -155,7 +156,7 @@ trait CSRFDefence { this: AppConfig =>
 
   def deleteCSRFCookie: Directive0 = deleteCookie(CSRFCookieName)
 
-  protected def error(msg: String, uri: Uri) =
+  protected def error(msg: String, uri: Uri): Nothing =
     throw new CSRFException(s"$msg (url - ${uri.withQuery(Uri.Query(Map[String, String]())).toString()})")
 
 }

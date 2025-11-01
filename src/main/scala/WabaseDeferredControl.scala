@@ -10,6 +10,7 @@ import org.wabase.DeferredControl.`X-Deferred`
 import org.wabase.WabaseService.{RequestHandler, Wabase}
 
 import scala.concurrent.Future
+import org.apache.pekko.actor.ActorRef
 
 class WabaseDeferredControl(
   wabase: WabaseService.Wabase,
@@ -25,7 +26,7 @@ class WabaseDeferredControl(
   }
   private val deferredStorage: DeferredControl.DeferredStorage = initDeferredStorage
 
-  protected val cleanupActor = as.actorOf(Props(classOf[DeferredControl.DeferredCleanup], deferredStorage))
+  protected val cleanupActor: ActorRef = as.actorOf(Props(classOf[DeferredControl.DeferredCleanup], deferredStorage))
 
   def publishUserDeferredStatuses(user: String): Unit = {
     val deferredRequests = deferredStorage.getUserDeferredStatuses(user)

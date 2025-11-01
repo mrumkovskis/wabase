@@ -25,19 +25,20 @@ import scala.language.reflectiveCalls
 import scala.util.Try
 import scala.util.control.NonFatal
 import scala.util.matching.Regex
+import org.mojoz.metadata.ViewDef_
 
 trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
   import AppMetadata._
 
-  val knownApiMethods = Set("create", "count", "get", "list", "insert", "update", "save", "delete", "head", "options")
+  val knownApiMethods: Set[String] = Set("create", "count", "get", "list", "insert", "update", "save", "delete", "head", "options")
   private val fullKeyOps = Set("get", "insert", "update", "save", "delete")
-  override lazy val yamlMetadata = YamlMd.fromPaths(Seq("jobs", "routes", "tables", "views"))
+  override lazy val yamlMetadata: Seq[YamlMd] = YamlMd.fromPaths(Seq("jobs", "routes", "tables", "views"))
   override lazy val uninheritableExtras: Seq[String] = Seq("api")
-  lazy val knownViewExtras = KnownViewExtras()
-  lazy val knownPrefixes = Set(KnownViewExtras.Auth)
-  val knownAuthOps = KnownAuthOps()
-  lazy val knownFieldExtras = KnownFieldExtras()
+  lazy val knownViewExtras: Set[String] = KnownViewExtras()
+  lazy val knownPrefixes: Set[String] = Set(KnownViewExtras.Auth)
+  val knownAuthOps: Set[String] = KnownAuthOps()
+  lazy val knownFieldExtras: Set[String] = KnownFieldExtras()
 
   lazy val defaultCpName = TresqlResourcesConf.DefaultCpName
 
@@ -66,7 +67,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   override lazy val nameToViewDef: Map[String, ViewDef] =
     toAppViewDefs(viewDefLoader.nameToViewDef)
 
-  val publicApiRoleName = config.getString("app.public-api.role-name")
+  val publicApiRoleName: String = config.getString("app.public-api.role-name")
   private val publicViewsLocationPattern = config.getString("app.public-views.location-pattern").r
   private lazy val publicViewNames: Set[String] = {
     yamlMetadata
@@ -74,7 +75,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       .flatMap(_.parsed.flatMap(_.get("name").toSeq).filter(_ != null).map(_.toString)).toSet
       .filter(nameToViewDef.contains)
   }
-  def isPublicView(viewName: String) = publicViewNames.contains(viewName)
+  def isPublicView(viewName: String): Boolean = publicViewNames.contains(viewName)
 
   private val actionParser: String => String => Map[String, Any] => Action =
     objectName => dataKey => dataMap => {
@@ -95,7 +96,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     m.asScala
   }
 
-  protected def opParserCache(name: String) = actionCache.getOrElseUpdate(
+  protected def opParserCache(name: String): OpParser.Caches = actionCache.getOrElseUpdate(
     name,
     OpParser.createOpParserCache(OpParser.SerializedCaches(Map(), Map()), parserCacheSize)
   )
@@ -104,7 +105,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   lazy val viewNameToQueryVariablesCache: Map[String, Seq[ast.Variable]] =
     loadViewNameToQueryVariablesCache(resourceLoader)
 
-  def toAppViewDefs(mojozViewDefs: Map[String, ViewDef]) = transformAppViewDefs {
+  def toAppViewDefs(mojozViewDefs: Map[String, ViewDef]): Map[String,ViewDef] = transformAppViewDefs {
     val inlineViewDefNames =
       mojozViewDefs.values.flatMap { viewDef =>
         viewDef.fields.filter { field =>
@@ -153,11 +154,11 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
   def collectViews[A](f: PartialFunction[ViewDef, A]): Iterable[A] = nameToViewDef.values.collect(f)
 
-  protected val handledViewExtras = KnownViewExtras() - KnownViewExtras.QuereaseViewExtrasKey
-  protected val handledFieldExtras = KnownFieldExtras() - KnownFieldExtras.QuereaseFieldExtrasKey
-  lazy val knownInlineViewExtras = knownViewExtras ++ knownFieldExtras
+  protected val handledViewExtras: Set[String] = KnownViewExtras() - KnownViewExtras.QuereaseViewExtrasKey
+  protected val handledFieldExtras: Set[String] = KnownFieldExtras() - KnownFieldExtras.QuereaseFieldExtrasKey
+  lazy val knownInlineViewExtras: Set[String] = knownViewExtras ++ knownFieldExtras
 
-  protected def isSortableField(viewDef: ViewDef, f: FieldDef) = {
+  protected def isSortableField(viewDef: ViewDef, f: FieldDef): Boolean = {
     FieldDefExtrasUtils.getBooleanExtraOpt(viewDef, f, KnownFieldExtras.Sortable) getOrElse {
       if (f.orderBy != null && viewDef.table != null && (
         !f.type_.isComplexType || viewDefOption(f.type_.name).exists { childView =>
@@ -857,11 +858,11 @@ class OpParser(viewName: String, caches: OpParser.Caches)
     * view name since spaces are eliminated at the beginning of input before applying parser */
   val ActionRegex = new Regex(Action().map(a => if (a == Action.Job) JobCall else a)
     .mkString("(?U)(", "|", """)(?=\s+)"""))
-  val ViewNameRegex = "(?U)\\w+".r
-  val ConfPropRegex = """\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*(?:\.\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*+)*""".r
-  val HttpClientFileStreamerNameRegex = """\w+(-\w+)*""".r
-  val RedirectOpRegex = """redirect\s+""".r
-  val RedirectToKeyRegex = """[_\p{IsLatin}][_\p{IsLatin}0-9]*$""".r
+  val ViewNameRegex: Regex = "(?U)\\w+".r
+  val ConfPropRegex: Regex = """\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*(?:\.\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*+)*""".r
+  val HttpClientFileStreamerNameRegex: Regex = """\w+(-\w+)*""".r
+  val RedirectOpRegex: Regex = """redirect\s+""".r
+  val RedirectToKeyRegex: Regex = """[_\p{IsLatin}][_\p{IsLatin}0-9]*$""".r
 
   def parseStep(step: String): Step = caches.stepCache.get(step).getOrElse {
     val parsedStep = phrase(this.step)(new scala.util.parsing.input.CharSequenceReader(step)) match {
@@ -1140,7 +1141,7 @@ class OpParser(viewName: String, caches: OpParser.Caches)
 }
 
 object OpParser extends Loggable {
-  val InvocationRegex = """(?U)\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*(\.\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*)*""".r
+  val InvocationRegex: Regex = """(?U)\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*(\.\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*)*""".r
 
   case class SerializedCaches(stepCache: Map[String, Action.Step], opCache: Map[String, Action.Op])
   case class Caches(stepCache: SimpleCacheBase[Action.Step], opCache: SimpleCacheBase[Action.Op])
@@ -1216,7 +1217,7 @@ object AppMetadata extends Loggable {
     refViewName: String, filterType: FilterType,
   )
 
-  val AuthEmpty = AuthFilters(Nil, Nil, Nil, Nil, Nil)
+  val AuthEmpty: AuthFilters = AuthFilters(Nil, Nil, Nil, Nil, Nil)
 
   val JoinsCompilerCacheName  = "joins-compiler-cache.cbor"
   def loadJoinsParserCache(getResourceAsStream: String => InputStream): Map[String, Map[String, Exp]] = {
@@ -1277,7 +1278,7 @@ object AppMetadata extends Loggable {
     val Job   = "job"
     val Head   = "head"
     val Options = "options"
-    def apply() =
+    def apply(): Set[String] =
       Set(Get, List, Save, Insert, Update, Upsert, Delete, Create, Count, Job, Head, Options)
 
     val ValidationsKey = "validations"
@@ -1287,7 +1288,7 @@ object AppMetadata extends Loggable {
     val LimitKey  = "limit"
     val OrderKey  = "sort"
 
-    val allowedCookiePars =
+    val allowedCookiePars: Set[String] =
       Set("name", "value", "expires", "max_age", "domain", "path", "secure", "http_only", "extension")
 
     object ConfTypes {
@@ -1574,7 +1575,7 @@ object AppMetadata extends Loggable {
     updatable: Boolean,
     excluded: Boolean,
   ) {
-    val readonly = !insertable && !updatable || excluded
+    val readonly: Boolean = !insertable && !updatable || excluded
   }
 
   trait AppFieldDefExtras {
@@ -1616,14 +1617,14 @@ object AppMetadata extends Loggable {
     def updateWabaseExtras(updater: AppViewDef => AppViewDef): ViewDef =
       updateExtras(WabaseViewExtrasKey, updater, defaultExtras)
 
-    override protected def updateExtrasMap(extras: Map[String, Any]) = viewDef.copy(extras = extras)
+    override protected def updateExtrasMap(extras: Map[String, Any]): ViewDef_[FieldDef] = viewDef.copy(extras = extras)
     override protected def extrasMap = viewDef.extras
   }
   implicit class AugmentedAppFieldDef(fieldDef: FieldDef)
          extends QuereaseMetadata.AugmentedQuereaseFieldDef(fieldDef)
             with AppFieldDefExtras {
     private val defaultExtras = AppFieldDef()
-    val appExtras = extras(WabaseFieldExtrasKey, defaultExtras)
+    val appExtras: AppFieldDef = extras(WabaseFieldExtrasKey, defaultExtras)
     override val api = appExtras.api
     override val label = appExtras.label
     override val required = appExtras.required
@@ -1671,12 +1672,12 @@ object AppMetadata extends Loggable {
 
   def this() = this(getClass.getResourceAsStream _)()
 
-  val integerNamePatterns = integerNamePatternStrings.map(pattern).toSeq
-  val decimalNamePatterns = decimalNamePatternStrings.map(pattern).toSeq
+  val integerNamePatterns: Seq[Pattern] = integerNamePatternStrings.map(pattern).toSeq
+  val decimalNamePatterns: Seq[Pattern] = decimalNamePatternStrings.map(pattern).toSeq
 
-  override def isIntegerName(name: String) =
+  override def isIntegerName(name: String): Boolean =
     integerNamePatterns exists matches(name)
-  override def isDecimalName(name: String) =
+  override def isDecimalName(name: String): Boolean =
     decimalNamePatterns exists matches(name)
   }
 
@@ -1691,7 +1692,7 @@ object AppMetadata extends Loggable {
     val Insert = "insert"
     val Update = "update"
     val Delete = "delete"
-    def apply() =
+    def apply(): Set[String] =
       Set(Get, List, Save, Insert, Update, Delete)
   }
 
@@ -1708,7 +1709,7 @@ object AppMetadata extends Loggable {
     val Swagger = "swagger"
     val QuereaseViewExtrasKey = QuereaseMetadata.QuereaseViewExtrasKey
     val WabaseViewExtrasKey = AppMetadata.WabaseViewExtrasKey
-    def apply() =
+    def apply(): Set[String] =
       Set(Api, Auth, Key, Limit, Validations, ExplicitDb,
           Decoder, Timeout, SqlTimeout, Swagger, QuereaseViewExtrasKey, WabaseViewExtrasKey,
       ) ++
@@ -1732,7 +1733,7 @@ object AppMetadata extends Loggable {
     val Swagger = "swagger"
     val QuereaseFieldExtrasKey = QuereaseMetadata.QuereaseFieldExtrasKey
     val WabaseFieldExtrasKey = AppMetadata.WabaseFieldExtrasKey
-    def apply() = Set(
+    def apply(): Set[String] = Set(
       Domain, Hidden, Sortable, Visible, Required,
       FieldApi, Initial, Swagger, QuereaseFieldExtrasKey, WabaseFieldExtrasKey)
   }
@@ -1756,29 +1757,29 @@ object AppMetadata extends Loggable {
         case Some(null) => Seq("")
         case Some(x) => Seq(x)
       }
-    def getIntExtra(name: String, viewDef: ViewDef) =
+    def getIntExtra(name: String, viewDef: ViewDef): Option[Int] =
       Option(viewDef.extras).flatMap(_ get name).map {
         case i: Int => i
         case x => sys.error(
           s"Expecting int value, viewDef, key: ${viewDef.name}, $name")
       }
-    def getStringExtra(name: String, viewDef: ViewDef) =
+    def getStringExtra(name: String, viewDef: ViewDef): Option[String] =
       Option(viewDef.extras).flatMap(_ get name).map {
         case s: String => s
         case x => sys.error(
           s"Expecting string value, viewDef, key: ${viewDef.name}, $name")
       }
-    def getBooleanExtraOpt(name: String, viewDef: ViewDef) =
+    def getBooleanExtraOpt(name: String, viewDef: ViewDef): Option[Boolean] =
       Option(viewDef.extras).flatMap(_ get name).map {
         case b: Boolean => b
         case s: String if s == name => true
         case x => sys.error(
           s"Expecting boolean value or no value, viewDef, key: ${viewDef.name}.$name")
       }
-    def getBooleanExtra(name: String, viewDef: ViewDef) =
+    def getBooleanExtra(name: String, viewDef: ViewDef): Boolean =
       getBooleanExtraOpt(name, viewDef) getOrElse false
 
-    def toAuth(viewDef: ViewDef, authPrefix: String, knownAuthOps: Set[String]) = {
+    def toAuth(viewDef: ViewDef, authPrefix: String, knownAuthOps: Set[String]): AuthFilters = {
       import KnownAuthOps._
       viewDef.extras.keySet
         .filter(k => k == authPrefix || k.startsWith(authPrefix + " "))
@@ -1814,10 +1815,10 @@ object AppMetadata extends Loggable {
   }
 
   object FieldDefExtrasUtils {
-    def fieldNameToLabel(n: String) =
+    def fieldNameToLabel(n: String): String =
       n.replace("_", " ").capitalize
-    def fieldLabelFromName(f: FieldDef) = fieldNameToLabel(f.fieldName)
-    def getExtraOpt(viewDef: ViewDef, f: FieldDef, key: String) =
+    def fieldLabelFromName(f: FieldDef): String = fieldNameToLabel(f.fieldName)
+    def getExtraOpt(viewDef: ViewDef, f: FieldDef, key: String): Option[String] =
       Option(f.extras).flatMap(_ get key).map {
         case s: String => s
         case i: Int => i.toString
@@ -1829,14 +1830,14 @@ object AppMetadata extends Loggable {
         case x => sys.error(
           s"Expecting String, AnyVal, BigDecimal value or no value, viewDef field, key: ${viewDef.name}.${f.name}, $key")
       }
-    def getBooleanExtraOpt(viewDef: ViewDef, f: FieldDef, key: String) =
+    def getBooleanExtraOpt(viewDef: ViewDef, f: FieldDef, key: String): Option[Boolean] =
       Option(f.extras).flatMap(_ get key).map {
         case b: Boolean => b
         case s: String if s == key => true
         case x => sys.error(
           s"Expecting boolean value or no value, viewDef field, key: ${viewDef.name}.${f.name}, $key")
       }
-    def getBooleanExtra(viewDef: ViewDef, f: FieldDef, key: String) =
+    def getBooleanExtra(viewDef: ViewDef, f: FieldDef, key: String): Boolean =
       getBooleanExtraOpt(viewDef, f, key) getOrElse false
   }
 }

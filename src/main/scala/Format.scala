@@ -13,9 +13,9 @@ import scala.util.control.NonFatal
 object Format extends ValueConverter {
 
   class ThreadLocalDateFormat(val pattern: String) extends ThreadLocal[SimpleDateFormat] {
-    override def initialValue = { val f = new SimpleDateFormat(pattern); f.setLenient(false); f }
-    def apply(date: Date) = get.format(date)
-    def format(date: Date) = get.format(date)
+    override def initialValue: SimpleDateFormat = { val f = new SimpleDateFormat(pattern); f.setLenient(false); f }
+    def apply(date: Date): String = get.format(date)
+    def format(date: Date): String = get.format(date)
     def parse(str: String): Date =
       try get.parse(str)
       catch {
@@ -23,13 +23,13 @@ object Format extends ValueConverter {
       }
   }
 
-  def parseDate(s: String) =
+  def parseDate(s: String): Date =
     valueConverterDelegate.convertToType(s, ClassOfJavaUtilDate) match {
       case d: java.util.Date => d
       case _ => sys.error("Failed to parse date")
     }
 
-  def parseDateTime(s: String) =
+  def parseDateTime(s: String): Date =
     valueConverterDelegate.convertToType(s, ClassOfJavaUtilDate) match {
       case d: java.util.Date => d
       case _ => sys.error("Failed to parse datetime")

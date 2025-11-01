@@ -75,13 +75,13 @@ object WabaseServer {
     def apply(clazz: Class[_]): NoDepsLogger = new SslConfigLogger(Logger(clazz))
   }
 
-  val port = config.getInt("port")
-  lazy val isSslEnabled =
+  val port: Int = config.getInt("port")
+  lazy val isSslEnabled: Boolean =
     Option("app.server.ssl.enabled").filter(config.hasPath).map(config.getBoolean)
       .getOrElse(config.hasPath("app.server.ssl-config"))
 
-  lazy val shutdownOnKeyPressEnter = config.getBoolean("app.server.shutdown-on-keypress-enter")
-  lazy val shutdownOnBindFailed    = config.getBoolean("app.server.shutdown-on-bind-failed")
+  lazy val shutdownOnKeyPressEnter: Boolean = config.getBoolean("app.server.shutdown-on-keypress-enter")
+  lazy val shutdownOnBindFailed: Boolean    = config.getBoolean("app.server.shutdown-on-bind-failed")
 
   lazy val (app, server, bindingFuture) = {
     implicit val serverSystem: ActorSystem  = ActorSystem("wabase-server")

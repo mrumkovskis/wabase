@@ -121,7 +121,7 @@ trait I18n {
 }
 
 object I18nService {
-  val ApplicationLanguageCookiePostfix = config.getString("app.language-cookie-postfix")
+  val ApplicationLanguageCookiePostfix: String = config.getString("app.language-cookie-postfix")
 
   def setLanguage(lang: String, resp: HttpResponse): HttpResponse = {
     WabaseService.setCookie(resp)(

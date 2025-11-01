@@ -19,7 +19,7 @@ import scala.util.Failure
 
 object AppFileStreamer {
   private class FieldOrdering(val nameToIndex: Map[String, Int]) extends Ordering[String] {
-    override def compare(x: String, y: String) =
+    override def compare(x: String, y: String): Int =
       nameToIndex.getOrElse(x, 999) - nameToIndex.getOrElse(y, 999)
   }
   private val fieldNames = "id, filename, upload_time, content_type, size, sha_256, path"
@@ -64,7 +64,7 @@ object AppFileStreamer {
     def sha_256      = file_info.sha_256
     def source: Source[ByteString, Future[IOResult]] =
       FileIO.fromPath(java.nio.file.Paths.get(path))
-    def toMap = file_info.toMap ++ Map("path" -> path)
+    def toMap: Map[String,Any] = file_info.toMap ++ Map("path" -> path)
   }
 
   private val pFieldNames = "name, value, file_info"
@@ -184,7 +184,7 @@ class FileStreamer(
 
   import AppFileStreamer._
 
-  def createTempFile = {
+  def createTempFile: File = {
     val tempPath = new File(rootPath + "/" + "tmp")
     tempPath.mkdirs
     try File.createTempFile("tmp", null, tempPath) catch {
@@ -325,8 +325,8 @@ class FileStreamer(
 }
 
 object FileStreamerConfig {
-  val fsConfigTunablePaths = Set("files.path", "jdbc.query-timeout")
-  lazy val componentConfs = ComponentConf.getConfigs("file-streamer", fsConfigTunablePaths)
+  val fsConfigTunablePaths: Set[String] = Set("files.path", "jdbc.query-timeout")
+  lazy val componentConfs: ComponentConfs = ComponentConf.getConfigs("file-streamer", fsConfigTunablePaths)
   lazy val configs: Map[String, Config] = componentConfs.confs.toMap - "files" - "jdbc"
   lazy val fileStreamerFactory: FileStreamerFactory =
     getObjectOrNewInstance[FileStreamerFactory](componentConfs.root, "factory-class", "file streamer factory")

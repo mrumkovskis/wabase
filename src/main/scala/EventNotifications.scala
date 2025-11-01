@@ -45,16 +45,16 @@ trait ServerNotifications extends EventStreamMarshalling with WebSocketDirective
     /**
       * Consider [[serverSideEventAction]] instead
       * */
-    def wsNotificationsAction(userIdString: String) = {
+    def wsNotificationsAction(userIdString: String): Route = {
       handleWebSocketMessages(ServerNotifications.subscribeToWsMessages(
         bus => act => bus.subscribe(act, ServerNotifications.UserAddresseeMsg(userIdString)),
         _ => publishInitialEvents(userIdString)
       )(system))
     }
-    def publishUserEvents(user: String, events: Iterable[Any]) = {
+    def publishUserEvents(user: String, events: Iterable[Any]): Unit = {
       events.foreach(publishUserEvent(user, _))
     }
-    def publishUserEvent(user: String, event: Any) = {
+    def publishUserEvent(user: String, event: Any): Unit = {
       import ServerNotifications._
       val addressee = UserAddresseeMsg(user)
       EventBus.publish(EventMessage(addressee, event))
@@ -82,7 +82,7 @@ object ServerNotifications extends EventStreamMarshalling with Loggable {
 
   private val ServerEventFunction =
     OpParser.classNameFunctionName(config.getString("app.server-event-function"))
-  val SubscriberWatcherActorName = config.getString("app.server-event-subscriber-watcher-actor-name")
+  val SubscriberWatcherActorName: String = config.getString("app.server-event-subscriber-watcher-actor-name")
 
   private def invokeCreateServerEventFunction(event: Any)(as: ActorSystem) = {
     val (cn, fn) = ServerEventFunction
@@ -118,7 +118,7 @@ object ServerNotifications extends EventStreamMarshalling with Loggable {
     act: ActorRef,
     subscriptionFun: EventBus => ActorRef => Unit,
     initialPublications: EventBus => Unit,
-  )(as: ActorSystem) = {
+  )(as: ActorSystem): Unit = {
     // wait for the result here since this function is called in mapMaterializedValue and in the case of
     // Failure it will probably be silently omitted
     val watcher = Await.result(
@@ -206,10 +206,10 @@ object ServerNotifications extends EventStreamMarshalling with Loggable {
   )
 
   class EventSubscriberWatcher extends Actor with org.apache.pekko.actor.ActorLogging {
-    override def preStart() = {
+    override def preStart(): Unit = {
       logger.info(s"EventSubscriberWatcher actor started")
     }
-    override def receive = {
+    override def receive: PartialFunction[Any,Unit] = {
       case EventSubscriberActorMsg(actor, subscriptions, initialPublications) =>
         context watch actor
         subscriptions(EventBus)(actor)
@@ -218,7 +218,7 @@ object ServerNotifications extends EventStreamMarshalling with Loggable {
         EventBus.unsubscribe(actor)
         context unwatch actor
     }
-    override def postStop() = {
+    override def postStop(): Unit = {
       logger.info(s"EventSubscriberWatcher actor stopped")
     }
   }

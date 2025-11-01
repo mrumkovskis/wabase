@@ -144,12 +144,12 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   override def convertToType(value: Any, targetClass: Class[_]): Any =
     Format.convertToType(value, targetClass)
 
-  lazy val resultRenderersFactory = getObjectOrNewInstance[ResultRenderersFactory](
+  lazy val resultRenderersFactory: ResultRenderersFactory = getObjectOrNewInstance[ResultRenderersFactory](
     config, "result-renderers.factory-class", "result renderers factory"
   )
   lazy val resultRenderers: ResultRenderers = resultRenderersFactory.createResultRenderers
 
-  lazy val requestDecodersFactory = getObjectOrNewInstance[RequestDecodersFactory](
+  lazy val requestDecodersFactory: RequestDecodersFactory = getObjectOrNewInstance[RequestDecodersFactory](
     config, "request-decoders.factory-class", "request decoders factory"
   )
   lazy val requestDecoders: RequestDecoders.Decoders = requestDecodersFactory.createRequestDecoders(this)
@@ -263,7 +263,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   }
 
   protected def getKeyValues(
-      viewName: String, data: Map[String, Any], forApi: Boolean = false) = tryOp({
+      viewName: String, data: Map[String, Any], forApi: Boolean = false): Seq[Any] = tryOp({
     val keyFields     = if (forApi) viewNameToApiKeyFields(viewName)     else viewNameToKeyFields(viewName)
     val keyFieldNames = if (forApi) viewNameToApiKeyFieldNames(viewName) else viewNameToKeyFieldNames(viewName)
     val keyValues = tryOp(
@@ -280,7 +280,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     keyValues
   }, data)
 
-  protected def keyResult(ir: IdResult, viewName: String, data: Map[String, Any]) = {
+  protected def keyResult(ir: IdResult, viewName: String, data: Map[String, Any]): KeyResult = {
     KeyResult(ir, viewName, getKeyValues(viewName, data ++ ir.toMap, forApi = true))
   }
 
@@ -365,8 +365,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     stepName: String = null,
     contextStack: List[ActionContext] = Nil,
   ) {
-    val name = s"$viewName.$actionName" + Option(stepName).map(s => s".$s").getOrElse("")
-    def log(msg: String) = {
+    val name: String = s"$viewName.$actionName" + Option(stepName).map(s => s".$s").getOrElse("")
+    def log(msg: String): Unit = {
       logger.debug(msg)
       if(!logger.underlying.isDebugEnabled()) AppQuerease.this.logger.debug(msg)
     }

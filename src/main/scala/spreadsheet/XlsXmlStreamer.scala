@@ -13,7 +13,7 @@ case class Font(bold: Boolean) {
   }
 }
 object Font {
-  val BOLD = Font(true)
+  val BOLD: Font = Font(true)
 }
 case class NumberFormat(format: String) {
   require(format != null, "NumberFormat format must not be null")
@@ -25,10 +25,10 @@ case class NumberFormat(format: String) {
 }
 object NumberFormat {
   //? DATE_DMY          = NumberFormat("""dd.mm.yyyy;@""")
-  val DATE_YMD          = NumberFormat("""yyyy\-mm\-dd""")
-  val DATE_TIME_HM      = NumberFormat("""yyyy\-mm\-dd\ hh:mm""")
-  val DATE_TIME_HMS     = NumberFormat("""yyyy\-mm\-dd\ hh:mm:ss""")
-  val DATE_TIME_HMS_MS  = NumberFormat("""yyyy\-mm\-dd\ hh:mm:ss.000""")
+  val DATE_YMD: NumberFormat          = NumberFormat("""yyyy\-mm\-dd""")
+  val DATE_TIME_HM: NumberFormat      = NumberFormat("""yyyy\-mm\-dd\ hh:mm""")
+  val DATE_TIME_HMS: NumberFormat     = NumberFormat("""yyyy\-mm\-dd\ hh:mm:ss""")
+  val DATE_TIME_HMS_MS: NumberFormat  = NumberFormat("""yyyy\-mm\-dd\ hh:mm:ss.000""")
 }
 case class Style(id: String, numberFormat: NumberFormat = null, font: Font = null) {
   require(id != null, "Style id must not be null")

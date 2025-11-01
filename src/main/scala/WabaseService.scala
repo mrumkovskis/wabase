@@ -31,6 +31,7 @@ import scala.jdk.CollectionConverters._
 import scala.util.Try
 import scala.util.control.NonFatal
 import scala.util.parsing.input.CharSequenceReader
+import scala.util.matching.Regex
 
 case class WabaseUser(properties: Map[String, Any]) {
   val id: Long      = properties.get("id").collect {
@@ -135,7 +136,7 @@ object WabaseService {
     } catch { case NonFatal(e) => errorHandler(e) }
   }
 
-  val CreateCountActionAndViewRegex = """(?U)(?:(count|create):)?([_\p{IsLatin}][\-\w]*)""".r
+  val CreateCountActionAndViewRegex: Regex = """(?U)(?:(count|create):)?([_\p{IsLatin}][\-\w]*)""".r
   val WabaseUserAttributeName = "wabase-user"
 
   val okResponse: HttpResponse = HttpResponse(StatusCodes.OK)
@@ -700,7 +701,7 @@ object WabaseService {
     }: ErrorHandler)
   }
 
-  def error(status: StatusCode, msg: String) = throw new HttpException(status, msg)
+  def error(status: StatusCode, msg: String): Nothing = throw new HttpException(status, msg)
 }
 
 object ApplicationStateExtractor {

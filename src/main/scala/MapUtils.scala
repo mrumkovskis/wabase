@@ -19,7 +19,7 @@ object MapUtils {
     transform(path, map, "")
   }
 
-  def replace(path: String, value: Any, map: Map[String, Any]) =
+  def replace(path: String, value: Any, map: Map[String, Any]): Map[String,Any] =
     transform(
       path,
       _ => value,
@@ -39,13 +39,13 @@ object MapUtils {
     flatenValue(map)
   }
 
-  def zipMaps[T, K](map1: Map[T, K], map2: Map[T, K]) =
+  def zipMaps[T, K](map1: Map[T, K], map2: Map[T, K]): Map[T,(Any, Any)] =
     map1.map{kv => (kv._1, (kv._2, map2.getOrElse(kv._1, null)))} ++
       map2.map{kv => (kv._1, (map1.getOrElse(kv._1, null), kv._2))}
 
-  def flattenAndZipMaps(map1: Map[String, _], map2: Map[String, _], keyFields: List[String] = Nil) = zipMaps(flattenTree(map1, keyFields), flattenTree(map2, keyFields))
-  def diffMaps(map1: Map[String, _], map2: Map[String, _], keyFields: List[String] = Nil) = flattenAndZipMaps(map1, map2, keyFields).filter(kv => kv._2._1 != kv._2._2)
-  def jsonizeDiff(map: Map[List[Any], (Any, Any)]) = {
+  def flattenAndZipMaps(map1: Map[String, _], map2: Map[String, _], keyFields: List[String] = Nil): Map[List[Any],(Any, Any)] = zipMaps(flattenTree(map1, keyFields), flattenTree(map2, keyFields))
+  def diffMaps(map1: Map[String, _], map2: Map[String, _], keyFields: List[String] = Nil): Map[List[Any],(Any, Any)] = flattenAndZipMaps(map1, map2, keyFields).filter(kv => kv._2._1 != kv._2._2)
+  def jsonizeDiff(map: Map[List[Any], (Any, Any)]): List[Map[String,Any]] = {
     implicit def orderLists[A <: List[Any]]: Ordering[A] = Ordering.by(l => l.toString)
     implicit def orderDifs[A <: (List[Any], (Any, Any))]: Ordering[A] = Ordering.by(_._1)
     map.toList.sorted.map(x => Map("path"-> x._1, "old_value"-> x._2._1, "new_value"-> x._2._2))
@@ -101,7 +101,7 @@ object MapRecursiveExtensions {
   // path matcher support
   case class /(node: Any, item: Any){
     def /(i2: Any) = new /(this, i2)
-    override def toString = node.toString + "/" + item
+    override def toString: String = node.toString + "/" + item
   }
   implicit class atRoot(s: String){
     def /(s2: Any) = new /(s, s2)

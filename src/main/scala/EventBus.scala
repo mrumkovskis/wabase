@@ -10,7 +10,7 @@ trait EventBus extends ActorEventBus with LookupClassification {
   override type Event = EventMessage
   override type Classifier = Any
 
-  override protected def publish(event: Event, subscriber: Subscriber) = subscriber ! event.payload
+  override protected def publish(event: Event, subscriber: Subscriber): Unit = subscriber ! event.payload
   override protected def classify(event: Event): Classifier = event.topic
 
   override protected def mapSize(): Int = 128

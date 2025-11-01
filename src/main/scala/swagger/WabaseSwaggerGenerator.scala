@@ -84,18 +84,18 @@ class WabaseSwaggerGenerator(
     swagger
   }
 
-  lazy val viewNameToQe = qes.flatMap { qe =>
+  lazy val viewNameToQe: Map[String,Querease] = qes.flatMap { qe =>
     qe.nameToViewDef.map { case (n, v) => (n, qe) }
   }.toMap
 
-  lazy val viewdefs =
+  lazy val viewdefs: Seq[ViewDef] =
     qes.flatMap { qe =>
       dropIrrelevant(qe, qe.nameToViewDef.values.toList)
     }
-  lazy val viewDefMap = viewdefs.map(v => v.name -> v).toMap
+  lazy val viewDefMap: Map[String,ViewDef] = viewdefs.map(v => v.name -> v).toMap
 
   // https://swagger.io/docs/specification/data-models/data-types/
-  def schemaFromType(type_ : org.mojoz.metadata.Type) = type_.name match {
+  def schemaFromType(type_ : org.mojoz.metadata.Type): Schema[_ <: Object] = type_.name match {
     case n if type_.isComplexType =>
       (new Schema).$ref(refFromViewName(n))
     case "long" => (new IntegerSchema).format("int64")
@@ -125,16 +125,16 @@ class WabaseSwaggerGenerator(
     )
   }
 
-  def getReadOnly(viewdefs: Map[String, ViewDef])(field: FieldDef) = {
+  def getReadOnly(viewdefs: Map[String, ViewDef])(field: FieldDef): Boolean = {
     if (!field.api.updatable && !field.api.insertable) true
     else if (field.type_.isComplexType) viewdefs.get(field.type_.name).exists(_.saveTo == Nil)
     else false
   }
 
-  def fieldRequired(viewdefs: Map[String, ViewDef])(field: FieldDef) =
+  def fieldRequired(viewdefs: Map[String, ViewDef])(field: FieldDef): Boolean =
     !getReadOnly(viewdefs)(field) && (field.required || !field.nullable)
 
-  def addEnumIfNeeded(enums: Seq[String], schema: Schema[_]) = {
+  def addEnumIfNeeded(enums: Seq[String], schema: Schema[_]): Schema[_] = {
     (enums, schema) match {
       case (enums, stringSchema: StringSchema) if enums != null => enums.foreach(stringSchema.addEnumItem)
       case _ =>
@@ -189,8 +189,8 @@ class WabaseSwaggerGenerator(
   }
 
   val schemaRefPrefix = "#/components/schemas/"
-  def refFromViewName(viewName: String) = s"${schemaRefPrefix}${viewName}"
-  def viewNameFromRef(ref: String) = if (ref.startsWith(schemaRefPrefix)) ref.substring(schemaRefPrefix.length) else ref
+  def refFromViewName(viewName: String): String = s"${schemaRefPrefix}${viewName}"
+  def viewNameFromRef(ref: String): String = if (ref.startsWith(schemaRefPrefix)) ref.substring(schemaRefPrefix.length) else ref
 
   def fileContent(view: String): Content = {
     val content = new Content
@@ -241,7 +241,7 @@ class WabaseSwaggerGenerator(
     content.addMediaType("text/plain", mediaType)
   }
 
-  def responseContent(view: String, array: Boolean = false) =
+  def responseContent(view: String, array: Boolean = false): Content =
     jsonContent(view, array)
 
   def createOperation(summary: String, description: String): Operation =
@@ -403,13 +403,13 @@ class WabaseSwaggerGenerator(
     op
   }
 
-  def addBadRequestResponse(op: Operation)     = addErrorResponse(op, "400")
-  def addForbiddenResponse(op: Operation, viewDef: ViewDef) = addErrorResponse(op, "403")
-  def addNotFoundResponse(op: Operation)       = addErrorResponse(op, "404")
-  def addInternalServerError(op: Operation)    = addErrorResponse(op, "500")
-  def addServiceUnavailabeError(op: Operation) = addErrorResponse(op, "503")
+  def addBadRequestResponse(op: Operation): Operation     = addErrorResponse(op, "400")
+  def addForbiddenResponse(op: Operation, viewDef: ViewDef): Operation = addErrorResponse(op, "403")
+  def addNotFoundResponse(op: Operation): Operation       = addErrorResponse(op, "404")
+  def addInternalServerError(op: Operation): Operation    = addErrorResponse(op, "500")
+  def addServiceUnavailabeError(op: Operation): Operation = addErrorResponse(op, "503")
 
-  def hasApiFields(view: String) =
+  def hasApiFields(view: String): Boolean =
     viewDefMap.get(view).exists(_.fields.exists(isApiField))
 
   def addRequestBody(op: Operation, view: String, array: Boolean = false): Operation = {
@@ -429,20 +429,20 @@ class WabaseSwaggerGenerator(
   }
 
   implicit class RichOperation(val op: Operation) {
-    val delegate = WabaseSwaggerGenerator.this
-    def addBadRequestResponse = delegate.addBadRequestResponse(op)
+    val delegate: WabaseSwaggerGenerator = WabaseSwaggerGenerator.this
+    def addBadRequestResponse: Operation = delegate.addBadRequestResponse(op)
     def addCookieParameters(method: String, viewDef: ViewDef, keySize: Int = 99): Operation =
           delegate.addCookieParameters(op, method, viewDef, keySize)
     def addErrorResponse(code: String, description: String, content: Content = null): Operation =
           delegate.addErrorResponse(op, code, description, content)
     def addFileRequestBody(view: String): Operation = delegate.addFileRequestBody(op, view)
-    def addForbiddenResponse(viewDef: ViewDef) = delegate.addForbiddenResponse(op, viewDef)
+    def addForbiddenResponse(viewDef: ViewDef): Operation = delegate.addForbiddenResponse(op, viewDef)
     def addHeaderParameters(method: String, viewDef: ViewDef, keySize: Int = 99): Operation =
           delegate.addHeaderParameters(op, method, viewDef, keySize)
     def addIntegerResponse(description: String, code: String = "200"): Operation =
           delegate.addIntegerResponse(op, description, code)
-    def addInternalServerError = delegate.addInternalServerError(op)
-    def addNotFoundResponse  = delegate.addNotFoundResponse(op)
+    def addInternalServerError: Operation = delegate.addInternalServerError(op)
+    def addNotFoundResponse: Operation  = delegate.addNotFoundResponse(op)
     def addParameters(method: String, viewDef: ViewDef, keySize: Int = 99): Operation =
           delegate.addParameters(op, method, viewDef, keySize)
     def addPathParameter(field: FieldDef): Operation =
@@ -460,7 +460,7 @@ class WabaseSwaggerGenerator(
     def addQueryParameters(method: String, viewDef: ViewDef, keySize: Int = 99): Operation =
           delegate.addQueryParameters(op, method, viewDef, keySize)
     def addRequestBody(view: String, array: Boolean = false): Operation = delegate.addRequestBody(op, view, array)
-    def addServiceUnavailabeError = delegate.addServiceUnavailabeError(op)
+    def addServiceUnavailabeError: Operation = delegate.addServiceUnavailabeError(op)
     def addSuccessPlaintextResponse(view: String, code: String = "200"): Operation =
           delegate.addSuccessPlaintextResponse(op, view, code)
     def addSuccessResponse(view: String, code: String = "200", array: Boolean = false): Operation =
@@ -505,9 +505,9 @@ class WabaseSwaggerGenerator(
     }
   }
 
-  def rootPathForView(viewDef: ViewDef) = s"/${viewDef.name}"
+  def rootPathForView(viewDef: ViewDef): String = s"/${viewDef.name}"
 
-  def pathWithKey(method: String, viewDef: ViewDef, keySize: Int = 99) = {
+  def pathWithKey(method: String, viewDef: ViewDef, keySize: Int = 99): String = {
     val infix = method match {
       case "create" => s":$method"
       case "count"  => s":$method"

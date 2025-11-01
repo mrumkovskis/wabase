@@ -13,9 +13,9 @@ trait HttpClient {
 
 object HttpClientConfig {
   val rootPath = "http-client"
-  val httpTunablePaths =
+  val httpTunablePaths: Set[String] =
     Set("server-port", "server-path", "server-ws", "request-timeout", "await-timeout", "ssl-config")
-  lazy val componentConfs = ComponentConf.getConfigs(rootPath, httpTunablePaths)
+  lazy val componentConfs: ComponentConfs = ComponentConf.getConfigs(rootPath, httpTunablePaths)
   lazy val configs: Map[String, Config] = componentConfs.confs.toMap - "ssl-config"
   lazy val httpClientFactory: HttpClientFactory =
     getObjectOrNewInstance[HttpClientFactory](componentConfs.root, "factory-class", "http client factory")

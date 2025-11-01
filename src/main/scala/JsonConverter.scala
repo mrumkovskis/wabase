@@ -42,44 +42,44 @@ trait JsonConverter[DTO <: Dto] { self: AppQuereaseIo[DTO] =>
     case x => JsString(String.valueOf(x))
   }
   implicit object DtoJsonFormat extends RootJsonFormat[DTO] {
-    def read(value: JsValue) = sys.error("not implemented yet!")
-    def write(value: DTO) = w(self.toMap(value))
+    def read(value: JsValue): DTO = sys.error("not implemented yet!")
+    def write(value: DTO): JsValue = w(self.toMap(value))
   }
   implicit object DtoListJsonFormat extends RootJsonFormat[List[DTO]] {
-    def read(value: JsValue) = sys.error("not implemented yet!")
-    def write(value: List[DTO]) = w(value map (self.toMap))
+    def read(value: JsValue): List[DTO] = sys.error("not implemented yet!")
+    def write(value: List[DTO]): JsValue = w(value map (self.toMap))
   }
 
   implicit object MapJsonFormat extends JsonFormat[Map[String, Any]] {
-    def read(value: JsValue) = {
+    def read(value: JsValue): Map[String,Any] = {
       value match {
         case _: JsObject => r(value).asInstanceOf[Map[String, Any]]
         case x => sys.error("Invalid JsValue object, unable to produce map: " + x)
       }
     }
-    def write(value: Map[String, Any]) = {
+    def write(value: Map[String, Any]): JsObject = {
       w(value).asInstanceOf[JsObject]
     }
   }
   implicit object TupleJsonFormat extends JsonFormat[(String, Any)] {
-    def read(value: JsValue) = {
+    def read(value: JsValue): (String, Any) = {
       value match {
         case JsObject(f) if f.size == 1 => r(value).asInstanceOf[Map[String, Any]].head
         case x => sys.error("Invalid JsValue object, unable to produce tuple: " + x)
       }
     }
-    def write(value: (String, Any)) = {
+    def write(value: (String, Any)): JsObject = {
       w(Map(value)).asInstanceOf[JsObject]
     }
   }
   implicit object ListJsonFormat extends JsonFormat[List[Any]] {
-    def read(value: JsValue) = {
+    def read(value: JsValue): List[Any] = {
       value match {
         case JsArray(elements: Vector[JsValue]) => r(value).asInstanceOf[Seq[_]].toList
         case x => sys.error("Invalid JsValue object, unable to produce list: " + x)
       }
     }
-    def write(value: List[Any]) = {
+    def write(value: List[Any]): JsArray = {
       w(value).asInstanceOf[JsArray]
     }
   }

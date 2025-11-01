@@ -8,7 +8,7 @@ import java.util.zip._
 class OdsStreamer(val zip: java.util.zip.ZipOutputStream, styles: List[OdsStyle] = Nil) {
   protected val writer = new OutputStreamWriter(zip)
   protected val contentStreamer = new OdsContentStreamer(writer, styles)
-  protected def resourceToZip(resourceName: String) = {
+  protected def resourceToZip(resourceName: String): Unit = {
     val source = Source.fromResource(resourceName)
     val value  = source.getLines().mkString("\n")
     source.close
@@ -27,30 +27,30 @@ class OdsStreamer(val zip: java.util.zip.ZipOutputStream, styles: List[OdsStyle]
   }
   def startWorksheet =
     contentStreamer.startWorksheet
-  def startTable(name: String) =
+  def startTable(name: String): Unit =
     contentStreamer.startTable(name, styles)
-  def startTable(name: String, individualStyles: List[OdsStyle]) =
+  def startTable(name: String, individualStyles: List[OdsStyle]): Unit =
     contentStreamer.startTable(name, individualStyles)
-  def startRow =
+  def startRow: Unit =
     contentStreamer.startRow(null)
-  def startRow(style: String) =
+  def startRow(style: String): Unit =
     contentStreamer.startRow(style)
   def cell(value: Any, style: String = null, formula: String = null,
-           colrep: Int = 1, colspan: Int = 1, rowspan: Int = 1) =
+           colrep: Int = 1, colspan: Int = 1, rowspan: Int = 1): Unit =
     contentStreamer.cell(value, style, formula, colrep, colspan, rowspan)
-  def endRow = {
+  def endRow: Unit = {
     contentStreamer.endRow
     writer.flush
   }
-  def endTable = {
+  def endTable: Unit = {
     contentStreamer.endTable
     writer.flush
   }
-  def endWorksheet = {
+  def endWorksheet: Unit = {
     contentStreamer.endWorksheet
     writer.flush
   }
-  def endWorkbook = {
+  def endWorkbook: Unit = {
     contentStreamer.endWorkbook
     writer.close
   }

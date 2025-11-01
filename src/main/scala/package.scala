@@ -207,7 +207,7 @@ package object wabase extends Loggable {
   }
 
   case class PoolName(connectionPoolName: String)
-  lazy val DEFAULT_CP = {
+  lazy val DEFAULT_CP: PoolName = {
     val dcp = PoolName(TresqlResourcesConf.DefaultCpName)
     if (dcp.connectionPoolName == null)
       logger.debug("Default JDBC connection pool disabled")

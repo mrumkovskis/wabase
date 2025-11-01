@@ -10,10 +10,11 @@ import scala.util.matching.Regex
 import scala.language.postfixOps
 import scala.util.Try
 import scala.util.matching.Regex.Match
+import java.sql.Date
 
 object Calendar {
 
-  val timeFormat = DateTimeFormatter.ofPattern("HH:mm:ss")
+  val timeFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")
 
   class calendar extends calendar_base {
     var value: sDate = null
@@ -74,30 +75,30 @@ object Calendar {
     dto
   }
 
-  def today = {
+  def today: Date = {
     java.sql.Date.valueOf(LocalDate.now)
   }
 
-  def month(date: LocalDate, locale: Locale) = {
+  def month(date: LocalDate, locale: Locale): String = {
     date.getMonth.getDisplayName(java.time.format.TextStyle.FULL_STANDALONE, locale)
   }
 
-  def year(date: LocalDate) = {
+  def year(date: LocalDate): String = {
     f"${date.getYear}%04d"
   }
 
-  def days(locale: Locale) = {
+  def days(locale: Locale): List[String] = {
     val firstDay = WeekFields.of(locale).getFirstDayOfWeek.getValue - 1
     val days = DayOfWeek.values.map(d => d.getValue -> d.getDisplayName(format.TextStyle.FULL_STANDALONE, locale)).toMap
     (0 to 6).map(i => (i + firstDay) % 7 + 1).map(days(_)).toList
   }
 
-  def weeks(date: LocalDate) = {
+  def weeks(date: LocalDate): List[String] = {
     val wnr = date.withDayOfMonth(1).get(ChronoField.ALIGNED_WEEK_OF_YEAR)
     0 to 5 map (_ + wnr) map (_.toString) toList
   }
 
-  def calendar(date: LocalDate, locale: Locale, time: Option[String]) = {
+  def calendar(date: LocalDate, locale: Locale, time: Option[String]): List[String] = {
     val timeStr = time.map(" " + _).getOrElse("")
     val firstDayOfMonth = date.withDayOfMonth(date.range(ChronoField.DAY_OF_MONTH).getMinimum.toInt)
     val dayNr = firstDayOfMonth.getDayOfWeek.getValue

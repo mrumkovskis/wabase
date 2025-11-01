@@ -11,6 +11,7 @@ import java.io.{ByteArrayOutputStream, InputStream, OutputStream}
 import java.nio.file.FileSystems
 import scala.concurrent.{ExecutionContext, Future}
 import scala.jdk.CollectionConverters._
+import scala.util.matching.Regex
 
 trait WabaseTemplate {
   def apply(template: String, data: Iterable[_])(implicit
@@ -48,7 +49,7 @@ trait WabaseTemplateLoader {
 
 class DefaultWabaseTemplateLoader extends WabaseTemplateLoader {
   val TemplateDirParam = "app.template.dir"
-  val fn_reg_ex = """(\d+?)/([0-9a-fA-F]{64})$""".r // filename in form: id/sha256
+  val fn_reg_ex: Regex = """(\d+?)/([0-9a-fA-F]{64})$""".r // filename in form: id/sha256
   val template_dir = if (config.hasPath(TemplateDirParam)) config.getString(TemplateDirParam) else null
 
   override def load(template: String)(implicit
@@ -172,7 +173,7 @@ object PdfRenderer {
     }
   }
 
-  def render(htmlContent: String, outputStream: OutputStream) = {
+  def render(htmlContent: String, outputStream: OutputStream): Unit = {
     val renderer = new ITextRenderer
 
     val sharedContext = renderer.getSharedContext

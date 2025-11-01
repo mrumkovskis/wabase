@@ -41,7 +41,7 @@ object WabaseAuthentication extends Authentication[WabaseUser] {
   override def encodeSession(session: Session): String = Json.encode(session).toUtf8String
   override def decodeSession(session: String): Session = Json.decode(ByteString(session)).to[Session].value
 
-  def userPrincipal(user: WabaseUser) = userInfo(user)
+  def userPrincipal(user: WabaseUser): String = userInfo(user)
 
   def extractSession(req: HttpRequest): Option[Session] = {
     WabaseService.optionalCookie(req)(SessionCookieName).map { sessionCookie =>
@@ -124,7 +124,7 @@ object WabaseAuthentication extends Authentication[WabaseUser] {
   def optUserFromRespAttributes(resp: HttpResponse): Option[WabaseUser] =
     resp.attribute(AttributeKey[WabaseUser](WabaseService.WabaseUserAttributeName))
 
-  def mergeReqRespUserData(reqUser: WabaseUser, resp: HttpResponse) =
+  def mergeReqRespUserData(reqUser: WabaseUser, resp: HttpResponse): WabaseUser =
     optUserFromRespAttributes(resp).map { u =>
       val (rp, cp) = u.properties.partition(_._2 == null)
       // remove null values, update rest
