@@ -24,7 +24,6 @@ import org.wabase.ResultRenderers.EncoderFactoryCreator
 
 import scala.annotation.tailrec
 import scala.collection.mutable.ListBuffer
-import io.bullet.borer.Reader
 
 object ResultEncoder {
   type EncoderFactory = OutputStream => ResultEncoder
@@ -420,7 +419,7 @@ object ResultRenderer {
       } else r.unexpectedDataItem(expected = "Map")
     }
 
-    protected def reader(data: ByteString, decodeFrom: Target): borer.InputReader[_ <: Reader.Config] = decodeFrom match {
+    protected def reader(data: ByteString, decodeFrom: Target) = decodeFrom match {
       case _: Cbor.type => Cbor.reader(data)
       case _: Json.type => Json.reader(data, Json.DecodingConfig.default.copy(
         maxNumberAbsExponent = 308, // to accept up to Double.MaxValue
