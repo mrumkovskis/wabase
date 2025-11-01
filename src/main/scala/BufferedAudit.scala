@@ -39,7 +39,7 @@ class BufferedAuditWriter(
   val delimiter: ByteString  = ByteString("\r\n"),
   val exitOnFailure: Boolean = true,
 )(implicit val system: ActorSystem) extends Loggable {
-  val filenameDateTime = DateTimeFormatter
+  val filenameDateTime: DateTimeFormatter = DateTimeFormatter
     .ofPattern("yyyy-MM-dd--HH-mm-ss-SSS")
     .withZone(ZoneOffset.UTC) // Reader expects ascending filenames. Using UTC to avoid problems with DST.
   private var filename: String = null
@@ -106,7 +106,7 @@ class BufferedAuditReader(
   private val buffer = ByteBuffer.allocate(256)
   private var file: File = _
   private var channel: FileChannel = _
-  val controlFileName = filenamePrefix + "next-read"
+  val controlFileName: String = filenamePrefix + "next-read"
   private def getChannel = {
     if (channel == null) {
       file = new File(rootPath.toFile, controlFileName)
@@ -263,9 +263,9 @@ class BufferedAuditReader(
 }
 
 class BufferedAuditFlow(path: Path, pos: Int, writer: BufferedAuditWriter) extends GraphStage[FlowShape[Notification, ByteString]] {
-  val in = Inlet[Notification]("BufferedAuditFlow.in")
-  val out = Outlet[ByteString]("BufferedAuditFlow.out")
-  val shape = FlowShape.of(in, out)
+  val in: Inlet[Notification] = Inlet[Notification]("BufferedAuditFlow.in")
+  val out: Outlet[ByteString] = Outlet[ByteString]("BufferedAuditFlow.out")
+  val shape: FlowShape[Notification,ByteString] = FlowShape.of(in, out)
   val filename = path.getFileName.toString
   val bufferSize = 4096
   override def createLogic(inheritedAttributes: Attributes): GraphStageLogic =

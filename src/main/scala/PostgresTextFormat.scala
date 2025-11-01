@@ -8,8 +8,8 @@ import java.io.{BufferedWriter, ByteArrayOutputStream, CharArrayWriter, OutputSt
   * see https://www.postgresql.org/docs/current/sql-copy.html
   */
 object PostgresTextFormat {
-  val columnDelimiter = ByteString("\t")
-  val rowDelimiter    = ByteString("\r\n")
+  val columnDelimiter: ByteString = ByteString("\t")
+  val rowDelimiter: ByteString    = ByteString("\r\n")
 
   def writeString(s: String, out: Writer): Unit = {
     val len = s.length

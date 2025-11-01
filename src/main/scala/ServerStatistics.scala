@@ -48,9 +48,9 @@ object ServerStatistics {
     result
   }
 
-  def registerTimeout = statsActor ! RegisterTimeout
-  def statsRegisterDeferredRequest = statsActor ! RegisterDeferredRequest
-  def statsRegisterDeferredResult = statsActor ! RegisterDeferredResult
+  def registerTimeout: Unit = statsActor ! RegisterTimeout
+  def statsRegisterDeferredRequest: Unit = statsActor ! RegisterDeferredRequest
+  def statsRegisterDeferredResult: Unit = statsActor ! RegisterDeferredResult
  }
 
  case class Statistics(
@@ -85,7 +85,7 @@ object ServerStatistics {
     var concurrentDeferredRequests: Long = _
     var maxConcurrentDeferredRequests: Long = _
 
-    override def preStart() = {
+    override def preStart(): Unit = {
       acceptedRequests = 0
       processedRequests = 0
       timedOutRequests = 0
@@ -99,7 +99,7 @@ object ServerStatistics {
       logger.info("Stats actor started")
     }
 
-    def receive = {
+    def receive: PartialFunction[Any,Unit] = {
       case GetStats => Future { stats.registerStats(Statistics(
         currentTime - stats.startTime,
         acceptedRequests,
@@ -135,7 +135,7 @@ object ServerStatistics {
         concurrentRequests -= 1
     }
 
-    override def postStop() = {
+    override def postStop(): Unit = {
       logger.info("Stats actor stopped")
     }
   }

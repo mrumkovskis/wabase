@@ -27,7 +27,7 @@ object ResultSerializer {
   }
   class ByteStringChunker(bytes: ByteString, chunkSize: Int) {
     // chunk byte arrays to enable reactive streaming with limited buffer size
-    val shouldChunk = chunkSize != Int.MaxValue && bytes.length > chunkSize
+    val shouldChunk: Boolean = chunkSize != Int.MaxValue && bytes.length > chunkSize
     def chunks: Iterator[ByteString] = new Iterator[ByteString] {
       var remaining = bytes
       override def hasNext: Boolean = remaining.nonEmpty
@@ -49,7 +49,7 @@ object ResultSerializer {
   class StringChunker(s: String, chunkSize: Int)
   {
     // chunk strings to enable reactive streaming with limited buffer size
-    val shouldChunk = chunkSize != Int.MaxValue && (
+    val shouldChunk: Boolean = chunkSize != Int.MaxValue && (
       s.length > chunkSize || {
         val tryIt = chunks
         tryIt.next()
@@ -126,7 +126,7 @@ class ResultSerializer(
   createEncoder:    EncoderFactory,
   bufferSizeHint:   Int = 1024,
 ) extends GraphStage[SourceShape[ByteString]] {
-  val out = Outlet[ByteString]("SerializedArraysTresqlResultSource")
+  val out: Outlet[ByteString] = Outlet[ByteString]("SerializedArraysTresqlResultSource")
   override val shape: SourceShape[ByteString] = SourceShape(out)
   override def createLogic(attrs: Attributes): GraphStageLogic = new GraphStageLogic(shape) {
     private val buf       = new ByteStringBuilder
@@ -232,7 +232,7 @@ object BorerDatetimeEncoders {
       w writeString Format.convertToString(value)
     }
   }
-  val TimeTag = Tag.Other(1042)
+  val TimeTag: Tag.Other = Tag.Other(1042)
   implicit val javaSqlTimeEncoder: Encoder[sql.Time] = Encoder { (w, value) =>
     if (w.writingCbor) {
       val seconds = value.getTime.toDouble / 1000 // TODO nanos?
@@ -368,7 +368,7 @@ object BorerNestedArraysEncoder {
     format:       Target  = Cbor,
     wrap:         Boolean = false,
     valueEncoderFactory: BorerNestedArraysEncoder => PartialFunction[Any, Writer] = null,
-  ) = {
+  ): BorerNestedArraysEncoder = {
     if (valueEncoderFactory == null)
       new BorerNestedArraysEncoder(createWriter(outputStream, format), wrap = wrap)
     else
@@ -572,7 +572,7 @@ object BorerNestedArraysTransformer {
     transformFrom:        Target,
     bufferSizeHint:       Int,
   ) extends GraphStage[SourceShape[ByteString]] {
-    val out = Outlet[ByteString]("BorerNestedArraysTransformerSource.out")
+    val out: Outlet[ByteString] = Outlet[ByteString]("BorerNestedArraysTransformerSource.out")
     override val shape: SourceShape[ByteString] = SourceShape(out)
     override def createLogic(attrs: Attributes): GraphStageLogic = new GraphStageLogic(shape) {
       private val buf         = new ByteStringBuilder
@@ -605,9 +605,9 @@ object BorerNestedArraysTransformer {
     transformFrom:  Target,
     bufferSizeHint: Int,
   ) extends GraphStage[FlowShape[ByteString, ByteString]] {
-    val in = Inlet[ByteString]("BorerNestedArraysTransformerFlow.in")
-    val out = Outlet[ByteString]("BorerNestedArraysTransformerFlow.out")
-    override val shape = FlowShape.of(in, out)
+    val in: Inlet[ByteString] = Inlet[ByteString]("BorerNestedArraysTransformerFlow.in")
+    val out: Outlet[ByteString] = Outlet[ByteString]("BorerNestedArraysTransformerFlow.out")
+    override val shape: FlowShape[ByteString,ByteString] = FlowShape.of(in, out)
     override def createLogic(inheritedAttributes: Attributes): GraphStageLogic = new GraphStageLogic(shape) {
       // XXX adding empty bytestring to queue because borer reader starts reading in constructor
       private val inQueue           = collection.mutable.Queue(ByteString.empty)
@@ -739,7 +739,7 @@ object DataSerializer {
     private  var headering = false
     private  var nextItem: Any = null
     override def hasNext: Boolean = headering || items.hasNext
-    override def next() = {
+    override def next(): Any = {
       if (!headering)
         nextItem = items.next()
       headering = asRows && isBeforeFirst && includeHeaders && nextItem.isInstanceOf[Map[_, _]]

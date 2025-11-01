@@ -103,8 +103,8 @@ class WabaseJobActor(wabase: AppBase[_], scheduler: WabaseScheduler) extends Act
 
 object WabaseJobStatusController {
 
-  val job_max_time = config.getString("app.job.max-time")
-  val jobStatusCp  = PoolName(config.getString("app.job.job-status-cp"))
+  val job_max_time: String = config.getString("app.job.max-time")
+  val jobStatusCp: PoolName  = PoolName(config.getString("app.job.job-status-cp"))
 
   def init(dbAccess: DbAccess): Unit = dbAccess.newTransaction(jobStatusCp) { implicit res =>
     Query("-cron_job_status[status != 'RUN']")

@@ -28,7 +28,7 @@ class AppFileCleanup(dbAccess: DbAccess, fileStreamers: AppFileStreamerConfig*) 
   4. delete all files from file system when they are in files_on_disk but not in file_body_info
   */
 
-  def doCleanup(log: org.apache.pekko.event.LoggingAdapter) = {
+  def doCleanup(log: org.apache.pekko.event.LoggingAdapter): Unit = {
     fileStreamers foreach { fs =>
       val wd = new File(fs.rootPath)
       val tmp = new File(fs.rootPath + "/tmp")
@@ -57,26 +57,26 @@ class AppFileCleanup(dbAccess: DbAccess, fileStreamers: AppFileStreamerConfig*) 
     file.isFile &&
       Try(System.currentTimeMillis > Files.getLastModifiedTime(file.toPath).toMillis + minAgeMillis).toOption.getOrElse(true)
 
-  protected def cleanTrash = {
+  protected def cleanTrash: Unit = {
     //remove files which where moved to trash directory in previous cron job run
     fileStreamers foreach { fs =>
       deleteFilesRecursively(new File(fs.rootPath + "/trash"))
     }
   }
 
-  protected def cleanupFileInfo =
+  protected def cleanupFileInfo: Unit =
     fileStreamers foreach { fs => deleteAndLog(
       fileInfoCleanupStatement(fs),
       s"${fs.file_info_table} table cleanup - records deleted:",
     )}
 
-  protected def cleanupFileBodyInfo =
+  protected def cleanupFileBodyInfo: Unit =
     fileStreamers  foreach { fs => deleteAndLog(
       fileBodyInfoCleanupStatement(fs),
       s"${fs.file_body_info_table} table cleanup - records deleted:",
     )}
 
-  protected def cleanupFiles = {
+  protected def cleanupFiles: Unit = {
     prepCompareTable
     fillCompareTable()
     compareDataAndMoveFilesToTrash
@@ -154,7 +154,7 @@ class AppFileCleanup(dbAccess: DbAccess, fileStreamers: AppFileStreamerConfig*) 
     }
   }
 
-  protected def cleanupTmp = {
+  protected def cleanupTmp: Unit = {
     fileStreamers foreach { fs =>
       val wd = new File(fs.rootPath + "/tmp")
       if (wd.exists)
@@ -165,13 +165,13 @@ class AppFileCleanup(dbAccess: DbAccess, fileStreamers: AppFileStreamerConfig*) 
   private lazy val batchLimit: String =
     batchSizeOpt.filter(_ > 0).map(n => s"@($n)").getOrElse("")
 
-  protected def fileBodyInfoCleanupSelectStatement(fs: AppFileStreamerConfig) =
+  protected def fileBodyInfoCleanupSelectStatement(fs: AppFileStreamerConfig): String =
     s"${fs.file_info_table} fi[fi.${fs.shaColName} = fbi.${fs.shaColName}]{1}"
 
-  protected def fileBodyInfoCleanupStatement(fs: AppFileStreamerConfig) =
+  protected def fileBodyInfoCleanupStatement(fs: AppFileStreamerConfig): String =
     s"${fs.file_body_info_table} fbi - [!exists(${fileBodyInfoCleanupSelectStatement(fs)}$batchLimit)]"
 
-  protected def fileInfoCleanupSelectStatement(fs: AppFileStreamerConfig) = {
+  protected def fileInfoCleanupSelectStatement(fs: AppFileStreamerConfig): String = {
     // select records from file_info table where id is not referenced in linked tables
     val tableMetadataWithFileInfo = (for {
       tableDef <- qe.tableMetadata.tableDefs
@@ -188,11 +188,11 @@ class AppFileCleanup(dbAccess: DbAccess, fileStreamers: AppFileStreamerConfig*) 
     selectStatement
   }
 
-  protected def fileInfoCleanupStatement(fs: AppFileStreamerConfig) =
+  protected def fileInfoCleanupStatement(fs: AppFileStreamerConfig): String =
     // delete all records from file_info table where id is not referenced in linked tables
     s"${fs.file_info_table} - [id in (${fileInfoCleanupSelectStatement(fs)}$batchLimit)]"
 
-  protected def deleteAndLog(statement: String, message: String) = {
+  protected def deleteAndLog(statement: String, message: String): Unit = {
     @tailrec
     def deleteWhileNonEmpty(deletedTotalCount: Int): Int = {
       val deletedCount =

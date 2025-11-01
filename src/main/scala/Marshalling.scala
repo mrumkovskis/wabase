@@ -79,7 +79,7 @@ trait BasicMarshalling extends OptionMarshalling {
   /*    `Content-Disposition`(ContentDispositionTypes.attachment, Map("filename" -> "...", "filename*" -> "...")
         // TODO content disposition akka-http bug: https://github.com/akka/akka-http/issues/1240
       ))*/
-  def contentDisposition(fileName: String, dispositionType: ContentDispositionType) = {
+  def contentDisposition(fileName: String, dispositionType: ContentDispositionType): List[RawHeader] = {
     // US-ASCII visual chars except for '"' and escape chars '\' and (for faulty clients) '%'. Placeholder for other chars
     // https://www.greenbytes.de/tech/webdav/rfc7230.html#rule.quoted-string
     // https://tools.ietf.org/html/rfc6266#appendix-D
@@ -95,9 +95,9 @@ trait BasicMarshalling extends OptionMarshalling {
     // Use RawHeader because akka-http puts value of extended `filename*` parameter in double quotes
     List(RawHeader("Content-Disposition", dispositionValue))
   }
-  def fallbackFilename(filename: String) = stripAccents(filename)
+  def fallbackFilename(filename: String): String = stripAccents(filename)
 
-  def stripAccents(s: String) = {
+  def stripAccents(s: String): String = {
     val DiacriticsRegex = "\\p{InCombiningDiacriticalMarks}+".r
     DiacriticsRegex.replaceAllIn(Normalizer.normalize(s, Normalizer.Form.NFD), "")
   }
@@ -196,7 +196,7 @@ trait WabaseUnmarshallers {
     // https://github.com/akka/akka/issues/31569
     streamUnmarshaller(new JsonEntityStreamingSupport(maxObjectSize = 8 * 1024 * 1024), unmarshalSync)
 
-  def isMultipartFormData(mediaType: MediaType) =
+  def isMultipartFormData(mediaType: MediaType): Boolean =
     mediaType.mainType == MediaTypes.`multipart/form-data`.mainType &&
     mediaType.subType  == MediaTypes.`multipart/form-data`.subType
 

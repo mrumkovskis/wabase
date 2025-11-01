@@ -42,7 +42,7 @@ object KeyLoader extends KeyLoader {
     // Initialize Bouncy Castle provider
     val bcProvider = new org.bouncycastle.jce.provider.BouncyCastleProvider()
     Security.addProvider(bcProvider)
-    def init = {}
+    def init: Unit = {}
   }
 }
 

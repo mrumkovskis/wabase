@@ -24,6 +24,7 @@ import org.wabase.ResultRenderers.EncoderFactoryCreator
 
 import scala.annotation.tailrec
 import scala.collection.mutable.ListBuffer
+import io.bullet.borer.Reader
 
 object ResultEncoder {
   type EncoderFactory = OutputStream => ResultEncoder
@@ -139,7 +140,7 @@ abstract class ResultRenderer(
     val context = contextStack.head
     context.resultFilter == null || context.resultFilter.shouldInclude(name)
   }
-  protected def childFilter(resFilter: ResultRenderer.ResultFilter, fieldName: String) =
+  protected def childFilter(resFilter: ResultRenderer.ResultFilter, fieldName: String): ResultRenderer.ResultFilter =
     if (resFilter != null)
       resFilter.childFilter(fieldName)
     else null
@@ -147,7 +148,7 @@ abstract class ResultRenderer(
     if  (hasHeaders || resFilter == null) Nil
     else resFilter.unfilteredNames
   }
-  protected def nextName(context: Context) = {
+  protected def nextName(context: Context): String = {
     if (context.names.nonEmpty) {
       val name = context.names.head
       context.names = context.names.tail
@@ -200,7 +201,7 @@ abstract class ResultRenderer(
   override def writeMapStart(): Unit = {
     throw new NotImplementedError("writeMapStart() in ResultRenderer is not implemented yet") // TODO
   }
-  protected def shouldRenderAsJson(name: String, context: Context) =
+  protected def shouldRenderAsJson(name: String, context: Context): Boolean =
     unwrapJson && context.resultFilter != null && (context.resultFilter.type_(name) match {
       case null => false
       case t => t.isComplexType || t.name == "json"
@@ -303,19 +304,19 @@ object ResultRenderer {
   }
 
   class ViewFieldFilter(viewName: String, nameToViewDef: Map[String, ViewDef]) extends ResultFilter {
-    protected val viewDef =
+    protected val viewDef: ViewDef =
       nameToViewDef.getOrElse(viewName, sys.error(s"View $viewName not found - can not render result"))
     override def name = viewName
-    override def shouldInclude(field: String)= viewDef.fieldOpt(field).exists(!_.api.excluded)
-    override def isCollection(field: String) = viewDef.fieldOpt(field).exists(_.isCollection)
-    override def type_       (field: String) = viewDef.fieldOpt(field).map(_.type_).orNull
-    override def childFilter (field: String) = viewDef.fieldOpt(field)
+    override def shouldInclude(field: String): Boolean= viewDef.fieldOpt(field).exists(!_.api.excluded)
+    override def isCollection(field: String): Boolean = viewDef.fieldOpt(field).exists(_.isCollection)
+    override def type_       (field: String): Type = viewDef.fieldOpt(field).map(_.type_).orNull
+    override def childFilter (field: String): ResultFilter = viewDef.fieldOpt(field)
       // TODO prepare, maybe cache
       .map(_.type_.name)
       .map(new ViewFieldFilter(_, nameToViewDef))
       .orNull
-    override def unfilteredNames = viewDef.fields.map(_.fieldName).toList
-    override def includedNames   = viewDef.fields.map(_.fieldName).filter(shouldInclude).toList
+    override def unfilteredNames: List[String] = viewDef.fields.map(_.fieldName).toList
+    override def includedNames: List[String]   = viewDef.fields.map(_.fieldName).filter(shouldInclude).toList
   }
 
   object NoAccess extends ResultFilter {
@@ -339,14 +340,14 @@ object ResultRenderer {
   }
 
   class IntersectionFilter(filter1: ResultFilter, filter2: ResultFilter) extends ResultFilter {
-    override def name = s"(${filter1.name}, ${filter2.name})"
-    override def shouldInclude(field: String) = filter1.shouldInclude(field) && filter2.shouldInclude(field)
-    override def isCollection(field: String) = filter2.isCollection(field)
-    override def type_       (field: String) = filter2.type_(field)
+    override def name: String = s"(${filter1.name}, ${filter2.name})"
+    override def shouldInclude(field: String): Boolean = filter1.shouldInclude(field) && filter2.shouldInclude(field)
+    override def isCollection(field: String): Boolean = filter2.isCollection(field)
+    override def type_       (field: String): Type = filter2.type_(field)
     override def childFilter (field: String) =
       new IntersectionFilter(filter1.childFilter(field), filter2.childFilter(field))
     override def unfilteredNames = filter1.unfilteredNames
-    override def includedNames   = filter1.includedNames.filter(filter2.shouldInclude)
+    override def includedNames: List[String]   = filter1.includedNames.filter(filter2.shouldInclude)
   }
 
   class JsonForwarder(renderer: ResultRenderer) {
@@ -419,7 +420,7 @@ object ResultRenderer {
       } else r.unexpectedDataItem(expected = "Map")
     }
 
-    protected def reader(data: ByteString, decodeFrom: Target) = decodeFrom match {
+    protected def reader(data: ByteString, decodeFrom: Target): borer.InputReader[_ <: Reader.Config] = decodeFrom match {
       case _: Cbor.type => Cbor.reader(data)
       case _: Json.type => Json.reader(data, Json.DecodingConfig.default.copy(
         maxNumberAbsExponent = 308, // to accept up to Double.MaxValue
@@ -444,13 +445,13 @@ class CborOrJsonResultRenderer(
 ) extends ResultRenderer(isCollection, resultFilter, hasHeaders) {
   val valueEncoder = new BorerValueEncoder(w)
   unwrapJson = !w.writingCbor // TODO unwrap json for cbor, too
-  override protected def renderHeader()             = if (isCollection && level <= 1) renderArrayStart()
-  override protected def renderFooter()             = if (isCollection) renderBreak()
-  override protected def renderArrayStart()         = w.writeArrayStart()
-  override protected def renderMapStart()           = w.writeMapStart()
-  override protected def renderBreak()              = w.writeBreak()
-  override protected def renderValue(value: Any)    = valueEncoder.writeValue(value)
-  override protected def renderRawValue(value: Any) = value match {
+  override protected def renderHeader(): Unit             = if (isCollection && level <= 1) renderArrayStart()
+  override protected def renderFooter(): Unit             = if (isCollection) renderBreak()
+  override protected def renderArrayStart(): Unit         = w.writeArrayStart()
+  override protected def renderMapStart(): Unit           = w.writeMapStart()
+  override protected def renderBreak(): Unit              = w.writeBreak()
+  override protected def renderValue(value: Any): Unit    = valueEncoder.writeValue(value)
+  override protected def renderRawValue(value: Any): Unit = value match {
     case bytes: Array[Byte] if w.writingCbor => w.writeBytes(bytes)
     case _ => super.renderRawValue(value)
   }
@@ -572,17 +573,17 @@ class FormUrlEncoder(
 }
 
 trait TableResultRenderer {
-  def renderHeader()                = {}
-  def renderRowStart()              = {}
-  def renderHeaderCell(value: Any)  = { renderCell(value) }
+  def renderHeader(): Unit                = {}
+  def renderRowStart(): Unit              = {}
+  def renderHeaderCell(value: Any): Unit  = { renderCell(value) }
   def renderCell(value: Any): Unit
   def renderRowEnd(): Unit
-  def renderFooter()                = {}
+  def renderFooter(): Unit                = {}
 }
 
 class CsvResultRenderer(writer: io.Writer) extends TableResultRenderer {
   protected var isAtRowStart = true
-  protected def escapeValue(s: String) =
+  protected def escapeValue(s: String): String =
     if (s == null) null
     else if (s.contains(",") || s.contains("\"")) ("\"" + s.replaceAll("\"", "\"\"") + "\"")
     else s
@@ -592,13 +593,13 @@ class CsvResultRenderer(writer: io.Writer) extends TableResultRenderer {
     case d: jDate => xsdDate(d)
     case x => x.toString
   }.map(escapeValue).getOrElse("")
-  override def renderCell(value: Any) = {
+  override def renderCell(value: Any): Unit = {
     if (!isAtRowStart)
       writer.write(",")
     writer.write(csvValue(value))
     isAtRowStart = false
   }
-  override def renderRowEnd() = {
+  override def renderRowEnd(): Unit = {
     writer.write("\n")
     isAtRowStart = true
   }
@@ -609,16 +610,16 @@ class CsvResultRenderer(writer: io.Writer) extends TableResultRenderer {
 class OdsResultRenderer(zos: ZipOutputStream, worksheetName: String = "data") extends TableResultRenderer {
   import org.wabase.spreadsheet.ods._
   val streamer = new OdsStreamer(zos)
-  override def renderHeader() = {
+  override def renderHeader(): Unit = {
     streamer.startWorkbook
     streamer.startWorksheet
     streamer.startTable(worksheetName)
   }
   override def renderRowStart()             = streamer.startRow
-  override def renderHeaderCell(value: Any) = streamer.cell(value) // TODO ods headerStyle
-  override def renderCell(value: Any)       = streamer.cell(value)
+  override def renderHeaderCell(value: Any): Unit = streamer.cell(value) // TODO ods headerStyle
+  override def renderCell(value: Any): Unit       = streamer.cell(value)
   override def renderRowEnd()               = streamer.endRow
-  override def renderFooter() = {
+  override def renderFooter(): Unit = {
     streamer.endTable
     streamer.endWorksheet
     streamer.endWorkbook
@@ -627,11 +628,11 @@ class OdsResultRenderer(zos: ZipOutputStream, worksheetName: String = "data") ex
 
 class XlsXmlResultRenderer(writer: io.Writer, worksheetName: String = "data") extends TableResultRenderer {
   import org.wabase.spreadsheet.xlsxml._
-  val headerStyle   = Style("header", null, Font.BOLD)
-  val dateStyle     = Style("sd",     NumberFormat.DATE_YMD, null)
-  val dateTimeStyle = Style("sdt",    NumberFormat.DATE_TIME_HMS_MS, null)
+  val headerStyle: Style   = Style("header", null, Font.BOLD)
+  val dateStyle: Style     = Style("sd",     NumberFormat.DATE_YMD, null)
+  val dateTimeStyle: Style = Style("sdt",    NumberFormat.DATE_TIME_HMS_MS, null)
   lazy val styles: Seq[Style] = Seq(headerStyle, dateStyle, dateTimeStyle)
-  def cellStyle(value: Any) = value match {
+  def cellStyle(value: Any): Style = value match {
     case d: java.time.LocalDate     => dateStyle
     case d: java.time.LocalDateTime => dateTimeStyle
     case d: java.sql.Timestamp      => dateTimeStyle
@@ -641,16 +642,16 @@ class XlsXmlResultRenderer(writer: io.Writer, worksheetName: String = "data") ex
     case _                          => null
   }
   val streamer = new XlsXmlStreamer(writer)
-  override def renderHeader() = {
+  override def renderHeader(): Unit = {
     streamer.startWorkbook(styles)
     streamer.startWorksheet(worksheetName)
     streamer.startTable
   }
   override def renderRowStart()             = streamer.startRow
-  override def renderHeaderCell(value: Any) = streamer.cell(value, headerStyle)
-  override def renderCell(value: Any)       = streamer.cell(value, cellStyle(value))
+  override def renderHeaderCell(value: Any): Unit = streamer.cell(value, headerStyle)
+  override def renderCell(value: Any): Unit       = streamer.cell(value, cellStyle(value))
   override def renderRowEnd()               = streamer.endRow
-  override def renderFooter() = {
+  override def renderFooter(): Unit = {
     streamer.endTable
     streamer.endWorksheet
     streamer.endWorkbook

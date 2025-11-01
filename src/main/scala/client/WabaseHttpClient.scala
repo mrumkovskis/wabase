@@ -37,7 +37,7 @@ class WabaseHttpClient(clientCfg: Config = HttpClientConfig.componentConfs.root)
   lazy val CSRFCookieName = "XSRF-TOKEN"
   lazy val CSRFHeaderName = "X-XSRF-TOKEN"
 
-  def getDefaultApiHeaders(cookies: CookieMap) = {
+  def getDefaultApiHeaders(cookies: CookieMap): List[HttpHeader] = {
     val cookie = cookies.getCookies.flatMap(_.cookies).find(_.name == CSRFCookieName)
     RawHeader("X-Requested-With", "XMLHttpRequest") :: originHeader :: cookie.map(c => List(RawHeader(CSRFHeaderName, c.value))).getOrElse(Nil)
   }
@@ -45,7 +45,7 @@ class WabaseHttpClient(clientCfg: Config = HttpClientConfig.componentConfs.root)
   private lazy val defaultUsername: String = clientCfg.getString("username")
   private lazy val defaultPassword: String = clientCfg.getString("password")
 
-  def login(username: String = defaultUsername, password: String = defaultPassword) = {
+  def login(username: String = defaultUsername, password: String = defaultPassword): String = {
     httpGetAwait[String]("api", headers = iSeq(AuthorizationHeader(BasicHttpCredentials(username, password))))
   }
 
@@ -77,12 +77,12 @@ class WabaseHttpClient(clientCfg: Config = HttpClientConfig.componentConfs.root)
 
   def getDtoFromJson[T <: Dto](viewClass: Class[T], value: Map[String, Any]): T = viewClass.getConstructor().newInstance().fill(value)
 
-  def pathForDto[T <: Dto](clzz: Class[T], id: jLong) = "data/" + urlEncoder(classToViewNameMap(clzz)) + Option(id).map("/" + _).getOrElse("")
-  def pathForDtoCount[T <: Dto](clzz: Class[T]) = "count/"+urlEncoder(classToViewNameMap(clzz))
+  def pathForDto[T <: Dto](clzz: Class[T], id: jLong): String = "data/" + urlEncoder(classToViewNameMap(clzz)) + Option(id).map("/" + _).getOrElse("")
+  def pathForDtoCount[T <: Dto](clzz: Class[T]): String = "count/"+urlEncoder(classToViewNameMap(clzz))
 
 
-  val deferredActor = system.actorOf(Props(classOf[DeferredActor]))
-  def deferredResultUri(hash: String) = s"deferred/$hash/result"
+  val deferredActor: ActorRef = system.actorOf(Props(classOf[DeferredActor]))
+  def deferredResultUri(hash: String): String = s"deferred/$hash/result"
 
   def handleDeferredResponse[R](cookieStorage: CookieMap)(response: (R, iSeq[HttpHeader]))(implicit umarshaller: FromResponseUnmarshaller[R]) : Future[R] = {
     val (result, headers) = response
@@ -111,8 +111,8 @@ object WabaseHttpClient{
   case class GetDeferred(hash: String)
 
   class DeferredActor extends Actor with Loggable{
-    val completeStatuses = Set(DeferredControl.DEFERRED_ERR, DeferredControl.DEFERRED_OK)
-    override def receive = queueResults(Map.empty, Map.empty)
+    val completeStatuses: Set[String] = Set(DeferredControl.DEFERRED_ERR, DeferredControl.DEFERRED_OK)
+    override def receive: Receive = queueResults(Map.empty, Map.empty)
 
     def queueResults(receivedMessages: Map[String, Any], subscribers: Map[String, ActorRef]): Receive = {
       case TextMessage.Strict(text) => try{
@@ -146,7 +146,7 @@ object WabaseHttpClient{
     }
   }
 
-  def fileUploadForm(entity: BodyPartEntity, fileName: String, fieldName: String = "file") =
+  def fileUploadForm(entity: BodyPartEntity, fileName: String, fieldName: String = "file"): Multipart.FormData =
     Multipart.FormData(
       Source.single(
         Multipart.FormData.BodyPart(

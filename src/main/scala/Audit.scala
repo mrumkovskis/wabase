@@ -50,7 +50,7 @@ object Audit {
 
    def audit(data: AuditData): Unit
 
-   override def audit[C <: RequestContext[_]](originalContext: C)(action: => C) = {
+   override def audit[C <: RequestContext[_]](originalContext: C)(action: => C): C = {
      val (res, error) = try {
        (action, null)
      } catch {
@@ -68,20 +68,20 @@ object Audit {
    }
 
    def logUnchangedSaves = false
-   val blackListedFields = Set("auth", "password", "repeated_password", "passwd")
-   def removeBlacklistedFields(m: Map[String, Any]) = m.map{
+   val blackListedFields: Set[String] = Set("auth", "password", "repeated_password", "passwd")
+   def removeBlacklistedFields(m: Map[String, Any]): Map[String,Any] = m.map{
      case (k, v) if blackListedFields(k) & v != null => k -> "********"
      case r => r
    }
 
-   def relevantKeys(view: String) = Set("id")
+   def relevantKeys(view: String): Set[String] = Set("id")
 
    def createRelevantIdExtractor: PartialFunction[Any, Long] = {
      case (_, id: Long) => id
    }
    lazy val relevantIdExtractor = createRelevantIdExtractor
 
-   def getRelevantIds(viewName: String, viewId: Long, data: Map[String, Any], loadFromDb: Boolean, error: Throwable) = {
+   def getRelevantIds(viewName: String, viewId: Long, data: Map[String, Any], loadFromDb: Boolean, error: Throwable): List[Long] = {
      if(error!= null){
        try dbAccess.tresqlResources.conn.rollback catch {
          case e: Exception => logger.error(e.getMessage, e)
@@ -113,7 +113,7 @@ object Audit {
    }) getOrElse Map.empty
 
    def keyFields: List[String] = Nil
-   def getDiff(oldObj: Map[String, Any], newObj: Map[String, Any]) = jsonizeDiff(diffMaps(oldObj, newObj, keyFields))
+   def getDiff(oldObj: Map[String, Any], newObj: Map[String, Any]): List[Map[String,Any]] = jsonizeDiff(diffMaps(oldObj, newObj, keyFields))
 
    override def auditLogin(user: User, loginInfo: Dto) = {
      audit(AuditData(action = "login", user = user, newData = mapFromObj(loginInfo), time = now))

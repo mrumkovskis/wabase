@@ -14,6 +14,7 @@ import java.time.LocalDate
 import java.util.Locale
 import scala.concurrent.ExecutionContext
 import scala.util.control.NonFatal
+import java.sql.Date
 
 
 trait ScriptValidation {
@@ -131,7 +132,7 @@ object WabaseScriptValidation {
 }
 
 trait CustomScriptValidationFunctions {
-  @Export def current_date = java.sql.Date.valueOf(LocalDate.now())
+  @Export def current_date: Date = java.sql.Date.valueOf(LocalDate.now())
   @Export def now = new java.sql.Timestamp(currentTime)
   @Export def is_valid_email(email: String): Boolean =
     org.apache.commons.validator.routines.EmailValidator.getInstance.isValid(email)

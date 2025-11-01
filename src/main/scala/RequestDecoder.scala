@@ -28,7 +28,7 @@ import scala.reflect.ClassTag
 
 /** Decodes cbor or json according to view and type metadata */
 class CborOrJsonDecoder(typeDefs: Seq[TypeDef], nameToViewDef: Map[String, ViewDef]) {
-  lazy val typeNameToScalaTypeName =
+  lazy val typeNameToScalaTypeName: Map[String,String] =
     typeDefs
       .map(td => td.name -> td.targetNames.get("scala").orNull)
       .filter(_._2 != null)
@@ -257,7 +257,7 @@ class CborOrJsonAnyValueDecoder() {
     } else r.unexpectedDataItem(expected = "Map")
   }
 
-  protected def decoding[T: Input.Provider](data: T, decodeFrom: Target) = decodeFrom match {
+  protected def decoding[T: Input.Provider](data: T, decodeFrom: Target): DecodingSetup.Api[_ <: Borer.DecodingConfig] = decodeFrom match {
     case _: Cbor.type => Cbor.decode(data)
     case _: Json.type => Json.decode(data).withConfig(Json.DecodingConfig.default.copy(
       maxNumberAbsExponent = 308, // to accept up to Double.MaxValue
@@ -313,7 +313,7 @@ class CborOrJsonAnyValueDecoder() {
 object CborOrJsonAnyValueDecoder extends CborOrJsonAnyValueDecoder
 
 object CsvDecoderConfig {
-  lazy val componentConfs = ComponentConf.getConfigs("data-parsers-csv")
+  lazy val componentConfs: ComponentConfs = ComponentConf.getConfigs("data-parsers-csv")
   lazy val configs: Map[String, Config] = componentConfs.confs.toMap
   lazy val csvDecoderFactory: CsvDecoderFactory =
     getObjectOrNewInstance[CsvDecoderFactory](componentConfs.root, "factory-class", "csv decoder factory")
@@ -378,7 +378,7 @@ object JsonDecoderFactory extends JsonDecoderFactory {
 }
 
 object XmlDecoderConfig {
-  lazy val componentConfs = ComponentConf.getConfigs("data-parsers-xml")
+  lazy val componentConfs: ComponentConfs = ComponentConf.getConfigs("data-parsers-xml")
   lazy val configs: Map[String, Config] = componentConfs.confs.toMap
   lazy val xmlDecoderFactory: XmlDecoderFactory =
     getObjectOrNewInstance[XmlDecoderFactory](componentConfs.root, "factory-class", "xml decoder factory")
@@ -431,7 +431,7 @@ object XmlDecoderFactory extends XmlDecoderFactory {
       elementsMap
     }
   }
-  def attributesToMap(element: Element) =
+  def attributesToMap(element: Element): Map[String,Any] =
     element.getAttributes match {
       case null => Map.empty[String, Any]
       case attrs =>

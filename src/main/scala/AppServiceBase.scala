@@ -33,6 +33,7 @@ import org.mojoz.querease.{ValidationException, ValidationResult}
 import java.lang.reflect.InvocationTargetException
 import scala.util.{Failure, Success}
 import scala.jdk.CollectionConverters._
+import org.slf4j.Logger
 
 
 trait AppProvider[User] {
@@ -58,27 +59,27 @@ trait AppServiceBase[User]
   }
 
   //custom directives
-  def metadataPath = path("metadata" / Segment ~ Slash.?) & get
-  def apiPath = path("api" ~ Slash.?) & get
+  def metadataPath: Directive[Tuple1[String]] = path("metadata" / Segment ~ Slash.?) & get
+  def apiPath: Directive[Unit] = path("api" ~ Slash.?) & get
 
-  def crudPath = pathPrefix("data")
+  def crudPath: Directive[Unit] = pathPrefix("data")
   // @deprecated("Use viewWithKeyPath. This method will be removed", "6.0.3")
-  def viewWithIdPath = path(Segment / LongNumber)
-  def viewWithKeyPath = path(Segment / Segments) | path(Segment ~ PathEnd) & provide(Nil: List[String])
-  def createPath = (path("create" / Segment) | pathPrefix("create:") & rawPathPrefix(Segment)) & get
-  def viewWithoutIdPath = path(Segment ~ (PathEnd | Slash))
+  def viewWithIdPath: Directive[(String, Long)] = path(Segment / LongNumber)
+  def viewWithKeyPath: Directive[(String, List[String])] = path(Segment / Segments) | path(Segment ~ PathEnd) & provide(Nil: List[String])
+  def createPath: Directive[Tuple1[String]] = (path("create" / Segment) | pathPrefix("create:") & rawPathPrefix(Segment)) & get
+  def viewWithoutIdPath: Directive[Tuple1[String]] = path(Segment ~ (PathEnd | Slash))
   // @deprecated("Use getByKeyPath. This method will be removed", "6.0.3")
-  def getByIdPath = viewWithIdPath & get
-  def getByKeyPath = viewWithKeyPath & get
+  def getByIdPath: Directive[(String, Long)] = viewWithIdPath & get
+  def getByKeyPath: Directive[(String, List[String])] = viewWithKeyPath & get
   // @deprecated("Use deleteByKeyPath. This method will be removed", "6.0.3")
-  def deletePath = viewWithIdPath & delete
-  def deleteByKeyPath = viewWithKeyPath & delete
+  def deletePath: Directive[(String, Long)] = viewWithIdPath & delete
+  def deleteByKeyPath: Directive[(String, List[String])] = viewWithKeyPath & delete
   // @deprecated("Use updateByKeyPath. This method will be removed", "6.0.3")
-  def updatePath = viewWithIdPath & put
-  def updateByKeyPath = viewWithKeyPath & put
-  def insertPath = viewWithKeyPath & post
-  def listOrGetPath = viewWithoutIdPath & get
-  def countPath = (path("count" / Segment) | pathPrefix("count:") & rawPathPrefix(Segment)) & get
+  def updatePath: Directive[(String, Long)] = viewWithIdPath & put
+  def updateByKeyPath: Directive[(String, List[String])] = viewWithKeyPath & put
+  def insertPath: Directive[(String, List[String])] = viewWithKeyPath & post
+  def listOrGetPath: Directive[Tuple1[String]] = viewWithoutIdPath & get
+  def countPath: Directive[Tuple1[String]] = (path("count" / Segment) | pathPrefix("count:") & rawPathPrefix(Segment)) & get
 
   def entityOrException[T](um: FromRequestUnmarshaller[T]): Directive1[T] =
     extractRequestContext.flatMap[Tuple1[T]] { ctx =>
@@ -146,7 +147,7 @@ trait AppServiceBase[User]
     !app.useLegacyFlow(viewName, actionName)
 
   // @deprecated("Use getByKeyAction. This method will be removed", "6.0.3")
-  def getByIdAction(viewName: String, id: Long)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
+  def getByIdAction(viewName: String, id: Long)(implicit user: User, state: ApplicationState, timeout: QueryTimeout): RequestContext => Future[RouteResult] =
     parameterMultiMap { params =>
       if (useActions(viewName, Action.Get)) {
         extractRequest { implicit httpReq =>
@@ -160,7 +161,7 @@ trait AppServiceBase[User]
     }
 
   def getByKeyAction(viewName: String, keyValues: Seq[String])(
-    implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
+    implicit user: User, state: ApplicationState, timeout: QueryTimeout): RequestContext => Future[RouteResult] =
     parameterMultiMap { params =>
       if (useActions(viewName, Action.Get)) {
         extractRequest { implicit httpReq =>
@@ -172,7 +173,7 @@ trait AppServiceBase[User]
       }
     }
 
-  def createAction(viewName: String)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
+  def createAction(viewName: String)(implicit user: User, state: ApplicationState, timeout: QueryTimeout): RequestContext => Future[RouteResult] =
     parameterMultiMap { params =>
       if (useActions(viewName, Action.Create)) {
         extractRequest { implicit httpReq =>
@@ -184,7 +185,7 @@ trait AppServiceBase[User]
     }
 
   // @deprecated("Use deleteByKeyAction. This method will be removed", "6.0.3")
-  def deleteAction(viewName: String, id: Long)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
+  def deleteAction(viewName: String, id: Long)(implicit user: User, state: ApplicationState, timeout: QueryTimeout): RequestContext => Future[RouteResult] =
     if (useActions(viewName, Action.Delete))
       extractStringId { idString =>
         deleteByKeyAction(viewName, Seq(idString))
@@ -238,7 +239,7 @@ trait AppServiceBase[User]
         }
       }
 
-  def listOrGetAction(viewName: String)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
+  def listOrGetAction(viewName: String)(implicit user: User, state: ApplicationState, timeout: QueryTimeout): RequestContext => Future[RouteResult] =
     parameterMultiMap { params =>
       val impliedIdForGetOpt = app.impliedIdForGetOverList(viewName)
       if (impliedIdForGetOpt.isDefined)
@@ -254,7 +255,7 @@ trait AppServiceBase[User]
     }
 
   protected def listAction(viewName: String, params: Map[String, List[String]])(
-    implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
+    implicit user: User, state: ApplicationState, timeout: QueryTimeout): RequestContext => Future[RouteResult] =
     if (useActions(viewName, Action.List)) {
       extractRequest { implicit httpReq =>
         complete {
@@ -281,7 +282,7 @@ trait AppServiceBase[User]
         params.get("sort").flatMap(_.headOption).orNull)
     }
 
-  def insertAction(viewName: String, keyValues: Seq[Any])(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
+  def insertAction(viewName: String, keyValues: Seq[Any])(implicit user: User, state: ApplicationState, timeout: QueryTimeout): RequestContext => Future[RouteResult] =
     extractUri { requestUri =>
       parameterMultiMap { params =>
         if (useActions(viewName, Action.Insert)) {
@@ -304,7 +305,7 @@ trait AppServiceBase[User]
       }
     }
 
-  def countAction(viewName: String)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
+  def countAction(viewName: String)(implicit user: User, state: ApplicationState, timeout: QueryTimeout): RequestContext => Future[RouteResult] =
     parameterMultiMap { params =>
       if (useActions(viewName, Action.Count)) {
         extractRequest { implicit httpReq =>
@@ -315,12 +316,12 @@ trait AppServiceBase[User]
       }
     }
 
-  def filterPars(params: Map[String, List[String]]) =
+  def filterPars(params: Map[String, List[String]]): Map[String,Any] =
     AppServiceBase.filterParams(metadataConventions, namesForInts, escapeReflectedXss)(params)
 
   // OK to use deprecated getByIdPath, deletePath, updatePath here
   @annotation.nowarn("cat=deprecation")
-  def crudActionOnKeyInPath(implicit user: User) = applicationState { implicit state =>
+  def crudActionOnKeyInPath(implicit user: User): RequestContext => Future[RouteResult] = applicationState { implicit state =>
     extractTimeout { implicit timeout =>
       getByIdPath     { getByIdAction     } ~
       countPath       { countAction       } ~
@@ -335,7 +336,7 @@ trait AppServiceBase[User]
     }
   }
 
-  def crudAction(implicit user: User) =
+  def crudAction(implicit user: User): Route =
     pathPrefixTest(Segment ~ PathEnd) { _ =>
       mapRequestContext(keyFromQueryToPath) {
         crudActionOnKeyInPath
@@ -371,8 +372,8 @@ trait AppServiceBase[User]
     }
   }
 
-  def apiAction(implicit user: User) = complete(app.api)
-  def metadataAction(viewName: String)(implicit user: User, state: ApplicationState) =
+  def apiAction(implicit user: User): StandardRoute = complete(app.api)
+  def metadataAction(viewName: String)(implicit user: User, state: ApplicationState): Route =
     respondWithHeader(ETag(EntityTag(app.metadataVersionString))) {
       conditional(EntityTag(app.metadataVersionString), DateTime(app.startupTimeMillis)) {
         val obj = if (viewName == "*") app.apiMetadata else app.metadata(viewName)
@@ -380,8 +381,8 @@ trait AppServiceBase[User]
       }
   }
 
-  val DefaultResourceExtensions = config.getStringList("app.resource-extensions").asScala.toSet
-  val DefaultResourcePathBase = config.getString("app.resource-path-base")
+  val DefaultResourceExtensions: Set[String] = config.getStringList("app.resource-extensions").asScala.toSet
+  val DefaultResourcePathBase: String = config.getString("app.resource-path-base")
   def staticResources(extensions: Set[String] = DefaultResourceExtensions, basePath: String = DefaultResourcePathBase): Route =
     pathSuffixTest(new Regex(extensions.map("\\." + _).mkString(".*(", "|", ")$"))) { p =>
       path(Remaining) { resource =>
@@ -392,11 +393,11 @@ trait AppServiceBase[User]
     }
   def decodeParams(params: Map[String, List[String]]): Map[String, Any] =
     AppServiceBase.decodeParams(metadataConventions, namesForInts, escapeReflectedXss )(params)
-  def decodeMultiParams(params: Map[String, List[String]]) =
+  def decodeMultiParams(params: Map[String, List[String]]): Map[String,List[Any]] =
     AppServiceBase.decodeMultiParams(metadataConventions, namesForInts, escapeReflectedXss)(params)
   val namesForInts = AppServiceBase.NamesForInts
-  def escapeReflectedXss(msg: String) = AppServiceBase.escapeReflectedXss(msg)
-  def decodeParam(key: String, value: String) =
+  def escapeReflectedXss(msg: String): String = AppServiceBase.escapeReflectedXss(msg)
+  def decodeParam(key: String, value: String): Any =
     AppServiceBase.decodeParam(metadataConventions, namesForInts, escapeReflectedXss)(key, value)
   override def dbAccess = app.dbAccess
 
@@ -424,14 +425,14 @@ trait AppFileServiceBase[User] {
   def uploadPath: Directive1[Option[String]] =
     path("upload") & provide(None) |
     path("upload" / Segment).flatMap { filename => provide(Some(filename))}
-  def uploadMultiplePath = path("upload-multiple")
-  def downloadPath = path("download" / LongNumber / Segment) & get
-  def uploadSizeLimit =  config.getBytes("app.upload.size-limit").toLong
+  def uploadMultiplePath: Directive[Unit] = path("upload-multiple")
+  def downloadPath: Directive[(Long, String)] = path("download" / LongNumber / Segment) & get
+  def uploadSizeLimit: Long =  config.getBytes("app.upload.size-limit").toLong
 
   //make visible implicit querease for fileInfo methods
   private implicit val qe: AppQuerease = DefaultAppQuerease
   import AppFileStreamer._
-  def validateFileName(fileName: String) = {}
+  def validateFileName(fileName: String): Unit = {}
 
   def extractFileDirective(filenameOpt: Option[String])(implicit user: User, state: ApplicationState): Directive[(Source[ByteString, Any], String, String)] =
     (withSizeLimit(uploadSizeLimit) & post & extractRequestContext).flatMap { ctx =>
@@ -589,10 +590,10 @@ trait AppFileServiceBase[User] {
 }
 
 object AppServiceBase {
-  val ApplicationStateCookiePrefix = config.getString("app.state-cookie-prefix")
-  val NamesForInts = config.getStringList("app.names-for-int-params").asScala.toSet
+  val ApplicationStateCookiePrefix: String = config.getString("app.state-cookie-prefix")
+  val NamesForInts: Set[String] = config.getStringList("app.names-for-int-params").asScala.toSet
 
-  def escapeReflectedXss(msg: String) =
+  def escapeReflectedXss(msg: String): String =
     msg.replace("<", "[<]")
 
   def decodeParam(
@@ -600,7 +601,7 @@ object AppServiceBase {
     namesForInts: Set[String],
     escapeReflectedXss: String => String,
   )(
-    key: String, value: String) = {
+    key: String, value: String): Any = {
     def throwBadType(type_ : String, cause: Exception = null) =
       throw new BusinessException(escapeReflectedXss(
         s"Failed to decode as $type_: parameter: '$key', value: '$value'" +
@@ -663,8 +664,8 @@ object AppServiceBase {
 
   trait AppStateExtractor { this: AppServiceBase[_] with QueryTimeoutExtractor with Execution =>
     val ApplicationStateCookiePrefix = AppServiceBase.ApplicationStateCookiePrefix
-    def applicationState = extract(r => extractState(r.request, ApplicationStateCookiePrefix))
-    protected def extractState(req: HttpRequest, prefix: String) = {
+    def applicationState: Directive1[ApplicationState] = extract(r => extractState(r.request, ApplicationStateCookiePrefix))
+    protected def extractState(req: HttpRequest, prefix: String): ApplicationState = {
       val state = req.headers.flatMap {
         case c: Cookie => c.cookies.filter(_.name.startsWith(prefix))
         case _ => Nil
@@ -700,7 +701,7 @@ object AppServiceBase {
 
   /** Always returns queryTimeout */
   trait ConstantQueryTimeout extends QueryTimeoutExtractor {
-    override def extractTimeout = extract(_ => queryTimeout)
+    override def extractTimeout: Directive1[QueryTimeout] = extract(_ => queryTimeout)
   }
 
   trait AppExceptionHandler {
@@ -708,14 +709,14 @@ object AppServiceBase {
   }
 
   object AppExceptionHandler{
-    def entityStreamSizeExceptionHandler(marshalling: BasicJsonMarshalling) = ExceptionHandler {
+    def entityStreamSizeExceptionHandler(marshalling: BasicJsonMarshalling): ExceptionHandler = ExceptionHandler {
       case e: EntityStreamSizeException =>
         import marshalling._
         val response = Map[String, Any]("actualSize"-> e.actualSize.orNull, "limit" -> e.limit)
         complete(StatusCodes.ContentTooLarge -> response)
     }
 
-    def businessExceptionHandler(logger: com.typesafe.scalalogging.Logger) = ExceptionHandler {
+    def businessExceptionHandler(logger: com.typesafe.scalalogging.Logger): ExceptionHandler = ExceptionHandler {
       case e: BusinessException =>
         logger.trace(e.getMessage, e)
         complete(HttpResponse(BadRequest, entity = e.getMessage))
@@ -725,41 +726,41 @@ object AppServiceBase {
         complete(HttpResponse(BadRequest, entity = msg))
     }
 
-    def unprocessableEntityExceptionHandler(logger: com.typesafe.scalalogging.Logger) = ExceptionHandler {
+    def unprocessableEntityExceptionHandler(logger: com.typesafe.scalalogging.Logger): ExceptionHandler = ExceptionHandler {
       case e: UnprocessableEntityException =>
         logger.trace(e.getMessage, e)
         complete(HttpResponse(UnprocessableContent, entity = e.getMessage))
     }
 
     def bindVariableExceptionHandler(logger: com.typesafe.scalalogging.Logger,
-        bindVariableExceptionResponseMessage: MissingBindVariableException => String = _.getMessage) = ExceptionHandler {
+        bindVariableExceptionResponseMessage: MissingBindVariableException => String = _.getMessage): ExceptionHandler = ExceptionHandler {
       case e: MissingBindVariableException =>
         logger.debug(e.getMessage, e)
         complete(HttpResponse(BadRequest, entity = bindVariableExceptionResponseMessage(e)))
     }
 
-    def quereaseEnvExceptionHandler(logger: com.typesafe.scalalogging.Logger) = ExceptionHandler {
+    def quereaseEnvExceptionHandler(logger: com.typesafe.scalalogging.Logger): ExceptionHandler = ExceptionHandler {
       case e: QuereaseEnvException =>
         logger.debug(e.getMessage, e)
         complete(HttpResponse(BadRequest, entity = e.getMessage))
     }
 
-    def viewNotFoundExceptionHandler = ExceptionHandler {
+    def viewNotFoundExceptionHandler: ExceptionHandler = ExceptionHandler {
       case e: org.mojoz.querease.ViewNotFoundException => complete(HttpResponse(NotFound, entity = e.getMessage))
     }
 
-    def rowNotFoundExceptionHandler = ExceptionHandler ({
+    def rowNotFoundExceptionHandler: ExceptionHandler = ExceptionHandler ({
       case e: org.mojoz.querease.NotFoundException =>
         complete(NotFound)
     })
 
-    def validationExceptionHandler(logger: com.typesafe.scalalogging.Logger) = ExceptionHandler {
+    def validationExceptionHandler(logger: com.typesafe.scalalogging.Logger): ExceptionHandler = ExceptionHandler {
       case e: ValidationException =>
         logger.trace(e.getMessage, e)
         complete(HttpResponse(BadRequest, entity = e.getMessage))
     }
 
-    def validationExceptionPathsHandler(logger: com.typesafe.scalalogging.Logger) = ExceptionHandler {
+    def validationExceptionPathsHandler(logger: com.typesafe.scalalogging.Logger): ExceptionHandler = ExceptionHandler {
       case e: ValidationException =>
         logger.trace(e.getMessage, e)
         import io.bullet.borer._, io.bullet.borer.derivation.MapBasedCodecs._, ResultEncoder._, JsonEncoder._
@@ -767,7 +768,7 @@ object AppServiceBase {
         complete(HttpResponse(BadRequest, entity = Json.encode(e.details).toUtf8String))
     }
 
-    def csrfExceptionHandler = {
+    def csrfExceptionHandler: ExceptionHandler = {
       val logger = LoggerFactory.getLogger("org.wabase.csrf")
       ExceptionHandler {
         case e: CSRFException =>
@@ -776,7 +777,7 @@ object AppServiceBase {
       }
     }
 
-    def quereaseActionExceptionHandler(innerHandler: => ExceptionHandler) = ExceptionHandler {
+    def quereaseActionExceptionHandler(innerHandler: => ExceptionHandler): ExceptionHandler = ExceptionHandler {
       case e: QuereaseActionException => innerHandler(e.getCause)
     }
 
@@ -790,16 +791,16 @@ object AppServiceBase {
        with ServerStatistics
        with DeferredCheck
        with AppI18nService =>
-      override lazy val appExceptionHandler = PostgresTimeoutExceptionHandler(this)
+      override lazy val appExceptionHandler: ExceptionHandler = PostgresTimeoutExceptionHandler(this)
     }
 
     object PostgresTimeoutExceptionHandler {
-      val timeoutLogger = LoggerFactory.getLogger("JdbcTimeoutLogger")
+      val timeoutLogger: Logger = LoggerFactory.getLogger("JdbcTimeoutLogger")
       val TimeoutSignature = "ERROR: canceling statement due to user request"
       val TimeoutFriendlyMessage = "Request canceled due to too long processing time"
       def apply[User](
         appService: AppStateExtractor with SessionUserExtractor[User]
-          with ServerStatistics with DeferredCheck with AppI18nService) = ExceptionHandler {
+          with ServerStatistics with DeferredCheck with AppI18nService): ExceptionHandler = ExceptionHandler {
        case e: org.postgresql.util.PSQLException if e.getMessage.startsWith(TimeoutSignature) =>
         import appService._
         registerTimeout
@@ -824,7 +825,7 @@ object AppServiceBase {
     object TresqExceptionHandler {
       def apply[User](
         appService: AppStateExtractor with SessionUserExtractor[User]
-          with ServerStatistics with DeferredCheck with AppI18nService) = ExceptionHandler {
+          with ServerStatistics with DeferredCheck with AppI18nService): ExceptionHandler = ExceptionHandler {
         case e: org.tresql.TresqlException if e.getCause.isInstanceOf[org.postgresql.util.PSQLException] &&
           e.getCause.getMessage == PostgresTimeoutExceptionHandler.TimeoutSignature =>
           PostgresTimeoutExceptionHandler(appService)(e.getCause)
@@ -835,7 +836,7 @@ object AppServiceBase {
       * [[org.mojoz.querease.ViewNotFoundException]]*/
     trait SimpleExceptionHandler extends AppExceptionHandler { this: Loggable =>
       def bindVariableExceptionResponseMessage(e: MissingBindVariableException): String = e.getMessage
-      override lazy val appExceptionHandler =
+      override lazy val appExceptionHandler: ExceptionHandler =
         unprocessableEntityExceptionHandler(this.logger)
           .withFallback(businessExceptionHandler(this.logger))
           .withFallback(bindVariableExceptionHandler(this.logger, this.bindVariableExceptionResponseMessage))
@@ -857,7 +858,7 @@ object AppServiceBase {
         with DeferredCheck
         with BasicJsonMarshalling
         with AppI18nService =>
-      override lazy val appExceptionHandler =
+      override lazy val appExceptionHandler: ExceptionHandler =
         unprocessableEntityExceptionHandler(this.logger)
           .withFallback(businessExceptionHandler(this.logger))
           .withFallback(validationExceptionHandler(this.logger))
@@ -879,10 +880,10 @@ object AppServiceBase {
     val i18n: I18n = initI18n
     protected def initI18n: I18n = app
 
-    def i18nPath = pathPrefix("i18n") & get
-    def i18nLanguagePath = path("lang" / Segment)
-    def i18nResourcePath = i18nPath & path(Segment ~ Slash.?)
-    def i18nTranslatePath = i18nPath & path(Segment / Segment / RemainingPath ~ Slash.?)
+    def i18nPath: Directive[Unit] = pathPrefix("i18n") & get
+    def i18nLanguagePath: Directive[Tuple1[String]] = path("lang" / Segment)
+    def i18nResourcePath: Directive[Tuple1[String]] = i18nPath & path(Segment ~ Slash.?)
+    def i18nTranslatePath: Directive[(String, String, Uri.Path)] = i18nPath & path(Segment / Segment / RemainingPath ~ Slash.?)
 
     protected def langCookieTransformer(cookie: HttpCookie): HttpCookie = cookie
 
@@ -911,9 +912,9 @@ object AppServiceBase {
       }
     }
 
-    def currentLangFromHeader(request: HttpRequest) = I18nService.currentLangFromHeader(request)
+    def currentLangFromHeader(request: HttpRequest): Option[String] = I18nService.currentLangFromHeader(request)
 
-    def applicationLocale = applicationState.map(getApplicationLocale)
+    def applicationLocale: Directive[Tuple1[Locale]] = applicationState.map(getApplicationLocale)
 
     def getApplicationLocale(state: ApplicationState): Locale =
       state.state.get(this.ApplicationStateCookiePrefix + this.ApplicationLanguageCookiePostfix)

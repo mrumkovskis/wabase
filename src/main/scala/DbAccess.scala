@@ -12,6 +12,7 @@ import org.wabase.AppMetadata.{AugmentedAppViewDef, DbAccessKey}
 
 import scala.language.{existentials, postfixOps}
 import scala.util.control.NonFatal
+import scala.util.matching.Regex
 
 trait DbAccessProvider {
   def dbAccess: DbAccess
@@ -23,7 +24,7 @@ trait DbAccess { this: QuereaseProvider with Loggable =>
 
   protected lazy val resourcesTemplate: ResourcesTemplate =
     TresqlResourcesConf.tresqlResourcesTemplate(TresqlResourcesConf.confs, tresqlMetadata)
-  protected lazy val threadLocalResources = new ThreadLocalResources {
+  protected lazy val threadLocalResources: ThreadLocalResources = new ThreadLocalResources {
     override def initResourcesTemplate: ResourcesTemplate = DbAccess.this.resourcesTemplate
   }
   protected def tresqlMetadata: TresqlMetadata
@@ -239,7 +240,7 @@ trait DbAccess { this: QuereaseProvider with Loggable =>
 }
 
 object TresqlResources {
-  def sqlWithParams(sql: String, params: Seq[(String, Any)]) = params.foldLeft(sql) {
+  def sqlWithParams(sql: String, params: Seq[(String, Any)]): String = params.foldLeft(sql) {
     case (sql, (name, value)) => sql.replace(s"?/*$name*/", value match {
       case _: Int | _: Long | _: Double | _: BigDecimal | _: BigInt | _: Boolean => value.toString
       case _: String | _: java.sql.Date | _: java.sql.Timestamp => s"'$value'"
@@ -247,12 +248,12 @@ object TresqlResources {
       case _ => value.toString
     })
   }
-  val infoLogger = Logger(LoggerFactory.getLogger("org.wabase.tresql"))
-  val tresqlLogger = Logger(LoggerFactory.getLogger("org.wabase.tresql.tql"))
-  val ortLogger = Logger(LoggerFactory.getLogger("org.wabase.tresql.ort"))
-  val sqlLogger = Logger(LoggerFactory.getLogger("org.wabase.tresql.sql"))
-  val varsLogger = Logger(LoggerFactory.getLogger("org.wabase.tresql.params"))
-  val sqlWithParamsLogger = Logger(LoggerFactory.getLogger("org.wabase.tresql.sql_wp"))
+  val infoLogger: Logger = Logger(LoggerFactory.getLogger("org.wabase.tresql"))
+  val tresqlLogger: Logger = Logger(LoggerFactory.getLogger("org.wabase.tresql.tql"))
+  val ortLogger: Logger = Logger(LoggerFactory.getLogger("org.wabase.tresql.ort"))
+  val sqlLogger: Logger = Logger(LoggerFactory.getLogger("org.wabase.tresql.sql"))
+  val varsLogger: Logger = Logger(LoggerFactory.getLogger("org.wabase.tresql.params"))
+  val sqlWithParamsLogger: Logger = Logger(LoggerFactory.getLogger("org.wabase.tresql.sql_wp"))
 
   val logger: Logging#TresqlLogger = (m, params, topic) => topic match {
     case LogTopic.sql => sqlLogger.debug(m)
@@ -325,7 +326,7 @@ object DbAccess extends Loggable {
       case NonFatal(ex) => logger.warn(s"Failed to close db connection $dbConn", ex)
     }
   }
-  def closeConns(connCloser: Connection => Unit)(resources: Resources) = {
+  def closeConns(connCloser: Connection => Unit)(resources: Resources): Unit = {
     (resources.conn :: resources
       .extraResources.collect { case (_, r) if r.conn != null => r.conn }.toList) foreach connCloser
   }
@@ -509,8 +510,8 @@ class Macros extends TresqlComparisonMacros {
 
 class TresqlComparisonMacros extends QuereaseMacros {
 
-  val hasNonAscii = """[^\p{ASCII}]"""r
-  val hasUpper = """\p{javaUpperCase}"""r
+  val hasNonAscii: Regex = """[^\p{ASCII}]"""r
+  val hasUpper: Regex = """\p{javaUpperCase}"""r
 
   override def bin_op_function(b: QueryBuilder, op: QueryBuilder#ConstExpr, lop: Expr, rop: Expr): Expr = {
     if (lop == null || rop == null) null else {
@@ -582,6 +583,6 @@ class TresqlComparisonMacros extends QuereaseMacros {
     }
   }
 
-  protected def shouldUnaccent(s: String) = hasNonAscii.findFirstIn(s).isEmpty
-  protected def shouldIgnoreCase(s: String) = hasUpper.findFirstIn(s).isEmpty
+  protected def shouldUnaccent(s: String): Boolean = hasNonAscii.findFirstIn(s).isEmpty
+  protected def shouldIgnoreCase(s: String): Boolean = hasUpper.findFirstIn(s).isEmpty
 }

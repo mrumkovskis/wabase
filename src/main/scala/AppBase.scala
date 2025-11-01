@@ -19,6 +19,7 @@ import org.apache.pekko.actor.ActorSystem
 
 import java.sql.Connection
 import scala.util.control.NonFatal
+import scala.collection.MapView
 
 object AppBase {
   trait AppConfig {
@@ -35,13 +36,13 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
     with DbConstraintMessage
     with Audit[User] =>
 
-  override def dbAccess = this
+  override def dbAccess: AppBase[User] with DbAccess with Authorization[User] with DbConstraintMessage with Audit[User] = this
 
   val startupTimeMillis = System.currentTimeMillis
 
   import qe.{viewDef, viewDefOption, classToViewNameMap, viewNameToClassMap}
 
-  protected def isQuereaseActionDefined(viewName: String, actionName: String) =
+  protected def isQuereaseActionDefined(viewName: String, actionName: String): Boolean =
     qe.quereaseActionOpt(viewName, actionName).isDefined
 
   protected def hasLegacyHandlers(viewName: String, actionName: String): Boolean = {
@@ -85,7 +86,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
     protected def nextInternal: T
     /** Override {{{hasNextInternal}}} method instead of this.
         This method calls {{{hasNextInternal}}} and in the case of non fatal error calls {{{close}}} */
-    override final def hasNext = exe(hasNextInternal)
+    override final def hasNext: Boolean = exe(hasNextInternal)
     /** Override {{{nextInternal}}} method instead of this.
         This method calls {{{nextInternal}}} and in the case of non fatal error calls {{{close}}}*/
     override final def next(): T = exe(nextInternal)
@@ -101,17 +102,17 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
         wrapper
       }
     }
-    def mapRow[R <: Dto](f: T => R) = new Wrapper[R] {
+    def mapRow[R <: Dto](f: T => R): Wrapper[R] = new Wrapper[R] {
       override protected def nextInternal: R = f(self.next())
     }
-    def mapRowWithResources[R <: Dto](f: Resources => T => R) = new Wrapper[R] {
+    def mapRowWithResources[R <: Dto](f: Resources => T => R): Wrapper[R] = new Wrapper[R] {
       override protected def nextInternal: R = f(self.resources)(self.next())
     }
     def andThen(action: => Unit): AppListResult[T] = {
       onCloseAction = onCloseAction andThen (_ => action)
       self
     }
-    def close() = onCloseAction(())
+    def close(): Unit = onCloseAction(())
 
   }
 
@@ -132,7 +133,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
     user: User,
     state: ApplicationState = Map[String, Any](), result: Option[T] = null)
     extends RequestContext[Option[T]] {
-    val params = state ++ inParams ++ current_user_param(user)
+    val params: Map[String,Any] = state ++ inParams ++ current_user_param(user)
   }
 
   case class CreateContext[+T <: Dto](viewName: String,
@@ -140,7 +141,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
     user: User,
     state: ApplicationState = Map[String, Any](), result: T = null)
     extends RequestContext[T] {
-    val params = state ++ inParams ++ current_user_param(user)
+    val params: Map[String,Any] = state ++ inParams ++ current_user_param(user)
   }
 
   case class ListContext[+T <: Dto](
@@ -159,15 +160,15 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
     result: AppListResult[T] = null,
     count: Long = -1)
     extends RequestContext[AppListResult[T]] {
-    val params = state ++ inParams ++ current_user_param(user)
+    val params: Map[String,Any] = state ++ inParams ++ current_user_param(user)
 
-    def mapRow[R <: Dto](f: T => R) = copy(result = result.mapRow(f))
-    def foreachRow(f: T => Unit) = mapRow{t => f(t);t}
-    def mapRowWithResources[R <: Dto](f: Resources => T => R) =
+    def mapRow[R <: Dto](f: T => R): ListContext[R] = copy(result = result.mapRow(f))
+    def foreachRow(f: T => Unit): ListContext[T] = mapRow{t => f(t);t}
+    def mapRowWithResources[R <: Dto](f: Resources => T => R): ListContext[R] =
       copy(result = result.mapRowWithResources(f))
-    def foreachRowWithResources(f: Resources => T => Unit) =
+    def foreachRowWithResources(f: Resources => T => Unit): ListContext[T] =
       mapRowWithResources { r => t => { f(r)(t); t } }
-    def andThen(action: => Unit) = copy(result = result.andThen(action))
+    def andThen(action: => Unit): ListContext[T] = copy(result = result.andThen(action))
   }
 
   case class SaveContext[+T <: Dto](
@@ -180,7 +181,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
       state: ApplicationState = Map[String, Any](),
       extraPropsToSave: Map[String, Any] = Map(),
       result: Long = -1) extends RequestContext[Long] {
-    val params = state ++ inParams ++ current_user_param(user)
+    val params: Map[String,Any] = state ++ inParams ++ current_user_param(user)
   }
 
   case class RemoveContext[+T <: DtoWithId](
@@ -193,14 +194,14 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
       result: Long = -1,
       old: T = null)
     extends RequestContext[Long] {
-    val keyMap = Map("id" -> id)
-    val viewDef = qe.viewDef(viewName)
-    val params = state ++ inParams ++ keyMap ++ current_user_param(user)
+    val keyMap: Map[String,Long] = Map("id" -> id)
+    val viewDef: ViewDef = qe.viewDef(viewName)
+    val params: Map[String,Any] = state ++ inParams ++ keyMap ++ current_user_param(user)
   }
 
  /** before(), after() and on() methods can be used from business code. */
   /** Names of date or time fields updated automatically on save */
-  val autoTimeFieldNames = Set("update_time")
+  val autoTimeFieldNames: Set[String] = Set("update_time")
   implicit object View extends HExt[ViewContext[Dto]] {
     override def defaultAction(ctx: ViewContext[Dto]): ViewContext[Dto] =
       defaultView(ctx)
@@ -236,7 +237,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
     override def register(
       typ: String,
       mf: Manifest[ListContext[Dto]],
-      a: ListContext[Dto] => ListContext[Dto]) = {
+      a: ListContext[Dto] => ListContext[Dto]): Unit = {
       if (typ == "after") {
         val f = (ctx: ListContext[Dto]) => if (!ctx.doCount) a(ctx) else ctx
         super.register(typ, mf, f)
@@ -358,9 +359,9 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
       ctx.copy(result = result.toString.toLong)
   }
 
-  def before(actions: Magnet*) = register("before", actions: _*)
-  def after(actions: Magnet*) = register("after", actions: _*)
-  def on(actions: Magnet*) = register("on", actions: _*)
+  def before(actions: Magnet*): Unit = register("before", actions: _*)
+  def after(actions: Magnet*): Unit = register("after", actions: _*)
+  def on(actions: Magnet*): Unit = register("on", actions: _*)
 
   /*
   def chainAndCollectBizEx[T](actions: Magnet[T]*): T => T = {
@@ -389,7 +390,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
   sealed abstract class Magnet { def register(actionType: String): Unit }
   implicit class FunctionMagnet[T](private[AppBase] val fun: T => T)(
     implicit ext: Ext[T], mf: Manifest[T]) extends Magnet {
-    override def register(actionType: String) = ext.asInstanceOf[HExt[T]].register(actionType, mf, fun)
+    override def register(actionType: String): Unit = ext.asInstanceOf[HExt[T]].register(actionType, mf, fun)
   }
   implicit class VoidFunctionMagnet[T: Ext: Manifest](fun: T => Unit)
     extends FunctionMagnet[T]((x: T) => { fun(x); x })
@@ -398,7 +399,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
   //helper class due to scalac error: contravariant type T occurs in covariant position in type => T => T
   sealed abstract class HExt[T] extends Ext[T] {
     private var actions: Map[(String, Class[_]), T => T] = Map()
-    def register(typ: String, mf: Manifest[T], a: T => T) = {
+    def register(typ: String, mf: Manifest[T], a: T => T): Unit = {
       val clazz = classFromManifest(mf)
       actions += ((typ, clazz) -> actions.get((typ, clazz)).map(_ andThen a).getOrElse(a))
     }
@@ -428,7 +429,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
 
   //rest services entry points
   def getRaw(viewName: String, id: Long, params: Map[String, Any] = Map())(
-    implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout, poolName: PoolName) =
+    implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout, poolName: PoolName): ViewContext[Dto] =
   {
     checkApi(viewName, "get", user, Seq(id))
     implicit val extraDbs = extraDb(AugmentedAppViewDef(viewDef(viewName)).actionToDbAccessKeys(Action.Get))
@@ -442,12 +443,12 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
 
   def get(viewName: String, id: Long, params: Map[String, Any] = Map())(
     implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout,
-      poolName: PoolName = ConnectionPools.key(viewDef(viewName).db)) =
+      poolName: PoolName = ConnectionPools.key(viewDef(viewName).db)): Option[Dto] =
     createViewResult(getRaw(viewName, id, params))
 
   def createRaw(viewName: String, params: Map[String, Any] = Map.empty)(
     implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout, poolName: PoolName
-  ) = {
+  ): CreateContext[Dto] = {
       checkApi(viewName, "get", user, Nil)
       implicit val extraDbs = extraDb(AugmentedAppViewDef(viewDef(viewName)).actionToDbAccessKeys(Action.Create))
       dbUse {
@@ -460,7 +461,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
 
   def create(viewName: String, params: Map[String, Any] = Map.empty)(
     implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout,
-      poolName: PoolName = ConnectionPools.key(viewDef(viewName).db)) =
+      poolName: PoolName = ConnectionPools.key(viewDef(viewName).db)): Dto =
     createCreateResult(createRaw(viewName, params))
 
   def listRaw(
@@ -473,7 +474,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
       implicit user: User,
       state: ApplicationState,
       timeoutSeconds: QueryTimeout,
-      poolName: PoolName) =
+      poolName: PoolName): ListContext[Dto] =
     {
       checkApi(viewName, "list", user, Nil)
       val maxLimitForView = viewDef(viewName).limit
@@ -496,7 +497,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
       implicit user: User,
       state: ApplicationState,
       timeoutSeconds: QueryTimeout,
-      poolName: PoolName = ConnectionPools.key(viewDef(viewName).db)) =
+      poolName: PoolName = ConnectionPools.key(viewDef(viewName).db)): AppListResult[Dto] =
     createListResult(listRaw(viewName, params, offset, limit, orderBy, doCount))
 
   def count(viewName: String, params: Map[String, Any])(
@@ -504,7 +505,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
     state: ApplicationState,
     timeoutSeconds: QueryTimeout,
     poolName: PoolName = ConnectionPools.key(viewDef(viewName).db)
-  ) = {
+  ): Long = {
     checkApi(viewName, "list", user, Nil)
     val result = listInternal(viewName, params, doCount = true)
     createCountResult(result)
@@ -542,14 +543,14 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
 
   def save(viewName: String, obj: Map[String, Any], params: Map[String, Any] = Map(), emptyStringsToNull: Boolean = true)(
     implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout,
-      poolName: PoolName = ConnectionPools.key(viewDef(viewName).db)) = {
+      poolName: PoolName = ConnectionPools.key(viewDef(viewName).db)): Long = {
     val instance = qio.fill[Dto](obj)(Manifest.classType(viewNameToClassMap(viewName)))
     saveInternal(viewName, instance, params, emptyStringsToNull)
   }
 
   def saveDto(instance: Dto, params: Map[String, Any] = Map(), emptyStringsToNull: Boolean = true, extraPropsToSave: Map[String, Any] = Map())(
     implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout,
-      poolName: PoolName = ConnectionPools.key(viewDef(classToViewNameMap(instance.getClass)).db)) = {
+      poolName: PoolName = ConnectionPools.key(viewDef(classToViewNameMap(instance.getClass)).db)): Long = {
     saveInternal(classToViewNameMap(instance.getClass), instance, params, emptyStringsToNull, extraPropsToSave)
   }
 
@@ -628,7 +629,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
 
   def delete(viewName: String, id: Long, params: Map[String, Any] = Map())(
     implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout,
-      poolName: PoolName = ConnectionPools.key(viewDef(viewName).db)) =
+      poolName: PoolName = ConnectionPools.key(viewDef(viewName).db)): Long =
   {
       checkApi(viewName, "delete", user, Seq("id"))
       val promise = Promise[Unit]()
@@ -653,7 +654,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
       }
   }
 
-  def rest[C <: RequestContext[_]](ctx: C)(implicit mgr: Ext[C], clazz: Class[_]) = auth(ctx, clazz){audit(ctx){
+  def rest[C <: RequestContext[_]](ctx: C)(implicit mgr: Ext[C], clazz: Class[_]): C = auth(ctx, clazz){audit(ctx){
     try mgr.asInstanceOf[HExt[C]].action(clazz)(ctx) catch {
       case e: java.lang.Error =>
         logger.error(s"Error occured! Request context:\n$ctx", e)
@@ -674,7 +675,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
   def createSaveResult[T <: Dto](ctx: SaveContext[T]) = ctx.result
   def createDeleteResult[T <: DtoWithId](ctx: RemoveContext[T]) = ctx.result
 
-  lazy val metadataVersionString = {
+  lazy val metadataVersionString: String = {
     java.util.Base64.getUrlEncoder.encodeToString(
       java.security.MessageDigest.getInstance("MD5").digest(
         qe.collectViews{ case v => v }.toList.toString
@@ -777,16 +778,16 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
 
   def currentUserParamNames: Set[String] = Set.empty
   private lazy val current_user_param_names = currentUserParamNames
-  def isInternalParameter(view: ViewDef, parameterName: String) =
+  def isInternalParameter(view: ViewDef, parameterName: String): Boolean =
     current_user_param_names.contains(parameterName) ||
       view.fieldOpt(parameterName).exists(_.api.excluded)
   def filterParameters(view: ViewDef): Seq[FilterParameter] = {
     qe.filterParameters(view)
       .filterNot(p => isInternalParameter(view, p.name))
   }
-  lazy val viewNameToFilterMetadata = qe.nameToViewDef.mapValues(filterParameters)
+  lazy val viewNameToFilterMetadata: MapView[String,Seq[FilterParameter]] = qe.nameToViewDef.mapValues(filterParameters)
 
-  def apiMetadata(implicit user: User, state: ApplicationState) = {
+  def apiMetadata(implicit user: User, state: ApplicationState): TreeMap[String,Any] = {
     // TODO duplicate code, just filter differs
     val q = new collection.mutable.Queue[ViewDef]
     val names = collection.mutable.Set[String]()
@@ -802,7 +803,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
     TreeMap[String, Any]() ++ names.toSeq.sorted.map(n => n -> metadata(n))
   }
 
-  def auth[C <: RequestContext[_]](ctx: C, clazz: Class[_])(action: => C) = {
+  def auth[C <: RequestContext[_]](ctx: C, clazz: Class[_])(action: => C): C = {
     check(ctx, clazz)
     relevant(action, clazz)
   }
@@ -822,7 +823,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
   def filterByHasRole(someRoles: Set[String], user: User): Set[String] =
     someRoles.filter(role => hasRole(user, Set(role)))
 
-  def api(implicit user: User) = {
+  def api(implicit user: User): TreeMap[String,Any] = {
     val views = qe.collectViews{ case v => v}.toSeq.sortBy(_.name)
     val allApiRelatedRoles =
       views.map(_.apiMethodToRoles).filter(_ != null)

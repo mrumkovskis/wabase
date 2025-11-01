@@ -53,7 +53,7 @@ object pekko {
 
     def toByteArray(bytes: ByteString): Array[Byte] = bytes.toArray
 
-    def concat(a: ByteString, b: ByteString) =
+    def concat(a: ByteString, b: ByteString): ByteString =
       if (a.nonEmpty) {
         if (b.nonEmpty) {
           val len = a.length + b.length
@@ -74,7 +74,7 @@ object pekko {
       if (copied < bytes.size) bytes.drop(copied) else empty
     }
 
-    def convert[B](value: B)(implicit byteAccess: ByteAccess[B]) =
+    def convert[B](value: B)(implicit byteAccess: ByteAccess[B]): ByteString =
       value match {
         case x: ByteString => x
         case x             => fromByteArray(byteAccess.toByteArray(x))
@@ -164,7 +164,7 @@ object pekko {
       else pp.padOctaByte(remaining)
     }
 
-    def readBytes(length: Long, pp: Input.PaddingProvider[ByteString]) = {
+    def readBytes(length: Long, pp: Input.PaddingProvider[ByteString]): ByteString = {
       val remaining = (byteString.length - _cursor).toLong
       val len       = math.min(remaining, length).toInt
       val bytes =

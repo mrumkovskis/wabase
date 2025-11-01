@@ -25,7 +25,7 @@ trait RowWriters { this: QuereaseProvider =>
 
   class JsonRowWriter[T: JsonFormat](val result: Iterator[T], writer: Writer) extends RowWriter {
     import spray.json._
-    override def header() = writer write "["
+    override def header(): Unit = writer write "["
 
     var first = true
     override def row(): Unit = {
@@ -33,10 +33,10 @@ trait RowWriters { this: QuereaseProvider =>
       writer write result.next().toJson.compactPrint
     }
 
-    override def footer() = writer write "]\n"
+    override def footer(): Unit = writer write "]\n"
 
     def hasNext = result.hasNext
-    def close() = result match {
+    def close(): Unit = result match {
       case cr: AutoCloseable => cr.close()
       case _ =>
     }
@@ -50,8 +50,8 @@ trait RowWriters { this: QuereaseProvider =>
     def row(r: Row): Unit
     def result: Result
     override def hasNext = result.hasNext
-    override def row() = row(result.next())
-    override def close() = result.close()
+    override def row(): Unit = row(result.next())
+    override def close(): Unit = result.close()
   }
 
   abstract class OdsRowWriter(zos: ZipOutputStream) extends AbstractRowWriter {
@@ -60,7 +60,7 @@ trait RowWriters { this: QuereaseProvider =>
 
     val streamer = new OdsStreamer(zos)
 
-    override def header() = {
+    override def header(): Unit = {
       streamer.startWorkbook
       streamer.startWorksheet
       streamer.startTable("dati")
@@ -68,12 +68,12 @@ trait RowWriters { this: QuereaseProvider =>
       labels foreach { h => streamer.cell(h) }
       streamer.endRow
     }
-    override def row(r: Row) = {
+    override def row(r: Row): Unit = {
       streamer.startRow
       r.values foreach { (v: Any) => streamer.cell(v) }
       streamer.endRow
     }
-    override def footer() = {
+    override def footer(): Unit = {
       streamer.endTable
       streamer.endWorksheet
       streamer.endWorkbook
@@ -81,20 +81,20 @@ trait RowWriters { this: QuereaseProvider =>
   }
 
   abstract class CsvRowWriter(writer: Writer) extends AbstractRowWriter {
-    def escapeValue(s: String) =
+    def escapeValue(s: String): String =
       if (s == null) null
       else if (s.contains(",") || s.contains("\"")) ("\"" + s.replaceAll("\"", "\"\"") + "\"")
       else s
 
-    override def header() = {
+    override def header(): Unit = {
       writer.write(labels.map(escapeValue).mkString("",",","\n"))
       writer.flush
     }
-    override def row(r: Row) = {
+    override def row(r: Row): Unit = {
       writer.write(r.values.map(csvValue).mkString("",",","\n"))
       writer.flush
     }
-    override def footer() = {}
+    override def footer(): Unit = {}
 
     def csvValue(v: Any): String = Option(v).map{
       case m: Map[String @unchecked, Any @unchecked] => ""
@@ -111,10 +111,10 @@ trait RowWriters { this: QuereaseProvider =>
 
     import org.wabase.spreadsheet.xlsxml._
 
-    val headerStyle = Style("header", null, Font.BOLD)
+    val headerStyle: Style = Style("header", null, Font.BOLD)
     val streamer = new XlsXmlStreamer(writer)
 
-    override def header() = {
+    override def header(): Unit = {
       streamer.startWorkbook(Seq(headerStyle))
       streamer.startWorksheet("dati")
       streamer.startTable
@@ -122,12 +122,12 @@ trait RowWriters { this: QuereaseProvider =>
       labels foreach { h => streamer.cell(h, headerStyle) }
       streamer.endRow
     }
-    override def row(r: Row) = {
+    override def row(r: Row): Unit = {
       streamer.startRow
       r.values foreach { (v: Any) => streamer.cell(v) }
       streamer.endRow
     }
-    override def footer() = {
+    override def footer(): Unit = {
       streamer.endTable
       streamer.endWorksheet
       streamer.endWorkbook
@@ -137,9 +137,9 @@ trait RowWriters { this: QuereaseProvider =>
 
 object RowSource {
   private class RowWriteSource (createRowWriter: Writer => RowWriter) extends GraphStage[SourceShape[ByteString]] {
-    val out = Outlet[ByteString]("RowWriteSource")
-    override val shape = SourceShape(out)
-    override def createLogic(attrs: Attributes) = new GraphStageLogic(shape) {
+    val out: Outlet[ByteString] = Outlet[ByteString]("RowWriteSource")
+    override val shape: SourceShape[ByteString] = SourceShape(out)
+    override def createLogic(attrs: Attributes): GraphStageLogic = new GraphStageLogic(shape) {
       var buf: ByteStringBuilder = _
       var writer: OutputStreamWriter = _
       var src: RowWriter = _
@@ -171,9 +171,9 @@ object RowSource {
   }
 
   private class RowWriteZipSource(createRowWriter: ZipOutputStream => RowWriter) extends GraphStage[SourceShape[ByteString]] {
-    val out = Outlet[ByteString]("RowWriteSource")
-    override val shape = SourceShape(out)
-    override def createLogic(attrs: Attributes) = new GraphStageLogic(shape) {
+    val out: Outlet[ByteString] = Outlet[ByteString]("RowWriteSource")
+    override val shape: SourceShape[ByteString] = SourceShape(out)
+    override def createLogic(attrs: Attributes): GraphStageLogic = new GraphStageLogic(shape) {
       var buf: ByteStringBuilder = _
       var zos: ZipOutputStream = _
       var src: RowWriter = _

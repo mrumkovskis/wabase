@@ -38,7 +38,7 @@ trait Authentication[User] extends SecurityDirectives with SessionInfoRemover wi
 
   /** Default implementation redirects to uri value stored in cookie {{{RequestedUriCookieName}}}
       or if cookie is missing redirects to / */
-  def signInSuccessRoute(user: User) = (setSessionCookie(user) & optionalCookie(RequestedUriCookieName)) {
+  def signInSuccessRoute(user: User): RequestContext => Future[RouteResult] = (setSessionCookie(user) & optionalCookie(RequestedUriCookieName)) {
     _.map { requestedUriCookie =>
       deleteCookie(RequestedUriCookieName) {
         redirect(Uri(requestedUriCookie.value), StatusCodes.SeeOther)
@@ -82,25 +82,25 @@ trait Authentication[User] extends SecurityDirectives with SessionInfoRemover wi
   val SignInPath = "/sign-in"
   val SignedInDefaultPath = "/"
   val SignedOutPath = "/"
-  val SessionCookieName = config.getString("session.cookie.name")
+  val SessionCookieName: String = config.getString("session.cookie.name")
   val RequestedUriCookieName = "requested-uri"
 
   lazy val HttpChallengeRealm = "APP"
-  lazy val AppDefaultChallenge = HttpChallenge("Any", HttpChallengeRealm)
+  lazy val AppDefaultChallenge: HttpChallenge = HttpChallenge("Any", HttpChallengeRealm)
 
-  val sessionTimeOut = config.getDuration("session.timeout").toMillis
+  val sessionTimeOut: Long = config.getDuration("session.timeout").toMillis
   val httpOnlyCookies = true
   val secureCookies = Crypto.secureCookies
 
   def uniqueSessionId = Crypto.uniqueSessionId
 
-  def remoteAddressToString(a: RemoteAddress) = a.toIP.map(_.ip.toString).orNull
+  def remoteAddressToString(a: RemoteAddress): String = a.toIP.map(_.ip.toString).orNull
   protected val IP = "IP"
   protected val UserAgent = "User-Agent"
 
-  def extractUserAgent = optionalHeaderValueByType(`User-Agent`).map(_.map(_.value))
+  def extractUserAgent: Directive[Tuple1[Option[String]]] = optionalHeaderValueByType(`User-Agent`).map(_.map(_.value))
 
-  def extractSessionToken(user: User) = (extractClientIP.map(remoteAddressToString).filter(_ != null) & extractUserAgent)
+  def extractSessionToken(user: User): Directive[(String, Long)] = (extractClientIP.map(remoteAddressToString).filter(_ != null) & extractUserAgent)
     .recover { _ =>
        throw new BusinessException(
           "Client IP and/or User-Agent header(s) not found, ensure pekko.http.server.remote-address-header = on")
@@ -160,7 +160,7 @@ trait Authentication[User] extends SecurityDirectives with SessionInfoRemover wi
       _.map { user => onSuccess(signOutUser(user)).flatMap (_ => pass) }.getOrElse(pass)
     } & removeSessionCookie)(signOutRoute)
 
-  def removeSessionInfoFromRequest(req: HttpRequest) = {
+  def removeSessionInfoFromRequest(req: HttpRequest): HttpRequest = {
     req.mapHeaders(_.flatMap {
       case c: Cookie =>
         c.cookies.filterNot(_.name == SessionCookieName) match {
@@ -172,11 +172,11 @@ trait Authentication[User] extends SecurityDirectives with SessionInfoRemover wi
   }
 
   /** Deletes session-id cookie if exists */
-  protected def removeSessionCookie = deleteCookie(SessionCookieName, path = "/")
+  protected def removeSessionCookie: Directive0 = deleteCookie(SessionCookieName, path = "/")
   /** On failed authentication sets requested-uri cookie if request has not been Ajax */
   protected def reqestedUriCookieTransformer(cookie: HttpCookie): HttpCookie = cookie
 
-  protected def setRequestedUriCookie = (isAjaxRequest & deleteCookie(RequestedUriCookieName, path = "/")) |
+  protected def setRequestedUriCookie: Directive[Unit] = (isAjaxRequest & deleteCookie(RequestedUriCookieName, path = "/")) |
     extractUri.flatMap { uri =>
       setCookie(reqestedUriCookieTransformer(HttpCookie(
         RequestedUriCookieName,
@@ -185,7 +185,7 @@ trait Authentication[User] extends SecurityDirectives with SessionInfoRemover wi
         httpOnly = true).withSameSite(SameSite.Lax)
       ))
   }
-  def authRejectionHandler = RejectionHandler.newBuilder().handle {
+  def authRejectionHandler: RejectionHandler = RejectionHandler.newBuilder().handle {
     case MissingCookieRejection(SessionCookieName) =>
       setRequestedUriCookie { authFailureRoute }
     case AuthenticationFailedRejection(credentials, _) =>
@@ -194,7 +194,7 @@ trait Authentication[User] extends SecurityDirectives with SessionInfoRemover wi
 
   private val `X-Requested-With` = "X-Requested-With".toLowerCase   // legacy ajax header name
   private val `Sec-Fetch-Mode` = "Sec-Fetch-Mode".toLowerCase       // modern ajax header name
-  val isAjaxRequest = headerValueByName(`Sec-Fetch-Mode`).recover {
+  val isAjaxRequest: Directive[Unit] = headerValueByName(`Sec-Fetch-Mode`).recover {
     r => headerValueByName(`X-Requested-With`)
       .filter { _ == "XMLHttpRequest" }
       .recover { _ => reject(r: _*): Directive1[String] }
@@ -221,7 +221,7 @@ object Authentication {
     def extractUserFromSession: Directive1[Option[User]]
   }
 
-  def passwordHash(password: String) = {
+  def passwordHash(password: String): String = {
     val (n, r, p) = (16384, 8, 1)
     SCryptUtil.scrypt(password, n, r, p)
   }
@@ -256,41 +256,41 @@ object Authentication {
       override def initialValue = new SecureRandom
     }
 
-    lazy val cryptoKey = secretKey(cryptoKeyStr)
-    lazy val macKey = secretKey(macKeyStr)
+    lazy val cryptoKey: Array[Byte] = secretKey(cryptoKeyStr)
+    lazy val macKey: Array[Byte] = secretKey(macKeyStr)
 
     lazy val secureCookies: Boolean = config.getBoolean("session.cookie.secure")
-    def uniqueSessionId = new Random(new SecureRandom).alphanumeric.take(100).mkString
+    def uniqueSessionId: String = new Random(new SecureRandom).alphanumeric.take(100).mkString
 
-    def secretKey(keyStr: String) = Option(decodeBytes(keyStr))
+    def secretKey(keyStr: String): Array[Byte] = Option(decodeBytes(keyStr))
       .filter(_.length >= 16)
       //take whole number of power of 2 bytes, i.e. 16, 32, ...
       .map(a => a.take(Math.pow(2, (Math.log(a.length) / Math.log(2)).toInt).toInt))
       .getOrElse(sys.error("too short secret key, in base 64 encoded format must be at least 16 bytes long"))
 
-    def randomBytes(size: Int) = {
+    def randomBytes(size: Int): Array[Byte] = {
       val array = Array.ofDim[Byte](size)
       randomGen.get.nextBytes(array)
       array ++ java.nio.ByteBuffer.allocate(8).putLong(currentTime).array.drop(2)
     }
 
-    def encodeBytes(bytes: Array[Byte]) = Base64.getUrlEncoder.encodeToString(bytes) match {
+    def encodeBytes(bytes: Array[Byte]): String = Base64.getUrlEncoder.encodeToString(bytes) match {
       // TODO performance
       case s if s endsWith "==" => s.dropRight(2)
       case s if s endsWith "="  => s.dropRight(1)
       case s => s
     }
-    def decodeBytes(string: String) =
+    def decodeBytes(string: String): Array[Byte] =
       // TODO performance
       Base64.getMimeDecoder.decode(string.replace('-', '+').replace('_', '/'))
 
-    def encrypt(s: String) = {
+    def encrypt(s: String): String = {
       val rb = randomBytes(10)
       val encryptedSession = rb ++ code(s.getBytes("utf-8"),
           new IvParameterSpec(rb), Cipher.ENCRYPT_MODE)
       encodeBytes(hmac(encryptedSession) ++ encryptedSession)
     }
-    def decrypt(s: String) = {
+    def decrypt(s: String): String = {
       val bytes = decodeBytes(s)
       val hmacBytes = bytes.take(32)
       val encryptedSession = bytes.drop(32)
@@ -301,7 +301,7 @@ object Authentication {
           Cipher.DECRYPT_MODE), "utf-8")
     }
 
-    def code(s: Array[Byte], salt: IvParameterSpec, mode: Int) = {
+    def code(s: Array[Byte], salt: IvParameterSpec, mode: Int): Array[Byte] = {
       val ks = new SecretKeySpec(cryptoKey, "AES")
       val cipher = Cipher.getInstance(cryptoAlgoritm)
       cipher.init(mode, ks, salt)
@@ -309,14 +309,14 @@ object Authentication {
       bytes
     }
 
-    def hmac(s: Array[Byte]) = {
+    def hmac(s: Array[Byte]): Array[Byte] = {
       val ks = new SecretKeySpec(macKey, "HMAC")
       val mac = Mac.getInstance(macAlgoritm)
       mac.init(ks)
       mac.doFinal(s)
     }
 
-    def newKey = {
+    def newKey: String = {
       //algrorithm name for key generator seems irrelevant
       val keyGen = KeyGenerator.getInstance("AES")
       keyGen.init(256) // for example
@@ -329,8 +329,8 @@ object Authentication {
 
     def authenticateUser(username: String, password: String): Future[Option[User]]
 
-    lazy val BasicChallenge = HttpChallenges.basic(HttpChallengeRealm)
-    lazy val CustomChallenge = HttpChallenge("BasicOrOther", HttpChallengeRealm)
+    lazy val BasicChallenge: HttpChallenge = HttpChallenges.basic(HttpChallengeRealm)
+    lazy val CustomChallenge: HttpChallenge = HttpChallenge("BasicOrOther", HttpChallengeRealm)
 
     override def signInUser: AuthenticationDirective[User] = {
       def r(c: Cause, ch: HttpChallenge) = reject(AuthenticationFailedRejection(c, ch)): Directive1[User]
@@ -355,8 +355,8 @@ object Authentication {
     import javax.naming.directory.InitialDirContext
     import scala.util.Try
 
-    val ldapUrl = Try(appConfig.getString("ldap-url")).toOption.getOrElse("")
-    val accountPostfix = Try(appConfig.getString("account-postfix")).toOption.getOrElse("")
+    val ldapUrl: String = Try(appConfig.getString("ldap-url")).toOption.getOrElse("")
+    val accountPostfix: String = Try(appConfig.getString("account-postfix")).toOption.getOrElse("")
 
     def ldapLogin(username: String, password: String)(implicit locale: Locale): Unit = {
       val env = new java.util.Hashtable[String, String]()

@@ -28,34 +28,34 @@ object DbConstraintMessage {
     genericNoDetailsMessage: String,
     genericMessage: String) {
     val namePattern = "[\\p{IsLatin}\\d\\.\\_]+"
-    val nameExtractorPatternString =
+    val nameExtractorPatternString: String =
       ("ERROR: " + dbMessagePattern)
         .replace("$$", s"""\"($namePattern)\"""")
         .replace("$", s"""\"$namePattern\"""")
         .replace(" ", "\\s+")
     val nameExtractor = nameExtractorPatternString.r
   }
-  val Nn = ConstraintViolationInfo(
+  val Nn: ConstraintViolationInfo = ConstraintViolationInfo(
     "23502",
     "null value in column $$( of relation $)? violates not-null constraint",
     "Field must not be empty",
     """Field "%s" must not be empty""")
-  val FkDel = ConstraintViolationInfo(
+  val FkDel: ConstraintViolationInfo = ConstraintViolationInfo(
     "23503",
     "update or delete on table $ violates foreign key constraint $$ on table $",
     "Unable to find related entity",
     "Unable to find related entity (link %s)")
-  val FkIns = ConstraintViolationInfo(
+  val FkIns: ConstraintViolationInfo = ConstraintViolationInfo(
     "23503",
     "insert or update on table $ violates foreign key constraint $$",
     "Unable to find related entity",
     "Unable to find related entity (link %s)")
-  val Uk = ConstraintViolationInfo(
+  val Uk: ConstraintViolationInfo = ConstraintViolationInfo(
     "23505",
     "duplicate key value violates unique constraint $$",
     "Value should be unique",
     "Value should be unique (constraint %s violated)")
-  val Ck = ConstraintViolationInfo(
+  val Ck: ConstraintViolationInfo = ConstraintViolationInfo(
     "23514",
     "new row for relation $ violates check constraint $$",
     "Invalid data",
@@ -63,7 +63,7 @@ object DbConstraintMessage {
   /** Code "235BX" is recognized and handled here and therefore can be used
     * to raise custom business exceptions from custom db functions
     */
-  val CustomDbBusinessException = ConstraintViolationInfo(
+  val CustomDbBusinessException: ConstraintViolationInfo = ConstraintViolationInfo(
     "235BX",
     "(.*)",
     "Error 235BX",

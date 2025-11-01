@@ -21,6 +21,9 @@ import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContextExecutor, Future, Promise}
 import scala.language.postfixOps
 import scala.util.{Failure, Success}
+import org.apache.pekko.NotUsed
+import scala.collection.mutable
+import scala.util.Try
 
 
 class ClientException(message: String, cause: Throwable, val status: StatusCode, val responseContent: String, val request: HttpRequest) extends Exception(message, cause)
@@ -35,14 +38,14 @@ object ClientException{
 class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root) extends HttpClient with Loggable {
 
   import RestClient.{WsClosed, WsFailed}
-  def actorSystemName   = clientCfg.getString("actor-system-name")
-  def createActorSystem = ActorSystem(actorSystemName)
+  def actorSystemName: String   = clientCfg.getString("actor-system-name")
+  def createActorSystem: ActorSystem = ActorSystem(actorSystemName)
   implicit val system: ActorSystem = createActorSystem
   implicit val executionContext: ExecutionContextExecutor = system.dispatcher
 
-  lazy val port         = clientCfg.getInt   ("server-port")
-  lazy val serverPath   = clientCfg.getString("server-path")
-  lazy val serverWsPath = clientCfg.getString("server-ws-path")
+  lazy val port: Int         = clientCfg.getInt   ("server-port")
+  lazy val serverPath: String   = clientCfg.getString("server-path")
+  lazy val serverWsPath: String = clientCfg.getString("server-ws-path")
 
   protected def getHttpsConnectionContext: Option[HttpsConnectionContext] = {
     Option("ssl-config").filter(clientCfg.hasPath).map(config.getConfig).map { sslConfig =>
@@ -59,7 +62,7 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root) exten
     }
   }
 
-  val flow = getHttpsConnectionContext match {
+  val flow: Flow[(HttpRequest, Unit),(Try[HttpResponse], Unit),NotUsed] = getHttpsConnectionContext match {
     case None             => Http().superPool[Unit]()
     case Some(sslContext) => Http().superPool[Unit](sslContext)
   }
@@ -69,13 +72,13 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root) exten
     Option("await-timeout").filter(clientCfg.hasPath).map(clientCfg.getDuration).map(toFiniteDuration)
       .getOrElse(requestTimeout + (2 seconds))
 
-  val urlEncoder = java.net.URLEncoder.encode(_: String, "UTF-8")
-  val urlDecoder = java.net.URLDecoder.decode(_: String, "UTF-8")
+  val urlEncoder: String => String = java.net.URLEncoder.encode(_: String, "UTF-8")
+  val urlDecoder: String => String = java.net.URLDecoder.decode(_: String, "UTF-8")
 
   class CookieMap {
-    val map =  scala.collection.mutable.Map.empty[String, HttpCookie]
+    val map: mutable.Map[String,HttpCookie] =  scala.collection.mutable.Map.empty[String, HttpCookie]
 
-    def getCookies = if(map.isEmpty) Nil else iSeq(Cookie(map.map(c=> c._2.pair).toList))
+    def getCookies: Seq[Cookie] = if(map.isEmpty) Nil else iSeq(Cookie(map.map(c=> c._2.pair).toList))
     def setCookiesFromHeaders(headers: iSeq[HttpHeader]): Unit = {
       headers.foreach {
         case `Set-Cookie`(cookie) =>
@@ -92,7 +95,7 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root) exten
   }
 
   private val cookiesThreadLocal = new ThreadLocal[CookieMap](){override def initialValue = new CookieMap}
-  def getCookieStorage = cookiesThreadLocal.get()
+  def getCookieStorage: CookieMap = cookiesThreadLocal.get()
   def clearCookies = cookiesThreadLocal.remove
 
   def decodeResponse(response: HttpResponse): HttpResponse = {
@@ -165,7 +168,7 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root) exten
 
   }
 
-  def requestPath(uri: String) =
+  def requestPath(uri: String): String =
     if (uri.startsWith("http://") || uri.startsWith("https://")) uri
     else if (uri.startsWith("/") && serverPath.endsWith("/")) serverPath + uri.drop(1)
     else if (!uri.startsWith("/") && !serverPath.endsWith("/")) serverPath + "/" + uri
@@ -175,7 +178,7 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root) exten
     doRequest(req, new CookieMap, requestTimeout)
 
   private val defaultSuccessStatusCodes = Set(200, 201, 202, 204, 206)
-  protected def isSuccess(response: HttpResponse) =
+  protected def isSuccess(response: HttpResponse): Boolean =
     defaultSuccessStatusCodes.contains(response.status.intValue)
 
   protected def doRequest(req: HttpRequest, cookieStorage: CookieMap, timeout: FiniteDuration, maxRedirects: Int = 20): Future[HttpResponse] = {
@@ -235,7 +238,7 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root) exten
     }
   }
 
-  def listenToWs(actor: ActorRef) = {
+  def listenToWs(actor: ActorRef): Unit = {
     val deferredFlow: Flow[Message, Message, Promise[Option[Message]]] =
       Flow.fromSinkAndSourceMat(
         Sink.actorRef(actor, WsClosed, e => WsFailed(e)), // FIXME do not use INTERNAL API
