@@ -2072,4 +2072,23 @@ object AppQuerease {
     case l: java.util.List[_] => l.asScala.map(configValueAsScala).toList
     case v => v
   }
+
+  case class Scope(data: Map[String, Any], parent: Scope = null) {
+    def apply(name: String): Any = data.getOrElse(name,
+      if (parent != null) parent(name) else throw new NoSuchElementException(s"Variable not found in scope: $name"))
+    def -(name: String): Scope =
+      if (data.contains(name) || parent == null) copy(data = data - name)
+      else copy(parent = parent - name)
+    def +(name: String, value: Any): Scope =
+      if (parent == null || !parent.contains(name)) copy(data = data + (name -> value))
+      else copy(parent = parent + (name, value))
+    @tailrec private def contains(name: String): Boolean =
+      data.contains(name) || parent != null && parent.contains(name)
+    def toBindeableMap: Map[String, Any] =
+      if (parent == null) data else data ++ {
+        val (yes, no) = parent.toBindeableMap.span { case (n, _) => data.contains(n) || n == ".." }
+        if (yes.isEmpty) no else no + (".." -> yes)
+      }
+    def toMap: Map[String, Any] = if (parent == null) data else parent.toMap ++ data
+  }
 }
