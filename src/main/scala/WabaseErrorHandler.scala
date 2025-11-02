@@ -15,10 +15,7 @@ import scala.concurrent.Future
 object WabaseErrorHandler {
   private val dbConstraintMessageBuilder = DbConstraintMessage.PostgreSqlConstraintMessageBuilder
   def errorHandler(ctx: WabaseRequestContext): WabaseService.ErrorHandler = {
-    def debug(msg: String, e: Throwable = null) = {
-      val m = s"[${ctxDebugInfo(ctx)}] $msg"
-      if (e == null) ctx.logger.debug(m) else ctx.logger.debug(m, e)
-    }
+    def debug(msg: String, e: Throwable) = ctx.logger.debug(s"[${ctxDebugInfo(ctx)}] $msg".trim, e)
     def applicationLocale = I18nService.applicationLocale(ApplicationStateExtractor.extractState(ctx))
     def friendlyConstraintErrorMessageResponse(exception: Throwable, sqlCause: SQLException, viewDefOpt: Option[ViewDef], tableName: String) = {
       import ctx.wabase.qe.tableMetadata
@@ -32,13 +29,13 @@ object WabaseErrorHandler {
     }
     val eh: PartialFunction[Throwable, HttpResponse] = {
       case e: HttpException =>
-        debug(e.getMessage)
+        debug(e.getMessage, e)
         HttpResponse(status = e.status, entity = e.getMessage)
       case e: AuthenticationException =>
         debug(e.getMessage, e.getCause)
         HttpResponse(status = Unauthorized)
       case e: AuthorizationException =>
-        debug(e.getMessage)
+        debug(e.getMessage, e)
         HttpResponse(status = Forbidden)
       case e: EntityStreamSizeException => HttpResponse(status = StatusCodes.ContentTooLarge,
         entity = s"Content too large: actual size - ${e.actualSize.getOrElse("<unknown>")}, limit - ${e.limit}")
