@@ -83,9 +83,9 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
   it should "process errors for wabase service routes" in {
     callRoute("/greater/than-3/5") shouldBe "Key: 5"
     callRoute("/greater/than-3/2") shouldBe "Key must be greater then 3, got: 2"
-    callRoute("/greater/than-3/fail") shouldBe """[/greater/than-3/fail] Key must be number instead got: For input string: "fail""""
+    callRoute("/greater/than-3/fail") shouldBe """[GET /greater/than-3/fail] Key must be number instead got: For input string: "fail""""
     callRoute("/key_in_action?code=1") shouldBe "1"
-    callRoute("/key_in_action?code=x") shouldBe """[/key_in_action?code=x] Key must be number instead got: For input string: "x""""
+    callRoute("/key_in_action?code=x") shouldBe """[GET /key_in_action?code=x] Key must be number instead got: For input string: "x""""
   }
 
   it should "do wabase service routes for public views" in {

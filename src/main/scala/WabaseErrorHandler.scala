@@ -63,13 +63,16 @@ object WabaseErrorHandler {
           HttpResponse(BadRequest, entity = Json.encode(e.details).toUtf8String)
         } else HttpResponse(BadRequest, entity = e.getMessage)
       case e: CSRFException =>
-        ctx.logger.info(e.toString)
+        val msg = s"[${ctxDebugInfo(ctx)}] ${e.toString}".trim
+        if  (ctx.logger.underlying.isDebugEnabled)
+             ctx.logger.info(msg, e)
+        else ctx.logger.info(msg)
         HttpResponse(StatusCodes.BadRequest)
       case e: org.postgresql.util.PSQLException if e.getMessage.startsWith(TimeoutSignature) =>
-        val user = Option(ctx.user).map(_.toString).orNull
-        val state = ctx.applicationState.state.map{ case (k,v) => s"$k = $v" }.mkString("{", ", ", "}")
-        val msg = s"JDBC timeout, statement cancelled - ${ctx.req.method} ${ctx.req.uri}, state - $state, user - $user"
-        ctx.logger.error(msg)
+        val msg = s"[${ctxDebugInfo(ctx)}] JDBC timeout, statement cancelled"
+        if  (ctx.logger.underlying.isDebugEnabled)
+             ctx.logger.error(msg, e)
+        else ctx.logger.error(msg)
         HttpResponse(InternalServerError,
           entity = ctx.wabase.translate(TimeoutFriendlyMessage)(applicationLocale))
       case e: SQLException if dbConstraintMessageBuilder.nameAndViolation(e)._1 != null =>
@@ -93,7 +96,7 @@ object WabaseErrorHandler {
         WabaseService.errorHandler(ctx)(e.getCause)
       case e: QuereaseActionException =>
         (WabaseService.errorHandler(ctx) orElse { case _ =>
-          ctx.logger.error(s"[${WabaseErrorHandler.ctxDebugInfo(ctx)}] ${e.getMessage}", e.getCause)
+          ctx.logger.error(s"[${ctxDebugInfo(ctx)}] ${e.getMessage}".trim, e.getCause)
           Future.successful(HttpResponse(status = StatusCodes.InternalServerError))
         }:WabaseService.ErrorHandler)(e.getCause)
     }
@@ -107,5 +110,6 @@ object WabaseErrorHandler {
     s"""$msg Payload: "$payload""""
   }
 
-  def ctxDebugInfo(ctx: WabaseRequestContext): String = s"${ctx.req.uri.toString()}"
+  def ctxDebugInfo(ctx: WabaseRequestContext): String =
+    Option(ctx.req).map(r => s"${r.method.value} ${r.uri.toString}").getOrElse("no req ctx")
 }
