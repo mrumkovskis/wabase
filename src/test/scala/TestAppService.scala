@@ -1,5 +1,7 @@
 package org.wabase
 
+import ch.qos.logback.classic.spi.ILoggingEvent
+import ch.qos.logback.core.boolex.EventEvaluatorBase
 import org.apache.pekko.actor.ActorSystem
 import org.wabase.DeferredControl.DeferredStorage
 
@@ -24,6 +26,20 @@ trait TestApp extends AppBase[TestUsr] with NoAudit[TestUsr] with PostgreSqlCons
 }
 
 object TestApp extends TestApp
+
+/** Detects expected error messages to hide when running tests */
+class TestAppLogMessageNoiseDetector extends EventEvaluatorBase[ILoggingEvent] {
+  private val badStartsWith = Set(
+    "[GET /error]",
+    "[GET /public/querease_action_exception]",
+    "Error during processing of request: 'Action: extract_parts_test2.insert",
+    "request timeout is defined for view person_health, however",
+  )
+  override def evaluate(event: ILoggingEvent): Boolean = {
+    val msg = event.getFormattedMessage
+    msg != null && badStartsWith.exists(msg.startsWith)
+  }
+}
 
 class TestAppService(system: ActorSystem) extends ExecutionImpl()(system)
     with AppServiceBase[TestUsr]
