@@ -68,6 +68,9 @@ case class Deferred(
 )
 
 class HttpException(val status: StatusCode, message: String) extends Exception(message)
+object HttpException {
+  def apply(status: StatusCode): HttpException = new HttpException(status, status.reason)
+}
 
 class WabaseService {
   def handle(
