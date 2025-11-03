@@ -517,27 +517,27 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     hasPerson("RediName") shouldBe false
     // on insert redirect to this explicitly
     Post("/data/by_key_redirect_view_1", """{"name": "RediName"}""") ~> route ~> check {
-      status shouldEqual StatusCodes.OK
+      status shouldEqual StatusCodes.SeeOther
       val location = header[Location].get.uri.toString
       location shouldBe "/data/by_key_redirect_view_1?/RediName"
     }
     // on update redirect to this explicitly
     Put(s"/data/by_key_redirect_view_1/RediName", s"""{"name": "RediNameUpd"}""") ~> route ~> check {
-      status shouldEqual StatusCodes.OK
+      status shouldEqual StatusCodes.SeeOther
       val location = header[Location].get.uri.toString
       location shouldBe "/data/by_key_redirect_view_1?/RediNameUpd"
     }
     hasPerson("RediOther") shouldBe false
     // on insert redirect to another view explicitly
     Post("/data/by_key_redirect_view_2", """{"name": "RediOther", "surname": "Surnm"}""") ~> route ~> check {
-      status shouldEqual StatusCodes.OK
+      status shouldEqual StatusCodes.SeeOther
       val location = header[Location].get.uri.toString
       location shouldBe "/data/by_key_view_1?/RediOther/Surnm"
     }
     // on update redirect to another view explicitly
     Put(s"/data/by_key_redirect_view_2/RediOther",
         s"""{"name": "RediOther", "surname": "SurnmUpd"}""") ~> route ~> check {
-      status shouldEqual StatusCodes.OK
+      status shouldEqual StatusCodes.SeeOther
       val location = header[Location].get.uri.toString
       location shouldBe "/data/by_key_view_1?/RediOther/SurnmUpd"
     }
@@ -625,13 +625,13 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     // half key hidden, upsert, redirect
     hasPerson("Hidden-3") shouldBe false
     Post("/data/by_hidden_key_view_3", """{"surname": "MeHidden", "d": "2022-08-10"}""") ~> route ~> check {
-      status shouldEqual StatusCodes.OK
+      status shouldEqual StatusCodes.SeeOther
       val location = header[Location].get.uri.toString
       location shouldBe "/data/by_hidden_key_view_3?/MeHidden"
     }
     hasPerson("Hidden-3") shouldBe true
     Put("/data/by_hidden_key_view_3?/MeHidden", """{"surname": "MeHidden", "d": "2022-08-11"}""") ~> route ~> check {
-      status shouldEqual StatusCodes.OK
+      status shouldEqual StatusCodes.SeeOther
       val location = header[Location].get.uri.toString
       location shouldBe "/data/by_hidden_key_view_3?/MeHidden"
     }

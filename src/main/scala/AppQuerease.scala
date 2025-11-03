@@ -1515,6 +1515,12 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     Future.successful(op.conformTo.map(comp_res(MapResult(data), _)).getOrElse(MapResult(data)))
   }
 
+  // XXX copied from Marshalling
+  private val crudRedirectsPrefix =
+    Option("app.crud-redirects-prefix").filter(config.hasPath).map(config.getString).getOrElse("")
+  private def redirectTresqlUri(kr: KeyResult): TresqlUri.Uri =
+    TresqlUri.Uri(Seq(s"${crudRedirectsPrefix}${kr.viewName}"), kr.key)
+
   protected def doActionOp(
     op: Action.Op,
     data: Map[String, Any],
@@ -1534,7 +1540,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         val idName = viewNameToIdName.getOrElse(viewName, null)
         val dataWithEnv = data ++ env
         val id = dataWithEnv.getOrElse(idName, null)
-        Future.successful(keyResult(IdResult(id, idName), viewName, dataWithEnv))
+        val kr = keyResult(IdResult(id, idName), viewName, dataWithEnv)
+        Future.successful(ResponseResult(303, RedirectValue(redirectTresqlUri(kr))))
       case st: Action.Response => doResponse(st, data, env, context)
       case Action.Commit =>
         def commit(c: Connection) = Option(c).foreach(_.commit())
