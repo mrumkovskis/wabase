@@ -444,7 +444,7 @@ get:
 
 
 name:     env_test_1
-api:      save
+api:      save, list
 table:    person
 auth get: :update_enabled = true
 fields:
@@ -456,6 +456,9 @@ save:
 - name = :current_person_name
 - sex  = 'M'
 - save this
+list:
+- addenv unique { 'AddedName' name, 'M' sex }
+- as env_test_1 this
 
 
 name:         env_test_2

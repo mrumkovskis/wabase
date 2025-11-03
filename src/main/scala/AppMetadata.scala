@@ -902,10 +902,11 @@ class OpParser(viewName: String, caches: OpParser.Caches)
       // setenv or return regexp ends with zero width positive lookahead group
       // so that no symbol - non word character - [^\w] or space
       // is consumed but rather left to the next parser
-      (("(setenv|return)(?=\\s+|[^\\w])?".r ~ opWithOptVarTransforms) ^^ {
+      (("(setenv|addenv|return)(?=\\s+|[^\\w])?".r ~ opWithOptVarTransforms) ^^ {
         case cmd ~ step =>
           val (transforms, op) = step
-          if (cmd == "setenv") SetEnv(None, transforms, op) else Return(None, transforms, op)
+          if (cmd == "setenv" || cmd == "addenv") SetEnv(None, transforms, op, add = cmd == "addenv")
+          else Return(None, transforms, op)
       }) named "set-env-or-return"
     }
 
@@ -1385,7 +1386,7 @@ object AppMetadata extends Loggable {
      *                   to some value usable in tresql as bind variable, if true assigns to op result to variable.
      * */
     case class Evaluation(name: Option[String], varTrans: List[VariableTransform], op: Op, keepResult: Boolean = false) extends Step
-    case class SetEnv(name: Option[String], varTrans: List[VariableTransform], value: Op) extends Step
+    case class SetEnv(name: Option[String], varTrans: List[VariableTransform], value: Op, add: Boolean = false) extends Step
     case class Return(name: Option[String], varTrans: List[VariableTransform], value: Op) extends Step
     case class Validations(name: Option[String], validations: Seq[String], db: Option[DbAccessKey]) extends Step
     case class RemoveVar(name: Option[String]) extends Step

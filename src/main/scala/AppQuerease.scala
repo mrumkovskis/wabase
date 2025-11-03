@@ -500,7 +500,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         step match {
           case Evaluation(_, vts, op, _) =>
             doActionOp(op, doVarsTransforms(vts, stepData, stepData).result, context.env, context)
-          case SetEnv(_, vts, op) =>
+          case SetEnv(_, vts, op, _) =>
             doActionOp(op, doVarsTransforms(vts, stepData, stepData).result, context.env, context)
           case Return(_, vts, op) =>
             doActionOp(op, doVarsTransforms(vts, stepData, stepData).result, context.env, context)
@@ -560,7 +560,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
             case se: SetEnv =>
               val newData =
                 dataForNextStep(stepRes, context, true) flatMap {
-                  case m: Map[String, Any]@unchecked => Future.successful(m)
+                  case m: Map[String, Any]@unchecked =>
+                    if (se.add) curData.map(_ ++ m) else Future.successful(m)
                   case x =>
                     //in the case of primitive value return step must have name
                     se.name.map(n => Future.successful(Map(n -> x))).getOrElse(curData)
