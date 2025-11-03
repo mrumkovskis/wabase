@@ -14,7 +14,7 @@ import org.tresql.ast.{Exp, Variable}
 import org.tresql.parsing.QueryParsers
 import org.wabase.AppMetadata.{Action, JobCall}
 import org.wabase.AppMetadata.Action.TresqlExtraction.{OpTresqlTraverser, State, StepTresqlTraverser, opTresqlTraverser, stepTresqlTraverser}
-import org.wabase.AppMetadata.Action.{Validations, ViewCall, traverseAction}
+import org.wabase.AppMetadata.Action.{TransactionKey, Validations, ViewCall, traverseAction}
 
 import java.io.InputStream
 import java.util.concurrent.{ConcurrentHashMap, TimeUnit}
@@ -540,17 +540,10 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   }
 
   protected def parseAction(objectName: String, stepData: Seq[Any], opParser: OpParser): Action = {
-    val namedStepRegex = """(?U)(?:(as\s+result\s+)?((?:\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*)(?:\.\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*)*)\s*=\s*)?(.+)""".r
     // matches - 'validations validation_name [db:cp]'
     val validationRegex = new Regex(s"(?U)${Action.ValidationsKey}(?:\\s+(\\w+))?(?:\\s+\\[(?:\\s*(\\w+)?\\s*(?::\\s*(\\w+)\\s*)?)\\])?")
-    val arr_regex = "(?:\\s+\\[([^\\[^\\]]+)\\])?"
-    val db_use_or_transaction_regex = new Regex(s"(${Action.DbUseKey}|${Action.TransactionKey})$arr_regex")
-    val ifOpRegex = """if(?=\s+|[^\w])(.+)""".r
-    val elseOpRegex = """else""".r
-    val foreachOpRegex = """foreach(?=\s+|[^\w])(.+)""".r
     import ViewDefExtrasUtils._
     val steps = stepData.map { step =>
-      def parseOp(st: String): Action.Op = opParser.parseOperation(st)
       def parseStep(anyStep: Any): (Action.Step, String) = {
         anyStep match {
           case s: String => (opParser.parseStep(s), s)
@@ -559,51 +552,40 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
           case null => (opParser.parseStep("null"), "null")
           case jm: java.util.Map[String, Any]@unchecked if jm.size() == 1 =>
             val m = jm.asScala.toMap
-            val nameWithKeepResultRegex = """(as\s+result\s+)?(.+)""".r
-            val (nameWithKeepResult, value) = m.head
-            val nameWithKeepResultRegex(keepResult, name) = nameWithKeepResult
-            if (validationRegex.pattern.matcher(name).matches()) {
-              val validationRegex(vn, db, cp) = name
-              val validations = getSeq(name, m).map(_.toString)
+            val (operationString, value) = m.head
+            if (validationRegex.pattern.matcher(operationString).matches()) {
+              val validationRegex(vn, db, cp) = operationString
+              val validations = getSeq(operationString, m).map(_.toString)
               (Action.Validations(
                 Option(vn),
                 validations,
                 if (db == null) None else Option(DbAccessKey(db))
               ), "validation" + Option(vn).map(n => s" [$n]").mkString)
             } else {
-              def fillInEvalStep(st: Action.Step) = st match {
-                case e: Action.Evaluation =>
-                  e.copy(name = Option(name), keepResult = keepResult != null)
-                case x => x
-              }
               value match {
                 case jm: java.util.Map[String@unchecked, _] =>
                   // may be 'if', 'foreach', 'db ...' step
-                  parseStep(jm) match { case (st, src) => (fillInEvalStep(st), src) }
-                case al: java.util.ArrayList[_] if name != null =>
+                  parseStep(jm)
+                case al: java.util.ArrayList[_] =>
                   // 'if', 'foreach', 'db ...' step
-                  val namedStepRegex(_, varName, opStr) = name
                   def pa = parseAction(objectName, al.asScala.toList, opParser)
-                  val op =
-                    if (ifOpRegex.pattern.matcher(opStr).matches()) {
-                      val ifOpRegex(condOpSt) = opStr
-                      Action.If(parseOp(condOpSt), pa)
-                    } else if (elseOpRegex.pattern.matcher(opStr).matches()) {
-                      Action.Else(pa)
-                    } else if (foreachOpRegex.pattern.matcher(opStr).matches()) {
-                      val foreachOpRegex(initOpSt) = opStr
-                      Action.Foreach(parseOp(initOpSt), pa)
-                    } else if (db_use_or_transaction_regex.pattern.matcher(opStr).matches()) {
-                      val db_use_or_transaction_regex(action, dbs) = opStr
-                      val db_keys = if (dbs == null) Nil else dbs.split(",").toList
-                      Action.Db(pa, action == Action.DbUseKey, db_keys.map(DbAccessKey))
-                    } else Action.Block(pa)
-                  val eval_var_name = op match {
-                    case _: Action.Block => name
-                    case _ => varName
+                  def addBlock(op: Action.Op) = op.asInstanceOf[Action.BlockOp] match {
+                    case bl: Action.If      => bl.copy(action = pa)
+                    case bl: Action.Foreach => bl.copy(action = pa)
+                    case bl: Action.Db      => bl.copy(action = pa)
+                    case bl: Action.Else    => bl.copy(action = pa)
+                    case bl: Action.Block   => bl.copy(action = pa)
+                    case null               => Action.Block(pa)
                   }
-                  (Action.Evaluation(Option(eval_var_name), Nil, op, keepResult != null), opStr)
-                case x => (fillInEvalStep(opParser.parseStep(x.toString)), x.toString)
+                  val step = opParser.parseStep(operationString, isBlock = true) match {
+                    case st: Action.Evaluation  => st.copy(op     = addBlock(st.op))
+                    case st: Action.SetEnv      => st.copy(value  = addBlock(st.value))
+                    case st: Action.Return      => st.copy(value  = addBlock(st.value))
+                    case st                     => sys.error(s"Unexpected operation: $operationString")
+                  }
+                  (step, operationString)
+                case _ => // the same as evaluation step like <variable_name> = <expression>
+                  (opParser.parseStep(s"$operationString = $value"), s"$operationString = $value")
               }
             }
           case x =>
@@ -613,12 +595,16 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       parseStep(step)
     }.toList
     //coalesce else op into if
-    val coalescedSteps = if (steps.isEmpty) Nil else
+    val coalesced_if_else_steps = if (steps.isEmpty) Nil else
       (steps.tail.foldLeft(steps.head -> List[(Action.Step, String)]()) { case (((p, psrc), r), (s, src)) =>
         s match {
           case Action.Evaluation(_, _, elseOp: Action.Else, _) => p match {
             case ifEv@Action.Evaluation(_, _, ifOp: Action.If, _) =>
               (null, (ifEv.copy(op = ifOp.copy(elseAct = elseOp.action)), psrc) :: r)
+            case ifSetEnv@Action.SetEnv(_, _, ifOp: Action.If, _) =>
+              (null, (ifSetEnv.copy(value = ifOp.copy(elseAct = elseOp.action)), psrc) :: r)
+            case ifReturn@Action.Return(_, _, ifOp: Action.If) =>
+              (null, (ifReturn.copy(value = ifOp.copy(elseAct = elseOp.action)), psrc) :: r)
             case _ => sys.error(s"else statement must follow if statement, instead found '$p'")
           }
           case _ => ((s, src), if (p != null) (p, psrc) :: r else r)
@@ -627,7 +613,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
         case (null, r) => r
         case (x, r) => x :: r
       }).reverse
-    Action(coalescedSteps)
+    Action(coalesced_if_else_steps)
   }
 
   protected def parseDecoder(viewName: String, decStr: String): (RequestDecoder, jLong) = {
@@ -863,8 +849,10 @@ class OpParser(viewName: String, caches: OpParser.Caches)
   val RedirectOpRegex = """redirect\s+""".r
   val RedirectToKeyRegex = """[_\p{IsLatin}][_\p{IsLatin}0-9]*$""".r
 
-  def parseStep(step: String): Step = caches.stepCache.get(step).getOrElse {
-    val parsedStep = phrase(this.step)(new scala.util.parsing.input.CharSequenceReader(step)) match {
+  def parseStep(step: String): Step = parseStep(step, isBlock = false)
+
+  def parseStep(step: String, isBlock: Boolean): Step = caches.stepCache.get(step).getOrElse {
+    val parsedStep = phrase(this.step(isBlock))(new scala.util.parsing.input.CharSequenceReader(step)) match {
       case Success(r, _) => r
       case x => sys.error(x.toString)
     }
@@ -872,9 +860,10 @@ class OpParser(viewName: String, caches: OpParser.Caches)
     parsedStep
   }
 
-  def step: MemParser[Step] = {
-    def opWithOptVarTransforms: MemParser[(List[VariableTransform], Op)] = {
-      def varTransform: MemParser[(Option[String], Variable)] = {
+  def step(isBlock: Boolean): Parser[Step] = { // returns Parser not MemParser because is dependant on parameter
+    def op: Parser[Op] = if (isBlock) blockOp else operation
+    def opWithOptVarTransforms: Parser[(List[VariableTransform], Op)] = {
+      def varTransform: Parser[(Option[String], Variable)] = {
         (variable | ("(" ~> ident ~ "=" ~ variable <~ ")")) ^^ {
           case v: Variable => (None, v)
           case (v1: String) ~ _ ~ (v2: Variable) => (Option(v1), v2)
@@ -882,23 +871,23 @@ class OpParser(viewName: String, caches: OpParser.Caches)
       } named "vars-transform"
       def tupleToVarTransform(t: (Option[String], Variable)) =
         VariableTransform(t._2.tresql.substring(1) /*drop colon*/, t._1)
-      def varsTransformsOrVar: MemParser[Op] = rep1sep(varTransform, "+") <~
+      def varsTransformsOrVar: Parser[Op] = rep1sep(varTransform, "+") <~
         "$".r /*end of input*/ ^^ {
           case (None, v) :: Nil => Tresql(v.tresql)
           case vts => VariableTransforms(vts map tupleToVarTransform)
         } named "vt-or-v"
-      def opWithVarsTransforms: MemParser[(List[VariableTransform], Op)] = {
-        def varsTransforms: MemParser[VariableTransforms] =
+      def opWithVarsTransforms: Parser[(List[VariableTransform], Op)] = {
+        def varsTransforms: Parser[VariableTransforms] =
           rep1sep(varTransform, "+") ^^
             (vts => VariableTransforms(vts map tupleToVarTransform)) named "vars-transforms"
-        ((varsTransforms <~ "->") ~ operation) ^^ {
+        ((varsTransforms <~ "->") ~ op) ^^ {
           case ovts ~ op => ovts.transforms -> op
         } named "op-with-vars-transforms"
       }
       (opWithVarsTransforms |
-        ((varsTransformsOrVar | operation) ^^ (Nil -> _))) named "op-with-opt-vts"
+        ((varsTransformsOrVar | op) ^^ (Nil -> _))) named "op-with-opt-vts"
     }
-    def setEnvOrReturn: MemParser[Step] = {
+    def setEnvOrReturn: Parser[Step] = {
       // setenv or return regexp ends with zero width positive lookahead group
       // so that no symbol - non word character - [^\w] or space
       // is consumed but rather left to the next parser
@@ -910,15 +899,18 @@ class OpParser(viewName: String, caches: OpParser.Caches)
       }) named "set-env-or-return"
     }
 
-    def removeVar: MemParser[RemoveVar] = ((ident | stringLiteral) <~ "-=") ^^ {
+    def removeVar: Parser[RemoveVar] = ((ident | stringLiteral) <~ "-=") ^^ {
       v => RemoveVar(Option(v))
     } named "remove-var"
-    def evaluation: MemParser[Evaluation] =
+    def evaluation: Parser[Evaluation] =
       (opt("as\\s+result\\s+".r) ~ opt(qualifiedIdent <~ "=") ~ opWithOptVarTransforms) ^^ {
         case keepResult ~ variable ~ tr_op =>
           Evaluation(variable.map(_.tresql), tr_op._1, tr_op._2, keepResult = keepResult.isDefined)
       } named "evaluation"
-    (removeVar | setEnvOrReturn | evaluation) named "step"
+    def namedBlock(isBlock: Boolean): Parser[Evaluation] =
+      (if (isBlock) qualifiedIdent ^^ { case n => Evaluation(Option(n.tresql), Nil, null) }
+      else failure("Not block")) named "named-block"
+    (removeVar | setEnvOrReturn | evaluation | namedBlock(isBlock)) named "step"
   }
 
   def parseOperation(op: String): Op = caches.opCache.get(op).getOrElse {
@@ -1013,10 +1005,12 @@ class OpParser(viewName: String, caches: OpParser.Caches)
       case conformTo ~ http => http.copy(conformTo = conformTo)
     } named "http-op"
   }
-  def dbOp: MemParser[Db] = (Action.DbUseKey | Action.TransactionKey) ~ opt("[" ~> ident <~ "]") ~ operation ^^ {
-    case op_type ~ db ~ op => Db(actionFromOp(op), op_type == Action.DbUseKey,
-      db.map(AppMetadata.DbAccessKey).toList)
+  def dbOp: MemParser[Db] = dbBlockOp ~ operation ^^ {
+    case db ~ op => db.copy(action = actionFromOp(op))
   } named "db-op"
+  def dbBlockOp: MemParser[Db] = (Action.DbUseKey | Action.TransactionKey) ~ opt("[" ~> ident <~ "]") ^^ {
+    case op_type ~ db => Db(null, op_type == Action.DbUseKey, db.map(AppMetadata.DbAccessKey).toList)
+  } named "db-block-op"
   def jsonCodecOp: MemParser[JsonCodec] = "(from|to)(?=\\s+)".r ~ "json\\s+".r ~ operation ^^ {
     case mode ~ _ ~ op => JsonCodec(mode == "to", op)
   } named "json-op"
@@ -1038,13 +1032,20 @@ class OpParser(viewName: String, caches: OpParser.Caches)
     (opt(opResultType) <~ "extract\\s+entity".r) ~ opt("using" ~> ident) ~ opt(operation) ^^ {
       case conformTo ~ decoder ~ op => ExtractHttpEntity(conformTo, decoder.orNull, op.orNull)
     } named "extract-entity"
-  def foreachOp: MemParser[Foreach] = ("foreach(?=\\s+|[^\\w])".r ~> (operation ~ operation)) ^^ {
-    case coll ~ op => Foreach(coll, actionFromOp(op))
+  def foreachOp: MemParser[Foreach] = foreachBlockOp ~ operation ^^ {
+    case coll ~ op => coll.copy(action = actionFromOp(op))
   } named "foreach-op"
-  def ifElseOp: MemParser[If] = ("if(?=\\s+|[^\\w])".r ~>
-    (operation ~ operation ~ opt("else(?=\\s+|[^\\w])".r ~> operation))) ^^ {
-      case cond ~ ifOp ~ elseOp => If(cond, actionFromOp(ifOp), elseOp.map(actionFromOp).orNull)
+  def foreachBlockOp: MemParser[Foreach] = "foreach(?=\\s+|[^\\w])".r ~> operation ^^ {
+    case coll => Foreach(coll, null)
+  } named "foreach-block-op"
+  def ifElseOp: MemParser[If] = ifBlockOp ~ operation ~ opt(elseBlockOp ~> operation) ^^ {
+      case cond ~ ifOp ~ elseOp => cond.copy(action = actionFromOp(ifOp), elseAct = elseOp.map(actionFromOp).orNull)
     } named "if-else-op"
+  def ifBlockOp: MemParser[If] = "if(?=\\s+|[^\\w])".r ~> operation ^^ {
+    case cond => If(cond, null)
+  } named "if-block-op"
+  def elseBlockOp: MemParser[Else] = "else".r ^^^ Else(null) named "else-block-op"
+  def blockOp: MemParser[BlockOp] = ifBlockOp | elseBlockOp | dbBlockOp | foreachBlockOp named "block-op"
   def thisOp: MemParser[This] = opt(opResultType) <~ "this" ^^ This named "this-op"
 
   def bracesOp: MemParser[Op] = "(" ~> operation <~ ")" named "braces-op"
@@ -1312,6 +1313,9 @@ object AppMetadata extends Loggable {
     case class SetUserAttributes(tresql: Tresql) extends SetHttpHeadersOp
 
     sealed trait Op
+    sealed trait BlockOp extends Op {
+      def action: Action
+    }
     sealed trait CastableOp extends Op {
       def conformTo: Option[OpResultType]
     }
@@ -1339,8 +1343,8 @@ object AppMetadata extends Loggable {
       body: Op = null,
     ) extends Op
     case class VariableTransforms(transforms: List[VariableTransform]) extends Op
-    case class Foreach(initOp: Op, action: Action) extends Op
-    case class If(cond: Op, action: Action, elseAct: Action = null) extends Op
+    case class Foreach(initOp: Op, action: Action) extends BlockOp
+    case class If(cond: Op, action: Action, elseAct: Action = null) extends BlockOp
     case class Resource(nameTresql: Tresql, contentTypeTresql: Tresql = null) extends Op
     case class File(
       idShaTresql: Tresql,
@@ -1369,12 +1373,12 @@ object AppMetadata extends Loggable {
      * File streamer name indicates which file streamer to use for parts serialization.
      * */
     case class ExtractParts(fileStreamerName: String = null) extends Op
-    case class Db(action: Action, doRollback: Boolean, dbs: List[DbAccessKey]) extends Op
+    case class Db(action: Action, doRollback: Boolean, dbs: List[DbAccessKey]) extends BlockOp
     case class Conf(param: String, paramType: ConfType = null) extends Op
     case class JsonCodec(encode: Boolean, op: Op) extends Op
     /** This operation exists only in parsing stage for if operation */
-    case class Else(action: Action) extends Op
-    case class Block(action: Action) extends Op
+    case class Else(action: Action) extends BlockOp
+    case class Block(action: Action) extends BlockOp
     case object Commit extends Op
 
     case class This(conformTo: Option[OpResultType] = None) extends Op
