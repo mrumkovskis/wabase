@@ -2082,21 +2082,15 @@ object AppQuerease {
   }
 
   case class Scope(data: Map[String, Any], parent: Scope = null) {
-    def apply(name: String): Any = data.getOrElse(name,
-      if (parent != null) parent(name) else throw new NoSuchElementException(s"Variable not found in scope: $name"))
-    def -(name: String): Scope =
-      if (data.contains(name) || parent == null) copy(data = data - name)
-      else copy(parent = parent - name)
-    def +(name: String, value: Any): Scope =
-      if (parent == null || !parent.contains(name)) copy(data = data + (name -> value))
-      else copy(parent = parent + (name, value))
-    @tailrec private def contains(name: String): Boolean =
-      data.contains(name) || parent != null && parent.contains(name)
-    def toBindeableMap: Map[String, Any] =
-      if (parent == null) data else data ++ {
-        val (yes, no) = parent.toBindeableMap.span { case (n, _) => data.contains(n) || n == ".." }
-        if (yes.isEmpty) no else no + (".." -> yes)
-      }
-    def toMap: Map[String, Any] = if (parent == null) data else parent.toMap ++ data
+    def apply(name: String): Any =
+      data.getOrElse(name, throw new NoSuchElementException(s"Variable not found in scope: $name"))
+    def -(name: String): Scope = copy(data = data - name)
+    def +(name: String, value: Any): Scope = copy(data = data + (name -> value))
+    /** Creates tresql bindeable map from action scope and env data. */
+    def toBindeableMap(env: Map[String, Any] = Map()): Map[String, Any] =
+      (if (parent == null) Map[String, Any]() else {
+        val pbm = parent.toBindeableMap()
+        pbm + (".." -> pbm)
+      }) ++ data ++ env
   }
 }

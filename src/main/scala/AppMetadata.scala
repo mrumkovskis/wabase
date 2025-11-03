@@ -596,9 +596,9 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     }.toList
     //coalesce else op into if
     val coalesced_if_else_steps = if (steps.isEmpty) Nil else
-      (steps.tail.foldLeft(steps.head -> List[(Action.Step, String)]()) { case (((p, psrc), r), (s, src)) =>
-        s match {
-          case Action.Evaluation(_, _, elseOp: Action.Else, _) => p match {
+      (steps.tail.foldLeft(steps.head -> List[(Action.Step, String)]()) { case ((prev_st, r), (s, src)) =>
+        (prev_st, s) match {
+          case ((p, psrc), Action.Evaluation(_, _, elseOp: Action.Else, _)) => p match {
             case ifEv@Action.Evaluation(_, _, ifOp: Action.If, _) =>
               (null, (ifEv.copy(op = ifOp.copy(elseAct = elseOp.action)), psrc) :: r)
             case ifSetEnv@Action.SetEnv(_, _, ifOp: Action.If, _) =>
@@ -607,7 +607,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
               (null, (ifReturn.copy(value = ifOp.copy(elseAct = elseOp.action)), psrc) :: r)
             case _ => sys.error(s"else statement must follow if statement, instead found '$p'")
           }
-          case _ => ((s, src), if (p != null) (p, psrc) :: r else r)
+          case _ => ((s, src), if (prev_st != null) prev_st :: r else r)
         }
       } match {
         case (null, r) => r

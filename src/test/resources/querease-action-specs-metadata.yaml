@@ -500,6 +500,22 @@ filter:
 - sex
 
 
+name: env_test_5
+api: get
+get:
+- x = 1
+- addenv if :cond:
+  - x = 2
+  - y = 0
+- else:
+  - y = -1
+  - z = 4
+- addenv if :cond:
+  - a = 9
+  - b = 10
+- this
+
+
 name:     cols_filter_test_1
 api:      get, list, save, delete
 table:    person
