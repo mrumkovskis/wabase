@@ -236,8 +236,8 @@ object Authentication {
   }
 
   object Crypto extends Crypto(
-    config.getString("auth.crypto.key"),
-    config.getString("auth.mac.key"),
+    Option("auth.crypto.key").filter(config.hasPath).map(config.getString).orNull,
+    Option("auth.mac.key").filter(config.hasPath).map(config.getString).orNull,
   )
 
   class Crypto(cryptoKeyStr: String, macKeyStr: String) {
