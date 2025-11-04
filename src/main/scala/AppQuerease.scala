@@ -757,7 +757,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     val invocationData = scope.toBindeableMap(env)
     def invokeFunction(className: String, function: String, pf: InvocationParameterFun): Any = {
       this.invokeFunction(className, function, invocationData, pf,
-        InjectionParametersContext(httpReq, env, invocationData), qr)
+        InjectionParametersContext(httpReq, invocationData), qr)
     }
 
     def wrongRes(x: Any) =
@@ -1286,7 +1286,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           .getOrElse(
             if (httpClients.httpClients.size == 1) httpClients.httpClients.head._2
             else sys.error(s"Http client name not specified, expected one http client, got: $httpClients"))
-        val httpClient = httpClientFactory(InjectionParametersContext(httpReq, env, opData))
+        val httpClient = httpClientFactory(InjectionParametersContext(httpReq, opData))
         doHttpRequest(httpClient, viewDefOption(context.viewName).map(_.maxContentSize).orNull, req)
       }
     }
@@ -1933,7 +1933,6 @@ object DefaultAppQuereaseIo extends AppQuereaseIo[Dto](DefaultAppQuerease)
 object AppQuerease {
   case class InjectionParametersContext(
     req:  HttpRequest,
-    env:  Map[String, Any]  = Map(),	  // action env (application state)
     data: Map[String, Any]  = Map(),	  // action current step data
   )
   type InjectionParametersProvider = InjectionParametersContext => PartialFunction[Parameter, Any]

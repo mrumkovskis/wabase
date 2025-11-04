@@ -255,7 +255,7 @@ class View1 extends Dto {
 object UserParameterProviderFactory extends AppQuerease.InjectionParametersProviderFactory {
   def createInjectionParametersProvider: AppQuerease.InjectionParametersProvider = ctx => {
     case par if par.getType.isAssignableFrom(classOf[WabaseUser]) =>
-      WabaseUser(ctx.env("current_user").asInstanceOf[Map[String, Any]])
+      WabaseUser(ctx.data("current_user").asInstanceOf[Map[String, Any]])
   }
 }
 
