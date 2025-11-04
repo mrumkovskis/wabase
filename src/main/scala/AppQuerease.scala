@@ -1506,6 +1506,28 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     }
   }
 
+  protected def doRedirectToKey(
+    op: Action.RedirectToKey,
+    data: Map[String, Any],
+    env: Map[String, Any],
+    context: ActionContext
+  ): Future[QuereaseResult] = {
+    val name = op.name
+    val viewName = if (name == "this") context.viewName else name
+    val idName = viewNameToIdName.getOrElse(viewName, null)
+    val dataWithEnv = data ++ env
+    val id = dataWithEnv.getOrElse(idName, null)
+    val kr = keyResult(IdResult(id, idName), viewName, dataWithEnv)
+    Future.successful(ResponseResult(303, RedirectValue(redirectTresqlUri(kr))))
+  }
+
+  protected def doCommit(resources: Resources): Future[QuereaseResult] = {
+    def commit(c: Connection): Unit = Option(c).foreach(_.commit())
+    commit(resources.conn)
+    resources.extraResources.foreach { case (_, r) => commit(r.conn) }
+    Future.successful(NoResult)
+  }
+
   protected def doThis(
     op: Action.This,
     data: Map[String, Any],
@@ -1535,19 +1557,9 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case vc: Action.ViewCall => doViewCall(vc, data, env, context)
       case op: Action.Unique => doUnique(op, data, env, context)
       case inv: Action.Invocation => doInvocation(inv, data, env, context)
-      case Action.RedirectToKey(name) =>
-        val viewName = if (name == "this") context.viewName else name
-        val idName = viewNameToIdName.getOrElse(viewName, null)
-        val dataWithEnv = data ++ env
-        val id = dataWithEnv.getOrElse(idName, null)
-        val kr = keyResult(IdResult(id, idName), viewName, dataWithEnv)
-        Future.successful(ResponseResult(303, RedirectValue(redirectTresqlUri(kr))))
+      case rtk: Action.RedirectToKey => doRedirectToKey(rtk, data, env, context)
       case st: Action.Response => doResponse(st, data, env, context)
-      case Action.Commit =>
-        def commit(c: Connection) = Option(c).foreach(_.commit())
-        commit(resources.conn)
-        resources.extraResources.foreach { case (_, r) => commit(r.conn) }
-        Future.successful(NoResult)
+      case Action.Commit => doCommit(resources)
       case cond: Action.If => doIf(cond, data, env, context)
       case foreach: Action.Foreach => doForeach(foreach, data, env, context)
       case resource: Action.Resource => doResource(resource, data, env, context)
