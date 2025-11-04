@@ -18,7 +18,7 @@ import org.slf4j.LoggerFactory
 import org.wabase.AppFileStreamer.FileInfo
 import org.wabase.AppMetadata.Action.{VariableTransform, VariableTransforms}
 import org.wabase.AppMetadata.DbAccessKey
-import org.wabase.AppQuerease.{InjectionParametersContext, InjectionParametersProvider, configValueAsScala, listOfStringTuples}
+import org.wabase.AppQuerease.{InjectionParametersContext, InjectionParametersProvider, Scope, configValueAsScala, listOfStringTuples}
 
 import java.lang.reflect.Parameter
 import java.sql.Connection
@@ -366,7 +366,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     contextStack: List[ActionContext] = Nil,
   ) {
     val name = s"$viewName.$actionName" + Option(stepName).map(s => s".$s").getOrElse("")
-    def log(msg: String) = {
+    def log(msg: => String) = {
       logger.debug(msg)
       if(!logger.underlying.isDebugEnabled()) AppQuerease.this.logger.debug(msg)
     }
@@ -409,7 +409,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     env: Map[String, Any],
     fieldFilter: FieldFilter = null,
   )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
-    do_action(view, actionName, data, env, fieldFilter)
+    do_action(view, actionName, Scope(data), env, fieldFilter)
   }
 
   private def loggable(res: Resources, x: Any): String = {
@@ -445,7 +445,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   private def do_action(
     view: String,
     actionName: String,
-    data: Map[String, Any],
+    scope: Scope,
     env: Map[String, Any],
     fieldFilter: FieldFilter = null,
     contextStack: List[ActionContext] = Nil,
@@ -458,13 +458,13 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       quereaseActionOpt(view, actionName)
         .map(_.steps)
         .getOrElse(List(Action.Return(None, Nil, Action.ViewCall(actionName, view, null)) -> ""))
-    doSteps(steps, ctx, Future.successful(data))
+    doSteps(steps, ctx, Future.successful(scope))
   }
 
   def doSteps(
     steps: List[(Action.Step, String)],
     context: ActionContext,
-    curData: Future[Map[String, Any]],
+    curData: Future[Scope],
   )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
     if (context.contextStack.size > maxStackDepth)
       throw new IllegalStateException(s"Action call stack depth exceeds $maxStackDepth (consider configuration parameter wabase.max-stack-depth). Stack - ${context.stackStr}")
@@ -492,22 +492,23 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         case r => key.map(k => upd(cr, k, r)).getOrElse(cr)
       }
     }
-    def doStep(step: Step, stepDataF: Future[Map[String, Any]], src: String): Future[QuereaseResult] = {
+    def scopeBindVars(scope: Scope) = scope.toBindeableMap(context.env)
+    def doStep(step: Step, stepDataF: Future[Scope], src: String): Future[QuereaseResult] = {
       import resourcesFactory._
-      stepDataF flatMap { stepData =>
+      stepDataF flatMap { stepScope =>
+        val stepData = stepScope.data
+        def scope_with_vts(vts: List[VariableTransform]) = if (vts.isEmpty) stepScope
+          else stepScope.copy(data = doVarsTransforms(vts, stepData, stepData).result)
         context.log(s"Doing action '${context.name}' step '$src', $step.")
-        context.log(s"Step data: {${loggable(resourcesFactory.resources, stepData)}}")
+        context.log(s"Step data: {${loggable(resourcesFactory.resources, scopeBindVars(stepScope))}}")
         step match {
-          case Evaluation(_, vts, op, _) =>
-            doActionOp(op, doVarsTransforms(vts, stepData, stepData).result, context)
-          case SetEnv(_, vts, op, _) =>
-            doActionOp(op, doVarsTransforms(vts, stepData, stepData).result, context)
-          case Return(_, vts, op) =>
-            doActionOp(op, doVarsTransforms(vts, stepData, stepData).result, context)
+          case Evaluation(_, vts, op, _) => doActionOp(op, scope_with_vts(vts), context)
+          case SetEnv(_, vts, op, _) => doActionOp(op, scope_with_vts(vts), context)
+          case Return(_, vts, op) => doActionOp(op, scope_with_vts(vts), context)
           case RemoveVar(name) => Future.successful(stepData - name.get) map MapResult
           case Validations(_, validations, db) =>
             context.view.map { vd =>
-              Future(doValidationStep(validations, db, stepData ++ context.env, vd))
+              Future(doValidationStep(validations, db, scopeBindVars(stepScope), vd))
                 .map(_ => MapResult(stepData))
             }.getOrElse(Future.failed(
               new RuntimeException(s"Validation cannot be performed without view in context -" +
@@ -517,27 +518,27 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     }
 
     steps match {
-      case Nil => curData map MapResult
+      case Nil => curData.map(sc => MapResult(sc.data))
       case (s, src) :: Nil =>
         doStep(s, curData, src) flatMap {
           case ir: IdResult =>
-            curData.map(keyResult(ir, context.viewName, _))
+            curData.map(sc => keyResult(ir, context.viewName, scopeBindVars(sc)))
           case kr: KeyResult =>
             s match {
               // FIXME enable simple redirect from If
               case Evaluation(_, _, RedirectToKey(_), _) => Future.successful(kr)
-              case _ => curData.map(keyResult(kr.ir, context.viewName, _)) // FIXME apply kr.toMap
+              case _ => curData.map(sc => keyResult(kr.ir, context.viewName, scopeBindVars(sc))) // FIXME apply kr.toMap
             }
           case TresqlResult(r: DMLResult) if context.stepName == null && context.contextStack.isEmpty =>
             r match {
               case _: InsertResult | _: UpdateResult =>
                 r.id.map { id =>
                   val idName = viewNameToIdName.getOrElse(context.viewName, null)
-                  curData.map(keyResult(IdResult(id, idName), context.viewName, _))
+                  curData.map(sc => keyResult(IdResult(id, idName), context.viewName, scopeBindVars(sc)))
                 }.getOrElse {
                   viewDefOption(context.viewName)
                     .filter(hasExplicitKey)
-                    .map(_ => curData.map(keyResult(IdResult(null, null), context.viewName, _)))
+                    .map(_ => curData.map(sc => keyResult(IdResult(null, null), context.viewName, scopeBindVars(sc))))
                     .getOrElse(Future.successful(NoResult))
                 }
               case _: DeleteResult =>
@@ -546,7 +547,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           case x => Future.successful(x)
         } flatMap { res => s match {
           case Evaluation(n@Some(_), _, _, _) => curData
-            .flatMap(updateCurRes(_, n, dataForNextStep(res, context, true)))
+            .flatMap(sc => updateCurRes(sc.data, n, dataForNextStep(res, context, true)))
             .map(MapResult)
           case _ => Future.successful(res)
         }}
@@ -554,27 +555,37 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         doStep(s, curData, src) flatMap { stepRes =>
           s match {
             case e: Evaluation =>
-              doSteps(tail, context, curData
-                .flatMap(updateCurRes(_, e.name,
-                  if(e.keepResult) Future.successful(stepRes) else dataForNextStep(stepRes, context, true))))
+              val ns = for {
+                sc <- curData
+                cr <- updateCurRes(
+                  sc.data, e.name,
+                  if(e.keepResult) Future.successful(stepRes) else dataForNextStep(stepRes, context, true)
+                )
+              } yield sc.copy(data = cr)
+              doSteps(tail, context, ns)
             case se: SetEnv =>
-              val newData =
-                dataForNextStep(stepRes, context, true) flatMap {
-                  case m: Map[String, Any]@unchecked =>
-                    if (se.add) curData.map(_ ++ m) else Future.successful(m)
-                  case x =>
-                    //in the case of primitive value return step must have name
-                    se.name.map(n => Future.successful(Map(n -> x))).getOrElse(curData)
-                }
-              doSteps(tail, context, newData)
-            case rv: RemoveVar =>
-              val newData = dataForNextStep(stepRes, context, true) flatMap {
-                case m: Map[String, Any]@unchecked => Future.successful(m)
+              val ns = for {
+                sc <- curData
+                cr <- dataForNextStep(stepRes, context, true)
+              } yield cr match {
+                case m: Map[String, Any]@unchecked =>
+                  if (se.add) sc.copy(data = sc.data ++ m) else sc.copy(data = m)
+                case x =>
+                  //in the case of primitive value return step must have name
+                  se.name.map(n => sc.copy(data = Map(n -> x))).getOrElse(sc)
+              }
+              doSteps(tail, context, ns)
+            case _: RemoveVar =>
+              val ns = for {
+                sc <- curData
+                cr <- dataForNextStep(stepRes, context, true)
+              } yield cr match {
+                case m: Map[String, Any]@unchecked => sc.copy(data = m)
                 case x => sys.error(s"Remove var step cannot produce anyting but Map, instead got $x")
               }
-              doSteps(tail, context, newData)
-            case _: Return => Future.successful(stepRes)
-            case _ => doSteps(tail, context, curData)
+              doSteps(tail, context, ns)
+            case _: Return => Future.successful(stepRes)  // stop execution and return
+            case _ => doSteps(tail, context, curData)     // validation continue execution
           }
         }
     }
@@ -599,13 +610,13 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
 
   protected def doTresql(
     tresql: Action.Tresql,
-    bindVars: Map[String, Any],
+    scope: Scope,
     context: ActionContext,
   )(implicit
     resources: Resources,
   ): DataResult = {
     val result = useResourcesConnOrEvaluator(resources, res =>
-     Query(tresql.tresql)(res.withParams(bindVars)) match {
+     Query(tresql.tresql)(res.withParams(scope.toBindeableMap(context.env))) match {
       case sel: SelectResult[_] if resources.conn == null =>
         // convert select result to list or single value so evaluator conn can be closed
         val r = sel.toListOfMaps
@@ -622,13 +633,11 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
 
   protected def doViewCall(
     op: Action.ViewCall,
-    data: Map[String, Any],
+    scope: Scope,
     context: ActionContext,
   )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
     import Action._
-    import qr._
-    import resourcesFactory._
-    import context.env
+    import qr._, resourcesFactory._, context.env
     implicit val fs: FileStreamer = fileStreamers.fs(null)
     val v = viewDef(
       if (op.view == "this") context.view.map(_.name) getOrElse op.view
@@ -636,18 +645,21 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     )
     val viewName = v.name
     val callDataF =
-      if (op.data == null) Future.successful(data ++ env)
+      if (op.data == null) Future.successful(scope)
       else {
+        @tailrec
         def unwrapSingleRow(d: Any): Map[String, _] = d match {
           case r: Map[String@unchecked, _] => r ++ env
           case r: Seq[_] if r.size == 1 => unwrapSingleRow(r.head)
           case NoResult => env
           case x => sys.error(s"Invalid view op result. Currently unable to create Map[String, _] from $x")
         }
-        doActionOp(op.data, data, context).flatMap(dataForNextStep(_, context, false))
+        doActionOp(op.data, scope, context).flatMap(dataForNextStep(_, context, false))
           .map(unwrapSingleRow)
+          .map(Scope(_))
       }
-    callDataF.flatMap { callData =>
+    callDataF.flatMap { callScope =>
+      val callData = callScope.toBindeableMap(env)
       // execute querease call if context view name and method corresponds to this view name and method
       def isThisMethod(ctxMethod: String, thisMethod: String) = {
         ctxMethod ==
@@ -725,7 +737,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         val nqr = qr.copy()(resourcesFactory = resourcesFactory
           .focus(if (v.db != null) v.db else defaultCpName, defaultCpName),
           ec, as, httpReq, qio, fileStreamers, httpClients, parametersProvider)
-        do_action(viewName, op.method, callData, env, context.fieldFilter, context :: context.contextStack)(nqr)
+        do_action(viewName, op.method, callScope, env, context.fieldFilter, context :: context.contextStack)(nqr)
       }
     }
       .map {
@@ -736,16 +748,16 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
 
   protected def doInvocation(
     op: Action.Invocation,
-    data: Map[String, Any],
+    scope: Scope,
     context: ActionContext,
   )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
     import op._
     import qr._
     import context.env
-    val invocationData = data ++ env
+    val invocationData = scope.toBindeableMap(env)
     def invokeFunction(className: String, function: String, pf: InvocationParameterFun): Any = {
       this.invokeFunction(className, function, invocationData, pf,
-        InjectionParametersContext(httpReq, env, data), qr)
+        InjectionParametersContext(httpReq, env, invocationData), qr)
     }
 
     def wrongRes(x: Any) =
@@ -813,7 +825,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     (if (op.args.isEmpty) {
       invokeFunction(className, function, dtoParamFun)
     } else {
-      Future.sequence(op.args.map(doActionOp(_, data, context))).flatMap { opResults =>
+      Future.sequence(op.args.map(doActionOp(_, scope, context))).flatMap { opResults =>
         val valFuns = opResults.zipWithIndex.map { case (opRes, idx) =>
           def unwrappedVal(qres: QuereaseResult) = qres match {
             case TresqlResult(SingleValueResult(qr: QuereaseResult)) => qr // unwrap bind variable value
@@ -852,7 +864,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
 
   protected def doUnique(
     op: Action.Unique,
-    data: Map[String, Any],
+    scope: Scope,
     context: ActionContext,
   )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
     import qr.ec
@@ -879,7 +891,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       }
       case r => sys.error(s"unique opt can only process DataResult type, instead encountered: $r")
     }
-    val r = doActionOp(op.innerOp, data, context) map createGetResult
+    val r = doActionOp(op.innerOp, scope, context) map createGetResult
     op.conformTo.map(rf => r.map {
       case dr: DataResult => comp_res(dr, rf)
       case x => x
@@ -888,7 +900,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
 
   protected def doResponse(
     op: Action.Response,
-    data: Map[String, Any],
+    scope: Scope,
     context: ActionContext,
   )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
     import qr.ec, context.env
@@ -896,12 +908,12 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     val (ua, hs) = hops.partition(_.isInstanceOf[Action.SetUserAttributes])
     val user = if (ua.isEmpty) null else ua.foldLeft(WabaseUser(Map())) { (u, ua) =>
       WabaseUser(u.properties ++
-        doSetUserAttributes(ua.asInstanceOf[Action.SetUserAttributes], data, env, context).properties)
+        doSetUserAttributes(ua.asInstanceOf[Action.SetUserAttributes], scope, context).properties)
     }
     val headers = hs.foldLeft(ArrayBuffer[HttpHeader]())((r, hop) => hop match {
-      case sc: Action.SetCookie => r ++= doSetCookie(sc, data, env, context)
-      case dc: Action.DeleteCookie => r ++= doDeleteCookie(dc, data, env, context)
-      case sh: Action.SetHttpHeaders => r ++= doSetHeaders(sh, data, env, context)
+      case sc: Action.SetCookie => r ++= doSetCookie(sc, scope, context)
+      case dc: Action.DeleteCookie => r ++= doDeleteCookie(dc, scope, context)
+      case sh: Action.SetHttpHeaders => r ++= doSetHeaders(sh, scope, context)
       case x => sys.error(s"Cannot convert to http header: $x")
     }).toList
     Option(body).map { b =>
@@ -911,13 +923,13 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           case Action.Tresql(tresql, _, _) =>
             val truri = useResourcesConnOrEvaluator(
               qr.resourcesFactory.resources,
-              res => tresqlUri.tresqlUriValue(TresqlUri.Tresql(tresql))(Query, data ++ env, res)
+              res => tresqlUri.tresqlUriValue(TresqlUri.Tresql(tresql))(Query, scope.toBindeableMap(env), res)
             )
             Future.successful(RedirectValue(truri))
           case _ => sys.error(s"Redirect operation body must be tresql returning single row, instead found: '$b'")
         }
       } else {
-        doActionOp(b, data, context)
+        doActionOp(b, scope, context)
           .flatMap(r =>
             if (statusMode) dataForNextStep(r, context, true)
               .map { // for status mode return string result so that content is marshalled as text/plain not json
@@ -935,13 +947,12 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
 
   protected def doSetOrDeleteCookie(
     op: Action.SetHttpHeadersOp,
-    data: Map[String, Any],
-    env: Map[String, Any],
+    scope: Scope,
     context: ActionContext,
   )(implicit qr: QuereaseResources): List[HttpCookie] = {
     require(op.isInstanceOf[Action.SetCookie] || op.isInstanceOf[Action.DeleteCookie])
     useResourcesConnOrEvaluator(qr.resourcesFactory.resources, implicit res => {
-      val params = data ++ env
+      val params = scope.toBindeableMap(context.env)
       val cookieResult = Query(op.tresql.tresql, params)
       val (nameValueCols, otherCols) = cookieResult.columns.partition(c => c.name == "name" || c.name == "value")
       cookieResult.map { cookieRow =>
@@ -966,31 +977,28 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
 
   protected def doSetCookie(
     op: Action.SetCookie,
-    data: Map[String, Any],
-    env: Map[String, Any],
+    scope: Scope,
     context: ActionContext,
   )(implicit qr: QuereaseResources): List[`Set-Cookie`] = {
-    doSetOrDeleteCookie(op, data, env, context).map(`Set-Cookie`(_))
+    doSetOrDeleteCookie(op, scope, context).map(`Set-Cookie`(_))
   }
 
   protected def doDeleteCookie(
     op: Action.DeleteCookie,
-    data: Map[String, Any],
-    env: Map[String, Any],
+    scope: Scope,
     context: ActionContext,
   )(implicit qr: QuereaseResources): List[`Set-Cookie`] = {
-    doSetOrDeleteCookie(op, data, env, context)
+    doSetOrDeleteCookie(op, scope, context)
       .map(c => `Set-Cookie`(c.withExpires(org.apache.pekko.http.scaladsl.model.DateTime.MinValue)))
   }
 
   protected def doSetHeaders(
     op: Action.SetHttpHeaders,
-    data: Map[String, Any],
-    env: Map[String, Any],
+    scope: Scope,
     context: ActionContext,
   )(implicit qr: QuereaseResources): List[HttpHeader] = {
     useResourcesConnOrEvaluator(qr.resourcesFactory.resources, implicit res => {
-      val params = data ++ env
+      val params = scope.toBindeableMap(context.env)
       Query
         .list[String, String](op.tresql.tresql, params)
         .map { case (n, v) => HttpHeader.parse(n, v) }
@@ -1003,12 +1011,11 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
 
   protected def doSetUserAttributes(
     op: Action.SetUserAttributes,
-    data: Map[String, Any],
-    env: Map[String, Any],
+    scope: Scope,
     context: ActionContext,
   )(implicit qr: QuereaseResources): WabaseUser = {
     useResourcesConnOrEvaluator(qr.resourcesFactory.resources, implicit res => {
-      val params = data ++ env
+      val params = scope.toBindeableMap(context.env)
       WabaseUser(
         Query.list[String, Any](op.tresql.tresql, params)
           .map {
@@ -1023,41 +1030,38 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
 
   protected def doIf(
     op: Action.If,
-    data: Map[String, Any],
+    scope: Scope,
     context: ActionContext,
   )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
     import qr.ec
-    doActionOp(op.cond, data, context).map {
+    doActionOp(op.cond, scope, context).map {
       case TresqlResult(tr) => tr.unique[Boolean]
       case r: TresqlSingleRowResult => r.map(_.boolean(0))
       case x => sys.error(s"Conditional operator must be whether TresqlResult or TresqlSingleRowResult or" +
         s"StringResult(true|false). Instead found: $x")
     }.flatMap { cond =>
       if (cond)
-        doSteps(op.action.steps, context.copy(stepName = "if"), Future.successful(data))
+        doSteps(op.action.steps, context.copy(stepName = "if"), Future.successful(scope))
       else if (op.elseAct != null)
-        doSteps(op.elseAct.steps, context.copy(stepName = "else"), Future.successful(data))
+        doSteps(op.elseAct.steps, context.copy(stepName = "else"), Future.successful(scope))
       else Future.successful(NoResult)
     }
   }
 
   protected def doForeach(
     op: Action.Foreach,
-    data: Map[String, Any],
+    scope: Scope,
     context: ActionContext,
   )(implicit qr: QuereaseResources): Future[IteratorResult] = {
     def iterator(res: Any, vd: ViewDef): Future[Iterator[Map[String, Any]]] = {
-      def addParentData(map: Map[String, Any]) = {
-        var key = ".."
-        //      while (map.contains(key)) key += "_" + key // hopefully no .. key is in data map
-        Option(vd).map(toCompatibleMap(map, _)).getOrElse(map) + (key -> data)
-      }
+      def maybeCompatible(map: Map[String, Any]) =
+        Option(vd).map(toCompatibleMap(map, _)).getOrElse(map)
       res match {
-        case s: Seq[Map[String, _]@unchecked] => Future.successful((s map addParentData).iterator)
-        case m: Map[String@unchecked, _] => Future.successful((List(m) map addParentData).iterator)
+        case s: Seq[Map[String, _]@unchecked] => Future.successful((s map maybeCompatible).iterator)
+        case m: Map[String@unchecked, _] => Future.successful((List(m) map maybeCompatible).iterator)
         case TresqlResult(tr) => tr match {
           case SingleValueResult(sr) => iterator(sr, vd)
-          case r: Result[_] => Future.successful(r.map(_.toMap) map addParentData)
+          case r: Result[_] => Future.successful(r.map(_.toMap) map maybeCompatible)
         }
         case r: TresqlSingleRowResult => iterator(r.map(_.toMap), vd)
         case HttpEntityResult(ent, dec) => decodeHttpEntity(ent, null, true, dec)(qr.as).flatMap(iterator(_, vd))(qr.ec)
@@ -1074,14 +1078,13 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       }
     }
     import qr.ec
-    doActionOp(op.initOp, data, context).flatMap(iterator(_, null))
+    doActionOp(op.initOp, scope, context).flatMap(iterator(_, null))
     .flatMap { mapIterator =>
       var idx = 0
       Future.traverse(mapIterator.toSeq) { itData =>
-        val IdxName = "__idx"
-        val dataWithIdx = if (itData.contains(IdxName)) itData else itData + (IdxName -> idx)
+        val itScope = Scope(itData, Map("__idx" -> idx), scope)
         idx += 1
-        doSteps(op.action.steps, context.copy(stepName = "foreach"), Future.successful(dataWithIdx))
+        doSteps(op.action.steps, context.copy(stepName = "foreach"), Future.successful(itScope))
           .flatMap(dataForNextStep(_, context, unwrapSingleValue = true))
       }
     }.map { it => IteratorResult(it.iterator) }
@@ -1089,18 +1092,19 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
 
   protected def doResource(
     op: Action.Resource,
-    data: Map[String, Any],
+    scope: Scope,
     context: ActionContext,
   )(implicit
     res: Resources,
     httpReq: HttpRequest,
   ): Future[ResourceResult] = {
     import context.env
-    val resource = useResourcesConnOrEvaluator(res,
-      r => Query(op.nameTresql.tresql)(r.withParams(data ++ env)).unique[String])
+    val resource = useResourcesConnOrEvaluator(res, r =>
+      Query(op.nameTresql.tresql)(r.withParams(scope.toBindeableMap(env))).unique[String])
     val ct = Option(op.contentTypeTresql)
       .map { ctt =>
-        val ct = useResourcesConnOrEvaluator(res, r => Query(ctt.tresql)(r.withParams(data ++ env)).unique[String])
+        val ct = useResourcesConnOrEvaluator(res, r =>
+          Query(ctt.tresql)(r.withParams(scope.toBindeableMap(env))).unique[String])
         ContentType.parse(ct)
           .toOption
           .getOrElse(sys.error(s"Invalid content type: $ct"))
@@ -1113,7 +1117,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
 
   protected def doFile(
     op: Action.File,
-    data: Map[String, Any],
+    scope: Scope,
     context: ActionContext,
   )(implicit
     res: Resources,
@@ -1122,19 +1126,19 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     import context.env
     val fs = fss.fs(op.fileStreamerName)
     val (id, sha) = useResourcesConnOrEvaluator(implicitly[Resources],
-      r => Query(op.idShaTresql.tresql)(r.withParams(data ++ env)).unique[Long, String])
+      r => Query(op.idShaTresql.tresql)(r.withParams(scope.toBindeableMap(env))).unique[Long, String])
     val r = FileResult(fs.getFileInfo(id, sha).map(_.file_info).orNull, fs)
     Future.successful { op.conformTo.map(comp_res(r, _)).getOrElse(r) }
   }
 
   protected def doToFile(
     op: Action.ToFile,
-    data: Map[String, Any],
+    scope: Scope,
     context: ActionContext,
   )(implicit qr: QuereaseResources): Future[FileInfoResult] = {
     import org.apache.pekko.http.scaladsl.model.{MediaTypes, ContentType}
     import qr._, resourcesFactory._, context.env
-    val bindVars = data ++ env
+    val bindVars = scope.toBindeableMap(env)
     def getVal(tr: Action.Tresql) = useResourcesConnOrEvaluator(resources,
       res => Query(tr.tresql)(res.withParams(bindVars)).unique[String])
     val fn = if (op.nameTresql != null) getVal(op.nameTresql) else "file"
@@ -1147,26 +1151,26 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       } else ContentType(MediaTypes.`application/json`)
 
     val fs = fileStreamers.fs(op.fileStreamerName)
-    doActionOpAndRender(contentType, op.contentOp, data, context).flatMap { case (src, ct, _) =>
+    doActionOpAndRender(contentType, op.contentOp, scope, context).flatMap { case (src, ct, _) =>
       src.runWith(fs.fileSink(fn, ct.value))
     }.map(FileInfoResult)
   }
 
   protected def doTemplate(
     op: Action.Template,
-    data: Map[String, Any],
+    scope: Scope,
     context: ActionContext,
   )(implicit qr: QuereaseResources): Future[TemplateResult] = {
     import qr._, resourcesFactory._, context.env
     implicit val fs: FileStreamer = fileStreamers.fs(null)
-    val bindVars = data ++ env
+    val bindVars = scope.toBindeableMap(env)
     val template = useResourcesConnOrEvaluator(resources,
       res => Query(op.templateTresql.tresql)(res.withParams(bindVars)).unique[String])
     val resF =
       if (op.dataOp == null) {
         templateEngine(template, bindVars)
       } else {
-        doActionOp(op.dataOp, data, context)
+        doActionOp(op.dataOp, scope, context)
           .flatMap(dataForNextStep(_, context, false))
           .flatMap {
             case m: Map[String@unchecked, _] => templateEngine(template, m)
@@ -1191,11 +1195,11 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
 
   protected def doEmail(
     op: Action.Email,
-    data: Map[String, Any],
+    scope: Scope,
     context: ActionContext,
   )(implicit qr: QuereaseResources): Future[LongResult] = {
     import qr._, context.env
-    val bindVars = data ++ env
+    val bindVars = scope.toBindeableMap(env)
     @tailrec
     def recipients(qr: QuereaseResult, vn: String): Source[Map[String, Any], _] = qr match {
       case TresqlResult(result) => Source.fromIterator(() => result.map(_.toMap))
@@ -1208,7 +1212,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case x => sys.error(s"Cannot extract email recipients from '$x'. " +
         s"Supported types are tresql and extract entity operations.")
     }
-    doActionOp(op.recipients, data, context)
+    doActionOp(op.recipients, scope, context)
       .map(recipients(_, null))
       .map { rec => if (op.isBatch) rec else rec.limit(1) }
       .flatMap(_.runFoldAsync(0) { (c, email) =>
@@ -1218,18 +1222,17 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         val bcc = s(email.getOrElse("bcc", null))
         val from = s(email.getOrElse("from", null))
         val replyTo = s(email.getOrElse("replyTo", null))
-        val opData = bindVars ++ email
         def subj_body(bv: Map[String, Any]) = {
           def stringContent(qr: QuereaseResult) = qr match {
             case TresqlResult(r) => Future.successful(r.unique[String])
             case _ => renderedResult(qr, null, null, Option(false), context)
               .flatMap(_._1.runReduce(_ ++ _).map(_.decodeString("UTF8")))
           }
-          Future.traverse(List(op.subject, op.body))(doActionOp(_, bv, context).flatMap(stringContent))
+          Future.traverse(List(op.subject, op.body))(doActionOp(_, Scope(bv), context).flatMap(stringContent))
         }
-        subj_body(opData).flatMap { sb =>
+        subj_body(bindVars ++ email).flatMap { sb =>
           val List(subject, body) = sb
-          Future.traverse(op.attachmentsOp)(doActionOp(_, opData, context)
+          Future.traverse(op.attachmentsOp)(doActionOp(_, Scope(scope.data ++ email), context)
             .flatMap(
               renderedResult(_, null, null, Option(false), context).map {
                 case (src, fn, ct, _) => EmailAttachment(fn, ct.value, src)
@@ -1244,11 +1247,11 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
 
   protected def doHttp(
     op: Action.Http,
-    data: Map[String, Any],
+    scope: Scope,
     context: ActionContext,
   )(implicit qr: QuereaseResources): Future[DataResult] = {
     import qr._, resourcesFactory._, context.env
-    val opData = data ++ env
+    val opData = scope.toBindeableMap(env)
     val httpMeth = HttpMethods.getForKeyCaseInsensitive(op.method).get
     val uri = useResourcesConnOrEvaluator(implicitly[Resources], res =>
       tresqlUri.fromTresqlUri(op.uriTresql)(Query, opData, res))
@@ -1266,7 +1269,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     val reqF = {
       def reqWithoutBody = HttpRequest(httpMeth, uri, headers)
       if (op.body == null) Future.successful(reqWithoutBody)
-      else doActionOpAndRender(optContentType.orNull, op.body, data, context).map { case (src, ct, clo) =>
+      else doActionOpAndRender(optContentType.orNull, op.body, scope, context).map { case (src, ct, clo) =>
           reqWithoutBody.withEntity(clo.map(
             HttpEntity(Option(ct).getOrElse(MediaTypes.`application/octet-stream`), _, src)).getOrElse(
             HttpEntity(ct, src))
@@ -1283,7 +1286,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           .getOrElse(
             if (httpClients.httpClients.size == 1) httpClients.httpClients.head._2
             else sys.error(s"Http client name not specified, expected one http client, got: $httpClients"))
-        val httpClient = httpClientFactory(InjectionParametersContext(httpReq, env, data))
+        val httpClient = httpClientFactory(InjectionParametersContext(httpReq, env, opData))
         doHttpRequest(httpClient, viewDefOption(context.viewName).map(_.maxContentSize).orNull, req)
       }
     }
@@ -1295,7 +1298,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
 
   protected def doExtractHeader(
     op: Action.HttpHeader,
-    data: Map[String, Any],
+    scope: Scope,
     context: ActionContext,
   )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
     import qr._, context.env
@@ -1306,7 +1309,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case cr: CompatibleResult => httpRes(cr.result)
     }
     Option(op.httpOp)
-      .map(doHttp(_, data, context))
+      .map(doHttp(_, scope, context))
       .map(_.map(httpRes))
       .getOrElse(Future.successful(httpReq))
       .map { msg => Option(msg).flatMap(_.headers.collectFirst {
@@ -1316,7 +1319,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
 
   protected def doExtractCookie(
     op: Action.Cookie,
-    data: Map[String, Any],
+    scope: Scope,
     context: ActionContext,
   )(implicit
     resFac: ResourcesFactory,
@@ -1333,12 +1336,12 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
 
   protected def doExtractEntity(
     exe: Action.ExtractHttpEntity,
-    data: Map[String, Any],
+    scope: Scope,
     context: ActionContext,
   )(implicit qr: QuereaseResources): Future[DataResult] = {
     import qr._
     Option(exe.op).map { op =>
-      doActionOp(op, data, context)
+      doActionOp(op, scope, context)
         .map {
           case HttpResult(response) => response.entity
           case fr: FileResult => fileHttpEntity(fr)
@@ -1364,7 +1367,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
 
   protected def doDb(
     op: Action.Db,
-    data: Map[String, Any],
+    scope: Scope,
     context: ActionContext,
   )(implicit qr: QuereaseResources): Future[DbResult] = {
     import qr._, context.env
@@ -1383,7 +1386,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     val closeRes = resourcesFactory.closeResources(newResFact.resources, op.doRollback, _)
     val nqr = new QuereaseResources()(newResFact, ec, as, httpReq, qio, fileStreamers, httpClients, parametersProvider)
     doSteps(op.action.steps, context.copy(stepName = "db"),
-      Future.successful(data))(nqr).map {
+      Future.successful(Scope(Map(), parent = scope)))(nqr).map {
       case DbResult(r, cl) => DbResult(r, cl.andThen(_ => closeRes(None)))
       case r => DbResult(r, closeRes)
     }.andThen {
@@ -1393,15 +1396,15 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
 
   protected def doBlock(
     op: Action.Block,
-    data: Map[String, Any],
+    scope: Scope,
     context: ActionContext,
   )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
-    doSteps(op.action.steps, context.copy(stepName = "block"), Future.successful(data))
+    doSteps(op.action.steps, context.copy(stepName = "block"), Future.successful(Scope(Map(), parent = scope)))
   }
 
   protected def doConf(
     op: Action.Conf,
-    data: Map[String, Any],
+    scope: Scope,
     context: ActionContext
   )(implicit
     resFac: ResourcesFactory,
@@ -1418,12 +1421,12 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
 
   protected def doJsonCodec(
     op: Action.JsonCodec,
-    data: Map[String, Any],
+    scope: Scope,
     context: ActionContext
   )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
     import qr._
     implicit val fs: FileStreamer = fileStreamers.fs(null)
-    doActionOp(op.op, data, context)
+    doActionOp(op.op, scope, context)
       .flatMap(dataForNextStep(_, context, true))
       .map { res =>
         if (op.encode) {
@@ -1452,10 +1455,10 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
 
   protected def doExtractParts(
     op: Action.ExtractParts,
-    data: Map[String, Any],
+    scope: Scope,
     context: ActionContext,
   )(implicit qr: QuereaseResources): Future[RequestPartResult] = {
-    import qr._
+    import qr._, context.env
     val entity = httpReq.entity
     val fs = fileStreamers.fs(op.fileStreamerName)
     if (entity.contentType.mediaType.isMultipart) {
@@ -1475,7 +1478,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     } else {
       val filename = viewDefOption(context.viewName)
         .filter(_.keyFieldNames.size == 1)
-        .flatMap(vd => data.get(vd.keyFieldNames.head).map(String.valueOf))
+        .flatMap(vd => scope.toBindeableMap(env).get(vd.keyFieldNames.head).map(String.valueOf))
         .getOrElse(httpReq.uri.path.reverse.head.toString)
       Future.successful(
         RequestPartResult(
@@ -1490,14 +1493,14 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
 
   protected def doRedirectToKey(
     op: Action.RedirectToKey,
-    data: Map[String, Any],
+    scope: Scope,
     context: ActionContext
   ): Future[QuereaseResult] = {
     import context.env
     val name = op.name
     val viewName = if (name == "this") context.viewName else name
     val idName = viewNameToIdName.getOrElse(viewName, null)
-    val dataWithEnv = data ++ env
+    val dataWithEnv = scope.toBindeableMap(env)
     val id = dataWithEnv.getOrElse(idName, null)
     val kr = keyResult(IdResult(id, idName), viewName, dataWithEnv)
     Future.successful(ResponseResult(303, RedirectValue(redirectTresqlUri(kr))))
@@ -1512,10 +1515,11 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
 
   protected def doThis(
     op: Action.This,
-    data: Map[String, Any],
+    scope: Scope,
     context: ActionContext
   ): Future[QuereaseResult] = {
-    Future.successful(op.conformTo.map(comp_res(MapResult(data), _)).getOrElse(MapResult(data)))
+    val data = MapResult(scope.data)
+    Future.successful(op.conformTo.map(comp_res(data, _)).getOrElse(data))
   }
 
   // XXX copied from Marshalling
@@ -1526,7 +1530,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
 
   protected def doActionOp(
     op: Action.Op,
-    data: Map[String, Any],
+    scope: Scope,
     context: ActionContext,
   )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
     import qr._
@@ -1534,32 +1538,32 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     import context.env
     implicit val fs: FileStreamer = fileStreamers.fs(null)
     op match {
-      case to: Action.Tresql => Future.successful(doTresql(to, data ++ env, context))
-      case vc: Action.ViewCall => doViewCall(vc, data, context)
-      case op: Action.Unique => doUnique(op, data, context)
-      case inv: Action.Invocation => doInvocation(inv, data, context)
-      case rtk: Action.RedirectToKey => doRedirectToKey(rtk, data, context)
-      case st: Action.Response => doResponse(st, data, context)
+      case to: Action.Tresql => Future.successful(doTresql(to, scope, context))
+      case vc: Action.ViewCall => doViewCall(vc, scope, context)
+      case op: Action.Unique => doUnique(op, scope, context)
+      case inv: Action.Invocation => doInvocation(inv, scope, context)
+      case rtk: Action.RedirectToKey => doRedirectToKey(rtk, scope, context)
+      case st: Action.Response => doResponse(st, scope, context)
       case Action.Commit => doCommit(resources)
-      case cond: Action.If => doIf(cond, data, context)
-      case foreach: Action.Foreach => doForeach(foreach, data, context)
-      case resource: Action.Resource => doResource(resource, data, context)
-      case file: Action.File => doFile(file, data, context)
-      case toFile: Action.ToFile => doToFile(toFile, data, context)
-      case template: Action.Template => doTemplate(template, data, context)
-      case email: Action.Email => doEmail(email, data, context)
-      case http: Action.Http => doHttp(http, data, context)
-      case eh: Action.HttpHeader => doExtractHeader(eh, data, context)
-      case exc: Action.Cookie => doExtractCookie(exc, data, context)
-      case exe: Action.ExtractHttpEntity => doExtractEntity(exe, data, context)
-      case db: Action.Db => doDb(db, data, context)
-      case block: Action.Block => doBlock(block, data, context)
-      case c: Action.Conf => doConf(c, data, context)
-      case j: Action.JsonCodec => doJsonCodec(j, data, context)
-      case ep: Action.ExtractParts => doExtractParts(ep, data, context)
-      case th: Action.This => doThis(th, data, context)
+      case cond: Action.If => doIf(cond, scope, context)
+      case foreach: Action.Foreach => doForeach(foreach, scope, context)
+      case resource: Action.Resource => doResource(resource, scope, context)
+      case file: Action.File => doFile(file, scope, context)
+      case toFile: Action.ToFile => doToFile(toFile, scope, context)
+      case template: Action.Template => doTemplate(template, scope, context)
+      case email: Action.Email => doEmail(email, scope, context)
+      case http: Action.Http => doHttp(http, scope, context)
+      case eh: Action.HttpHeader => doExtractHeader(eh, scope, context)
+      case exc: Action.Cookie => doExtractCookie(exc, scope, context)
+      case exe: Action.ExtractHttpEntity => doExtractEntity(exe, scope, context)
+      case db: Action.Db => doDb(db, scope, context)
+      case block: Action.Block => doBlock(block, scope, context)
+      case c: Action.Conf => doConf(c, scope, context)
+      case j: Action.JsonCodec => doJsonCodec(j, scope, context)
+      case ep: Action.ExtractParts => doExtractParts(ep, scope, context)
+      case th: Action.This => doThis(th, scope, context)
       case VariableTransforms(vts) =>
-        Future.successful(doVarsTransforms(vts, Map[String, Any](), data ++ env))
+        Future.successful(doVarsTransforms(vts, Map[String, Any](), scope.data ++ env))
       case _: Action.Else => sys.error(s"Integrity error. Else operation cannot be here, must be coalesced into if operation")
     }
   }
@@ -1567,11 +1571,11 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   private def doActionOpAndRender(
     contentType: ContentType,
     op: Action.Op,
-    data: Map[String, Any],
+    scope: Scope,
     context: ActionContext,
    )(implicit qr: QuereaseResources): Future[(Source[ByteString, _], ContentType, Option[Long])] = {
     import qr._
-    doActionOp(op, data, context)
+    doActionOp(op, scope, context)
       .flatMap(renderedResult(_, contentType, null, None, context))
       .map { case (src, _, ct, l) => (src, ct, l) }
   }
@@ -1928,9 +1932,9 @@ object DefaultAppQuereaseIo extends AppQuereaseIo[Dto](DefaultAppQuerease)
 
 object AppQuerease {
   case class InjectionParametersContext(
-    req: HttpRequest,
-    env: Map[String, Any] = Map(),	  // action env (application state)
-    data: Map[String, Any] = Map(),	// action current step data
+    req:  HttpRequest,
+    env:  Map[String, Any]  = Map(),	  // action env (application state)
+    data: Map[String, Any]  = Map(),	  // action current step data
   )
   type InjectionParametersProvider = InjectionParametersContext => PartialFunction[Parameter, Any]
 
@@ -2073,14 +2077,14 @@ object AppQuerease {
     case v => v
   }
 
-  case class Scope(data: Map[String, Any], parent: Scope = null) {
+  case class Scope(data: Map[String, Any], initBindVars: Map[String, Any] = Map(), parent: Scope = null) {
     def apply(name: String): Any =
       data.getOrElse(name, throw new NoSuchElementException(s"Variable not found in scope: $name"))
     def -(name: String): Scope = copy(data = data - name)
     def +(name: String, value: Any): Scope = copy(data = data + (name -> value))
     /** Creates tresql bindeable map from action scope and env data. */
     def toBindeableMap(env: Map[String, Any] = Map()): Map[String, Any] =
-      (if (parent == null) Map[String, Any]() else {
+      initBindVars ++ (if (parent == null) Map[String, Any]() else {
         val pbm = parent.toBindeableMap()
         pbm + (".." -> pbm)
       }) ++ data ++ env

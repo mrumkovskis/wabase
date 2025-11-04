@@ -1117,13 +1117,6 @@ get:
 
 name: variable_definition_block_test
 api: get
-fields:
-- a
-- b
-- c:
-  fields:
-  - d
-  - e
 get:
 - res:
   - a = 'a'
@@ -1131,7 +1124,7 @@ get:
   - c:
     - d = 'd'
     - e = 'e'
-- as variable_definition_block_test :res
+- :res
 
 
 name: template_test1
