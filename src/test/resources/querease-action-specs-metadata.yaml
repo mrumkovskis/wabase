@@ -724,13 +724,13 @@ fields:
 save:
 - insert this
 - foreach :children :
-    - parent = :'..'.code
+    - parent = :'..'.code  # :'..'.code references outer scope code variable
     - insert this
 - get this
 update:
 - update this
 - foreach :children :
-    - parent = :'..'.code
+    - parent = :'..'.code   # :'..'.code references outer scope code variable
     - update this
 - get this
 
@@ -740,10 +740,8 @@ api: get, save
 save:
 - insert this
 - if{ :value = 'new' } :
-    - foreach :children :
-       - if { :value = 'new child' } :
-           - parent = :'..'.code  # '..' denotes parent data since curent data is :children.<idx> element
-           - insert this
+    - parent = :code
+    - foreach :children if { :value = 'new child' } insert this
 - get this
 
 
@@ -1038,8 +1036,6 @@ get:
 - setenv:res
 - forests = foreach :forests :
   - tree_list = as tree * http { '/tree', '?', :nr nr }
-  - "'..'-="  # remove super data for easier assertion
-  - __idx -=  # remove idx for easier assertion
 
 
 name: not_found_test

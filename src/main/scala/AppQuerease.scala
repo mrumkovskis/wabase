@@ -1041,9 +1041,9 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         s"StringResult(true|false). Instead found: $x")
     }.flatMap { cond =>
       if (cond)
-        doSteps(op.action.steps, context.copy(stepName = "if"), Future.successful(scope))
+        doSteps(op.action.steps, context.copy(stepName = "if"), Future.successful(Scope(Map(), parent = scope)))
       else if (op.elseAct != null)
-        doSteps(op.elseAct.steps, context.copy(stepName = "else"), Future.successful(scope))
+        doSteps(op.elseAct.steps, context.copy(stepName = "else"), Future.successful(Scope(Map(), parent = scope)))
       else Future.successful(NoResult)
     }
   }
@@ -1082,7 +1082,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     .flatMap { mapIterator =>
       var idx = 0
       Future.traverse(mapIterator.toSeq) { itData =>
-        val itScope = Scope(itData, Map("__idx" -> idx), scope)
+        val itScope = Scope(itData, Map("__idx" -> idx), parent = scope)
         idx += 1
         doSteps(op.action.steps, context.copy(stepName = "foreach"), Future.successful(itScope))
           .flatMap(dataForNextStep(_, context, unwrapSingleValue = true))
