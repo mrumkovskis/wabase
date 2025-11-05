@@ -497,14 +497,15 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       import resourcesFactory._
       stepDataF flatMap { stepScope =>
         val stepData = stepScope.data
-        def scope_with_vts(vts: List[VariableTransform]) = if (vts.isEmpty) stepScope
-          else stepScope.copy(data = doVarsTransforms(vts, stepData, stepData).result)
+        def doActionStep(vts: List[VariableTransform], op: Action.Op) =
+          doActionOp(op, if (vts.isEmpty) stepScope
+            else stepScope.copy(data = doVarsTransforms(vts, stepData, stepData).result), context)
         context.log(s"Doing action '${context.name}' step '$src', $step.")
         context.log(s"Step data: {${loggable(resourcesFactory.resources, scopeBindVars(stepScope))}}")
         step match {
-          case Evaluation(_, vts, op, _) => doActionOp(op, scope_with_vts(vts), context)
-          case SetEnv(_, vts, op, _) => doActionOp(op, scope_with_vts(vts), context)
-          case Return(_, vts, op) => doActionOp(op, scope_with_vts(vts), context)
+          case Evaluation(_, vts, op, _) => doActionStep(vts, op)
+          case SetEnv(_, vts, op, _) => doActionStep(vts, op)
+          case Return(_, vts, op) => doActionStep(vts, op)
           case RemoveVar(name) => Future.successful(stepData - name.get) map MapResult
           case Validations(_, validations, db) =>
             context.view.map { vd =>
@@ -569,7 +570,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
                 cr <- dataForNextStep(stepRes, context, true)
               } yield cr match {
                 case m: Map[String, Any]@unchecked =>
-                  if (se.add) sc.copy(data = sc.data ++ m) else sc.copy(data = m)
+                  sc.copy(data = if (se.add) sc.data ++ m else m)
                 case x =>
                   //in the case of primitive value return step must have name
                   se.name.map(n => sc.copy(data = Map(n -> x))).getOrElse(sc)

@@ -734,14 +734,17 @@ update:
     - update this
 - get this
 
+
 name: foreach_test_2
 extends: foreach_test_1
 api: get, save
 save:
 - insert this
 - if{ :value = 'new' } :
-    - parent = :code
-    - foreach :children if { :value = 'new child' } insert this
+  - foreach :children:
+    - if { :value = 'new child' }:
+      - parent = :'..'.'..'.'..'.code   # code three levels up
+      - insert this
 - get this
 
 
