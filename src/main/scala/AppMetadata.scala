@@ -589,7 +589,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
               }
             }
           case x =>
-            sys.error(s"'$objectName' parsing error, invalid value: '$x'")
+            sys.error(s"'$objectName' parsing error. Unable to parse value: '$x'")
         }
       }
       parseStep(step)
