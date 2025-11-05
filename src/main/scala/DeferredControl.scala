@@ -221,12 +221,14 @@ object DeferredControl extends Loggable with AppConfig {
       .toMap
   }
 
-  logger.info(s"defaultTimeout: $defaultTimeout")
-  logger.info(s"deferredWorkerCount: $deferredWorkerCount")
-  logger.info(s"deferredUris: $deferredUris")
-  logger.info(s"deferredTimeouts: $deferredTimeouts")
-  logger.info(s"deferredCleanupInterval: $deferredCleanupInterval")
-  logger.info(s"deferredModules: $deferredModules")
+  private lazy val lazyLogCurrentConf: Unit = {
+    logger.info(s"defaultTimeout: $defaultTimeout")
+    logger.info(s"deferredWorkerCount: $deferredWorkerCount")
+    logger.info(s"deferredUris: $deferredUris")
+    logger.info(s"deferredTimeouts: $deferredTimeouts")
+    logger.info(s"deferredCleanupInterval: $deferredCleanupInterval")
+    logger.info(s"deferredModules: $deferredModules")
+  }
 
   case class DeferredRequestArrived(module: String) extends ServerNotifications.Addressee
 
@@ -379,6 +381,7 @@ object DeferredControl extends Loggable with AppConfig {
     publisher: DeferredStatusPublisher,
     workerCount: Int
   )(implicit as: ActorSystem) = {
+    lazyLogCurrentConf
     logger.info(s"Starting deferred request processor $name, worker count - ($workerCount)")
     Source.actorRef[DeferredContext](PartialFunction.empty, PartialFunction.empty, 8, OverflowStrategy.dropTail)
       .to(deferredSink(name, storage, publisher, workerCount))
