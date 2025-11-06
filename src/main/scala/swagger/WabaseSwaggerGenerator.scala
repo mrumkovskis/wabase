@@ -94,6 +94,16 @@ class WabaseSwaggerGenerator(
     }
   lazy val viewDefMap = viewdefs.map(v => v.name -> v).toMap
 
+  lazy val viewNameToApiKeyFieldNames: Map[String, Seq[String]] = viewdefs.map { v => (
+    v.name,
+    viewNameToQe(v.name) match {
+      case qe: AppQuerease => qe.viewNameToApiKeyFieldNames(v.name)
+      case qe              => qe.viewNameToKeyFields(v.name).filterNot(_.api.excluded).map(_.fieldName)
+    }
+  )}.toMap
+
+  def apiKeyFieldNames(viewDef: ViewDef) = viewNameToApiKeyFieldNames(viewDef.name)
+
   // https://swagger.io/docs/specification/data-models/data-types/
   def schemaFromType(type_ : org.mojoz.metadata.Type) = type_.name match {
     case n if type_.isComplexType =>
@@ -260,7 +270,7 @@ class WabaseSwaggerGenerator(
   }
 
   def addPathParameters(op: Operation, method: String, viewDef: ViewDef, keySize: Int = 99): Operation = {
-    viewDef.keyFieldNames.take(keySize).foreach { keyFieldName =>
+    apiKeyFieldNames(viewDef).take(keySize).foreach { keyFieldName =>
       val field = viewDef.fieldOpt(keyFieldName).getOrElse(
         new org.mojoz.metadata.FieldDef(keyFieldName, new org.mojoz.metadata.Type("string")))
       op.addParametersItem {
@@ -484,7 +494,7 @@ class WabaseSwaggerGenerator(
   }
 
   def keyDescription(viewDef: ViewDef, keySize: Int = 99): String = {
-    val keyFieldNames = viewDef.keyFieldNames.take(keySize)
+    val keyFieldNames = apiKeyFieldNames(viewDef).take(keySize)
     keyFieldNames.size match {
       case 0 => ""
       case 1 => s"""by '${keyFieldNames.head}'"""
@@ -513,10 +523,10 @@ class WabaseSwaggerGenerator(
       case "count"  => s":$method"
       case _        =>  ""
     }
-    if (viewDef.keyFieldNames.take(keySize).isEmpty)
+    if (apiKeyFieldNames(viewDef).take(keySize).isEmpty)
       s"${rootPathForView(viewDef)}$infix"
     else
-      s"${rootPathForView(viewDef)}$infix/${viewDef.keyFieldNames.take(keySize).mkString("{", "}/{", "}")}"
+      s"${rootPathForView(viewDef)}$infix/${apiKeyFieldNames(viewDef).take(keySize).mkString("{", "}/{", "}")}"
   }
 
   def isArrayRequest(viewDef: ViewDef, method: String) = false
@@ -621,8 +631,10 @@ class WabaseSwaggerGenerator(
 
   def pathsAndOperations(method: String, viewDef: ViewDef): Seq[(String, HttpMethod, Operation)] =
     method match {
-      case "create" => Seq((pathWithKey(method, viewDef), HttpMethods.GET,    operationForCreate(viewDef)))
-      case "count"  => Seq((pathWithKey(method, viewDef), HttpMethods.GET,    operationForCount(viewDef)))
+      case "create" => Seq((pathWithKey(method, viewDef, 0), HttpMethods.GET, operationForCreate(viewDef, 0)))
+      case "count"  => Seq((pathWithKey(method, viewDef, viewDef.maxKeySizeForList),
+                            HttpMethods.GET,
+                            operationForCount(viewDef, viewDef.maxKeySizeForList)))
       case "get"    => Seq((pathWithKey(method, viewDef), HttpMethods.GET,    operationForGet(viewDef)))
       case "list"   =>
         (viewDef.minKeySizeForList to viewDef.maxKeySizeForList).map { keySize =>
@@ -631,15 +643,13 @@ class WabaseSwaggerGenerator(
       case "insert" => Seq((pathWithKey(method, viewDef), HttpMethods.POST,   operationForInsert(viewDef)))
       case "update" => Seq((pathWithKey(method, viewDef), HttpMethods.PUT,    operationForUpdate(viewDef)))
       case "save"   =>
-                if  (viewDef.keyFieldNames.isEmpty)
+                if  (apiKeyFieldNames(viewDef).isEmpty)
                        Seq((pathWithKey(method, viewDef),    HttpMethods.POST, operationForSave(viewDef)))
                 else   Seq((pathWithKey(method, viewDef, 0), HttpMethods.POST, operationForInsert(viewDef, 0)),
                            (pathWithKey(method, viewDef),    HttpMethods.PUT,  operationForUpdate(viewDef)))
       case "delete" => Seq((pathWithKey(method, viewDef), HttpMethods.DELETE, operationForDelete(viewDef)))
       case _        =>
-        logger.warn(
-          s"Unsupported api method '$method'. View ${viewDef.name}, " +
-          s"key fields ${viewDef.keyFieldNames.mkString("[", ", ", "]")}")
+        logger.warn(s"Unsupported api method '$method' for view '${viewDef.name}' skipped by swagger generator")
         Nil
     }
 

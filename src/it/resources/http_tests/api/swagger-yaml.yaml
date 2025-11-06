@@ -138,8 +138,35 @@ response: |+
                   type: string
     /guideline_calculation_helper:
       get:
-        summary: Get 'guideline_calculation_helper'
+        summary: List 'guideline_calculation_helper'
         description: ""
+        responses:
+          "200":
+            description: OK
+            content:
+              application/json:
+                schema:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/guideline_calculation_helper"
+          "400":
+            description: Bad Request
+          "403":
+            description: Forbidden
+          "503":
+            description: Service Unavailable
+    /guideline_calculation_helper/{code}:
+      get:
+        summary: Get 'guideline_calculation_helper' by 'code'
+        description: ""
+        parameters:
+        - name: code
+          in: path
+          description: Code
+          required: true
+          schema:
+            type: string
+            maxLength: 12
         responses:
           "200":
             description: OK
@@ -156,8 +183,16 @@ response: |+
           "503":
             description: Service Unavailable
       post:
-        summary: Insert 'guideline_calculation_helper'
+        summary: Insert 'guideline_calculation_helper' by 'code'
         description: ""
+        parameters:
+        - name: code
+          in: path
+          description: Code
+          required: true
+          schema:
+            type: string
+            maxLength: 12
         requestBody:
           content:
             application/json:
@@ -394,18 +429,10 @@ response: |+
             description: No Content
           "404":
             description: Not Found
-    /person:count/{code}:
+    /person:count:
       get:
-        summary: Count 'person' by 'code'
+        summary: Count 'person'
         description: ""
-        parameters:
-        - name: code
-          in: path
-          description: Code
-          required: true
-          schema:
-            type: string
-            maxLength: 12
         responses:
           "200":
             description: Count
@@ -422,18 +449,10 @@ response: |+
             description: Not Found
           "503":
             description: Service Unavailable
-    /person:create/{code}:
+    /person:create:
       get:
-        summary: Create 'person' by 'code'
+        summary: Create 'person'
         description: ""
-        parameters:
-        - name: code
-          in: path
-          description: Code
-          required: true
-          schema:
-            type: string
-            maxLength: 12
         responses:
           "200":
             description: OK
@@ -776,7 +795,7 @@ response: |+
           "503":
             description: Service Unavailable
       post:
-        summary: Save 'user'
+        summary: Insert 'user'
         description: ""
         requestBody:
           content:
@@ -794,13 +813,6 @@ response: |+
             description: Bad Request
           "503":
             description: Service Unavailable
-      delete:
-        summary: Delete 'user'
-        responses:
-          "204":
-            description: No Content
-          "404":
-            description: Not Found
     /user-with-roles-array:
       get:
         summary: Get 'user-with-roles-array'
@@ -816,6 +828,75 @@ response: |+
             description: Not Found
           "503":
             description: Service Unavailable
+    /user/{id}:
+      get:
+        summary: Get 'user' by 'id'
+        description: ""
+        parameters:
+        - name: id
+          in: path
+          description: Id
+          required: true
+          schema:
+            type: integer
+            format: int64
+        responses:
+          "200":
+            description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: "#/components/schemas/user"
+          "400":
+            description: Bad Request
+          "403":
+            description: Forbidden
+          "404":
+            description: Not Found
+          "503":
+            description: Service Unavailable
+      put:
+        summary: Update 'user' by 'id'
+        description: ""
+        parameters:
+        - name: id
+          in: path
+          description: Id
+          required: true
+          schema:
+            type: integer
+            format: int64
+        requestBody:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/user"
+        responses:
+          "200":
+            description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: "#/components/schemas/user"
+          "400":
+            description: Bad Request
+          "503":
+            description: Service Unavailable
+      delete:
+        summary: Delete 'user' by 'id'
+        parameters:
+        - name: id
+          in: path
+          description: Id
+          required: true
+          schema:
+            type: integer
+            format: int64
+        responses:
+          "204":
+            description: No Content
+          "404":
+            description: Not Found
     /user:count:
       get:
         summary: Count 'user'
@@ -945,8 +1026,36 @@ response: |+
             description: Service Unavailable
     /validation:
       post:
-        summary: Save 'validation'
+        summary: Insert 'validation'
         description: Validation scripts for views
+        requestBody:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/validation"
+        responses:
+          "200":
+            description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: "#/components/schemas/validation"
+          "400":
+            description: Bad Request
+          "503":
+            description: Service Unavailable
+    /validation/{id}:
+      put:
+        summary: Update 'validation' by 'id'
+        description: Validation scripts for views
+        parameters:
+        - name: id
+          in: path
+          description: Id
+          required: true
+          schema:
+            type: integer
+            format: int64
         requestBody:
           content:
             application/json:
