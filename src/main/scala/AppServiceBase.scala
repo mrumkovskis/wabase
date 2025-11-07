@@ -738,6 +738,12 @@ object AppServiceBase {
         complete(HttpResponse(BadRequest, entity = bindVariableExceptionResponseMessage(e)))
     }
 
+    def httpExceptionHandler(logger: com.typesafe.scalalogging.Logger) = ExceptionHandler {
+      case e: HttpException =>
+        logger.debug(e.getMessage, e)
+        complete(HttpResponse(status = e.status, entity = e.getMessage))
+    }
+
     def quereaseEnvExceptionHandler(logger: com.typesafe.scalalogging.Logger) = ExceptionHandler {
       case e: QuereaseEnvException =>
         logger.debug(e.getMessage, e)
@@ -837,6 +843,7 @@ object AppServiceBase {
       def bindVariableExceptionResponseMessage(e: MissingBindVariableException): String = e.getMessage
       override lazy val appExceptionHandler =
         unprocessableEntityExceptionHandler(this.logger)
+          .withFallback(httpExceptionHandler(this.logger))
           .withFallback(businessExceptionHandler(this.logger))
           .withFallback(bindVariableExceptionHandler(this.logger, this.bindVariableExceptionResponseMessage))
           .withFallback(quereaseEnvExceptionHandler(this.logger))
@@ -859,6 +866,7 @@ object AppServiceBase {
         with AppI18nService =>
       override lazy val appExceptionHandler =
         unprocessableEntityExceptionHandler(this.logger)
+          .withFallback(httpExceptionHandler(this.logger))
           .withFallback(businessExceptionHandler(this.logger))
           .withFallback(validationExceptionHandler(this.logger))
           .withFallback(entityStreamSizeExceptionHandler(this))
