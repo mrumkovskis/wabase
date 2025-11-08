@@ -1756,6 +1756,15 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     } yield t1
   }
 
+  it should "work with tables in schema" in {
+    for {
+      t1 <- doAction("get", "table_schema_test1", Map("name" -> "Cleaning"))
+        .map {
+          _ shouldBe Nil
+        }
+    } yield t1
+  }
+
   behavior of "Save operation with dynamically generated deep nesting"
 
   it should "attempt to process a very deep structure and observe behavior" in {

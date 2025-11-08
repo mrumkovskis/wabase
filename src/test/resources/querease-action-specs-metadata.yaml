@@ -114,6 +114,13 @@ columns:
   - data3 bytes
 
 
+table: services_schema.service
+columns:
+- id
+- name
+- description
+
+
 name: constants
 get:
   - '"text"'
@@ -1672,3 +1679,14 @@ list:
 insert:
 - arr = {'jasmine' name, |[({'guest'} + {'admin'})#(1)] 'roles'} # alias roles must be put in quotes so it is not taken for table name
 - as any :arr
+
+
+name: table_schema_test1
+api: insert, get, list
+table: services_schema.service
+key: name
+fields:
+- name
+- description
+get:
+- services_schema.service[name = :name] {name, description}

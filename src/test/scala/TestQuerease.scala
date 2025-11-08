@@ -57,11 +57,24 @@ trait TestQuereaseInitializer extends BeforeAndAfterAll with Loggable { this: Su
     )
     Thread.sleep(50) // allow property to be set for sure (fix unstable hsqldb tests)
 
+    def schemas() = {
+      val SchemaRegex = """([^.]+)(?:\.([^.]+))?""".r
+      querease.tableMetadata.tableDefs.flatMap { table =>
+        val SchemaRegex(schema, name) = table.name
+        if (name == null) Nil else List(schema)
+      }
+    }
+
     this.tresqlThreadLocalResources = {
       def init_db(db: String): (String, Connection) = {
         val url = s"jdbc:hsqldb:mem:$dbNamePrefix${if (db != null) "_" + db else ""}"
         val db_conn = DriverManager.getConnection(url)
         logger.debug(s"Creating database $url ...\n")
+        schemas().foreach { schema =>
+          val st = db_conn.createStatement()
+          st.execute(s"create schema $schema")
+          st.close()
+        }
         DdlGenerator.hsqldb().schema(querease.tableMetadata.dbToTableDefs(db))
           .split(";\\s+").filter(_ != "").map(_ + ";")
           .++(customStatements)

@@ -943,9 +943,13 @@ class OpParser(viewName: String, caches: OpParser.Caches)
       opt("(" ~> rep1sep(operation, ",") <~ ")") ~ opt(operation)
     p(in) match {
       case Success(rt ~ res ~ args ~ arg, next) =>
-        val (cn, fn) = OpParser.classNameFunctionName(res)
-        if (cn == null) Failure(s"Class name not found for function '$fn'", next)
-        else Success(Action.Invocation(cn, fn, args.getOrElse(Nil) ++ arg.toList, rt), next)
+        try {
+          val (cn, fn) = OpParser.classNameFunctionName(res)
+          if (cn == null) Failure(s"Class name not found for function '$fn'", next)
+          else Success(Action.Invocation(cn, fn, args.getOrElse(Nil) ++ arg.toList, rt), next)
+        } catch {
+          case NonFatal(_) => Failure(s"Function not found: $res", next)
+        }
       case e: NoSuccess => e
     }
   } named "invocation-op"
@@ -1185,7 +1189,7 @@ object OpParser extends Loggable {
     if (idx == -1)
       try if (config.hasPath(s"app.wabase-call-alias.$name"))
         classNameFunctionName(config.getString(s"app.wabase-call-alias.$name"))
-      else (null, name) catch { case _: ConfigException.BadPath => (null, name) } // may throw exception if not property format not matched
+      else (null, name) catch { case _: ConfigException.BadPath => (null, name) } // may throw exception if property format not matched
     else {
       val cn = name.substring(0, idx)
       val fn = name.substring(idx + 1)
