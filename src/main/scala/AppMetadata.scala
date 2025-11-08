@@ -971,7 +971,7 @@ class OpParser(viewName: String, caches: OpParser.Caches)
     val Data = "data"
     val Filename = "filename"
     val args = Set(Data, Filename)
-    "template\\s+".r ~> tresqlOp ~ namedOps(args) ^^ {
+    "template\\s+".r ~> operation ~ namedOps(args) ^^ {
       case templ ~ args =>
         args match {
           case Nil => Template(templ, null, null)
@@ -1357,7 +1357,7 @@ object AppMetadata extends Loggable {
       contentTypeTresql: Tresql = null,
       fileStreamerName: String = null,
     ) extends Op
-    case class Template(templateTresql: Tresql, dataOp: Op = null, filenameTresql: Tresql = null) extends Op
+    case class Template(template: Op, dataOp: Op = null, filenameTresql: Tresql = null) extends Op
     case class Email(recipients: Op, subject: Op, body: Op, attachmentsOp: List[Op] = Nil, isBatch: Boolean = false) extends Op
     case class Http(method: String,
                     uriTresql: TresqlUri.Tresql,
@@ -1496,8 +1496,8 @@ object AppMetadata extends Loggable {
               val s1 = opTrTr(contentOp)
               val s2 = us(s1, nv(s1.value)(nameTresql))
               us(s2, nv(s2.value)(contentTypeTresql))
-            case Template(templateTresql, dataOp, filenameTresql) =>
-              val s = opTresqlTrav(us(state, nv(state.value)(templateTresql)))(dataOp)
+            case Template(template, dataOp, filenameTresql) =>
+              val s = opTresqlTrav(opTresqlTrav(state)(template))(dataOp)
               us(s, nv(s.value)(filenameTresql))
             case Email(r, s, b, a, _) =>
               a.foldLeft(

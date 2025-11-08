@@ -1140,13 +1140,15 @@ fields:
 get:
 - template 'Hello {{name}}!'
 list:
-- template 'Hello {{title}}. {{name}}!' {:name name, 'Ms' title}
+- template {'Hello {{title}}. {{name}}!'} {:name name, 'Ms' title}
 insert:
-- template 'Hello {{name}}!' filename='file name'
+- template ('Hello {{name}}!') filename='file name'
 update:
 - template 'Hello {{name}} in {{action}}!' filename='file name' data={:name name, 'update' action}
 delete:
-- template 'Hello {{name}} in {{action}}!' data={:name name, 'delete' action}
+- template = {'Hello {{name}} in {{action}}!'}
+- template_file = to file :template content_type = 'text/plain; charset=UTF-8'
+- template (file {:template_file.id, :template_file.sha_256}) data={:name name, 'delete' action}
 
 
 name: email_test1

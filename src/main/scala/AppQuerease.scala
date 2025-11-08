@@ -4,7 +4,7 @@ import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.model.HttpHeader.ParsingResult.{Error, Ok}
 import org.apache.pekko.http.scaladsl.model.headers.ContentDispositionTypes.attachment
 import org.apache.pekko.http.scaladsl.model.headers.{Cookie, HttpCookie, HttpCookiePair, `Content-Disposition`, `Set-Cookie`}
-import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes, ErrorInfo, HttpCharsets, HttpEntity, HttpHeader, HttpMethods, HttpRequest, HttpResponse, MediaTypes, Multipart, UniversalEntity}
+import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes, ErrorInfo, HttpCharsets, HttpEntity, HttpHeader, HttpMethods, HttpRequest, HttpResponse, MediaTypes, Multipart, ResponseEntity, UniversalEntity}
 import org.apache.pekko.http.scaladsl.server.directives.ContentTypeResolver
 import org.apache.pekko.http.scaladsl.server.directives.FileAndResourceDirectives.ResourceFile
 import org.apache.pekko.stream.scaladsl.{Source, StreamConverters}
@@ -1157,12 +1157,19 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   )(implicit qr: QuereaseResources): Future[TemplateResult] = {
     import qr._, resourcesFactory._, context.env
     implicit val fs: FileStreamer = fileStreamers.fs(null)
-    val bindVars = scope.toBindeableMap(env)
-    val template = useResourcesConnOrEvaluator(resources,
-      res => Query(op.templateTresql.tresql)(res.withParams(bindVars)).unique[String])
-    val resF =
+    def template(res: Any): Future[String] = res match {
+      case TresqlResult(r) => Future.successful(r.unique[String])
+      case HttpResult(resp) => template(resp)
+      case fr: FileResult => template(fileHttpEntity(fr))
+      case Some(ent) => template(ent)
+      case ent: HttpEntity => template(ent.dataBytes)
+      case HttpEntityResult(ent, _) => template(ent)
+      case src: Source[ByteString@unchecked, _] => src.runFold(ByteString.empty)( _ ++ _).map(_.utf8String)
+      case x => sys.error(s"Cannot extract template source string from $x")
+    }
+    def doTemplate(template: String) =
       if (op.dataOp == null) {
-        templateEngine(template, bindVars)
+        templateEngine(template, scope.toBindeableMap(env))
       } else {
         doActionOp(op.dataOp, scope, context)
           .flatMap(dataForNextStep(_, context, false))
@@ -1175,16 +1182,18 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
               sys.error(s"Unexpected template data class: $className. Expecting Map[String, _] or Seq[_]")
           }
       }
-    Option(op.filenameTresql)
-      .map(t => useResourcesConnOrEvaluator(resources,
-        res => Query(t.tresql)(res.withParams(bindVars)).unique[String]))
-      .map { filename =>
-        resF.map {
+    for {
+      template  <- doActionOp(op.template, scope, context) flatMap template
+      res       <- doTemplate(template)
+    } yield
+      Option(op.filenameTresql)
+        .map(t => useResourcesConnOrEvaluator(resources,
+        res => Query(t.tresql)(res.withParams(scope.toBindeableMap(env))).unique[String]))
+        .map { filename => res match {
           case ft: FileTemplateResult => ft.copy(filename = filename)
           case StringTemplateResult(r) => FileTemplateResult(
             filename, ContentTypes.`text/plain(UTF-8)`.toString, r.getBytes("UTF8"))
-        }
-      }.getOrElse(resF)
+        }}.getOrElse(res)
   }
 
   protected def doEmail(
