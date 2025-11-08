@@ -763,6 +763,13 @@ insert:
 - foreach if_and_foreach_test{code, value}#(1,2) :code || ' ' || :value
 
 
+name: foreach_outer_scope_test
+api: get
+get:
+  - outer = 1
+  - foreach {1 x} if_missing(:outer, 'correct')     # outer scope variable within foreach is accessible only through :'..'.outer
+
+
 name:   insert_update_test_1
 table:  simple_table
 api:    get, save

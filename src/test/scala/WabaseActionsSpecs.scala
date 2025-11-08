@@ -1738,6 +1738,9 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         "foreach_test_2.1 new", "foreach_test_2.1.ch_2 new child", "if_test_1 no_value"
       ))
     }
+    Get("/foreach_outer_scope_test") ~> route ~> check {
+      jsonAssert(entityAs[String], List("correct"))
+    }
   }
 
   it should "return array" in {

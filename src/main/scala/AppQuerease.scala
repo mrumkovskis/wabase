@@ -1083,7 +1083,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     .flatMap { mapIterator =>
       var idx = 0
       Future.traverse(mapIterator.toSeq) { itData =>
-        val itScope = Scope(itData, Map("__idx" -> idx), parent = scope)
+        val itScope = Scope(itData, Map("__idx" -> idx), parent = scope, transparent = false)
         idx += 1
         doSteps(op.action.steps, context.copy(stepName = "foreach"), Future.successful(itScope))
           .flatMap(dataForNextStep(_, context, unwrapSingleValue = true))
@@ -2077,7 +2077,12 @@ object AppQuerease {
     case v => v
   }
 
-  case class Scope(data: Map[String, Any], initBindVars: Map[String, Any] = Map(), parent: Scope = null) {
+  case class Scope(
+    data: Map[String, Any],
+    initBindVars: Map[String, Any] = Map(),
+    parent: Scope = null,
+    transparent: Boolean = true,
+  ) {
     def apply(name: String): Any =
       data.getOrElse(name, throw new NoSuchElementException(s"Variable not found in scope: $name"))
     def -(name: String): Scope = copy(data = data - name)
@@ -2086,7 +2091,7 @@ object AppQuerease {
     def toBindeableMap(env: Map[String, Any] = Map()): Map[String, Any] =
       initBindVars ++ (if (parent == null) Map[String, Any]() else {
         val pbm = parent.toBindeableMap()
-        pbm + (".." -> pbm)
+        (if (transparent) pbm else Map[String, Any]()) + (".." -> pbm)
       }) ++ data ++ env
   }
 }
