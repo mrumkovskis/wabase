@@ -22,6 +22,7 @@ import AppMetadata.AugmentedAppViewDef
 import AppServiceBase._
 import Authentication.SessionUserExtractor
 import DeferredControl._
+import com.typesafe.scalalogging.Logger
 import org.apache.pekko.actor.ActorSystem
 
 import java.util.Locale
@@ -151,6 +152,7 @@ trait AppServiceBase[User]
       if (useActions(viewName, Action.Get)) {
         extractRequest { implicit httpReq =>
           extractStringId { idString =>
+            implicit val routeLogger: Logger = WabaseService.routeLogger(httpReq)
             complete(app.doWabaseAction(Action.Get, viewName, Seq(idString), filterPars(params)))
           }
         }
@@ -164,6 +166,7 @@ trait AppServiceBase[User]
     parameterMultiMap { params =>
       if (useActions(viewName, Action.Get)) {
         extractRequest { implicit httpReq =>
+          implicit val routeLogger: Logger = WabaseService.routeLogger(httpReq)
           complete(app.doWabaseAction(Action.Get, viewName, keyValues, filterPars(params)))
         }
       } else {
@@ -176,6 +179,7 @@ trait AppServiceBase[User]
     parameterMultiMap { params =>
       if (useActions(viewName, Action.Create)) {
         extractRequest { implicit httpReq =>
+          implicit val routeLogger: Logger = WabaseService.routeLogger(httpReq)
           complete(app.doWabaseAction(Action.Create, viewName, Nil, filterPars(params)))
         }
       } else {
@@ -202,6 +206,7 @@ trait AppServiceBase[User]
     parameterMultiMap { params =>
       extractRequest { implicit httpReq =>
         complete {
+          implicit val routeLogger: Logger = WabaseService.routeLogger(httpReq)
           app.doWabaseAction(Action.Delete, viewName, keyValues, filterPars(params))
         }
       }
@@ -231,6 +236,7 @@ trait AppServiceBase[User]
         entityAsMapOrException(viewName) { entityAsMap =>
           extractRequest { implicit httpReq =>
             complete {
+              implicit val routeLogger: Logger = WabaseService.routeLogger(httpReq)
               app.doWabaseAction(Action.Update, viewName, keyValues, filterPars(params), entityAsMap,
                 doApiCheck = false /* api checked above */)
             }
@@ -244,6 +250,7 @@ trait AppServiceBase[User]
       if (impliedIdForGetOpt.isDefined)
         if (useActions(viewName, Action.Get)) {
           extractRequest { implicit httpReq =>
+            implicit val routeLogger: Logger = WabaseService.routeLogger(httpReq)
             complete(app.doWabaseAction(Action.Get, viewName, Nil, filterPars(params)))
           }
         } else {
@@ -258,6 +265,7 @@ trait AppServiceBase[User]
     if (useActions(viewName, Action.List)) {
       extractRequest { implicit httpReq =>
         complete {
+          implicit val routeLogger: Logger = WabaseService.routeLogger(httpReq)
           app.doWabaseAction(
             Action.List,
             viewName,
@@ -289,6 +297,7 @@ trait AppServiceBase[User]
           entityAsMapOrException(viewName) { entityAsMap =>
             extractRequest { implicit httpReq =>
               complete {
+                implicit val routeLogger: Logger = WabaseService.routeLogger(httpReq)
                 app.doWabaseAction(Action.Insert, viewName, keyValues, filterPars(params), entityAsMap,
                   doApiCheck = false /* api checked above */)
               }
@@ -308,6 +317,7 @@ trait AppServiceBase[User]
     parameterMultiMap { params =>
       if (useActions(viewName, Action.Count)) {
         extractRequest { implicit httpReq =>
+          implicit val routeLogger: Logger = WabaseService.routeLogger(httpReq)
           complete(app.doWabaseAction(Action.Count, viewName, Nil, filterPars(params)))
         }
       } else {

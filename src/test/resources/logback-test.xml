@@ -37,8 +37,7 @@
     <!-- specific route logger, format - <http method>.<uri path with slashes replaced with dots> -->
     <!-- logger name="post.data.purchase_save" level="debug"/ -->
 
-    <!-- specific view logger -->
-    <!-- logger name="purchase_get.get" level="debug"/ -->
+    <!-- logger name="org.wabase.WabaseService" level="debug"/ -->
 
     <!-- specific job logger -->
     <!-- logger name="job-name.job" level="debug"/ -->

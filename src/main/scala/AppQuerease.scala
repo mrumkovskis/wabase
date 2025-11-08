@@ -49,6 +49,7 @@ case class QuereaseResources()(implicit
   val fileStreamers: WabaseFileStreamers,
   val httpClients: WabaseHttpClients,
   val parametersProvider: InjectionParametersProvider,
+  val logger: Logger,
 )
 
 case class ResourcesFactory(
@@ -313,6 +314,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       fileStreamers: WabaseFileStreamers,
       httpClients: WabaseHttpClients,
       parameterProvider: InjectionParametersProvider,
+      logger: Logger,
     ): QuereaseAction[QuereaseResult] = {
         new QuereaseAction[QuereaseResult] {
           override def run(ec: ExecutionContext, as: ActorSystem) = {
@@ -323,7 +325,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
                 resourcesFactory.copy()(resources = resourcesFactory.initResources(poolName, extraDbs))
               }
             implicit val qr = new QuereaseResources()(resFac, ec, as, httpReq, qio, fileStreamers, httpClients,
-              parameterProvider)
+              parameterProvider, logger)
             import resFac._
             def processResult(res: QuereaseResult, cleanup: Option[Throwable] => Unit): QuereaseResult = res match {
               case sr@ResponseResult(_, ResultValue(result), _, _) =>
@@ -360,16 +362,11 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     actionName: String,
     env: Map[String, Any],
     view: Option[ViewDef],
-    logger: Logger,
     fieldFilter: FieldFilter = null,
     stepName: String = null,
     contextStack: List[ActionContext] = Nil,
   ) {
     val name = s"$viewName.$actionName" + Option(stepName).map(s => s".$s").getOrElse("")
-    def log(msg: => String) = {
-      logger.debug(msg)
-      if(!logger.underlying.isDebugEnabled()) AppQuerease.this.logger.debug(msg)
-    }
     def stackStr: String = (name :: contextStack.map(_.name)).mkString("[", ",", "]")
   }
 
@@ -433,13 +430,13 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case x => s"$x"
     }
   }
-  private def logContext(ctx: ActionContext, env: Map[String, Any], rf: ResourcesFactory) = {
-    val res = rf.resources
-    ctx.log(s"Doing action '${ctx.name}'")
-    ctx.log(s"Ctx stack: [${ctx.contextStack.map(_.name).mkString(", ")}]")
-    ctx.log(s"Database connections: [${(("[main]", res.conn) ::
+  private def logContext(ctx: ActionContext, env: Map[String, Any], qr: QuereaseResources) = {
+    val res = qr.resourcesFactory.resources
+    qr.logger.debug(s"Doing action '${ctx.name}'")
+    qr.logger.debug(s"Ctx stack: [${ctx.contextStack.map(_.name).mkString(", ")}]")
+    qr.logger.debug(s"Database connections: [${(("[main]", res.conn) ::
       res.extraResources.map{case (n, r) => n -> r.conn}.toList).mkString(", ")}]")
-    ctx.log(s"Env: {${loggable(res, env)}}")
+    qr.logger.debug(s"Env: {${loggable(res, env)}}")
   }
 
   private def do_action(
@@ -450,10 +447,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     fieldFilter: FieldFilter = null,
     contextStack: List[ActionContext] = Nil,
   )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
-    val loggerName = s"$view.$actionName.ctx"
-    val ctx = ActionContext(view, actionName, env, viewDefOption(view), Logger(LoggerFactory.getLogger(loggerName)),
-      fieldFilter, null, contextStack)
-    logContext(ctx, env, qr.resourcesFactory)
+    val ctx = ActionContext(view, actionName, env, viewDefOption(view), fieldFilter, null, contextStack)
+    logContext(ctx, env, qr)
     val steps =
       quereaseActionOpt(view, actionName)
         .map(_.steps)
@@ -500,8 +495,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         def doActionStep(vts: List[VariableTransform], op: Action.Op) =
           doActionOp(op, if (vts.isEmpty) stepScope
             else stepScope.copy(data = doVarsTransforms(vts, stepData, stepData).result), context)
-        context.log(s"Doing action '${context.name}' step '$src', $step.")
-        context.log(s"Step data: {${loggable(resourcesFactory.resources, scopeBindVars(stepScope))}}")
+        qr.logger.debug(s"Doing action '${context.name}' step '$src', $step.")
+        qr.logger.debug(s"Step data: {${loggable(resourcesFactory.resources, scopeBindVars(stepScope))}}")
         step match {
           case Evaluation(_, vts, op, _) => doActionStep(vts, op)
           case SetEnv(_, vts, op, _) => doActionStep(vts, op)
@@ -737,7 +732,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       } else {
         val nqr = qr.copy()(resourcesFactory = resourcesFactory
           .focus(if (v.db != null) v.db else defaultCpName, defaultCpName),
-          ec, as, httpReq, qio, fileStreamers, httpClients, parametersProvider)
+          ec, as, httpReq, qio, fileStreamers, httpClients, parametersProvider, qr.logger)
         do_action(viewName, op.method, callScope, env, context.fieldFilter, context :: context.contextStack)(nqr)
       }
     }
@@ -752,9 +747,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     scope: Scope,
     context: ActionContext,
   )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
-    import op._
-    import qr._
-    import context.env
+    import op._, qr._, context.env
     val invocationData = scope.toBindeableMap(env)
     def invokeFunction(className: String, function: String, pf: InvocationParameterFun): Any = {
       this.invokeFunction(className, function, invocationData, pf,
@@ -1281,7 +1274,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       import context.{viewName, actionName}
       val http_logger = Logger(LoggerFactory.getLogger(s"$viewName.$actionName.http"))
       req => {
-        http_logger.debug(s"HTTP ${req.method.value} ${req.uri}")
+        qr.logger.debug(s"HTTP ${req.method.value} ${req.uri}")
         val httpClientFactory = Option(op.httpClientName)
           .map(httpClients.httpClients.getOrElse(_, sys.error(s"Http client not found: ${op.httpClientName}")))
           .getOrElse(
@@ -1383,9 +1376,10 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     val newResFact = resourcesFactory
        .focus(poolName.connectionPoolName, defaultCpName)
        .copy()(resources = resourcesFactory.initResources(poolName, extraDbs))
-    logContext(context, env, newResFact)
     val closeRes = resourcesFactory.closeResources(newResFact.resources, op.doRollback, _)
-    val nqr = new QuereaseResources()(newResFact, ec, as, httpReq, qio, fileStreamers, httpClients, parametersProvider)
+    val nqr = new QuereaseResources()(
+      newResFact, ec, as, httpReq, qio, fileStreamers, httpClients, parametersProvider, qr.logger)
+    logContext(context, env, nqr)
     doSteps(op.action.steps, context.copy(stepName = "db"),
       Future.successful(Scope(Map(), parent = scope)))(nqr).map {
       case DbResult(r, cl) => DbResult(r, cl.andThen(_ => closeRes(None)))

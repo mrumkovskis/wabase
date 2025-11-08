@@ -114,7 +114,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
       )
     qr = new QuereaseResources()(ResourcesFactory(null, null)(tresqlResources),
       scala.concurrent.ExecutionContext.global, ActorSystem("querease-action-specs"), null, qio,
-      WabaseFileStreamers(Map("main" -> null)), null, _ => PartialFunction.empty)
+      WabaseFileStreamers(Map("main" -> null)), null, _ => PartialFunction.empty, logger)
   }
 
   def doAction(view: String, action: String, data: Map[String, Any], env: Map[String, Any]) = {

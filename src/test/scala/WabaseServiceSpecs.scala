@@ -192,6 +192,7 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
       decodeJs) shouldBe List(Map("a" -> 1), 2, true, "x", List(1, "y"))
     callRoute("/do/org.wabase.WabaseTestHandlers.optionHandler?key=true") shouldBe "yes"
     response(Get("/do/org.wabase.WabaseTestHandlers.optionHandler?key=false")).status shouldBe StatusCodes.NotFound
+    response(Get("/not-existing")).status shouldBe StatusCodes.NotFound
   }
 
   it should "do routes with additional args" in {

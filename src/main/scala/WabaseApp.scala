@@ -1,5 +1,6 @@
 package org.wabase
 
+import com.typesafe.scalalogging.Logger
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.model.{HttpRequest, HttpResponse, StatusCodes}
 import org.apache.pekko.http.scaladsl.model.headers.`Timeout-Access`
@@ -74,6 +75,7 @@ trait WabaseApp[User] {
     val as:       ActorSystem,
     val rf:       ResourcesFactory,
     val httpReq:  HttpRequest,
+    val log:      Logger,   // cannot use name logger - unable to find implicit value
   ) {
     lazy val env: Map[String, Any] = state ++
       Option(httpReq)
@@ -104,12 +106,26 @@ trait WabaseApp[User] {
     as:       ActorSystem,
     qt:       QueryTimeout,
     httpReq:  HttpRequest,
+    logger:   Logger,
   ): Future[WabaseResult] = {
     val vdo = qe.viewDefOption(viewName)
-    val rf = resourceFactory(viewName, actionName, qt)
+    def setTimeout(req: HttpRequest) = vdo.map { vd =>
+      if(vd.timeout == null || req == null) req
+      else {
+        req.header[`Timeout-Access`].map(_.timeoutAccess.updateTimeout(vd.timeout))
+          .getOrElse(logger.warn(s"request timeout is defined for view ${vd.name}, however no request-timeout http header is set!"))
+        req
+      }
+    }.getOrElse(req)
+    def setMaxContentSize(req: HttpRequest) = vdo.map { vd =>
+      if (vd.maxContentSize == null || req == null) req
+      else req.withEntity(req.entity.withSizeLimit(vd.maxContentSize))
+    }.getOrElse(req)
+
+    val rf = resourceFactory(viewName, logger.underlying.getName, qt)
     doWabaseAction(
       AppActionContext(actionName, viewName, keyValues, params, values ++ params, resultFilter)(
-        user, state, ec, as, rf, setMaxContentSize(setTimeout(httpReq, vdo), vdo)),
+        user, state, ec, as, rf, setMaxContentSize(setTimeout(httpReq)), logger),
       doApiCheck)
   }
 
@@ -123,30 +139,17 @@ trait WabaseApp[User] {
     doApiCheck: Boolean = true,
   )(implicit wrctx: WabaseRequestContext): Future[WabaseResult] = {
     val vdo = qe.viewDefOption(viewName)
-    val rf = resourceFactory(viewName, actionName, wrctx.queryTimeout)
+    val rf = resourceFactory(viewName, wrctx.logger.underlying.getName, wrctx.queryTimeout)
     doWabaseAction(
       AppActionContext(actionName, viewName, keyValues, params, values ++ params, resultFilter)(
-        wrctx.user.asInstanceOf[User], wrctx.applicationState, wrctx.as.dispatcher, wrctx.as, rf, wrctx.req),
+        wrctx.user.asInstanceOf[User], wrctx.applicationState, wrctx.as.dispatcher, wrctx.as, rf, wrctx.req,
+        wrctx.logger),
       doApiCheck)
   }
 
   def _api(implicit user: User) = api
   def _apiMetadata(implicit user: User, state: ApplicationState) = apiMetadata
   def _metadata(viewName: String)(implicit user: User, state: ApplicationState) = metadata(viewName)
-
-  private def setMaxContentSize(httpReq: HttpRequest, vdo: Option[ViewDef]) = vdo.map { vd =>
-    if (vd.maxContentSize == null || httpReq == null) httpReq
-    else httpReq.withEntity(httpReq.entity.withSizeLimit(vd.maxContentSize))
-  }.getOrElse(httpReq)
-
-  private def setTimeout(httpReq: HttpRequest, vdo: Option[ViewDef]) = vdo.map { vd =>
-    if(vd.timeout == null || httpReq == null) httpReq
-    else {
-      httpReq.header[`Timeout-Access`].map(_.timeoutAccess.updateTimeout(vd.timeout))
-        .getOrElse(logger.warn(s"request timeout is defined for view ${vd.name}, however no request-timeout http header is set!"))
-      httpReq
-    }
-  }.getOrElse(httpReq)
 
   protected def doWabaseAction(
     context:    AppActionContext,
@@ -174,7 +177,7 @@ trait WabaseApp[User] {
   def simpleAction(context: AppActionContext): ActionHandlerResult = {
     import context._
     qe.QuereaseAction(viewName, actionName, values, env, context.resultFilter)(
-        rf, httpReq, qio, fileStreamers, httpClients, injectionParametersProvider)
+        rf, httpReq, qio, fileStreamers, httpClients, injectionParametersProvider, log)
       .map(WabaseResult(context, _))
   }
 
@@ -217,7 +220,7 @@ trait WabaseApp[User] {
 
     }
     qe.QuereaseAction(viewName, Action.Get, values, env,
-      context.resultFilter)(rf, httpReq, qio, fileStreamers, httpClients, injectionParametersProvider).map(oldVal)
+      context.resultFilter)(rf, httpReq, qio, fileStreamers, httpClients, injectionParametersProvider, log).map(oldVal)
   }
   protected def throwOldValueNotFound(message: String, locale: Locale): Nothing =
     throw new org.mojoz.querease.NotFoundException(translate(message)(locale))
@@ -243,7 +246,7 @@ trait WabaseApp[User] {
         validateFields(viewName, saveable)
         this.scriptValidations(saveableContext)(state.locale)
         qe.QuereaseAction(viewName, context.actionName, saveable, env, context.resultFilter)(rf,
-            httpReq, qio, fileStreamers, httpClients, injectionParametersProvider)
+            httpReq, qio, fileStreamers, httpClients, injectionParametersProvider, log)
           .map(WabaseResult(saveableContext, _))
           .recover { case ex => friendlyConstraintErrorMessage(viewDef, throw ex)(state.locale) }
       }
@@ -254,7 +257,7 @@ trait WabaseApp[User] {
     maybeGetOldValue(context).flatMap { oldValue =>
       val richContext = context.copy(oldValue = oldValue)
       qe.QuereaseAction(viewName, actionName, values, env, context.resultFilter)(
-          rf, httpReq, qio, fileStreamers, httpClients, injectionParametersProvider)
+          rf, httpReq, qio, fileStreamers, httpClients, injectionParametersProvider, log)
         .map(WabaseResult(richContext, _))
         .recover { case ex => friendlyConstraintErrorMessage(throw ex)(state.locale) }
     }
@@ -273,8 +276,8 @@ trait WabaseApp[User] {
     }
   }
 
-  def resourceFactory(viewName: String, actionName: String, qt: QueryTimeout): ResourcesFactory = {
-    resourceFactory(viewDefOption(viewName).orNull, s"$actionName", qt)
+  def resourceFactory(viewName: String, loggerName: String, qt: QueryTimeout): ResourcesFactory = {
+    resourceFactory(viewDefOption(viewName).orNull, loggerName, qt)
   }
 
   def maybeSerializeResult(context: AppActionContext, wr: WabaseResult): Future[WabaseResult] = wr match {
@@ -390,7 +393,7 @@ trait WabaseApp[User] {
           case seq: Seq[_] => seq.map(_.toString).toSet
           case cols => s"$cols".split(",").map(_.trim).toSet
         }.orNull
-        logger.debug(s"Adding result filter. allowed: ${allowed}")
+        context.log.debug(s"Adding result filter. allowed: ${allowed}")
         if (allowed != null) {
           class ColsFilter(viewName: String, nameToViewDef: Map[String, ViewDef])
             extends ResultRenderer.ViewFieldFilter(viewName, nameToViewDef) {

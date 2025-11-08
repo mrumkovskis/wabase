@@ -15,6 +15,7 @@ import scala.util.Try
 import org.tresql.{Resources, RowLike}
 import AppMetadata._
 import CustomScriptValidationFunctions.is_valid_email
+import com.typesafe.scalalogging.Logger
 import org.apache.pekko.actor.ActorSystem
 
 import java.sql.Connection
@@ -581,6 +582,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
         implicit val httpReq: org.apache.pekko.http.scaladsl.model.HttpRequest = null
         implicit val httpClients: WabaseHttpClients = null
         implicit val rf: ResourcesFactory = null
+        implicit val log: Logger = logger
         dbUse {
           validateFields(instance)
           val ctx = AppActionContext(

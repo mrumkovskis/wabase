@@ -101,11 +101,9 @@ trait DbAccess { this: QuereaseProvider with Loggable =>
     }
   }
 
-  def resourceFactory(viewDef: ViewDef, actionName: String, qt: QueryTimeout = null): ResourcesFactory = {
+  def resourceFactory(viewDef: ViewDef, loggerName: String, qt: QueryTimeout = null): ResourcesFactory = {
     val vdo      = Option(viewDef)
-    val viewName = vdo.map(_.name).getOrElse("null")
-    val loggerPrefix = s"$viewName.$actionName"
-    val rt = Option(withDbAccessLogger(resourcesTemplate, loggerPrefix)).map { templ =>
+    val rt = Option(withDbAccessLogger(resourcesTemplate, loggerName)).map { templ =>
       vdo.map { v =>
         val timeout: jLong =
           if (qt != null) qt.timeoutSeconds.toLong
@@ -133,7 +131,7 @@ trait DbAccess { this: QuereaseProvider with Loggable =>
 
   def withConn[A](viewName: String, actionName: String, qt: QueryTimeout)(f: Resources => A): A = {
     val (poolName, extraDbs) = qe.dbResourceNames(viewName, actionName)
-    val resources = resourceFactory(qe.viewDef(viewName), actionName, qt).initResources(poolName, extraDbs)
+    val resources = resourceFactory(qe.viewDef(viewName), s"$viewName.$actionName", qt).initResources(poolName, extraDbs)
     try f(resources) finally closeConns(DbAccess.closeConnection)(resources)
   }
 
@@ -146,7 +144,7 @@ trait DbAccess { this: QuereaseProvider with Loggable =>
 
   def withRollbackConn[A](viewName: String, actionName: String, qt: QueryTimeout)(f: Resources => A): A = {
     val (poolName, extraDbs) = qe.dbResourceNames(viewName, actionName)
-    val resources = resourceFactory(qe.viewDef(viewName), actionName, qt).initResources(poolName, extraDbs)
+    val resources = resourceFactory(qe.viewDef(viewName), s"$viewName.$actionName", qt).initResources(poolName, extraDbs)
     try f(resources) finally closeConns(DbAccess.rollbackAndCloseConnection)(resources)
   }
 
@@ -159,7 +157,7 @@ trait DbAccess { this: QuereaseProvider with Loggable =>
 
   def newTransaction[A](viewName: String, actionName: String, qt: QueryTimeout)(f: Resources => A): A = {
     val (poolName, extraDbs) = qe.dbResourceNames(viewName, actionName)
-    val resources = resourceFactory(qe.viewDef(viewName), actionName, qt).initResources(poolName, extraDbs)
+    val resources = resourceFactory(qe.viewDef(viewName), s"$viewName.$actionName", qt).initResources(poolName, extraDbs)
     DbAccess.newTransaction(resources)(f)
   }
 
@@ -435,8 +433,8 @@ trait DbAccessDelegate extends DbAccess { this: QuereaseProvider with Loggable =
   override def closeResources: (Resources, Boolean, Option[Throwable]) => Unit = dbAccessDelegate.closeResources
   override def extraDb(keys: Seq[DbAccessKey]): Seq[DbAccessKey] = dbAccessDelegate.extraDb(keys)
 
-  override def resourceFactory(viewDef: ViewDef, actionName: String, qt: QueryTimeout = null): ResourcesFactory =
-    dbAccessDelegate.resourceFactory(viewDef, actionName, qt)
+  override def resourceFactory(viewDef: ViewDef, loggerName: String, qt: QueryTimeout = null): ResourcesFactory =
+    dbAccessDelegate.resourceFactory(viewDef, loggerName, qt)
   override def withConn[A](poolName: PoolName, template: Resources, extraDb: Seq[DbAccessKey])(f: Resources => A): A =
     dbAccessDelegate.withConn(poolName, template, extraDb)(f)
   override def withConn[A](viewName: String, actionName: String, qt: QueryTimeout)(f: Resources => A): A =

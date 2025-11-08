@@ -1,6 +1,7 @@
 package org.wabase
 
 import com.typesafe.config.ConfigFactory
+import com.typesafe.scalalogging.Logger
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.marshalling.Marshal
 import org.apache.pekko.http.scaladsl.model.HttpHeader.ParsingResult.Ok
@@ -230,6 +231,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     implicit val state = ApplicationState(env)
     implicit val fileStreamer: AppFileStreamer[TestUsr] = app
     implicit val httpReq: HttpRequest = null
+    implicit val log: Logger = logger
     app.doWabaseAction(action, view, keyValues, params, values)
       .map(_.result)
       .flatMap(processResult(_, view, removeIdsFlag))

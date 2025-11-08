@@ -1,7 +1,9 @@
 package org.wabase
 
+import com.typesafe.scalalogging.Logger
 import org.apache.pekko.actor.{Actor, ActorRef, ActorSystem, Props}
 import org.mojoz.metadata.ViewDef
+import org.slf4j.LoggerFactory
 import org.wabase.WabaseScheduler.{JobRunning, JobStarted, Tick}
 import org.tresql._
 import org.wabase.AppMetadata.Action
@@ -40,21 +42,23 @@ class WabaseScheduler(wabase: AppBase[_], system: ActorSystem) extends Loggable 
   def doJob(job: ViewDef, params: Map[String, Any]): Future[QuereaseResult] = {
     val qe = wabase.qe
     val dbAccess = wabase.dbAccess
+    val loggerName = s"${job.name}.job"
 
     val resourcesFactory: ResourcesFactory = {
       val resTempl = dbAccess
-        .withDbAccessLogger(dbAccess.tresqlResources.resourcesTemplate, s"${job.name}.job")
+        .withDbAccessLogger(dbAccess.tresqlResources.resourcesTemplate, loggerName)
       val initRes = dbAccess.initResources(resTempl)
         ResourcesFactory(initRes, dbAccess.closeResources)(resTempl)
     }
     implicit val executionContext: ExecutionContext = system.dispatcher
     implicit val actorSystem: ActorSystem = system
+    val logger = Logger(LoggerFactory.getLogger(loggerName))
 
     qe.QuereaseAction(job.name, Action.Job, params, Map(), doCleanup = true)(
         resourcesFactory, httpReq = null, qio = wabase.qio,
         fileStreamers = wabase.fileStreamers,
         httpClients = wabase.httpClients,
-        parameterProvider = wabase.injectionParametersProvider)
+        parameterProvider = wabase.injectionParametersProvider, logger)
       .run(executionContext, actorSystem)
   }
 }

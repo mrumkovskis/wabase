@@ -81,7 +81,7 @@ class WabaseService {
   }
 }
 
-object WabaseService {
+object WabaseService extends Loggable {
 
   object MediaTypes {
     val `application/json`: PekkoMediaType.WithFixedCharset =
@@ -98,21 +98,29 @@ object WabaseService {
     wabase: Wabase,
     deferredControl: WabaseDeferredControl,
   )(req: HttpRequest)(implicit as: ActorSystem): Future[HttpResponse] = {
-    val loggerName = req.method.value.toLowerCase + WabaseService.toReadableString(req.uri.path).replace('/', '.')
-    val logger = Logger(LoggerFactory.getLogger(loggerName))
-    val ctx = WabaseRequestContext(wabase, req, Deferred(deferredControl = deferredControl), as = as, logger = logger)
-    ctx.logger.debug(s"Matching route for path: ${req.uri.path}")
+    val ctx = WabaseRequestContext(wabase, req, Deferred(deferredControl = deferredControl), as = as)
+    logger.debug(s"Matching route for path: ${req.uri.path}")
     findRoute(ctx).fold(
       resp => {
-        ctx.logger.debug(s"Route not found for path: ${req.uri.path}, error code: ${resp.status}")
+        logger.debug(s"Route not found for path: ${req.uri.path}, error code: ${resp.status}")
         Future.successful(resp)
       },
       route => {
-        ctx.logger.debug(s"Route '${route.methods.map(_.value + " ").mkString}${route.path}' matched for request '${
-          ctx.req.method.value} ${ctx.req.uri}'")
-        doRoute(ctx.copy(route = route))
+        // route logger
+        val ctxWithLogger = ctx.copy(logger = routeLogger(ctx.req))
+        ctxWithLogger.logger
+          .debug(s"Route '${route.methods.map(_.value + " ").mkString}${route.path}' matched for request '${
+            ctxWithLogger.req.method.value} ${ctxWithLogger.req.uri}'")
+        doRoute(ctxWithLogger.copy(route = route))
       }
     )
+  }
+
+  private val LoggerNameFactoryClass = config.getString("app.wabase-logger-name-factory")
+  def routeLogger(req: HttpRequest): Logger = {
+    val fact = getObjectOrNewInstance(LoggerNameFactoryClass, "logger name factory")
+      .asInstanceOf[LoggerNameFactory]
+    Logger(LoggerFactory.getLogger(fact.loggerName(req)))
   }
 
   /* If route found return Right(route) else Left(http client error) */
@@ -750,5 +758,15 @@ object HandlerArgsParser extends QueryParsers {
   def argValues(args: List[Action.Op]): List[HandlerArg] = args.map {
     case t: Action.Tresql => parsArg(t.tresql)
     case x => sys.error(s"Invalid handler arg: '$x'. Only string constants or regexp group refs allowed")
+  }
+}
+
+trait LoggerNameFactory {
+  def loggerName(req: HttpRequest): String
+}
+
+object LoggerNameFactory extends LoggerNameFactory {
+  def loggerName(req: HttpRequest): String = {
+    req.method.value.toLowerCase + WabaseService.toReadableString(req.uri.path).replace('/', '.')
   }
 }
