@@ -1281,7 +1281,6 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     }
     def do_http: HttpRequest => Future[HttpResponse] = {
       import context.{viewName, actionName}
-      val http_logger = Logger(LoggerFactory.getLogger(s"$viewName.$actionName.http"))
       req => {
         qr.logger.debug(s"HTTP ${req.method.value} ${req.uri}")
         val httpClientFactory = Option(op.httpClientName)

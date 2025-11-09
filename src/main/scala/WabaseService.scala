@@ -116,11 +116,11 @@ object WabaseService extends Loggable {
     )
   }
 
-  private val LoggerNameFactoryClass = config.getString("app.wabase-logger-name-factory")
-  def routeLogger(req: HttpRequest): Logger = {
-    val fact = getObjectOrNewInstance(LoggerNameFactoryClass, "logger name factory")
+  private val LoggerNameFactory =
+    getObjectOrNewInstance(config.getString("app.wabase-logger-name-factory"), "logger name factory")
       .asInstanceOf[LoggerNameFactory]
-    Logger(LoggerFactory.getLogger(fact.loggerName(req)))
+  def routeLogger(req: HttpRequest): Logger = {
+    Logger(LoggerFactory.getLogger(LoggerNameFactory.loggerName(req)))
   }
 
   /* If route found return Right(route) else Left(http client error) */

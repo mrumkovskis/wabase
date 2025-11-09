@@ -13,6 +13,16 @@
     <logger name="org.apache.pekko.stream.scaladsl.RestartWithBackoffSource" level="error"/>
     <logger name="wabase.app.BusinessScenariosSpecs" level="info"/>
 
+    <!-- specific route logger, format - <http method>.<uri path with slashes replaced with dots> -->
+    <!-- logger name="post.data.person" level="debug"/ -->
+
+    <!-- specific view logger, format - <view name>.<action name>
+         Is used in corresponding DbAccess functions withConn, withRollbackConn, newTransaction -->
+    <!--logger name="post.data.person" level="debug"/-->
+
+    <!-- specific job logger -->
+    <!-- logger name="job-name.job" level="debug"/ -->
+
     <!-- sql statement with embedded params logger -->
     <!-- <logger name="org.wabase.tresql.sql_wp" level="debug"/> -->
 </configuration>

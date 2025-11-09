@@ -37,10 +37,17 @@
     <!-- specific route logger, format - <http method>.<uri path with slashes replaced with dots> -->
     <!-- logger name="post.data.purchase_save" level="debug"/ -->
 
-    <!-- logger name="org.wabase.WabaseService" level="debug"/ -->
+    <!-- specific view logger, format - <view name>.<action name>
+         Is used in corresponding DbAccess functions withConn, withRollbackConn, newTransaction -->
+    <!-- logger name="purchase_get.get" level="debug"/ -->
 
     <!-- specific job logger -->
     <!-- logger name="job-name.job" level="debug"/ -->
+
+    <!-- logger name="org.wabase.WabaseService" level="debug"/ -->
+    <!-- logger name="org.wabase.WabaseApp" level="debug"/ -->
+    <!-- logger name="org.wabase.AppQuerease" level="debug"/ -->
+
 
     <!-- logger name="org.wabase.tresql" level="debug"/ -->
 
