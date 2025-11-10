@@ -1142,6 +1142,7 @@ get:
 
 name: template_test1
 api: get, list, insert, update, delete
+decoder: none
 fields:
 - name
 get:
@@ -1151,7 +1152,7 @@ list:
 insert:
 - template ('Hello {{name}}!') filename='file name'
 update:
-- template 'Hello {{name}} in {{action}}!' filename='file name' data={:name name, 'update' action}
+- template (extract entity) filename='file name' data={:name name, 'update' action}
 delete:
 - template = {'Hello {{name}} in {{action}}!'}
 - template_file = to file :template content_type = 'text/plain; charset=UTF-8'

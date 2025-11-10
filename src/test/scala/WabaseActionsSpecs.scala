@@ -5,7 +5,7 @@ import com.typesafe.scalalogging.Logger
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.marshalling.Marshal
 import org.apache.pekko.http.scaladsl.model.HttpHeader.ParsingResult.Ok
-import org.apache.pekko.http.scaladsl.model.headers.`Set-Cookie`
+import org.apache.pekko.http.scaladsl.model.headers.{`Content-Disposition`, `Set-Cookie`}
 import org.apache.pekko.http.scaladsl.model.{AttributeKey, ContentType, ContentTypes, HttpEntity, HttpHeader, HttpRequest, HttpResponse, MessageEntity, Multipart, StatusCodes}
 import org.apache.pekko.http.scaladsl.server.Route
 import org.apache.pekko.http.scaladsl.testkit.ScalatestRouteTest
@@ -1221,6 +1221,8 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
   }
 
   it should "render template" in {
+    implicit val user: TestUsr = TestUsr(100)
+    val route = service.crudAction
     for {
       t1 <-
         doAction("get", "template_test1", Map("name" -> "Dzidzis"))
@@ -1237,13 +1239,11 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
             new String(fa.content) shouldBe "Hello Boris!"
           }
       t4 <-
-        doAction("update", "template_test1", Map("name" -> "Joe"))
-          .map { r =>
-            r shouldBe a[FileTemplateResult]
-            val fa = r.asInstanceOf[FileTemplateResult]
-            fa.filename shouldBe "file name"
-            new String(fa.content) shouldBe "Hello Joe in update!"
-          }
+        Put("/template_test1?name=Joe",
+          createEntity("'Hello {{name}} in {{action}}!'", ContentTypes.`text/plain(UTF-8)`)) ~> route ~> check {
+          entityAs[String] shouldBe "'Hello Joe in update!'"
+          header[`Content-Disposition`].flatMap(_.params.get("filename")) shouldBe Option("file name")
+        }
       t5 <-
         doAction("delete", "template_test1", Map("name" -> "Migel"))
           .map(_ shouldBe StringTemplateResult("Hello Migel in delete!"))
