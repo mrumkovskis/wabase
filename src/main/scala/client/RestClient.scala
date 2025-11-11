@@ -45,7 +45,7 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root) exten
   lazy val serverWsPath = clientCfg.getString("server-ws-path")
 
   protected def getHttpsConnectionContext: Option[HttpsConnectionContext] = {
-    Option("ssl-config").filter(clientCfg.hasPath).map(config.getConfig).map { sslConfig =>
+    Option("ssl-config").filter(clientCfg.hasPath).map(clientCfg.getConfig).map { sslConfig =>
       val sslConfigSettings = SSLConfigFactory.parse(sslConfig)
       val sslContext =
         new ConfigSSLContextBuilder(
