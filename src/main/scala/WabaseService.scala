@@ -475,10 +475,10 @@ object WabaseService extends Loggable {
       implicit val timeout: Timeout = 1.second
       for {
         jobControActor <- ctx.as.actorSelection(ctx.as / jobControlActorName).resolveOne(1.second)
-        params <- if (!ctx.req.entity.isKnownEmpty() &&
-          (ctx.req.method == HttpMethods.POST || ctx.req.method == HttpMethods.PUT)) {
-          toMapEntityDecoder(ctx)
-        } else Future.successful(ctx.req.uri.query().toMap)
+        params <- if (ctx.req.method == HttpMethods.POST) {
+          (if (ctx.req.entity.isKnownEmpty()) Future.successful(Map[String, Any]()) else toMapEntityDecoder(ctx))
+            .map(_ ++ ctx.req.uri.query().toMap)
+        } else Future.failed(HttpException(StatusCodes.MethodNotAllowed))
         msg <- jobControActor ? WabaseScheduler.Tick(job, params)
       } yield msg match {
         case WabaseScheduler.JobStarted => okResponse
