@@ -14,7 +14,7 @@ import org.tresql.ast.{Exp, Variable}
 import org.tresql.parsing.QueryParsers
 import org.wabase.AppMetadata.{Action, JobCall}
 import org.wabase.AppMetadata.Action.TresqlExtraction.{OpTresqlTraverser, State, StepTresqlTraverser, opTresqlTraverser, stepTresqlTraverser}
-import org.wabase.AppMetadata.Action.{TransactionKey, Validations, ViewCall, traverseAction}
+import org.wabase.AppMetadata.Action.{Validations, ViewCall, traverseAction}
 
 import java.io.InputStream
 import java.util.concurrent.{ConcurrentHashMap, TimeUnit}
@@ -1057,17 +1057,17 @@ class OpParser(viewName: String, caches: OpParser.Caches)
 
   def redirect: MemParser[Op] = {
     (RedirectOpRegex ~> ((RedirectToKeyRegex ^^ (s => RedirectToKey(s))) | ((setHttpHeadersOps ~ tresqlOp) ^^ {
-      case hops ~ tr => Response(303, true, hops, tr)
+      case hops ~ tr => Response(Tresql("303"), true, hops, tr)
     }))) named "redirect-op"
   }
   def response: MemParser[Response] = {
     val StResp = "(status|response)\\s+".r
-    (StResp ~ ("\\w+".r ~ setHttpHeadersOps ~ opt(operation))) ^? ({
+    (StResp ~ (("ok" | "\\d+".r | variable) ~ setHttpHeadersOps ~ opt(operation))) ^? ({
       case StResp(sor) ~ (c ~ hops ~ body) =>
         val code = c match {
-          case "ok" => 200
-          case x if Try(x.toInt).toOption.isDefined => x.toInt
-          case x => throw new IllegalArgumentException(s"Status code must be 'ok' or integer, instead '$x' encountered in $viewName.")
+          case "ok" => Tresql("200")
+          case v: ast.Variable => Tresql(v.tresql)
+          case _ => Tresql(String.valueOf(c))
         }
         Action.Response(code, sor == "status", hops, body.orNull)
     }) named "response-op"
@@ -1341,8 +1341,8 @@ object AppMetadata extends Loggable {
                           args: List[Op] = Nil,
                           conformTo: Option[OpResultType] = None) extends CastableOp
     case class Response(
-      code: Int,
-      statusMode: Boolean,  // if status mode = true, body op must be tresql and is executed as unique[String]
+      codeTresql: Tresql,
+      statusMode: Boolean, // if status mode = true, body op must be tresql and is executed as unique[String]
       setHttpHeaders: List[SetHttpHeadersOp] = Nil,
       body: Op = null,
     ) extends Op
@@ -1488,8 +1488,9 @@ object AppMetadata extends Loggable {
           def us(s: State[T], v: T) = { s.copy(value = v) }
           {
             case t: Tresql => us(state, nv(state.value)(t))
-            case Response(_, _, hops, body) =>
-              hops.foldLeft(opTrTr(body)){ (resSt, hdop) =>
+            case Response(codeTresql, _, hops, body) =>
+              val s = us(state, nv(state.value)(codeTresql))
+              hops.foldLeft(opTresqlTrav(s)(body)){ (resSt, hdop) =>
                 us(resSt, nv(resSt.value)(hdop.tresql))
               }
             case Resource(nameTresql, contentTypeTresql) =>

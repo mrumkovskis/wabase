@@ -13,6 +13,20 @@ columns:
   - path    ! 240
 pk: sha_256
 
+table: cron_job_status
+comments: Automatic process status control
+columns:
+  - id
+  - cron_name       ! 50
+  - status          ! 5 (RUN, ERR, SUCC)
+  - report_time     !
+  - up_count        ! int = 0
+  - succ_down_count ! int = 0
+  - err_down_count  ! int = 0
+  - collision_count ! int = 0
+uk:
+  - cron_name
+
 table: person
 columns:
 - id
@@ -91,7 +105,6 @@ columns:
 - id
 - value                 64
 
-
 table: get
 columns:
 - key                 ! 40
@@ -105,14 +118,12 @@ columns:
   - value               ! 256
 pk: key
 
-
 table: blob_data
 columns:
   - id
   - data bytes
   - data2 bytes
   - data3 bytes
-
 
 table: services_schema.service
 columns:
@@ -1286,9 +1297,16 @@ job:
 - unique { 'Hello ' || coalesce(if_defined(:name?, :name || ' '), '') || 'from test_job1!' greeting }
 
 
-name: test_job_insert
+name: test_job2
+api: save, get
 job:
-- +simple_table {id = nextval('seq'), value = 'ABC'}
+- +simple_table {id = nextval('seq'), value = :value}
+save:
+- result = startJobAction ('test_job2') unique{:value value}
+- sleep(100)
+- status :result
+get:
+- as any unique simple_table[value = :value]{count(*) count}
 
 
 name: recursive_job

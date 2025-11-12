@@ -104,6 +104,7 @@ package object wabase extends Loggable {
             case util.control.NonFatal(ex2) =>
               val idx = cn.lastIndexOf('.')
               if (idx == -1) {
+                logger.debug(s"Failed to get $description instance of class $className, tried both empty constructor and object", ex2)
                 throw new RuntimeException(s"Failed to get $description instance of class $className", ex1)
               } else obj_or_new(cn.substring(0, idx) + "$" + cn.substring(idx + 1, cn.length))
           }
@@ -117,6 +118,7 @@ package object wabase extends Loggable {
       case util.control.NonFatal(ex1) =>
         try clazz.getDeclaredConstructor().newInstance().asInstanceOf[AnyRef] catch {
           case util.control.NonFatal(ex2) =>
+            logger.debug(s"Failed to get $description instance, tried both object and empty constructor", ex1)
             throw new RuntimeException(s"Failed to get $description instance", ex2)
         }
     }
@@ -133,8 +135,11 @@ package object wabase extends Loggable {
       }
       clazz.getMethods.filter(m => m.getName == function) match {
         case Array(method) => objAndFun(method)
-        case Array() => sys.error(s"Method $function not found in class $className")
+        case Array() =>
+          logger.debug(s"Method $function not found in class $className")
+          sys.error(s"Method $function not found in class $className")
         case m =>
+          logger.debug(s"Multiple methods '$function' found: (${m.toList}) in class $className")
           sys.error(s"Multiple methods '$function' found: (${m.toList}) in class $className")
       }
     }

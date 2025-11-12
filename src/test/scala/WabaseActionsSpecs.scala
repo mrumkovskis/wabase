@@ -16,6 +16,7 @@ import org.mojoz.querease.{TresqlMetadata, ValidationException, ValidationResult
 import org.mojoz.querease.ValueConverter.ClassOfJavaSqlDate
 import org.scalatest.flatspec.{AsyncFlatSpec, AsyncFlatSpecLike}
 import org.scalatest.matchers.should.Matchers
+import org.slf4j.LoggerFactory
 import org.tresql.{MissingBindVariableException, Query, ThreadLocalResources, convString}
 import org.wabase.QuereaseActionsDtos.PersonWithHealthDataHealth
 import org.wabase.client.WabaseHttpClient
@@ -202,6 +203,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       override def initApp = myApp
     }
     wabaseScheduler = new WabaseScheduler(app, as)
+    wabaseScheduler.init()
   }
 
   override def afterAll(): Unit = {
@@ -231,7 +233,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     implicit val state = ApplicationState(env)
     implicit val fileStreamer: AppFileStreamer[TestUsr] = app
     implicit val httpReq: HttpRequest = null
-    implicit val log: Logger = logger
+    implicit val log: Logger = Logger(LoggerFactory.getLogger(s"$view.$action"))
     app.doWabaseAction(action, view, keyValues, params, values)
       .map(_.result)
       .flatMap(processResult(_, view, removeIdsFlag))
@@ -1370,7 +1372,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       t2 <-
         doAction("get", "job_call_test1", Map("name" -> "John"))
           .map(_ shouldBe ResponseResult(200, ResultValue(StringResult("Hello John from test_job1!"))))
-      t3 <- doJob("test_job_insert", Map()).map(_ shouldBe NoResult)
+      t3 <- doJob("test_job2", Map("value" -> "ABC")).map(_ shouldBe NoResult)
       t4 <- doAction("list", "job_call_test1", Map("name" -> "ABC"))
         .map(_ shouldBe List(Map("value" -> "ABC")))
       t5 <- doAction("insert", "job_call_test1",
@@ -1393,6 +1395,11 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         Map("data" -> Map("id" -> 1, "ch" -> List(Map("id" -> 2, "ch" -> Nil))))
       )
         .map(_ shouldBe MapResult(Map("id" -> 2, "ch" -> List(Map("id" -> 3, "ch" -> Nil)))))
+      t7 <- doAction("save", "test_job2", Map("value" -> "XYZ"))
+        .mapTo[ResponseResult]
+        .map(_.code shouldBe 200)
+      t8 <- doAction("get", "test_job2", Map("value" -> "XYZ"))
+        .map(_ shouldBe Map("count" -> 1))
     } yield t1
   }
 

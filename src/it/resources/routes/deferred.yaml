@@ -3,7 +3,7 @@ do: authenticateOpt deferredResult($deferred_id)
 
 
 on: GET /slow-respond
-do: authenticateOpt maybeDeferred sleep(500) response(200, 'slow done')
+do: authenticateOpt maybeDeferred sleepAndRespond(500) response(200, 'slow done')
 swagger:
   '200':
     content:
@@ -12,7 +12,7 @@ swagger:
 
 
 on: GET /fast-respond
-do: authenticateOpt maybeDeferred sleep(005) response(200, 'fast done')
+do: authenticateOpt maybeDeferred sleepAndRespond(005) response(200, 'fast done')
 swagger:
   '200':
     content:

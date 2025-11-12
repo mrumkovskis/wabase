@@ -4,17 +4,16 @@ import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.model.HttpHeader.ParsingResult.{Error, Ok}
 import org.apache.pekko.http.scaladsl.model.headers.ContentDispositionTypes.attachment
 import org.apache.pekko.http.scaladsl.model.headers.{Cookie, HttpCookie, HttpCookiePair, `Content-Disposition`, `Set-Cookie`}
-import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes, ErrorInfo, HttpCharsets, HttpEntity, HttpHeader, HttpMethods, HttpRequest, HttpResponse, MediaTypes, Multipart, ResponseEntity, UniversalEntity}
+import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes, ErrorInfo, HttpCharsets, HttpEntity, HttpHeader, HttpMethods, HttpRequest, HttpResponse, MediaTypes, Multipart, ResponseEntity, StatusCodes, UniversalEntity}
 import org.apache.pekko.http.scaladsl.server.directives.ContentTypeResolver
 import org.apache.pekko.http.scaladsl.server.directives.FileAndResourceDirectives.ResourceFile
 import org.apache.pekko.stream.scaladsl.{Source, StreamConverters}
-import org.apache.pekko.util.ByteString
+import org.apache.pekko.util.{ByteString, Timeout}
 import com.typesafe.scalalogging.Logger
 import org.tresql._
 import org.mojoz.querease._
 import org.mojoz.querease.SaveMethod
 import org.mojoz.metadata.ViewDef
-import org.slf4j.LoggerFactory
 import org.wabase.AppFileStreamer.FileInfo
 import org.wabase.AppMetadata.Action.{VariableTransform, VariableTransforms}
 import org.wabase.AppMetadata.DbAccessKey
@@ -25,6 +24,7 @@ import java.sql.Connection
 import scala.annotation.tailrec
 import scala.collection.immutable.Seq
 import scala.collection.mutable.ArrayBuffer
+import scala.concurrent.duration.DurationInt
 import scala.concurrent.{ExecutionContext, Future}
 import scala.jdk.CollectionConverters._
 import scala.util.{Failure, Try}
@@ -898,7 +898,13 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     context: ActionContext,
   )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
     import qr.ec, context.env
-    val Action.Response(code, statusMode, hops, body) = op
+    val Action.Response(codeTresql, statusMode, hops, body) = op
+    val code =  useResourcesConnOrEvaluator(qr.resourcesFactory.resources, r =>
+      Query(codeTresql.tresql)(r.withParams(scope.toBindeableMap(env))) match {
+        case SingleValueResult(n: Number) => n.intValue
+        case r: Result[_] => r.unique[Int]
+      }
+    )
     val (ua, hs) = hops.partition(_.isInstanceOf[Action.SetUserAttributes])
     val user = if (ua.isEmpty) null else ua.foldLeft(WabaseUser(Map())) { (u, ua) =>
       WabaseUser(u.properties ++
@@ -2078,6 +2084,31 @@ object AppQuerease {
     case l: java.util.List[_] => l.asScala.map(configValueAsScala).toList
     case v => v
   }
+
+  def startJob(jobName: String, params: Map[String, Any])(implicit
+    as: ActorSystem,
+    ec: ExecutionContext,
+    qio: AppQuereaseIo[Dto],
+  ): Future[Int] = {
+    qio.qe.viewDefOption(jobName).map { job =>
+      val jobControlActorName = config.getString("app.job.actor-name")
+      import org.apache.pekko.pattern.ask
+      implicit val timeout: Timeout = 1.second
+      for {
+        jobControActor <- as.actorSelection(as / jobControlActorName).resolveOne(1.second)
+        msg <- jobControActor ? WabaseScheduler.Tick(job, params)
+      } yield msg match {
+        case WabaseScheduler.JobStarted => StatusCodes.OK
+        case WabaseScheduler.JobRunning => StatusCodes.Conflict
+        case x => throw sys.error(s"Unknown message from scheduler '$x' for job '$jobName'")
+      }
+    }.getOrElse {
+      Future.successful(StatusCodes.NotFound)
+    }.map(_.intValue)
+  }
+
+  /** Can be used in actions since Thread.sleep cannot be invoked directly due to method overload */
+  def sleep(millis: Long): Unit = Thread.sleep(millis)
 
   case class Scope(
     data: Map[String, Any],

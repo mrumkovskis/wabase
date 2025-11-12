@@ -1,13 +1,13 @@
 name: create_person
 job:
-- wabase.app.JobUtils.sleep 100
+- sleep 100
 - +person{code = 'pk10', name = 'Kurtis', surname = 'Vaidelotis'}
 
 name: check_person
 api: get
 key: code
 get:
-- wabase.app.JobUtils.sleep 200
+- sleep 200
 - get person
 swagger:
   '200':

@@ -47,6 +47,7 @@
     <!-- logger name="org.wabase.WabaseService" level="debug"/ -->
     <!-- logger name="org.wabase.WabaseApp" level="debug"/ -->
     <!-- logger name="org.wabase.AppQuerease" level="debug"/ -->
+    <!-- logger name="org.wabase.package" level="debug"/ -->
 
 
     <!-- logger name="org.wabase.tresql" level="debug"/ -->

@@ -88,10 +88,6 @@ object ScriptValidations {
   }
 }
 
-object JobUtils {
-  def sleep(millis: Long) = Thread.sleep(millis)
-}
-
 object Guidelines {
   def requestCalculation(result: Array[dto.response_calculation_view],
                          filterCond: dto.request_calculation_view) = {

@@ -25,7 +25,6 @@ import org.wabase.WabaseService.Wabase
 
 import java.util.Locale
 import scala.annotation.tailrec
-import scala.concurrent.duration.DurationInt
 import scala.concurrent.{ExecutionContext, Future}
 import scala.jdk.CollectionConverters._
 import scala.util.Try
@@ -468,27 +467,23 @@ object WabaseService extends Loggable {
   }
 
   def startJob(jobName: String, ctx: WabaseRequestContext): Future[HttpResponse] = {
-    ctx.wabase.qe.viewDefOption(jobName).map { job =>
-      implicit val ec: ExecutionContext = ctx.as.dispatcher
-      val jobControlActorName = config.getString("app.job.actor-name")
-      import org.apache.pekko.pattern.ask
-      implicit val timeout: Timeout = 1.second
-      for {
-        jobControActor <- ctx.as.actorSelection(ctx.as / jobControlActorName).resolveOne(1.second)
-        params <- if (ctx.req.method == HttpMethods.POST) {
-          (if (ctx.req.entity.isKnownEmpty()) Future.successful(Map[String, Any]()) else toMapEntityDecoder(ctx))
-            .map(_ ++ ctx.req.uri.query().toMap)
-        } else Future.failed(HttpException(StatusCodes.MethodNotAllowed))
-        msg <- jobControActor ? WabaseScheduler.Tick(job, params)
-      } yield msg match {
-        case WabaseScheduler.JobStarted => okResponse
-        case WabaseScheduler.JobRunning => HttpResponse(status = StatusCodes.Conflict,
-          entity = HttpEntity(s"Job '$jobName' is already running."))
-        case x => throw sys.error(s"Unknown message from scheduler '$x' for job '$jobName'")
+    implicit val ec: ExecutionContext = ctx.as.dispatcher
+    for {
+      params <- if (ctx.req.method == HttpMethods.POST) {
+        (if (ctx.req.entity.isKnownEmpty()) Future.successful(Map[String, Any]()) else toMapEntityDecoder(ctx))
+          .map(_ ++ ctx.req.uri.query().toMap)
+      } else Future.failed(HttpException(StatusCodes.MethodNotAllowed))
+      result <- AppQuerease.startJob(jobName, params)(ctx.as, ctx.as.dispatcher, ctx.wabase.qio)
+    } yield {
+      val code: StatusCode = result
+      code match {
+        case StatusCodes.OK => okResponse
+        case StatusCodes.Conflict =>
+          HttpResponse(status = code, entity = HttpEntity(s"Job '$jobName' is already running."))
+        case StatusCodes.NotFound =>
+          HttpResponse(status = code, entity = HttpEntity(s"Job not found: '${ctx.wabase.sanitizedViewName(jobName)}'"))
+        case x => HttpResponse(status = x)
       }
-    }.getOrElse {
-      Future.successful(HttpResponse(status = StatusCodes.NotFound,
-        entity = HttpEntity(s"Job not found: '${ctx.wabase.sanitizedViewName(jobName)}'")))
     }
   }
 
