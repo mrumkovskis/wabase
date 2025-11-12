@@ -1713,21 +1713,20 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     as: ActorSystem,
     ec: ExecutionContext,
   ): Future[(Source[ByteString, _], Option[Long])] = {
-    val dataSource = data match {
-      case r: Result[_]   =>
-        if (isCollection) TresqlResultSerializer.source(() => r)
-        else TresqlResultSerializer.rowSource(() => r)
-      case r: RowLike     => TresqlResultSerializer.rowSource(() => r)
-      case r: Iterator[_] => DataSerializer.source(() => r)
-      case x              => sys.error(s"Unable to render data: '$x'. Only tresql Result, RowLike or Iterator allowed")
-    }
     val viewDef = if (resultFilter == null) null else nameToViewDef(resultFilter.name)
     val renderer =
       resultRenderers.renderers.get(contentType)
         .map(_ (isCollection, resultFilter, viewDef))
         .getOrElse(sys.error(s"Renderer not found for content type: $contentType"))
-    val renderedSource = dataSource.via(BorerNestedArraysTransformer.flow(renderer))
-    ResultSerializer.serializeResult(bufferSize, maxFileSize, renderedSource)
+    val dataSource = data match {
+      case r: Result[_]   =>
+        if (isCollection) TresqlResultSerializer.source(() => r, createEncoder = renderer)
+        else TresqlResultSerializer.rowSource(() => r, createEncoder = renderer)
+      case r: RowLike     => TresqlResultSerializer.rowSource(() => r, createEncoder = renderer)
+      case r: Iterator[_] => DataSerializer.source(() => r, createEncoder = renderer)
+      case x              => sys.error(s"Unable to render data: '$x'. Only tresql Result, RowLike or Iterator allowed")
+    }
+    ResultSerializer.serializeResult(bufferSize, maxFileSize, dataSource)
       .map(_.head)
       .map {
         case CompleteResult(bytes) => (Source.single(bytes), Option(bytes.length))
