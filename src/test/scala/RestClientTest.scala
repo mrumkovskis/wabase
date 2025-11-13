@@ -1,6 +1,7 @@
 package org.wabase
 package client
 
+import com.typesafe.config.Config
 import org.apache.pekko.http.scaladsl.Http
 import org.apache.pekko.http.scaladsl.model.HttpMethods.POST
 import org.apache.pekko.http.scaladsl.model.{HttpEntity, HttpRequest, HttpResponse, StatusCodes}
@@ -20,6 +21,11 @@ import scala.language.postfixOps
 object Teapot extends RestClient {
   override def doRequest(req: HttpRequest): Future[HttpResponse] =
     Future.successful(HttpResponse(StatusCodes.ImATeapot))
+}
+
+class FakeClient(clientCfg: Config = HttpClientConfig.componentConfs.root) extends RestClient(clientCfg) {
+  override def doRequest(req: HttpRequest): Future[HttpResponse] =
+    Future.successful(HttpResponse(entity = clientCfg.getString("fake-response")))
 }
 
 class RestClientTest  extends FlatSpec with Matchers with ScalatestRouteTest with BeforeAndAfterAll with Loggable{
@@ -53,6 +59,21 @@ class RestClientTest  extends FlatSpec with Matchers with ScalatestRouteTest wit
       HttpClientConfig.httpClientFactory.createHttpClients("teapot")(injection)(request),
       1 second,
     ).status shouldBe StatusCodes.ImATeapot
+  }
+
+  it should "construct extended client with config" in {
+    val request = HttpRequest(POST, entity = HttpEntity("BREW"))
+    val injection = InjectionParametersContext(request)
+    Await.result(
+      HttpClientConfig.httpClientFactory.createHttpClients("fake_1")(injection)(request)
+        .flatMap(_.entity.toStrict(1.second)),
+      1 second,
+    ).data.utf8String shouldBe "so fake"
+    Await.result(
+      HttpClientConfig.httpClientFactory.createHttpClients("fake_2")(injection)(request)
+        .flatMap(_.entity.toStrict(1.second)),
+      1 second,
+    ).data.utf8String shouldBe "fake again"
   }
 
   it should "properly time out delayed response" in {

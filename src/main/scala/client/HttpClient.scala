@@ -42,7 +42,7 @@ object HttpClientFactory extends HttpClientFactory {
         case "org.wabase.client.WabaseHttpClient" =>
           new WabaseHttpClient(clientCfg)
         case other =>
-          getObjectOrNewInstance[HttpClient](clientCfg, "client-class", "http client")
+          getObjectOrNewInstance[HttpClient](clientCfg, "client-class", "http client", Seq(clientCfg))
       }
       n -> ((_: InjectionParametersContext) => req => client.doRequest(req))
     }.toMap
