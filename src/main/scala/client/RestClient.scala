@@ -15,6 +15,7 @@ import org.apache.pekko.http.scaladsl.model.headers._
 import org.apache.pekko.http.scaladsl.model.ws.{Message, WebSocketRequest}
 import org.apache.pekko.http.scaladsl.unmarshalling._
 import org.apache.pekko.stream.scaladsl.{Flow, Keep, Sink, Source}
+import org.wabase.client.HttpClient.ProxyMode
 
 import scala.collection.immutable.{Seq => iSeq}
 import scala.concurrent.duration._
@@ -181,6 +182,10 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root) exten
   protected def doRequest(req: HttpRequest, cookieStorage: CookieMap, timeout: FiniteDuration, maxRedirects: Int = 20): Future[HttpResponse] = {
     val req_abs = if (req.uri.isAbsolute) req else req.withUri(Uri(requestPath(req.uri.toString)))
     val request = if (cookieStorage.map.isEmpty) req_abs else req_abs.withHeaders(req.headers ++ cookieStorage.getCookies)
+    val isProxy = req.attribute(HttpClient.ModeKey) match {
+      case Some(ProxyMode) => true
+      case _ => false
+    }
     logger.debug(s"HTTP ${request.method.value} ${request.uri}")
     Source.single((request, ())).via(flow).completionTimeout(timeout).runWith(Sink.head).recover {
       case util.control.NonFatal(ex) => (Failure(ex), ())
@@ -190,7 +195,7 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root) exten
       case (Success(response), _) =>
         cookieStorage.setCookiesFromHeaders(response.headers)
         (response.status.intValue, response.header[Location]) match {
-          case _  if isSuccess(response)  => Future.successful(response)
+          case _  if isProxy || isSuccess(response)  => Future.successful(response)
           case (301 | 302 | 303, Some(Location(uri))) =>
             response.discardEntityBytes()
             if (maxRedirects > 0)

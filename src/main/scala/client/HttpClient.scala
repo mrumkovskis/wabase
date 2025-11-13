@@ -2,13 +2,19 @@ package org.wabase
 package client
 
 import com.typesafe.config.Config
-import org.apache.pekko.http.scaladsl.model.{HttpRequest, HttpResponse}
+import org.apache.pekko.http.scaladsl.model.{AttributeKey, HttpRequest, HttpResponse}
 import org.wabase.AppQuerease.InjectionParametersContext
 
 import scala.concurrent.Future
 
 trait HttpClient {
   def doRequest(req: HttpRequest): Future[HttpResponse]
+}
+
+object HttpClient {
+  sealed trait Mode
+  case object ProxyMode extends Mode
+  val ModeKey = AttributeKey[Mode]("http-client-mode")
 }
 
 object HttpClientConfig {
