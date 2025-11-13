@@ -1,17 +1,26 @@
 package org.wabase
+package client
 
 import org.apache.pekko.http.scaladsl.Http
+import org.apache.pekko.http.scaladsl.model.HttpMethods.POST
+import org.apache.pekko.http.scaladsl.model.{HttpEntity, HttpRequest, HttpResponse, StatusCodes}
 import org.apache.pekko.http.scaladsl.server.Directives._
 import org.apache.pekko.http.scaladsl.server.Route
 import org.apache.pekko.http.scaladsl.testkit.ScalatestRouteTest
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers
-import org.wabase.client.{ClientException, HttpClientConfig, RestClient}
+import org.wabase.AppQuerease.InjectionParametersContext
 
-import scala.concurrent.Await
 import scala.concurrent.duration._
+import scala.concurrent.{Await, Future}
 import scala.language.postfixOps
+
+
+object Teapot extends RestClient {
+  override def doRequest(req: HttpRequest): Future[HttpResponse] =
+    Future.successful(HttpResponse(StatusCodes.ImATeapot))
+}
 
 class RestClientTest  extends FlatSpec with Matchers with ScalatestRouteTest with BeforeAndAfterAll with Loggable{
   behavior of "RestClient"
@@ -32,6 +41,18 @@ class RestClientTest  extends FlatSpec with Matchers with ScalatestRouteTest wit
   it should "work" in {
     val resp = client.httpGetAwait[String](s"ok")
     resp should be ("HELLO")
+  }
+
+  it should "construct extended client" in {
+    val clientCfg = HttpClientConfig.configs("teapot")
+    val client = getObjectOrNewInstance[HttpClient](clientCfg, "client-class", "http client")
+    client shouldBe Teapot
+    val request = HttpRequest(POST, entity = HttpEntity("BREW"))
+    val injection = InjectionParametersContext(request)
+    Await.result(
+      HttpClientConfig.httpClientFactory.createHttpClients("teapot")(injection)(request),
+      1 second,
+    ).status shouldBe StatusCodes.ImATeapot
   }
 
   it should "properly time out delayed response" in {
