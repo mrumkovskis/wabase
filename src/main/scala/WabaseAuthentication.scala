@@ -7,7 +7,7 @@ import JsonEncoder._
 import io.bullet.borer.compat.pekko._
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.model.RemoteAddress.Unknown
-import org.apache.pekko.http.scaladsl.model.{AttributeKey, AttributeKeys, HttpRequest, HttpResponse, RemoteAddress}
+import org.apache.pekko.http.scaladsl.model.{AttributeKey, AttributeKeys, HttpRequest, HttpResponse, RemoteAddress, StatusCodes}
 import org.apache.pekko.http.scaladsl.server.directives.AuthenticationDirective
 import org.apache.pekko.http.scaladsl.unmarshalling.Unmarshal
 import org.apache.pekko.http.scaladsl.model.headers.{BasicHttpCredentials, HttpCookie, HttpCredentials, OAuth2BearerToken, SameSite, `Remote-Address`, `User-Agent`, `X-Forwarded-For`, `X-Real-Ip`}
@@ -16,7 +16,6 @@ import org.wabase.WabaseService.RequestHandler
 import org.wabase.WabaseUnmarshallers.mapUnmarshaller
 
 import scala.concurrent.{ExecutionContext, Future}
-import scala.util.Try
 import scala.util.control.NonFatal
 
 
@@ -86,6 +85,12 @@ object WabaseAuthentication extends Authentication[WabaseUser] {
     session.filter(validateSession(_, ip, userAgent))
       .map(session => ctx.copy(user = session.user))
       .getOrElse(ctx)
+  }
+
+  def checkRole(role: String)(ctx: WabaseRequestContext): WabaseRequestContext = {
+    if (ctx.user == null) throw HttpException(StatusCodes.Unauthorized)
+    else if (ctx.wabase.hasRole(ctx.user, Set(role))) ctx
+    else throw HttpException(StatusCodes.Forbidden)
   }
 
   /* Response transformer */

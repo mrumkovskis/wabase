@@ -1,0 +1,4 @@
+on: /role-check/(.+)
+do: authenticateOpt audit checkRole($1) ok
+swagger:
+  paths = : {}    # skip here - derived from views

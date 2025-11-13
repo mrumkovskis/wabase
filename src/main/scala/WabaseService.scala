@@ -14,7 +14,7 @@ import org.apache.pekko.http.scaladsl.server.directives.ContentTypeResolver
 import org.apache.pekko.http.scaladsl.server.directives.FileAndResourceDirectives.ResourceFile
 import org.apache.pekko.http.scaladsl.unmarshalling.Unmarshaller
 import org.apache.pekko.stream.scaladsl.StreamConverters
-import org.apache.pekko.util.{ByteString, Timeout}
+import org.apache.pekko.util.ByteString
 import org.mojoz.metadata.ViewDef
 import org.slf4j.LoggerFactory
 import org.tresql.parsing.QueryParsers
@@ -91,7 +91,14 @@ object WabaseService extends Loggable {
 
   type RequestHandler = WabaseRequestContext => Future[HttpResponse]
   type ErrorHandler   = PartialFunction[Throwable, Future[HttpResponse]]
-  type Wabase = WabaseApp[WabaseUser] with QuereaseProvider with I18n with DbAccess with Marshalling with AppProvider[WabaseUser] with Execution
+  type Wabase = WabaseApp[WabaseUser]
+    with Authorization[WabaseUser]
+    with QuereaseProvider
+    with I18n
+    with DbAccess
+    with Marshalling
+    with AppProvider[WabaseUser]
+    with Execution
 
   def handle(
     wabase: Wabase,
