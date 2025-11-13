@@ -4,7 +4,7 @@ import java.util.concurrent.TimeUnit.MILLISECONDS
 import com.zaxxer.hikari.{HikariConfig, HikariDataSource}
 import org.tresql.SimpleCacheBase
 
-import java.lang.reflect.{InvocationTargetException, Parameter}
+import java.lang.reflect.{Constructor, InvocationTargetException, Parameter}
 import javax.sql.DataSource
 import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration.{Duration, FiniteDuration}
@@ -82,9 +82,13 @@ package object wabase extends Loggable {
     new HikariDataSource(hikariConfig)
   }
 
-  def getObjectOrNewInstance[T](cfg: Config, configPath: String, description: String)(implicit m: Manifest[T]): T = try {
+  def getObjectOrNewInstance[T](cfg: Config, configPath: String, description: String)(implicit m: Manifest[T]): T =
+      getObjectOrNewInstance(cfg, configPath, description, Seq.empty, Seq.empty)
+  def getObjectOrNewInstance[T](cfg: Config, configPath: String, description: String, potentialParameters: Seq[Any])(implicit m: Manifest[T]): T =
+      getObjectOrNewInstance(cfg, configPath, description, potentialParameters, potentialParameters.map(_.getClass))
+  def getObjectOrNewInstance[T](cfg: Config, configPath: String, description: String, potentialParameters: Seq[Any], parameterClasses: Seq[Class[_]])(implicit m: Manifest[T]): T = try {
     val className = cfg.getString(configPath)
-    val r = getObjectOrNewInstance(className, description)
+    val r = getObjectOrNewInstance(className, description, potentialParameters, parameterClasses)
     if (m >:> Manifest.classType(r.getClass))
       r.asInstanceOf[T]
     else
@@ -94,11 +98,15 @@ package object wabase extends Loggable {
       throw new RuntimeException(s"Failed to get $description instance, please cofigure $configPath properly: ${ex.getMessage}", ex)
   }
 
-  def getObjectOrNewInstance(className: String, description: String): AnyRef = {
+  def getObjectOrNewInstance(className: String, description: String): AnyRef =
+      getObjectOrNewInstance(className, description, Seq.empty, Seq.empty)
+  def getObjectOrNewInstance(className: String, description: String, potentialParameters: Seq[Any]): AnyRef =
+      getObjectOrNewInstance(className, description, potentialParameters, potentialParameters.map(_.getClass))
+  def getObjectOrNewInstance(className: String, description: String, potentialParameters: Seq[Any], parameterClasses: Seq[Class[_]]): AnyRef = {
     def obj_or_new(cn: String): AnyRef =
       if (cn endsWith "$")
-        getObjectOrNewInstance(Class.forName(cn), description)
-      else try Class.forName(cn).getDeclaredConstructor().newInstance().asInstanceOf[AnyRef] catch {
+        getObjectOrNewInstance(Class.forName(cn), description, potentialParameters, parameterClasses)
+      else try  getNewInstance(Class.forName(cn), description, potentialParameters, parameterClasses) catch {
         case util.control.NonFatal(ex1) =>
           try Class.forName(cn + "$").getField("MODULE$").get(null) catch {
             case util.control.NonFatal(ex2) =>
@@ -113,14 +121,53 @@ package object wabase extends Loggable {
     obj_or_new(className)
   }
 
-  def getObjectOrNewInstance(clazz: Class[_], description: String): AnyRef = {
+  def getObjectOrNewInstance(clazz: Class[_], description: String): AnyRef =
+      getObjectOrNewInstance(clazz, description, Seq.empty, Seq.empty)
+  def getObjectOrNewInstance(clazz: Class[_], description: String, potentialParameters: Seq[Any]): AnyRef =
+      getObjectOrNewInstance(clazz, description, potentialParameters, potentialParameters.map(_.getClass))
+  def getObjectOrNewInstance(clazz: Class[_], description: String, potentialParameters: Seq[Any], parameterClasses: Seq[Class[_]]): AnyRef = {
     try clazz.getField("MODULE$").get(null) catch {
       case util.control.NonFatal(ex1) =>
-        try clazz.getDeclaredConstructor().newInstance().asInstanceOf[AnyRef] catch {
+        try getNewInstance(clazz, description, potentialParameters, parameterClasses) catch {
           case util.control.NonFatal(ex2) =>
             logger.debug(s"Failed to get $description instance, tried both object and empty constructor", ex1)
             throw new RuntimeException(s"Failed to get $description instance", ex2)
         }
+    }
+  }
+
+  def getNewInstance(clazz: Class[_], description: String, potentialParameters: Seq[Any], parameterClasses: Seq[Class[_]]): AnyRef = {
+    require(potentialParameters.length == parameterClasses.length, "Potential parameters and their classes must have the same length")
+    try {
+      if (potentialParameters.isEmpty) {
+        clazz.getConstructor().newInstance().asInstanceOf[AnyRef]
+      } else {
+        val paramTypes: Array[Class[_]] = parameterClasses.toArray
+        val params: Array[Any] = potentialParameters.toArray
+        val ctors: Array[Constructor[_]] = clazz.getConstructors
+        var maxLen = -1
+        var bestCtor: Constructor[_] = null
+        for (c <- ctors) {
+          val cTypes: Array[Class[_]] = c.getParameterTypes
+          val len: Int = cTypes.length
+          def assignableMatch = (0 until len).forall(i => cTypes(i).isAssignableFrom(paramTypes(i)))
+          if (len <= paramTypes.length && assignableMatch) {
+            if (len > maxLen) {
+              maxLen = len
+              bestCtor = c
+            }
+          }
+        }
+        if (bestCtor != null) {
+          bestCtor.newInstance(params.take(maxLen).map(_.asInstanceOf[AnyRef]): _*).asInstanceOf[AnyRef]
+        } else {
+          throw new NoSuchMethodException(
+            s"No suitable constructor found for class ${clazz.getName}, parameter classes: [${parameterClasses.map(_.getName).mkString(", ")}]")
+        }
+      }
+    } catch {
+      case util.control.NonFatal(ex) =>
+        throw new RuntimeException(s"Failed to get $description instance", ex)
     }
   }
 
