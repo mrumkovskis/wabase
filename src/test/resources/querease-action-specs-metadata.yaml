@@ -1709,3 +1709,16 @@ fields:
 - description
 get:
 - services_schema.service[name = :name] {name, description}
+
+
+name: http_proxy_test1
+api: get, insert
+get:
+- int_status = {:status::int}
+- response :int_status as any unique {'hello' greeting}
+insert:
+# http_proxy command returns map with following keys - status, headers, content_type, content.
+# command does not terminate action execution on http error
+- result = as any http_proxy get {'/http_proxy_test1', '?', :status status}
+- result.result = if {:result.status < 400} 'This is ok' else 'This is ere'
+- :result

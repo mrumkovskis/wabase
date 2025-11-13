@@ -1005,8 +1005,8 @@ class OpParser(viewName: String, caches: OpParser.Caches)
         case method ~ client ~ uri ~ op ~ headers =>
           Http(method, tu(uri), headers.orNull, op.orNull, httpClientName = client.orNull)
       } named "http-post-put-op"
-    opt(opResultType) ~ ("http\\s+".r ~> (http_with_entity | http_no_entity)) ^^ {
-      case conformTo ~ http => http.copy(conformTo = conformTo)
+    opt(opResultType) ~ ("(http|http_proxy)(?=\\s+)".r ~ (http_with_entity | http_no_entity)) ^^ {
+      case conformTo ~ (mode ~ http) => http.copy(conformTo = conformTo, isProxy = mode == "http_proxy")
     } named "http-op"
   }
   def dbOp: MemParser[Db] = dbBlockOp ~ operation ^^ {
@@ -1368,7 +1368,8 @@ object AppMetadata extends Loggable {
                     headerTresql: Tresql = null,
                     body: Op = null,
                     conformTo: Option[OpResultType] = None,
-                    httpClientName: String = null) extends CastableOp
+                    httpClientName: String = null,
+                    isProxy: Boolean = false) extends CastableOp
     case class HttpHeader(name: String, httpOp: Http = null) extends Op
     case class Cookie(name: String) extends Op
     case class ExtractHttpEntity(conformTo: Option[OpResultType] = None, decoder: String = null, op: Op = null) extends Op
@@ -1508,7 +1509,7 @@ object AppMetadata extends Loggable {
               a.foldLeft(
                 opTresqlTrav(opTresqlTrav(opTresqlTrav(state)(r))(s))(b)
               )(opTresqlTrav(_)(_))
-            case Http(_, uriTresql, headerTresql, body, _, _) =>
+            case Http(_, uriTresql, headerTresql, body, _, _, _) =>
               val s1 = us(state, nv(state.value)(Tresql(uriTresql.uriTresql)))
               val s2 = us(s1, nv(s1.value)(headerTresql))
               opTresqlTrav(s2)(body)

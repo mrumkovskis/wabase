@@ -266,7 +266,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
           }
         }
         .map(r => if (removeIdsFlag) removeIds(r) else r)
-    case HttpResult(resp) => unmarshalResponse(resp)
+    case HttpResult(resp, _) => unmarshalResponse(resp)
     case CompatibleResult(m: MapResult, f, _) => Future.successful {
       if (f != null) MapResult(app.qe.toCompatibleMap(m.result, app.qe.viewDef(f.name)))
       else m
@@ -1768,6 +1768,31 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       t1 <- doAction("get", "table_schema_test1", Map("name" -> "Cleaning"))
         .map {
           _ shouldBe Nil
+        }
+    } yield t1
+  }
+
+  it should "do http requests in proxy mode" in {
+    for {
+      t1 <- doAction("insert", "http_proxy_test1", Map("status" -> 200))
+        .map{ _ shouldBe MapResult(
+          Map(
+            "status" -> 200,
+            "headers" -> Map(),
+            "content_type" -> "application/json",
+            "content" -> Map("greeting" -> "hello"),
+            "result" -> "This is ok",
+          ))
+        }
+      t2 <- doAction("insert", "http_proxy_test1", Map("status" -> 400))
+        .map{ _ shouldBe MapResult(
+          Map(
+            "status" -> 400,
+            "headers" -> Map(),
+            "content_type" -> "application/json",
+            "content" -> Map("greeting" -> "hello"),
+            "result" -> "This is ere",
+          ))
         }
     } yield t1
   }

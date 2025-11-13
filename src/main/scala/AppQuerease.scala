@@ -17,7 +17,8 @@ import org.mojoz.metadata.ViewDef
 import org.wabase.AppFileStreamer.FileInfo
 import org.wabase.AppMetadata.Action.{VariableTransform, VariableTransforms}
 import org.wabase.AppMetadata.DbAccessKey
-import org.wabase.AppQuerease.{InjectionParametersContext, InjectionParametersProvider, Scope, configValueAsScala, listOfStringTuples}
+import org.wabase.AppQuerease.{InjectionParametersContext, InjectionParametersProvider, Scope, configValueAsScala, httpResponseToMap, listOfStringTuples}
+import org.wabase.client.HttpClient
 
 import java.lang.reflect.Parameter
 import java.sql.Connection
@@ -98,7 +99,7 @@ case class StringTemplateResult(content: String) extends TemplateResult
 case class FileTemplateResult(filename: String, contentType: String, content: Array[Byte]) extends TemplateResult
   { override def contentString: String = new String(content, "UTF-8") }
 case class HttpEntityResult(entity: HttpEntity, decoder: RequestDecoders.RequestDecoder) extends DataResult
-case class HttpResult(response: HttpResponse) extends DataResult
+case class HttpResult(response: HttpResponse, isProxy: Boolean = false) extends DataResult
 case object NoResult extends QuereaseResult
 case class QuereaseResultWithCleanup(result: QuereaseCloseableResult, cleanup: Option[Throwable] => Unit)
   extends QuereaseResult {
@@ -1067,7 +1068,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         case HttpEntityResult(ent, dec) => decodeHttpEntity(ent, null, true, dec)(qr.as).flatMap(iterator(_, vd))(qr.ec)
         case fr: FileResult => iterator(HttpEntityResult(fileHttpEntity(fr)
           .getOrElse(sys.error(s"Cannot find file data: ${fr.fileInfo}")), null), vd)
-        case HttpResult(resp) => iterator(HttpEntityResult(resp.entity, null), vd)
+        case HttpResult(resp, _) => iterator(HttpEntityResult(resp.entity, null), vd)
         case RequestPartResult(parts, fs) =>
           import qr._
           parts.mapAsync(1)(AppQuerease.saveRequestPart(_, fs))
@@ -1165,7 +1166,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     implicit val fs: FileStreamer = fileStreamers.fs(null)
     def template(res: Any): Future[String] = res match {
       case TresqlResult(r) => Future.successful(r.unique[String])
-      case HttpResult(resp) => template(resp)
+      case HttpResult(resp, _) => template(resp)
       case fr: FileResult => template(fileHttpEntity(fr))
       case Some(ent) => template(ent)
       case ent: HttpEntity => template(ent.dataBytes)
@@ -1286,7 +1287,6 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       }
     }
     def do_http: HttpRequest => Future[HttpResponse] = {
-      import context.{viewName, actionName}
       req => {
         qr.logger.debug(s"HTTP ${req.method.value} ${req.uri}")
         val httpClientFactory = Option(op.httpClientName)
@@ -1295,12 +1295,14 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
             if (httpClients.httpClients.size == 1) httpClients.httpClients.head._2
             else sys.error(s"Http client name not specified, expected one http client, got: $httpClients"))
         val httpClient = httpClientFactory(InjectionParametersContext(httpReq, opData))
-        doHttpRequest(httpClient, viewDefOption(context.viewName).map(_.maxContentSize).orNull, req)
+        val maybeProxyReq =
+          if (op.isProxy) req.addAttribute(HttpClient.ModeKey, HttpClient.ProxyMode) else req
+        doHttpRequest(httpClient, viewDefOption(context.viewName).map(_.maxContentSize).orNull, maybeProxyReq)
       }
     }
     reqF
       .flatMap(do_http)
-      .map(HttpResult)
+      .map(HttpResult(_, op.isProxy))
       .map { r => op.conformTo.map(comp_res(r, _)).getOrElse(r) }
   }
 
@@ -1311,7 +1313,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
     import qr._, context.env
     @tailrec def httpRes(qr: QuereaseResult): HttpResponse = (qr: @unchecked) match {
-      case HttpResult(response) =>
+      case HttpResult(response, _) =>
         response.entity.discardBytes(as) // discard bytes since we are interested only in http header
         response
       case cr: CompatibleResult => httpRes(cr.result)
@@ -1351,7 +1353,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     Option(exe.op).map { op =>
       doActionOp(op, scope, context)
         .map {
-          case HttpResult(response) => response.entity
+          case HttpResult(response, _) => response.entity
           case fr: FileResult => fileHttpEntity(fr)
             .getOrElse(sys.error(s"Cannot find file data: ${fr.fileInfo}"))
           case x => sys.error(s"Cannot extract entity from $x. Currently only HttpResult and FileResult are supported")
@@ -1673,7 +1675,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           res.contentType,
           res.contentLengthOption
         ))
-      case HttpResult(res) =>
+      case HttpResult(res, _) =>
         Future.successful(( res.entity.dataBytes,
           res.header[`Content-Disposition`]
             .filter(_.dispositionType == attachment)
@@ -1835,10 +1837,14 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         case StringTemplateResult(content) => content
         case FileTemplateResult(_, _, content) => content
       }
-      case HttpResult(r) =>
-        if (r.status.isRedirection())
-          r.headers.find(_.is("location")).map(_.value()).getOrElse("")
-        else r.entity.dataBytes.runWith(StreamConverters.asInputStream())
+      case HttpResult(r, isProxy) =>
+        if (!isProxy)
+          if (r.status.isRedirection()) r.headers.find(_.is("location")).map(_.value()).getOrElse("")
+          else r.entity.dataBytes.runWith(StreamConverters.asInputStream())
+        else httpResponseToMap(r,
+          ent => Future.successful(ent.dataBytes.runWith(StreamConverters.asInputStream())),
+          ent => decodeHttpEntity(ent, null, false, null)
+        )
       case HttpEntityResult(r, d) => decodeHttpEntity(r, null, false, d)
       case NoResult => NoResult
       case CompatibleResult(r, filter, isCollection) => r match {
@@ -1849,7 +1855,12 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         case fr: FileResult => fileHttpEntity(fr).map(decodeHttpEntity(_, filter.name, isCollection, null)) // FIXME assumes that filter matches view name
           .getOrElse(sys.error(s"File not found: ${fr.fileInfo}"))
         case HttpEntityResult(r, d) => decodeHttpEntity(r, filter.name, isCollection, d)  // FIXME assumes that filter name matches view name
-        case HttpResult(r) => decodeHttpEntity(r.entity, filter.name, isCollection, null) // FIXME assumes that filter name matches view name
+        case HttpResult(r, isProxy) =>
+          if (!isProxy) decodeHttpEntity(r.entity, filter.name, isCollection, null) // FIXME assumes that filter name matches view name
+          else httpResponseToMap(r,
+            ent => decodeHttpEntity(ent, filter.name, isCollection, null),
+            ent => decodeHttpEntity(ent, null, false, null)
+          )
         case r => dataForNextStep(r, context, unwrapSingleValue)
       }
       case DbResult(dbr, cl) => dataForNextStep(dbr, context, unwrapSingleValue).andThen {
@@ -2082,6 +2093,22 @@ object AppQuerease {
     case m: java.util.Map[_, _] => m.asScala.map { case (k, v) => String.valueOf(k) -> configValueAsScala(v) }.toMap
     case l: java.util.List[_] => l.asScala.map(configValueAsScala).toList
     case v => v
+  }
+
+  def httpResponseToMap(
+    resp: HttpResponse,
+    contentSuccess: HttpEntity => Future[Any],
+    contentFailure: HttpEntity => Future[Any]
+  )(implicit ec: ExecutionContext): Future[Map[String, Any]] = {
+    for {
+      content <- if (resp.status.isSuccess) contentSuccess(resp.entity)
+      else contentFailure(resp.entity)
+    } yield Map(
+      "status" -> resp.status.intValue,
+      "headers" -> resp.headers.map(h => (h.name, h.value)).toMap,
+      "content_type" -> resp.entity.contentType.value,
+      "content" -> content,
+    )
   }
 
   def startJob(jobName: String, params: Map[String, Any])(implicit
