@@ -1,7 +1,7 @@
 package org.wabase
 
 import com.typesafe.config.Config
-import org.apache.pekko.stream.scaladsl.{Flow, Source}
+import org.apache.pekko.stream.scaladsl.{Flow, Sink, Source}
 import org.apache.pekko.stream.connectors.csv.scaladsl.{CsvParsing, CsvToMap}
 import org.apache.pekko.stream.connectors.xml.scaladsl.XmlParsing
 import org.apache.pekko.util.ByteString
@@ -10,6 +10,7 @@ import io.bullet.borer.encodings.BaseEncoding
 import io.bullet.borer.{Borer, Cbor, Decoder, DecodingSetup, Input, Json, Tag, Target, DataItem => DI}
 import org.apache.pekko.http.scaladsl.model.HttpEntity
 import org.apache.pekko.NotUsed
+import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.common.JsonEntityStreamingSupport
 import org.mojoz.metadata.{Type, TypeDef, ViewDef}
 import org.w3c.dom.{Element, Node, NodeList}
@@ -22,6 +23,8 @@ import java.nio.charset.Charset
 import java.time.{LocalDate, LocalDateTime, LocalTime}
 import scala.annotation.tailrec
 import scala.collection.immutable.{ListMap, Map, Seq}
+import scala.concurrent.Await
+import scala.concurrent.duration.{Duration, DurationInt}
 import scala.jdk.CollectionConverters._
 import scala.language.{higherKinds, postfixOps}
 import scala.reflect.ClassTag
@@ -471,6 +474,37 @@ object RequestDecoders {
     CsvDecoderConfig.csvDecoderFactory.createCsvStreamDecoders.map { case (n, d) => (n, requestDecoder(d)) } ++
       JsonDecoderConfig.jsonDecoderFactory.createJsonStreamDecoders.map { case (n, d) => (n, requestDecoder(d)) } ++
       XmlDecoderConfig.xmlDecoderFactory.createXmlStreamDecoders.map { case (n, d) => (n, requestDecoder(d)) }
+  }
+  def sourceToIterator[T](src: Source[T, _])(implicit as: ActorSystem): Iterator[T] = new Iterator[T] {
+    private var currentSource = src
+    private var hasNextElement: Boolean = true
+    private var nextElement: Option[T] = None
+
+    private def fetchNext(): Unit = {
+      if (hasNextElement) {
+        val currentF = currentSource.idleTimeout(10.seconds).prefixAndTail(1).runWith(Sink.head)
+        Await.result(currentF, Duration.Inf) match {
+          case (Seq(element), tailSource) =>
+            nextElement = Some(element)
+            currentSource = tailSource
+          case _ =>
+            hasNextElement = false
+            nextElement = None
+        }
+      }
+    }
+
+    override def hasNext: Boolean = {
+      if (nextElement.isEmpty && hasNextElement) fetchNext()
+      nextElement.isDefined
+    }
+
+    override def next(): T = {
+      if (!hasNext) throw new NoSuchElementException("End of iterator")
+      val elem = nextElement.get
+      nextElement = None
+      elem
+    }
   }
 }
 

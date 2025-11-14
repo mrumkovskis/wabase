@@ -1058,6 +1058,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       def maybeCompatible(map: Map[String, Any]) =
         Option(vd).map(toCompatibleMap(map, _)).getOrElse(map)
       res match {
+        case i: Iterator[Map[String, _]@unchecked] => Future.successful(i)
         case s: Seq[Map[String, _]@unchecked] => Future.successful((s map maybeCompatible).iterator)
         case m: Map[String@unchecked, _] => Future.successful((List(m) map maybeCompatible).iterator)
         case TresqlResult(tr) => tr match {
@@ -1769,15 +1770,9 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     def decodeToSeqOfMaps(bs: ByteString) =
       if (viewName == null) CborOrJsonAnyValueDecoder.decode(bs)
       else cborOrJsonDecoder.decodeToSeqOfMaps(bs, viewName)(viewNameToMapZero)
-    def decodeUsingDecoder = decoder(viewName)(ent)
-      .runFold(ArrayBuffer[Any]()) { (res, data) => res += data }
-      .map {
-        case res if !isCollection && res.size == 1 => res.head
-        case res if isCollection => res.toVector
-        case res => sys.error(s"Decoded result must contain one element, got: $res")
-      }
+    def decodeUsingDecoder = RequestDecoders.sourceToIterator(decoder(viewName)(ent))
 
-    if (decoder != null) decodeUsingDecoder
+    if (decoder != null) Future.successful(decodeUsingDecoder)
     else ent.toStrict(1.second).map { se =>
       if (ent.contentType == ContentTypes.`application/json`)
         if (isCollection) decodeToSeqOfMaps(se.data) else decodeToMap(se.data)
