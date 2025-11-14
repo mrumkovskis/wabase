@@ -747,9 +747,10 @@ object HandlerArgsParser extends QueryParsers {
   def groupRef: MemParser[RegexGroupRef] = "\\$(\\d+)".r ^^ {
     gr => RegexGroupRef(gr.substring(1).toInt)
   } named "regex-group-arg"
+  def nullArg: MemParser[StringArg] = "null" ^^ (_ => StringArg(null)) named "null-arg"
   def stringArg: MemParser[StringArg] = stringLiteral ^^ StringArg named "string-arg"
   def numberArg: MemParser[NumberArg] = "\\d+".r ^^ (v => NumberArg(v.toLong)) named "number-arg"
-  def arg: MemParser[HandlerArg] = (stringArg | groupRef | numberArg)
+  def arg: MemParser[HandlerArg] = (stringArg | groupRef | numberArg | nullArg)
     .withFailureMessage("Handler argument must be either string literal or regexp group ref - $<group nr> or long number.")
   def parsArg(value: String): HandlerArg = {
     phrase(arg)(new CharSequenceReader(value)) match {

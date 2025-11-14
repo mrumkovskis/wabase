@@ -93,29 +93,50 @@ object WabaseAuthentication extends Authentication[WabaseUser] {
     else throw HttpException(StatusCodes.Forbidden)
   }
 
-  /* Response transformer */
-  // cannot name setSessionCookie because setSessionCookie from super trait appears from reflection to be member of this object
-  def setAppSessionCookie(req: HttpRequest, user: WabaseUser, resp: HttpResponse): HttpResponse = {
-   if (resp.status.isSuccess)
-     WabaseService.setCookie(resp)(sessionCookie(encryptedSession(req, mergeReqRespUserData(user, resp))))
-   else resp
+  def authenticatePlusSession(innerHandler: RequestHandler): RequestHandler =
+    authenticateDomainAndPathPlusSession(null, "/")(innerHandler)
+
+
+  def authenticatePlusSessionOpt(innerHandler: RequestHandler): RequestHandler =
+    authenticateDomainAndPathPlusSessionOpt(null, "/")(innerHandler)
+
+  def authenticateDomainAndPathPlusSession(domain: String, path: String)(
+    innerHandler: RequestHandler): RequestHandler = ctx => {
+    val user = appAuthenticate(ctx.req)
+    innerHandler(ctx.copy(user = user))
+      .map(setDomainAndPathSessionCookieOpt(domain, path)(ctx.req, user, _))(ctx.as.dispatcher)
   }
 
-  def setAppSessionCookieOpt(req: HttpRequest, user: WabaseUser, resp: HttpResponse): HttpResponse = {
-    if (resp.status.isSuccess && user != null)
-      WabaseService.setCookie(resp)(sessionCookie(encryptedSession(req, mergeReqRespUserData(user, resp))))
+  def authenticateDomainAndPathPlusSessionOpt(domain: String, path: String)(
+    innerHandler: RequestHandler): RequestHandler = ctx => {
+    val ctxWithUser = appAuthenticateOpt(ctx)
+    innerHandler(ctxWithUser)
+      .map(setDomainAndPathSessionCookieOpt(domain, path)(ctx.req, ctxWithUser.user, _))(ctxWithUser.as.dispatcher)
+  }
+
+  // cannot name setSessionCookie because setSessionCookie from super trait appears from reflection to be member of this object
+  def setAppSessionCookie(req: HttpRequest, user: WabaseUser, resp: HttpResponse): HttpResponse =
+    setDomainAndPathSessionCookieOpt(null, "/")(req, user, resp)
+
+  def setAppSessionCookieOpt(req: HttpRequest, user: WabaseUser, resp: HttpResponse): HttpResponse =
+    setDomainAndPathSessionCookieOpt(null, "/")(req, user, resp)
+
+  def setDomainAndPathSessionCookie(domain: String, path: String)(
+    req: HttpRequest, user: WabaseUser, resp: HttpResponse): HttpResponse = {
+    if (resp.status.isSuccess)
+      WabaseService.setCookie(resp)(
+        sessionCookie(encryptedSession(req, mergeReqRespUserData(user, resp)), domain, path)
+      )
     else resp
   }
 
-  def authenticatePlusSession(innerHandler: RequestHandler): RequestHandler = ctx => {
-    val user = appAuthenticate(ctx.req)
-    innerHandler(ctx.copy(user = user)).map(setAppSessionCookie(ctx.req, user, _))(ctx.as.dispatcher)
-  }
-
-  def authenticatePlusSessionOpt(innerHandler: RequestHandler): RequestHandler = ctx => {
-    val ctxWithUser = appAuthenticateOpt(ctx)
-    innerHandler(ctxWithUser)
-      .map(setAppSessionCookieOpt(ctx.req, ctxWithUser.user, _))(ctxWithUser.as.dispatcher)
+  def setDomainAndPathSessionCookieOpt(domain: String, path: String)(
+    req: HttpRequest, user: WabaseUser, resp: HttpResponse): HttpResponse = {
+    if (resp.status.isSuccess && user != null)
+      WabaseService.setCookie(resp)(
+        sessionCookie(encryptedSession(req, mergeReqRespUserData(user, resp)), domain, path)
+      )
+    else resp
   }
 
   def session(req: HttpRequest): Option[String] = WabaseService.optionalCookie(req)(SessionCookieName)
@@ -136,11 +157,12 @@ object WabaseAuthentication extends Authentication[WabaseUser] {
       WabaseUser(Option(reqUser).map(_.properties).getOrElse(Map()) -- rp.keys ++ cp)
     }.getOrElse(reqUser)
 
-  def sessionCookie(encryptedSession: String): HttpCookie =
+  def sessionCookie(encryptedSession: String, domain: String = null, path: String = "/"): HttpCookie =
     HttpCookie(
       SessionCookieName,
       value = encryptedSession,
-      path = Some("/"),
+      domain = Option(domain),
+      path = Option(path),
       httpOnly= httpOnlyCookies,
       secure = secureCookies
     ).withSameSite(SameSite.Lax)
