@@ -475,7 +475,7 @@ save:
 - sex  = 'M'
 - save this
 list:
-- addenv unique { 'AddedName' name, 'M' sex }
+- addenv unique { 'AddedName' name, 'M' sex }   # add expression variables name and sex to action current data
 - as env_test_1 this
 
 
@@ -522,7 +522,7 @@ name: env_test_5
 api: get
 get:
 - x = 1
-- addenv if :cond:
+- addenv if :cond:  # add variables to action current data according to condition
   - x = 2
   - y = 0
 - else:
@@ -610,7 +610,7 @@ fields:
 - n1
 - n2
 get:
-- setenv create this
+- setenv create this      # set action current data to variables returned by operation
 - s3 = org.wabase.QuereaseActionTestManager.concatStrings
 - status ok { :s3 }
 save:
