@@ -556,7 +556,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
                 sc <- curData
                 cr <- updateCurRes(
                   sc.data, e.name,
-                  if(e.keepResult) Future.successful(stepRes) else dataForNextStep(stepRes, context, true)
+                  if(e.keepResult /* || e.name.isEmpty TODO avoid dataForNextStep is variable is not defined to preserve memory!*/) Future.successful(stepRes)
+                  else dataForNextStep(stepRes, context, true)
                 )
               } yield sc.copy(data = cr)
               doSteps(tail, context, ns)
@@ -1054,42 +1055,42 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     scope: Scope,
     context: ActionContext,
   )(implicit qr: QuereaseResources): Future[IteratorResult] = {
-    def iterator(res: Any, vd: ViewDef): Future[Iterator[Map[String, Any]]] = {
+    import qr.{ec, as}
+    def source(res: Any, vd: ViewDef): Future[Source[Map[String, Any], _]] = {
       def maybeCompatible(map: Map[String, Any]) =
         Option(vd).map(toCompatibleMap(map, _)).getOrElse(map)
       res match {
-        case i: Iterator[Map[String, _]@unchecked] => Future.successful(i)
-        case s: Seq[Map[String, _]@unchecked] => Future.successful((s map maybeCompatible).iterator)
-        case m: Map[String@unchecked, _] => Future.successful((List(m) map maybeCompatible).iterator)
+        case s: Source[Map[String, _]@unchecked, _] => Future.successful(s)
+        case s: Seq[Map[String, _]@unchecked] =>
+          Future.successful(Source.fromIterator(() => (s map maybeCompatible).iterator))
+        case m: Map[String@unchecked, _] =>
+          Future.successful(Source.fromIterator(() => (List(m) map maybeCompatible).iterator))
         case TresqlResult(tr) => tr match {
-          case SingleValueResult(sr) => iterator(sr, vd)
-          case r: Result[_] => Future.successful(r.map(_.toMap) map maybeCompatible)
+          case SingleValueResult(sr) => source(sr, vd)
+          case r: Result[_] => Future.successful(Source.fromIterator(() => r.map(_.toMap) map maybeCompatible))
         }
-        case r: TresqlSingleRowResult => iterator(r.map(_.toMap), vd)
-        case HttpEntityResult(ent, dec) => decodeHttpEntity(ent, null, true, dec)(qr.as).flatMap(iterator(_, vd))(qr.ec)
-        case fr: FileResult => iterator(HttpEntityResult(fileHttpEntity(fr)
+        case r: TresqlSingleRowResult => source(r.map(_.toMap), vd)
+        case HttpEntityResult(ent, dec) =>
+          decodeHttpEntity(ent, null, true, dec)(qr.as).flatMap(source(_, vd))(qr.ec)
+        case fr: FileResult => source(HttpEntityResult(fileHttpEntity(fr)
           .getOrElse(sys.error(s"Cannot find file data: ${fr.fileInfo}")), null), vd)
-        case HttpResult(resp, _) => iterator(HttpEntityResult(resp.entity, null), vd)
+        case HttpResult(resp, _) => source(HttpEntityResult(resp.entity, null), vd)
         case RequestPartResult(parts, fs) =>
-          import qr._
-          parts.mapAsync(1)(AppQuerease.saveRequestPart(_, fs))
-            .runFold(scala.collection.mutable.ArrayBuffer[Map[String, Any]]())(_ += _)
-            .map(_.iterator)
-        case CompatibleResult(r, rf, _) => iterator(r, Option(rf).flatMap(f => viewDefOption(f.name)).orNull)
+          Future.successful(parts.mapAsync(1)(AppQuerease.saveRequestPart(_, fs)))
+        case CompatibleResult(r, rf, _) => source(r, Option(rf).flatMap(f => viewDefOption(f.name)).orNull)
         case x => sys.error(s"Not iterable result for foreach operation: $x")
       }
     }
-    import qr.ec
-    doActionOp(op.initOp, scope, context).flatMap(iterator(_, null))
-    .flatMap { mapIterator =>
-      var idx = 0
-      Future.traverse(mapIterator.toSeq) { itData =>
+    @volatile var idx = 0
+    doActionOp(op.initOp, scope, context).flatMap(source(_, null))
+      .map ( _.mapAsync(1) { itData => // paralellism is 1 so that idx is incremented correctly
         val itScope = Scope(itData, Map("__idx" -> idx), parent = scope, transparent = false)
         idx += 1
         doSteps(op.action.steps, context.copy(stepName = "foreach"), Future.successful(itScope))
           .flatMap(dataForNextStep(_, context, unwrapSingleValue = true))
-      }
-    }.map { it => IteratorResult(it.iterator) }
+      })
+      .map(RequestDecoders.sourceToIterator)
+      .map(IteratorResult)
   }
 
   protected def doResource(
@@ -1770,7 +1771,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     def decodeToSeqOfMaps(bs: ByteString) =
       if (viewName == null) CborOrJsonAnyValueDecoder.decode(bs)
       else cborOrJsonDecoder.decodeToSeqOfMaps(bs, viewName)(viewNameToMapZero)
-    def decodeUsingDecoder = RequestDecoders.sourceToIterator(decoder(viewName)(ent))
+    def decodeUsingDecoder = decoder(viewName)(ent)
 
     if (decoder != null) Future.successful(decodeUsingDecoder)
     else ent.toStrict(1.second).map { se =>
