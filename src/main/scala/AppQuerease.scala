@@ -1065,13 +1065,13 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         Option(vd).map(toCompatibleMap(map, _)).getOrElse(map)
       res match {
         case s: Source[Map[String, _]@unchecked, _] => Future.successful(s)
-        case s: Seq[Map[String, _]@unchecked] =>
-          Future.successful(Source.fromIterator(() => (s map maybeCompatible).iterator))
-        case m: Map[String@unchecked, _] =>
-          Future.successful(Source.fromIterator(() => (List(m) map maybeCompatible).iterator))
+        case i: Iterator[Map[String, _]@unchecked] =>
+          Future.successful(Source.fromIterator(() => i map maybeCompatible))
+        case s: Seq[Map[String, _]@unchecked] => source(s.iterator, vd)
+        case m: Map[String@unchecked, _] => source(Seq(m).iterator, vd)
         case TresqlResult(tr) => tr match {
           case SingleValueResult(sr) => source(sr, vd)
-          case r: Result[_] => Future.successful(Source.fromIterator(() => r.map(_.toMap) map maybeCompatible))
+          case r: Result[_] => source(r.map(_.toMap), vd)
         }
         case r: TresqlSingleRowResult => source(r.map(_.toMap), vd)
         case HttpEntityResult(ent, dec) =>
@@ -1081,6 +1081,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         case HttpResult(resp, _) => source(HttpEntityResult(resp.entity, null), vd)
         case RequestPartResult(parts, fs) =>
           Future.successful(parts.mapAsync(1)(AppQuerease.saveRequestPart(_, fs)))
+        case IteratorResult(it: Iterator[Map[String, _]@unchecked]) => source(it, vd)
         case CompatibleResult(r, rf, _) => source(r, Option(rf).flatMap(f => viewDefOption(f.name)).orNull)
         case x => sys.error(s"Not iterable result for foreach operation: $x")
       }

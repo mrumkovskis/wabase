@@ -1550,7 +1550,7 @@ fields:
 list:
 - "{'N1' name, 'S1' surname} + {'N2', 'S2'}"      # yaml parser wants to put tresql in quotes
 insert:
-# extract entity using default_json_decoder command ensures Map[String, Any] iterator over returned data
+# extract entity using default_json_decoder command ensures Map[String, Any] source over data to save memory
 - foreach extract entity using default_json_decoder http get '/extract_http_entity_test4':
   - name = {:name || ' ' || :name}
   - surname = {:surname || ' ' || :surname}
@@ -1569,7 +1569,7 @@ fields:
 - name
 - surname
 insert:
-# extract entity using default_csv_decoder command ensures Map[String, Any] iterator over returned data
+# extract entity using default_csv_decoder command ensures Map[String, Any] source over data to save memory
 - foreach as any * extract entity using default_csv_decoder (http get '/extract_http_entity_test4' {'Accept', 'text/csv; charset=UTF-8'}):
   - name = :name || ' ' || :name
   - surname = :surname || ' ' || :surname
@@ -1589,7 +1589,7 @@ fields:
   - surname
 insert:
   - data_file = to file [main] extract entity
-  # extract entity using test_xml_decoder command ensures Map[String, Any] iterator over returned data
+  # extract entity using test_xml_decoder command ensures Map[String, Any] source over data to save memory
   - foreach as extract_http_entity_test4 * extract entity using test_xml_decoder file [main] {:data_file.id, :data_file.sha_256}:
       - name = :name || '-' || :name
       - surname = :surname || '-' || :surname
