@@ -467,7 +467,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     import Action._
     import qr._
     def updateCurRes(cr: Map[String, Any], key: Option[String], resF: Future[_]) = {
-      def upd(d: Map[String, _], k: String, v: Any) = {
+      def upd_key(d: Map[String, _], k: String, v: Any) = {
         def rec(m: Map[String, _], kp: List[String]): Map[String, _] = kp match {
           case k :: Nil => m + (k -> v)
           case k :: tail => m.get(k).map {
@@ -476,17 +476,20 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           }.getOrElse(m + (k -> rec(Map[String, Any](), tail)))
           case Nil => m
         }
+
         rec(d, k.split("\\.").toList)
       }
-      resF map {
+      def upd(res: Any): Map[String, _] = res match {
+        case kr: KeyResult => upd(kr.ir)
         case ir: IdResult =>
           // id result always updates current result
           key
-            .map(k => upd(cr, k, ir.id))
+            .map(k => upd_key(cr, k, ir.id))
             .getOrElse(cr ++ ir.toMap)
-        case NoResult => key.map(upd(cr, _, null)).getOrElse(cr)
-        case r => key.map(k => upd(cr, k, r)).getOrElse(cr)
+        case NoResult => key.map(upd_key(cr, _, null)).getOrElse(cr)
+        case r => key.map(k => upd_key(cr, k, r)).getOrElse(cr)
       }
+      resF map upd
     }
     def scopeBindVars(scope: Scope) = scope.toBindeableMap(context.env)
     def doStep(step: Step, stepDataF: Future[Scope], src: String): Future[QuereaseResult] = {
@@ -556,7 +559,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
                 sc <- curData
                 cr <- updateCurRes(
                   sc.data, e.name,
-                  if(e.keepResult /* || e.name.isEmpty TODO avoid dataForNextStep is variable is not defined to preserve memory!*/) Future.successful(stepRes)
+                  if(e.keepResult) Future.successful(stepRes)
+                  else if (e.name.isEmpty) consumeResult(stepRes)
                   else dataForNextStep(stepRes, context, true)
                 )
               } yield sc.copy(data = cr)
@@ -1865,6 +1869,29 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case ConfResult(_, r) => r
       case r: RequestPartResult => saveRequestParts(r)
       case x => sys.error(s"${x.getClass.getName} not expected here!")
+    }) match {
+      case f: Future[_] => f
+      case x => Future.successful(x)
+    }
+  }
+
+  private def consumeResult(res: Any)(implicit qr: QuereaseResources): Future[Any] = {
+    import qr._
+    (res match {
+      case TresqlResult(tr) => tr.close()
+      case TresqlSingleRowResult(sr) => sr.close()
+      case IteratorResult(ir) => consumeResult(ir)
+      case it: Iterator[_] => while(it.hasNext) it.next()
+      case AnyResult(ar) => consumeResult(ar)
+      case ResponseResult(_, ResultValue(r), _, _) => consumeResult(r)
+      case ent: HttpEntity => ent.discardBytes()
+      case HttpResult(res, _) => consumeResult(res.entity)
+      case HttpEntityResult(ent, _) => consumeResult(ent)
+      case CompatibleResult(res, _, _) => consumeResult(res)
+      case DbResult(res, cl) => consumeResult(res)
+        .andThen { case r => cl(r.failed.toOption) }
+      case RequestPartResult(res, _) => res.runForeach(_.entity.discardBytes())
+      case x => x
     }) match {
       case f: Future[_] => f
       case x => Future.successful(x)
