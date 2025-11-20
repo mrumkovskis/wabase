@@ -175,7 +175,7 @@ save:
   - :account_count_total_b_from_with.count <= 3,
       "person cannot have more than 3 accounts, got '" || :account_count_total_b_from_with.count || "'" ||
       " with total balance (" || :account_count_total_b_from_with.total_b || ")"
-  - ac(# c) { accounts {count(*)} }, (ac{c}) <= 3, "person cannot have more than 3 accounts, instead '" || (ac{c}) || "' encountered"
+  - :accounts.size <= 3, "person cannot have more than 3 accounts, instead '" || :accounts.size || "' encountered"
   - transactions_balance(# number, balance, tr_balance) {
       (accounts pa_deb[originator_id = pa_deb.id] transaction deb_tr?
         { number, sum(amount) amount_deb }(pa_deb.number)) a_deb
