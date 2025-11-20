@@ -4,7 +4,7 @@ import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.model.HttpHeader.ParsingResult.{Error, Ok}
 import org.apache.pekko.http.scaladsl.model.headers.ContentDispositionTypes.attachment
 import org.apache.pekko.http.scaladsl.model.headers.{Cookie, HttpCookie, HttpCookiePair, `Content-Disposition`, `Set-Cookie`}
-import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes, ErrorInfo, HttpCharsets, HttpEntity, HttpHeader, HttpMethods, HttpRequest, HttpResponse, MediaTypes, Multipart, ResponseEntity, StatusCodes, UniversalEntity}
+import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes, ErrorInfo, HttpCharsets, HttpEntity, HttpHeader, HttpMethods, HttpRequest, HttpResponse, MediaTypes, Multipart, StatusCodes, UniversalEntity}
 import org.apache.pekko.http.scaladsl.server.directives.ContentTypeResolver
 import org.apache.pekko.http.scaladsl.server.directives.FileAndResourceDirectives.ResourceFile
 import org.apache.pekko.stream.scaladsl.{Source, StreamConverters}
@@ -1058,7 +1058,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     op: Action.Foreach,
     scope: Scope,
     context: ActionContext,
-  )(implicit qr: QuereaseResources): Future[IteratorResult] = {
+  )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
     import qr.{ec, as}
     def source(res: Any, vd: ViewDef): Future[Source[Map[String, Any], _]] = {
       def maybeCompatible(map: Map[String, Any]) =
@@ -1094,8 +1094,16 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         doSteps(op.action.steps, context.copy(stepName = "foreach"), Future.successful(itScope))
           .flatMap(dataForNextStep(_, context, unwrapSingleValue = true))
       })
-      .map(RequestDecoders.sourceToIterator)
-      .map(IteratorResult)
+      .flatMap { src =>
+        if (op.foldOp == null) Future.successful(IteratorResult(RequestDecoders.sourceToIterator(src)))
+        else src.runFold(Future.successful(scope(op.foldOp.resVar))) { (resF, el) =>
+          for {
+            res <- resF
+            foldOpRes <- doActionOp(op.foldOp.op, Scope(Map(op.foldOp.resVar -> res, op.foldOp.elVar -> el)), context)
+            new_res <- dataForNextStep(foldOpRes, context, unwrapSingleValue = true)
+          } yield new_res
+        }.flatten.map(AnyResult)
+      }
   }
 
   protected def doResource(

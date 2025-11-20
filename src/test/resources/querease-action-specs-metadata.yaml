@@ -688,6 +688,7 @@ update:
 delete:
 - multipleArguments({'2'}, '{:value}') multipleArguments({'1'}, '{:value - 1}', {'3'})
 
+
 name: if_test_1
 table: if_and_foreach_test
 api: save, get, delete
@@ -786,6 +787,20 @@ api: get
 get:
   - outer = 1
   - foreach {1 x} if_missing(:outer, 'correct')     # outer scope variable within foreach is accessible only through :'..'.outer
+
+
+name: foreach_fold_test
+api: get, insert
+get:
+# sum variable must be defined to create initial value fold op value
+- sum = 0
+- foreach ({1 x} + {2} + {3}) (:x) fold (sum, x) {:sum + :x} # fold op
+insert:
+# sum variable must be defined to create initial value fold op value
+- sum = 0
+- foreach ({1 x} + {2} + {3}) fold (sum, x) {:sum + :x} : # fold op block
+  - x = :x + 1
+  - :x
 
 
 name:   insert_update_test_1

@@ -1036,11 +1036,15 @@ class OpParser(viewName: String, caches: OpParser.Caches)
     (opt(opResultType) <~ "extract\\s+entity".r) ~ opt("using" ~> ident) ~ opt(operation) ^^ {
       case conformTo ~ decoder ~ op => ExtractHttpEntity(conformTo, decoder.orNull, op.orNull)
     } named "extract-entity"
-  def foreachOp: MemParser[Foreach] = foreachBlockOp ~ operation ^^ {
-    case coll ~ op => coll.copy(action = actionFromOp(op))
+  def foreachFoldOp: MemParser[FoldOp] = ("fold" ~ "(") ~> (ident <~ ",") ~ (ident <~ ")") ~ operation ^^ {
+    case res ~ el ~ op => FoldOp(res, el, op)
+  } named "foreach-fold-op"
+  def foreachOp: MemParser[Foreach] = foreachBlockOpBase ~ operation ~ opt(foreachFoldOp) ^^ {
+    case coll ~ op ~ foldOp => Foreach(coll, actionFromOp(op), foldOp.orNull)
   } named "foreach-op"
-  def foreachBlockOp: MemParser[Foreach] = "foreach(?=\\s+|[^\\w])".r ~> operation ^^ {
-    case coll => Foreach(coll, null)
+  def foreachBlockOpBase: MemParser[Op] = "foreach(?=\\s+|[^\\w])".r ~> operation named "foreach-block-op-base"
+  def foreachBlockOp: MemParser[Foreach] = foreachBlockOpBase ~ opt(foreachFoldOp) ^^ {
+    case coll ~ foldOp => Foreach(coll, null, foldOp = foldOp.orNull)
   } named "foreach-block-op"
   def ifElseOp: MemParser[If] = ifBlockOp ~ operation ~ opt(elseBlockOp ~> operation) ^^ {
       case cond ~ ifOp ~ elseOp => cond.copy(action = actionFromOp(ifOp), elseAct = elseOp.map(actionFromOp).orNull)
@@ -1329,6 +1333,7 @@ object AppMetadata extends Loggable {
 
     case class VariableTransform(from: String, to: Option[String] = None)
     case class OpResultType(viewName: String = null, isCollection: Boolean = false)
+    case class FoldOp(resVar: String, elVar: String, op: Op)
 
     case class Tresql(tresql: String,
                       dbs: List[ast.Db] = Nil,
@@ -1347,7 +1352,7 @@ object AppMetadata extends Loggable {
       body: Op = null,
     ) extends Op
     case class VariableTransforms(transforms: List[VariableTransform]) extends Op
-    case class Foreach(initOp: Op, action: Action) extends BlockOp
+    case class Foreach(initOp: Op, action: Action, foldOp: FoldOp = null) extends BlockOp
     case class If(cond: Op, action: Action, elseAct: Action = null) extends BlockOp
     case class Resource(nameTresql: Tresql, contentTypeTresql: Tresql = null) extends Op
     case class File(
@@ -1411,7 +1416,9 @@ object AppMetadata extends Loggable {
              _: ExtractParts | _: This | _: Resource | Commit | null => state
         case o: ViewCall => opTrav(state)(o.data)
         case Unique(o, _, _) => opTrav(state)(o)
-        case Foreach(o, a) => traverseAction(a)(stepTrav)(opTrav(state)(o))
+        case Foreach(o, a, foldOp) =>
+          val ns = traverseAction(a)(stepTrav)(opTrav(state)(o))
+          if (foldOp == null) ns else opTrav(ns)(foldOp.op)
         case If(o, a, e) =>
           val r = traverseAction(a)(stepTrav)(opTrav(state)(o))
           if (e == null) r else traverseAction(e)(stepTrav)(r)

@@ -917,6 +917,17 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     }
   }
 
+  it should "fold foreach" in {
+    for {
+      t1 <- doAction("get", "foreach_fold_test", Map()).map {
+        _ shouldBe AnyResult(6)
+      }
+      t2 <- doAction("insert", "foreach_fold_test", Map()).map {
+        _ shouldBe AnyResult(9)
+      }
+    } yield t1
+  }
+
   it should "process result source after wabase result" in {
     val id = 55
     doAction("get", "result_audit_test", Map("id" -> id))
