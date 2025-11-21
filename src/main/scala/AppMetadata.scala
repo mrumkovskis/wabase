@@ -863,17 +863,18 @@ class OpParser(viewName: String, caches: OpParser.Caches)
   def step(isBlock: Boolean): Parser[Step] = { // returns Parser not MemParser because is dependant on parameter
     def op: Parser[Op] = if (isBlock) blockOp else operation
     def opWithOptVarTransforms: Parser[(List[VariableTransform], Op)] = {
-      def varTransform: Parser[(Option[String], Variable)] = {
-        (variable | ("(" ~> ident ~ "=" ~ variable <~ ")")) ^^ {
-          case v: Variable => (None, v)
-          case (v1: String) ~ _ ~ (v2: Variable) => (Option(v1), v2)
+      def varConcat: Parser[List[Variable]] = rep1sep(variable, "++")
+      def varTransform: Parser[(Option[String], List[Variable])] = {
+        (variable | ("(" ~> ident ~ "=" ~ varConcat <~ ")")) ^^ {
+          case v: Variable => (None, v :: Nil)
+          case (v1: String) ~ _ ~ (vc: List[Variable@unchecked]) => (Option(v1), vc)
         }
       } named "vars-transform"
-      def tupleToVarTransform(t: (Option[String], Variable)) =
-        VariableTransform(t._2.tresql.substring(1) /*drop colon*/, t._1)
+      def tupleToVarTransform(t: (Option[String], List[Variable])) =
+        VariableTransform(VariableConcats(t._2.map(_.tresql.substring(1))) /*drop colon*/, t._1)
       def varsTransformsOrVar: Parser[Op] = rep1sep(varTransform, "+") <~
         "$".r /*end of input*/ ^^ {
-          case (None, v) :: Nil => Tresql(v.tresql)
+          case (None, v :: Nil) :: Nil => Tresql(v.tresql)
           case vts => VariableTransforms(vts map tupleToVarTransform)
         } named "vt-or-v"
       def opWithVarsTransforms: Parser[(List[VariableTransform], Op)] = {
@@ -1331,7 +1332,8 @@ object AppMetadata extends Loggable {
       def name: Option[String]
     }
 
-    case class VariableTransform(from: String, to: Option[String] = None)
+    case class VariableTransform(from: VariableConcats, to: Option[String] = None)
+    case class VariableConcats(vars: List[String])
     case class OpResultType(viewName: String = null, isCollection: Boolean = false)
     case class FoldOp(resVar: String, elVar: String, op: Op)
 

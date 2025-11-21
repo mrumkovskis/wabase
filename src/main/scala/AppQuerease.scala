@@ -848,17 +848,28 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   protected def doVarsTransforms(transforms: List[VariableTransform],
                                  seed: Map[String, Any],
                                  data: Map[String, Any]): MapResult = {
-    val transRes = transforms.foldLeft(seed) { (sd, vt) =>
-      if (vt.from == "_") sd ++ data //indicates all call data map
-      else Query(":" + vt.from)(new Resources {}.withParams(data)) match {
-        case SingleValueResult(m: Map[String, _]@unchecked) => sd ++ m
-        case SingleValueResult(x) =>
-          val f = vt.from
-          val from = f.substring(f.lastIndexOf(".") + 1, f.length)
-          sd + (vt.to.getOrElse(from) -> x)
+    def evalConcats(names: List[String]) = names.map(evalVar).reduce[Any] {
+      case (x: Seq[_], y: Seq[_]) => x ++ y
+      case (x: Seq[_], y) => x :+ y
+      case (x, y: Seq[_]) => y.+:(x)
+      case (x, y) => Seq(x) :+ y
+    }
+    def evalVar(name: String) =
+      if (name == "_") data
+      else Query(":" + name)(new Resources {}.withParams(data)) match {
+        case SingleValueResult(r) => r
         case x => sys.error(s"Unexpected variable transformation result: $x, expected SingleValueResult")
       }
+    def updRes(from: List[String], to: Option[String], curRes: Map[String, Any]) = {
+      val res = evalConcats(from)
+      to.map(name => curRes + (name -> res)).getOrElse(res match {
+        case m: Map[String, _]@unchecked => curRes ++ m
+        case x =>
+          val vn = from.head
+          curRes + (to.getOrElse(vn.substring(vn.lastIndexOf(".") + 1, vn.length)) -> x)
+      })
     }
+    val transRes = transforms.foldLeft(seed) ((res, vt) => updRes(vt.from.vars, vt.to, res))
     MapResult(transRes)
   }
 

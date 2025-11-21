@@ -287,6 +287,10 @@ get:
 - v1.n = 'Gunzis'
 - v2.j = 'Developer'
 - return (name = :v1.n) + (job = :v2.j)
+insert:
+- it1 = [1, 2, 3]
+- it2 = [3, 4, 5]
+- (it = :it1 ++ :it2) -> :it    # sequence concatenation
 
 
 name: person_health
@@ -792,11 +796,11 @@ get:
 name: foreach_fold_test
 api: get, insert
 get:
-# sum variable must be defined to create initial value fold op value
+# sum variable must be defined to create initial fold op value
 - sum = 0
 - foreach ({1 x} + {2} + {3}) (:x) fold (sum, x) {:sum + :x} # fold op
 insert:
-# sum variable must be defined to create initial value fold op value
+# sum variable must be defined to create initial fold op value
 - sum = 0
 - foreach ({1 x} + {2} + {3}) fold (sum, x) {:sum + :x} : # fold op block
   - x = :x + 1

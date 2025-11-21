@@ -6,7 +6,7 @@ import org.apache.pekko.stream.scaladsl.StreamConverters
 import org.mojoz.querease.{ValidationException, ValidationResult}
 import org.scalatest.flatspec.{AsyncFlatSpec, AsyncFlatSpecLike}
 import org.scalatest.matchers.should.Matchers
-import org.tresql.{Query, Resources, Result, convAny, convLong}
+import org.tresql.{Query, Resources, Result, SingleValueResult, convAny, convLong}
 import org.wabase.QuereaseActionsDtos.{Person, PersonWithHealthDataHealth}
 
 import java.io.InputStream
@@ -377,9 +377,19 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
   behavior of "variable transformations"
 
   it should "transform variables" in {
-    doAction("variable_transform_test", "get", Map(), Map()).map {
-      _ shouldBe MapResult(Map("name" -> "Gunzis", "job" -> "Developer"))
-    }
+    for {
+      t1 <- doAction("variable_transform_test", "get", Map(), Map()).map {
+        _ shouldBe MapResult(Map("name" -> "Gunzis", "job" -> "Developer"))
+      }
+      t2 <- doAction("variable_transform_test", "insert", Map(), Map())
+        .mapTo[TresqlResult]
+        .map(_.result)
+        .mapTo[SingleValueResult[_]]
+        .map(_.value)
+        .map {
+          _ shouldBe Seq(1, 2, 3, 3, 4, 5)
+        }
+    } yield t1
   }
 
   behavior of "extra db support"
