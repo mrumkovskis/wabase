@@ -1125,9 +1125,12 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
           "h_var" -> "header1_value header2_value",
           "h3" -> null))
         }
-    } yield {
-      t1
-    }
+      t2 <- doAction("insert", "extract_http_header_test", Map())
+        .map { _ shouldBe MapResult(Map("h1" -> "header1-value", "h2" -> "header2-value", "h3" -> null)) }
+      t3 <- recoverToExceptionIf[HttpException](doAction("delete", "extract_http_header_test", Map())).map {
+        _.getMessage shouldBe "HTTP message is missing required header 'X'"
+      }
+    } yield t1
   }
 
   it should "extract http cookies" in {

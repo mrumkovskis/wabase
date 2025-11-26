@@ -1025,8 +1025,8 @@ class OpParser(viewName: String, caches: OpParser.Caches)
       case pt ~ param => Conf(param, ConfTypes.parse(pt.orNull))
     }
   } named "conf-op"
-  def httpHeaderOp: MemParser[Op] = ("extract" ~ "header") ~> "[^:\\s]+".r ~ opt(httpOp) ^^ {
-    case h ~ httpOp => HttpHeader(h, httpOp.orNull)
+  def httpHeaderOp: MemParser[Op] = ("extract" ~> opt("optional") <~ "header") ~ "[^:\\s]+".r ~ opt(httpOp | tresqlOp) ^^ {
+    case opt ~ h ~ httpOp => HttpHeader(h, httpOp.orNull, opt.isDefined)
   } named "http-hop"
   def httpCookieOp: MemParser[Op] = ("extract" ~ "cookie") ~> ".*".r ^^ (Cookie(_)) named "http-cop"
   def extractPartsOp: MemParser[ExtractParts] =
@@ -1377,7 +1377,7 @@ object AppMetadata extends Loggable {
                     conformTo: Option[OpResultType] = None,
                     httpClientName: String = null,
                     isProxy: Boolean = false) extends CastableOp
-    case class HttpHeader(name: String, httpOp: Http = null) extends Op
+    case class HttpHeader(name: String, httpOp: Op = null, isOpt: Boolean = false) extends Op
     case class Cookie(name: String) extends Op
     case class ExtractHttpEntity(conformTo: Option[OpResultType] = None, decoder: String = null, op: Op = null) extends Op
     /** This op can be used if view property 'decode request' is false, for multipart request it extracts parts,
@@ -1428,7 +1428,7 @@ object AppMetadata extends Loggable {
         case o: Template => opTrav(state)(o.dataOp)
         case Email(r, s, b, a, _) => a.foldLeft(opTrav(opTrav(opTrav(state)(r))(s))(b))(opTrav(_)(_))
         case o: Http => opTrav(state)(o.body)
-        case h: HttpHeader => if (h.httpOp == null) state else opTrav(state)(h.httpOp.body)
+        case h: HttpHeader => if (h.httpOp == null) state else opTrav(state)(h.httpOp)
         case Db(a, _, _) => traverseAction(a)(stepTrav)(state)
         case Block(a) => traverseAction(a)(stepTrav)(state)
         case JsonCodec(_, o) => opTrav(state)(o)
@@ -1522,7 +1522,7 @@ object AppMetadata extends Loggable {
               val s1 = us(state, nv(state.value)(Tresql(uriTresql.uriTresql)))
               val s2 = us(s1, nv(s1.value)(headerTresql))
               opTresqlTrav(s2)(body)
-            case HttpHeader(_, httpOp) => opTresqlTrav(state)(httpOp)
+            case HttpHeader(_, httpOp, _) => opTresqlTrav(state)(httpOp)
             case ViewCall(method, view, data, _) =>
               val vn = if (view == "this") state.name else view
               val ns = opTrTr(data)

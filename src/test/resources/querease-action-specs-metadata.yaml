@@ -1106,22 +1106,32 @@ get:
 
 
 name: extract_http_header_test
-api: get, list
+api: get, list, insert, update, delete
 key: id
-fields:
-- id
+decoder: none
 get:
 - h1 = extract header Test-Header1
 - h2 = extract header Test-Header2
 - status ok { :h1 || ' ' || :h2 }
 list:
-- h3 = extract header Test-Header3
+- h3 = extract optional header Test-Header3        # optional header, returns null if header not found
 - h1_h2 = as any http get { '/extract_http_header_test', '1' }
     ({ 'Test-Header1', 'header1_value'} + { 'Test-Header2', 'header2_value'}) # headers
 - h = { 'Test-Header1', 'header1_value'} + { 'Test-Header2', 'header2_value'} # headers as variable to avoid db usage in http op
 - h_var = as any http get { '/extract_http_header_test', '1' } :h
 - :h1_h2
     + :h_var + :h3  # variable transformations not tresql, return is optional
+insert:
+  - as result resp = http put { '/extract_http_header_test', '1' }
+  - h1 = extract header Header1 :resp
+  - h2 = extract header Header2 :resp
+  - h3 = extract optional header Header3 :resp
+  - :h1 + :h2 + :h3
+update:
+- status ok
+    set_headers({'Header1', 'header1-value'} + {'Header2', 'header2-value'})
+delete:
+- extract header X http put { '/extract_http_header_test', '1' }    # must throw http exception with bad request status
 
 
 name: extract_http_cookie_test

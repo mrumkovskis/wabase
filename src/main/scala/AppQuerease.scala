@@ -1337,20 +1337,24 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     scope: Scope,
     context: ActionContext,
   )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
-    import qr._, context.env
+    import qr._
     @tailrec def httpRes(qr: QuereaseResult): HttpResponse = (qr: @unchecked) match {
       case HttpResult(response, _) =>
         response.entity.discardBytes(as) // discard bytes since we are interested only in http header
         response
       case cr: CompatibleResult => httpRes(cr.result)
+      case TresqlResult(SingleValueResult(qr: QuereaseResult)) => httpRes(qr)
     }
     Option(op.httpOp)
-      .map(doHttp(_, scope, context))
+      .map(doActionOp(_, scope, context))
       .map(_.map(httpRes))
       .getOrElse(Future.successful(httpReq))
       .map { msg => Option(msg).flatMap(_.headers.collectFirst {
         case h if h.is(op.name.toLowerCase) => StringResult(h.value())
-      }).getOrElse(NoResult) }
+      }).getOrElse {
+        if (op.isOpt) NoResult
+        else throw new HttpException(StatusCodes.BadRequest, s"HTTP message is missing required header '${op.name}'")
+      } }
   }
 
   protected def doExtractCookie(
