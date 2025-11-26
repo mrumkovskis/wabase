@@ -363,21 +363,31 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
     ).mkString("\n", "\n", ""))
   }
 
-  def createSiblingTextFile(original: File, suffix: String, content: String): File = {
+  def siblingFile(original: File, suffix: String): File = {
     val parentDir   = original.getParent
     val newFileName = original.getName + suffix
     val newFile =
       if  (parentDir != null)
            new File(parentDir, newFileName)
       else new File(newFileName)
+    newFile
+  }
+  def createSiblingTextFile(original: File, suffix: String, content: String): File = {
+    val newFile = siblingFile(original, suffix)
     val writer = new PrintWriter(newFile, "UTF-8")
     try writer.write(content) finally writer.close()
     newFile
+  }
+  def deleteSiblingTextFile(original: File, suffix: String): Unit = {
+    val newFile = siblingFile(original, suffix)
+    try newFile.delete() catch { case util.control.NonFatal(ex) => }
   }
   def shouldDumpResponseToFile(scenario: File, testCase: File, rawResponse: Any) =
     s"$rawResponse".length > 1000
   def dumpResponseToFile(scenario: File, testCase: File, rawResponse: Any) =
     createSiblingTextFile(testCase, ".received", s"$rawResponse")
+  def deleteResponseFile(scenario: File, testCase: File) =
+    deleteSiblingTextFile(testCase, ".received")
   private def trimString(s: String, maxLength: Int): String = {
     if (s.length <= maxLength) s else s.substring(0, maxLength) + "..."
   }
@@ -403,6 +413,14 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
       if (!dumpedToFile) {
         logger.info(s"\n**** Response causing $fullTestName to fail with '$trimmedMessage':\n$rawResponse\n****")
       }
+    }
+  }
+  def scenarioTestCaseOnSuccess(
+    scenario: File, testCase: File, context: Map[String, Any],
+    debugResponse: Boolean, rawResponse: Any, response: Any,
+  ): Unit = {
+    if (debugResponse) {
+      deleteResponseFile(scenario, testCase)
     }
   }
 
@@ -539,11 +557,16 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
         case x => sys.error(s"Unexpected response class for header tests: ${x.getClass.getName}")
       }
 
-    if(expectedResponse != null) try assertResponse(response, expectedResponse, "[ROOT]", fullCompare) catch {
+    if (expectedResponse != null)
+     try {
+      val result = assertResponse(response, expectedResponse, "[ROOT]", fullCompare)
+      scenarioTestCaseOnSuccess(scenario, testCase, context, debugResponse, rawResponse, response)
+      result
+     } catch {
       case util.control.NonFatal(ex) =>
         logScenarioResponseInfoOnFailure(scenario, testCase, context, ex, debugResponse, rawResponse, response)
       throw ex
-    }
+     }
     else Map.empty[String, Any]
   }
 
