@@ -513,7 +513,13 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
     val (rawResponse, response) = unprocessedResponse match {
       case httpResponse: HttpResponse =>
         val resString = Await.result(httpResponse.entity.toStrict(awaitTimeout), awaitTimeout).data.utf8String
-        Try(CborOrJsonAnyValueDecoder.decode(ByteString(resString))).toOption.map((resString, _)).getOrElse((resString, resString))
+        expectedResponse match {
+          case _: String => (resString, resString)
+          case _ =>
+            Try(CborOrJsonAnyValueDecoder.decode(ByteString(resString)))
+              .toOption.map((resString, _))
+              .getOrElse((resString, resString))
+        }
       case _ => (unprocessedResponse, unprocessedResponse)
     }
 
