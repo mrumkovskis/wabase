@@ -598,8 +598,8 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val coalesced_if_else_steps = if (steps.isEmpty) Nil else
       (steps.tail.foldLeft(steps.head -> List[(Action.Step, String)]()) { case ((prev_st, r), (s, src)) =>
         (prev_st, s) match {
-          case ((p, psrc), Action.Evaluation(_, _, elseOp: Action.Else, _)) => p match {
-            case ifEv@Action.Evaluation(_, _, ifOp: Action.If, _) =>
+          case ((p, psrc), Action.Evaluation(_, _, elseOp: Action.Else)) => p match {
+            case ifEv@Action.Evaluation(_, _, ifOp: Action.If) =>
               (null, (ifEv.copy(op = ifOp.copy(elseAct = elseOp.action)), psrc) :: r)
             case ifSetEnv@Action.SetEnv(_, _, ifOp: Action.If, _) =>
               (null, (ifSetEnv.copy(value = ifOp.copy(elseAct = elseOp.action)), psrc) :: r)
@@ -904,9 +904,9 @@ class OpParser(viewName: String, caches: OpParser.Caches)
       v => RemoveVar(Option(v))
     } named "remove-var"
     def evaluation: Parser[Evaluation] =
-      (opt("as\\s+result\\s+".r) ~ opt(qualifiedIdent <~ "=") ~ opWithOptVarTransforms) ^^ {
-        case keepResult ~ variable ~ tr_op =>
-          Evaluation(variable.map(_.tresql), tr_op._1, tr_op._2, keepResult = keepResult.isDefined)
+      (opt(qualifiedIdent <~ "=") ~ opWithOptVarTransforms) ^^ {
+        case variable ~ tr_op =>
+          Evaluation(variable.map(_.tresql), tr_op._1, tr_op._2)
       } named "evaluation"
     def namedBlock(isBlock: Boolean): Parser[Evaluation] =
       (if (isBlock) qualifiedIdent ^^ { case n => Evaluation(Option(n.tresql), Nil, null) }
@@ -1113,13 +1113,16 @@ class OpParser(viewName: String, caches: OpParser.Caches)
   private def opResultType: MemParser[OpResultType] = {
     sealed trait ResType
     case object NoType extends ResType
+    case object NoBindType extends ResType
     case class ViewType(vn: String) extends ResType
     def noType: Parser[ResType] = "any" ^^^ NoType
+    def nonBindableType: Parser[ResType] = "result" ^^^ NoBindType
     def viewType: Parser[ResType] = opt("`") ~> ViewNameRegex <~ opt("`") ^^ ViewType
 
-    "as" ~> ((noType | viewType) ~ opt("*")) ^^ {
-      case NoType ~ isColl => OpResultType(null, isColl.nonEmpty)
-      case ViewType(typ) ~ isColl => OpResultType(typ, isColl.nonEmpty)
+    "as" ~> ((noType | nonBindableType | viewType) ~ opt("*")) ^^ {
+      case NoType ~ isColl => ViewResultType(null, isColl.nonEmpty)
+      case NoBindType ~ _ => NonBindableResultType
+      case ViewType(typ) ~ isColl => ViewResultType(typ, isColl.nonEmpty)
       case x => sys.error(s"Knipis, unexpected op result type: $x")
     } named "op-result-type"
   }
@@ -1322,6 +1325,7 @@ object AppMetadata extends Loggable {
     case class SetUserAttributes(tresql: Tresql) extends SetHttpHeadersOp
 
     sealed trait Op
+    sealed trait OpResultType
     sealed trait BlockOp extends Op {
       def action: Action
     }
@@ -1334,7 +1338,8 @@ object AppMetadata extends Loggable {
 
     case class VariableTransform(from: VariableConcats, to: Option[String] = None)
     case class VariableConcats(vars: List[String])
-    case class OpResultType(viewName: String = null, isCollection: Boolean = false)
+    case class ViewResultType(viewName: String = null, isCollection: Boolean = false) extends OpResultType
+    case object NonBindableResultType extends OpResultType
     case class FoldOp(resVar: String, elVar: String, op: Op)
 
     case class Tresql(tresql: String,
@@ -1398,10 +1403,8 @@ object AppMetadata extends Loggable {
      * @param name - optional variable name i.e. variable = ...
      * @param varTrans - variable transformation for operation
      * @param op - step operation
-     * @param keepResult - if false and name is specified converts QuereaseResult returned by op
-     *                   to some value usable in tresql as bind variable, if true assigns to op result to variable.
      * */
-    case class Evaluation(name: Option[String], varTrans: List[VariableTransform], op: Op, keepResult: Boolean = false) extends Step
+    case class Evaluation(name: Option[String], varTrans: List[VariableTransform], op: Op) extends Step
     case class SetEnv(name: Option[String], varTrans: List[VariableTransform], value: Op, add: Boolean = false) extends Step
     case class Return(name: Option[String], varTrans: List[VariableTransform], value: Op) extends Step
     case class Validations(name: Option[String], validations: Seq[String], db: Option[DbAccessKey]) extends Step

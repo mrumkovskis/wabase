@@ -68,14 +68,13 @@ case class ResultValue(value: QuereaseResult) extends ResponseValue
 sealed trait QuereaseResult
 sealed trait QuereaseCloseableResult extends QuereaseResult
 /** Data result can conform to view structure */
-sealed trait DataResult extends QuereaseResult
-case class TresqlResult(result: Result[RowLike]) extends QuereaseCloseableResult with DataResult
-case class TresqlSingleRowResult(row: RowLike) extends QuereaseCloseableResult with DataResult {
+case class TresqlResult(result: Result[RowLike]) extends QuereaseCloseableResult
+case class TresqlSingleRowResult(row: RowLike) extends QuereaseCloseableResult {
   /** map, close row (i.e. result), return mapped */
   def map[T](f: RowLike => T): T = try f(row) finally row.close()
 }
-case class MapResult(result: Map[String, Any]) extends DataResult
-case class IteratorResult(result: Iterator[Any]) extends QuereaseCloseableResult with DataResult
+case class MapResult(result: Map[String, Any]) extends QuereaseResult
+case class IteratorResult(result: Iterator[Any]) extends QuereaseCloseableResult
 case class LongResult(value: Long) extends QuereaseResult
 case class StringResult(value: String) extends QuereaseResult
 case class NumberResult(value: java.lang.Number) extends QuereaseResult
@@ -87,10 +86,10 @@ case class KeyResult(ir: IdResult, viewName: String, key: Seq[Any]) extends Quer
 case class AnyResult(result: Any) extends QuereaseResult
 case class QuereaseDeleteResult(count: Int) extends QuereaseResult
 case class ResponseResult(code: Int, value: ResponseValue, headers: List[HttpHeader] = Nil, user: WabaseUser = null) extends QuereaseResult
-case class ResourceResult(resource: String, contentType: ContentType, httpReq: HttpRequest) extends DataResult
+case class ResourceResult(resource: String, contentType: ContentType, httpReq: HttpRequest) extends QuereaseResult
 case class FileInfoResult(fileInfo: FileInfo) extends QuereaseResult
-case class FileResult(fileInfo: FileInfo, fileStreamer: FileStreamer) extends DataResult
-case class RequestPartResult(result: Source[RequestPart, Any], fs: FileStreamer) extends DataResult
+case class FileResult(fileInfo: FileInfo, fileStreamer: FileStreamer) extends QuereaseResult
+case class RequestPartResult(result: Source[RequestPart, Any], fs: FileStreamer) extends QuereaseResult
 case class RequestPart(name: String, filename: String, entity: HttpEntity)
 sealed trait TemplateResult extends QuereaseResult
   { def contentString: String }
@@ -98,8 +97,8 @@ case class StringTemplateResult(content: String) extends TemplateResult
   { override def contentString: String = content }
 case class FileTemplateResult(filename: String, contentType: String, content: Array[Byte]) extends TemplateResult
   { override def contentString: String = new String(content, "UTF-8") }
-case class HttpEntityResult(entity: HttpEntity, decoder: RequestDecoders.RequestDecoder) extends DataResult
-case class HttpResult(response: HttpResponse, isProxy: Boolean = false) extends DataResult
+case class HttpEntityResult(entity: HttpEntity, decoder: RequestDecoders.RequestDecoder) extends QuereaseResult
+case class HttpResult(response: HttpResponse, isProxy: Boolean = false) extends QuereaseResult
 case object NoResult extends QuereaseResult
 case class QuereaseResultWithCleanup(result: QuereaseCloseableResult, cleanup: Option[Throwable] => Unit)
   extends QuereaseResult {
@@ -117,12 +116,10 @@ case class QuereaseResultWithCleanup(result: QuereaseCloseableResult, cleanup: O
 case class QuereaseSerializedResult(result: SerializedResult,
                                     resultFilter: ResultRenderer.ResultFilter,
                                     isCollection: Boolean) extends QuereaseResult
-case class CompatibleResult(result: DataResult,
-                            resultFilter: ResultRenderer.ResultFilter = null,
-                            isCollection: Boolean = false)
-  extends DataResult with QuereaseCloseableResult
-case class DbResult(result: QuereaseResult, cleanup: Option[Throwable] => Unit)
-  extends QuereaseResult
+case class CompatibleResult(result: QuereaseResult,
+                            resultFilter: ResultRenderer.ResultFilter,
+                            isCollection: Boolean = false) extends QuereaseCloseableResult
+case class DbResult(result: QuereaseResult, cleanup: Option[Throwable] => Unit) extends QuereaseResult
 case class ConfResult(param: String, result: Any) extends QuereaseResult
 
 class AppQuereaseIo[DTO <: Dto](val qe: QuereaseMetadata with QuereaseResolvers with ValueTransformer)
@@ -502,7 +499,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         qr.logger.debug(s"Doing action '${context.name}' step '$src', $step.")
         qr.logger.debug(s"Step data: {${loggable(resourcesFactory.resources, scopeBindVars(stepScope))}}")
         step match {
-          case Evaluation(_, vts, op, _) => doActionStep(vts, op)
+          case Evaluation(_, vts, op) => doActionStep(vts, op)
           case SetEnv(_, vts, op, _) => doActionStep(vts, op)
           case Return(_, vts, op) => doActionStep(vts, op)
           case RemoveVar(name) => Future.successful(stepData - name.get) map MapResult
@@ -526,7 +523,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           case kr: KeyResult =>
             s match {
               // FIXME enable simple redirect from If
-              case Evaluation(_, _, RedirectToKey(_), _) => Future.successful(kr)
+              case Evaluation(_, _, RedirectToKey(_)) => Future.successful(kr)
               case _ => curData.map(sc => keyResult(kr.ir, context.viewName, scopeBindVars(sc))) // FIXME apply kr.toMap
             }
           case TresqlResult(r: DMLResult) if context.stepName == null && context.contextStack.isEmpty =>
@@ -546,7 +543,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
             }
           case x => Future.successful(x)
         } flatMap { res => s match {
-          case Evaluation(n@Some(_), _, _, _) => curData
+          case Evaluation(n@Some(_), _, _) => curData
             .flatMap(sc => updateCurRes(sc.data, n, dataForNextStep(res, context, true)))
             .map(MapResult)
           case _ => Future.successful(res)
@@ -559,8 +556,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
                 sc <- curData
                 cr <- updateCurRes(
                   sc.data, e.name,
-                  if(e.keepResult) Future.successful(stepRes)
-                  else if (e.name.isEmpty) consumeResult(stepRes)
+                  if (e.name.isEmpty) consumeResult(stepRes)
                   else dataForNextStep(stepRes, context, true)
                 )
               } yield sc.copy(data = cr)
@@ -616,7 +612,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     context: ActionContext,
   )(implicit
     resources: Resources,
-  ): DataResult = {
+  ): QuereaseResult = {
     val result = useResourcesConnOrEvaluator(resources, res =>
      Query(tresql.tresql)(res.withParams(scope.toBindeableMap(context.env))) match {
       case sel: SelectResult[_] if resources.conn == null =>
@@ -681,16 +677,14 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         }, callData)
 
         def string(name: String) = callData.get(name) map String.valueOf
-        def castedResult(qr: QuereaseResult): QuereaseResult = qr match {
-          case r: TresqlSingleRowResult => op.conformTo
-            .orElse(Option(Action.OpResultType(viewName, isCollection = false)))
-            .map(comp_res(r, _))
-            .get
-          case r: DataResult => op.conformTo
-            .orElse(Option(Action.OpResultType(viewName, isCollection = true)))
-            .map(comp_res(r, _))
-            .get
-          case r => r
+        def castedResult(qr: QuereaseResult): QuereaseResult = {
+          def cr(isColl: Boolean) =
+            op.conformTo.orElse(Option(Action.ViewResultType(viewName, isColl))).map(comp_res(qr, _)).get
+          qr match {
+            case r: TresqlSingleRowResult => cr(false)
+            case r: TresqlResult => cr(true)
+            case r => r
+          }
         }
         val res =
           (op.method match {
@@ -741,11 +735,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           ec, as, httpReq, qio, fileStreamers, httpClients, parametersProvider, qr.logger)
         do_action(viewName, op.method, callScope, env, context.fieldFilter, context :: context.contextStack)(nqr)
       }
-    }
-      .map {
-        case result: DataResult => op.conformTo.map(comp_res(result, _)).getOrElse(result)
-        case r => r
-      }
+    }.map(result => op.conformTo.map(comp_res(result, _)).getOrElse(result))
   }
 
   protected def doInvocation(
@@ -765,7 +755,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         s"may want to prefix invocation with 'as any'")
 
     def comp_q_result(r: Any) = {
-      val allowAny = op.conformTo.exists(_.viewName == null)
+      val allowAny = op.conformTo.collectFirst{ case Action.ViewResultType(null, _) => }.isDefined
       def qresult(r: Any): QuereaseResult = r match {
         case null | () => NoResult // reflection call on function with Unit (void) return type returns null
         case r: Result[_] => TresqlResult(r)
@@ -810,12 +800,14 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       }
 
       def createCompatibleResult(result: QuereaseResult, conformTo: Action.OpResultType) = result match {
-        case c: CompatibleResult =>
-          require(c.isCollection == conformTo.isCollection, s"Incompatible results $c != $conformTo")
-          val c1 = comp_res(c.result, conformTo)
-          c.copy(resultFilter = new ResultRenderer.IntersectionFilter(c1.resultFilter, c.resultFilter))
-        case r: DataResult => comp_res(r, conformTo)
-        case x => x
+        case c: CompatibleResult => conformTo match {
+          case Action.ViewResultType(_, isColl) =>
+            require(c.isCollection == isColl, s"Incompatible results $c != $conformTo")
+            val c1 = comp_res(c.result, conformTo)
+            c.copy(resultFilter = new ResultRenderer.IntersectionFilter(c1.resultFilter, c.resultFilter))
+          case _ => c.copy(resultFilter = null)
+        }
+        case r => comp_res(r, conformTo)
       }
       val qr = qresult(r)
       conformTo.map(createCompatibleResult(qr, _)).getOrElse(qr)
@@ -897,16 +889,12 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           case _ =>
         }
       case c: CompatibleResult => createGetResult(c.result) match {
-        case dr: DataResult => c.copy(result = dr)
-        case r => r
+        case r => c.copy(result = r)
       }
-      case r => sys.error(s"unique opt can only process DataResult type, instead encountered: $r")
+      case r => sys.error(s"unique opt can only process Iterator type, instead encountered: $r")
     }
     val r = doActionOp(op.innerOp, scope, context) map createGetResult
-    op.conformTo.map(rf => r.map {
-      case dr: DataResult => comp_res(dr, rf)
-      case x => x
-    }).getOrElse(r)
+    op.conformTo.map(rf => r.map (r => comp_res(r, rf))).getOrElse(r)
   }
 
   protected def doResponse(
@@ -1149,7 +1137,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   )(implicit
     res: Resources,
     ec: ExecutionContext,
-    fss: WabaseFileStreamers): Future[DataResult] = {
+    fss: WabaseFileStreamers): Future[QuereaseResult] = {
     import context.env
     val fs = fss.fs(op.fileStreamerName)
     val (id, sha) = useResourcesConnOrEvaluator(implicitly[Resources],
@@ -1285,7 +1273,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     op: Action.Http,
     scope: Scope,
     context: ActionContext,
-  )(implicit qr: QuereaseResources): Future[DataResult] = {
+  )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
     import qr._, resourcesFactory._, context.env
     val opData = scope.toBindeableMap(env)
     val httpMeth = HttpMethods.getForKeyCaseInsensitive(op.method).get
@@ -1378,7 +1366,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     exe: Action.ExtractHttpEntity,
     scope: Scope,
     context: ActionContext,
-  )(implicit qr: QuereaseResources): Future[DataResult] = {
+  )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
     import qr._
     Option(exe.op).map { op =>
       doActionOp(op, scope, context)
@@ -1871,6 +1859,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         )
       case HttpEntityResult(r, d) => decodeHttpEntity(r, null, false, d)
       case NoResult => NoResult
+      case CompatibleResult(r, null, _) => r  // return result as non bindable value
       case CompatibleResult(r, filter, isCollection) => r match {
         case TresqlResult(r: Result[_]) =>
           val l = toCompatibleSeqOfMaps(r, v(filter.name)) // FIXME assumes that filter name matches view name, refactor!
@@ -1922,15 +1911,16 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     }
   }
 
-  private def comp_res(res: DataResult, conformTo: Action.OpResultType) =
-    CompatibleResult(
-      res,
-      if (conformTo.viewName != null)
-        new ResultRenderer.ViewFieldFilter(conformTo.viewName, nameToViewDef)
-      else
-        ResultRenderer.NoFilter,
-      conformTo.isCollection
-    )
+  private def comp_res(res: QuereaseResult, conformTo: Action.OpResultType) = {
+    val (fil, isColl) = conformTo match {
+      case Action.ViewResultType(vn, isColl) => (
+        if (vn != null) new ResultRenderer.ViewFieldFilter(vn, nameToViewDef) else ResultRenderer.NoFilter,
+        isColl
+      )
+      case Action.NonBindableResultType => (null, false)
+    }
+    CompatibleResult(res, fil, isColl)
+  }
 
   private def invokeFunction(
     className: String,

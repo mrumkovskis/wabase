@@ -59,7 +59,7 @@ class YamlRouteDefLoader(
       def parseProperty(property: String, pathParams: Seq[String]) =
         parser(property)(rdMap).steps match {
           case Nil => null
-          case List((Action.Evaluation(_, _, op: Action.Invocation, _), _)) =>
+          case List((Action.Evaluation(_, _, op: Action.Invocation), _)) =>
             //transform named params to regex group index params
             val NamedParamRegex = """\$([^\d][^\s]*)""".r
             def transform(o: Action.Op): Action.Op = o match {

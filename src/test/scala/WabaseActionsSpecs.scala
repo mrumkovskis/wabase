@@ -271,6 +271,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       if (f != null) MapResult(app.qe.toCompatibleMap(m.result, app.qe.viewDef(f.name)))
       else m
     }
+    case CompatibleResult(r, _, _) => Future.successful(r)
     case r => Future.successful(r)
   }
 

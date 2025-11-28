@@ -1122,7 +1122,7 @@ list:
 - :h1_h2
     + :h_var + :h3  # variable transformations not tresql, return is optional
 insert:
-  - as result resp = http put { '/extract_http_header_test', '1' }
+  - resp = as result http put { '/extract_http_header_test', '1' }
   - h1 = extract header Header1 :resp
   - h2 = extract header Header2 :resp
   - h3 = extract optional header Header3 :resp
@@ -1505,7 +1505,7 @@ api: get
 fields:
 - uri
 get:
-- as result res = org.wabase.QuereaseActionTestManagerObj.httpRequest
+- res = as result org.wabase.QuereaseActionTestManagerObj.httpRequest
 - :res
 
 
@@ -1551,7 +1551,7 @@ decoder: none
 api: insert, update
 explicit db: true
 insert:
-- as result extracted_entity = extract entity               # keep result feature, step result not converted to bindable values
+- extracted_entity = as result extract entity               # keep result feature, step result not converted to bindable values
 - http post '/extract_http_entity_test1' :extracted_entity
 
 
@@ -1631,7 +1631,7 @@ decoder: none
 api: insert
 explicit db: true
 insert:
-- as result res = http post '/extract_http_entity_test1' extract entity
+- res = as result http post '/extract_http_entity_test1' extract entity
 - org.wabase.QuereaseActionTestManagerObj.httpResult :res
 
 
