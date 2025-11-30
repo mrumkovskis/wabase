@@ -1475,6 +1475,8 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         .map {
           _.getMessage should include (": java.lang.String") // cannot test 'str: java.lang.String' because for scala 3 parameter name is arg0
         }
+      t9 <- doAction("get", "result_view_escape_test", Map("value" -> "result"))
+        .map { _ shouldBe MapResult(Map("id" -> null, "value" -> "result")) }
     } yield t1
   }
 

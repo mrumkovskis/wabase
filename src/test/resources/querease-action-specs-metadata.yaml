@@ -1754,3 +1754,19 @@ insert:
 - result = as any http_proxy get {'/http_proxy_test1', '?', :status status}
 - result.result = if {:result.status < 400} 'This is ok' else 'This is ere'
 - :result
+
+
+name: result
+api: get
+fields:
+- id
+- value
+get:
+- this
+
+
+name: result_view_escape_test
+api: get
+get:
+- res = as `result` http get {'/result', '?', :id? id, :value? value}   # result must be backticked to indicate view name
+- :res
