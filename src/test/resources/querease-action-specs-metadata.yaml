@@ -959,11 +959,11 @@ insert:
 - data.f2 = :f2
 - data.m1.f1 = :m1.f1
 - data.m1.f2 = :m1.f2
-- http post '/extract_http_entity_test1' as http_test_3 :data       # convert to concrete type so child structure is not wrapped into array
+- http post '/extract_http_entity_test1' :data
 update:
-- http post '/extract_http_entity_test1' as http_test_3 this        # convert to concrete type so child structure is not wrapped into array
+- http post '/extract_http_entity_test1' this
 delete:
-- http post '/extract_http_entity_test1' as http_test_3 get this    # convert to concrete type so child structure is not wrapped into array
+- http post '/extract_http_entity_test1' get this
 get:
 - this
 

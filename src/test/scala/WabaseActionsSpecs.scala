@@ -1449,7 +1449,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
           )
       t3 <-
         doAction("update", "result_render_test", Map())
-          .map(_ shouldBe MapResult(Map("string_field" -> "string")))
+          .map(_ shouldBe List(Map("string_field" -> "string", "date_field" -> null, "number_field" -> null)))
       t4 <-
         doAction("delete", "invocation_test_3", Map())
           .map {

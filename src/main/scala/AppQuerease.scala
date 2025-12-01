@@ -1643,6 +1643,12 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         WabaseAppConfig.viewSerializationBufferMaxFileSize(context.viewName)
       ).map { case (src, l) => (src, null, ct, l) }
     }
+    def isUnfilteredJson =
+      (ct == ContentTypes.`application/json`) && (resFil == null || resFil == ResultRenderer.NoFilter)
+    def encodeMap(m: Map[_, _]) =
+      if  (isUnfilteredJson)
+           encodeJson(if (isCollection.getOrElse(false)) Seq(m) else m)
+      else encodeStructure(Seq(m).iterator, isCollection.getOrElse(false))
 
     res match {
       case StringResult(v) => encodePrimitive(v, ct)
@@ -1653,10 +1659,10 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         case _ => encodePrimitive(v)
       }
       case AnyResult(v) => encodeJson(v)
-      case MapResult(data) => encodeStructure(Seq(data).iterator, false)
+      case MapResult(m) => encodeMap(m)
       case IteratorResult(data) => encodeStructure(data, true)
       case TresqlResult(tr) => tr match {
-        case SingleValueResult(m: Map[_, _]) => encodeStructure(Seq(m).iterator, false)
+        case SingleValueResult(m: Map[_, _]) => encodeMap(m)
         case SingleValueResult(r: Iterable[_]) => encodeStructure(r.iterator, isCollection.getOrElse(true))
         case SingleValueResult(s: String) => encodePrimitive(s, ct)
         // single value can be querease result if action step keepResult is set like 'as result variable = ...'
