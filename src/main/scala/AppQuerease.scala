@@ -24,7 +24,6 @@ import java.lang.reflect.Parameter
 import java.sql.Connection
 import scala.annotation.tailrec
 import scala.collection.immutable.Seq
-import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{ExecutionContext, Future}
 import scala.jdk.CollectionConverters._
@@ -915,7 +914,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       WabaseUser(u.properties ++
         doSetUserAttributes(ua.asInstanceOf[Action.SetUserAttributes], scope, context).properties)
     }
-    val headers = hs.foldLeft(ArrayBuffer[HttpHeader]())((r, hop) => hop match {
+    val headers = hs.foldLeft(scala.collection.mutable.ArrayBuffer[HttpHeader]())((r, hop) => hop match {
       case sc: Action.SetCookie => r ++= doSetCookie(sc, scope, context)
       case dc: Action.DeleteCookie => r ++= doDeleteCookie(dc, scope, context)
       case sh: Action.SetHttpHeaders => r ++= doSetHeaders(sh, scope, context)
@@ -2178,6 +2177,39 @@ object AppQuerease {
 
   /** Can be used in actions since Thread.sleep cannot be invoked directly due to method overload */
   def sleep(millis: Long): Unit = Thread.sleep(millis)
+
+  def toHierarchy(levelParamName: String, nestedParamName: String, result: Result[RowLike]) = {
+    import scala.collection.mutable.{Stack => MS, ArrayBuffer => AB}
+    def coalesce(rows: List[AB[Map[String, Any]]]): AB[Map[String, Any]] = (rows: @unchecked) match {
+      case List(row: AB[Map[String, Any]]) => row
+      case h :: tail => h(h.size - 1) = h.last + (nestedParamName -> coalesce(tail).toSeq); h
+    }
+    @tailrec
+    def popWhile(
+      st: MS[(java.lang.Number, AB[Map[String, Any]])],
+      cond: Int => Boolean,
+      res: List[(java.lang.Number, AB[Map[String, Any]])] = Nil,
+    ): List[(java.lang.Number, AB[Map[String, Any]])] = {
+      if (!cond(st.top._1.intValue())) res
+      else popWhile(st, cond, st.pop() :: res)
+    }
+    val res = result.map(_.toMap).foldLeft(
+      MS[(java.lang.Number, AB[Map[String, Any]])]((Integer.MIN_VALUE, AB(Map())))
+    ) { (res, row) =>
+      val (cur_level, rows) = res.top
+      val level = row(levelParamName).asInstanceOf[Number]
+      if (cur_level == level) {
+        rows += row
+        res
+      } else if (cur_level.intValue() < level.intValue()) {
+        res.push(level -> AB(row))
+      } else {
+        val seq = popWhile(res, _ >= level.intValue())
+        res.push(seq.head._1 -> (coalesce(seq.map(_._2)) += row))
+      }
+    }
+    res.pop()._2.toSeq
+  }
 
   case class Scope(
     data: Map[String, Any],

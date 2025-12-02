@@ -1770,3 +1770,15 @@ api: get
 get:
 - res = as `result` http get {'/result', '?', :id? id, :value? value}   # result must be backticked to indicate view name
 - :res
+
+
+name: hierarchy_test
+api: list
+list:
+- as any toHierarchy('level', 'children') data(# id, parent_id, value) {
+    {1, null, 'v1'} + {2, null, 'v2'} + {3, null, 'v3'} +
+    {6, 2, 'v21'} + {7, 2, 'v22'} + {4, 1, 'v11'} + {5, 4, 'v111'}
+  }, hierarchy(id, value, level, path) {
+    data[parent_id = null] {id, value, 1, `array[1, id]`} +
+    data d[d.parent_id = h.id]hierarchy h{d.id, d.value, level + 1, path || `array[level + 1, d.id]`}
+  } hierarchy {trim(value) value, level}#(path)

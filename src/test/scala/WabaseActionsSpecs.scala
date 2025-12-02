@@ -1814,6 +1814,23 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     } yield t1
   }
 
+  it should "create hierarchy from recursive query" in {
+    implicit val user: TestUsr = TestUsr(4)
+    val route = service.crudAction
+    Get("/hierarchy_test") ~> route ~> check {
+      jsonAssert(entityAs[String],  List(
+        Map("value" -> "v1", "level" -> 1, "children" -> List(
+          Map("value" -> "v11", "level" -> 2, "children" -> List(
+            Map("value" -> "v111", "level" -> 3)
+          )))),
+        Map("value" -> "v2", "level" -> 1, "children" -> List(
+          Map("value" -> "v21", "level" -> 2),
+          Map("value" -> "v22", "level" -> 2)
+        )),
+        Map("value" -> "v3", "level" -> 1)))
+    }
+  }
+
   behavior of "Save operation with dynamically generated deep nesting"
 
   it should "attempt to process a very deep structure and observe behavior" in {
