@@ -116,7 +116,7 @@ object WabaseAuthentication extends Authentication[WabaseUser] {
 
   // cannot name setSessionCookie because setSessionCookie from super trait appears from reflection to be member of this object
   def setAppSessionCookie(req: HttpRequest, user: WabaseUser, resp: HttpResponse): HttpResponse =
-    setDomainAndPathSessionCookieOpt(null, "/")(req, user, resp)
+    setDomainAndPathSessionCookie(null, "/")(req, user, resp)
 
   def setAppSessionCookieOpt(req: HttpRequest, user: WabaseUser, resp: HttpResponse): HttpResponse =
     setDomainAndPathSessionCookieOpt(null, "/")(req, user, resp)
