@@ -2178,24 +2178,11 @@ object AppQuerease {
   /** Can be used in actions since Thread.sleep cannot be invoked directly due to method overload */
   def sleep(millis: Long): Unit = Thread.sleep(millis)
 
-  def toHierarchy(levelParamName: String, nestedParamName: String, result: Result[RowLike]) = {
+  def toHierarchy(levelParamName: String, nestedParamName: String, result: Result[RowLike]): scala.collection.Seq[Map[String, Any]] = {
     import scala.collection.mutable.{Stack => MS, ArrayBuffer => AB}
-    def coalesce(rows: List[AB[Map[String, Any]]]): AB[Map[String, Any]] = (rows: @unchecked) match {
-      case List(row: AB[Map[String, Any]]) => row
-      case h :: tail => h(h.size - 1) = h.last + (nestedParamName -> coalesce(tail).toSeq); h
-    }
-    @tailrec
-    def popWhile(
-      st: MS[(java.lang.Number, AB[Map[String, Any]])],
-      cond: Int => Boolean,
-      res: List[(java.lang.Number, AB[Map[String, Any]])] = Nil,
-    ): List[(java.lang.Number, AB[Map[String, Any]])] = {
-      if (!cond(st.top._1.intValue())) res
-      else popWhile(st, cond, st.pop() :: res)
-    }
-    val res = result.map(_.toMap).foldLeft(
-      MS[(java.lang.Number, AB[Map[String, Any]])]((Integer.MIN_VALUE, AB(Map())))
-    ) { (res, row) =>
+    type Rows = AB[Map[String, Any]]
+    type HierEl = (java.lang.Number, Rows)
+    val res = result.map(_.toMap).foldLeft(MS[HierEl]((Integer.MIN_VALUE, AB(Map())))) { (res, row) =>
       val (cur_level, rows) = res.top
       val level = row(levelParamName).asInstanceOf[Number]
       if (cur_level == level) {
@@ -2204,6 +2191,14 @@ object AppQuerease {
       } else if (cur_level.intValue() < level.intValue()) {
         res.push(level -> AB(row))
       } else {
+        def coalesce(rows: List[Rows]): Rows = (rows: @unchecked) match {
+          case List(row: Rows) => row
+          case h :: tail => h(h.size - 1) = h.last + (nestedParamName -> coalesce(tail).toSeq); h
+        }
+        @tailrec def popWhile(st: MS[HierEl], cond: Int => Boolean, res: List[HierEl] = Nil): List[HierEl] = {
+          if (!cond(st.top._1.intValue())) res
+          else popWhile(st, cond, st.pop() :: res)
+        }
         val seq = popWhile(res, _ >= level.intValue())
         res.push(seq.head._1 -> (coalesce(seq.map(_._2)) += row))
       }
