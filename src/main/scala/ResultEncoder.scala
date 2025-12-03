@@ -66,11 +66,21 @@ object ResultEncoder {
 
   object JsonEncoder {
     import scala.jdk.CollectionConverters._
+
+    def noCustomEncoder(): JsValueEncoderPF = _ => PartialFunction.empty
+
+    private val customEncoder = {
+      import scala.concurrent.ExecutionContext.Implicits.global
+      val (enc_cl, enc_fn) =
+        OpParser.classNameFunctionName(config.getString("app.custom-json-encoder"))
+      invokeFunction(enc_cl, enc_fn, Nil).asInstanceOf[JsValueEncoderPF]
+    }
+
     /**
       * Default scala value json encoder as a partial function.
       * */
     implicit lazy val jsValueEncoderPF: JsValueEncoderPF =
-      extendableJsValueEncoderPF(jsValueEncoderPF)(_ => PartialFunction.empty)
+      extendableJsValueEncoderPF(jsValueEncoderPF)(customEncoder)
     /**
       * Creates json value encoder as partial function, see [[jsValueEncoderPF]].
       * Default implemention encodes scala values - {{{String, Number, Boolean, null, Map[String, Any], Iterable[Any]}}}.

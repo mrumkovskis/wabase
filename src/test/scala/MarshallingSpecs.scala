@@ -8,10 +8,17 @@ import org.apache.pekko.http.scaladsl.testkit.ScalatestRouteTest
 import org.apache.pekko.http.scaladsl.unmarshalling.Unmarshal
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
+import org.wabase.ResultEncoder.JsValueEncoderPF
 
 import scala.collection.immutable.{ListMap, Seq}
 import scala.concurrent.duration._
 import scala.concurrent.{Await, Future}
+
+object MarshallingSpecs {
+  def customJsonEncoder: JsValueEncoderPF = w => {
+    case Some(d) => w.writeString(d.toString)
+  }
+}
 
 class MarshallingSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitializer with ScalatestRouteTest {
 
@@ -49,9 +56,6 @@ class MarshallingSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
           override lazy val viewNameToClassMap = JsonDecoderSpecs.viewNameToClass
           override val tresqlUri: TresqlUri = new TresqlUri {
             override def uriWithKey(uri: Uri, key: Seq[Any]): Uri = uriWithKeyInPath(uri, key)
-          }
-          override val jsonValueEncoder = w => {
-            case d: java.sql.Date => w.writeString(d.toString.replaceAll("-", "."))
           }
         }
         override def dbAccessDelegate: DbAccess = db
@@ -347,7 +351,7 @@ class MarshallingSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
         "s" -> "string",
         "b" -> true,
         "n" -> 1.4,
-        "date" -> java.sql.Date.valueOf("2000-01-01")))),
+        "date" -> Some(java.sql.Date.valueOf("2000-01-01"))))),
       Map(
         "s" -> "string",
         "b" -> true,
@@ -356,7 +360,7 @@ class MarshallingSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
           "s" -> "string",
           "b" -> true,
           "n" -> 1.4,
-          "date" -> "2000.01.01")))
+          "date" -> "2000-01-01")))
     )
   }
 

@@ -156,10 +156,6 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   lazy val cborOrJsonDecoder = new CborOrJsonDecoder(typeDefs, nameToViewDef)
 
   protected val maxStackDepth: Int = config.getInt("wabase.max-stack-depth")
-  /** Override this to override default scala value (like String, Number, Boolean, null, Iterable, Map) json encoding.
-    * Default implementation is {{{Writer => PartialFunction.empty}}}
-    * */
-  val jsonValueEncoder: ResultEncoder.JsValueEncoderPF = _ => PartialFunction.empty
   lazy val templateEngine: WabaseTemplate = createTemplateEngine
   protected def createTemplateEngine: WabaseTemplate =
     getObjectOrNewInstance[WabaseTemplate](config, "app.template.engine", "template engine")
@@ -1458,9 +1454,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       .flatMap(dataForNextStep(_, context, true))
       .map { res =>
         if (op.encode) {
-          import ResultEncoder._
-          implicit lazy val enc: JsValueEncoderPF = JsonEncoder.extendableJsValueEncoderPF(enc)(jsonValueEncoder)
-          StringResult(encodeToJsonString(res))
+          StringResult(ResultEncoder.encodeAnyToJsonString(res))
         } else {
           try {
             (res match {
@@ -1621,9 +1615,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     val ct: ContentType = if (contentType == null) MediaTypes.`application/json` else contentType
 
     def encodeJson(data: Any): Future[(Source[ByteString, _], String, ContentType, Option[Long])] = {
-      import ResultEncoder._
-      implicit lazy val enc: JsValueEncoderPF = JsonEncoder.extendableJsValueEncoderPF(enc)(jsonValueEncoder)
-      val res = encodeToJsonByteString(data)
+      val res = ResultEncoder.encodeAnyToJsonByteString(data)
       Future.successful((Source.single(res), null, ct, Option(res.length)))
     }
     def encodePrimitive(
@@ -2182,7 +2174,7 @@ object AppQuerease {
     import scala.collection.mutable.{Stack => MS, ArrayBuffer => AB}
     type Rows = AB[Map[String, Any]]
     type HierEl = (java.lang.Number, Rows)
-    val res = result.map(_.toMap).foldLeft(MS[HierEl]((Integer.MIN_VALUE, AB(Map())))) { (res, row) =>
+    val res = result.map(_.toMap).foldLeft(MS[HierEl]((Integer.MIN_VALUE, null))) { (res, row) =>
       val (cur_level, rows) = res.top
       val level = row(levelParamName).asInstanceOf[Number]
       if (cur_level == level) {
@@ -2195,11 +2187,11 @@ object AppQuerease {
           case List(row: Rows) => row
           case h :: tail => h(h.size - 1) = h.last + (nestedParamName -> coalesce(tail).toSeq); h
         }
-        @tailrec def popWhile(st: MS[HierEl], cond: Int => Boolean, res: List[HierEl] = Nil): List[HierEl] = {
+        @tailrec def popWhile(st: MS[HierEl], cond: Int => Boolean, res: List[HierEl]): List[HierEl] = {
           if (!cond(st.top._1.intValue())) res
           else popWhile(st, cond, st.pop() :: res)
         }
-        val seq = popWhile(res, _ >= level.intValue())
+        val seq = popWhile(res, _ >= level.intValue(), Nil)
         res.push(seq.head._1 -> (coalesce(seq.map(_._2)) += row))
       }
     }
