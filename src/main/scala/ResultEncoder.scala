@@ -67,13 +67,14 @@ object ResultEncoder {
   object JsonEncoder {
     import scala.jdk.CollectionConverters._
 
-    def noCustomEncoder(): JsValueEncoderPF = _ => PartialFunction.empty
-
-    private val customEncoder = {
-      import scala.concurrent.ExecutionContext.Implicits.global
-      val (enc_cl, enc_fn) =
-        OpParser.classNameFunctionName(config.getString("app.custom-json-encoder"))
-      invokeFunction(enc_cl, enc_fn, Nil).asInstanceOf[JsValueEncoderPF]
+    private val customEncoder: JsValueEncoderPF = {
+      if (config.getIsNull("app.json-encoder-customization")) _ => PartialFunction.empty
+      else {
+        import scala.concurrent.ExecutionContext.Implicits.global
+        val (enc_cl, enc_fn) =
+          OpParser.classNameFunctionName(config.getString("app.json-encoder-customization"))
+        invokeFunction(enc_cl, enc_fn, Nil).asInstanceOf[JsValueEncoderPF]
+      }
     }
 
     /**
