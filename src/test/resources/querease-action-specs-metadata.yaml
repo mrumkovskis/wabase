@@ -1779,6 +1779,9 @@ list:
     {1, null, 'v1'} + {2, null, 'v2'} + {3, null, 'v3'} +
     {6, 2, 'v21'} + {7, 2, 'v22'} + {4, 1, 'v11'} + {5, 4, 'v111'}
   }, hierarchy(id, value, level, path) {
-    data[parent_id = null] {id, value, 1, `array[1, id]`} +
-    data d[d.parent_id = h.id]hierarchy h{d.id, d.value, level + 1, path || `array[level + 1, d.id]`}
+    data[parent_id = null] {id, value, 1, `array[1, id]` /* path ordering by level and id */} +
+    data d[d.parent_id = h.id]hierarchy h {
+      d.id, d.value, level + 1,
+      path || `array[level + 1, d.id]` /* path ordering by level and id */
+    }
   } hierarchy {trim(value) value, level}#(path)

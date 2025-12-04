@@ -2170,6 +2170,14 @@ object AppQuerease {
   /** Can be used in actions since Thread.sleep cannot be invoked directly due to method overload */
   def sleep(millis: Long): Unit = Thread.sleep(millis)
 
+  /**
+   * Creates nested hierarchical data based on tresql result.
+   *
+   * @param levelParamName result column indicating hierarchy level. Parameter value must be non negative integer
+   * @param nestedParamName parameter name for nested structure
+   * @param result tresql result. Result must be ordered according to hierarchy path.
+   * @return sequence of nested maps
+   * */
   def toHierarchy(levelParamName: String, nestedParamName: String, result: Result[RowLike]): scala.collection.Seq[Map[String, Any]] = {
     import scala.collection.mutable.{Stack => MS, ArrayBuffer => AB}
     type Rows = AB[Map[String, Any]]
