@@ -1818,12 +1818,12 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     implicit val user: TestUsr = TestUsr(4)
     val route = service.crudAction
     Get("/hierarchy_test") ~> route ~> check {
-      jsonAssert(entityAs[String],  List(
-        Map("value" -> "v1", "level" -> 1, "children" -> List(
-          Map("value" -> "v11", "level" -> 2, "children" -> List(
+      jsonAssert(entityAs[String],  Seq(
+        Map("value" -> "v1", "level" -> 1, "children" -> Seq(
+          Map("value" -> "v11", "level" -> 2, "children" -> Seq(
             Map("value" -> "v111", "level" -> 3)
           )))),
-        Map("value" -> "v2", "level" -> 1, "children" -> List(
+        Map("value" -> "v2", "level" -> 1, "children" -> Seq(
           Map("value" -> "v21", "level" -> 2),
           Map("value" -> "v22", "level" -> 2)
         )),

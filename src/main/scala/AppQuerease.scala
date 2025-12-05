@@ -2176,9 +2176,9 @@ object AppQuerease {
    * @param levelParamName result column indicating hierarchy level. Parameter value must be non negative integer
    * @param nestedParamName parameter name for nested structure
    * @param result tresql result. Result must be ordered according to hierarchy path.
-   * @return sequence of nested maps
+   * @return Vector of nested maps
    * */
-  def toHierarchy(levelParamName: String, nestedParamName: String, result: Result[RowLike]): scala.collection.Seq[Map[String, Any]] = {
+  def toHierarchy(levelParamName: String, nestedParamName: String, result: Result[RowLike]): Vector[Map[String, Any]] = {
     import scala.collection.mutable.{Stack => MS, ArrayBuffer => AB}
     type Rows = AB[Map[String, Any]]
     type HierEl = (java.lang.Number, Rows)
@@ -2193,7 +2193,7 @@ object AppQuerease {
       } else {
         def coalesce(rows: List[Rows]): Rows = (rows: @unchecked) match {
           case List(row: Rows) => row
-          case h :: tail => h(h.size - 1) = h.last + (nestedParamName -> coalesce(tail).toSeq); h
+          case h :: tail => h(h.size - 1) = h.last + (nestedParamName -> coalesce(tail).toVector); h
         }
         @tailrec def popWhile(st: MS[HierEl], cond: Int => Boolean, res: List[HierEl]): List[HierEl] = {
           if (!cond(st.top._1.intValue())) res
@@ -2203,7 +2203,7 @@ object AppQuerease {
         res.push(seq.head._1 -> (coalesce(seq.map(_._2)) += row))
       }
     }
-    res.pop()._2.toSeq
+    res.pop()._2.toVector
   }
 
   case class Scope(
