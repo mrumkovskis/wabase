@@ -718,7 +718,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
                 .map(a => doSteps(a.steps, context, callDataF))
                 .getOrElse(NoResult)
             case x =>
-              sys.error(s"Unknown view action $x")
+              sys.error(s"Unknown view action: '$x'")
           }) match {
             case f: Future[QuereaseResult@unchecked] => f // job call, do not cast, may be casted at the end
             case r: QuereaseResult => Future.successful(castedResult(r))
