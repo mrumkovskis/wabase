@@ -223,11 +223,12 @@ trait WabaseApp[User] {
   protected def throwOldValueNotFound(message: String, locale: Locale): Nothing =
     throw new org.mojoz.querease.NotFoundException(translate(message)(locale))
 
+  val ActionForKeyUpdate = config.getString("app.action-for-key-update") // "update+", maybe "update" for legacy app
   def save(context: AppActionContext): ActionHandlerResult = {
     import context._
     val viewDef = qe.viewDef(viewName)
     val keyAsMap =
-      if  (actionName == Action.Update)
+      if  (actionName == ActionForKeyUpdate)
            values.getOrElse(qe.oldKeyParamName, Map.empty: Map[String, Any]) match {
              case keyAsMap: Map[String, Any] @unchecked => keyAsMap
              case x => sys.error("Unexpected old key type, expecting Map")
@@ -417,7 +418,7 @@ trait WabaseApp[User] {
       checkApi(viewName, actionName, user, keyValues)
     val keyAsMap = prepareKey(viewName, keyValues, actionName)
     val key_params =
-      if  (context.actionName == Action.Update && keyAsMap != null && keyAsMap.nonEmpty)
+      if  (context.actionName == ActionForKeyUpdate && keyAsMap != null && keyAsMap.nonEmpty)
            Map(qe.oldKeyParamName -> keyAsMap)
       else keyAsMap
     addResultFilter(
@@ -509,17 +510,70 @@ trait WabaseApp[User] {
     if  (user == null)
          new AuthenticationException("Unauthorized")
     else new AuthorizationException("Forbidden")
-  def checkApi[F](viewName: String, method: String, user: User, keyValues: Seq[Any]): Unit = {
+  def apiMethod(viewDef: ViewDef, method: String, keyValues: Seq[Any]): String = {
+    import AppMetadata.AugmentedAppViewDef
+    val api        = viewDef.apiMethodToRoles
+    def apiKeySize = qe.viewNameToApiKeyFieldNames.get(viewDef.name).map(_.size).getOrElse(0)
+    def hasAutoKey = qe.viewNameToHasAutoKey.get(viewDef.name).exists(identity)
+    method match {
+      case Action.Get =>
+        if ((keyValues.isEmpty || keyValues.size < apiKeySize) && api.contains(Action.List))
+          Action.List
+        else
+          Action.Get
+      case _ if api.contains(method) =>
+        method
+      case Action.Put =>
+        if (api.contains(Action.Upsert))
+          Action.Upsert
+        else if (hasAutoKey || api.contains(Action.Update))
+          Action.Update
+        else
+          Action.Upsert
+      case Action.Upsert =>
+        if (hasAutoKey || api.contains(Action.Update))
+          Action.Update
+        else
+          Action.Upsert
+      case Action.Post =>
+        if (keyValues.isEmpty)
+          Action.Insert
+        else
+          Action.UpdatePlus
+      case _ => method
+    }
+  }
+  val ActionLegacyMapping = config.getBoolean("app.action-legacy-mapping")
+  def checkApi[F](viewName: String, method: String, user: User, keyValues: Seq[Any]): String = {
+    val viewDefOpt = qe.viewDefOption(viewName)
+    val api_m_opt  = viewDefOpt.map(apiMethod(_, method, keyValues))
+    val api_r_opt  = api_m_opt match {
+      case Some(api_m) => viewDefOpt.get.apiMethodToRoles.get(api_m)
+      case None        => None
+    }
     (for {
-      view  <- qe.viewDefOption(viewName)
-      roles <- view.apiMethodToRoles.get(method).orElse(method match {
+      view  <- viewDefOpt
+      roles <- api_r_opt.orElse(api_m_opt.flatMap {
         case Action.Insert |
+             Action.Upsert |
              Action.Update => view.apiMethodToRoles.get(Action.Save)
         case x => None
       })
+      isMethodAllowed <- api_m_opt.map {
+        case _ if ActionLegacyMapping => true
+        case Action.Insert     => api_r_opt.nonEmpty || roles.nonEmpty && keyValues.isEmpty   // POST
+        case Action.UpdatePlus => api_r_opt.nonEmpty || roles.nonEmpty && keyValues.nonEmpty  // POST
+        case Action.Update     => api_r_opt.nonEmpty || roles.nonEmpty && keyValues.nonEmpty  // PUT
+        case Action.Upsert     => api_r_opt.nonEmpty || roles.nonEmpty && keyValues.nonEmpty  // PUT
+        case _                 => api_r_opt.nonEmpty
+      }
       result <-
-        if (qe.isPublicView(viewName) || roles.contains(qe.publicApiRoleName) || hasRole(user, roles))
-          Option(true)
+        if (!isMethodAllowed) {
+          logger.error(s"Method $viewName.$method (api_m: $api_m_opt) not allowed. keyValues: [${keyValues.mkString(", ")}]")   
+          throw HttpException(StatusCodes.MethodNotAllowed)
+        }
+        else if (qe.isPublicView(viewName) || roles.contains(qe.publicApiRoleName) || hasRole(user, roles))
+          api_m_opt
         else throw apiUnauthorizedException(viewName, method, user)
     } yield result).getOrElse(
       throw noApiException(viewName, method, user)

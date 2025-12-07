@@ -12,6 +12,7 @@ import org.mojoz.querease.{FilterType, QuereaseMetadata, TresqlJoinsParser, Tres
 import org.tresql.{Cache, MacroResourcesImpl, QueryParser, SimpleCache, SimpleCacheBase, ast}
 import org.tresql.ast.{Exp, Variable}
 import org.tresql.parsing.QueryParsers
+import org.tresql.OrtMetadata.{AutoValue, KeyValue, Property}
 import org.wabase.AppMetadata.{Action, JobCall}
 import org.wabase.AppMetadata.Action.TresqlExtraction.{OpTresqlTraverser, State, StepTresqlTraverser, opTresqlTraverser, stepTresqlTraverser}
 import org.wabase.AppMetadata.Action.{Validations, ViewCall, traverseAction}
@@ -30,8 +31,10 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
   import AppMetadata._
 
-  val knownApiMethods = Set("create", "count", "get", "list", "insert", "update", "save", "delete", "head", "options")
-  private val fullKeyOps = Set("get", "insert", "update", "save", "delete")
+  val knownApiMethods = Set(
+    "create", "count", "get", "list", "insert", "update", "update+", "upsert", "save", "delete", "put",
+    "post", "head", "options")
+  private val fullKeyOps = Set("get",/*insert*/ "update", "update+", "upsert", "save", "delete", "put")
   override lazy val yamlMetadata = YamlMd.fromPaths(Seq("jobs", "routes", "tables", "views"))
   override lazy val uninheritableExtras: Seq[String] = Seq("api")
   lazy val knownViewExtras = KnownViewExtras()
@@ -1288,11 +1291,14 @@ object AppMetadata extends Loggable {
     val Delete = "delete"
     val Create = "create"
     val Count  = "count"
-    val Job   = "job"
+    val Job    = "job"
     val Head   = "head"
-    val Options = "options"
+    val Options= "options"
+    val Post   = "post"
+    val Put    = "put"
+    val UpdatePlus = "update+" // Update with key update - post to old key uri, new key in body
     def apply() =
-      Set(Get, List, Save, Insert, Update, Upsert, Delete, Create, Count, Job, Head, Options)
+      Set(Get, List, Save, Insert, Update, Upsert, Delete, Create, Count, Job, Head, Options, Post, Put, UpdatePlus)
 
     val ValidationsKey = "validations"
     val DbUseKey = "db use"

@@ -704,6 +704,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
               IdResult(save(v, callData, null, SaveMethod.Insert, null, env), idName)
             case Update =>
               IdResult(save(v, callData, null, SaveMethod.Update, null, env), idName)
+            case UpdatePlus =>
+              IdResult(save(v, callData, null, SaveMethod.Update, null, env), idName)
             case Upsert =>
               IdResult(save(v, callData, null, SaveMethod.Upsert, null, env), idName)
             case Delete =>

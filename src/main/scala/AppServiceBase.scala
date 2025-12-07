@@ -212,10 +212,12 @@ trait AppServiceBase[User]
       }
     }
 
+  val ActionForHttpPost = config.getString("app.action-for-http.post") // maybe "insert" for legacy app
+  val ActionForHttpPut  = config.getString("app.action-for-http.put")  // maybe "update" for legacy app
   // @deprecated("Use updateByKeyAction. This method will be removed", "6.0.3")
   def updateAction(viewName: String, id: Long)(
     implicit user: User, state: ApplicationState, timeout: QueryTimeout): Route =
-    if (useActions(viewName, Action.Update))
+    if (useActions(viewName, ActionForHttpPut))
       extractStringId { idString =>
         updateByKeyAction(viewName, Seq(idString))
       }
@@ -232,12 +234,12 @@ trait AppServiceBase[User]
   def updateByKeyAction(viewName: String, keyValues: Seq[Any])(
     implicit user: User, state: ApplicationState, timeout: QueryTimeout): Route =
       parameterMultiMap { params =>
-        app.checkApi(viewName, Action.Update, user, keyValues)
+        val actionName = app.checkApi(viewName, ActionForHttpPut, user, keyValues)
         entityAsMapOrException(viewName) { entityAsMap =>
           extractRequest { implicit httpReq =>
             complete {
               implicit val routeLogger: Logger = WabaseService.routeLogger(httpReq)
-              app.doWabaseAction(Action.Update, viewName, keyValues, filterPars(params), entityAsMap,
+              app.doWabaseAction(actionName, viewName, keyValues, filterPars(params), entityAsMap,
                 doApiCheck = false /* api checked above */)
             }
           }
@@ -292,13 +294,13 @@ trait AppServiceBase[User]
   def insertAction(viewName: String, keyValues: Seq[Any])(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     extractUri { requestUri =>
       parameterMultiMap { params =>
-        if (useActions(viewName, Action.Insert)) {
-          app.checkApi(viewName, Action.Insert, user, keyValues)
+        val actionName = app.checkApi(viewName, ActionForHttpPost, user, keyValues)
+        if (useActions(viewName, actionName)) {
           entityAsMapOrException(viewName) { entityAsMap =>
             extractRequest { implicit httpReq =>
               complete {
                 implicit val routeLogger: Logger = WabaseService.routeLogger(httpReq)
-                app.doWabaseAction(Action.Insert, viewName, keyValues, filterPars(params), entityAsMap,
+                app.doWabaseAction(actionName, viewName, keyValues, filterPars(params), entityAsMap,
                   doApiCheck = false /* api checked above */)
               }
             }

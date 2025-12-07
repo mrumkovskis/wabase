@@ -360,6 +360,8 @@ object WabaseService extends Loggable {
     }
   }
 
+  val ActionForHttpPost = config.getString("app.action-for-http.post") // maybe "insert" for legacy app
+  val ActionForHttpPut  = config.getString("app.action-for-http.put")  // maybe "update" for legacy app
   def viewActionKey(view_action: String, ctx: WabaseRequestContext): WabaseRequestContext = {
     import ctx._
     val viewDefs = wabase.qe.nameToViewDef
@@ -376,20 +378,16 @@ object WabaseService extends Loggable {
     else {
       val key = WabaseService.key(req.uri.path, viewNameAndActionStr)
       val action = if (create_count_action != null) create_count_action else req.method match {
-        case `GET`    =>
-          if (key.nonEmpty || viewDefs.get(view_name)
-            .exists(v => v.apiMethodToRoles.contains("get") && !v.apiMethodToRoles.contains("list")))
-            Action.Get
-          else
-            Action.List
-        case `POST`   => Action.Insert
-        case `PUT`    => Action.Update
+        case `GET`    => Action.Get
+        case `POST`   => ActionForHttpPost
+        case `PUT`    => ActionForHttpPut
         case `DELETE` => Action.Delete
         case `HEAD`   => Action.Head
         case `OPTIONS`=> Action.Options
         case x        => error(StatusCodes.MethodNotAllowed, s"Unsupported http method $x for request '${req.uri}'")
       }
-      ctx.copy(viewName = view_name, action = action, key = key)
+      val apiAction = wabase.apiMethod(viewDefs(view_name), action, key)
+      ctx.copy(viewName = view_name, action = apiAction, key = key)
     }
   }
 
@@ -439,7 +437,7 @@ object WabaseService extends Loggable {
         import updatedCtx._
         implicit val ec = as.dispatcher
         val valuesF =
-          if (Set(Action.Insert, Action.Update, Action.Save).contains(action))
+          if (Set(Action.Insert, Action.Update, Action.UpdatePlus, Action.Upsert, Action.Save).contains(action))
             toMapForViewEntityDecoder(updatedCtx)
           else  Future.successful(Map[String, Any]())
         valuesF.flatMap { values =>
