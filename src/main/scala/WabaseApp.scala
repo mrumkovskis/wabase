@@ -39,8 +39,6 @@ trait WabaseApp[User] {
     with DbConstraintMessage
     =>
 
-  import qe.viewDefOption
-
   val SerializationBufferSize: Int = WabaseAppConfig.SerializationBufferSize
   val SerializationBufferMaxFileSize: Long = WabaseAppConfig.SerializationBufferMaxFileSize
   val SerializationBufferMaxFileSizes: Map[String, Long] = WabaseAppConfig.SerializationBufferMaxFileSizes
@@ -277,7 +275,7 @@ trait WabaseApp[User] {
   }
 
   def resourceFactory(viewName: String, loggerName: String, qt: QueryTimeout): ResourcesFactory = {
-    resourceFactory(viewDefOption(viewName).orNull, loggerName, qt)
+    resourceFactory(qe.viewDefOption(viewName).orNull, loggerName, qt)
   }
 
   def maybeSerializeResult(context: AppActionContext, wr: WabaseResult): Future[WabaseResult] = wr match {
@@ -513,7 +511,7 @@ trait WabaseApp[User] {
     else new AuthorizationException("Forbidden")
   def checkApi[F](viewName: String, method: String, user: User, keyValues: Seq[Any]): Unit = {
     (for {
-      view <- viewDefOption(viewName)
+      view  <- qe.viewDefOption(viewName)
       roles <- view.apiMethodToRoles.get(method).orElse(method match {
         case Action.Insert |
              Action.Update => view.apiMethodToRoles.get(Action.Save)
