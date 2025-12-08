@@ -482,7 +482,8 @@ object RequestDecoders {
 
     private def fetchNext(): Unit = {
       if (hasNextElement) {
-        val currentF = currentSource.idleTimeout(10.seconds).prefixAndTail(1).runWith(Sink.head)
+        // source timeout to 1 day, expecting that upstream rate or downstream demand will timeout quicker
+        val currentF = currentSource.idleTimeout(1.day).prefixAndTail(1).runWith(Sink.head)
         Await.result(currentF, Duration.Inf) match {
           case (Seq(element), tailSource) =>
             nextElement = Some(element)
