@@ -18,6 +18,18 @@ swagger:
           type: object
 
 
+on: GET /swagger-for-redirects\.json
+do: generateSwaggerJsonForRedirects
+swagger:
+  summary: Get swagger json
+  description: Returns swagger.json file
+  responses:
+    '200':
+      content:
+        application/json:
+          type: object
+
+
 on: GET /swagger\.yaml
 do: swaggerYaml
 swagger:

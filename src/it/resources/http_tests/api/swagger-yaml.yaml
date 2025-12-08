@@ -204,7 +204,7 @@ response: |+
             content:
               application/json:
                 schema:
-                  $ref: "#/components/schemas/guideline_calculation_helper"
+                  $ref: "#/components/schemas/guideline_calculation_helper_key_response"
           "400":
             description: Bad Request
           "503":
@@ -355,7 +355,7 @@ response: |+
             content:
               application/json:
                 schema:
-                  $ref: "#/components/schemas/person"
+                  $ref: "#/components/schemas/person_key_response"
           "400":
             description: Bad Request
           "503":
@@ -409,7 +409,7 @@ response: |+
             content:
               application/json:
                 schema:
-                  $ref: "#/components/schemas/person"
+                  $ref: "#/components/schemas/person_key_response"
           "400":
             description: Bad Request
           "503":
@@ -547,10 +547,6 @@ response: |+
         responses:
           "200":
             description: OK
-            content:
-              application/json:
-                schema:
-                  $ref: "#/components/schemas/request_calculation_view"
           "400":
             description: Bad Request
           "503":
@@ -589,7 +585,7 @@ response: |+
             content:
               application/json:
                 schema:
-                  $ref: "#/components/schemas/save_person_email"
+                  $ref: "#/components/schemas/save_person_email_key_response"
           "400":
             description: Bad Request
           "503":
@@ -617,7 +613,7 @@ response: |+
             content:
               application/json:
                 schema:
-                  $ref: "#/components/schemas/save_person_email"
+                  $ref: "#/components/schemas/save_person_email_key_response"
           "400":
             description: Bad Request
           "503":
@@ -655,7 +651,7 @@ response: |+
             content:
               application/json:
                 schema:
-                  $ref: "#/components/schemas/server_events"
+                  $ref: "#/components/schemas/server_events_key_response"
           "400":
             description: Bad Request
           "503":
@@ -707,7 +703,7 @@ response: |+
             content:
               application/json:
                 schema:
-                  $ref: "#/components/schemas/server_events"
+                  $ref: "#/components/schemas/server_events_key_response"
           "400":
             description: Bad Request
           "503":
@@ -753,6 +749,17 @@ response: |+
             description: Job not found
           "409":
             description: Job is already running
+    /swagger-for-redirects.json:
+      get:
+        summary: Get swagger json
+        description: Returns swagger.json file
+        responses:
+          "200":
+            description: OK
+            content:
+              application/json:
+                schema:
+                  type: object
     /swagger.json:
       get:
         summary: Get swagger json
@@ -808,7 +815,7 @@ response: |+
             content:
               application/json:
                 schema:
-                  $ref: "#/components/schemas/user"
+                  $ref: "#/components/schemas/user_key_response"
           "400":
             description: Bad Request
           "503":
@@ -877,7 +884,7 @@ response: |+
             content:
               application/json:
                 schema:
-                  $ref: "#/components/schemas/user"
+                  $ref: "#/components/schemas/user_key_response"
           "400":
             description: Bad Request
           "503":
@@ -951,7 +958,7 @@ response: |+
             content:
               application/json:
                 schema:
-                  $ref: "#/components/schemas/user_role"
+                  $ref: "#/components/schemas/user_role_key_response"
           "400":
             description: Bad Request
           "503":
@@ -1019,7 +1026,7 @@ response: |+
             content:
               application/json:
                 schema:
-                  $ref: "#/components/schemas/user_role"
+                  $ref: "#/components/schemas/user_role_key_response"
           "400":
             description: Bad Request
           "503":
@@ -1039,7 +1046,7 @@ response: |+
             content:
               application/json:
                 schema:
-                  $ref: "#/components/schemas/validation"
+                  $ref: "#/components/schemas/validation_key_response"
           "400":
             description: Bad Request
           "503":
@@ -1067,7 +1074,7 @@ response: |+
             content:
               application/json:
                 schema:
-                  $ref: "#/components/schemas/validation"
+                  $ref: "#/components/schemas/validation_key_response"
           "400":
             description: Bad Request
           "503":
@@ -1209,6 +1216,14 @@ response: |+
             readOnly: false
         required:
         - code
+      guideline_calculation_helper_key_response:
+        type: object
+        properties:
+          code:
+            type: string
+            description: Code
+            maxLength: 12
+            readOnly: false
       login_using_json_or_urlencoded:
         type: object
         properties:
@@ -1243,6 +1258,14 @@ response: |+
             readOnly: false
         required:
         - code
+      person_key_response:
+        type: object
+        properties:
+          code:
+            type: string
+            description: Code
+            maxLength: 12
+            readOnly: false
       person_with_access_control:
         type: object
         properties:
@@ -1300,6 +1323,14 @@ response: |+
             readOnly: false
         required:
         - code
+      save_person_email_key_response:
+        type: object
+        properties:
+          code:
+            type: string
+            description: Code
+            maxLength: 12
+            readOnly: false
       server_events:
         type: object
         properties:
@@ -1310,6 +1341,13 @@ response: |+
           value:
             type: string
             description: Value
+            readOnly: false
+      server_events_key_response:
+        type: object
+        properties:
+          topic:
+            type: string
+            description: Topic
             readOnly: false
       user:
         type: object
@@ -1335,6 +1373,14 @@ response: |+
       user-with-roles-array:
         type: object
         properties: {}
+      user_key_response:
+        type: object
+        properties:
+          id:
+            type: integer
+            format: int64
+            description: Id
+            readOnly: false
       user_role:
         type: object
         properties:
@@ -1351,6 +1397,20 @@ response: |+
             readOnly: false
         required:
         - role
+      user_role_key_response:
+        type: object
+        properties:
+          user_id:
+            type: integer
+            format: int64
+            description: User id
+            readOnly: false
+          role:
+            type: string
+            description: Role
+            example: admin
+            maxLength: 10
+            readOnly: false
       validation:
         type: object
         description: Validation scripts for views
@@ -1380,3 +1440,11 @@ response: |+
         - context
         - expression
         - message
+      validation_key_response:
+        type: object
+        properties:
+          id:
+            type: integer
+            format: int64
+            description: Id
+            readOnly: false

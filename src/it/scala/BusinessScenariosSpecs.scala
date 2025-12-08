@@ -1,28 +1,31 @@
 package wabase.app
 
+import com.typesafe.config.ConfigFactory
 import org.apache.pekko.NotUsed
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.Http
 import org.apache.pekko.http.scaladsl.client.RequestBuilding.{Get, Post}
 import org.apache.pekko.http.scaladsl.model.sse.ServerSentEvent
 import org.apache.pekko.http.scaladsl.model.ws.{Message, TextMessage, WebSocketRequest}
-import org.apache.pekko.http.scaladsl.model.{ContentTypes, HttpEntity, HttpRequest, HttpResponse, StatusCodes}
+import org.apache.pekko.http.scaladsl.model._
+import org.apache.pekko.http.scaladsl.model.headers.EntityTag
 import org.apache.pekko.http.scaladsl.unmarshalling.Unmarshal
 import org.apache.pekko.stream.scaladsl.{Flow, Keep, Sink, Source}
 import org.apache.pekko.util.ByteString
+import org.mojoz.metadata.ViewDef
 import org.mojoz.metadata.out.DdlGenerator
-import org.tresql.{Result, RowLike}
-import org.wabase.WabaseScriptValidation.Validation
-import org.wabase._
+import org.wabase.AppMetadata.FilterParameter
+import org.wabase.CacheConditionHandlers.conditional
+import org.wabase.WabaseService.{MediaTypes, RequestHandler}
 import org.wabase.WabaseUnmarshallers.mapUnmarshaller
+import org.wabase._
+import org.wabase.swagger.WabaseSwaggerGenerator
 
-import java.io.File
 import java.time.Instant
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.language.reflectiveCalls
 import scala.util.Try
-import scala.util.control.NonFatal
 
 object BusinessScenariosSpecs extends Loggable {
   def executeStatements(statements: String*): Unit = {
@@ -104,6 +107,23 @@ object Guidelines {
       entity = HttpEntity(ContentTypes.`application/json`,
         ResultEncoder.encodeAnyToJsonByteString(result.map(_.toMap(ctx.wabase.qe))))
     )
+  }
+}
+
+object SwaggerTests {
+  def generateSwaggerJsonForRedirects(ctx: WabaseRequestContext): RequestHandler = {
+    conditional(EntityTag(ctx.wabase.app.metadataVersionString), DateTime(ctx.wabase.app.startupTimeMillis), _ => {
+      Future.successful {
+        val generatorConfig = ConfigFactory.parseString(s"""app.marshal_key_as_json = false""")
+        val generator = new WabaseSwaggerGenerator(Seq(ctx.wabase.qe), config.getString("app.host"), config = generatorConfig) {
+          override def getQueryParameters(method: String, viewDef: ViewDef, keySize: Int = 99): Seq[FilterParameter] = {
+            super.getQueryParameters(method, viewDef, keySize)
+              .filterNot(p => ctx.wabase.app.isInternalParameter(viewDef, p.name))
+          }
+        }
+        HttpResponse(entity = HttpEntity(MediaTypes.`application/json`, generator.generateSwaggerJson))
+      }
+    })
   }
 }
 

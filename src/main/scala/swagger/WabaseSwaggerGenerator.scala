@@ -1,6 +1,7 @@
 package org.wabase.swagger
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.typesafe.config.Config
 import io.swagger.v3.core.util.{Json, Json31, Yaml, Yaml31}
 import io.swagger.v3.oas.models._
 import io.swagger.v3.oas.models.callbacks.Callback
@@ -36,6 +37,7 @@ class WabaseSwaggerGenerator(
   hostString: String,
   isRelevantView:     ViewDef  => Boolean = _.apiMethodToRoles.nonEmpty,
   isRelevantRoute:    RouteDef => Boolean = _ => true,
+  config: Config = org.wabase.config,
 ) extends Loggable {
   private val hostUri = new URI(hostString.stripSuffix("/"))
   def host: String = hostUri.getHost +
@@ -57,6 +59,9 @@ class WabaseSwaggerGenerator(
   def externalDocs: Option[ExternalDocumentation] = None
   def vendorExtensions: Map[String, Object] = Map.empty
   def specVersion: SpecVersion = SpecVersion.V31
+
+  val marshalKeyAsJson: Boolean =
+    Option("app.marshal_key_as_json").filter(config.hasPath).map(config.getBoolean).getOrElse(true)
 
   def swaggerConfig: OpenAPI = {
     val swagger = new OpenAPI()
@@ -182,7 +187,7 @@ class WabaseSwaggerGenerator(
 
   def shouldIncludeSchemaForView(v: ViewDef): Boolean = true
   def schemasFromViewDefs(viewDefMap: Map[String, ViewDef]): Map[String, Schema[_]] = {
-    viewDefMap.view.filter { case (_, v) => shouldIncludeSchemaForView(v) }.map { case (key, viewDef) =>
+    viewDefMap.view.filter { case (_, v) => shouldIncludeSchemaForView(v) }.flatMap { case (viewName, viewDef) =>
       val filteredFields = viewDef.fields.filter(isApiField)
       val fields: TreeMap[String, Schema[_]] =
         TreeMap()(viewNameToQe(viewDef.name).fieldOrdering(viewDef.name)) ++
@@ -190,16 +195,34 @@ class WabaseSwaggerGenerator(
       val fieldsAsJava = new java.util.LinkedHashMap[String, Schema[_]](fields.size, 1)
       fields.foreach { case (name, schema) => fieldsAsJava.put(name, schema) }
       val requiredFields = filteredFields.filter(fieldRequired(viewDefMap)).map(_.fieldName).toList
-      key -> new ObjectSchema()
-        .name{viewDef.name}
+      val viewSchema = new ObjectSchema()
+        .name(viewName)
         .description(viewDef.comments)
         .properties(fieldsAsJava)
-        .required(Option(requiredFields).filter(_.nonEmpty).map(_.asJava).orNull): (String, Schema[_]) /* cast for scala 2.12 */
+        .required(Option(requiredFields).filter(_.nonEmpty).map(_.asJava).orNull)
+        .asInstanceOf[Schema[Object]] /* cast for scala 2.12 */
+      if (marshalKeyAsJson && hasKeyResultMethods(viewDef) && apiKeyFieldNames(viewDef).nonEmpty) {
+        val keyFields: TreeMap[String, Schema[_]] =
+          TreeMap()(viewNameToQe(viewDef.name).fieldOrdering(viewDef.name)) ++
+          apiKeyFieldNames(viewDef).map { keyFieldName =>
+            viewDef.fieldOpt(keyFieldName).getOrElse(
+              new org.mojoz.metadata.FieldDef(keyFieldName, new org.mojoz.metadata.Type("string")))
+          }.map(schemaFromFieldDef(viewDefMap)).toMap
+        val keyFieldsAsJava = new java.util.LinkedHashMap[String, Schema[_]](fields.size, 1)
+        keyFields.foreach { case (name, schema) => keyFieldsAsJava.put(name, schema) }
+        val keyResponseName = keySchemaName(viewDef.name)
+        val keySchema = new ObjectSchema()
+          .name(keyResponseName)
+          .properties(keyFieldsAsJava)
+          .asInstanceOf[Schema[Object]] /* cast for scala 2.12 */
+        Seq(viewName -> viewSchema, keyResponseName -> keySchema)
+      } else Seq(viewName -> viewSchema)
     }.toMap - "count" // no object schema for "count" service
   }
 
   val schemaRefPrefix = "#/components/schemas/"
   def refFromViewName(viewName: String) = s"${schemaRefPrefix}${viewName}"
+  def keyRefFromViewName(viewName: String) = s"${schemaRefPrefix}${keySchemaName(viewName)}"
   def viewNameFromRef(ref: String) = if (ref.startsWith(schemaRefPrefix)) ref.substring(schemaRefPrefix.length) else ref
 
   def fileContent(view: String): Content = {
@@ -244,6 +267,19 @@ class WabaseSwaggerGenerator(
     content
   }
 
+  def jsonKeyContent(view: String, array: Boolean = false): Content = {
+    val content = new Content
+    val mediaType = new MediaType
+    val viewSchema = (new Schema()).$ref(keyRefFromViewName(view))
+    val maybeArraySchema = if (array) {
+      new ArraySchema().items(viewSchema)
+    } else viewSchema
+
+    mediaType.setSchema(maybeArraySchema)
+    content.addMediaType("application/json", mediaType)
+    content
+  }
+
   def plaintextContent(view: String): Content = {
     val content = new Content
     val mediaType = new MediaType
@@ -253,6 +289,9 @@ class WabaseSwaggerGenerator(
 
   def responseContent(view: String, array: Boolean = false) =
     jsonContent(view, array)
+
+  def keyResponseContent(view: String, array: Boolean = false) =
+    jsonKeyContent(view, array)
 
   def createOperation(summary: String, description: String): Operation =
     (new Operation).summary(summary).description(description)
@@ -381,19 +420,28 @@ class WabaseSwaggerGenerator(
     op
   }
 
-  def addSuccessResponse(op: Operation, view: String, code: String = "200", array: Boolean = false): Operation = {
+  private val KeyResultMethodNames = Set("insert", "update", "update+", "upsert", "save", "put", "post")
+  def isKeyResultMethod(method: String) = KeyResultMethodNames.contains(method)
+  def hasKeyResultMethods(viewDef: ViewDef) = viewDef.apiMethodToRoles.keys.exists(isKeyResultMethod)
+  def keySchemaName(viewName: String) = s"${viewName}_key_response"
+
+  def addSuccessResponse(op: Operation, method: String, viewDef: ViewDef, code: String = "200", array: Boolean = false): Operation = {
     val responses = getResponses(op)
     val response = new ApiResponse
-    if (hasApiFields(view))
-      response.content(responseContent(view, array))
+    if (marshalKeyAsJson && viewDef != null && isKeyResultMethod(method)) {
+      if (apiKeyFieldNames(viewDef).nonEmpty)
+        response.content(keyResponseContent(viewDef.name, array))
+    } else if (viewDef != null && hasApiFields(viewDef.name)) {
+      response.content(responseContent(viewDef.name, array))
+    }
     responses.addApiResponse(code, response)
     op
   }
 
   def addSuccessResponse(op: Operation, method: HttpMethod): Operation = method match {
-    case HttpMethods.DELETE => addSuccessResponse(op, null, "204")
-    case HttpMethods.POST   => addSuccessResponse(op, null, "201")
-    case _                  => addSuccessResponse(op, null, "200")
+    case HttpMethods.DELETE => addSuccessResponse(op, method.value.toLowerCase, null, "204")
+    case HttpMethods.POST   => addSuccessResponse(op, method.value.toLowerCase, null, "201")
+    case _                  => addSuccessResponse(op, method.value.toLowerCase, null, "200")
   }
 
   def addSuccessPlaintextResponse(op: Operation, view: String, code: String = "200"): Operation = {
@@ -473,8 +521,8 @@ class WabaseSwaggerGenerator(
     def addServiceUnavailabeError = delegate.addServiceUnavailabeError(op)
     def addSuccessPlaintextResponse(view: String, code: String = "200"): Operation =
           delegate.addSuccessPlaintextResponse(op, view, code)
-    def addSuccessResponse(view: String, code: String = "200", array: Boolean = false): Operation =
-          delegate.addSuccessResponse(op, view, code, array)
+    def addSuccessResponse(method: String, viewDef: ViewDef, code: String = "200", array: Boolean = false): Operation =
+          delegate.addSuccessResponse(op, method, viewDef, code, array)
     def addSuccessResponse(method: HttpMethod): Operation =
           delegate.addSuccessResponse(op, method)
     def getResponses: ApiResponses = delegate.getResponses(op)
@@ -534,7 +582,7 @@ class WabaseSwaggerGenerator(
   def operationForCreate(viewDef: ViewDef, keySize: Int = 99): Operation =
     createOperation("create", viewDef, keySize)
       .addParameters("create", viewDef, keySize)
-      .addSuccessResponse(view = viewDef.name)
+      .addSuccessResponse("create", viewDef)
       .addBadRequestResponse
       .addForbiddenResponse(viewDef)
       .addNotFoundResponse
@@ -552,7 +600,7 @@ class WabaseSwaggerGenerator(
   def operationForGet(viewDef: ViewDef, keySize: Int = 99): Operation =
     createOperation("get", viewDef, keySize)
       .addParameters("get", viewDef, keySize)
-      .addSuccessResponse(view = viewDef.name)
+      .addSuccessResponse("get", viewDef)
       .addBadRequestResponse
       .addForbiddenResponse(viewDef)
       .addNotFoundResponse
@@ -561,7 +609,7 @@ class WabaseSwaggerGenerator(
   def operationForList(viewDef: ViewDef, keySize: Int = 99): Operation =
     createOperation("list", viewDef, keySize)
       .addParameters("list", viewDef, keySize)
-      .addSuccessResponse(view = viewDef.name, array = true)
+      .addSuccessResponse("list", viewDef, array = true)
       .addBadRequestResponse
       .addForbiddenResponse(viewDef)
       .addServiceUnavailabeError
@@ -569,7 +617,7 @@ class WabaseSwaggerGenerator(
   def operationForInsert(viewDef: ViewDef, keySize: Int = 99): Operation =
     createOperation("insert", viewDef, keySize)
       .addParameters("insert", viewDef, keySize)
-      .addSuccessResponse(view = viewDef.name)
+      .addSuccessResponse("insert", viewDef)
       .addRequestBody(view = viewDef.name, isArrayRequest(viewDef, "insert"))
       .addBadRequestResponse
       .addServiceUnavailabeError
@@ -577,7 +625,7 @@ class WabaseSwaggerGenerator(
   def operationForUpdate(viewDef: ViewDef, keySize: Int = 99): Operation =
     createOperation("update", viewDef, keySize)
       .addParameters("update", viewDef, keySize)
-      .addSuccessResponse(view = viewDef.name)
+      .addSuccessResponse("update", viewDef)
       .addRequestBody(view = viewDef.name, isArrayRequest(viewDef, "update"))
       .addBadRequestResponse
       .addServiceUnavailabeError
@@ -585,7 +633,7 @@ class WabaseSwaggerGenerator(
   def operationForSave(viewDef: ViewDef, keySize: Int = 99): Operation =
     createOperation("save", viewDef, keySize)
       .addParameters("save", viewDef, keySize)
-      .addSuccessResponse(view = viewDef.name)
+      .addSuccessResponse("save", viewDef)
       .addRequestBody(view = viewDef.name, isArrayRequest(viewDef, "save"))
       .addBadRequestResponse
       .addServiceUnavailabeError
