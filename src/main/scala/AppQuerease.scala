@@ -2155,7 +2155,7 @@ object AppQuerease {
     qio.qe.viewDefOption(jobName).map { job =>
       val jobControlActorName = config.getString("app.job.actor-name")
       import org.apache.pekko.pattern.ask
-      implicit val timeout: Timeout = 1.second
+      implicit val timeout: Timeout = 5.seconds
       for {
         jobControActor <- as.actorSelection(as / jobControlActorName).resolveOne(1.second)
         msg <- jobControActor ? WabaseScheduler.Tick(job, params)
