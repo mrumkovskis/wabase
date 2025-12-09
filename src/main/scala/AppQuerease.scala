@@ -311,39 +311,41 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     ): QuereaseAction[QuereaseResult] = {
         new QuereaseAction[QuereaseResult] {
           override def run(ec: ExecutionContext, as: ActorSystem) = {
-            implicit val resFac =
-              if (isExplicitDb(objName, actionName)) resourcesFactory
-              else {
-                val (poolName, extraDbs) = dbResourceNames(objName, actionName)
-                resourcesFactory.copy()(resources = resourcesFactory.initResources(poolName, extraDbs))
+            Future {
+              val resFac =
+                if (isExplicitDb(objName, actionName)) resourcesFactory
+                else {
+                  val (poolName, extraDbs) = dbResourceNames(objName, actionName)
+                  resourcesFactory.copy()(resources = resourcesFactory.initResources(poolName, extraDbs))
+                }
+              new QuereaseResources()(resFac, ec, as, httpReq, qio, fileStreamers, httpClients,
+                parameterProvider, logger)
+            }(ec).flatMap { implicit qr: QuereaseResources =>
+              def processResult(res: QuereaseResult, cleanup: Option[Throwable] => Unit): QuereaseResult = res match {
+                case sr@ResponseResult(_, ResultValue(result), _, _) =>
+                  sr.copy(value = ResultValue(processResult(result, cleanup)))
+                case DbResult(result, cl) =>
+                  // close outer resources
+                  cleanup(None)
+                  processResult(result, cl)
+                case r: QuereaseCloseableResult if !doCleanup => QuereaseResultWithCleanup(r, cleanup)
+                case r: QuereaseResult =>
+                  cleanup(None)
+                  r
               }
-            implicit val qr = new QuereaseResources()(resFac, ec, as, httpReq, qio, fileStreamers, httpClients,
-              parameterProvider, logger)
-            import resFac._
-            def processResult(res: QuereaseResult, cleanup: Option[Throwable] => Unit): QuereaseResult = res match {
-              case sr@ResponseResult(_, ResultValue(result), _, _) =>
-                sr.copy(value = ResultValue(processResult(result, cleanup)))
-              case DbResult(result, cl) =>
-                // close outer resources
-                cleanup(None)
-                processResult(result, cl)
-              case r: QuereaseCloseableResult if !doCleanup => QuereaseResultWithCleanup(r, cleanup)
-              case r: QuereaseResult =>
-                cleanup(None)
-                r
-            }
-
-            try {
-              doAction(objName, actionName, data, env, fieldFilter).map {
-                processResult(_, closeResources(resources, false, _))
-              }(ec).andThen {
-                case Failure(NonFatal(exception)) => closeResources(resources, true, Option(exception))
-              }(ec)
-            } catch { // catch exception also here in the case doAction is not executed into separate thread
+              import qr.resourcesFactory._
+              try {
+                doAction(objName, actionName, data, env, fieldFilter).map {
+                  processResult(_, closeResources(resources, false, _))
+                }(ec).andThen {
+                  case Failure(NonFatal(exception)) => closeResources(resources, true, Option(exception))
+                }(ec)
+              } catch { // catch exception also here in the case doAction is not executed into separate thread
                 case NonFatal(e) =>
                   closeResources(resources, true, Option(e))
                   throw e
-            }
+              }
+            }(ec)
           }
         }
     }
