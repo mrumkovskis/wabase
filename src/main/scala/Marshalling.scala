@@ -504,7 +504,8 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
       case tq: TresqlResult   => sys.error("TresqlResult must be serialized before marshalling.")
       case rr: TresqlSingleRr => sys.error("TresqlSingleRowResult must be serialized before marshalling.")
       case it: IteratorResult => sys.error("IteratorResult must be serialized before marshalling.")
-      case fr: FileInfoResult => sys.error("File info result marshalling not supported")
+      case sr: SourceResult   => sys.error("Source result  must me serialized before marshalling.")
+      case fr: FileInfoResult => sys.error("File info result marshalling not supported.")
       case db: DbResult       => sys.error("Db result cannot be marshalled directly, unwrap inner result and try marshalling.")
       case r: QuereaseResultWithCleanup =>
         sys.error(s"QuereaseResult marshaller for class ${r.getClass.getName} not implemented")

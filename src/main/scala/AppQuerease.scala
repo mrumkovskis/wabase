@@ -7,7 +7,7 @@ import org.apache.pekko.http.scaladsl.model.headers.{Cookie, HttpCookie, HttpCoo
 import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes, ErrorInfo, HttpCharsets, HttpEntity, HttpHeader, HttpMethods, HttpRequest, HttpResponse, MediaTypes, Multipart, StatusCodes, UniversalEntity}
 import org.apache.pekko.http.scaladsl.server.directives.ContentTypeResolver
 import org.apache.pekko.http.scaladsl.server.directives.FileAndResourceDirectives.ResourceFile
-import org.apache.pekko.stream.scaladsl.{Source, StreamConverters}
+import org.apache.pekko.stream.scaladsl.{Sink, Source, StreamConverters}
 import org.apache.pekko.util.{ByteString, Timeout}
 import com.typesafe.scalalogging.Logger
 import org.tresql._
@@ -74,6 +74,7 @@ case class TresqlSingleRowResult(row: RowLike) extends QuereaseCloseableResult {
 }
 case class MapResult(result: Map[String, Any]) extends QuereaseResult
 case class IteratorResult(result: Iterator[Any]) extends QuereaseCloseableResult
+case class SourceResult(src: Source[QuereaseResult, _], toBindableValue: QuereaseResult => Future[Any]) extends QuereaseCloseableResult
 case class LongResult(value: Long) extends QuereaseResult
 case class StringResult(value: String) extends QuereaseResult
 case class NumberResult(value: java.lang.Number) extends QuereaseResult
@@ -324,6 +325,9 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
               def processResult(res: QuereaseResult, cleanup: Option[Throwable] => Unit): QuereaseResult = res match {
                 case sr@ResponseResult(_, ResultValue(result), _, _) =>
                   sr.copy(value = ResultValue(processResult(result, cleanup)))
+                case SourceResult(src, toBindableValue) => processResult(
+                  IteratorResult(RequestDecoders.sourceToIterator(src.mapAsync(1)(toBindableValue))(as)), cleanup
+                )
                 case DbResult(result, cl) =>
                   // close outer resources
                   cleanup(None)
@@ -869,8 +873,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     scope: Scope,
     context: ActionContext,
   )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
-    import qr.ec
-    def createGetResult(res: QuereaseResult): QuereaseResult = res match {
+    import qr.{ec, as}
+    def createGetResult(res: QuereaseResult): Future[QuereaseResult] = (res match {
       case TresqlResult(r) if !r.isInstanceOf[DMLResult] =>
         if (op.opt) r.uniqueOption map TresqlSingleRowResult getOrElse NoResult
         else TresqlSingleRowResult(r.unique)
@@ -887,12 +891,20 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           case c: AutoCloseable => c.close()
           case _ =>
         }
-      case c: CompatibleResult => createGetResult(c.result) match {
-        case r => c.copy(result = r)
-      }
+      case SourceResult(src, _) => src.runWith(
+        if (op.opt) Sink.headOption[QuereaseResult] else Sink.head[QuereaseResult])
+        .map {
+          case None => NoResult
+          case Some(r: QuereaseResult) => r
+          case r: QuereaseResult => r
+        }
+      case c: CompatibleResult => createGetResult(c.result).map { r => c.copy(result = r) }
       case r => sys.error(s"unique opt can only process Iterator type, instead encountered: $r")
+    }) match {
+      case f: Future[QuereaseResult@unchecked] => f
+      case r: QuereaseResult => Future.successful(r)
     }
-    val r = doActionOp(op.innerOp, scope, context) map createGetResult
+    val r = doActionOp(op.innerOp, scope, context) flatMap createGetResult
     op.conformTo.map(rf => r.map (r => comp_res(r, rf))).getOrElse(r)
   }
 
@@ -1080,6 +1092,9 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         case RequestPartResult(parts, fs) =>
           Future.successful(parts.mapAsync(1)(AppQuerease.saveRequestPart(_, fs)))
         case IteratorResult(it: Iterator[Map[String, _]@unchecked]) => source(it, vd)
+        case SourceResult(src, toBindableValue) => Future.successful {
+          src.mapAsync(1)(toBindableValue).map(_.asInstanceOf[Map[String, Any]])
+        }
         case CompatibleResult(r, rf, _) => source(r, Option(rf).flatMap(f => viewDefOption(f.name)).orNull)
         case x => sys.error(s"Not iterable result for foreach operation: $x")
       }
@@ -1090,13 +1105,13 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         val itScope = Scope(itData, Map("__idx" -> idx), parent = scope, transparent = false)
         idx += 1
         doSteps(op.action.steps, context.copy(stepName = "foreach"), Future.successful(itScope))
-          .flatMap(dataForNextStep(_, context, unwrapSingleValue = true))
       })
       .flatMap { src =>
-        if (op.foldOp == null) Future.successful(IteratorResult(RequestDecoders.sourceToIterator(src)))
-        else src.runFold(Future.successful(scope(op.foldOp.resVar))) { (resF, el) =>
+        if (op.foldOp == null) Future.successful(SourceResult(src, dataForNextStep(_, context, unwrapSingleValue = true)))
+        else src.runFold(Future.successful(scope(op.foldOp.resVar))) { (resF, qres) =>
           for {
             res <- resF
+            el <- dataForNextStep(qres, context, unwrapSingleValue = true)
             foldOpRes <- doActionOp(op.foldOp.op, Scope(Map(op.foldOp.resVar -> res, op.foldOp.elVar -> el)), context)
             new_res <- dataForNextStep(foldOpRes, context, unwrapSingleValue = true)
           } yield new_res
@@ -1656,6 +1671,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case AnyResult(v) => encodeJson(v)
       case MapResult(m) => encodeMap(m)
       case IteratorResult(data) => encodeStructure(data, true)
+      case SourceResult(src, toBindableValue) => encodeStructure(
+        RequestDecoders.sourceToIterator(src.mapAsync(1)(toBindableValue)), true)
       case TresqlResult(tr) => tr match {
         case SingleValueResult(m: Map[_, _]) => encodeMap(m)
         case SingleValueResult(r: Iterable[_]) => encodeStructure(r.iterator, isCollection.getOrElse(true))
@@ -1810,6 +1827,10 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case row :: Nil if row.size == 1 => row.head._2
       case rows => rows
     }
+    def mapValue(value: Any) = value match {
+      case r: QuereaseResult => dataForNextStep(r, context, unwrapSingleValue)
+      case x => x
+    }
     (res match {
       case TresqlResult(tr) => tr match {
         case dml: DMLResult =>
@@ -1822,14 +1843,16 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       }
       case srr: TresqlSingleRowResult => srr.map(_.toMap)
       case MapResult(mr) => mr
-      case IteratorResult(ir) => ir.toVector
+      case IteratorResult(ir) => (ir map mapValue).toVector
+      case SourceResult(src, toBindableValue) => src.mapAsync(1)(toBindableValue)
+        .runFold(scala.collection.mutable.ArrayBuffer[Any]()) (_ += _).map(_.toVector)
       case LongResult(nr) => nr
       case NumberResult(nr) => nr
       case StringResult(str) => str
       case id: IdResult => id
       case kr: KeyResult => kr.ir
       case AnyResult(ar) => ar match {
-        case v: Iterator[_] => v.toVector
+        case v: Iterator[_] => (v map mapValue).toVector
         case v => v // TODO may be need to convert java collections to scala?
       }
       case ResponseResult(code, value, _, _) => Map("code" -> code, "value" ->
@@ -1895,7 +1918,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case TresqlResult(tr) => tr.close()
       case TresqlSingleRowResult(sr) => sr.close()
       case IteratorResult(ir) => consumeResult(ir)
-      case it: Iterator[_] => while(it.hasNext) it.next()
+      case it: Iterator[_] => while(it.hasNext) consumeResult(it.next())
+      case SourceResult(src, _) => src.mapAsync(1)(consumeResult).runWith(Sink.ignore)
       case AnyResult(ar) => consumeResult(ar)
       case ResponseResult(_, ResultValue(r), _, _) => consumeResult(r)
       case ent: HttpEntity => ent.discardBytes()

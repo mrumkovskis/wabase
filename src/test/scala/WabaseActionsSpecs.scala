@@ -929,6 +929,38 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     } yield t1
   }
 
+  it should "process two level foreach" in {
+    for {
+      t1 <- doAction("insert", "two_level_foreach_test", Map("data"-> List(
+        Map("code" -> "tlft.c1", "value" -> "v1", "children" -> List(
+          Map("code" -> "tlft.c1.1", "value" -> "v1.1"),
+          Map("code" -> "tlft.c1.2", "value" -> "v1.2"),
+          Map("code" -> "tlft.c1.3", "value" -> "v1.3"),
+        )),
+        Map("code" -> "tlft.c2", "value" -> "v2", "children" -> List(
+          Map("code" -> "tlft.c2.1", "value" -> "v2.1"),
+          Map("code" -> "tlft.c2.2", "value" -> "v2.2"),
+        )),
+      ))).map {
+        _ shouldBe StringResult("ok")
+      }
+      t2 <- doAction("list", "two_level_foreach_test", Map("codes" -> List(Map("code" -> "tlft.c1"),
+        Map("code" -> "tlft.c2")))).map {
+        _ shouldBe Seq(
+          Map("code" -> "tlft.c1", "value" -> "v1", "children" -> Seq(
+            Map("code" -> "tlft.c1.1", "value" -> "v1.1", "children" -> Seq()),
+            Map("code" -> "tlft.c1.2", "value" -> "v1.2", "children" -> Seq()),
+            Map("code" -> "tlft.c1.3", "value" -> "v1.3", "children" -> Seq()),
+          )),
+          Map("code" -> "tlft.c2", "value" -> "v2", "children" -> Seq(
+            Map("code" -> "tlft.c2.1", "value" -> "v2.1", "children" -> Seq()),
+            Map("code" -> "tlft.c2.2", "value" -> "v2.2", "children" -> Seq()),
+          )),
+        )
+      }
+    } yield t1
+  }
+
   it should "process result source after wabase result" in {
     val id = 55
     doAction("get", "result_audit_test", Map("id" -> id))

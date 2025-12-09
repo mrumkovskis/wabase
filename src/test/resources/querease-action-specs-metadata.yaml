@@ -783,7 +783,8 @@ list:
 count:
 - foreach(({1 value} + {2} + {3}){value}#(1)) :value + 1
 insert:
-- foreach if_and_foreach_test{code, value}#(1,2) :code || ' ' || :value
+- foreach if_and_foreach_test[code ~ 'foreach_test%' | code = 'if_test_1']{code, value}#(1,2)
+    :code || ' ' || :value
 
 
 name: foreach_outer_scope_test
@@ -805,6 +806,27 @@ insert:
 - foreach ({1 x} + {2} + {3}) fold (sum, x) {:sum + :x} : # fold op block
   - x = :x + 1
   - :x
+
+
+name: two_level_foreach_test
+api: insert, list
+decoder: none
+table: if_and_foreach_test
+fields:
+- code
+- value
+- children * two_level_foreach_test =
+insert:
+- foreach :data:
+  - insert this
+  - foreach :children:
+    - parent = :'..'.code
+    - +if_and_foreach_test{code = :code, parent = :parent, value = :value}
+- "'ok'"
+list:
+- foreach :codes:
+  - setenv unique if_and_foreach_test[code = :code] {code code, value value}
+  - children = foreach if_and_foreach_test[parent = :code] {code code, value value}#(code) this
 
 
 name:   insert_update_test_1
