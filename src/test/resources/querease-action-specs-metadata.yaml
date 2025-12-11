@@ -1482,6 +1482,26 @@ get:
 - as any unique { :id::int id, :sha_256 sha_256 }
 
 
+name: typed_fake_key_test
+api: get
+key: id::string, sha_256
+get:
+- as any unique { :id::string id, :sha_256 sha_256 }
+
+
+name: fake_key_field_syntax_test
+api: get
+key:
+- id        string 8: Identifier
+  swagger:
+    example:    'X-59'
+- sha_256   32
+- hideme:
+    field api: excluded
+get:
+- as any unique { :id::string id, :sha_256 sha_256 }
+
+
 name: upload_test
 decoder: none
 key: filename

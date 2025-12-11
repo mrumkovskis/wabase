@@ -70,7 +70,10 @@ class QuereaseSpecs extends AsyncFlatSpec with Matchers with TestQuereaseInitial
   implicit protected var tresqlResources: Resources = _
 
   override def beforeAll(): Unit = {
-    querease = new TestQuerease("/querease-specs-metadata.yaml") {
+    querease = new TestQuerease(
+      List("/querease-specs-metadata.yaml", "/querease-action-specs-metadata.yaml"),
+      md => md.filename.endsWith("querease-specs-metadata.yaml") || md.body.contains("fake_key")
+    ) {
       override lazy val viewNameToClassMap = QuereaseSpecsDtos.viewNameToClass
     }
     qio = new AppQuereaseIo[Dto](querease)
@@ -387,5 +390,16 @@ class QuereaseSpecs extends AsyncFlatSpec with Matchers with TestQuereaseInitial
     intercept[RuntimeException] {
       new TestQuerease("/querease-specs-bad-metadata.yaml", _.body contains "api_error_test_2").nameToViewDef
     }.getMessage shouldBe "Unexpected API methods and roles structure for view api_error_test_2"
+  }
+
+  it should "load key fields" in {
+    import AppMetadata.AugmentedAppFieldDef
+    querease.viewNameToKeyFields("fake_key_test"             ).find(_.fieldName == "id").get.type_.name         shouldBe "long"
+    querease.viewNameToKeyFields("typed_fake_key_test"       ).find(_.fieldName == "id").get.type_.name         shouldBe "string"
+    querease.viewNameToKeyFields("fake_key_field_syntax_test").find(_.fieldName == "id").get.type_.name         shouldBe "string"
+    querease.viewNameToKeyFields("fake_key_field_syntax_test").find(_.fieldName == "id").get.type_.length       shouldBe  Some(8)
+    querease.viewNameToKeyFields("fake_key_field_syntax_test").find(_.fieldName == "id").get.label              shouldBe "Identifier"
+    querease.viewNameToKeyFields("fake_key_field_syntax_test").find(_.fieldName == "id").get.extras("swagger")  shouldBe Map("example" -> "X-59")
+    querease.viewNameToKeyFields("fake_key_field_syntax_test").find(_.fieldName == "hideme").get.api.excluded   shouldBe true
   }
 }
