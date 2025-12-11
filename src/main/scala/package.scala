@@ -9,6 +9,7 @@ import javax.sql.DataSource
 import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration.{Duration, FiniteDuration}
 import scala.jdk.CollectionConverters._
+import scala.util.control.NonFatal
 
 package object wabase extends Loggable {
 
@@ -270,21 +271,30 @@ package object wabase extends Loggable {
     private lazy val cps = {
       val c = config.getConfig("jdbc.cp")
       val s: Seq[(PoolName, DataSource)] =
-        c.root().asScala.keys.map(v => (PoolName(v), createConnectionPool(c.getConfig(v)))).toSeq ++
+        c.root().asScala.keys.map(v => (PoolName(v), createConnPool(c.getConfig(v)))).toSeq ++
           Seq(PoolName(null) -> DisabledDataSource)
       scala.collection.concurrent.TrieMap(s: _*)
     }
+
+    private def createConnPool(conf: Config) = try createConnectionPool(conf) catch {
+      case NonFatal(ex) =>
+        logger.error(s"Error initializing Db connection pool for $conf", ex)
+        null
+    }
+
     def key(poolName: String): PoolName =
       if (poolName != null) PoolName(poolName) else DEFAULT_CP
 
     def apply(poolName: String): DataSource =
       apply(key(poolName))
     def apply(pool: PoolName): DataSource = {
-      cps.getOrElse(pool, {
+      val ds = cps.getOrElse(pool, {
         require(pool == null || pool.connectionPoolName == null,
           s"""Unable to find connection pool "${pool.connectionPoolName}"""")
         cps(DEFAULT_CP)
       })
+      if (ds != null) ds
+      else apply(pool, () => createConnectionPool(config.getConfig(s"jdbc.cp.${pool.connectionPoolName}")))
     }
 
     def apply(pool: PoolName, factoryFun: () => DataSource): DataSource = {
