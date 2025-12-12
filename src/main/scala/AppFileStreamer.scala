@@ -14,6 +14,7 @@ import org.apache.pekko.stream._
 import org.apache.pekko.stream.scaladsl._
 import org.apache.pekko.util.ByteString
 import org.tresql._
+import org.wabase.ds.{PoolName, QueryTimeout}
 
 import scala.util.Failure
 

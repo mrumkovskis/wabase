@@ -1,6 +1,7 @@
 package org.wabase
 
 import com.typesafe.config.{Config, ConfigFactory}
+
 import java.io.File
 import java.nio.file.attribute.{BasicFileAttributeView, FileTime}
 import java.nio.file.{Files, Paths}
@@ -16,6 +17,7 @@ import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers
 import org.tresql._
 import org.wabase.AppMetadata.DbAccessKey
+import org.wabase.ds.{PoolName, QueryTimeout}
 
 import scala.concurrent._
 import scala.concurrent.duration._

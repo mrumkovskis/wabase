@@ -9,6 +9,8 @@ import org.slf4j.LoggerFactory
 import org.mojoz.metadata.ViewDef
 import org.tresql.{Cache, Dialect, Expr, LogTopic, Logging, QueryBuilder, Resources, ResourcesTemplate, SimpleCache, ThreadLocalResources}
 import org.wabase.AppMetadata.{AugmentedAppViewDef, DbAccessKey}
+import org.wabase.ds.ConnectionPools.{DEFAULT_CP, DefaultQueryTimeout}
+import org.wabase.ds.{ConnectionPools, PoolName, QueryTimeout}
 
 import scala.language.{existentials, postfixOps}
 import scala.util.control.NonFatal

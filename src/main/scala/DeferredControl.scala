@@ -25,6 +25,8 @@ import AppFileStreamer.FileInfo
 import org.apache.pekko.http.scaladsl.model.MediaTypes.`application/json`
 import org.apache.pekko.http.scaladsl.server.RouteResult.Complete
 import org.apache.pekko.util.ByteString
+import org.wabase.ds.ConnectionPools.DefaultQueryTimeout
+import org.wabase.ds.{PoolName, QueryTimeout}
 
 import scala.annotation.tailrec
 import scala.util.control.NonFatal

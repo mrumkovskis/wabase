@@ -30,6 +30,8 @@ import org.apache.pekko.http.scaladsl.server.util.Tuple
 import org.apache.pekko.http.scaladsl.unmarshalling.{FromRequestUnmarshaller, PredefinedFromEntityUnmarshallers}
 import org.apache.pekko.util.ByteString
 import org.mojoz.querease.{ValidationException, ValidationResult}
+import org.wabase.ds.ConnectionPools.DefaultQueryTimeout
+import org.wabase.ds.QueryTimeout
 
 import java.lang.reflect.InvocationTargetException
 import scala.util.{Failure, Success}

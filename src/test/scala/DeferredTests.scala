@@ -1,6 +1,7 @@
 package org.wabase
 
 import com.typesafe.config.ConfigFactory
+
 import java.io.File
 import java.nio.file.Files
 import java.util.UUID
@@ -16,6 +17,7 @@ import org.apache.pekko.util.ByteString
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import org.wabase.AppServiceBase.AppExceptionHandler._
+import org.wabase.ds.{PoolName, QueryTimeout}
 
 import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.Future

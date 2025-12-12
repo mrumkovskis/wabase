@@ -13,6 +13,8 @@ import org.wabase.AppMetadata.{Action, AugmentedAppFieldDef, AugmentedAppViewDef
 import org.wabase.AppMetadata.Action.{LimitKey, OffsetKey, OrderKey}
 import org.wabase.AppQuerease.InjectionParametersContext
 import org.wabase.client.HttpClientConfig
+import org.wabase.ds.ConnectionPools.DEFAULT_CP
+import org.wabase.ds.{PoolName, QueryTimeout}
 
 import java.util.Locale
 import scala.concurrent.{ExecutionContext, Future}

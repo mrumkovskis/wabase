@@ -19,6 +19,7 @@ import org.wabase.AppMetadata.Action.{VariableTransform, VariableTransforms}
 import org.wabase.AppMetadata.DbAccessKey
 import org.wabase.AppQuerease.{InjectionParametersContext, InjectionParametersProvider, Scope, configValueAsScala, httpResponseToMap, listOfStringTuples}
 import org.wabase.client.HttpClient
+import org.wabase.ds.{ConnectionPools, PoolName}
 
 import java.lang.reflect.Parameter
 import java.sql.Connection

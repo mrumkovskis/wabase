@@ -19,6 +19,7 @@ import org.wabase.CacheConditionHandlers.conditional
 import org.wabase.WabaseService.{MediaTypes, RequestHandler}
 import org.wabase.WabaseUnmarshallers.mapUnmarshaller
 import org.wabase._
+import org.wabase.ds.ConnectionPools
 import org.wabase.swagger.WabaseSwaggerGenerator
 
 import java.time.Instant

@@ -20,6 +20,7 @@ import org.slf4j.LoggerFactory
 import org.tresql.{MissingBindVariableException, Query, ThreadLocalResources, convString}
 import org.wabase.QuereaseActionsDtos.PersonWithHealthDataHealth
 import org.wabase.client.WabaseHttpClient
+import org.wabase.ds.{PoolName, QueryTimeout}
 
 import java.io.File
 import java.nio.file.Files

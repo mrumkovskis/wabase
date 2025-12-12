@@ -22,6 +22,7 @@ import org.wabase.AppMetadata.{Action, RouteDef}
 import org.wabase.CacheConditionHandlers._
 import org.wabase.swagger.WabaseSwaggerGenerator
 import org.wabase.WabaseService.Wabase
+import org.wabase.ds.QueryTimeout
 
 import java.util.Locale
 import scala.annotation.tailrec

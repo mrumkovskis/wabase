@@ -4,6 +4,8 @@ import java.io.File
 import java.nio.file.{Files, StandardCopyOption}
 import org.tresql._
 import org.wabase.AppMetadata.DbAccessKey
+import org.wabase.ds.ConnectionPools.DEFAULT_CP
+import org.wabase.ds.{PoolName, QueryTimeout}
 
 import scala.annotation.tailrec
 import scala.util.Try

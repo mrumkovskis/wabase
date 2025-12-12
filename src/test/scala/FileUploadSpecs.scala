@@ -2,6 +2,7 @@ package org.wabase
 
 
 import com.typesafe.config.ConfigFactory
+
 import java.io.File
 import java.nio.file.Files
 import java.util.UUID
@@ -14,6 +15,7 @@ import org.apache.pekko.stream.scaladsl.Source
 import org.apache.pekko.util.ByteString
 import org.scalatest.flatspec.AnyFlatSpec
 import org.wabase.client.WabaseHttpClient
+import org.wabase.ds.PoolName
 
 import scala.concurrent.duration
 import scala.concurrent.duration.{Duration, FiniteDuration}

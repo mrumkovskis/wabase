@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory
 import org.wabase.WabaseScheduler.{JobRunning, JobStarted, Tick}
 import org.tresql._
 import org.wabase.AppMetadata.Action
+import org.wabase.ds.PoolName
 
 import scala.concurrent.{ExecutionContext, Future}
 import scala.language.existentials

@@ -7,6 +7,8 @@ import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers
 import org.tresql.ThreadLocalResources
 import org.wabase.AppMetadata.DbAccessKey
+import org.wabase.ds.ConnectionPools.DEFAULT_CP
+import org.wabase.ds.{PoolName, QueryTimeout}
 
 class MultiPoolTest extends FlatSpec with Matchers with ScalatestRouteTest with BeforeAndAfterAll {
   behavior of "dbUse() and transaction()"

@@ -17,6 +17,7 @@ import AppMetadata._
 import CustomScriptValidationFunctions.is_valid_email
 import com.typesafe.scalalogging.Logger
 import org.apache.pekko.actor.ActorSystem
+import org.wabase.ds.{ConnectionPools, PoolName, QueryTimeout}
 
 import java.sql.Connection
 import scala.util.control.NonFatal

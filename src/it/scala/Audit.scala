@@ -12,8 +12,8 @@ import org.apache.pekko.util.ByteString
 import org.mojoz.querease.{QuereaseIo, SaveMethod}
 import org.wabase.WabaseAppConfig.DefaultCp
 import org.wabase.WabaseService.RequestHandler
-import org.wabase.{BufferedAudit, CborOrJsonAnyValueDecoder, DbAccess, DefaultAppQuerease, DefaultAppQuereaseIo,
-  Loggable, PoolName, TresqlResourcesConf, WabaseRequestContext, WabaseServer}
+import org.wabase.ds.PoolName
+import org.wabase.{BufferedAudit, CborOrJsonAnyValueDecoder, DbAccess, DefaultAppQuerease, DefaultAppQuereaseIo, Loggable, TresqlResourcesConf, WabaseRequestContext, WabaseServer}
 
 import java.nio.file.Files
 import java.time.Instant

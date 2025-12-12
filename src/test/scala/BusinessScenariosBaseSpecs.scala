@@ -22,6 +22,8 @@ import scala.concurrent.Await
 import scala.language.reflectiveCalls
 import scala.util.{Random, Try}
 import org.wabase.client.{ClientException, HttpClientConfig, WabaseHttpClient}
+import org.wabase.ds.ConnectionPools.DEFAULT_CP
+import org.wabase.ds.{PoolName, QueryTimeout}
 
 abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
        extends FlatSpec with Matchers with BeforeAndAfterAll

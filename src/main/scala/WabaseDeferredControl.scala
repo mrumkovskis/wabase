@@ -8,6 +8,7 @@ import org.apache.pekko.http.scaladsl.server.PathMatchers._
 import org.apache.pekko.util.ByteString
 import org.wabase.DeferredControl.`X-Deferred`
 import org.wabase.WabaseService.{RequestHandler, Wabase}
+import org.wabase.ds.QueryTimeout
 
 import scala.concurrent.Future
 
