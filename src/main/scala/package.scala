@@ -1,7 +1,5 @@
 package org
 
-import java.util.concurrent.TimeUnit.MILLISECONDS
-import com.zaxxer.hikari.{HikariConfig, HikariDataSource}
 import org.tresql.SimpleCacheBase
 
 import java.lang.reflect.{Constructor, InvocationTargetException, Parameter}
@@ -68,20 +66,6 @@ package object wabase extends Loggable {
 
   private[wabase] lazy val functionInvocationCache =
     new FunctionInvocationCache(config.getInt("app.function-invocation-cache-size"))
-
-  //db connection pool configuration
-  def createConnectionPool(config: Config): HikariDataSource = {
-    val props = new java.util.Properties(System.getProperties)
-    for (e <- config.entrySet.asScala) {
-      val key = e.getKey
-      if (key.toLowerCase.contains("time") || key == "leakDetectionThreshold")
-        props.setProperty(key, "" + config.getDuration(key, MILLISECONDS))
-      else
-        props.setProperty(key, config.getString(key))
-    }
-    val hikariConfig = new HikariConfig(props)
-    new HikariDataSource(hikariConfig)
-  }
 
   def getObjectOrNewInstance[T](cfg: Config, configPath: String, description: String)(implicit m: Manifest[T]): T =
       getObjectOrNewInstance(cfg, configPath, description, Seq.empty, Seq.empty)
@@ -268,15 +252,22 @@ package object wabase extends Loggable {
   }
 
   object ConnectionPools {
+    private val factory_class_function = OpParser.classNameFunctionName(config.getString("jdbc.data-source-factory"))
     private lazy val cps = {
       val c = config.getConfig("jdbc.cp")
       val s: Seq[(PoolName, DataSource)] =
-        c.root().asScala.keys.map(v => (PoolName(v), createConnPool(c.getConfig(v)))).toSeq ++
+        c.root().asScala.keys.map(v => (PoolName(v), createDataSource(c.getConfig(v)))).toSeq ++
           Seq(PoolName(null) -> DisabledDataSource)
       scala.collection.concurrent.TrieMap(s: _*)
     }
 
-    private def createConnPool(conf: Config) = try createConnectionPool(conf) catch {
+    private def createDataSourceFromFactory(config: Config): DataSource = {
+      import scala.concurrent.ExecutionContext.Implicits.global
+      val (cn, fn) = factory_class_function
+      invokeFunction(cn, fn, Seq((classOf[Config], () => config))).asInstanceOf[DataSource]
+    }
+
+    private def createDataSource(conf: Config) = try createDataSourceFromFactory(conf) catch {
       case NonFatal(ex) =>
         logger.error(s"Error initializing Db connection pool for $conf", ex)
         null
@@ -287,6 +278,7 @@ package object wabase extends Loggable {
 
     def apply(poolName: String): DataSource =
       apply(key(poolName))
+
     def apply(pool: PoolName): DataSource = {
       val ds = cps.getOrElse(pool, {
         require(pool == null || pool.connectionPoolName == null,
@@ -294,7 +286,7 @@ package object wabase extends Loggable {
         cps(DEFAULT_CP)
       })
       if (ds != null) ds
-      else apply(pool, () => createConnectionPool(config.getConfig(s"jdbc.cp.${pool.connectionPoolName}")))
+      else apply(pool, () => createDataSourceFromFactory(config.getConfig(s"jdbc.cp.${pool.connectionPoolName}")))
     }
 
     def apply(pool: PoolName, factoryFun: () => DataSource): DataSource = {
