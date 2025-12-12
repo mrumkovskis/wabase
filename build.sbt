@@ -112,13 +112,13 @@ lazy val wabase = (project in file("."))
         "-doc-source-url", "https://github.com/mrumkovskis/wabase/blob/develop€{FILE_PATH}.scala")
     }).value)
   .settings(
-    publishTo := version { v: String =>
-      val nexus = "https://oss.sonatype.org/"
-      if (v.trim.endsWith("SNAPSHOT"))
-        Some("snapshots" at nexus + "content/repositories/snapshots")
+    publishTo := {
+      val centralSnapshots = "https://central.sonatype.com/repository/maven-snapshots/"
+      if (isSnapshot.value)
+        Some("central-snapshots" at centralSnapshots)
       else
-        Some("releases" at nexus + "service/local/staging/deploy/maven2")
-    }.value,
+        localStaging.value
+    },
     publishMavenStyle := true,
     Test / publishArtifact := true,
     //publishArtifact in IntegrationTest := true, --does not work, https://github.com/sbt/sbt/issues/2458

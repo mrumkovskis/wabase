@@ -23,6 +23,7 @@ wabase.iml
 # scalatest reports
 report/
 it-report/
+wabase-it-report/
 
 #ensime plugin files
 .ensime
@@ -30,3 +31,10 @@ it-report/
 
 #macos
 .DS_Store
+
+# vs code scala plugin
+.metals/
+.vscode/
+project/.bloop/
+project/metals.sbt
+project/project/

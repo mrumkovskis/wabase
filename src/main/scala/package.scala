@@ -6,6 +6,7 @@ import com.zaxxer.hikari.{HikariConfig, HikariDataSource}
 import javax.sql.DataSource
 import scala.concurrent.duration.{Duration, FiniteDuration}
 import scala.jdk.CollectionConverters._
+import scala.util.control.NonFatal
 
 package object wabase extends Loggable {
 
@@ -92,8 +93,13 @@ package object wabase extends Loggable {
     private lazy val cps = {
       val c = config.getConfig("jdbc.cp")
       val s: Seq[(PoolName, DataSource)] =
-        c.root().asScala.keys.map(v => (PoolName(v), createConnectionPool(c.getConfig(v)))).toSeq
+        c.root().asScala.keys.map(v => (PoolName(v), createConnPool(c.getConfig(v)))).toSeq
       scala.collection.concurrent.TrieMap(s: _*)
+    }
+    private def createConnPool(conf: Config) = try createConnectionPool(conf) catch {
+      case NonFatal(ex) =>
+        logger.error(s"Error initializing Db connection pool for $conf", ex)
+        null
     }
     def key(poolName: String): PoolName =
       if (poolName != null) PoolName(poolName) else DEFAULT_CP
@@ -109,11 +115,13 @@ package object wabase extends Loggable {
     }
 
     def apply(pool: PoolName, factoryFun: () => DataSource): DataSource = {
-      cps.getOrElse(pool, {
+      val ds = cps.getOrElse(pool, {
         val ds = factoryFun()
         cps.put(pool, ds)
         ds
       })
+      if (ds != null) ds
+      else apply(pool, () => createConnectionPool(config.getConfig(s"jdbc.cp.${pool.connectionPoolName}")))
     }
   }
 }
