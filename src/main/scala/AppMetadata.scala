@@ -69,8 +69,8 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   override lazy val nameToViewDef: Map[String, ViewDef] =
     toAppViewDefs(viewDefLoader.nameToViewDef)
 
-  val publicApiRoleName = config.getString("app.public-api.role-name")
-  private val publicViewsLocationPattern = config.getString("app.public-views.location-pattern").r
+  lazy val publicApiRoleName = config.getString("app.public-api.role-name")
+  private lazy val publicViewsLocationPattern = config.getString("app.public-views.location-pattern").r
   private lazy val publicViewNames: Set[String] = {
     yamlMetadata
       .filter(md => publicViewsLocationPattern.pattern.matcher(md.filename).matches())
