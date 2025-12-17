@@ -157,7 +157,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   val tresqlUri: TresqlUri = new TresqlUri()
   lazy val cborOrJsonDecoder = new CborOrJsonDecoder(typeDefs, nameToViewDef)
 
-  protected val maxStackDepth: Int = config.getInt("wabase.max-stack-depth")
+  protected lazy val maxStackDepth: Int = config.getInt("wabase.max-stack-depth")
   lazy val templateEngine: WabaseTemplate = createTemplateEngine
   protected def createTemplateEngine: WabaseTemplate =
     getObjectOrNewInstance[WabaseTemplate](config, "app.template.engine", "template engine")
