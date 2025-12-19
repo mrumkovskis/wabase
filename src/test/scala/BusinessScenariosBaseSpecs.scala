@@ -500,7 +500,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
         case None =>
           (formData.toEntity, headers.filterNot(_.isInstanceOf[`Content-Type`]))
       }
-      httpPostAwait[RequestEntity, HttpResponse](HttpMethods.PUT, path, entity, requestHeaders)
+      httpPostAwait[RequestEntity, HttpResponse](method, path, entity, requestHeaders)
     }
 
     def doRequest: HttpResponse  = (method, requestMap, requestSeq, requestString, requestBytes, requestFormData) match {
