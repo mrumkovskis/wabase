@@ -26,7 +26,7 @@ lazy val commonSettings = Seq(
   crossScalaVersions := Seq(
     "3.3.7",
     "2.13.17",
-    "2.12.20",
+    "2.12.21",
   ),
   scalacOptions ++= Seq("-unchecked", "-deprecation", "-feature"),
   resolvers += "snapshots" at "https://central.sonatype.com/repository/maven-snapshots/",
