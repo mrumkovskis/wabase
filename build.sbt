@@ -1,8 +1,8 @@
 val scalaV    = "2.13.18" // "3.3.7"
 
-val pekkoV    = "1.2.1"
+val pekkoV    = "1.4.0"
 val pekkoConnV= "1.2.0"
-val pekkoHttpV= "1.2.0"
+val pekkoHttpV= "1.3.0"
 
 val mojozV    = "6.0.0"
 val quereaseV = "8.1.0-SNAPSHOT"
