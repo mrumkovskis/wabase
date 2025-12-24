@@ -1,4 +1,4 @@
-val scalaV    = "2.13.17" // "3.3.7"
+val scalaV    = "2.13.18" // "3.3.7"
 
 val pekkoV    = "1.2.1"
 val pekkoConnV= "1.2.0"
@@ -25,7 +25,7 @@ lazy val commonSettings = Seq(
   scalaVersion := scalaV,
   crossScalaVersions := Seq(
     "3.3.7",
-    "2.13.17",
+    "2.13.18",
     "2.12.21",
   ),
   scalacOptions ++= Seq("-unchecked", "-deprecation", "-feature"),
