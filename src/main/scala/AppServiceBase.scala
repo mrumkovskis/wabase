@@ -449,23 +449,32 @@ trait AppFileServiceBase[User] {
 
   def extractFileDirective(filenameOpt: Option[String])(implicit user: User, state: ApplicationState): Directive[(Source[ByteString, Any], String, String)] =
     (withSizeLimit(uploadSizeLimit) & post & extractRequestContext).flatMap { ctx =>
-      def multipartFormUpload = {
-        entity(as[Multipart.FormData]).flatMap { _ =>
-          fileUpload("file").flatMap {
-            case (fileInfo, bytes) =>
+      val contentType = ctx.request.entity.contentType
+      def multipartFormUpload = new Directive[Tuple3[Source[ByteString, Any], String, String]] {
+        override def tapply(f: Tuple3[Source[ByteString, Any], String, String] => Route): Route = { ctx =>
+          fileUpload("file").tapply { case Tuple1((fileInfo, bytes)) =>
               validateFileName(fileInfo.fileName)
-              provide(bytes) & provide(fileInfo.fileName) & provide(fileInfo.contentType.toString)
-          }
+              f(Tuple3(bytes, fileInfo.fileName, fileInfo.contentType.toString))
+          }(ctx).flatMap {
+            case rejected @ RouteResult.Rejected(rejs) if rejs.contains(MissingFormFieldRejection("file")) =>
+              Future.failed(new BusinessException(s"No part named 'file' with 'filename' found in multipart upload"))
+            case other =>
+              Future.successful(other)
+          }(ctx.executionContext)
         }
       }
       def simpleUpload(fileName: String) = {
-        val contentType = ctx.request.entity.contentType
         validateFileName(fileName)
         provide (ctx.request.entity.dataBytes) & provide(fileName) & provide(contentType.toString)
       }
       filenameOpt match {
         case None =>
-          multipartFormUpload | simpleUpload("file")
+          contentType match {
+            case multipartFormData if WabaseUnmarshallers.isMultipartFormData(multipartFormData.mediaType) =>
+              multipartFormUpload
+            case _ =>
+              simpleUpload("file")
+          }
         case Some(fileName) =>
           simpleUpload(fileName)
       }
