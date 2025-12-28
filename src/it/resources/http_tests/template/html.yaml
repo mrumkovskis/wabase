@@ -1,0 +1,9 @@
+path:       /data/template_test
+params:
+  title:    Renderer test
+  header:   Header
+  body:     Some text
+  filename: test.html
+response_headers:
+  # TODO Content-Type: text/html; charset=UTF-8   
+response: <!DOCTYPE html><html><head><title>Renderer test</title></head><body><h1>Header</h1><p>Some text</p></body></html>

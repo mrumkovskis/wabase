@@ -729,6 +729,12 @@ response: {
     }],
     "filter": []
   },
+  "template_test": {
+    "name": "template_test",
+    "key": [],
+    "fields": [],
+    "filter": []
+  },
   "user": {
     "name": "user",
     "key": ["id"],

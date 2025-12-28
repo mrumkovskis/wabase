@@ -1227,6 +1227,29 @@ response: {
         }
       }
     },
+    "/template_test" : {
+      "get" : {
+        "summary" : "Get 'template_test'",
+        "description" : "",
+        "responses" : {
+          "200" : {
+            "description" : "OK"
+          },
+          "400" : {
+            "description" : "Bad Request"
+          },
+          "403" : {
+            "description" : "Forbidden"
+          },
+          "404" : {
+            "description" : "Not Found"
+          },
+          "503" : {
+            "description" : "Service Unavailable"
+          }
+        }
+      }
+    },
     "/user" : {
       "get" : {
         "summary" : "List 'user'",
@@ -2035,6 +2058,10 @@ response: {
             "readOnly" : false
           }
         }
+      },
+      "template_test" : {
+        "type" : "object",
+        "properties" : { }
       },
       "user" : {
         "type" : "object",

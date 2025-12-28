@@ -1,0 +1,10 @@
+path:       /data/template_test
+params:
+  title:    Renderer test
+  header:   Header
+  body:     Some text
+  filename: test.pdf
+response_headers:
+  Content-Disposition: attachment; filename="test.pdf"
+  Content-Type: application/pdf
+response:   # pdf content not tested

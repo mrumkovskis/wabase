@@ -1,10 +1,11 @@
 package org.wabase
 
 import java.io.{File, PrintWriter}
-import org.apache.pekko.http.scaladsl.model.{ContentTypes, HttpEntity, HttpHeader, HttpMethod, HttpMethods, HttpResponse, MediaType, MediaTypes, Multipart, RequestEntity}
+import org.apache.pekko.http.scaladsl.model.{
+  ContentType, ContentTypes, HttpEntity, HttpHeader, HttpMethod, HttpMethods,
+  HttpResponse, MediaType, MediaTypes, Multipart, RequestEntity, Uri}
 import org.apache.pekko.http.scaladsl.model.headers.`Content-Type`
 import org.apache.pekko.http.scaladsl.model.headers.RawHeader
-import org.apache.pekko.http.scaladsl.model.Uri
 import org.apache.pekko.http.scaladsl.server.directives.ContentTypeResolver
 import com.typesafe.config.ConfigFactory
 import org.apache.pekko.http.scaladsl.marshalling.{Marshaller, ToEntityMarshaller}
@@ -455,6 +456,20 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
   private implicit val seqOfAnyMarshaller: ToEntityMarshaller[Seq[Any]] = Marshaller.combined { item =>
     HttpEntity(ContentTypes.`application/json`, ResultEncoder.encodeAnyToJsonByteString(item))
   }
+
+  def parseContentType(value: String): `Content-Type` = {
+    `Content-Type`.parseFromValueString(value).toOption.getOrElse(value match {
+      case "application/pdf" =>
+        // `Content-Type`(ContentType(MediaTypes.`application/pdf`))
+        invokeFunction(
+          "org.apache.pekko.http.scaladsl.model.headers.`Content-Type`$",
+          "apply", // private[pekko]
+          Seq((classOf[ContentType], () => ContentType(MediaTypes.`application/pdf`)),
+        )).asInstanceOf[`Content-Type`]
+      case x => sys.error(s"Unsupported content type: $x")
+    })
+  }
+
   def checkTestCase(scenario: File, testCase: File, context: Map[String, Any], map: Map[String, Any], retriesLeft: Int): Map[String, Any] = {
     val requestInfo = extractRequestInfo(cleanupTemplate(map))
     import requestInfo._
@@ -469,9 +484,9 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
       case (null, req) => req
       case (resp : Map[String, Any] @unchecked, req) => cleanupTemplate(mergeTemplate(req, resp))
     }
-    val expectedHeaders = map.m("response_headers").map {
+    val expectedHeaders = Option(map.m("response_headers")).getOrElse(Map.empty).map {
       case ("Content-Type", value) => // Content-Type is not accepted as valid RawHeader
-        `Content-Type`.parseFromValueString(value.toString).toOption.get
+        parseContentType(value.toString)
       case (name, value) =>
         RawHeader(name, value.toString)
     }.toList

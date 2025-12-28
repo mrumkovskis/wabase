@@ -28,13 +28,18 @@ class DefaultWabaseTemplate extends WabaseTemplate {
   private def factory[T](propName: String)(implicit m: Manifest[T]): T = {
     getObjectOrNewInstance[T](config, propName, "template factory")
   }
-
+  val templateAndNameR = """(.*)\|([_\p{IsLatin}][_\p{IsLatin}0-9\- \.]*)$""".r
   override def apply(template: String, data: Iterable[_])(implicit
     ec: ExecutionContext,
     as: ActorSystem,
     fs: FileStreamer
   ): Future[TemplateResult] = {
-    loader.load(template).flatMap { renderer(template, _, data) }
+    val matcher = templateAndNameR.pattern.matcher(template)
+    val (templ, name) =
+      if   (matcher.matches)
+           (matcher.group(1), matcher.group(2))
+      else (template, template)
+    loader.load(templ).flatMap { renderer(name, _, data) }
   }
 }
 
