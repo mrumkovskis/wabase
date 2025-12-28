@@ -3,7 +3,7 @@ target/
 lib_managed/
 src_managed/
 bin/
-src/it/resources/application.conf
+src/it*/resources/application.conf
 logback.xml
 lib/
 tmp

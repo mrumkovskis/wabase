@@ -217,6 +217,24 @@ lazy val it = (project in file("src/it"))
     Test / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-h", name.value + "-it-report"),
   )
 
+lazy val it_legacy = (project in file("src/it_legacy"))
+  .dependsOn(wabase)
+  .settings(commonSettings: _*)
+  .settings(
+    libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.19",
+    publish / skip := true,
+    Compile / resourceDirectory := baseDirectory.value / "resources",
+    Compile / run / mainClass   := Some("org.wabase.WabaseServer"),
+    Compile / unmanagedSources  += baseDirectory.value / ".." / "test" / "scala" / "BusinessScenariosBaseSpecs.scala",
+    Compile / unmanagedSources  += baseDirectory.value / ".." / "test" / "scala" / "TemplateUtil.scala",
+    Test / fork := true,
+    Test / javaOptions := Seq("-Xmx2G"),
+    Test / parallelExecution := false,
+    Test / resourceDirectory := baseDirectory.value / "resources",
+    Test / scalaSource       := baseDirectory.value / "scala",
+    Test / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-h", name.value + "-it-report"),
+  )
+
 Test            / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-h", "report")
 
 Test            / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-oDSF")

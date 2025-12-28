@@ -1,0 +1,11 @@
+path:   upload
+method: POST
+request-parts:
+  - headers:
+      Content-Type: text/plain
+    name:     file
+    filename: text.txt
+    value:    Some text
+response_headers:
+  Content-Type: text/plain; charset=UTF-8
+response: 4c2e9e6da31a64c70623619c449a040968cdbea85945bf384fa30ed2d5d24fa3

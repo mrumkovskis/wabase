@@ -1,0 +1,5 @@
+path:   upload
+method: POST
+request-parts:
+  - name: file
+error: No part named 'file' with 'filename' found in multipart upload
