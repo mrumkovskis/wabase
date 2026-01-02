@@ -184,7 +184,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     import KnownViewExtras._
     import KnownFieldExtras._
     import ViewDefExtrasUtils._
-    val viewDef = QuereaseMetadata.toQuereaseViewDef(vd)
+    val viewDef = toQuereaseViewDef(vd)
     def toAppField(f: FieldDef): FieldDef = {
       import FieldDefExtrasUtils._
 
@@ -269,39 +269,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     }
     val appFields = viewDef.fields.map(toAppField)
 
-    val isSimpleKey = {
-      import QuereaseMetadata.AugmentedQuereaseViewDef
-      val keyFieldNames = Option(viewDef.keyFieldNames).filter(_.nonEmpty).orNull
-      keyFieldNames == null || (
-        (Option(viewDef.extras).flatMap(_ get Key) match {
-          case Some(s: java.lang.String) => true
-          case Some(a: java.util.ArrayList[_]) =>
-            a.asScala.toList.forall {
-              case s: String => true
-              case _ => false
-            }
-          case None => true
-          case Some(null) => true
-          case Some(x) => false
-        }) &&
-        keyFieldNames.forall(ViewDefExtrasUtils.isSimpleOrTypedIdent)
-      )
-    }
-
-    val keyFields =
-      if (!isSimpleKey) {
-        val md = Map(
-          "name"   -> viewDef.name,
-          "db"     -> viewDef.db,
-          "fields" -> Option(viewDef.extras).flatMap(_ get Key).orNull,
-        )
-        val yamlMd = YamlMd.fromNamedString(s"key for view '${viewDef.name}'", ResultEncoder.encodeAnyToJsonString(md))
-        // TODO improve mojoz, performance, clean up! Load in qe and map toAppField?
-        (new YamlViewDefLoader(tableMetadata, yamlMd, joinsParser, metadataConventions, uninheritableExtras, typeDefs))
-          .nameToViewDef(viewDef.name)
-            .fields
-            .map(toAppField)
-      } else null
+    val keyFields = Option(viewDef.keyFields).map(_.map(toAppField)).orNull
 
     import viewDef._
     val auth = toAuth(viewDef, Auth, knownAuthOps)
@@ -389,23 +357,16 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     ViewDef(name, db, table, tableAlias, column, distinct, joins, filter,
       viewDef.groupBy, viewDef.having, orderBy, extends_,
       comments, appFields, viewDef.saveTo, extras)
+      .updateExtras(_.copy(keyFields = keyFields))
       .updateWabaseExtras(_ =>
         AppViewDef(limit, explicitDb, decoder, maxContentSize, timeout, sqlTimeout,
-          auth, apiToRoles, actions, Map.empty, keyFields, minKeySizeForList, maxKeySizeForList, expectedKeySizeDescr))
+          auth, apiToRoles, actions, Map.empty, minKeySizeForList, maxKeySizeForList, expectedKeySizeDescr))
   }
 
   private lazy val viewNameToQueryVariablesCompilerCache = {
     val cache = new ConcurrentHashMap[String, Seq[ast.Variable]]
     cache.putAll(viewNameToQueryVariablesCache.asJava)
     cache
-  }
-
-  override protected def keyFields(view: ViewDef): Seq[FieldDef] = {
-    import AppMetadata.AugmentedAppViewDef
-    Option(view.keyFields).filter(_.nonEmpty) match {
-      case Some(fields) => fields
-      case None         => super.keyFields(view)
-    }
   }
 
   protected def actionQueries(actionName: String, objName: String, action: Action): Set[(String,String)] = {
@@ -1621,7 +1582,6 @@ object AppMetadata extends Loggable {
     val apiMethodToRoles: Map[String, Set[String]]
     val actions: Map[String, Action]
     val actionToDbAccessKeys: Map[String, Seq[DbAccessKey]]
-    val keyFields: Seq[FieldDef]
     val minKeySizeForList     : Int
     val maxKeySizeForList     : Int
     val expectedKeySizeDescr  : String
@@ -1638,7 +1598,6 @@ object AppMetadata extends Loggable {
     apiMethodToRoles: Map[String, Set[String]] = Map(),
     actions: Map[String, Action] = Map(),
     actionToDbAccessKeys: Map[String, Seq[DbAccessKey]] = Map.empty,
-    keyFields: Seq[FieldDef]  = Nil,
     minKeySizeForList   : Int = 0,
     maxKeySizeForList   : Int = 0,
     expectedKeySizeDescr: String = null,
@@ -1685,7 +1644,6 @@ object AppMetadata extends Loggable {
     override val apiMethodToRoles = appExtras.apiMethodToRoles
     override val actions = appExtras.actions
     override val actionToDbAccessKeys = appExtras.actionToDbAccessKeys
-    override val keyFields            = appExtras.keyFields
     override val minKeySizeForList    = appExtras.minKeySizeForList
     override val maxKeySizeForList    = appExtras.maxKeySizeForList
     override val expectedKeySizeDescr = appExtras.expectedKeySizeDescr
@@ -1815,14 +1773,6 @@ object AppMetadata extends Loggable {
 
 
   object ViewDefExtrasUtils {
-    private val ident       = "[_\\p{IsLatin}][_\\p{IsLatin}0-9]*"
-    private val typeName    = ident // TODO backticked type name?
-    private val s           = "\\s*"
-    private val typedIdent  = s"$ident(?:$s::$s$typeName)?"
-    private val typedIdentR = ("^" + typedIdent + "$").r
-
-    def isSimpleOrTypedIdent(s: String) = typedIdentR.pattern.matcher(s).matches
-
     def getStringSeq(name: String, extras: Map[String, Any]): Seq[String] = {
       getSeq(name, extras) map {
         case s: java.lang.String => s
