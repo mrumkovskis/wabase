@@ -12,7 +12,7 @@ import org.apache.pekko.util.{ByteString, Timeout}
 import com.typesafe.scalalogging.Logger
 import org.tresql._
 import org.mojoz.querease._
-import org.mojoz.querease.SaveMethod
+import org.mojoz.querease.SaveMethod.SaveMethod
 import org.mojoz.metadata.ViewDef
 import org.wabase.AppFileStreamer.FileInfo
 import org.wabase.AppMetadata.Action.{VariableTransform, VariableTransforms}
@@ -79,7 +79,8 @@ case class SourceResult(src: Source[QuereaseResult, _], toBindableValue: Quereas
 case class LongResult(value: Long) extends QuereaseResult
 case class StringResult(value: String) extends QuereaseResult
 case class NumberResult(value: java.lang.Number) extends QuereaseResult
-case class IdResult(id: Any, name: String) extends QuereaseResult {
+case class IdResult(id: Any, name: String, created: Boolean = false) extends QuereaseResult {
+  def this(idName: String, result: (SaveMethod, Any)) = this(result._2, idName, result._1 == SaveMethod.Insert)
   def toMap: Map[String, Any] =
     if (id == null || id == 0L) Map.empty else Map((if (name == null) "id" else name) -> id)
 }
@@ -704,17 +705,17 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
                 case Insert => SaveMethod.Insert
                 case Update => SaveMethod.Update
                 case Upsert => SaveMethod.Upsert
-                case _ => SaveMethod.Save
+                case _      => SaveMethod.Save
               }
-              IdResult(save(v, callData, null, saveMethod, null, env), idName)
+              new IdResult(idName, validateAndSave(v, callData, saveMethod,        null, env))
             case Insert =>
-              IdResult(save(v, callData, null, SaveMethod.Insert, null, env), idName)
+              new IdResult(idName, validateAndSave(v, callData, SaveMethod.Insert, null, env))
             case Update =>
-              IdResult(save(v, callData, null, SaveMethod.Update, null, env), idName)
+              new IdResult(idName, validateAndSave(v, callData, SaveMethod.Update, null, env))
             case UpdatePlus =>
-              IdResult(save(v, callData, null, SaveMethod.Update, null, env), idName)
+              new IdResult(idName, validateAndSave(v, callData, SaveMethod.Update, null, env))
             case Upsert =>
-              IdResult(save(v, callData, null, SaveMethod.Upsert, null, env), idName)
+              new IdResult(idName, validateAndSave(v, callData, SaveMethod.Upsert, null, env))
             case Delete =>
               getKeyValues(viewName, callData) // check mappings for key exist
               LongResult(delete(v, callData, null, env))

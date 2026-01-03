@@ -287,18 +287,21 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
     Marshaller.combined((mr:  MapResult) => (mr.result, viewName, resFilter))
   implicit val toEntityQuereaseLongResultMarshaller:      ToResponseMarshaller  [LongResult]   =
     Marshaller { _ => (lr: LongResult) => opaqueStringMarshaller("" + lr.value) }
-  implicit val toEntityQuereaseStringResultMarshaller:    ToResponseMarshaller  [StringResult]     =
+  implicit val toEntityQuereaseStringResultMarshaller:    ToResponseMarshaller  [StringResult] =
     Marshaller { _ => (lr: StringResult) => opaqueStringMarshaller(lr.value) }
-  implicit val toEntityQuereaseNumberResultMarshaller:    ToResponseMarshaller  [NumberResult]     =
+  implicit val toEntityQuereaseNumberResultMarshaller:    ToResponseMarshaller  [NumberResult] =
     Marshaller { _ => (nr: NumberResult) => opaqueStringMarshaller(String.valueOf(nr.value))}
-  implicit val toEntityQuereaseIdResultMarshaller:        ToResponseMarshaller  [IdResult]       =
-    Marshaller { _ => (id: IdResult) => opaqueStringMarshaller(id.toString) }
+  implicit val toEntityQuereaseIdResultMarshaller:        ToResponseMarshaller  [IdResult]     =
+    Marshaller.opaque{(ir: IdResult) => HttpResponse(
+      status = if (ir.created) StatusCodes.Created else StatusCodes.OK,
+      entity = HttpEntity(Option(ir.id).map(_.toString).getOrElse("")))
+    }
   implicit def toResponseQuereaseKeyResultMarshaller:     ToResponseMarshaller[KeyResult]      =
     Marshaller { ec => kr =>
       import AppMetadata._
       val sr =
         if (config.getBoolean("app.marshal_key_as_json")) {
-          ResponseResult(StatusCodes.OK.intValue,
+          ResponseResult((if (kr.ir.created) StatusCodes.Created else StatusCodes.OK).intValue,
             ResultValue(
               AnyResult((ListMap.newBuilder ++=
                 qe.viewNameToApiKeyFieldNames(kr.viewName).zip(kr.key)).result())
@@ -307,7 +310,7 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
           )
         } else if (qe.viewDef(kr.viewName).apiMethodToRoles.contains(Action.Get))
           ResponseResult(StatusCodes.SeeOther.intValue, RedirectValue(redirectTresqlUri(kr)))
-        else ResponseResult(StatusCodes.OK.intValue, ResultValue(NoResult))
+        else ResponseResult((if (kr.ir.created) StatusCodes.Created else StatusCodes.OK).intValue, ResultValue(NoResult))
       toResponseQuereaseResponseResultMarshaller(app.WabaseResult(null, sr))(ec)(sr)
     }
   implicit def toResponseQuereaseResponseResultMarshaller(wr: app.WabaseResult)(implicit ec: ExecutionContext):  ToResponseMarshaller[ResponseResult] = {

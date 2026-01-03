@@ -79,7 +79,7 @@ response: [
       "name": ""
     },
     "response": {
-      "code": 200,
+      "code": 201,
       "headers": [
         "Location: person?/p1"
       ],
@@ -108,7 +108,7 @@ response: [
       "name": ""
     },
     "response": {
-      "code": 200,
+      "code": 201,
       "headers": [
         "Location: person?/p2"
       ],

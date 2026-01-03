@@ -3,7 +3,7 @@ method:     POST
 request:
   name:     John
   surname:  Doe
-response_status: 200 OK
+response_status: 201 Created
 response_headers:
   Location: person?/p1
 response:
