@@ -230,6 +230,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
                             params: Map[String, Any] = Map.empty,
                             removeIdsFlag: Boolean = true,
                             keyValues: Seq[Any] = Nil,
+                            unwrapException: Boolean = true,
                           ) = {
     implicit val state = ApplicationState(env)
     implicit val fileStreamer: AppFileStreamer[TestUsr] = app
@@ -238,7 +239,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     app.doWabaseAction(action, view, keyValues, params, values)
       .map(_.result)
       .flatMap(processResult(_, view, removeIdsFlag))
-      .transform(identity, { case e: QuereaseActionException => e.getCause case e => e })
+      .transform(identity, { case e: QuereaseActionException if unwrapException => e.getCause case e => e })
   }
 
   protected def doJob(jobName: String, params: Map[String, Any]): Future[Any] = {
@@ -1870,6 +1871,15 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         )),
         Map("value" -> "v3", "level" -> 1)))
     }
+  }
+
+  it should "have correct source in exception" in {
+    for {
+      t1 <- recoverToExceptionIf[QuereaseActionException](doAction("get", "source_check", Map(), unwrapException = false))
+        .map(_.getMessage should include ("org.wabase.QuereaseActionTestManagerObj.businessException"))
+      t2 <- recoverToExceptionIf[QuereaseActionException](doAction("post", "source_check", Map(), unwrapException = false))
+        .map(_.getMessage should include ("org.wabase.QuereaseActionTestManagerObj.businessException"))
+    } yield t1
   }
 
   behavior of "Save operation with dynamically generated deep nesting"

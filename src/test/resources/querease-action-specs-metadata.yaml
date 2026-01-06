@@ -1827,3 +1827,14 @@ list:
       path || `array[level + 1, d.id]` /* path ordering by level and id */
     }
   } hierarchy {trim(value) value, level}#(path)
+
+
+name: source_check
+api: get, post
+get:
+- foreach {1 x} org.wabase.QuereaseActionTestManagerObj.businessException
+- 1
+post:
+- foreach {1 x}:
+  - org.wabase.QuereaseActionTestManagerObj.businessException
+- 2
