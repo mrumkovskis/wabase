@@ -1018,8 +1018,8 @@ class OpParser(viewName: String, caches: OpParser.Caches)
       case conformTo ~ (mode ~ http) => http.copy(conformTo = conformTo, isProxy = mode == "http_proxy")
     } named "http-op"
   }
-  def dbOp: MemParser[Db] = dbBlockOp ~ operation ^^ {
-    case db ~ op => db.copy(action = actionFromOp(op))
+  def dbOp: MemParser[Db] = dbBlockOp ~ actionFromOp ^^ {
+    case db ~ act => db.copy(action = act)
   } named "db-op"
   def dbBlockOp: MemParser[Db] = (Action.DbUseKey | Action.TransactionKey) ~ opt("[" ~> ident <~ "]") ^^ {
     case op_type ~ db => Db(null, op_type == Action.DbUseKey, db.map(AppMetadata.DbAccessKey).toList)
@@ -1048,15 +1048,15 @@ class OpParser(viewName: String, caches: OpParser.Caches)
   def foreachFoldOp: MemParser[FoldOp] = ("fold" ~ "(") ~> (ident <~ ",") ~ (ident <~ ")") ~ operation ^^ {
     case res ~ el ~ op => FoldOp(res, el, op)
   } named "foreach-fold-op"
-  def foreachOp: MemParser[Foreach] = foreachBlockOpBase ~ operation ~ opt(foreachFoldOp) ^^ {
-    case coll ~ op ~ foldOp => Foreach(coll, actionFromOp(op), foldOp.orNull)
+  def foreachOp: MemParser[Foreach] = foreachBlockOpBase ~ actionFromOp ~ opt(foreachFoldOp) ^^ {
+    case coll ~ act ~ foldOp => Foreach(coll, act, foldOp.orNull)
   } named "foreach-op"
   def foreachBlockOpBase: MemParser[Op] = "foreach(?=\\s+|[^\\w])".r ~> operation named "foreach-block-op-base"
   def foreachBlockOp: MemParser[Foreach] = foreachBlockOpBase ~ opt(foreachFoldOp) ^^ {
     case coll ~ foldOp => Foreach(coll, null, foldOp = foldOp.orNull)
   } named "foreach-block-op"
-  def ifElseOp: MemParser[If] = ifBlockOp ~ operation ~ opt(elseBlockOp ~> operation) ^^ {
-      case cond ~ ifOp ~ elseOp => cond.copy(action = actionFromOp(ifOp), elseAct = elseOp.map(actionFromOp).orNull)
+  def ifElseOp: MemParser[If] = ifBlockOp ~ actionFromOp ~ opt(elseBlockOp ~> actionFromOp) ^^ {
+      case cond ~ ifAct ~ elseAct => cond.copy(action = ifAct, elseAct = elseAct.orNull)
     } named "if-else-op"
   def ifBlockOp: MemParser[If] = "if(?=\\s+|[^\\w])".r ~> operation ^^ {
     case cond => If(cond, null)
@@ -1158,7 +1158,15 @@ class OpParser(viewName: String, caches: OpParser.Caches)
   private def findArg(name: String, idx: Int, l: List[(String, Op)]) =
     l.find(_._1 == name).orElse(l.lift(idx).filter(_._1 == null)).map(_._2)
 
-  private def actionFromOp(op: Op) = Action((Evaluation(None, Nil, op), "") :: Nil)
+  def actionFromOp: MemParser[Action] = new Parser[Action] {
+    def apply(in: Input): ParseResult[Action] = {
+      val start = in.offset
+      operation(in).flatMapWithNext(op => next =>
+        Success(Action((Evaluation(None, Nil, op), in.source.subSequence(start, next.offset).toString.trim) :: Nil),
+          next)
+      )
+    }
+  }
 }
 
 object OpParser extends Loggable {
