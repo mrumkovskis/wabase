@@ -89,10 +89,8 @@ object WabaseServer {
     val executionImpl = new ExecutionImpl()(serverSystem)
     val app = new App(executionImpl)
     val server = new WabaseServer(app,
-      enableServerNotifications =
-        !config.hasPath("app.enable-server-notifications") || config.getBoolean("app.enable-server-notifications"),
-      enableDeferredRequests =
-        !config.hasPath("app.enable-deferred-requests") || config.getBoolean("app.enable-deferred-requests"),
+      enableServerNotifications = config.getBoolean("app.server-notifications.enabled"),
+      enableDeferredRequests = config.getBoolean("app.deferred-requests.enabled"),
     )
     val protocol        = if (isSslEnabled) "https" else "http"
     val hostPortString  = s"$protocol://localhost:${server.port}"

@@ -81,8 +81,8 @@ object ServerNotifications extends EventStreamMarshalling with Loggable {
   }
 
   private val ServerEventFunction =
-    OpParser.classNameFunctionName(config.getString("app.server-event-function"))
-  val SubscriberWatcherActorName = config.getString("app.server-event-subscriber-watcher-actor-name")
+    OpParser.classNameFunctionName(config.getString("app.server-notifications.event-function"))
+  val SubscriberWatcherActorName = config.getString("app.server-notifications.event-subscriber-watcher-actor-name")
 
   private def invokeCreateServerEventFunction(event: Any)(as: ActorSystem) = {
     val (cn, fn) = ServerEventFunction
