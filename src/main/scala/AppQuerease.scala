@@ -495,21 +495,20 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     def doStep(step: Step, stepDataF: Future[Scope], src: String): Future[QuereaseResult] = {
       import resourcesFactory._
       stepDataF flatMap { stepScope =>
-        val stepData = stepScope.data
         def doActionStep(vts: List[VariableTransform], op: Action.Op) =
           doActionOp(op, if (vts.isEmpty) stepScope
-            else stepScope.copy(data = doVarsTransforms(vts, stepData, stepData).result), context)
+            else stepScope.copy(data = doVarsTransforms(vts, scopeBindVars(stepScope)).result), context)
         qr.logger.debug(s"Doing action '${context.name}' step '$src', $step.")
         qr.logger.debug(s"Step data: {${loggable(resourcesFactory.resources, scopeBindVars(stepScope))}}")
         step match {
           case Evaluation(_, vts, op) => doActionStep(vts, op)
           case SetEnv(_, vts, op, _) => doActionStep(vts, op)
           case Return(_, vts, op) => doActionStep(vts, op)
-          case RemoveVar(name) => Future.successful(stepData - name.get) map MapResult
+          case RemoveVar(name) => Future.successful(stepScope.data - name.get) map MapResult
           case Validations(_, validations, db) =>
             context.view.map { vd =>
               Future(doValidationStep(validations, db, scopeBindVars(stepScope), vd))
-                .map(_ => MapResult(stepData))
+                .map(_ => MapResult(stepScope.data))
             }.getOrElse(Future.failed(
               new RuntimeException(s"Validation cannot be performed without view in context -" +
                 s"(${context.name})")))
@@ -843,7 +842,6 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   }
 
   protected def doVarsTransforms(transforms: List[VariableTransform],
-                                 seed: Map[String, Any],
                                  data: Map[String, Any]): MapResult = {
     def evalConcats(names: List[String]) = names.map(evalVar).reduce[Any] {
       case (x: Seq[_], y: Seq[_]) => x ++ y
@@ -866,7 +864,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           curRes + (to.getOrElse(vn.substring(vn.lastIndexOf(".") + 1, vn.length)) -> x)
       })
     }
-    val transRes = transforms.foldLeft(seed) ((res, vt) => updRes(vt.from.vars, vt.to, res))
+    val transRes = transforms.foldLeft(Map[String, Any]()) ((res, vt) => updRes(vt.from.vars, vt.to, res))
     MapResult(transRes)
   }
 
@@ -1606,7 +1604,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case ep: Action.ExtractParts => doExtractParts(ep, scope, context)
       case th: Action.This => doThis(th, scope, context)
       case VariableTransforms(vts) =>
-        Future.successful(doVarsTransforms(vts, Map[String, Any](), scope.data ++ env))
+        Future.successful(doVarsTransforms(vts, scope.toBindeableMap(env)))
       case _: Action.Else => sys.error(s"Integrity error. Else operation cannot be here, must be coalesced into if operation")
     }
   }

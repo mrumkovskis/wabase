@@ -282,7 +282,6 @@ get:
 
 
 name: variable_transform_test
-fields:
 get:
 - v1.n = 'Gunzis'
 - v2.j = 'Developer'
@@ -291,6 +290,11 @@ insert:
 - it1 = [1, 2, 3]
 - it2 = [3, 4, 5]
 - (it = :it1 ++ :it2) -> :it    # sequence concatenation
+update:
+- if :upd:
+  - (tr_name = :name) + (tr_surname = :surname) -> :tr_name || ' ' || :tr_surname
+- else:
+  - :name
 
 
 name: person_health

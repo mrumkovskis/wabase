@@ -389,6 +389,22 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
         .map {
           _ shouldBe Seq(1, 2, 3, 3, 4, 5)
         }
+      t3 <- doAction("variable_transform_test", "update",
+        Map("upd" -> true, "name" -> "Joe", "surname" -> "Doe"), Map()
+      )
+        .mapTo[TresqlResult]
+        .map(_.result.toListOfVectors.head.head)
+        .map {
+          _ shouldBe "Joe Doe"
+        }
+      t4 <- doAction("variable_transform_test", "update",
+        Map("upd" -> false, "name" -> "Joe", "surname" -> "Doe"), Map()
+      )
+        .mapTo[TresqlResult]
+        .map(_.result.toListOfVectors.head.head)
+        .map {
+          _ shouldBe "Joe"
+        }
     } yield t1
   }
 
