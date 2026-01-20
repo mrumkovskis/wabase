@@ -1,5 +1,5 @@
 path:       /data/person?/p1
-method:     POST
+method:     PUT
 request:
   name:     John
   surname:  Doe

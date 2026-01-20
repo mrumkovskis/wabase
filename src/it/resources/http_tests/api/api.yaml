@@ -3,10 +3,10 @@ response: {
   "audit":["list"],
   "check_person": ["get"],
   "current_user": ["get"],
-  "guideline_calculation_helper": ["list", "insert", "get"],
+  "guideline_calculation_helper": ["list", "upsert", "get"],
   "login_using_json_or_urlencoded": ["insert"],
   "logout": ["insert"],
-  "person": ["count", "create", "delete", "get", "save", "list"],
+  "person": ["count", "create", "delete", "get", "list", "upsert"],
   "request_calculation_view": ["insert"],
   "response_calculation_view": ["list"],
   "save_person_email": ["save"],
@@ -15,5 +15,5 @@ response: {
   "user": ["count","create","delete","get","save","list"],
   "user-with-roles-array": ["get"],
   "user_role": ["get", "save"],
-  "validation": ["save"]
+  "validation": ["upsert"]
 }

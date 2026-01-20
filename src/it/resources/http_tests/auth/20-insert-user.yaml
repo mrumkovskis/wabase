@@ -1,4 +1,4 @@
-path:       /data/user/1
+path:       /data/user
 method:     POST
 request:
   name:     john

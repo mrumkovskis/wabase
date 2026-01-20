@@ -1,5 +1,0 @@
-path:       /data/user/2
-method:     POST
-request:
-  name:     johan
-error:      405 Method Not Allowed

@@ -1,5 +1,5 @@
 path:       /data/save_person_email?/p1
-method:     POST
+method:     PUT
 request:
   email:    please-fail
 error:      Lauka "Email" vērtība neatbilst e-pasta adreses šablonam

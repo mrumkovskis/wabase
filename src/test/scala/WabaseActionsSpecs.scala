@@ -1617,7 +1617,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     }
     var fileId: Any = null
     var fileSha: Any = null
-    Post("/upload_test/file.txt", createEntity("upload download", ContentTypes.`text/plain(UTF-8)`)) ~>
+    Put("/upload_test/file.txt", createEntity("upload download", ContentTypes.`text/plain(UTF-8)`)) ~>
       route ~> check {
         val r = decodeJs(entityAs[String]).asInstanceOf[Map[String, Any]]
         fileId = r("id")

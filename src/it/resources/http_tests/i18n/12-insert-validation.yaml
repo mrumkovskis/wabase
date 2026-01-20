@@ -1,5 +1,5 @@
 path:       /data/validation/100
-method:     POST
+method:     PUT
 request:
   context:     save_person_email
   expression:  email && email.length <= 75

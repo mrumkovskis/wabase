@@ -39,7 +39,7 @@ order:
 
 
 name:   by_key_view_1
-api:    get list count create save delete
+api:    get list count create insert update update+ delete
 table:  person
 fields:
 - name
@@ -47,7 +47,7 @@ fields:
 
 
 name:   by_key_view_2
-api:    get list count create save delete
+api:    get list count create insert update update+ delete
 table:  person
 key:    name
 fields:
@@ -56,18 +56,20 @@ fields:
 
 
 name:   by_key_view_3
-api:    get list count create save delete
+api:    get list count create save update+ delete
 table:  person
 key:    name
 fields:
 - name
 - surname
+update+:
+- update by_key_view_2
 save:
 - save by_key_view_2
 
 
 name:   by_hidden_key_view_1
-api:    get list count create save delete
+api:    get list count create save update+ delete
 key:    name, surname
 table:  person
 fields:
@@ -75,6 +77,9 @@ fields:
   - field api: excluded
 - surname
 save:
+- name = 'Hidden-1'
+- save this
+update+:
 - name = 'Hidden-1'
 - save this
 get:
@@ -86,7 +91,7 @@ delete:
 
 
 name:   by_hidden_key_view_2
-api:    get count create save delete
+api:    get count create insert update delete
 key:    name
 table:  person
 fields:
@@ -130,13 +135,16 @@ get:
 
 
 name:   by_key_redirect_view_1
-api:    get list count create save delete
+api:    get list count create save update+ delete
 table:  person
 key:    name
 fields:
 - name
 - surname
 save:
+- save this
+- redirect this
+update+:
 - save this
 - redirect this
 
@@ -163,7 +171,7 @@ fields:
 
 
 name:   by_magic_key_view_1
-api:    get list count create save delete
+api:    get list count create insert update update+ delete
 table:  person
 key:    name
 fields:
@@ -175,10 +183,13 @@ insert:
 update:
 - name = 'MagicUpd'
 - save this
+update+:
+- name = 'MagicUpd'
+- save this
 
 
 name:   by_magic_key_view_2
-api:    get list count create save delete
+api:    get list count create insert update delete
 table:  person
 key:    name
 fields:

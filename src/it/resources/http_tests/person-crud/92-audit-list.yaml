@@ -63,7 +63,7 @@ response: [
     "request_time": "-> _",
     "request": {
       "uri": "http://localhost:8080/data/person?/p1",
-      "method": "POST",
+      "method": "PUT",
       "headers": [
         "Host: localhost:8080",
         "X-Requested-With: XMLHttpRequest",
@@ -92,7 +92,7 @@ response: [
     "request_time": "-> _",
     "request": {
       "uri": "http://localhost:8080/data/person?/p2",
-      "method": "POST",
+      "method": "PUT",
       "headers": [
         "Host: localhost:8080",
         "X-Requested-With: XMLHttpRequest",

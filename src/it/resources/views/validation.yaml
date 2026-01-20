@@ -1,6 +1,6 @@
 name:   validation
 table:  validation
-api:    save
+api:    upsert
 fields:
 - id
 - context

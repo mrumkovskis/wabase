@@ -639,7 +639,7 @@ delete:
 
 
 name: invocation_test_2
-api: get, list, save, delete, count
+api: get, list, insert, update, delete, count
 key: key
 fields:
 - key:
@@ -686,7 +686,7 @@ list:
 
 
 name: multi_argument_invocation
-api: get, save, delete
+api: get, insert, update, delete
 get:
 - multipleStringArguments({'a'}, {'b'}) {'c'}
 insert:
@@ -741,7 +741,7 @@ list:
 
 name: foreach_test_1
 table: if_and_foreach_test ift
-api: get, save
+api: get, save, update
 key: code
 fields:
 - code
@@ -835,7 +835,7 @@ list:
 
 name:   insert_update_test_1
 table:  simple_table
-api:    get, save
+api:    get, insert, update
 fields:
 - id
 - value
@@ -953,7 +953,7 @@ delete:
 
 name: http_test_2
 key: name
-api: get, list, save
+api: get, list, insert, update
 fields:
 - id
 - name
@@ -1514,8 +1514,8 @@ get:
 name: upload_test
 decoder: none
 key: filename
-api: insert
-insert:
+api: put
+put:
   - extract parts
 
 

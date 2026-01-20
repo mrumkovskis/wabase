@@ -98,7 +98,7 @@ do:       doAction $1
 ################# views ###############
 
 name: view1
-api: get, insert, update, delete, list, create, count
+api: get, update, update+, delete, list, create, count
 explicit db: true
 key: id
 fields:
@@ -106,7 +106,7 @@ fields:
 - value
 get:
 - value = 'Value' || :id
-insert:
+update+:
 - this
 update:
 - value = 'upd-' || :value

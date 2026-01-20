@@ -1,5 +1,5 @@
 path:       /data/guideline_calculation_helper?/c1
-method:     POST
+method:     PUT
 request:
   category:     guideline_cat
   description:  guideline desc

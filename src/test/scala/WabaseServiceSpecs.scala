@@ -91,7 +91,7 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
   it should "do wabase service routes for public views" in {
     callRoute("/public/view1/10", decoder = decodeJs) shouldBe Map("id" -> 10, "value" -> "Value10")
     entityForRequest(Post("/public/view1/5", encodeJs(Map("value" -> "Value5-ins"))), decodeJs) shouldBe
-      Map("id" -> 5, "value" -> "Value5-ins")
+      Map("id" -> null, "value" -> "Value5-ins")
     entityForRequest(Put("/public/view1/5", encodeJs(Map("id" -> 5, "value" -> "Value5-ins"))),
       decodeJs) shouldBe Map("id" -> 5, "value" -> "upd-Value5-ins")
     entityForRequest(RequestBuilding.Delete("/public/view1/10")) shouldBe "deleted 10"
@@ -109,12 +109,10 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
         code shouldBe StatusCodes.BadRequest
         String.valueOf(resp) should startWith("Failed to read to map for view1")
     }
-    statusAndEntityForRequest(Post(
-      "/public/view1/5",
-      encodeJs(Seq(Map("id" -> 5, "value" -> "Value5-ins")))
-    ))  match { case (code, resp) =>
-      code shouldBe StatusCodes.BadRequest
-      String.valueOf(resp) should startWith("Failed to read to map for view1")
+    statusAndEntityForRequest(Post("/public/view1/5", encodeJs(Seq(Map("id" -> 5, "value" -> "Value5-ins"))))) match {
+      case (code, resp) =>
+        code shouldBe StatusCodes.BadRequest
+        String.valueOf(resp) should startWith("Failed to read to map for view1")
     }
   }
 

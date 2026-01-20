@@ -370,7 +370,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       val location = header[Location].get.uri.toString
       location shouldBe "/data/by_key_view_3?/KeyName"
     }
-    Put(s"/data/by_key_view_3?/KeyName", s"""{"name": "KeyName2", "surname": "NewSurname"}""") ~> route ~> check {
+    Post(s"/data/by_key_view_3?/KeyName", s"""{"name": "KeyName2", "surname": "NewSurname"}""") ~> route ~> check {
       status shouldEqual StatusCodes.OK
       val location = header[Location].get.uri.toString
       location shouldBe "/data/by_key_view_3?/KeyName2"
@@ -379,12 +379,15 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     hasPerson("02220") shouldBe false
     createPerson("02220", "OldSurname")
     hasPerson("02220", "OldSurname") shouldBe true
-    Put(s"/data/by_key_view_2/02220", s"""{"name": "02221", "surname": "NewSurname"}""") ~> route ~> check {
+    Post(s"/data/by_key_view_2/02220", s"""{"name": "02221", "surname": "NewSurname"}""") ~> route ~> check {
       status shouldEqual StatusCodes.OK
       val location = header[Location].get.uri.toString
       location shouldBe "/data/by_key_view_2?/02221"
     }
     hasPerson("02221", "NewSurname") shouldBe true
+    hasPerson("02220", "NewSurname") shouldBe false
+    hasPerson("02220", "OldSurname") shouldBe false
+    hasPerson("02221", "OldSurname") shouldBe false
   }
 
   it should "update key" in {
@@ -393,12 +396,12 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     val id = createPerson("Winnie", "Pooh")
     hasPerson("Winnie") shouldBe true
     hasPerson("Bear")   shouldBe false
-    Put(s"/data/by_key_view_1?/Winnie/Pooh", s"""{"name": "Greedy", "surname": "Pooh"}""") ~> route ~> check {
+    Post(s"/data/by_key_view_1?/Winnie/Pooh", s"""{"name": "Greedy", "surname": "Pooh"}""") ~> route ~> check {
       status shouldEqual StatusCodes.OK
       val location = header[Location].get.uri.toString
       location shouldBe "/data/by_key_view_1?/Greedy/Pooh"
     }
-    Put(s"/data/by_key_view_1/Greedy/Pooh", s"""{"name": "Bear", "surname": "Pooh"}""") ~> route ~> check {
+    Post(s"/data/by_key_view_1/Greedy/Pooh", s"""{"name": "Bear", "surname": "Pooh"}""") ~> route ~> check {
       status shouldEqual StatusCodes.OK
       val location = header[Location].get.uri.toString
       location shouldBe "/data/by_key_view_1?/Bear/Pooh"
@@ -419,7 +422,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     hasPerson("MagicIns") shouldBe true
     hasPerson("MagicUpd") shouldBe false
     hasPerson("NotMagic") shouldBe false
-    Put(s"/data/by_magic_key_view_1/MagicIns", s"""{"name": "NotMagic"}""") ~> route ~> check {
+    Post(s"/data/by_magic_key_view_1/MagicIns", s"""{"name": "NotMagic"}""") ~> route ~> check {
       status shouldEqual StatusCodes.OK
       val location = header[Location].get.uri.toString
       location shouldBe "/data/by_magic_key_view_1?/MagicUpd"
@@ -522,7 +525,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       location shouldBe "/data/by_key_redirect_view_1?/RediName"
     }
     // on update redirect to this explicitly
-    Put(s"/data/by_key_redirect_view_1/RediName", s"""{"name": "RediNameUpd"}""") ~> route ~> check {
+    Post(s"/data/by_key_redirect_view_1/RediName", s"""{"name": "RediNameUpd"}""") ~> route ~> check {
       status shouldEqual StatusCodes.SeeOther
       val location = header[Location].get.uri.toString
       location shouldBe "/data/by_key_redirect_view_1?/RediNameUpd"
@@ -552,7 +555,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       location shouldBe "/data/by_hidden_key_view_1?/MeHidden"
     }
     hasPerson("Hidden-1") shouldBe true
-    Put("/data/by_hidden_key_view_1/MeHidden", """{"surname": "MeHiddenUpd"}""") ~> route ~> check {
+    Post("/data/by_hidden_key_view_1/MeHidden", """{"surname": "MeHiddenUpd"}""") ~> route ~> check {
       status shouldEqual StatusCodes.OK
       val location = header[Location].get.uri.toString
       location shouldBe "/data/by_hidden_key_view_1?/MeHiddenUpd"
@@ -853,7 +856,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       status shouldEqual StatusCodes.OK
       val apiMap =  CborOrJsonAnyValueDecoder.decode(ByteString(responseAs[String])).asInstanceOf[Map[String, Any]]
       apiMap("by_id_view_1") shouldBe Seq("count", "create", "delete", "get", "save", "list")
-      apiMap("by_hidden_key_view_2") shouldBe Seq("count", "create", "delete", "get", "save")
+      apiMap("by_hidden_key_view_2") shouldBe Seq("count", "insert", "create", "delete", "get", "update")
       apiMap.get("no_api_view") shouldBe None
       apiMap.get("roles_test") shouldBe Some(Seq("list"))
     }
@@ -898,11 +901,11 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     }
     Post("/data/no_api_view", "{}") ~> route ~> check {
       status shouldEqual StatusCodes.BadRequest
-      responseAs[String] shouldBe "no_api_view.insert is not a part of this API"
+      responseAs[String] shouldBe "no_api_view.post is not a part of this API"
     }
     Put("/data/no_api_view/0", "{}") ~> route ~> check {
       status shouldEqual StatusCodes.BadRequest
-      responseAs[String] shouldBe "no_api_view.update is not a part of this API"
+      responseAs[String] shouldBe "no_api_view.put is not a part of this API"
     }
     Delete("/data/no_api_view/0") ~> route ~> check {
       status shouldEqual StatusCodes.BadRequest
@@ -910,15 +913,15 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     }
     Post("/data/non_existing_view", "{bad json}") ~> route ~> check {
       status shouldEqual StatusCodes.BadRequest
-      responseAs[String] should include ("non_existing_view.insert is not a part of this API")
+      responseAs[String] should include ("non_existing_view.post is not a part of this API")
     }
     Put("/data/non_existing_view/0", "{bad json}") ~> route ~> check {
       status shouldEqual StatusCodes.BadRequest
-      responseAs[String] should include ("non_existing_view.update is not a part of this API")
+      responseAs[String] should include ("non_existing_view.put is not a part of this API")
     }
     Put("/data/non_existing_view?/0", "{bad json}") ~> route ~> check {
       status shouldEqual StatusCodes.BadRequest
-      responseAs[String] should include ("non_existing_view.update is not a part of this API")
+      responseAs[String] should include ("non_existing_view.put is not a part of this API")
     }
   }
 
