@@ -921,7 +921,7 @@ list:
 
 
 name: conf_test
-api: list, get, insert, update
+api: list, get, insert, update, delete
 get:
 - uri = conf string conf.test.uri
 - status ok { :uri || 'about' }
@@ -935,6 +935,11 @@ update:
 - file = to file conf string conf.test.uri 'updated'
 - res = as any file [main] {:file.id, :file.sha_256}         # use named file streamer
 - :res
+delete:
+- status = if conf boolean conf.test.enabled:
+  - "'yes'"
+- else:
+  - "'no'"
 
 
 name: http_test_1

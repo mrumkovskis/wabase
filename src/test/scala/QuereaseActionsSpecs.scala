@@ -484,7 +484,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
     }.flatMap { _ =>
       doAction("conf_test", "list", Map(), Map()).map {
         case r => r should be(
-          ConfResult("conf.test", Map("uri" -> "http://wabase.org/", "list" -> List(1, 2, 3))))
+          ConfResult("conf.test", Map("uri" -> "http://wabase.org/", "list" -> List(1, 2, 3), "enabled" -> true)))
       }
     }
   }

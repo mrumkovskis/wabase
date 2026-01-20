@@ -1053,8 +1053,9 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     doActionOp(op.cond, scope, context).map {
       case TresqlResult(tr) => tr.unique[Boolean]
       case r: TresqlSingleRowResult => r.map(_.boolean(0))
-      case x => sys.error(s"Conditional operator must be whether TresqlResult or TresqlSingleRowResult or" +
-        s"StringResult(true|false). Instead found: $x")
+      case ConfResult(_, r: Boolean) => r
+      case x => sys.error(s"Conditional operator must be whether TresqlResult or TresqlSingleRowResult or " +
+        s"ConfResult(_, true|false). Instead found: $x")
     }.flatMap { cond =>
       if (cond)
         doSteps(op.action.steps, context.copy(stepName = "if"), Future.successful(Scope(Map(), parent = scope)))
