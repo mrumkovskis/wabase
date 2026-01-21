@@ -17,7 +17,6 @@ class RouteTests extends FlatSpec with Matchers with ScalatestRouteTest {
   behavior of "Core routes"
 
   it should "handle get by id" in {
-    @annotation.nowarn("cat=deprecation") // OK to test deprecated getByIdPath
     val route = (service.crudPath & service.getByIdPath) { (path, id) =>
       complete("OK")
     }
@@ -59,8 +58,7 @@ class RouteTests extends FlatSpec with Matchers with ScalatestRouteTest {
   }
 
   it should "handle delete" in {
-    @annotation.nowarn("cat=deprecation") // OK to test deprecated deletePath
-    val route = (service.crudPath & service.deletePath) { (path, id) =>
+    val route = (service.crudPath & service.deleteByIdPath) { (path, id) =>
       complete("OK")
     }
 
@@ -80,8 +78,7 @@ class RouteTests extends FlatSpec with Matchers with ScalatestRouteTest {
   }
 
   it should "handle update" in {
-    @annotation.nowarn("cat=deprecation") // OK to test deprecated updatePath
-    val route = (service.crudPath & service.updatePath) { (path, id) =>
+    val route = (service.crudPath & service.putByIdPath) { (path, id) =>
       complete("OK")
     }
 
@@ -102,7 +99,7 @@ class RouteTests extends FlatSpec with Matchers with ScalatestRouteTest {
 
 
   it should "handle insert" in {
-    val route = (service.crudPath & service.insertPath) { (path, keyValues) =>
+    val route = (service.crudPath & service.postByKeyPath) { (path, keyValues) =>
       complete("OK")
     }
 

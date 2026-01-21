@@ -65,22 +65,18 @@ trait AppServiceBase[User]
   def apiPath = path("api" ~ Slash.?) & get
 
   def crudPath = pathPrefix("data")
-  // @deprecated("Use viewWithKeyPath. This method will be removed", "6.0.3")
   def viewWithIdPath = path(Segment / LongNumber)
   def viewWithKeyPath = path(Segment / Segments) | path(Segment ~ PathEnd) & provide(Nil: List[String])
   def createPath = (path("create" / Segment) | pathPrefix("create:") & rawPathPrefix(Segment)) & get
   def viewWithoutIdPath = path(Segment ~ (PathEnd | Slash))
-  // @deprecated("Use getByKeyPath. This method will be removed", "6.0.3")
   def getByIdPath = viewWithIdPath & get
   def getByKeyPath = viewWithKeyPath & get
-  // @deprecated("Use deleteByKeyPath. This method will be removed", "6.0.3")
-  def deletePath = viewWithIdPath & delete
-  def deleteByKeyPath = viewWithKeyPath & delete
-  // @deprecated("Use updateByKeyPath. This method will be removed", "6.0.3")
-  def updatePath = viewWithIdPath & put
-  def updateByKeyPath = viewWithKeyPath & put
-  def insertPath = viewWithKeyPath & post
-  def listOrGetPath = viewWithoutIdPath & get
+  def deleteByIdPath  = viewWithIdPath    & delete
+  def deleteByKeyPath = viewWithKeyPath   & delete
+  def putByIdPath     = viewWithIdPath    & put
+  def putByKeyPath    = viewWithKeyPath   & put
+  def postByKeyPath   = viewWithKeyPath   & post
+  def listOrGetPath   = viewWithoutIdPath & get
   def countPath = (path("count" / Segment) | pathPrefix("count:") & rawPathPrefix(Segment)) & get
 
   def entityOrException[T](um: FromRequestUnmarshaller[T]): Directive1[T] =
@@ -148,7 +144,6 @@ trait AppServiceBase[User]
   private def useActions(viewName: String, actionName: String) =
     !app.useLegacyFlow(viewName, actionName)
 
-  // @deprecated("Use getByKeyAction. This method will be removed", "6.0.3")
   def getByIdAction(viewName: String, id: Long)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
       if (useActions(viewName, Action.Get)) {
@@ -189,8 +184,7 @@ trait AppServiceBase[User]
       }
     }
 
-  // @deprecated("Use deleteByKeyAction. This method will be removed", "6.0.3")
-  def deleteAction(viewName: String, id: Long)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
+  def deleteByIdAction(viewName: String, id: Long)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     if (useActions(viewName, Action.Delete))
       extractStringId { idString =>
         deleteByKeyAction(viewName, Seq(idString))
@@ -216,12 +210,11 @@ trait AppServiceBase[User]
 
   val ActionForHttpPost = config.getString("app.action-for-http.post") // maybe "insert" for legacy app
   val ActionForHttpPut  = config.getString("app.action-for-http.put")  // maybe "update" for legacy app
-  // @deprecated("Use updateByKeyAction. This method will be removed", "6.0.3")
-  def updateAction(viewName: String, id: Long)(
+  def putByIdAction(viewName: String, id: Long)(
     implicit user: User, state: ApplicationState, timeout: QueryTimeout): Route =
     if (useActions(viewName, ActionForHttpPut))
       extractStringId { idString =>
-        updateByKeyAction(viewName, Seq(idString))
+        putByKeyAction(viewName, Seq(idString))
       }
     else
       extractUri { requestUri =>
@@ -233,7 +226,7 @@ trait AppServiceBase[User]
         }
       }
 
-  def updateByKeyAction(viewName: String, keyValues: Seq[Any])(
+  def putByKeyAction(viewName: String, keyValues: Seq[Any])(
     implicit user: User, state: ApplicationState, timeout: QueryTimeout): Route =
       parameterMultiMap { params =>
         val actionName = app.checkApi(viewName, ActionForHttpPut, user, keyValues)
@@ -293,7 +286,7 @@ trait AppServiceBase[User]
         params.get("sort").flatMap(_.headOption).orNull)
     }
 
-  def insertAction(viewName: String, keyValues: Seq[Any])(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
+  def postByKeyAction(viewName: String, keyValues: Seq[Any])(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     extractUri { requestUri =>
       parameterMultiMap { params =>
         val actionName = app.checkApi(viewName, ActionForHttpPost, user, keyValues)
@@ -332,20 +325,19 @@ trait AppServiceBase[User]
   def filterPars(params: Map[String, List[String]]) =
     AppServiceBase.filterParams(metadataConventions, namesForInts, escapeReflectedXss)(params)
 
-  // OK to use deprecated getByIdPath, deletePath, updatePath here
   @annotation.nowarn("cat=deprecation")
   def crudActionOnKeyInPath(implicit user: User) = applicationState { implicit state =>
     extractTimeout { implicit timeout =>
       getByIdPath     { getByIdAction     } ~
       countPath       { countAction       } ~
       createPath      { createAction      } ~
-      deletePath      { deleteAction      } ~
+      deleteByIdPath  { deleteByIdAction  } ~
       deleteByKeyPath { deleteByKeyAction } ~
-      updatePath      { updateAction      } ~
-      updateByKeyPath { updateByKeyAction } ~
+      putByIdPath     { putByIdAction     } ~
+      putByKeyPath    { putByKeyAction    } ~
       listOrGetPath   { listOrGetAction   } ~
       getByKeyPath    { getByKeyAction    } ~
-      insertPath      { insertAction      }
+      postByKeyPath   { postByKeyAction   }
     }
   }
 
