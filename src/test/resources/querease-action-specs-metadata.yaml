@@ -720,15 +720,13 @@ get:
 - :result
 delete:
 - result:
-  - if {:code = 'true'}:
-    - unique { :code code, null parent, 'Value delete' value }
-  - else:
-    - unique { :code code, null parent, 'Else value delete' value }
+  - if {:code = 'true'} unique { :code code, null parent, 'Value delete' value }  #if op
+  - else unique { :code code, null parent, 'Else value delete' value }            #else op
 - :result
 
 
 name: if_test_2
-api: get, list
+api: get, list, insert, update
 fields:
 - value
 get:
@@ -737,6 +735,16 @@ get:
 list:
 - res = 'init'
 - get this
+insert:
+- if {:value = 'insert'} 'I'    #if op
+- else:                         #else block op
+  - x = 'NI'
+  - :x
+update:
+- if {:value = 'update'}:       #if block op
+  - x = 'U'
+  - :x
+- else 'NU'                     #else op
 
 
 name: foreach_test_1
@@ -1133,7 +1141,9 @@ fields:
   - address
 get:
 - val = get owner
-- if is_defined(:val.name) :val else status 404 {'not found'}
+- if is_defined(:val.name):       #if block
+  - :val
+- else status 404 {'not found'}   #else op
 
 
 name: extract_http_header_test

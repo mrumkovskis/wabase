@@ -1055,9 +1055,10 @@ class OpParser(viewName: String, caches: OpParser.Caches)
   def foreachBlockOp: MemParser[Foreach] = foreachBlockOpBase ~ opt(foreachFoldOp) ^^ {
     case coll ~ foldOp => Foreach(coll, null, foldOp = foldOp.orNull)
   } named "foreach-block-op"
-  def ifElseOp: MemParser[If] = ifBlockOp ~ actionFromOp ~ opt(elseBlockOp ~> actionFromOp) ^^ {
-      case cond ~ ifAct ~ elseAct => cond.copy(action = ifAct, elseAct = elseAct.orNull)
+  def ifElseOp: MemParser[If] = ifBlockOp ~ actionFromOp ~ opt(elseOp) ^^ {
+      case cond ~ ifAct ~ elseOp => cond.copy(action = ifAct, elseAct = elseOp.map(_.action).orNull)
     } named "if-else-op"
+  def elseOp: MemParser[Else] = elseBlockOp ~> actionFromOp ^^ (Else(_))
   def ifBlockOp: MemParser[If] = "if(?=\\s+|[^\\w])".r ~> operation ^^ {
     case cond => If(cond, null)
   } named "if-block-op"
@@ -1114,7 +1115,7 @@ class OpParser(viewName: String, caches: OpParser.Caches)
     rep(setCookie | deleteCookie | setHttpHeaders | setUserAttributes) named "set-http-headers-ops"
   def commit: MemParser[Commit.type] = "commit\\s*$".r ^^^ Commit named "commit-op"
   def operation: MemParser[Op] = (commit | redirect | response | viewOp | confOp | uniqueOp |
-    httpOp | dbOp | foreachOp | ifElseOp | resourceOp | fileOp | toFileOp | templateOp | emailOp |
+    httpOp | dbOp | foreachOp | ifElseOp | elseOp | resourceOp | fileOp | toFileOp | templateOp | emailOp |
     jsonCodecOp | httpHeaderOp | httpCookieOp | extractPartsOp | extractEntityOp |
     thisOp | bracesOp | invocationOp | tresqlOp) named "operation"
 
