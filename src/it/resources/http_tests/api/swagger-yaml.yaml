@@ -182,6 +182,33 @@ response: |+
             description: Not Found
           "503":
             description: Service Unavailable
+      put:
+        summary: Upsert 'guideline_calculation_helper' by 'code'
+        description: ""
+        parameters:
+        - name: code
+          in: path
+          description: Code
+          required: true
+          schema:
+            type: string
+            maxLength: 12
+        requestBody:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/guideline_calculation_helper"
+        responses:
+          "200":
+            description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: "#/components/schemas/guideline_calculation_helper_key_response"
+          "400":
+            description: Bad Request
+          "503":
+            description: Service Unavailable
     /hello:
       get:
         responses:
@@ -339,6 +366,33 @@ response: |+
             description: Forbidden
           "404":
             description: Not Found
+          "503":
+            description: Service Unavailable
+      put:
+        summary: Upsert 'person' by 'code'
+        description: ""
+        parameters:
+        - name: code
+          in: path
+          description: Code
+          required: true
+          schema:
+            type: string
+            maxLength: 12
+        requestBody:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/person"
+        responses:
+          "200":
+            description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: "#/components/schemas/person_key_response"
+          "400":
+            description: Bad Request
           "503":
             description: Service Unavailable
       delete:
@@ -969,6 +1023,34 @@ response: |+
               application/json:
                 schema:
                   $ref: "#/components/schemas/user_role_key_response"
+          "400":
+            description: Bad Request
+          "503":
+            description: Service Unavailable
+    /validation/{id}:
+      put:
+        summary: Upsert 'validation' by 'id'
+        description: Validation scripts for views
+        parameters:
+        - name: id
+          in: path
+          description: Id
+          required: true
+          schema:
+            type: integer
+            format: int64
+        requestBody:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/validation"
+        responses:
+          "200":
+            description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: "#/components/schemas/validation_key_response"
           "400":
             description: Bad Request
           "503":

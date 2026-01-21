@@ -630,6 +630,22 @@ class WabaseSwaggerGenerator(
       .addBadRequestResponse
       .addServiceUnavailabeError
 
+  def operationForUpdatePlus(viewDef: ViewDef, keySize: Int = 99): Operation =
+    createOperation("update+", viewDef, keySize)
+      .addParameters("update+", viewDef, keySize)
+      .addSuccessResponse("update+", viewDef)
+      .addRequestBody(view = viewDef.name, isArrayRequest(viewDef, "update+"))
+      .addBadRequestResponse
+      .addServiceUnavailabeError
+
+  def operationForUpsert(viewDef: ViewDef, keySize: Int = 99): Operation =
+    createOperation("upsert", viewDef, keySize)
+      .addParameters("upsert", viewDef, keySize)
+      .addSuccessResponse("upsert", viewDef)
+      .addRequestBody(view = viewDef.name, isArrayRequest(viewDef, "upsert"))
+      .addBadRequestResponse
+      .addServiceUnavailabeError
+
   def operationForSave(viewDef: ViewDef, keySize: Int = 99): Operation =
     createOperation("save", viewDef, keySize)
       .addParameters("save", viewDef, keySize)
@@ -643,6 +659,36 @@ class WabaseSwaggerGenerator(
       .addParameters("delete", viewDef, keySize)
       .addSuccessResponse(HttpMethods.DELETE)
       .addNotFoundResponse
+
+  def operationForPut(viewDef: ViewDef, keySize: Int = 99): Operation =
+    createOperation("put", viewDef, keySize)
+      .addParameters("put", viewDef, keySize)
+      .addSuccessResponse("put", viewDef)
+      .addRequestBody(view = viewDef.name, isArrayRequest(viewDef, "put"))
+      .addBadRequestResponse
+      .addServiceUnavailabeError
+
+  def operationForPost(viewDef: ViewDef, keySize: Int = 99): Operation =
+    createOperation("post", viewDef, keySize)
+      .addParameters("post", viewDef, keySize)
+      .addSuccessResponse("post", viewDef)
+      .addRequestBody(view = viewDef.name, isArrayRequest(viewDef, "post"))
+      .addBadRequestResponse
+      .addServiceUnavailabeError
+
+  def operationForHead(viewDef: ViewDef, keySize: Int = 99): Operation =
+    createOperation("head", viewDef, keySize)
+      .addParameters("head", viewDef, keySize)
+      .addRequestBody(view = viewDef.name, isArrayRequest(viewDef, "head"))
+      .addBadRequestResponse
+      .addServiceUnavailabeError
+
+  def operationForOptions(viewDef: ViewDef, keySize: Int = 99): Operation =
+    createOperation("options", viewDef, keySize)
+      .addParameters("options", viewDef, keySize)
+      .addRequestBody(view = viewDef.name, isArrayRequest(viewDef, "options"))
+      .addBadRequestResponse
+      .addServiceUnavailabeError
 
   def operationForDelete (pathInfo: PathNameAndParameters): Operation = new Operation().addParameters(pathInfo).addSuccessResponse(HttpMethods.DELETE)
   def operationForGet    (pathInfo: PathNameAndParameters): Operation = new Operation().addParameters(pathInfo).addSuccessResponse(HttpMethods.GET)
@@ -688,14 +734,20 @@ class WabaseSwaggerGenerator(
         (viewDef.minKeySizeForList to viewDef.maxKeySizeForList).map { keySize =>
           (pathWithKey(method, viewDef, keySize),         HttpMethods.GET,    operationForList(viewDef, keySize)
         )}
-      case "insert" => Seq((pathWithKey(method, viewDef), HttpMethods.POST,   operationForInsert(viewDef)))
+      case "insert" => Seq((pathWithKey(method, viewDef, 0), HttpMethods.POST,operationForInsert(viewDef, 0)))
       case "update" => Seq((pathWithKey(method, viewDef), HttpMethods.PUT,    operationForUpdate(viewDef)))
+      case "update+"=> Seq((pathWithKey(method, viewDef), HttpMethods.POST,   operationForUpdatePlus(viewDef)))
+      case "upsert" => Seq((pathWithKey(method, viewDef), HttpMethods.PUT,    operationForUpsert(viewDef)))
       case "save"   =>
                 if  (apiKeyFieldNames(viewDef).isEmpty)
                        Seq((pathWithKey(method, viewDef),    HttpMethods.POST, operationForSave(viewDef)))
                 else   Seq((pathWithKey(method, viewDef, 0), HttpMethods.POST, operationForInsert(viewDef, 0)),
                            (pathWithKey(method, viewDef),    HttpMethods.PUT,  operationForUpdate(viewDef)))
-      case "delete" => Seq((pathWithKey(method, viewDef), HttpMethods.DELETE, operationForDelete(viewDef)))
+      case "delete" => Seq((pathWithKey(method, viewDef),    HttpMethods.DELETE,  operationForDelete(viewDef)))
+      case "put"    => Seq((pathWithKey(method, viewDef),    HttpMethods.PUT,     operationForPut(viewDef)))
+      case "post"   => Seq((pathWithKey(method, viewDef, 0), HttpMethods.POST,    operationForPost(viewDef, 0)))
+      case "head"   => Seq((pathWithKey(method, viewDef),    HttpMethods.HEAD,    operationForHead(viewDef)))
+      case "options"=> Seq((pathWithKey(method, viewDef),    HttpMethods.OPTIONS, operationForOptions(viewDef)))
       case _        =>
         logger.warn(s"Unsupported api method '$method' for view '${viewDef.name}' skipped by swagger generator")
         Nil
