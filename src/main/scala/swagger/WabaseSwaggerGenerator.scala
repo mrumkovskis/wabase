@@ -723,7 +723,10 @@ class WabaseSwaggerGenerator(
     case x => throw new RuntimeException(s"Http method not supported by swagger generator: $x") // not expected
   }
 
-  def pathsAndOperations(method: String, viewDef: ViewDef): Seq[(String, HttpMethod, Operation)] =
+  private val fullKeyOps = Set("get",/*insert*/ "update", "update+", "upsert", "save", "delete", "put")
+  def pathsAndOperations(method: String, viewDef: ViewDef): Seq[(String, HttpMethod, Operation)] = {
+    lazy val hasFullKeyOps = fullKeyOps.exists(viewDef.apiMethodToRoles.contains)
+    lazy val z = if (hasFullKeyOps) 0 else 99
     method match {
       case "create" => Seq((pathWithKey(method, viewDef, 0), HttpMethods.GET, operationForCreate(viewDef, 0)))
       case "count"  => Seq((pathWithKey(method, viewDef, viewDef.maxKeySizeForList),
@@ -734,7 +737,7 @@ class WabaseSwaggerGenerator(
         (viewDef.minKeySizeForList to viewDef.maxKeySizeForList).map { keySize =>
           (pathWithKey(method, viewDef, keySize),         HttpMethods.GET,    operationForList(viewDef, keySize)
         )}
-      case "insert" => Seq((pathWithKey(method, viewDef, 0), HttpMethods.POST,operationForInsert(viewDef, 0)))
+      case "insert" => Seq((pathWithKey(method, viewDef, z), HttpMethods.POST,operationForInsert(viewDef, z)))
       case "update" => Seq((pathWithKey(method, viewDef), HttpMethods.PUT,    operationForUpdate(viewDef)))
       case "update+"=> Seq((pathWithKey(method, viewDef), HttpMethods.POST,   operationForUpdatePlus(viewDef)))
       case "upsert" => Seq((pathWithKey(method, viewDef), HttpMethods.PUT,    operationForUpsert(viewDef)))
@@ -745,13 +748,14 @@ class WabaseSwaggerGenerator(
                            (pathWithKey(method, viewDef),    HttpMethods.PUT,  operationForUpdate(viewDef)))
       case "delete" => Seq((pathWithKey(method, viewDef),    HttpMethods.DELETE,  operationForDelete(viewDef)))
       case "put"    => Seq((pathWithKey(method, viewDef),    HttpMethods.PUT,     operationForPut(viewDef)))
-      case "post"   => Seq((pathWithKey(method, viewDef, 0), HttpMethods.POST,    operationForPost(viewDef, 0)))
+      case "post"   => Seq((pathWithKey(method, viewDef, z), HttpMethods.POST,    operationForPost(viewDef, z)))
       case "head"   => Seq((pathWithKey(method, viewDef),    HttpMethods.HEAD,    operationForHead(viewDef)))
       case "options"=> Seq((pathWithKey(method, viewDef),    HttpMethods.OPTIONS, operationForOptions(viewDef)))
       case _        =>
         logger.warn(s"Unsupported api method '$method' for view '${viewDef.name}' skipped by swagger generator")
         Nil
     }
+  }
 
   def swaggerOverridesKey = "swagger"
 
