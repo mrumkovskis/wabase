@@ -726,7 +726,7 @@ delete:
 
 
 name: if_test_2
-api: get, list, insert, update
+api: get, list, insert, update, delete
 fields:
 - value
 get:
@@ -745,6 +745,11 @@ update:
   - x = 'U'
   - :x
 - else 'NU'                     #else op
+delete:
+- if {:value = 'delete'} 'D' else:    #if op else block op
+  - x = 'ND'
+  - :x
+
 
 
 name: foreach_test_1

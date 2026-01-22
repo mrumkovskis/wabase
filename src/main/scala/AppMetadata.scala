@@ -578,7 +578,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
                   // 'if', 'foreach', 'db ...' step
                   def pa = parseAction(objectName, al.asScala.toList, opParser)
                   def addBlock(op: Action.Op) = op.asInstanceOf[Action.BlockOp] match {
-                    case bl: Action.If      => bl.copy(action = pa)
+                    case bl: Action.If      => if (bl.action == null) bl.copy(action = pa) else bl.copy(elseAct = pa)
                     case bl: Action.Foreach => bl.copy(action = pa)
                     case bl: Action.Db      => bl.copy(action = pa)
                     case bl: Action.Else    => bl.copy(action = pa)
@@ -1059,8 +1059,8 @@ class OpParser(viewName: String, caches: OpParser.Caches)
       case cond ~ ifAct ~ elseOp => cond.copy(action = ifAct, elseAct = elseOp.map(_.action).orNull)
     } named "if-else-op"
   def elseOp: MemParser[Else] = elseBlockOp ~> actionFromOp ^^ (Else(_))
-  def ifBlockOp: MemParser[If] = "if(?=\\s+|[^\\w])".r ~> operation ^^ {
-    case cond => If(cond, null)
+  def ifBlockOp: MemParser[If] = "if(?=\\s+|[^\\w])".r ~> operation ~ opt(actionFromOp <~ (elseBlockOp ~ "$".r)) ^^ {
+    case cond ~ ifActElseBl => If(cond, ifActElseBl.orNull)
   } named "if-block-op"
   def elseBlockOp: MemParser[Else] = "else".r ^^^ Else(null) named "else-block-op"
   def blockOp: MemParser[BlockOp] = ifBlockOp | elseBlockOp | dbBlockOp | foreachBlockOp named "block-op"
