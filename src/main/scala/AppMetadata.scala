@@ -31,9 +31,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
   import AppMetadata._
 
-  val knownApiMethods = Set(
-    "create", "count", "get", "list", "insert", "update", "update+", "upsert", "save", "delete", "put",
-    "post", "head", "options")
+  val knownApiMethods: Set[String] = AppMetadata.Action() - AppMetadata.Action.Job
   private val fullKeyOps = Set("get",/*insert*/ "update", "update+", "upsert", "save", "delete", "put")
   override lazy val yamlMetadata = YamlMd.fromPaths(Seq("jobs", "routes", "tables", "views"))
   override lazy val uninheritableExtras: Seq[String] = Seq("api")
