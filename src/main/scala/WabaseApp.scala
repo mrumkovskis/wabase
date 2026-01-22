@@ -530,6 +530,8 @@ trait WabaseApp[User] {
           Action.Upsert
         else if (hasAutoKey || api.contains(Action.Update))
           Action.Update
+        else if (keyValues.nonEmpty && !hasAutoKey && api.contains(Action.Insert))
+          Action.Insert
         else
           Action.Upsert
       case Action.Upsert =>
