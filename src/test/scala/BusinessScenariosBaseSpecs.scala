@@ -385,8 +385,10 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
     val newFile = siblingFile(original, suffix)
     try newFile.delete() catch { case util.control.NonFatal(ex) => }
   }
+  def shouldLogResponse(scenario: File, testCase: File, rawResponse: Any, dumpedToFile: Boolean) =
+    s"$rawResponse".length < 1000
   def shouldDumpResponseToFile(scenario: File, testCase: File, rawResponse: Any) =
-    s"$rawResponse".length > 1000
+    true
   def dumpResponseToFile(scenario: File, testCase: File, rawResponse: Any) =
     createSiblingTextFile(testCase, ".received", s"$rawResponse")
   def deleteResponseFile(scenario: File, testCase: File) =
@@ -413,7 +415,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
               false
           }
         } else false
-      if (!dumpedToFile) {
+      if (shouldLogResponse(scenario, testCase, rawResponse, dumpedToFile)) {
         logger.info(s"\n**** Response causing $fullTestName to fail with '$trimmedMessage':\n$rawResponse\n****")
       }
     }
