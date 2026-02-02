@@ -308,20 +308,18 @@ class WabaseSwaggerGenerator(
     op
   }
 
-  def addPathParameters(op: Operation, method: String, viewDef: ViewDef, keySize: Int = 99): Operation = {
-    apiKeyFieldNames(viewDef).take(keySize).foreach { keyFieldName =>
-      val field = viewDef.fieldOpt(keyFieldName).getOrElse(
-        new org.mojoz.metadata.FieldDef(keyFieldName, new org.mojoz.metadata.Type("string")))
-      op.addParametersItem {
-        val p = new PathParameter
-        p.name(keyFieldName)
-        p.setDescription(Option(field.comments).orElse(Option(field.label)).getOrElse(keyFieldName))
-        p.setSchema(addEnumIfNeeded(field.enum_, schemaFromType(field.type_)))
-        p
-      }
+  def addPathParameters(op: Operation, method: String, viewDef: ViewDef, fieldNames: Seq[String]): Operation = {
+    fieldNames.foreach { fieldName =>
+      val field = viewDef.fieldOpt(fieldName).getOrElse(
+        new org.mojoz.metadata.FieldDef(fieldName, new org.mojoz.metadata.Type("string")))
+      addPathParameter(op, field)
     }
     op
   }
+
+  def addPathParameters(op: Operation, method: String, viewDef: ViewDef, keySize: Int = 99): Operation =
+    addPathParameters(op, method, viewDef, apiKeyFieldNames(viewDef).take(keySize))
+
 
   def addPathParameter(op: Operation, pathParameter: AppMetadata.PathParameter): Operation = {
     val p = new PathParameter
@@ -505,6 +503,8 @@ class WabaseSwaggerGenerator(
           delegate.addParameters(op, method, viewDef, keySize)
     def addPathParameter(field: FieldDef): Operation =
           delegate.addPathParameter(op, field)
+    def addPathParameters(method: String, viewDef: ViewDef, fieldNames: Seq[String]): Operation =
+          delegate.addPathParameters(op, method, viewDef, fieldNames)
     def addPathParameters(method: String, viewDef: ViewDef, keySize: Int = 99): Operation =
           delegate.addPathParameters(op, method, viewDef, keySize)
     def addParameters(pathInfo: PathNameAndParameters): Operation =
