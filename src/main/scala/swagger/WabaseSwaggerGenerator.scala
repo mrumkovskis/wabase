@@ -312,7 +312,7 @@ class WabaseSwaggerGenerator(
     fieldNames.foreach { fieldName =>
       val field =
         viewDef.fieldOpt(fieldName)
-          .orElse(Option(viewDef.keyFields).flatMap(_.find(_.fieldName == fieldName)))
+          .orElse(viewNameToQe.get(viewDef.name).map(_.viewNameToKeyFields(viewDef.name)).flatMap(_.find(_.fieldName == fieldName)))
           .getOrElse(new org.mojoz.metadata.FieldDef(fieldName, new org.mojoz.metadata.Type("string")))
       addPathParameter(op, field)
     }

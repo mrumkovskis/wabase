@@ -76,7 +76,7 @@ response: |+
         parameters:
         - name: code
           in: path
-          description: code
+          description: Code
           required: true
           schema:
             type: string
