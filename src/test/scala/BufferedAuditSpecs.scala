@@ -1,4 +1,4 @@
-package org.wabase
+package org.wabase.audit
 
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.stream.RestartSettings

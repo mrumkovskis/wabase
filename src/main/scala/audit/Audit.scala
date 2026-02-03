@@ -1,6 +1,6 @@
-package wabase.app
+package org.wabase.audit
 
-
+import com.typesafe.config.ConfigFactory
 import io.bullet.borer.compat.pekko._
 import io.bullet.borer.derivation.MapBasedCodecs._
 import io.bullet.borer.{Encoder, Json}
@@ -13,14 +13,19 @@ import org.mojoz.querease.{QuereaseIo, SaveMethod}
 import org.wabase.WabaseAppConfig.DefaultCp
 import org.wabase.WabaseService.RequestHandler
 import org.wabase.ds.PoolName
-import org.wabase.{BufferedAudit, CborOrJsonAnyValueDecoder, DbAccess, DefaultAppQuerease, DefaultAppQuereaseIo, Loggable, TresqlResourcesConf, WabaseRequestContext, WabaseServer}
+import org.wabase.{
+  CborOrJsonAnyValueDecoder, DbAccess, DefaultAppQuerease, DefaultAppQuereaseIo,
+  Loggable, TresqlResourcesConf, WabaseRequestContext, WabaseServer
+}
 
 import java.nio.file.Files
 import java.time.Instant
 import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.util.{Failure, Success}
 
-object Audit extends Loggable {
+class Audit extends Loggable {
+
+  protected lazy val config = ConfigFactory.load()
 
   /* Key to store request start time for auditing. If not set, audit method entry time will be used */
   val AuditTimestampKey = AttributeKey[Instant]("audit-timestamp")
@@ -28,10 +33,10 @@ object Audit extends Loggable {
   /* Key to store captured entity for auditing. */
   val AuditEntityKey = AttributeKey[HttpEntity.Strict]("audit-entity")
 
-  implicit val auditPoolName: PoolName = PoolName("wabase_it_audit_cp")
+  implicit lazy val auditPoolName: PoolName = PoolName(config.getString("app.audit-pool-name"))
 
   // Ensure AuditRecord (req + resp + etc) fits within bufferedAudit.reader.maxRecordSize!
-  private val maxContentSizeToAudit: Long = 256 * 1024
+  protected val maxContentSizeToAudit: Long = 256 * 1024
 
   case class RequestAudit(
     uri:      String,
@@ -65,10 +70,10 @@ object Audit extends Loggable {
 
   implicit val system: ActorSystem = WabaseServer.app.system
   implicit val ec: scala.concurrent.ExecutionContext = system.dispatcher
-  private  val auditSaveView = DefaultAppQuerease.viewDef("audit")
-  private  val resourcesTemplate =
+  protected val auditSaveView = DefaultAppQuerease.viewDef("audit")
+  protected val resourcesTemplate =
     TresqlResourcesConf.tresqlResourcesTemplate(TresqlResourcesConf.confs, DefaultAppQuerease.tresqlMetadata)
-  private implicit val qio: QuereaseIo[_] = DefaultAppQuereaseIo
+  protected implicit val qio: QuereaseIo[_] = DefaultAppQuereaseIo
 
   def saveAuditRecordsBatchToDatabase(records: Seq[ByteString]): Future[Unit] = {
     try {
@@ -88,16 +93,19 @@ object Audit extends Loggable {
     }
   }
 
-  private val bufferedAudit = BufferedAudit(saveAuditRecordsBatchToDatabase)
-  Files.createDirectories(bufferedAudit.writer.rootPath)
+  protected lazy val bufferedAudit = {
+    val ba = BufferedAudit(saveAuditRecordsBatchToDatabase)
+    Files.createDirectories(ba.writer.rootPath)
+    ba
+  }
 
-  private def renderHeader(header: HttpHeader): String =
+  protected def renderHeader(header: HttpHeader): String =
     s"${header.name}: ${header.value}"
 
-  private def largeContentReplacementForAuditing(contentLength: Long): ByteString =
+  protected def largeContentReplacementForAuditing(contentLength: Long): ByteString =
     ByteString(s"[large content: $contentLength bytes]")
 
-  private def contentForAuditing(entity: HttpEntity): String = entity match {
+  protected def contentForAuditing(entity: HttpEntity): String = entity match {
     case strict: HttpEntity.Strict =>
       if  (strict.contentLength > maxContentSizeToAudit)
            largeContentReplacementForAuditing(strict.contentLength).utf8String
@@ -141,7 +149,7 @@ object Audit extends Loggable {
     bufferedAudit.writer.writeRecord(serialized)
   }
 
-  private def shouldCaptureAndPromise(contentLengthOption: Option[Long]): (Boolean, Promise[ByteString]) = {
+  protected def shouldCaptureAndPromise(contentLengthOption: Option[Long]): (Boolean, Promise[ByteString]) = {
     val promise = Promise[ByteString]()
     contentLengthOption match {
       case Some(len) if len > maxContentSizeToAudit =>
@@ -154,7 +162,7 @@ object Audit extends Loggable {
     }
   }
 
-  private def createCaptureSink(promise: Promise[ByteString])(implicit ec: ExecutionContext): Sink[ByteString, NotUsed] = {
+  protected def createCaptureSink(promise: Promise[ByteString])(implicit ec: ExecutionContext): Sink[ByteString, NotUsed] = {
     Sink.fold[(Long, ByteString), ByteString]((0L, ByteString.empty)) { case ((size, content), bs) =>
       val added = bs.length.toLong
       val newSize = size + added

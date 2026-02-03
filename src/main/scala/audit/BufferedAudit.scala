@@ -1,4 +1,5 @@
 package org.wabase
+package audit
 
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.stream._
