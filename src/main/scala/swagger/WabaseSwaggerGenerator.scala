@@ -310,8 +310,10 @@ class WabaseSwaggerGenerator(
 
   def addPathParameters(op: Operation, method: String, viewDef: ViewDef, fieldNames: Seq[String]): Operation = {
     fieldNames.foreach { fieldName =>
-      val field = viewDef.fieldOpt(fieldName).getOrElse(
-        new org.mojoz.metadata.FieldDef(fieldName, new org.mojoz.metadata.Type("string")))
+      val field =
+        viewDef.fieldOpt(fieldName)
+          .orElse(Option(viewDef.keyFields).flatMap(_.find(_.fieldName == fieldName)))
+          .getOrElse(new org.mojoz.metadata.FieldDef(fieldName, new org.mojoz.metadata.Type("string")))
       addPathParameter(op, field)
     }
     op
