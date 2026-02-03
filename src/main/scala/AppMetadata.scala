@@ -177,13 +177,9 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     }
   }
 
-  protected def toAppViewDef(vd: ViewDef, isInline: Boolean): ViewDef = {
-    import KnownAuthOps._
-    import KnownViewExtras._
-    import KnownFieldExtras._
-    import ViewDefExtrasUtils._
-    val viewDef = toQuereaseViewDef(vd)
-    def toAppField(f: FieldDef): FieldDef = {
+  protected def toAppFieldDef(viewDef: ViewDef, f: FieldDef): FieldDef = {
+      import KnownFieldExtras._
+      import ViewDefExtrasUtils.getStringSeq
       import FieldDefExtrasUtils._
 
       val (label, comments) =
@@ -264,10 +260,15 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
         type_, enum_, joinToParent, orderBy,
         comments, extras)
       .updateWabaseExtras(_ => AppFieldDef(fieldApi, label, required, sortable, visible))
-    }
-    val appFields = viewDef.fields.map(toAppField)
+  }
 
-    val keyFields = Option(viewDef.keyFields).map(_.map(toAppField)).orNull
+  protected def toAppViewDef(vd: ViewDef, isInline: Boolean): ViewDef = {
+    import KnownViewExtras._
+    import ViewDefExtrasUtils._
+    val viewDef = toQuereaseViewDef(vd)
+    val appFields = viewDef.fields.map(toAppFieldDef(viewDef, _))
+
+    val keyFields = Option(viewDef.keyFields).map(_.map(toAppFieldDef(viewDef, _))).orNull
 
     import viewDef._
     val auth = toAuth(viewDef, Auth, knownAuthOps)
@@ -360,6 +361,12 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
         AppViewDef(limit, explicitDb, decoder, maxContentSize, timeout, sqlTimeout,
           auth, apiToRoles, actions, Map.empty, minKeySizeForList, maxKeySizeForList, expectedKeySizeDescr))
   }
+
+  override protected def keyFields(view: ViewDef): Seq[FieldDef] =
+    Option(view.keyFields).getOrElse(super.keyFields(view).map { f =>
+      if (f.extras != null && f.extras.contains(WabaseFieldExtrasKey)) f
+      else toAppFieldDef(view, f)
+    })
 
   private lazy val viewNameToQueryVariablesCompilerCache = {
     val cache = new ConcurrentHashMap[String, Seq[ast.Variable]]
