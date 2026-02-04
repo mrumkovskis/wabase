@@ -5,7 +5,7 @@ import java.nio.file.{Files, StandardCopyOption}
 import org.tresql._
 import org.wabase.AppMetadata.DbAccessKey
 import org.wabase.ds.ConnectionPools.DEFAULT_CP
-import org.wabase.ds.{PoolName, QueryTimeout}
+import org.wabase.ds.PoolName
 
 import scala.annotation.tailrec
 import scala.util.Try
@@ -18,10 +18,9 @@ class AppFileCleanup(dbAccess: DbAccess, fileStreamers: AppFileStreamerConfig*) 
   protected lazy val refsToIgnore: Set[(String, String)] = Set.empty
   protected lazy val batchSizeOpt: Option[Int] = None
 
-  implicit lazy val connectionPool: PoolName = DEFAULT_CP
+  val connectionPoolName: String  = Option("app.file-cleanup.cp").filter(config.hasPath).map(config.getString).orNull
+  implicit lazy val connectionPool: PoolName = Option(connectionPoolName).map(PoolName).getOrElse(dbAccess.DefaultCp)
   implicit lazy val extraDb: Seq[DbAccessKey] = Nil
-  implicit lazy val queryTimeout: QueryTimeout =
-    QueryTimeout(config.getDuration("app.file-cleanup.jdbc.query-timeout").toSeconds.toInt)
 
   /*
   1. delete all records from file_info, if id not referenced in linked tables (info about linked tables from metadata)

@@ -14,7 +14,7 @@ import org.apache.pekko.stream._
 import org.apache.pekko.stream.scaladsl._
 import org.apache.pekko.util.ByteString
 import org.tresql._
-import org.wabase.ds.{PoolName, QueryTimeout}
+import org.wabase.ds.PoolName
 
 import scala.util.Failure
 
@@ -170,7 +170,6 @@ class FileStreamer(
   override val file_body_info_table: String = fsCfg.getString("file-body-info-table")
   override val shaColName: String           = fsCfg.getString("sha-col-name")
   val connectionPoolName: String            = Option("cp").filter(fsCfg.hasPath).map(fsCfg.getString).orNull
-  val queryTimeoutSeconds: Int              = fsCfg.getDuration("jdbc.query-timeout").toSeconds.toInt
 
   private val fileInfoInsert =
     s"+$file_info_table {id, upload_time, content_type, $shaColName, filename} " +
@@ -181,7 +180,6 @@ class FileStreamer(
 
   private lazy val db = dbAccessProvider.dbAccess
   private lazy val fsCp: PoolName = Option(connectionPoolName).map(PoolName).getOrElse(db.DefaultCp)
-  private implicit val queryTimeout: QueryTimeout  = QueryTimeout(queryTimeoutSeconds)
 
   import AppFileStreamer._
 

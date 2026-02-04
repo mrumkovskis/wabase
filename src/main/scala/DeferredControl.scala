@@ -25,7 +25,6 @@ import AppFileStreamer.FileInfo
 import org.apache.pekko.http.scaladsl.model.MediaTypes.`application/json`
 import org.apache.pekko.http.scaladsl.server.RouteResult.Complete
 import org.apache.pekko.util.ByteString
-import org.wabase.ds.ConnectionPools.DefaultQueryTimeout
 import org.wabase.ds.{PoolName, QueryTimeout}
 
 import scala.annotation.tailrec
@@ -470,7 +469,6 @@ object DeferredControl extends Loggable with AppConfig {
     override def dbAccess = db
     import stats._
 
-    implicit private lazy val queryTimeout: QueryTimeout = DefaultQueryTimeout
     private lazy val Cp =
       Option("deferred-requests.storage.cp").filter(conf.hasPath).map(conf.getString).map(PoolName)
         .getOrElse(db.DefaultCp)
