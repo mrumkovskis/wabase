@@ -36,7 +36,7 @@ class Audit extends Loggable {
   implicit lazy val auditPoolName: PoolName = PoolName(config.getString("app.audit-pool-name"))
 
   // Ensure AuditRecord (req + resp + etc) fits within bufferedAudit.reader.maxRecordSize!
-  protected val maxContentSizeToAudit: Long = 256 * 1024
+  protected lazy val maxContentSizeToAudit: Long = config.getBytes("app.audit-max-content-size")
 
   case class RequestAudit(
     uri:      String,
@@ -68,12 +68,12 @@ class Audit extends Loggable {
   implicit val userAuditEncoder:     Encoder[UserAudit]     = deriveEncoder[UserAudit]
   implicit val auditRecordEncoder:   Encoder[AuditRecord]   = deriveEncoder[AuditRecord]
 
-  implicit val system: ActorSystem = WabaseServer.app.system
-  implicit val ec: scala.concurrent.ExecutionContext = system.dispatcher
-  protected val auditSaveView = DefaultAppQuerease.viewDef("audit")
-  protected val resourcesTemplate =
+  implicit lazy val system: ActorSystem = WabaseServer.app.system
+  implicit lazy val ec: scala.concurrent.ExecutionContext = system.dispatcher
+  protected lazy val auditSaveView = DefaultAppQuerease.viewDef("audit")
+  protected lazy val resourcesTemplate =
     TresqlResourcesConf.tresqlResourcesTemplate(TresqlResourcesConf.confs, DefaultAppQuerease.tresqlMetadata)
-  protected implicit val qio: QuereaseIo[_] = DefaultAppQuereaseIo
+  protected implicit lazy val qio: QuereaseIo[_] = DefaultAppQuereaseIo
 
   def saveAuditRecordsBatchToDatabase(records: Seq[ByteString]): Future[Unit] = {
     try {
