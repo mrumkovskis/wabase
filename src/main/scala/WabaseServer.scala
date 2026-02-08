@@ -17,10 +17,23 @@ import scala.io.StdIn
 
 class WabaseServer(
   wabase: WabaseService.Wabase,
+  invokeBeforeStart: String,
   enableServerNotifications: Boolean,
   enableDeferredRequests: Boolean,
-) extends Loggable {
+)(implicit ec: ExecutionContext) extends Loggable {
   val port = WabaseServer.port
+    if (invokeBeforeStart != null && invokeBeforeStart != "")
+      try {
+        val (className, methodName) =
+          invokeBeforeStart.lastIndexOf(".") match {
+            case -1 => (invokeBeforeStart, "apply")
+            case  i => (invokeBeforeStart.substring(0, i), invokeBeforeStart.substring(i + 1))
+          }
+        invokeFunction(className, methodName, Nil)
+      } catch {
+        case util.control.NonFatal(ex) =>
+          throw new RuntimeException(s"""Failed to invoke beforeStart: "$invokeBeforeStart"""", ex)
+      }
   if (enableServerNotifications)   // start server event subscriber watcher actor
     wabase.system.actorOf(Props(classOf[ServerNotifications.EventSubscriberWatcher]),
       ServerNotifications.SubscriberWatcherActorName)
@@ -89,6 +102,7 @@ object WabaseServer {
     val executionImpl = new ExecutionImpl()(serverSystem)
     val app = new App(executionImpl)
     val server = new WabaseServer(app,
+      invokeBeforeStart = config.getString("app.server.invoke-before-start"),
       enableServerNotifications = config.getBoolean("app.server-notifications.enabled"),
       enableDeferredRequests = config.getBoolean("app.deferred-requests.enabled"),
     )
