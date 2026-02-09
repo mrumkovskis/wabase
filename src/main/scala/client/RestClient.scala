@@ -41,7 +41,6 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root) exten
   implicit val system: ActorSystem = createActorSystem
   implicit val executionContext: ExecutionContextExecutor = system.dispatcher
 
-  lazy val port         = clientCfg.getInt   ("server-port")
   lazy val serverPath   = clientCfg.getString("server-path")
   lazy val serverWsPath = clientCfg.getString("server-ws-path")
 

@@ -33,6 +33,8 @@ class RestClientTest  extends FlatSpec with Matchers with ScalatestRouteTest wit
   val client     = new RestClient(HttpClientConfig("slow"))
   val fastClient = new RestClient(HttpClientConfig("fast"))
 
+  val server_port= HttpClientConfig("slow").getInt("server-port")
+
   val route: Route = {
     path("ok") {complete{"HELLO"}} ~
     path("timeout") {complete{Thread.sleep(5000);"HELLO"}} ~
@@ -40,7 +42,7 @@ class RestClientTest  extends FlatSpec with Matchers with ScalatestRouteTest wit
     path("counter" / LongNumber) {num => complete{Thread.sleep(200);s"RESULT $num"}}
   }
 
-  val binding = Await.result(Http().newServerAt("0.0.0.0", client.port).bindFlow(route), 1 minute)
+  val binding = Await.result(Http().newServerAt("0.0.0.0", server_port).bindFlow(route), 1 minute)
 
   override def afterAll() = Await.result(binding.unbind(), 1 minute)
 
@@ -100,7 +102,7 @@ class RestClientTest  extends FlatSpec with Matchers with ScalatestRouteTest wit
   it should "allow query in path, append params" in {
     def echo(path: String, params: Map[String, Any] = Map.empty) =
       Option(Await.result(client.httpGet[String](path, params), 1 second)).map(echoed =>
-        echoed.substring(echoed.indexOf(client.port.toString) + client.port.toString.length + 1)
+        echoed.substring(echoed.indexOf(server_port.toString) + server_port.toString.length + 1)
       ).get
     val q1 = Map("q" -> 1)
     echo("uri-echo")                    shouldBe "uri-echo"

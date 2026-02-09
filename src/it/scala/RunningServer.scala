@@ -10,7 +10,6 @@ import scala.language.reflectiveCalls
 class RunningServer extends WabaseHttpClient {
 
   override protected def initQuerease: AppQuerease = DefaultAppQuerease
-  override lazy val port = WabaseServer.port
 
   override def login(username: String = null, password: String = null) = {
     ""

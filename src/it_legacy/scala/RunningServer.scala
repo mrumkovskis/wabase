@@ -6,7 +6,6 @@ import org.wabase.{AppQuerease, DefaultAppQuerease}
 class RunningServer extends WabaseHttpClient {
 
   override protected def initQuerease: AppQuerease = DefaultAppQuerease
-  override lazy val port: Int = Server.port
 
   override def login(username: String = null, password: String = null) = {
     ""
