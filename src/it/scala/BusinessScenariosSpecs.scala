@@ -131,7 +131,6 @@ object SwaggerTests {
 class BusinessScenariosSpecs extends BusinessScenariosBaseSpecs("http_tests") {
   import BusinessScenariosSpecs._
   lazy val server = new RunningServer
-  override def resourcePath = "resources/"
   override def initHttpClient = server
   override def beforeAll() = {
     server

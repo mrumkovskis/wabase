@@ -14,7 +14,7 @@ trait TemplateUtil { this: QuereaseProvider =>
 
   val DEL = ".del"
 
-  def resourcePath = "src/it/resources/"
+  def resourcePath = "resources/"
   def getTemplatePath = new File(resourcePath + "templates")
 
   type MapTemplate = Map[String, Any]
