@@ -65,11 +65,11 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
     override protected def initQuerease: AppQuerease           = qe
   }
   final lazy val httpClient = initHttpClient
-  import httpClient._
 
   protected lazy val isFullCompareByDefault: Boolean = true
 
   override def beforeAll() = {
+    import httpClient._
     login()
     listenToWs(deferredActor)
   }
@@ -460,6 +460,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
   }
 
   def parseContentType(value: String): `Content-Type` = {
+    import httpClient._
     `Content-Type`.parseFromValueString(value).toOption.getOrElse(value match {
       case "application/pdf" =>
         // `Content-Type`(ContentType(MediaTypes.`application/pdf`))
@@ -474,6 +475,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
 
   def checkTestCase(scenario: File, testCase: File, context: Map[String, Any], map: Map[String, Any], retriesLeft: Int): Map[String, Any] = {
     val requestInfo = extractRequestInfo(cleanupTemplate(map))
+    import httpClient._
     import requestInfo._
     val fullCompare   = map.bd("full_compare", isFullCompareByDefault)
     val mergeResponse = map.b("merge_response")
@@ -618,6 +620,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
   def ckeckAllTestCases =
     scenarios.sortBy(_.getCanonicalPath).foreach{scenario =>
       behavior of scenario.getName
+      import httpClient._
       var context = Map.empty[String, Any]
       if (scenariosAutoLogin) {
         it should "login" in login()
