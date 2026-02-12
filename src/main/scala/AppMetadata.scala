@@ -2,7 +2,7 @@ package org.wabase
 
 import com.typesafe.config.{ConfigException, ConfigFactory}
 import org.apache.pekko.http.scaladsl.model.HttpMethod
-import org.mojoz.metadata.{FieldDef, Type, ViewDef}
+import org.mojoz.metadata.{FieldDef, TableMetadata, Type, ViewDef}
 import org.mojoz.metadata.in._
 import org.mojoz.metadata.io.MdConventions
 import org.mojoz.metadata.out.DdlGenerator.SimpleConstraintNamingRules
@@ -79,7 +79,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
   private val actionParser: String => String => Map[String, Any] => Action =
     objectName => dataKey => dataMap => {
-      val opParser = new OpParser(objectName, opParserCache(objectName))
+      val opParser = new OpParser(objectName, tableMetadata, true, opParserCache(objectName))
       parseAction(objectName, ViewDefExtrasUtils.getSeq(dataKey, dataMap), opParser)
     }
 
@@ -310,7 +310,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val timeout = parseTimeout(viewDef.name, getStringExtra(Timeout, viewDef).orNull)
     val sqlTimeout = parseTimeout(viewDef.name, getStringExtra(SqlTimeout, viewDef).orNull)
     val actions = Action().foldLeft(Map[String, Action]()) { (res, actionName) =>
-      val opParser = new OpParser(viewDef.name, opParserCache(viewDef.name))
+      val opParser = new OpParser(viewDef.name, tableMetadata, true, opParserCache(viewDef.name))
       val a = parseAction(s"${viewDef.name}.$actionName", getSeq(actionName, viewDef.extras), opParser)
       if (a.steps.nonEmpty) res + (actionName -> a) else res
     }
@@ -847,7 +847,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   }
 }
 
-class OpParser(viewName: String, caches: OpParser.Caches)
+class OpParser(viewName: String, tmd: TableMetadata, checkInvocation: Boolean, caches: OpParser.Caches)
   extends QueryParsers { self =>
   import AppMetadata.Action._
   import AppMetadata.Action
@@ -957,13 +957,19 @@ class OpParser(viewName: String, caches: OpParser.Caches)
       opt("(" ~> rep1sep(operation, ",") <~ ")") ~ opt(operation)
     p(in) match {
       case Success(rt ~ res ~ args ~ arg, next) =>
-        try {
-          val (cn, fn) = OpParser.classNameFunctionName(res)
-          if (cn == null) Failure(s"Class name not found for function '$fn'", next)
-          else Success(Action.Invocation(cn, fn, args.getOrElse(Nil) ++ arg.toList, rt), next)
+        def resolveFunction(name: String) = try {
+          val (cn, fn) =
+            if (checkInvocation) OpParser.classNameFunctionName(name) // check whether function exists
+            else OpParser.classNameFunctionNameNoCheck(name)          // do not check (file containing function may not be compiled)
+          Success(Action.Invocation(cn, fn, args.getOrElse(Nil) ++ arg.toList, rt), next)
         } catch {
-          case NonFatal(_) => Failure(s"Function not found: $res", next)
+          case NonFatal(_) => Failure(s"Function not found: $name", next)
         }
+        OpParser.resolveFunctionAliasOpt(res)   // if function alias found resolve function
+          .map(resolveFunction)
+          .orElse(tmd.tableDefOption(res, null) // if table def found return failure - function not found
+            .map(_ => Failure(s"Function not found: $res", next)))
+          .getOrElse(resolveFunction(res))      // resolve function
       case e: NoSuccess => e
     }
   } named "invocation-op"
@@ -1214,19 +1220,30 @@ object OpParser extends Loggable {
     opCache.load(initData.opCache)
     Caches(stepCache, opCache)
   }
-  def classNameFunctionName(name: String): (String, String) = {
-    val idx = name.lastIndexOf('.')
+  def resolveFunctionAliasOpt(alias: String): Option[String] = {
+    val idx = alias.lastIndexOf('.')
     if (idx == -1)
-      try if (config.hasPath(s"app.wabase-call-alias.$name"))
-        classNameFunctionName(config.getString(s"app.wabase-call-alias.$name"))
-      else (null, name) catch { case _: ConfigException.BadPath => (null, name) } // may throw exception if property format not matched
-    else {
-      val cn = name.substring(0, idx)
-      val fn = name.substring(idx + 1)
-      // check function existence
-      getObjAndFunction(cn, fn)
-      (cn, fn)
-    }
+      try
+        if (config.hasPath(s"app.wabase-call-alias.$alias")) {
+          Option(config.getString(s"app.wabase-call-alias.$alias"))
+        } else None
+      catch { case _: ConfigException.BadPath => None }
+    else None
+  }
+  def classNameFunctionNameNoCheck(name: String): (String, String) = {
+    resolveFunctionAliasOpt(name)
+      .map(classNameFunctionNameNoCheck)
+      .getOrElse {
+        val idx = name.lastIndexOf('.')
+        val cn = name.substring(0, idx)
+        val fn = name.substring(idx + 1)
+        (cn, fn)
+      }
+  }
+  def classNameFunctionName(name: String): (String, String) = {
+    val cn_fn = classNameFunctionNameNoCheck(name)
+    getObjAndFunction(cn_fn._1, cn_fn._2)
+    cn_fn
   }
 }
 object AppMetadata extends Loggable {
