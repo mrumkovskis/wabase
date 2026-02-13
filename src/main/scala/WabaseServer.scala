@@ -24,11 +24,7 @@ class WabaseServer(
   val port = WabaseServer.port
   if (invokeBeforeStart != null && invokeBeforeStart != "")
     try {
-      val (className, methodName) =
-        invokeBeforeStart.lastIndexOf(".") match {
-          case -1 => (invokeBeforeStart, "apply")
-          case  i => (invokeBeforeStart.substring(0, i), invokeBeforeStart.substring(i + 1))
-        }
+      val (className, methodName) = OpParser.classNameFunctionName(invokeBeforeStart)
       invokeFunction(className, methodName, Nil)
     } catch {
       case util.control.NonFatal(ex) =>
