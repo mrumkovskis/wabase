@@ -15,7 +15,7 @@ import org.tresql.parsing.QueryParsers
 import org.tresql.OrtMetadata.{AutoValue, KeyValue, Property}
 import org.wabase.AppMetadata.{Action, JobCall}
 import org.wabase.AppMetadata.Action.TresqlExtraction.{OpTresqlTraverser, State, StepTresqlTraverser, opTresqlTraverser, stepTresqlTraverser}
-import org.wabase.AppMetadata.Action.{Validations, ViewCall, traverseAction}
+import org.wabase.AppMetadata.Action.{OpTraverser, StepTraverser, Validations, ViewCall, traverseAction}
 
 import java.io.InputStream
 import java.util.concurrent.{ConcurrentHashMap, TimeUnit}
@@ -82,7 +82,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
   private val actionParser: String => String => Map[String, Any] => Action =
     objectName => dataKey => dataMap => {
-      val opParser = new OpParser(objectName, tableMetadata, checkInvocations, opParserCache(objectName))
+      val opParser = new OpParser(objectName, tableMetadata, opParserCache(objectName))
       parseAction(objectName, ViewDefExtrasUtils.getSeq(dataKey, dataMap), opParser)
     }
 
@@ -108,15 +108,19 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   lazy val viewNameToQueryVariablesCache: Map[String, Seq[ast.Variable]] =
     loadViewNameToQueryVariablesCache(resourceLoader)
 
-  def toAppViewDefs(mojozViewDefs: Map[String, ViewDef]) = transformAppViewDefs {
-    val inlineViewDefNames =
-      mojozViewDefs.values.flatMap { viewDef =>
-        viewDef.fields.filter { field =>
-          field.type_.isComplexType &&
-          field.type_.name == viewDef.name + "_" + field.name // XXX
-        }.map(_.type_.name)
-      }.toSet
-    mojozViewDefs.transform { (_, v) => toAppViewDef(v, isInline = inlineViewDefNames.contains(v.name)) }
+  def toAppViewDefs(mojozViewDefs: Map[String, ViewDef]) = {
+    val viewDefs = transformAppViewDefs {
+      val inlineViewDefNames =
+        mojozViewDefs.values.flatMap { viewDef =>
+          viewDef.fields.filter { field =>
+            field.type_.isComplexType &&
+              field.type_.name == viewDef.name + "_" + field.name // XXX
+          }.map(_.type_.name)
+        }.toSet
+      mojozViewDefs.transform { (_, v) => toAppViewDef(v, isInline = inlineViewDefNames.contains(v.name)) }
+    }
+    checkInvocations(viewDefs)
+    viewDefs
   }
 
   protected def transformAppViewDefs(viewDefs: Map[String, ViewDef]): Map[String, ViewDef] =
@@ -313,7 +317,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val timeout = parseTimeout(viewDef.name, getStringExtra(Timeout, viewDef).orNull)
     val sqlTimeout = parseTimeout(viewDef.name, getStringExtra(SqlTimeout, viewDef).orNull)
     val actions = Action().foldLeft(Map[String, Action]()) { (res, actionName) =>
-      val opParser = new OpParser(viewDef.name, tableMetadata, checkInvocations, opParserCache(viewDef.name))
+      val opParser = new OpParser(viewDef.name, tableMetadata, opParserCache(viewDef.name))
       val a = parseAction(s"${viewDef.name}.$actionName", getSeq(actionName, viewDef.extras), opParser)
       if (a.steps.nonEmpty) res + (actionName -> a) else res
     }
@@ -552,6 +556,28 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
         (action, dbkeys)
       }.toMap
       viewDef.updateWabaseExtras(_.copy(actionToDbAccessKeys = actionToDbAccessKeys))
+    }
+  }
+
+  protected def checkInvocations(viewDefs: Map[String, ViewDef]): Unit = {
+    if (checkInvocations) {
+      lazy val opTrav: OpTraverser[Unit] =
+        Action.opTraverser(opTrav, stepTrav)(_ => {
+          case Action.Invocation(cn, fn, args, _) =>
+            getObjAndFunction(cn, fn)
+            args foreach opTrav(())
+        })
+      lazy val stepTrav: StepTraverser[Unit] =
+        Action.stepTraverser(opTrav)(PartialFunction.empty)
+      viewDefs.foreach { case (viewName, viewDef) =>
+        viewDef.actions.foreach { case (actionName, action) =>
+          try Action.traverseAction(action)(stepTrav) catch {
+            case NonFatal(e) => new RuntimeException(
+              s"Unable to resolve invocation in $viewName.$actionName: '${e.getMessage}'", e
+            )
+          }
+        }
+      }
     }
   }
 
@@ -850,7 +876,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   }
 }
 
-class OpParser(viewName: String, tmd: TableMetadata, checkInvocations: Boolean, caches: OpParser.Caches)
+class OpParser(viewName: String, tmd: TableMetadata, caches: OpParser.Caches)
   extends QueryParsers { self =>
   import AppMetadata.Action._
   import AppMetadata.Action
@@ -961,9 +987,7 @@ class OpParser(viewName: String, tmd: TableMetadata, checkInvocations: Boolean, 
     p(in) match {
       case Success(rt ~ res ~ args ~ arg, next) =>
         def resolveFunction(name: String) = try {
-          val (cn, fn) =
-            if (checkInvocations) OpParser.classNameFunctionName(name)// check whether function exists
-            else OpParser.classNameFunctionNameNoCheck(name)          // do not check (file containing function may not be compiled)
+          val (cn, fn) = OpParser.classNameFunctionNameNoCheck(name)
           Success(Action.Invocation(cn, fn, args.getOrElse(Nil) ++ arg.toList, rt), next)
         } catch {
           case NonFatal(_) => Failure(s"Function not found: $name", next)
