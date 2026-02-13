@@ -42,6 +42,9 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
   lazy val defaultCpName = TresqlResourcesConf.DefaultCpName
 
+  /** Set to false to compile actions when invocation target classes are not (yet) available, defaults to true for runtime to fail fast */
+  lazy val checkInvocations = true
+
   /** Get macro class from 'main' tresql resources config */
   override lazy val macrosClass: Class[_] =
     // somehow flatMap needs type parameter [Class[_]] for scala 2.12.x compiler in order to succeed
@@ -79,7 +82,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
   private val actionParser: String => String => Map[String, Any] => Action =
     objectName => dataKey => dataMap => {
-      val opParser = new OpParser(objectName, tableMetadata, true, opParserCache(objectName))
+      val opParser = new OpParser(objectName, tableMetadata, checkInvocations, opParserCache(objectName))
       parseAction(objectName, ViewDefExtrasUtils.getSeq(dataKey, dataMap), opParser)
     }
 
@@ -310,7 +313,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val timeout = parseTimeout(viewDef.name, getStringExtra(Timeout, viewDef).orNull)
     val sqlTimeout = parseTimeout(viewDef.name, getStringExtra(SqlTimeout, viewDef).orNull)
     val actions = Action().foldLeft(Map[String, Action]()) { (res, actionName) =>
-      val opParser = new OpParser(viewDef.name, tableMetadata, true, opParserCache(viewDef.name))
+      val opParser = new OpParser(viewDef.name, tableMetadata, checkInvocations, opParserCache(viewDef.name))
       val a = parseAction(s"${viewDef.name}.$actionName", getSeq(actionName, viewDef.extras), opParser)
       if (a.steps.nonEmpty) res + (actionName -> a) else res
     }
@@ -847,7 +850,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   }
 }
 
-class OpParser(viewName: String, tmd: TableMetadata, checkInvocation: Boolean, caches: OpParser.Caches)
+class OpParser(viewName: String, tmd: TableMetadata, checkInvocations: Boolean, caches: OpParser.Caches)
   extends QueryParsers { self =>
   import AppMetadata.Action._
   import AppMetadata.Action
@@ -959,7 +962,7 @@ class OpParser(viewName: String, tmd: TableMetadata, checkInvocation: Boolean, c
       case Success(rt ~ res ~ args ~ arg, next) =>
         def resolveFunction(name: String) = try {
           val (cn, fn) =
-            if (checkInvocation) OpParser.classNameFunctionName(name) // check whether function exists
+            if (checkInvocations) OpParser.classNameFunctionName(name)// check whether function exists
             else OpParser.classNameFunctionNameNoCheck(name)          // do not check (file containing function may not be compiled)
           Success(Action.Invocation(cn, fn, args.getOrElse(Nil) ++ arg.toList, rt), next)
         } catch {
