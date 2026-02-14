@@ -568,11 +568,11 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
             args foreach opTrav(())
         })
       lazy val stepTrav: StepTraverser[Unit] =
-        Action.stepTraverser(opTrav)(PartialFunction.empty)
+        Action.stepTraverser(opTrav)(_ => PartialFunction.empty)
       viewDefs.foreach { case (viewName, viewDef) =>
         viewDef.actions.foreach { case (actionName, action) =>
-          try Action.traverseAction(action)(stepTrav) catch {
-            case NonFatal(e) => new RuntimeException(
+          try Action.traverseAction(action)(stepTrav)(()) catch {
+            case NonFatal(e) => throw new RuntimeException(
               s"Unable to resolve invocation in $viewName.$actionName: '${e.getMessage}'", e
             )
           }
