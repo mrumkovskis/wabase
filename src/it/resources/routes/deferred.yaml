@@ -7,16 +7,33 @@ do: authenticateOpt maybeDeferred sleepAndRespond(500) response(200, 'slow done'
 swagger:
  responses = :
   '202':
+    description: The request has been accepted for processing, but the processing has not been completed. The response contains a deferred identifier.
     content:
-      text/plain:
-        type: string
+      application/json:
+        schema:
+          type: object
+          required:
+            - deferred
+          properties:
+            deferred:
+              type: string
+              description: A unique identifier for the deferred operation (e.g., base64-encoded token).
+              example: hGLDObRtjluGLjD4mrxZX2rIOaI=
 
 
 on: GET /fast-respond
 do: authenticateOpt maybeDeferred sleepAndRespond(005) response(200, 'fast done')
 swagger:
- responses = :
   '202':
+    description: The request has been accepted for processing, but the processing has not been completed. The response contains a deferred identifier.
     content:
-      text/plain:
-        type: string
+      application/json:
+        schema:
+          type: object
+          required:
+            - deferred
+          properties:
+            deferred:
+              type: string
+              description: A unique identifier for the deferred operation (e.g., base64-encoded token).
+              example: hGLDObRtjluGLjD4mrxZX2rIOaI=
