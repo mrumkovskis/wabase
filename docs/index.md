@@ -33,6 +33,7 @@ Detailed technical specifications for every part of the framework.
 *   [Action Language Spec](reference/02-action-language.md)
 *   [Tresql Reference](reference/03-tresql.md)
 *   [Configuration](reference/04-configuration.md)
+*   [Routes Reference](reference/05-routes.md)
 
 ### 3. [Internals](internals/architecture.md)
 For advanced users who want to understand the engine under the hood.
