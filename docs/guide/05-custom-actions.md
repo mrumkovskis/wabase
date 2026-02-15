@@ -15,6 +15,20 @@ save:
   - save this
 ```
 
+### Deeper Integration (`setenv`)
+
+You can modify the "current" action data (scope) using `setenv`.
+
+```yaml
+get:
+  # Set the current scope to the result of 'get this'
+  - setenv get this
+  # Now add a new variable to the scope
+  - user_status = 'active'
+  # Return the modified scope
+  - this
+```
+
 ## 2. Example: Auto-Close Project
 
 Modify `task_view` save action:
@@ -43,10 +57,8 @@ save:
   - save this
   - if (:assignee_id != :old_assignee_id):
       - assignee_email = tms_user[id = :assignee_id] { email }
-      - log_notification(:assignee_email, "You have a new task")
+      - com.example.tms.TMSFunctions.logNotification(:assignee_email, "You have a new task")
 ```
-
-Wait, `log_notification` isn't a standard Wabase function. We need to implement it in Scala!
 
 ## 4. Extending Wabase with Scala
 
@@ -56,18 +68,13 @@ Create `src/main/scala/TMSFunctions.scala`:
 package com.example.tms
 
 object TMSFunctions {
+  // Methods referenced in YAML must be static (object methods)
   def logNotification(email: String, message: String): Unit = {
     println(s"SENDING EMAIL TO $email: $message")
   }
 }
 ```
 
-Now call it in YAML:
-
-```yaml
-      - com.example.tms.TMSFunctions.logNotification(:assignee_email, "You have a new task")
-```
-
-This seamless interoperability is a killer feature.
+This seamless interoperability is a killer feature. You can inject dependencies (like `HttpRequest`) into your methods automatically if you define an `InjectionParametersProvider`.
 
 **Next Step:** [Background Jobs](06-background-jobs.md)

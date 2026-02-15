@@ -33,3 +33,13 @@ The `application.conf` file controls the runtime behavior.
 | Key | Description | Default |
 | :--- | :--- | :--- |
 | `app.server-notifications.enabled` | Enable server-side events. | `true` |
+
+## Advanced Integration
+
+| Key | Description | Default |
+| :--- | :--- | :--- |
+| `app.wabase-call-alias` | Map of alias names to fully qualified method names. | - |
+| `app.wabase-injection-parameters-provider-factory` | Class implementing `InjectionParametersProviderFactory`. | `org.wabase.AppQuerease.InjectionParametersProviderFactory` |
+| `request-decoders.factory-class` | Class factory for request decoders. | `org.wabase.RequestDecodersFactory` |
+| `data-parsers-csv` | Configuration for CSV decoder. | - |
+| `data-parsers-xml` | Configuration for XML decoder. | - |
