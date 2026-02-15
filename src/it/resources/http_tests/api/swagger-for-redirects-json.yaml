@@ -199,8 +199,8 @@ response: {
     "/fast-respond" : {
       "get" : {
         "responses" : {
-          "200" : {
-            "description" : "OK",
+          "202" : {
+            "description" : "Accepted",
             "content" : {
               "text/plain" : {
                 "schema" : {
@@ -1113,8 +1113,8 @@ response: {
     "/slow-respond" : {
       "get" : {
         "responses" : {
-          "200" : {
-            "description" : "OK",
+          "202" : {
+            "description" : "Accepted",
             "content" : {
               "text/plain" : {
                 "schema" : {
