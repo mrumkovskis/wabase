@@ -24,6 +24,7 @@ A step-by-step tutorial that takes you from an empty project to a full-featured 
 *   [Custom Actions](guide/05-custom-actions.md)
 *   [Background Jobs](guide/06-background-jobs.md)
 *   [Security & Roles](guide/07-security.md)
+*   [Deployment](guide/08-deployment.md)
 
 ### 2. [Reference](reference/01-views.md)
 Detailed technical specifications for every part of the framework.

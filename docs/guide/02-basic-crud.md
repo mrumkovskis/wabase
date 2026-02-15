@@ -1,45 +1,74 @@
-# Part 2: Basic CRUD
+# Part 2: Data Model & Basic CRUD
 
-Now that we have a database and a server, let's expose our tables as REST API endpoints.
+In this part, we leverage Wabase's superpower: **Metadata-Driven Development**. Instead of writing SQL DDL manually, we define our data model in YAML, and Wabase (via Mojoz) generates the SQL schema and Scala DTOs for us.
 
-## 1. Defining Views
+## 1. Defining the Data Model
 
-Views are defined in YAML files in `src/main/resources`. They tell Wabase which tables to use and which fields to expose.
-
-Create `src/main/resources/tms-views.yaml`:
+Create `src/main/resources/tms-model.yaml`. This file defines your tables (entities).
 
 ```yaml
-# Table definitions (optional if metadata is loaded from DB, but good for reference)
+# -----------------------------------------------------------------------------
+# Table Definitions (The Source of Truth)
+# -----------------------------------------------------------------------------
+
 table: tms_user
 columns:
-- id
-- username
-- full_name
-- email
-- is_active
+- id          bigint  pk auto
+- username    string  !  uk
+- full_name   string  !
+- email       string
+- is_active   boolean = true
 
 table: project
 columns:
-- id
-- name
-- description
-- owner_id
-- status
+- id          bigint  pk auto
+- name        string  !
+- description text
+- owner_id    bigint  ref tms_user
+- status      string  = 'PLANNING'
 
 table: task
 columns:
-- id
-- project_id
-- assignee_id
-- summary
-- details
-- due_date
-- priority
-- status
+- id          bigint  pk auto
+- project_id  bigint  ref project
+- assignee_id bigint  ref tms_user
+- summary     string  !
+- details     text
+- due_date    date
+- priority    string  = 'MEDIUM'
+- status      string  = 'OPEN'
+```
 
-# -----------------------------------------------------------------------------
-# Views
-# -----------------------------------------------------------------------------
+*Note: The syntax `pk auto` means Primary Key, Auto Increment. `!` means Not Null. `ref table` creates a Foreign Key.*
+
+## 2. Generating Code & Schema
+
+Run the following command in sbt:
+
+```bash
+sbt compile
+```
+
+The **MojozPlugin** will now:
+1.  Read `tms-model.yaml`.
+2.  Generate PostgreSQL DDL script at `db/db-schema.sql`.
+3.  Generate Scala case classes (DTOs) in `target/scala-*/src_managed/main/...`.
+
+## 3. Applying the Schema
+
+Open `db/db-schema.sql`. It should contain the `CREATE TABLE` statements. Run this script against your database.
+
+```bash
+psql -U tms_user -d tms_db -f db/db-schema.sql
+```
+
+## 4. Defining Views
+
+Now that the physical model is set, we define the API Views in `src/main/resources/tms-views.yaml`.
+
+```yaml
+# Import table definitions if in a separate file, or define views here.
+# Since we already defined tables in tms-model.yaml, we can just reference them.
 
 name:   user_view
 table:  tms_user
@@ -51,7 +80,7 @@ fields:
   - email
   - is_active
 filter:
-  - username ~% :username?   # Case-insensitive substring search (ilike)
+  - username ~% :username?
 order:
   - full_name
 
@@ -81,88 +110,29 @@ fields:
   - status
 ```
 
-## 2. Defining Routes
+## 5. Defining Routes
 
-We need to map URL paths to these views. Create `src/main/resources/routes.yaml`:
+Create `src/main/resources/routes.yaml`:
 
 ```yaml
-# User routes
 on: /api/users
 do:
   - org.wabase.WabaseServer.crudAction: user_view
 
-# Project routes
 on: /api/projects
 do:
   - org.wabase.WabaseServer.crudAction: project_view
 
-# Task routes
 on: /api/tasks
 do:
   - org.wabase.WabaseServer.crudAction: task_view
 ```
 
-*Note: `org.wabase.WabaseServer.crudAction` is a helper that inspects the request. `GET /api/users` becomes `list`, `POST /api/users` becomes `save`, `GET /api/users/1` becomes `get`, etc.*
+## 6. Running the API
 
-## 3. Testing the API
+Run `sbt run`. Your API is live!
 
-Restart your application (`sbt run`).
-
-### Create a User
-**POST** `http://localhost:8080/api/users`
-```json
-{
-  "username": "alice",
-  "full_name": "Alice Smith",
-  "email": "alice@example.com"
-}
-```
-Response: `{"id": 1}`
-
-### List Users
-**GET** `http://localhost:8080/api/users`
-Response:
-```json
-[
-  {
-    "id": 1,
-    "username": "alice",
-    "full_name": "Alice Smith",
-    "email": "alice@example.com",
-    "is_active": true
-  }
-]
-```
-
-### Create a Project
-**POST** `http://localhost:8080/api/projects`
-```json
-{
-  "name": "Wabase Tutorial",
-  "owner_id": 1
-}
-```
-
-### Create a Task
-**POST** `http://localhost:8080/api/tasks`
-```json
-{
-  "project_id": 1,
-  "assignee_id": 1,
-  "summary": "Write documentation",
-  "priority": "HIGH"
-}
-```
-
-## How It Works
-
-1.  **Request**: `GET /api/users?username=ali`
-2.  **Routing**: Matches `/api/users` in `routes.yaml`, invokes `crudAction` with `user_view`.
-3.  **Action**: Determines method is `GET` and path has no ID, so it executes `list` action.
-4.  **Query Generation**: Wabase looks at `user_view`.
-    *   Generates Tresql: `tms_user[username ~% :username] { id, username, full_name, email, is_active } order by full_name`.
-    *   Binds `:username` to "ali".
-5.  **Execution**: Executes query against PostgreSQL.
-6.  **Serialization**: Converts result to JSON and sends response.
+*   **Users**: `http://localhost:8080/api/users`
+*   **Projects**: `http://localhost:8080/api/projects`
 
 **Next Step:** [Relationships and Validation](03-relationships-and-validation.md)

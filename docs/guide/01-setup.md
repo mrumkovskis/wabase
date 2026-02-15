@@ -1,18 +1,35 @@
 # Part 1: Project Setup
 
-In this tutorial, we will build a **Task Management System** (TMS). This system will handle users, projects, and tasks. It will include file attachments, complex validations, and background jobs.
+In this tutorial, we will build a **Task Management System** (TMS). We will use the powerful code-generation features of Wabase to speed up development.
 
 ## Prerequisites
 
-*   **Java**: JDK 11 or higher.
+*   **Java**: JDK 11 or higher (JDK 21 recommended).
 *   **sbt**: Scala Build Tool (version 1.9.0+ recommended).
-*   **Database**: PostgreSQL (recommended) or HSQLDB (for quick testing).
+*   **Database**: PostgreSQL (recommended) or HSQLDB.
 
-## 1. Create the sbt Project
+## Setup Strategy
 
-Create a new directory `wabase-tms` and add the following files.
+We recommend the **Manual Setup** to ensure all dependencies are compatible with the current Wabase version. There is a Giter8 template available (`guntiso/wabase-template.g8`), but it may contain experimental configurations (e.g., Java 25 requirements) that are not suitable for a standard start.
 
-### `build.sbt`
+## Manual Setup
+
+### 1. Create the sbt Project
+
+Create a directory `wabase-tms`.
+
+### 2. Configure Plugins
+
+Create `project/plugins.sbt`. We will use **Mojoz** for code generation and **sbt-assembly** for deployment.
+
+```scala
+addSbtPlugin("org.mojoz" % "sbt-mojoz" % "0.1.0") // Check for latest version
+addSbtPlugin("com.eed3si9n" % "sbt-assembly" % "2.1.5")
+```
+
+### 3. Configure Build (`build.sbt`)
+
+Create `build.sbt`:
 
 ```scala
 name := "wabase-tms"
@@ -23,16 +40,33 @@ scalaVersion := "2.13.12"
 
 val wabaseVersion = "6.0.2"
 
-libraryDependencies ++= Seq(
-  "org.wabase"     %% "wabase"     % wabaseVersion,
-  "org.postgresql" %  "postgresql" % "42.6.0", // Database driver
-  "ch.qos.logback" %  "logback-classic" % "1.4.7" // Logging
-)
+// Enable Mojoz plugins for code generation
+lazy val root = (project in file("."))
+  .enablePlugins(MojozPlugin, MojozGenerateSchemaPlugin)
+  .settings(
+    libraryDependencies ++= Seq(
+      "org.wabase"             %% "wabase"                 % wabaseVersion,
+      "org.postgresql"         %  "postgresql"             % "42.6.0",
+      "ch.qos.logback"         %  "logback-classic"        % "1.4.7",
+      "io.github.samueleresca" %% "pekko-quartz-scheduler" % "1.1.0-pekko-1.0.x", // For jobs
+      "org.scalatest"          %% "scalatest"              % "3.2.15" % Test
+    ),
+    // Mojoz Settings
+    mojozDtosPackage := "com.example.tms.dto",
+    mojozDtosImports := Seq("org.tresql._", "org.wabase.{ Dto, DtoWithId }"),
+    // Generate SQL schema to db/db-schema.sql
+    mojozSchemaSqlFiles := Seq((baseDirectory.value / "db" / "db-schema.sql")),
+    mojozSchemaSqlGenerators := Seq(
+      org.mojoz.metadata.out.DdlGenerator.postgresql(typeDefs = mojozTypeDefs.value)
+    ),
+    // Run the Wabase server directly
+    Compile / mainClass := Some("org.wabase.WabaseServer")
+  )
 ```
 
-## 2. Configure the Application
+## 4. Configure Application
 
-Create `src/main/resources/application.conf`. This is the brain of your Wabase application.
+Create `src/main/resources/application.conf`.
 
 ```hocon
 # Database Connection
@@ -47,58 +81,33 @@ jdbc.cp {
 
 app {
   host = "http://localhost:8080"
-
-  # File storage for uploads
   files.path = "./data/files"
 
   # Security (Replace with random strings in production!)
   auth.crypto.key = "01234567890123456789012345678901"
   auth.mac.key    = "01234567890123456789012345678901"
+
+  # Enable jobs
+  job.actor = org.wabase.WabaseJobActor
 }
 
-# Web Server Settings
 app.server {
-  bind-address = "localhost"
+  bind-address = "0.0.0.0"
   port = 8080
 }
 ```
 
-## 3. Create the Database Schema
+## 5. Running the Application
 
-Before we start the app, we need to create the tables. Run the following SQL in your PostgreSQL database:
+Since we defined `mainClass` in `build.sbt`, you can simply run:
 
-```sql
-CREATE TABLE tms_user (
-    id SERIAL PRIMARY KEY,
-    username VARCHAR(50) NOT NULL UNIQUE,
-    full_name VARCHAR(100) NOT NULL,
-    email VARCHAR(100),
-    is_active BOOLEAN DEFAULT TRUE
-);
-
-CREATE TABLE project (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    description TEXT,
-    owner_id INTEGER REFERENCES tms_user(id),
-    status VARCHAR(20) DEFAULT 'PLANNING'
-);
-
-CREATE TABLE task (
-    id SERIAL PRIMARY KEY,
-    project_id INTEGER REFERENCES project(id),
-    assignee_id INTEGER REFERENCES tms_user(id),
-    summary VARCHAR(200) NOT NULL,
-    details TEXT,
-    due_date DATE,
-    priority VARCHAR(10) DEFAULT 'MEDIUM', -- LOW, MEDIUM, HIGH
-    status VARCHAR(20) DEFAULT 'OPEN'      -- OPEN, IN_PROGRESS, DONE
-);
+```bash
+sbt run
 ```
 
-## 4. The Main Class
+### Custom Startup (Optional)
 
-Create `src/main/scala/TMSApp.scala`.
+If you need to customize the startup process (e.g., adding custom actors), create `src/main/scala/TMSApp.scala`:
 
 ```scala
 package com.example.tms
@@ -107,21 +116,13 @@ import org.wabase.WabaseServer
 
 object TMSApp extends App {
   // Initialize and start the Wabase server
-  new WabaseServer {
-    override def port = 8080
-  }.start()
+  WabaseServer()
 }
 ```
 
-## 5. Verify Installation
-
-Run the application:
-
-```bash
-sbt run
+And update `build.sbt`:
+```scala
+Compile / mainClass := Some("com.example.tms.TMSApp")
 ```
 
-You should see logs indicating the server started on port 8080.
-Go to `http://localhost:8080/` in your browser. You might see a 404 because we haven't defined any routes yet, but the server is running!
-
-**Next Step:** [Defining Views and Basic CRUD](02-basic-crud.md)
+**Next Step:** [Defining Data Model & Basic CRUD](02-basic-crud.md)

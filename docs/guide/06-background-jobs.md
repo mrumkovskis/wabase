@@ -1,8 +1,16 @@
 # Part 6: Background Jobs
 
-Some tasks, like "Archive old projects" or "Generate Monthly Report", shouldn't happen in a web request.
+Some tasks, like "Archive old projects" or "Generate Monthly Report", shouldn't happen in a web request. Wabase integrates with `pekko-quartz-scheduler` for this.
 
-## 1. Database for Jobs
+## 1. Dependencies
+
+Ensure `build.sbt` has the scheduler dependency:
+
+```scala
+libraryDependencies += "io.github.samueleresca" %% "pekko-quartz-scheduler" % "1.1.0-pekko-1.0.x"
+```
+
+## 2. Database for Jobs
 
 Wabase needs a table to track job status.
 
@@ -19,7 +27,7 @@ CREATE TABLE cron_job_status (
 );
 ```
 
-## 2. Defining a Job View
+## 3. Defining a Job View
 
 A job is just a view with a `job` action.
 
@@ -37,32 +45,26 @@ job:
   - return "Archived " || :count || " projects."
 ```
 
-## 3. Scheduling
+## 4. Scheduling (Quartz)
 
-You can schedule this job using an external cron calling a special endpoint, or configure the internal scheduler (requires Quartz dependency).
+In `application.conf`, configure the schedule:
 
-For now, let's trigger it manually via HTTP.
+```hocon
+pekko.quartz.schedules {
+  ArchiveProjects {
+    expression = "0 0 1 * * ?" # Every night at 1 AM
+    timezone = "UTC"
+    description = "Archives completed projects"
+  }
+}
 
-Add route:
-```yaml
-on: /jobs/archive
-do:
-  - org.wabase.WabaseServer.crudAction: archive_old_projects_job
+app.job {
+  # Map Quartz schedule name to Wabase job name
+  ArchiveProjects = archive_old_projects_job
+}
 ```
 
-Wait, `crudAction` maps GET to `list` or `get`. We need to map it to `job`.
-
-We can use `startJob` helper in `routes.yaml`:
-
-```yaml
-on: /jobs/archive
-do:
-  - org.wabase.WabaseServer.startJob: archive_old_projects_job
-```
-
-Now `POST /jobs/archive` will start the job asynchronously and return `202 Accepted`.
-
-## 4. Deferred Requests
+## 5. Deferred Requests
 
 If a user request takes too long (e.g. "Generate PDF"), we can defer it.
 
