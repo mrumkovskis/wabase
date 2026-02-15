@@ -13,3 +13,23 @@ The `application.conf` file controls the runtime behavior.
 | `file-streamer.sha-col-name` | Column name for SHA hash. | `sha_256` |
 | `session.timeout` | Session duration. | `900s` |
 | `wabase.max-stack-depth` | Recursion limit for actions. | 50 |
+
+## Audit Configuration
+
+| Key | Description | Default |
+| :--- | :--- | :--- |
+| `app.audit-pool-name` | Database pool name for audit logs. | - |
+| `app.audit-max-content-size` | Max size of request/response body to log. | `256 K` |
+| `app.audit-queue.path` | Local directory for audit buffer. | - |
+
+## I18n Configuration
+
+| Key | Description | Default |
+| :--- | :--- | :--- |
+| `app.language-cookie-postfix` | Postfix for language cookie name. | `lang` |
+
+## Server Notifications
+
+| Key | Description | Default |
+| :--- | :--- | :--- |
+| `app.server-notifications.enabled` | Enable server-side events. | `true` |

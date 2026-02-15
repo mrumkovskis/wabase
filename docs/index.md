@@ -25,6 +25,7 @@ A step-by-step tutorial that takes you from an empty project to a full-featured 
 *   [Background Jobs](guide/06-background-jobs.md)
 *   [Security & Roles](guide/07-security.md)
 *   [Deployment](guide/08-deployment.md)
+*   [Additional Features](guide/09-additional-features.md) (Audit, I18n, CSRF, Notifications, Spreadsheets)
 
 ### 2. [Reference](reference/01-views.md)
 Detailed technical specifications for every part of the framework.
