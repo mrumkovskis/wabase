@@ -94,11 +94,11 @@ object WabaseAuthentication extends Authentication[WabaseUser] {
   }
 
   def authenticatePlusSession(innerHandler: RequestHandler): RequestHandler =
-    authenticateDomainAndPathPlusSession(null, "/")(innerHandler)
+    authenticateDomainAndPathPlusSession(null, SessionCookiePath)(innerHandler)
 
 
   def authenticatePlusSessionOpt(innerHandler: RequestHandler): RequestHandler =
-    authenticateDomainAndPathPlusSessionOpt(null, "/")(innerHandler)
+    authenticateDomainAndPathPlusSessionOpt(null, SessionCookiePath)(innerHandler)
 
   def authenticateDomainAndPathPlusSession(domain: String, path: String)(
     innerHandler: RequestHandler): RequestHandler = ctx => {
@@ -116,10 +116,10 @@ object WabaseAuthentication extends Authentication[WabaseUser] {
 
   // cannot name setSessionCookie because setSessionCookie from super trait appears from reflection to be member of this object
   def setAppSessionCookie(req: HttpRequest, user: WabaseUser, resp: HttpResponse): HttpResponse =
-    setDomainAndPathSessionCookie(null, "/")(req, user, resp)
+    setDomainAndPathSessionCookie(null, SessionCookiePath)(req, user, resp)
 
   def setAppSessionCookieOpt(req: HttpRequest, user: WabaseUser, resp: HttpResponse): HttpResponse =
-    setDomainAndPathSessionCookieOpt(null, "/")(req, user, resp)
+    setDomainAndPathSessionCookieOpt(null, SessionCookiePath)(req, user, resp)
 
   def setDomainAndPathSessionCookie(domain: String, path: String)(
     req: HttpRequest, user: WabaseUser, resp: HttpResponse): HttpResponse = {
@@ -157,7 +157,7 @@ object WabaseAuthentication extends Authentication[WabaseUser] {
       WabaseUser(Option(reqUser).map(_.properties).getOrElse(Map()) -- rp.keys ++ cp)
     }.getOrElse(reqUser)
 
-  def sessionCookie(encryptedSession: String, domain: String = null, path: String = "/"): HttpCookie =
+  def sessionCookie(encryptedSession: String, domain: String = null, path: String = SessionCookiePath): HttpCookie =
     HttpCookie(
       SessionCookieName,
       value = encryptedSession,
@@ -169,7 +169,7 @@ object WabaseAuthentication extends Authentication[WabaseUser] {
 
   /* Response transformer */
   def removeAppSessionCookie(resp: HttpResponse): HttpResponse =
-    WabaseService.deleteCookie(resp)(SessionCookieName, path = "/")
+    WabaseService.deleteCookie(resp)(SessionCookieName, path = SessionCookiePath)
 
   def httpCredentials: HttpRequest => Option[HttpCredentials] = WabaseService.optionalHttpHeaderValuePF(_) {
     case org.apache.pekko.http.scaladsl.model.headers.Authorization(credentials) => credentials
