@@ -1,72 +1,96 @@
 # Part 7: Security & Roles
 
-Wabase has built-in RBAC (Role-Based Access Control).
+Wabase supports role-based API control with route-level authentication handlers.
 
-## 1. Defining Roles
+## 1. Role-Scoped API Methods
 
-Roles are strings. Common ones: `admin`, `manager`, `user`.
-
-## 2. Restricting Views
-
-In your view definition:
+In view metadata, prefix methods with role names:
 
 ```yaml
-name:   user_view
-# Only admin can list/delete. Everyone can get/save (registration).
-api:    admin list delete, user get save
+name: user
+table: tms_user
+api: admin list delete, user get save
+key: id
+fields:
+- id
+- username
+- full_name
 ```
 
-## 3. Implementing Authentication
+Meaning:
+1. `admin` can call `list` and `delete`.
+2. `user` can call `get` and `save`.
 
-You need to tell Wabase *who* the current user is. Override `WabaseApp.auth` or implement a custom `WabaseAuthentication`.
+## 2. Login/Logout Views
 
-Example `TMSAuthentication.scala`:
-
-```scala
-package com.example.tms
-
-import org.wabase.{WabaseAuthentication, WabaseUser}
-import org.apache.pekko.http.scaladsl.server.Directives._
-import org.apache.pekko.http.scaladsl.server.Route
-
-trait TMSAuthentication extends WabaseAuthentication[WabaseUser] {
-
-  // Minimal example: Read 'X-User-Id' header (Insecure! Use JWT/Session in production)
-  override def authenticate: Route = {
-    optionalHeaderValueByName("X-User-Id") { userIdOpt =>
-      userIdOpt match {
-        case Some(userId) =>
-          // Mock lookup user roles from DB
-          val roles = if (userId == "1") Set("admin") else Set("user")
-          val user = WabaseUser(Map("id" -> userId.toLong, "roles" -> roles))
-          provide(user)
-        case None =>
-          reject // 401 Unauthorized
-      }
-    }
-  }
-}
-```
-
-Mix this trait into your `TMSApp` / `WabaseServer`.
-
-## 4. Row-Level Security
-
-You can restrict data based on the logged-in user.
+Create `src/main/resources/views/security.yaml`:
 
 ```yaml
-name:   task_view
-# ...
+name: login_using_json_or_urlencoded
+api: insert
+fields:
+- name
+- password
+insert:
+- if exists(tms_user[username = :current_user.credentials.name] {id}) :
+  - user_id = tms_user[username = :current_user.credentials.name] {id}
+  - (status ok
+      user_attrs({'id', :user_id})
+      user_attrs({'name', :current_user.credentials.name})
+    )
+- else:
+  - status 401
+
+
+name: logout
+api: insert
+insert:
+- status ok
+```
+
+## 3. Security Routes
+
+Create `src/main/resources/routes/security.yaml`:
+
+```yaml
+on: /(login_using_json_or_urlencoded)
+do: extractFormDataCredentials setDomainAndPathSessionCookie(null, '/') doAction $1
+
+on: POST /logout
+do: removeSessionCookie doAction('logout')
+
+on: /role-check/(.+)
+do: authenticateOpt checkRole($1) ok
+```
+
+If you use `checkRole`, ensure your login flow writes `roles` into session via `user_attrs({'roles', ...})`.
+
+## 4. Row-Level Filtering
+
+Use `:current_user` in view filters:
+
+```yaml
+name: my_tasks
+table: task
+api: get, list
+key: id
+fields:
+- id
+- summary
+- assignee_id
 filter:
-  # Only show tasks assigned to me OR if I am admin
-  - assignee_id = :current_user.id | :current_user.roles ? 'admin'
+- assignee_id = :current_user.id
 ```
 
-`:current_user` is a special variable populated from `WabaseUser`.
+`authenticate`/`authenticateOpt` must run before `doAction` for `:current_user` to be populated.
 
-## Conclusion
+## 5. CSRF for Browser Clients
 
-You have built a secure, scalable Task Management System with advanced features!
-Check the [Reference](../reference/01-views.md) for more details.
-Security deep dive:
-*   [Security, Authentication, and CSRF](../reference/07-security-authentication-and-csrf.md)
+If your client is browser-based, add CSRF checks on state-changing routes:
+
+```yaml
+on: POST /ui/(.+)
+do: checkSameOrigin checkCsrfToken authenticate doAction $1
+```
+
+**Next Step:** [Deployment](08-deployment.md)

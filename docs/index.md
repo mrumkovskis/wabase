@@ -13,7 +13,7 @@ Wabase is a "database-first" framework. It assumes your data model (schema) is t
 
 ## Documentation Structure
 
-This documentation is divided into three main sections:
+This documentation is divided into four main sections:
 
 ### 0. [Feature Guides](features/index.md)
 Task-first guides for individual capabilities, so you can jump directly to what you need.

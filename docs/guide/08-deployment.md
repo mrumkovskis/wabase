@@ -88,3 +88,5 @@ Build and run:
 docker build -t wabase-tms .
 docker run -p 8080:8080 -e DB_USER=admin -e DB_PASS=secret wabase-tms
 ```
+
+**Next Step:** [Additional Features](09-additional-features.md)

@@ -31,10 +31,10 @@ get:
 
 ## 2. Example: Auto-Close Project
 
-Modify `task_view` save action:
+Modify `task` save action:
 
 ```yaml
-name: task_view
+name: task
 # ...
 save:
   - save this

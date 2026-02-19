@@ -1,138 +1,168 @@
 # Part 2: Data Model & Basic CRUD
 
-In this part, we leverage Wabase's superpower: **Metadata-Driven Development**. Instead of writing SQL DDL manually, we define our data model in YAML, and Wabase (via Mojoz) generates the SQL schema and Scala DTOs for us.
+This part defines metadata in the runtime folders Wabase loads by default: `tables/`, `views/`, `routes/`.
 
-## 1. Defining the Data Model
+## 1. Define Table Metadata
 
-Create `src/main/resources/tms-model.yaml`. This file defines your tables (entities).
+Create `src/main/resources/tables/tms.yaml`:
 
 ```yaml
-# -----------------------------------------------------------------------------
-# Table Definitions (The Source of Truth)
-# -----------------------------------------------------------------------------
-
 table: tms_user
 columns:
-- id          bigint  pk auto
-- username    string  !  uk
-- full_name   string  !
-- email       string
-- is_active   boolean = true
+- id         ! 12
+- username   ! 80
+- full_name  ! 120
+- email        160
+- is_active  ! boolean
+pk:
+- id
+idx:
+- username
+
 
 table: project
 columns:
-- id          bigint  pk auto
-- name        string  !
-- description text
-- owner_id    bigint  ref tms_user
-- status      string  = 'PLANNING'
+- id          ! 12
+- name        ! 160
+- description   2000
+- owner_id    ! tms_user.id
+- status      ! 20
+pk:
+- id
+
 
 table: task
 columns:
-- id          bigint  pk auto
-- project_id  bigint  ref project
-- assignee_id bigint  ref tms_user
-- summary     string  !
-- details     text
-- due_date    date
-- priority    string  = 'MEDIUM'
-- status      string  = 'OPEN'
+- id          ! 12
+- project_id  ! project.id
+- assignee_id ! tms_user.id
+- summary     ! 240
+- details       4000
+- due_date      date
+- priority    ! 20
+- status      ! 20
+pk:
+- id
+idx:
+- project_id
+- assignee_id
 ```
 
-*Note: The syntax `pk auto` means Primary Key, Auto Increment. `!` means Not Null. `ref table` creates a Foreign Key.*
+## 2. Create Physical DB Schema
 
-## 2. Generating Code & Schema
+Create and apply `db/schema.sql`:
 
-Run the following command in sbt:
+```sql
+create table tms_user (
+  id bigserial primary key,
+  username varchar(80) not null unique,
+  full_name varchar(120) not null,
+  email varchar(160),
+  is_active boolean not null default true
+);
+
+create table project (
+  id bigserial primary key,
+  name varchar(160) not null,
+  description text,
+  owner_id bigint not null references tms_user(id),
+  status varchar(20) not null default 'PLANNING'
+);
+
+create table task (
+  id bigserial primary key,
+  project_id bigint not null references project(id),
+  assignee_id bigint not null references tms_user(id),
+  summary varchar(240) not null,
+  details text,
+  due_date date,
+  priority varchar(20) not null default 'MEDIUM',
+  status varchar(20) not null default 'OPEN'
+);
+```
+
+Apply it:
 
 ```bash
-sbt compile
+psql -U tms_user -d tms_db -f db/schema.sql
 ```
 
-The **MojozPlugin** will now:
-1.  Read `tms-model.yaml`.
-2.  Generate PostgreSQL DDL script at `db/db-schema.sql`.
-3.  Generate Scala case classes (DTOs) in `target/scala-*/src_managed/main/...`.
+## 3. Define Views
 
-## 3. Applying the Schema
-
-Open `db/db-schema.sql`. It should contain the `CREATE TABLE` statements. Run this script against your database.
-
-```bash
-psql -U tms_user -d tms_db -f db/db-schema.sql
-```
-
-## 4. Defining Views
-
-Now that the physical model is set, we define the API Views in `src/main/resources/tms-views.yaml`.
+Create `src/main/resources/views/tms.yaml`:
 
 ```yaml
-# Import table definitions if in a separate file, or define views here.
-# Since we already defined tables in tms-model.yaml, we can just reference them.
-
-name:   user_view
-table:  tms_user
-api:    list, get, save, delete
+name: user
+table: tms_user
+api: count, create, get, list, save, delete
+key: id
 fields:
-  - id
-  - username
-  - full_name
-  - email
-  - is_active
+- id
+- username
+- full_name
+- email
+- is_active
 filter:
-  - username ~% :username?
+- username ~% :username?
 order:
-  - full_name
+- full_name
 
-name:   project_view
-table:  project
-api:    list, get, save, delete
+
+name: project
+table: project
+api: count, create, get, list, save, delete
+key: id
 fields:
-  - id
-  - name
-  - description
-  - owner_id
-  - status
+- id
+- name
+- description
+- owner_id
+- status
 order:
-  - id desc
+- id desc
 
-name:   task_view
-table:  task
-api:    list, get, save, delete
+
+name: task
+table: task
+api: count, create, get, list, save, delete
+key: id
 fields:
-  - id
-  - project_id
-  - assignee_id
-  - summary
-  - details
-  - due_date
-  - priority
-  - status
+- id
+- project_id
+- assignee_id
+- summary
+- details
+- due_date
+- priority
+- status
+order:
+- id desc
 ```
 
-## 5. Defining Routes
+## 4. Define Routes
 
-Create `src/main/resources/routes.yaml`:
+Create `src/main/resources/routes/data.yaml`:
 
 ```yaml
-on: /api/users
-do:
-  - org.wabase.WabaseServer.crudAction: user_view
-
-on: /api/projects
-do:
-  - org.wabase.WabaseServer.crudAction: project_view
-
-on: /api/tasks
-do:
-  - org.wabase.WabaseServer.crudAction: task_view
+on: /api/((?:create:|count:)?\w+)(/.+)?
+do: doAction $1
 ```
 
-## 6. Running the API
+## 5. Run and Verify
 
-Run `sbt run`. Your API is live!
+```bash
+sbt run
+```
 
-*   **Users**: `http://localhost:8080/api/users`
-*   **Projects**: `http://localhost:8080/api/projects`
+Quick checks:
+
+```bash
+curl -X POST http://localhost:8080/api/user \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"alice","full_name":"Alice Smith","email":"alice@example.com","is_active":true}'
+
+curl http://localhost:8080/api/user
+curl http://localhost:8080/api/user/1
+```
 
 **Next Step:** [Relationships and Validation](03-relationships-and-validation.md)

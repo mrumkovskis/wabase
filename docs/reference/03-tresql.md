@@ -1,31 +1,139 @@
 # Tresql Reference
 
-Tresql is a query language for SQL databases.
+Tresql is the query language used by Wabase actions and views. It covers read/write queries, filtering, joins, aggregation, and expression evaluation.
 
-## Select
+## Simple Example
 
-**Basic**: `table_name { col1, col2 }`
-**Filter**: `table_name [col1 = 'value'] { col1 }`
-**Join**: `table1 t1[t1.id = t2.ref_id] table2 t2 { t1.col1, t2.col2 }`
-**Implicit Join**: `table1 { ref_table.col_name }` (uses FK)
+```tresql
+person[code = :code] {code, name, surname}
+```
 
-## Insert
+```tresql
++person {code, name, surname} ['p100', 'Alice', 'Smith']
+```
 
-`+table_name { col1, col2 } [ 'val1', 'val2' ]`
+## Complex Example
 
-## Update
+```tresql
+person p[p.code = :code] {
+  p.code,
+  p.name,
+  main_account = account a[a.id = p.main_account_id] {number},
+  accounts = [account[person_code = p.code] {id, number, balance}]
+}
+```
 
-`=table_name [id = 1] { col1 = 'new_val' }`
+```tresql
+=task[id = :id] {
+  status = 'DONE',
+  last_modified = now()
+}
+```
 
-## Delete
+## 1. Select / Read
 
-`-table_name [id = 1]`
+Basic forms:
 
-## Functions
+```tresql
+table_name {col1, col2}
+table_name[condition] {col1, col2}
+```
 
-Tresql supports SQL standard functions: `count(*)`, `sum(col)`, `max(col)`, `now()`, `coalesce(a, b)`.
+Examples:
 
-## Variables
+```tresql
+task[project_id = :project_id] {id, summary, status}
+tms_user[username ~% :username?] {id, username, full_name}
+```
 
-Bind variables are prefixed with colon: `:variable_name`.
-Optional variables: `:variable_name?`.
+## 2. Insert / Update / Delete
+
+Insert:
+
+```tresql
++table_name {col1, col2} [:v1, :v2]
+```
+
+Update:
+
+```tresql
+=table_name[id = :id] {col1 = :value}
+```
+
+Delete:
+
+```tresql
+-table_name[id = :id]
+```
+
+## 3. Joins and Aliases
+
+Use aliases for readable join conditions:
+
+```tresql
+task t[project_id = p.id] project p[id = :project_id] {
+  t.id,
+  t.summary,
+  p.name
+}
+```
+
+Lookup pattern used in view fields:
+
+```tresql
+account[number = _]{id}
+```
+
+## 4. Aggregation
+
+```tresql
+task[project_id = :project_id] {count(*)}
+task[project_id = :project_id] {sum(coalesce(estimate_hours, 0))}
+```
+
+## 5. Variables and Optional Inputs
+
+Bind variables:
+1. `:name` required input.
+2. `:name?` optional input.
+3. `_` current field value in lookup/save mappings.
+
+Examples:
+
+```tresql
+tms_user[username = :username] {id}
+tms_user[username ~% :username?] {id, username}
+```
+
+## 6. Useful Operators and Functions
+
+Common operators/functions in metadata:
+1. `coalesce(a, b)`
+2. `now()`
+3. `length(:value)`
+4. `exists(query {1})`
+5. `in (...)`
+
+Example:
+
+```tresql
+exists(task[id = :id & status = 'OPEN'] {1})
+```
+
+## 7. Tresql Inside Actions
+
+Tresql is the default operation language in action steps:
+
+```yaml
+save:
+- open_tasks = task[project_id = :project_id & status != 'DONE'] {count(*)}
+- if (:open_tasks == 0):
+    - =project[id = :project_id] {status = 'ARCHIVED'}
+- save this
+```
+
+## Related Docs
+
+* [Action Language Reference](02-action-language.md)
+* [View Definition Reference](01-views.md)
+* [Guide: Relationships and Validation](../guide/03-relationships-and-validation.md)

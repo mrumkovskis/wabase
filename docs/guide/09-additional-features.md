@@ -8,16 +8,14 @@ Wabase provides a robust auditing system that can capture every request and resp
 
 ### Enabling Audit
 
-The `WabaseApp` trait usually mixes in `NoAudit`. To enable auditing, your application class should mix in `Audit` (or a subclass like `BufferedAudit` which writes to a queue first for performance).
+Enable the `audit` route handler in your metadata routes:
 
-In `WabaseServer.scala` or your custom app class:
-
-```scala
-class App(exec: Execution) extends WabaseApp[WabaseUser]
-  with Execution
-  // ... other traits ...
-  with org.wabase.audit.Audit // Use the default Audit implementation
+```yaml
+on: /api/((?:create:|count:)?\w+)(/.+)?
+do: authenticateOpt audit doAction $1
 ```
+
+This uses the built-in audit handler alias from `app.wabase-call-alias.audit`.
 
 ### Configuration
 
@@ -57,11 +55,11 @@ Wabase uses standard Java `ResourceBundle` (`.properties` files) for translation
 ### Setup
 
 Create property files in `src/main/resources`:
-*   `wabase.properties` (Default/English)
+*   `wabase_en.properties` (English)
 *   `wabase_lv.properties` (Latvian)
-*   `wabase_fr.properties` (French)
+*   `wabase_fr.properties` (French, optional)
 
-**Example `wabase.properties`**:
+**Example `wabase_en.properties`**:
 ```properties
 hello.world=Hello World!
 user.not.found=User {0} not found.
@@ -86,7 +84,15 @@ Wabase includes built-in protection against Cross-Site Request Forgery (CSRF) us
 
 ### Enabling
 
-Use the `CSRFDefence` trait or helper methods in your routes/directives.
+Add CSRF handlers to routes that change state:
+
+```yaml
+on: POST /set-csrf-cookie
+do: setCsrfCookie ok
+
+on: POST /api/(.+)
+do: checkSameOrigin checkCsrfToken authenticate doAction $1
+```
 
 ### How it Works
 
@@ -99,6 +105,25 @@ It also checks `Origin` and `Referer` headers to ensure the request is coming fr
 ## 4. Server Notifications (SSE)
 
 You can push real-time updates to clients using Server-Sent Events (SSE) or WebSockets.
+
+### Define Notification View
+
+Create `src/main/resources/views/server-events.yaml`:
+
+```yaml
+name: server_events
+api: get, list, save
+key: topic
+fields:
+- topic
+- value
+get:
+- wabase.app.EventsFunctions.subscribeToEvent :topic
+list:
+- wabase.app.EventsFunctions.subscribeToWsMessages :topic
+insert:
+- wabase.app.EventsFunctions.publishEvent(:topic, :value)
+```
 
 ### Publish Events
 
@@ -116,7 +141,7 @@ ServerNotifications.publishUserEvent(userId, Map("type" -> "task_assigned", "tas
 The client connects to an SSE endpoint.
 
 ```javascript
-const eventSource = new EventSource("/api/events");
+const eventSource = new EventSource("/api/server_events/tasks");
 eventSource.onmessage = function(event) {
     const data = JSON.parse(event.data);
     console.log("New Event:", data);
@@ -125,7 +150,7 @@ eventSource.onmessage = function(event) {
 
 ## 5. Spreadsheet Export
 
-Wabase can export any List view to Excel or OpenDocument Spreadsheet (ODS) format automatically.
+Wabase can export list results to CSV, ODS, or Excel XML formats.
 
 ### Usage in Actions
 
@@ -133,13 +158,16 @@ Use the `to file` action with a specific content type.
 
 ```yaml
 list:
-  # Export list result to Excel
-  - to file (list this) 'report.xlsx' 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  - csv = to file (list this) 'report.csv' 'text/csv; charset=UTF-8'
+  - ods = to file (list this) 'report.ods' 'application/vnd.oasis.opendocument.spreadsheet'
+  - xls = to file (list this) 'report.xml' 'application/vnd.ms-excel'
+  - return {csv = :csv, ods = :ods, xls = :xls}
 ```
 
 Supported types:
-*   `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` (Excel .xlsx)
+*   `text/csv; charset=UTF-8` (CSV)
 *   `application/vnd.oasis.opendocument.spreadsheet` (ODS)
+*   `application/vnd.ms-excel` (Excel XML)
 
 Wabase uses metadata (field labels, types) to format the spreadsheet columns correctly.
 

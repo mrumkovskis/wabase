@@ -7,7 +7,7 @@ Some tasks, like "Archive old projects" or "Generate Monthly Report", shouldn't 
 Ensure `build.sbt` has the scheduler dependency:
 
 ```scala
-libraryDependencies += "io.github.samueleresca" %% "pekko-quartz-scheduler" % "1.1.0-pekko-1.0.x"
+libraryDependencies += "io.github.samueleresca" %% "pekko-quartz-scheduler" % "1.3.0-pekko-1.1.x"
 ```
 
 ## 2. Database for Jobs
@@ -29,9 +29,9 @@ CREATE TABLE cron_job_status (
 
 ## 3. Defining a Job View
 
-A job is just a view with a `job` action.
+A job is a metadata object with a `job` action.
 
-Create `src/main/resources/jobs.yaml`:
+Create `src/main/resources/jobs/archive-old-projects.yaml`:
 
 ```yaml
 name:   archive_old_projects_job
@@ -78,7 +78,7 @@ app.deferred-requests {
 In the view:
 ```yaml
 save:
-  - result = startJobAction('generate_pdf_job') { :id }
+  - result = startJobAction ('generate_pdf_job') unique{:id id}
   # Return '202 Accepted' with location of the result
   - status :result
 ```

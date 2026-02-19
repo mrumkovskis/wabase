@@ -1,8 +1,8 @@
 # Feature Coverage Index
 
-This index maps every tracked repository file to a feature area and primary documentation entry point.
+This index maps a broad repository snapshot to feature areas and primary documentation entry points.
 
-Generated from full repository feature-mapping pass (snapshot in this docs revision).
+It is a generated mapping artifact, not a strict 1:1 source-of-truth for every tracked file in the current branch.
 
 For task-first guides, see [Feature Guides](../features/index.md).
 
