@@ -15,6 +15,14 @@ Wabase is a "database-first" framework. It assumes your data model (schema) is t
 
 This documentation is divided into three main sections:
 
+### 0. [Feature Guides](features/index.md)
+Task-first guides for individual capabilities, so you can jump directly to what you need.
+*   [Feature Guides Index](features/index.md)
+*   [Email Sending](features/11-email-sending.md)
+*   [Deferred Requests](features/05-deferred-requests.md)
+*   [Authentication and Sessions](features/01-authentication-and-sessions.md)
+*   [Files and Attachments](features/09-files-and-attachments.md)
+
 ### 1. [The Comprehensive Guide](guide/01-setup.md)
 A step-by-step tutorial that takes you from an empty project to a full-featured **Task Management System**.
 *   [Setup & Installation](guide/01-setup.md)
@@ -34,6 +42,12 @@ Detailed technical specifications for every part of the framework.
 *   [Tresql Reference](reference/03-tresql.md)
 *   [Configuration](reference/04-configuration.md)
 *   [Routes Reference](reference/05-routes.md)
+*   [Core Runtime & Extension Points](reference/06-core-runtime-and-extension-points.md)
+*   [Security, Authentication & CSRF](reference/07-security-authentication-and-csrf.md)
+*   [Input/Output & Renderers](reference/08-input-output-and-renderers.md)
+*   [Async: Jobs, Deferred, Events, Audit](reference/09-async-jobs-deferred-events.md)
+*   [Testing & Verification Playbook](reference/10-testing-and-verification-playbook.md)
+*   [Feature Coverage Index](reference/11-feature-coverage-index.md)
 
 ### 3. [Internals](internals/architecture.md)
 For advanced users who want to understand the engine under the hood.

@@ -84,3 +84,6 @@ save:
 ```
 
 **Next Step:** [Security & Roles](07-security.md)
+
+For production-grade behavior and internals, see:
+*   [Async Processing: Jobs, Deferred Requests, Events, Audit](../reference/09-async-jobs-deferred-events.md)

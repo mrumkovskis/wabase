@@ -68,3 +68,5 @@ filter:
 
 You have built a secure, scalable Task Management System with advanced features!
 Check the [Reference](../reference/01-views.md) for more details.
+Security deep dive:
+*   [Security, Authentication, and CSRF](../reference/07-security-authentication-and-csrf.md)

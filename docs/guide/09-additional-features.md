@@ -142,3 +142,7 @@ Supported types:
 *   `application/vnd.oasis.opendocument.spreadsheet` (ODS)
 
 Wabase uses metadata (field labels, types) to format the spreadsheet columns correctly.
+
+Related reference chapters:
+*   [Input, Output, and Renderers](../reference/08-input-output-and-renderers.md)
+*   [Async Processing: Jobs, Deferred Requests, Events, Audit](../reference/09-async-jobs-deferred-events.md)

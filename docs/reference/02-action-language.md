@@ -202,3 +202,9 @@ References current action data.
 ```yaml
 - save this
 ```
+
+## Feature Guides
+
+*   [Action Language Workflows](../features/04-action-language-workflows.md)
+*   [Email Sending](../features/11-email-sending.md)
+*   [Outbound HTTP Client Calls](../features/12-outbound-http-client-calls.md)

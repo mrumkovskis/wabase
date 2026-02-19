@@ -129,3 +129,10 @@ do: com.example.MyService.handleCustomLogic
 on: GET /ping
 do: response(200, 'pong')
 ```
+
+## Related Deep Dives
+
+*   [Core Runtime and Extension Points](06-core-runtime-and-extension-points.md)
+*   [Security, Authentication, and CSRF](07-security-authentication-and-csrf.md)
+*   [Async Processing (Deferred/Jobs/Events)](09-async-jobs-deferred-events.md)
+*   [Feature Guide: Views, Routes, and CRUD API](../features/03-views-routes-and-crud.md)
