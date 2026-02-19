@@ -25,7 +25,3 @@ Start here when you already know the capability you need (for example: email sen
 17. [Result Rendering and Export](16-result-rendering-and-export.md)
 18. [Script Validations](17-script-validations.md)
 19. [Static Resources and Cache Controls](18-static-resources-and-cache-controls.md)
-
-## Quality Review
-
-- [Independent Review Report](_independent-review.md)
