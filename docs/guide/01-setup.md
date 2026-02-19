@@ -1,14 +1,34 @@
 # Part 1: Project Setup
 
-In this tutorial, we build a **Task Management System** (TMS) using the same runtime conventions used in this branch (`tables/`, `views/`, `routes/` metadata folders, `doAction` route handler alias, and top-level `port` config).
+In this tutorial, we build a **Task Management System** (TMS) using Wabase.
 
 ## Prerequisites
 
-*   **Java**: JDK 11 (required by this branch).
+*   **Java**: JDK 11 (required by the framework).
 *   **sbt**: 1.11.7+.
 *   **Database**: PostgreSQL (recommended).
 
-## 1. Create Project
+---
+
+## 1. Create Project (Recommended)
+
+The fastest way to start a new Wabase project is using the Giter8 template.
+
+```bash
+sbt new guntiso/wabase-template.g8
+```
+
+This will prompt you for project name and package details, then scaffold the standard directory structure, `build.sbt`, and initial configuration.
+
+**Next Step:** [Data Model and Basic CRUD](02-basic-crud.md)
+
+---
+
+## 2. Manual Setup (Advanced)
+
+If you prefer to build the project structure manually, follow these steps.
+
+### A. Directory Structure
 
 ```bash
 mkdir wabase-tms
@@ -16,7 +36,7 @@ cd wabase-tms
 mkdir -p src/main/resources/{tables,views,routes,jobs}
 ```
 
-## 2. Configure `build.sbt`
+### B. Configure `build.sbt`
 
 Create `build.sbt`:
 
@@ -42,9 +62,9 @@ libraryDependencies ++= Seq(
 Compile / mainClass := Some("org.wabase.WabaseServer")
 ```
 
-If you are targeting a stable release instead of this branch snapshot, switch `wabaseVersion` to the published release and remove the snapshots resolver.
+If you are targeting a stable release, switch `wabaseVersion` to the published release and remove the snapshots resolver.
 
-## 3. Configure `application.conf`
+### C. Configure `application.conf`
 
 Create `src/main/resources/application.conf`:
 
@@ -70,13 +90,15 @@ app.server.bind-address = "0.0.0.0"
 port = 8080
 ```
 
-## 4. Run
+### D. Run
 
 ```bash
 sbt run
 ```
 
 If startup is successful, the server binds to `http://localhost:8080`.
+
+**Next Step:** [Data Model and Basic CRUD](02-basic-crud.md)
 
 ### Optional: Custom Main Class
 

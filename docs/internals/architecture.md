@@ -5,6 +5,42 @@
 Wabase follows a hierarchical object-oriented architecture:
 `WabaseServer` -> `WabaseService` -> `WabaseApp` -> `AppQuerease` -> `Marshalling`
 
+```mermaid
+graph TD
+    A[WabaseServer] --> B[WabaseService]
+    B --> C[WabaseApp]
+    C --> D[AppQuerease]
+    D --> E[Tresql]
+    D --> F[Action Interpreter]
+    B --> G[Marshalling]
+```
+
+## Request Lifecycle
+
+The flow of a typical metadata-driven action request:
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant S as WabaseService
+    participant A as WabaseApp
+    participant Q as AppQuerease
+    participant DB as Database
+
+    C->>S: HTTP Request (e.g. GET /api/user/1)
+    S->>S: Route Match (routes.yaml)
+    S->>S: Auth / Validation Handlers
+    S->>A: doWabaseAction(view, action, context)
+    A->>Q: doActionOp(context)
+    Q->>Q: Evaluate Action Steps
+    Q->>DB: Execute Tresql Query
+    DB-->>Q: Query Result
+    Q-->>A: QuereaseResult
+    A-->>S: Result Stream
+    S->>S: Marshalling (JSON/CSV)
+    S-->>C: HTTP Response
+```
+
 ## Components
 
 ### 1. WabaseServer (`src/main/scala/WabaseServer.scala`)

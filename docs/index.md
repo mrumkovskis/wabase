@@ -18,10 +18,25 @@ This documentation is divided into four main sections:
 ### 0. [Feature Guides](features/index.md)
 Task-first guides for individual capabilities, so you can jump directly to what you need.
 *   [Feature Guides Index](features/index.md)
-*   [Email Sending](features/11-email-sending.md)
-*   [Deferred Requests](features/05-deferred-requests.md)
+*   [Feature Catalog](features/00-feature-catalog.md)
 *   [Authentication and Sessions](features/01-authentication-and-sessions.md)
+*   [CSRF Protection](features/02-csrf-protection.md)
+*   [Views, Routes, and CRUD API](features/03-views-routes-and-crud.md)
+*   [Action Language Workflows](features/04-action-language-workflows.md)
+*   [Deferred Requests](features/05-deferred-requests.md)
+*   [Background Jobs and Scheduler](features/06-background-jobs.md)
+*   [Auditing](features/07-auditing.md)
+*   [Internationalization (I18n)](features/08-internationalization-i18n.md)
 *   [Files and Attachments](features/09-files-and-attachments.md)
+*   [Templates and Document Generation](features/10-templates-and-document-generation.md)
+*   [Email Sending](features/11-email-sending.md)
+*   [Outbound HTTP Client Calls](features/12-outbound-http-client-calls.md)
+*   [Server Notifications (SSE/WS)](features/13-server-notifications.md)
+*   [API Metadata and Swagger](features/14-api-metadata-and-swagger.md)
+*   [Request Decoding and Content Types](features/15-request-decoding-and-content-types.md)
+*   [Result Rendering and Export](features/16-result-rendering-and-export.md)
+*   [Script Validations](features/17-script-validations.md)
+*   [Static Resources and Cache Controls](features/18-static-resources-and-cache-controls.md)
 
 ### 1. [The Comprehensive Guide](guide/01-setup.md)
 A step-by-step tutorial that takes you from an empty project to a full-featured **Task Management System**.
@@ -37,6 +52,7 @@ A step-by-step tutorial that takes you from an empty project to a full-featured 
 
 ### 2. [Reference](reference/01-views.md)
 Detailed technical specifications for every part of the framework.
+*   **[Metadata Cheat Sheet](reference/cheat-sheet.md)** (Quick lookup)
 *   [View Definition](reference/01-views.md)
 *   [Action Language Spec](reference/02-action-language.md)
 *   [Tresql Reference](reference/03-tresql.md)
@@ -52,3 +68,30 @@ Detailed technical specifications for every part of the framework.
 ### 3. [Internals](internals/architecture.md)
 For advanced users who want to understand the engine under the hood.
 *   [Architecture Overview](internals/architecture.md)
+
+---
+
+## High-Level Architecture
+
+```mermaid
+graph LR
+    subgraph Client
+        Browser
+        MobileApp
+    end
+    subgraph Wabase_Server
+        API[HTTP API / Routes]
+        Auth[Auth & Security]
+        Metadata[Metadata Engine]
+        Action[Action Language]
+        Tresql[Tresql / JDBC]
+    end
+    Database[(PostgreSQL)]
+
+    Browser -- JSON --> API
+    API -- Match --> Auth
+    Auth -- Run --> Metadata
+    Metadata -- Interpret --> Action
+    Action -- Query --> Tresql
+    Tresql -- SQL --> Database
+```
