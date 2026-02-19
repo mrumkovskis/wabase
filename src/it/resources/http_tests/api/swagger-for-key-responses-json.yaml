@@ -200,11 +200,22 @@ response: {
       "get" : {
         "responses" : {
           "200" : {
-            "description" : "OK",
+            "description" : "OK"
+          },
+          "202" : {
+            "description" : "The request has been accepted for processing, but the processing has not been completed. The response contains a deferred identifier.",
             "content" : {
-              "text/plain" : {
+              "application/json" : {
                 "schema" : {
-                  "type" : "string"
+                  "type" : "object",
+                  "properties" : {
+                    "deferred" : {
+                      "type" : "string",
+                      "description" : "A unique identifier for the deferred operation (e.g., base64-encoded token).",
+                      "example" : "hGLDObRtjluGLjD4mrxZX2rIOaI="
+                    }
+                  },
+                  "required" : [ "deferred" ]
                 }
               }
             }
@@ -1106,12 +1117,20 @@ response: {
     "/slow-respond" : {
       "get" : {
         "responses" : {
-          "200" : {
-            "description" : "OK",
+          "202" : {
+            "description" : "The request has been accepted for processing, but the processing has not been completed. The response contains a deferred identifier.",
             "content" : {
-              "text/plain" : {
+              "application/json" : {
                 "schema" : {
-                  "type" : "string"
+                  "type" : "object",
+                  "properties" : {
+                    "deferred" : {
+                      "type" : "string",
+                      "description" : "A unique identifier for the deferred operation (e.g., base64-encoded token).",
+                      "example" : "hGLDObRtjluGLjD4mrxZX2rIOaI="
+                    }
+                  },
+                  "required" : [ "deferred" ]
                 }
               }
             }

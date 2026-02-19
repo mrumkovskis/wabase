@@ -81,6 +81,7 @@ trait Authentication[User] extends SecurityDirectives with SessionInfoRemover wi
   val SignedInDefaultPath = "/"
   val SignedOutPath = "/"
   val SessionCookieName = config.getString("session.cookie.name")
+  val SessionCookiePath = config.getString("session.cookie.path")
   val RequestedUriCookieName = "requested-uri"
 
   lazy val HttpChallengeRealm = "APP"
@@ -118,7 +119,7 @@ trait Authentication[User] extends SecurityDirectives with SessionInfoRemover wi
       setCookie(sessionCookieTransformer(HttpCookie(
         SessionCookieName,
         value = sessionToken,
-        path = Some("/"),
+        path = Some(SessionCookiePath),
         httpOnly= httpOnlyCookies,
         secure = secureCookies
       ).withSameSite(SameSite.Lax)))
@@ -170,7 +171,7 @@ trait Authentication[User] extends SecurityDirectives with SessionInfoRemover wi
   }
 
   /** Deletes session-id cookie if exists */
-  protected def removeSessionCookie = deleteCookie(SessionCookieName, path = "/")
+  protected def removeSessionCookie = deleteCookie(SessionCookieName, path = SessionCookiePath)
   /** On failed authentication sets requested-uri cookie if request has not been Ajax */
   protected def reqestedUriCookieTransformer(cookie: HttpCookie): HttpCookie = cookie
 

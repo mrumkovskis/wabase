@@ -94,16 +94,19 @@ object WabaseDeferredControl extends WabaseDeferredControlFactory {
 
   /** Enable deferred processing for handler. */
   def maybeDeferred(innerHandler: RequestHandler): RequestHandler = ctx => {
-    if (ctx.user != null && (isDeferredPath(ctx.req.uri) || hasDeferredHeader(ctx.req))) {
+    if (isDeferredPath(ctx.req.uri) || hasDeferredHeader(ctx.req)) {
       doDeferred(innerHandler)(ctx)
     } else innerHandler(ctx)
   }
+
+  private def user_(ctx: WabaseRequestContext): String =
+    Option(ctx.user).map(_.name).filter(_ != null).getOrElse("(anonymous)")
 
   def doDeferred(handler: RequestHandler): RequestHandler = ctx => {
     require(ctx.deferred.deferredControl != null, "Cannot do deferred request. Deferred module not initialized.")
     val timeout = extractTimeout(ctx, ctx.req)
     val dctx = ctx.copy(queryTimeout = timeout)
-    val user = dctx.user.name
+    val user = user_(dctx)
     val hash = DeferredControl.requestHash(user, dctx.req, WabaseAuthentication.removeSessionInfoFromRequest)
     val deferredCtx = DeferredControl.DeferredContext(user, hash, dctx, handler)
     ServerNotifications
@@ -119,7 +122,7 @@ object WabaseDeferredControl extends WabaseDeferredControlFactory {
   def deferredResult(deferred_id: String, ctx: WabaseRequestContext): Future[HttpResponse] = {
     require(ctx.deferred.deferredControl != null,
       s"Cannot retrieve deferred result $deferred_id, deferred module not initialized.")
-    Future.successful(ctx.deferred.deferredControl.deferredResult(deferred_id, ctx.user.name))
+    Future.successful(ctx.deferred.deferredControl.deferredResult(deferred_id, user_(ctx)))
   }
 }
 
