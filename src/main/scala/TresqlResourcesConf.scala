@@ -25,11 +25,12 @@ trait TresqlResourcesConf {
 }
 
 object TresqlResourcesConf extends Loggable {
-
   private val tunablePaths =
     Set("query-timeout", "max-result-size", "fetch-size", "recursive-stack-depth", "cache-size")
   private val resConfs = ComponentConf.getConfigs("tresql", tunablePaths, "tresql-resources.conf")
   private val config   = resConfs.root
+  private val dialectFactory = config.getString("dialect-factory")
+  private val idExprFactory = config.getString("id-expr-factory")
   val wabaseConf = ConfigFactory.load
 
   lazy val DefaultCpName: String =
@@ -50,7 +51,7 @@ object TresqlResourcesConf extends Loggable {
       (cpConfs ++ resConfs.confs.toMap)
         .map { case (cpName, cpOrResConf) =>
           val n = if (cpName == DefaultCpName) null else cpName
-          n -> tresqlResourcesConf(n, cpOrResConf.withFallback(resConfs.root))
+          n -> tresqlResourcesConf(n, cpOrResConf.withFallback(config))
         }.toMap match {
           case m if m.isEmpty => Map((null, new TresqlResourcesConf {}))
           case m => m
@@ -94,9 +95,9 @@ object TresqlResourcesConf extends Loggable {
       new TresqlResourcesConf {
         override val cacheSize:             Int = getInt("cache-size")
         override val db:                 String = getStringOpt("db").orNull
-        override val dialect:           Dialect = getStringOpt("vendor").map(vendor_dialect).orNull
+        override val dialect:           Dialect = getStringOpt("vendor").map(vendorDialect).orNull
         override val fetchSize:             Int = getInt("fetch-size")
-        override val idExpr:   String => String = getStringOpt("vendor").map(vendor_id_expr).orNull
+        override val idExpr:   String => String = getStringOpt("vendor").map(vendorIdExpr).orNull
         override val macrosClass:      Class[_] = getStringOpt("macros-class").map(Class.forName).orNull
         override val maxResultSize:         Int = getInt("max-result-size")
         override val queryTimeout:          Int = getSeconds("query-timeout")
@@ -122,7 +123,7 @@ object TresqlResourcesConf extends Loggable {
       override val bindVarLogFilter: Logging#BindVarLogFilter = getValue(_.bindVarLogFilter)
       override val cache:               Cache = getValue(_.cache)
       override val cacheSize:             Int = getInt(_.cacheSize)
-      override val db:                 String = tresqlConfs.filter(_.isDbSet).headOption.map(_.db).getOrElse(cpName)
+      override val db:                 String = tresqlConfs.find(_.isDbSet).map(_.db).getOrElse(cpName)
       override val dialect:           Dialect = getValue(_.dialect)
       override val toBindableValue: PartialFunction[Any, Any] = getValue(_.toBindableValue)
       override val fetchSize:             Int = getInt(_.fetchSize)
@@ -143,11 +144,21 @@ object TresqlResourcesConf extends Loggable {
     case _ => dialects.ANSISQLDialect orElse dialects.VariableNameDialect
   }
 
+  private def vendorDialect(vendor: String) = vendorObject[Dialect](vendor, dialectFactory)
+
   def vendor_id_expr(vendor: String): String => String = vendor match {
     case "postgresql" => _ => "nextval('seq')"
     case "oracle" => seq => s"dual{`$seq.nextval`}"
     case "hsqldb" => _ => "nextval('seq')"
     case _ => seq => s"nextval('$seq')"
+  }
+
+  private def vendorIdExpr(vendor: String) = vendorObject[String => String](vendor, idExprFactory)
+
+  private def vendorObject[T](vendor: String, factory: String): T = {
+    val (cn, fn) = OpParser.classNameFunctionName(factory)
+    import concurrent.ExecutionContext.Implicits.global
+    invokeFunction(cn, fn, Seq((classOf[String], () => vendor))).asInstanceOf[T]
   }
 
   def tresqlResourcesTemplate(
@@ -178,13 +189,13 @@ object TresqlResourcesConf extends Loggable {
         else Macros
       val dialect: Dialect = {
         val dbVendor = cpToVendor.getOrElse(cpName, null)
-        if (conf.dialect != null) conf.dialect orElse vendor_dialect(dbVendor)
-        else vendor_dialect(dbVendor)
+        if (conf.dialect != null) conf.dialect orElse vendorDialect(dbVendor)
+        else vendorDialect(dbVendor)
       }
       val toBindableValue: PartialFunction[Any, Any] = Option(conf.toBindableValue).getOrElse(PartialFunction.empty)
       val idExpr: String => String =
         if (conf.idExpr != null) conf.idExpr
-        else vendor_id_expr(cpToVendor.getOrElse(cpName, null))
+        else vendorIdExpr(cpToVendor.getOrElse(cpName, null))
       val queryTimeout =
         if (conf.queryTimeout != -1) conf.queryTimeout
         else wabaseConf.getDuration("jdbc.query-timeout").getSeconds.toInt
