@@ -777,6 +777,7 @@ class WabaseSwaggerGenerator(
         }.toSeq
       val pathsOverrides =
         viewDef.extras.get(swaggerOverridesKey).map {
+          case null => Map[String, Any]() // allow to cancel swagger override from super
           case m: Map[String @unchecked, _] => m
           case x =>
             throw new RuntimeException(
