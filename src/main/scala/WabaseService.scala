@@ -227,7 +227,7 @@ object WabaseService extends Loggable {
   }
 
   def doRequest(handlerName: String, ctx: WabaseRequestContext): Future[HttpResponse] = {
-    val (cn, fn) = OpParser.classNameFunctionName(handlerName)
+    val (cn, fn) = classNameFunctionName(handlerName)
     val key = WabaseService.key(ctx.req.uri.path, handlerName)
     buildRequestHandler(cn, fn, Nil, null)(ctx.copy(key = key))
   }
@@ -680,8 +680,7 @@ object WabaseService extends Loggable {
 
   private val ERR_AND_THEN_PARAM = "app.wabase-error-handler-and-then"
   private val error_and_then_cn_fn =
-    if (!config.getIsNull(ERR_AND_THEN_PARAM))
-      OpParser.classNameFunctionName(config.getString(ERR_AND_THEN_PARAM))
+    if (!config.getIsNull(ERR_AND_THEN_PARAM)) config.getString(ERR_AND_THEN_PARAM)
     else null
   def errorHandler(wrc: WabaseRequestContext): ErrorHandler = {
     implicit val ec: ExecutionContext = wrc.as.dispatcher
@@ -695,8 +694,7 @@ object WabaseService extends Loggable {
       }
     if (error_and_then_cn_fn == null) errorHandler
     else {
-      val (cn, fn) = error_and_then_cn_fn
-      val andThen = invokeFunction(cn, fn, Seq((classOf[WabaseRequestContext], () => wrc))) match {
+      val andThen = invokeFunction(error_and_then_cn_fn, Seq((classOf[WabaseRequestContext], () => wrc))) match {
         case f: Function[HttpResponse, Future[HttpResponse]]@unchecked => f
         case x => sys.error(s"Error handler and then function must return value of type:" +
           s" HttpResponse => Future[HttpResponse], instead got '$x' of type '${x.getClass}'")

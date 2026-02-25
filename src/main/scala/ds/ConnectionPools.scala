@@ -25,7 +25,7 @@ object ConnectionPools extends Loggable {
   lazy val DefaultQueryTimeout: QueryTimeout =
     QueryTimeout(config.getDuration("jdbc.query-timeout").toSeconds.toInt)
 
-  private val factory_class_function = OpParser.classNameFunctionName(config.getString("jdbc.data-source-factory"))
+  private val factory_class_function = config.getString("jdbc.data-source-factory")
   private lazy val cps = {
     val c = config.getConfig("jdbc.cp")
     val s: Seq[(PoolName, DataSource)] =
@@ -36,8 +36,7 @@ object ConnectionPools extends Loggable {
 
   private def createDataSourceFromFactory(config: Config): DataSource = {
     import scala.concurrent.ExecutionContext.Implicits.global
-    val (cn, fn) = factory_class_function
-    invokeFunction(cn, fn, Seq((classOf[Config], () => config))).asInstanceOf[DataSource]
+    invokeFunction(factory_class_function, Seq((classOf[Config], () => config))).asInstanceOf[DataSource]
   }
 
   private def createDataSource(conf: Config) = try createDataSourceFromFactory(conf) catch {

@@ -156,9 +156,8 @@ object TresqlResourcesConf extends Loggable {
   private def vendorIdExpr(vendor: String) = vendorObject[String => String](vendor, idExprFactory)
 
   private def vendorObject[T](vendor: String, factory: String): T = {
-    val (cn, fn) = OpParser.classNameFunctionName(factory)
     import concurrent.ExecutionContext.Implicits.global
-    invokeFunction(cn, fn, Seq((classOf[String], () => vendor))).asInstanceOf[T]
+    invokeFunction(factory, Seq((classOf[String], () => vendor))).asInstanceOf[T]
   }
 
   def tresqlResourcesTemplate(

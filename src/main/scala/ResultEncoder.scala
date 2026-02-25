@@ -71,9 +71,7 @@ object ResultEncoder {
       if (config.getIsNull("app.json-encoder-customization")) _ => PartialFunction.empty
       else {
         import scala.concurrent.ExecutionContext.Implicits.global
-        val (enc_cl, enc_fn) =
-          OpParser.classNameFunctionName(config.getString("app.json-encoder-customization"))
-        invokeFunction(enc_cl, enc_fn, Nil).asInstanceOf[JsValueEncoderPF]
+        invokeFunction(config.getString("app.json-encoder-customization"), Nil).asInstanceOf[JsValueEncoderPF]
       }
     }
 

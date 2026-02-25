@@ -26,8 +26,7 @@ class WabaseScheduler(wabase: AppBase[_], system: ActorSystem) extends Loggable 
     }
     if (!config.getIsNull("app.job.scheduler-initializer")) {
       if (wabaseJobActor != null) {
-        val (clazz, initFun) = OpParser.classNameFunctionName(config.getString("app.job.scheduler-initializer"))
-        invokeFunction(clazz, initFun, Seq(
+        invokeFunction(config.getString("app.job.scheduler-initializer"), Seq(
           (classOf[AppBase[_]], () => wabase),
           (classOf[ActorSystem], () => system),
           (classOf[ActorRef], () => wabaseJobActor),

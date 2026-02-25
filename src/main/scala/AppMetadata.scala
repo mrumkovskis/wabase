@@ -987,12 +987,12 @@ class OpParser(viewName: String, tmd: TableMetadata, caches: OpParser.Caches)
     p(in) match {
       case Success(rt ~ res ~ args ~ arg, next) =>
         def resolveFunction(name: String) = try {
-          val (cn, fn) = OpParser.classNameFunctionNameNoCheck(name)
+          val (cn, fn) = classNameFunctionNameNoCheck(name)
           Success(Action.Invocation(cn, fn, args.getOrElse(Nil) ++ arg.toList, rt), next)
         } catch {
           case NonFatal(_) => Failure(s"Function not found: $name", next)
         }
-        OpParser.resolveFunctionAliasOpt(res)   // if function alias found resolve function
+        resolveFunctionAliasOpt(res)   // if function alias found resolve function
           .map(resolveFunction)
           .orElse(tmd.tableDefOption(res, null) // if table def found return failure - function not found
             .map(_ => Failure(s"Function not found: $res", next)))
@@ -1246,31 +1246,6 @@ object OpParser extends Loggable {
     val opCache = new SimpleCacheBase[Action.Op](maxSize, "OpParser op cache")
     opCache.load(initData.opCache)
     Caches(stepCache, opCache)
-  }
-  def resolveFunctionAliasOpt(alias: String): Option[String] = {
-    val idx = alias.lastIndexOf('.')
-    if (idx == -1)
-      try
-        if (config.hasPath(s"app.wabase-call-alias.$alias")) {
-          Option(config.getString(s"app.wabase-call-alias.$alias"))
-        } else None
-      catch { case _: ConfigException.BadPath => None }
-    else None
-  }
-  def classNameFunctionNameNoCheck(name: String): (String, String) = {
-    resolveFunctionAliasOpt(name)
-      .map(classNameFunctionNameNoCheck)
-      .getOrElse {
-        val idx = name.lastIndexOf('.')
-        val cn = name.substring(0, idx)
-        val fn = name.substring(idx + 1)
-        (cn, fn)
-      }
-  }
-  def classNameFunctionName(name: String): (String, String) = {
-    val cn_fn = classNameFunctionNameNoCheck(name)
-    getObjAndFunction(cn_fn._1, cn_fn._2)
-    cn_fn
   }
 }
 object AppMetadata extends Loggable {

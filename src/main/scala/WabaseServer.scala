@@ -24,8 +24,7 @@ class WabaseServer(
   val port = WabaseServer.port
   if (invokeBeforeStart != null && invokeBeforeStart != "")
     try {
-      val (className, methodName) = OpParser.classNameFunctionName(invokeBeforeStart)
-      invokeFunction(className, methodName, Nil)
+      invokeFunction(invokeBeforeStart, Nil)
     } catch {
       case util.control.NonFatal(ex) =>
         throw new RuntimeException(s"""Failed to invoke beforeStart: "$invokeBeforeStart"""", ex)

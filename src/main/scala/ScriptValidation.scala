@@ -24,11 +24,11 @@ class WabaseScriptValidation(db: DbAccess, qe: AppQuerease)(implicit ec: Executi
 
   private def invFun[T](fun: String, pars: Seq[(Class[_], () => Any)] = Nil,
                         ordPars: Seq[Any] = Nil) = {
-    val (cn, fn) = OpParser.classNameFunctionName(config.getString(fun))
     val ordParFun = ordPars.zipWithIndex
       .map { case (v, vIdx) => { case (_, pIdx) if pIdx == vIdx => v }: InvocationParameterFun }
       .foldLeft(PartialFunction.empty: InvocationParameterFun)(_ orElse _)
-    invokeFunction(cn, fn, pars ++ Seq((classOf[DbAccess], () => db), (classOf[AppQuerease], () => qe)), ordParFun)
+    invokeFunction(config.getString(fun),
+      pars ++ Seq((classOf[DbAccess], () => db), (classOf[AppQuerease], () => qe)), ordParFun)
       .asInstanceOf[T]
   }
 

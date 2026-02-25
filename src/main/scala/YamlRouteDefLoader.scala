@@ -77,7 +77,7 @@ class YamlRouteDefLoader(
 
       def errorHandler(inv: AppMetadata.Action.Invocation) =
         Option(inv).getOrElse {
-          val (cn, fn) = OpParser.classNameFunctionName(config.getString("app.wabase-error-handler"))
+          val (cn, fn) = classNameFunctionName(config.getString("app.wabase-error-handler"))
           AppMetadata.Action.Invocation(cn, fn)
         }
       val PathRegex(m, p) = route

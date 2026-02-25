@@ -219,6 +219,12 @@ package object wabase extends Loggable {
   )(implicit ec: ExecutionContext): Any =
     invokeFunction(className, function, invocationParameter(parameters)(_))
 
+  def invokeFunction(classAndFunctionName: String, parameters: Seq[(Class[_], () => Any)])(
+                    implicit ec: ExecutionContext): Any = {
+    val (cn, fn) = classNameFunctionName(classAndFunctionName)
+    invokeFunction(cn, fn, parameters)
+  }
+
   def invokeFunction(
     className: String,
     function: String,
@@ -229,5 +235,40 @@ package object wabase extends Loggable {
       case p => invocationParameter(fallbackParameters)(p)
     }
     invokeFunction(className, function, parameterFun orElse default)
+  }
+
+  def invokeFunction(
+    classAndFunctionName: String,
+    fallbackParameters: Seq[(Class[_], () => Any)],
+    parameterFun: InvocationParameterFun,
+  )(implicit ec: ExecutionContext): Any = {
+    val (cn, fn) = classNameFunctionName(classAndFunctionName)
+    invokeFunction(cn, fn, fallbackParameters, parameterFun)
+  }
+
+  def resolveFunctionAliasOpt(alias: String): Option[String] = {
+    val idx = alias.lastIndexOf('.')
+    if (idx == -1)
+      try
+        if (config.hasPath(s"app.wabase-call-alias.$alias")) {
+          Option(config.getString(s"app.wabase-call-alias.$alias"))
+        } else None
+      catch { case _: ConfigException.BadPath => None }
+    else None
+  }
+  def classNameFunctionNameNoCheck(name: String): (String, String) = {
+    resolveFunctionAliasOpt(name)
+      .map(classNameFunctionNameNoCheck)
+      .getOrElse {
+        val idx = name.lastIndexOf('.')
+        val cn = name.substring(0, idx)
+        val fn = name.substring(idx + 1)
+        (cn, fn)
+      }
+  }
+  def classNameFunctionName(name: String): (String, String) = {
+    val cn_fn = classNameFunctionNameNoCheck(name)
+    getObjAndFunction(cn_fn._1, cn_fn._2)
+    cn_fn
   }
 }

@@ -81,15 +81,13 @@ object ServerNotifications extends EventStreamMarshalling with Loggable {
       new ServerSentEvent(data = data)
   }
 
-  private val ServerEventFunction =
-    OpParser.classNameFunctionName(config.getString("app.server-notifications.event-function"))
+  private val ServerEventFunction = config.getString("app.server-notifications.event-function")
   val SubscriberWatcherActorName = config.getString("app.server-notifications.event-subscriber-watcher-actor-name")
 
   private def invokeCreateServerEventFunction(event: Any)(as: ActorSystem) = {
-    val (cn, fn) = ServerEventFunction
-    invokeFunction(cn, fn,
+    invokeFunction(ServerEventFunction,
       Seq((classOf[ActorSystem], () => as)),
-      { case (_, idx) if idx == 0 => event }
+      { case (_, idx) if idx == 0 => event }: InvocationParameterFun
     )(as.dispatcher) match {
       case e: ServerSentEvent => e
       case x => sys.error(s"ServerSentEvent type expected but got: '$x' of type ${x.getClass}")

@@ -612,8 +612,7 @@ trait WabaseApp[User] {
   protected def isScriptValidationEnabled: Boolean = scriptValidationEnabled
   protected def scriptValidations(ctx: AppActionContext)(implicit locale: Locale): Unit = {
     if (isScriptValidationEnabled) {
-      val (cn, fn) = OpParser.classNameFunctionName(config.getString("app.script-validations.init"))
-      val module = invokeFunction(cn, fn,
+      val module = invokeFunction(config.getString("app.script-validations.init"),
         Seq(
           (classOf[DbAccess], () => this),
           (classOf[AppQuerease], () => qe),
