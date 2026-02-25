@@ -1,0 +1,3 @@
+method:       POST
+path:         /backdoor/clear_server_sent_events/test_topic_events
+response:

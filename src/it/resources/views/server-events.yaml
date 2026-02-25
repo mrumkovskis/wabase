@@ -11,3 +11,4 @@ list:
 - wabase.app.EventsFunctions.subscribeToWsMessages :topic
 insert:
 - wabase.app.EventsFunctions.publishEvent(:topic, :value)
+- status 202

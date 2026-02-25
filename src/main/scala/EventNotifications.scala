@@ -8,6 +8,7 @@ import org.apache.pekko.actor.{Actor, ActorNotFound, ActorRef, ActorSystem, Prop
 import DeferredControl._
 import org.apache.pekko.http.scaladsl.marshalling.Marshal
 import org.apache.pekko.http.scaladsl.marshalling.sse.EventStreamMarshalling
+import org.apache.pekko.http.scaladsl.model.headers.{CacheDirectives, RawHeader, `Cache-Control`}
 import org.apache.pekko.http.scaladsl.model.{AttributeKeys, HttpRequest, HttpResponse}
 import org.apache.pekko.http.scaladsl.model.sse.ServerSentEvent
 import org.apache.pekko.http.scaladsl.server.{Directives, Route}
@@ -146,6 +147,10 @@ object ServerNotifications extends EventStreamMarshalling with Loggable {
     val dataSrc = subscribeToEvents(subscriptionFun, initialPublications)(as)
     implicit val ec: ExecutionContext = as.dispatcher
     Marshal(dataSrc).toResponseFor(req)
+      .map(_.withHeaders(
+        `Cache-Control`(CacheDirectives.`no-cache`),
+         RawHeader("X-Accel-Buffering", "no"),
+      ))
   }
 
   def subscribeToWsMessages(

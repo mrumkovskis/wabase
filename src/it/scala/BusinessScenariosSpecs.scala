@@ -1,14 +1,12 @@
 package wabase.app
 
 import com.typesafe.config.ConfigFactory
-import org.apache.pekko.NotUsed
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.Http
-import org.apache.pekko.http.scaladsl.client.RequestBuilding.{Get, Post}
-import org.apache.pekko.http.scaladsl.model.sse.ServerSentEvent
-import org.apache.pekko.http.scaladsl.model.ws.{Message, TextMessage, WebSocketRequest}
+import org.apache.pekko.http.scaladsl.client.RequestBuilding.Post
 import org.apache.pekko.http.scaladsl.model._
 import org.apache.pekko.http.scaladsl.model.headers.EntityTag
+import org.apache.pekko.http.scaladsl.model.ws.{Message, TextMessage, WebSocketRequest}
 import org.apache.pekko.http.scaladsl.unmarshalling.Unmarshal
 import org.apache.pekko.stream.scaladsl.{Flow, Keep, Sink, Source}
 import org.apache.pekko.util.ByteString
@@ -22,7 +20,6 @@ import org.wabase._
 import org.wabase.ds.ConnectionPools
 import org.wabase.swagger.WabaseSwaggerGenerator
 
-import java.time.Instant
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.language.reflectiveCalls
@@ -143,7 +140,7 @@ class BusinessScenariosSpecs extends BusinessScenariosBaseSpecs("http_tests") {
   override def scenariosAutoLogout = false
 
   override def backdoorAction(requestInfo: RequestInfo, context: Map[String, Any], map: Map[String, Any]): Any = {
-    import requestInfo._
+    import requestInfo.path
     if (path.startsWith("/backdoor/create-sequences/")) {
       val seqNames   = path.substring("/backdoor/create-sequences/".length).split(",").toSeq
       val statements = seqNames.map { seqName => s"create sequence $seqName start with 1;" }
@@ -162,36 +159,12 @@ class BusinessScenariosSpecs extends BusinessScenariosBaseSpecs("http_tests") {
       val tableNames = path.substring("/backdoor/drop-tables/".length).split(",").toSeq
       val statements = tableNames.map { tableName => s"drop table $tableName;" }
       executeStatements(statements: _*)
-    } else if (path == "/backdoor/current_time") {
-      Map("current_time" -> Instant.now().toString)
     } else {
-      throw new IllegalArgumentException(s"Unexpected path: $path")
+      super.backdoorAction(requestInfo, context, map)
     }
   }
 
   behavior of "server notifications"
-  it should "read server events" in {
-    val port = config.getString("port")
-    import org.apache.pekko.http.scaladsl.unmarshalling.sse.EventStreamUnmarshalling._
-    implicit val as: ActorSystem = ActorSystem("test-server-events-client")
-    implicit val ec: ExecutionContext = as.dispatcher
-
-    val topic = "test_topic"
-
-    val resF = Http()
-      .singleRequest(Get(s"http://localhost:$port/data/server_events/$topic"))
-      .flatMap { Unmarshal(_).to[Source[ServerSentEvent, NotUsed]] }
-      .flatMap { src =>
-        Future.traverse(List("value1", "value2", "value3")) { value =>
-          Http()
-            .singleRequest(Post(s"http://localhost:$port/data/server_events?topic=$topic&value=$value"))
-        }.flatMap(_ => Future.successful(src))
-      }
-      .flatMap(_.take(3).runFold(List[String]()){ (res, ev) => ev.data :: res })
-    val res = Await.result(resF, 3.seconds)
-    res.sorted shouldBe List("value1", "value2", "value3")
-  }
-
   it should "read web socket messages" in {
     val port = config.getString("port")
     implicit val as: ActorSystem = ActorSystem("test-server-ws-messages-client")

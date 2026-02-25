@@ -1,0 +1,7 @@
+path:       /data/server_events/test_topic
+response_headers:
+  Content-Type: text/event-stream
+  Cache-Control: no-cache
+  X-Accel-Buffering: no
+response_status: 200 OK
+response: -> test_topic_events

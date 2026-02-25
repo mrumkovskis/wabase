@@ -1,0 +1,4 @@
+method:       POST
+path:         /data/server_events?topic=test_topic&value=value1
+status_code:  202 Accepted
+response:

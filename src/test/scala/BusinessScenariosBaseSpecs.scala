@@ -8,7 +8,13 @@ import org.apache.pekko.http.scaladsl.model.headers.`Content-Type`
 import org.apache.pekko.http.scaladsl.model.headers.RawHeader
 import org.apache.pekko.http.scaladsl.server.directives.ContentTypeResolver
 import com.typesafe.config.ConfigFactory
+import org.apache.pekko.NotUsed
+import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.marshalling.{Marshaller, ToEntityMarshaller}
+import org.apache.pekko.http.scaladsl.model.sse.ServerSentEvent
+import org.apache.pekko.http.scaladsl.unmarshalling.Unmarshal
+import org.apache.pekko.http.scaladsl.unmarshalling.sse.EventStreamUnmarshalling._
+import org.apache.pekko.stream.scaladsl.{Sink, Source}
 import org.apache.pekko.util.ByteString
 import org.mojoz.querease.TresqlMetadata
 import org.scalatest.BeforeAndAfterAll
@@ -19,12 +25,36 @@ import org.wabase.AppMetadata.DbAccessKey
 
 import java.time.Instant
 import scala.collection.immutable.{Map, Seq}
-import scala.concurrent.Await
+import scala.concurrent.{Await, ExecutionContext}
 import scala.language.reflectiveCalls
 import scala.util.{Random, Try}
 import org.wabase.client.{ClientException, HttpClientConfig, WabaseHttpClient}
 import org.wabase.ds.ConnectionPools.DEFAULT_CP
 import org.wabase.ds.{PoolName, QueryTimeout}
+
+class ServerSentEventsHandler(response: HttpResponse)(implicit as: ActorSystem) {
+  implicit val ec: ExecutionContext = as.dispatcher
+  private var eventsReceived: Vector[ServerSentEvent] = Vector.empty
+  private def addEvent(event: ServerSentEvent): Unit =
+    this.synchronized { eventsReceived :+= event }
+  def clearEvents(): Unit =
+    this.synchronized { eventsReceived = Vector.empty }
+  def events: Vector[ServerSentEvent] =
+    this.synchronized { eventsReceived }
+  def eventToMap(sse: ServerSentEvent): Map[String, Any] =
+    Seq(
+      Some("data" -> sse.data),
+      sse.eventType.map("eventType" -> _),
+      sse.id.map("id" -> _),
+      sse.retry.map(d => "retry" -> d)
+    ).flatten.toMap
+  def eventsAsSeqOfMaps: Vector[Map[String, Any]] =
+    events.map(eventToMap)
+  override def toString: String =
+    s"ServerSentEventsHandler(${eventsReceived.size} event(s))"
+  Unmarshal(response).to[Source[ServerSentEvent, NotUsed]]
+    .map(_.map(addEvent).runWith(Sink.ignore))
+}
 
 abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
        extends FlatSpec with Matchers with BeforeAndAfterAll
@@ -440,9 +470,22 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
   def isBackdoorPath(path: String) = path.startsWith("/backdoor/")
   def backdoorAction(requestInfo: RequestInfo, context: Map[String, Any], map: Map[String, Any]): Any = {
     import requestInfo._
+    def lastSegment = path.substring(path.lastIndexOf("/") + 1)
+    def sseHandler: ServerSentEventsHandler = {
+      val handlerName = lastSegment
+      context.getOrElse(handlerName, null) match {
+        case handler: ServerSentEventsHandler => handler
+        case null => sys.error(s"No server-sent events handler in context named '$handlerName'")
+        case x => sys.error(s"Unexpected server-sent events handler class for '$handlerName': ${Option(x).map(_.getClass.getName).orNull}")
+      }
+    }
     path match {
       case "/backdoor/current_time" =>
         Map("current_time" -> Instant.now().toString)
+      case sse_events_get if sse_events_get.startsWith("/backdoor/server_sent_events/") && requestInfo.method == "GET" =>
+        ResultEncoder.encodeAnyToJsonString(sseHandler.eventsAsSeqOfMaps)
+      case sse_events_clear if sse_events_clear.startsWith("/backdoor/clear_server_sent_events/") && requestInfo.method == "POST" =>
+        sseHandler.clearEvents()
       case "/backdoor/tresql_row" =>
         transformToStringValues(dbUse(Query(requestString, context).toListOfMaps.headOption.getOrElse(Map())))
       case "/backdoor/tresql_list" =>
@@ -551,7 +594,17 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
 
     val (rawResponse, response) = unprocessedResponse match {
       case httpResponse: HttpResponse =>
-        val resString = Await.result(httpResponse.entity.toStrict(awaitTimeout), awaitTimeout).data.utf8String
+        lazy val resString = Await.result(httpResponse.entity.toStrict(awaitTimeout), awaitTimeout).data.utf8String
+        expectedResponse match {
+          case handlerName: String if handlerName.startsWith("->") && httpResponse.entity.contentType.toString == "text/event-stream" =>
+            (unprocessedResponse, new ServerSentEventsHandler(httpResponse))
+          case _: String => (resString, resString)
+          case _ =>
+            Try(CborOrJsonAnyValueDecoder.decode(ByteString(resString)))
+              .toOption.map((resString, _))
+              .getOrElse((resString, resString))
+        }
+      case resString: String =>
         expectedResponse match {
           case _: String => (resString, resString)
           case _ =>

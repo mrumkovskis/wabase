@@ -1,0 +1,3 @@
+sleep:      50 ms
+path:       /backdoor/server_sent_events/test_topic_events
+response:   [{"data": "value2"}, {"data": "value3"}]
