@@ -3,7 +3,7 @@ package org.wabase.audit
 import com.typesafe.config.ConfigFactory
 import io.bullet.borer.compat.pekko._
 import io.bullet.borer.derivation.MapBasedCodecs._
-import io.bullet.borer.{Encoder, Json}
+import io.bullet.borer.{Decoder, Encoder, Json}
 import org.apache.pekko.NotUsed
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.model.{AttributeKey, HttpEntity, HttpHeader, HttpResponse}
@@ -68,6 +68,11 @@ class Audit extends Loggable {
   implicit val userAuditEncoder:     Encoder[UserAudit]     = deriveEncoder[UserAudit]
   implicit val auditRecordEncoder:   Encoder[AuditRecord]   = deriveEncoder[AuditRecord]
 
+  implicit val requestAuditDecoder:  Decoder[RequestAudit]  = deriveDecoder[RequestAudit]
+  implicit val responseAuditDecoder: Decoder[ResponseAudit] = deriveDecoder[ResponseAudit]
+  implicit val userAuditDecoder:     Decoder[UserAudit]     = deriveDecoder[UserAudit]
+  implicit val auditRecordDecoder:   Decoder[AuditRecord]   = deriveDecoder[AuditRecord]
+
   implicit lazy val system: ActorSystem = WabaseServer.app.system
   implicit lazy val ec: scala.concurrent.ExecutionContext = system.dispatcher
   protected lazy val auditSaveView = DefaultAppQuerease.viewDef("audit")
@@ -75,9 +80,16 @@ class Audit extends Loggable {
     TresqlResourcesConf.tresqlResourcesTemplate(TresqlResourcesConf.confs, DefaultAppQuerease.tresqlMetadata)
   protected implicit lazy val qio: QuereaseIo[_] = DefaultAppQuereaseIo
 
+  protected def decodeAuditRecord(record: ByteString): AuditRecord =
+    Json.decode(record).to[AuditRecord].value
+
+  /** Override if necessary. You may use decodeAuditRecord(record) */
+  protected def auditRecordToMapForSaveToDatabase(record: ByteString): Map[String, Any] =
+    CborOrJsonAnyValueDecoder.decodeToMap(record)
+
   def saveAuditRecordsBatchToDatabase(records: Seq[ByteString]): Future[Unit] = {
     try {
-      val decoded: Seq[Map[String, Any]] = records.map(CborOrJsonAnyValueDecoder.decodeToMap(_))
+      val decoded: Seq[Map[String, Any]] = records.map(auditRecordToMapForSaveToDatabase)
       DbAccess.newTransaction(auditPoolName, DefaultCp, resourcesTemplate) { implicit resources =>
         decoded.foreach { map =>
           val compatibleMap = DefaultAppQuerease.toCompatibleMap(map, auditSaveView)
