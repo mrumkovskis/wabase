@@ -22,7 +22,7 @@ response: [
       "protocol": "HTTP/1.1"
     },
     "user": {
-      "name": ""
+      "name": null
     },
     "response": {
       "code": 200,
@@ -49,7 +49,7 @@ response: [
       "protocol": "HTTP/1.1"
     },
     "user": {
-      "name": ""
+      "name": null
     },
     "response": {
       "code": 200,
@@ -76,7 +76,7 @@ response: [
       "protocol": "HTTP/1.1"
     },
     "user": {
-      "name": ""
+      "name": null
     },
     "response": {
       "code": 201,
@@ -105,7 +105,7 @@ response: [
       "protocol": "HTTP/1.1"
     },
     "user": {
-      "name": ""
+      "name": null
     },
     "response": {
       "code": 201,
@@ -134,7 +134,7 @@ response: [
       "protocol": "HTTP/1.1"
     },
     "user": {
-      "name": ""
+      "name": null
     },
     "response": {
       "code": 200,
@@ -161,7 +161,7 @@ response: [
       "protocol": "HTTP/1.1"
     },
     "user": {
-      "name": ""
+      "name": null
     },
     "response": {
       "code": 200,
@@ -188,7 +188,7 @@ response: [
       "protocol": "HTTP/1.1"
     },
     "user": {
-      "name": ""
+      "name": null
     },
     "response": {
       "code": 200,
@@ -215,7 +215,7 @@ response: [
       "protocol": "HTTP/1.1"
     },
     "user": {
-      "name": ""
+      "name": null
     },
     "response": {
       "code": 200,
@@ -242,7 +242,7 @@ response: [
       "protocol": "HTTP/1.1"
     },
     "user": {
-      "name": ""
+      "name": null
     },
     "response": {
       "code": 200,
@@ -269,7 +269,7 @@ response: [
       "protocol": "HTTP/1.1"
     },
     "user": {
-      "name": ""
+      "name": null
     },
     "response": {
       "code": 200,
@@ -296,7 +296,7 @@ response: [
       "protocol": "HTTP/1.1"
     },
     "user": {
-      "name": ""
+      "name": null
     },
     "response": {
       "code": 200,
@@ -323,7 +323,7 @@ response: [
       "protocol": "HTTP/1.1"
     },
     "user": {
-      "name": ""
+      "name": null
     },
     "response": {
       "code": 404,
@@ -350,7 +350,7 @@ response: [
       "protocol": "HTTP/1.1"
     },
     "user": {
-      "name": ""
+      "name": null
     },
     "response": {
       "code": 200,
@@ -377,7 +377,7 @@ response: [
       "protocol": "HTTP/1.1"
     },
     "user": {
-      "name": ""
+      "name": null
     },
     "response": {
       "code": 200,
@@ -406,7 +406,7 @@ response: [
       "protocol": "HTTP/1.1"
     },
     "user": {
-      "name": ""
+      "name": null
     },
     "response": {
       "code": 200,
@@ -433,7 +433,7 @@ response: [
       "protocol": "HTTP/1.1"
     },
     "user": {
-      "name": ""
+      "name": null
     },
     "response": {
       "code": 200,
@@ -460,7 +460,7 @@ response: [
       "protocol": "HTTP/1.1"
     },
     "user": {
-      "name": ""
+      "name": null
     },
     "response": {
       "code": 404,

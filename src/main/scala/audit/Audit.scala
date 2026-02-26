@@ -15,7 +15,7 @@ import org.wabase.WabaseService.RequestHandler
 import org.wabase.ds.PoolName
 import org.wabase.{
   CborOrJsonAnyValueDecoder, DbAccess, DefaultAppQuerease, DefaultAppQuereaseIo,
-  Loggable, TresqlResourcesConf, WabaseRequestContext, WabaseServer
+  Loggable, ResultEncoder, TresqlResourcesConf, WabaseRequestContext, WabaseServer
 }
 
 import java.nio.file.Files
@@ -53,24 +53,24 @@ class Audit extends Loggable {
     content:  String,
     protocol: String,
   )
-  case class UserAudit(
-    name:     String,
-  )
   case class AuditRecord(
     request_time: String,
     request:      RequestAudit,
-    user:         UserAudit,
+    user:         Map[String, Any],
+    state:        Map[String, Any],
     response:     ResponseAudit,
   )
 
+  implicit val mapStringAnyEncoder:  Encoder[Map[String, Any]] =
+    ResultEncoder.jsValEncoder(ResultEncoder.JsonEncoder.jsValueEncoderPF).asInstanceOf[Encoder[Map[String, Any]]]
   implicit val requestAuditEncoder:  Encoder[RequestAudit]  = deriveEncoder[RequestAudit]
   implicit val responseAuditEncoder: Encoder[ResponseAudit] = deriveEncoder[ResponseAudit]
-  implicit val userAuditEncoder:     Encoder[UserAudit]     = deriveEncoder[UserAudit]
   implicit val auditRecordEncoder:   Encoder[AuditRecord]   = deriveEncoder[AuditRecord]
 
+  implicit val mapStringAnyDecoder:  Decoder[Map[String, Any]] =
+    CborOrJsonAnyValueDecoder.toMapDecoder(() => Map.empty[String, Any])
   implicit val requestAuditDecoder:  Decoder[RequestAudit]  = deriveDecoder[RequestAudit]
   implicit val responseAuditDecoder: Decoder[ResponseAudit] = deriveDecoder[ResponseAudit]
-  implicit val userAuditDecoder:     Decoder[UserAudit]     = deriveDecoder[UserAudit]
   implicit val auditRecordDecoder:   Decoder[AuditRecord]   = deriveDecoder[AuditRecord]
 
   implicit lazy val system: ActorSystem = WabaseServer.app.system
@@ -141,9 +141,9 @@ class Audit extends Loggable {
           protocol= ctx.req.protocol.value,
         ),
       user =
-        UserAudit(
-          name    = Option(ctx.user).map(_.name).getOrElse(""),
-        ),
+        Option(ctx.user).map(_.properties).getOrElse(Map.empty),
+      state =
+        Option(ctx.applicationState).map(_.state).getOrElse(Map.empty),
       response =
         ResponseAudit(
           code    = response.status.intValue,
