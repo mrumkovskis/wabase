@@ -26,13 +26,10 @@ class FileCleanupSpecs extends FlatSpec with Matchers with BeforeAndAfterEach {
   behavior of "AppFileCleanup"
 
   import FileCleanupSpecsHelper._
-  import FileCleanupSpecsHelper.db._
 
   val schemaSql: String = DdlGenerator.hsqldb().schema(FileCleanupSpecsQuerease.tableMetadata.tableDefs)
-  transaction {
-    executeStatements(schemaSql.split(";\\s+").map(_ + ";").toIndexedSeq: _*)
-    executeStatements("create sequence seq;")
-  }
+  executeStatements(schemaSql.split(";\\s+").map(_ + ";").toIndexedSeq: _*)
+  executeStatements("create sequence seq;")
 
   val maxWait = 1.minute
   val txtContentType = ContentTypes.`text/plain(UTF-8)`
@@ -48,15 +45,15 @@ class FileCleanupSpecs extends FlatSpec with Matchers with BeforeAndAfterEach {
   def saveFileAndRef(fileStreamer: TestFileStreamer, fileName: String, contentType: ContentType) = {
     val fileInfo = saveFile(fileStreamer, fileName, contentType)
     import fileStreamer._
-    transaction(Query(s"+$file_ref_table{id, ${file_info_table}_id} [#$file_info_table, ${fileInfo.id}]"))
+    newTransaction(implicit res => Query(s"+$file_ref_table{id, ${file_info_table}_id} [#$file_info_table, ${fileInfo.id}]"))
     fileInfo
   }
   def removeRefs(fileStreamer: TestFileStreamer, fileInfo: AppFileStreamer.FileInfoHelper) = {
-    transaction(Query(s"-${fileStreamer.file_ref_table}[${fileStreamer.file_info_table}_id = ${fileInfo.id}]"))
+    newTransaction(implicit res => Query(s"-${fileStreamer.file_ref_table}[${fileStreamer.file_info_table}_id = ${fileInfo.id}]"))
   }
 
   def ageUploadInfo(fileStreamer: AppFileStreamer[_], fileInfo: AppFileStreamer.FileInfoHelper) =
-    transaction(Query(s"""${fileStreamer.file_info_table}[${fileInfo.id}]{upload_time} = [date_sub(upload_time, sql("interval 1 day"))]"""))
+    newTransaction(implicit res => Query(s"""${fileStreamer.file_info_table}[${fileInfo.id}]{upload_time} = [date_sub(upload_time, sql("interval 1 day"))]"""))
   def ageFile(fileInfo: AppFileStreamer.FileInfoHelper) = {
     val path = Paths.get(fileInfo.path)
     val view = Files.getFileAttributeView(path, classOf[BasicFileAttributeView])
@@ -67,9 +64,9 @@ class FileCleanupSpecs extends FlatSpec with Matchers with BeforeAndAfterEach {
   }
 
   def fileInfoExists(fileStreamer: AppFileStreamer[_], fileInfo: AppFileStreamer.FileInfoHelper) =
-    dbUse(Query(s"${fileStreamer.file_info_table}[${fileInfo.id}]{count(1)}").unique[Long] == 1)
+    newTransaction(implicit res => Query(s"${fileStreamer.file_info_table}[${fileInfo.id}]{count(1)}").unique[Long] == 1)
   def fileBodyInfoExists(fileStreamer: AppFileStreamer[_], fileInfo: AppFileStreamer.FileInfoHelper) =
-    dbUse(Query(s"${fileStreamer.file_body_info_table}[${fileStreamer.shaColName} = '${fileInfo.sha_256}']{count(1)}").unique[Long] == 1)
+    newTransaction(implicit res => Query(s"${fileStreamer.file_body_info_table}[${fileStreamer.shaColName} = '${fileInfo.sha_256}']{count(1)}").unique[Long] == 1)
   def fileExists(file: AppFileStreamer.FileInfoHelper) = new java.io.File(file.path).exists()
 
   val filestreamerConfigs: List[List[TestFileStreamer]] = List(
@@ -93,7 +90,7 @@ class FileCleanupSpecs extends FlatSpec with Matchers with BeforeAndAfterEach {
     file.delete
   }
 
-  def clearDb = transaction {
+  def clearDb = newTransaction { implicit res =>
     Query("file_ref_1 - []")
     Query("file_info_1 - []")
     Query("file_body_info_1 - []")
@@ -333,7 +330,6 @@ object FileCleanupSpecsHelper {
     override protected def initQuerease: AppQuerease = FileCleanupSpecsQuerease
     override protected def initQuereaseIo: AppQuereaseIo[Dto] = new AppQuereaseIo[Dto](FileCleanupSpecsQuerease)
   }
-  import db._
 
   val attachmentsRootPath = {
     val slash = System.getProperty("file.separator")
@@ -344,8 +340,8 @@ object FileCleanupSpecsHelper {
   val fsCfg1 = FileStreamerConfig.configs("TestFileStreamer1")
   val fsCfg2 = FileStreamerConfig.configs("TestFileStreamer2")
 
-  implicit val TestCp: PoolName = PoolName("file-cleanup-test")
-  implicit val extraDbs: Seq[DbAccessKey] = Nil
+  val TestCp: PoolName = PoolName("file-cleanup-test")
+  val extraDbs: Seq[DbAccessKey] = Nil
   class TestFileStreamer(config: Config, val attachmentsRootPathTail: String) extends AppFileStreamer[String]
       with DbAccessProvider {
     override def dbAccess = db
@@ -361,9 +357,9 @@ object FileCleanupSpecsHelper {
     override lazy val yamlMetadata = YamlMd.fromResource("/filestreamer-specs-table-metadata.yaml")
   }
   val qe = FileCleanupSpecsQuerease
-  def executeStatements(statements: String*) = transaction {
-    val conn = db.tresqlResources.conn
-    val statement = conn.createStatement
+  def newTransaction[A](f: Resources => A): A = db.newTransaction(TestCp, extraDb = extraDbs)(f)
+  def executeStatements(statements: String*) = newTransaction{ res =>
+    val statement = res.conn.createStatement
     try statements foreach { statement.execute } finally statement.close()
   }
   class TestFileCleanup(db: DbAccess, fileStreamers: AppFileStreamerConfig*)

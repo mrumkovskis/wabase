@@ -129,12 +129,10 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
   //----------------------------------------------------------//
 
   def createPerson(name: String, surname: String = null): Long = {
-    val db = dbAccess
-    import db._
     val values = Seq(name, surname)
       .map { case null => "null" case x => s"'$x'" }
       .mkString(", ")
-    transaction {
+    dbAccess.newTransaction() { implicit res =>
       Query(s"+person {id, name, surname} [#person, $values]") match {
         case r: DMLResult => r.id.get.toString.toLong
         case _ => -1
@@ -142,19 +140,13 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     }
   }
   def deletePerson(name: String): Unit = {
-    val db = dbAccess
-    import db._
-    transaction { Query(s"-person[name = '$name']") }
+    dbAccess.newTransaction() { implicit res => Query(s"-person[name = '$name']") }
   }
   def hasPerson(name: String): Boolean = {
-    val db = dbAccess
-    import db._
-    dbUse(Query(s"person[name = '$name'] {count(*)}").unique[Int]) == 1
+    dbAccess.withConn()(implicit res => Query(s"person[name = '$name'] {count(*)}").unique[Int]) == 1
   }
   def hasPerson(name: String, surname: String = null): Boolean = {
-    val db = dbAccess
-    import db._
-    dbUse(Query(s"person[name = '$name' & surname = '$surname'] {count(*)}").unique[Int]) == 1
+    dbAccess.withConn()(implicit res => Query(s"person[name = '$name' & surname = '$surname'] {count(*)}").unique[Int]) == 1
   }
   //----------------------------------------------------------//
   it should "get by id" in {

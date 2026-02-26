@@ -59,14 +59,6 @@ class ServerSentEventsHandler(response: HttpResponse)(implicit as: ActorSystem) 
 abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
        extends FlatSpec with Matchers with BeforeAndAfterAll
           with TemplateUtil with QuereaseProvider with Loggable {
-
-  val db = new DbAccess with QuereaseProvider with Loggable {
-    override protected def tresqlMetadata: TresqlMetadata = null
-    override protected def initQuerease: AppQuerease = null
-    override protected def initQuereaseIo: AppQuereaseIo[Dto] = null
-  }
-  import db._
-
   implicit val queryTimeout: QueryTimeout = QueryTimeout(10)
   implicit val Cp: PoolName = DEFAULT_CP
   implicit val extraDb: Seq[DbAccessKey] = Nil
@@ -94,6 +86,13 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
   def initHttpClient: WabaseHttpClient = new WabaseHttpClient(HttpClientConfig("test")) {
     override protected def initQuerease: AppQuerease           = qe
   }
+
+  val db = new DbAccess with QuereaseProvider with Loggable {
+    override protected def tresqlMetadata: TresqlMetadata     = qe.tresqlMetadata
+    override protected def initQuerease:   AppQuerease        = BusinessScenariosBaseSpecs.this.qe
+    override protected def initQuereaseIo: AppQuereaseIo[Dto] = BusinessScenariosBaseSpecs.this.qio
+  }
+
   final lazy val httpClient = initHttpClient
 
   protected lazy val isFullCompareByDefault: Boolean = true
@@ -487,11 +486,11 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
       case sse_events_clear if sse_events_clear.startsWith("/backdoor/clear_server_sent_events/") && requestInfo.method == "POST" =>
         sseHandler.clearEvents()
       case "/backdoor/tresql_row" =>
-        transformToStringValues(dbUse(Query(requestString, context).toListOfMaps.headOption.getOrElse(Map())))
+        transformToStringValues(db.withConn()(implicit res => Query(requestString, context).toListOfMaps.headOption.getOrElse(Map())))
       case "/backdoor/tresql_list" =>
-        transformToStringValues(dbUse(Query(requestString, context).toListOfMaps))
+        transformToStringValues(db.withConn()(implicit res => Query(requestString, context).toListOfMaps))
       case "/backdoor/tresql_transaction" =>
-        transaction(Query(requestString, context))
+        db.newTransaction()(implicit res => Query(requestString, context))
         Map("result" -> "ok")
       case _ =>
         throw new IllegalArgumentException(s"Unexpected path: $path")
