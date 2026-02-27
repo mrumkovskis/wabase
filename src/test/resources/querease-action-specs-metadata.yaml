@@ -1310,9 +1310,9 @@ fields:
 get:
   - res =
       as any http post
-        {'/form_urlencoded_test'}
-        { :name name, :surname surname }
-        { 'Content-Type', 'application/x-www-form-urlencoded' }
+        {'/form_urlencoded_test'}                                   /* uri */
+        { :name name, :surname surname }                            /* body */
+        { 'Content-Type', 'application/x-www-form-urlencoded' }     /* headers - two column tresql - header name, header value */
   - :res
 insert:
 - status ok { :name || ' ' || :surname }
