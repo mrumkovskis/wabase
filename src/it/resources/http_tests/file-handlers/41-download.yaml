@@ -1,0 +1,3 @@
+path:   download/{{file_id}}/f0ca7ef61aed3763f9bec72e14379549179c5d31cc25f23a6e62fcdc43f3374c
+method: GET
+response: File content

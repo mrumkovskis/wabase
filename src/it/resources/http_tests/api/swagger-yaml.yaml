@@ -122,6 +122,23 @@ response: |+
         responses:
           "200":
             description: OK
+    /download/{id}/{sha256}:
+      get:
+        parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^\d*$
+        - name: sha256
+          in: path
+          required: true
+          schema:
+            type: string
+        responses:
+          "200":
+            description: OK
     /echo:
       post:
         responses:
@@ -798,6 +815,17 @@ response: |+
             description: Not Found
           "503":
             description: Service Unavailable
+    /upload/{filename}:
+      post:
+        parameters:
+        - name: filename
+          in: path
+          required: true
+          schema:
+            type: string
+        responses:
+          "201":
+            description: Created
     /user:
       get:
         summary: List 'user'

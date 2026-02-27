@@ -1,0 +1,5 @@
+on:       POST /upload/(?<filename>.*)
+do:       fileUpload $1
+
+on:       GET /download/(?<id>\d*)/(?<sha256>.*)
+do:       fileDownload($1, $2)
