@@ -2,7 +2,7 @@ package org.wabase
 
 import com.typesafe.scalalogging.Logger
 import org.apache.pekko.actor.ActorSystem
-import org.apache.pekko.http.scaladsl.model.{HttpRequest, HttpResponse, StatusCodes}
+import org.apache.pekko.http.scaladsl.model.{HttpRequest, HttpResponse, StatusCode, StatusCodes}
 import org.apache.pekko.http.scaladsl.model.headers.`Timeout-Access`
 import org.apache.pekko.stream.scaladsl.Source
 import org.apache.pekko.util.ByteString
@@ -549,6 +549,18 @@ trait WabaseApp[User] {
   }
   val ActionLegacyMapping = config.getBoolean("app.action-legacy-mapping")
   def checkApi[F](viewName: String, method: String, user: User, keyValues: Seq[Any]): String = {
+    hasApi(viewName, method, keyValues, hasRole(user, _)) match {
+      case Left(statusCode) =>
+        statusCode match {
+          case StatusCodes.BadRequest       => throw noApiException(viewName, method, user)
+          case StatusCodes.MethodNotAllowed => throw HttpException(statusCode)
+          case StatusCodes.Unauthorized     => throw apiUnauthorizedException(viewName, method, user)
+        }
+      case Right(methodName) =>
+        methodName
+    }
+  }
+  def hasApi[F](viewName: String, method: String, keyValues: Seq[Any], hasRole: Set[String] => Boolean): Either[StatusCode, String] = {
     val viewDefOpt = qe.viewDefOption(viewName)
     val api_m_opt  = viewDefOpt.map(apiMethod(_, method, keyValues))
     val api_r_opt  = api_m_opt match {
@@ -573,14 +585,13 @@ trait WabaseApp[User] {
       }
       result <-
         if (!isMethodAllowed) {
-          logger.error(s"Method $viewName.$method (api_m: $api_m_opt) not allowed. keyValues: [${keyValues.mkString(", ")}]")   
-          throw HttpException(StatusCodes.MethodNotAllowed)
+          Some(Left(StatusCodes.MethodNotAllowed))
         }
-        else if (qe.isPublicView(viewName) || roles.contains(qe.publicApiRoleName) || hasRole(user, roles))
-          api_m_opt
-        else throw apiUnauthorizedException(viewName, method, user)
+        else if (qe.isPublicView(viewName) || roles.contains(qe.publicApiRoleName) || hasRole(roles))
+          api_m_opt.map(Right(_))
+        else Some(Left(StatusCodes.Unauthorized))
     } yield result).getOrElse(
-      throw noApiException(viewName, method, user)
+      Left(StatusCodes.BadRequest)
     )
   }
   protected def checkLimit(viewDef: ViewDef, limit: Int): Unit = {
