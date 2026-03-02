@@ -1,4 +1,4 @@
-path:       /data/server_events/test_topic
+path:       /server_events_subscription/test_topic
 response_headers:
   Content-Type: text/event-stream
   Cache-Control: no-cache

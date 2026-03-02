@@ -1,0 +1,5 @@
+on:       GET /server_events_subscription/(?<topic>.*)
+do:       subscribeToEvent $1
+
+on:       GET /server_ws_events_subscription/(?<topic>.*)
+do:       subscribeToWsMessages $1

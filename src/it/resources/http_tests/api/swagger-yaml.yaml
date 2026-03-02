@@ -627,72 +627,9 @@ response: |+
             description: Bad Request
           "503":
             description: Service Unavailable
-    /server_events:
-      get:
-        summary: List 'server_events'
-        description: ""
-        responses:
-          "200":
-            description: OK
-            content:
-              application/json:
-                schema:
-                  type: array
-                  items:
-                    $ref: "#/components/schemas/server_events"
-          "400":
-            description: Bad Request
-          "403":
-            description: Forbidden
-          "503":
-            description: Service Unavailable
-      post:
-        summary: Insert 'server_events'
-        description: ""
-        requestBody:
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/server_events"
-        responses:
-          "200":
-            description: OK
-            content:
-              application/json:
-                schema:
-                  $ref: "#/components/schemas/server_events_key_response"
-          "400":
-            description: Bad Request
-          "503":
-            description: Service Unavailable
     /server_events/{topic}:
-      get:
-        summary: Get 'server_events' by 'topic'
-        description: ""
-        parameters:
-        - name: topic
-          in: path
-          description: Topic
-          required: true
-          schema:
-            type: string
-        responses:
-          "200":
-            description: OK
-            content:
-              application/json:
-                schema:
-                  $ref: "#/components/schemas/server_events"
-          "400":
-            description: Bad Request
-          "403":
-            description: Forbidden
-          "404":
-            description: Not Found
-          "503":
-            description: Service Unavailable
-      put:
-        summary: Update 'server_events' by 'topic'
+      post:
+        summary: Post 'server_events' by 'topic'
         description: ""
         parameters:
         - name: topic
@@ -717,6 +654,28 @@ response: |+
             description: Bad Request
           "503":
             description: Service Unavailable
+    /server_events_subscription/{topic}:
+      get:
+        parameters:
+        - name: topic
+          in: path
+          required: true
+          schema:
+            type: string
+        responses:
+          "200":
+            description: OK
+    /server_ws_events_subscription/{topic}:
+      get:
+        parameters:
+        - name: topic
+          in: path
+          required: true
+          schema:
+            type: string
+        responses:
+          "200":
+            description: OK
     /set-csrf-cookie:
       post:
         responses:

@@ -1,14 +1,10 @@
 name: server_events
-api: get list save
+api: post
 decoder: none
 key: topic
 fields:
 - topic
 - value
-get:
-- wabase.app.EventsFunctions.subscribeToEvent :topic
-list:
-- wabase.app.EventsFunctions.subscribeToWsMessages :topic
-insert:
-- wabase.app.EventsFunctions.publishEvent(:topic, :value)
+post:
+- publishEvent(:topic, :value)
 - status 202

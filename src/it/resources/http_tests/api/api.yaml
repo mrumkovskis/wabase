@@ -10,7 +10,7 @@ response: {
   "request_calculation_view": ["insert"],
   "response_calculation_view": ["list"],
   "save_person_email": ["save"],
-  "server_events": ["get", "list", "save"],
+  "server_events": ["post"],
   "template_test": ["get"],
   "user": ["count","create","delete","get","save","list"],
   "user-with-roles-array": ["get"],

@@ -67,20 +67,6 @@ object BusinessScenariosSpecs extends Loggable {
   }
 }
 
-object EventsFunctions {
-  def subscribeToEvent(topic: String)(as: ActorSystem, req: HttpRequest) = {
-    ServerNotifications.subscribeToEventsAndListen(b => a => b.subscribe(a, topic), _ => ())(as, req)
-  }
-
-  def publishEvent(topic: String, value: String) = {
-    ServerNotifications.publish { _.publish(EventMessage(topic, value)) }
-  }
-
-  def subscribeToWsMessages(topic: String)(as: ActorSystem, req: HttpRequest) = {
-    ServerNotifications.subscribeToWsMessagesAndListen(b => a => b.subscribe(a, topic), _ => ())(as, req)
-  }
-}
-
 object ScriptValidations {
   def loadValidations(viewName: String, actionName: String, dbAccess: DbAccess)(implicit qe: AppQuerease) = {
     if (viewName == "save_person_email") {
@@ -182,7 +168,7 @@ class BusinessScenariosSpecs extends BusinessScenariosBaseSpecs("http_tests") {
       Source.maybe[Message]/*keep web socket alive until promise is completed*/)(Keep.both)
 
     val (upgradeResponse, (resF, close)) =
-      Http().singleWebSocketRequest(WebSocketRequest(s"ws://localhost:$port/data/server_events?topic=$topic"), flow)
+      Http().singleWebSocketRequest(WebSocketRequest(s"ws://localhost:$port/server_ws_events_subscription/$topic"), flow)
     val upgrade = Await.result(upgradeResponse, 2.seconds)
     upgrade.response.status shouldBe StatusCodes.SwitchingProtocols
     Future.traverse(List("ws_value1", "ws_value2", "ws_value3")) { value =>

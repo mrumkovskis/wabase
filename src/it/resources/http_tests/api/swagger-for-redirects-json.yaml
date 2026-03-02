@@ -979,38 +979,19 @@ response: {
         }
       }
     },
-    "/server_events" : {
-      "get" : {
-        "summary" : "List 'server_events'",
-        "description" : "",
-        "responses" : {
-          "200" : {
-            "description" : "OK",
-            "content" : {
-              "application/json" : {
-                "schema" : {
-                  "type" : "array",
-                  "items" : {
-                    "$ref" : "#/components/schemas/server_events"
-                  }
-                }
-              }
-            }
-          },
-          "400" : {
-            "description" : "Bad Request"
-          },
-          "403" : {
-            "description" : "Forbidden"
-          },
-          "503" : {
-            "description" : "Service Unavailable"
-          }
-        }
-      },
+    "/server_events/{topic}" : {
       "post" : {
-        "summary" : "Insert 'server_events'",
+        "summary" : "Post 'server_events' by 'topic'",
         "description" : "",
+        "parameters" : [ {
+          "name" : "topic",
+          "in" : "path",
+          "description" : "Topic",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
         "requestBody" : {
           "content" : {
             "application/json" : {
@@ -1040,14 +1021,11 @@ response: {
         }
       }
     },
-    "/server_events/{topic}" : {
+    "/server_events_subscription/{topic}" : {
       "get" : {
-        "summary" : "Get 'server_events' by 'topic'",
-        "description" : "",
         "parameters" : [ {
           "name" : "topic",
           "in" : "path",
-          "description" : "Topic",
           "required" : true,
           "schema" : {
             "type" : "string"
@@ -1055,66 +1033,24 @@ response: {
         } ],
         "responses" : {
           "200" : {
-            "description" : "OK",
-            "content" : {
-              "application/json" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/server_events"
-                }
-              }
-            }
-          },
-          "400" : {
-            "description" : "Bad Request"
-          },
-          "403" : {
-            "description" : "Forbidden"
-          },
-          "404" : {
-            "description" : "Not Found"
-          },
-          "503" : {
-            "description" : "Service Unavailable"
+            "description" : "OK"
           }
         }
-      },
-      "put" : {
-        "summary" : "Update 'server_events' by 'topic'",
-        "description" : "",
+      }
+    },
+    "/server_ws_events_subscription/{topic}" : {
+      "get" : {
         "parameters" : [ {
           "name" : "topic",
           "in" : "path",
-          "description" : "Topic",
           "required" : true,
           "schema" : {
             "type" : "string"
           }
         } ],
-        "requestBody" : {
-          "content" : {
-            "application/json" : {
-              "schema" : {
-                "$ref" : "#/components/schemas/server_events"
-              }
-            }
-          }
-        },
         "responses" : {
           "200" : {
-            "description" : "OK",
-            "content" : {
-              "application/json" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/server_events"
-                }
-              }
-            }
-          },
-          "400" : {
-            "description" : "Bad Request"
-          },
-          "503" : {
-            "description" : "Service Unavailable"
+            "description" : "OK"
           }
         }
       }

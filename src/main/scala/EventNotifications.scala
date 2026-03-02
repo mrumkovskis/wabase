@@ -177,6 +177,10 @@ object ServerNotifications extends EventStreamMarshalling with Loggable {
     publish(bus => messages.foreach(bus.publish))
   }
 
+  def publishEvent(topic: String, value: String): Unit = {
+    ServerNotifications.publish { _.publish(EventMessage(topic, value)) }
+  }
+
   /** Publishes events to newly created websocket */
   trait InitialEventsPublisher {
     def publishInitialEvents(userIdString: String): Unit
