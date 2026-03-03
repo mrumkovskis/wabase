@@ -506,8 +506,9 @@ trait WabaseApp[User] {
   private val validViewNameRegex = s"^$qualifiedIdent$$".r
   def sanitizedViewName(viewName: String) =
     if (validViewNameRegex.pattern.matcher(viewName).matches()) viewName else "Strange name"
-  protected def noApiException(viewName: String, method: String, user: User): Exception =
-    new BusinessException(s"${sanitizedViewName(viewName)}.$method is not a part of this API")
+  protected def noApiException(viewName: String, method: String, keySize: Int, user: User): Exception =
+    new BusinessException(
+      s"Not in this API: $method ${(Seq(sanitizedViewName(viewName)) ++ (1 to keySize).map(n => s"{$n}")).mkString("/")}")
   protected def apiUnauthorizedException(viewName: String, method: String, user: User): Exception =
     if  (user == null)
          new AuthenticationException("Unauthorized")
@@ -552,7 +553,7 @@ trait WabaseApp[User] {
     hasApi(viewName, method, keyValues, hasRole(user, _)) match {
       case Left(statusCode) =>
         statusCode match {
-          case StatusCodes.BadRequest       => throw noApiException(viewName, method, user)
+          case StatusCodes.BadRequest       => throw noApiException(viewName, method, keyValues.size, user)
           case StatusCodes.MethodNotAllowed => throw HttpException(statusCode)
           case StatusCodes.Unauthorized     => throw apiUnauthorizedException(viewName, method, user)
         }

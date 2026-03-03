@@ -2,4 +2,4 @@ path:       /data/user/2
 method:     POST
 request:
   name:     johan
-error:      user.update+ is not a part of this API # TODO 405 Method Not Allowed?
+error:      "Not in this API: update+ user/{1}" # TODO 405 Method Not Allowed?
