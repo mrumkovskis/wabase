@@ -15,7 +15,7 @@ import io.swagger.v3.oas.models.responses.{ApiResponse, ApiResponses}
 import io.swagger.v3.oas.models.security.{SecurityRequirement, SecurityScheme}
 import io.swagger.v3.oas.models.servers.Server
 import org.apache.commons.lang3.StringUtils
-import org.apache.pekko.http.scaladsl.model.{HttpMethod, HttpMethods, StatusCodes}
+import org.apache.pekko.http.scaladsl.model.{HttpMethod, HttpMethods, StatusCode, StatusCodes}
 import org.mojoz.metadata.{FieldDef, Type, ViewDef}
 import org.mojoz.querease.FilterType.{ComparisonFilter, OtherFilter}
 import org.mojoz.querease.Querease
@@ -35,6 +35,7 @@ import scala.util.Try
 class WabaseSwaggerGenerator(
   qes: Seq[Querease],
   hostString: String,
+  hasApi: (String, String, Int)=> Either[StatusCode, String], // viewName, defaultAction, keySize => error | action
   isRelevantView:     ViewDef  => Boolean = _.apiMethodToRoles.nonEmpty,
   isRelevantRoute:    RouteDef => Boolean = _ => true,
   config: Config = org.wabase.config,
@@ -701,72 +702,103 @@ class WabaseSwaggerGenerator(
   def operationForPut    (pathInfo: PathNameAndParameters): Operation = new Operation().addParameters(pathInfo).addSuccessResponse(HttpMethods.PUT)
   def operationForTrace  (pathInfo: PathNameAndParameters): Operation = new Operation().addParameters(pathInfo).addSuccessResponse(HttpMethods.TRACE)
 
-  private val allSupportedHttpMethods = Set(
-    HttpMethods.DELETE,
+  private val allSupportedHttpMethods = Seq(
     HttpMethods.GET,
-    HttpMethods.HEAD,
-    HttpMethods.OPTIONS,
-    HttpMethods.PATCH,
     HttpMethods.POST,
     HttpMethods.PUT,
+    HttpMethods.PATCH,
+    HttpMethods.DELETE,
+    HttpMethods.HEAD,
+    HttpMethods.OPTIONS,
     HttpMethods.TRACE,
   )
-  def defaultHttpMethodsForRoute: Set[HttpMethod] = allSupportedHttpMethods
+
+  def defaultHttpMethodsForRoute: Seq[HttpMethod] = allSupportedHttpMethods
 
   def setOperation(pathItem: PathItem, method: HttpMethod, operation: Operation): PathItem = method match {
-    case HttpMethods.DELETE  => pathItem.delete (operation)
     case HttpMethods.GET     => pathItem.get    (operation)
-    case HttpMethods.HEAD    => pathItem.head   (operation)
-    case HttpMethods.OPTIONS => pathItem.options(operation)
-    case HttpMethods.PATCH   => pathItem.patch  (operation)
     case HttpMethods.POST    => pathItem.post   (operation)
     case HttpMethods.PUT     => pathItem.put    (operation)
+    case HttpMethods.PATCH   => pathItem.patch  (operation)
+    case HttpMethods.DELETE  => pathItem.delete (operation)
+    case HttpMethods.HEAD    => pathItem.head   (operation)
+    case HttpMethods.OPTIONS => pathItem.options(operation)
     case HttpMethods.TRACE   => pathItem.trace  (operation)
     case x => throw new RuntimeException(s"Http method not supported by swagger generator: $x") // not expected
   }
 
-  private val fullKeyOps = Set("get",/*insert*/ "update", "update+", "upsert", "save", "delete", "put")
-  def pathsAndOperations(method: String, viewDef: ViewDef): Seq[(String, HttpMethod, Operation)] = {
-    lazy val hasFullKeyOps = fullKeyOps.exists(viewDef.apiMethodToRoles.contains)
-    lazy val z = if (hasFullKeyOps) 0 else 99
+  private def methodToDefaultAction(method: HttpMethod): Option[String] = {
+    val ActionForHttpPost = config.getString("app.action-for-http.post") // maybe "insert" for legacy app
+    val ActionForHttpPut  = config.getString("app.action-for-http.put")  // maybe "update" for legacy app
     method match {
-      case "create" => Seq((pathWithKey(method, viewDef, 0), HttpMethods.GET, operationForCreate(viewDef, 0)))
-      case "count"  => Seq((pathWithKey(method, viewDef, viewDef.maxKeySizeForList),
-                            HttpMethods.GET,
-                            operationForCount(viewDef, viewDef.maxKeySizeForList)))
-      case "get"    => Seq((pathWithKey(method, viewDef), HttpMethods.GET,    operationForGet(viewDef)))
-      case "list"   =>
-        (viewDef.minKeySizeForList to viewDef.maxKeySizeForList).map { keySize =>
-          (pathWithKey(method, viewDef, keySize),         HttpMethods.GET,    operationForList(viewDef, keySize)
-        )}
-      case "insert" => Seq((pathWithKey(method, viewDef, z), HttpMethods.POST,operationForInsert(viewDef, z)))
-      case "update" => Seq((pathWithKey(method, viewDef), HttpMethods.PUT,    operationForUpdate(viewDef)))
-      case "update+"=> Seq((pathWithKey(method, viewDef), HttpMethods.POST,   operationForUpdatePlus(viewDef)))
-      case "upsert" => Seq((pathWithKey(method, viewDef), HttpMethods.PUT,    operationForUpsert(viewDef)))
-      case "save"   =>
-                if  (apiKeyFieldNames(viewDef).isEmpty)
-                       Seq((pathWithKey(method, viewDef),    HttpMethods.POST, operationForSave(viewDef)))
-                else   Seq((pathWithKey(method, viewDef, 0), HttpMethods.POST, operationForInsert(viewDef, 0)),
-                           (pathWithKey(method, viewDef),    HttpMethods.PUT,  operationForUpdate(viewDef)))
-      case "delete" => Seq((pathWithKey(method, viewDef),    HttpMethods.DELETE,  operationForDelete(viewDef)))
-      case "put"    => Seq((pathWithKey(method, viewDef),    HttpMethods.PUT,     operationForPut(viewDef)))
-      case "post"   => Seq((pathWithKey(method, viewDef, z), HttpMethods.POST,    operationForPost(viewDef, z)))
-      case "head"   => Seq((pathWithKey(method, viewDef),    HttpMethods.HEAD,    operationForHead(viewDef)))
-      case "options"=> Seq((pathWithKey(method, viewDef),    HttpMethods.OPTIONS, operationForOptions(viewDef)))
-      case _        =>
-        logger.warn(s"Unsupported api method '$method' for view '${viewDef.name}' skipped by swagger generator")
-        Nil
+      case HttpMethods.GET      => Some("get")
+      case HttpMethods.POST     => Some(ActionForHttpPost)
+      case HttpMethods.PUT      => Some(ActionForHttpPut)
+      case HttpMethods.DELETE   => Some("delete")
+      case HttpMethods.HEAD     => Some("head")
+      case HttpMethods.OPTIONS  => Some("options")
+      case _                    => None
     }
+  }
+
+  val methodsAndDefaultActions: Seq[(HttpMethod, String)] =
+    Seq(
+      HttpMethods.GET -> "create",
+      HttpMethods.GET -> "count",
+    ) ++
+    allSupportedHttpMethods.map(method => method -> methodToDefaultAction(method))
+      .filter(_._2.nonEmpty)
+      .map(ma => ma._1 -> ma._2.get)
+
+  def keySizes(defaultAction: String, viewDef: ViewDef): Set[Int] = defaultAction match {
+    case "create"   => Set(0)
+    case "count"    => Set(viewDef.maxKeySizeForList)
+    case "delete"   => Set(viewNameToApiKeyFieldNames(viewDef.name).size)
+    case "options"  => Set(viewNameToApiKeyFieldNames(viewDef.name).size)
+    case  _         => (viewDef.minKeySizeForList to viewNameToApiKeyFieldNames(viewDef.name).size).toSet + 0
+  }
+
+  val methodToOperationBuilder: Map[String, (ViewDef, Int) => Operation] = Map(
+    "create"  -> operationForCreate,
+    "count"   -> operationForCount,
+    "get"     -> operationForGet,
+    "list"    -> operationForList,
+    "insert"  -> operationForInsert,
+    "update"  -> operationForUpdate,
+    "update+" -> operationForUpdatePlus,
+    "upsert"  -> operationForUpsert,
+    "save"    -> operationForSave,
+    "delete"  -> operationForDelete,
+    "put"     -> operationForPut,
+    "post"    -> operationForPost,
+    "head"    -> operationForHead,
+    "options" -> operationForOptions,
+  )
+
+  def keySizesAndActions(defaultAction: String, viewDef: ViewDef): Seq[(Int, String)] =
+    keySizes(defaultAction, viewDef).toSeq.sorted.flatMap { keySize =>
+      hasApi(viewDef.name, defaultAction, keySize).toOption.map(keySize -> _)
+    }
+
+  def pathsAndMethodsAndOperations(viewDef: ViewDef): Seq[(String, HttpMethod, Operation)] = {
+    methodsAndDefaultActions.flatMap { case (method, defaultAction) =>
+      keySizesAndActions(defaultAction, viewDef).flatMap { case (keySize, action) =>
+        methodToOperationBuilder.get(action).map(createOp => (
+          pathWithKey(action, viewDef, keySize),
+          method,
+          createOp(viewDef, keySize),
+        ))
+      }}
   }
 
   def swaggerOverridesKey = "swagger"
 
+  val ActionForHttpPost = config.getString("app.action-for-http.post") // maybe "insert" for legacy app
+  val ActionForHttpPut  = config.getString("app.action-for-http.put")  // maybe "update" for legacy app
   def pathsFromViewDefs: Seq[(String, PathItem)] = {
     viewdefs.flatMap { viewDef =>
       val pathsAndMethodsAndOps =
-        viewDef.apiMethodToRoles.keys.toList.flatMap { method =>
-            pathsAndOperations(method, viewDef)
-        }
+        pathsAndMethodsAndOperations(viewDef)
       val defaultPaths =
         pathsAndMethodsAndOps.groupBy(_._1).map { case (pathName, listOfOperations) =>
           val pi = new PathItem

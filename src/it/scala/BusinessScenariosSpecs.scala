@@ -98,8 +98,9 @@ object SwaggerTests {
   def generateSwaggerJsonForRedirects(ctx: WabaseRequestContext): RequestHandler = {
     conditional(EntityTag(ctx.wabase.app.metadataVersionString), DateTime(ctx.wabase.app.startupTimeMillis), _ => {
       Future.successful {
-        val generatorConfig = ConfigFactory.parseString(s"""app.marshal_key_as_json = false""")
-        val generator = new WabaseSwaggerGenerator(Seq(ctx.wabase.qe), config.getString("app.host"), config = generatorConfig) {
+        val hasApi = ctx.wabase.app.hasApi(_, _, _, _ => true)
+        val generatorConfig = ConfigFactory.parseString(s"""app.marshal_key_as_json = false""").withFallback(org.wabase.config)
+        val generator = new WabaseSwaggerGenerator(Seq(ctx.wabase.qe), config.getString("app.host"), hasApi, config = generatorConfig) {
           override def getQueryParameters(method: String, viewDef: ViewDef, keySize: Int = 99): Seq[FilterParameter] = {
             super.getQueryParameters(method, viewDef, keySize)
               .filterNot(p => ctx.wabase.app.isInternalParameter(viewDef, p.name))

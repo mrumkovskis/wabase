@@ -1038,7 +1038,7 @@ fields:
 - area
 - trees
 save:
-- save this as forest http { '/http_forest', '?', :nr nr, :owner owner, :area area, :trees trees }
+- save this as forest http { '/http_forest', :nr, '?', :owner owner, :area area, :trees trees }
 
 
 name: http_forest
@@ -1078,7 +1078,7 @@ name: json_codec_2
 api: get
 fields:
 get:
-- from json http get { '/http_forest', '?', 'Nr1' nr, 'Owner5' owner, 12.4 area, 'Fig' trees }
+- from json http get { '/http_forest', 'Nr1', '?', 'Owner5' owner, 12.4 area, 'Fig' trees }
 
 
 name: last_step_assignment_test

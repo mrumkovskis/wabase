@@ -979,6 +979,39 @@ response: {
         }
       }
     },
+    "/server_events" : {
+      "post" : {
+        "summary" : "Post 'server_events'",
+        "description" : "",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/server_events"
+              }
+            }
+          }
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/server_events"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Bad Request"
+          },
+          "503" : {
+            "description" : "Service Unavailable"
+          }
+        }
+      }
+    },
     "/server_events/{topic}" : {
       "post" : {
         "summary" : "Post 'server_events' by 'topic'",

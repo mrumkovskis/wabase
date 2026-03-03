@@ -593,7 +593,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         doAction("insert", "env_test_2", person, updateOkEnv).flatMap { r =>
           val id = r match { case kr: KeyResult => kr.ir.id case _ => -1 }
           implicit val qe = querease
-          doAction("get", "env_test_2", Map("id" -> id), removeIdsFlag = false).map {
+          doAction("get", "env_test_2", Map.empty, keyValues = Seq(id), removeIdsFlag = false).map {
             case map: Map[_, _] => map shouldBe Map(
               "id" -> id,
               "name" -> "EnvTestName",
@@ -607,7 +607,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         doAction("insert", "env_test_3", person, updateOkEnv).flatMap { r =>
           val id = r match { case kr: KeyResult => kr.ir.id case _ => -1 }
           implicit val qe = querease
-          doAction("get", "env_test_3", Map("id" -> id), removeIdsFlag = false).map {
+          doAction("get", "env_test_3", Map.empty, keyValues = Seq(id), removeIdsFlag = false).map {
             case map: Map[_, _] => map shouldBe Map(
               "id" -> id,
               "name" -> "EnvTestName",
@@ -623,7 +623,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
           implicit val qe = querease
           doAction("update", "env_test_4", person ++ Map("id" -> id, "sex" -> "F"),
                     updateOkEnv, removeIdsFlag = false, keyValues = Seq(id)).flatMap { r =>
-            doAction("get", "env_test_4", Map("id" -> id), removeIdsFlag = false).map {
+            doAction("get", "env_test_4", Map.empty, keyValues = Seq(id), removeIdsFlag = false).map {
               case map: Map[_, _] => map shouldBe Map(
                 "id" -> id,
                 "name" -> "Mika",
@@ -748,7 +748,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       t6 <- doAction("insert", "invocation_test_2", Map()).map {
         _ shouldBe Seq(Map("key" -> "key_val", "value" -> "value_val"))
       }
-      t7 <- doAction("update", "invocation_test_2", Map()).map {
+      t7 <- doAction("update", "invocation_test_2", Map(), keyValues = Seq("ignored")).map {
         _ shouldBe Seq(Map("key" -> "key_val", "value" -> "value_val"))
       }
       t8 <- doAction("delete", "invocation_test_2", Map("java_key" -> "java_value")).map {
@@ -790,7 +790,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       t5 <- doAction("insert", "invocation_type_conversion_test", Map()).map {
         _ shouldBe AnyResult(true)
       }
-      t6 <- doAction("update", "invocation_type_conversion_test", Map()).map {
+      t6 <- doAction("update", "invocation_type_conversion_test", Map(), keyValues = Seq("ignored")).map {
         _ shouldBe AnyResult(true)
       }
     } yield {
@@ -803,13 +803,13 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       t1 <- doAction("insert", "insert_update_test_1", Map("id" -> 42)).map {
         _ shouldBe Map("value" -> "INS")
       }
-      t2 <- doAction("update", "insert_update_test_1", Map("id" -> 42)).map {
+      t2 <- doAction("update", "insert_update_test_1", Map.empty, keyValues = Seq(42)).map {
         _ shouldBe Map("value" -> "UPD")
       }
       t3 <- doAction("insert", "insert_to_no_result_test", Map("value" -> "insert_to_no_result_test")).map {
         _ shouldBe NoResult
       }
-      t4 <- doAction("get", "insert_to_no_result_test", Map("value" -> "insert_to_no_result_test")).map {
+      t4 <- doAction("get", "insert_to_no_result_test", Map("value" -> "insert_to_no_result_test"), keyValues = Seq(0)).map {
         _ shouldBe Map("value" -> "insert_to_no_result_test")
       }
     } yield {
@@ -840,10 +840,10 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       t6 <- doAction("list", "if_test_2", Map("value" -> false)).map {
         _ shouldBe ResponseResult(200, ResultValue(StringResult(null)))
       }
-      t7 <- doAction("get", "if_test_1", Map("code" -> "true")).map {
+      t7 <- doAction("get", "if_test_1", Map.empty, keyValues = Seq("true")).map {
         _ shouldBe MapResult(ListMap("code" -> "true", "parent" -> null, "value" -> "Value"))
       }
-      t8 <- doAction("get", "if_test_1", Map("code" -> "false")).map {
+      t8 <- doAction("get", "if_test_1", Map.empty, keyValues = Seq("false")).map {
         _ shouldBe MapResult(ListMap("code" -> "false", "parent" -> null, "value" -> "Else value"))
       }
       t9 <- doAction("delete", "if_test_1", Map("code" -> "true")).map {
@@ -916,12 +916,13 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         )
       }
       t4 <- doAction("update", "foreach_test_1",
-        Map("code" -> "foreach_test_1", "value" -> "top_upd",
+        Map("value" -> "top_upd",
           "children" -> List(
             Map("code" -> "foreach_test_1.ch_1", "value" -> "child1_upd"),
             Map("code" -> "foreach_test_1.ch_2", "value" -> "child2_upd"),
           )
-        )
+        ),
+        keyValues = Seq("foreach_test_1"),
       ).map {
         _ shouldBe Map("code" -> "foreach_test_1", "parent" -> null, "value" -> "top_upd", "children" ->
           List(
@@ -983,7 +984,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
 
   it should "process result source after wabase result" in {
     val id = 55
-    doAction("get", "result_audit_test", Map("id" -> id))
+    doAction("get", "result_audit_test", Map("id" -> id), keyValues = Seq(id))
       .map { _ =>
         Thread.sleep(200) // wait until hopefully afterWabaseAction method is completed
         app.dbAccess.withConn(app.DefaultCp) { implicit r =>
@@ -1051,8 +1052,8 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         .map {
           _ shouldBe ResponseResult(200, ResultValue(StringResult("person_health?/Mr.%20Mario/2022-04-11?par1=val1&par2=val2")))
         }
-      t4 <- doAction("update", "http_test_2", Map("name" -> "Mr. Gunza",
-        "manipulation_date" -> "2022-09-10", "vaccine" -> "Pfizer"))
+      t4 <- doAction("update", "http_test_2", Map(
+        "manipulation_date" -> "2022-09-10", "vaccine" -> "Pfizer"), keyValues = Seq("Mr. Gunza"))
         .map { _ shouldBe "person_health?/Mr.%20Gunza/2022-09-10?par1=val1&par2=val2" }
       t5 <- doAction("insert", "forest", Map("nr" -> "OF1", "owner" -> "Pedro",
         "area" -> 1000, "trees" -> "oaks"))
@@ -1121,7 +1122,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
           "height" -> 5.3,
           "diameter" -> 1
         ))
-      t2 <- doAction("get", "owner_with_forest_with_trees", Map("name" -> "Pedro"))
+      t2 <- doAction("get", "owner_with_forest_with_trees", Map.empty, keyValues = Seq("Pedro"))
         .mapTo[MapResult]
         .map { r =>
           removeIds(r.result) shouldBe ( YamlUtils.parseYamlData(
@@ -1525,7 +1526,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         .map {
           _.getMessage shouldBe "Invocation error"
         }
-      t8 <- recoverToExceptionIf[IllegalArgumentException](doAction("update", "invocation_test_3", Map()))
+      t8 <- recoverToExceptionIf[IllegalArgumentException](doAction("update", "invocation_test_3", Map(), keyValues = Seq("")))
         .map {
           _.getMessage should include (": java.lang.String") // cannot test 'str: java.lang.String' because for scala 3 parameter name is arg0
         }

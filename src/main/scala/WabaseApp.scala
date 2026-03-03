@@ -513,17 +513,17 @@ trait WabaseApp[User] {
     if  (user == null)
          new AuthenticationException("Unauthorized")
     else new AuthorizationException("Forbidden")
-  def apiMethod(viewDef: ViewDef, method: String, keyValues: Seq[Any]): String = {
+  def apiMethod(viewDef: ViewDef, method: String, keySize: Int): String = {
     import AppMetadata.AugmentedAppViewDef
     val api        = viewDef.apiMethodToRoles
     def apiKeySize = qe.viewNameToApiKeyFieldNames.get(viewDef.name).map(_.size).getOrElse(0)
     def hasAutoKey = qe.viewNameToHasAutoKey.get(viewDef.name).exists(identity)
     method match {
       case Action.Get =>
-        if ((keyValues.isEmpty || keyValues.size < apiKeySize) && api.contains(Action.List))
-          Action.List
-        else
+        if (keySize == apiKeySize && api.contains(Action.Get))
           Action.Get
+        else
+          Action.List
       case _ if api.contains(method) =>
         method
       case Action.Put =>
@@ -531,7 +531,7 @@ trait WabaseApp[User] {
           Action.Upsert
         else if (hasAutoKey || api.contains(Action.Update))
           Action.Update
-        else if (keyValues.nonEmpty && !hasAutoKey && api.contains(Action.Insert))
+        else if (keySize > 0 && !hasAutoKey && api.contains(Action.Insert))
           Action.Insert
         else
           Action.Upsert
@@ -541,7 +541,7 @@ trait WabaseApp[User] {
         else
           Action.Upsert
       case Action.Post =>
-        if (keyValues.isEmpty)
+        if (keySize == 0)
           Action.Insert
         else
           Action.UpdatePlus
@@ -549,21 +549,22 @@ trait WabaseApp[User] {
     }
   }
   val ActionLegacyMapping = config.getBoolean("app.action-legacy-mapping")
-  def checkApi[F](viewName: String, method: String, user: User, keyValues: Seq[Any]): String = {
-    hasApi(viewName, method, keyValues, hasRole(user, _)) match {
+  def checkApi(viewName: String, method: String, user: User, keyValues: Seq[Any]): String = {
+    hasApi(viewName, method, keyValues.size, hasRole(user, _)) match {
       case Left(statusCode) =>
         statusCode match {
-          case StatusCodes.BadRequest       => throw noApiException(viewName, method, keyValues.size, user)
           case StatusCodes.MethodNotAllowed => throw HttpException(statusCode)
           case StatusCodes.Unauthorized     => throw apiUnauthorizedException(viewName, method, user)
+          case _/* StatusCodes.BadRequest*/ => throw noApiException(viewName, method, keyValues.size, user)
         }
       case Right(methodName) =>
         methodName
     }
   }
-  def hasApi[F](viewName: String, method: String, keyValues: Seq[Any], hasRole: Set[String] => Boolean): Either[StatusCode, String] = {
+  def hasApi(viewName: String, method: String, keySize: Int, hasRole: Set[String] => Boolean): Either[StatusCode, String] = {
     val viewDefOpt = qe.viewDefOption(viewName)
-    val api_m_opt  = viewDefOpt.map(apiMethod(_, method, keyValues))
+    def apiKeySize = qe.viewNameToApiKeyFieldNames.get(viewName).map(_.size).getOrElse(0)
+    val api_m_opt  = viewDefOpt.map(apiMethod(_, method, keySize))
     val api_r_opt  = api_m_opt match {
       case Some(api_m) => viewDefOpt.get.apiMethodToRoles.get(api_m)
       case None        => None
@@ -578,15 +579,15 @@ trait WabaseApp[User] {
       })
       isMethodAllowed <- api_m_opt.map {
         case _ if ActionLegacyMapping => true
-        case Action.Insert     => api_r_opt.nonEmpty || roles.nonEmpty && keyValues.isEmpty   // POST
-        case Action.UpdatePlus => api_r_opt.nonEmpty || roles.nonEmpty && keyValues.nonEmpty  // POST
-        case Action.Update     => api_r_opt.nonEmpty || roles.nonEmpty && keyValues.nonEmpty  // PUT
-        case Action.Upsert     => api_r_opt.nonEmpty || roles.nonEmpty && keyValues.nonEmpty  // PUT
+        case Action.Insert     => roles.nonEmpty && keySize == 0           // POST
+        case Action.UpdatePlus => roles.nonEmpty && keySize == apiKeySize  // POST
+        case Action.Update     => roles.nonEmpty && keySize == apiKeySize  // PUT
+        case Action.Upsert     => roles.nonEmpty && keySize == apiKeySize  // PUT
         case _                 => api_r_opt.nonEmpty
       }
       result <-
         if (!isMethodAllowed) {
-          Some(Left(StatusCodes.MethodNotAllowed))
+          Some(Left(StatusCodes.BadRequest))
         }
         else if (qe.isPublicView(viewName) || roles.contains(qe.publicApiRoleName) || hasRole(roles))
           api_m_opt.map(Right(_))

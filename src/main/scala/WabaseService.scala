@@ -256,7 +256,8 @@ object WabaseService extends Loggable {
   def generateSwaggerJson(ctx: WabaseRequestContext): RequestHandler = {
     conditional(EntityTag(ctx.wabase.app.metadataVersionString), DateTime(ctx.wabase.app.startupTimeMillis), _ => {
       Future.successful {
-        val generator = new WabaseSwaggerGenerator(Seq(ctx.wabase.qe), config.getString("app.host")) {
+        val hasApi = ctx.wabase.app.hasApi(_, _, _, _ => true)
+        val generator = new WabaseSwaggerGenerator(Seq(ctx.wabase.qe), config.getString("app.host"), hasApi) {
           override def getQueryParameters(method: String, viewDef: ViewDef, keySize: Int = 99): Seq[FilterParameter] = {
             super.getQueryParameters(method, viewDef, keySize)
               .filterNot(p => ctx.wabase.app.isInternalParameter(viewDef, p.name))
@@ -270,7 +271,8 @@ object WabaseService extends Loggable {
   def generateSwaggerYaml(ctx: WabaseRequestContext): RequestHandler = {
     conditional(EntityTag(ctx.wabase.app.metadataVersionString), DateTime(ctx.wabase.app.startupTimeMillis), _ => {
       Future.successful {
-        val generator = new WabaseSwaggerGenerator(Seq(ctx.wabase.qe), config.getString("app.host")) {
+        val hasApi = ctx.wabase.app.hasApi(_, _, _, _ => true)
+        val generator = new WabaseSwaggerGenerator(Seq(ctx.wabase.qe), config.getString("app.host"), hasApi) {
           override def getQueryParameters(method: String, viewDef: ViewDef, keySize: Int = 99): Seq[FilterParameter] = {
             super.getQueryParameters(method, viewDef, keySize)
               .filterNot(p => ctx.wabase.app.isInternalParameter(viewDef, p.name))
@@ -387,7 +389,7 @@ object WabaseService extends Loggable {
         case `OPTIONS`=> Action.Options
         case x        => error(StatusCodes.MethodNotAllowed, s"Unsupported http method $x for request '${req.uri}'")
       }
-      val apiAction = wabase.apiMethod(viewDefs(view_name), action, key)
+      val apiAction = wabase.apiMethod(viewDefs(view_name), action, key.size)
       ctx.copy(viewName = view_name, action = apiAction, key = key)
     }
   }
