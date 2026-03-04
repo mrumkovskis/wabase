@@ -337,12 +337,22 @@ trait WabaseApp[User] {
     case wr => Future.successful(wr)
   }
 
+  private def expectedKeySizeDescr(minKeySize: Int, maxKeySize: Int): String = {
+    val MaxKeySize = maxKeySize
+    val MaxKeySizeMinus1 = maxKeySize - 1
+    minKeySize match {
+      case MaxKeySize       => s"$maxKeySize"
+      case MaxKeySizeMinus1 => s"$minKeySize or $maxKeySize"
+      case _                => s"$minKeySize to $maxKeySize"
+    }
+  }
+
   def checkKeySize(viewDef: ViewDef, keySize: Int, actionName: String): Unit = actionName match {
     case Action.List | Action.Count =>
-      if (keySize < viewDef.minKeySizeForList || keySize > viewDef.maxKeySizeForList) {
+      if (keySize < viewDef.minKeySizeForCollection || keySize > viewDef.maxKeySizeForCollection) {
         throw new BusinessException(
           s"Invalid key size for $actionName of '${viewDef.name}'. " +
-            s"Expecting ${viewDef.expectedKeySizeDescr}, got $keySize")
+            s"Expecting ${expectedKeySizeDescr(viewDef.minKeySizeForCollection, viewDef.maxKeySizeForCollection)}, got $keySize")
       }
     case _ =>
       val expectedKeySize = qe.viewNameToApiKeyFields.get(viewDef.name).map(_.size).getOrElse(-1)
