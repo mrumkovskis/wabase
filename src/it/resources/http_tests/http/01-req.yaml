@@ -1,0 +1,20 @@
+path:       /data/http_test
+method:     POST
+request:
+  name:     John
+  surname:  Doe
+  father:
+    name: Kyle
+    surname: Doe
+  mother:
+    name: Kiki
+    surname: Smith
+response:
+  name: John
+  surname: Doe
+  father:
+    name: Kyle
+    surname: Doe
+  mother:
+    name: Kiki
+    surname: Smith

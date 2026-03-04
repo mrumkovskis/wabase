@@ -1,0 +1,13 @@
+name: http_test
+api: post
+decoder: none
+post:
+- body = extract entity
+- http post {'data', 'http_echo'} :body
+
+
+name: http_echo
+api: post
+decoder: none
+post:
+- extract entity

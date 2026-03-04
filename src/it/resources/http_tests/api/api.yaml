@@ -1,9 +1,11 @@
 path:     /api
 response: {
-  "audit":["list"],
+  "audit": ["list"],
   "check_person": ["get"],
   "current_user": ["get"],
   "guideline_calculation_helper": ["list", "upsert", "get"],
+  "http_echo": ["post"],
+  "http_test": ["post"],
   "login_using_json_or_urlencoded": ["insert"],
   "logout": ["insert"],
   "person": ["count", "create", "delete", "get", "list", "upsert"],
@@ -12,7 +14,7 @@ response: {
   "save_person_email": ["save"],
   "server_events": ["post"],
   "template_test": ["get"],
-  "user": ["count","create","delete","get","save","list"],
+  "user": ["count", "create", "delete", "get", "save", "list"],
   "user-with-roles-array": ["get"],
   "user_role": ["get", "save"],
   "validation": ["upsert"]

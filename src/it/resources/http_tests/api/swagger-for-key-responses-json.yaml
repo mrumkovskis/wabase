@@ -391,6 +391,40 @@ response: {
         }
       }
     },
+    "/http_echo" : {
+      "post" : {
+        "summary" : "Post 'http_echo'",
+        "description" : "",
+        "responses" : {
+          "200" : {
+            "description" : "OK"
+          },
+          "400" : {
+            "description" : "Bad Request"
+          },
+          "503" : {
+            "description" : "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/http_test" : {
+      "post" : {
+        "summary" : "Post 'http_test'",
+        "description" : "",
+        "responses" : {
+          "200" : {
+            "description" : "OK"
+          },
+          "400" : {
+            "description" : "Bad Request"
+          },
+          "503" : {
+            "description" : "Service Unavailable"
+          }
+        }
+      }
+    },
     "/i18n" : {
       "get" : {
         "responses" : {
@@ -1829,6 +1863,14 @@ response: {
             "readOnly" : false
           }
         }
+      },
+      "http_echo" : {
+        "type" : "object",
+        "properties" : { }
+      },
+      "http_test" : {
+        "type" : "object",
+        "properties" : { }
       },
       "login_using_json_or_urlencoded" : {
         "type" : "object",

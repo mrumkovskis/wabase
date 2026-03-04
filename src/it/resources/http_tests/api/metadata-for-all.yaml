@@ -417,6 +417,18 @@ response: {
     }],
     "filter": []
   },
+  "http_echo": {
+    "name": "http_echo",
+    "key": [],
+    "fields": [],
+    "filter": []
+  },
+  "http_test": {
+    "name": "http_test",
+    "key": [],
+    "fields": [],
+    "filter": []
+  },
   "login_using_json_or_urlencoded": {
     "name": "login_using_json_or_urlencoded",
     "key": [],
