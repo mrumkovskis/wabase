@@ -550,13 +550,13 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
 
   it should "delete purchase" in {
     doAction("delete", "purchase",
-      Map("purchase_time" -> "2021-12-08 12:15:33.0", "customer" -> "Mr. Mario"))
+      Map("purchase_time" -> "2021-12-08 12:15:33.0", "customer" -> "Mr. Mario"), keyValues = Seq(-1))
       .map(_ should be(QuereaseDeleteResult(1)))
   }
 
   it should "delete purchase old style" in {
     doAction("get", "purchase",
-      Map("purchase_time" -> "2021-12-04 15:15:23.0", "customer" -> "Mr. Gunza"), removeIdsFlag = false)
+      Map("purchase_time" -> "2021-12-04 15:15:23.0", "customer" -> "Mr. Gunza"), keyValues = Seq(-1), removeIdsFlag = false)
       .map {
         case purch: Map[String@unchecked, _] =>
           app.delete("purchase", purch("id").toString.toLong) should be(1)
@@ -751,8 +751,8 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       t7 <- doAction("update", "invocation_test_2", Map(), keyValues = Seq("ignored")).map {
         _ shouldBe Seq(Map("key" -> "key_val", "value" -> "value_val"))
       }
-      t8 <- doAction("delete", "invocation_test_2", Map("java_key" -> "java_value")).map {
-        _ shouldBe MapResult(Map("java_key" -> "java_value"))
+      t8 <- doAction("delete", "invocation_test_2", Map("java_key" -> "java_value"), keyValues = Seq("x")).map {
+        _ shouldBe MapResult(Map("java_key" -> "java_value", "key" -> "x"))
       }
       t9 <- doAction("count", "invocation_test_2", Map())
         .map(_ shouldBe StringResult("value value") )
@@ -846,10 +846,10 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       t8 <- doAction("get", "if_test_1", Map.empty, keyValues = Seq("false")).map {
         _ shouldBe MapResult(ListMap("code" -> "false", "parent" -> null, "value" -> "Else value"))
       }
-      t9 <- doAction("delete", "if_test_1", Map("code" -> "true")).map {
+      t9 <- doAction("delete", "if_test_1", Map.empty, keyValues = Seq("true")).map {
         _ shouldBe MapResult(ListMap("code" -> "true", "parent" -> null, "value" -> "Value delete"))
       }
-      t10 <- doAction("delete", "if_test_1", Map("code" -> "false")).map {
+      t10 <- doAction("delete", "if_test_1", Map.empty, keyValues = Seq("false")).map {
         _ shouldBe MapResult(ListMap("code" -> "false", "parent" -> null, "value" -> "Else value delete"))
       }
       t11 <- doAction("insert", "if_test_2", Map("value" -> "insert")).map {
@@ -1181,7 +1181,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         }
       t2 <- doAction("insert", "extract_http_header_test", Map())
         .map { _ shouldBe MapResult(Map("h1" -> "header1-value", "h2" -> "header2-value", "h3" -> null)) }
-      t3 <- recoverToExceptionIf[HttpException](doAction("delete", "extract_http_header_test", Map())).map {
+      t3 <- recoverToExceptionIf[HttpException](doAction("delete", "extract_http_header_test", Map(), keyValues = Seq(-1))).map {
         _.getMessage shouldBe "HTTP message is missing required header 'X'"
       }
     } yield t1
@@ -1249,7 +1249,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         doAction("get", "cols_filter_test_1", Map("id" -> id), Map.empty, Map("fields" -> "sex"))
           .map( _ shouldBe (person - "surname" - "birthdate"))
       cleanup <-
-        doAction("delete", "cols_filter_test_1", Map("id" -> id))
+        doAction("delete", "cols_filter_test_1", Map.empty, keyValues = Seq(id))
     } yield t5
   }
 
@@ -1286,7 +1286,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         listAndFind(id, "sex")
           .map( _ shouldBe (person - "surname" - "birthdate"))
       cleanup <-
-        doAction("delete", "cols_filter_test_1", Map("id" -> id))
+        doAction("delete", "cols_filter_test_1", Map.empty, keyValues = Seq(id))
     } yield t5
   }
 
@@ -1506,7 +1506,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         doAction("update", "result_render_test", Map())
           .map(_ shouldBe List(Map("string_field" -> "string", "date_field" -> null, "number_field" -> null)))
       t4 <-
-        doAction("delete", "invocation_test_3", Map())
+        doAction("delete", "invocation_test_3", Map(), keyValues = Seq("0"))
           .map {
             _ shouldBe AnyResult(Map("1" -> Map("key" -> "value")))
           }
@@ -1570,7 +1570,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     * classOf[Marshalling].getClassLoader.getResource("/resource.txt") - DOES NOT WORK
     */
     val route = service.crudAction
-    Delete("/invocation_test_3") ~> route ~> check {
+    Delete("/invocation_test_3/0") ~> route ~> check {
       val r = entityAs[String]
       jsonAssert(r, Map("1" -> Map("key" -> "value")))
     }

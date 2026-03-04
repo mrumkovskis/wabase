@@ -750,13 +750,8 @@ class WabaseSwaggerGenerator(
       .filter(_._2.nonEmpty)
       .map(ma => ma._1 -> ma._2.get)
 
-  def keySizes(defaultAction: String, viewDef: ViewDef): Set[Int] = defaultAction match {
-    case "create"   => Set(0)
-    case "count"    => Set(viewDef.maxKeySizeForCollection)
-    case "delete"   => Set(viewNameToApiKeyFieldNames(viewDef.name).size)
-    case "options"  => Set(viewNameToApiKeyFieldNames(viewDef.name).size)
-    case  _         => (viewDef.minKeySizeForCollection to viewNameToApiKeyFieldNames(viewDef.name).size).toSet + 0
-  }
+  def keySizes(defaultAction: String, viewDef: ViewDef): Set[Int] =
+    (0 to viewNameToApiKeyFieldNames.get(viewDef.name).map(_.size).getOrElse(0)).toSet
 
   val methodToOperationBuilder: Map[String, (ViewDef, Int) => Operation] = Map(
     "create"  -> operationForCreate,

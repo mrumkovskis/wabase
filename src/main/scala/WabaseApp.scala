@@ -571,9 +571,21 @@ trait WabaseApp[User] {
         methodName
     }
   }
+  def isApiKeySizeAllowed(viewDef: ViewDef, actionName: String, keySize: Int): Boolean = {
+    def apiKeySize = qe.viewNameToApiKeyFieldNames.get(viewDef.name).map(_.size).getOrElse(0)
+    def isCollectionActionKeySize(viewDef: ViewDef) =
+      keySize >= viewDef.minKeySizeForCollection && keySize <= viewDef.maxKeySizeForCollection
+    def isMixedActionKeySize(viewDef: ViewDef) =
+      keySize >= viewDef.minKeySizeForCollection && keySize <= apiKeySize
+    actionName match {
+      case Action.Create                                            => keySize == 0 // ?
+      case Action.Save | Action.Head | Action.Options               => isMixedActionKeySize(viewDef)
+      case Action.List | Action.Post | Action.Insert | Action.Count => isCollectionActionKeySize(viewDef)
+      case _                                                        => keySize == apiKeySize
+    }
+  }
   def hasApi(viewName: String, method: String, keySize: Int, hasRole: Set[String] => Boolean): Either[StatusCode, String] = {
     val viewDefOpt = qe.viewDefOption(viewName)
-    def apiKeySize = qe.viewNameToApiKeyFieldNames.get(viewName).map(_.size).getOrElse(0)
     val api_m_opt  = viewDefOpt.map(apiMethod(_, method, keySize))
     val api_r_opt  = api_m_opt match {
       case Some(api_m) => viewDefOpt.get.apiMethodToRoles.get(api_m)
@@ -587,16 +599,9 @@ trait WabaseApp[User] {
              Action.Update => view.apiMethodToRoles.get(Action.Save)
         case x => None
       })
-      isMethodAllowed <- api_m_opt.map {
-        case _ if ActionLegacyMapping => true
-        case Action.Head       => roles.nonEmpty && keySize >= view.minKeySizeForCollection && keySize <= apiKeySize
-        case Action.Insert     => roles.nonEmpty && keySize >= view.minKeySizeForCollection && keySize <= view.maxKeySizeForCollection // POST
-        case Action.Post       => roles.nonEmpty && keySize >= view.minKeySizeForCollection && keySize <= view.maxKeySizeForCollection // POST
-        case Action.Options    => roles.nonEmpty && keySize >= view.minKeySizeForCollection && keySize <= apiKeySize
-        case Action.UpdatePlus => roles.nonEmpty && keySize == apiKeySize  // POST
-        case Action.Update     => roles.nonEmpty && keySize == apiKeySize  // PUT
-        case Action.Upsert     => roles.nonEmpty && keySize == apiKeySize  // PUT
-        case _                 => api_r_opt.nonEmpty
+      isMethodAllowed <- api_m_opt.map { api_m =>
+        ActionLegacyMapping ||
+          roles.nonEmpty && isApiKeySizeAllowed(view, api_m, keySize)
       }
       result <-
         if (!isMethodAllowed) {
