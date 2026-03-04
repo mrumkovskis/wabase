@@ -1,4 +1,4 @@
 method:       POST
-path:         /data/server_events?topic=test_topic&value=value2
+path:         /data/server_events/test_topic?value=value2
 status_code:  202 Accepted
 response:

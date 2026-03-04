@@ -589,7 +589,10 @@ trait WabaseApp[User] {
       })
       isMethodAllowed <- api_m_opt.map {
         case _ if ActionLegacyMapping => true
-        case Action.Insert     => roles.nonEmpty && keySize == 0           // POST
+        case Action.Head       => roles.nonEmpty && keySize >= view.minKeySizeForCollection && keySize <= apiKeySize
+        case Action.Insert     => roles.nonEmpty && keySize >= view.minKeySizeForCollection && keySize <= view.maxKeySizeForCollection // POST
+        case Action.Post       => roles.nonEmpty && keySize >= view.minKeySizeForCollection && keySize <= view.maxKeySizeForCollection // POST
+        case Action.Options    => roles.nonEmpty && keySize >= view.minKeySizeForCollection && keySize <= apiKeySize
         case Action.UpdatePlus => roles.nonEmpty && keySize == apiKeySize  // POST
         case Action.Update     => roles.nonEmpty && keySize == apiKeySize  // PUT
         case Action.Upsert     => roles.nonEmpty && keySize == apiKeySize  // PUT

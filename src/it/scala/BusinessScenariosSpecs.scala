@@ -174,7 +174,7 @@ class BusinessScenariosSpecs extends BusinessScenariosBaseSpecs("http_tests") {
     upgrade.response.status shouldBe StatusCodes.SwitchingProtocols
     Future.traverse(List("ws_value1", "ws_value2", "ws_value3")) { value =>
       Http()
-        .singleRequest(Post(s"http://localhost:$port/data/server_events?topic=$topic&value=$value"))
+        .singleRequest(Post(s"http://localhost:$port/data/server_events/$topic?value=$value"))
     }.flatMap(_ => resF)
     // wait until all messages are arrived in the sink
     Thread.sleep(1000)
