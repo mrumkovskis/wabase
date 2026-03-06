@@ -295,6 +295,8 @@ update:
   - (tr_name = :name) + (tr_surname = :surname) -> :tr_name || ' ' || :tr_surname
 - else:
   - :name
+delete:
+- (req.header = 'header value') + (req.body = this) -> :req
 
 
 name: person_health
@@ -1053,7 +1055,7 @@ get:
 - unique { :nr nr, :owner owner, :area::decimal area, :trees trees }
 update:
 - forest = as forest http { '/forest', :nr, :xx? }  # optional variable (xx) in url must work
-- :forest + :_ /* all data reference */ -> http put {'/forest', :nr } get http_forest
+- :forest + this /* all data reference */ -> http put {'/forest', :nr } get http_forest
 
 
 name: json_codec_1

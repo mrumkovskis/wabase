@@ -17,7 +17,7 @@ import org.mojoz.metadata.ViewDef
 import org.wabase.AppFileStreamer.FileInfo
 import org.wabase.AppMetadata.Action.{VariableTransform, VariableTransforms}
 import org.wabase.AppMetadata.DbAccessKey
-import org.wabase.AppQuerease.{InjectionParametersContext, InjectionParametersProvider, Scope, configValueAsScala, httpResponseToMap, listOfStringTuples}
+import org.wabase.AppQuerease.{InjectionParametersContext, InjectionParametersProvider, Scope, configValueAsScala, httpResponseToMap, listOfStringTuples, updComplexKey}
 import org.wabase.client.HttpClient
 import org.wabase.ds.{ConnectionPools, PoolName}
 
@@ -467,27 +467,15 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     import Action._
     import qr._
     def updateCurRes(cr: Map[String, Any], key: Option[String], resF: Future[_]) = {
-      def upd_key(d: Map[String, _], k: String, v: Any) = {
-        def rec(m: Map[String, _], kp: List[String]): Map[String, _] = kp match {
-          case k :: Nil => m + (k -> v)
-          case k :: tail => m.get(k).map {
-            case cm: Map[String@unchecked, _] => m + (k -> rec(cm, tail))
-            case _ => m
-          }.getOrElse(m + (k -> rec(Map[String, Any](), tail)))
-          case Nil => m
-        }
-
-        rec(d, k.split("\\.").toList)
-      }
       def upd(res: Any): Map[String, _] = res match {
         case kr: KeyResult => upd(kr.ir)
         case ir: IdResult =>
           // id result always updates current result
           key
-            .map(k => upd_key(cr, k, ir.id))
+            .map(k => updComplexKey(cr, k, ir.id))
             .getOrElse(cr ++ ir.toMap)
-        case NoResult => key.map(upd_key(cr, _, null)).getOrElse(cr)
-        case r => key.map(k => upd_key(cr, k, r)).getOrElse(cr)
+        case NoResult => key.map(updComplexKey(cr, _, null)).getOrElse(cr)
+        case r => key.map(k => updComplexKey(cr, k, r)).getOrElse(cr)
       }
       resF map upd
     }
@@ -843,28 +831,29 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
 
   protected def doVarsTransforms(transforms: List[VariableTransform],
                                  data: Map[String, Any]): MapResult = {
-    def evalConcats(names: List[String]) = names.map(evalVar).reduce[Any] {
-      case (x: Seq[_], y: Seq[_]) => x ++ y
-      case (x: Seq[_], y) => x :+ y
-      case (x, y: Seq[_]) => y.+:(x)
-      case (x, y) => Seq(x) :+ y
-    }
-    def evalVar(name: String) =
-      if (name == "_") data
-      else Query(":" + name)(new Resources {}.withParams(data)) match {
-        case SingleValueResult(r) => r
-        case x => sys.error(s"Unexpected variable transformation result: $x, expected SingleValueResult")
+    def updRes(from: List[ast.Exp], to: Option[String], curRes: Map[String, Any]) = {
+      def evalConcats(vals: List[ast.Exp]) = {
+        def evalVal(exp: ast.Exp) =
+          if (exp == ast.Ident(List("this"))) data
+          else Query.buildFromAst(exp)(new Resources {}.withParams(data))()
+        vals.map(evalVal).reduce[Any] {
+          case (x: Seq[_], y: Seq[_]) => x ++ y
+          case (x: Seq[_], y) => x :+ y
+          case (x, y: Seq[_]) => y.+:(x)
+          case (x, y) => Seq(x) :+ y
+        }
       }
-    def updRes(from: List[String], to: Option[String], curRes: Map[String, Any]) = {
       val res = evalConcats(from)
-      to.map(name => curRes + (name -> res)).getOrElse(res match {
+      to.map(name => updComplexKey(curRes, name, res)).getOrElse(res match {
         case m: Map[String, _]@unchecked => curRes ++ m
         case x =>
-          val vn = from.head
-          curRes + (to.getOrElse(vn.substring(vn.lastIndexOf(".") + 1, vn.length)) -> x)
+          curRes + (to.getOrElse {
+            val vn = from.head.tresql.substring(1)  // strip variable exp ':' symbol
+            vn.substring(vn.lastIndexOf(".") + 1, vn.length)
+          } -> x)
       })
     }
-    val transRes = transforms.foldLeft(Map[String, Any]()) ((res, vt) => updRes(vt.from.vars, vt.to, res))
+    val transRes = transforms.foldLeft(Map[String, Any]()) ((res, vt) => updRes(vt.from.vals, vt.to, res))
     MapResult(transRes)
   }
 
@@ -2233,6 +2222,19 @@ object AppQuerease {
       }
     }
     res.pop()._2.toVector
+  }
+
+  def updComplexKey(d: Map[String, _], key: String, value: Any): Map[String, _] = {
+    def rec(m: Map[String, _], kp: List[String]): Map[String, _] = kp match {
+      case k :: Nil => m + (k -> value)
+      case k :: tail => m.get(k).map {
+        case cm: Map[String@unchecked, _] => m + (k -> rec(cm, tail))
+        case _ => m
+      }.getOrElse(m + (k -> rec(Map[String, Any](), tail)))
+      case Nil => m
+    }
+
+    rec(d, key.split("\\.").toList)
   }
 
   case class Scope(

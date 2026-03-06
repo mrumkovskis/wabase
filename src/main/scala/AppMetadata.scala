@@ -896,17 +896,23 @@ class OpParser(viewName: String, tmd: TableMetadata, caches: OpParser.Caches)
   def step(isBlock: Boolean): Parser[Step] = { // returns Parser not MemParser because is dependant on parameter
     def op: Parser[Op] = if (isBlock) blockOp else operation
     def opWithOptVarTransforms: Parser[(List[VariableTransform], Op)] = {
-      def varConcat: Parser[List[Variable]] = rep1sep(variable, "++")
-      def varTransform: Parser[(Option[String], List[Variable])] = {
-        (variable | ("(" ~> ident ~ "=" ~ varConcat <~ ")")) ^^ {
+      def value: Parser[ast.Exp] = (variable | const | "this") ^^ {
+        case "this" => ast.Ident("this" :: Nil)
+        case e: ast.Exp => e
+      }
+      def val_concat: Parser[List[ast.Exp]] = rep1sep(value, "++")
+      def varTransform: Parser[(Option[String], List[ast.Exp])] = {
+        (variable | "this" | ("(" ~> qualifiedIdent ~ "=" ~ val_concat <~ ")")) ^^ {
           case v: Variable => (None, v :: Nil)
-          case (v1: String) ~ _ ~ (vc: List[Variable@unchecked]) => (Option(v1), vc)
+          case "this" => (None, ast.Ident("this" :: Nil) :: Nil)
+          case (v1: ast.Ident) ~ _ ~ (vc: List[ast.Exp@unchecked]) => (Option(v1.tresql), vc)
         }
       } named "vars-transform"
-      def tupleToVarTransform(t: (Option[String], List[Variable])) =
-        VariableTransform(VariableConcats(t._2.map(_.tresql.substring(1))) /*drop colon*/, t._1)
+      def tupleToVarTransform(t: (Option[String], List[ast.Exp])) =
+        VariableTransform(ValueConcats(t._2), t._1)
       def varsTransformsOrVar: Parser[Op] = rep1sep(varTransform, "+") <~
         "$".r /*end of input*/ ^^ {
+          case (None, ast.Ident("this" :: Nil) :: Nil) :: Nil => This()
           case (None, v :: Nil) :: Nil => Tresql(v.tresql)
           case vts => VariableTransforms(vts map tupleToVarTransform)
         } named "vt-or-v"
@@ -1371,8 +1377,8 @@ object AppMetadata extends Loggable {
       def name: Option[String]
     }
 
-    case class VariableTransform(from: VariableConcats, to: Option[String] = None)
-    case class VariableConcats(vars: List[String])
+    case class VariableTransform(from: ValueConcats, to: Option[String] = None)
+    case class ValueConcats(vals: List[ast.Exp])
     case class ViewResultType(viewName: String = null, isCollection: Boolean = false) extends OpResultType
     case object NonBindableResultType extends OpResultType
     case class FoldOp(resVar: String, elVar: String, op: Op)

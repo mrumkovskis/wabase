@@ -6,7 +6,7 @@ import io.bullet.borer.Codec
 import org.tresql.ast._
 import org.tresql.metadata.{Par, Procedure, ReturnType}
 import CompilerAst._
-import org.wabase.AppMetadata.Action.{ConfType, FoldOp, Op, OpResultType, SetHttpHeadersOp, Step, VariableConcats, VariableTransform}
+import org.wabase.AppMetadata.Action.{ConfType, FoldOp, Op, OpResultType, SetHttpHeadersOp, Step, ValueConcats, VariableTransform}
 import org.wabase.AppMetadata.{Action, DbAccessKey}
 
 object CacheIo {
@@ -56,7 +56,7 @@ object CacheIo {
   implicit lazy val varCodec:           Codec[Variable]       = deriveCodec    [Variable]
 
   implicit val dbAccessKeyCodec: Codec[DbAccessKey] = deriveCodec[DbAccessKey]
-  implicit val varConcatCodec: Codec[VariableConcats] = deriveCodec[VariableConcats]
+  implicit val varConcatCodec: Codec[ValueConcats] = deriveCodec[ValueConcats]
   implicit val varTransformCodec: Codec[VariableTransform] = deriveCodec[VariableTransform]
   implicit val opResultTypeCodec: Codec[OpResultType] = deriveAllCodecs[OpResultType]
   implicit val foldOpCodec: Codec[FoldOp] = deriveCodec[FoldOp]
