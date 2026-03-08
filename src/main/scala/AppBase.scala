@@ -545,7 +545,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
   def save(viewName: String, obj: Map[String, Any], params: Map[String, Any] = Map(), emptyStringsToNull: Boolean = true)(
     implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout,
       poolName: PoolName = ConnectionPools.key(viewDef(viewName).db)) = {
-    val instance = qio.fill[Dto](obj)(Manifest.classType(viewNameToClassMap(viewName)))
+    val instance = qio.fill[Dto](qe.toCompatibleMap(obj, viewDef(viewName)))(Manifest.classType(viewNameToClassMap(viewName)))
     saveInternal(viewName, instance, params, emptyStringsToNull)
   }
 
