@@ -2,5 +2,5 @@ path:   data/array/{{id}}
 method: GET
 response:
   id: <- id
-  scores: [1,2,3]
-  names: ["a", "b", "c"]
+  scores: [2, 3, 5]
+  names: ["b", "c", "a"]

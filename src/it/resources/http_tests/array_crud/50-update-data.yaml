@@ -1,0 +1,5 @@
+path:   data/array/{{id}}
+method: PUT
+request: {"scores": [2, 3, 5], "names": ["b", "c", "a"]}
+response:
+  id: <- id
