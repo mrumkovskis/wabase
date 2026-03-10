@@ -4,7 +4,7 @@ val pekkoV    = "1.4.0"
 val pekkoConnV= "1.2.0"
 val pekkoHttpV= "1.3.0"
 
-val mojozV    = "7.0.0"
+val mojozV    = "7.0.1"
 val quereaseV = "9.0.0"
 val tresqlV   = "13.2.0"
 
