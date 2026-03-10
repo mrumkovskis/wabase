@@ -13,10 +13,7 @@ import org.mojoz.querease.{QuereaseIo, SaveMethod}
 import org.wabase.WabaseAppConfig.DefaultCp
 import org.wabase.WabaseService.RequestHandler
 import org.wabase.ds.PoolName
-import org.wabase.{
-  CborOrJsonAnyValueDecoder, DbAccess, DefaultAppQuerease, DefaultAppQuereaseIo,
-  Loggable, ResultEncoder, TresqlResourcesConf, WabaseRequestContext, WabaseServer
-}
+import org.wabase.{CborOrJsonAnyValueDecoder, DbAccess, DefaultAppQuerease, DefaultAppQuereaseIo, Loggable, ResultEncoder, TresqlResourcesConf, WabaseRequestContext, WabaseServer}
 
 import java.nio.file.Files
 import java.time.Instant
@@ -189,9 +186,11 @@ class Audit extends Loggable {
         }
       }
     }.mapMaterializedValue { fut =>
-      fut.foreach { case (size, content) =>
-        val bs = if (size > maxContentSizeToAudit) largeContentReplacementForAuditing(size) else content
-        promise.success(bs)
+      fut.onComplete {
+        case Success((size, content)) =>
+          val bs = if (size > maxContentSizeToAudit) largeContentReplacementForAuditing(size) else content
+          promise.success(bs)
+        case Failure(ex) => promise.failure(ex)
       }
       NotUsed
     }

@@ -438,12 +438,8 @@ object WabaseService extends Loggable {
       else {
         val updatedCtx = withReqTimeout(withReqMaxContentSize(ctx))
         import updatedCtx._
-        implicit val ec = as.dispatcher
-        val valuesF =
-          if (Set(Action.Insert, Action.Update, Action.UpdatePlus, Action.Upsert, Action.Save).contains(action))
-            toMapForViewEntityDecoder(updatedCtx)
-          else  Future.successful(Map[String, Any]())
-        valuesF.flatMap { values =>
+        implicit val ec: ExecutionContext = as.dispatcher
+        toMapForViewEntityDecoder(updatedCtx).flatMap { values =>
           updatedCtx.wabase.app.doAction(
             actionName = action,
             viewName = viewName,
@@ -516,13 +512,16 @@ object WabaseService extends Loggable {
     }
   }
 
+  val BodyActions: Set[String] =
+    Set(Action.Insert, Action.Update, Action.UpdatePlus, Action.Upsert, Action.Save, Action.Post, Action.Put)
+
   def toMapForViewEntityDecoder(ctx: WabaseRequestContext): Future[Map[String, Any]] = {
     import ctx._
     implicit val mat = as
     implicit val ec = as.dispatcher
     val vd = wabase.qe.viewDef(viewName)
     vd.decoder match {
-      case AppMetadata.DefaultDecoder =>
+      case AppMetadata.DefaultDecoder if BodyActions.contains(action) =>
         def defaultContent = wabase.toMapUnmarshallerForView(viewName)(req.entity)
         def mappedContent  = wabase.toMapUnmarshaller(req.entity).map(m => wabase.qe.toCompatibleMap(m, vd))
         req.entity.contentType match {
@@ -533,7 +532,7 @@ object WabaseService extends Loggable {
             mappedContent
           case _ => defaultContent
         }
-      case AppMetadata.CustomDecoder(o, f) =>
+      case AppMetadata.CustomDecoder(o, f) if BodyActions.contains(action) =>
         invokeFunction(o, f,
           Seq[(Class[_], () => Any)](
             (classOf[HttpRequest], () => req),
@@ -546,6 +545,7 @@ object WabaseService extends Loggable {
           case x => throw new IllegalArgumentException(s"Custom decoder must return Map[String, Any], instead got: $x")
         }
       case AppMetadata.NoneDecoder => Future.successful(Map())
+      case _ => req.entity.discardBytes().future.map(_ => Map())
     }
   }
 
