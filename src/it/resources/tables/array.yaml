@@ -1,0 +1,5 @@
+table: array_data
+columns:
+  - id
+  - scores * int
+  - names * 24

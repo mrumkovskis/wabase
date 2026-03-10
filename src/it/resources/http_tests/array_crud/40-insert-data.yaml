@@ -1,0 +1,5 @@
+path:   data/array
+method: POST
+request: {"scores": [1, 2, 3], "names": ["a", "b", "c"]}
+response:
+  id: -> id

@@ -65,6 +65,11 @@ object BusinessScenariosSpecs extends Loggable {
     Thread.sleep(millis)
     response
   }
+
+  def toIntArray(coll: Seq[Int]): Array[java.lang.Integer] = {
+    coll.map(Integer.valueOf).toArray[java.lang.Integer]
+  }
+  def toStringArray(coll: Seq[String]): Array[String] = coll.toArray[String]
 }
 
 object ScriptValidations {

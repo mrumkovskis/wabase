@@ -33,6 +33,79 @@ response: {
         }
       }
     },
+    "/array" : {
+      "post" : {
+        "summary" : "Post 'array'",
+        "description" : "",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/array"
+              }
+            }
+          }
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/array"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Bad Request"
+          },
+          "503" : {
+            "description" : "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/array/{id}" : {
+      "get" : {
+        "summary" : "Get 'array' by 'id'",
+        "description" : "",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "description" : "Id",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/array"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Bad Request"
+          },
+          "403" : {
+            "description" : "Forbidden"
+          },
+          "404" : {
+            "description" : "Not Found"
+          },
+          "503" : {
+            "description" : "Service Unavailable"
+          }
+        }
+      }
+    },
     "/audit" : {
       "get" : {
         "summary" : "List 'audit'",
@@ -1700,6 +1773,36 @@ response: {
   },
   "components" : {
     "schemas" : {
+      "array" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "integer",
+            "format" : "int64",
+            "description" : "Id",
+            "readOnly" : false
+          },
+          "scores" : {
+            "type" : "array",
+            "description" : "Scores",
+            "items" : {
+              "type" : "integer",
+              "format" : "int32"
+            },
+            "readOnly" : false
+          },
+          "names" : {
+            "type" : "array",
+            "description" : "Names",
+            "items" : {
+              "type" : "string",
+              "maxLength" : 24
+            },
+            "readOnly" : false
+          }
+        },
+        "required" : [ "id" ]
+      },
       "audit" : {
         "type" : "object",
         "properties" : {

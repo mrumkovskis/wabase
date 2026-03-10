@@ -604,17 +604,17 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     resources: Resources,
   ): QuereaseResult = {
     val result = useResourcesConnOrEvaluator(resources, res =>
-     Query(tresql.tresql)(res.withParams(scope.toBindeableMap(context.env))) match {
-      case sel: SelectResult[_] if resources.conn == null =>
-        // convert select result to list or single value so evaluator conn can be closed
-        val r = sel.toListOfMaps
-        if (r.size == 1 && r.head.size == 1) TresqlResult(SingleValueResult(r.head.head._2))
-        else IteratorResult(r.iterator)
-      case arraySel: DynamicArraySelectResult =>
-        if (resources.conn == null) IteratorResult(arraySel.elIterator.toSeq.iterator)
-        else IteratorResult(arraySel.elIterator)
-      case r => TresqlResult(r)
-     }
+      Query(tresql.tresql)(res.withParams(scope.toBindeableMap(context.env))) match {
+        case sel: SelectResult[_] if resources.conn == null =>
+          // convert select result to list or single value so evaluator conn can be closed
+          val r = sel.toListOfMaps
+          if (r.size == 1 && r.head.size == 1) TresqlResult(SingleValueResult(r.head.head._2))
+          else IteratorResult(r.iterator)
+        case arraySel: DynamicArraySelectResult =>
+          if (resources.conn == null) IteratorResult(arraySel.elIterator.toSeq.iterator)
+          else IteratorResult(arraySel.elIterator)
+        case r => TresqlResult(r)
+      }
     )
     tresql.conformTo.map(comp_res(result, _)).getOrElse(result)
   }
@@ -746,6 +746,11 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       sys.error(s"Unrecognized result type: ${x.getClass}, value: $x from function $className.$function. You " +
         s"may want to prefix invocation with 'as any'")
 
+    def dtoToMap(v: Any) = v match {
+      case d: Dto => d.toMap(this)
+      case x => x
+    }
+
     def comp_q_result(r: Any) = {
       val allowAny = op.conformTo.collectFirst{ case Action.ViewResultType(null, _) => }.isDefined
       def qresult(r: Any): QuereaseResult = r match {
@@ -774,15 +779,13 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         case m: java.util.Map[_, _] => qresult(m.asScala.toMap)
         case i: java.lang.Iterable[_] => qresult(i.asScala)
         case i: java.util.Iterator[_] => qresult(i.asScala)
-        case a: Array[_] => qresult(a.iterator)
+        case a: Array[_] if !allowAny => qresult(a.iterator)
         //any res
         case x if allowAny => (x match { // convert dto(s) in collections to map for json encoder
           case v: Map[_, _] => v
           case v: Iterable[_] => qresult(v.iterator)
-          case v: Iterator[_] => v.map {
-            case d: Dto => d.toMap(this)
-            case v => v
-          }
+          case v: Iterator[_] => v map dtoToMap
+          case v: Array[_] => v
           case v => v
         }) match {
           case v: AnyResult => v
@@ -1843,6 +1846,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case kr: KeyResult => kr.ir
       case AnyResult(ar) => ar match {
         case v: Iterator[_] => (v map mapValue).toVector
+        case a: Array[_] => a//a map mapValue
         case v => v // TODO may be need to convert java collections to scala?
       }
       case ResponseResult(code, value, _, _) => Map("code" -> code, "value" ->

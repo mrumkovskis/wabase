@@ -1,0 +1,11 @@
+name: array
+api: post, get
+table: array_data
+fields:
+- id
+- scores
+- names
+post:
+- scores = as any wabase.app.BusinessScenariosSpecs.toIntArray :scores
+- names = as any wabase.app.BusinessScenariosSpecs.toStringArray :names
+- "+array_data{id = #array_data, scores = :scores, names = :names}"

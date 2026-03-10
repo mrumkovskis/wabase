@@ -2,6 +2,61 @@ path:     /metadata/*
 #response_headers:
 #  ETag: '"7Fbn0zb1wvRZXGNvTGagsw=="'
 response: {
+  "array": {
+    "name": "array",
+    "key": ["id"],
+    "fields": [{
+      "name": "id",
+      "type": "long",
+      "isCollection": false,
+      "isComplexType": false,
+      "nullable": false,
+      "required": false,
+      "sortable": true,
+      "label": "Id",
+      "visible": true,
+      "insertable": true,
+      "updatable": false,
+      "enum": null,
+      "refViewName": null,
+      "comments": null,
+      "jsonType": "number"
+    }, {
+      "name": "scores",
+      "type": "int",
+      "isCollection": true,
+      "isComplexType": false,
+      "nullable": true,
+      "required": false,
+      "sortable": false,
+      "label": "Scores",
+      "visible": true,
+      "insertable": true,
+      "updatable": true,
+      "enum": null,
+      "refViewName": null,
+      "comments": null,
+      "jsonType": "number"
+    }, {
+      "name": "names",
+      "type": "string",
+      "isCollection": true,
+      "isComplexType": false,
+      "nullable": true,
+      "required": false,
+      "sortable": false,
+      "label": "Names",
+      "visible": true,
+      "insertable": true,
+      "updatable": true,
+      "enum": null,
+      "refViewName": null,
+      "comments": null,
+      "jsonType": "string",
+      "length": 24
+    }],
+    "filter": []
+  },
   "audit": {
     "name": "audit",
     "key": [],

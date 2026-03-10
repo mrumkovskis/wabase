@@ -807,6 +807,10 @@ object TresqlResultSerializer {
       }
     override def next(): Any = cols.next() match {
       case arr: DynamicArraySelectResult => arr.elIterator
+      case arr: java.sql.Array => arr.getArray match {
+        case a: Array[_] => a.iterator
+        case x => x
+      }
       case rows: Result[_] => new TresqlRowsIterator(rows, includeHeaders)
       case value => value
     }
