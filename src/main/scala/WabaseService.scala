@@ -130,6 +130,12 @@ object WabaseService extends Loggable {
     Logger(LoggerFactory.getLogger(LoggerNameFactory.loggerName(req)))
   }
 
+  private val swaggerGeneratorFactory =
+    getObjectOrNewInstance(config.getString("app.wabase-swagger-generator-factory"), "swagger generator factory")
+      .asInstanceOf[WabaseSwaggerGeneratorFactory]
+  def createSwaggerGenerator(ctx: WabaseRequestContext) =
+    swaggerGeneratorFactory.createSwaggerGenerator(ctx)
+
   /* If route found return Right(route) else Left(http client error) */
   def findRoute(ctx: WabaseRequestContext): Either[HttpResponse, RouteDef] = {
     val pathString = WabaseService.toReadableString(ctx.req.uri.path)
@@ -256,13 +262,7 @@ object WabaseService extends Loggable {
   def generateSwaggerJson(ctx: WabaseRequestContext): RequestHandler = {
     conditional(EntityTag(ctx.wabase.app.metadataVersionString), DateTime(ctx.wabase.app.startupTimeMillis), _ => {
       Future.successful {
-        val hasApi = ctx.wabase.app.hasApi(_, _, _, _ => true)
-        val generator = new WabaseSwaggerGenerator(Seq(ctx.wabase.qe), config.getString("app.host"), hasApi) {
-          override def getQueryParameters(method: String, viewDef: ViewDef, keySize: Int = 99): Seq[FilterParameter] = {
-            super.getQueryParameters(method, viewDef, keySize)
-              .filterNot(p => ctx.wabase.app.isInternalParameter(viewDef, p.name))
-          }
-        }
+        val generator = swaggerGeneratorFactory.createSwaggerGenerator(ctx)
         HttpResponse(entity = HttpEntity(MediaTypes.`application/json`, generator.generateSwaggerJson))
       }
     })
@@ -271,13 +271,7 @@ object WabaseService extends Loggable {
   def generateSwaggerYaml(ctx: WabaseRequestContext): RequestHandler = {
     conditional(EntityTag(ctx.wabase.app.metadataVersionString), DateTime(ctx.wabase.app.startupTimeMillis), _ => {
       Future.successful {
-        val hasApi = ctx.wabase.app.hasApi(_, _, _, _ => true)
-        val generator = new WabaseSwaggerGenerator(Seq(ctx.wabase.qe), config.getString("app.host"), hasApi) {
-          override def getQueryParameters(method: String, viewDef: ViewDef, keySize: Int = 99): Seq[FilterParameter] = {
-            super.getQueryParameters(method, viewDef, keySize)
-              .filterNot(p => ctx.wabase.app.isInternalParameter(viewDef, p.name))
-          }
-        }
+        val generator = swaggerGeneratorFactory.createSwaggerGenerator(ctx)
         HttpResponse(entity = HttpEntity(MediaTypes.`application/yaml`, generator.generateSwaggerYaml))
       }
     })
@@ -771,4 +765,19 @@ object LoggerNameFactory extends LoggerNameFactory {
   def loggerName(req: HttpRequest): String = {
     req.method.value.toLowerCase + WabaseService.toReadableString(req.uri.path).replace('/', '.')
   }
+}
+
+trait WabaseSwaggerGeneratorFactory {
+  def createSwaggerGenerator(ctx: WabaseRequestContext): WabaseSwaggerGenerator
+}
+
+object WabaseSwaggerGeneratorFactory extends WabaseSwaggerGeneratorFactory {
+  class WabaseDefaultSwaggerGenerator(ctx: WabaseRequestContext)
+      extends WabaseSwaggerGenerator(Seq(ctx.wabase.qe), config.getString("app.host"), ctx.wabase.app.hasApi(_, _, _, _ => true)) {
+    override def getQueryParameters(method: String, viewDef: ViewDef, keySize: Int = 99): Seq[FilterParameter] = {
+      super.getQueryParameters(method, viewDef, keySize)
+        .filterNot(p => ctx.wabase.app.isInternalParameter(viewDef, p.name))
+    }
+  }
+  override def createSwaggerGenerator(ctx: WabaseRequestContext): WabaseSwaggerGenerator = new WabaseDefaultSwaggerGenerator(ctx)
 }
