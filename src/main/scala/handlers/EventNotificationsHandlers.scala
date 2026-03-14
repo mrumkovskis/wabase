@@ -5,10 +5,10 @@ import org.apache.pekko.http.scaladsl.model.HttpRequest
 import org.wabase.ServerNotifications
 
 trait EventNotificationsHandlers {
-  def subscribeToEvent(topic: String)(as: ActorSystem, req: HttpRequest) = {
+  def subscribeToServerSentEvents(topic: String)(as: ActorSystem, req: HttpRequest) = {
     ServerNotifications.subscribeToEventsAndListen(b => a => b.subscribe(a, topic), _ => ())(as, req)
   }
-  def subscribeToWsMessages(topic: String)(as: ActorSystem, req: HttpRequest) = {
+  def subscribeToWebSocketMessages(topic: String)(as: ActorSystem, req: HttpRequest) = {
     ServerNotifications.subscribeToWsMessagesAndListen(b => a => b.subscribe(a, topic), _ => ())(as, req)
   }
 }
