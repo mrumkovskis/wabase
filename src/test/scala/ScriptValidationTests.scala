@@ -22,10 +22,12 @@ object TestValidationEngine extends org.wabase.TestApp {
   override protected def isScriptValidationEnabled: Boolean = true
   def loadValidations(viewName: String, actionName: String) = threadLocalValidations.get
   def validations(instance: org.wabase.Dto) =  {
-    val v = new Validation
     val test = instance.asInstanceOf[ValidationEngineTestDto]
-    v.expression = test.expression
-    v.message = test.message
+    val v = new Validation {
+      var context:    String = null
+      var expression: String = test.expression
+      var message:    String = test.message
+    }
     List(v)
   }
   def validate(instance: org.wabase.Dto)(implicit locale: Locale): Unit = {

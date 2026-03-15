@@ -80,11 +80,16 @@ class WabaseScriptValidation(db: DbAccess, qe: AppQuerease)(implicit ec: Executi
 }
 
 object WabaseScriptValidation {
-  class Validation extends org.wabase.DtoWithId {
-    var id: java.lang.Long = null
-    var context: String = null
+  trait Validation {
+    def context:    String
+    def expression: String
+    def message:    String
+  }
+
+  private class Validation_ extends org.wabase.Dto with Validation {
+    var context:    String = null
     var expression: String = null
-    var message: String = null
+    var message:    String = null
   }
 
   def initWabaseScriptValidation(db: DbAccess, qe: AppQuerease)(implicit ec: ExecutionContext) =
@@ -123,9 +128,9 @@ object WabaseScriptValidation {
   def loadValidations(viewName: String, actionName: String, dbAccess: DbAccess)(
     implicit qe: AppQuerease): List[Validation] = {
     val validationsQuery =
-      "validation[context ~~ :context] {id, context, expression, message}#(context, id)"
+      "validation[context ~~ :context] {context, expression, message}#(context)"
     dbAccess.withRollbackConn() { res =>
-      Query(validationsQuery, Map("context" -> viewName))(res).map(r => new Validation().fill(r)).toList
+      Query(validationsQuery, Map("context" -> viewName))(res).map(r => new Validation_().fill(r)).toList
     }
   }
 }
