@@ -35,9 +35,9 @@ import scala.util.Try
 class WabaseSwaggerGenerator(
   qes: Seq[Querease],
   hostString: String,
-  hasApi: (String, String, Int)=> Either[StatusCode, String], // viewName, defaultAction, keySize => error | action
-  isRelevantView:     ViewDef  => Boolean = _.apiMethodToRoles.nonEmpty,
-  isRelevantRoute:    RouteDef => Boolean = _ => true,
+  hasApi: (ViewDef, String, Int) => Either[StatusCode, String], // viewName, defaultAction, keySize => error | action
+  isRelevantView:       ViewDef  => Boolean = _.apiMethodToRoles.nonEmpty,
+  isRelevantRoute:      RouteDef => Boolean = _ => true,
   config: Config = org.wabase.config,
 ) extends Loggable {
   private val hostUri = new URI(hostString.stripSuffix("/"))
@@ -772,7 +772,7 @@ class WabaseSwaggerGenerator(
 
   def keySizesAndActions(defaultAction: String, viewDef: ViewDef): Seq[(Int, String)] =
     keySizes(defaultAction, viewDef).toSeq.sorted.flatMap { keySize =>
-      hasApi(viewDef.name, defaultAction, keySize).toOption.map(keySize -> _)
+      hasApi(viewDef, defaultAction, keySize).toOption.map(keySize -> _)
     }
 
   def pathsAndMethodsAndOperations(viewDef: ViewDef): Seq[(String, HttpMethod, Operation)] = {

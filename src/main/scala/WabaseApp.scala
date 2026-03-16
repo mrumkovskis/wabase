@@ -560,7 +560,7 @@ trait WabaseApp[User] {
   }
   val ActionLegacyMapping = config.getBoolean("app.action-legacy-mapping")
   def checkApi(viewName: String, method: String, user: User, keyValues: Seq[Any]): String = {
-    hasApi(viewName, method, keyValues.size, hasRole(user, _)) match {
+    hasApiForName(viewName, method, keyValues.size, hasRole(user, _)) match {
       case Left(statusCode) =>
         statusCode match {
           case StatusCodes.MethodNotAllowed => throw HttpException(statusCode)
@@ -584,15 +584,17 @@ trait WabaseApp[User] {
       case _                                                        => keySize == apiKeySize
     }
   }
-  def hasApi(viewName: String, method: String, keySize: Int, hasRole: Set[String] => Boolean): Either[StatusCode, String] = {
-    val viewDefOpt = qe.viewDefOption(viewName)
-    val api_m_opt  = viewDefOpt.map(apiMethod(_, method, keySize))
+  protected def hasApiForName(viewName: String, method: String, keySize: Int, hasRole: Set[String] => Boolean): Either[StatusCode, String] =
+    qe.viewDefOption(viewName)
+      .map { view => hasApi(view, method, keySize, hasRole) }
+      .getOrElse(Left(StatusCodes.BadRequest))
+  def hasApi(view: ViewDef, method: String, keySize: Int, hasRole: Set[String] => Boolean): Either[StatusCode, String] = {
+    val api_m_opt  = Option(view).map(apiMethod(_, method, keySize))
     val api_r_opt  = api_m_opt match {
-      case Some(api_m) => viewDefOpt.get.apiMethodToRoles.get(api_m)
+      case Some(api_m) => view.apiMethodToRoles.get(api_m)
       case None        => None
     }
     (for {
-      view  <- viewDefOpt
       roles <- api_r_opt.orElse(api_m_opt.flatMap {
         case Action.Insert |
              Action.Upsert |
@@ -607,7 +609,7 @@ trait WabaseApp[User] {
         if (!isMethodAllowed) {
           Some(Left(StatusCodes.BadRequest))
         }
-        else if (qe.isPublicView(viewName) || roles.contains(qe.publicApiRoleName) || hasRole(roles))
+        else if (qe.isPublicView(view.name) || roles.contains(qe.publicApiRoleName) || hasRole(roles))
           api_m_opt.map(Right(_))
         else Some(Left(StatusCodes.Unauthorized))
     } yield result).getOrElse(
