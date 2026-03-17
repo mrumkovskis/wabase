@@ -543,12 +543,8 @@ trait WabaseApp[User] {
       case Action.Put =>
         if (api.contains(Action.Upsert))
           Action.Upsert
-        else if (api.contains(Action.Update))
+        else if (api.contains(Action.Update) || hasAutoKey(viewDef))
           Action.Update
-        else if (hasAutoKey(viewDef))
-          Action.Update
-        else if (keySize > 0 && api.contains(Action.Insert))
-          Action.Insert
         else
           Action.Upsert
       case Action.Upsert =>
