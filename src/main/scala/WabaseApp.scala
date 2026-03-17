@@ -523,14 +523,18 @@ trait WabaseApp[User] {
     if  (user == null)
          new AuthenticationException("Unauthorized")
     else new AuthorizationException("Forbidden")
+  protected def apiKeySize(viewDef: ViewDef): Int =
+    qe.viewNameToApiKeyFieldNames.get(viewDef.name).map(_.size).getOrElse(0)
+  protected def hasAutoKey(viewDef: ViewDef): Boolean =
+    qe.viewNameToHasAutoKey.get(viewDef.name).exists(identity)
+  protected def isPublicView(viewDef: ViewDef): Boolean =
+    qe.isPublicView(viewDef.name)
   def apiMethod(viewDef: ViewDef, method: String, keySize: Int): String = {
     import AppMetadata.AugmentedAppViewDef
     val api        = viewDef.apiMethodToRoles
-    def apiKeySize = qe.viewNameToApiKeyFieldNames.get(viewDef.name).map(_.size).getOrElse(0)
-    def hasAutoKey = qe.viewNameToHasAutoKey.get(viewDef.name).exists(identity)
     method match {
       case Action.Get =>
-        if (keySize == apiKeySize && api.contains(Action.Get))
+        if (api.contains(Action.Get) && keySize == apiKeySize(viewDef))
           Action.Get
         else
           Action.List
@@ -539,19 +543,21 @@ trait WabaseApp[User] {
       case Action.Put =>
         if (api.contains(Action.Upsert))
           Action.Upsert
-        else if (hasAutoKey || api.contains(Action.Update))
+        else if (api.contains(Action.Update))
           Action.Update
-        else if (keySize > 0 && !hasAutoKey && api.contains(Action.Insert))
+        else if (hasAutoKey(viewDef))
+          Action.Update
+        else if (keySize > 0 && api.contains(Action.Insert))
           Action.Insert
         else
           Action.Upsert
       case Action.Upsert =>
-        if (hasAutoKey || api.contains(Action.Update))
+        if (api.contains(Action.Update) || hasAutoKey(viewDef))
           Action.Update
         else
           Action.Upsert
       case Action.Post =>
-        if (keySize == 0)
+        if (keySize == 0 || !api.contains(Action.UpdatePlus))
           Action.Insert
         else
           Action.UpdatePlus
@@ -572,16 +578,15 @@ trait WabaseApp[User] {
     }
   }
   def isApiKeySizeAllowed(viewDef: ViewDef, actionName: String, keySize: Int): Boolean = {
-    def apiKeySize = qe.viewNameToApiKeyFieldNames.get(viewDef.name).map(_.size).getOrElse(0)
     def isCollectionActionKeySize(viewDef: ViewDef) =
       keySize >= viewDef.minKeySizeForCollection && keySize <= viewDef.maxKeySizeForCollection
     def isMixedActionKeySize(viewDef: ViewDef) =
-      keySize >= viewDef.minKeySizeForCollection && keySize <= apiKeySize
+      keySize >= viewDef.minKeySizeForCollection && keySize <= apiKeySize(viewDef)
     actionName match {
       case Action.Create                                            => keySize == 0 // ?
       case Action.Save | Action.Head | Action.Options               => isMixedActionKeySize(viewDef)
       case Action.List | Action.Post | Action.Insert | Action.Count => isCollectionActionKeySize(viewDef)
-      case _                                                        => keySize == apiKeySize
+      case _                                                        => keySize == apiKeySize(viewDef)
     }
   }
   protected def hasApiForName(viewName: String, method: String, keySize: Int, hasRole: Set[String] => Boolean): Either[StatusCode, String] =
@@ -609,7 +614,7 @@ trait WabaseApp[User] {
         if (!isMethodAllowed) {
           Some(Left(StatusCodes.BadRequest))
         }
-        else if (qe.isPublicView(view.name) || roles.contains(qe.publicApiRoleName) || hasRole(roles))
+        else if (isPublicView(view) || roles.contains(publicApiRoleName) || hasRole(roles))
           api_m_opt.map(Right(_))
         else Some(Left(StatusCodes.Unauthorized))
     } yield result).getOrElse(

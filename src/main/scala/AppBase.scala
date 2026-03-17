@@ -67,6 +67,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
     */
   def useLegacyFlow(viewName: String, actionName: String): Boolean = false
     // !isQuereaseActionDefined(viewName, actionName) && hasLegacyHandlers(viewName, actionName)
+  lazy val publicApiRoleName = config.getString("app.public-api.role-name")
 
   implicit def rowLikeToDto[B <: Dto](r: RowLike, m: Manifest[B]): B = qio.rowLikeToDto(r, m)
 
@@ -838,7 +839,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
         .filter(_.apiMethodToRoles != null)
         .map(v => v -> v.apiMethodToRoles.filter { case (method, roles) =>
           qe.isPublicView(v.name) ||
-          roles.contains(qe.publicApiRoleName) ||
+          roles.contains(publicApiRoleName) ||
           roles.exists(relevantRoles.contains)
         })
         .filter(_._2.nonEmpty)
