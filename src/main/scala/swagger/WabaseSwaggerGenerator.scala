@@ -186,7 +186,7 @@ class WabaseSwaggerGenerator(
   def isApiField(f: FieldDef): Boolean =
     !f.api.excluded
 
-  def shouldIncludeSchemaForView(v: ViewDef): Boolean = true
+  def shouldIncludeSchemaForView(v: ViewDef): Boolean = v.fields.exists(isApiField)
   def schemasFromViewDefs(viewDefMap: Map[String, ViewDef]): Map[String, Schema[_]] = {
     viewDefMap.view.filter { case (_, v) => shouldIncludeSchemaForView(v) }.flatMap { case (viewName, viewDef) =>
       val filteredFields = viewDef.fields.filter(isApiField)

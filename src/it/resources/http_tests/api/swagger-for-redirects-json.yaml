@@ -1952,10 +1952,6 @@ response: {
           }
         }
       },
-      "check_person" : {
-        "type" : "object",
-        "properties" : { }
-      },
       "current_user" : {
         "type" : "object",
         "properties" : {
@@ -2004,14 +2000,6 @@ response: {
         },
         "required" : [ "code" ]
       },
-      "http_echo" : {
-        "type" : "object",
-        "properties" : { }
-      },
-      "http_test" : {
-        "type" : "object",
-        "properties" : { }
-      },
       "login_using_json_or_urlencoded" : {
         "type" : "object",
         "properties" : {
@@ -2026,10 +2014,6 @@ response: {
             "readOnly" : false
           }
         }
-      },
-      "logout" : {
-        "type" : "object",
-        "properties" : { }
       },
       "person" : {
         "type" : "object",
@@ -2142,10 +2126,6 @@ response: {
           }
         }
       },
-      "template_test" : {
-        "type" : "object",
-        "properties" : { }
-      },
       "user" : {
         "type" : "object",
         "properties" : {
@@ -2170,10 +2150,6 @@ response: {
           }
         },
         "required" : [ "id" ]
-      },
-      "user-with-roles-array" : {
-        "type" : "object",
-        "properties" : { }
       },
       "user_role" : {
         "type" : "object",
