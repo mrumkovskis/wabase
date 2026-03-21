@@ -33,6 +33,11 @@ case class WabaseFileStreamers(fileStreamers: Map[String, FileStreamer]) {
   }
 }
 
+trait ViewApi {
+  def apiMethod(viewDef: ViewDef, method: String, keySize: Int): String
+  def hasApi(view: ViewDef, method: String, keySize: Int, hasRole: Set[String] => Boolean): Either[StatusCode, String]
+}
+
 trait WabaseApp[User] {
   this:  AppBase[User]
     with Audit[User]
@@ -529,38 +534,10 @@ trait WabaseApp[User] {
     qe.viewNameToHasAutoKey.get(viewDef.name).exists(identity)
   protected def isPublicView(viewDef: ViewDef): Boolean =
     qe.isPublicView(viewDef.name)
+  protected lazy val viewApi: ViewApi = new WabaseViewApi(apiKeySize _, hasAutoKey _, isPublicView _, publicApiRoleName)
   def apiMethod(viewDef: ViewDef, method: String, keySize: Int): String = {
-    import AppMetadata.AugmentedAppViewDef
-    val api        = viewDef.apiMethodToRoles
-    method match {
-      case Action.Get =>
-        if (api.contains(Action.Get) && keySize == apiKeySize(viewDef))
-          Action.Get
-        else
-          Action.List
-      case _ if api.contains(method) =>
-        method
-      case Action.Put =>
-        if (api.contains(Action.Upsert))
-          Action.Upsert
-        else if (api.contains(Action.Update) || hasAutoKey(viewDef))
-          Action.Update
-        else
-          Action.Upsert
-      case Action.Upsert =>
-        if (api.contains(Action.Update) || hasAutoKey(viewDef))
-          Action.Update
-        else
-          Action.Upsert
-      case Action.Post =>
-        if (keySize == 0 || !api.contains(Action.UpdatePlus))
-          Action.Insert
-        else
-          Action.UpdatePlus
-      case _ => method
-    }
+    viewApi.apiMethod(viewDef, method, keySize)
   }
-  val ActionLegacyMapping = config.getBoolean("app.action-legacy-mapping")
   def checkApi(viewName: String, method: String, user: User, keyValues: Seq[Any]): String = {
     hasApiForName(viewName, method, keyValues.size, hasRole(user, _)) match {
       case Left(statusCode) =>
@@ -573,49 +550,12 @@ trait WabaseApp[User] {
         methodName
     }
   }
-  def isApiKeySizeAllowed(viewDef: ViewDef, actionName: String, keySize: Int): Boolean = {
-    def isCollectionActionKeySize(viewDef: ViewDef) =
-      keySize >= viewDef.minKeySizeForCollection && keySize <= viewDef.maxKeySizeForCollection
-    def isMixedActionKeySize(viewDef: ViewDef) =
-      keySize >= viewDef.minKeySizeForCollection && keySize <= apiKeySize(viewDef)
-    actionName match {
-      case Action.Create                                            => keySize == 0 // ?
-      case Action.Save | Action.Head | Action.Options               => isMixedActionKeySize(viewDef)
-      case Action.List | Action.Post | Action.Insert | Action.Count => isCollectionActionKeySize(viewDef)
-      case _                                                        => keySize == apiKeySize(viewDef)
-    }
-  }
   protected def hasApiForName(viewName: String, method: String, keySize: Int, hasRole: Set[String] => Boolean): Either[StatusCode, String] =
     qe.viewDefOption(viewName)
-      .map { view => hasApi(view, method, keySize, hasRole) }
+      .map { view => viewApi.hasApi(view, method, keySize, hasRole) }
       .getOrElse(Left(StatusCodes.BadRequest))
   def hasApi(view: ViewDef, method: String, keySize: Int, hasRole: Set[String] => Boolean): Either[StatusCode, String] = {
-    val api_m_opt  = Option(view).map(apiMethod(_, method, keySize))
-    val api_r_opt  = api_m_opt match {
-      case Some(api_m) => view.apiMethodToRoles.get(api_m)
-      case None        => None
-    }
-    (for {
-      roles <- api_r_opt.orElse(api_m_opt.flatMap {
-        case Action.Insert |
-             Action.Upsert |
-             Action.Update => view.apiMethodToRoles.get(Action.Save)
-        case x => None
-      })
-      isMethodAllowed <- api_m_opt.map { api_m =>
-        ActionLegacyMapping ||
-          roles.nonEmpty && isApiKeySizeAllowed(view, api_m, keySize)
-      }
-      result <-
-        if (!isMethodAllowed) {
-          Some(Left(StatusCodes.BadRequest))
-        }
-        else if (isPublicView(view) || roles.contains(publicApiRoleName) || hasRole(roles))
-          api_m_opt.map(Right(_))
-        else Some(Left(StatusCodes.Unauthorized))
-    } yield result).getOrElse(
-      Left(StatusCodes.BadRequest)
-    )
+    viewApi.hasApi(view, method, keySize, hasRole)
   }
   protected def checkLimit(viewDef: ViewDef, limit: Int): Unit = {
     val maxLimitForView = viewDef.limit
@@ -654,6 +594,86 @@ trait WabaseApp[User] {
         ))(ctx.ec).asInstanceOf[ScriptValidation]
       module.validate(ctx.viewName, ctx.actionName, ctx.values ++ ctx.env)
     }
+  }
+}
+
+class WabaseViewApi(
+  apiKeySize:   ViewDef => Int,
+  hasAutoKey:   ViewDef => Boolean,
+  isPublicView: ViewDef => Boolean,
+  publicApiRoleName: String,
+) extends ViewApi {
+  def apiMethod(viewDef: ViewDef, method: String, keySize: Int): String = {
+    import AppMetadata.AugmentedAppViewDef
+    val api        = viewDef.apiMethodToRoles
+    method match {
+      case Action.Get =>
+        if (api.contains(Action.Get) && keySize == apiKeySize(viewDef))
+          Action.Get
+        else
+          Action.List
+      case _ if api.contains(method) =>
+        method
+      case Action.Put =>
+        if (api.contains(Action.Upsert))
+          Action.Upsert
+        else if (api.contains(Action.Update) || hasAutoKey(viewDef))
+          Action.Update
+        else
+          Action.Upsert
+      case Action.Upsert =>
+        if (api.contains(Action.Update) || hasAutoKey(viewDef))
+          Action.Update
+        else
+          Action.Upsert
+      case Action.Post =>
+        if (keySize == 0 || !api.contains(Action.UpdatePlus))
+          Action.Insert
+        else
+          Action.UpdatePlus
+      case _ => method
+    }
+  }
+  val ActionLegacyMapping = config.getBoolean("app.action-legacy-mapping")
+  def isApiKeySizeAllowed(viewDef: ViewDef, actionName: String, keySize: Int): Boolean = {
+    def isCollectionActionKeySize(viewDef: ViewDef) =
+      keySize >= viewDef.minKeySizeForCollection && keySize <= viewDef.maxKeySizeForCollection
+    def isMixedActionKeySize(viewDef: ViewDef) =
+      keySize >= viewDef.minKeySizeForCollection && keySize <= apiKeySize(viewDef)
+    actionName match {
+      case Action.Create                                            => keySize == 0 // ?
+      case Action.Save | Action.Head | Action.Options               => isMixedActionKeySize(viewDef)
+      case Action.List | Action.Post | Action.Insert | Action.Count => isCollectionActionKeySize(viewDef)
+      case _                                                        => keySize == apiKeySize(viewDef)
+    }
+  }
+  def hasApi(view: ViewDef, method: String, keySize: Int, hasRole: Set[String] => Boolean): Either[StatusCode, String] = {
+    val api_m_opt  = Option(view).map(apiMethod(_, method, keySize))
+    val api_r_opt  = api_m_opt match {
+      case Some(api_m) => view.apiMethodToRoles.get(api_m)
+      case None        => None
+    }
+    (for {
+      roles <- api_r_opt.orElse(api_m_opt.flatMap {
+        case Action.Insert |
+             Action.Upsert |
+             Action.Update => view.apiMethodToRoles.get(Action.Save)
+        case x => None
+      })
+      isMethodAllowed <- api_m_opt.map { api_m =>
+        ActionLegacyMapping ||
+          roles.nonEmpty && isApiKeySizeAllowed(view, api_m, keySize)
+      }
+      result <-
+        if (!isMethodAllowed) {
+          Some(Left(StatusCodes.BadRequest))
+        }
+        else if (isPublicView(view) || roles.contains(publicApiRoleName) || hasRole(roles))
+          api_m_opt.map(Right(_))
+        else Some(Left(StatusCodes.Unauthorized))
+    } yield result).getOrElse(
+      Left(StatusCodes.BadRequest)
+    )
   }
 }
 
