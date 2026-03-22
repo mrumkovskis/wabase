@@ -608,7 +608,7 @@ class WabaseViewApi(
     val api        = viewDef.apiMethodToRoles
     method match {
       case Action.Get =>
-        if (api.contains(Action.Get) && keySize == apiKeySize(viewDef))
+        if (api.contains(Action.Get) && keySize >= apiKeySize(viewDef))
           Action.Get
         else
           Action.List
