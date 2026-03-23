@@ -739,7 +739,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       t3 <- doAction("count", "invocation_test_1", Map()).map {
         _ shouldBe StringResult("0")
       }
-      t4 <- doAction("get", "invocation_test_2", Map()).map {
+      t4 <- doAction("get", "invocation_test_2", Map(), keyValues = Seq("ignored")).map {
         _ shouldBe Map("key" -> "key_val", "value" -> "value_val")
       }
       t5 <- doAction("list", "invocation_test_2", Map()).map {
@@ -1231,22 +1231,22 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         doAction("insert", "cols_filter_test_1", person)
           .map { case kr: KeyResult => kr.ir.id case _ => -1 }
       t0 <-
-        doAction("get", "cols_filter_test_1", Map("id" -> id), Map.empty)
+        doAction("get", "cols_filter_test_1", Map(), Map.empty, keyValues = Seq(id))
           .map( _ shouldBe person)
       t1 <-
-        doAction("get", "cols_filter_test_1", Map("id" -> id), Map.empty, Map("fields" -> ""))
+        doAction("get", "cols_filter_test_1", Map(), Map.empty, Map("fields" -> ""), keyValues = Seq(id))
           .map( _ shouldBe (person - "surname" - "birthdate" - "sex"))
       t2 <-
-        doAction("get", "cols_filter_test_1", Map("id" -> id), Map.empty, Map("fields" -> "name"))
+        doAction("get", "cols_filter_test_1", Map(), Map.empty, Map("fields" -> "name"), keyValues = Seq(id))
           .map( _ shouldBe (person - "surname" - "birthdate" - "sex"))
       t3 <-
-        doAction("get", "cols_filter_test_1", Map("id" -> id), Map.empty, Map("fields" -> "name, sex"))
+        doAction("get", "cols_filter_test_1", Map(), Map.empty, Map("fields" -> "name, sex"), keyValues = Seq(id))
           .map( _ shouldBe (person - "surname" - "birthdate"))
       t4 <-
-        doAction("get", "cols_filter_test_1", Map("id" -> id), Map.empty, Map("fields" -> "name, surname"))
+        doAction("get", "cols_filter_test_1", Map(), Map.empty, Map("fields" -> "name, surname"), keyValues = Seq(id))
           .map( _ shouldBe (person - "birthdate" - "sex"))
       t5 <-
-        doAction("get", "cols_filter_test_1", Map("id" -> id), Map.empty, Map("fields" -> "sex"))
+        doAction("get", "cols_filter_test_1", Map(), Map.empty, Map("fields" -> "sex"), keyValues = Seq(id))
           .map( _ shouldBe (person - "surname" - "birthdate"))
       cleanup <-
         doAction("delete", "cols_filter_test_1", Map.empty, keyValues = Seq(id))

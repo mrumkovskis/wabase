@@ -97,7 +97,7 @@ trait WabaseApp[User] {
   protected def shouldAddResultToContext(context: AppActionContext): Boolean = false
 
   def doWabaseAction(
-    actionName: String,
+    httpAction: String,
     viewName:   String,
     keyValues:  Seq[Any],
     params:     Map[String, Any],
@@ -128,6 +128,12 @@ trait WabaseApp[User] {
     }.getOrElse(req)
 
     val rf = resourceFactory(viewName, logger.underlying.getName, qt)
+    val actionName =
+      if (doApiCheck)
+           qe.viewDefOption(viewName).map { viewDef =>
+              apiMethod(viewDef, httpAction, keyValues.size)
+           }.getOrElse(httpAction)
+      else httpAction
     doWabaseAction(
       AppActionContext(actionName, viewName, keyValues, params, values ++ params, resultFilter)(
         user, state, ec, as, rf, setMaxContentSize(setTimeout(httpReq)), logger),
@@ -610,8 +616,10 @@ class WabaseViewApi(
       case Action.Get =>
         if (api.contains(Action.Get) && keySize >= apiKeySize(viewDef))
           Action.Get
-        else
+        else if (api.contains(Action.List))
           Action.List
+        else
+          Action.Get
       case _ if api.contains(method) =>
         method
       case Action.Put =>
