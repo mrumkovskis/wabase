@@ -17,7 +17,7 @@ import org.w3c.dom.{Element, Node, NodeList}
 import org.wabase.BorerDatetimeDecoders._
 
 import java.io.InputStream
-import java.lang.{Boolean => JBoolean, Double => JDouble, Long => JLong}
+import java.lang.{Boolean => JBoolean, Double => JDouble, Long => JLong, Short => JShort}
 import java.math.{BigDecimal => JBigDecimal, BigInteger => JBigInteger}
 import java.nio.charset.Charset
 import java.time.{LocalDate, LocalDateTime, LocalTime}
@@ -39,6 +39,7 @@ class CborOrJsonDecoder(typeDefs: Seq[TypeDef], nameToViewDef: Map[String, ViewD
   def simpleValueDecoder(type_ : Type): Decoder[Any] =
     (typeNameToScalaTypeName.get(type_.name).orNull match {
       case "String"             => Decoder.forString
+      case "java.lang.Short"    => Decoder.forBoxedShort
       case "java.lang.Long"     => Decoder.forBoxedLong
       case "java.lang.Integer"  => Decoder.forBoxedInt
       case "java.sql.Date"      => javaSqlDateDecoder
@@ -169,6 +170,7 @@ class CborOrJsonLenientDecoder(typeDefs: Seq[TypeDef], nameToViewDef: Map[String
     Decoder(r => if (r.hasString) BigDecimal(r.readString()) else r[BigDecimal])
   override def simpleValueDecoder(type_ : Type): Decoder[Any] =
     (typeNameToScalaTypeName.get(type_.name).orNull match {
+      case "java.lang.Short"    => Decoder.StringNumbers.shortDecoder.asInstanceOf[Decoder[JShort]]
       case "java.lang.Long"     => Decoder.StringNumbers.longDecoder.asInstanceOf[Decoder[JLong]]
       case "java.lang.Integer"  => Decoder.StringNumbers.intDecoder.asInstanceOf[Decoder[Integer]]
       case "java.lang.Double"   => Decoder.StringNumbers.doubleDecoder.asInstanceOf[Decoder[JDouble]]

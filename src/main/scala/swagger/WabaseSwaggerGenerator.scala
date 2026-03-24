@@ -116,6 +116,7 @@ class WabaseSwaggerGenerator(
       (new Schema).$ref(refFromViewName(n))
     case "long" => (new IntegerSchema).format("int64")
     case "int" => new IntegerSchema
+    case "short" => (new IntegerSchema).format("int16")
     case "decimal" => new NumberSchema
     case "boolean" => new BooleanSchema
     case "date" => new DateSchema
