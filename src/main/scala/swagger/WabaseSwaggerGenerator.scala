@@ -19,6 +19,7 @@ import org.apache.pekko.http.scaladsl.model.{HttpMethod, HttpMethods, StatusCode
 import org.mojoz.metadata.{FieldDef, Type, ViewDef}
 import org.mojoz.querease.FilterType.{ComparisonFilter, OtherFilter}
 import org.mojoz.querease.Querease
+import org.mojoz.querease.ValueConverter._
 import org.wabase.AppMetadata.Action.{Evaluation, Validations, ViewCall}
 import org.wabase.AppMetadata.{AugmentedAppFieldDef, AugmentedAppViewDef, FilterParameter, PathNameAndParameters, RouteDef}
 import org.wabase.{AppMetadata, AppQuerease, Loggable, MapUtils}
@@ -152,8 +153,15 @@ class WabaseSwaggerGenerator(
     !getReadOnly(viewdefs)(field) && (field.required || !field.nullable)
 
   def addEnumIfNeeded(enums: Seq[String], schema: Schema[_]) = {
+    lazy val qe = qes.head
     (enums, schema) match {
-      case (enums, stringSchema: StringSchema) if enums != null => enums.foreach(stringSchema.addEnumItem)
+      case (null, _) =>
+      case (e, s:  BooleanSchema) => e.foreach(e => s.addEnumItem(qe.convertToType(e, ClassOfJavaLangBoolean).asInstanceOf[java.lang.Boolean]))
+      case (e, s:     DateSchema) => e.foreach(e => s.addEnumItem(qe.convertToType(e, ClassOfJavaUtilDate).asInstanceOf[java.util.Date]))
+      case (e, s: DateTimeSchema) => e.foreach(e => s.addEnumItem(qe.convertToType(e, ClassOfJavaTimeOffsetDateTime).asInstanceOf[java.time.OffsetDateTime]))
+      case (e, s:  IntegerSchema) => e.foreach(e => s.addEnumItem(qe.convertToType(e, ClassOfJavaLangInteger).asInstanceOf[java.lang.Integer]))
+      case (e, s:   NumberSchema) => e.foreach(e => s.addEnumItem(qe.convertToType(e, ClassOfJavaMathBigDecimal).asInstanceOf[java.math.BigDecimal]))
+      case (e, s:   StringSchema) => e.foreach(e => s.addEnumItem(e))
       case _ =>
     }
     schema
