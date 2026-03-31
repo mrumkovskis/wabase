@@ -371,7 +371,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     cache
   }
 
-  protected def actionQueries(actionName: String, objName: String, action: Action): Set[(String,String)] = {
+  protected def actionQueries(actionName: String, objName: String, action: Action): scala.collection.mutable.Set[(String,String)] = {
     case class QueriesState(dbStack: List[String], queries: scala.collection.mutable.Set[(String, String)])
     lazy val opTresqlTrav: OpTresqlTraverser[QueriesState] =
       opTresqlTraverser(opTresqlTrav, stepTresqlTrav)(st => {
@@ -402,9 +402,10 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
         cq
       },
       viewExtractor = v => _ => v,
-      processed = Set(), value = QueriesState(Nil, scala.collection.mutable.Set[(String, String)]())
+      // use linked hash set to preserve query order
+      processed = Set(), value = QueriesState(Nil, scala.collection.mutable.LinkedHashSet[(String, String)]())
     )
-    traverseAction(action)(stepTresqlTrav)(state).value.queries.toSet
+    traverseAction(action)(stepTresqlTrav)(state).value.queries
   }
   override def allQueryStrings(viewDef: ViewDef): Seq[CompilationUnit] = {
     super.allQueryStrings(viewDef) ++ viewDef.actions.flatMap { case (actionName, action) =>
