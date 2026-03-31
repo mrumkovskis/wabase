@@ -11,7 +11,8 @@ import scala.annotation.tailrec
 import scala.util.Try
 import scala.language.reflectiveCalls
 
-class AppFileCleanup(dbAccess: DbAccess, fileStreamers: AppFileStreamerConfig*) extends Loggable { this: QuereaseProvider =>
+class AppFileCleanup(qe: AppQuerease, resourcesTemplate: Resources,
+                     fileStreamers: AppFileStreamerConfig*) extends Loggable {
 
   lazy val minAgeMillis: Long = 1000L * 60 * 60 * 24
   protected lazy val ageCheckSql: String = "now() - interval '1 days'"
@@ -19,7 +20,7 @@ class AppFileCleanup(dbAccess: DbAccess, fileStreamers: AppFileStreamerConfig*) 
   protected lazy val batchSizeOpt: Option[Int] = None
 
   val connectionPoolName: String  = Option("app.file-cleanup.cp").filter(config.hasPath).map(config.getString).orNull
-  implicit lazy val connectionPool: PoolName = Option(connectionPoolName).map(PoolName).getOrElse(dbAccess.DefaultCp)
+  implicit lazy val connectionPool: PoolName = Option(connectionPoolName).map(PoolName).getOrElse(WabaseAppConfig.DefaultCp)
   implicit lazy val extraDb: Seq[DbAccessKey] = Nil
 
   /*
@@ -29,12 +30,12 @@ class AppFileCleanup(dbAccess: DbAccess, fileStreamers: AppFileStreamerConfig*) 
   4. delete all files from file system when they are in files_on_disk but not in file_body_info
   */
 
-  def doCleanup(log: org.apache.pekko.event.LoggingAdapter) = {
+  def doCleanup(): Unit = {
     fileStreamers foreach { fs =>
       val wd = new File(fs.rootPath)
       val tmp = new File(fs.rootPath + "/tmp")
-      if (!wd.exists)  log.error("Filestreamer directory doesn't exist: " + wd.getAbsolutePath)
-      if (!tmp.exists) log.error("Filestreamer tmp directory doesn't exist: " + tmp.getAbsolutePath)
+      if (!wd.exists)  logger.error("Filestreamer directory doesn't exist: " + wd.getAbsolutePath)
+      if (!tmp.exists) logger.error("Filestreamer tmp directory doesn't exist: " + tmp.getAbsolutePath)
     }
     cleanTrash
     cleanupFileInfo
@@ -106,7 +107,7 @@ class AppFileCleanup(dbAccess: DbAccess, fileStreamers: AppFileStreamerConfig*) 
           })
 
       // insert files into files_on_disk
-      dbAccess.newTransaction(connectionPool) { implicit res =>
+      DbAccess.newTransaction(connectionPool, WabaseAppConfig.DefaultCp, resourcesTemplate) { implicit res =>
         def prepareStatement = res.conn.prepareStatement("INSERT INTO files_on_disk(path) VALUES (?)")
         val lastBatch =
           files.foldLeft((prepareStatement, 0)) { case ((stmt, count), file) =>
@@ -122,7 +123,7 @@ class AppFileCleanup(dbAccess: DbAccess, fileStreamers: AppFileStreamerConfig*) 
           lastBatch._1.executeBatch()
       }
       //filesUploaded as count query also for "warming up" DB (something like sql "analyze file_body_info"); independent of logger.debug scope
-      val filesUploaded = dbAccess.withRollbackConn(connectionPool) { implicit res =>
+      val filesUploaded = DbAccess.withRollbackConn(connectionPool, WabaseAppConfig.DefaultCp, resourcesTemplate) { implicit res =>
         Query("files_on_disk{count(1)}").unique[Long]
       }
       logger.debug(s"Number of records inserted into files_on_disk for $rootPath: $filesUploaded")
@@ -139,7 +140,7 @@ class AppFileCleanup(dbAccess: DbAccess, fileStreamers: AppFileStreamerConfig*) 
     val pathsParams = fileStreamers.zipWithIndex.map {
       case (fs, idx) => s"path_$idx" -> fs.rootPath
     }.toMap
-    dbAccess.withRollbackConn(connectionPool) { implicit res =>
+    DbAccess.withRollbackConn(connectionPool, WabaseAppConfig.DefaultCp, resourcesTemplate) { implicit res =>
       val filesMoved = Query(query, pathsParams).list[String]
         .map(new File(_))
         .foldLeft(0){case (counter, fullPathFile) =>
@@ -197,7 +198,7 @@ class AppFileCleanup(dbAccess: DbAccess, fileStreamers: AppFileStreamerConfig*) 
     @tailrec
     def deleteWhileNonEmpty(deletedTotalCount: Int): Int = {
       val deletedCount =
-        dbAccess.newTransaction(connectionPool) { implicit res =>
+        DbAccess.newTransaction(connectionPool, WabaseAppConfig.DefaultCp, resourcesTemplate) { implicit res =>
           Query(statement)
         } match {
           case deleteResult: DeleteResult => deleteResult.count.getOrElse(0)
@@ -210,5 +211,17 @@ class AppFileCleanup(dbAccess: DbAccess, fileStreamers: AppFileStreamerConfig*) 
     }
     val deletedTotalCount = deleteWhileNonEmpty(deletedTotalCount = 0)
     logger.debug(s"$message $deletedTotalCount")
+  }
+}
+
+object FileCleanup {
+  /**
+   * File cleanup invocation.
+   *
+   *  NOTE: view definition using this invocation must have `explicit db: true` setting!
+   * This is necessary so that db connection is used only on demand.
+   * */
+  def doCleanup(qe: AppQuerease, resourcesTemplate: Resources, fs: WabaseFileStreamers): Unit = {
+    new AppFileCleanup(qe, resourcesTemplate, fs.fileStreamers.values.toSeq: _*).doCleanup()
   }
 }

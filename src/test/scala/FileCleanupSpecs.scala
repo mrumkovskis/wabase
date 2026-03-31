@@ -111,7 +111,8 @@ class FileCleanupSpecs extends FlatSpec with Matchers with BeforeAndAfterEach {
   filestreamerConfigs foreach { fileStreamerList =>
     val fsConfigName = fileStreamerList.head.attachmentsRootPathTail.split("/")(0) + " paths"
 
-    val fileCleaner = new TestFileCleanup(db, fileStreamerList: _*)
+    val fileCleaner =
+      new TestFileCleanup(FileCleanupSpecsQuerease, FileCleanupSpecsHelper.db.rt, fileStreamerList: _*)
     def comfortFileCleaner = {
       fileStreamerList.foreach { fs =>
         new File(fs.rootPath + "/" + "tmp").mkdirs
@@ -119,7 +120,7 @@ class FileCleanupSpecs extends FlatSpec with Matchers with BeforeAndAfterEach {
     }
     def doCleanup = {
       comfortFileCleaner
-      fileCleaner.doCleanup(execution.system.log)
+      fileCleaner.doCleanup()
     }
 
     it should ("cleanup file body info with references removed, for " + fsConfigName) in {
@@ -325,11 +326,12 @@ object FileCleanupSpecsHelper {
   implicit val queryTimeout: QueryTimeout = QueryTimeout(10)
 
   DbDrivers.loadDrivers
-  val db: DbAccess = new DbAccess with QuereaseProvider with Loggable { self =>
+  class FileCleanupDbAccess extends DbAccess with QuereaseProvider with Loggable { self =>
     override protected def tresqlMetadata = FileCleanupSpecsQuerease.tresqlMetadata
-    override protected def initQuerease: AppQuerease = FileCleanupSpecsQuerease
     override protected def initQuereaseIo: AppQuereaseIo[Dto] = new AppQuereaseIo[Dto](FileCleanupSpecsQuerease)
+    def rt: ResourcesTemplate = resourcesTemplate
   }
+  val db: FileCleanupDbAccess = new FileCleanupDbAccess
 
   val attachmentsRootPath = {
     val slash = System.getProperty("file.separator")
@@ -362,9 +364,8 @@ object FileCleanupSpecsHelper {
     val statement = res.conn.createStatement
     try statements foreach { statement.execute } finally statement.close()
   }
-  class TestFileCleanup(db: DbAccess, fileStreamers: AppFileStreamerConfig*)
-      extends AppFileCleanup(db, fileStreamers: _*) with QuereaseProvider {
-    override protected def initQuerease = FileCleanupSpecsQuerease
+  class TestFileCleanup(qe: AppQuerease, res: Resources, fileStreamers: AppFileStreamerConfig*)
+      extends AppFileCleanup(qe, res, fileStreamers: _*) with QuereaseProvider {
     override implicit lazy val connectionPool: PoolName = TestCp
     override lazy val ageCheckSql: String = "now() - interval 1 day"
     override protected lazy val batchSizeOpt: Option[Int] = Some(1)
