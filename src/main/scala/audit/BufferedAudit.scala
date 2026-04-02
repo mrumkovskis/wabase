@@ -54,7 +54,12 @@ class BufferedAuditWriter(
   fileContentChangeNotificationsSource.runWith(Sink.ignore)     // XXX keep it alive - https://github.com/akka/akka/issues/28926
   private def getChannel = {
     if (channel == null) {
-      val file = new File(rootPath.toFile, filenamePrefix + filenameDateTime.format(Instant.now()))
+      val dir = rootPath.toFile
+      if (!dir.exists()) {
+        logger.warn(s"audit file path does not exist, creating '$dir' ...")
+        if (!dir.mkdirs()) sys.error(s"Failed to create audit file path '$dir'")
+      }
+      val file = new File(dir, filenamePrefix + filenameDateTime.format(Instant.now()))
       if (!file.createNewFile)
         sys.error("Failed to create file " + file)
       else
