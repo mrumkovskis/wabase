@@ -76,7 +76,7 @@ lazy val commonSettings = Seq(
       "org.graalvm.js"              % "js"                    % "22.3.5"            % Optional,
       "org.graalvm.js"              % "js-scriptengine"       % "22.3.5"            % Optional,
     ) ++ Seq( // for test
-      "org.scalatest"              %% "scalatest"             % "3.2.19"  %     Test,
+      "org.scalatest"              %% "scalatest"             % "3.2.20"  %     Test,
       "org.apache.pekko"           %% "pekko-http-testkit"    % pekkoHttpV%     Test,
       "org.apache.pekko"           %% "pekko-testkit"         % pekkoV    %     Test,
       "org.apache.pekko"           %% "pekko-stream-testkit"  % pekkoV    %     Test,
