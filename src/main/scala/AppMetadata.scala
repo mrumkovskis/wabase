@@ -1149,7 +1149,8 @@ class OpParser(viewName: String, tmd: TableMetadata, caches: OpParser.Caches)
   def setHttpHeadersOps: MemParser[List[SetHttpHeadersOp]] =
     rep(setCookie | deleteCookie | setHttpHeaders | setUserAttributes) named "set-http-headers-ops"
   def commit: MemParser[Commit.type] = "commit\\s*$".r ^^^ Commit named "commit-op"
-  def operation: MemParser[Op] = (commit | redirect | response | viewOp | confOp | uniqueOp |
+  def rollback: MemParser[Rollback.type] = "rollback\\s*$".r ^^^ Rollback named "rollback-op"
+  def operation: MemParser[Op] = (commit | rollback | redirect | response | viewOp | confOp | uniqueOp |
     httpOp | dbOp | foreachOp | ifElseOp | elseOp | resourceOp | fileOp | toFileOp | templateOp | emailOp |
     jsonCodecOp | httpHeaderOp | httpCookieOp | extractPartsOp | extractEntityOp |
     thisOp | bracesOp | invocationOp | tresqlOp) named "operation"
@@ -1438,6 +1439,7 @@ object AppMetadata extends Loggable {
     case class Else(action: Action) extends BlockOp
     case class Block(action: Action) extends BlockOp
     case object Commit extends Op
+    case object Rollback extends Op
 
     case class This(conformTo: Option[OpResultType] = None) extends Op
     /**
@@ -1459,7 +1461,7 @@ object AppMetadata extends Loggable {
       def traverse(state: T): PartialFunction[Op, T] = {
         case _: Tresql | _: RedirectToKey | _: Response |
              _: VariableTransforms | _: File | _: Conf | _: Cookie |
-             _: ExtractParts | _: This | _: Resource | Commit | null => state
+             _: ExtractParts | _: This | _: Resource | Commit | Rollback | null => state
         case o: ViewCall => opTrav(state)(o.data)
         case Unique(o, _, _) => opTrav(state)(o)
         case Foreach(o, a, foldOp) =>

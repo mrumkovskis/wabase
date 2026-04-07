@@ -1864,3 +1864,17 @@ post:
 - foreach {1 x}:
   - org.wabase.QuereaseActionTestManagerObj.businessException
 - 2
+
+
+name: rollback_test
+table: simple_table
+api: insert, get
+key: value
+fields:
+- id
+- value
+insert:
+- +simple_table{id = nextval('seq'), value = :value}
+- rollback
+get:
+- unique_opt simple_table[value = :value]{id, value}

@@ -1547,6 +1547,13 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     Future.successful(NoResult)
   }
 
+  protected def doRollback(resources: Resources): Future[QuereaseResult] = {
+    def rollback(c: Connection): Unit = Option(c).foreach(_.rollback())
+    rollback(resources.conn)
+    resources.extraResources.foreach { case (_, r) => rollback(r.conn) }
+    Future.successful(NoResult)
+  }
+
   protected def doThis(
     op: Action.This,
     scope: Scope,
@@ -1578,7 +1585,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case inv: Action.Invocation => doInvocation(inv, scope, context)
       case rtk: Action.RedirectToKey => doRedirectToKey(rtk, scope, context)
       case st: Action.Response => doResponse(st, scope, context)
-      case Action.Commit => doCommit(resources)
+      case Action.Commit    => doCommit(resources)
+      case Action.Rollback  => doRollback(resources)
       case cond: Action.If => doIf(cond, scope, context)
       case foreach: Action.Foreach => doForeach(foreach, scope, context)
       case resource: Action.Resource => doResource(resource, scope, context)

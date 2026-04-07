@@ -1903,6 +1903,15 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     } yield t1
   }
 
+  it should "rollback transaction" in {
+    for {
+      t1 <- doAction("insert", "rollback_test", Map("value" -> "rollback_test_value"))
+        .map { _ shouldBe NoResult }
+      t2 <- doAction("get", "rollback_test", Map(), keyValues = Seq("rollback_test_value"))
+        .map { _ shouldBe NoResult }
+    } yield t2
+  }
+
   behavior of "Save operation with dynamically generated deep nesting"
 
   it should "attempt to process a very deep structure and observe behavior" in {
