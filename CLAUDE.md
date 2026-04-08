@@ -25,8 +25,8 @@ sbt test
 # Run a single test class
 sbt "testOnly org.wabase.CrudServiceSpecs"
 
-# Run a specific test by name
-sbt "testOnly org.wabase.CrudServiceSpecs -- -t \"test name here\""
+# Run a specific test by name (use single quotes; FlatSpec test name includes the subject, e.g. "actions should rollback transaction")
+sbt 'testOnly org.wabase.CrudServiceSpecs -- -t "<subject (value of behavior of)> should <test name here>"'
 
 # Run integration tests
 sbt "it/test"
