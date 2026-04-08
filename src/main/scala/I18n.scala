@@ -1,18 +1,12 @@
 package org.wabase
 
 import io.bullet.borer.Json
-import org.apache.pekko.http.scaladsl.marshalling.{Marshaller, ToEntityMarshaller, ToResponseMarshallable}
+import org.apache.pekko.http.scaladsl.marshalling.{Marshaller, ToEntityMarshaller}
 import org.apache.pekko.http.scaladsl.model.MediaTypes.`application/json`
-import org.apache.pekko.http.scaladsl.model.headers.{HttpCookie, SameSite}
-import org.apache.pekko.http.scaladsl.model.{HttpEntity, HttpRequest, HttpResponse, Uri}
-import org.apache.pekko.http.scaladsl.server.{LanguageNegotiator, PathMatcher}
-import org.apache.pekko.http.scaladsl.server.PathMatchers._
-import org.apache.pekko.http.scaladsl.model.StatusCodes
-import org.apache.pekko.http.scaladsl.model.Uri.Path
+import org.apache.pekko.http.scaladsl.model.{HttpEntity, HttpRequest}
+import org.apache.pekko.http.scaladsl.server.LanguageNegotiator
 
-import java.nio.charset.StandardCharsets
 import java.util.{Collections, Locale, PropertyResourceBundle, ResourceBundle}
-import scala.concurrent.Future
 import scala.jdk.CollectionConverters._
 import scala.util.Try
 
@@ -122,34 +116,6 @@ trait I18n {
 
 object I18nService {
   val ApplicationLanguageCookiePostfix = config.getString("app.language-cookie-postfix")
-
-  def setLanguage(lang: String, resp: HttpResponse): HttpResponse = {
-    WabaseService.setCookie(resp)(
-      HttpCookie(AppServiceBase.ApplicationStateCookiePrefix + ApplicationLanguageCookiePostfix,
-        value = lang,
-        path = Some("/")
-      ).withSameSite(SameSite.Lax)
-    )
-  }
-
-  def i18nTranslate(name: String, key: String, params: String, ctx: WabaseRequestContext): Future[HttpResponse] = {
-    implicit val locale = applicationLocale(ctx.applicationState)
-    val paramsSeq   = Option(params).map(Uri.Path.apply(_, StandardCharsets.UTF_8)).map(WabaseService.pathSegments).getOrElse(Nil)
-    val translation = ctx.wabase.translateFromBundle(name, key, paramsSeq: _*)
-    WabaseService.complete(ctx, translation)
-  }
-
-  def i18nResources(ctx: WabaseRequestContext): Future[HttpResponse] = {
-    implicit val locale = applicationLocale(ctx.applicationState)
-    val res = ctx.wabase.i18nResources
-    WabaseService.complete(ctx, res)
-  }
-
-  def i18nResourcesFromBundle(bundleName: String, ctx: WabaseRequestContext): Future[HttpResponse] = {
-    implicit val locale = applicationLocale(ctx.applicationState)
-    val translation = ctx.wabase.i18nResourcesFromBundle(bundleName)
-    WabaseService.complete(ctx, translation)
-  }
 
   def currentLangFromHeader(request: HttpRequest): Option[String] = {
     LanguageNegotiator(request.headers)
