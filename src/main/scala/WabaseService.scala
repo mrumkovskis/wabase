@@ -9,7 +9,7 @@ import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.marshalling.{Marshal, ToResponseMarshallable}
 import org.apache.pekko.http.scaladsl.model.headers.{Cookie, EntityTag, HttpCookie, `Set-Cookie`, `Timeout-Access`}
 import org.apache.pekko.http.scaladsl.model.HttpCharsets.`UTF-8`
-import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes, DateTime, HttpEntity, HttpHeader, HttpMessage, HttpMethods, HttpRequest, HttpResponse, StatusCode, StatusCodes, Uri, MediaType => PekkoMediaType}
+import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes, DateTime, HttpEntity, HttpHeader, HttpMessage, HttpRequest, HttpResponse, StatusCode, StatusCodes, Uri, MediaType => PekkoMediaType}
 import org.apache.pekko.http.scaladsl.server.directives.ContentTypeResolver
 import org.apache.pekko.http.scaladsl.server.directives.FileAndResourceDirectives.ResourceFile
 import org.apache.pekko.http.scaladsl.unmarshalling.Unmarshaller
@@ -232,12 +232,6 @@ object WabaseService extends Loggable {
     }
   }
 
-  def doRequest(handlerName: String, ctx: WabaseRequestContext): Future[HttpResponse] = {
-    val (cn, fn) = classNameFunctionName(handlerName)
-    val key = WabaseService.key(ctx.req.uri.path, handlerName)
-    buildRequestHandler(cn, fn, Nil, null)(ctx.copy(key = key))
-  }
-
   def pathMatchedGroups(ctx: WabaseRequestContext): Option[List[String]] = {
     ctx.route.path.unapplySeq(toReadableString(ctx.req.uri.path))
   }
@@ -423,31 +417,6 @@ object WabaseService extends Loggable {
         addResultFilter(ctxWithViewAndState, params)
       else ctxWithViewAndState
     dwa(ctxWithViewAndStateAndFilter, params)
-  }
-
-  def doActionWithKeyToPath(view_action: String, reqCtx: WabaseRequestContext): Future[HttpResponse] = {
-    doAction(view_action, keyFromQueryToPath(reqCtx))
-  }
-
-  def startJob(jobName: String, ctx: WabaseRequestContext): Future[HttpResponse] = {
-    implicit val ec: ExecutionContext = ctx.as.dispatcher
-    for {
-      params <- if (ctx.req.method == HttpMethods.POST) {
-        (if (ctx.req.entity.isKnownEmpty()) Future.successful(Map[String, Any]()) else toMapEntityDecoder(ctx))
-          .map(_ ++ ctx.req.uri.query().toMap)
-      } else Future.failed(HttpException(StatusCodes.MethodNotAllowed))
-      result <- AppQuerease.startJob(jobName, params)(ctx.as, ctx.as.dispatcher, ctx.wabase.qio)
-    } yield {
-      val code: StatusCode = result
-      code match {
-        case StatusCodes.OK => okResponse
-        case StatusCodes.Conflict =>
-          HttpResponse(status = code, entity = HttpEntity(s"Job '$jobName' is already running."))
-        case StatusCodes.NotFound =>
-          HttpResponse(status = code, entity = HttpEntity(s"Job not found: '${ctx.wabase.sanitizedViewName(jobName)}'"))
-        case x => HttpResponse(status = x)
-      }
-    }
   }
 
   def withReqMaxContentSize(ctx: WabaseRequestContext): WabaseRequestContext = {
