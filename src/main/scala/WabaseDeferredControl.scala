@@ -1,11 +1,9 @@
 package org.wabase
 
-import io.bullet.borer.Json
 import org.apache.pekko.actor.{ActorSystem, Props}
-import org.apache.pekko.http.scaladsl.model.{ContentTypes, HttpEntity, HttpRequest, HttpResponse, StatusCodes, Uri}
+import org.apache.pekko.http.scaladsl.model.{HttpRequest, HttpResponse, StatusCodes, Uri}
 import org.apache.pekko.http.scaladsl.server.PathMatcher.Matched
 import org.apache.pekko.http.scaladsl.server.PathMatchers._
-import org.apache.pekko.util.ByteString
 import org.wabase.DeferredControl.`X-Deferred`
 import org.wabase.WabaseService.{RequestHandler, Wabase}
 import org.wabase.ds.QueryTimeout
@@ -92,38 +90,6 @@ object WabaseDeferredControl extends WabaseDeferredControlFactory {
     } getOrElse(QueryTimeout(config.getDuration("jdbc.query-timeout").toSeconds.toInt))
   }
 
-  /** Enable deferred processing for handler. */
-  def maybeDeferred(innerHandler: RequestHandler): RequestHandler = ctx => {
-    if (isDeferredPath(ctx.req.uri) || hasDeferredHeader(ctx.req)) {
-      doDeferred(innerHandler)(ctx)
-    } else innerHandler(ctx)
-  }
-
-  private def user_(ctx: WabaseRequestContext): String =
-    Option(ctx.user).map(_.name).filter(_ != null).getOrElse("(anonymous)")
-
-  def doDeferred(handler: RequestHandler): RequestHandler = ctx => {
-    require(ctx.deferred.deferredControl != null, "Cannot do deferred request. Deferred module not initialized.")
-    val timeout = extractTimeout(ctx, ctx.req)
-    val dctx = ctx.copy(queryTimeout = timeout)
-    val user = user_(dctx)
-    val hash = DeferredControl.requestHash(user, dctx.req, WabaseAuthentication.removeSessionInfoFromRequest)
-    val deferredCtx = DeferredControl.DeferredContext(user, hash, dctx, handler)
-    ServerNotifications
-      .publishMessages(EventMessage(DeferredControl.DeferredRequestArrived(dctx.deferred.deferredModule), deferredCtx))
-    Future.successful(HttpResponse(
-      status = StatusCodes.Accepted,
-      entity = HttpEntity.Strict(ContentTypes.`application/json`,
-        ByteString(Json.encode(Map("deferred" -> hash)).toUtf8String))
-    ))
-  }
-
-  /** Get deferred request result */
-  def deferredResult(deferred_id: String, ctx: WabaseRequestContext): Future[HttpResponse] = {
-    require(ctx.deferred.deferredControl != null,
-      s"Cannot retrieve deferred result $deferred_id, deferred module not initialized.")
-    Future.successful(ctx.deferred.deferredControl.deferredResult(deferred_id, user_(ctx)))
-  }
 }
 
 trait DeferredStorageFactory {
