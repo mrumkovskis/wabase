@@ -7,6 +7,7 @@ import org.mojoz.querease.{ValidationException, ValidationResult}
 import org.tresql.MissingBindVariableException
 import org.wabase.AppServiceBase.AppExceptionHandler.PostgresTimeoutExceptionHandler
 import org.wabase.AppServiceBase.AppExceptionHandler.PostgresTimeoutExceptionHandler.{TimeoutFriendlyMessage, TimeoutSignature}
+import org.wabase.handlers.CSRFException
 
 import java.sql.SQLException
 import java.util.Locale

@@ -9,6 +9,7 @@ import org.apache.pekko.util.ByteString
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import org.wabase.WabaseService.MediaTypes
+import org.wabase.handlers.CSRFException
 
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{Await, ExecutionContext, Future}

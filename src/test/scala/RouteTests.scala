@@ -1,14 +1,13 @@
 package org.wabase
 
-import org.apache.pekko.actor.ActorSystem
-import org.apache.pekko.http.scaladsl.model.{HttpRequest, StatusCodes}
-import org.apache.pekko.http.scaladsl.model.headers.HttpOrigin
+import org.apache.pekko.http.scaladsl.model.StatusCodes
 import org.apache.pekko.http.scaladsl.testkit.ScalatestRouteTest
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers
 import org.apache.pekko.http.scaladsl.server.Directives._
 import org.apache.pekko.http.scaladsl.server.{ExceptionHandler, Route}
 import org.scalatest.Inspectors.forAll
+import org.wabase.handlers.{CSRFException, CSRFHandlers}
 
 
 class RouteTests extends FlatSpec with Matchers with ScalatestRouteTest {
@@ -266,13 +265,13 @@ class RouteTests extends FlatSpec with Matchers with ScalatestRouteTest {
     val route2 = Route.seal(service.checkCSRFToken {
       complete("OK")
     })
-    Get("/") ~> Cookie(service.CSRFCookieName -> "abc") ~> RawHeader(service.CSRFHeaderName, "abc") ~>
+    Get("/") ~> Cookie(CSRFHandlers.CSRFCookieName -> "abc") ~> RawHeader(CSRFHandlers.CSRFHeaderName, "abc") ~>
       route2 ~> check(csrfOk)
-    Get("/") ~> Cookie(service.CSRFCookieName -> "abc") ~> RawHeader(service.CSRFHeaderName, "123") ~>
+    Get("/") ~> Cookie(CSRFHandlers.CSRFCookieName -> "abc") ~> RawHeader(CSRFHandlers.CSRFHeaderName, "123") ~>
       route2 ~> check(csrfErr(List("does not match")))
-    Get("/") ~> Cookie(service.CSRFCookieName -> "abc") ~>
+    Get("/") ~> Cookie(CSRFHandlers.CSRFCookieName -> "abc") ~>
       route2 ~> check(csrfErr(List("X-XSRF-TOKEN header")))
-    Get("/") ~> RawHeader(service.CSRFHeaderName, "123") ~>
+    Get("/") ~> RawHeader(CSRFHandlers.CSRFHeaderName, "123") ~>
       route2 ~> check(csrfErr(List("XSRF-TOKEN cookie")))
   }
 }

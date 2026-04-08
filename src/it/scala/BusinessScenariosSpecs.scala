@@ -5,7 +5,7 @@ import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.Http
 import org.apache.pekko.http.scaladsl.client.RequestBuilding.Post
 import org.apache.pekko.http.scaladsl.model._
-import org.apache.pekko.http.scaladsl.model.headers.EntityTag
+import org.apache.pekko.http.scaladsl.model.headers.{EntityTag, HttpCookie}
 import org.apache.pekko.http.scaladsl.model.ws.{Message, TextMessage, WebSocketRequest}
 import org.apache.pekko.http.scaladsl.unmarshalling.Unmarshal
 import org.apache.pekko.stream.scaladsl.{Flow, Keep, Sink, Source}
@@ -70,6 +70,8 @@ object BusinessScenariosSpecs extends Loggable {
     coll.map(Integer.valueOf).toArray[java.lang.Integer]
   }
   def toStringArray(coll: Seq[String]): Array[String] = coll.toArray[String]
+
+  def identityCsrfCookieTransformer(cookie: HttpCookie): HttpCookie = cookie
 }
 
 object ScriptValidations {

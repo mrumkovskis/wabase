@@ -32,6 +32,7 @@ import org.apache.pekko.util.ByteString
 import org.mojoz.querease.{ValidationException, ValidationResult}
 import org.wabase.ds.ConnectionPools.DefaultQueryTimeout
 import org.wabase.ds.QueryTimeout
+import org.wabase.handlers.CSRFException
 
 import java.lang.reflect.InvocationTargetException
 import scala.util.{Failure, Success}
