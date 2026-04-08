@@ -5,17 +5,12 @@ import io.bullet.borer.derivation.MapBasedCodecs._
 import ResultEncoder._
 import JsonEncoder._
 import io.bullet.borer.compat.pekko._
-import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.model.RemoteAddress.Unknown
-import org.apache.pekko.http.scaladsl.model.{AttributeKey, AttributeKeys, HttpRequest, HttpResponse, RemoteAddress, StatusCodes}
+import org.apache.pekko.http.scaladsl.model.{AttributeKey, AttributeKeys, HttpRequest, HttpResponse, RemoteAddress}
 import org.apache.pekko.http.scaladsl.server.directives.AuthenticationDirective
-import org.apache.pekko.http.scaladsl.unmarshalling.Unmarshal
-import org.apache.pekko.http.scaladsl.model.headers.{BasicHttpCredentials, HttpCookie, HttpCredentials, OAuth2BearerToken, SameSite, `Remote-Address`, `User-Agent`, `X-Forwarded-For`, `X-Real-Ip`}
+import org.apache.pekko.http.scaladsl.model.headers.{HttpCookie, HttpCredentials, SameSite, `Remote-Address`, `User-Agent`, `X-Forwarded-For`, `X-Real-Ip`}
 import org.apache.pekko.util.ByteString
-import org.wabase.WabaseService.RequestHandler
-import org.wabase.WabaseUnmarshallers.mapUnmarshaller
 
-import scala.concurrent.{ExecutionContext, Future}
 import scala.util.control.NonFatal
 
 
@@ -87,58 +82,6 @@ object WabaseAuthentication extends Authentication[WabaseUser] {
       .getOrElse(ctx)
   }
 
-  def checkRole(role: String)(ctx: WabaseRequestContext): WabaseRequestContext = {
-    if (ctx.user == null) throw HttpException(StatusCodes.Unauthorized)
-    else if (ctx.wabase.hasRole(ctx.user, Set(role))) ctx
-    else throw HttpException(StatusCodes.Forbidden)
-  }
-
-  def authenticatePlusSession(innerHandler: RequestHandler): RequestHandler =
-    authenticateDomainAndPathPlusSession(null, SessionCookiePath)(innerHandler)
-
-
-  def authenticatePlusSessionOpt(innerHandler: RequestHandler): RequestHandler =
-    authenticateDomainAndPathPlusSessionOpt(null, SessionCookiePath)(innerHandler)
-
-  def authenticateDomainAndPathPlusSession(domain: String, path: String)(
-    innerHandler: RequestHandler): RequestHandler = ctx => {
-    val user = appAuthenticate(ctx.req)
-    innerHandler(ctx.copy(user = user))
-      .map(setDomainAndPathSessionCookieOpt(domain, path)(ctx.req, user, _))(ctx.as.dispatcher)
-  }
-
-  def authenticateDomainAndPathPlusSessionOpt(domain: String, path: String)(
-    innerHandler: RequestHandler): RequestHandler = ctx => {
-    val ctxWithUser = appAuthenticateOpt(ctx)
-    innerHandler(ctxWithUser)
-      .map(setDomainAndPathSessionCookieOpt(domain, path)(ctx.req, ctxWithUser.user, _))(ctxWithUser.as.dispatcher)
-  }
-
-  // cannot name setSessionCookie because setSessionCookie from super trait appears from reflection to be member of this object
-  def setAppSessionCookie(req: HttpRequest, user: WabaseUser, resp: HttpResponse): HttpResponse =
-    setDomainAndPathSessionCookie(null, SessionCookiePath)(req, user, resp)
-
-  def setAppSessionCookieOpt(req: HttpRequest, user: WabaseUser, resp: HttpResponse): HttpResponse =
-    setDomainAndPathSessionCookieOpt(null, SessionCookiePath)(req, user, resp)
-
-  def setDomainAndPathSessionCookie(domain: String, path: String)(
-    req: HttpRequest, user: WabaseUser, resp: HttpResponse): HttpResponse = {
-    if (resp.status.isSuccess)
-      WabaseService.setCookie(resp)(
-        sessionCookie(encryptedSession(req, mergeReqRespUserData(user, resp)), domain, path)
-      )
-    else resp
-  }
-
-  def setDomainAndPathSessionCookieOpt(domain: String, path: String)(
-    req: HttpRequest, user: WabaseUser, resp: HttpResponse): HttpResponse = {
-    if (resp.status.isSuccess && user != null)
-      WabaseService.setCookie(resp)(
-        sessionCookie(encryptedSession(req, mergeReqRespUserData(user, resp)), domain, path)
-      )
-    else resp
-  }
-
   def session(req: HttpRequest): Option[String] = WabaseService.optionalCookie(req)(SessionCookieName)
 
   def setAnonSessionCookie(resp: HttpResponse): HttpResponse = {
@@ -167,29 +110,11 @@ object WabaseAuthentication extends Authentication[WabaseUser] {
       secure = secureCookies
     ).withSameSite(SameSite.Lax)
 
-  /* Response transformer */
-  def removeAppSessionCookie(resp: HttpResponse): HttpResponse =
-    WabaseService.deleteCookie(resp)(SessionCookieName, path = SessionCookiePath)
-
   def httpCredentials: HttpRequest => Option[HttpCredentials] = WabaseService.optionalHttpHeaderValuePF(_) {
     case org.apache.pekko.http.scaladsl.model.headers.Authorization(credentials) => credentials
   }
 
-  def extractBasicHttpCredentials(req: HttpRequest): WabaseUser = WabaseService.optionalHttpHeaderValuePF(req) {
-    case org.apache.pekko.http.scaladsl.model.headers.Authorization(BasicHttpCredentials(usr, pwd)) =>
-      WabaseUser(Map(WabaseAppConfig.UserCredentialsParameterName -> Map("username" -> usr, "password" -> pwd)))
-  }.getOrElse(throw new AuthenticationException("Credentials required"))
-
-  def extractFormDataCredentials(req: HttpRequest)(implicit ec: ExecutionContext, as: ActorSystem): Future[WabaseUser] =
-    Unmarshal(req.entity).to[Map[String, Any]].map { formData =>
-      WabaseUser(Map(WabaseAppConfig.UserCredentialsParameterName -> formData))
-    }
-
   lazy val jwtDecoder = new JwtDecoder(config.getConfig("jwt-decoder"))
-  def extractJwtTokenCredentials(req: HttpRequest): WabaseUser = WabaseService.optionalHttpHeaderValuePF(req) {
-    case org.apache.pekko.http.scaladsl.model.headers.Authorization(OAuth2BearerToken(jwtToken: String)) =>
-      WabaseUser(Map(WabaseAppConfig.UserCredentialsParameterName -> jwtDecoder.decodeToMap(jwtToken)))
-  }.getOrElse(throw new AuthenticationException("Credentials required"))
 
   override def signInUser: AuthenticationDirective[WabaseUser] = ???
 }
