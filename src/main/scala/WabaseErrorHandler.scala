@@ -17,7 +17,7 @@ object WabaseErrorHandler {
   private val dbConstraintMessageBuilder = DbConstraintMessage.PostgreSqlConstraintMessageBuilder
   def errorHandler(ctx: WabaseRequestContext): WabaseService.ErrorHandler = {
     def debug(msg: String, e: Throwable) = ctx.logger.debug(s"[${ctxDebugInfo(ctx)}] $msg".trim, e)
-    def applicationLocale = I18nService.applicationLocale(ApplicationStateExtractor.extractState(ctx))
+    def applicationLocale = I18nService.applicationLocale(handlers.RequestHandlers.extractState(ctx))
     def friendlyConstraintErrorMessageResponse(exception: Throwable, sqlCause: SQLException, viewDefOpt: Option[ViewDef], tableName: String) = {
       import ctx.wabase.qe.tableMetadata
       dbConstraintMessageBuilder.friendlyMessageAndDetails(exception, sqlCause, viewDefOpt, tableName, tableMetadata.tableDefOption) match {

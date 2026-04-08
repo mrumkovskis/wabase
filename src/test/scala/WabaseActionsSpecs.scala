@@ -1770,7 +1770,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         )
       header("header1") shouldBe Some(HttpHeader.parse("header1", "value1").asInstanceOf[Ok].header)
       header("header2") shouldBe Some(HttpHeader.parse("header2", "value2").asInstanceOf[Ok].header)
-      response.attribute(AttributeKey[WabaseUser](WabaseService.WabaseUserAttributeName)) shouldBe Some(WabaseUser(Map("attr1" -> "val1", "attr2" -> "val2")))
+      response.attribute(AttributeKey[WabaseUser](WabaseAuthentication.WabaseUserAttributeName)) shouldBe Some(WabaseUser(Map("attr1" -> "val1", "attr2" -> "val2")))
     }
     Get("/set_headers_test2") ~> route ~> check {
       headers.collect {

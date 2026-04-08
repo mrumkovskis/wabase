@@ -20,6 +20,7 @@ class AuthorizationException(msg: String) extends Exception(msg)
 object WabaseAuthentication extends Authentication[WabaseUser] {
 
   type Session = Authentication.Session[WabaseUser]
+  val WabaseUserAttributeName = "wabase-user"
 
   implicit val userCodec: Codec[WabaseUser] = {
     implicit val userMapDecoder: Decoder[Map[String, Any]] =
@@ -91,7 +92,7 @@ object WabaseAuthentication extends Authentication[WabaseUser] {
   def sessionId: String = java.util.UUID.randomUUID().toString
 
   def optUserFromRespAttributes(resp: HttpResponse): Option[WabaseUser] =
-    resp.attribute(AttributeKey[WabaseUser](WabaseService.WabaseUserAttributeName))
+    resp.attribute(AttributeKey[WabaseUser](WabaseUserAttributeName))
 
   def mergeReqRespUserData(reqUser: WabaseUser, resp: HttpResponse) =
     optUserFromRespAttributes(resp).map { u =>

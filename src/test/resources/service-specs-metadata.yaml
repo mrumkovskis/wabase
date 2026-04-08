@@ -82,7 +82,7 @@ do:       staticResources('static_resources', $1)
 
 # deep nested structure decoding for view
 on:       POST PUT /deep-nested-view/(.+)
-do:       org.wabase.WabaseService.viewActionKey($1) org.wabase.WabaseService.toMapForViewEntityDecoder
+do:       org.wabase.handlers.RequestHandlers.viewActionKey($1) org.wabase.WabaseService.toMapForViewEntityDecoder
 
 on:       POST PUT /deep-nested-data
 do:       org.wabase.WabaseService.toMapEntityDecoder

@@ -337,7 +337,7 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
       }
       def setUserAttrs(resp: HttpResponse) =
         if (str.user != null)
-          resp.withAttributes(Map(AttributeKey[WabaseUser](WabaseService.WabaseUserAttributeName) -> str.user))
+          resp.withAttributes(Map(AttributeKey[WabaseUser](WabaseAuthentication.WabaseUserAttributeName) -> str.user))
         else resp
       setUserAttrs(setHeaders(response)).withStatus(str.code)
     }
