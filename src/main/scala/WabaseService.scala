@@ -242,41 +242,6 @@ object WabaseService extends Loggable {
     ctx.route.path.unapplySeq(toReadableString(ctx.req.uri.path))
   }
 
-  def api(ctx: WabaseRequestContext): HttpResponse = {
-    val json = ctx.wabase._api(ctx.user)
-    HttpResponse(entity = HttpEntity(ContentTypes.`application/json`, ResultEncoder.encodeAnyToJsonByteString(json)))
-  }
-
-  def metadata(viewName: String, ctx: WabaseRequestContext): RequestHandler = {
-    conditional(EntityTag(ctx.wabase.app.metadataVersionString), DateTime(ctx.wabase.app.startupTimeMillis), _ => {
-      implicit val user:  WabaseUser       = ctx.user
-      implicit val state: ApplicationState = ctx.applicationState
-      import ctx.wabase
-      val json = if (viewName == "*") wabase._apiMetadata else wabase._metadata(viewName)
-      Future.successful(
-        HttpResponse(entity = HttpEntity(ContentTypes.`application/json`, ResultEncoder.encodeAnyToJsonByteString(json)))
-      )
-    })
-  }
-
-  def generateSwaggerJson(ctx: WabaseRequestContext): RequestHandler = {
-    conditional(EntityTag(ctx.wabase.app.metadataVersionString), DateTime(ctx.wabase.app.startupTimeMillis), _ => {
-      Future.successful {
-        val generator = swaggerGeneratorFactory.createSwaggerGenerator(ctx)
-        HttpResponse(entity = HttpEntity(MediaTypes.`application/json`, generator.generateSwaggerJson))
-      }
-    })
-  }
-
-  def generateSwaggerYaml(ctx: WabaseRequestContext): RequestHandler = {
-    conditional(EntityTag(ctx.wabase.app.metadataVersionString), DateTime(ctx.wabase.app.startupTimeMillis), _ => {
-      Future.successful {
-        val generator = swaggerGeneratorFactory.createSwaggerGenerator(ctx)
-        HttpResponse(entity = HttpEntity(MediaTypes.`application/yaml`, generator.generateSwaggerYaml))
-      }
-    })
-  }
-
   def conditionsFor(length: Long, lastModified: Long): (Option[EntityTag], Option[DateTime]) = {
     // extractSettings.flatMap(settings =>
       // if (settings.fileGetConditional) {
