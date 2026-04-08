@@ -3,7 +3,8 @@ package org.wabase.handlers
 import org.apache.pekko.http.scaladsl.marshalling.Marshal
 import org.apache.pekko.http.scaladsl.model.{HttpEntity, HttpMethods, HttpResponse, StatusCode, StatusCodes}
 import org.wabase._
-import org.wabase.WabaseService.{addResultFilter, error, okResponse, toMapForViewEntityDecoder, withReqMaxContentSize, withReqTimeout}
+import org.wabase.WabaseService.{addResultFilter, error, toMapForViewEntityDecoder, withReqMaxContentSize, withReqTimeout}
+import org.wabase.handlers.ResponseHandlers.okResponse
 import org.wabase.handlers.RequestHandlers.viewActionKey
 
 import scala.concurrent.{ExecutionContext, Future}

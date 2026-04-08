@@ -9,11 +9,7 @@ import org.apache.pekko.http.scaladsl.marshalling.ToResponseMarshallable
 import org.apache.pekko.http.scaladsl.model.headers.{Cookie, EntityTag, HttpCookie, `Set-Cookie`, `Timeout-Access`}
 import org.apache.pekko.http.scaladsl.model.HttpCharsets.`UTF-8`
 import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes, DateTime, HttpEntity, HttpHeader, HttpMessage, HttpRequest, HttpResponse, StatusCode, StatusCodes, Uri, MediaType => PekkoMediaType}
-import org.apache.pekko.http.scaladsl.server.directives.ContentTypeResolver
-import org.apache.pekko.http.scaladsl.server.directives.FileAndResourceDirectives.ResourceFile
 import org.apache.pekko.http.scaladsl.unmarshalling.Unmarshaller
-import org.apache.pekko.stream.scaladsl.StreamConverters
-import org.apache.pekko.util.ByteString
 import org.mojoz.metadata.ViewDef
 import org.slf4j.LoggerFactory
 import org.tresql.parsing.QueryParsers
@@ -157,18 +153,7 @@ object WabaseService extends Loggable {
     } catch { case NonFatal(e) => errorHandler(e) }
   }
 
-  val okResponse: HttpResponse = HttpResponse(StatusCodes.OK)
   val notFound: HttpResponse = HttpResponse(status = StatusCodes.NotFound)
-  def statusResponse(statusCode: Int): HttpResponse = HttpResponse(statusCode)
-  def statusAndTextResponse(statusCode: Int, text: String): HttpResponse = HttpResponse(statusCode, entity = text)
-  def responseWithContentType(statusCode: Int, contentType: String, content: String): HttpResponse = {
-    val ent = ContentType.parse(contentType)
-      .toOption.getOrElse(sys.error(s"Invalid content type: $contentType")) match {
-      case ct: ContentType.NonBinary => HttpEntity(contentType = ct, string = content)
-      case ct => HttpEntity(contentType = ct, data = ByteString(content))
-    }
-    HttpResponse(statusCode, entity = ent)
-  }
 
   def optionalHttpHeaderValue[T](msg: HttpMessage)(extractorF: HttpHeader => Option[T]): Option[T] = {
     msg.headers.collectFirst(Function.unlift(extractorF))
@@ -246,27 +231,6 @@ object WabaseService extends Loggable {
     else innerHandler
   }
   private val classLoader = this.getClass.getClassLoader
-  def getFromResource(resourcesRootPath: String, resourcePathAndName: String): RequestHandler = {
-    val resourceName = s"${resourcesRootPath}${resourcePathAndName}"
-    val contentType = ContentTypeResolver.Default(resourceName)
-    if (!resourceName.endsWith("/"))
-        Option(classLoader.getResource(resourceName)).flatMap(ResourceFile.apply) match {
-          case Some(ResourceFile(url, length, lastModified)) =>
-            conditionalFor(length, lastModified, _ => {
-              if (length > 0) {
-                // TODO withRangeSupportAndPrecompressedMediaTypeSupport {
-                Future.successful(
-                  HttpResponse(entity =
-                    HttpEntity.Default(contentType, length,
-                      StreamConverters.fromInputStream(() => url.openStream()))
-                  )
-                )
-              } else Future.successful(HttpResponse(entity = HttpEntity.Empty))
-            })
-          case _ => (_: WabaseRequestContext) => Future.successful(HttpResponse(StatusCodes.NotFound)) // not found or directory
-        }
-    else (_: WabaseRequestContext) => Future.successful(HttpResponse(StatusCodes.NotFound))
-  }
 
   /** Extract segments as list from path after segment matching prefix */
   def key(path: Path, prefix: String): Seq[String] = {
