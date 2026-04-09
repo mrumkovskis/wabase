@@ -63,7 +63,7 @@ class WabaseSwaggerGenerator(
   def specVersion: SpecVersion = SpecVersion.V31
 
   val marshalKeyAsJson: Boolean =
-    Option("app.marshal_key_as_json").filter(config.hasPath).map(config.getBoolean).getOrElse(true)
+    Option("app.marshal_key_as_json").filter(config.hasPath).forall(config.getBoolean)
 
   def swaggerConfig: OpenAPI = {
     val swagger = new OpenAPI()
