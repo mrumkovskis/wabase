@@ -329,7 +329,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     )
     recoverToExceptionIf[ValidationException](
       doAction("save", "purchase", purchase)
-    ).map(_.details should be(List(ValidationResult(Nil, List("Pardon, customer 'Ravus' is not vaccinated...")))))
+    ).map(_.details should be(List(ValidationResult(List("is_vaccinated"), List("Pardon, customer 'Ravus' is not vaccinated...")))))
   }
 
   it should "fail purchase due to insufficient funds" in {
@@ -361,7 +361,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
           doAction("save", "purchase", purchase)
         }
       }
-    ).map(_.details should be(List(ValidationResult(Nil, List("Insufficient funds, available (0.00)")))))
+    ).map(_.details should be(List(ValidationResult(List("has_funds"), List("Insufficient funds, available (0.00)")))))
   }
 
   it should "make purchase" in {

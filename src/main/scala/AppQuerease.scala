@@ -493,9 +493,9 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           case SetEnv(_, vts, op, _) => doActionStep(vts, op)
           case Return(_, vts, op) => doActionStep(vts, op)
           case RemoveVar(name) => Future.successful(stepScope.data - name.get) map MapResult
-          case Validations(_, validations, db) =>
+          case validations: Action.Validations =>
             context.view.map { vd =>
-              Future(doValidationStep(validations, db, scopeBindVars(stepScope), vd))
+              Future(doValidationStep(validations, scopeBindVars(stepScope), vd))
                 .map(_ => MapResult(stepScope.data))
             }.getOrElse(Future.failed(
               new RuntimeException(s"Validation cannot be performed without view in context -" +
@@ -579,18 +579,21 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     }
   }
 
-  protected def doValidationStep(validations: Seq[String],
-                                 dbkey: Option[DbAccessKey],
+  protected def doValidationStep(validations: Action.Validations,
                                  params: Map[String, Any],
                                  view: ViewDef)(implicit res: Resources): Unit = {
-    validationsQueryString(view, validations) foreach { vs =>
+    validationsQueryString(view, validations.validations) foreach { vs =>
       useResourcesConnOrEvaluator(res, r =>
-        Query(dbkey.flatMap(k => Option(k.db)).map("|" + _ + ":").mkString("", "", vs), toSaveableMap(params, view))(r))
+        Query(validations.db.flatMap(k => Option(k.db))
+          .map("|" + _ + ":").mkString("", "", vs), toSaveableMap(params, view))(r))
         .map(_.s("msg"))
         .filter(_ != null).filter(_ != "")
         .toList match {
         case messages if messages.nonEmpty =>
-          throw new ValidationException(messages.mkString("\n"), List(ValidationResult(Nil, messages)))
+          throw new ValidationException(
+            messages.mkString("\n"),
+            List(ValidationResult(validations.name.toList, messages))
+          )
         case _ =>
       }
     }

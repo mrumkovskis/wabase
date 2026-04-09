@@ -281,14 +281,14 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
     p.beneficiary = "AAA"
     recoverToExceptionIf[ValidationException] {
       doAction("payment", "save", p.toMap(querease), Map())
-    }.map(_.details should be(List(ValidationResult(Nil,
+    }.map(_.details should be(List(ValidationResult(List("amount"),
       List("Wrong amount 0. Amount must be greater than 0")
     )))).flatMap { _ =>
       p.originator = "BBB"
       p.amount = 10
       recoverToExceptionIf[ValidationException] {
         doAction("payment", "save", p.toMap(querease), Map())
-      }.map(_.details should be(List(ValidationResult(Nil,
+      }.map(_.details should be(List(ValidationResult(List("balance"),
         List("Insufficient funds for account 'BBB'")
       ))))
     }
@@ -432,7 +432,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
       Map("current_person" -> "Gunzagi", "vaccine" -> "AstraZeneca", "manipulation_date" -> java.sql.Date.valueOf("2021-06-05"))
     recoverToExceptionIf[ValidationException] {
       doAction("person_health_priv", "save", m, Map())
-    }.map(_.details should be (List(ValidationResult(Nil, List("Person 'Gunzagi' must be registered")))))
+    }.map(_.details should be (List(ValidationResult(List("check_person"), List("Person 'Gunzagi' must be registered")))))
   }
 
   it should "register person health data" in {
@@ -480,7 +480,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
   it should "switch db context when calling action on another view" in {
     recoverToExceptionIf[ValidationException] {
       doAction("db_context_person", "update", Map("id" -> 0), Map())
-    }.map(_.details should be (List(ValidationResult(Nil, List("Person health record to be updated must exist")))))
+    }.map(_.details should be (List(ValidationResult(List("check_health_exists"), List("Person health record to be updated must exist")))))
   }
 
 

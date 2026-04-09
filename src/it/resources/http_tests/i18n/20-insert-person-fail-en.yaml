@@ -3,4 +3,4 @@ method:     PUT
 request:
   email:    please-fail
 error: |-
-  {"path":["email"],"messages":["Field \"Email\" is not valid e-mail address"]}
+  "Field \"Email\" is not valid e-mail address"

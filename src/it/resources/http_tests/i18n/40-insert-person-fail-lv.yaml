@@ -3,4 +3,4 @@ method:     PUT
 request:
   email:    please-fail
 error: |-
-  {"path":["email"],"messages":["Lauka \"Email\" vērtība neatbilst e-pasta adreses šablonam"]}
+  "Lauka \"Email\" vērtība neatbilst e-pasta adreses šablonam"
