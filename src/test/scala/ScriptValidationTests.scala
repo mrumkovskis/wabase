@@ -1,5 +1,7 @@
 package org.wabase
 
+import org.mojoz.querease.ValidationException
+
 import java.util.Locale
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers
@@ -51,7 +53,7 @@ class ValidationEngineTests extends FlatSpec with Matchers {
       "true",
       "true ok"
     ))
-    intercept[BusinessException] {
+    intercept[ValidationException] {
       TestValidationEngine.validate(validationTestDto(
         "false",
         "false throws"
@@ -61,7 +63,7 @@ class ValidationEngineTests extends FlatSpec with Matchers {
       "1 + 1 === 2",
       "true ok"
     ))
-    intercept[BusinessException] {
+    intercept[ValidationException] {
       TestValidationEngine.validate(validationTestDto(
         "1 + 1 === 5",
         "false throws"
@@ -70,19 +72,19 @@ class ValidationEngineTests extends FlatSpec with Matchers {
   }
 
   "validation engine" should "support variables" in {
-    intercept[BusinessException] {
+    intercept[ValidationException] {
       TestValidationEngine.validate(validationTestDto(
         "my_string_field",
         "string throws"
       ))
     }.getMessage should be ("""Error (validation "string throws"): mystring""")
-    intercept[BusinessException] {
+    intercept[ValidationException] {
       TestValidationEngine.validate(validationTestDto(
         "my_string_field + ', ' + my_int_field",
         "dynamic message"
       ))
     }.getMessage should be ("""Error (validation "dynamic message"): mystring, 42""")
-    intercept[BusinessException] {
+    intercept[ValidationException] {
       TestValidationEngine.validate(validationTestDto(
         "my_int_field === 43",
         "false throws"
@@ -92,7 +94,7 @@ class ValidationEngineTests extends FlatSpec with Matchers {
       "my_bool_field",
       "true ok"
     ))
-    intercept[BusinessException] {
+    intercept[ValidationException] {
       TestValidationEngine.validate(validationTestDto(
         "!my_bool_field",
         "false throws"
@@ -105,7 +107,7 @@ class ValidationEngineTests extends FlatSpec with Matchers {
       "is_valid_email('e@mail.com')",
       "email ok"
     ))
-    intercept[BusinessException] {
+    intercept[ValidationException] {
       TestValidationEngine.validate(validationTestDto(
         "is_valid_email(my_string_field)",
         "invalid email"
@@ -114,7 +116,7 @@ class ValidationEngineTests extends FlatSpec with Matchers {
   }
 
   "validation engine" should "support dynamic error messages" in {
-    intercept[BusinessException] {
+    intercept[ValidationException] {
       TestValidationEngine.validate(validationTestDto(
         "my_int_field === 43",
         "'Should be 43, found - ' + my_int_field"

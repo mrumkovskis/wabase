@@ -6,6 +6,7 @@ import org.graalvm.polyglot.HostAccess.Export
 
 import javax.script.ScriptEngine
 import org.graalvm.polyglot.{Context, Engine, HostAccess}
+import org.mojoz.querease.{ValidationException, ValidationResult}
 import org.slf4j.LoggerFactory
 import org.tresql.Query
 import org.wabase.WabaseScriptValidation.Validation
@@ -51,7 +52,7 @@ class WabaseScriptValidation(db: DbAccess, qe: AppQuerease)(implicit ec: Executi
           case NonFatal(_) => msg //return original message
         }
 
-      validations foreach { v =>
+      val validationResults = validations flatMap { v =>
         val result = try engine.eval(v.expression) catch {
           case ex: Exception =>
             val msg =
@@ -62,19 +63,18 @@ class WabaseScriptValidation(db: DbAccess, qe: AppQuerease)(implicit ec: Executi
             throw new BusinessException(msg)
         }
         result match {
-          case TRUE => // OK
-          case FALSE =>
-            throw new BusinessException(errorMsg(v.message))
-          case s: String =>
-            throw new BusinessException(
-              s"""Error (validation "${errorMsg(v.message)}"): $s""")
-          case x =>
-            throw new BusinessException(
-              "Validation error \"" + errorMsg(v.message) + "\": " +
-                "Wrong validation result type: " +
-                Option(x).map(_.getClass.getName).getOrElse(x))
+          case TRUE => Nil // OK
+          case FALSE => List(ValidationResult(Nil, List(errorMsg(v.message))))
+          case s: String => List(ValidationResult(Nil, List(s"""Error (validation "${errorMsg(v.message)}"): $s""")))
+          case x => List(ValidationResult(Nil, List(
+            "Validation error \"" + errorMsg(v.message) + "\": " +
+              "Wrong validation result type: " +
+              Option(x).map(_.getClass.getName).getOrElse(x)
+          )))
         }
       }
+      if (validationResults.nonEmpty)
+        throw new ValidationException(validationResults.flatMap(_.messages).mkString("\n"), validationResults)
     }
   }
 }
