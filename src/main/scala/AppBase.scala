@@ -2,8 +2,7 @@ package org.wabase
 
 import java.util.Locale
 import org.mojoz.metadata.{FieldDef, ViewDef}
-import org.mojoz.querease.NotFoundException
-import org.mojoz.querease.QuereaseIteratorResult
+import org.mojoz.querease.{NotFoundException, QuereaseIteratorResult, ValidationException, ValidationResult}
 import com.typesafe.config.Config
 
 import scala.concurrent.Promise
@@ -904,31 +903,32 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
 
   private val maxStackDepth = config.getInt("wabase.max-stack-depth")
   def validateFields(viewName: String, instance: Map[String, Any])(implicit state: ApplicationState): Unit = {
-    def valFields(vn: String, inst: Map[String, Any], depth: Int): Unit = {
+    def valFields(vn: String, inst: Map[String, Any], path: List[Any])(depth: Int): List[ValidationResult] = {
       if (depth > maxStackDepth) throw new IllegalStateException(s"Structure depth exceeds $maxStackDepth (consider configuration parameter wabase.max-stack-depth)")
       val viewDef = qe.viewDef(vn)
       // TODO ensure field ordering
       val errorMessages = viewDef.fields
         .filterNot(_.api.readonly)
-        .map(fld =>
-          validationErrorMessage(vn, fld, inst.getOrElse(fld.fieldName, null))(state.locale))
-        .filter(_.isDefined)
-        .map(_.get)
-        .filter(_ != null)
-      if (errorMessages.nonEmpty)
-        throw new BusinessException(errorMessages.mkString("\n"))
+        .flatMap(fld =>
+          validationErrorMessage(vn, fld, inst.getOrElse(fld.fieldName, null))(state.locale)
+            .filter(_ != null)
+            .map(msg => ValidationResult((fld.fieldName :: path).reverse, List(msg)))
+            .toList
+        ).toList
 
-      // TODO merge all errorMessages?
       val complexFields = viewDef.fields.filter(_.type_.isComplexType).map(fld => fld.fieldName -> fld.type_.name)
-      complexFields.foreach { case (fieldName, typeName) =>
+      errorMessages ::: complexFields.flatMap { case (fieldName, typeName) =>
         inst.getOrElse(fieldName, null) match {
-          case m: Map[String, Any] @unchecked => valFields(typeName, m, depth + 1)
-          case l: Seq[Map[String, Any]] @unchecked => l.foreach(valFields(typeName, _, depth + 1))
-          case null =>
+          case m: Map[String, Any] @unchecked => valFields(typeName, m, fieldName :: path)(depth + 1)
+          case l: Seq[Map[String, Any]] @unchecked => l.zipWithIndex.flatMap {
+            case (m, i) => valFields(typeName, m, i :: path)(depth + 1)
+          }.toList
+          case null => Nil
         }
-      }
+      }.toList
     }
-    valFields(viewName, instance, 1)
+    val errors = valFields(viewName, instance, Nil)(1)
+    if (errors.nonEmpty) throw new ValidationException(errors.map(_.messages).mkString("\n"), errors)
   }
 
   def validateFields(instance: Dto)(implicit state: ApplicationState): Unit = {

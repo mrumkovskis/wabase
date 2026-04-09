@@ -2,4 +2,5 @@ path:       /data/save_person_email?/p1
 method:     PUT
 request:
   email:    please-fail
-error:      Field "Email" is not valid e-mail address
+error: |-
+  {"path":["email"],"messages":["Field \"Email\" is not valid e-mail address"]}
