@@ -1709,12 +1709,19 @@ object AppMetadata extends Loggable {
     pattern: String,
   )
 
+  /**
+   * Query parameter encoding information (comes from swagger extras)
+   * @param parameters key - parameter name, value - content type (e.g. application/json)
+   * */
+  case class QueryParameters(parameters: Map[String, String])
+
   case class RouteDef(
     methods: Set[HttpMethod],
     path: Regex,
     requestHandler: Action.Invocation,
     errorHandler: Action.Invocation,
     pathNamesAndParameters: Seq[PathNameAndParameters],
+    queryParameters: QueryParameters,
     extras: Map[String, Any],
   )
 

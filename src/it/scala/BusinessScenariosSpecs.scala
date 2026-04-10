@@ -72,6 +72,10 @@ object BusinessScenariosSpecs extends Loggable {
   def toStringArray(coll: Seq[String]): Array[String] = coll.toArray[String]
 
   def identityCsrfCookieTransformer(cookie: HttpCookie): HttpCookie = cookie
+
+  def queryParamsTransformer(): Map[String, Any] => Map[String, Any] = (params: Map[String, Any]) =>
+    params.get("query").collect { case m: Map[String, Any]@unchecked => params ++ m }.getOrElse(params)
+
 }
 
 object ScriptValidations {

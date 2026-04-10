@@ -47,7 +47,9 @@ object RequestHandlers {
       AppServiceBase.decodeParam(
         ctx.wabase.qe.metadataConventions,
         AppServiceBase.NamesForInts,
-        AppServiceBase.escapeReflectedXss)(c.name, c.value)
+        AppServiceBase.escapeReflectedXss,
+        ctx.route.queryParameters
+      )(c.name, c.value)
     }.toMap
     val langKey = prefix + I18nService.ApplicationLanguageCookiePostfix
     if (state.contains(langKey))

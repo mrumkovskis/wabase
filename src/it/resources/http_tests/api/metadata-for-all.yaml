@@ -484,6 +484,12 @@ response: {
     "fields": [],
     "filter": []
   },
+  "json_query_param": {
+    "name": "json_query_param",
+    "key": [],
+    "fields": [],
+    "filter": []
+  },
   "login_using_json_or_urlencoded": {
     "name": "login_using_json_or_urlencoded",
     "key": [],

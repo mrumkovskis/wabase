@@ -323,8 +323,20 @@ trait AppServiceBase[User]
       }
     }
 
-  def filterPars(params: Map[String, List[String]]) =
-    AppServiceBase.filterParams(metadataConventions, namesForInts, escapeReflectedXss)(params)
+  private val DefaultQueryParamConfig =
+    AppMetadata.QueryParameters(Map("filter" -> ContentTypes.`application/json`.toString()))
+  private def filterParsTransformer(params: Map[String, Any]) = {
+    params.get("filter").collect { case m: Map[String, Any]@unchecked => params - "filter" ++ m }.getOrElse(params)
+  }
+  def filterPars(params: Map[String, List[String]]) = {
+    AppServiceBase.filterParams(
+      metadataConventions,
+      namesForInts,
+      escapeReflectedXss,
+      DefaultQueryParamConfig,
+      filterParsTransformer,
+    )(params)
+  }
 
   @annotation.nowarn("cat=deprecation")
   def crudActionOnKeyInPath(implicit user: User) = applicationState { implicit state =>
@@ -398,13 +410,13 @@ trait AppServiceBase[User]
       }
     }
   def decodeParams(params: Map[String, List[String]]): Map[String, Any] =
-    AppServiceBase.decodeParams(metadataConventions, namesForInts, escapeReflectedXss )(params)
+    AppServiceBase.decodeParams(metadataConventions, namesForInts, escapeReflectedXss, DefaultQueryParamConfig)(params)
   def decodeMultiParams(params: Map[String, List[String]]) =
-    AppServiceBase.decodeMultiParams(metadataConventions, namesForInts, escapeReflectedXss)(params)
+    AppServiceBase.decodeMultiParams(metadataConventions, namesForInts, escapeReflectedXss, DefaultQueryParamConfig)(params)
   val namesForInts = AppServiceBase.NamesForInts
   def escapeReflectedXss(msg: String) = AppServiceBase.escapeReflectedXss(msg)
   def decodeParam(key: String, value: String) =
-    AppServiceBase.decodeParam(metadataConventions, namesForInts, escapeReflectedXss)(key, value)
+    AppServiceBase.decodeParam(metadataConventions, namesForInts, escapeReflectedXss, DefaultQueryParamConfig)(key, value)
   override def dbAccess = app.dbAccess
 
   protected def fileStreamerConfigs: Seq[AppFileStreamerConfig] = {
@@ -615,6 +627,7 @@ object AppServiceBase {
     metadataConventions: AppMetadata.AppMdConventions,
     namesForInts: Set[String],
     escapeReflectedXss: String => String,
+    parametersConfig: AppMetadata.QueryParameters,
   )(
     key: String, value: String) = {
     def throwBadType(type_ : String, cause: Exception = null) =
@@ -629,32 +642,41 @@ object AppServiceBase {
         case ex: Exception => throwBadType(typeStr, ex)
       }
     }
-    if (metadataConventions.isBooleanName(key)) {
-      handleType({
-        case "true" => TRUE
-        case "false" => FALSE
-      }, "boolean")
-    } else if (metadataConventions.isDateName(key)) {
-      handleType(d => Format.convertToType(d.replaceAll("\"", ""), ClassOfJavaSqlDate), "date")
-    } else if (metadataConventions.isDateTimeName(key)) {
-      handleType(d => Format.convertToType(d.replaceAll("\"", ""), ClassOfJavaSqlTimestamp), "dateTime (not supported yet)")
-    } else if (namesForInts.contains(key) ||
-      metadataConventions.isIntegerName(key) ||
-      metadataConventions.isIdName(key) ||
-      metadataConventions.isIdRefName(key)) {
-      handleType(l => java.lang.Long.valueOf(l), "long")
-    } else if (metadataConventions.isDecimalName(key)) {
-      handleType(d => BigDecimal(d), "bigDecimal")
-    } else value
+    def defaultDecoding() =
+      if (metadataConventions.isBooleanName(key)) {
+        handleType({
+          case "true" => TRUE
+          case "false" => FALSE
+        }, "boolean")
+      } else if (metadataConventions.isDateName(key)) {
+        handleType(d => Format.convertToType(d.replaceAll("\"", ""), ClassOfJavaSqlDate), "date")
+      } else if (metadataConventions.isDateTimeName(key)) {
+        handleType(d => Format.convertToType(d.replaceAll("\"", ""), ClassOfJavaSqlTimestamp), "dateTime (not supported yet)")
+      } else if (namesForInts.contains(key) ||
+        metadataConventions.isIntegerName(key) ||
+        metadataConventions.isIdName(key) ||
+        metadataConventions.isIdRefName(key)) {
+        handleType(l => java.lang.Long.valueOf(l), "long")
+      } else if (metadataConventions.isDecimalName(key)) {
+        handleType(d => BigDecimal(d), "bigDecimal")
+      } else value
+
+    parametersConfig.parameters
+      .get(key)
+      .map { enc =>
+        if (enc == ContentTypes.`application/json`.toString()) CborOrJsonAnyValueDecoder.decode(ByteString(value))
+        else defaultDecoding()
+      }.getOrElse(defaultDecoding())
   }
 
   def decodeParams(
     metadataConventions: AppMetadata.AppMdConventions,
     namesForInts: Set[String],
     escapeReflectedXss: String => String,
+    parametersConfig: AppMetadata.QueryParameters,
   )(
     params: Map[String, List[String]]): Map[String, Any] = params map { t =>
-    t._1 -> (t._2.map(decodeParam(metadataConventions, namesForInts, escapeReflectedXss)(t._1, _)) match {
+    t._1 -> (t._2.map(decodeParam(metadataConventions, namesForInts, escapeReflectedXss, parametersConfig)(t._1, _)) match {
       case List(x) => x
       case x @ List(_, _*) => x
       case x => throw new IllegalStateException("unexpected: " + x)
@@ -664,18 +686,18 @@ object AppServiceBase {
     metadataConventions: AppMetadata.AppMdConventions,
     namesForInts: Set[String],
     escapeReflectedXss: String => String,
+    parametersConfig: AppMetadata.QueryParameters,
   )(params: Map[String, List[String]]): Map[String, List[Any]] =
-    params map { t => t._1 -> t._2.map(decodeParam(metadataConventions, namesForInts, escapeReflectedXss)(t._1, _)) }
+    params map { t => t._1 -> t._2.map(decodeParam(metadataConventions, namesForInts, escapeReflectedXss, parametersConfig)(t._1, _)) }
 
   def filterParams(
     metadataConventions: AppMetadata.AppMdConventions,
     namesForInts: Set[String],
     escapeReflectedXss: String => String,
+    parametersConfig: AppMetadata.QueryParameters,
+    parametersTransformer: Map[String, Any] => Map[String, Any],
   )(params: Map[String, List[String]]): Map[String, Any] =
-    params.get("filter")
-      .flatMap(_.headOption)
-      .map(f => CborOrJsonAnyValueDecoder.decodeToMap[Map[String, Any]](ByteString(f)))
-      .getOrElse(decodeParams(metadataConventions, namesForInts, escapeReflectedXss)(params))
+    parametersTransformer(decodeParams(metadataConventions, namesForInts, escapeReflectedXss, parametersConfig)(params))
 
   trait AppStateExtractor { this: AppServiceBase[_] with QueryTimeoutExtractor with Execution =>
     val ApplicationStateCookiePrefix = AppServiceBase.ApplicationStateCookiePrefix

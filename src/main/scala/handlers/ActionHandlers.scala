@@ -42,11 +42,19 @@ object ActionHandlers {
     }
   }
 
+  private val QueryParamsTransformer =
+    if (config.getIsNull("app.query-parameters-transformer")) identity[Map[String, Any]] _
+    else invokeFunction(config.getString("app.query-parameters-transformer"), Nil)(
+      scala.concurrent.ExecutionContext.Implicits.global).asInstanceOf[Map[String, Any] => Map[String, Any]]
   def doAction(view_action: String, reqCtx: WabaseRequestContext): Future[HttpResponse] = {
     def extractParams(ctx: WabaseRequestContext) = {
       import ctx._
       AppServiceBase.filterParams(
-        wabase.qe.metadataConventions, AppServiceBase.NamesForInts, AppServiceBase.escapeReflectedXss
+        wabase.qe.metadataConventions,
+        AppServiceBase.NamesForInts,
+        AppServiceBase.escapeReflectedXss,
+        route.queryParameters,
+        QueryParamsTransformer,
       )(WabaseService.parameterMultiMap(req))
     }
     def dwa(ctx: WabaseRequestContext, params: Map[String, Any]) = {

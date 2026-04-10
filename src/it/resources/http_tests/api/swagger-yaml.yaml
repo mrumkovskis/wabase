@@ -413,6 +413,43 @@ response: |+
             description: OK
             content:
               text/plain: {}
+    /json-query-param:
+      get:
+        summary: Get with JSON query parameter
+        description: Returns the filter query parameter value decoded from JSON
+        parameters:
+        - name: filter
+          in: query
+          required: false
+          content:
+            application/json:
+              schema:
+                type: object
+        - name: query
+          in: query
+          required: false
+          content:
+            application/json:
+              schema:
+                type: object
+        responses:
+          "200":
+            description: OK
+    /json_query_param:
+      get:
+        summary: Get 'json_query_param'
+        description: ""
+        responses:
+          "200":
+            description: OK
+          "400":
+            description: Bad Request
+          "403":
+            description: Forbidden
+          "404":
+            description: Not Found
+          "503":
+            description: Service Unavailable
     /login_using_json_or_urlencoded:
       post:
         summary: Insert 'login_using_json_or_urlencoded'

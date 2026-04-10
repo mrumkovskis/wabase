@@ -1,0 +1,3 @@
+path:     /json-query-param?filter=%7B%22name%22%3A%22John%22%7D
+response:
+  name: John
