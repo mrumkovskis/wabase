@@ -194,14 +194,14 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
           case lc => lc
         } getOrElse (fieldLabelFromName(f), null)
       val fieldName = f.fieldName
+      def isPk = viewDef.table != null &&
+        tableMetadata.tableDefOption(viewDef).flatMap(_.pk).map(_.cols).contains(Seq(f.name))
 
       val fieldApiKnownOps = Set(Readwrite, Readonly, NoInsert, NoUpdate, Excluded)
       val fieldApi = getStringSeq(FieldApi, f.extras) match {
         case api =>
           val ops = api.flatMap(_.trim.split(",").toList).map(_.trim).filter(_ != "").toSet
           val opt = fieldOptionsSelf(f)
-          def isPk = viewDef.table != null &&
-            tableMetadata.tableDefOption(viewDef).flatMap(_.pk).map(_.cols).contains(Seq(fieldName))
           def op(opkey: String) = (ops contains opkey) || api.isEmpty && (opkey match {
             case Excluded => false
             case Readonly => opt != null &&  (opt contains "!")
@@ -220,8 +220,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
           )
       }
 
-      val required = getBooleanExtra(viewDef, f, Required)
-
+      val required = getBooleanExtraOpt(viewDef, f, Required).getOrElse(!f.nullable && !isPk)
       val sortable = isSortableField(viewDef, f)
       val hiddenOpt = getBooleanExtraOpt(viewDef, f, Hidden)
       val visibleOpt = getBooleanExtraOpt(viewDef, f, Visible)

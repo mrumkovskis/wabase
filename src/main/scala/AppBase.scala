@@ -853,7 +853,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
   def fieldRequiredErrorMessage(viewName: String, field: FieldDef)(implicit locale: Locale): String =
     translate("""Field %1$s is mandatory.""", field.label)
   def isFieldRequiredViolated(viewName: String, field: FieldDef, value: Any): Boolean =
-    field.required &&
+    (field.required && !(field.api.readonly || field.api.excluded)) &&
     (value match {
       case null => true
       case s: String if s.trim == "" => true
@@ -920,9 +920,11 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
       errorMessages ::: complexFields.flatMap { case (fieldName, typeName) =>
         inst.getOrElse(fieldName, null) match {
           case m: Map[String, Any] @unchecked => valFields(typeName, m, fieldName :: path)(depth + 1)
-          case l: Seq[Map[String, Any]] @unchecked => l.zipWithIndex.flatMap {
-            case (m, i) => valFields(typeName, m, i :: path)(depth + 1)
-          }.toList
+          case l: Seq[Map[String, Any]] @unchecked =>
+            val new_path = fieldName :: path
+            l.zipWithIndex
+              .flatMap { case (m, i) => valFields(typeName, m, i :: new_path)(depth + 1) }
+              .toList
           case null => Nil
         }
       }.toList

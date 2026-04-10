@@ -236,7 +236,8 @@ fields:
 - beneficiary = beneficiary.number -> = account [number = _] { id }
 - amount
 - date_time -> = :time :
-  - initial: now()
+    - field api: excluded
+    - initial: now()
 save:
 - validations beneficiary:
   - exists(^person_choice[^name = :beneficiary_name]{1}), "Beneficiary not found - '" ||
@@ -477,9 +478,9 @@ table:    person
 auth get: :update_enabled = true
 fields:
 - id
-- name
-- sex
-- birthdate
+- name ?
+- sex  ?
+- birthdate ?
 save:
 - name = :current_person_name
 - sex  = 'M'
@@ -1878,3 +1879,16 @@ insert:
 - rollback
 get:
 - unique_opt simple_table[value = :value]{id, value}
+
+
+name: field_validation_test
+api: save
+table: person
+fields:
+- id
+- name
+- accounts *:
+    table: account
+    fields:
+    - id
+    - number

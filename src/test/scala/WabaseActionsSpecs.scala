@@ -1942,4 +1942,23 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       doAction("save", "foreach_test_1", deepInput)
     }.map(_.getMessage should startWith("Structure depth exceeds"))
   }
+
+  behavior of "validateFields"
+
+  it should "produce ValidationResults with location length > 1 for hierarchical view violations" in {
+    recoverToExceptionIf[ValidationException](
+      doAction("save", "field_validation_test", Map(
+        "accounts" -> List(
+          Map("number" -> null),
+          Map("number" -> "n" * 65),
+        )
+      ))
+    ).map { ex =>
+      ex.details shouldBe List(
+        ValidationResult(List("name"), List("""Field "Name" is mandatory.""")),
+        ValidationResult(List("accounts", 0, "number"), List("""Field "Number" is mandatory.""")),
+        ValidationResult(List("accounts", 1, "number"), List(s"""Field "Number" value length 65 exceeds maximum limit 64.""")),
+      )
+    }
+  }
 }
