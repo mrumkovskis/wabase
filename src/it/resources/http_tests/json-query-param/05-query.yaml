@@ -1,2 +1,2 @@
-path:     /json-query-param?query=%7B%22name%22%3A%22John%22%7D
+path:     /json-query-param?query={"name":"John"}
 response: John
