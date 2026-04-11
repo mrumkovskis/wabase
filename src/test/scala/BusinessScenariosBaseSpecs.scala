@@ -155,11 +155,6 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
     }
   }
 
-  def assertResponseStatus(response: HttpResponse, expectedStatus: String) = {
-    if (response.status.toString != expectedStatus)
-      sys.error(s"Unexpected response status: ${response.status.toString}. Expected: $expectedStatus.")
-  }
-
   def assertResponseHeaders(response: HttpResponse, expectedHeaders: Seq[HttpHeader]) = {
     val received = (response.headers.toSet + s"Content-Type: ${response.entity.contentType}").map(_.toString)
     expectedHeaders foreach { expectedHeader =>
@@ -618,8 +613,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
 
     if (expectedStatus != null)
       unprocessedResponse match {
-        case httpResponse: HttpResponse =>
-          assertResponseStatus(httpResponse, expectedStatus)
+        case httpResponse: HttpResponse => httpResponse.status.toString shouldBe expectedStatus
         case x => sys.error(s"Unexpected response class for status tests: ${x.getClass.getName}")
       }
 
