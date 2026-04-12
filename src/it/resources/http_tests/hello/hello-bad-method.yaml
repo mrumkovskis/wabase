@@ -1,3 +1,3 @@
 path:     /hello
 method:   PUT
-error:    405 Method Not Allowed
+response_status: 405 Method Not Allowed

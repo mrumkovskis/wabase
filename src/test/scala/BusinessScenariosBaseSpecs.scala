@@ -1,9 +1,7 @@
 package org.wabase
 
 import java.io.{File, PrintWriter}
-import org.apache.pekko.http.scaladsl.model.{
-  ContentType, ContentTypes, HttpEntity, HttpHeader, HttpMethod, HttpMethods,
-  HttpResponse, MediaType, MediaTypes, Multipart, RequestEntity, Uri}
+import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes, HttpEntity, HttpHeader, HttpMethod, HttpMethods, HttpResponse, MediaType, MediaTypes, Multipart, RequestEntity, Uri}
 import org.apache.pekko.http.scaladsl.model.headers.`Content-Type`
 import org.apache.pekko.http.scaladsl.model.headers.RawHeader
 import org.apache.pekko.http.scaladsl.server.directives.ContentTypeResolver
@@ -350,7 +348,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
   def logScenarioRequestInfo(
     scenario: File, testCase: File, context: Map[String, Any], map: Map[String, Any],
     requestInfo: RequestInfo,
-    expectedStatus: String, expectedHeaders: Seq[HttpHeader], expectedResponse: Any, expectedError: String,
+    expectedStatus: String, expectedHeaders: Seq[HttpHeader], expectedResponse: Any, expectedError: Any,
     options: Seq[String],
   ): Unit = logger.whenDebugEnabled {
     import requestInfo._
@@ -511,20 +509,23 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
   }
 
   def checkTestCase(scenario: File, testCase: File, context: Map[String, Any], map: Map[String, Any], retriesLeft: Int): Map[String, Any] = {
+    assert(!(map.contains("response") && map.contains("error")), "Test cannot contain both - 'response' and 'error' fields.")
+
     val requestInfo = extractRequestInfo(cleanupTemplate(map))
     import httpClient._
     import requestInfo._
     val fullCompare   = map.bd("full_compare", isFullCompareByDefault)
     val mergeResponse = map.b("merge_response")
     val debugResponse = map.get("debug_response").forall { case false => false case _ => true }
-    val expectedError = map.sd("error", null)
     val expectedStatus= map.sd("response_status", null)
-    val expectedResponse = (map.getOrElse("response", null), requestMap) match{
+    def expectedContent(content: Any) = (content, requestMap) match {
       case (resp, _) if !mergeResponse => resp
       case (resp, null) => resp
       case (null, req) => req
       case (resp : Map[String, Any] @unchecked, req) => cleanupTemplate(mergeTemplate(req, resp))
     }
+    val expectedResponse = expectedContent(map.getOrElse("response", null))
+    val expectedError = map.get("error").map(expectedContent).orNull
     val expectedHeaders = Option(map.m("response_headers")).getOrElse(Map.empty).map {
       case ("Content-Type", value) => // Content-Type is not accepted as valid RawHeader
         parseContentType(value.toString)
@@ -578,12 +579,13 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
     val unprocessedResponse =
       if (isBackdoorPath(path)) {
         backdoorAction(requestInfo, context, map)
-      } else if (expectedError == null) {
-        doRequest
       } else {
-        val message = intercept[ClientException](doRequest).getMessage
-        message should include (expectedError)
-        message
+        val ErrorStatusRegex = """^[45]\d{2}""".r
+        if (expectedError != null || Option(expectedStatus).flatMap(ErrorStatusRegex.findFirstIn).nonEmpty)
+          try doRequest catch {
+            case ce: ClientException => ce.getMessage   // catch client exception in the case ProxyMode not set for request
+          }
+        else doRequest
       }
 
     val (rawResponse, response) = unprocessedResponse match {
@@ -611,30 +613,37 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
 
     logScenarioResponseInfo(debugResponse, response)
 
-    if (expectedStatus != null)
-      unprocessedResponse match {
-        case httpResponse: HttpResponse => httpResponse.status.toString shouldBe expectedStatus
-        case x => sys.error(s"Unexpected response class for status tests: ${x.getClass.getName}")
-      }
-
-    if (expectedHeaders.nonEmpty)
-      unprocessedResponse match {
-        case httpResponse: HttpResponse =>
-          assertResponseHeaders(httpResponse, expectedHeaders)
-        case x => sys.error(s"Unexpected response class for header tests: ${x.getClass.getName}")
-      }
-
-    if (expectedResponse != null)
-     try {
-      val result = assertResponse(response, expectedResponse, "[ROOT]", fullCompare)
-      scenarioTestCaseOnSuccess(scenario, testCase, context, debugResponse, rawResponse, response)
-      result
-     } catch {
-      case util.control.NonFatal(ex) =>
-        logScenarioResponseInfoOnFailure(scenario, testCase, context, ex, debugResponse, rawResponse, response)
-      throw ex
+    if (expectedStatus != null) unprocessedResponse match {
+      case httpResponse: HttpResponse => httpResponse.status.toString shouldBe expectedStatus
+      case x => sys.error(s"Unexpected response class for status tests: ${x.getClass.getName}")
      }
-    else Map.empty[String, Any]
+
+    if (expectedHeaders.nonEmpty) unprocessedResponse match {
+      case httpResponse: HttpResponse => assertResponseHeaders(httpResponse, expectedHeaders)
+      case x => sys.error(s"Unexpected response class for header tests: ${x.getClass.getName}")
+    }
+
+    def assertResp(resp: Any): Map[String, Any] =
+      if (resp != null) try {
+        val result = assertResponse(response, resp, "[ROOT]", fullCompare)
+        scenarioTestCaseOnSuccess(scenario, testCase, context, debugResponse, rawResponse, response)
+        result
+      } catch {
+        case util.control.NonFatal(ex) =>
+          logScenarioResponseInfoOnFailure(scenario, testCase, context, ex, debugResponse, rawResponse, response)
+          throw ex
+      } else Map.empty
+
+    if (expectedError != null) unprocessedResponse match {       //assert error
+      case message: String =>
+        message should include (String.valueOf(expectedError))
+        Map.empty
+      case resp: HttpResponse =>
+        if (resp.status.intValue() < 400) sys.error(s"Expected http error, but got: ${resp.status}")
+        assertResp(expectedError)
+    } else if (expectedResponse != null) {                        //assert content
+      assertResp(expectedResponse)
+    } else Map.empty[String, Any]
   }
 
   def checkTestCase(scenario: File, testCase: File, context: Map[String, Any], map: Map[String, Any]): Map[String, Any] = {

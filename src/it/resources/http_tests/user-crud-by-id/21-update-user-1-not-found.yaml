@@ -2,4 +2,4 @@ path:       /data/user/1
 method:     PUT
 request:
   name:     johan
-error:      404 Not Found
+response_status: 404 Not Found

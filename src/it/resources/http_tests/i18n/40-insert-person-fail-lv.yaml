@@ -2,5 +2,5 @@ path:       /data/save_person_email?/p1
 method:     PUT
 request:
   email:    please-fail
-error: |-
-  "Lauka \"Email\" vērtība neatbilst e-pasta adreses šablonam"
+error:
+  [{"location":["email"],"messages":["Lauka \"Email\" vērtība neatbilst e-pasta adreses šablonam"]}]

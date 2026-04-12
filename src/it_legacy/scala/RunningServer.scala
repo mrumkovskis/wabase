@@ -1,7 +1,11 @@
 package wabase.app
 
-import org.wabase.client.WabaseHttpClient
+import org.apache.pekko.http.scaladsl.model.{HttpRequest, HttpResponse}
 import org.wabase.{AppQuerease, DefaultAppQuerease}
+import org.wabase.client.{HttpClient, WabaseHttpClient}
+
+import scala.concurrent.Future
+import scala.concurrent.duration.FiniteDuration
 
 class RunningServer extends WabaseHttpClient {
 
@@ -10,6 +14,9 @@ class RunningServer extends WabaseHttpClient {
   override def login(username: String = null, password: String = null) = {
     ""
   }
+
+  override protected def doRequest(req: HttpRequest, cookieStorage: CookieMap, timeout: FiniteDuration, maxRedirects: Int): Future[HttpResponse] =
+    super.doRequest(req.addAttribute(HttpClient.ModeKey, HttpClient.ProxyMode), cookieStorage, timeout, maxRedirects)
 
   ServerState.synchronized {
     if (!ServerState.is_running) {

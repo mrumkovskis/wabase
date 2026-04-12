@@ -1,7 +1,7 @@
 package org.wabase
 
 import org.apache.pekko.http.scaladsl.model.StatusCodes.{BadRequest, Forbidden, InternalServerError, NotFound, Unauthorized, UnprocessableContent}
-import org.apache.pekko.http.scaladsl.model.{EntityStreamSizeException, HttpEntity, HttpResponse, StatusCodes}
+import org.apache.pekko.http.scaladsl.model.{ContentTypes, EntityStreamSizeException, HttpEntity, HttpResponse, StatusCodes}
 import org.mojoz.metadata.ViewDef
 import org.mojoz.querease.{ValidationException, ValidationResult}
 import org.tresql.MissingBindVariableException
@@ -61,7 +61,8 @@ object WabaseErrorHandler {
         if (e.details != null && e.details.nonEmpty) {
           import io.bullet.borer._, io.bullet.borer.derivation.MapBasedCodecs._, ResultEncoder._, JsonEncoder._
           implicit val enc = deriveEncoder[ValidationResult]
-          HttpResponse(BadRequest, entity = Json.encode(e.details).toUtf8String)
+          HttpResponse(BadRequest,
+            entity = HttpEntity(ContentTypes.`application/json`, Json.encode(e.details).toUtf8String))
         } else HttpResponse(BadRequest, entity = e.getMessage)
       case e: CSRFException =>
         val msg = s"[${ctxDebugInfo(ctx)}] ${e.toString}".trim

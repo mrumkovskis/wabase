@@ -1,2 +1,2 @@
 path:     /check-csrf-token
-error:    400 Bad Request
+response_status: 400 Bad Request

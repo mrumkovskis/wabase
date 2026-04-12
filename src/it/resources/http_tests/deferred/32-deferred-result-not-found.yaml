@@ -1,2 +1,2 @@
 path:       /deferred-result/{{deferred_id}}
-error:      404 Not Found
+response_status: 404 Not Found

@@ -3,4 +3,4 @@ method:     POST
 request:
   name:     fail
   password: secret
-error: 401 Unauthorized
+response_status: 401 Unauthorized
