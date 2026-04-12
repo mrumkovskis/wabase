@@ -15,9 +15,6 @@ class RunningServer extends WabaseHttpClient {
     ""
   }
 
-  override protected def doRequest(req: HttpRequest, cookieStorage: CookieMap, timeout: FiniteDuration, maxRedirects: Int): Future[HttpResponse] =
-    super.doRequest(req.addAttribute(HttpClient.ModeKey, HttpClient.ProxyMode), cookieStorage, timeout, maxRedirects)
-
   ServerState.synchronized {
     if (!ServerState.is_running) {
       Server.main(Array.empty)
