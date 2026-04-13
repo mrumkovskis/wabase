@@ -1,2 +1,2 @@
 path:       /current-user
-response_status: 401 Unauthorized
+error:           401 Unauthorized

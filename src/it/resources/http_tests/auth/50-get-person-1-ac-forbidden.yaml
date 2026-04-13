@@ -1,2 +1,2 @@
 path:       /data/person_with_access_control?/p1
-response_status: 403 Forbidden
+error:           403 Forbidden

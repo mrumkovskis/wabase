@@ -1,4 +1,4 @@
 path:     /check-csrf-token
 headers:
   X-XSRF-TOKEN: abc
-response_status: 400 Bad Request
+error:           400 Bad Request

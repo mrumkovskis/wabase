@@ -1,4 +1,4 @@
 path:     /check-same-origin
 headers:
   Origin: http://example.com
-response_status: 400 Bad Request
+error:           400 Bad Request

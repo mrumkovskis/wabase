@@ -26,7 +26,7 @@ import scala.collection.immutable.{Map, Seq}
 import scala.concurrent.{Await, ExecutionContext}
 import scala.language.reflectiveCalls
 import scala.util.{Random, Try}
-import org.wabase.client.{ClientException, HttpClientConfig, WabaseHttpClient}
+import org.wabase.client.{ClientException, HttpClientConfig, RestClient, WabaseHttpClient}
 import org.wabase.ds.ConnectionPools.DEFAULT_CP
 import org.wabase.ds.{PoolName, QueryTimeout}
 
@@ -588,18 +588,26 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
         else doRequest
       }
 
+    def mayBeDecodeResp(content: String) =
+      Try(CborOrJsonAnyValueDecoder.decode(ByteString(content)))
+        .toOption.map((content, _))
+        .getOrElse((content, content))
+
     val (rawResponse, response) = unprocessedResponse match {
       case httpResponse: HttpResponse =>
         lazy val resString = Await.result(httpResponse.entity.toStrict(awaitTimeout), awaitTimeout).data.utf8String
-        expectedResponse match {
-          case handlerName: String if handlerName.startsWith("->") && httpResponse.entity.contentType.toString == "text/event-stream" =>
-            (unprocessedResponse, new ServerSentEventsHandler(httpResponse))
-          case _: String => (resString, resString)
-          case _ =>
-            Try(CborOrJsonAnyValueDecoder.decode(ByteString(resString)))
-              .toOption.map((resString, _))
-              .getOrElse((resString, resString))
-        }
+        if (httpResponse.status.isSuccess())
+          expectedResponse match {
+            case handlerName: String if handlerName.startsWith("->") && httpResponse.entity.contentType.toString == "text/event-stream" =>
+              (unprocessedResponse, new ServerSentEventsHandler(httpResponse))
+            case _: String => (resString, resString)
+            case _ => mayBeDecodeResp(resString)
+         }
+        else
+          expectedError match {
+           case _: String => (resString, RestClient.fullErrorErrorMessage(httpResponse.status, resString))
+           case _ => mayBeDecodeResp(resString)
+         }
       case resString: String =>
         expectedResponse match {
           case _: String => (resString, resString)
@@ -640,7 +648,11 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
         Map.empty
       case resp: HttpResponse =>
         if (resp.status.intValue() < 400) sys.error(s"Expected http error, but got: ${resp.status}")
-        assertResp(expectedError)
+        if (expectedError.isInstanceOf[String] && response.isInstanceOf[String]) {
+          // legacy check
+          response.toString should include (expectedError.toString)
+          Map.empty
+        } else assertResp(expectedError)
     } else if (expectedResponse != null) {                        //assert content
       assertResp(expectedResponse)
     } else Map.empty[String, Any]

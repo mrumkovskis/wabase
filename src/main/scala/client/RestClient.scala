@@ -16,6 +16,7 @@ import org.apache.pekko.http.scaladsl.model.ws.{Message, WebSocketRequest}
 import org.apache.pekko.http.scaladsl.unmarshalling._
 import org.apache.pekko.stream.scaladsl.{Flow, Keep, Sink, Source}
 import org.wabase.client.HttpClient.ProxyMode
+import org.wabase.client.RestClient.fullErrorErrorMessage
 
 import scala.collection.immutable.{Seq => iSeq}
 import scala.concurrent.duration._
@@ -209,7 +210,7 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root) exten
                 logger.error(s"Failed to unmarshal response for unexpected status ${response.status.intValue}", e)
                 ""
             }.flatMap { content =>
-              val exceptionMessage = response.status.value + "\n" + response.status.defaultMessage + "\n" + content
+              val exceptionMessage = fullErrorErrorMessage(response.status, content)
               requestFailed(exceptionMessage, null, response.status, content, request)
             }
         }
@@ -254,4 +255,7 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root) exten
 object RestClient extends Loggable {
   object WsClosed
   case class WsFailed(cause: Throwable)
+  /** For legacy purposes */
+  private [wabase] def fullErrorErrorMessage(status: StatusCode, content: String) =
+    status.value + "\n" + status.defaultMessage + "\n" + content
 }

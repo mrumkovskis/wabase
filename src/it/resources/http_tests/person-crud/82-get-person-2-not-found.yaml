@@ -1,2 +1,2 @@
 path:       /data/person?/p2
-response_status: 404 Not Found
+error:           404 Not Found
