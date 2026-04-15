@@ -873,54 +873,54 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
   it should "respect api" in {
     Get("/data/no_api_view/0") ~> route ~> check {
       status shouldEqual StatusCodes.BadRequest
-      responseAs[String] shouldBe "Not in this API: get no_api_view/{1}"
+      responseAs[String] shouldBe "Request '/data/no_api_view/0' not in this API: get no_api_view/{1}"
     }
     Get("/data/no.api.view/0") ~> route ~> check {
       status shouldEqual StatusCodes.BadRequest
-      responseAs[String] shouldBe "Not in this API: get no.api.view/{1}"
+      responseAs[String] shouldBe "Request '/data/no.api.view/0' not in this API: get no.api.view/{1}"
     }
     Get("/data/no_api_view") ~> route ~> check {
       status shouldEqual StatusCodes.BadRequest
-      responseAs[String] shouldBe "Not in this API: list no_api_view"
+      responseAs[String] shouldBe "Request '/data/no_api_view' not in this API: list no_api_view"
     }
     Get("/data/count/no_api_view") ~> route ~> check {
       status shouldEqual StatusCodes.BadRequest
-      responseAs[String] shouldBe "Not in this API: count no_api_view"
+      responseAs[String] shouldBe "Request '/data/count/no_api_view' not in this API: count no_api_view"
     }
     Get("/data/create/no_api_view") ~> route ~> check {
       status shouldEqual StatusCodes.BadRequest
-      responseAs[String] shouldBe "Not in this API: create no_api_view"
+      responseAs[String] shouldBe "Request '/data/create/no_api_view' not in this API: create no_api_view"
     }
     Post("/data/no_api_view", "{}") ~> route ~> check {
       status shouldEqual StatusCodes.BadRequest
-      responseAs[String] shouldBe "Not in this API: post no_api_view"
+      responseAs[String] shouldBe "Request '/data/no_api_view' not in this API: post no_api_view"
     }
     Put("/data/no_api_view/0", "{}") ~> route ~> check {
       status shouldEqual StatusCodes.BadRequest
-      responseAs[String] shouldBe "Not in this API: put no_api_view/{1}"
+      responseAs[String] shouldBe "Request '/data/no_api_view/0' not in this API: put no_api_view/{1}"
     }
     Delete("/data/no_api_view/0") ~> route ~> check {
       status shouldEqual StatusCodes.BadRequest
-      responseAs[String] shouldBe "Not in this API: delete no_api_view/{1}"
+      responseAs[String] shouldBe "Request '/data/no_api_view/0' not in this API: delete no_api_view/{1}"
     }
     Post("/data/non_existing_view", "{bad json}") ~> route ~> check {
       status shouldEqual StatusCodes.BadRequest
-      responseAs[String] should include ("Not in this API: post non_existing_view")
+      responseAs[String] should include ("Request '/data/non_existing_view' not in this API: post non_existing_view")
     }
     Put("/data/non_existing_view/0", "{bad json}") ~> route ~> check {
       status shouldEqual StatusCodes.BadRequest
-      responseAs[String] should include ("Not in this API: put non_existing_view")
+      responseAs[String] should include ("Request '/data/non_existing_view/0' not in this API: put non_existing_view/{1}")
     }
     Put("/data/non_existing_view?/0", "{bad json}") ~> route ~> check {
       status shouldEqual StatusCodes.BadRequest
-      responseAs[String] should include ("Not in this API: put non_existing_view/{1}")
+      responseAs[String] should include ("Request '/data/non_existing_view/0' not in this API: put non_existing_view/{1}")
     }
   }
 
   it should "not reflect html" in {
     Get("/data/no%3Cb%3Eapi%3C%2Fb%3Eview/0") ~> route ~> check {
       status shouldEqual StatusCodes.BadRequest
-      responseAs[String] shouldBe "Not in this API: get Strange name/{1}"
+      responseAs[String] shouldBe "Request '/data/no%3Cb%3Eapi%3C%2Fb%3Eview/0' not in this API: get Strange name/{1}"
     }
     Get("/data/by_id_view_1?sort=x,no%3Cb%3Ecol%3C%2Fb%3E,id,z") ~> route ~> check {
       status shouldEqual StatusCodes.BadRequest

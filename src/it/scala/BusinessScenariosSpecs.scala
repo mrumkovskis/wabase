@@ -109,7 +109,7 @@ object SwaggerTests {
   def generateSwaggerJsonForRedirects(ctx: WabaseRequestContext): RequestHandler = {
     conditional(EntityTag(ctx.wabase.app.metadataVersionString), DateTime(ctx.wabase.app.startupTimeMillis), _ => {
       Future.successful {
-        val hasApi = ctx.wabase.app.hasApi(_, _, _, _ => true)
+        val hasApi = ctx.wabase.app.hasApi(_, null, _, _, _ => true)
         val generatorConfig = ConfigFactory.parseString(s"""app.marshal_key_as_json = false""").withFallback(org.wabase.config)
         val generator = new WabaseSwaggerGenerator(Seq(ctx.wabase.qe), config.getString("app.host"), hasApi, config = generatorConfig) {
           override def getQueryParameters(method: String, viewDef: ViewDef, keySize: Int = 99): Seq[FilterParameter] = {

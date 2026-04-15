@@ -2,7 +2,7 @@ package org.wabase
 
 import com.typesafe.scalalogging.Logger
 import org.apache.pekko.actor.ActorSystem
-import org.apache.pekko.http.scaladsl.model.{HttpRequest, HttpResponse, StatusCode, StatusCodes}
+import org.apache.pekko.http.scaladsl.model.{HttpRequest, HttpResponse, StatusCode, StatusCodes, Uri}
 import org.apache.pekko.http.scaladsl.model.headers.`Timeout-Access`
 import org.apache.pekko.stream.scaladsl.Source
 import org.apache.pekko.util.ByteString
@@ -35,7 +35,7 @@ case class WabaseFileStreamers(fileStreamers: Map[String, FileStreamer]) {
 
 trait ViewApi {
   def apiMethod(viewDef: ViewDef, method: String, keySize: Int): String
-  def hasApi(view: ViewDef, method: String, keySize: Int, hasRole: Set[String] => Boolean): Either[StatusCode, String]
+  def hasApi(view: ViewDef, requestPath: Uri.Path, method: String, keySize: Int, hasRole: Set[String] => Boolean): Either[StatusCode, String]
 }
 
 trait WabaseApp[User] {
@@ -438,7 +438,7 @@ trait WabaseApp[User] {
   ): AppActionContext = {
     import context._
     if (doApiCheck)
-      checkApi(viewName, actionName, user, keyValues)
+      checkApi(viewName, Option(httpReq).map(_.uri.path).orNull, actionName, user, keyValues)
     val keyAsMap = prepareKey(viewName, keyValues, actionName)
     val key_params =
       if  (context.actionName == ActionForKeyUpdate && keyAsMap != null && keyAsMap.nonEmpty)
@@ -527,9 +527,9 @@ trait WabaseApp[User] {
   private val validViewNameRegex = s"^$qualifiedIdent$$".r
   def sanitizedViewName(viewName: String) =
     if (validViewNameRegex.pattern.matcher(viewName).matches()) viewName else "Strange name"
-  protected def noApiException(viewName: String, method: String, keySize: Int, user: User): Exception =
+  protected def noApiException(viewName: String, requestPath: Uri.Path, method: String, keySize: Int, user: User): Exception =
     new BusinessException(
-      s"Not in this API: $method ${(Seq(sanitizedViewName(viewName)) ++ (1 to keySize).map(n => s"{$n}")).mkString("/")}")
+      s"Request '${requestPath.toString()}' not in this API: $method ${(Seq(sanitizedViewName(viewName)) ++ (1 to keySize).map(n => s"{$n}")).mkString("/")}")
   protected def apiUnauthorizedException(viewName: String, method: String, user: User): Exception =
     if  (user == null)
          new AuthenticationException("Unauthorized")
@@ -544,24 +544,24 @@ trait WabaseApp[User] {
   def apiMethod(viewDef: ViewDef, method: String, keySize: Int): String = {
     viewApi.apiMethod(viewDef, method, keySize)
   }
-  def checkApi(viewName: String, method: String, user: User, keyValues: Seq[Any]): String = {
-    hasApiForName(viewName, method, keyValues.size, hasRole(user, _)) match {
+  def checkApi(viewName: String, requestPath: Uri.Path, method: String, user: User, keyValues: Seq[Any]): String = {
+    hasApiForName(viewName, requestPath, method, keyValues.size, hasRole(user, _)) match {
       case Left(statusCode) =>
         statusCode match {
           case StatusCodes.MethodNotAllowed => throw HttpException(statusCode)
           case StatusCodes.Unauthorized     => throw apiUnauthorizedException(viewName, method, user)
-          case _/* StatusCodes.BadRequest*/ => throw noApiException(viewName, method, keyValues.size, user)
+          case _/* StatusCodes.BadRequest*/ => throw noApiException(viewName, requestPath, method, keyValues.size, user)
         }
       case Right(methodName) =>
         methodName
     }
   }
-  protected def hasApiForName(viewName: String, method: String, keySize: Int, hasRole: Set[String] => Boolean): Either[StatusCode, String] =
+  protected def hasApiForName(viewName: String, requestPath: Uri.Path, method: String, keySize: Int, hasRole: Set[String] => Boolean): Either[StatusCode, String] =
     qe.viewDefOption(viewName)
-      .map { view => viewApi.hasApi(view, method, keySize, hasRole) }
+      .map { view => viewApi.hasApi(view, requestPath, method, keySize, hasRole) }
       .getOrElse(Left(StatusCodes.BadRequest))
-  def hasApi(view: ViewDef, method: String, keySize: Int, hasRole: Set[String] => Boolean): Either[StatusCode, String] = {
-    viewApi.hasApi(view, method, keySize, hasRole)
+  def hasApi(view: ViewDef, requestPath: Uri.Path, method: String, keySize: Int, hasRole: Set[String] => Boolean): Either[StatusCode, String] = {
+    viewApi.hasApi(view, requestPath, method, keySize, hasRole)
   }
   protected def checkLimit(viewDef: ViewDef, limit: Int): Unit = {
     val maxLimitForView = viewDef.limit
@@ -655,7 +655,7 @@ class WabaseViewApi(
       case _                                                        => keySize == apiKeySize(viewDef)
     }
   }
-  def hasApi(view: ViewDef, method: String, keySize: Int, hasRole: Set[String] => Boolean): Either[StatusCode, String] = {
+  def hasApi(view: ViewDef, requestPath: Uri.Path, method: String, keySize: Int, hasRole: Set[String] => Boolean): Either[StatusCode, String] = {
     val api_m_opt  = Option(view).map(apiMethod(_, method, keySize))
     val api_r_opt  = api_m_opt match {
       case Some(api_m) => view.apiMethodToRoles.get(api_m)
@@ -672,10 +672,12 @@ class WabaseViewApi(
         ActionLegacyMapping ||
           roles.nonEmpty && isApiKeySizeAllowed(view, api_m, keySize)
       }
+      isCorrespondingPath <- Option(requestPath).map(rp => view.paths.exists(rp.startsWith)).orElse(Option(true))
       result <-
         if (!isMethodAllowed) {
           Some(Left(StatusCodes.BadRequest))
         }
+        else if (!isCorrespondingPath) Some(Left(StatusCodes.BadRequest))
         else if (isPublicView(view) || roles.contains(publicApiRoleName) || hasRole(roles))
           api_m_opt.map(Right(_))
         else Some(Left(StatusCodes.Unauthorized))

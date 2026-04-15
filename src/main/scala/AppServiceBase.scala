@@ -27,7 +27,7 @@ import org.apache.pekko.actor.ActorSystem
 
 import java.util.Locale
 import org.apache.pekko.http.scaladsl.server.util.Tuple
-import org.apache.pekko.http.scaladsl.unmarshalling.{FromRequestUnmarshaller, PredefinedFromEntityUnmarshallers}
+import org.apache.pekko.http.scaladsl.unmarshalling.FromRequestUnmarshaller
 import org.apache.pekko.util.ByteString
 import org.mojoz.querease.{ValidationException, ValidationResult}
 import org.wabase.ds.ConnectionPools.DefaultQueryTimeout
@@ -229,14 +229,16 @@ trait AppServiceBase[User]
 
   def putByKeyAction(viewName: String, keyValues: Seq[Any])(
     implicit user: User, state: ApplicationState, timeout: QueryTimeout): Route =
-      parameterMultiMap { params =>
-        val actionName = app.checkApi(viewName, ActionForHttpPut, user, keyValues)
-        entityAsMapOrException(viewName) { entityAsMap =>
-          extractRequest { implicit httpReq =>
-            complete {
-              implicit val routeLogger: Logger = WabaseService.routeLogger(httpReq)
-              app.doWabaseAction(actionName, viewName, keyValues, filterPars(params), entityAsMap,
-                doApiCheck = false /* api checked above */)
+      extractUri { requestUri =>
+        parameterMultiMap { params =>
+          val actionName = app.checkApi(viewName, requestUri.path, ActionForHttpPut, user, keyValues)
+          entityAsMapOrException(viewName) { entityAsMap =>
+            extractRequest { implicit httpReq =>
+              complete {
+                implicit val routeLogger: Logger = WabaseService.routeLogger(httpReq)
+                app.doWabaseAction(actionName, viewName, keyValues, filterPars(params), entityAsMap,
+                  doApiCheck = false /* api checked above */)
+              }
             }
           }
         }
@@ -290,7 +292,7 @@ trait AppServiceBase[User]
   def postByKeyAction(viewName: String, keyValues: Seq[Any])(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     extractUri { requestUri =>
       parameterMultiMap { params =>
-        val actionName = app.checkApi(viewName, ActionForHttpPost, user, keyValues)
+        val actionName = app.checkApi(viewName, requestUri.path, ActionForHttpPost, user, keyValues)
         if (useActions(viewName, actionName)) {
           entityAsMapOrException(viewName) { entityAsMap =>
             extractRequest { implicit httpReq =>

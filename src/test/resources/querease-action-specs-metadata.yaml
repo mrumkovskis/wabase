@@ -1460,6 +1460,10 @@ count:
 
 name: invocation_test_3
 api: get, list, delete, create, count, insert, update
+paths:
+  - /invocation_test_3
+  - /create/invocation_test_3
+  - /count/invocation_test_3
 key: name
 fields:
   - name

@@ -99,6 +99,10 @@ do:       doAction $1
 
 name: view1
 api: get, update, update+, delete, list, create, count
+paths:
+  - /public/view1
+  - /public/create:view1
+  - /public/count:view1
 explicit db: true
 key: id
 fields:
@@ -137,6 +141,7 @@ get:
 
 name: user_principal
 api: get, insert
+paths: /restricted/user_principal
 decoder: none
 explicit db: true
 get:
@@ -165,6 +170,7 @@ fields:
 
 name: querease_action_exception
 api: get, insert, update
+paths: /public/querease_action_exception
 explicit db: true
 decoder: none
 get:
@@ -184,6 +190,7 @@ get:
 
 name: entity_size_limit
 api: insert
+paths: /public/entity_size_limit
 decoder: default 64b
 explicit db: true
 fields:
@@ -195,6 +202,7 @@ insert:
 
 name: state_extractor
 api: get
+paths: /public/state_extractor
 explicit db: true
 fields:
 get:

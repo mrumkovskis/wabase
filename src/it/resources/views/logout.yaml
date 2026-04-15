@@ -1,5 +1,6 @@
 name:   logout
 api:    insert
+paths:  /logout
 fields:
 insert:
 - status ok

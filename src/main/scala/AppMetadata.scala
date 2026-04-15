@@ -1,7 +1,7 @@
 package org.wabase
 
-import com.typesafe.config.{ConfigException, ConfigFactory}
-import org.apache.pekko.http.scaladsl.model.HttpMethod
+import com.typesafe.config.ConfigFactory
+import org.apache.pekko.http.scaladsl.model.{HttpMethod, Uri}
 import org.mojoz.metadata.{FieldDef, TableMetadata, Type, ViewDef}
 import org.mojoz.metadata.in._
 import org.mojoz.metadata.io.MdConventions
@@ -12,7 +12,6 @@ import org.mojoz.querease.{FilterType, QuereaseMetadata, TresqlJoinsParser, Tres
 import org.tresql.{Cache, MacroResourcesImpl, QueryParser, SimpleCache, SimpleCacheBase, ast}
 import org.tresql.ast.{Exp, Variable}
 import org.tresql.parsing.QueryParsers
-import org.tresql.OrtMetadata.{AutoValue, KeyValue, Property}
 import org.wabase.AppMetadata.{Action, JobCall}
 import org.wabase.AppMetadata.Action.TresqlExtraction.{OpTresqlTraverser, State, StepTresqlTraverser, opTresqlTraverser, stepTresqlTraverser}
 import org.wabase.AppMetadata.Action.{OpTraverser, StepTraverser, Validations, ViewCall, traverseAction}
@@ -70,12 +69,12 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   override lazy val nameToViewDef: Map[String, ViewDef] =
     toAppViewDefs(viewDefLoader.nameToViewDef)
 
-  private lazy val publicViewsLocationPattern = config.getString("app.public-views.location-pattern").r
+  private lazy val publicViewsLocationPattern = config.getString("app.public-api.views-location-pattern").r
   private lazy val publicViewNames: Set[String] = {
     yamlMetadata
       .filter(md => publicViewsLocationPattern.pattern.matcher(md.filename).matches())
       .flatMap(_.parsed.flatMap(_.get("name").toSeq).filter(_ != null).map(_.toString)).toSet
-      .filter(nameToViewDef.contains)
+      .filter(viewDefLoader.nameToViewDef.contains)
   }
   def isPublicView(viewName: String) = publicViewNames.contains(viewName)
 
@@ -308,6 +307,14 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     }._1
 
     val limit = getIntExtra(Limit, viewDef) getOrElse 100
+    val pathPrefix = config.getString("app.views-api.uri-prefix")
+    val publicPrefix = config.getString("app.public-api.views-uri-prefix")
+    val paths = getStringSeq(Paths, viewDef.extras) match {
+      case Nil =>
+        val prefix = Uri.Path(if (isPublicView(viewDef.name)) publicPrefix else pathPrefix)
+        Seq(prefix ?/ viewDef.name, prefix ?/ s"count:${viewDef.name}", prefix ?/ s"create:${viewDef.name}")
+      case paths  => paths.map(p => if (p.startsWith("/")) Uri.Path(p) else Uri.Path(pathPrefix) ?/ p)
+    }
 
     val explicitDb = getBooleanExtra(ExplicitDb, viewDef)
     val (decoder, maxContentSize) = getStringExtra(Decoder, viewDef)
@@ -354,7 +361,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       comments, appFields, viewDef.saveTo, extras)
       .updateExtras(_.copy(keyFields = keyFields))
       .updateWabaseExtras(_ =>
-        AppViewDef(limit, explicitDb, decoder, maxContentSize, timeout, sqlTimeout,
+        AppViewDef(limit, paths, explicitDb, decoder, maxContentSize, timeout, sqlTimeout,
           auth, apiToRoles, actions, Map.empty, minKeySizeForCollection, maxKeySizeForCollection))
   }
 
@@ -1604,6 +1611,7 @@ object AppMetadata extends Loggable {
 
   trait AppViewDefExtras {
     val limit: Int
+    val paths: Seq[Uri.Path]
     val explicitDb: Boolean
     val decoder: RequestDecoder
     val maxContentSize: jLong
@@ -1619,6 +1627,7 @@ object AppMetadata extends Loggable {
 
   private [wabase] case class AppViewDef(
     limit: Int = 1000,
+    paths: Seq[Uri.Path] = Nil,
     explicitDb: Boolean = false,
     decoder: RequestDecoder = DefaultDecoder,
     maxContentSize: jLong = null,
@@ -1664,6 +1673,7 @@ object AppMetadata extends Loggable {
     private val defaultExtras = AppViewDef()
     private val appExtras = extras(WabaseViewExtrasKey, defaultExtras)
     override val limit = appExtras.limit
+    override val paths = appExtras.paths
     override val explicitDb = appExtras.explicitDb
     override val decoder = appExtras.decoder
     override val maxContentSize = appExtras.maxContentSize
@@ -1769,6 +1779,7 @@ object AppMetadata extends Loggable {
     val Auth = "auth"
     val Key   = "key"
     val Limit = "limit"
+    val Paths = "paths"
     val Validations = "validations"
     val ExplicitDb = "explicit db"
     val Decoder = "decoder"
@@ -1778,7 +1789,7 @@ object AppMetadata extends Loggable {
     val QuereaseViewExtrasKey = QuereaseMetadata.QuereaseViewExtrasKey
     val WabaseViewExtrasKey = AppMetadata.WabaseViewExtrasKey
     def apply() =
-      Set(Api, Auth, Key, Limit, Validations, ExplicitDb,
+      Set(Api, Auth, Key, Limit, Paths, Validations, ExplicitDb,
           Decoder, Timeout, SqlTimeout, Swagger, QuereaseViewExtrasKey, WabaseViewExtrasKey,
       ) ++
         Action()

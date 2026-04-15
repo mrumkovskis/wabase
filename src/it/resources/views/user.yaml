@@ -1,5 +1,6 @@
 name: user-with-roles-array
 api: get
+paths: /user-with-roles-array
 fields:
 get:
 - as any unique {'jasmine' name, |[({'admin'} + {'guest'})#(1)] 'roles'}
@@ -30,6 +31,7 @@ fields:
 
 name:     current_user
 api:      get
+paths:    /current-user
 fields:
 - user_id
 - name

@@ -1,5 +1,6 @@
 name: json_query_param
 api: get
+paths: /json-query-param
 get:
 - val = if is_defined(:filter) :filter else :name
 - as any :val
