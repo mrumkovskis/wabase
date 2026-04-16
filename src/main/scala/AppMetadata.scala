@@ -9,7 +9,7 @@ import org.mojoz.metadata.out.DdlGenerator.SimpleConstraintNamingRules
 import org.mojoz.querease.FilterType._
 import org.mojoz.querease.QueryStringBuilder.CompilationUnit
 import org.mojoz.querease.{FilterType, QuereaseMetadata, TresqlJoinsParser, TresqlMetadata}
-import org.tresql.{Cache, MacroResourcesImpl, QueryParser, SimpleCache, SimpleCacheBase, ast}
+import org.tresql.{Cache, CacheBase, MacroResourcesImpl, QueryParser, SimpleCache, SimpleCacheBase, ast}
 import org.tresql.ast.{Exp, Variable}
 import org.tresql.parsing.QueryParsers
 import org.wabase.AppMetadata.{Action, JobCall}
@@ -78,29 +78,22 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   }
   def isPublicView(viewName: String) = publicViewNames.contains(viewName)
 
-  private val actionParser: String => String => Map[String, Any] => Action =
-    objectName => dataKey => dataMap => {
-      val opParser = new OpParser(objectName, tableMetadata, opParserCache(objectName))
-      parseAction(objectName, ViewDefExtrasUtils.getSeq(dataKey, dataMap), opParser)
-    }
-
-  lazy val routeDefLoader =
+  lazy val routeDefLoader = {
+    val actionParser: String => String => Map[String, Any] => Action =
+      objectName => dataKey => dataMap => {
+        val opParser = new OpParser(objectName, tableMetadata)
+        parseOrCacheAction(s"$objectName.$dataKey", ViewDefExtrasUtils.getSeq(dataKey, dataMap), opParser)
+      }
     new YamlRouteDefLoader(yamlMetadata, actionParser)
+  }
   lazy val routeDefs: Seq[RouteDef] = routeDefLoader.routeDefs
 
+  /** This cache is update on view metadata loading.
+   *  NOTE: Do not clear method clearAllCaches because it is not updated during view compilation
+   * */
+  protected lazy val actionCache: CacheBase[Action] =
+    ActionCache.createCache(ActionCache.loadSerializedCache(resourceLoader), parserCacheSize)
 
-  protected lazy val actionCache: scala.collection.concurrent.Map[String, OpParser.Caches] = {
-    val m = new java.util.concurrent.ConcurrentHashMap[String, OpParser.Caches]
-    m.putAll(OpParser.loadSerializedOpCaches(resourceLoader).transform { (_, data) =>
-      OpParser.createOpParserCache(data, parserCacheSize)
-    }.asJava)
-    m.asScala
-  }
-
-  protected def opParserCache(name: String) = actionCache.getOrElseUpdate(
-    name,
-    OpParser.createOpParserCache(OpParser.SerializedCaches(Map(), Map()), parserCacheSize)
-  )
   protected lazy val joinsParserCache: Map[String, Map[String, Exp]] =
     loadJoinsParserCache(resourceLoader)
   lazy val viewNameToQueryVariablesCache: Map[String, Seq[ast.Variable]] =
@@ -321,9 +314,9 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       .map(parseDecoder(viewDef.name, _)).getOrElse((DefaultDecoder, null))
     val timeout = parseTimeout(viewDef.name, getStringExtra(Timeout, viewDef).orNull)
     val sqlTimeout = parseTimeout(viewDef.name, getStringExtra(SqlTimeout, viewDef).orNull)
+    val opParser = new OpParser(viewDef.name, tableMetadata)
     val actions = Action().foldLeft(Map[String, Action]()) { (res, actionName) =>
-      val opParser = new OpParser(viewDef.name, tableMetadata, opParserCache(viewDef.name))
-      val a = parseAction(s"${viewDef.name}.$actionName", getSeq(actionName, viewDef.extras), opParser)
+      val a = parseOrCacheAction(s"${viewDef.name}.$actionName", getSeq(actionName, viewDef.extras), opParser)
       if (a.steps.nonEmpty) res + (actionName -> a) else res
     }
     val maxKeySize            = viewDef.keyFieldNames.size
@@ -478,7 +471,6 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   override protected def clearAllCaches(): Unit = {
     super.clearAllCaches()
     viewNameToQueryVariablesCompilerCache.clear()
-    actionCache.clear()
   }
 
   override protected def serializedCaches: Map[String, Array[Byte]] = {
@@ -501,7 +493,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
     super.serializedCaches ++
       serializedQeParserCache ++
-      OpParser.serializeOpCaches(actionCache) ++
+      ActionCache.serializeCache(actionCache) ++
       serializedJoins ++
       serializedVars
   }
@@ -575,6 +567,14 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
           }
         }
       }
+    }
+  }
+
+  protected def parseOrCacheAction(objectName: String, stepData: Seq[Any], opParser: OpParser): Action = {
+    actionCache.get(objectName).getOrElse {
+      val act = parseAction(objectName, stepData, opParser)
+      actionCache.put(objectName, act)
+      act
     }
   }
 
@@ -873,7 +873,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   }
 }
 
-class OpParser(viewName: String, tmd: TableMetadata, caches: OpParser.Caches)
+class OpParser(viewName: String, tmd: TableMetadata)
   extends QueryParsers { self =>
   import AppMetadata.Action._
   import AppMetadata.Action
@@ -890,14 +890,11 @@ class OpParser(viewName: String, tmd: TableMetadata, caches: OpParser.Caches)
 
   def parseStep(step: String): Step = parseStep(step, isBlock = false)
 
-  def parseStep(step: String, isBlock: Boolean): Step = caches.stepCache.get(step).getOrElse {
-    val parsedStep = phrase(this.step(isBlock))(new scala.util.parsing.input.CharSequenceReader(step)) match {
+  def parseStep(step: String, isBlock: Boolean): Step =
+    phrase(this.step(isBlock))(new scala.util.parsing.input.CharSequenceReader(step)) match {
       case Success(r, _) => r
       case x => sys.error(x.toString)
     }
-    caches.stepCache.put(step, parsedStep)
-    parsedStep
-  }
 
   def step(isBlock: Boolean): Parser[Step] = { // returns Parser not MemParser because is dependant on parameter
     def op: Parser[Op] = if (isBlock) blockOp else operation
@@ -959,14 +956,11 @@ class OpParser(viewName: String, tmd: TableMetadata, caches: OpParser.Caches)
     (removeVar | setEnvOrReturn | evaluation | namedBlock(isBlock)) named "step"
   }
 
-  def parseOperation(op: String): Op = caches.opCache.get(op).getOrElse {
-    val parsedOp = phrase(operation)(new scala.util.parsing.input.CharSequenceReader(op)) match {
+  def parseOperation(op: String): Op =
+    phrase(operation)(new scala.util.parsing.input.CharSequenceReader(op)) match {
       case Success(r, _) => r
       case x => sys.error(x.toString)
     }
-    caches.opCache.put(op, parsedOp)
-    parsedOp
-  }
 
   // operation parsers
   def tresqlOp: MemParser[Tresql] = opt(opResultType) ~ expr ^^ { case rt ~ e =>
@@ -1214,43 +1208,6 @@ class OpParser(viewName: String, tmd: TableMetadata, caches: OpParser.Caches)
 
 object OpParser extends Loggable {
   val InvocationRegex = """(?U)\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*(\.\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*)*""".r
-
-  case class SerializedCaches(stepCache: Map[String, Action.Step], opCache: Map[String, Action.Op])
-  case class Caches(stepCache: SimpleCacheBase[Action.Step], opCache: SimpleCacheBase[Action.Op])
-
-  val QuereaseActionCacheName = "querease-action-cache.cbor"
-  import io.bullet.borer._
-  import io.bullet.borer.derivation.MapBasedCodecs._
-  import CacheIo.{stepCodec, opCodec}
-  private implicit lazy val serializedCachesCodec: Codec[SerializedCaches] = deriveCodec[SerializedCaches]
-
-  def loadSerializedOpCaches(getResourceAsStream: String => InputStream): Map[String, SerializedCaches] = {
-    val res = getResourceAsStream(s"/$QuereaseActionCacheName")
-    if (res == null) {
-      logger.debug(s"No querease view action cache resource - '/$QuereaseActionCacheName' found")
-      Map()
-    } else {
-      val cache =
-        Cbor.decode(res).to[Map[String, SerializedCaches]].value
-      logger.debug(s"Querease action cache loaded for ${cache.size} views.")
-      cache
-    }
-  }
-
-  def serializeOpCaches(caches: scala.collection.mutable.Map[String, Caches]): Map[String, Array[Byte]] = {
-    val actionOpData = caches
-      .map { case (n, c) => (n, SerializedCaches(c.stepCache.toMap, c.opCache.toMap)) }
-      .toMap
-    Map(QuereaseActionCacheName -> Cbor.encode(actionOpData).toByteArray)
-  }
-
-  def createOpParserCache(initData: SerializedCaches, maxSize: Int): Caches = {
-    val stepCache = new SimpleCacheBase[Action.Step](maxSize, "OpParser step cache")
-    stepCache.load(initData.stepCache)
-    val opCache = new SimpleCacheBase[Action.Op](maxSize, "OpParser op cache")
-    opCache.load(initData.opCache)
-    Caches(stepCache, opCache)
-  }
 }
 object AppMetadata extends Loggable {
 
@@ -1918,5 +1875,34 @@ object AppMetadata extends Loggable {
       }
     def getBooleanExtra(viewDef: ViewDef, f: FieldDef, key: String) =
       getBooleanExtraOpt(viewDef, f, key) getOrElse false
+  }
+
+  object ActionCache {
+    val QuereaseActionCacheName = "querease-action-cache.cbor"
+    import io.bullet.borer._
+    import CacheIo.actionCodec
+
+    def loadSerializedCache(getResourceAsStream: String => InputStream): Map[String, Action] = {
+      val res = getResourceAsStream(s"/$QuereaseActionCacheName")
+      if (res == null) {
+        logger.debug(s"No querease view action cache resource - '/$QuereaseActionCacheName' found")
+        Map()
+      } else {
+        val cache =
+          Cbor.decode(res).to[Map[String, Action]].value
+        logger.debug(s"Querease action cache loaded for ${cache.size} views.")
+        cache
+      }
+    }
+
+    def serializeCache(cache: CacheBase[Action]): Map[String, Array[Byte]] = {
+      Map(QuereaseActionCacheName -> Cbor.encode(cache.toMap).toByteArray)
+    }
+
+    def createCache(initData: Map[String, Action], maxSize: Int): CacheBase[Action] = {
+      val cache = new SimpleCacheBase[Action](maxSize, "Action cache")
+      cache.load(initData)
+      cache
+    }
   }
 }

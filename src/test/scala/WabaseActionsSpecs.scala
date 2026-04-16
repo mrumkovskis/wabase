@@ -22,7 +22,7 @@ import org.wabase.QuereaseActionsDtos.PersonWithHealthDataHealth
 import org.wabase.client.WabaseHttpClient
 import org.wabase.ds.{PoolName, QueryTimeout}
 
-import java.io.File
+import java.io.{ByteArrayInputStream, File}
 import java.nio.file.Files
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -292,6 +292,22 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
   private implicit val state: ApplicationState = ApplicationState(Map())
 
   behavior of "metadata"
+
+  it should "serialize actions" in {
+    import AppMetadata._
+    val actions = app.qe.nameToViewDef.flatMap { case (name, vd) =>
+      vd.actions.map { case (an, a) => s"$name.$an" -> a }
+    }
+    // serialize actions
+    val serializedCache =
+      AppMetadata.ActionCache.serializeCache(app.qe.asInstanceOf[TestQuerease].publicActionCache).head._2
+    val deserializedCache = AppMetadata.ActionCache.loadSerializedCache(_ => new ByteArrayInputStream(serializedCache))
+    import org.scalatest.Inspectors._
+    convertAssertionToFutureAssertion(forAll(actions) { case (name, a) =>
+      deserializedCache.contains(name) shouldBe true
+      deserializedCache(name) shouldBe a
+    })
+  }
 
   it should "compile metadata" in {
     var msgs: List[String] = Nil

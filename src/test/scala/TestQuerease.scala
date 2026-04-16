@@ -19,6 +19,7 @@ class TestQuerease(val metadataFiles: Seq[String], mdFilter: YamlMd => Boolean =
   override lazy val aliasToDb: Map[String, String] = Map(defaultCpName -> null)
   override lazy val yamlMetadata = YamlMd.fromPaths(metadataFiles).filter(mdFilter)
   override lazy val viewNameToClassMap = Map[String, Class[_ <: Dto]]()
+  lazy val publicActionCache = actionCache
   def persistenceMetadata(viewName: String) = nameToPersistenceMetadata(viewName)
 }
 

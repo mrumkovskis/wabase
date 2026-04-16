@@ -4,10 +4,8 @@ import org.apache.pekko.http.scaladsl.model.{HttpMethod, HttpMethods}
 import org.mojoz.metadata.in.YamlMd
 import org.wabase.AppMetadata.{Action, PathNameAndParameters, PathParameter, QueryParameters, RouteDef}
 
-import java.util.regex.Pattern
 import scala.collection.immutable._
 import scala.util.matching.Regex
-import scala.util.Try
 import scala.util.parsing.combinator.Parsers
 import scala.util.parsing.input.CharSequenceReader
 
