@@ -1905,4 +1905,25 @@ object AppMetadata extends Loggable {
       cache
     }
   }
+
+  import org.apache.pekko.http.scaladsl.server.PathMatcher
+  import org.apache.pekko.http.scaladsl.server.PathMatchers._
+  /**
+   * Path matcher can be used to extract fragments from swagger section in route or view definitions
+   * */
+  def swaggerPathToPathMatcher(path: String): PathMatcher[Unit] = {
+    val isParam = """\{[^}]+\}""".r
+    val swaggerSegments = path.stripPrefix("/").split("/", -1)  // negative second parameter ensures empty string(s) at the end of array if path ends with slash(es)
+    swaggerSegments.foldLeft[PathMatcher[Unit]](Neutral) {
+      (pm, seg) =>
+        if (isParam.pattern.matcher(seg).matches()) (pm ~ Slash ~ Segment).tmap(_ => ())
+        else (pm ~ Slash ~ seg).tmap(_ => ())
+    }
+  }
+  def isFullMatch(path: Uri.Path, matcher: PathMatcher[Unit]): Boolean = {
+    matcher(path) match {
+      case m: PathMatcher.Matched[_] => m.pathRest.isEmpty
+      case _ => false
+    }
+  }
 }
