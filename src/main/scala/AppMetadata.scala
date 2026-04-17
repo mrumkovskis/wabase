@@ -12,7 +12,7 @@ import org.mojoz.querease.{FilterType, QuereaseMetadata, TresqlJoinsParser, Tres
 import org.tresql.{Cache, CacheBase, MacroResourcesImpl, QueryParser, SimpleCache, SimpleCacheBase, ast}
 import org.tresql.ast.{Exp, Variable}
 import org.tresql.parsing.QueryParsers
-import org.wabase.AppMetadata.{Action, JobCall}
+import org.wabase.AppMetadata.JobCall
 import org.wabase.AppMetadata.Action.TresqlExtraction.{OpTresqlTraverser, State, StepTresqlTraverser, opTresqlTraverser, stepTresqlTraverser}
 import org.wabase.AppMetadata.Action.{OpTraverser, StepTraverser, Validations, ViewCall, traverseAction}
 

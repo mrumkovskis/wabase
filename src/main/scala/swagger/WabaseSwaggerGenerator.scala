@@ -575,18 +575,18 @@ class WabaseSwaggerGenerator(
     }
   }
 
-  def rootPathForView(viewDef: ViewDef) = s"/${viewDef.name}"
+  def rootPathsForView(viewDef: ViewDef): Seq[String] = viewDef.paths.map(_.toString)
 
-  def pathWithKey(method: String, viewDef: ViewDef, keySize: Int = 99) = {
+  def pathsWithKey(method: String, viewDef: ViewDef, keySize: Int = 99): Seq[String] = {
     val infix = method match {
       case "create" => s":$method"
       case "count"  => s":$method"
       case _        =>  ""
     }
-    if (apiKeyFieldNames(viewDef).take(keySize).isEmpty)
-      s"${rootPathForView(viewDef)}$infix"
-    else
-      s"${rootPathForView(viewDef)}$infix/${apiKeyFieldNames(viewDef).take(keySize).mkString("{", "}/{", "}")}"
+    val keyPart =
+      if (apiKeyFieldNames(viewDef).take(keySize).isEmpty) infix
+      else s"$infix/${apiKeyFieldNames(viewDef).take(keySize).mkString("{", "}/{", "}")}"
+    rootPathsForView(viewDef).map(rootPath => s"$rootPath$keyPart")
   }
 
   def isArrayRequest(viewDef: ViewDef, method: String) = false
@@ -787,12 +787,13 @@ class WabaseSwaggerGenerator(
   def pathsAndMethodsAndOperations(viewDef: ViewDef): Seq[(String, HttpMethod, Operation)] = {
     methodsAndDefaultActions.flatMap { case (method, defaultAction) =>
       keySizesAndActions(defaultAction, viewDef).flatMap { case (keySize, action) =>
-        methodToOperationBuilder.get(action).map(createOp => (
-          pathWithKey(action, viewDef, keySize),
-          method,
-          createOp(viewDef, keySize),
-        ))
-      }}
+        methodToOperationBuilder.get(action).toSeq.flatMap { createOp =>
+          pathsWithKey(action, viewDef, keySize).map { path =>
+            (path, method, createOp(viewDef, keySize))
+          }
+        }
+      }
+    }
   }
 
   def swaggerOverridesKey = "swagger"
