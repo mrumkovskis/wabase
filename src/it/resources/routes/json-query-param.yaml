@@ -1,20 +1,2 @@
 on: GET /json-query-param
 do: doAction('json_query_param')
-swagger:
-  summary: Get with JSON query parameter
-  description: Returns the filter query parameter value decoded from JSON
-  parameters:
-  - in: query
-    name: filter
-    required: false
-    content:
-      application/json:
-        schema:
-          type: object
-  - in: query
-    name: query
-    required: false
-    content:
-      application/json:
-        schema:
-          type: object

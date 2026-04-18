@@ -73,9 +73,15 @@ object BusinessScenariosSpecs extends Loggable {
 
   def identityCsrfCookieTransformer(cookie: HttpCookie): HttpCookie = cookie
 
-  def queryParamsTransformer(): Map[String, Any] => Map[String, Any] = (params: Map[String, Any]) =>
-    params.get("query").collect { case m: Map[String, Any]@unchecked => params ++ m }.getOrElse(params)
-
+  def queryParamsDecoder(): HttpRequest => Map[String, Any] = (req: HttpRequest) => {
+    if (req.uri.path.toString() == "/json-query-param") {
+      val params = req.uri.query().toMap.map {
+        case (n, v) if Set("query", "filter")(n) => n -> CborOrJsonAnyValueDecoder.decode(ByteString(v))
+        case x => x
+      }
+      params.get("query").collect { case m: Map[String, Any]@unchecked => params ++ m }.getOrElse(params)
+    } else null
+  }
 }
 
 object ScriptValidations {

@@ -1,7 +1,7 @@
 package org.wabase.handlers
 
 import org.apache.pekko.http.scaladsl.marshalling.Marshal
-import org.apache.pekko.http.scaladsl.model.{HttpEntity, HttpMethods, HttpResponse, StatusCode, StatusCodes}
+import org.apache.pekko.http.scaladsl.model.{HttpEntity, HttpMethods, HttpRequest, HttpResponse, StatusCode, StatusCodes}
 import org.wabase._
 import org.wabase.WabaseService.{addResultFilter, error, toMapForViewEntityDecoder, withReqMaxContentSize, withReqTimeout}
 import org.wabase.handlers.ResponseHandlers.okResponse
@@ -42,10 +42,10 @@ object ActionHandlers {
     }
   }
 
-  private val QueryParamsTransformer =
-    if (config.getIsNull("app.query-parameters-transformer")) identity[Map[String, Any]] _
-    else invokeFunction(config.getString("app.query-parameters-transformer"), Nil)(
-      scala.concurrent.ExecutionContext.Implicits.global).asInstanceOf[Map[String, Any] => Map[String, Any]]
+  private val QueryParamsDecoder: HttpRequest => Map[String, Any] =
+    if (config.getIsNull("app.query-parameters-decoder")) null
+    else invokeFunction(config.getString("app.query-parameters-decoder"), Nil)(
+      scala.concurrent.ExecutionContext.Implicits.global).asInstanceOf[HttpRequest => Map[String, Any]]
   def doAction(view_action: String, reqCtx: WabaseRequestContext): Future[HttpResponse] = {
     def extractParams(ctx: WabaseRequestContext) = {
       import ctx._
@@ -53,9 +53,9 @@ object ActionHandlers {
         wabase.qe.metadataConventions,
         AppServiceBase.NamesForInts,
         AppServiceBase.escapeReflectedXss,
-        route.queryParameters,
-        QueryParamsTransformer,
-      )(WabaseService.parameterMultiMap(req))
+        QueryParamsDecoder,
+        req,
+      )
     }
     def dwa(ctx: WabaseRequestContext, params: Map[String, Any]) = {
       if (ctx.viewName == null || !ctx.wabase.qe.nameToViewDef.contains(ctx.viewName))

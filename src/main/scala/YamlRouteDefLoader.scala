@@ -2,7 +2,7 @@ package org.wabase
 
 import org.apache.pekko.http.scaladsl.model.{HttpMethod, HttpMethods}
 import org.mojoz.metadata.in.YamlMd
-import org.wabase.AppMetadata.{Action, PathNameAndParameters, PathParameter, QueryParameters, RouteDef}
+import org.wabase.AppMetadata.{Action, PathNameAndParameters, PathParameter, RouteDef}
 
 import scala.collection.immutable._
 import scala.util.matching.Regex
@@ -88,27 +88,12 @@ class YamlRouteDefLoader(
       val handler = Option(parseProperty("do", pathParameterNames)).getOrElse(sys.error(s"Request handler missing"))
       val error = errorHandler(parseProperty("recover", pathParameterNames))
       val extras = rdMap - "on" - "do" - "recover"
-      val queryParameters =
-        extras.get("swagger")
-          .collect { case m: Map[String @ unchecked, _] => m }
-          .getOrElse(Map())
-          .get("parameters")
-          .collect { case seq: Seq[_] => seq }
-          .getOrElse(Nil)
-          .collect { case m: Map[String, Any] @unchecked
-            if m.get("in").contains("query") && m.contains("name") && m.contains("content") =>
-            (String.valueOf(m("name")), m("content") match {
-              case s: String => s
-              case m: Map[String@unchecked, _] if m.nonEmpty => m.keys.head   // assume that map has one media type key
-            })
-          }.toMap
       RouteDef(
         methods = method,
         path = path,
         requestHandler = handler,
         errorHandler = error,
         pathNamesAndParameters = pathNamesAndParameters,
-        queryParameters = QueryParameters(queryParameters),
         extras = extras,
       )
     }.toList
