@@ -1909,8 +1909,8 @@ object AppMetadata extends Loggable {
     val swaggerSegments = path.stripPrefix("/").split("/", -1)  // negative second parameter ensures empty string(s) at the end of array if path ends with slash(es)
     swaggerSegments.foldLeft[PathMatcher[Unit]](Neutral) {
       (pm, seg) =>
-        if (isParam.pattern.matcher(seg).matches()) (pm ~ Slash ~ Segment).tmap(_ => ())
-        else (pm ~ Slash ~ seg).tmap(_ => ())
+        if (isParam.pattern.matcher(seg).matches()) (pm / Segment).tmap(_ => ())
+        else (pm / seg).tmap(_ => ())
     }
   }
   def isFullMatch(path: Uri.Path, matcher: PathMatcher[Unit]): Boolean = {
