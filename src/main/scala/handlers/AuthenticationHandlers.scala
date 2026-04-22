@@ -4,6 +4,7 @@ import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.model.{HttpRequest, HttpResponse, StatusCodes}
 import org.apache.pekko.http.scaladsl.model.headers.{BasicHttpCredentials, OAuth2BearerToken}
 import org.apache.pekko.http.scaladsl.unmarshalling.Unmarshal
+import org.wabase.WabaseAuthentication.{extractClientIP, extractSession, extractUserAgent, sessionCookie, sessionId, validateSession}
 import org.wabase._
 import org.wabase.WabaseService.RequestHandler
 import org.wabase.WabaseUnmarshallers.mapUnmarshaller
@@ -18,6 +19,25 @@ object AuthenticationHandlers {
     else throw HttpException(StatusCodes.Forbidden)
   }
 
+  def appAuthenticate(req: HttpRequest): WabaseUser = {
+    val (session, ip, userAgent) = (extractSession(req), extractClientIP(req), extractUserAgent(req))
+    session.filter(validateSession(_, ip, userAgent))
+      .map(_.user)
+      .getOrElse(throw new AuthenticationException("Unauthorized"))
+  }
+
+  def appAuthenticateOpt(ctx: WabaseRequestContext): WabaseRequestContext = {
+    import ctx.req
+    val (session, ip, userAgent) = (extractSession(req), extractClientIP(req), extractUserAgent(req))
+    session.filter(validateSession(_, ip, userAgent))
+      .map(session => ctx.copy(user = session.user))
+      .getOrElse(ctx)
+  }
+
+  def setAnonSessionCookie(resp: HttpResponse): HttpResponse = {
+    WabaseService.setCookie(resp)(sessionCookie(sessionId))
+  }
+
   def authenticatePlusSession(innerHandler: RequestHandler): RequestHandler =
     authenticateDomainAndPathPlusSession(null, WabaseAuthentication.SessionCookiePath)(innerHandler)
 
@@ -26,14 +46,14 @@ object AuthenticationHandlers {
 
   def authenticateDomainAndPathPlusSession(domain: String, path: String)(
     innerHandler: RequestHandler): RequestHandler = ctx => {
-    val user = WabaseAuthentication.appAuthenticate(ctx.req)
+    val user = appAuthenticate(ctx.req)
     innerHandler(ctx.copy(user = user))
       .map(setDomainAndPathSessionCookieOpt(domain, path)(ctx.req, user, _))(ctx.as.dispatcher)
   }
 
   def authenticateDomainAndPathPlusSessionOpt(domain: String, path: String)(
     innerHandler: RequestHandler): RequestHandler = ctx => {
-    val ctxWithUser = WabaseAuthentication.appAuthenticateOpt(ctx)
+    val ctxWithUser = appAuthenticateOpt(ctx)
     innerHandler(ctxWithUser)
       .map(setDomainAndPathSessionCookieOpt(domain, path)(ctx.req, ctxWithUser.user, _))(ctxWithUser.as.dispatcher)
   }

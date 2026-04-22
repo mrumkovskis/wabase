@@ -67,27 +67,7 @@ object WabaseAuthentication extends Authentication[WabaseUser] {
     encryptSession(encodeSession(Authentication.Session(user, ip, expirationTime, userAgent)))
   }
 
-  /* Request mapper */
-  def appAuthenticate(req: HttpRequest): WabaseUser = {
-    val (session, ip, userAgent) = (extractSession(req), extractClientIP(req), extractUserAgent(req))
-    session.filter(validateSession(_, ip, userAgent))
-      .map(_.user)
-      .getOrElse(throw new AuthenticationException("Unauthorized"))
-  }
-
-  def appAuthenticateOpt(ctx: WabaseRequestContext): WabaseRequestContext = {
-    import ctx.req
-    val (session, ip, userAgent) = (extractSession(req), extractClientIP(req), extractUserAgent(req))
-    session.filter(validateSession(_, ip, userAgent))
-      .map(session => ctx.copy(user = session.user))
-      .getOrElse(ctx)
-  }
-
   def session(req: HttpRequest): Option[String] = WabaseService.optionalCookie(req)(SessionCookieName)
-
-  def setAnonSessionCookie(resp: HttpResponse): HttpResponse = {
-    WabaseService.setCookie(resp)(sessionCookie(sessionId))
-  }
 
   def sessionId: String = java.util.UUID.randomUUID().toString
 
