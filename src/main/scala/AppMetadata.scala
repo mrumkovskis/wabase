@@ -87,9 +87,10 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       val paths = vd.paths match {
         case Nil =>
           val prefix = Uri.Path(if (isPublicView(vd.name)) publicPrefix else pathPrefix)
-          def maybePath(api: String) =
-            if (vd.apiMethodToRoles.contains(api)) Seq(prefix ?/ s"$api:${vd.name}") else Seq()
-          Seq(prefix ?/ vd.name) ++ maybePath(Action.Count) ++ maybePath(Action.Create)
+          def maybePaths(apis: Seq[String]) = apis.collect {
+            case api if vd.apiMethodToRoles.contains(api) => prefix ?/ s"$api:${vd.name}"
+          }
+          Seq(prefix ?/ vd.name) ++ maybePaths(Seq(Action.Count, Action.Create))
         case paths  => paths.map(p => if (p.startsWith("/")) Uri.Path(p) else Uri.Path(pathPrefix) ?/ p)
       }
       (n, paths)
