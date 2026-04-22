@@ -540,7 +540,9 @@ trait WabaseApp[User] {
     qe.viewNameToHasAutoKey.get(viewDef.name).exists(identity)
   protected def isPublicView(viewDef: ViewDef): Boolean =
     qe.isPublicView(viewDef.name)
-  protected lazy val viewApi: ViewApi = new WabaseViewApi(apiKeySize _, hasAutoKey _, isPublicView _, publicApiRoleName)
+  protected def allowedPaths(viewDef: ViewDef): Seq[Uri.Path] =
+    qe.allowedPaths(viewDef.name)
+  protected lazy val viewApi: ViewApi = new WabaseViewApi(apiKeySize _, hasAutoKey _, isPublicView _, allowedPaths _, publicApiRoleName)
   def apiMethod(viewDef: ViewDef, method: String, keySize: Int): String = {
     viewApi.apiMethod(viewDef, method, keySize)
   }
@@ -607,6 +609,7 @@ class WabaseViewApi(
   apiKeySize:   ViewDef => Int,
   hasAutoKey:   ViewDef => Boolean,
   isPublicView: ViewDef => Boolean,
+  allowedPaths: ViewDef => Seq[Uri.Path],
   publicApiRoleName: String,
 ) extends ViewApi {
   def apiMethod(viewDef: ViewDef, method: String, keySize: Int): String = {
@@ -672,7 +675,7 @@ class WabaseViewApi(
         ActionLegacyMapping ||
           roles.nonEmpty && isApiKeySizeAllowed(view, api_m, keySize)
       }
-      isCorrespondingPath <- Option(requestPath).map(rp => view.paths.exists(rp.startsWith)).orElse(Option(true))
+      isCorrespondingPath <- Option(requestPath).map(rp => allowedPaths(view).exists(rp.startsWith)).orElse(Option(true))
       result <-
         if (!isMethodAllowed) {
           Some(Left(StatusCodes.BadRequest))

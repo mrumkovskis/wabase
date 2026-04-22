@@ -575,7 +575,8 @@ class WabaseSwaggerGenerator(
     }
   }
 
-  def rootPathsForView(viewDef: ViewDef): Seq[String] = viewDef.paths.map(_.toString)
+  def rootPathsForView(viewDef: ViewDef): Seq[String] =
+    qes.collectFirst { case q: AppQuerease => q.allowedPaths(viewDef.name) }.getOrElse(Nil).map(_.toString)
 
   def pathsWithKey(method: String, viewDef: ViewDef, keySize: Int = 99): Seq[String] = {
     val infix = method match {

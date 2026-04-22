@@ -8,7 +8,7 @@ import org.mojoz.metadata.io.MdConventions
 import org.mojoz.metadata.out.DdlGenerator.SimpleConstraintNamingRules
 import org.mojoz.querease.FilterType._
 import org.mojoz.querease.QueryStringBuilder.CompilationUnit
-import org.mojoz.querease.{FilterType, QuereaseMetadata, TresqlJoinsParser, TresqlMetadata}
+import org.mojoz.querease.{FilterType, QuereaseMetadata, TresqlJoinsParser, TresqlMetadata, ViewNotFoundException}
 import org.tresql.{Cache, CacheBase, MacroResourcesImpl, QueryParser, SimpleCache, SimpleCacheBase, ast}
 import org.tresql.ast.{Exp, Variable}
 import org.tresql.parsing.QueryParsers
@@ -77,6 +77,27 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       .filter(viewDefLoader.nameToViewDef.contains)
   }
   def isPublicView(viewName: String) = publicViewNames.contains(viewName)
+
+  /* view paths are calculated outside of toAppViewDef method because of config parameters usage which
+  * are not available in sbt-mojoz plugin. */
+  private lazy val viewPaths: Map[String, Seq[Uri.Path]] = {
+    nameToViewDef.map { case (n, vd) =>
+      val pathPrefix = config.getString("app.views-api.uri-prefix")
+      val publicPrefix = config.getString("app.public-api.views-uri-prefix")
+      val paths = vd.paths match {
+        case Nil =>
+          val prefix = Uri.Path(if (isPublicView(vd.name)) publicPrefix else pathPrefix)
+          def maybePath(api: String) =
+            if (vd.apiMethodToRoles.contains(api)) Seq(prefix ?/ s"$api:${vd.name}") else Seq()
+          Seq(prefix ?/ vd.name) ++ maybePath(Action.Count) ++ maybePath(Action.Create)
+        case paths  => paths.map(p => if (p.startsWith("/")) Uri.Path(p) else Uri.Path(pathPrefix) ?/ p)
+      }
+      (n, paths)
+    }
+  }
+
+  def allowedPaths(viewName: String): Seq[Uri.Path] = viewPaths.getOrElse(viewName,
+    throw ViewNotFoundException(s"View definition for $viewName not found"))
 
   lazy val routeDefLoader = {
     val actionParser: String => String => Map[String, Any] => Action =
@@ -300,15 +321,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     }._1
 
     val limit = getIntExtra(Limit, viewDef) getOrElse 100
-    val pathPrefix = config.getString("app.views-api.uri-prefix")
-    val publicPrefix = config.getString("app.public-api.views-uri-prefix")
-    val paths = getStringSeq(Paths, viewDef.extras) match {
-      case Nil =>
-        val prefix = Uri.Path(if (isPublicView(viewDef.name)) publicPrefix else pathPrefix)
-        Seq(prefix ?/ viewDef.name, prefix ?/ s"count:${viewDef.name}", prefix ?/ s"create:${viewDef.name}")
-      case paths  => paths.map(p => if (p.startsWith("/")) Uri.Path(p) else Uri.Path(pathPrefix) ?/ p)
-    }
-
+    val paths = getStringSeq(Paths, viewDef.extras)
     val explicitDb = getBooleanExtra(ExplicitDb, viewDef)
     val (decoder, maxContentSize) = getStringExtra(Decoder, viewDef)
       .map(parseDecoder(viewDef.name, _)).getOrElse((DefaultDecoder, null))
@@ -1568,7 +1581,7 @@ object AppMetadata extends Loggable {
 
   trait AppViewDefExtras {
     val limit: Int
-    val paths: Seq[Uri.Path]
+    val paths: Seq[String]
     val explicitDb: Boolean
     val decoder: RequestDecoder
     val maxContentSize: jLong
@@ -1584,7 +1597,7 @@ object AppMetadata extends Loggable {
 
   private [wabase] case class AppViewDef(
     limit: Int = 1000,
-    paths: Seq[Uri.Path] = Nil,
+    paths: Seq[String] = Nil,
     explicitDb: Boolean = false,
     decoder: RequestDecoder = DefaultDecoder,
     maxContentSize: jLong = null,
