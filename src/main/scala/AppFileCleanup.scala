@@ -15,7 +15,6 @@ class AppFileCleanup(qe: AppQuerease, resourcesTemplate: Resources,
                      fileStreamers: AppFileStreamerConfig*) extends Loggable {
 
   lazy val minAgeMillis: Long = 1000L * 60 * 60 * 24
-  protected lazy val ageCheckSql: String = "now() - interval '1 days'"
   protected lazy val refsToIgnore: Set[(String, String)] = Set.empty
   protected lazy val batchSizeOpt: Option[Int] = None
 
@@ -186,7 +185,7 @@ class AppFileCleanup(qe: AppQuerease, resourcesTemplate: Resources,
     }
     val selectStatement =
       s"${fs.file_info_table} fi" + joinsAndTables.map("; " + _._1).mkString +
-        s"""[fi.upload_time < sql("$ageCheckSql") """ + joinsAndTables.map(" & " + _._2 + " = null").mkString + "]{fi.id}"
+        s"""[fi.upload_time < now() - seconds_to_interval(${minAgeMillis/1000}) """ + joinsAndTables.map(" & " + _._2 + " = null").mkString + "]{fi.id}"
     selectStatement
   }
 

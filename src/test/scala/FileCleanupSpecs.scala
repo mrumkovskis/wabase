@@ -367,7 +367,6 @@ object FileCleanupSpecsHelper {
   class TestFileCleanup(qe: AppQuerease, res: Resources, fileStreamers: AppFileStreamerConfig*)
       extends AppFileCleanup(qe, res, fileStreamers: _*) with QuereaseProvider {
     override implicit lazy val connectionPool: PoolName = TestCp
-    override lazy val ageCheckSql: String = "now() - interval 1 day"
     override protected lazy val batchSizeOpt: Option[Int] = Some(1)
   }
 }
