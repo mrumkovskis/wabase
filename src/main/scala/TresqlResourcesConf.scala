@@ -7,7 +7,7 @@ import org.tresql.{Cache, Dialect, Logging, Metadata, Resources, ResourcesTempla
 import scala.jdk.CollectionConverters._
 
 trait TresqlResourcesConf {
-  def macrosClass: Class[_] = null
+  def macros: AnyRef = null
   def dialect: Dialect = null
   def toBindableValue: PartialFunction[Any, Any] = null
   def idExpr: String => String = null
@@ -98,7 +98,7 @@ object TresqlResourcesConf extends Loggable {
         override val dialect:           Dialect = getStringOpt("vendor").map(vendorDialect).orNull
         override val fetchSize:             Int = getInt("fetch-size")
         override val idExpr:   String => String = getStringOpt("vendor").map(vendorIdExpr).orNull
-        override val macrosClass:      Class[_] = getStringOpt("macros-class").map(Class.forName).orNull
+        override val macros:             AnyRef = getStringOpt("macros-class").map(getObjectOrNewInstance(_, "macros")).orNull
         override val maxResultSize:         Int = getInt("max-result-size")
         override val queryTimeout:          Int = getSeconds("query-timeout")
         override val recursiveStackDepth:   Int = getInt("recursive-stack-depth")
@@ -128,7 +128,7 @@ object TresqlResourcesConf extends Loggable {
       override val toBindableValue: PartialFunction[Any, Any] = getValue(_.toBindableValue)
       override val fetchSize:             Int = getInt(_.fetchSize)
       override val idExpr:   String => String = getValue(_.idExpr)
-      override val macrosClass:      Class[_] = getValue(_.macrosClass)
+      override val macros:             AnyRef = getValue(_.macros)
       override val maxResultSize:         Int = getInt(_.maxResultSize)
       override val queryTimeout:          Int = getInt(_.queryTimeout)
       override val recursiveStackDepth:   Int = getInt(_.recursiveStackDepth)
@@ -182,10 +182,7 @@ object TresqlResourcesConf extends Loggable {
       metadata: Metadata,
       extraResources: Map[String, Resources],
     ): ResourcesTemplate = {
-      val macros =
-        if (conf.macrosClass != null)
-             getObjectOrNewInstance(conf.macrosClass, "macros")
-        else Macros
+      val macros = Option(conf.macros).getOrElse(Macros)
       val dialect: Dialect = {
         val dbVendor = cpToVendor.getOrElse(cpName, null)
         if (conf.dialect != null) conf.dialect orElse vendorDialect(dbVendor)

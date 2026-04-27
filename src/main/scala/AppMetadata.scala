@@ -46,9 +46,9 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
   /** Get macro class from 'main' tresql resources config */
   override lazy val macrosClass: Class[_] =
-    // somehow flatMap needs type parameter [Class[_]] for scala 2.12.x compiler in order to succeed
     TresqlResourcesConf.confs.get(null)
-      .flatMap[Class[_]](c => Option(c.macrosClass))
+      .flatMap(c => Option(c.macros))
+      .map(_.getClass)
       .getOrElse(classOf[Macros])
   override lazy val joinsParser: JoinsParser =
     new TresqlJoinsParser(
