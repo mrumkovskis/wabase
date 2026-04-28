@@ -12,7 +12,8 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import scala.collection.immutable.Seq
 
-class TestQuerease(val metadataFiles: Seq[String], mdFilter: YamlMd => Boolean = _ => true) extends AppQuerease {
+class TestQuerease(val metadataFiles: Seq[String], mdFilter: YamlMd => Boolean = _ => true)
+  extends AppQuerease with compiling.WabaseViewCompiler {
   def this(metadataFile: String) = this(Seq(metadataFile))
   def this(metadataFile: String, mdFilter: YamlMd => Boolean) = this(Seq(metadataFile), mdFilter)
   override lazy val defaultCpName = "wabase_db"

@@ -11,7 +11,7 @@ class CompileViews extends AnyFlatSpec with Matchers with QuereaseProvider with 
     val previouslyCompiledQueries: Set[String] = Set.empty
     val showFailedViewQuery = true
     val (compiledViews, caches) =
-      DefaultAppQuerease.compileAllQueries(
+      new AppQuerease with compiling.WabaseViewCompiler{}.compileAllQueries(
         previouslyCompiledQueries,
         showFailedViewQuery,
         logger.info(_: String),
