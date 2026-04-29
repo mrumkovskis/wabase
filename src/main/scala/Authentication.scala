@@ -261,11 +261,14 @@ object Authentication {
     lazy val secureCookies: Boolean = config.getBoolean("session.cookie.secure")
     def uniqueSessionId = new Random(new SecureRandom).alphanumeric.take(100).mkString
 
-    def secretKey(keyStr: String) = Option(decodeBytes(keyStr))
-      .filter(_.length >= 16)
-      //take whole number of power of 2 bytes, i.e. 16, 32, ...
-      .map(a => a.take(Math.pow(2, (Math.log(a.length) / Math.log(2)).toInt).toInt))
-      .getOrElse(sys.error("too short secret key, in base 64 encoded format must be at least 16 bytes long"))
+    def secretKey(keyStr: String) = {
+      assert(keyStr != null, "Cannot create key on value null, please check configuration parameters.")
+      Option(decodeBytes(keyStr))
+        .filter(_.length >= 16)
+        //take whole number of power of 2 bytes, i.e. 16, 32, ...
+        .map(a => a.take(Math.pow(2, (Math.log(a.length) / Math.log(2)).toInt).toInt))
+        .getOrElse(sys.error("too short secret key, in base 64 encoded format must be at least 16 bytes long"))
+    }
 
     def randomBytes(size: Int) = {
       val array = Array.ofDim[Byte](size)
