@@ -295,8 +295,13 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
 
   it should "serialize actions" in {
     import AppMetadata._
-    val actions = app.qe.nameToViewDef.flatMap { case (name, vd) =>
-      vd.actions.map { case (an, a) => s"$name.$an" -> a }
+    val actions = app.qe.viewDefLoader.nameToViewDef.flatMap { case (vn, vd) =>
+      val parsedView = app.qe.nameToViewDef(vn)
+      Action().collect { case actionName if parsedView.actions.contains(actionName) =>
+        ( AppMetadata.sha256(Map(vn -> ViewDefExtrasUtils.getSeq(actionName, vd.extras)))
+        , parsedView.actions(actionName)
+        )
+      }
     }
     // serialize actions
     val serializedCache =

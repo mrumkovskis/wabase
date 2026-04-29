@@ -133,6 +133,22 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
     }
   }
 
+  it should "do raw action json encoding" in {
+    import org.apache.pekko.util.ByteString
+    import org.scalatest.Inspectors._
+    val viewActionData = querease.viewDefLoader.nameToViewDef.flatMap { case (_, vd) =>
+      Action().map { actionName => (actionName, vd) }
+    }
+    convertAssertionToFutureAssertion(
+      forAll(viewActionData) { case (actionName, vd) =>
+        val seq     = ViewDefExtrasUtils.getSeq(actionName, vd.extras)
+        val encoded = ResultEncoder.encodeAnyToJsonBytes(seq)
+        val decoded = CborOrJsonAnyValueDecoder.decode(ByteString(encoded))
+        ResultEncoder.encodeAnyToJsonBytes(decoded) shouldBe encoded
+      }
+    )
+  }
+
   it should "correctly encode, decode action data" in {
     import io.bullet.borer._
     import CacheIo.actionCodec

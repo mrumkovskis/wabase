@@ -103,15 +103,14 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val actionParser: String => String => Map[String, Any] => Action =
       objectName => dataKey => dataMap => {
         val opParser = new OpParser(objectName, tableMetadata)
-        parseOrCacheAction(s"$objectName.$dataKey", ViewDefExtrasUtils.getSeq(dataKey, dataMap), opParser)
+        parseOrCacheAction(ViewDefExtrasUtils.getSeq(dataKey, dataMap), opParser)
       }
     new YamlRouteDefLoader(yamlMetadata, actionParser)
   }
   lazy val routeDefs: Seq[RouteDef] = routeDefLoader.routeDefs
 
-  /** This cache is update on view metadata loading.
-   *  NOTE: Do not clear method clearAllCaches because it is not updated during view compilation
-   * */
+  protected def isActionCacheUpdatable: Boolean = false
+  /** This cache is updated on view metadata loading if isActionCacheUpdatable */
   protected lazy val actionCache: CacheBase[Action] =
     ActionCache.createCache(ActionCache.loadSerializedCache(resourceLoader), parserCacheSize)
 
@@ -329,7 +328,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val sqlTimeout = parseTimeout(viewDef.name, getStringExtra(SqlTimeout, viewDef).orNull)
     val opParser = new OpParser(viewDef.name, tableMetadata)
     val actions = Action().foldLeft(Map[String, Action]()) { (res, actionName) =>
-      val a = parseOrCacheAction(s"${viewDef.name}.$actionName", getSeq(actionName, viewDef.extras), opParser)
+      val a = parseOrCacheAction(getSeq(actionName, viewDef.extras), opParser)
       if (a.steps.nonEmpty) res + (actionName -> a) else res
     }
     val maxKeySize            = viewDef.keyFieldNames.size
@@ -469,10 +468,11 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     }
   }
 
-  protected def parseOrCacheAction(objectName: String, stepData: Seq[Any], opParser: OpParser): Action = {
-    actionCache.get(objectName).getOrElse {
-      val act = parseAction(objectName, stepData, opParser)
-      actionCache.put(objectName, act)
+  protected def parseOrCacheAction(stepData: Seq[Any], opParser: OpParser): Action = {
+    val objectHash = AppMetadata.sha256(Map(opParser.viewName -> stepData))
+    actionCache.get(objectHash).getOrElse {
+      val act = parseAction(objectHash, stepData, opParser)
+      if (isActionCacheUpdatable) actionCache.put(objectHash, act)
       act
     }
   }
@@ -772,7 +772,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   }
 }
 
-class OpParser(viewName: String, tmd: TableMetadata)
+class OpParser(val viewName: String, tmd: TableMetadata)
   extends QueryParsers { self =>
   import AppMetadata.Action._
   import AppMetadata.Action
@@ -1818,4 +1818,11 @@ object AppMetadata extends Loggable {
       case _ => false
     }
   }
+
+  def sha256(data: Any): String = {
+    java.security.MessageDigest.getInstance("SHA-256")
+      .digest(ResultEncoder.encodeAnyToJsonBytes(data))
+      .map("%02x".format(_)).mkString
+  }
+
 }

@@ -68,7 +68,8 @@ object ResultEncoder {
     import scala.jdk.CollectionConverters._
 
     private val customEncoder: JsValueEncoderPF = {
-      if (config.getIsNull("app.json-encoder-customization")) _ => PartialFunction.empty
+      if (!config.hasPath("app.json-encoder-customization") || config.getIsNull("app.json-encoder-customization"))
+        _ => PartialFunction.empty
       else {
         import scala.concurrent.ExecutionContext.Implicits.global
         invokeFunction(config.getString("app.json-encoder-customization"), Nil).asInstanceOf[JsValueEncoderPF]

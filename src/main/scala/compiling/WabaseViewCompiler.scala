@@ -1,4 +1,4 @@
-package compiling
+package org.wabase.compiling
 
 import org.mojoz.metadata.ViewDef
 import org.mojoz.querease.QueryStringBuilder.CompilationUnit
@@ -19,6 +19,8 @@ trait WabaseViewCompiler extends ViewCompiler with AppMetadata { this: AppQuerea
     cache.putAll(viewNameToQueryVariablesCache.asJava)
     cache
   }
+
+  override protected def isActionCacheUpdatable: Boolean = true
 
   protected def actionQueries(actionName: String, objName: String, action: Action): scala.collection.mutable.Set[(String,String)] = {
     case class QueriesState(dbStack: List[String], queries: scala.collection.mutable.Set[(String, String)])
