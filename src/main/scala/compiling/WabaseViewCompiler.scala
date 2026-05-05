@@ -5,7 +5,7 @@ import org.mojoz.querease.QueryStringBuilder.CompilationUnit
 import org.mojoz.querease.compiling.ViewCompiler
 import org.tresql.{MacroResourcesImpl, QueryParser, SimpleCache, ast}
 import org.wabase.AppMetadata.Action.TresqlExtraction.{OpTresqlTraverser, State, StepTresqlTraverser, opTresqlTraverser, stepTresqlTraverser}
-import org.wabase.{AppMetadata, AppQuerease, getObjectOrNewInstance}
+import org.wabase.{AppMetadata, AppQuerease, ClassLoaderTresqlResourcesConf, Macros, TresqlResourcesConf, getObjectOrNewInstance}
 import org.wabase.AppMetadata._
 
 import java.util.concurrent.ConcurrentHashMap
@@ -18,6 +18,18 @@ trait WabaseViewCompiler extends ViewCompiler with AppMetadata { this: AppQuerea
     val cache = new ConcurrentHashMap[String, Seq[ast.Variable]]
     cache.putAll(viewNameToQueryVariablesCache.asJava)
     cache
+  }
+
+  override lazy val macrosClass: Class[_] = {
+    val cl = resourcesClassLoader
+    if (cl == null) TresqlResourcesConf.confs.get(null)
+      .flatMap(c => Option(c.macros))
+      .map(_.getClass)
+      .getOrElse(classOf[Macros])
+    else new ClassLoaderTresqlResourcesConf(resourcesClassLoader).confs.get(null)
+      .flatMap(c => Option(c.macros))
+      .map(_.getClass)
+      .getOrElse(classOf[Macros])
   }
 
   override protected def isActionCacheUpdatable: Boolean = true
@@ -81,8 +93,6 @@ trait WabaseViewCompiler extends ViewCompiler with AppMetadata { this: AppQuerea
     case "queries" =>
       log(s"Compiling $category - ${compilationUnits.size} total")
       val startTime = System.currentTimeMillis
-      val scalaMacros: Any = Option(tresqlMetadata.macrosClass).map(getObjectOrNewInstance(_, "metadata macros")).orNull
-      val macroResources = new MacroResourcesImpl(scalaMacros, tresqlMetadata)
       val dbToCompiler = compilationUnits.map(_.db).toSet.map { (db: String) =>
         val compiler = new QueryParser(macroResources, new SimpleCache(parserCacheSize)) with org.tresql.compiling.Compiler {
           override val metadata = if (db == null) tresqlMetadata else tresqlMetadata.extraDbToMetadata(db)

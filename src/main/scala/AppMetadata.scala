@@ -102,7 +102,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   lazy val routeDefLoader = {
     val actionParser: String => String => Map[String, Any] => Action =
       objectName => dataKey => dataMap => {
-        val opParser = new OpParser(objectName, tableMetadata)
+        val opParser = new OpParser(objectName, tableMetadata, resourcesClassLoader)
         parseOrCacheAction(ViewDefExtrasUtils.getSeq(dataKey, dataMap), opParser)
       }
     new YamlRouteDefLoader(yamlMetadata, actionParser)
@@ -326,7 +326,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       .map(parseDecoder(viewDef.name, _)).getOrElse((DefaultDecoder, null))
     val timeout = parseTimeout(viewDef.name, getStringExtra(Timeout, viewDef).orNull)
     val sqlTimeout = parseTimeout(viewDef.name, getStringExtra(SqlTimeout, viewDef).orNull)
-    val opParser = new OpParser(viewDef.name, tableMetadata)
+    val opParser = new OpParser(viewDef.name, tableMetadata, resourcesClassLoader)
     val actions = Action().foldLeft(Map[String, Action]()) { (res, actionName) =>
       val a = parseOrCacheAction(getSeq(actionName, viewDef.extras), opParser)
       if (a.steps.nonEmpty) res + (actionName -> a) else res
@@ -772,7 +772,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   }
 }
 
-class OpParser(val viewName: String, tmd: TableMetadata)
+class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
   extends QueryParsers { self =>
   import AppMetadata.Action._
   import AppMetadata.Action
@@ -883,12 +883,12 @@ class OpParser(val viewName: String, tmd: TableMetadata)
     p(in) match {
       case Success(rt ~ res ~ args ~ arg, next) =>
         def resolveFunction(name: String) = try {
-          val (cn, fn) = classNameFunctionNameNoCheck(name)
+          val (cn, fn) = classNameFunctionNameNoCheck(name, cl)
           Success(Action.Invocation(cn, fn, args.getOrElse(Nil) ++ arg.toList, rt), next)
         } catch {
           case NonFatal(_) => Failure(s"Function not found: $name", next)
         }
-        resolveFunctionAliasOpt(res)   // if function alias found resolve function
+        resolveFunctionAliasOpt(res, cl)   // if function alias found resolve function
           .map(resolveFunction)
           .orElse(tmd.tableDefOption(res, null) // if table def found return failure - function not found
             .map(_ => Failure(s"Function not found: $res", next)))

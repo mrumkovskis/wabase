@@ -21,17 +21,17 @@ trait TresqlResourcesConf {
   def db: String = null
   /** This method allows to distinguish between null db value and no db value. In the last case db name
    * is taken from configuration parameter tresql.<db name>. */
-  protected def isDbSet: Boolean = false
+  private[wabase] def isDbSet: Boolean = false
 }
 
-object TresqlResourcesConf extends Loggable {
+class ClassLoaderTresqlResourcesConf(cl: ClassLoader) extends Loggable {
   private val tunablePaths =
     Set("query-timeout", "max-result-size", "fetch-size", "recursive-stack-depth", "cache-size")
-  private val resConfs = ComponentConf.getConfigs("tresql", tunablePaths, "tresql-resources.conf")
+  private val resConfs = new ClassLoaderComponentConf(cl).getConfigs("tresql", tunablePaths, "tresql-resources.conf")
   private val config   = resConfs.root
   private val dialectFactory = config.getString("dialect-factory")
   private val idExprFactory = config.getString("id-expr-factory")
-  val wabaseConf = ConfigFactory.load
+  val wabaseConf = if (cl == null) ConfigFactory.load else ConfigFactory.load(cl)
 
   lazy val DefaultCpName: String =
     Option("default")
@@ -98,7 +98,7 @@ object TresqlResourcesConf extends Loggable {
         override val dialect:           Dialect = getStringOpt("vendor").map(vendorDialect).orNull
         override val fetchSize:             Int = getInt("fetch-size")
         override val idExpr:   String => String = getStringOpt("vendor").map(vendorIdExpr).orNull
-        override val macros:             AnyRef = getStringOpt("macros-class").map(getObjectOrNewInstance(_, "macros")).orNull
+        override val macros:             AnyRef = getStringOpt("macros-class").map(mcn => if (cl == null) getObjectOrNewInstance(mcn, "macros") else getObjectOrNewInstance(mcn, "macros", Nil, Nil, cl)).orNull
         override val maxResultSize:         Int = getInt("max-result-size")
         override val queryTimeout:          Int = getSeconds("query-timeout")
         override val recursiveStackDepth:   Int = getInt("recursive-stack-depth")
@@ -106,7 +106,7 @@ object TresqlResourcesConf extends Loggable {
           getStringSetOpt("confidential-value-variable-names").map { hide => {
             case (fullName, _) if hide.contains(fullName) || hide.exists(h => fullName startsWith s"$h.") => "***"
           }: Logging#BindVarLogFilter}.orNull
-        override protected val isDbSet: Boolean = cConf.hasPathOrNull("db") && !tunableOnly
+        override private[wabase] val isDbSet: Boolean = cConf.hasPathOrNull("db") && !tunableOnly
       }
     }
 
@@ -132,7 +132,7 @@ object TresqlResourcesConf extends Loggable {
       override val maxResultSize:         Int = getInt(_.maxResultSize)
       override val queryTimeout:          Int = getInt(_.queryTimeout)
       override val recursiveStackDepth:   Int = getInt(_.recursiveStackDepth)
-      override protected val isDbSet: Boolean = tresqlConfs.exists(_.isDbSet)
+      override private[wabase] val isDbSet: Boolean = tresqlConfs.exists(_.isDbSet)
     }
   }
 
@@ -247,3 +247,5 @@ object TresqlResourcesConf extends Loggable {
     }
   }
 }
+
+object TresqlResourcesConf extends ClassLoaderTresqlResourcesConf(null)

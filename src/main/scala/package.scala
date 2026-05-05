@@ -77,13 +77,16 @@ package object wabase extends Loggable {
       getObjectOrNewInstance(className, description, Seq.empty, Seq.empty)
   def getObjectOrNewInstance(className: String, description: String, potentialParameters: Seq[Any]): AnyRef =
       getObjectOrNewInstance(className, description, potentialParameters, potentialParameters.map(_.getClass))
-  def getObjectOrNewInstance(className: String, description: String, potentialParameters: Seq[Any], parameterClasses: Seq[Class[_]]): AnyRef = {
-    def obj_or_new(cn: String): AnyRef =
+  def getObjectOrNewInstance(className: String, description: String, potentialParameters: Seq[Any], parameterClasses: Seq[Class[_]]): AnyRef =
+      getObjectOrNewInstance(className, description, potentialParameters, parameterClasses, null)
+  def getObjectOrNewInstance(className: String, description: String, potentialParameters: Seq[Any], parameterClasses: Seq[Class[_]], cl: ClassLoader): AnyRef = {
+    def obj_or_new(cn: String): AnyRef = {
+      def loadCl(n: String) = if (cl == null) Class.forName(n) else Class.forName(n, true, cl)
       if (cn endsWith "$")
-        getObjectOrNewInstance(Class.forName(cn), description, potentialParameters, parameterClasses)
-      else try  getNewInstance(Class.forName(cn), description, potentialParameters, parameterClasses) catch {
+        getObjectOrNewInstance(loadCl(cn), description, potentialParameters, parameterClasses)
+      else try  getNewInstance(loadCl(cn), description, potentialParameters, parameterClasses) catch {
         case util.control.NonFatal(ex1) =>
-          try Class.forName(cn + "$").getField("MODULE$").get(null) catch {
+          try getObject(loadCl(cn + "$")) catch {
             case util.control.NonFatal(ex2) =>
               val idx = cn.lastIndexOf('.')
               if (idx == -1) {
@@ -92,6 +95,7 @@ package object wabase extends Loggable {
               } else obj_or_new(cn.substring(0, idx) + "$" + cn.substring(idx + 1, cn.length))
           }
         }
+    }
     require(className != null, "Class name cannot be null, cannot instantiate class")
     obj_or_new(className)
   }
@@ -101,7 +105,7 @@ package object wabase extends Loggable {
   def getObjectOrNewInstance(clazz: Class[_], description: String, potentialParameters: Seq[Any]): AnyRef =
       getObjectOrNewInstance(clazz, description, potentialParameters, potentialParameters.map(_.getClass))
   def getObjectOrNewInstance(clazz: Class[_], description: String, potentialParameters: Seq[Any], parameterClasses: Seq[Class[_]]): AnyRef = {
-    try clazz.getField("MODULE$").get(null) catch {
+    try getObject(clazz) catch {
       case util.control.NonFatal(ex1) =>
         try getNewInstance(clazz, description, potentialParameters, parameterClasses) catch {
           case util.control.NonFatal(ex2) =>
@@ -110,6 +114,8 @@ package object wabase extends Loggable {
         }
     }
   }
+
+  def getObject(clazz: Class[_]): AnyRef = clazz.getField("MODULE$").get(null)
 
   def getNewInstance(clazz: Class[_], description: String, potentialParameters: Seq[Any], parameterClasses: Seq[Class[_]]): AnyRef = {
     require(potentialParameters.length == parameterClasses.length, "Potential parameters and their classes must have the same length")
@@ -246,19 +252,20 @@ package object wabase extends Loggable {
     invokeFunction(cn, fn, fallbackParameters, parameterFun)
   }
 
-  def resolveFunctionAliasOpt(alias: String): Option[String] = {
+  def resolveFunctionAliasOpt(alias: String, cl: ClassLoader): Option[String] = {
+    val conf = if (cl == null) config else ConfigFactory.load(cl)
     val idx = alias.lastIndexOf('.')
     if (idx == -1)
       try
-        if (config.hasPath(s"app.wabase-call-alias.$alias")) {
-          Option(config.getString(s"app.wabase-call-alias.$alias"))
+        if (conf.hasPath(s"app.wabase-call-alias.$alias")) {
+          Option(conf.getString(s"app.wabase-call-alias.$alias"))
         } else None
       catch { case _: ConfigException.BadPath => None }
     else None
   }
-  def classNameFunctionNameNoCheck(name: String): (String, String) = {
-    resolveFunctionAliasOpt(name)
-      .map(classNameFunctionNameNoCheck)
+  def classNameFunctionNameNoCheck(name: String, cl: ClassLoader): (String, String) = {
+    resolveFunctionAliasOpt(name, cl)
+      .map(classNameFunctionNameNoCheck(_, cl))
       .getOrElse {
         val idx = name.lastIndexOf('.')
         val cn = name.substring(0, idx)
@@ -267,7 +274,7 @@ package object wabase extends Loggable {
       }
   }
   def classNameFunctionName(name: String): (String, String) = {
-    val cn_fn = classNameFunctionNameNoCheck(name)
+    val cn_fn = classNameFunctionNameNoCheck(name, null)
     getObjAndFunction(cn_fn._1, cn_fn._2)
     cn_fn
   }

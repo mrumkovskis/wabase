@@ -17,11 +17,14 @@ trait ComponentConf {
   ): ComponentConfs
 }
 
-object ComponentConf extends ComponentConf {
+class ClassLoaderComponentConf(cl: ClassLoader) extends ComponentConf {
 
-  private lazy val defaultOverrides           = ConfigFactory.defaultOverrides()
-  private lazy val defaultApplication         = ConfigFactory.defaultApplication()
-  private lazy val defaultReferenceUnresolved = ConfigFactory.defaultReferenceUnresolved()
+  private lazy val defaultOverrides           =
+    if (cl == null) ConfigFactory.defaultOverrides()            else ConfigFactory.defaultOverrides(cl)
+  private lazy val defaultApplication         =
+    if (cl == null) ConfigFactory.defaultApplication()          else ConfigFactory.defaultApplication(cl)
+  private lazy val defaultReferenceUnresolved =
+    if (cl == null) ConfigFactory.defaultReferenceUnresolved()  else ConfigFactory.defaultReferenceUnresolved(cl)
 
   private val delegateClassSetting = "conf-loader-class"
   private lazy val delegate: ComponentConf =
@@ -52,7 +55,10 @@ object ComponentConf extends ComponentConf {
     dedicatedConfResourceName: String = null,
   ): ComponentConfs = {
 
-    val dedicLoad = ConfigFactory.parseResources(Option(dedicatedConfResourceName).getOrElse(s"$parentConfPath.conf"))
+    val dedicLoad = {
+      val res = Option(dedicatedConfResourceName).getOrElse(s"$parentConfPath.conf")
+      if (cl == null) ConfigFactory.parseResources(res) else ConfigFactory.parseResources(cl, res)
+    }
     val dedicConf = dedicLoad.resolve(ConfigResolveOptions.noSystem())
 
     val tunedConf = defaultOverrides
@@ -86,3 +92,5 @@ object ComponentConf extends ComponentConf {
     )
   }
 }
+
+object ComponentConf extends ClassLoaderComponentConf(null)
