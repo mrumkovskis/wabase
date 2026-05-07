@@ -525,6 +525,22 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
         _.result.toListOfMaps shouldBe List(Map("key" -> "k", "value" -> "v"))
       }
   }
+
+  behavior of "Macros.dynamic_sql"
+
+  it should "filter with literal SQL condition" in {
+    doAction("dynamic_sql_test", "get", Map(), Map()).map {
+      case MapResult(res) => res should be(Map("name" -> "Mr. Kalis", "surname" -> "Calis"))
+      case x => sys.error("Unexpected action result class: " + Option(x).map(_.getClass.getName).orNull)
+    }
+  }
+
+  it should "filter with SQL condition containing bind variable" in {
+    doAction("dynamic_sql_test", "list", Map(), Map()).map {
+      case TresqlResult(res) => res.toListOfMaps should be(List(Map("name" -> "Ms. Zina", "surname" -> "Mina")))
+      case x => sys.error("Unexpected action result class: " + Option(x).map(_.getClass.getName).orNull)
+    }
+  }
 }
 
 class QuereaseActionTestPersonManager {

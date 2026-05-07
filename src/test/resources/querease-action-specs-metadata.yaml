@@ -1885,6 +1885,18 @@ get:
 - unique_opt simple_table[value = :value]{id, value}
 
 
+name: dynamic_sql_test
+api: get, list
+get:
+- cond = 'name = ' || '''Mr. Kalis'''
+- res = unique_opt person[dynamic_sql(:cond)]{name, surname}
+- return (name = :res.name) + (surname = :res.surname)
+list:
+- pname = 'Ms. Zina'
+- cond = 'name = :pname'
+- person[dynamic_sql(:cond)]{name, surname}
+
+
 name: field_validation_test
 api: save
 table: person

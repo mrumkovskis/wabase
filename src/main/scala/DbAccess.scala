@@ -502,6 +502,10 @@ class Macros extends TresqlComparisonMacros {
       b.SQLExpr("null", Nil)
     else b.SQLExpr(sqlSnippet, vars)
   }
+  def dynamic_sql(b: QueryBuilder, sqlVar: QueryBuilder#VarExpr): b.SQLExpr = sqlVar() match {
+    case sqlStr: String => sql(b, b.ConstExpr(sqlStr))
+    case x              => sys.error(s"String value expected, got '$x': ${x.getClass}")
+  }
 
   override def shouldUnaccent(s: String) = true
   override def shouldIgnoreCase(s: String) = true
