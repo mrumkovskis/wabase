@@ -53,10 +53,10 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     new TresqlJoinsParser(
       // to avoid stack overflow cannot use directly field tresqlMetadata,
       // since it is initialized with viewDefs (for cursor table metadata)
-      TresqlMetadata(tableMetadata.tableDefs, typeDefs, macrosClass, resourceLoader, aliasToDb),
+      TresqlMetadata(tableMetadata.tableDefs, typeDefs, macrosClass, resourceClassLoader, aliasToDb),
       createJoinsParserCache(_)
     )
-  private lazy val macrosInstance = Option(macrosClass).map(getObjectOrNewInstance(_, "metadata macros")).orNull
+  protected lazy val macrosInstance = Option(macrosClass).map(getObjectOrNewInstance(_, "metadata macros")).orNull
   lazy val macroResources = new MacroResourcesImpl(macrosInstance, tresqlMetadata)
   override lazy val metadataConventions: AppMdConventions = new DefaultAppMdConventions(resourceLoader)()
   override lazy val viewDefLoader: YamlViewDefLoader =
@@ -102,7 +102,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   lazy val routeDefLoader = {
     val actionParser: String => String => Map[String, Any] => Action =
       objectName => dataKey => dataMap => {
-        val opParser = new OpParser(objectName, tableMetadata, resourcesClassLoader)
+        val opParser = new OpParser(objectName, tableMetadata, resourceClassLoader)
         parseOrCacheAction(ViewDefExtrasUtils.getSeq(dataKey, dataMap), opParser)
       }
     new YamlRouteDefLoader(yamlMetadata, actionParser)
@@ -326,7 +326,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       .map(parseDecoder(viewDef.name, _)).getOrElse((DefaultDecoder, null))
     val timeout = parseTimeout(viewDef.name, getStringExtra(Timeout, viewDef).orNull)
     val sqlTimeout = parseTimeout(viewDef.name, getStringExtra(SqlTimeout, viewDef).orNull)
-    val opParser = new OpParser(viewDef.name, tableMetadata, resourcesClassLoader)
+    val opParser = new OpParser(viewDef.name, tableMetadata, resourceClassLoader)
     val actions = Action().foldLeft(Map[String, Action]()) { (res, actionName) =>
       val a = parseOrCacheAction(getSeq(actionName, viewDef.extras), opParser)
       if (a.steps.nonEmpty) res + (actionName -> a) else res
