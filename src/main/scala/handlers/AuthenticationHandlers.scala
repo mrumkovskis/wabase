@@ -10,6 +10,8 @@ import org.wabase.WabaseService.RequestHandler
 import org.wabase.WabaseUnmarshallers.mapUnmarshaller
 
 import scala.concurrent.{ExecutionContext, Future}
+import scala.util.{Failure, Try}
+import scala.util.control.NonFatal
 
 object AuthenticationHandlers {
 
@@ -27,8 +29,14 @@ object AuthenticationHandlers {
   }
 
   def appAuthenticateOpt(ctx: WabaseRequestContext): WabaseRequestContext = {
+    def extractSessionOpt(req: HttpRequest) =
+      Try(extractSession(req)).recoverWith {
+        case NonFatal(e) =>
+          ctx.logger.debug("Error decoding session:", e)
+          Failure(e)
+      }.toOption.flatten
     import ctx.req
-    val (session, ip, userAgent) = (extractSession(req), extractClientIP(req), extractUserAgent(req))
+    val (session, ip, userAgent) = (extractSessionOpt(req), extractClientIP(req), extractUserAgent(req))
     session.filter(validateSession(_, ip, userAgent))
       .map(session => ctx.copy(user = session.user))
       .getOrElse(ctx)

@@ -1,0 +1,7 @@
+path:       /data/person/p1
+headers:
+  Cookie: session-id=invalid_garbage_not_decryptable
+response:
+  code:     p1
+  name:     John
+  surname:  Doe
