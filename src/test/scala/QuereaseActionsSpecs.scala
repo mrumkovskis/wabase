@@ -577,7 +577,9 @@ class QuereaseActionTestManager extends QuereaseActionTestPersonManager with Log
   }
 
   def concatStrings(data: Map[String, Any]): String = {
-    data.getOrElse("s1", "").toString + " " + data.getOrElse("s2", "").toString
+    if (data != null)
+      data.getOrElse("s1", "").toString + " " + data.getOrElse("s2", "").toString
+    else null
   }
 
   def addNumbers(data: Map[String, Any]): java.lang.Number = {

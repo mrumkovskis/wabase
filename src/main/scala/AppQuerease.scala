@@ -2127,6 +2127,7 @@ object AppQuerease {
     else {
       import resources._
       def cf(r: Any): Any = r match {
+        case null if !parType.isPrimitive => null
         case x if parType.isAssignableFrom(x.getClass) => x
         case m: Map[String, Any]@unchecked =>
           if (classOf[Dto].isAssignableFrom(parType)) qio.fill(m)(Manifest.classType[Dto](parType))

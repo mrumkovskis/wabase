@@ -789,6 +789,12 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       t13 <- doAction("insert", "invocation_test_4", Map()).map {
         _ shouldBe List(Map("key" -> "3", "value" -> "4"), Map("key" -> "x", "value" -> "y"))
       }
+      t14 <- doAction("update", "invocation_test_4", Map()).map {
+        _ shouldBe StringResult("null null")
+      }
+      t15 <- doAction("count", "invocation_test_4", Map()).map {
+        _ shouldBe NoResult
+      }
     } yield {
       t2
     }

@@ -669,7 +669,7 @@ count:
 
 
 name: invocation_test_4
-api: list, save
+api: list, save, count
 fields:
 - key
 - value
@@ -677,6 +677,10 @@ list:
 - org.wabase.QuereaseActionTestManagerObj.listOfMaps (({ '1' key, '2' value } + { 'a', 'b' }){key, value}#(1))
 insert:
 - org.wabase.QuereaseActionTestManagerObj.tresqlResult (({ '3' key, '4' value } + { 'x', 'y' }){key, value}#(1))
+update:
+- stringArgument null
+count:
+- org.wabase.QuereaseActionTestManager.concatStrings null
 
 
 name: invocation_result_mapper_test
