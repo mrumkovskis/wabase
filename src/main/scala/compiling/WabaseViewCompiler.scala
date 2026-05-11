@@ -3,22 +3,14 @@ package org.wabase.compiling
 import org.mojoz.metadata.ViewDef
 import org.mojoz.querease.QueryStringBuilder.CompilationUnit
 import org.mojoz.querease.compiling.ViewCompiler
-import org.tresql.{MacroResourcesImpl, QueryCompiler, SimpleCache, ast}
 import org.wabase.AppMetadata.Action.TresqlExtraction.{OpTresqlTraverser, State, StepTresqlTraverser, opTresqlTraverser, stepTresqlTraverser}
 import org.wabase.{AppMetadata, AppQuerease, ClassLoaderTresqlResourcesConf, Macros, TresqlResourcesConf}
 import org.wabase.AppMetadata._
 
-import java.util.concurrent.ConcurrentHashMap
 import scala.collection.immutable.{Map, Seq, Set}
 import scala.jdk.CollectionConverters._
 
 trait WabaseViewCompiler extends ViewCompiler with AppMetadata { this: AppQuerease =>
-
-  private lazy val viewNameToQueryVariablesCompilerCache = {
-    val cache = new ConcurrentHashMap[String, Seq[ast.Variable]]
-    cache.putAll(viewNameToQueryVariablesCache.asJava)
-    cache
-  }
 
   override lazy val macrosClass: Class[_] = {
     val cl = resourceClassLoader
@@ -31,9 +23,6 @@ trait WabaseViewCompiler extends ViewCompiler with AppMetadata { this: AppQuerea
       .map(_.getClass)
       .getOrElse(classOf[Macros])
   }
-
-  override lazy val macroResources: MacroResourcesImpl =
-    new MacroResourcesImpl(macrosInstance, tresqlMetadata, resourceClassLoader)
 
   override protected def isActionCacheUpdatable: Boolean = true
 
@@ -84,54 +73,6 @@ trait WabaseViewCompiler extends ViewCompiler with AppMetadata { this: AppQuerea
   private def compilationUnit(category: String, source: String, defaultDb: String, query: (String, String)) = {
     val (db, q) = query
     CompilationUnit(category, source, if (db == null) defaultDb else db, q)
-  }
-
-  override protected def compileQueries(
-    category: String,
-    compilationUnits: Seq[CompilationUnit],
-    previouslyCompiledQueries: Set[String],
-    showFailedViewQuery: Boolean,
-    log: => String => Unit,
-  ): Int = category match {
-    case "action-queries" =>
-      log(s"Compiling $category - ${compilationUnits.size} total")
-      val startTime = System.currentTimeMillis
-      val dbToCompiler = compilationUnits.map(_.db).toSet.map { (db: String) =>
-        val compiler = new QueryCompiler(
-          if (db == null) tresqlMetadata else tresqlMetadata.extraDbToMetadata(db),
-          tresqlMetadata.extraDbToMetadata,
-          macroResources,
-          new SimpleCache(parserCacheSize)
-        )
-        db -> compiler
-      }.toMap
-      val compiledQueries = collection.mutable.Set[String](previouslyCompiledQueries.toSeq: _*)
-      var compiledCount = 0
-      compilationUnits.foreach { case cu @ CompilationUnit(_, viewName, db, q) =>
-        if (!compiledQueries.contains(cu.queryStringWithContext) ||
-          viewNameToQueryVariablesCompilerCache.get(viewName) == null) {
-          val compiler = dbToCompiler(db)
-          try compiler.compile(q) catch { case util.control.NonFatal(ex) =>
-            val msg = s"\nFailed to compile $viewName query: ${ex.getMessage}" +
-              (if (showFailedViewQuery) s"\n$q" else "")
-            throw new RuntimeException(msg, ex)
-          }
-          viewNameToQueryVariablesCompilerCache.put(viewName, compiler.extractVariables(q))
-          if (!compiledQueries.contains(cu.queryStringWithContext)) {
-            compiledCount += 1
-            compiledQueries += cu.queryStringWithContext
-          }
-        }
-      }
-      val endTime = System.currentTimeMillis
-      val allQueries = compilationUnits.map(_.queryStringWithContext).toSet
-      log(
-        s"Query compilation done - ${endTime - startTime} ms, " +
-          s"queries compiled: $compiledCount" +
-          (if (compiledCount != allQueries.size) s" of ${allQueries.size}" else ""))
-      compiledCount
-    case _ => super.compileQueries(
-      category, compilationUnits, previouslyCompiledQueries, showFailedViewQuery, log)
   }
 
   override protected def serializedCaches: Map[String, Array[Byte]] = {

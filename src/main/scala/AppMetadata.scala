@@ -8,7 +8,7 @@ import org.mojoz.metadata.io.MdConventions
 import org.mojoz.metadata.out.DdlGenerator.SimpleConstraintNamingRules
 import org.mojoz.querease.FilterType._
 import org.mojoz.querease.{FilterType, QuereaseMetadata, TresqlJoinsParser, TresqlMetadata, ViewNotFoundException}
-import org.tresql.{Cache, CacheBase, MacroResourcesImpl, QueryParser, SimpleCache, SimpleCacheBase, ast}
+import org.tresql.{Cache, CacheBase, QueryParser, SimpleCache, SimpleCacheBase, ast}
 import org.tresql.ast.{Exp, Variable}
 import org.tresql.parsing.QueryParsers
 import org.wabase.AppMetadata.JobCall
@@ -56,8 +56,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       TresqlMetadata(tableMetadata.tableDefs, typeDefs, macrosClass, resourceClassLoader, aliasToDb),
       createJoinsParserCache(_)
     )
-  protected lazy val macrosInstance = Option(macrosClass).map(getObjectOrNewInstance(_, "metadata macros")).orNull
-  lazy val macroResources = new MacroResourcesImpl(macrosInstance, tresqlMetadata)
+  override protected lazy val macrosInstance = Option(macrosClass).map(getObjectOrNewInstance(_, "metadata macros")).orNull
   override lazy val metadataConventions: AppMdConventions = new DefaultAppMdConventions(resourceLoader)()
   override lazy val viewDefLoader: YamlViewDefLoader =
     new YamlViewDefLoader(tableMetadata, yamlMetadata, joinsParser, metadataConventions, uninheritableExtras, typeDefs) {
@@ -116,8 +115,8 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
   protected lazy val joinsParserCache: Map[String, Map[String, Exp]] =
     loadJoinsParserCache(resourceLoader)
-  lazy val viewNameToQueryVariablesCache: Map[String, Seq[ast.Variable]] =
-    loadViewNameToQueryVariablesCache(resourceLoader)
+  override lazy val viewNameToQueryVariablesCache: Map[String, Seq[ast.Variable]] =
+    loadViewNameToQueryVariablesCache(resourceClassLoader)
 
   def toAppViewDefs(mojozViewDefs: Map[String, ViewDef]) = {
     val viewDefs = transformAppViewDefs {
@@ -1151,10 +1150,11 @@ object AppMetadata extends Loggable {
   }
 
   val ViewNameToQueryVariablesCacheName  = "view-query-variables-cache.cbor"
-  def loadViewNameToQueryVariablesCache(getResourceAsStream: String => InputStream): Map[String, Seq[ast.Variable]] = {
-    val res = getResourceAsStream(s"/$ViewNameToQueryVariablesCacheName")
+  private def loadViewNameToQueryVariablesCache(classLoader: ClassLoader): Map[String, Seq[ast.Variable]] = {
+    val res = Option(classLoader).getOrElse(getClass.getClassLoader)
+      .getResourceAsStream(ViewNameToQueryVariablesCacheName)
     if (res == null) {
-      logger.debug(s"Query variables cache resource not found: '/$ViewNameToQueryVariablesCacheName'")
+      logger.debug(s"Query variables cache resource not found: '$ViewNameToQueryVariablesCacheName'")
       Map()
     } else {
       import io.bullet.borer._
