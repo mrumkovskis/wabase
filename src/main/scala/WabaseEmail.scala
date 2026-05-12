@@ -16,6 +16,7 @@ import java.io.{InputStream, OutputStream}
 import java.util.Properties
 import scala.collection.immutable.Seq
 import scala.concurrent.{ExecutionContext, Future}
+import scala.jdk.FutureConverters.CompletionStageOps
 
 
 case class EmailAttachment(
@@ -112,10 +113,6 @@ class DefaultWabaseEmailSender extends WabaseEmail with Loggable {
         builder.withAttachment(filename, dataSource)
     }
     val email = builder.buildEmail
-    // // TODO (when scala 2.12 no longer supported):
-    // Option(mailer).map(_.sendMail(email, async).asScala.map(_ => ())) getOrElse Future.successful(())
-    Future {
-      Option(mailer).foreach(_.sendMail(email, async))
-    }
+    Option(mailer).map(_.sendMail(email, async).asScala.map(_ => ())) getOrElse Future.successful(())
   }
 }
