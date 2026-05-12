@@ -100,7 +100,7 @@ class DefaultWabaseEmailSender extends WabaseEmail with Loggable {
       builder.withPlainText(body)
     attachments.foreach { attachment =>
       val filename = attachment.filename // org.apache.commons.lang3.StringUtils.stripAccents(attachment.filename)
-      val inputStream: InputStream = attachment.content.runWith(StreamConverters.asInputStream())
+      def inputStream: InputStream = attachment.content.runWith(StreamConverters.asInputStream())
       val dataSource = new DataSource {
         override def getContentType()   = attachment.content_type
         override def getInputStream()   = inputStream
