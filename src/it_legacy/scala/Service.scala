@@ -5,6 +5,8 @@ import org.apache.pekko.http.scaladsl.server.Directives.{complete, handleExcepti
 import org.apache.pekko.http.scaladsl.server.Route
 import org.wabase._
 
+import scala.concurrent.Future
+
 object TestDbAccess extends DbAccess with QuereaseProvider with Loggable {
   override protected def tresqlMetadata = DefaultAppQuerease.tresqlMetadata
 }
@@ -21,7 +23,7 @@ object TestApp extends AppBase[TestUser]
   override def dbAccessDelegate: DbAccess = TestDbAccess
   override def check[C <: RequestContext[_]](ctx: C, clazz: Class[_]): Unit = {}
   override def relevant[C <: RequestContext[_]](ctx: C, clazz: Class[_]) = ctx
-  override def hasRole(user: TestUser, roles: Set[String]): Boolean = true
+  override def hasRole(user: TestUser, roles: Set[String])(authCtx: AuthContext): Future[Boolean] = Future.successful(true)
 }
 
 class Service(system: ActorSystem) extends ExecutionImpl()(system)

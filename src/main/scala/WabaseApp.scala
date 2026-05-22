@@ -17,7 +17,8 @@ import org.wabase.ds.ConnectionPools.DEFAULT_CP
 import org.wabase.ds.{PoolName, QueryTimeout}
 
 import java.util.Locale
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.duration.DurationInt
+import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.language.{existentials, implicitConversions}
 import scala.util.{Failure, Success, Try}
 
@@ -35,7 +36,12 @@ case class WabaseFileStreamers(fileStreamers: Map[String, FileStreamer]) {
 
 trait ViewApi {
   def apiMethod(viewDef: ViewDef, method: String, keySize: Int): String
-  def hasApi(view: ViewDef, requestPath: Uri.Path, method: String, keySize: Int, hasRole: Set[String] => Boolean): Either[StatusCode, String]
+  def hasApi(
+    view: ViewDef,
+    requestPath: Uri.Path,
+    method: String, keySize: Int,
+    hasRole: Set[String] => Future[Boolean]
+  )(implicit ec: ExecutionContext): Future[Either[StatusCode, String]]
 }
 
 trait WabaseApp[User] {
@@ -141,24 +147,23 @@ trait WabaseApp[User] {
   }
 
   def doAction(
-    actionName: String,
-    viewName:   String,
-    keyValues:  Seq[Any],
     params:     Map[String, Any],
     values:     Map[String, Any] = Map(),
-    resultFilter: ResultRenderer.ResultFilter = null,
     doApiCheck: Boolean = true,
-  )(implicit wrctx: WabaseRequestContext): Future[WabaseResult] = {
-    val vdo = qe.viewDefOption(viewName)
-    val rf = resourceFactory(viewName, wrctx.logger.underlying.getName, wrctx.queryTimeout)
-    doWabaseAction(
-      AppActionContext(actionName, viewName, keyValues, params, values ++ params, resultFilter)(
-        wrctx.user.asInstanceOf[User], wrctx.applicationState, wrctx.as.dispatcher, wrctx.as, rf, wrctx.req,
-        wrctx.logger),
-      doApiCheck)
+  )(wrctx: WabaseRequestContext): Future[WabaseResult] = {
+    doWabaseAction(actionCtxFromReqCtx(params, values)(wrctx), doApiCheck)
   }
 
-  def _api(implicit user: User) = api
+  def actionCtxFromReqCtx(params: Map[String, Any], values: Map[String, Any])(
+    wrctx: WabaseRequestContext): AppActionContext = {
+    import wrctx._
+    val rf = resourceFactory(viewName, wrctx.logger.underlying.getName, wrctx.queryTimeout)
+    AppActionContext(action, viewName, key, params, values ++ params, resultFilter)(
+      wrctx.user.asInstanceOf[User], wrctx.applicationState, wrctx.as.dispatcher, wrctx.as, rf, wrctx.req,
+      wrctx.logger)
+  }
+
+  def _api(user: User)(authCtx: AuthContext) = api(user)(authCtx)
   def _apiMetadata(implicit user: User, state: ApplicationState) = apiMetadata
   def _metadata(viewName: String)(implicit user: User, state: ApplicationState) = metadata(viewName)
 
@@ -173,15 +178,17 @@ trait WabaseApp[User] {
     context:    AppActionContext,
     doApiCheck: Boolean,
   ): Future[WabaseResult] = {
-    val actionContext = beforeWabaseAction(context, doApiCheck)
     import context.ec
     import context.as
-    action(actionContext)
-      .run(ec, as)
-      .flatMap(maybeSerializeResult(context, _))
-      .andThen {
-        case Success(WabaseResult(ctx, res)) => this.afterWabaseAction(ctx, Success(res))
-        case Failure(error) => this.afterWabaseAction(context, Failure[QuereaseResult](error))
+    beforeWabaseAction(context, doApiCheck)
+      .map(action)
+      .flatMap { _
+        .run(ec, as)
+        .flatMap(maybeSerializeResult(context, _))
+        .andThen {
+          case Success(WabaseResult(ctx, res)) => this.afterWabaseAction(ctx, Success(res))
+          case Failure(error) => this.afterWabaseAction(context, Failure[QuereaseResult](error))
+        }
       }
   }
 
@@ -435,18 +442,23 @@ trait WabaseApp[User] {
   protected def beforeWabaseAction(
     context:    AppActionContext,
     doApiCheck: Boolean,
-  ): AppActionContext = {
+  ): Future[AppActionContext] = {
     import context._
-    if (doApiCheck)
-      checkApi(viewName, Option(httpReq).map(_.uri.path).orNull, actionName, user, keyValues)
-    val keyAsMap = prepareKey(viewName, keyValues, actionName)
-    val key_params =
-      if  (context.actionName == ActionForKeyUpdate && keyAsMap != null && keyAsMap.nonEmpty)
-           Map(qe.oldKeyParamName -> keyAsMap)
-      else keyAsMap
-    addResultFilter(
-      context.copy(values = values ++ key_params)
-    )
+    val apiF =
+      if (doApiCheck)
+        checkApi(viewName, Option(httpReq).map(_.uri.path).orNull, actionName, user, keyValues)(
+          AuthContext(as, httpReq, QueryTimeout(rf.resources.queryTimeout), log))
+      else Future.successful(())
+    apiF.map { _ =>
+      val keyAsMap = prepareKey(viewName, keyValues, actionName)
+      val key_params =
+        if  (context.actionName == ActionForKeyUpdate && keyAsMap != null && keyAsMap.nonEmpty)
+          Map(qe.oldKeyParamName -> keyAsMap)
+        else keyAsMap
+      addResultFilter(
+        context.copy(values = values ++ key_params)
+      )
+    }
   }
 
   protected def afterWabaseAction(context: AppActionContext, result: Try[QuereaseResult]): Unit = {}
@@ -546,8 +558,10 @@ trait WabaseApp[User] {
   def apiMethod(viewDef: ViewDef, method: String, keySize: Int): String = {
     viewApi.apiMethod(viewDef, method, keySize)
   }
-  def checkApi(viewName: String, requestPath: Uri.Path, method: String, user: User, keyValues: Seq[Any]): String = {
-    hasApiForName(viewName, requestPath, method, keyValues.size, hasRole(user, _)) match {
+  def checkApi(viewName: String, requestPath: Uri.Path, method: String, user: User, keyValues: Seq[Any])(
+    authCtx: AuthContext): Future[String] = {
+    import authCtx._
+    hasApiForName(viewName, requestPath, method, keyValues.size, hasRole(user, _)(authCtx)).map {
       case Left(statusCode) =>
         statusCode match {
           case StatusCodes.MethodNotAllowed => throw HttpException(statusCode)
@@ -558,12 +572,19 @@ trait WabaseApp[User] {
         methodName
     }
   }
-  protected def hasApiForName(viewName: String, requestPath: Uri.Path, method: String, keySize: Int, hasRole: Set[String] => Boolean): Either[StatusCode, String] =
+  protected def hasApiForName(viewName: String, requestPath: Uri.Path, method: String, keySize: Int,
+    hasRole: Set[String] => Future[Boolean])(implicit ec: ExecutionContext): Future[Either[StatusCode, String]] = {
     qe.viewDefOption(viewName)
       .map { view => viewApi.hasApi(view, requestPath, method, keySize, hasRole) }
-      .getOrElse(Left(StatusCodes.BadRequest))
-  def hasApi(view: ViewDef, requestPath: Uri.Path, method: String, keySize: Int, hasRole: Set[String] => Boolean): Either[StatusCode, String] = {
-    viewApi.hasApi(view, requestPath, method, keySize, hasRole)
+      .getOrElse(Future.successful(Left(StatusCodes.BadRequest)))
+  }
+  def hasApiSync(
+    view: ViewDef,
+    requestPath: Uri.Path,
+    method: String, keySize: Int,
+    hasRole: Set[String] => Future[Boolean]
+  )(implicit ec: ExecutionContext): Either[StatusCode, String] = {
+    Await.result(viewApi.hasApi(view, requestPath, method, keySize, hasRole), 1.second)
   }
   protected def checkLimit(viewDef: ViewDef, limit: Int): Unit = {
     val maxLimitForView = viewDef.limit
@@ -658,7 +679,13 @@ class WabaseViewApi(
       case _                                                        => keySize == apiKeySize(viewDef)
     }
   }
-  def hasApi(view: ViewDef, requestPath: Uri.Path, method: String, keySize: Int, hasRole: Set[String] => Boolean): Either[StatusCode, String] = {
+  def hasApi(
+    view: ViewDef,
+    requestPath: Uri.Path,
+    method: String,
+    keySize: Int,
+    hasRole: Set[String] => Future[Boolean]
+  )(implicit ec: ExecutionContext): Future[Either[StatusCode, String]] = {
     val api_m_opt  = Option(view).map(apiMethod(_, method, keySize))
     val api_r_opt  = api_m_opt match {
       case Some(api_m) => view.apiMethodToRoles.get(api_m)
@@ -678,14 +705,16 @@ class WabaseViewApi(
       isCorrespondingPath <- Option(requestPath).map(rp => allowedPaths(view).exists(rp.startsWith)).orElse(Option(true))
       result <-
         if (!isMethodAllowed) {
-          Some(Left(StatusCodes.BadRequest))
+          Some(Future.successful(Left(StatusCodes.BadRequest)))
         }
-        else if (!isCorrespondingPath) Some(Left(StatusCodes.BadRequest))
-        else if (isPublicView(view) || roles.contains(publicApiRoleName) || hasRole(roles))
-          api_m_opt.map(Right(_))
-        else Some(Left(StatusCodes.Unauthorized))
+        else if (!isCorrespondingPath) Some(Future.successful(Left(StatusCodes.BadRequest)))
+        else if (isPublicView(view) || roles.contains(publicApiRoleName))
+          api_m_opt.map(api => Future.successful(Right(api)))
+        else api_m_opt.map { api =>
+          hasRole(roles).map(r => if (r) Right(api) else Left(StatusCodes.Unauthorized))
+        }
     } yield result).getOrElse(
-      Left(StatusCodes.BadRequest)
+      Future.successful(Left(StatusCodes.BadRequest))
     )
   }
 }

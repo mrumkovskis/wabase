@@ -6,13 +6,16 @@ import org.wabase._
 import org.wabase.CacheConditionHandlers._
 import org.wabase.WabaseService.RequestHandler
 
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
 
 object MetadataHandlers {
 
-  def api(ctx: WabaseRequestContext): HttpResponse = {
-    val json = ctx.wabase._api(ctx.user)
-    HttpResponse(entity = HttpEntity(ContentTypes.`application/json`, ResultEncoder.encodeAnyToJsonByteString(json)))
+  def api(ctx: WabaseRequestContext): Future[HttpResponse] = {
+    import ctx._
+    implicit val ec: ExecutionContext = as.dispatcher
+    ctx.wabase._api(ctx.user)(AuthContext(as, req, queryTimeout, logger)).map { json =>
+      HttpResponse(entity = HttpEntity(ContentTypes.`application/json`, ResultEncoder.encodeAnyToJsonByteString(json)))
+    }
   }
 
   def metadata(viewName: String, ctx: WabaseRequestContext): RequestHandler = {

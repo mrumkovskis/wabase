@@ -9,3 +9,6 @@ fields:
 - surname
 order:
 - code
+
+name: has_role
+get: exists(user_role[user_id = :current_user.id & role in :roles] {1})

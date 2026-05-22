@@ -15,10 +15,14 @@ import scala.util.control.NonFatal
 
 object AuthenticationHandlers {
 
-  def checkRole(role: String)(ctx: WabaseRequestContext): WabaseRequestContext = {
-    if (ctx.user == null) throw HttpException(StatusCodes.Unauthorized)
-    else if (ctx.wabase.hasRole(ctx.user, Set(role))) ctx
-    else throw HttpException(StatusCodes.Forbidden)
+  def checkRole(role: String)(ctx: WabaseRequestContext): Future[WabaseRequestContext] = {
+    import ctx._
+    implicit val ec: ExecutionContext = as.dispatcher
+    if (user == null) Future.failed(HttpException(StatusCodes.Unauthorized))
+    else wabase.hasRole(user, Set(role))(AuthContext(as, req, queryTimeout, logger)).map {
+      case true  => ctx
+      case false => throw HttpException(StatusCodes.Forbidden)
+    }
   }
 
   def appAuthenticate(req: HttpRequest): WabaseUser = {

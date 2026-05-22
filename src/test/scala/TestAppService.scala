@@ -4,6 +4,9 @@ import ch.qos.logback.classic.spi.ILoggingEvent
 import ch.qos.logback.core.boolex.EventEvaluatorBase
 import org.apache.pekko.actor.ActorSystem
 import org.wabase.DeferredControl.DeferredStorage
+import org.wabase.WabaseService.Wabase
+
+import scala.concurrent.Future
 
 case class TestUsr(id: Long) {
   def toMap: Map[String, Any] = Map("id" -> id)
@@ -21,8 +24,11 @@ trait TestApp extends AppBase[TestUsr] with NoAudit[TestUsr] with PostgreSqlCons
   override def useLegacyFlow(viewName: String, actionName: String): Boolean = viewName endsWith "_legacy_flow"
   override def check[C <: RequestContext[_]](ctx: C, clazz: Class[_]): Unit = {}
   override def relevant[C <: RequestContext[_]](ctx: C, clazz: Class[_]) = ctx
-  override def hasRole(user: TestUsr, roles: Set[String]): Boolean =
-    user != null && roles.exists(_.equalsIgnoreCase("private"))
+}
+
+object TestAuthorization extends WabaseAuthorization {
+  override def hasRole(wabase: Wabase, user: WabaseUser, roles: Set[String]): Future[Boolean] =
+    Future.successful(user != null && user.roles.intersect(roles).nonEmpty)
 }
 
 object TestApp extends TestApp

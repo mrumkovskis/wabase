@@ -5,7 +5,7 @@ import org.mojoz.metadata.{FieldDef, ViewDef}
 import org.mojoz.querease.{NotFoundException, QuereaseIteratorResult, ValidationException, ValidationResult}
 import com.typesafe.config.Config
 
-import scala.concurrent.Promise
+import scala.concurrent.{Await, Future, Promise}
 import scala.language.existentials
 import scala.language.implicitConversions
 import scala.collection.immutable.{ListMap, Set, TreeMap}
@@ -16,9 +16,11 @@ import AppMetadata._
 import CustomScriptValidationFunctions.is_valid_email
 import com.typesafe.scalalogging.Logger
 import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.http.scaladsl.model.Uri
 import org.wabase.ds.{ConnectionPools, PoolName, QueryTimeout}
 
 import java.sql.Connection
+import scala.concurrent.duration.DurationInt
 import scala.util.control.NonFatal
 
 object AppBase {
@@ -432,7 +434,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
   def getRaw(viewName: String, id: Long, params: Map[String, Any] = Map())(
     implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout, poolName: PoolName) =
   {
-    checkApi(viewName, null, "get", user, Seq(id))
+    checkApiSync(viewName, null, "get", user, Seq(id))
     implicit val extraDbs = extraDb(AugmentedAppViewDef(viewDef(viewName)).actionToDbAccessKeys(Action.Get))
     dbUse {
         implicit val clazz = viewNameToClassMap(viewName)
@@ -450,14 +452,14 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
   def createRaw(viewName: String, params: Map[String, Any] = Map.empty)(
     implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout, poolName: PoolName
   ) = {
-      checkApi(viewName, null, "get", user, Nil)
-      implicit val extraDbs = extraDb(AugmentedAppViewDef(viewDef(viewName)).actionToDbAccessKeys(Action.Create))
-      dbUse {
-        implicit val clazz = viewNameToClassMap(viewName)
-        rest(
-          createCreateCtx(CreateContext[Dto](viewName, params, user, state))
-        )
-      }
+    checkApiSync(viewName, null, "get", user, Nil)
+    implicit val extraDbs = extraDb(AugmentedAppViewDef(viewDef(viewName)).actionToDbAccessKeys(Action.Create))
+    dbUse {
+      implicit val clazz = viewNameToClassMap(viewName)
+      rest(
+        createCreateCtx(CreateContext[Dto](viewName, params, user, state))
+      )
+    }
   }
 
   def create(viewName: String, params: Map[String, Any] = Map.empty)(
@@ -477,7 +479,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
       timeoutSeconds: QueryTimeout,
       poolName: PoolName) =
     {
-      checkApi(viewName, null, "list", user, Nil)
+      checkApiSync(viewName, null, "list", user, Nil)
       val maxLimitForView = viewDef(viewName).limit
       if (maxLimitForView > 0 && limit > maxLimitForView)
         throw new BusinessException(
@@ -507,7 +509,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
     timeoutSeconds: QueryTimeout,
     poolName: PoolName = ConnectionPools.key(viewDef(viewName).db)
   ) = {
-    checkApi(viewName, null, "list", user, Nil)
+    checkApiSync(viewName, null, "list", user, Nil)
     val result = listInternal(viewName, params, doCount = true)
     createCountResult(result)
   }
@@ -569,7 +571,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
   ) = {
       implicit val clazz = instance.getClass
       val viewDef = qe.viewDef(classToViewNameMap(clazz))
-      checkApi(viewName, null, "save", user, Nil)
+      checkApiSync(viewName, null, "save", user, Nil)
       val idOpt = Option(instance)
         .filter(_.isInstanceOf[org.wabase.DtoWithId])
         .map(_.asInstanceOf[DtoWithId])
@@ -577,16 +579,9 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
         .filter(_ != null)
       val old = {
         implicit val extraDbs = extraDb(AugmentedAppViewDef(viewDef).actionToDbAccessKeys(Action.Get))
-        implicit val ec = scala.concurrent.ExecutionContext.global
-        implicit val as: ActorSystem = null
-        implicit val fs: AppFileStreamer[User] = null
-        implicit val httpReq: org.apache.pekko.http.scaladsl.model.HttpRequest = null
-        implicit val httpClients: WabaseHttpClients = null
-        implicit val rf: ResourcesFactory = null
-        implicit val log: Logger = logger
         dbUse {
           validateFields(instance)
-          val ctx = AppActionContext(
+          val ctx = legacyAppActionContext(
             actionName = Action.Save,
             viewName = viewName,
             keyValues = Nil,
@@ -633,7 +628,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
     implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout,
       poolName: PoolName = ConnectionPools.key(viewDef(viewName).db)) =
   {
-      checkApi(viewName, null, "delete", user, Seq("id"))
+      checkApiSync(viewName, null, "delete", user, Seq("id"))
       val promise = Promise[Unit]()
       try {
         val res = friendlyConstraintErrorMessage {
@@ -663,6 +658,33 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
         throw e
     }
   }}
+
+  private def legacyAppActionContext(
+    actionName: String = null,
+    viewName: String = null,
+    keyValues: Seq[Any] = Nil,
+    params: Map[String, Any] = Map(),
+    values: Map[String, Any] = Map(),
+  )(implicit user: User, state: ApplicationState) = {
+    implicit val ec = scala.concurrent.ExecutionContext.global
+    implicit val as: ActorSystem = null
+    implicit val fs: AppFileStreamer[User] = null
+    implicit val httpReq: org.apache.pekko.http.scaladsl.model.HttpRequest = null
+    implicit val httpClients: WabaseHttpClients = null
+    implicit val rf: ResourcesFactory = null
+    implicit val log: Logger = logger
+    AppActionContext(
+      actionName = Action.Save,
+      viewName = viewName,
+      keyValues = keyValues,
+      params = params,
+      values = values
+    )
+  }
+
+  private def checkApiSync(viewName: String, requestPath: Uri.Path, method: String, user: User, keyValues: Seq[Any]) =
+    Await.result(checkApi(viewName, requestPath, method, user, keyValues)(emptyAuthCtx), 1.second)
+  private def emptyAuthCtx = AuthContext(null, null, null, null)(scala.concurrent.ExecutionContext.global)
 
   def createSaveCtx[T <: Dto](ctx: SaveContext[T]): SaveContext[T] = ctx
   def createDeleteCtx[T <: DtoWithId](ctx: RemoveContext[T]): RemoveContext[T] = ctx
@@ -822,27 +844,31 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
     case _ => Map.empty
   }
 
-  def filterByHasRole(someRoles: Set[String], user: User): Set[String] =
-    someRoles.filter(role => hasRole(user, Set(role)))
+  def filterByHasRole(someRoles: Set[String], user: User)(authCtx: AuthContext): Future[Set[String]] = {
+    import authCtx._
+    Future.traverse(someRoles)(role => hasRole(user, Set(role))(authCtx).map(role -> _))
+      .map(_.collect { case (role, has) if has => role })
+  }
 
-  def api(implicit user: User) = {
+  def api(user: User)(authCtx: AuthContext) = {
     val views = qe.collectViews{ case v => v}.toSeq.sortBy(_.name)
     val allApiRelatedRoles =
       views.map(_.apiMethodToRoles).filter(_ != null)
-        .flatMap(_.values).filter(_ != null)
-        .flatMap(identity).filter(_ != null)
+        .flatMap(_.values).filter(_ != null).flatten.filter(_ != null)
         .toSet
-    val relevantRoles = filterByHasRole(allApiRelatedRoles, user)
-    TreeMap[String, Any]() ++
-      views
-        .filter(_.apiMethodToRoles != null)
-        .map(v => v -> v.apiMethodToRoles.filter { case (method, roles) =>
-          qe.isPublicView(v.name) ||
-          roles.contains(publicApiRoleName) ||
-          roles.exists(relevantRoles.contains)
-        })
-        .filter(_._2.nonEmpty)
-        .map { case (v, methodsToRoles) => v.name -> methodsToRoles.keys.toSeq }
+    import authCtx._
+    filterByHasRole(allApiRelatedRoles, user)(authCtx).map { relevantRoles =>
+      TreeMap[String, Any]() ++
+        views
+          .filter(_.apiMethodToRoles != null)
+          .map(v => v -> v.apiMethodToRoles.filter { case (method, roles) =>
+            qe.isPublicView(v.name) ||
+              roles.contains(publicApiRoleName) ||
+              roles.exists(relevantRoles.contains)
+          })
+          .filter(_._2.nonEmpty)
+          .map { case (v, methodsToRoles) => v.name -> methodsToRoles.keys.toSeq }
+    }
   }
 
   def impliedIdForGetOverList[F](viewName: String): Option[Long] =

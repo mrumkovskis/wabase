@@ -67,14 +67,7 @@ object ActionHandlers {
         import updatedCtx._
         implicit val ec: ExecutionContext = as.dispatcher
         toMapForViewEntityDecoder(updatedCtx).flatMap { values =>
-          updatedCtx.wabase.app.doAction(
-            actionName = action,
-            viewName = viewName,
-            keyValues = updatedCtx.key,
-            params = params,
-            values = values,
-            resultFilter = resultFilter,
-          )(updatedCtx)
+          updatedCtx.wabase.app.doAction(params = params, values = values)(updatedCtx)
         }.flatMap { result =>
           Marshal(result).toResponseFor(updatedCtx.req)(wabase.toResponseWabaseResultMarshaller, ec)
         }

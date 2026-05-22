@@ -231,13 +231,15 @@ trait AppServiceBase[User]
     implicit user: User, state: ApplicationState, timeout: QueryTimeout): Route =
       extractUri { requestUri =>
         parameterMultiMap { params =>
-          val actionName = app.checkApi(viewName, requestUri.path, ActionForHttpPut, user, keyValues)
-          entityAsMapOrException(viewName) { entityAsMap =>
-            extractRequest { implicit httpReq =>
-              complete {
-                implicit val routeLogger: Logger = WabaseService.routeLogger(httpReq)
-                app.doWabaseAction(actionName, viewName, keyValues, filterPars(params), entityAsMap,
-                  doApiCheck = false /* api checked above */)
+          extractRequest { implicit httpReq =>
+            implicit val routeLogger: Logger = WabaseService.routeLogger(httpReq)
+            onSuccess(app.checkApi(viewName, requestUri.path, ActionForHttpPut, user, keyValues)(
+              AuthContext(system, httpReq, timeout, routeLogger))) { actionName =>
+              entityAsMapOrException(viewName) { entityAsMap =>
+                complete {
+                  app.doWabaseAction(actionName, viewName, keyValues, filterPars(params), entityAsMap,
+                    doApiCheck = false /* api checked above */)
+                }
               }
             }
           }
@@ -292,22 +294,25 @@ trait AppServiceBase[User]
   def postByKeyAction(viewName: String, keyValues: Seq[Any])(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     extractUri { requestUri =>
       parameterMultiMap { params =>
-        val actionName = app.checkApi(viewName, requestUri.path, ActionForHttpPost, user, keyValues)
-        if (useActions(viewName, actionName)) {
-          entityAsMapOrException(viewName) { entityAsMap =>
-            extractRequest { implicit httpReq =>
-              complete {
-                implicit val routeLogger: Logger = WabaseService.routeLogger(httpReq)
-                app.doWabaseAction(actionName, viewName, keyValues, filterPars(params), entityAsMap,
-                  doApiCheck = false /* api checked above */)
+        extractRequest { implicit httpReq =>
+          onSuccess(app.checkApi(viewName, requestUri.path, ActionForHttpPost, user, keyValues)(
+            AuthContext(system, httpReq, timeout, WabaseService.routeLogger(httpReq))
+          )) { actionName =>
+            if (useActions(viewName, actionName)) {
+              entityAsMapOrException(viewName) { entityAsMap =>
+                complete {
+                  implicit val routeLogger: Logger = WabaseService.routeLogger(httpReq)
+                  app.doWabaseAction(actionName, viewName, keyValues, filterPars(params), entityAsMap,
+                    doApiCheck = false /* api checked above */)
+                }
+              }
+            } else {
+              entityAsMapOrException(viewName) { data =>
+                val keyAsMap = if (keyValues.nonEmpty) app.prepareKey(viewName, keyValues, "insert") else Map.empty
+                val id = app.save(viewName, data, filterPars(params) ++ keyAsMap)
+                redirect(Uri(path = requestUri.path / id.toString), StatusCodes.SeeOther)
               }
             }
-          }
-        } else {
-          entityAsMapOrException(viewName) { data =>
-            val keyAsMap = if (keyValues.nonEmpty) app.prepareKey(viewName, keyValues, "insert") else Map.empty
-            val id = app.save(viewName, data, filterPars(params) ++ keyAsMap)
-            redirect(Uri(path = requestUri.path / id.toString), StatusCodes.SeeOther)
           }
         }
       }
@@ -382,7 +387,9 @@ trait AppServiceBase[User]
     }
   }
 
-  def apiAction(implicit user: User) = complete(app.api)
+  def apiAction(implicit user: User) = (extractRequest & extractTimeout) { (httpReq, timeout) =>
+    complete(app.api(user)(AuthContext(system, httpReq, timeout, WabaseService.routeLogger(httpReq))))
+  }
   def metadataAction(viewName: String)(implicit user: User, state: ApplicationState) =
     respondWithHeader(ETag(EntityTag(app.metadataVersionString))) {
       conditional(EntityTag(app.metadataVersionString), DateTime(app.startupTimeMillis)) {

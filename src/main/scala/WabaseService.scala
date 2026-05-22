@@ -544,7 +544,8 @@ trait WabaseSwaggerGeneratorFactory {
 
 object WabaseSwaggerGeneratorFactory extends WabaseSwaggerGeneratorFactory {
   class WabaseDefaultSwaggerGenerator(ctx: WabaseRequestContext)
-      extends WabaseSwaggerGenerator(Seq(ctx.wabase.qe), config.getString("app.host"), ctx.wabase.app.hasApi(_, null, _, _, _ => true)) {
+      extends WabaseSwaggerGenerator(Seq(ctx.wabase.qe), config.getString("app.host"),
+        ctx.wabase.app.hasApiSync(_, null, _, _, _ => Future.successful(true))(ctx.as.dispatcher)) {
     override def getQueryParameters(method: String, viewDef: ViewDef, keySize: Int = 99): Seq[FilterParameter] = {
       super.getQueryParameters(method, viewDef, keySize)
         .filterNot(p => ctx.wabase.app.isInternalParameter(viewDef, p.name))
