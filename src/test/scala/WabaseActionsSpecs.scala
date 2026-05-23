@@ -1970,6 +1970,42 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     }.map(_.getMessage should startWith("Structure depth exceeds"))
   }
 
+  behavior of "get invoice form tresql"
+
+  it should "insert invoice on purchase and get from tresql" in {
+    for {
+      purchaseResult <-
+        doAction("get", "purchase",
+          Map(
+            "purchase_time" -> java.sql.Timestamp.valueOf("2021-12-04 00:06:53"),
+            "customer"      -> "Ravus"
+          ),
+          removeIdsFlag = false
+        )
+      purchaseId = purchaseResult match {
+        case Seq(m: Map[String @unchecked, _]) => m("id")
+      }
+      insertResult <-
+        doAction("insert", "invoice",
+          Map("number" -> "INV-001", "account" -> "ACC-001", "purchase_id" -> purchaseId)
+        )
+      invoiceId = insertResult match {
+        case kr: KeyResult => kr.ir.id
+        case _             => -1L
+      }
+      getResult <- doAction("get", "invoice", Map.empty, keyValues = Seq(invoiceId))
+    } yield {
+      getResult shouldBe Map(
+        "number"      -> "INV-001",
+        "account"     -> "ACC-001",
+        "purchase_id" -> purchaseId,
+        "customer"    -> "Ravus",
+        "item"        -> "sword",
+        "amount"      -> 100.0
+      )
+    }
+  }
+
   behavior of "validateFields"
 
   it should "produce ValidationResults with location length > 1 for hierarchical view violations" in {

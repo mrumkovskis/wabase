@@ -117,7 +117,7 @@ trait DbAccess { this: QuereaseProvider with Loggable =>
         if (timeout == null) templ else templ.copy(queryTimeout = timeout.toInt)
       }.getOrElse(templ)
     }.get
-    val resFactory = ResourcesFactory(initResources(rt), closeResources)(rt)
+    val resFactory = ResourcesFactory(initResources, closeResources)(rt)
     vdo.flatMap(v => Option(v.db)).map(PoolName) getOrElse DefaultCp match {
       case DefaultCp => resFactory
       case PoolName(cp) => resFactory.focus(cp, DefaultCp.connectionPoolName)
@@ -131,9 +131,14 @@ trait DbAccess { this: QuereaseProvider with Loggable =>
   )(f: Resources => A): A =
     DbAccess.withConn(poolName, DefaultCp, template, extraDb)(f)
 
-  def withConn[A](viewName: String, actionName: String, qt: QueryTimeout)(f: Resources => A): A = {
+  private def resWithConn(viewName: String, actionName: String, qt: QueryTimeout) = {
     val (poolName, extraDbs) = qe.dbResourceNames(viewName, actionName)
-    val resources = resourceFactory(qe.viewDef(viewName), s"$viewName.$actionName", qt).initResources(poolName, extraDbs)
+    val rf = resourceFactory(qe.viewDef(viewName), s"$viewName.$actionName", qt)
+    rf.initResources(rf.resources)(poolName, extraDbs)
+  }
+
+  def withConn[A](viewName: String, actionName: String, qt: QueryTimeout)(f: Resources => A): A = {
+    val resources = resWithConn(viewName, actionName, qt)
     try f(resources) finally closeConns(DbAccess.closeConnection)(resources)
   }
 
@@ -145,8 +150,7 @@ trait DbAccess { this: QuereaseProvider with Loggable =>
     DbAccess.withRollbackConn(poolName, DefaultCp, template, extraDb)(f)
 
   def withRollbackConn[A](viewName: String, actionName: String, qt: QueryTimeout)(f: Resources => A): A = {
-    val (poolName, extraDbs) = qe.dbResourceNames(viewName, actionName)
-    val resources = resourceFactory(qe.viewDef(viewName), s"$viewName.$actionName", qt).initResources(poolName, extraDbs)
+    val resources = resWithConn(viewName, actionName, qt)
     try f(resources) finally closeConns(DbAccess.rollbackAndCloseConnection)(resources)
   }
 
@@ -158,8 +162,7 @@ trait DbAccess { this: QuereaseProvider with Loggable =>
     DbAccess.newTransaction(poolName, DefaultCp, template, extraDb)(f)
 
   def newTransaction[A](viewName: String, actionName: String, qt: QueryTimeout)(f: Resources => A): A = {
-    val (poolName, extraDbs) = qe.dbResourceNames(viewName, actionName)
-    val resources = resourceFactory(qe.viewDef(viewName), s"$viewName.$actionName", qt).initResources(poolName, extraDbs)
+    val resources = resWithConn(viewName, actionName, qt)
     DbAccess.newTransaction(resources)(f)
   }
 

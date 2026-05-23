@@ -47,8 +47,7 @@ class WabaseScheduler(wabase: AppBase[_], system: ActorSystem) extends Loggable 
     val resourcesFactory: ResourcesFactory = {
       val resTempl = dbAccess
         .withDbAccessLogger(dbAccess.tresqlResources.resourcesTemplate, loggerName)
-      val initRes = dbAccess.initResources(resTempl)
-        ResourcesFactory(initRes, dbAccess.closeResources)(resTempl)
+      ResourcesFactory(dbAccess.initResources, dbAccess.closeResources)(resTempl)
     }
     implicit val executionContext: ExecutionContext = system.dispatcher
     implicit val actorSystem: ActorSystem = system

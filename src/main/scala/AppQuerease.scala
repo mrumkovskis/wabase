@@ -54,7 +54,7 @@ case class QuereaseResources()(implicit
 )
 
 case class ResourcesFactory(
-  initResources: (PoolName, Seq[DbAccessKey]) => Resources,
+  initResources: Resources => (PoolName, Seq[DbAccessKey]) => Resources,
   closeResources: (Resources, Boolean, Option[Throwable]) => Unit,
 )(implicit val resources: Resources)
 {
@@ -319,7 +319,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
                 if (isExplicitDb(objName, actionName)) resourcesFactory
                 else {
                   val (poolName, extraDbs) = dbResourceNames(objName, actionName)
-                  resourcesFactory.copy()(resources = resourcesFactory.initResources(poolName, extraDbs))
+                  resourcesFactory.copy()(resources =
+                    resourcesFactory.initResources(resourcesFactory.resources)(poolName, extraDbs))
                 }
               new QuereaseResources()(resFac, ec, as, httpReq, qio, fileStreamers, httpClients,
                 parameterProvider, logger)
@@ -1419,7 +1420,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       else dbResourceNames(context.viewName, context.actionName)
     val newResFact = resourcesFactory
        .focus(poolName.connectionPoolName, defaultCpName)
-       .copy()(resources = resourcesFactory.initResources(poolName, extraDbs))
+       .copy()(resources = resourcesFactory.initResources(resourcesFactory.resources)(poolName, extraDbs))
     val closeRes = resourcesFactory.closeResources(newResFact.resources, op.doRollback, _)
     val nqr = new QuereaseResources()(
       newResFact, ec, as, httpReq, qio, fileStreamers, httpClients, parametersProvider, qr.logger)

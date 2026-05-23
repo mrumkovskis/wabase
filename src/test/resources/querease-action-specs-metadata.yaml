@@ -94,6 +94,14 @@ columns:
 - item                ! 256
 - amount              ! decimal 10 2
 
+table: invoice
+db: shop_db
+columns:
+- id
+- number              ! string
+- account             !
+- purchase.id         !
+
 table: if_and_foreach_test
 columns:
 - code                ! 40
@@ -470,6 +478,24 @@ fields:
 get:
 - unique_opt |shop_db:purchase[purchase_time = :purchase_time & customer = :customer]
     {item, amount}
+
+
+name: invoice
+api: insert, get
+db: shop_db
+table: invoice i
+fields:
+- id
+- number
+- account
+- purchase_id
+- customer                    =
+- item                        =
+- amount        decimal 10 2  =
+get:
+- unique_opt invoice i/purchase p[i.id = :id]
+    {i.id id, i.number number, i.account account, i.purchase_id purchase_id,
+     p.customer customer, p.item item, p.amount amount}
 
 
 name:     env_test_1
