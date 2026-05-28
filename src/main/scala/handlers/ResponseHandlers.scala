@@ -6,7 +6,7 @@ import org.apache.pekko.http.scaladsl.server.directives.FileAndResourceDirective
 import org.apache.pekko.stream.scaladsl.StreamConverters
 import org.apache.pekko.util.ByteString
 import org.wabase._
-import org.wabase.CacheConditionHandlers._
+import org.wabase.handlers.CacheConditionHandlers._
 import org.wabase.WabaseService.RequestHandler
 
 import scala.concurrent.Future

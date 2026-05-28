@@ -13,7 +13,7 @@ import org.apache.pekko.util.ByteString
 import org.mojoz.metadata.ViewDef
 import org.mojoz.metadata.out.DdlGenerator
 import org.wabase.AppMetadata.FilterParameter
-import org.wabase.CacheConditionHandlers.conditional
+import org.wabase.handlers.CacheConditionHandlers.conditional
 import org.wabase.WabaseService.{MediaTypes, RequestHandler}
 import org.wabase.WabaseUnmarshallers.mapUnmarshaller
 import org.wabase._

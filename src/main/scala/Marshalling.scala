@@ -1,5 +1,6 @@
 package org.wabase
 
+import org.wabase.handlers.CacheConditionHandlers
 import org.apache.pekko.http.scaladsl.common.{EntityStreamingSupport, JsonEntityStreamingSupport}
 import org.apache.pekko.http.scaladsl.marshalling._
 import org.apache.pekko.http.scaladsl.model._

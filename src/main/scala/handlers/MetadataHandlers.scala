@@ -3,7 +3,7 @@ package org.wabase.handlers
 import org.apache.pekko.http.scaladsl.model.headers.EntityTag
 import org.apache.pekko.http.scaladsl.model.{ContentTypes, DateTime, HttpEntity, HttpResponse}
 import org.wabase._
-import org.wabase.CacheConditionHandlers._
+import org.wabase.handlers.CacheConditionHandlers._
 import org.wabase.WabaseService.RequestHandler
 
 import scala.concurrent.{ExecutionContext, Future}

@@ -14,7 +14,6 @@ import org.mojoz.metadata.ViewDef
 import org.slf4j.LoggerFactory
 import org.tresql.parsing.QueryParsers
 import org.wabase.AppMetadata.{Action, RouteDef}
-import org.wabase.CacheConditionHandlers._
 import org.wabase.swagger.WabaseSwaggerGenerator
 import org.wabase.WabaseService.Wabase
 import org.wabase.ds.QueryTimeout
@@ -224,13 +223,6 @@ object WabaseService extends Loggable {
         (Some(EntityTag(tag)), Some(lastModifiedDateTime))
       // } else (None, None))
   }
-  private def conditionalFor(length: Long, lastModified: Long, innerHandler: RequestHandler): RequestHandler = {
-    val (eTagOpt, lastModifiedOpt) = conditionsFor(length, lastModified)
-    if (eTagOpt.nonEmpty || lastModifiedOpt.nonEmpty)
-         conditional(eTagOpt, lastModifiedOpt, innerHandler)
-    else innerHandler
-  }
-  private val classLoader = this.getClass.getClassLoader
 
   /** Extract segments as list from path after segment matching prefix */
   def key(path: Path, prefix: String): Seq[String] = {

@@ -4,15 +4,14 @@
  *
  *   https://www.apache.org/licenses/LICENSE-2.0
  */
-package org.wabase
+package org.wabase.handlers
 
+import org.apache.pekko.http.scaladsl.model.HttpMethods._
+import org.apache.pekko.http.scaladsl.model.StatusCodes._
 import org.apache.pekko.http.scaladsl.model._
-import org.apache.pekko.http.scaladsl.model.DateTime
-import headers._
-import HttpMethods._
-import StatusCodes._
-import EntityTag._
-import WabaseService.RequestHandler
+import org.apache.pekko.http.scaladsl.model.headers.EntityTag._
+import org.apache.pekko.http.scaladsl.model.headers._
+import org.wabase.WabaseService.RequestHandler
 
 import scala.concurrent.{ExecutionContext, Future}
 
