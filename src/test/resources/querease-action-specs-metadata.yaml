@@ -732,7 +732,7 @@ delete:
 
 name: if_test_1
 table: if_and_foreach_test
-api: save, get, delete
+api: save, get, delete, count
 fields:
 - code
 - parent
@@ -756,6 +756,8 @@ delete:
   - if {:code = 'true'} unique { :code code, null parent, 'Value delete' value }  #if op
   - else unique { :code code, null parent, 'Else value delete' value }            #else op
 - :result
+count:
+- if org.wabase.QuereaseActionTestManagerObj.booleanMethod true 'yes' else 'no'
 
 
 name: if_test_2

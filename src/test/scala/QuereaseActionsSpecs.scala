@@ -615,6 +615,8 @@ class QuereaseActionTestManagerObj {
 object QuereaseActionTestManagerObj {
   def unitMethod(): Unit = new QuereaseActionTestManagerObj().unitMethod()
 
+  def booleanMethod(b: Boolean): Boolean = b
+
   def name_surname_formatter(res: TresqlResult) = {
     val tr = res.result.map(row => Map("person_name" -> s"${row("name")} ${row("surname")}"))
     IteratorResult(tr)
