@@ -99,7 +99,8 @@ object Guidelines {
   }
 
   def qeCall(ctx: WabaseRequestContext) = {
-    val result = ctx.wabase.withConn("guideline_calculation_helper", "list", ctx.queryTimeout) { implicit res =>
+    val result = ctx.wabase.withConn("guideline_calculation_helper", "list", ctx.queryTimeout,
+      ctx.logger.underlying.getName) { implicit res =>
       implicit val qio: AppQuereaseIo[Dto] = ctx.wabase.qio
       ctx.wabase.qe.list[dto.guideline_calculation_helper](Map[String, Any]())
     }

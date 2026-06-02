@@ -131,14 +131,15 @@ trait DbAccess { this: QuereaseProvider with Loggable =>
   )(f: Resources => A): A =
     DbAccess.withConn(poolName, DefaultCp, template, extraDb)(f)
 
-  private def resWithConn(viewName: String, actionName: String, qt: QueryTimeout) = {
+  private def resWithConn(viewName: String, actionName: String, qt: QueryTimeout, ln: String) = {
     val (poolName, extraDbs) = qe.dbResourceNames(viewName, actionName)
-    val rf = resourceFactory(qe.viewDef(viewName), s"$viewName.$actionName", qt)
+    val rf = resourceFactory(qe.viewDef(viewName), ln, qt)
     rf.initResources(rf.resources)(poolName, extraDbs)
   }
 
-  def withConn[A](viewName: String, actionName: String, qt: QueryTimeout)(f: Resources => A): A = {
-    val resources = resWithConn(viewName, actionName, qt)
+  def withConn[A](viewName: String, actionName: String, qt: QueryTimeout, loggerName: String)(
+    f: Resources => A): A = {
+    val resources = resWithConn(viewName, actionName, qt, loggerName)
     try f(resources) finally closeConns(DbAccess.closeConnection)(resources)
   }
 
@@ -149,8 +150,9 @@ trait DbAccess { this: QuereaseProvider with Loggable =>
   )(f: Resources => A): A =
     DbAccess.withRollbackConn(poolName, DefaultCp, template, extraDb)(f)
 
-  def withRollbackConn[A](viewName: String, actionName: String, qt: QueryTimeout)(f: Resources => A): A = {
-    val resources = resWithConn(viewName, actionName, qt)
+  def withRollbackConn[A](viewName: String, actionName: String, qt: QueryTimeout, loggerName: String)(
+    f: Resources => A): A = {
+    val resources = resWithConn(viewName, actionName, qt, loggerName)
     try f(resources) finally closeConns(DbAccess.rollbackAndCloseConnection)(resources)
   }
 
@@ -161,8 +163,9 @@ trait DbAccess { this: QuereaseProvider with Loggable =>
   )(f: Resources => A): A =
     DbAccess.newTransaction(poolName, DefaultCp, template, extraDb)(f)
 
-  def newTransaction[A](viewName: String, actionName: String, qt: QueryTimeout)(f: Resources => A): A = {
-    val resources = resWithConn(viewName, actionName, qt)
+  def newTransaction[A](viewName: String, actionName: String, qt: QueryTimeout, loggerName: String)(
+    f: Resources => A): A = {
+    val resources = resWithConn(viewName, actionName, qt, loggerName)
     DbAccess.newTransaction(resources)(f)
   }
 
@@ -442,16 +445,19 @@ trait DbAccessDelegate extends DbAccess { this: QuereaseProvider with Loggable =
     dbAccessDelegate.resourceFactory(viewDef, loggerName, qt)
   override def withConn[A](poolName: PoolName, template: Resources, extraDb: Seq[DbAccessKey])(f: Resources => A): A =
     dbAccessDelegate.withConn(poolName, template, extraDb)(f)
-  override def withConn[A](viewName: String, actionName: String, qt: QueryTimeout)(f: Resources => A): A =
-    dbAccessDelegate.withConn(viewName, actionName, qt)(f)
+  override def withConn[A](viewName: String, actionName: String, qt: QueryTimeout, loggerName: String)(
+    f: Resources => A): A =
+    dbAccessDelegate.withConn(viewName, actionName, qt, loggerName)(f)
   override def withRollbackConn[A](poolName: PoolName, template: Resources, extraDb: Seq[DbAccessKey])(f: Resources => A): A =
     dbAccessDelegate.withRollbackConn(poolName, template, extraDb)(f)
-  override def withRollbackConn[A](viewName: String, actionName: String, qt: QueryTimeout)(f: Resources => A): A =
-    dbAccessDelegate.withRollbackConn(viewName, actionName, qt)(f)
+  override def withRollbackConn[A](viewName: String, actionName: String, qt: QueryTimeout, loggerName: String)(
+    f: Resources => A): A =
+    dbAccessDelegate.withRollbackConn(viewName, actionName, qt, loggerName)(f)
   override def newTransaction[A](poolName: PoolName, template: Resources, extraDb: Seq[DbAccessKey])(f: Resources => A): A =
     dbAccessDelegate.newTransaction(poolName, template, extraDb)(f)
-  override def newTransaction[A](viewName: String, actionName: String, qt: QueryTimeout)(f: Resources => A): A =
-    dbAccessDelegate.newTransaction(viewName, actionName, qt)(f)
+  override def newTransaction[A](viewName: String, actionName: String, qt: QueryTimeout, loggerName: String)(
+    f: Resources => A): A =
+    dbAccessDelegate.newTransaction(viewName, actionName, qt, loggerName)(f)
 
   override def dbUse[A](a: => A)(implicit timeout: QueryTimeout = defaultQueryTimeout,
                                  pool: PoolName = DEFAULT_CP,

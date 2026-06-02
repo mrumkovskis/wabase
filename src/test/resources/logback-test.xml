@@ -37,8 +37,7 @@
     <!-- specific route logger, format - <http method>.<uri path with slashes replaced with dots> -->
     <!-- logger name="post.data.purchase_save" level="debug"/ -->
 
-    <!-- specific view logger, format - <view name>.<action name>
-         Is used in corresponding DbAccess functions withConn, withRollbackConn, newTransaction -->
+    <!-- specific view logger used in WabaseActionSpecs - <view name>.<action name> -->
     <!-- logger name="purchase_get.get" level="debug"/ -->
 
     <!-- specific job logger -->
