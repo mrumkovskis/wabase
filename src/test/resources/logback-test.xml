@@ -32,10 +32,19 @@
     <logger name="org.apache.pekko.stream.scaladsl.RestartWithBackoffSource" level="error"/>
     <logger name="wabase.app.BusinessScenariosSpecs" level="info"/>
 
-    <!-- <logger name="org.wabase.tresql" level="debug"/> -->
-
     <!-- specific route logger, format - <http method>.<uri path with slashes replaced with dots> -->
     <!-- logger name="post.data.purchase_save" level="debug"/ -->
+    <!-- SPECIFIC tresql LOGGERS for route -->
+    <!-- tresql statement logger -->
+    <!-- logger name="post.data.purchase_save.tresql.tql" level="debug"/ -->
+    <!-- ort metadata logger -->
+    <!-- logger name="post.data.purchase_save.tresql.ort" level="debug"/ -->
+    <!-- sql statement logger -->
+    <!-- logger name="post.data.purchase_save.tresql.sql" level="debug"/ -->
+    <!-- tresql params logger -->
+    <!-- logger name="post.data.purchase_save.tresql.params" level="debug"/ -->
+    <!-- sql statement with embedded params logger -->
+    <!-- logger name="post.data.purchase_save.tresql.sql_wp" level="debug"/ -->
 
     <!-- specific view logger used in WabaseActionSpecs - <view name>.<action name> -->
     <!-- logger name="purchase_get.get" level="debug"/ -->
@@ -51,7 +60,7 @@
 
     <!-- logger name="org.wabase.tresql" level="debug"/ -->
 
-    <!-- SPECIFIC tresql LOGGERS -->
+    <!-- SPECIFIC wabase internal component (file streamer, cleanup, deferred storage) tresql LOGGERS -->
     <!-- tresql statement logger -->
     <!-- logger name="org.wabase.tresql.tql" level="debug"/ -->
     <!-- ort metadata logger -->

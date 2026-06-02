@@ -261,13 +261,13 @@ object TresqlResources {
   val sqlWithParamsLogger = Logger(LoggerFactory.getLogger("org.wabase.tresql.sql_wp"))
 
   val logger: Logging#TresqlLogger = (m, params, topic) => topic match {
-    case LogTopic.sql => sqlLogger.debug(m)
-    case LogTopic.tresql => tresqlLogger.debug(m)
-    case LogTopic.params => varsLogger.debug(m)
+    case LogTopic.sql             => sqlLogger.debug(m)
+    case LogTopic.tresql          => tresqlLogger.debug(m)
+    case LogTopic.params          => varsLogger.debug(m)
     case LogTopic.sql_with_params => sqlWithParamsLogger.debug(sqlWithParams(m, params))
-    case LogTopic.ort => ortLogger.debug(m)
-    case LogTopic.info => infoLogger.debug(m)
-    case _ => infoLogger.debug(m)
+    case LogTopic.ort             => ortLogger.debug(m)
+    case LogTopic.info            => infoLogger.debug(m)
+    case _                        => infoLogger.debug(m)
   }
 
   def withLogger(loggerPrefix: String): Logging#TresqlLogger = {
@@ -280,24 +280,12 @@ object TresqlResources {
 
     (msg, params, topic) => {
       topic match {
-        case LogTopic.sql =>
-          sqlLogger.debug(msg)
-          if(!sqlLogger.underlying.isDebugEnabled) this.sqlLogger.debug(msg)
-        case LogTopic.tresql =>
-          tresqlLogger.debug(msg)
-          if(!tresqlLogger.underlying.isDebugEnabled) this.tresqlLogger.debug(msg)
-        case LogTopic.params =>
-          varsLogger.debug(msg)
-          if(!varsLogger.underlying.isDebugEnabled) this.varsLogger.debug(msg)
-        case LogTopic.sql_with_params =>
-          sqlWithParamsLogger.debug(sqlWithParams(msg, params))
-          if(!sqlWithParamsLogger.underlying.isDebugEnabled) this.sqlWithParamsLogger.debug(sqlWithParams(msg, params))
-        case LogTopic.ort =>
-          ortLogger.debug(msg)
-          if(!ortLogger.underlying.isDebugEnabled) this.ortLogger.debug(msg)
-        case LogTopic.info =>
-          infoLogger.debug(msg)
-          if(!infoLogger.underlying.isDebugEnabled) this.infoLogger.debug(msg)
+        case LogTopic.sql             => sqlLogger.debug(msg)
+        case LogTopic.tresql          => tresqlLogger.debug(msg)
+        case LogTopic.params          => varsLogger.debug(msg)
+        case LogTopic.sql_with_params => sqlWithParamsLogger.debug(sqlWithParams(msg, params))
+        case LogTopic.ort             => ortLogger.debug(msg)
+        case LogTopic.info            => infoLogger.debug(msg)
       }
     }
   }
