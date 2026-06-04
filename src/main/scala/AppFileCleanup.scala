@@ -180,15 +180,10 @@ class AppFileCleanup(qe: AppQuerease, resourcesTemplate: Resources,
       if tableRef.refTable == fs.file_info_table
     } yield (tableDef.name, tableRef.cols.head)).toSet -- refsToIgnore
 
+    val unionSubquery   = tableMetadataWithFileInfo.map { case (table, col) => s"$table[$col = fi.id]{1}" }.mkString(" + ")
+    val andNotExists    = if (unionSubquery.nonEmpty) s"& !exists($unionSubquery)" else ""
     val selectStatement =
-      if (tableMetadataWithFileInfo.isEmpty) {
-        s"${fs.file_info_table} fi[fi.upload_time < now() - seconds_to_interval(${minAgeMillis/1000})]{fi.id}"
-      } else {
-        val unionSubquery = tableMetadataWithFileInfo.map {
-          case (table, col) => s"select $col id from $table"
-        }.mkString(" union all ")
-        s"${fs.file_info_table} fi[fi.upload_time < now() - seconds_to_interval(${minAgeMillis/1000}) & !exists(sql('select 1 from ($unionSubquery) all_refs where all_refs.id = fi.id'))]{fi.id}"
-      }
+      s"${fs.file_info_table} fi[fi.upload_time < now() - seconds_to_interval(${minAgeMillis/1000}) $andNotExists]{fi.id}"
     selectStatement
   }
 
