@@ -575,19 +575,24 @@ class WabaseSwaggerGenerator(
     }
   }
 
-  def rootPathsForView(viewDef: ViewDef): Seq[String] =
-    qes.collectFirst { case q: AppQuerease => q.allowedPaths(viewDef.name) }.getOrElse(Nil).map(_.toString)
+  def isPathForCount(path: String)  = path.endsWith(":count")  || path.contains(":count/")
+  def isPathForCreate(path: String) = path.endsWith(":create") || path.contains(":create/")
+  def rootPathsForView(method: String, viewDef: ViewDef): Seq[String] = {
+    qes.collectFirst { case q: AppQuerease => q.allowedPaths(viewDef.name) }
+      .getOrElse(Nil)
+      .map(_.toString)
+      .filter { path => method match {
+        case "count"  => isPathForCount(path)
+        case "create" => isPathForCreate(path)
+        case _        => !isPathForCount(path) && !isPathForCreate(path)
+      }}
+  }
 
   def pathsWithKey(method: String, viewDef: ViewDef, keySize: Int = 99): Seq[String] = {
-    val infix = method match {
-      case "create" => s":$method"
-      case "count"  => s":$method"
-      case _        =>  ""
-    }
     val keyPart =
-      if (apiKeyFieldNames(viewDef).take(keySize).isEmpty) infix
-      else s"$infix/${apiKeyFieldNames(viewDef).take(keySize).mkString("{", "}/{", "}")}"
-    rootPathsForView(viewDef).map(rootPath => s"$rootPath$keyPart")
+      if (apiKeyFieldNames(viewDef).take(keySize).isEmpty) ""
+      else s"${apiKeyFieldNames(viewDef).take(keySize).mkString("/{", "}/{", "}")}"
+    rootPathsForView(method, viewDef).map(rootPath => s"$rootPath$keyPart")
   }
 
   def isArrayRequest(viewDef: ViewDef, method: String) = false
