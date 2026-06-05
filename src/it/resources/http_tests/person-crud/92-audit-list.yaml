@@ -8,7 +8,7 @@ response: [
   {
     "request_time": "-> _",
     "request": {
-      "uri": "http://localhost:8080/data/count:person",
+      "uri": "http://localhost:8080/data/person:count",
       "method": "GET",
       "headers": [
         "Host: localhost:8080",
@@ -35,7 +35,7 @@ response: [
   {
     "request_time": "-> _",
     "request": {
-      "uri": "http://localhost:8080/data/create:person",
+      "uri": "http://localhost:8080/data/person:create",
       "method": "GET",
       "headers": [
         "Host: localhost:8080",
@@ -120,7 +120,7 @@ response: [
   {
     "request_time": "-> _",
     "request": {
-      "uri": "http://localhost:8080/data/count:person",
+      "uri": "http://localhost:8080/data/person:count",
       "method": "GET",
       "headers": [
         "Host: localhost:8080",

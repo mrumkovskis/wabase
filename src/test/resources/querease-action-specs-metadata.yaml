@@ -995,7 +995,7 @@ api: get, delete
 get:
 - http '/invocation_test_1'
 delete:
-- res = as any http '/count:invocation_test_1'
+- res = as any http '/invocation_test_1:count'
 - :res
 
 

@@ -1093,7 +1093,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       t7 <- doAction("get", "forest", Map(), keyValues = List("OF1"))
         .map { _ shouldBe Map("nr" -> "OF1", "owner" -> "Pedro", "area" -> 20.5, "trees" -> "oaks") }
       t8 <- doAction("delete", "http_test_1", Map()). map {
-        _ shouldBe StringResult("/count:invocation_test_1 = 0")
+        _ shouldBe StringResult("/invocation_test_1:count = 0")
       }
       t9 <- doAction("get", "http_client_test", Map("uri" -> "/invocation_test_1")).map {
         _ shouldBe "val1 val2"
@@ -1847,7 +1847,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
   it should "foreach as an expression" in {
     implicit val user: TestUsr = TestUsr(100)
     val route = service.crudAction
-    Get("/count:foreach_test_3") ~> route ~> check {
+    Get("/foreach_test_3:count") ~> route ~> check {
       jsonAssert(entityAs[String], Seq(2, 3, 4))
     }
     Post("/foreach_test_3") ~> route ~> check {

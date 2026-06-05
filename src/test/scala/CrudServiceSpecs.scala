@@ -235,7 +235,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
   }
 
   it should "count" in {
-    Get("/data/count:by_id_view_1") ~> route ~> check {
+    Get("/data/by_id_view_1:count") ~> route ~> check {
       status shouldEqual StatusCodes.OK
       header[`Content-Type`].get.contentType shouldBe ContentTypes.`text/plain(UTF-8)`
     }
@@ -243,7 +243,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       status shouldEqual StatusCodes.OK
       header[`Content-Type`].get.contentType shouldBe ContentTypes.`text/plain(UTF-8)`
     }
-    Get("/data/count:by_id_view_1?name=A") ~> route ~> check {
+    Get("/data/by_id_view_1:count?name=A") ~> route ~> check {
       status shouldEqual StatusCodes.OK
       header[`Content-Type`].get.contentType shouldBe ContentTypes.`text/plain(UTF-8)`
       entityAs[String].toInt shouldBe 0
@@ -254,7 +254,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       entityAs[String].toInt shouldBe 0
     }
     val id1 = createPerson("Anna")
-    Get("/data/count:by_id_view_1?name=A") ~> route ~> check {
+    Get("/data/by_id_view_1:count?name=A") ~> route ~> check {
       status shouldEqual StatusCodes.OK
       header[`Content-Type`].get.contentType shouldBe ContentTypes.`text/plain(UTF-8)`
       entityAs[String].toInt shouldBe 1
@@ -267,7 +267,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
   }
 
   it should "create" in {
-    Get("/data/create:by_id_view_1") ~> route ~> check {
+    Get("/data/by_id_view_1:create") ~> route ~> check {
       status shouldEqual StatusCodes.OK
       header[`Content-Type`].get.contentType shouldBe ContentTypes.`application/json`
       entityAs[String] shouldBe """{"id":null,"name":null,"surname":null}"""
@@ -277,7 +277,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       header[`Content-Type`].get.contentType shouldBe ContentTypes.`application/json`
       entityAs[String] shouldBe """{"id":null,"name":null,"surname":null}"""
     }
-    Get("/data/create:by_key_view_1") ~> route ~> check {
+    Get("/data/by_key_view_1:create") ~> route ~> check {
       status shouldEqual StatusCodes.OK
       header[`Content-Type`].get.contentType shouldBe ContentTypes.`application/json`
       entityAs[String] shouldBe """{"name":null,"surname":null}"""

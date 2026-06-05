@@ -29,9 +29,9 @@ name:   by_id_view_1
 api:    get list count create save delete
 paths:
   - /data/by_id_view_1
-  - /data/count:by_id_view_1
+  - /data/by_id_view_1:count
   - /data/count/by_id_view_1
-  - /data/create:by_id_view_1
+  - /data/by_id_view_1:create
   - /data/create/by_id_view_1
 table:  person
 fields:
@@ -48,7 +48,7 @@ name:   by_key_view_1
 api:    get list count create insert update update+ delete
 paths:
   - /data/by_key_view_1
-  - /data/create:by_key_view_1
+  - /data/by_key_view_1:create
   - /data/create/by_key_view_1
 table:  person
 fields:

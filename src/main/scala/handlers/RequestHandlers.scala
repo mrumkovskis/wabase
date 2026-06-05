@@ -59,14 +59,14 @@ object RequestHandlers {
         .getOrElse(ApplicationState(state))
   }
 
-  val CreateCountActionAndViewRegex = """(?U)(?:(count|create):)?([_\p{IsLatin}][\-\w]*)""".r
+  val CreateCountActionAndViewRegex = """(?U)([_\p{IsLatin}][\-\w]*)(?::(count|create))?""".r
   val ActionForHttpPost = config.getString("app.action-for-http.post") // maybe "insert" for legacy app
   val ActionForHttpPut  = config.getString("app.action-for-http.put")  // maybe "update" for legacy app
   def viewActionKey(view_action: String, ctx: WabaseRequestContext): WabaseRequestContext = {
     import ctx._
     val viewDefs = wabase.qe.nameToViewDef
     val (viewNameAndActionStr, view_name, create_count_action) = try {
-      val CreateCountActionAndViewRegex(cca, vn) = view_action
+      val CreateCountActionAndViewRegex(vn, cca) = view_action
       if (viewDefs.contains(vn)) (view_action, vn, cca)
       else (null, null, null)
     } catch {

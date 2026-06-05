@@ -1,4 +1,4 @@
-path:       /data/create:person
+path:       /data/person:create
 response:
   code:     null
   name:     null

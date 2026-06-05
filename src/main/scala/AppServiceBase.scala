@@ -68,7 +68,7 @@ trait AppServiceBase[User]
   def crudPath = pathPrefix("data")
   def viewWithIdPath = path(Segment / LongNumber)
   def viewWithKeyPath = path(Segment / Segments) | path(Segment ~ PathEnd) & provide(Nil: List[String])
-  def createPath = (path("create" / Segment) | pathPrefix("create:") & rawPathPrefix(Segment)) & get
+  def createPath = (path("create" / Segment) | path("""(.+):create""".r)) & get
   def viewWithoutIdPath = path(Segment ~ (PathEnd | Slash))
   def getByIdPath = viewWithIdPath & get
   def getByKeyPath = viewWithKeyPath & get
@@ -78,7 +78,7 @@ trait AppServiceBase[User]
   def putByKeyPath    = viewWithKeyPath   & put
   def postByKeyPath   = viewWithKeyPath   & post
   def listOrGetPath   = viewWithoutIdPath & get
-  def countPath = (path("count" / Segment) | pathPrefix("count:") & rawPathPrefix(Segment)) & get
+  def countPath = (path("count" / Segment) | path("""(.+):count""".r)) & get
 
   def entityOrException[T](um: FromRequestUnmarshaller[T]): Directive1[T] =
     extractRequestContext.flatMap[Tuple1[T]] { ctx =>

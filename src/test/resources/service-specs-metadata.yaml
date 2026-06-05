@@ -101,8 +101,8 @@ name: view1
 api: get, update, update+, delete, list, create, count
 paths:
   - /public/view1
-  - /public/create:view1
-  - /public/count:view1
+  - /public/view1:create
+  - /public/view1:count
 explicit db: true
 key: id
 fields:

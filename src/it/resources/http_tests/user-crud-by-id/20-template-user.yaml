@@ -1,4 +1,4 @@
-path:       /data/create:user
+path:       /data/user:create
 response: {
   "id": null,
   "name": null,
