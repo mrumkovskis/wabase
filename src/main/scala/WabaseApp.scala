@@ -560,7 +560,7 @@ trait WabaseApp[User] {
   }
   def checkApi(viewName: String, requestPath: Uri.Path, method: String, user: User, keyValues: Seq[Any])(
     authCtx: AuthContext): Future[String] = {
-    import authCtx._
+    import authCtx.ec
     hasApiForName(viewName, requestPath, method, keyValues.size, hasRole(user, _)(authCtx)).map {
       case Left(statusCode) =>
         statusCode match {
