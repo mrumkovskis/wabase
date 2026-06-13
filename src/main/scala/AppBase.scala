@@ -48,7 +48,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
     qe.quereaseActionOpt(viewName, actionName).isDefined
 
   protected def hasLegacyHandlers(viewName: String, actionName: String): Boolean = {
-    val handler = actionName match {
+    val handler: HExt[_] = actionName match {
       case Action.Get    => View
       case Action.List   => BList
       case Action.Insert => Save
