@@ -540,8 +540,10 @@ trait WabaseApp[User] {
   def sanitizedViewName(viewName: String) =
     if (validViewNameRegex.pattern.matcher(viewName).matches()) viewName else "Strange name"
   protected def noApiException(viewName: String, requestPath: Uri.Path, method: String, keySize: Int, user: User): Exception =
-    new BusinessException(
-      s"Request '${requestPath.toString()}' not in this API: $method ${(Seq(sanitizedViewName(viewName)) ++ (1 to keySize).map(n => s"{$n}")).mkString("/")}")
+    new BusinessException(s"${requestPath match {
+      case null =>                  "Not in this API"
+      case path => s"Request '$path' not in this API"
+    }}: $method ${(Seq(sanitizedViewName(viewName)) ++ (1 to keySize).map(n => s"{$n}")).mkString("/")}")
   protected def apiUnauthorizedException(viewName: String, method: String, user: User): Exception =
     if  (user == null)
          new AuthenticationException("Unauthorized")
