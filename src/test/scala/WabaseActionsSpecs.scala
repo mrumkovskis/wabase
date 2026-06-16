@@ -2025,6 +2025,11 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         ValidationResult(List("accounts", 0, "number"), List("""Field "Number" is mandatory.""")),
         ValidationResult(List("accounts", 1, "number"), List(s"""Field "Number" value length 65 exceeds maximum limit 64.""")),
       )
+      ex.getMessage shouldBe List(
+        """Field "Name" is mandatory.""",
+        """Field "Number" is mandatory.""",
+        """Field "Number" value length 65 exceeds maximum limit 64.""",
+      ).mkString("\n")
     }
   }
 }

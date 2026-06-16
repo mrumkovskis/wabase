@@ -956,7 +956,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
       }.toList
     }
     val errors = valFields(viewName, instance, Nil)(1)
-    if (errors.nonEmpty) throw new ValidationException(errors.map(_.messages).mkString("\n"), errors)
+    if (errors.nonEmpty) throw new ValidationException(errors.flatMap(_.messages).mkString("\n"), errors)
   }
 
   def validateFields(instance: Dto)(implicit state: ApplicationState): Unit = {
