@@ -231,7 +231,9 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
           )
       }
 
-      val required = getBooleanExtraOpt(viewDef, f, Required).getOrElse(!f.nullable && !isPk)
+      val required = getBooleanExtraOpt(viewDef, f, Required)
+                        .getOrElse(viewDef.table == f.table && !f.nullable && !isPk &&
+                                   !fieldApi.readonly && !fieldApi.excluded)
       val sortable = isSortableField(viewDef, f)
       val hiddenOpt = getBooleanExtraOpt(viewDef, f, Hidden)
       val visibleOpt = getBooleanExtraOpt(viewDef, f, Visible)

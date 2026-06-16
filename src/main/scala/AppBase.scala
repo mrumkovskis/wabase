@@ -879,7 +879,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
   def fieldRequiredErrorMessage(viewName: String, field: FieldDef)(implicit locale: Locale): String =
     translate("""Field %1$s is mandatory.""", field.label)
   def isFieldRequiredViolated(viewName: String, field: FieldDef, value: Any): Boolean =
-    (field.required && !(field.api.readonly || field.api.excluded)) &&
+    field.required &&
     (value match {
       case null => true
       case s: String if s.trim == "" => true
