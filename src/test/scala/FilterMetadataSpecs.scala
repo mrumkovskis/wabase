@@ -172,6 +172,42 @@ class FilterMetadataSpecs extends FlatSpec with Matchers with TestQuereaseInitia
       ),
     )
 
+    app.filterParameters(querease.viewDef("filter_metadata_test_4")) shouldBe List(
+      FilterParameter(
+        name        = "ma_number",
+        table       = "person",
+        label       = FilterLabel("Ma number",null),
+        nullable    = true,
+        required    = false,
+        type_       = Type("string",None,None,None,false),
+        enum_       = null,
+        refViewName = null,
+        filterType  = null,
+      ),
+      FilterParameter(
+        name        = "sex",
+        table       = "person",
+        label       = FilterLabel("Sex",null),
+        nullable    = false,
+        required    = true,
+        type_       = Type("string",Some(1),None,None,false),
+        enum_       = List("M", "F"),
+        refViewName = null,
+        filterType  = IdentFilter("p.sex","sex",""),
+      ),
+      FilterParameter(
+        name        = "modified_before_time",
+        table       = "account",
+        label       = FilterLabel("Modified before time",null),
+        nullable    = false,
+        required    = true,
+        type_       = Type("dateTime",None,None,None,false),
+        enum_       = null,
+        refViewName = null,
+        filterType  = ComparisonFilter("ma_.last_modified","<","modified_before_time",""),
+      ),
+    )
+
     app.filterParameters(querease.viewDef("filter_metadata_test_exclude_excluded")) shouldBe List()
   }
 }

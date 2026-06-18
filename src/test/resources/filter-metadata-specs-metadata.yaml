@@ -58,6 +58,19 @@ filter:
 - ma_.last_modified < :modified_before_time
 
 
+name:     filter_metadata_test_4
+api:      list
+table:    person p
+joins:
+- p /[ma_.number > if_defined_or_else(:ma_number?, :ma_number, -1)] account ma_
+fields:
+- id
+- name
+filter:
+- sex!
+- ma_.last_modified < :modified_before_time
+
+
 name:   filter_metadata_test_exclude_excluded
 api:    list
 table:  person

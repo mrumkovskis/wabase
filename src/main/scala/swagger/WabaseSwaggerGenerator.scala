@@ -364,10 +364,7 @@ class WabaseSwaggerGenerator(
   def addQueryParameter(op: Operation, param: FilterParameter): Operation = {
     val p = new QueryParameter
     p.name(param.name)
-    val required = param.filterType match {
-      case OtherFilter(filter) if filter.startsWith("if_defined") => false
-      case _ => param.required
-    }
+    val required = param.required
     val schema = param.filterType match {
       case ComparisonFilter(_, "in", _, _) => new ArraySchema().items(schemaFromType(param.type_))
       // TODO should have better filter processing.

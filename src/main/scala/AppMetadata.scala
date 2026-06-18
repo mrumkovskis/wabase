@@ -721,8 +721,11 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
           new QueryParser(macroResources, filterParametersParserCache).extractVariables(q)
         })
       // TODO? fromAndPathToAlias(v): (String, Map[List[String], String])
+      val groupedVariables = allVariables.groupBy(_.variable)
       allVariables
-        .distinct // FIXME aggregate v.opt!
+        .map(_.variable)
+        .distinct
+        .map(name => groupedVariables(name).maxBy(_.opt))
         .map { v =>
           val colQName = parameterNameToCol.getOrElse(v.variable, "")
           val filterType = parameterNameToFilterType.get(v.variable).orNull
