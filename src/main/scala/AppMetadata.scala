@@ -674,7 +674,9 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     def fieldNameToLabel(n: String) =
       n.replace("_", " ").capitalize
     val v = view
-    if (v.apiMethodToRoles != null && v.apiMethodToRoles.nonEmpty && (v.table != null || v.joins != null && v.joins.nonEmpty)) {
+    val hasTableOrJoins = v.table != null || v.joins != null && v.joins.nonEmpty
+    if (v.apiMethodToRoles != null && v.apiMethodToRoles.nonEmpty &&
+          (hasTableOrJoins || Option(v.filter).getOrElse(Nil).nonEmpty)) {
       val filters =
         Option(v.filter).getOrElse(Nil) flatMap { f =>
           analyzeFilter(f, v, v.tableAlias)
@@ -717,7 +719,9 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
         filters.flatMap(filter => filterToParameterNames(filter).map(_ -> filter)).toMap
       val allVariables =
         viewNameToQueryVariablesCache.getOrElse(v.name, {
-          val q = queryStringAndParams(v, Map.empty)._1
+          val q =
+            if (hasTableOrJoins) queryStringAndParams(v, Map.empty)._1
+            else                 s"null${where(v, null)}"
           new QueryParser(macroResources, filterParametersParserCache).extractVariables(q)
         })
       // TODO? fromAndPathToAlias(v): (String, Map[List[String], String])

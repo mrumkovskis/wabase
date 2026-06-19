@@ -71,6 +71,14 @@ filter:
 - ma_.last_modified < :modified_before_time
 
 
+name:     filter_metadata_test_5
+api:      list
+fields:
+- name
+filter:
+- :sex?
+
+
 name:   filter_metadata_test_exclude_excluded
 api:    list
 table:  person

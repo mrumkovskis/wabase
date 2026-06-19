@@ -208,6 +208,20 @@ class FilterMetadataSpecs extends FlatSpec with Matchers with TestQuereaseInitia
       ),
     )
 
+    app.filterParameters(querease.viewDef("filter_metadata_test_5")) shouldBe List(
+      FilterParameter(
+        name        = "sex",
+        table       = null,
+        label       = FilterLabel("Sex",null),
+        nullable    = true,
+        required    = false,
+        type_       = Type("string",None,None,None,false),
+        enum_       = null,
+        refViewName = null,
+        filterType  = OtherFilter(":sex?"),
+      ),
+    )
+
     app.filterParameters(querease.viewDef("filter_metadata_test_exclude_excluded")) shouldBe List()
   }
 }
