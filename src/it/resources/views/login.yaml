@@ -1,5 +1,6 @@
 name:   login_using_json_or_urlencoded
 api:    insert
+decoder: none
 paths:  /login_using_json_or_urlencoded
 fields:
 - name
