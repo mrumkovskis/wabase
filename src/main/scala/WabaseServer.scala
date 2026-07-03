@@ -7,7 +7,7 @@ import com.typesafe.sslconfig.ssl.{ConfigSSLContextBuilder, SSLConfigFactory}
 import com.typesafe.sslconfig.ssl.{DefaultKeyManagerFactoryWrapper, DefaultTrustManagerFactoryWrapper}
 import com.typesafe.sslconfig.util.NoDepsLogger
 
-import org.apache.pekko.actor.{ActorSystem, Props}
+import org.apache.pekko.actor.{ActorSystem, Props, Terminated}
 import org.apache.pekko.http.scaladsl.{ConnectionContext, Http}
 import org.apache.pekko.http.scaladsl.model.{HttpRequest, HttpResponse}
 
@@ -148,12 +148,16 @@ object WabaseServer {
 
   def unbind(): Unit = {
     implicit val ec: ExecutionContext = app.executor
+    val _ = unbindFuture
+  }
+
+  def unbindFuture(implicit ec: ExecutionContext): Future[Terminated] =
     bindingFuture
       .flatMap(_.unbind()) // trigger unbinding from the port
-      .onComplete { _ =>   // and terminate actor system when done
+      .recover { case _ => null }
+      .flatMap { _ =>      // and terminate actor system when done
         app.system.terminate()
       }
-  }
 
   def shutdown(): Unit = {
     implicit val ec: ExecutionContext = app.executor

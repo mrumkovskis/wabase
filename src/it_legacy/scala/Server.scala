@@ -1,10 +1,10 @@
 package wabase.app
 
-import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.actor.{ActorSystem, Terminated}
 import org.apache.pekko.http.scaladsl.Http
 import org.wabase._
 
-import scala.concurrent.ExecutionContext
+import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success}
 
 object Server extends scala.App with Loggable {
@@ -35,10 +35,14 @@ object Server extends scala.App with Loggable {
       service.system.terminate()
   }
   def unbind(): Unit = {
+    val _ = unbindFuture
+  }
+
+  def unbindFuture(implicit ec: ExecutionContext): Future[Terminated] =
     bindingFuture
       .flatMap(_.unbind())  // trigger unbinding from the port
-     .onComplete { _ =>     // and terminate actor system when done
+      .recover { case _ => null }
+      .flatMap { _ =>       // and terminate actor system when done
        service.system.terminate()
-     }
-  }
+      }
 }

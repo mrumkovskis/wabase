@@ -4,8 +4,9 @@ import org.apache.pekko.http.scaladsl.model.{HttpRequest, HttpResponse}
 import org.wabase.{AppQuerease, DefaultAppQuerease, WabaseServer}
 import org.wabase.client.{HttpClient, WabaseHttpClient}
 
+import scala.concurrent.Await
 import scala.concurrent.Future
-import scala.concurrent.duration.FiniteDuration
+import scala.concurrent.duration._
 
 class RunningServer extends WabaseHttpClient {
 
@@ -25,7 +26,10 @@ class RunningServer extends WabaseHttpClient {
     }
   }
 
-  def unbind() = WabaseServer.unbind()
+  def unbind(): Unit = {
+    implicit val ec: scala.concurrent.ExecutionContext = WabaseServer.app.executor
+    Await.result(WabaseServer.unbindFuture, 30.seconds)
+  }
 }
 
 private object ServerState {
