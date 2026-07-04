@@ -196,14 +196,20 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root) exten
         cookieStorage.setCookiesFromHeaders(response.headers)
         (response.status.intValue, response.header[Location]) match {
           case _  if isProxy || isSuccess(response)  => Future.successful(response)
-          case (301 | 302 | 303, Some(Location(uri))) =>
+          case (301 | 302 | 303, Some(Location(locationUri))) =>
             response.discardEntityBytes()
-            if (maxRedirects > 0)
-              doRequest(HttpRequest(uri = requestPath(uri.toString), headers = req.headers), cookieStorage, timeout, maxRedirects - 1).recover {
+            if (maxRedirects > 0) {
+              val redirectUri = RestClient.resolveRedirectUri(request.uri, locationUri)
+              val redirectMethod =
+                if (response.status == StatusCodes.SeeOther) HttpMethods.GET
+                else request.method
+              doRequest(
+                HttpRequest(method = redirectMethod, uri = redirectUri, headers = req.headers),
+                cookieStorage, timeout, maxRedirects - 1).recover {
                 case util.control.NonFatal(e) => requestFailed(e.getMessage, e, response.status, null, request)
               }
-            else
-              requestFailed("Too many http redirects", null, response.status, uri.toString, request)
+            } else
+              requestFailed("Too many http redirects", null, response.status, locationUri.toString, request)
           case _ =>
             Unmarshal(decodeResponse(response).entity).to[String].recover {
               case util.control.NonFatal(e) =>
@@ -258,4 +264,11 @@ object RestClient extends Loggable {
   /** For legacy purposes */
   private [wabase] def fullErrorErrorMessage(status: StatusCode, content: String) =
     status.value + "\n" + status.defaultMessage + "\n" + content
+
+  /** Resolve a Location header URI reference against the request URI (RFC 3986 §5.2). */
+  private [client] def resolveRedirectUri(baseUri: Uri, locationUri: Uri): Uri = {
+    require(baseUri.isAbsolute, s"Base URI must be absolute for redirect resolution: $baseUri")
+    if (locationUri.isAbsolute) locationUri
+    else locationUri.resolvedAgainst(baseUri)
+  }
 }

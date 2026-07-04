@@ -3,11 +3,14 @@ package client
 
 import com.typesafe.config.Config
 import org.apache.pekko.http.scaladsl.Http
-import org.apache.pekko.http.scaladsl.model.HttpMethods.POST
+import org.apache.pekko.http.scaladsl.model.HttpMethods.{POST, PUT}
+import org.apache.pekko.http.scaladsl.model.Uri
+import org.apache.pekko.http.scaladsl.model.headers.Location
 import org.apache.pekko.http.scaladsl.model.{HttpEntity, HttpRequest, HttpResponse, StatusCodes}
 import org.apache.pekko.http.scaladsl.server.Directives._
 import org.apache.pekko.http.scaladsl.server.Route
 import org.apache.pekko.http.scaladsl.testkit.ScalatestRouteTest
+
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers
@@ -39,7 +42,22 @@ class RestClientTest  extends FlatSpec with Matchers with ScalatestRouteTest wit
     path("ok") {complete{"HELLO"}} ~
     path("timeout") {complete{Thread.sleep(5000);"HELLO"}} ~
     path("uri-echo") { extractUri { uri => complete(uri.toString) } } ~
-    path("counter" / LongNumber) {num => complete{Thread.sleep(200);s"RESULT $num"}}
+    path("counter" / LongNumber) {num => complete{Thread.sleep(200);s"RESULT $num"}} ~
+    path("redirect-abs-path") {
+      get {
+        complete(HttpResponse(status = StatusCodes.Found, headers = List(Location(Uri("/uri-echo")))))
+      }
+    } ~
+    path("redirect-parent-relative" / Segment) { id =>
+      put {
+        complete(HttpResponse(
+          status = StatusCodes.SeeOther,
+          headers = List(Location(Uri(s"../resource?/$id")))))
+      }
+    } ~
+    path("resource") {
+      extractUri { uri => complete(uri.toString) }
+    }
   }
 
   val binding = Await.result(Http().newServerAt("0.0.0.0", server_port).bindFlow(route), 1 minute)
@@ -97,6 +115,29 @@ class RestClientTest  extends FlatSpec with Matchers with ScalatestRouteTest wit
     }
     val res = Await.result(Future.foldLeft(results)(0){ case (c, _) => c + 1 }, 1 minute)
     res should be (100)
+  }
+
+  it should "resolve relative Location per RFC 3986" in {
+    val base = Uri(s"http://localhost:$server_port/name/42")
+    RestClient.resolveRedirectUri(base, Uri("name?/42")).toString shouldBe
+      s"http://localhost:$server_port/name/name?/42"
+    RestClient.resolveRedirectUri(base, Uri("/name?/42")).toString shouldBe
+      s"http://localhost:$server_port/name?/42"
+    RestClient.resolveRedirectUri(base, Uri("../name?/42")).toString shouldBe
+      s"http://localhost:$server_port/name?/42"
+  }
+
+  it should "follow redirect with absolute-path Location" in {
+    val resp = client.httpGetAwait[String]("redirect-abs-path")
+    resp should include ("uri-echo")
+  }
+
+  it should "follow 303 redirect with GET and parent-relative Location" in {
+    val response = Await.result(
+      client.doRequest(HttpRequest(PUT, uri = s"http://localhost:$server_port/redirect-parent-relative/42")),
+      1.second)
+    val body = Await.result(response.entity.toStrict(1.second).map(_.data.utf8String.trim), 1.second)
+    body shouldBe s"http://localhost:$server_port/resource?/42"
   }
 
   it should "allow query in path, append params" in {
