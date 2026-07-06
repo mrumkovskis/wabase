@@ -1,5 +1,6 @@
 package org.wabase
 
+import org.apache.pekko.actor.ActorSystem
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers
@@ -10,6 +11,7 @@ abstract class DataBaseSpecs[User]
           with TemplateUtil with QuereaseProvider {
 
   import AppMetadata._
+  private val actorSystem: ActorSystem = ActorSystem("wabase-test-http-client")
   val ApplicationStateCookiePrefix = "current_"
   def defaultListParams: Map[String, Any] = Map("limit" -> 1)
   private var defaultListParamsForClass: Map[Class[_ <: Dto], Map[String, Any]] = Map()
@@ -20,7 +22,7 @@ abstract class DataBaseSpecs[User]
   def listTest(clzz: Class[_ <: Dto], name: String, params: Map[String, Any]): Unit = createListTest(clzz, name, params)
 
   override protected def initQuerease: AppQuerease           = DefaultAppQuerease
-  def initHttpClient: WabaseHttpClient = new WabaseHttpClient(HttpClientConfig("test")) {
+  def initHttpClient: WabaseHttpClient = new WabaseHttpClient(HttpClientConfig("test"))(actorSystem) {
     override protected def initQuerease: AppQuerease           = qe
   }
   final lazy val httpClient = initHttpClient

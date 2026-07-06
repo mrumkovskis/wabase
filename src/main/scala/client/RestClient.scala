@@ -34,12 +34,9 @@ object ClientException{
   def apply(message: String): ClientException = apply(message, null)
 }
 
-class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root) extends HttpClient with Loggable {
+class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root)(implicit val system: ActorSystem) extends HttpClient with Loggable {
 
   import RestClient.{WsClosed, WsFailed}
-  def actorSystemName   = clientCfg.getString("actor-system-name")
-  def createActorSystem = ActorSystem(actorSystemName)
-  implicit val system: ActorSystem = createActorSystem
   implicit val executionContext: ExecutionContextExecutor = system.dispatcher
 
   lazy val serverPath   = clientCfg.getString("server-path")

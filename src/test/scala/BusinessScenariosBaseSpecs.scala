@@ -57,6 +57,7 @@ class ServerSentEventsHandler(response: HttpResponse)(implicit as: ActorSystem) 
 abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
        extends FlatSpec with Matchers with BeforeAndAfterAll
           with TemplateUtil with QuereaseProvider with Loggable {
+  private val actorSystem: ActorSystem = ActorSystem("wabase-business-scenarios-http-client")
   implicit val queryTimeout: QueryTimeout = QueryTimeout(10)
   implicit val Cp: PoolName = DEFAULT_CP
   implicit val extraDb: Seq[DbAccessKey] = Nil
@@ -81,7 +82,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
   }
 
   override protected def initQuerease: AppQuerease           = DefaultAppQuerease
-  def initHttpClient: WabaseHttpClient = new WabaseHttpClient(HttpClientConfig("test")) {
+  def initHttpClient: WabaseHttpClient = new WabaseHttpClient(HttpClientConfig("test"))(actorSystem) {
     override protected def initQuerease: AppQuerease           = qe
   }
 
@@ -513,6 +514,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
 
     val requestInfo = extractRequestInfo(cleanupTemplate(map))
     import httpClient._
+    implicit val system: ActorSystem = actorSystem
     import requestInfo._
     val fullCompare   = map.bd("full_compare", isFullCompareByDefault)
     val mergeResponse = map.b("merge_response")

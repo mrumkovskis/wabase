@@ -2,6 +2,7 @@ package org.wabase
 package client
 
 import com.typesafe.config.Config
+import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.model.{AttributeKey, HttpRequest, HttpResponse}
 import org.wabase.AppQuerease.InjectionParametersContext
 
@@ -30,11 +31,11 @@ object HttpClientConfig {
 }
 
 trait HttpClientFactory {
-  def createHttpClients: Map[String, InjectionParametersContext => HttpRequest => Future[HttpResponse]]
+  def createHttpClients(implicit system: ActorSystem): Map[String, InjectionParametersContext => HttpRequest => Future[HttpResponse]]
 }
 
 object HttpClientFactory extends HttpClientFactory {
-  def createHttpClients: Map[String, InjectionParametersContext => HttpRequest => Future[HttpResponse]] = {
+  def createHttpClients(implicit system: ActorSystem): Map[String, InjectionParametersContext => HttpRequest => Future[HttpResponse]] = {
     HttpClientConfig.configs.map { case (n, clientCfg) =>
       val client = clientCfg.getString("client-class") match {
         case "org.wabase.client.RestClient" =>
@@ -42,9 +43,11 @@ object HttpClientFactory extends HttpClientFactory {
         case "org.wabase.client.WabaseHttpClient" =>
           new WabaseHttpClient(clientCfg)
         case other =>
-          getObjectOrNewInstance[HttpClient](clientCfg, "client-class", "http client", Seq(clientCfg))
+          getObjectOrNewInstance[HttpClient](
+            clientCfg, "client-class", "http client",
+            Seq(clientCfg, system), Seq(classOf[Config], classOf[ActorSystem]))
       }
-      n -> ((_: InjectionParametersContext) => req => client.doRequest(req))
+      n -> ((_: InjectionParametersContext) => (req: HttpRequest) => client.doRequest(req))
     }.toMap
   }
 }

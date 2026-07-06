@@ -2,7 +2,7 @@ package org.wabase
 package client
 
 import com.typesafe.config.Config
-import org.apache.pekko.actor.{Actor, ActorRef, Props}
+import org.apache.pekko.actor.{Actor, ActorRef, ActorSystem, Props}
 import org.apache.pekko.http.scaladsl.model._
 import org.apache.pekko.http.scaladsl.model.headers.{BasicHttpCredentials, Host, HttpOrigin, Origin, RawHeader, Authorization => AuthorizationHeader}
 import org.apache.pekko.http.scaladsl.model.ws.TextMessage
@@ -19,8 +19,8 @@ import org.apache.pekko.pattern.ask
 import scala.concurrent.duration.FiniteDuration
 import WabaseUnmarshallers._
 
-class WabaseHttpClient(clientCfg: Config = HttpClientConfig.componentConfs.root)
-    extends RestClient(clientCfg) with BasicJsonMarshalling with QuereaseProvider {
+class WabaseHttpClient(clientCfg: Config = HttpClientConfig.componentConfs.root)(implicit system: ActorSystem)
+    extends RestClient(clientCfg)(system) with BasicJsonMarshalling with QuereaseProvider {
 
   /** Override this method in subclass. Method usage instead of direct
   {{{val qe: AppQuerease}}} initialization ensures that this.qe and subclass qe

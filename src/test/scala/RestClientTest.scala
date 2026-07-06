@@ -2,6 +2,7 @@ package org.wabase
 package client
 
 import com.typesafe.config.Config
+import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.Http
 import org.apache.pekko.http.scaladsl.model.HttpMethods.{POST, PUT}
 import org.apache.pekko.http.scaladsl.model.Uri
@@ -21,12 +22,13 @@ import scala.concurrent.{Await, Future}
 import scala.language.postfixOps
 
 
-object Teapot extends RestClient {
+object Teapot extends RestClient()(ActorSystem("teapot")) {
   override def doRequest(req: HttpRequest): Future[HttpResponse] =
     Future.successful(HttpResponse(StatusCodes.ImATeapot))
 }
 
-class FakeClient(clientCfg: Config = HttpClientConfig.componentConfs.root) extends RestClient(clientCfg) {
+class FakeClient(clientCfg: Config = HttpClientConfig.componentConfs.root)(implicit system: ActorSystem)
+    extends RestClient(clientCfg)(system) {
   override def doRequest(req: HttpRequest): Future[HttpResponse] =
     Future.successful(HttpResponse(entity = clientCfg.getString("fake-response")))
 }
@@ -75,8 +77,9 @@ class RestClientTest  extends FlatSpec with Matchers with ScalatestRouteTest wit
     client shouldBe Teapot
     val request = HttpRequest(POST, entity = HttpEntity("BREW"))
     val injection = InjectionParametersContext(request)
+    val httpClients = HttpClientConfig.httpClientFactory.createHttpClients
     Await.result(
-      HttpClientConfig.httpClientFactory.createHttpClients("teapot")(injection)(request),
+      httpClients("teapot")(injection)(request),
       1 second,
     ).status shouldBe StatusCodes.ImATeapot
   }
@@ -84,13 +87,14 @@ class RestClientTest  extends FlatSpec with Matchers with ScalatestRouteTest wit
   it should "construct extended client with config" in {
     val request = HttpRequest(POST, entity = HttpEntity("BREW"))
     val injection = InjectionParametersContext(request)
+    val httpClients = HttpClientConfig.httpClientFactory.createHttpClients
     Await.result(
-      HttpClientConfig.httpClientFactory.createHttpClients("fake_1")(injection)(request)
+      httpClients("fake_1")(injection)(request)
         .flatMap(_.entity.toStrict(1.second)),
       1 second,
     ).data.utf8String shouldBe "so fake"
     Await.result(
-      HttpClientConfig.httpClientFactory.createHttpClients("fake_2")(injection)(request)
+      httpClients("fake_2")(injection)(request)
         .flatMap(_.entity.toStrict(1.second)),
       1 second,
     ).data.utf8String shouldBe "fake again"

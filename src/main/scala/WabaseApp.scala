@@ -63,8 +63,13 @@ trait WabaseApp[User] {
 
   type ActionHandlerResult = qe.QuereaseAction[WabaseResult]
   type ActionHandler       = AppActionContext => ActionHandlerResult
-  implicit lazy val httpClients: WabaseHttpClients =
+  implicit lazy val httpClients: WabaseHttpClients = {
+    implicit val system: ActorSystem = this match {
+      case execution: Execution => execution.system
+      case _ => ActorSystem("wabase-http-clients")
+    }
     WabaseHttpClients(HttpClientConfig.httpClientFactory.createHttpClients)
+  }
   implicit lazy val fileStreamers: WabaseFileStreamers =
     WabaseFileStreamers(FileStreamerConfig.fileStreamerFactory.createFileStreamers(this))
   lazy val injectionParametersProvider: AppQuerease.InjectionParametersProvider =
