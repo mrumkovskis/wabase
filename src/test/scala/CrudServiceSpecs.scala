@@ -20,7 +20,8 @@ import org.scalatest.matchers.should.Matchers
 import org.tresql.{DMLResult, Query, convInt}
 
 import scala.collection.immutable.Seq
-import scala.concurrent.{ExecutionContextExecutor, Future}
+import scala.concurrent.{Await, ExecutionContextExecutor, Future}
+import scala.concurrent.duration._
 
 class CrudTestService(system: ActorSystem, testApp: TestApp) extends TestAppService(system) {
   override def initApp          = testApp
@@ -809,14 +810,15 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     }
     val id1 = createPerson("Zoe")
     val id2 = createPerson("Zorg")
+    val expectedCsv = List(
+      s"""Id,Name,Surname""",
+      s"""$id1,Zoe,""",
+      s"""$id2,Zorg,""",
+    ).mkString("", "\n", "\n")
     Get("/data/by_id_view_1?name=Z") ~> addHeader("Accept", "text/csv") ~> route ~> check {
       status shouldEqual StatusCodes.OK
       header[`Content-Type`].get.contentType shouldBe ContentTypes.`text/csv(UTF-8)`
-      entityAs[String] shouldBe List(
-        s"""Id,Name,Surname""",
-        s"""$id1,Zoe,""",
-        s"""$id2,Zorg,""",
-      ).mkString("", "\n", "\n")
+      entityAs[String] shouldBe expectedCsv
     }
     Get("/data/by_id_view_1?name=Z") ~> addHeader(
         "Accept", "application/vnd.oasis.opendocument.spreadsheet") ~> route ~> check {
@@ -839,6 +841,20 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       excelXml should include ("Zoe")
       excelXml should include ("Zorg")
       excelXml should endWith ("</Workbook>\n")
+    }
+    Get("/data/by_id_view_1?name=Z") ~> addHeader("Accept", "text/csv; bom=true") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
+      header[`Content-Type`].get.contentType shouldBe ResultRenderers.textCsvUtf8WithBom
+      val data = Await.result(response.entity.toStrict(1.second), 1.second).data
+      data.take(3).toArray shouldBe CsvWithBom.byteOrderMark
+      data.drop(3).utf8String shouldBe expectedCsv
+    }
+    Get("/data/by_id_view_1?name=Z") ~> addHeader("Accept", "text/csv") ~> route ~> check {
+      status shouldEqual StatusCodes.OK
+      header[`Content-Type`].get.contentType shouldBe ContentTypes.`text/csv(UTF-8)`
+      val data = Await.result(response.entity.toStrict(1.second), 1.second).data
+      data.take(3).toArray should not be CsvWithBom.byteOrderMark
+      data.utf8String shouldBe expectedCsv
     }
   }
 

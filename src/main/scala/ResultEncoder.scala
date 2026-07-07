@@ -19,7 +19,7 @@ import org.wabase.ResultEncoder.{ByteChunks, ChunkType, TextChunks}
 import scala.collection.immutable.{ListMap, Seq}
 import AppMetadata.AugmentedAppFieldDef
 import org.apache.pekko.http.scaladsl.model.Uri.Query
-import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes}
+import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes, HttpCharsets, MediaTypes}
 import org.wabase.ResultRenderers.EncoderFactoryCreator
 
 import scala.annotation.tailrec
@@ -590,6 +590,26 @@ trait TableResultRenderer {
   def renderFooter()                = {}
 }
 
+object CsvWithBom {
+  val byteOrderMark: Array[Byte] = Array(0xEF.toByte, 0xBB.toByte, 0xBF.toByte)
+
+  final class BomPrefixOutputStream(delegate: OutputStream) extends OutputStream {
+    private var written = false
+    private def ensureBom(): Unit =
+      if (!written) {
+        delegate.write(byteOrderMark)
+        written = true
+      }
+    override def write(b: Int): Unit = { ensureBom(); delegate.write(b) }
+    override def write(b: Array[Byte], off: Int, len: Int): Unit = { ensureBom(); delegate.write(b, off, len) }
+    override def flush(): Unit = delegate.flush()
+    override def close(): Unit = delegate.close()
+  }
+
+  def outputStream(delegate: OutputStream, withBom: Boolean): OutputStream =
+    if (withBom) new BomPrefixOutputStream(delegate) else delegate
+}
+
 class CsvResultRenderer(writer: io.Writer) extends TableResultRenderer {
   protected var isAtRowStart = true
   protected def escapeValue(s: String) =
@@ -676,11 +696,15 @@ object ResultRenderers {
   type EncoderFactoryCreator = (Boolean, ResultRenderer.ResultFilter, ViewDef) => EncoderFactory
 
   import org.apache.pekko.http.scaladsl.model.MediaTypes._
+  val textCsvUtf8WithBom: ContentType =
+    MediaTypes.`text/csv`.withParams(Map("bom" -> "true")).withCharset(HttpCharsets.`UTF-8`)
+
   val renderers: ListMap[ContentType, EncoderFactoryCreator] =
     ListMap(
       (`application/json`,                                createJsonEncoderFactory),
       (`application/cbor`,                                createCborEncoderFactory),
-      (ContentTypes.`text/csv(UTF-8)`,                           createCsvEncoderFactory),
+      (ContentTypes.`text/csv(UTF-8)`,                           createCsvEncoderFactory(withBom = false)),
+      (textCsvUtf8WithBom,                                createCsvEncoderFactory(withBom = true)),
       (`application/vnd.oasis.opendocument.spreadsheet`,  createOdsEncoderFactory),
       (`application/vnd.ms-excel`,                        createXlsXmlEncoderFactory),
       (`application/x-www-form-urlencoded`,               createFormUrlEncodedFactory),
@@ -693,9 +717,10 @@ object ResultRenderers {
                                viewDef: ViewDef): EncoderFactory =
     CborResultRenderer(_, isCollection, resultFilter)
 
-  def createCsvEncoderFactory(isCollection: Boolean, resultFilter: ResultRenderer.ResultFilter,
-                              viewDef: ViewDef): EncoderFactory =
-    os => new FlatTableResultRenderer(new CsvResultRenderer(new OutputStreamWriter(os, "UTF-8")),
+  def createCsvEncoderFactory(withBom: Boolean)(isCollection: Boolean, resultFilter: ResultRenderer.ResultFilter,
+                                              viewDef: ViewDef): EncoderFactory =
+    os => new FlatTableResultRenderer(
+      new CsvResultRenderer(new OutputStreamWriter(CsvWithBom.outputStream(os, withBom), "UTF-8")),
       resultFilter, viewDef)
 
   def createOdsEncoderFactory(isCollection: Boolean, resultFilter: ResultRenderer.ResultFilter,
