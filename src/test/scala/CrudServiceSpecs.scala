@@ -846,14 +846,14 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       status shouldEqual StatusCodes.OK
       header[`Content-Type`].get.contentType shouldBe ResultRenderers.textCsvUtf8WithBom
       val data = Await.result(response.entity.toStrict(1.second), 1.second).data
-      data.take(3).toArray shouldBe CsvWithBom.byteOrderMark
+      data.take(3).toArray shouldBe CsvWithBom.byteOrderMark.toArray
       data.drop(3).utf8String shouldBe expectedCsv
     }
     Get("/data/by_id_view_1?name=Z") ~> addHeader("Accept", "text/csv") ~> route ~> check {
       status shouldEqual StatusCodes.OK
       header[`Content-Type`].get.contentType shouldBe ContentTypes.`text/csv(UTF-8)`
       val data = Await.result(response.entity.toStrict(1.second), 1.second).data
-      data.take(3).toArray should not be CsvWithBom.byteOrderMark
+      data.take(3).toArray should not be CsvWithBom.byteOrderMark.toArray
       data.utf8String shouldBe expectedCsv
     }
   }

@@ -591,13 +591,14 @@ trait TableResultRenderer {
 }
 
 object CsvWithBom {
-  val byteOrderMark: Array[Byte] = Array(0xEF.toByte, 0xBB.toByte, 0xBF.toByte)
+  private val byteOrderMarkArray: Array[Byte] = Array(0xEF.toByte, 0xBB.toByte, 0xBF.toByte)
+  val byteOrderMark = ByteString(byteOrderMarkArray)
 
   final class BomPrefixOutputStream(delegate: OutputStream) extends OutputStream {
     private var written = false
     private def ensureBom(): Unit =
       if (!written) {
-        delegate.write(byteOrderMark)
+        delegate.write(byteOrderMarkArray)
         written = true
       }
     override def write(b: Int): Unit = { ensureBom(); delegate.write(b) }
