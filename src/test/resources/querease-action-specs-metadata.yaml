@@ -969,7 +969,7 @@ list:
 
 
 name: conf_test
-api: list, get, insert, update, delete
+api: list, get, insert, update, delete, count
 get:
 - uri = conf string conf.test.uri
 - status ok { :uri || 'about' }
@@ -988,6 +988,8 @@ delete:
   - "'yes'"
 - else:
   - "'no'"
+count:
+- conf number conf.test.request-timeout
 
 
 name: http_test_1

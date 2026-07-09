@@ -1438,12 +1438,22 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     for {
       t1 <-
         doAction("insert", "conf_test", Map())
-          .map(_ shouldBe MapResult(Map("list" -> List(1, 2, 3), "uri" -> "http://wabase.org/", "enabled" -> true)))
+          .map(_ shouldBe MapResult(
+            Map(
+              "list" -> List(1, 2, 3),
+              "uri" -> "http://wabase.org/",
+              "enabled" -> true,
+              "request-timeout" -> 10,
+            )
+          ))
       t2 <-
         doAction("update", "conf_test", Map())
           .map(_ shouldBe StringResult("http://wabase.org/"))
       t3 <- doAction("delete", "conf_test", Map())
         .map(_ shouldBe MapResult(Map("status" -> "yes")))
+      _ <-
+        doAction("count", "conf_test", Map())
+          .map(_ shouldBe ConfResult("conf.test.request-timeout", 10))
     } yield t2
   }
 

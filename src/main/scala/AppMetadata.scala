@@ -790,7 +790,7 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
   val ActionRegex = new Regex(Action().map(a => if (a == Action.Job) JobCall else a)
     .mkString("(?U)(", "|", """)(?=\s+)"""))
   val ViewNameRegex = "(?U)\\w+".r
-  val ConfPropRegex = """\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*(?:\.\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*+)*""".r
+  val ConfPropRegex = """\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*(?:[.-]\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*+)*""".r
   val HttpClientFileStreamerNameRegex = """\w+(-\w+)*""".r
   val RedirectOpRegex = """redirect\s+""".r
   val RedirectToKeyRegex = """[_\p{IsLatin}][_\p{IsLatin}0-9]*$""".r
