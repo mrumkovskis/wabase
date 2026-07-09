@@ -648,6 +648,12 @@ response: {
     }],
     "filter": []
   },
+  "post_uid": {
+    "name": "post_uid",
+    "key": ["uid"],
+    "fields": [],
+    "filter": []
+  },
   "request_calculation_view": {
     "name": "request_calculation_view",
     "key": [],

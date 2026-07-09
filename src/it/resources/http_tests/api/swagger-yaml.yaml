@@ -1002,6 +1002,28 @@ response: |+
         responses:
           "200":
             description: OK
+    /post-uid/{uid}:
+      post:
+        summary: Post 'post_uid' by 'uid'
+        description: ""
+        parameters:
+        - name: uid
+          in: path
+          description: Uid
+          required: true
+          schema:
+            type: string
+        responses:
+          "200":
+            description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: "#/components/schemas/post_uid_key_response"
+          "400":
+            description: Bad Request
+          "503":
+            description: Service Unavailable
     /qe_call/guideline_calculation_helper:
       get:
         responses:

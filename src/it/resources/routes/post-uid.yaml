@@ -1,0 +1,2 @@
+on: POST /post-uid/{uid}
+do: doAction 'post_uid'

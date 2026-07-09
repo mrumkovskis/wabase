@@ -59,6 +59,17 @@ object RequestHandlers {
         .getOrElse(ApplicationState(state))
   }
 
+  private def lastPathSegment(path: Uri.Path): Option[String] =
+    WabaseService.pathSegments(path).lastOption
+
+  private def keyPathPrefix(allowedPaths: Seq[Uri.Path], requestPath: Uri.Path, defaultPrefix: String): String =
+    allowedPaths
+      .filter(requestPath.startsWith)
+      .sortBy(_.toString.length)
+      .lastOption
+      .flatMap(lastPathSegment(_))
+      .getOrElse(defaultPrefix)
+
   val CreateCountActionAndViewRegex = """(?U)([_\p{IsLatin}][\-\w]*)(?::(count|create))?""".r
   val ActionForHttpPost = config.getString("app.action-for-http.post") // maybe "insert" for legacy app
   val ActionForHttpPut  = config.getString("app.action-for-http.put")  // maybe "update" for legacy app
@@ -76,7 +87,8 @@ object RequestHandlers {
 
     if (viewNameAndActionStr == null) ctx
     else {
-      val key = WabaseService.key(req.uri.path, viewNameAndActionStr)
+      val keyPrefix = keyPathPrefix(wabase.qe.allowedPaths(view_name), req.uri.path, viewNameAndActionStr)
+      val key = WabaseService.key(req.uri.path, keyPrefix)
       val action = if (create_count_action != null) create_count_action else req.method match {
         case `GET`    => Action.Get
         case `POST`   => ActionForHttpPost

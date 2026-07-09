@@ -1,0 +1,6 @@
+name:   post_uid
+paths: /post-uid
+api:    public post
+key:    uid
+post:
+- as any :uid
