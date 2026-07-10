@@ -95,6 +95,10 @@ do:       org.wabase.WabaseTestHandlers.error
 on:       GET HEAD /(head)
 do:       doAction $1
 
+# null test
+on:       GET /(null_test)/(.*)
+do:       doAction $1
+
 ################# views ###############
 
 name: view1
@@ -217,3 +221,11 @@ head:
 - response ok set_headers({'Last-Modified', 'Mon, 29 Sep 2025 22:18:54 EET'})
 get:
 - extract header Last-Modified http head {'/head'}
+
+
+name: null_test
+api: get
+key: name
+get:
+- res = if {:name = null} 'name is null' else 'name = ' || :name
+- as any :res

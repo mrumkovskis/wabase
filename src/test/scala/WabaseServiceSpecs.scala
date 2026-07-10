@@ -104,6 +104,11 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
     response(Put("/public/querease_action_exception")).status shouldBe StatusCodes.BadRequest
   }
 
+  it should "compare null bind variable value" in {
+    callRoute("/null_test/null") shouldBe "name is null"
+    callRoute("/null_test/abc") shouldBe "name = abc"
+  }
+
   it should "process request decoder errors" in {
     statusAndEntityForRequest(Post("/public/view1/5", encodeJs(Seq(Map("value" -> "Value5-ins"))))) match {
       case (code, resp) =>
