@@ -1919,7 +1919,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     }
   }
 
-  private def consumeResult(res: Any)(implicit qr: QuereaseResources): Future[Any] = {
+  def consumeResult(res: Any)(implicit qr: QuereaseResources): Future[Any] = {
     import qr._
     (res match {
       case TresqlResult(tr) => tr.close()
@@ -1936,6 +1936,10 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case DbResult(res, cl) => consumeResult(res)
         .andThen { case r => cl(r.failed.toOption) }
       case RequestPartResult(res, _) => res.runForeach(_.entity.discardBytes())
+      case QuereaseResultWithCleanup(r, cleanup) =>
+        val cr = consumeResult(r)
+        cleanup(None)
+        cr
       case x => x
     }) match {
       case f: Future[_] => f

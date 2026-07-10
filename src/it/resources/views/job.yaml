@@ -3,6 +3,11 @@ job:
 - sleep 100
 - +person{code = 'pk10', name = 'Kurtis', surname = 'Vaidelotis'}
 
+name: create_persons
+job:
+- foreach {'pj1' code, 'Ansis' name, 'Kalns' surname} ++ {'pj2' code, 'Ilze' name, 'Ozola' surname} ++ {'pj3' code, 'Janis' name, 'Berzins' surname} :
+  - +person{code = :code, name = trim(:name), surname = trim(:surname)}
+
 name: check_person
 api: get
 key: code

@@ -15,7 +15,7 @@ import scala.util.control.NonFatal
 import scala.util.{Failure, Success}
 
 class WabaseScheduler(wabase: AppBase[_], system: ActorSystem) extends Loggable {
-  def init(): Future[QuereaseResult] = {
+  def init(): Future[Any] = {
     if (config.getBoolean("app.job.clean-jobs-on-start"))
       WabaseJobStatusController.init(wabase.dbAccess)
     val wabaseJobActor = if (config.getIsNull("app.job.actor")) null else try {
@@ -39,7 +39,7 @@ class WabaseScheduler(wabase: AppBase[_], system: ActorSystem) extends Loggable 
     } else Future.successful(NoResult)
   }
 
-  def doJob(job: ViewDef, params: Map[String, Any]): Future[QuereaseResult] = {
+  def doJob(job: ViewDef, params: Map[String, Any]): Future[Any] = {
     val qe = wabase.qe
     val dbAccess = wabase.dbAccess
     val loggerName = s"${job.name}.job"
@@ -53,12 +53,21 @@ class WabaseScheduler(wabase: AppBase[_], system: ActorSystem) extends Loggable 
     implicit val actorSystem: ActorSystem = system
     val logger = Logger(LoggerFactory.getLogger(loggerName))
 
-    qe.QuereaseAction(job.name, Action.Job, params, Map(), doCleanup = true)(
+    qe.QuereaseAction(job.name, Action.Job, params, Map())(
         resourcesFactory, httpReq = null, qio = wabase.qio,
         fileStreamers = wabase.fileStreamers,
         httpClients = wabase.httpClients,
         parameterProvider = wabase.injectionParametersProvider, logger)
       .run(executionContext, actorSystem)
+      .flatMap { res =>
+        // consume result in the case QuereaseResultWithCleanup is returned
+        qe.consumeResult(res)(QuereaseResources()(
+          resourcesFactory, executionContext, actorSystem,
+          httpReq = null, wabase.qio, wabase.fileStreamers,
+          wabase.httpClients, wabase.injectionParametersProvider,
+          logger,
+        ))
+      }
   }
 }
 
