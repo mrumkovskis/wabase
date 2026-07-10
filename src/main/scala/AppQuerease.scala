@@ -486,7 +486,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       stepDataF flatMap { stepScope =>
         def doActionStep(vts: List[VariableTransform], op: Action.Op) =
           doActionOp(op, if (vts.isEmpty) stepScope
-            else stepScope.copy(data = doVarsTransforms(vts, scopeBindVars(stepScope)).result), context)
+            else Scope(data = doVarsTransforms(vts, scopeBindVars(stepScope)).result), context)
         qr.logger.debug(s"Doing action '${context.name}' step '$src', $step.")
         qr.logger.debug(s"Step data: {${loggable(resourcesFactory.resources, scopeBindVars(stepScope))}}")
         step match {
