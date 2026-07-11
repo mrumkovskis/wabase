@@ -42,7 +42,7 @@ class WabaseScheduler(wabase: AppBase[_], system: ActorSystem) extends Loggable 
   def doJob(job: ViewDef, params: Map[String, Any]): Future[Any] = {
     val qe = wabase.qe
     val dbAccess = wabase.dbAccess
-    val loggerName = s"${job.name}.job"
+    val loggerName = WabaseScheduler.loggerName(job.name)
 
     val resourcesFactory: ResourcesFactory = {
       val resTempl = dbAccess
@@ -78,6 +78,8 @@ object WabaseScheduler {
   case object JobStarted
   /** message to inform sender that job could not be started because it is already running */
   case object JobRunning
+
+  def loggerName(jobName: String): String = s"job.$jobName"
 }
 
 class WabaseJobActor(wabase: AppBase[_], scheduler: WabaseScheduler) extends Actor {
@@ -113,16 +115,25 @@ class WabaseJobActor(wabase: AppBase[_], scheduler: WabaseScheduler) extends Act
   }
 }
 
-object WabaseJobStatusController {
+object WabaseJobStatusController extends Loggable {
 
   val job_max_time = config.getDuration("app.job.max-time").toSeconds
   val jobStatusCp  = PoolName(config.getString("app.job.job-status-cp"))
 
-  def init(dbAccess: DbAccess): Unit = dbAccess.newTransaction(jobStatusCp) { implicit res =>
+  private def db[A](dbAccess: DbAccess)(act: Resources => A): A =
+    dbAccess.newTransaction(
+      poolName = jobStatusCp,
+      template = dbAccess.withDbAccessLogger(
+        dbAccess.tresqlResources.resourcesTemplate,
+        loggerName
+      )
+    )(act)
+
+  def init(dbAccess: DbAccess): Unit = db(dbAccess) { implicit res =>
     Query("-cron_job_status[status != 'RUN']")
   }
 
-  def updateCronJobStatus(name: String, status: String)(dbAccess: DbAccess): Unit = dbAccess.newTransaction(jobStatusCp) {
+  def updateCronJobStatus(name: String, status: String)(dbAccess: DbAccess): Unit = db(dbAccess) {
     implicit res => status match {
       case "SUCC" =>
         Query(
@@ -139,7 +150,7 @@ object WabaseJobStatusController {
     }
   }
 
-  def acquireIsRunnningLock(name: String)(dbAccess: DbAccess): Boolean = dbAccess.newTransaction(jobStatusCp) { implicit res =>
+  def acquireIsRunnningLock(name: String)(dbAccess: DbAccess): Boolean = db(dbAccess) { implicit res =>
     Query(
       """+cron_job_status
         |{id, cron_name, status, report_time}

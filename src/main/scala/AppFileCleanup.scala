@@ -22,6 +22,13 @@ class AppFileCleanup(qe: AppQuerease, resourcesTemplate: Resources,
   implicit lazy val connectionPool: PoolName = Option(connectionPoolName).map(PoolName).getOrElse(WabaseAppConfig.DefaultCp)
   implicit lazy val extraDb: Seq[DbAccessKey] = Nil
 
+  override def loggerName: String = "wabase-file-cleanup"
+
+  def db[A](act: Resources => A)(res: Resources): A = {
+    val logger = TresqlResources.withLogger(loggerName)
+    act(res.withLogger(logger = logger))
+  }
+
   /*
   1. delete all records from file_info, if id not referenced in linked tables (info about linked tables from metadata)
   2. delete all records from file_body_info where sha256 is not found in file_info
@@ -106,7 +113,7 @@ class AppFileCleanup(qe: AppQuerease, resourcesTemplate: Resources,
           })
 
       // insert files into files_on_disk
-      DbAccess.newTransaction(connectionPool, WabaseAppConfig.DefaultCp, resourcesTemplate) { implicit res =>
+      DbAccess.newTransaction(connectionPool, WabaseAppConfig.DefaultCp, resourcesTemplate) (db { implicit res =>
         def prepareStatement = res.conn.prepareStatement("INSERT INTO files_on_disk(path) VALUES (?)")
         val lastBatch =
           files.foldLeft((prepareStatement, 0)) { case ((stmt, count), file) =>
@@ -120,11 +127,11 @@ class AppFileCleanup(qe: AppQuerease, resourcesTemplate: Resources,
           }
         if (lastBatch._2 > 0)
           lastBatch._1.executeBatch()
-      }
+      }(_))
       //filesUploaded as count query also for "warming up" DB (something like sql "analyze file_body_info"); independent of logger.debug scope
-      val filesUploaded = DbAccess.withRollbackConn(connectionPool, WabaseAppConfig.DefaultCp, resourcesTemplate) { implicit res =>
+      val filesUploaded = DbAccess.withRollbackConn(connectionPool, WabaseAppConfig.DefaultCp, resourcesTemplate) (db { implicit res =>
         Query("files_on_disk{count(1)}").unique[Long]
-      }
+      }(_))
       logger.debug(s"Number of records inserted into files_on_disk for $rootPath: $filesUploaded")
     }
   }
@@ -139,7 +146,7 @@ class AppFileCleanup(qe: AppQuerease, resourcesTemplate: Resources,
     val pathsParams = fileStreamers.zipWithIndex.map {
       case (fs, idx) => s"path_$idx" -> fs.rootPath
     }.toMap
-    DbAccess.withRollbackConn(connectionPool, WabaseAppConfig.DefaultCp, resourcesTemplate) { implicit res =>
+    DbAccess.withRollbackConn(connectionPool, WabaseAppConfig.DefaultCp, resourcesTemplate) (db { implicit res =>
       val filesMoved = Query(query, pathsParams).list[String]
         .map(new File(_))
         .foldLeft(0){case (counter, fullPathFile) =>
@@ -152,7 +159,7 @@ class AppFileCleanup(qe: AppQuerease, resourcesTemplate: Resources,
           counter + 1
         }
       logger.debug("Files moved to trash: " + filesMoved)
-    }
+    }(_))
   }
 
   protected def cleanupTmp = {
@@ -195,9 +202,9 @@ class AppFileCleanup(qe: AppQuerease, resourcesTemplate: Resources,
     @tailrec
     def deleteWhileNonEmpty(deletedTotalCount: Int): Int = {
       val deletedCount =
-        DbAccess.newTransaction(connectionPool, WabaseAppConfig.DefaultCp, resourcesTemplate) { implicit res =>
+        DbAccess.newTransaction(connectionPool, WabaseAppConfig.DefaultCp, resourcesTemplate) (db { implicit res =>
           Query(statement)
-        } match {
+        }(_)) match {
           case deleteResult: DeleteResult => deleteResult.count.getOrElse(0)
           case x => sys.error(s"Unexpected result class: ${x.getClass.getName}. Expecting DeleteResult.")
         }

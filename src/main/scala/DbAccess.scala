@@ -25,7 +25,7 @@ trait DbAccess { this: QuereaseProvider with Loggable =>
 
   protected lazy val resourcesTemplate: ResourcesTemplate =
     TresqlResourcesConf.tresqlResourcesTemplate(TresqlResourcesConf.confs, tresqlMetadata)
-  protected lazy val threadLocalResources = new ThreadLocalResources {
+  private lazy val threadLocalResources = new ThreadLocalResources {
     override def initResourcesTemplate: ResourcesTemplate = DbAccess.this.resourcesTemplate
   }
   protected def tresqlMetadata: TresqlMetadata

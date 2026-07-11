@@ -15,4 +15,11 @@
 
     <!-- specific route logger, format - <http method>.<uri path with slashes replaced with dots> -->
     <!-- logger name="post.data.person" level="debug"/ -->
+    <!-- specific job logger -->
+    <!-- logger name="job.my_job" level="debug"/ -->
+    <!-- specific file streamer logger -->
+    <!-- logger name="file-streamer.my_file_streamer" level="debug"/ -->
+    <!-- logger name="org.wabase.WabaseJobStatusController" level="debug"/ -->
+    <!-- logger name="wabase-deferred-control" level="debug"/ -->
+    <!-- logger name="wabase-file-cleanup" level="debug"/ -->
 </configuration>

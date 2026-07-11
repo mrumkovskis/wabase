@@ -36,8 +36,7 @@ trait DeferredControl
    with AppServiceBase[_]
    with AppExceptionHandler
    with AppConfig
-   with SessionInfoRemover
-   with Loggable =>
+   with SessionInfoRemover =>
 
   import DeferredControl._
   import io.bullet.borer._, ResultEncoder._, JsonEncoder._
@@ -248,6 +247,8 @@ object DeferredControl extends Loggable with AppConfig {
   case object RunDeferredCleanup
   case object GetProcessedDeferredCount
   case class ProcessedDeferredCount(count: Long)
+
+  override def loggerName: String = "wabase-deferred-control"
 
   def deferredTimeout(
     viewName: Option[String],
@@ -475,8 +476,23 @@ object DeferredControl extends Loggable with AppConfig {
 
     override lazy val fileStreamerConfig: Config = conf.getConfig("deferred-requests.storage.file-streamer")
 
+    override def loggerName: String = DeferredControl.loggerName
+    private def db_read[A](act: Resources => A): A =
+      db.withRollbackConn(
+        poolName = Cp,
+        template =
+          db.withDbAccessLogger(db.tresqlResources.resourcesTemplate, loggerName)
+      )(act)
+    private def db_write[A](act: Resources => A): A =
+      db.newTransaction(
+        poolName = Cp,
+        template =
+          db.withDbAccessLogger(db.tresqlResources.resourcesTemplate, loggerName)
+      )(act)
+
+
     import DeferredControl.HttpMessageSerialization._
-    def registerDeferredRequest(ctx: DeferredContext): DeferredContext = db.newTransaction(Cp) { implicit res =>
+    def registerDeferredRequest(ctx: DeferredContext): DeferredContext = db_write { implicit res =>
       import ctx._
       val isDuplicate =
         Query("""{ exists(deferred_request[username = ? & request_hash = ? & status in (?, ?)]) }""",
@@ -495,7 +511,7 @@ object DeferredControl extends Loggable with AppConfig {
       }
     }
 
-    def registerDeferredStatus(ctx: DeferredContext) = db.newTransaction(Cp) { implicit res =>
+    def registerDeferredStatus(ctx: DeferredContext) = db_write { implicit res =>
       import ctx._
       Query("=deferred_request[request_hash = ? & username = ?] {status, priority} [?, ?]",
         hash, userIdString, status, priority)
@@ -518,7 +534,7 @@ object DeferredControl extends Loggable with AppConfig {
       }
       val (header, fif) = serializeHttpResponse(this, result)
       fif.map { fi =>
-        db.newTransaction(Cp) { implicit res =>
+        db_write { implicit res =>
           statsRegisterDeferredResult
           Query("""=deferred_request[?]
             {status, response_time, response_headers, response_entity_file_id, response_entity_file_sha_256 }
@@ -537,7 +553,7 @@ object DeferredControl extends Loggable with AppConfig {
     }
 
     def getUserDeferredStatuses(userIdString: String): Iterable[DeferredContext] =
-      db.withRollbackConn(Cp) { implicit res =>
+      db_read { implicit res =>
         Query("""deferred_request [username = ?]
             { request, request_time, response_time, status, priority, request_hash }""",
             userIdString)
@@ -547,7 +563,7 @@ object DeferredControl extends Loggable with AppConfig {
             null, r._2, null, r._3, r._4, r._5))
       }
 
-    def cleanupDeferredRequests: Int = db.newTransaction(Cp) { implicit res =>
+    def cleanupDeferredRequests: Int = db_write { implicit res =>
       val old = new java.sql.Timestamp(currentTime - deferredCleanupInterval.toMillis)
       Query("=deferred_request[status in (?, ?) & response_time < ?] {status} [?]",
         DEFERRED_OK, DEFERRED_ERR, old, DEFERRED_DEL)
@@ -557,7 +573,7 @@ object DeferredControl extends Loggable with AppConfig {
       }
     }
 
-    def getDeferredRequest(hash: String, userIdString: String) = db.withRollbackConn(Cp) { implicit res =>
+    def getDeferredRequest(hash: String, userIdString: String) = db_read { implicit res =>
       Query("""deferred_request [request_hash = ? & username = ?]
           { request, request_time, response_time, status, priority }""",
           hash, userIdString)
@@ -567,7 +583,7 @@ object DeferredControl extends Loggable with AppConfig {
           null, r._2, null, r._3, r._4, r._5))
     }
 
-    def getDeferredResult(hash: String, userIdString: String) = db.withRollbackConn(Cp) { implicit res =>
+    def getDeferredResult(hash: String, userIdString: String) = db_read { implicit res =>
       Query("""deferred_request [request_hash = ? & username = ? & status in (?, ?)]
                  { response_headers, response_entity_file_id, response_entity_file_sha_256 }""",
                  hash, userIdString, DEFERRED_OK, DEFERRED_ERR)
@@ -577,14 +593,14 @@ object DeferredControl extends Loggable with AppConfig {
         }
     }
 
-    def getDeferredHttpRequest(hash: String, userIdString: String) = db.withRollbackConn(Cp) { implicit res =>
+    def getDeferredHttpRequest(hash: String, userIdString: String) = db_read { implicit res =>
       Query("""deferred_request [request_hash = ? & username = ?] { request }""", hash, userIdString)
         .headOption[java.io.InputStream]
         .map(deserializeHttpMessage(_, None).asInstanceOf[HttpRequest])
     }
 
     def onRestart(): Unit = {
-      db.newTransaction(Cp) { implicit res =>
+      db_write { implicit res =>
         val c = Query("""-deferred_request[status in (?, ?)]""", DEFERRED_EXE, DEFERRED_QUEUE).unique[Int]
         if (c > 0) logger.warn(s"Deleted ($c) uncompleted deferred record(s) on deferred request processor restart")
       }

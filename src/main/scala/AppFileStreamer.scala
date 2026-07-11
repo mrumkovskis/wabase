@@ -118,7 +118,7 @@ trait AppFileStreamerConfig {
   def shaColName: String
 }
 
-trait AppFileStreamer[User] extends AppFileStreamerConfig { this: DbAccessProvider =>
+trait AppFileStreamer[User] extends AppFileStreamerConfig with Loggable { this: DbAccessProvider =>
   
   override def rootPath: String             = fileStreamer.rootPath
   override def file_info_table: String      = fileStreamer.file_info_table
@@ -136,9 +136,9 @@ trait AppFileStreamer[User] extends AppFileStreamerConfig { this: DbAccessProvid
       )
     )
   }
-  lazy val fileStreamer: FileStreamer =
-    new FileStreamer(fileStreamerConfig, this)
 
+  lazy val fileStreamer: FileStreamer =
+    new FileStreamer(fileStreamerConfig, this, loggerName)
 
   import AppFileStreamer._
 
@@ -163,7 +163,10 @@ trait AppFileStreamer[User] extends AppFileStreamerConfig { this: DbAccessProvid
 class FileStreamer(
   fsCfg:            Config,
   dbAccessProvider: DbAccessProvider,
+  name: String = null,
 ) extends AppFileStreamerConfig with Loggable {
+
+  override def loggerName: String = Option(name).getOrElse(super.loggerName)
 
   override val rootPath: String             = fsCfg.getString("files.path").replaceAll("/+$", "")
   override val file_info_table: String      = fsCfg.getString("file-info-table")
@@ -180,6 +183,18 @@ class FileStreamer(
 
   private lazy val db = dbAccessProvider.dbAccess
   private lazy val fsCp: PoolName = Option(connectionPoolName).map(PoolName).getOrElse(db.DefaultCp)
+  private def db_read[A](act: Resources => A): A =
+    db.withConn(
+      poolName = fsCp,
+      template =
+        db.withDbAccessLogger(db.tresqlResources.resourcesTemplate, loggerName)
+    )(act)
+  private def db_write[A](act: Resources => A): A =
+    db.newTransaction(
+      poolName = fsCp,
+      template =
+        db.withDbAccessLogger(db.tresqlResources.resourcesTemplate, loggerName)
+    )(act)
 
   import AppFileStreamer._
 
@@ -235,7 +250,7 @@ class FileStreamer(
         new BusinessException(
           "Cannot process file, please contact administrator: " + sha)
 
-      def oldPathOpt = db.withConn(fsCp) { implicit res =>
+      def oldPathOpt = db_read { implicit res =>
         Query(s"$file_body_info_table[$shaColName=?]{path}", sha).uniqueOption[String]
       }
       val oldFileInfoF: Future[Option[FileInfo]] = oldPathOpt match {
@@ -249,11 +264,11 @@ class FileStreamer(
               } yield {
                 if (size == oldSize && sha == oldSha) {
                   // old file ok
-                  val id = db.newTransaction(fsCp) { implicit res =>
+                  val id = db_write { implicit res =>
                     Query(fileInfoInsert, fi.toMap) match { case r: InsertResult => r.id.get }
                   }
                   Files.delete(tempFile.toPath)
-                  db.withConn(fsCp) { implicit res =>
+                  db_read { implicit res =>
                     Query(fileInfoSelect, Map("id" -> id, "sha_256" -> sha))
                       .map(new FileInfo(_)).find(_ => true)
                   }
@@ -273,7 +288,7 @@ class FileStreamer(
             if (!targetFile.exists || !Files.isRegularFile(targetFile.toPath))
               throw badFileException
           // if we are here, file body is accepted and copied, db has to be updated
-          db.newTransaction(fsCp) { implicit res =>
+          db_write { implicit res =>
             if (oldPathOpt.isDefined)
                 Query(s"=$file_body_info_table[$shaColName = ?] {path = ?}", sha, tailPath)
             else
@@ -295,7 +310,7 @@ class FileStreamer(
   }
 
   def getFileInfo(id: Long, sha256: String): Option[FileInfoHelper] = {
-    db.withConn(fsCp) { implicit res =>
+    db_read { implicit res =>
       Query(fileInfoSelect, Map("id" -> id, "sha_256" -> sha256))
         .map(new FileInfoHelper(_)).find(_ => true)
     }
@@ -338,7 +353,7 @@ trait FileStreamerFactory {
 object FileStreamerFactory extends FileStreamerFactory {
   def createFileStreamers(dbAccessProvider: DbAccessProvider): Map[String, FileStreamer] = {
     FileStreamerConfig.configs.map { case (n, fsCfg) =>
-      n -> new FileStreamer(fsCfg, dbAccessProvider)
+      n -> new FileStreamer(fsCfg, dbAccessProvider, "file-streamer." + n)
     }.toMap
   }
 }
