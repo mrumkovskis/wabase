@@ -583,7 +583,7 @@ fields:
 
 
 name:   status_test_1
-api:    get, save, list, count
+api:    get, save, list, count, delete
 fields:
 - status =
 get:
@@ -594,6 +594,9 @@ count:
 - status ok unique_opt {:status}[false]  # should return 200 with no message in response
 list:
 - status 303 { '/data', '?/', 'path', :status }
+delete:
+- x = status ok
+- :x
 
 
 name:   status_test_2

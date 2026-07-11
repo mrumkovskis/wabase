@@ -1866,6 +1866,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         (value match {
           case ResultValue(v) => v
           case RedirectValue(value) => tresqlUri.uri(value).toString()
+          case null => null
         }))
       case fi: FileInfoResult => fi.fileInfo.toMap
       case FileResult(fi, fs) => fs.getFileInfo(fi.id, fi.sha_256)

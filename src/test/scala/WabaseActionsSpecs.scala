@@ -677,63 +677,67 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         doAction("get", "status_test_1", Map()).map {
           _ shouldBe ResponseResult(200, null)
         }
-      t2 <-
+      _ <-
         doAction("save", "status_test_1", Map("status" -> "ok")).map {
           _ shouldBe ResponseResult(200, ResultValue(StringResult("ok")))
         }
-      t3 <-
+      _ <-
         doAction("count", "status_test_1", Map("status" -> "ok")).map {
           _ shouldBe ResponseResult(200, ResultValue(AnyResult(NoResult)))
         }
-      t4 <-
+      _ <-
         doAction("list", "status_test_1", Map("status" -> "redirect")).map {
           _ shouldBe ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq("/data"), List("path", "redirect"), ListMap())))
         }
-      t5 <-
+      _ <-
+        doAction("delete", "status_test_1", Map()).map {
+          _ shouldBe MapResult(Map("code" -> 200, "value" -> null))
+        }
+      _ <-
         doAction("get", "status_test_2", Map("id" -> 1)).map {
           _ shouldBe ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq("data/path"), List("1"), ListMap())))
         }
-      t6 <-
+      _ <-
         doAction("save", "status_test_2", Map("id" -> 1)).map {
           _ shouldBe ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq("data/path"), Nil, ListMap("id" -> "1"))))
         }
-      t7 <-
+      _ <-
         doAction("count", "status_test_2", Map()).map {
           _ shouldBe ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq("data/path"), Nil, ListMap())))
         }
-      t8 <-
+      _ <-
         doAction("list", "status_test_2", Map()).map {
           _ shouldBe ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq("data/path"), Nil, ListMap())))
         }
-      t9 <-
+      _ <-
         doAction("save", "status_test_3", Map()).map {
           _ shouldBe ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq("303"), List(), ListMap())))
         }
-      t10 <-
+      _ <-
         doAction("get", "status_test_3", Map("id" -> 2)).map {
           _ shouldBe ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq("data/path/2"), List(), ListMap())))
         }
-      t11 <-
+      _ <-
         doAction("list", "status_test_3", Map("id" -> 3)).map {
           _ shouldBe ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq("data/path"), List("3"), ListMap("par1" -> "val-of-par1"))))
         }
-      t12 <-
+      _ <-
         doAction("count", "status_test_3", Map("id" -> 4)).map {
           _ shouldBe ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq(null), List("4"), ListMap("par1" -> "5"))))
         }
-      t13 <-
+      _ <-
         doAction("save", "status_test_4", Map("id" -> null)).map {
           _ shouldBe ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq("data/path"), List(null), ListMap())))
         }
-      t14 <-
+      _ <-
         doAction("get", "status_test_4", Map("id" -> null)).map {
           _ shouldBe ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq("data/path"), List(), ListMap("id" -> null))))
         }
-      t15 <-
+      _ <-
         doAction("list", "status_test_4", Map("id" -> null)).map {
           _ shouldBe ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq(null), List(), ListMap())))
         }
-      t16 <-
+      _ <-
         doAction("delete", "status_test_4", Map("id" -> null))
           .mapTo[ResponseResult]
           .map(_.value)
@@ -745,7 +749,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
             _ shouldBe List(Map("a" -> "a value", "b" -> "b value"))
           }
     } yield {
-      t15
+      t1
     }
   }
 
