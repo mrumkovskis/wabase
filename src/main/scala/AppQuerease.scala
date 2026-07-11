@@ -1937,10 +1937,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case DbResult(res, cl) => consumeResult(res)
         .andThen { case r => cl(r.failed.toOption) }
       case RequestPartResult(res, _) => res.runForeach(_.entity.discardBytes())
-      case QuereaseResultWithCleanup(r, cleanup) =>
-        val cr = consumeResult(r)
-        cleanup(None)
-        cr
+      case QuereaseResultWithCleanup(res, cl) => consumeResult(res)
+        .andThen { case r => cl(r.failed.toOption) }
       case x => x
     }) match {
       case f: Future[_] => f
