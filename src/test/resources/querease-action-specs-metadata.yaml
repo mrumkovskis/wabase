@@ -761,7 +761,7 @@ count:
 
 
 name: if_test_2
-api: get, list, insert, update, delete
+api: get, list, insert, update, delete, count
 fields:
 - value
 get:
@@ -784,7 +784,8 @@ delete:
 - if {:value = 'delete'} 'D' else:    #if op else block op
   - x = 'ND'
   - :x
-
+count:
+- if {:value != null} :value
 
 
 name: foreach_test_1
