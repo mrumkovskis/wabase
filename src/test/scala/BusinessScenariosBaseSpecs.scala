@@ -21,6 +21,7 @@ import org.scalatest.matchers.should.Matchers
 import org.tresql.Query
 import org.wabase.AppMetadata.DbAccessKey
 
+import java.io.{PrintWriter, StringWriter}
 import java.time.Instant
 import scala.collection.immutable.{Map, Seq}
 import scala.concurrent.{Await, ExecutionContext}
@@ -389,6 +390,11 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
     ).mkString("\n", "\n", ""))
   }
 
+  private def throwableToString(t: Throwable): String = {
+    val sw = new StringWriter()
+    t.printStackTrace(new PrintWriter(sw))
+    sw.toString
+  }
   def siblingFile(original: File, suffix: String): File = {
     val parentDir   = original.getParent
     val newFileName = original.getName + suffix
@@ -412,12 +418,30 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
     s"$rawResponse".length < 1000
   def shouldDumpResponseToFile(scenario: File, testCase: File, rawResponse: Any) =
     true
+  def shouldDumpExceptionToFile(scenario: File, testCase: File) =
+    true
+  def dumpExceptionToFile(scenario: File, testCase: File, exception: Throwable) =
+    createSiblingTextFile(testCase, ".exception", throwableToString(exception))
+  def deleteExceptionFile(scenario: File, testCase: File) =
+    deleteSiblingTextFile(testCase, ".exception")
   def dumpResponseToFile(scenario: File, testCase: File, rawResponse: Any) =
     createSiblingTextFile(testCase, ".received", s"$rawResponse")
   def deleteResponseFile(scenario: File, testCase: File) =
     deleteSiblingTextFile(testCase, ".received")
   private def trimString(s: String, maxLength: Int): String = {
     if (s.length <= maxLength) s else s.substring(0, maxLength) + "..."
+  }
+  def logScenarioFailure(scenario: File, testCase: File, context: Map[String, Any], exception: Throwable): Unit = {
+    val fullTestName = s"${scenario.getName}/${testCase.getName}"
+    if (shouldDumpExceptionToFile(scenario, testCase)) {
+      try {
+        val targetFile = dumpExceptionToFile(scenario, testCase, exception)
+        logger.info(s"\n**** Exception failing $fullTestName dumped to file ${targetFile.getAbsolutePath}\n****")
+      } catch {
+        case util.control.NonFatal(ex) =>
+          logger.warn(s"\n**** Failed to dump exception failing $fullTestName to file: ${ex.getMessage}")
+      }
+    }
   }
   def logScenarioResponseInfoOnFailure(
     scenario: File, testCase: File, context: Map[String, Any], exception: Throwable,
@@ -450,6 +474,8 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
     if (debugResponse) {
       deleteResponseFile(scenario, testCase)
     }
+    if (shouldDumpExceptionToFile(scenario, testCase))
+      deleteExceptionFile(scenario, testCase)
   }
 
   def transformToStringValues(m: Any): Any = m match {
@@ -579,6 +605,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
     }
 
     val unprocessedResponse =
+     try {
       if (isBackdoorPath(path)) {
         backdoorAction(requestInfo, context, map)
       } else {
@@ -589,6 +616,11 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
           }
         else doRequest
       }
+     } catch {
+      case util.control.NonFatal(ex) =>
+        logScenarioFailure(scenario, testCase, context, ex)
+        throw ex
+     }
 
     def mayBeDecodeResp(content: String) =
       Try(CborOrJsonAnyValueDecoder.decode(ByteString(content)))
@@ -696,7 +728,13 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
       }
       scenario.listFiles.filter(isTestCaseFile).sortBy(_.getName).foreach{testCase =>
         it should "handle "+testCase.getName in {
-          val (newValuesInContext, map) = applyContext(readPojoMap(testCase, getTemplatePath), context)
+          val (newValuesInContext, map) =
+            try applyContext(readPojoMap(testCase, getTemplatePath), context)
+            catch {
+              case util.control.NonFatal(ex) =>
+                logScenarioFailure(scenario, testCase, context, ex)
+                throw ex
+            }
           context ++= newValuesInContext
           context ++= checkTestCase(scenario, testCase, context, map)
         }
