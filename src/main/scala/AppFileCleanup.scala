@@ -22,7 +22,7 @@ class AppFileCleanup(qe: AppQuerease, resourcesTemplate: Resources,
   implicit lazy val connectionPool: PoolName = Option(connectionPoolName).map(PoolName).getOrElse(WabaseAppConfig.DefaultCp)
   implicit lazy val extraDb: Seq[DbAccessKey] = Nil
 
-  override def loggerName: String = "wabase-file-cleanup"
+  override def loggerName: String = "wabase.file-cleanup"
 
   private def db_read[A]: (Resources => A) => A = DbAccess.withRollbackConn(
     connectionPool, WabaseAppConfig.DefaultCp, DbAccess.withLogger(resourcesTemplate, loggerName)

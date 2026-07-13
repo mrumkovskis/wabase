@@ -120,6 +120,8 @@ object WabaseJobStatusController extends Loggable {
   val job_max_time = config.getDuration("app.job.max-time").toSeconds
   val jobStatusCp  = PoolName(config.getString("app.job.job-status-cp"))
 
+  override def loggerName: String = "wabase.job-status-controller"
+
   private def db[A](dbAccess: DbAccess): (Resources => A) => A =
     dbAccess.newTransaction(
       poolName = jobStatusCp,

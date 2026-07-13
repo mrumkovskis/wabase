@@ -353,7 +353,7 @@ trait FileStreamerFactory {
 object FileStreamerFactory extends FileStreamerFactory {
   def createFileStreamers(dbAccessProvider: DbAccessProvider): Map[String, FileStreamer] = {
     FileStreamerConfig.configs.map { case (n, fsCfg) =>
-      n -> new FileStreamer(fsCfg, dbAccessProvider, "file-streamer." + n)
+      n -> new FileStreamer(fsCfg, dbAccessProvider, "wabase.file-streamer." + n)
     }.toMap
   }
 }

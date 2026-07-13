@@ -248,7 +248,7 @@ object DeferredControl extends Loggable with AppConfig {
   case object GetProcessedDeferredCount
   case class ProcessedDeferredCount(count: Long)
 
-  override def loggerName: String = "wabase-deferred-control"
+  override def loggerName: String = "wabase.deferred-control"
 
   def deferredTimeout(
     viewName: Option[String],
