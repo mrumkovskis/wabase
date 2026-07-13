@@ -71,8 +71,8 @@ trait DbAccess { this: QuereaseProvider with Loggable =>
 
   def extraDb(keys: Seq[DbAccessKey]): Seq[DbAccessKey] = keys.filter(_.db != null)
 
-  def withDbAccessLogger(rt: ResourcesTemplate, loggerPrefix: String): ResourcesTemplate =
-    DbAccess.withLogger(rt, loggerPrefix)
+  def withDbAccessLogger(res: Resources, loggerPrefix: String): Resources =
+    DbAccess.withLogger(res, loggerPrefix)
 
   private val currentPool = new ThreadLocal[PoolName]
   // TODO do not call nested dbUse with extraDb parameter set to avoid connection leaks
@@ -105,7 +105,7 @@ trait DbAccess { this: QuereaseProvider with Loggable =>
 
   def resourceFactory(viewDef: ViewDef, loggerName: String, qt: QueryTimeout = null): ResourcesFactory = {
     val vdo      = Option(viewDef)
-    val rt = Option(withDbAccessLogger(resourcesTemplate, loggerName)).map { templ =>
+    val res = Option(withDbAccessLogger(resourcesTemplate, loggerName)).map { templ =>
       vdo.map { v =>
         val timeout: jLong =
           if (qt != null) qt.timeoutSeconds.toLong
@@ -114,10 +114,10 @@ trait DbAccess { this: QuereaseProvider with Loggable =>
             val ts = v.timeout.toSeconds
             if (ts < 2) ts else ts - 1  // reduce timeout to be a little less than http timeout
           } else null
-        if (timeout == null) templ else templ.copy(queryTimeout = timeout.toInt)
+        if (timeout == null) templ else templ.withQueryTimeout(timeout.toInt)
       }.getOrElse(templ)
     }.get
-    val resFactory = ResourcesFactory(initResources, closeResources)(rt)
+    val resFactory = ResourcesFactory(initResources, closeResources)(res)
     vdo.flatMap(v => Option(v.db)).map(PoolName) getOrElse DefaultCp match {
       case DefaultCp => resFactory
       case PoolName(cp) => resFactory.focus(cp, DefaultCp.connectionPoolName)
@@ -407,12 +407,10 @@ object DbAccess extends Loggable {
     }
   }
 
-  def withLogger(rt: ResourcesTemplate, loggerPrefix: String): ResourcesTemplate = {
+  def withLogger(res: Resources, loggerPrefix: String): Resources = {
     val logger = TresqlResources.withLogger(loggerPrefix)
-    rt.copy(
-      logger = logger,
-      extraResources = rt.extraResources.transform((_, rt) => rt.withLogger(logger))
-    )
+    res.withLogger(logger)
+      .withExtraResources(res.extraResources.transform((_, r) => r.withLogger(logger)))
   }
 }
 
