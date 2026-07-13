@@ -183,18 +183,18 @@ class FileStreamer(
 
   private lazy val db = dbAccessProvider.dbAccess
   private lazy val fsCp: PoolName = Option(connectionPoolName).map(PoolName).getOrElse(db.DefaultCp)
-  private def db_read[A](act: Resources => A): A =
+  private def db_read[A]: (Resources => A) => A =
     db.withConn(
       poolName = fsCp,
       template =
         db.withDbAccessLogger(db.tresqlResources.resourcesTemplate, loggerName)
-    )(act)
-  private def db_write[A](act: Resources => A): A =
+    )
+  private def db_write[A]: (Resources => A) => A =
     db.newTransaction(
       poolName = fsCp,
       template =
         db.withDbAccessLogger(db.tresqlResources.resourcesTemplate, loggerName)
-    )(act)
+    )
 
   import AppFileStreamer._
 

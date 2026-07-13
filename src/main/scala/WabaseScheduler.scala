@@ -120,14 +120,14 @@ object WabaseJobStatusController extends Loggable {
   val job_max_time = config.getDuration("app.job.max-time").toSeconds
   val jobStatusCp  = PoolName(config.getString("app.job.job-status-cp"))
 
-  private def db[A](dbAccess: DbAccess)(act: Resources => A): A =
+  private def db[A](dbAccess: DbAccess): (Resources => A) => A =
     dbAccess.newTransaction(
       poolName = jobStatusCp,
       template = dbAccess.withDbAccessLogger(
         dbAccess.tresqlResources.resourcesTemplate,
         loggerName
       )
-    )(act)
+    )
 
   def init(dbAccess: DbAccess): Unit = db(dbAccess) { implicit res =>
     Query("-cron_job_status[status != 'RUN']")

@@ -477,18 +477,18 @@ object DeferredControl extends Loggable with AppConfig {
     override lazy val fileStreamerConfig: Config = conf.getConfig("deferred-requests.storage.file-streamer")
 
     override def loggerName: String = DeferredControl.loggerName
-    private def db_read[A](act: Resources => A): A =
+    private def db_read[A]: (Resources => A) => A =
       db.withRollbackConn(
         poolName = Cp,
         template =
           db.withDbAccessLogger(db.tresqlResources.resourcesTemplate, loggerName)
-      )(act)
-    private def db_write[A](act: Resources => A): A =
+      )
+    private def db_write[A]: (Resources => A) => A =
       db.newTransaction(
         poolName = Cp,
         template =
           db.withDbAccessLogger(db.tresqlResources.resourcesTemplate, loggerName)
-      )(act)
+      )
 
 
     import DeferredControl.HttpMessageSerialization._
