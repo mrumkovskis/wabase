@@ -151,7 +151,8 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
   }
   //----------------------------------------------------------//
   it should "get by id" in {
-    Get("/data/by_id_view_1?/0") ~> route ~> check {
+    val idRoute = route.andThen(identity)   // define variable so that classes are loaded to avoid timeout on slow machines
+    Get("/data/by_id_view_1?/0") ~> idRoute ~> check {
       status shouldEqual StatusCodes.NotFound
     }
     Get("/data/by_id_view_1/0") ~> route ~> check {
