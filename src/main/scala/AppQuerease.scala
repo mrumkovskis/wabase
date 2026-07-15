@@ -17,7 +17,7 @@ import org.mojoz.metadata.ViewDef
 import org.wabase.AppFileStreamer.FileInfo
 import org.wabase.AppMetadata.Action.{VariableTransform, VariableTransforms}
 import org.wabase.AppMetadata.DbAccessKey
-import org.wabase.AppQuerease.{InjectionParametersContext, InjectionParametersProvider, Scope, configValueAsScala, httpResponseToMap, listOfStringTuples, updComplexKey}
+import org.wabase.AppQuerease.{InjectionParametersContext, InjectionParametersProvider, Scope, configValueAsScala, httpResponseToMap, listOfStringTuples, loggable, updComplexKey}
 import org.wabase.client.HttpClient
 import org.wabase.ds.{ConnectionPools, PoolName}
 
@@ -131,9 +131,8 @@ class AppQuereaseIo[DTO <: Dto](val qe: QuereaseMetadata with QuereaseResolvers 
   }
 }
 
-class QuereaseEnvException(val env: Map[String, Any], cause: Exception) extends Exception(cause) {
-  override def getMessage: String = s"Error occured while processing env: ${cause.getMessage}. Env: ${
-    String.valueOf(env)}"
+class QuereaseEnvException(envString: String, cause: Exception) extends Exception(cause) {
+  override def getMessage: String = s"Error occured while processing env: ${cause.getMessage}. Env: $envString"
 }
 
 class AppQuerease extends Querease with AppMetadata with Loggable {
@@ -229,8 +228,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     super.countAll_(viewDef, params, extraFilterAndAuth, extraParams)
   }
 
-  private def tryOp[T](op: => T, env: Map[String, Any]) = try op catch {
-    case e: Exception => throw new QuereaseEnvException(env, e)
+  private def tryOp[T](op: => T, env: Map[String, Any], logFilter: Logging#BindVarLogFilter) = try op catch {
+    case e: Exception => throw new QuereaseEnvException(loggable(logFilter, env), e)
   }
 
   /* For action IdResult.name - field or column name */
@@ -260,7 +259,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   }
 
   protected def getKeyValues(
-      viewName: String, data: Map[String, Any], forApi: Boolean = false) = tryOp({
+      viewName: String, data: Map[String, Any], forApi: Boolean = false,
+      logFilter: Logging#BindVarLogFilter = null) = tryOp({
     val keyFields     = if (forApi) viewNameToApiKeyFields(viewName)     else viewNameToKeyFields(viewName)
     val keyFieldNames = if (forApi) viewNameToApiKeyFieldNames(viewName) else viewNameToKeyFieldNames(viewName)
     val keyValues = tryOp(
@@ -272,13 +272,15 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
               s"Failed to convert value for key field ${f.name} to type ${f.type_.name}", ex)
           }
         },
-      data
+      data,
+      logFilter
     )
     keyValues
-  }, data)
+  }, data, logFilter)
 
-  protected def keyResult(ir: IdResult, viewName: String, data: Map[String, Any]) = {
-    KeyResult(ir, viewName, getKeyValues(viewName, data ++ ir.toMap, forApi = true))
+  protected def keyResult(ir: IdResult, viewName: String, data: Map[String, Any],
+      logFilter: Logging#BindVarLogFilter = null) = {
+    KeyResult(ir, viewName, getKeyValues(viewName, data ++ ir.toMap, forApi = true, logFilter = logFilter))
   }
 
 
@@ -411,34 +413,13 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     do_action(view, actionName, Scope(data), env, fieldFilter)
   }
 
-  private def loggable(res: Resources, x: Any): String = {
-    def hinted(v: Any, s: String) = v match {
-      case _: Map[String @unchecked, _] => s"{$s}"
-      case _: Seq[_]                    => s"[$s]"
-      case _                            =>     s
-    }
-    x match {
-      case m: scala.collection.Map[String @unchecked, _] =>
-        m.map {
-          case (k, v) =>
-            val vs   = loggable(res, v)
-            val safe = Option(res.bindVarLogFilter).filter(_.isDefinedAt((k, vs))).map(_((k, vs))).getOrElse(vs)
-            s"$k -> ${hinted(v, safe)}"
-        }.mkString(", ")
-      case s: String => s
-      case s: scala.collection.Seq[_] =>
-        s.map(sv => hinted(sv, loggable(res, sv))).mkString(", ")
-      case "" => "\"\""
-      case x => s"$x"
-    }
-  }
   private def logContext(ctx: ActionContext, env: Map[String, Any], qr: QuereaseResources) = {
     val res = qr.resourcesFactory.resources
     qr.logger.debug(s"Doing action '${ctx.name}'")
     qr.logger.debug(s"Ctx stack: [${ctx.contextStack.map(_.name).mkString(", ")}]")
     qr.logger.debug(s"Database connections: [${(("[main]", res.conn) ::
       res.extraResources.map{case (n, r) => n -> r.conn}.toList).mkString(", ")}]")
-    qr.logger.debug(s"Env: {${loggable(res, env)}}")
+    qr.logger.debug(s"Env: {${loggable(res.bindVarLogFilter, env)}}")
   }
 
   private def do_action(
@@ -481,6 +462,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       resF map upd
     }
     def scopeBindVars(scope: Scope) = scope.toBindeableMap(context.env)
+    val bindVarLogFilter = resourcesFactory.resources.bindVarLogFilter
     def doStep(step: Step, stepDataF: Future[Scope], src: String): Future[QuereaseResult] = {
       import resourcesFactory._
       stepDataF flatMap { stepScope =>
@@ -488,7 +470,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           doActionOp(op, if (vts.isEmpty) stepScope
             else Scope(data = doVarsTransforms(vts, scopeBindVars(stepScope)).result), context)
         qr.logger.debug(s"Doing action '${context.name}' step '$src', $step.")
-        qr.logger.debug(s"Step data: {${loggable(resourcesFactory.resources, scopeBindVars(stepScope))}}")
+        qr.logger.debug(s"Step data: {${loggable(bindVarLogFilter, scopeBindVars(stepScope))}}")
         step match {
           case Evaluation(_, vts, op) => doActionStep(vts, op)
           case SetEnv(_, vts, op, _) => doActionStep(vts, op)
@@ -510,23 +492,23 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case (s, src) :: Nil =>
         doStep(s, curData, src) flatMap {
           case ir: IdResult =>
-            curData.map(sc => keyResult(ir, context.viewName, scopeBindVars(sc)))
+            curData.map(sc => keyResult(ir, context.viewName, scopeBindVars(sc), bindVarLogFilter))
           case kr: KeyResult =>
             s match {
               // FIXME enable simple redirect from If
               case Evaluation(_, _, RedirectToKey(_)) => Future.successful(kr)
-              case _ => curData.map(sc => keyResult(kr.ir, context.viewName, scopeBindVars(sc))) // FIXME apply kr.toMap
+              case _ => curData.map(sc => keyResult(kr.ir, context.viewName, scopeBindVars(sc), bindVarLogFilter)) // FIXME apply kr.toMap
             }
           case TresqlResult(r: DMLResult) if context.stepName == null && context.contextStack.isEmpty =>
             r match {
               case _: InsertResult | _: UpdateResult =>
                 r.id.map { id =>
                   val idName = viewNameToIdName.getOrElse(context.viewName, null)
-                  curData.map(sc => keyResult(IdResult(id, idName), context.viewName, scopeBindVars(sc)))
+                  curData.map(sc => keyResult(IdResult(id, idName), context.viewName, scopeBindVars(sc), bindVarLogFilter))
                 }.getOrElse {
                   viewDefOption(context.viewName)
                     .filter(hasExplicitKey)
-                    .map(_ => curData.map(sc => keyResult(IdResult(null, null), context.viewName, scopeBindVars(sc))))
+                    .map(_ => curData.map(sc => keyResult(IdResult(null, null), context.viewName, scopeBindVars(sc), bindVarLogFilter)))
                     .getOrElse(Future.successful(NoResult))
                 }
               case _: DeleteResult =>
@@ -668,7 +650,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           case x: Number => x.intValue
           case x: String => x.toInt
           case x => x.toString.toInt
-        }, callData)
+        }, callData, resources.bindVarLogFilter)
 
         def string(name: String) = callData.get(name) map String.valueOf
         def castedResult(qr: QuereaseResult): QuereaseResult = {
@@ -683,7 +665,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         val res =
           (op.method match {
             case Get =>
-              val keyValues = getKeyValues(viewName, callData)
+              val keyValues = getKeyValues(viewName, callData, logFilter = resources.bindVarLogFilter)
               val keyColNames = viewNameToKeyColNames(viewName)
               val fieldFilter: FieldFilter = context.fieldFilter
               get(v, keyValues, keyColNames, null, callData, fieldFilter)
@@ -708,7 +690,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
             case Upsert =>
               new IdResult(idName, validateAndSave(v, callData, SaveMethod.Upsert, null, env))
             case Delete =>
-              getKeyValues(viewName, callData) // check mappings for key exist
+              getKeyValues(viewName, callData, logFilter = resources.bindVarLogFilter) // check mappings for key exist
               LongResult(delete(v, callData, null, env))
             case Create =>
               TresqlSingleRowResult(create(v, callData))
@@ -2068,12 +2050,12 @@ object AppQuerease {
       case SingleValueResult(r) => r match { // unwrap header values from list of maps
         case m: Map[_, _] => m.map { case (k, v) => (k.toString.trim, v.toString.trim) }.toList
         case i: Iterable[_] => i.map {
-          case m: Map[_, _] if m.size > 1 =>
+          case m: scala.collection.immutable.ListMap[_, _] if m.size == 2 =>
             val h = m.toList
             h.head._2.toString.trim -> h.tail.head._2.toString.trim // extract values - 1st value header name, 2nd - header value
-          case x => sys.error(s"Cannot retrieve values from structure: [$x], Map[_, _] is required")
+          case x => sys.error(s"Cannot retrieve values from structure: [$x], ListMap[_, _] of two entries (header name, header value) is required")
         }.toList
-        case x => sys.error(s"Cannot retrieve values from structure: [$x], Iterable[Map[_, _]] is required")
+        case x => sys.error(s"Cannot retrieve values from structure: [$x], Iterable[ListMap[_, _]] is required")
       }
       case r: Result[_] => r.list[String, String].map{ case (n, v) => (n.trim, v.trim) }
     }
@@ -2243,6 +2225,27 @@ object AppQuerease {
       }
     }
     res.pop()._2.toVector
+  }
+
+  private[wabase] def loggable(logFilter: Logging#BindVarLogFilter, x: Any): String = {
+    def hinted(v: Any, s: String) = v match {
+      case _: Map[String @unchecked, _] => s"{$s}"
+      case _: Seq[_]                    => s"[$s]"
+      case _                            =>     s
+    }
+    x match {
+      case m: scala.collection.Map[String @unchecked, _] =>
+        m.map {
+          case (k, v) =>
+            val vs   = loggable(logFilter, v)
+            val safe = Option(logFilter).filter(_.isDefinedAt((k, vs))).map(_((k, vs))).getOrElse(vs)
+            s"$k -> ${hinted(v, safe)}"
+        }.mkString(", ")
+      case s: String => s
+      case s: scala.collection.Seq[_] =>
+        s.map(sv => hinted(sv, loggable(logFilter, sv))).mkString(", ")
+      case x => s"$x"
+    }
   }
 
   def updComplexKey(d: Map[String, _], key: String, value: Any): Map[String, _] = {
