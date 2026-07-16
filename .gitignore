@@ -12,6 +12,7 @@ wabase.iml
 # business tests failed responses
 *.exception
 *.received
+*.received-headers
 
 # eclipse conf file
 .eclipse

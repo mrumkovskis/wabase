@@ -395,6 +395,14 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
     t.printStackTrace(new PrintWriter(sw))
     sw.toString
   }
+  def responseBodyText(rawResponse: Any): String = rawResponse match {
+    case httpResponse: HttpResponse =>
+      httpResponse.entity match {
+        case strict: HttpEntity.Strict => strict.data.utf8String
+        case _ => s"$httpResponse"
+      }
+    case other => s"$other"
+  }
   def siblingFile(original: File, suffix: String): File = {
     val parentDir   = original.getParent
     val newFileName = original.getName + suffix
@@ -414,9 +422,11 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
     val newFile = siblingFile(original, suffix)
     try newFile.delete() catch { case util.control.NonFatal(ex) => }
   }
-  def shouldLogResponse(scenario: File, testCase: File, rawResponse: Any, dumpedToFile: Boolean) =
-    s"$rawResponse".length < 1000
-  def shouldDumpResponseToFile(scenario: File, testCase: File, rawResponse: Any) =
+  def shouldLogResponse(scenario: File, testCase: File, debugResponse: Boolean, rawResponse: Any, dumpedToFile: Boolean) =
+    debugResponse && responseBodyText(rawResponse).length < 1000
+  def shouldDumpResponseToFile(scenario: File, testCase: File) =
+    true
+  def shouldDumpResponseHeadersToFile(scenario: File, testCase: File) =
     true
   def shouldDumpExceptionToFile(scenario: File, testCase: File) =
     true
@@ -425,9 +435,22 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
   def deleteExceptionFile(scenario: File, testCase: File) =
     deleteSiblingTextFile(testCase, ".exception")
   def dumpResponseToFile(scenario: File, testCase: File, rawResponse: Any) =
-    createSiblingTextFile(testCase, ".received", s"$rawResponse")
+    createSiblingTextFile(testCase, ".received", responseBodyText(rawResponse))
   def deleteResponseFile(scenario: File, testCase: File) =
     deleteSiblingTextFile(testCase, ".received")
+  def dumpResponseHeadersToFile(scenario: File, testCase: File, httpResponse: HttpResponse) =
+    createSiblingTextFile(testCase, ".received-headers", formatResponseHeaders(httpResponse))
+  def deleteResponseHeadersFile(scenario: File, testCase: File) =
+    deleteSiblingTextFile(testCase, ".received-headers")
+  def formatResponseHeaders(httpResponse: HttpResponse): String = {
+    val status = httpResponse.status
+    val statusLine = s"${httpResponse.protocol.value} ${status.intValue} ${status.reason}"
+    val contentTypeHeader = s"Content-Type: ${httpResponse.entity.contentType}"
+    val contentLengthHeader = httpResponse.entity.contentLengthOption.map(len => s"Content-Length: $len")
+    val otherHeaders = httpResponse.headers.map(_.toString)
+    (Seq(statusLine, contentTypeHeader) ++ contentLengthHeader.toSeq ++ otherHeaders)
+      .mkString("", "\r\n", "\r\n")
+  }
   private def trimString(s: String, maxLength: Int): String = {
     if (s.length <= maxLength) s else s.substring(0, maxLength) + "..."
   }
@@ -447,11 +470,20 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
     scenario: File, testCase: File, context: Map[String, Any], exception: Throwable,
     debugResponse: Boolean, rawResponse: Any, response: Any,
   ): Unit = {
-    if (debugResponse) {
       val fullTestName = s"${scenario.getName}/${testCase.getName}"
       val trimmedMessage = trimString(exception.getMessage, 200)
+      rawResponse match {
+        case httpResponse: HttpResponse if shouldDumpResponseHeadersToFile(scenario, testCase) =>
+          try
+            dumpResponseHeadersToFile(scenario, testCase, httpResponse)
+          catch {
+            case util.control.NonFatal(ex) =>
+              logger.warn(s"\n**** Failed to dump response headers causing $fullTestName to fail to file: ${ex.getMessage}")
+          }
+        case _ =>
+      }
       val dumpedToFile =
-        if (shouldDumpResponseToFile(scenario, testCase, rawResponse)) {
+        if (shouldDumpResponseToFile(scenario, testCase)) {
           try {
             val targetFile = dumpResponseToFile(scenario, testCase, rawResponse)
             logger.info(s"\n**** Response causing $fullTestName to fail with '$trimmedMessage' dumped to file ${targetFile.getAbsolutePath}\n****")
@@ -462,18 +494,18 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
               false
           }
         } else false
-      if (shouldLogResponse(scenario, testCase, rawResponse, dumpedToFile)) {
-        logger.info(s"\n**** Response causing $fullTestName to fail with '$trimmedMessage':\n$rawResponse\n****")
+      if (shouldLogResponse(scenario, testCase, debugResponse, rawResponse, dumpedToFile)) {
+        logger.info(s"\n**** Response causing $fullTestName to fail with '$trimmedMessage':\n${responseBodyText(rawResponse)}\n****")
       }
-    }
   }
   def scenarioTestCaseOnSuccess(
     scenario: File, testCase: File, context: Map[String, Any],
     debugResponse: Boolean, rawResponse: Any, response: Any,
   ): Unit = {
-    if (debugResponse) {
+    if (shouldDumpResponseToFile(scenario, testCase))
       deleteResponseFile(scenario, testCase)
-    }
+    if (shouldDumpResponseHeadersToFile(scenario, testCase))
+      deleteResponseHeadersFile(scenario, testCase)
     if (shouldDumpExceptionToFile(scenario, testCase))
       deleteExceptionFile(scenario, testCase)
   }
@@ -605,7 +637,6 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
     }
 
     val unprocessedResponse =
-     try {
       if (isBackdoorPath(path)) {
         backdoorAction(requestInfo, context, map)
       } else {
@@ -616,80 +647,84 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
           }
         else doRequest
       }
-     } catch {
-      case util.control.NonFatal(ex) =>
-        logScenarioFailure(scenario, testCase, context, ex)
-        throw ex
-     }
 
-    def mayBeDecodeResp(content: String) =
-      Try(CborOrJsonAnyValueDecoder.decode(ByteString(content)))
-        .toOption.map((content, _))
-        .getOrElse((content, content))
+    def mayBeDecodeResp(content: String): Any =
+      Try(CborOrJsonAnyValueDecoder.decode(ByteString(content))).getOrElse(content)
 
     val (rawResponse, response) = unprocessedResponse match {
       case httpResponse: HttpResponse =>
-        lazy val resString = Await.result(httpResponse.entity.toStrict(awaitTimeout), awaitTimeout).data.utf8String
-        if (httpResponse.status.isSuccess())
-          expectedResponse match {
-            case handlerName: String if handlerName.startsWith("->") && httpResponse.entity.contentType.toString == "text/event-stream" =>
-              (unprocessedResponse, new ServerSentEventsHandler(httpResponse))
-            case _: String => (resString, resString)
-            case _ => mayBeDecodeResp(resString)
-         }
-        else
-          expectedError match {
-           case _: String => (resString, RestClient.fullErrorErrorMessage(httpResponse.status, resString))
-           case _ => mayBeDecodeResp(resString)
-         }
+        expectedResponse match {
+          case handlerName: String
+              if handlerName.startsWith("->") &&
+                 httpResponse.status.isSuccess() &&
+                 httpResponse.entity.contentType.toString == "text/event-stream" =>
+            (unprocessedResponse, new ServerSentEventsHandler(httpResponse))
+          case _ =>
+            val strictEntity = Await.result(httpResponse.entity.toStrict(awaitTimeout), awaitTimeout)
+            val strictResponse = httpResponse.withEntity(strictEntity)
+            val resString = strictEntity.data.utf8String
+            val responseValue =
+              if (httpResponse.status.isSuccess())
+                expectedResponse match {
+                  case _: String => resString
+                  case _ => mayBeDecodeResp(resString)
+                }
+              else
+                expectedError match {
+                  case _: String => RestClient.fullErrorErrorMessage(httpResponse.status, resString)
+                  case _ => mayBeDecodeResp(resString)
+                }
+            (strictResponse, responseValue)
+        }
       case resString: String =>
         expectedResponse match {
           case _: String => (resString, resString)
-          case _ =>
-            Try(CborOrJsonAnyValueDecoder.decode(ByteString(resString)))
-              .toOption.map((resString, _))
-              .getOrElse((resString, resString))
+          case _ => (resString, mayBeDecodeResp(resString))
         }
       case _ => (unprocessedResponse, unprocessedResponse)
     }
 
     logScenarioResponseInfo(debugResponse, response)
 
+    def logOnFail[T](body: => T): T = try body catch {
+      case util.control.NonFatal(ex) =>
+        logScenarioResponseInfoOnFailure(scenario, testCase, context, ex, debugResponse, rawResponse, response)
+        throw ex
+    }
+
     if (expectedStatus != null) unprocessedResponse match {
-      case httpResponse: HttpResponse => httpResponse.status.toString shouldBe expectedStatus
+      case httpResponse: HttpResponse => logOnFail(httpResponse.status.toString shouldBe expectedStatus)
       case x => sys.error(s"Unexpected response class for status tests: ${x.getClass.getName}")
-     }
+    }
 
     if (expectedHeaders.nonEmpty) unprocessedResponse match {
-      case httpResponse: HttpResponse => assertResponseHeaders(httpResponse, expectedHeaders)
+      case httpResponse: HttpResponse => logOnFail(assertResponseHeaders(httpResponse, expectedHeaders))
       case x => sys.error(s"Unexpected response class for header tests: ${x.getClass.getName}")
     }
 
     def assertResp(resp: Any): Map[String, Any] =
-      if (resp != null) try {
-        val result = assertResponse(response, resp, "[ROOT]", fullCompare)
-        scenarioTestCaseOnSuccess(scenario, testCase, context, debugResponse, rawResponse, response)
-        result
-      } catch {
-        case util.control.NonFatal(ex) =>
-          logScenarioResponseInfoOnFailure(scenario, testCase, context, ex, debugResponse, rawResponse, response)
-          throw ex
+      if (resp != null) {
+        logOnFail(assertResponse(response, resp, "[ROOT]", fullCompare))
       } else Map.empty
 
-    if (expectedError != null) unprocessedResponse match {       //assert error
+    val result: Map[String, Any] =
+     if (expectedError != null) unprocessedResponse match {       //assert error
       case message: String =>
-        message should include (String.valueOf(expectedError))
+        logOnFail(message should include (String.valueOf(expectedError)))
         Map.empty
       case resp: HttpResponse =>
-        if (resp.status.intValue() < 400) sys.error(s"Expected http error, but got: ${resp.status}")
+        if (resp.status.isSuccess) logOnFail(sys.error(s"Expected http error, but got: ${resp.status}"))
         if (expectedError.isInstanceOf[String] && response.isInstanceOf[String]) {
           // legacy check
-          response.toString should include (expectedError.toString)
+          logOnFail(response.toString should include (expectedError.toString))
           Map.empty
         } else assertResp(expectedError)
-    } else if (expectedResponse != null) {                        //assert content
+     } else if (expectedResponse != null) {                        //assert content
       assertResp(expectedResponse)
-    } else Map.empty[String, Any]
+     } else Map.empty[String, Any]
+
+    scenarioTestCaseOnSuccess(scenario, testCase, context, debugResponse, rawResponse, response)
+    result
   }
 
   def checkTestCase(scenario: File, testCase: File, context: Map[String, Any], map: Map[String, Any]): Map[String, Any] = {
@@ -705,7 +740,13 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
           logger.info(s"Awake!")
         }
         try {
-          result = checkTestCase(scenario, testCase, context, map, retriesLeft)
+          result =
+            try checkTestCase(scenario, testCase, context, map, retriesLeft)
+            catch {
+              case util.control.NonFatal(ex) =>
+                logScenarioFailure(scenario, testCase, context, ex)
+                throw ex
+            }
           break()
         } catch {
           case util.control.NonFatal(ex) if retriesLeft > 0 =>
