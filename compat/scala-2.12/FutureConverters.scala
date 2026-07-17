@@ -3,6 +3,7 @@ package scala.jdk
 import java.util.concurrent.CompletionStage
 import scala.concurrent.Future
 import scala.concurrent.java8.FuturesConvertersImpl._
+import scala.language.implicitConversions
 
 object FutureConverters {
   def toScala[T](cs: CompletionStage[T]): Future[T] = {

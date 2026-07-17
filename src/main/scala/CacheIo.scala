@@ -42,6 +42,8 @@ object CacheIo {
   implicit lazy val queryCodec:         Codec[Query]          = deriveCodec    [Query]         // TODO
   implicit lazy val binOpCodec:         Codec[BinOp]          = deriveCodec    [BinOp]         // TODO
   implicit lazy val selectDefBaseCodec: Codec[SelectDefBase]  = deriveAllCodecs[SelectDefBase] // TODO
+  // borer deriveAllCodecs emits dead type-pattern cases under this multi-parent sealed ADT
+  @annotation.nowarn("msg=unreachable")
   implicit lazy val sqlDefBaseCodec:    Codec[SQLDefBase]     = deriveAllCodecs[SQLDefBase]    // TODO
   // define explicitly empty transformer exp codec since it cannot be derived
   implicit lazy val transformerExpCodec: Codec[TransformerExp] = Codec(

@@ -64,7 +64,7 @@ package object wabase extends Loggable {
   def getObjectOrNewInstance[T](cfg: Config, configPath: String, description: String, potentialParameters: Seq[Any], parameterClasses: Seq[Class[_]])(implicit m: Manifest[T]): T = try {
     val className = cfg.getString(configPath)
     val r = getObjectOrNewInstance(className, description, potentialParameters, parameterClasses)
-    if (m >:> Manifest.classType(r.getClass))
+    if (m.runtimeClass.isAssignableFrom(r.getClass))
       r.asInstanceOf[T]
     else
       sys.error(s"Incompatible class ${r.getClass.getName}, expecting $m")

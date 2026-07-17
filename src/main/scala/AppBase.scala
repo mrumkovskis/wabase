@@ -809,7 +809,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
     qe.filterParameters(view)
       .filterNot(p => isInternalParameter(view, p.name))
   }
-  lazy val viewNameToFilterMetadata = qe.nameToViewDef.mapValues(filterParameters)
+  lazy val viewNameToFilterMetadata = qe.nameToViewDef.map { case (name, view) => name -> filterParameters(view) }
 
   def apiMetadata(implicit user: User, state: ApplicationState) = {
     // TODO duplicate code, just filter differs

@@ -102,7 +102,7 @@ trait Authentication[User] extends SecurityDirectives with SessionInfoRemover wi
   def extractSessionToken(user: User) = (extractClientIP.map(remoteAddressToString).filter(_ != null) & extractUserAgent)
     .recover { _ =>
        throw new BusinessException(
-          "Client IP and/or User-Agent header(s) not found, ensure pekko.http.server.remote-address-header = on")
+          "Client IP and/or User-Agent attribute(s) not found, ensure pekko.http.server.remote-address-attribute = on")
     }.tmap { case (ip, userAgent) =>
       val expirationTime = currentTime + sessionTimeOut
       encryptSession(

@@ -2200,31 +2200,31 @@ object AppQuerease {
    * @return Vector of nested maps
    * */
   def toHierarchy(levelParamName: String, nestedParamName: String, result: Result[RowLike]): Vector[Map[String, Any]] = {
-    import scala.collection.mutable.{Stack => MS, ArrayBuffer => AB}
+    import scala.collection.mutable.{ArrayBuffer => AB}
     type Rows = AB[Map[String, Any]]
     type HierEl = (java.lang.Number, Rows)
-    val res = result.map(_.toMap).foldLeft(MS[HierEl]((Integer.MIN_VALUE, null))) { (res, row) =>
-      val (cur_level, rows) = res.top
+    val res = result.map(_.toMap).foldLeft(List[HierEl]((Integer.MIN_VALUE, null))) { (stack, row) =>
+      val (cur_level, rows) = stack.head
       val level = row(levelParamName).asInstanceOf[Number]
       if (cur_level == level) {
         rows += row
-        res
+        stack
       } else if (cur_level.intValue() < level.intValue()) {
-        res.push(level -> AB(row))
+        (level -> AB(row)) :: stack
       } else {
-        def coalesce(rows: List[Rows]): Rows = (rows: @unchecked) match {
-          case List(row: Rows) => row
+        def coalesce(rs: List[Rows]): Rows = (rs: @unchecked) match {
+          case List(r: Rows) => r
           case h :: tail => h(h.size - 1) = h.last + (nestedParamName -> coalesce(tail).toVector); h
         }
-        @tailrec def popWhile(st: MS[HierEl], cond: Int => Boolean, res: List[HierEl]): List[HierEl] = {
-          if (!cond(st.top._1.intValue())) res
-          else popWhile(st, cond, st.pop() :: res)
+        @tailrec def popWhile(st: List[HierEl], cond: Int => Boolean, acc: List[HierEl]): (List[HierEl], List[HierEl]) = {
+          if (!cond(st.head._1.intValue())) (st, acc)
+          else popWhile(st.tail, cond, st.head :: acc)
         }
-        val seq = popWhile(res, _ >= level.intValue(), Nil)
-        res.push(seq.head._1 -> (coalesce(seq.map(_._2)) += row))
+        val (rest, seq) = popWhile(stack, _ >= level.intValue(), Nil)
+        (seq.head._1 -> (coalesce(seq.map(_._2)) += row)) :: rest
       }
     }
-    res.pop()._2.toVector
+    res.head._2.toVector
   }
 
   private[wabase] def loggable(logFilter: Logging#BindVarLogFilter, x: Any): String = {

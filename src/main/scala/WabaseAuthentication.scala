@@ -47,10 +47,14 @@ object WabaseAuthentication extends Authentication[WabaseUser] {
   }
 
   // code taken from extractClientIP directive
+  /** Set pekko.http.server.remote-address-attribute = on instead of pekko.http.server.remote-address-header = on */
+  @annotation.nowarn("msg=use remote-address-attribute instead")
   def extractClientIP(req: HttpRequest): RemoteAddress = {
     WabaseService.optionalHttpHeaderValuePF(req) {
       case `X-Forwarded-For`(Seq(address, _*)) => address
       case `X-Real-Ip`(address) => address
+      // Remote-Address header have been deprecated since Akka HTTP 10.2.0.
+      // Set pekko.http.server.remote-address-attribute = on instead of pekko.http.server.remote-address-header = on
       case `Remote-Address`(address) => address
     }.orElse(req.attribute(AttributeKeys.remoteAddress))
       .getOrElse(Unknown)
