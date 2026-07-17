@@ -39,7 +39,7 @@ object pekko {
   private def serializationSystem: actor.ActorSystem = Serialization.getCurrentTransportInformation().system
 
   /**
-   * [[ByteAccess]] for [[ByteString]].
+   * [[io.bullet.borer.ByteAccess]] for [[org.apache.pekko.util.ByteString]].
    */
   implicit object ByteStringByteAccess extends ByteAccess[ByteString] {
 
@@ -84,12 +84,12 @@ object pekko {
   }
 
   /**
-   * Encoding and Decoding for [[ByteString]].
+   * Encoding and Decoding for [[org.apache.pekko.util.ByteString]].
    */
   implicit val ByteStringCodec: Codec[ByteString] = Codec[ByteString](_ writeBytes _, _.readBytes())
 
   /**
-   * [[Input]] around [[ByteString]].
+   * [[io.bullet.borer.Input]] around [[org.apache.pekko.util.ByteString]].
    */
   implicit object ByteStringProvider extends Input.Provider[ByteString] {
     type Bytes = ByteString
@@ -184,7 +184,7 @@ object pekko {
   }
 
   /**
-   * Mutable [[Output]] implementation for serializing to [[ByteString]].
+   * Mutable [[io.bullet.borer.Output]] implementation for serializing to [[org.apache.pekko.util.ByteString]].
    */
   final class ByteStringOutput extends Output {
     private[this] var builder = ByteString.newBuilder

@@ -1716,17 +1716,17 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
 
   /**
    * Render data into source in format specified by content type.
-   * @return formatted source, optional length of data (if [[CompleteResult]] is returned from serialization)
+   * @return formatted source, optional length of data (if [[org.wabase.CompleteResult]] is returned from serialization)
    * Params:
-   * @param data - data to be rendered, accepted types are [[org.tresql.Result]], [[org.tresql.RowLike]], [[Iterator]]
-   * @param contentType - required result format - must be supported [[AppQuerease#resultRenderers]]
-   * @param resultFilter - one for [[ResultRenderer.ResultFilter]]
-   * @param isCollection - is used in case of application/json format requiring single element list to unwrap from array tags
-   * @param bufferSize - memory buffer size to store data in the case of slower downstream
-   * @param maxFileSize - max file size for data storage in the case of slower downstream
-   * @param as - [[ActorSystem]]
-   * @param ec - [[ExecutionContext]]
-   * */
+   * @param data data to be rendered; accepted types are [[org.tresql.Result]], [[org.tresql.RowLike]], [[scala.collection.Iterator]]
+   * @param contentType required result format — must be supported by [[AppQuerease#resultRenderers]]
+   * @param resultFilter one of [[ResultRenderer.ResultFilter]]
+   * @param isCollection used when application/json format requires a single-element list to unwrap from array tags
+   * @param bufferSize memory buffer size to store data in the case of slower downstream
+   * @param maxFileSize max file size for data storage in the case of slower downstream
+   * @param as [[org.apache.pekko.actor.ActorSystem]]
+   * @param ec [[scala.concurrent.ExecutionContext]]
+   */
   def renderedSource(
     data: Any,
     contentType: ContentType,

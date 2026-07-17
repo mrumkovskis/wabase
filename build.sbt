@@ -89,19 +89,21 @@ lazy val commonSettings = Seq(
 lazy val wabase = (project in file("."))
   .settings(commonSettings: _*)
   .settings(
-  /*
-  apiMappings ++= (Compile / fullClasspath map { fcp =>
-    // fix bad api mappings,
-    val mappings: Map[String, String] =
-      fcp.files.map(_.getName).filter(_ startsWith "pekko-").filterNot(_ startsWith "pekko-http-")
-        .map(akkajar => (akkajar, s"http://doc.pekko.io/api/pekko/$pekkoV/")).toMap ++
-      fcp.files.map(_.getName).filter(_ startsWith "pekko-http-")
-        .map(akkajar => (akkajar, s"http://doc.pekko.io/api/pekko/$pekkoHttpV/")).toMap
-    fcp.files.filter(f => mappings.contains(f.getName))
-      .map(f => (f, new java.net.URL(mappings(f.getName)))).toMap
-  }).value,
-  */
-  updateOptions := updateOptions.value.withLatestSnapshots(false),
+    // Explicit Scaladoc base URLs for Apache Pekko jars (sbt-api-mappings does not
+    // cover these). Match by Maven path so third-party "pekko-*" artifacts are skipped.
+    apiMappings ++= {
+      val jars = (Compile / fullClasspath).value.files
+        .filter(_.getPath.replace('\\', '/').contains("/org/apache/pekko/"))
+      def baseUrl(jarName: String): Option[String] =
+        if (jarName.startsWith("pekko-http") || jarName.startsWith("pekko-parsing"))
+          Some(s"https://pekko.apache.org/api/pekko-http/$pekkoHttpV/")
+        else if (jarName.startsWith("pekko-connectors"))
+          Some(s"https://pekko.apache.org/api/pekko-connectors/$pekkoConnV/")
+        else
+          Some(s"https://pekko.apache.org/api/pekko/$pekkoV/")
+      jars.flatMap(j => baseUrl(j.getName).map(u => j -> url(u))).toMap
+    },
+    updateOptions := updateOptions.value.withLatestSnapshots(false),
   )
   /*
   .settings(

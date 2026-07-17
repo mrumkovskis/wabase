@@ -5,7 +5,6 @@ import java.util.Date
 import MapRecursiveExtensions._
 
 import scala.language.implicitConversions
-import scala.language.reflectiveCalls
 import scala.util.{Try, Failure, Success}
 import scala.util.control.NonFatal
 
@@ -70,7 +69,7 @@ object Audit {
    def logUnchangedSaves = false
    val blackListedFields = Set("auth", "password", "repeated_password", "passwd")
    def removeBlacklistedFields(m: Map[String, Any]) = m.map{
-     case (k, v) if blackListedFields(k) & v != null => k -> "********"
+     case (k, v) if blackListedFields(k) && v != null => k -> "********"
      case r => r
    }
 

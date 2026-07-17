@@ -86,7 +86,7 @@ object ResultEncoder {
       * Default implemention encodes scala values - {{{String, Number, Boolean, null, Map[String, Any], Iterable[Any]}}}.
       * @param encoder        value returned by this method, used for recursive calls for nested structures.
       * @param customEncoder  custom value encoder. Can be used to encode non standard values like
-      *                       [[java.sql.Date]] etc.
+      *                       `java.sql.Date` etc.
       * */
     def extendableJsValueEncoderPF(encoder: => JsValueEncoderPF)(customEncoder: JsValueEncoderPF): JsValueEncoderPF = {
       lazy val borerEncoder = jsValEncoder(encoder)

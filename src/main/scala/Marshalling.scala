@@ -25,7 +25,6 @@ import org.tresql.{Resources, Result, RowLike}
 
 import scala.collection.immutable.{ListMap, Seq}
 import scala.language.implicitConversions
-import scala.language.reflectiveCalls
 
 trait Marshalling
   extends BasicJsonMarshalling

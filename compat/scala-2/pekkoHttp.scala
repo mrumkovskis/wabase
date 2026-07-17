@@ -37,7 +37,8 @@ trait PekkoHttpCompat {
     Unmarshaller.messageUnmarshallerFromEntityUnmarshaller(borerFromEntityUnmarshaller)
 
   /**
-   * Provides a [[FromEntityUnmarshaller]] for [[T]] given an implicit borer Decoder for [[T]].
+   * Provides a [[org.apache.pekko.http.scaladsl.unmarshalling.FromEntityUnmarshaller]] for `T`
+   * given an implicit borer Decoder for `T`.
    * Supports both CBOR and JSON with the given MediaTypes.
    */
   final def borerUnmarshaller[T: Decoder](
@@ -59,7 +60,8 @@ trait PekkoHttpCompat {
     }
 
   /**
-   * Provides a [[FromEntityUnmarshaller]] for [[T]] given an implicit borer Decoder for [[T]].
+   * Provides a [[org.apache.pekko.http.scaladsl.unmarshalling.FromEntityUnmarshaller]] for `T`
+   * given an implicit borer Decoder for `T`.
    * Supports only CBOR with the given MediaType.
    */
   final def borerCborUnmarshaller[T: Decoder](
@@ -77,7 +79,8 @@ trait PekkoHttpCompat {
     }
 
   /**
-   * Provides a [[FromEntityUnmarshaller]] for [[T]] given an implicit borer Decoder for [[T]].
+   * Provides a [[org.apache.pekko.http.scaladsl.unmarshalling.FromEntityUnmarshaller]] for `T`
+   * given an implicit borer Decoder for `T`.
    * Supports only JSON with the given MediaType.
    */
   final def borerJsonUnmarshaller[T: Decoder](
@@ -108,7 +111,8 @@ trait PekkoHttpCompat {
     Marshaller.liftMarshaller(borerToEntityMarshaller)
 
   /**
-   * Provides a [[ToEntityMarshaller]] for [[T]] given an implicit borer Encoder for [[T]].
+   * Provides a [[org.apache.pekko.http.scaladsl.marshalling.ToEntityMarshaller]] for `T`
+   * given an implicit borer Encoder for `T`.
    * Supports both CBOR and JSON with the given MediaTypes.
    * Content negotiation will determine, whether CBOR or JSON is produced.
    * If the client accepts both formats with equal q-value the marshaller will produce
@@ -130,7 +134,8 @@ trait PekkoHttpCompat {
   }
 
   /**
-   * Provides a [[ToEntityMarshaller]] for [[T]] given an implicit borer Encoder for [[T]].
+   * Provides a [[org.apache.pekko.http.scaladsl.marshalling.ToEntityMarshaller]] for `T`
+   * given an implicit borer Encoder for `T`.
    * Supports only CBOR with the given MediaType.
    */
   final def borerCborMarshaller[T: Encoder](
@@ -141,7 +146,8 @@ trait PekkoHttpCompat {
     }
 
   /**
-   * Provides a [[ToEntityMarshaller]] for [[T]] given an implicit borer Encoder for [[T]].
+   * Provides a [[org.apache.pekko.http.scaladsl.marshalling.ToEntityMarshaller]] for `T`
+   * given an implicit borer Encoder for `T`.
    * Supports only JSON with the given MediaType.
    */
   final def borerJsonMarshaller[T: Encoder](
@@ -162,10 +168,11 @@ trait PekkoHttpCompat {
     Unmarshaller.messageUnmarshallerFromEntityUnmarshaller(borerJsonStreamFromEntityUnmarshaller)
 
   /**
-   * Provides a [[FromEntityUnmarshaller]] which produces streams of [[T]] given an implicit borer Decoder
-   * for [[T]]. Supports JSON or CSV, depending on the given [[EntityStreamingSupport]].
+   * Provides a [[org.apache.pekko.http.scaladsl.unmarshalling.FromEntityUnmarshaller]] which produces
+   * streams of `T` given an implicit borer Decoder for `T`. Supports JSON or CSV, depending on the
+   * given [[org.apache.pekko.http.scaladsl.common.EntityStreamingSupport]].
    *
-   * @see https://doc.pekko.io/api/pekko-http/10.1.9/pekko/http/scaladsl/common/EntityStreamingSupport.html
+   * @see https://pekko.apache.org/api/pekko-http/current/org/apache/pekko/http/scaladsl/common/EntityStreamingSupport.html
    */
   final def borerStreamUnmarshaller[T: Decoder](
       ess: EntityStreamingSupport): FromEntityUnmarshaller[Source[T, NotUsed]] =
@@ -198,8 +205,9 @@ trait PekkoHttpCompat {
     Marshaller.liftMarshaller(borerJsonStreamToEntityMarshaller)
 
   /**
-   * Provides a [[ToEntityMarshaller]] for streams of [[T]] given an implicit borer Encoder for [[T]].
-   * Supports JSON or CSV, depending on the given [[EntityStreamingSupport]].
+   * Provides a [[org.apache.pekko.http.scaladsl.marshalling.ToEntityMarshaller]] for streams of `T`
+   * given an implicit borer Encoder for `T`. Supports JSON or CSV, depending on the given
+   * [[org.apache.pekko.http.scaladsl.common.EntityStreamingSupport]].
    */
   final def borerStreamMarshaller[T](ess: EntityStreamingSupport)(
       implicit marshaller: ToEntityMarshaller[T],
