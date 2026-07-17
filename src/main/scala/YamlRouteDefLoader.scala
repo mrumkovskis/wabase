@@ -62,7 +62,7 @@ class YamlRouteDefLoader(
             val NamedParamRegex = """\$([^\d][^\s]*)""".r
             def transform(o: Action.Op): Action.Op = o match {
               case t: Action.Tresql if NamedParamRegex.pattern.matcher(t.tresql).matches() =>
-                val NamedParamRegex(paramName) = t.tresql
+                val NamedParamRegex(paramName) = t.tresql: @unchecked
                 val idx = pathParams.indexOf(paramName)
                 if (idx == -1) sys.error(s"Error parsing route $route $property: unknown parameter name $paramName")
                 else t.copy(tresql = "$" + (idx + 1))
@@ -78,7 +78,7 @@ class YamlRouteDefLoader(
           val (cn, fn) = classNameFunctionName(config.getString("app.wabase-error-handler"))
           AppMetadata.Action.Invocation(cn, fn)
         }
-      val PathRegex(m, p) = route
+      val PathRegex(m, p) = route: @unchecked
       val method = if (m.trim.isEmpty) Set[HttpMethod]() else m.split("\\s+").map(httpMethods(_)).toSet
       val (path, pathNamesAndParameters): (Regex, Seq[PathNameAndParameters]) = regexAndPathNamesAndParameters(p, rdMap)
       val pathParameterNames =
@@ -148,14 +148,14 @@ object RegexPath {
     def atom: Parser[RegexAST] =
       literal('(') ~> groupType <~ literal(')') |
         literal('.') ^^^ Dot() |
-        literal('[') ~> classContent <~ literal(']') ^^ CharClass |
-        literal('\\') ~> anyChar ^^ Escaped |
+        literal('[') ~> classContent <~ literal(']') ^^ CharClass.apply |
+        literal('\\') ~> anyChar ^^ Escaped.apply |
         noneOf(".^$*+?()|[{\\") ^^ { c => Literal(c.toString) }
 
     def groupType: Parser[RegexAST] =
       (literal('?') ~> literal('<') ~> id <~ literal('>')) ~ regex ^^ { case name ~ inner => NamedGroup(name, inner) } |
         (literal('?') ~> literal(':')) ~ regex ^^ { case _ ~ inner => NonCapturingGroup(inner) } |
-        regex ^^ Group
+        regex ^^ Group.apply
 
     def quantifier: Parser[String] =
       literal('*') ^^^ "*" |

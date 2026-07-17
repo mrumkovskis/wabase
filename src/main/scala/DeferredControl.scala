@@ -258,7 +258,7 @@ object DeferredControl extends Loggable with AppConfig {
   ): QueryTimeout = {
     val limit = viewName.flatMap(timeouts.get).getOrElse(defaultTimeout).toSeconds.toInt
     if (timeout.isDefined)
-      timeout.filter(_ <= limit).map(QueryTimeout).getOrElse {
+      timeout.filter(_ <= limit).map(QueryTimeout.apply).getOrElse {
         throw new BusinessException(s"Max request timeout exceeded: ${timeout.get} > $limit")
       }
     else QueryTimeout(limit)
@@ -471,7 +471,7 @@ object DeferredControl extends Loggable with AppConfig {
     import stats._
 
     private lazy val Cp =
-      Option("deferred-requests.storage.cp").filter(conf.hasPath).map(conf.getString).map(PoolName)
+      Option("deferred-requests.storage.cp").filter(conf.hasPath).map(conf.getString).map(PoolName.apply)
         .getOrElse(db.DefaultCp)
 
     override lazy val fileStreamerConfig: Config = conf.getConfig("deferred-requests.storage.file-streamer")

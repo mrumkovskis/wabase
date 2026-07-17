@@ -390,7 +390,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
 
   def dbResourceNames(objectName: String, actionName: String): (PoolName, Seq[DbAccessKey]) = {
     val vdo = viewDefOption(objectName)
-    val poolName = vdo.flatMap(v => Option(v.db)).map(PoolName) getOrElse PoolName(defaultCpName)
+    val poolName = vdo.flatMap(v => Option(v.db)).map(PoolName.apply) getOrElse PoolName(defaultCpName)
     val extraDbs = vdo.map(_.actionToDbAccessKeys(actionName).filter(_.db != null).toList).getOrElse(Nil)
     (poolName, extraDbs)
   }
@@ -475,7 +475,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           case Evaluation(_, vts, op) => doActionStep(vts, op)
           case SetEnv(_, vts, op, _) => doActionStep(vts, op)
           case Return(_, vts, op) => doActionStep(vts, op)
-          case RemoveVar(name) => Future.successful(stepScope.data - name.get) map MapResult
+          case RemoveVar(name) => Future.successful(stepScope.data - name.get) map MapResult.apply
           case validations: Action.Validations =>
             context.view.map { vd =>
               Future(doValidationStep(validations, scopeBindVars(stepScope), vd))
@@ -518,7 +518,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         } flatMap { res => s match {
           case Evaluation(n@Some(_), _, _) => curData
             .flatMap(sc => updateCurRes(sc.data, n, dataForNextStep(res, context, true)))
-            .map(MapResult)
+            .map(MapResult.apply)
           case _ => Future.successful(res)
         }}
       case (s, src) :: tail =>
@@ -669,7 +669,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
               val keyColNames = viewNameToKeyColNames(viewName)
               val fieldFilter: FieldFilter = context.fieldFilter
               get(v, keyValues, keyColNames, null, callData, fieldFilter)
-                .map(TresqlSingleRowResult) getOrElse NoResult
+                .map(TresqlSingleRowResult.apply) getOrElse NoResult
             case Action.List =>
               TresqlResult(rowsResult(v, callData, int(OffsetKey).getOrElse(0), int(LimitKey).getOrElse(0),
                 string(OrderKey).orNull, null, Map(), context.fieldFilter))
@@ -854,7 +854,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     import qr.{ec, as}
     def createGetResult(res: QuereaseResult): Future[QuereaseResult] = (res match {
       case TresqlResult(r) if !r.isInstanceOf[DMLResult] =>
-        if (op.opt) r.uniqueOption map TresqlSingleRowResult getOrElse NoResult
+        if (op.opt) r.uniqueOption map TresqlSingleRowResult.apply getOrElse NoResult
         else TresqlSingleRowResult(r.unique)
       case IteratorResult(r) =>
         try r.hasNext match {
@@ -1095,7 +1095,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
             foldOpRes <- doActionOp(op.foldOp.op, Scope(Map(op.foldOp.resVar -> res, op.foldOp.elVar -> el)), context)
             new_res <- dataForNextStep(foldOpRes, context, unwrapSingleValue = true)
           } yield new_res
-        }.flatten.map(AnyResult)
+        }.flatten.map(AnyResult.apply)
       }
   }
 
@@ -1162,7 +1162,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     val fs = fileStreamers.fs(op.fileStreamerName)
     doActionOpAndRender(contentType, op.contentOp, scope, context).flatMap { case (src, ct, _) =>
       src.runWith(fs.fileSink(fn, ct.value))
-    }.map(FileInfoResult)
+    }.map(FileInfoResult.apply)
   }
 
   protected def doTemplate(
@@ -1437,7 +1437,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case Action.NumberConf => config.getNumber(op.param)
       case Action.StringConf => config.getString(op.param)
       case Action.BooleanConf => config.getBoolean(op.param)
-      case _ => config.getValue(op.param).unwrapped()
+      case null => config.getValue(op.param).unwrapped()
     }
     Future.successful(ConfResult(op.param, configValueAsScala(value)))
   }

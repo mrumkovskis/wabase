@@ -279,7 +279,7 @@ class DeferredTests extends AnyFlatSpec with Matchers with TestQuereaseInitializ
 
     Try {
       while(true) {
-        val TextMessage.Strict(msg) = wsClient.expectMessage()
+        val TextMessage.Strict(msg) = wsClient.expectMessage(): @unchecked
         CborOrJsonAnyValueDecoder.decode(ByteString(msg)).asInstanceOf[Map[String, Any]].toList match {
           case List(("version", version)) => version shouldBe service.appVersion
           case List((hash, statusObj: Map[String@unchecked, _])) =>

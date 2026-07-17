@@ -57,6 +57,8 @@ object WabaseServer {
     with AppProvider[WabaseUser] {
       // Members declared in org.wabase.Execution
       override protected def execution: org.wabase.Execution = exec
+      override implicit def system: org.apache.pekko.actor.ActorSystem = exec.system
+      override implicit def executor: scala.concurrent.ExecutionContextExecutor = exec.executor
 
       // Members declared in org.wabase.AppProvider
       override type App = AppBase[WabaseUser]

@@ -6,9 +6,10 @@ import org.apache.pekko.stream.Materializer
 import scala.concurrent.ExecutionContextExecutor
 
 trait Execution {
+  /** Delegate used by wrappers that do not own the actor system. */
   protected def execution: Execution
-  implicit val system: ActorSystem = execution.system
-  implicit lazy val executor: ExecutionContextExecutor = execution.executor
+  implicit def system: ActorSystem
+  implicit def executor: ExecutionContextExecutor
 }
 
 class ExecutionImpl(

@@ -25,7 +25,6 @@ import java.io.{PrintWriter, StringWriter}
 import java.time.Instant
 import scala.collection.immutable.{Map, Seq}
 import scala.concurrent.{Await, ExecutionContext}
-import scala.language.reflectiveCalls
 import scala.util.{Random, Try}
 import org.wabase.client.{ClientException, HttpClientConfig, RestClient, WabaseHttpClient}
 import org.wabase.ds.ConnectionPools.DEFAULT_CP

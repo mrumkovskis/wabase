@@ -62,7 +62,7 @@ trait TestQuereaseInitializer extends BeforeAndAfterAll with Loggable { this: Su
     def schemas() = {
       val SchemaRegex = """([^.]+)(?:\.([^.]+))?""".r
       querease.tableMetadata.tableDefs.flatMap { table =>
-        val SchemaRegex(schema, name) = table.name
+        val SchemaRegex(schema, name) = table.name: @unchecked
         if (name == null) Nil else List(schema)
       }
     }

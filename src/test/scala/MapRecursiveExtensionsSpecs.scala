@@ -3,7 +3,6 @@ package org.wabase
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers
 
-import scala.language.reflectiveCalls
 import MapRecursiveExtensions._
 
 class MapRecursiveExtensionsSpecs extends FlatSpec with Matchers {

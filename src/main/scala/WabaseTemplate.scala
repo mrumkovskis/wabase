@@ -73,7 +73,7 @@ class DefaultWabaseTemplateLoader extends WabaseTemplateLoader {
     fs: FileStreamer,
   ): Option[Future[Array[Byte]]] = {
     Option(fs).filter(_ => fn_reg_ex.pattern.matcher(template).matches()).flatMap { fs =>
-      val fn_reg_ex(id, sha) = template
+      val fn_reg_ex(id, sha) = template: @unchecked
       fs.getFileInfo(id.toLong, sha).map {
         _.source.runFold(ByteString.empty)(_ ++ _).map(_.toArray)
       }

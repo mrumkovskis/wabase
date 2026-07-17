@@ -20,7 +20,7 @@ import java.util.concurrent.TimeUnit
 import scala.collection.immutable.{Map, Seq, Set}
 import scala.concurrent.duration.FiniteDuration
 import scala.jdk.CollectionConverters._
-import scala.language.reflectiveCalls
+
 import scala.util.Try
 import scala.util.control.NonFatal
 import scala.util.matching.Regex
@@ -146,8 +146,9 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
   lazy val viewNameToClassMap: Map[String, Class[_ <: Dto]] = {
     val objectClass = Class.forName(dtoMappingClassName + "$")
-    objectClass.getField("MODULE$").get(objectClass)
-      .asInstanceOf[{ val viewNameToClass: Map[String, Class[_ <: Dto]] }].viewNameToClass
+    val module = objectClass.getField("MODULE$").get(objectClass)
+    module.getClass.getMethod("viewNameToClass").invoke(module)
+      .asInstanceOf[Map[String, Class[_ <: Dto]]]
   }
 
   lazy val classToViewNameMap: Map[Class[_], String] = viewNameToClassMap.map(_.swap)
@@ -493,7 +494,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
             val m = jm.asScala.toMap
             val (operationString, value) = m.head
             if (validationRegex.pattern.matcher(operationString).matches()) {
-              val validationRegex(vn, db, cp) = operationString
+              val validationRegex(vn, db, cp) = operationString: @unchecked
               val validations = getSeq(operationString, m).map(_.toString)
               (Action.Validations(
                 Option(vn),
@@ -558,7 +559,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   protected def parseDecoder(viewName: String, decStr: String): (RequestDecoder, jLong) = {
     val decPattern = new Regex(s"(none|default|${OpParser.InvocationRegex})(.*)")
     if (decPattern.pattern.matcher(decStr).matches()) {
-      val decPattern(dec, _, size) = decStr
+      val decPattern(dec, _, size) = decStr: @unchecked
       (dec match {
         case "default" => DefaultDecoder
         case "none" => NoneDecoder
@@ -809,6 +810,7 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
       def value: Parser[ast.Exp] = (variable | const | "this") ^^ {
         case "this" => ast.Ident("this" :: Nil)
         case e: ast.Exp => e
+        case other => sys.error(s"Unexpected value expression: $other")
       }
       def val_concat: Parser[List[ast.Exp]] = rep1sep(value, "++")
       def varTransform: Parser[(Option[String], List[ast.Exp])] = {
@@ -816,6 +818,7 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
           case v: Variable => (None, v :: Nil)
           case "this" => (None, ast.Ident("this" :: Nil) :: Nil)
           case (v1: ast.Ident) ~ _ ~ (vc: List[ast.Exp@unchecked]) => (Option(v1.tresql), vc)
+          case other => sys.error(s"Unexpected variable transform: $other")
         }
       } named "vars-transform"
       def tupleToVarTransform(t: (Option[String], List[ast.Exp])) =
@@ -964,7 +967,7 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
     case db ~ act => db.copy(action = act)
   } named "db-op"
   def dbBlockOp: MemParser[Db] = (Action.DbUseKey | Action.TransactionKey) ~ opt("[" ~> ident <~ "]") ^^ {
-    case op_type ~ db => Db(null, op_type == Action.DbUseKey, db.map(AppMetadata.DbAccessKey).toList)
+    case op_type ~ db => Db(null, op_type == Action.DbUseKey, db.map(AppMetadata.DbAccessKey.apply).toList)
   } named "db-block-op"
   def jsonCodecOp: MemParser[JsonCodec] = "(from|to)(?=\\s+)".r ~ "json\\s+".r ~ operation ^^ {
     case mode ~ _ ~ op => JsonCodec(mode == "to", op)
@@ -1006,7 +1009,7 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
   } named "if-block-op"
   def elseBlockOp: MemParser[Else] = "else".r ^^^ Else(null) named "else-block-op"
   def blockOp: MemParser[BlockOp] = ifBlockOp | elseBlockOp | dbBlockOp | foreachBlockOp named "block-op"
-  def thisOp: MemParser[This] = opt(opResultType) <~ "this" ^^ This named "this-op"
+  def thisOp: MemParser[This] = opt(opResultType) <~ "this" ^^ This.apply named "this-op"
 
   def bracesOp: MemParser[Op] = "(" ~> operation <~ ")" named "braces-op"
   def bracesTresql: MemParser[Exp] = (("(" ~> expr <~ ")") | expr) named "braces-tresql-op"
@@ -1069,7 +1072,7 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
     case class ViewType(vn: String) extends ResType
     def noType: Parser[ResType] = "any" ^^^ NoType
     def nonBindableType: Parser[ResType] = "result" ^^^ NoBindType
-    def viewType: Parser[ResType] = opt("`") ~> ViewNameRegex <~ opt("`") ^^ ViewType
+    def viewType: Parser[ResType] = opt("`") ~> ViewNameRegex <~ opt("`") ^^ ViewType.apply
 
     "as" ~> ((noType | nonBindableType | viewType) ~ opt("*")) ^^ {
       case NoType ~ isColl => ViewResultType(null, isColl.nonEmpty)
@@ -1606,7 +1609,7 @@ object AppMetadata extends Loggable {
       namePatternsFromResource("/md-conventions/decimal-name-patterns.txt", Nil, resourceLoader),
   ) extends SimplePatternMdConventions(resourceLoader) with AppMdConventions {
 
-  def this() = this(getClass.getResourceAsStream _)()
+  def this() = this(classOf[DefaultAppMdConventions].getResourceAsStream _)()
 
   val integerNamePatterns = integerNamePatternStrings.map(pattern).toSeq
   val decimalNamePatterns = decimalNamePatternStrings.map(pattern).toSeq

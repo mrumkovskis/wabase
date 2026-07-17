@@ -182,7 +182,7 @@ class FileStreamer(
       s"{id, filename, upload_time, content_type, f.$shaColName sha_256, size, path}@(1)"
 
   private lazy val db = dbAccessProvider.dbAccess
-  private lazy val fsCp: PoolName = Option(connectionPoolName).map(PoolName).getOrElse(db.DefaultCp)
+  private lazy val fsCp: PoolName = Option(connectionPoolName).map(PoolName.apply).getOrElse(db.DefaultCp)
   private def db_read[A]: (Resources => A) => A =
     db.withConn(
       poolName = fsCp,

@@ -4,8 +4,6 @@ import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import org.wabase._
 
-import scala.language.reflectiveCalls
-
 class CompileViews extends AnyFlatSpec with Matchers with QuereaseProvider with Loggable {
   it should "compile views" in {
     val previouslyCompiledQueries: Set[String] = Set.empty

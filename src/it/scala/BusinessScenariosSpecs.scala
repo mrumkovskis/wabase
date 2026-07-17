@@ -22,7 +22,6 @@ import org.wabase.swagger.WabaseSwaggerGenerator
 
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{Await, ExecutionContext, Future}
-import scala.language.reflectiveCalls
 import scala.util.Try
 
 object BusinessScenariosSpecs extends Loggable {

@@ -19,7 +19,7 @@ class AppFileCleanup(qe: AppQuerease, resourcesTemplate: Resources,
   protected lazy val batchSizeOpt: Option[Int] = None
 
   val connectionPoolName: String  = Option("app.file-cleanup.cp").filter(config.hasPath).map(config.getString).orNull
-  implicit lazy val connectionPool: PoolName = Option(connectionPoolName).map(PoolName).getOrElse(WabaseAppConfig.DefaultCp)
+  implicit lazy val connectionPool: PoolName = Option(connectionPoolName).map(PoolName.apply).getOrElse(WabaseAppConfig.DefaultCp)
   implicit lazy val extraDb: Seq[DbAccessKey] = Nil
 
   override def loggerName: String = "wabase.file-cleanup"

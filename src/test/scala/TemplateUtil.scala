@@ -6,7 +6,6 @@ import org.snakeyaml.engine.v2.api.{Dump, DumpSettings, Load, LoadSettings}
 import org.snakeyaml.engine.v2.common.FlowStyle
 import scala.jdk.CollectionConverters._
 import scala.io.{Codec, Source}
-import scala.language.{implicitConversions, reflectiveCalls}
 import scala.util.Try
 import MapRecursiveExtensions._
 
@@ -20,9 +19,7 @@ trait TemplateUtil { this: QuereaseProvider =>
   type MapTemplate = Map[String, Any]
   private case object NotDefined
 
-  implicit def conversion(map: MapTemplate): Object {
-    def zipWithMap(second: MapTemplate, nullObject: Any): Map[String, (Any, Any)]
-  } = new {
+  implicit class MapTemplateOps(map: MapTemplate) {
     def zipWithMap(second: MapTemplate, nullObject: Any): Map[String, (Any, Any)] =
       map.map{
         case(k, null) => (k, (null, second.getOrElse(k, nullObject)))
@@ -33,22 +30,14 @@ trait TemplateUtil { this: QuereaseProvider =>
       }
   }
 
-  implicit def mapShortcuts(map: Map[String, Any]): Object {
-    def a(param: String): List[MapTemplate]
-    def b(param: String): Boolean
-    def bd(param: String, defultValue: Boolean): Boolean
-    def m(param: String): Map[String, Any]
-    def md(param: String, defaultValue: Map[String, Any]): Map[String, Any]
-    def s(param: String): String
-    def sd(param: String, defaultValue: String): String
-  } = new {
-    def a(param: String) = map(param).asInstanceOf[List[MapTemplate]]
-    def b(param: String) = map.get(param).contains("true") || map.get(param).contains(true)
-    def bd(param: String, defaultValue: Boolean) = map.get(param).map(b => b == "true" || b == true).getOrElse(defaultValue)
-    def m(param: String) = map.getOrElse(param, Map.empty).asInstanceOf[Map[String, Any]]
-    def md(param: String, defaultValue: Map[String, Any]) = map.getOrElse(param, defaultValue).asInstanceOf[Map[String, Any]]
-    def s(param: String) = map(param).asInstanceOf[String]
-    def sd(param: String, defaultValue: String) = map.getOrElse(param, defaultValue).asInstanceOf[String]
+  implicit class MapShortcuts(map: Map[String, Any]) {
+    def a(param: String):                                  List[MapTemplate]= map(param).asInstanceOf[List[MapTemplate]]
+    def b(param: String):                                  Boolean          = map.get(param).contains("true") || map.get(param).contains(true)
+    def bd(param: String, defaultValue: Boolean):          Boolean          = map.get(param).map(b => b == "true" || b == true).getOrElse(defaultValue)
+    def m(param: String):                                  Map[String, Any] = map.getOrElse(param, Map.empty).asInstanceOf[Map[String, Any]]
+    def md(param: String, defaultValue: Map[String, Any]): Map[String, Any] = map.getOrElse(param, defaultValue).asInstanceOf[Map[String, Any]]
+    def s(param: String):                                  String           = map(param).asInstanceOf[String]
+    def sd(param: String, defaultValue: String):           String           = map.getOrElse(param, defaultValue).asInstanceOf[String]
   }
 
   def pojoFromTemplate[T <: Dto](viewClass: Class[T], fileName: String) =

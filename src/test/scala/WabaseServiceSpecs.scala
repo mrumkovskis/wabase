@@ -325,7 +325,7 @@ object WabaseTestHandlers {
 
   def keyExtractor(ctx: WabaseRequestContext, uri: Uri) = {
     val R = ctx.route.path
-    val R(key) = uri.path.toString()
+    val R(key) = uri.path.toString(): @unchecked
     ctx.copy(key = Seq(key))
   }
 
@@ -343,11 +343,12 @@ object WabaseTestHandlers {
   def seq_handler(ctx: WabaseRequestContext) = ctx.key
   def dto_handler(ctx: WabaseRequestContext) = ctx.wabase.qio.fill[View1](ctx.req.uri.query().toMap)
   def dto_seq_handler(ctx: WabaseRequestContext) = {
-    import scala.language.existentials
-    val List(l1: List[(String, Any)], l2: List[(String, Any)]) =
-      ctx.req.uri.query().toMultiMap.map { case (k, v) => v.map(k -> _) }
+    val lists = ctx.req.uri.query().toMultiMap.map { case (k, v) => v.map(k -> _) }.toList
+    require(lists.size == 2, s"Expected 2 query multi-map lists, got ${lists.size}")
+    val l1 = lists(0)
+    val l2 = lists(1)
     l1.zip(l2)
-      .map(_.productIterator.asInstanceOf[Iterator[(String, Any)]].toMap)
+      .map { case (a, b) => Map(a, b) }
       .map(m => ctx.wabase.qio.fill[View1](m))
   }
 

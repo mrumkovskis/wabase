@@ -77,7 +77,7 @@ object RequestHandlers {
     import ctx._
     val viewDefs = wabase.qe.nameToViewDef
     val (viewNameAndActionStr, view_name, create_count_action) = try {
-      val CreateCountActionAndViewRegex(vn, cca) = view_action
+      val CreateCountActionAndViewRegex(vn, cca) = view_action: @unchecked
       if (viewDefs.contains(vn)) (view_action, vn, cca)
       else (null, null, null)
     } catch {

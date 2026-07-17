@@ -87,7 +87,7 @@ class TresqlUri {
   def uri(value: TresqlUri.Uri): Uri = {
     require(value.segments != null && value.segments.nonEmpty, "Uri segments must not be empty!")
     val uriRegex = """(?U)(https?://[^/]+)?(?:(?:$)|(.+))?""".r
-    val uriRegex(uriStart, uriPath) = value.segments.mkString("/")
+    val uriRegex(uriStart, uriPath) = value.segments.mkString("/"): @unchecked
     val path = Option(uriPath).map(Path(_)).getOrElse(Path.Empty)
     val nonNullParams = value.params.map { case (k, v) => (k, if (v == null) "" else v) }
     val uriWithoutKey =

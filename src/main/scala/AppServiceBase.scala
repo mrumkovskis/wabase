@@ -432,8 +432,8 @@ trait AppServiceBase[User]
 }
 
 trait AppFileServiceBase[User] {
-    this: AppProvider[User] with BasicJsonMarshalling
-          { type App <: AppBase[User] with Audit[User] } =>
+  this: AppProvider[User] with BasicJsonMarshalling
+        { type App <: AppBase[User] with Audit[User] } =>
   val fileStreamer: AppFileStreamer[User] = initFileStreamer
   /** Override this method in subclass. Method usage instead of direct
   {{{val fileStreamer: AppFileStreamer}}} initialization ensures that this.fileStreamer and subclass fileStreamer

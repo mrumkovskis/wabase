@@ -118,7 +118,7 @@ trait DbAccess { this: QuereaseProvider with Loggable =>
       }.getOrElse(templ)
     }.get
     val resFactory = ResourcesFactory(initResources, closeResources)(res)
-    vdo.flatMap(v => Option(v.db)).map(PoolName) getOrElse DefaultCp match {
+    vdo.flatMap(v => Option(v.db)).map(PoolName.apply) getOrElse DefaultCp match {
       case DefaultCp => resFactory
       case PoolName(cp) => resFactory.focus(cp, DefaultCp.connectionPoolName)
     }

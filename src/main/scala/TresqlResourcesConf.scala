@@ -167,7 +167,7 @@ class ClassLoaderTresqlResourcesConf(cl: ClassLoader) extends Loggable {
     val cpToVendor = {
       val DbVendorRegex = """jdbc:(\w+):.*""".r
       def dbVendor(jdbcUrl: String): String = {
-        val DbVendorRegex(vendor) = jdbcUrl
+        val DbVendorRegex(vendor) = jdbcUrl: @unchecked
         vendor
       }
       val c = wabaseConf.getConfig("jdbc.cp")

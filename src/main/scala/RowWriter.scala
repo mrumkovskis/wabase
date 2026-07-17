@@ -11,7 +11,7 @@ import java.io.{OutputStreamWriter, Writer}
 import java.util.zip.ZipOutputStream
 import scala.collection.immutable.Seq
 import scala.concurrent.{ExecutionContext, Future}
-import scala.language.reflectiveCalls
+import org.tresql.RowLike
 
 trait RowWriter {
   def header(): Unit
@@ -43,7 +43,7 @@ trait RowWriters { this: QuereaseProvider =>
   }
 
   trait AbstractRowWriter extends RowWriter {
-    type Row <: {def values: Iterable[_]}
+    type Row <: RowLike
     type Result <: Iterator[Row] with AutoCloseable
 
     def labels: Seq[String]
@@ -99,7 +99,7 @@ trait RowWriters { this: QuereaseProvider =>
     def csvValue(v: Any): String = Option(v).map{
       case m: Map[String @unchecked, Any @unchecked] => ""
       case i: Iterable[Any] => ""
-      case l: Traversable[Any] @annotation.nowarn => "": @annotation.nowarn
+    //case l: Traversable[Any] @annotation.nowarn => "": @annotation.nowarn
       case n: java.lang.Number => String.valueOf(n)
       case t: Timestamp => xlsxDateTime(t)
       case d: jDate => xsdDate(d)
