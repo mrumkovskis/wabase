@@ -1,3 +1,5 @@
 path:     /hello
 method:   PUT
 error:           405 Method Not Allowed
+response_headers:
+  Allow: GET

@@ -3,7 +3,7 @@ package org.wabase
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.client.RequestBuilding
 import org.apache.pekko.http.scaladsl.client.RequestBuilding.{Get, Head, Options, Post, Put}
-import org.apache.pekko.http.scaladsl.model.headers.{BasicHttpCredentials, Cookie, HttpCookiePair, `Set-Cookie`}
+import org.apache.pekko.http.scaladsl.model.headers.{Allow, BasicHttpCredentials, Cookie, HttpCookiePair, `Set-Cookie`}
 import org.apache.pekko.http.scaladsl.model.{HttpEntity, HttpMessage, HttpMethod, HttpMethods, HttpRequest, HttpResponse, RequestEntity, StatusCodes, Uri}
 import org.apache.pekko.util.ByteString
 import org.scalatest.flatspec.AnyFlatSpec
@@ -79,6 +79,14 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
       decodeJs) shouldBe List(Map("a" -> 1), 2, true, "x", List(1, "y"))
     entityForRequest(Put("/decoded-string-entity", HttpEntity("content"))) shouldBe "content"
     entityForRequest(Post("/decoded-dto-entity", encodeJs(Map("id" -> 1, "name" -> "View1")))) shouldBe "1:View1"
+  }
+
+  it should "return 405 Method Not Allowed with Allow header" in {
+    val resp = response(RequestBuilding.Delete("/decoded-map-entity"))
+    resp.status shouldBe StatusCodes.MethodNotAllowed
+    resp.header[Allow] shouldBe Some(Allow(HttpMethods.POST, HttpMethods.PUT))
+    response(Get("/not-existing-path-xyz")).status shouldBe StatusCodes.NotFound
+    response(Get("/not-existing-path-xyz")).header[Allow] shouldBe None
   }
 
   it should "process errors for wabase service routes" in {

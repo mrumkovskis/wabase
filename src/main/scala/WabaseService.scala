@@ -6,9 +6,9 @@ import AppMetadata._
 import com.typesafe.scalalogging.Logger
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.marshalling.ToResponseMarshallable
-import org.apache.pekko.http.scaladsl.model.headers.{Cookie, EntityTag, HttpCookie, `Set-Cookie`, `Timeout-Access`}
+import org.apache.pekko.http.scaladsl.model.headers.{Allow, Cookie, EntityTag, HttpCookie, `Set-Cookie`, `Timeout-Access`}
 import org.apache.pekko.http.scaladsl.model.HttpCharsets.`UTF-8`
-import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes, DateTime, HttpEntity, HttpHeader, HttpMessage, HttpRequest, HttpResponse, StatusCode, StatusCodes, Uri, MediaType => PekkoMediaType}
+import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes, DateTime, HttpEntity, HttpHeader, HttpMessage, HttpMethod, HttpRequest, HttpResponse, StatusCode, StatusCodes, Uri, MediaType => PekkoMediaType}
 import org.apache.pekko.http.scaladsl.unmarshalling.Unmarshaller
 import org.mojoz.metadata.ViewDef
 import org.slf4j.LoggerFactory
@@ -132,16 +132,29 @@ object WabaseService extends Loggable {
   /* If route found return Right(route) else Left(http client error) */
   def findRoute(ctx: WabaseRequestContext): Either[HttpResponse, RouteDef] = {
     val pathString = WabaseService.toReadableString(ctx.req.uri.path)
-    var notAllowed: Left[HttpResponse, RouteDef] = null
+    val method = ctx.req.method
+    // Collect allowed methods for path matches so 405 responses can include a proper Allow header
+    // (RFC 9110 §15.5.6 requires Allow on Method Not Allowed).
+    var allowedMethods: Set[HttpMethod] = Set.empty
     ctx.wabase.qe.routeDefs.find { rd =>
         rd.path.pattern.matcher(pathString).matches &&
-          (rd.methods.isEmpty || rd.methods(ctx.req.method) || {
-            notAllowed = Left(HttpResponse(StatusCodes.MethodNotAllowed))
+          (rd.methods.isEmpty || rd.methods(method) || {
+            allowedMethods ++= rd.methods
             false
           })
       }.map(Right[HttpResponse, RouteDef])
-      .orElse(Option(notAllowed)).getOrElse(Left(notFound))
+      .getOrElse {
+        if (allowedMethods.nonEmpty) Left(methodNotAllowed(allowedMethods))
+        else Left(notFound)
+      }
   }
+
+  /** 405 response with Allow header listing methods currently supported for the resource. */
+  def methodNotAllowed(allowedMethods: Iterable[HttpMethod]): HttpResponse =
+    HttpResponse(
+      status = StatusCodes.MethodNotAllowed,
+      headers = List(Allow(allowedMethods.toList.sortBy(_.value))),
+    )
 
   def doRoute(ctx: WabaseRequestContext)(implicit as: ActorSystem): Future[HttpResponse] = {
     implicit val ec: ExecutionContext = as.dispatcher
