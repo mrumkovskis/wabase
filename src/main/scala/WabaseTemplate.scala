@@ -21,8 +21,10 @@ trait WabaseTemplate {
 }
 
 class DefaultWabaseTemplate extends WabaseTemplate {
+  @annotation.nowarn("msg=Manifest")
   protected val loader: WabaseTemplateLoader =
     factory[WabaseTemplateLoader]("app.template.loader")
+  @annotation.nowarn("msg=Manifest")
   protected val renderer: WabaseTemplateRenderer =
     factory[WabaseTemplateRenderer]("app.template.renderer")
   private def factory[T](propName: String)(implicit m: Manifest[T]): T = {

@@ -63,6 +63,7 @@ object QuereaseSpecsDtos {
   )
 }
 
+@annotation.nowarn("msg=Manifest")
 class QuereaseSpecs extends AsyncFlatSpec with Matchers with TestQuereaseInitializer with AsyncFlatSpecLike {
 
   import AppMetadata._

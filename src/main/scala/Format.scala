@@ -106,6 +106,7 @@ object Format extends ValueConverter {
      .replace("<", "&lt;")
      .replace(">", "&gt;")
 
+  @annotation.nowarn("msg=Manifest")
   private lazy val valueConverterDelegate: ValueConverter =
     Option("app.value-converter").filter(config.hasPath).map {
       getObjectOrNewInstance[ValueConverter](config, _, "value converter")

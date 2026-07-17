@@ -250,6 +250,7 @@ class FileStreamer(
         new BusinessException(
           "Cannot process file, please contact administrator: " + sha)
 
+      @annotation.nowarn("msg=Manifest")
       def oldPathOpt = db_read { implicit res =>
         Query(s"$file_body_info_table[$shaColName=?]{path}", sha).uniqueOption[String]
       }
@@ -342,6 +343,7 @@ object FileStreamerConfig {
   val fsConfigTunablePaths = Set("files.path", "jdbc.query-timeout")
   lazy val componentConfs = ComponentConf.getConfigs("file-streamer", fsConfigTunablePaths)
   lazy val configs: Map[String, Config] = componentConfs.confs.toMap - "files" - "jdbc"
+  @annotation.nowarn("msg=Manifest")
   lazy val fileStreamerFactory: FileStreamerFactory =
     getObjectOrNewInstance[FileStreamerFactory](componentConfs.root, "factory-class", "file streamer factory")
 }

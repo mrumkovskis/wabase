@@ -94,6 +94,7 @@ object QuereaseActionsDtos {
   )
 }
 
+@annotation.nowarn("msg=Manifest")
 class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseInitializer with AsyncFlatSpecLike {
 
   import AppMetadata._
@@ -548,6 +549,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
   }
 }
 
+@annotation.nowarn("msg=Manifest")
 class QuereaseActionTestPersonManager {
   def personSaveBizMethod(data: Map[String, Any]) = {
     if (data("sex") == "F")
@@ -575,6 +577,7 @@ class QuereaseActionTestPersonManager {
   }
 }
 
+@annotation.nowarn("msg=Manifest")
 class QuereaseActionTestManager extends QuereaseActionTestPersonManager with Loggable {
 
   def sendNotifications(data: Map[String, Any]): Unit = {
@@ -676,11 +679,13 @@ object QuereaseActionTestManagerObj {
   }
   def stringArgument(s: String) = s + " " + s
   def multipleStringArguments(s1: String, s2: String, s3: String) = s1 + " " + s2 + " " + s3
+  @annotation.nowarn("msg=Manifest")
   def multipleArguments(s1: String, result: TresqlResult, s2: String, vars: Map[String, Any])(implicit res: Resources) = {
     import org.tresql.CoreTypes.convString // scala 3 peculiarity
     s1 + " " + Query(result.result.unique[String], vars).unique[String] + " " + s2
   }
   def httpResult(httpResult: HttpResult) = httpResult
+  @annotation.nowarn("msg=Manifest")
   def stringResultFromInputStream(tresqlResult: TresqlResult)(implicit qr: QuereaseResources) = {
     import qr._
     import org.tresql.convInputStream
@@ -691,6 +696,7 @@ object QuereaseActionTestManagerObj {
   }
   def tresqlResult(res: Result[_]) = res.toListOfMaps
   def listOfMaps(res: Seq[Map[String, Any]]) = res
+  @annotation.nowarn("msg=Manifest")
   def stringResultsFromInputStreams(tresqlResult: TresqlResult)(implicit qr: QuereaseResources) = {
     import qr._
     import org.tresql.convInputStream

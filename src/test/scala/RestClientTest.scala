@@ -73,6 +73,7 @@ class RestClientTest  extends FlatSpec with Matchers with ScalatestRouteTest wit
 
   it should "construct extended client" in {
     val clientCfg = HttpClientConfig.configs("teapot")
+    @annotation.nowarn("msg=Manifest")
     val client = getObjectOrNewInstance[HttpClient](clientCfg, "client-class", "http client")
     client shouldBe Teapot
     val request = HttpRequest(POST, entity = HttpEntity("BREW"))

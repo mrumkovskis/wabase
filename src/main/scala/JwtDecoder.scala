@@ -64,6 +64,7 @@ class JwtDecoder(config: Config) extends Loggable {
   private val chooseKeyType =
     allowedHmacAlgorithms.nonEmpty && allowedAsymmetricAlgorithms.nonEmpty
 
+  @annotation.nowarn("msg=Manifest")
   private val keyLoader = getObjectOrNewInstance[KeyLoader](config, "key-loader-class", "KeyLoader for JWT decoder")
 
   // Initialize secret key for HMAC or public key for asymmetric algorithms

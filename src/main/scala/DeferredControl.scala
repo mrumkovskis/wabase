@@ -494,6 +494,7 @@ object DeferredControl extends Loggable with AppConfig {
     import DeferredControl.HttpMessageSerialization._
     def registerDeferredRequest(ctx: DeferredContext): DeferredContext = db_write { implicit res =>
       import ctx._
+      @annotation.nowarn("msg=Manifest")
       val isDuplicate =
         Query("""{ exists(deferred_request[username = ? & request_hash = ? & status in (?, ?)]) }""",
           userIdString, hash, DEFERRED_EXE, DEFERRED_QUEUE).head[Boolean]
@@ -552,6 +553,7 @@ object DeferredControl extends Loggable with AppConfig {
       }
     }
 
+    @annotation.nowarn("msg=Manifest")
     def getUserDeferredStatuses(userIdString: String): Iterable[DeferredContext] =
       db_read { implicit res =>
         Query("""deferred_request [username = ?]
@@ -573,6 +575,7 @@ object DeferredControl extends Loggable with AppConfig {
       }
     }
 
+    @annotation.nowarn("msg=Manifest")
     def getDeferredRequest(hash: String, userIdString: String) = db_read { implicit res =>
       Query("""deferred_request [request_hash = ? & username = ?]
           { request, request_time, response_time, status, priority }""",
@@ -583,6 +586,7 @@ object DeferredControl extends Loggable with AppConfig {
           null, r._2, null, r._3, r._4, r._5))
     }
 
+    @annotation.nowarn("msg=Manifest")
     def getDeferredResult(hash: String, userIdString: String) = db_read { implicit res =>
       Query("""deferred_request [request_hash = ? & username = ? & status in (?, ?)]
                  { response_headers, response_entity_file_id, response_entity_file_sha_256 }""",
@@ -593,6 +597,7 @@ object DeferredControl extends Loggable with AppConfig {
         }
     }
 
+    @annotation.nowarn("msg=Manifest")
     def getDeferredHttpRequest(hash: String, userIdString: String) = db_read { implicit res =>
       Query("""deferred_request [request_hash = ? & username = ?] { request }""", hash, userIdString)
         .headOption[java.io.InputStream]
@@ -601,6 +606,7 @@ object DeferredControl extends Loggable with AppConfig {
 
     def onRestart(): Unit = {
       db_write { implicit res =>
+        @annotation.nowarn("msg=Manifest")
         val c = Query("""-deferred_request[status in (?, ?)]""", DEFERRED_EXE, DEFERRED_QUEUE).unique[Int]
         if (c > 0) logger.warn(s"Deleted ($c) uncompleted deferred record(s) on deferred request processor restart")
       }

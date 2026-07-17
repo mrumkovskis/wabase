@@ -20,6 +20,7 @@ object MarshallingSpecs {
   }
 }
 
+@annotation.nowarn("msg=Manifest")
 class MarshallingSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitializer with ScalatestRouteTest {
 
   var streamerConfQe: QuereaseProvider with AppFileStreamerConfig = _

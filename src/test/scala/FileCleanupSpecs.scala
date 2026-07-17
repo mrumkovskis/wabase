@@ -63,8 +63,10 @@ class FileCleanupSpecs extends FlatSpec with Matchers with BeforeAndAfterEach {
     view.setTimes(newTime, newTime, newTime)
   }
 
+  @annotation.nowarn("msg=Manifest")
   def fileInfoExists(fileStreamer: AppFileStreamer[_], fileInfo: AppFileStreamer.FileInfoHelper) =
     newTransaction(implicit res => Query(s"${fileStreamer.file_info_table}[${fileInfo.id}]{count(1)}").unique[Long] == 1)
+  @annotation.nowarn("msg=Manifest")
   def fileBodyInfoExists(fileStreamer: AppFileStreamer[_], fileInfo: AppFileStreamer.FileInfoHelper) =
     newTransaction(implicit res => Query(s"${fileStreamer.file_body_info_table}[${fileStreamer.shaColName} = '${fileInfo.sha_256}']{count(1)}").unique[Long] == 1)
   def fileExists(file: AppFileStreamer.FileInfoHelper) = new java.io.File(file.path).exists()

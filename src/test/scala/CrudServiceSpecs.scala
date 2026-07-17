@@ -143,9 +143,11 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
   def deletePerson(name: String): Unit = {
     dbAccess.newTransaction() { implicit res => Query(s"-person[name = '$name']") }
   }
+  @annotation.nowarn("msg=Manifest")
   def hasPerson(name: String): Boolean = {
     dbAccess.withConn()(implicit res => Query(s"person[name = '$name'] {count(*)}").unique[Int]) == 1
   }
+  @annotation.nowarn("msg=Manifest")
   def hasPerson(name: String, surname: String = null): Boolean = {
     dbAccess.withConn()(implicit res => Query(s"person[name = '$name' & surname = '$surname'] {count(*)}").unique[Int]) == 1
   }

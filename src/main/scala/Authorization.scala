@@ -20,6 +20,7 @@ case class AuthContext(
 trait Authorization[User] {
   this: AppBase[User] with Audit[User] with DbAccess with DbConstraintMessage =>
 
+  @annotation.nowarn("msg=Manifest")
   private val wabaseAuth = {
     val WaClassProp = "app.wabase-authorization.class"
     if (!config.getIsNull(WaClassProp))
@@ -38,6 +39,7 @@ trait Authorization[User] {
   /** legacy flow - adds authZ information regarding result to context, i.e is result editable, etc... */
   def relevant[C <: RequestContext[_]](ctx: C, clazz: Class[_]): C = ???
 
+  @annotation.nowarn("msg=Manifest")
   def hasRole(user: User, roles: Set[String])(authCtx: AuthContext): Future[Boolean] = {
     if (wabaseAuthView != null) user match {
       case _: WabaseUser =>

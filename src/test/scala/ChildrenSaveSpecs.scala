@@ -33,6 +33,7 @@ object ChildrenSaveSpecsDtos {
   )
 }
 
+@annotation.nowarn("msg=Manifest")
 class ChildrenSaveSpecs extends FlatSpec with Matchers with TestQuereaseInitializer {
 
   import AppMetadata._

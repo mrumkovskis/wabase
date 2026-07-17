@@ -78,6 +78,7 @@ class ClassLoaderTresqlResourcesConf(cl: ClassLoader) extends Loggable {
    * */
   def tresqlResourcesConf(
       cpName: String, tunedConfForCp: Config): TresqlResourcesConf = {
+    @annotation.nowarn("msg=Manifest")
     val tresqlConfInstance =
       if (tunedConfForCp.hasPath("config-class"))
         getObjectOrNewInstance[TresqlResourcesConf](tunedConfForCp, "config-class", "tresql resources config")

@@ -27,6 +27,7 @@ class ClassLoaderComponentConf(cl: ClassLoader) extends ComponentConf {
     if (cl == null) ConfigFactory.defaultReferenceUnresolved()  else ConfigFactory.defaultReferenceUnresolved(cl)
 
   private val delegateClassSetting = "conf-loader-class"
+  @annotation.nowarn("msg=Manifest")
   private lazy val delegate: ComponentConf =
     Option(defaultGetConfigs("component-conf", Set.empty).root)
       .filter(_.hasPath(delegateClassSetting))

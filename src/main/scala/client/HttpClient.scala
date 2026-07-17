@@ -24,6 +24,7 @@ object HttpClientConfig {
     Set("server-port", "server-path", "server-ws", "request-timeout", "await-timeout", "ssl-config")
   lazy val componentConfs = ComponentConf.getConfigs(rootPath, httpTunablePaths)
   lazy val configs: Map[String, Config] = componentConfs.confs.toMap - "ssl-config"
+  @annotation.nowarn("msg=Manifest")
   lazy val httpClientFactory: HttpClientFactory =
     getObjectOrNewInstance[HttpClientFactory](componentConfs.root, "factory-class", "http client factory")
   def apply(name: String): Config =
@@ -37,6 +38,7 @@ trait HttpClientFactory {
 object HttpClientFactory extends HttpClientFactory {
   def createHttpClients(implicit system: ActorSystem): Map[String, InjectionParametersContext => HttpRequest => Future[HttpResponse]] = {
     HttpClientConfig.configs.map { case (n, clientCfg) =>
+      @annotation.nowarn("msg=Manifest")
       val client = clientCfg.getString("client-class") match {
         case "org.wabase.client.RestClient" =>
           new RestClient(clientCfg)

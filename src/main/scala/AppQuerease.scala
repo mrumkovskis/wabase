@@ -144,11 +144,13 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   override def convertToType(value: Any, targetClass: Class[_]): Any =
     Format.convertToType(value, targetClass)
 
+  @annotation.nowarn("msg=Manifest")
   lazy val resultRenderersFactory = getObjectOrNewInstance[ResultRenderersFactory](
     config, "result-renderers.factory-class", "result renderers factory"
   )
   lazy val resultRenderers: ResultRenderers = resultRenderersFactory.createResultRenderers
 
+  @annotation.nowarn("msg=Manifest")
   lazy val requestDecodersFactory = getObjectOrNewInstance[RequestDecodersFactory](
     config, "request-decoders.factory-class", "request decoders factory"
   )
@@ -159,9 +161,11 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
 
   protected lazy val maxStackDepth: Int = config.getInt("wabase.max-stack-depth")
   lazy val templateEngine: WabaseTemplate = createTemplateEngine
+  @annotation.nowarn("msg=Manifest")
   protected def createTemplateEngine: WabaseTemplate =
     getObjectOrNewInstance[WabaseTemplate](config, "app.template.engine", "template engine")
   lazy val emailSender: WabaseEmail = createEmailSender
+  @annotation.nowarn("msg=Manifest")
   protected def createEmailSender: WabaseEmail =
     getObjectOrNewInstance[WabaseEmail](config, "app.email.sender", "email sender")
   protected def evaluatorConn(): Connection = {
@@ -893,6 +897,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
     import qr.ec, context.env
     val Action.Response(codeTresql, statusMode, hops, body) = op
+    @annotation.nowarn("msg=Manifest")
     val code =  useResourcesConnOrEvaluator(qr.resourcesFactory.resources, r =>
       Query(codeTresql.tresql)(r.withParams(scope.toBindeableMap(env))) match {
         case SingleValueResult(n: Number) => n.intValue
@@ -986,6 +991,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       .map(c => `Set-Cookie`(c.withExpires(org.apache.pekko.http.scaladsl.model.DateTime.MinValue)))
   }
 
+  @annotation.nowarn("msg=Manifest")
   protected def doSetHeaders(
     op: Action.SetHttpHeaders,
     scope: Scope,
@@ -1003,6 +1009,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     })
   }
 
+  @annotation.nowarn("msg=Manifest")
   protected def doSetUserAttributes(
     op: Action.SetUserAttributes,
     scope: Scope,
@@ -1022,6 +1029,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     })
   }
 
+  @annotation.nowarn("msg=Manifest")
   protected def doIf(
     op: Action.If,
     scope: Scope,
@@ -1108,10 +1116,12 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     httpReq: HttpRequest,
   ): Future[ResourceResult] = {
     import context.env
+    @annotation.nowarn("msg=Manifest")
     val resource = useResourcesConnOrEvaluator(res, r =>
       Query(op.nameTresql.tresql)(r.withParams(scope.toBindeableMap(env))).unique[String])
     val ct = Option(op.contentTypeTresql)
       .map { ctt =>
+        @annotation.nowarn("msg=Manifest")
         val ct = useResourcesConnOrEvaluator(res, r =>
           Query(ctt.tresql)(r.withParams(scope.toBindeableMap(env))).unique[String])
         ContentType.parse(ct)
@@ -1134,6 +1144,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     fss: WabaseFileStreamers): Future[QuereaseResult] = {
     import context.env
     val fs = fss.fs(op.fileStreamerName)
+    @annotation.nowarn("msg=Manifest")
     val (id, sha) = useResourcesConnOrEvaluator(implicitly[Resources],
       r => Query(op.idShaTresql.tresql)(r.withParams(scope.toBindeableMap(env))).unique[Long, String])
     val r = FileResult(fs.getFileInfo(id, sha).map(_.file_info).orNull, fs)
@@ -1148,6 +1159,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     import org.apache.pekko.http.scaladsl.model.{MediaTypes, ContentType}
     import qr._, resourcesFactory._, context.env
     val bindVars = scope.toBindeableMap(env)
+    @annotation.nowarn("msg=Manifest")
     def getVal(tr: Action.Tresql) = useResourcesConnOrEvaluator(resources,
       res => Query(tr.tresql)(res.withParams(bindVars)).unique[String])
     val fn = if (op.nameTresql != null) getVal(op.nameTresql) else "file"
@@ -1165,6 +1177,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     }.map(FileInfoResult.apply)
   }
 
+  @annotation.nowarn("msg=Manifest")
   protected def doTemplate(
     op: Action.Template,
     scope: Scope,
@@ -1241,6 +1254,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         val from = s(email.getOrElse("from", null))
         val replyTo = s(email.getOrElse("replyTo", null))
         def subj_body(bv: Map[String, Any]) = {
+          @annotation.nowarn("msg=Manifest")
           def stringContent(qr: QuereaseResult) = qr match {
             case TresqlResult(r) => Future.successful(r.unique[String])
             case _ => renderedResult(qr, null, null, Option(false), context)
@@ -2014,6 +2028,7 @@ object AppQuerease {
     def createInjectionParametersProvider: InjectionParametersProvider
   }
 
+  @annotation.nowarn("msg=Manifest")
   def injectionParametersProviderFactory: InjectionParametersProviderFactory =
     getObjectOrNewInstance[InjectionParametersProviderFactory](
       config, "app.wabase-injection-parameters-provider-factory", "injection parameters provider factory")
@@ -2045,6 +2060,7 @@ object AppQuerease {
   /** Function used for http headers construction.
    * NOTE: Returned tuple elements are trimmed since sql may return trailing spaces from union select
    * */
+  @annotation.nowarn("msg=Manifest")
   def listOfStringTuples(result: Result[_]): List[(String, String)] = {
     result match {
       case SingleValueResult(r) => r match { // unwrap header values from list of maps

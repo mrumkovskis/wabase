@@ -133,6 +133,7 @@ class AppFileCleanup(qe: AppQuerease, resourcesTemplate: Resources,
           lastBatch._1.executeBatch()
       }
       //filesUploaded as count query also for "warming up" DB (something like sql "analyze file_body_info"); independent of logger.debug scope
+      @annotation.nowarn("msg=Manifest")
       val filesUploaded = db_write { implicit res =>
         Query("files_on_disk{count(1)}").unique[Long]
       }
@@ -151,6 +152,7 @@ class AppFileCleanup(qe: AppQuerease, resourcesTemplate: Resources,
       case (fs, idx) => s"path_$idx" -> fs.rootPath
     }.toMap
     db_read { implicit res: Resources =>
+      @annotation.nowarn("msg=Manifest")
       val filesMoved = Query(query, pathsParams).list[String]
         .map(new File(_))
         .foldLeft(0){case (counter, fullPathFile) =>

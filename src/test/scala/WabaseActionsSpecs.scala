@@ -1028,6 +1028,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       .map { _ =>
         Thread.sleep(200) // wait until hopefully afterWabaseAction method is completed
         app.dbAccess.withConn(app.DefaultCp) { implicit r =>
+          @annotation.nowarn("msg=Manifest")
           val res = Query("simple_table [id = ?] {value}", id + 1).unique[String]
           app.qe.cborOrJsonDecoder
             .decodeToMap(ByteString(res), "result_audit_test")(app.qe.viewNameToMapZero) shouldBe Map("id" -> 55, "value" -> "data")

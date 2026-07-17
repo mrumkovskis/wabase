@@ -320,6 +320,7 @@ object CborOrJsonAnyValueDecoder extends CborOrJsonAnyValueDecoder
 object CsvDecoderConfig {
   lazy val componentConfs = ComponentConf.getConfigs("data-parsers-csv")
   lazy val configs: Map[String, Config] = componentConfs.confs.toMap
+  @annotation.nowarn("msg=Manifest")
   lazy val csvDecoderFactory: CsvDecoderFactory =
     getObjectOrNewInstance[CsvDecoderFactory](componentConfs.root, "factory-class", "csv decoder factory")
 }
@@ -360,6 +361,7 @@ object CsvDecoderFactory extends CsvDecoderFactory {
 object JsonDecoderConfig {
   lazy val componentConfs: ComponentConfs = ComponentConf.getConfigs("data-parsers-json")
   lazy val configs: Map[String, Config] = componentConfs.confs.toMap
+  @annotation.nowarn("msg=Manifest")
   lazy val jsonDecoderFactory: JsonDecoderFactory =
     getObjectOrNewInstance[JsonDecoderFactory](componentConfs.root, "factory-class", "json decoder factory")
 }
@@ -385,6 +387,7 @@ object JsonDecoderFactory extends JsonDecoderFactory {
 object XmlDecoderConfig {
   lazy val componentConfs = ComponentConf.getConfigs("data-parsers-xml")
   lazy val configs: Map[String, Config] = componentConfs.confs.toMap
+  @annotation.nowarn("msg=Manifest")
   lazy val xmlDecoderFactory: XmlDecoderFactory =
     getObjectOrNewInstance[XmlDecoderFactory](componentConfs.root, "factory-class", "xml decoder factory")
 }

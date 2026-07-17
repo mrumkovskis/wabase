@@ -18,6 +18,7 @@ class WabaseDeferredControl(
   extends DeferredControl.DeferredStatusPublisher {
 
   protected def initDeferredStorage: DeferredControl.DeferredStorage = {
+    @annotation.nowarn("msg=Manifest")
     val factory = getObjectOrNewInstance[DeferredStorageFactory](
       config, "app.deferred-requests.storage-factory-class", "deferred storage factory")
     factory.initialize(wabase)

@@ -341,7 +341,9 @@ object WabaseTestHandlers {
   def testHandler(ctx: WabaseRequestContext) = s"Key: [${ctx.key.mkString(", ")}]"
   def map_handler(uri: Uri) = uri.query().toMap
   def seq_handler(ctx: WabaseRequestContext) = ctx.key
+  @annotation.nowarn("msg=Manifest")
   def dto_handler(ctx: WabaseRequestContext) = ctx.wabase.qio.fill[View1](ctx.req.uri.query().toMap)
+  @annotation.nowarn("msg=Manifest")
   def dto_seq_handler(ctx: WabaseRequestContext) = {
     val lists = ctx.req.uri.query().toMultiMap.map { case (k, v) => v.map(k -> _) }.toList
     require(lists.size == 2, s"Expected 2 query multi-map lists, got ${lists.size}")

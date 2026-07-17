@@ -97,6 +97,7 @@ object Guidelines {
     result.filter(d => d.code == "code2" && d.category == filterCond.category)
   }
 
+  @annotation.nowarn("msg=Manifest")
   def qeCall(ctx: WabaseRequestContext) = {
     val result = ctx.wabase.withConn("guideline_calculation_helper", "list", ctx.queryTimeout,
       ctx.logger.underlying.getName) { implicit res =>
