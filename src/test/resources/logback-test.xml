@@ -30,7 +30,7 @@
 
     <logger name="com.zaxxer.hikari" level="warn"/>
     <logger name="org.apache.pekko.stream.scaladsl.RestartWithBackoffSource" level="error"/>
-    <logger name="wabase.app.BusinessScenariosSpecs" level="info"/>
+    <logger name="wabase.app.BusinessScenariosSpecs" level="warn"/>
 
     <!-- specific route logger, format - <http method>.<uri path with slashes replaced with dots> -->
     <!-- logger name="post.data.purchase_save" level="debug"/ -->
