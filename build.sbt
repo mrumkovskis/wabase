@@ -204,40 +204,48 @@ lazy val wabase = (project in file("."))
       </developers>
   )
 
+// Shared by it / it_legacy: resources dir is used for both Compile and Test, but
+// logback-test.xml must only appear once on the test classpath (Logback warns if it
+// is also copied to Compile/classes).
+lazy val itResourceSettings = Seq(
+  Compile / resourceDirectory := baseDirectory.value / "resources",
+  // Keep app config/routes/views on compile classpath; exclude test-only Logback config.
+  Compile / unmanagedResources / excludeFilter := {
+    (Compile / unmanagedResources / excludeFilter).value ||
+      new SimpleFileFilter(_.getName == "logback-test.xml")
+  },
+  Test / resourceDirectory := baseDirectory.value / "resources",
+  // Test must not inherit Compile's logback-test.xml exclusion (scope delegation).
+  Test / unmanagedResources / excludeFilter := HiddenFileFilter,
+  Test / scalaSource       := baseDirectory.value / "scala",
+  Test / fork := true,
+  Test / javaOptions := Seq("-Xmx2G"),
+  Test / parallelExecution := false,
+  Test / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-h", name.value + "-it-report"),
+)
+
 lazy val it = (project in file("src/it"))
   .dependsOn(wabase)
   .settings(commonSettings: _*)
+  .settings(itResourceSettings: _*)
   .settings(
     libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.19",
     publish / skip := true,
-    Compile / resourceDirectory := baseDirectory.value / "resources",
     Compile / run / mainClass   := Some("org.wabase.WabaseServer"),
     Compile / unmanagedSources  += baseDirectory.value / ".." / "test" / "scala" / "BusinessScenariosBaseSpecs.scala",
     Compile / unmanagedSources  += baseDirectory.value / ".." / "test" / "scala" / "TemplateUtil.scala",
-    Test / fork := true,
-    Test / javaOptions := Seq("-Xmx2G"),
-    Test / parallelExecution := false,
-    Test / resourceDirectory := baseDirectory.value / "resources",
-    Test / scalaSource       := baseDirectory.value / "scala",
-    Test / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-h", name.value + "-it-report"),
   )
 
 lazy val it_legacy = (project in file("src/it_legacy"))
   .dependsOn(wabase)
   .settings(commonSettings: _*)
+  .settings(itResourceSettings: _*)
   .settings(
     libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.19",
     publish / skip := true,
-    Compile / resourceDirectory := baseDirectory.value / "resources",
     Compile / run / mainClass   := Some("org.wabase.WabaseServer"),
     Compile / unmanagedSources  += baseDirectory.value / ".." / "test" / "scala" / "BusinessScenariosBaseSpecs.scala",
     Compile / unmanagedSources  += baseDirectory.value / ".." / "test" / "scala" / "TemplateUtil.scala",
-    Test / fork := true,
-    Test / javaOptions := Seq("-Xmx2G"),
-    Test / parallelExecution := false,
-    Test / resourceDirectory := baseDirectory.value / "resources",
-    Test / scalaSource       := baseDirectory.value / "scala",
-    Test / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-h", name.value + "-it-report"),
   )
 
 Test            / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-h", "report")
