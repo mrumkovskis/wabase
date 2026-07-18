@@ -59,11 +59,22 @@ class BufferedAuditWriter(
         logger.warn(s"audit file path does not exist, creating '$dir' ...")
         if (!dir.mkdirs()) sys.error(s"Failed to create audit file path '$dir'")
       }
-      val file = new File(dir, filenamePrefix + filenameDateTime.format(Instant.now()))
-      if (!file.createNewFile)
+      var instant = Instant.now()
+      var file: File = null
+      var created = false
+      var attempt = 0
+      while (!created && attempt < 5) {
+        file = new File(dir, filenamePrefix + filenameDateTime.format(instant))
+        if (file.createNewFile) {
+          created = true
+          filename = file.getName
+        } else {
+          attempt += 1
+          instant = instant.plusMillis(1)
+        }
+      }
+      if (!created)
         sys.error("Failed to create file " + file)
-      else
-        filename = file.getName
       fileCreationQueue.offer(Notification)
       channel = FileChannel.open(file.toPath, StandardOpenOption.WRITE)
     }
