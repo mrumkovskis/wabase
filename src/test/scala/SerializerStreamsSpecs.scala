@@ -725,6 +725,28 @@ class SerializerStreamsSpecs extends FlatSpec with Matchers with TestQuereaseIni
     }
   }
 
+  it should "escape csv values according to RFC 4180" in {
+    def render(cells: Any*): String = {
+      val baos = new java.io.ByteArrayOutputStream
+      val renderer = new CsvResultRenderer(new OutputStreamWriter(baos, "UTF-8"))
+      cells.foreach(renderer.renderCell)
+      renderer.renderRowEnd()
+      renderer.renderFooter()
+      baos.toString("UTF-8")
+    }
+    // unquoted when no special characters
+    render("plain", 42, null) shouldBe "plain,42,\n"
+    // quote fields containing comma, double quote, CR or LF; double embedded quotes
+    render("a,b") shouldBe "\"a,b\"\n"
+    render("say \"hi\"") shouldBe "\"say \"\"hi\"\"\"\n"
+    render("line1\nline2") shouldBe "\"line1\nline2\"\n"
+    render("line1\rline2") shouldBe "\"line1\rline2\"\n"
+    render("line1\r\nline2") shouldBe "\"line1\r\nline2\"\n"
+    render("a,\"b\",c\nd") shouldBe "\"a,\"\"b\"\",c\nd\"\n"
+    // mixed row
+    render("ok", "x,y", "z") shouldBe "ok,\"x,y\",z\n"
+  }
+
   it should "encode byte arrays to text formats" in {
     implicit val qe = querease
     def createCsvResultRenderer(os: OutputStream) =

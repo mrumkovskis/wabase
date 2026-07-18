@@ -613,10 +613,20 @@ object CsvWithBom {
 
 class CsvResultRenderer(writer: io.Writer) extends TableResultRenderer {
   protected var isAtRowStart = true
-  protected def escapeValue(s: String) =
-    if (s == null) null
-    else if (s.contains(",") || s.contains("\"")) ("\"" + s.replaceAll("\"", "\"\"") + "\"")
-    else s
+  /** Escape a CSV field per RFC 4180: quote when the value contains comma, double quote, CR or LF;
+    * escape embedded double quotes by doubling them. */
+  protected def escapeValue(s: String): String = {
+    if (s == null) return null
+    var i = 0
+    val n = s.length
+    while (i < n) {
+      val c = s.charAt(i)
+      if (c == ',' || c == '"' || c == '\r' || c == '\n')
+        return "\"" + s.replace("\"", "\"\"") + "\""
+      i += 1
+    }
+    s
+  }
   protected def csvValue(v: Any): String = Option(v).map{
     case n: java.lang.Number => String.valueOf(n)
     case t: Timestamp => xlsxDateTime(t)
