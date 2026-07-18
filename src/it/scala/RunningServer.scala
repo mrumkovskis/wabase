@@ -8,6 +8,7 @@ import org.wabase.client.{HttpClient, WabaseHttpClient}
 import scala.concurrent.Await
 import scala.concurrent.Future
 import scala.concurrent.duration._
+import scala.util.control.NonFatal
 
 class RunningServer extends WabaseHttpClient()(ActorSystem("it-http-client")) {
 
@@ -20,11 +21,22 @@ class RunningServer extends WabaseHttpClient()(ActorSystem("it-http-client")) {
   override protected def doRequest(req: HttpRequest, cookieStorage: CookieMap, timeout: FiniteDuration, maxRedirects: Int): Future[HttpResponse] =
     super.doRequest(req.addAttribute(HttpClient.ModeKey, HttpClient.ProxyMode), cookieStorage, timeout, maxRedirects)
 
-  ServerState.synchronized {
-    if (!ServerState.is_running) {
+  private val readyF = ServerState.synchronized {
+    if (!ServerState.started) {
+      ServerState.started = true
       WabaseServer.main(Array.empty)
-      ServerState.is_running = true
+      ServerState.ready = WabaseServer.bindingFuture
     }
+    ServerState.ready
+  }
+  try Await.result(readyF, 30.seconds)
+  catch {
+    case NonFatal(e) =>
+      ServerState.synchronized {
+        ServerState.started = false
+        ServerState.ready = null
+      }
+      throw e
   }
 
   def unbind(): Unit = {
@@ -34,5 +46,6 @@ class RunningServer extends WabaseHttpClient()(ActorSystem("it-http-client")) {
 }
 
 private object ServerState {
-  var is_running = false
+  var started = false
+  var ready: Future[_] = _
 }
