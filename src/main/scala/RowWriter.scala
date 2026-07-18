@@ -11,7 +11,6 @@ import java.io.{OutputStreamWriter, Writer}
 import java.util.zip.ZipOutputStream
 import scala.collection.immutable.Seq
 import scala.concurrent.{ExecutionContext, Future}
-import org.tresql.RowLike
 
 trait RowWriter {
   def header(): Unit
@@ -43,12 +42,13 @@ trait RowWriters { this: QuereaseProvider =>
   }
 
   trait AbstractRowWriter extends RowWriter {
-    type Row <: RowLike
+    type Row
     type Result <: Iterator[Row] with AutoCloseable
 
     def labels: Seq[String]
     def row(r: Row): Unit
     def result: Result
+    protected def values(r: Row): Iterable[_]
     override def hasNext = result.hasNext
     override def row() = row(result.next())
     override def close() = result.close()
@@ -70,7 +70,7 @@ trait RowWriters { this: QuereaseProvider =>
     }
     override def row(r: Row) = {
       streamer.startRow
-      r.values foreach { (v: Any) => streamer.cell(v) }
+      values(r) foreach { (v: Any) => streamer.cell(v) }
       streamer.endRow
     }
     override def footer() = {
@@ -91,7 +91,7 @@ trait RowWriters { this: QuereaseProvider =>
       writer.flush
     }
     override def row(r: Row) = {
-      writer.write(r.values.map(csvValue).mkString("",",","\n"))
+      writer.write(values(r).map(csvValue).mkString("",",","\n"))
       writer.flush
     }
     override def footer() = {}
@@ -124,7 +124,7 @@ trait RowWriters { this: QuereaseProvider =>
     }
     override def row(r: Row) = {
       streamer.startRow
-      r.values foreach { (v: Any) => streamer.cell(v) }
+      values(r) foreach { (v: Any) => streamer.cell(v) }
       streamer.endRow
     }
     override def footer() = {
