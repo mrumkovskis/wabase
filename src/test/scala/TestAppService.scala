@@ -47,7 +47,7 @@ class TestAppLogMessageNoiseDetector extends EventEvaluatorBase[ILoggingEvent] {
   }
 }
 
-class TestAppService(system: ActorSystem) extends ExecutionImpl()(system)
+class TestAppService(val actorSystem: ActorSystem) extends Execution
     with AppServiceBase[TestUsr]
     with AppFileServiceBase[TestUsr]
     with AppConfig
@@ -67,10 +67,10 @@ class TestAppService(system: ActorSystem) extends ExecutionImpl()(system)
   override def decodeSession(session: String) = ???
   override def signInUser = ???
   override def appVersion: String = "TEST"
-  override protected def initDeferredStorage: DeferredStorage = new DbDeferredStorage(appConfig, dbAccess, this)(system)
+  override protected def initDeferredStorage: DeferredStorage = new DbDeferredStorage(appConfig, dbAccess, this)(actorSystem)
 }
 
-class TestAppServiceNoDeferred(system: ActorSystem) extends ExecutionImpl()(system)
+class TestAppServiceNoDeferred(val actorSystem: ActorSystem) extends Execution
   with AppServiceBase[TestUsr]
   with AppFileServiceBase[TestUsr]
   with AppConfig

@@ -33,7 +33,6 @@ class FileCleanupSpecs extends FlatSpec with Matchers with BeforeAndAfterEach {
 
   val maxWait = 1.minute
   val txtContentType = ContentTypes.`text/plain(UTF-8)`
-  val execution = new ExecutionImpl()(ActorSystem("file-cleanup-spec-system"))
   def saveFile(fileStreamer: AppFileStreamer[String], fileName: String, contentType: ContentType) = {
     implicit val system = ActorSystem("file-cleanup-specs")
     implicit val executor = system.dispatcher

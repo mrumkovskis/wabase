@@ -30,7 +30,7 @@ object ServerStatistics {
 
   import DefaultServerStatistics._
 
-  private val statsActor = system.actorOf(Props(classOf[StatsActor], this))
+  private val statsActor = actorSystem.actorOf(Props(classOf[StatsActor], this))
 
   val startTime = currentTime
 

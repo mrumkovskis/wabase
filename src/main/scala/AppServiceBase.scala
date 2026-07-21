@@ -121,8 +121,8 @@ trait AppServiceBase[User]
           val value: Future[Map[String, Any]] = invokeFunction(o, f,
             Seq[(Class[_], () => Any)](
               (classOf[HttpRequest], () => ctx.request),
-              (classOf[ActorSystem], () => system),
-              (classOf[ExecutionContext], () => executor)
+              (classOf[ActorSystem], () => actorSystem),
+              (classOf[ExecutionContext], () => executionContext)
             )
           ) match {
             case f: Future[_] => f.mapTo[Map[String, Any]]
@@ -234,7 +234,7 @@ trait AppServiceBase[User]
           extractRequest { implicit httpReq =>
             implicit val routeLogger: Logger = WabaseService.routeLogger(httpReq)
             onSuccess(app.checkApi(viewName, requestUri.path, ActionForHttpPut, user, keyValues)(
-              AuthContext(system, httpReq, timeout, routeLogger))) { actionName =>
+              AuthContext(actorSystem, httpReq, timeout, routeLogger))) { actionName =>
               entityAsMapOrException(viewName) { entityAsMap =>
                 complete {
                   app.doWabaseAction(actionName, viewName, keyValues, filterPars(params), entityAsMap,
@@ -296,7 +296,7 @@ trait AppServiceBase[User]
       parameterMultiMap { params =>
         extractRequest { implicit httpReq =>
           onSuccess(app.checkApi(viewName, requestUri.path, ActionForHttpPost, user, keyValues)(
-            AuthContext(system, httpReq, timeout, WabaseService.routeLogger(httpReq))
+            AuthContext(actorSystem, httpReq, timeout, WabaseService.routeLogger(httpReq))
           )) { actionName =>
             if (useActions(viewName, actionName)) {
               entityAsMapOrException(viewName) { entityAsMap =>
@@ -388,7 +388,7 @@ trait AppServiceBase[User]
   }
 
   def apiAction(implicit user: User) = (extractRequest & extractTimeout) { (httpReq, timeout) =>
-    complete(app.api(user)(AuthContext(system, httpReq, timeout, WabaseService.routeLogger(httpReq))))
+    complete(app.api(user)(AuthContext(actorSystem, httpReq, timeout, WabaseService.routeLogger(httpReq))))
   }
   def metadataAction(viewName: String)(implicit user: User, state: ApplicationState) =
     respondWithHeader(ETag(EntityTag(app.metadataVersionString))) {

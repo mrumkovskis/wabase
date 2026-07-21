@@ -13,8 +13,8 @@ object Server extends scala.App with Loggable {
   val hostPortString  = s"http://localhost:$port"
 
   val service = new Service(ActorSystem("legacy-service-test"))
-  implicit val ec: ExecutionContext = service.executor
-  implicit val ss: ActorSystem      = service.system
+  implicit val ec: ExecutionContext = service.executionContext
+  implicit val ss: ActorSystem      = service.actorSystem
 
   val bindingFuture = {
     Http().newServerAt(bindAddress, port).bindFlow(service.route)
@@ -32,7 +32,7 @@ object Server extends scala.App with Loggable {
         s"FAILED to start server at $hostPortString because of: ${ex.getMessage}" +
         "\n\n"
       )
-      service.system.terminate()
+      service.actorSystem.terminate()
   }
   def unbind(): Unit = {
     val _ = unbindFuture
@@ -43,6 +43,6 @@ object Server extends scala.App with Loggable {
       .flatMap(_.unbind())  // trigger unbinding from the port
       .recover { case _ => null }
       .flatMap { _ =>       // and terminate actor system when done
-       service.system.terminate()
+       service.actorSystem.terminate()
       }
 }

@@ -37,7 +37,7 @@ class RunningServer extends WabaseHttpClient()(ActorSystem("legacy-it-http-clien
   }
 
   def unbind(): Unit = {
-    implicit val ec: scala.concurrent.ExecutionContext = Server.service.executor
+    implicit val ec: scala.concurrent.ExecutionContext = Server.service.executionContext
     Await.result(Server.unbindFuture, 30.seconds)
   }
 }

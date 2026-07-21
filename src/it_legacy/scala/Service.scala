@@ -26,7 +26,7 @@ object TestApp extends AppBase[TestUser]
   override def hasRole(user: TestUser, roles: Set[String])(authCtx: AuthContext): Future[Boolean] = Future.successful(true)
 }
 
-class Service(system: ActorSystem) extends ExecutionImpl()(system)
+class Service(val actorSystem: ActorSystem) extends Execution
     with AppServiceBase[TestUser]
     with AppFileServiceBase[TestUser]
     with ConstantQueryTimeout

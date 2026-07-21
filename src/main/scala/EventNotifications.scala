@@ -23,13 +23,13 @@ trait ServerNotifications extends EventStreamMarshalling with WebSocketDirective
     with Loggable =>
 
     // start event subscriber watcher actor
-    system
-      .actorSelection(system / ServerNotifications.SubscriberWatcherActorName)
+    actorSystem
+      .actorSelection(actorSystem / ServerNotifications.SubscriberWatcherActorName)
       .resolveOne(1.second)
       .onComplete {
         case Success(_) => logger.info(s"Subscriber watcher already exists")
         case Failure(_: ActorNotFound) =>
-          system.actorOf(Props(classOf[ServerNotifications.EventSubscriberWatcher]),
+          actorSystem.actorOf(Props(classOf[ServerNotifications.EventSubscriberWatcher]),
             ServerNotifications.SubscriberWatcherActorName)
         case Failure(e) => logger.error("Unable to start subscriber watcher actor", e)
       }
@@ -41,7 +41,7 @@ trait ServerNotifications extends EventStreamMarshalling with WebSocketDirective
       ServerNotifications.subscribeToEvents(
         bus => act => bus.subscribe(act, ServerNotifications.UserAddresseeMsg(userIdString)),
         _ => publishInitialEvents(userIdString)
-      )(system)
+      )(actorSystem)
     }
     /**
       * Consider [[serverSideEventAction]] instead
@@ -50,7 +50,7 @@ trait ServerNotifications extends EventStreamMarshalling with WebSocketDirective
       handleWebSocketMessages(ServerNotifications.subscribeToWsMessages(
         bus => act => bus.subscribe(act, ServerNotifications.UserAddresseeMsg(userIdString)),
         _ => publishInitialEvents(userIdString)
-      )(system))
+      )(actorSystem))
     }
     def publishUserEvents(user: String, events: Iterable[Any]) = {
       events.foreach(publishUserEvent(user, _))

@@ -70,7 +70,7 @@ class Audit extends Loggable {
   implicit val responseAuditDecoder: Decoder[ResponseAudit] = deriveDecoder[ResponseAudit]
   implicit val auditRecordDecoder:   Decoder[AuditRecord]   = deriveDecoder[AuditRecord]
 
-  implicit lazy val system: ActorSystem = WabaseServer.app.system
+  implicit lazy val system: ActorSystem = WabaseServer.app.actorSystem
   implicit lazy val ec: scala.concurrent.ExecutionContext = system.dispatcher
   protected lazy val auditSaveView = DefaultAppQuerease.viewDef("audit")
   protected lazy val resourcesTemplate =

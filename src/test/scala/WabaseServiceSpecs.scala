@@ -16,15 +16,14 @@ import scala.concurrent.{Await, ExecutionContext, Future}
 
 class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
 
-  class WA(exec: Execution) extends WabaseServer.App(exec) {
+  class WA(system: ActorSystem) extends WabaseServer.App(system) {
     override def initQuerease: AppQuerease = new TestQuerease(List("/service-specs-metadata.yaml", "/roles-test.yaml"))
     override implicit lazy val httpClients: WabaseHttpClients =
       WabaseHttpClients(Map("default-wabase-http-client" -> (_ => server.handle)))
   }
   implicit val serverSystem: ActorSystem  = ActorSystem("wabase-server")
   implicit val ec: ExecutionContext = serverSystem.dispatcher
-  val executionImpl = new ExecutionImpl()(serverSystem)
-  val wabase = new WA(executionImpl)
+  val wabase = new WA(serverSystem)
   val server = new WabaseServer(wabase, invokeBeforeStart = null, enableServerNotifications = false, enableDeferredRequests = false)
 
   DbDrivers.loadDrivers

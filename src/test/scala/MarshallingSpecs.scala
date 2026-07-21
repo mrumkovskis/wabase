@@ -158,7 +158,7 @@ class MarshallingSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
   it should "marshal status result, key in query" in {
     val svc = service
     implicit val sm: ToResponseMarshaller[ResponseResult] = Marshaller { implicit ec =>sr =>
-      svc.toResponseQuereaseResponseResultMarshaller(svc.app.WabaseResult(null, sr))(ec)(sr)
+      svc.toResponseQuereaseResponseResultMarshaller(svc.app.WabaseResult(null, sr))(sr)
     }
     def response(sr: ResponseResult) = Await.result(Marshal(sr).to[HttpResponse], 1.second)
 
@@ -243,7 +243,7 @@ class MarshallingSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
   it should "marshal status result, key in path" in {
     val svc = service2
     implicit val sm: ToResponseMarshaller[ResponseResult] = Marshaller { implicit ec =>sr =>
-      svc.toResponseQuereaseResponseResultMarshaller(svc.app.WabaseResult(null, sr))(ec)(sr)
+      svc.toResponseQuereaseResponseResultMarshaller(svc.app.WabaseResult(null, sr))(sr)
     }
     def response(sr: ResponseResult) = Await.result(Marshal(sr).to[HttpResponse], 1.second)
 

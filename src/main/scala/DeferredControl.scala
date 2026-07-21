@@ -55,7 +55,7 @@ trait DeferredControl
   private val deferredStorage = Option(initDeferredStorage)
     .getOrElse(sys.error("initDeferredStorage function returned null, cannot initialize DeferredControl."))
 
-  protected val cleanupActor = system.actorOf(Props(classOf[DeferredControl.DeferredCleanup], deferredStorage))
+  protected val cleanupActor = actorSystem.actorOf(Props(classOf[DeferredControl.DeferredCleanup], deferredStorage))
 
   //Start deferred request processing flow - subscribe entry actor to DeferredRequestArrived message
   startDeferredGraph(moduleId, deferredStorage, this, deferredWorkerCount)

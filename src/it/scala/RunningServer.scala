@@ -1,6 +1,5 @@
 package wabase.app
 
-import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.model.{HttpRequest, HttpResponse}
 import org.wabase.{AppQuerease, DefaultAppQuerease, WabaseServer}
 import org.wabase.client.{HttpClient, WabaseHttpClient}
@@ -10,7 +9,7 @@ import scala.concurrent.Future
 import scala.concurrent.duration._
 import scala.util.control.NonFatal
 
-class RunningServer extends WabaseHttpClient()(ActorSystem("it-http-client")) {
+class RunningServer extends WabaseHttpClient()(WabaseServer.app.actorSystem) {
 
   override protected def initQuerease: AppQuerease = DefaultAppQuerease
 
@@ -40,7 +39,6 @@ class RunningServer extends WabaseHttpClient()(ActorSystem("it-http-client")) {
   }
 
   def unbind(): Unit = {
-    implicit val ec: scala.concurrent.ExecutionContext = WabaseServer.app.executor
     Await.result(WabaseServer.unbindFuture, 30.seconds)
   }
 }

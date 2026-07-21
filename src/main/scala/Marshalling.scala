@@ -138,25 +138,25 @@ trait DtoMarshalling extends QuereaseMarshalling { this: AppProvider[_] with Exe
 trait QuereaseMarshalling extends QuereaseResultMarshalling with WabaseUnmarshallers { this: AppProvider[_] with Execution with OptionMarshalling =>
   import app.qe
   implicit val mapForViewMarshaller: ToEntityMarshaller[(Map[String, Any], String, ResultRenderer.ResultFilter)] = {
-    def marsh(viewName: String, resFilter: ResultRenderer.ResultFilter)(implicit ec: ExecutionContext): ToEntityMarshaller[Map[String, Any]] =
+    def marsh(viewName: String, resFilter: ResultRenderer.ResultFilter): ToEntityMarshaller[Map[String, Any]] =
       Marshaller.combined { (map: Map[String, Any]) =>
         // TODO transcode directly
         ResultSerializer.serializeResult(app.SerializationBufferSize, app.viewSerializationBufferMaxFileSize(viewName),
           DataSerializer.source(() => Seq(map).iterator)).map(_.head)
           .map(QuereaseSerializedResult(_, resFilter, isCollection = false))
       } (GenericMarshallers.futureMarshaller(toEntityQuereaseSerializedResultMarshaller(viewName, null)))
-    Marshaller { ec => mapAndView => marsh(mapAndView._2, mapAndView._3)(ec)(mapAndView._1) }
+    Marshaller { _ => mapAndView => marsh(mapAndView._2, mapAndView._3)(mapAndView._1) }
   }
 
   implicit val seqOfMapsForViewMarshaller: ToEntityMarshaller[(Seq[Map[String, Any]], String, ResultRenderer.ResultFilter)] = {
-    def marsh(viewName: String, resFilter: ResultRenderer.ResultFilter)(implicit ec: ExecutionContext): ToEntityMarshaller[Seq[Map[String, Any]]] =
+    def marsh(viewName: String, resFilter: ResultRenderer.ResultFilter): ToEntityMarshaller[Seq[Map[String, Any]]] =
       Marshaller.combined { (seqOfMaps: Seq[Map[String, Any]]) =>
         // TODO transcode directly
         ResultSerializer.serializeResult(app.SerializationBufferSize, app.viewSerializationBufferMaxFileSize(viewName),
           DataSerializer.source(() => seqOfMaps.iterator)).map(_.head)
           .map(QuereaseSerializedResult(_, resFilter, isCollection = true))
       } (GenericMarshallers.futureMarshaller(toEntityQuereaseSerializedResultMarshaller(viewName, null)))
-    Marshaller { ec => seqOfMapsAndView => marsh(seqOfMapsAndView._2, seqOfMapsAndView._3)(ec)(seqOfMapsAndView._1) }
+    Marshaller { _ => seqOfMapsAndView => marsh(seqOfMapsAndView._2, seqOfMapsAndView._3)(seqOfMapsAndView._1) }
   }
 
   def toMapUnmarshallerForView(viewName: String): FromEntityUnmarshaller[Map[String, Any]] =
@@ -297,7 +297,7 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
       entity = HttpEntity(Option(ir.id).map(_.toString).getOrElse("")))
     }
   implicit def toResponseQuereaseKeyResultMarshaller:     ToResponseMarshaller[KeyResult]      =
-    Marshaller { ec => kr =>
+    Marshaller { _ => kr =>
       import AppMetadata._
       val sr =
         if (config.getBoolean("app.marshal_key_as_json")) {
@@ -311,9 +311,9 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
         } else if (qe.viewDef(kr.viewName).apiMethodToRoles.contains(Action.Get))
           ResponseResult(StatusCodes.SeeOther.intValue, RedirectValue(redirectTresqlUri(kr)))
         else ResponseResult((if (kr.ir.created) StatusCodes.Created else StatusCodes.OK).intValue, ResultValue(NoResult))
-      toResponseQuereaseResponseResultMarshaller(app.WabaseResult(null, sr))(ec)(sr)
+      toResponseQuereaseResponseResultMarshaller(app.WabaseResult(null, sr))(sr)
     }
-  implicit def toResponseQuereaseResponseResultMarshaller(wr: app.WabaseResult)(implicit ec: ExecutionContext):  ToResponseMarshaller[ResponseResult] = {
+  implicit def toResponseQuereaseResponseResultMarshaller(wr: app.WabaseResult):  ToResponseMarshaller[ResponseResult] = {
     val str = wr.result.asInstanceOf[ResponseResult]
     val responseMarshaller: ToResponseMarshaller[ResponseResult] =
       str.value match {
@@ -323,7 +323,7 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
             HttpResponse(headers = Seq(Location(app.qe.tresqlUri.uri(value))))
           }
         case ResultValue(value) => Marshaller { _ => _ =>
-           toResponseWabaseResultMarshaller(ec)(wr.copy(result = value))
+           toResponseWabaseResultMarshaller(wr.copy(result = value))
         }
         case null => Marshaller.opaque(_ => HttpResponse(StatusCodes.OK))
       }
@@ -448,7 +448,7 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
   }
 
   def toResponseCompatibleResultMarshaller(wr: app.WabaseResult): ToResponseMarshaller[CompatibleResult] = {
-    Marshaller { implicit ec => cr =>
+    Marshaller { _ => cr =>
       val fil = getResultFilter(wr.ctx.viewName, wr.ctx.resultFilter, cr.resultFilter)
       val ctx = wr.ctx.withResultFilter(fil)
       (toResponseWabaseResultMarshaller: ToResponseMarshaller[app.WabaseResult])(
@@ -458,7 +458,7 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
 
   def toEntityQuereaseSerializedResultMarshaller(viewName: String,
                                                  resultFilter: ResultRenderer.ResultFilter): ToEntityMarshaller[QuereaseSerializedResult] =
-    Marshaller { implicit ec => sr =>
+    Marshaller { _ => sr =>
       implicit val formats_marshaller: ToEntityMarshaller[SerializedResult] = {
         val marshallers = qe.resultRenderers.renderers.map {
           case (contentType, encCreator) =>
@@ -479,8 +479,8 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
   import org.wabase.{QuereaseSerializedResult => QuereaseSerRes}
   import org.wabase.{QuereaseDeleteResult     => QuereaseDelRes}
   import org.wabase.{TresqlSingleRowResult    => TresqlSingleRr}
-  implicit def toResponseWabaseResultMarshaller(implicit ec: ExecutionContext): ToResponseMarshaller[app.WabaseResult] =
-    Marshaller { implicit ec => wr => wr.result match {
+  implicit def toResponseWabaseResultMarshaller: ToResponseMarshaller[app.WabaseResult] =
+    Marshaller { _ => wr => wr.result match {
       case sr: QuereaseSerRes =>
         (toEntityQuereaseSerializedResultMarshaller (
           wr.ctx.viewName, wr.ctx.resultFilter):                                                       ToResponseMarshaller[QuereaseSerRes])(sr)
@@ -515,14 +515,14 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with Execution with Quere
     }}
 
   implicit val toResponseQuereaseIteratorMarshaller: ToResponseMarshaller[QuereaseIteratorResult[Dto]] = {
-    def marsh(viewName: String)(implicit ec: ExecutionContext): ToResponseMarshaller[QuereaseIteratorResult[Dto]] =
+    def marsh(viewName: String): ToResponseMarshaller[QuereaseIteratorResult[Dto]] =
       Marshaller.combined { (qir: QuereaseIteratorResult[Dto]) =>
         ResultSerializer.serializeResult(app.SerializationBufferSize, app.viewSerializationBufferMaxFileSize(viewName),
           DataSerializer.source(() => qir.map(_.toMap))).map(_.head)
           .map(QuereaseSerializedResult(_, null, isCollection = true))
       } (GenericMarshallers.futureMarshaller(toEntityQuereaseSerializedResultMarshaller(viewName, null)))
 
-    Marshaller { ec => res => marsh(res.view.name)(ec)(res) }
+    Marshaller { _ => res => marsh(res.view.name)(res) }
   }
 
   implicit def toResponseTresqlResultMarshaller(implicit res: Resources): ToEntityMarshaller[RowLike] =

@@ -137,9 +137,10 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
   }
 
   var app: TestApp = _
-  var marshallers: AppProvider[TestUsr] with QuereaseMarshalling with Execution = _
   var service: WabaseActionsService = _
   var wabaseScheduler: WabaseScheduler = _
+
+  private implicit val as: ActorSystem = ActorSystem("wabase-action-specs")
 
   override def beforeAll(): Unit = {
     querease = new TestQuerease("/querease-action-specs-metadata.yaml") {
@@ -168,7 +169,6 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       override protected def afterWabaseAction(context: AppActionContext, result: Try[QuereaseResult]): Unit =
         if (context.viewName == "result_audit_test") {
           val res = context.serializedResult
-          implicit val as = marshallers.system
           BorerNestedArraysTransformer
             .blockingTransform(res,
               JsonResultRenderer(_, false, new ResultRenderer.ViewFieldFilter(context.viewName, qe.nameToViewDef)))
@@ -190,15 +190,9 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         Map("main" -> app.fileStreamer)
       )
       override implicit lazy val httpClients: WabaseHttpClients =
-        WabaseHttpClients(Map("default-wabase-http-client" -> (_ => Route.toFunction(service.route)(service.system)(_))))
+        WabaseHttpClients(Map("default-wabase-http-client" -> (_ => Route.toFunction(service.route)(service.actorSystem)(_))))
     }
     val myApp = app
-    marshallers =
-      new ExecutionImpl()(ActorSystem("actions-spec-system"))
-        with Execution with AppProvider[TestUsr] with QuereaseMarshalling with OptionMarshalling {
-        override type App = AppBase[TestUsr]
-        override protected def initApp: App = myApp
-      }
 
     service = new WabaseActionsService(as) {
       override def initApp = myApp
@@ -221,7 +215,6 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
   private implicit val user: TestUsr = TestUsr(100)
   private implicit val timeout: QueryTimeout = QueryTimeout(10)
   private implicit val defaultCp: PoolName = PoolName(dbNamePrefix)
-  private implicit val as: ActorSystem = ActorSystem("wabase-action-specs")
 
   protected def doAction[T](action: String,
                             view: String,
@@ -253,12 +246,12 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       val filter =
         if (sr.resultFilter == null) new ResultRenderer.ViewFieldFilter(view, app.qe.nameToViewDef)
         else sr.resultFilter
-      implicit val marshaller     = marshallers.toEntityQuereaseSerializedResultMarshaller(view, filter)
+      implicit val marshaller     = service.toEntityQuereaseSerializedResultMarshaller(view, filter)
       Marshal(sr).to[MessageEntity]
         .flatMap { entity =>
           if (filter.name == view) {
-            implicit val unmarshaller_1 = marshallers.toMapUnmarshallerForView(view)
-            implicit val unmarshaller_2 = marshallers.toSeqOfMapsUnmarshallerForView(view)
+            implicit val unmarshaller_1 = service.toMapUnmarshallerForView(view)
+            implicit val unmarshaller_2 = service.toSeqOfMapsUnmarshallerForView(view)
             if  (sr.isCollection)
               Unmarshal(entity).to[Seq[Map[String, Any]]]
             else Unmarshal(entity).to[Map[String, Any]]

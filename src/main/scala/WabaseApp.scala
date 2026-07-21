@@ -65,7 +65,7 @@ trait WabaseApp[User] {
   type ActionHandler       = AppActionContext => ActionHandlerResult
   implicit lazy val httpClients: WabaseHttpClients = {
     implicit val system: ActorSystem = this match {
-      case execution: Execution => execution.system
+      case execution: Execution => execution.actorSystem
       case _ => ActorSystem("wabase-http-clients")
     }
     WabaseHttpClients(HttpClientConfig.httpClientFactory.createHttpClients)

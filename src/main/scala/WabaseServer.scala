@@ -30,24 +30,24 @@ class WabaseServer(
         throw new RuntimeException(s"""Failed to invoke beforeStart: "$invokeBeforeStart"""", ex)
     }
   if (enableServerNotifications)   // start server event subscriber watcher actor
-    wabase.system.actorOf(Props(classOf[ServerNotifications.EventSubscriberWatcher]),
+    wabase.actorSystem.actorOf(Props(classOf[ServerNotifications.EventSubscriberWatcher]),
       ServerNotifications.SubscriberWatcherActorName)
   private val deferredControl =
     if (enableDeferredRequests)
-      new WabaseDeferredControl(wabase)(wabase.system)
+      new WabaseDeferredControl(wabase)(wabase.actorSystem)
     else null
-  new WabaseScheduler(wabase.app, wabase.system).init().failed.foreach {
+  new WabaseScheduler(wabase.app, wabase.actorSystem).init().failed.foreach {
     logger.error(s"Error occured initializing wabase scheduler", _)
-  }(wabase.system.dispatcher)
+  }(wabase.actorSystem.dispatcher)
   private val service         = new WabaseService
 
   def handle(req: HttpRequest): Future[HttpResponse] =
-    service.handle(wabase, deferredControl)(req)(wabase.system)
+    service.handle(wabase, deferredControl)(req)(wabase.actorSystem)
 }
 
 object WabaseServer {
 
-  class App(exec: Execution) extends WabaseApp[WabaseUser]
+  class App(val actorSystem: ActorSystem) extends WabaseApp[WabaseUser]
     with Execution
     with AppBase[WabaseUser]
     with NoAudit[WabaseUser]
@@ -55,11 +55,6 @@ object WabaseServer {
     with NoCustomConstraintMessage
     with Marshalling
     with AppProvider[WabaseUser] {
-      // Members declared in org.wabase.Execution
-      override protected def execution: org.wabase.Execution = exec
-      override implicit def system: org.apache.pekko.actor.ActorSystem = exec.system
-      override implicit def executor: scala.concurrent.ExecutionContextExecutor = exec.executor
-
       // Members declared in org.wabase.AppProvider
       override type App = AppBase[WabaseUser]
       override protected def initApp: App = this
@@ -95,9 +90,8 @@ object WabaseServer {
 
   lazy val (app, server, bindingFuture) = {
     implicit val serverSystem: ActorSystem  = ActorSystem("wabase-server")
-    implicit val ec: ExecutionContext = serverSystem.dispatcher
-    val executionImpl = new ExecutionImpl()(serverSystem)
-    val app = new App(executionImpl)
+    val app = new App(serverSystem)
+    import app.executionContext
     val server = new WabaseServer(app,
       invokeBeforeStart = config.getString("app.server.invoke-before-start"),
       enableServerNotifications = config.getBoolean("app.server-notifications.enabled"),
@@ -138,7 +132,7 @@ object WabaseServer {
           s"FAILED to start server at $hostPortString because of: ${ex.getMessage}" +
           "\n\n"
         )
-        app.system.terminate()
+        app.actorSystem.terminate()
         if (shutdownOnBindFailed) {
           System.exit(1)
         }
@@ -149,7 +143,7 @@ object WabaseServer {
   def apply(): WabaseServer = server
 
   def unbind(): Unit = {
-    implicit val ec: ExecutionContext = app.executor
+    implicit val ec: ExecutionContext = app.executionContext
     val _ = unbindFuture
   }
 
@@ -158,15 +152,15 @@ object WabaseServer {
       .flatMap(_.unbind()) // trigger unbinding from the port
       .recover { case _ => null }
       .flatMap { _ =>      // and terminate actor system when done
-        app.system.terminate()
+        app.actorSystem.terminate()
       }
 
   def shutdown(): Unit = {
-    implicit val ec: ExecutionContext = app.executor
+    implicit val ec: ExecutionContext = app.executionContext
     bindingFuture
       .flatMap(_.unbind()) // trigger unbinding from the port
       .onComplete { _ =>   // and shutdown when done
-        app.system.terminate()
+        app.actorSystem.terminate()
         System.exit(0)
       }
   }
