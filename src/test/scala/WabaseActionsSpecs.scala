@@ -246,7 +246,8 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       val filter =
         if (sr.resultFilter == null) new ResultRenderer.ViewFieldFilter(view, app.qe.nameToViewDef)
         else sr.resultFilter
-      implicit val marshaller     = service.toEntityQuereaseSerializedResultMarshaller(view, filter)
+      implicit val marshaller: org.apache.pekko.http.scaladsl.marshalling.ToEntityMarshaller[QuereaseSerializedResult] =
+        service.toEntityQuereaseSerializedResultMarshaller(view, filter)
       Marshal(sr).to[MessageEntity]
         .flatMap { entity =>
           if (filter.name == view) {
