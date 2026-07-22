@@ -30,7 +30,7 @@ case class WabaseUser(properties: Map[String, Any]) {
     case x: Number => x.longValue
     case s: String => Try(s.toLong).getOrElse(-1L)
   }.getOrElse(-1)
-  val name: String  = properties.get("name").map(String.valueOf)
+  val name: String  = properties.get("name").map(n => Option(n).map(String.valueOf).orNull)
     .orElse(Option(id).filter(_ != -1).map(_.toString)).orNull
   val roles: Set[String] = properties.get("roles")
     .collect { case r: Iterable[String@unchecked] => r.toSet }.getOrElse(Set())
@@ -241,7 +241,7 @@ object WabaseService extends Loggable {
   def key(path: Path, prefix: String): Seq[String] = {
     def key_path(path: Path): Path = path match {
       case Segment(head, tail) =>
-        if (head contains prefix) tail
+        if (head == prefix) tail
         else key_path(tail)
       case Empty => Empty
       case p => key_path(p.tail)
@@ -310,8 +310,8 @@ object WabaseService extends Loggable {
 
   def toMapForViewEntityDecoder(ctx: WabaseRequestContext): Future[Map[String, Any]] = {
     import ctx._
-    implicit val mat = as
-    implicit val ec = as.dispatcher
+    implicit val system: ActorSystem = as
+    implicit val ec: ExecutionContext = as.dispatcher
     val vd = wabase.qe.viewDef(viewName)
     vd.decoder match {
       case AppMetadata.DefaultDecoder if BodyActions.contains(action) =>
@@ -344,8 +344,8 @@ object WabaseService extends Loggable {
 
   def toStringEntityDecoder(ctx: WabaseRequestContext): Future[String] = {
     import ctx._
-    implicit val mat = as
-    implicit val ec = as.dispatcher
+    implicit val system: ActorSystem = as
+    implicit val ec: ExecutionContext = as.dispatcher
     Unmarshaller.stringUnmarshaller(req.entity)
   }
 
@@ -357,8 +357,8 @@ object WabaseService extends Loggable {
 
   private def toAnyEntityDecoder(ctx: WabaseRequestContext): Future[Any] = {
     import ctx._
-    implicit val mat = as
-    implicit val ec = as.dispatcher
+    implicit val system: ActorSystem = as
+    implicit val ec: ExecutionContext = as.dispatcher
     def decodeJs = Unmarshaller.byteStringUnmarshaller
       .map { b => CborOrJsonAnyValueDecoder.decode(b) }
     req.entity.contentType match {
@@ -478,24 +478,27 @@ object WabaseService extends Loggable {
     if (!config.getIsNull(ERR_AND_THEN_PARAM)) config.getString(ERR_AND_THEN_PARAM)
     else null
   def errorHandler(wrc: WabaseRequestContext): ErrorHandler = {
-    implicit val ec: ExecutionContext = wrc.as.dispatcher
-    val eh = wrc.route.errorHandler
-    val errorHandler = invokeFunction(
-      eh.className, eh.function, Seq((classOf[WabaseRequestContext], () => wrc))
-    ) match {
+    lazy val handler: ErrorHandler = {
+      implicit val ec: ExecutionContext = wrc.as.dispatcher
+      val eh = wrc.route.errorHandler
+      val errorHandler = invokeFunction(
+        eh.className, eh.function, Seq((classOf[WabaseRequestContext], () => wrc))
+      ) match {
         case h: ErrorHandler@unchecked => h
         case x => sys.error(s"Error handler for route ${wrc.route.path} must return value of type:" +
           s" WabaseService.ErrorHandler, instead got '$x' of type '${x.getClass}'")
       }
-    if (error_and_then_cn_fn == null) errorHandler
-    else {
-      val andThen = invokeFunction(error_and_then_cn_fn, Seq((classOf[WabaseRequestContext], () => wrc))) match {
-        case f: Function[HttpResponse, Future[HttpResponse]]@unchecked => f
-        case x => sys.error(s"Error handler and then function must return value of type:" +
-          s" HttpResponse => Future[HttpResponse], instead got '$x' of type '${x.getClass}'")
+      if (error_and_then_cn_fn == null) errorHandler
+      else {
+        val andThen = invokeFunction(error_and_then_cn_fn, Seq((classOf[WabaseRequestContext], () => wrc))) match {
+          case f: Function[HttpResponse, Future[HttpResponse]]@unchecked => f
+          case x => sys.error(s"Error handler and then function must return value of type:" +
+            s" HttpResponse => Future[HttpResponse], instead got '$x' of type '${x.getClass}'")
+        }
+        errorHandler.andThen(_.flatMap(andThen))
       }
-      errorHandler.andThen(_.flatMap(andThen))
     }
+    { case e if handler.isDefinedAt(e) => handler(e) }
   }
 
   def sealedErrorHandler(eh: ErrorHandler)(wrc: WabaseRequestContext): ErrorHandler = {
