@@ -4,7 +4,7 @@ import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.model.HttpHeader.ParsingResult.{Error, Ok}
 import org.apache.pekko.http.scaladsl.model.headers.ContentDispositionTypes.attachment
 import org.apache.pekko.http.scaladsl.model.headers.{Cookie, HttpCookie, HttpCookiePair, `Content-Disposition`, `Set-Cookie`}
-import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes, ErrorInfo, HttpCharsets, HttpEntity, HttpHeader, HttpMethods, HttpRequest, HttpResponse, MediaTypes, Multipart, StatusCodes, UniversalEntity}
+import org.apache.pekko.http.scaladsl.model.{AttributeKey, ContentType, ContentTypes, ErrorInfo, HttpCharsets, HttpEntity, HttpHeader, HttpMethods, HttpRequest, HttpResponse, MediaTypes, Multipart, StatusCodes, UniversalEntity, Uri}
 import org.apache.pekko.http.scaladsl.server.directives.ContentTypeResolver
 import org.apache.pekko.http.scaladsl.server.directives.FileAndResourceDirectives.ResourceFile
 import org.apache.pekko.stream.scaladsl.{Sink, Source, StreamConverters}
@@ -1530,7 +1530,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     op: Action.RedirectToKey,
     scope: Scope,
     context: ActionContext
-  ): Future[QuereaseResult] = {
+  )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
     import context.env
     val name = op.name
     val viewName = if (name == "this") context.viewName else name
@@ -1538,7 +1538,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     val dataWithEnv = scope.toBindeableMap(env)
     val id = dataWithEnv.getOrElse(idName, null)
     val kr = keyResult(IdResult(id, idName), viewName, dataWithEnv)
-    Future.successful(ResponseResult(303, RedirectValue(redirectTresqlUri(kr))))
+    Future.successful(ResponseResult(303, RedirectValue(redirectTresqlUri(kr, qr.httpReq))))
   }
 
   protected def doCommit(resources: Resources): Future[QuereaseResult] = {
@@ -1563,12 +1563,6 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     val data = MapResult(scope.data)
     Future.successful(op.conformTo.map(comp_res(data, _)).getOrElse(data))
   }
-
-  // XXX copied from Marshalling
-  private val crudRedirectsPrefix =
-    Option("app.crud-redirects-prefix").filter(config.hasPath).map(config.getString).getOrElse("")
-  private def redirectTresqlUri(kr: KeyResult): TresqlUri.Uri =
-    TresqlUri.Uri(Seq(s"${crudRedirectsPrefix}${kr.viewName}"), kr.key)
 
   protected def doActionOp(
     op: Action.Op,
@@ -2018,6 +2012,9 @@ object DefaultAppQuerease extends AppQuerease
 object DefaultAppQuereaseIo extends AppQuereaseIo[Dto](DefaultAppQuerease)
 
 object AppQuerease {
+  /** Matched view API path (without key) for the current request; used for redirects/Location. */
+  val ViewApiPathAttribute: AttributeKey[Uri.Path] = AttributeKey[Uri.Path]("wabase-view-api-path")
+
   case class InjectionParametersContext(
     req:  HttpRequest,
     data: Map[String, Any]  = Map(),	  // action current step data

@@ -4,7 +4,7 @@ import org.apache.pekko.http.scaladsl.model.{StatusCodes, Uri}
 import org.apache.pekko.http.scaladsl.model.headers.Cookie
 import org.apache.pekko.http.scaladsl.model.HttpMethods._
 import org.wabase.AppMetadata.Action
-import org.wabase.{AppServiceBase, ApplicationState, I18nService, WabaseRequestContext, WabaseService, config}
+import org.wabase.{AppQuerease, AppServiceBase, ApplicationState, I18nService, WabaseRequestContext, WabaseService, config}
 import org.wabase.WabaseService.error
 
 import java.util.Locale
@@ -66,13 +66,11 @@ object RequestHandlers {
   private def lastPathSegment(path: Uri.Path): Option[String] =
     WabaseService.pathSegments(path).lastOption
 
-  private def keyPathPrefix(allowedPaths: Seq[Uri.Path], requestPath: Uri.Path, defaultPrefix: String): String =
+  private def matchedAllowedPath(allowedPaths: Seq[Uri.Path], requestPath: Uri.Path): Option[Uri.Path] =
     allowedPaths
       .filter(requestPath.startsWith)
       .sortBy(_.toString.length)
       .lastOption
-      .flatMap(lastPathSegment(_))
-      .getOrElse(defaultPrefix)
 
   val CreateCountActionAndViewRegex = """(?U)([_\p{IsLatin}][\-\w]*)(?::(count|create))?""".r
   val ActionForHttpPost = config.getString("app.action-for-http.post") // maybe "insert" for legacy app
@@ -91,7 +89,9 @@ object RequestHandlers {
 
     if (viewNameAndActionStr == null) ctx
     else {
-      val keyPrefix = keyPathPrefix(wabase.qe.allowedPaths(view_name), req.uri.path, viewNameAndActionStr)
+      val allowed   = wabase.qe.allowedPaths(view_name)
+      val matched   = matchedAllowedPath(allowed, req.uri.path)
+      val keyPrefix = matched.flatMap(lastPathSegment(_)).getOrElse(viewNameAndActionStr)
       val key = WabaseService.key(req.uri.path, keyPrefix)
       val action = if (create_count_action != null) create_count_action else req.method match {
         case `GET`    => Action.Get
@@ -103,7 +103,13 @@ object RequestHandlers {
         case x        => error(StatusCodes.MethodNotAllowed, s"Unsupported http method $x for request '${req.uri}'")
       }
       val apiAction = wabase.apiMethod(viewDefs(view_name), action, key.size)
-      ctx.copy(viewName = view_name, action = apiAction, key = key)
+      // Store root path (not count/create) for redirects; fall back to primary root when unmatched
+      val viewApiPath =
+        matched.filterNot(p => wabase.qe.isPathForCount(p) || wabase.qe.isPathForCreate(p))
+          .orElse(wabase.qe.rootPaths(view_name).headOption)
+          .getOrElse(wabase.qe.primaryRootPath(view_name))
+      val reqWithPath = req.addAttribute(AppQuerease.ViewApiPathAttribute, viewApiPath)
+      ctx.copy(req = reqWithPath, viewName = view_name, action = apiAction, key = key)
     }
   }
 }

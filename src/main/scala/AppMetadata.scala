@@ -76,6 +76,12 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
   }
   def isPublicView(viewName: String) = publicViewNames.contains(viewName)
 
+  /** Join views-api (or public) uri-prefix with a view segment.
+    * Empty prefix keeps the path relative (`person`); `/` or absolute prefixes stay absolute. */
+  private def pathWithPrefix(prefix: String, segment: String): Uri.Path =
+    if (prefix == null || prefix.isEmpty) Uri.Path(segment)
+    else Uri.Path(prefix) ?/ segment
+
   /* view paths are calculated outside of toAppViewDef method because of config parameters usage which
   * are not available in sbt-mojoz plugin. */
   private lazy val viewPaths: Map[String, Seq[Uri.Path]] = {
@@ -84,12 +90,12 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       val publicPrefix = config.getString("app.public-api.views-uri-prefix")
       val paths = vd.paths match {
         case Nil =>
-          val prefix = Uri.Path(if (isPublicView(vd.name)) publicPrefix else pathPrefix)
+          val prefix = if (isPublicView(vd.name)) publicPrefix else pathPrefix
           def maybePaths(apis: Seq[String]) = apis.collect {
-            case api if vd.apiMethodToRoles.contains(api) => prefix ?/ s"${vd.name}:$api"
+            case api if vd.apiMethodToRoles.contains(api) => pathWithPrefix(prefix, s"${vd.name}:$api")
           }
-          Seq(prefix ?/ vd.name) ++ maybePaths(Seq(Action.Count, Action.Create))
-        case paths  => paths.map(p => if (p.startsWith("/")) Uri.Path(p) else Uri.Path(pathPrefix) ?/ p)
+          Seq(pathWithPrefix(prefix, vd.name)) ++ maybePaths(Seq(Action.Count, Action.Create))
+        case paths  => paths.map(p => if (p.startsWith("/")) Uri.Path(p) else pathWithPrefix(pathPrefix, p))
       }
       (n, paths)
     }
@@ -97,6 +103,54 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
   def allowedPaths(viewName: String): Seq[Uri.Path] = viewPaths.getOrElse(viewName,
     throw ViewNotFoundException(s"View definition for $viewName not found"))
+
+  def isPathForCount(path: Uri.Path): Boolean = {
+    val s = path.toString
+    s.endsWith(":count") || s.contains(":count/")
+  }
+  def isPathForCreate(path: Uri.Path): Boolean = {
+    val s = path.toString
+    s.endsWith(":create") || s.contains(":create/")
+  }
+
+  /** Resource paths for a view, excluding count/create variants. */
+  def rootPaths(viewName: String): Seq[Uri.Path] =
+    allowedPaths(viewName).filterNot(p => isPathForCount(p) || isPathForCreate(p))
+
+  def primaryRootPath(viewName: String): Uri.Path =
+    rootPaths(viewName).headOption.getOrElse(Uri.Path(viewName))
+
+  /** Longest root path of `viewName` that is a prefix of `requestPath`. */
+  def matchedRootPath(viewName: String, requestPath: Uri.Path): Option[Uri.Path] =
+    Option(requestPath).flatMap { rp =>
+      rootPaths(viewName)
+        .filter(rp.startsWith)
+        .sortBy(_.toString.length)
+        .lastOption
+    }
+
+  /** Path used for redirects/Location for `viewName`.
+    * Prefer request attribute (set while routing), then path matched from the request URI, then primary root path. */
+  def redirectPath(viewName: String, httpReq: org.apache.pekko.http.scaladsl.model.HttpRequest = null): Uri.Path = {
+    import AppQuerease.ViewApiPathAttribute
+    def fromAttr =
+      Option(httpReq).flatMap(_.attribute(ViewApiPathAttribute)).filter { p =>
+        rootPaths(viewName).exists(rp => rp == p)
+      }
+    fromAttr
+      .orElse(matchedRootPath(viewName, Option(httpReq).map(_.uri.path).orNull))
+      .getOrElse(primaryRootPath(viewName))
+  }
+
+  /** Build TresqlUri for view key redirect / Location header (respects `app.key-in-query` via [[TresqlUri]]). */
+  def redirectTresqlUri(kr: KeyResult, httpReq: org.apache.pekko.http.scaladsl.model.HttpRequest = null): TresqlUri.Uri = {
+    val path = redirectPath(kr.viewName, httpReq)
+    val pathStr = path.toString match {
+      case s if s.length > 1 && s.endsWith("/") => s.dropRight(1)
+      case s => s
+    }
+    TresqlUri.Uri(Seq(pathStr), kr.key)
+  }
 
   lazy val routeDefLoader = {
     val actionParser: String => String => Map[String, Any] => Action =
