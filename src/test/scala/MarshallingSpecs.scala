@@ -55,9 +55,7 @@ class MarshallingSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       override def initApp: App = new TestApp {
         override protected def initQuerease = new TestQuerease("/json-decoder-specs-metadata.yaml") {
           override lazy val viewNameToClassMap = JsonDecoderSpecs.viewNameToClass
-          override val tresqlUri: TresqlUri = new TresqlUri {
-            override def uriWithKey(uri: Uri, key: Seq[Any]): Uri = uriWithKeyInPath(uri, key)
-          }
+          override val tresqlUri: TresqlUri = new TresqlUri(keyInQuery = false)
         }
         override def dbAccessDelegate: DbAccess = db
       }

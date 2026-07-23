@@ -353,14 +353,22 @@ trait AppServiceBase[User]
 
   def crudAction(implicit user: User) =
     pathPrefixTest(Segment ~ PathEnd) { _ =>
-      mapRequestContext(keyFromQueryToPath) {
+      mapRequestContext(maybeKeyFromQueryToPath) {
         crudActionOnKeyInPath
       }
     } ~ pathPrefixTest(!(Segment ~ PathEnd)) {
       crudActionOnKeyInPath
     }
 
-  /** Enables alternative URI where row key is in special query string */
+  /** Whether resource keys may be supplied in the URI query string (?/key/parts).
+    * Controlled by `app.key-in-query` (default true). Override in tests if needed. */
+  def keyInQuery: Boolean = AppServiceBase.KeyInQuery
+
+  /** Moves key from special query string (?/key/parts) into the path when [[keyInQuery]] is true. */
+  def maybeKeyFromQueryToPath(context: RequestContext): RequestContext =
+    if (keyInQuery) keyFromQueryToPath(context) else context
+
+  /** Moves key from special query string (?/key/parts) into the path. */
   def keyFromQueryToPath(context: RequestContext): RequestContext = {
     def decode(s: String) = java.net.URLDecoder.decode(s, "UTF-8")
     context.request.uri.rawQueryString match {
@@ -618,6 +626,10 @@ trait AppFileServiceBase[User] {
 object AppServiceBase {
   val ApplicationStateCookiePrefix = config.getString("app.state-cookie-prefix")
   val NamesForInts = config.getStringList("app.names-for-int-params").asScala.toSet
+  /** When true, resource keys use URI query form (?/key/parts) for incoming requests and outgoing uris.
+    * Defaults to true if `app.key-in-query` is unset. See also [[TresqlUri.keyInQuery]]. */
+  val KeyInQuery: Boolean =
+    Option("app.key-in-query").filter(config.hasPath).forall(config.getBoolean)
 
   def escapeReflectedXss(msg: String) =
     msg.replace("<", "[<]")

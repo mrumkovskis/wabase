@@ -12,7 +12,7 @@ import scala.concurrent.{ExecutionContext, Future}
 object ActionHandlers {
 
   def doActionWithKeyToPath(view_action: String, reqCtx: WabaseRequestContext): Future[HttpResponse] = {
-    doAction(view_action, RequestHandlers.keyFromQueryToPath(reqCtx))
+    doAction(view_action, RequestHandlers.maybeKeyFromQueryToPath(reqCtx))
   }
 
   def doRequest(handlerName: String, ctx: WabaseRequestContext): Future[HttpResponse] = {

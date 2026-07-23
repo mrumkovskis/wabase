@@ -1,5 +1,6 @@
 package org.wabase
 
+import org.apache.pekko.http.scaladsl.model.Uri
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import org.tresql.{Resources, Query => TresqlQuery}
@@ -44,5 +45,20 @@ class TresqlUriSpecs extends AnyFlatSpec with Matchers {
         if (q.isEmpty) "" else s"?$q"
       } shouldBe uri
     }
+  }
+
+  it should "encode key in query or path according to keyInQuery" in {
+    val base = Uri("data/person")
+    val key = Seq("42", "a/b")
+
+    val inQuery = new TresqlUri(keyInQuery = true)
+    inQuery.uriWithKey(base, key).toString shouldBe "data/person?/42/a%2Fb"
+    inQuery.uri(TresqlUri.Uri(Seq("data/person"), key, ListMap("x" -> "1"))).toString shouldBe
+      "data/person?/42/a%2Fb?x=1"
+
+    val inPath = new TresqlUri(keyInQuery = false)
+    inPath.uriWithKey(base, key).toString shouldBe "data/person/42/a%2Fb"
+    inPath.uri(TresqlUri.Uri(Seq("data/person"), key, ListMap("x" -> "1"))).toString shouldBe
+      "data/person/42/a%2Fb?x=1"
   }
 }

@@ -11,7 +11,11 @@ import java.util.Locale
 
 object RequestHandlers {
 
-  /** Enables alternative URI where row key is in special query string */
+  /** Moves key from special query string (?/key/parts) into the path when `app.key-in-query` is true. */
+  def maybeKeyFromQueryToPath(ctx: WabaseRequestContext): WabaseRequestContext =
+    if (AppServiceBase.KeyInQuery) keyFromQueryToPath(ctx) else ctx
+
+  /** Moves key from special query string (?/key/parts) into the path. */
   def keyFromQueryToPath(ctx: WabaseRequestContext): WabaseRequestContext = {
     val request = ctx.req
     def decode(s: String) = java.net.URLDecoder.decode(s, "UTF-8")

@@ -15,7 +15,12 @@ object TresqlUri {
   case class Uri(segments: Seq[Any], key: Seq[Any] = Nil, params: ListMap[String, String] = ListMap()) extends TrUri
 }
 
-class TresqlUri {
+class TresqlUri(
+  /** When true, encode resource key in query string (?/key/parts); when false, in path.
+    * Defaults to `app.key-in-query` config (true if unset). */
+  val keyInQuery: Boolean =
+    Option("app.key-in-query").filter(config.hasPath).forall(config.getBoolean)
+) {
   private [wabase] def tresqlUriValue(trUri: TresqlUri.Tresql)(
     q: TresqlQuery, env: Map[String, Any], res: Resources): TresqlUri.Uri = {
     def uriValue(row: RowLike): TresqlUri.Uri = {
@@ -74,12 +79,12 @@ class TresqlUri {
     } else uri
   }
 
-  /** Override to change key representation in redirect uri,
-    * see uriWithKeyInPath(uri, key) and uriWithKeyInQuery(uri, key).
-    * Default is uriWithKeyInQuery.
+  /** Key representation in redirect / Location uri.
+    * Uses [[uriWithKeyInQuery]] when [[keyInQuery]] is true (default, `app.key-in-query`),
+    * otherwise [[uriWithKeyInPath]]. Override or construct with `keyInQuery = false` to change.
     */
   def uriWithKey(uri: Uri, key: Seq[Any]): Uri =
-    uriWithKeyInQuery(uri, key)
+    if (keyInQuery) uriWithKeyInQuery(uri, key) else uriWithKeyInPath(uri, key)
 
   def fromTresqlUri(value: TresqlUri.Tresql)(q: TresqlQuery, env: Map[String, Any], res: Resources): Uri =
     uri(tresqlUriValue(value)(q, env, res))
