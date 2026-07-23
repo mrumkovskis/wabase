@@ -478,6 +478,7 @@ object WabaseService extends Loggable {
     if (!config.getIsNull(ERR_AND_THEN_PARAM)) config.getString(ERR_AND_THEN_PARAM)
     else null
   def errorHandler(wrc: WabaseRequestContext): ErrorHandler = {
+    // for performance reasons do not create real error handler unless error occurs
     lazy val handler: ErrorHandler = {
       implicit val ec: ExecutionContext = wrc.as.dispatcher
       val eh = wrc.route.errorHandler

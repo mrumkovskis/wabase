@@ -96,10 +96,10 @@ trait BasicMarshalling extends OptionMarshalling {
     // Use RawHeader because akka-http puts value of extended `filename*` parameter in double quotes
     List(RawHeader("Content-Disposition", dispositionValue))
   }
-  def fallbackFilename(filename: String) = stripAccents(filename)
+  private def fallbackFilename(filename: String) = stripAccents(filename)
 
-  def stripAccents(s: String) = {
-    val DiacriticsRegex = "\\p{InCombiningDiacriticalMarks}+".r
+  private val DiacriticsRegex = "\\p{InCombiningDiacriticalMarks}+".r
+  private def stripAccents(s: String) = {
     DiacriticsRegex.replaceAllIn(Normalizer.normalize(s, Normalizer.Form.NFD), "")
   }
 
@@ -283,9 +283,9 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with QuereaseMarshalling 
   private def opaqueStringMarshaller: ToResponseMarshaller[String] =
     Marshaller.opaque(sr => HttpResponse(status = StatusCodes.OK, entity = HttpEntity(Option(sr).getOrElse(""))))
 
-  implicit def toEntityQuereaseMapResultMarshaller (viewName: String,
-                                                    resFilter: ResultRenderer.ResultFilter)
-                                                   (implicit as: ActorSystem):  ToEntityMarshaller[MapResult]  =
+  def toEntityQuereaseMapResultMarshaller (viewName: String,
+                                           resFilter: ResultRenderer.ResultFilter)
+                                           (implicit as: ActorSystem):  ToEntityMarshaller[MapResult]  =
     Marshaller.combined((mr:  MapResult) => (mr.result, viewName, resFilter))
   implicit val toEntityQuereaseLongResultMarshaller:      ToResponseMarshaller  [LongResult]   =
     Marshaller { implicit ec => (lr: LongResult) => opaqueStringMarshaller("" + lr.value) }
@@ -313,6 +313,8 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with QuereaseMarshalling 
         } else if (qe.viewDef(kr.viewName).apiMethodToRoles.contains(Action.Get))
           ResponseResult(StatusCodes.SeeOther.intValue, RedirectValue(redirectTresqlUri(kr)))
         else ResponseResult((if (kr.ir.created) StatusCodes.Created else StatusCodes.OK).intValue, ResultValue(NoResult))
+      // NOTE: can wabase result with null AppActionContext because val sr can contain only AnyResult, NoResult, RedirectValue
+      // which marshalling does not require ActorSystem in AppActionContext
       toResponseQuereaseResponseResultMarshaller(app.WabaseResult(null, sr))(sr)
     }
   implicit def toResponseQuereaseResponseResultMarshaller(wr: app.WabaseResult):  ToResponseMarshaller[ResponseResult] = {
