@@ -104,26 +104,24 @@ trait DbAccess { this: QuereaseProvider with Loggable =>
   }
 
   def resourceFactory(viewDef: ViewDef, loggerName: String, qt: QueryTimeout = null): ResourcesFactory = {
-    val vdo      = Option(viewDef)
-    val res = Option(withDbAccessLogger(resourcesTemplate, loggerName)).map { templ =>
-      vdo.map { v =>
-        val timeout: jLong =
-          if (qt != null) qt.timeoutSeconds.toLong
-          else if (v.sqlTimeout != null) v.sqlTimeout.toSeconds
-          else if(v.timeout != null) {
-            val ts = v.timeout.toSeconds
-            if (ts < 2) ts else ts - 1  // reduce timeout to be a little less than http timeout
-          } else null
-        if (timeout == null) templ else templ.withQueryTimeout(timeout.toInt)
-      }.getOrElse(templ)
-    }.get
+    val vdo = Option(viewDef)
+    val templ = withDbAccessLogger(resourcesTemplate, loggerName)
+    val res = vdo.map { v =>
+      val timeout: jLong =
+        if (qt != null) qt.timeoutSeconds.toLong
+        else if (v.sqlTimeout != null) v.sqlTimeout.toSeconds
+        else if (v.timeout != null) {
+          val ts = v.timeout.toSeconds
+          if (ts < 2) ts else ts - 1 // reduce timeout to be a little less than http timeout
+        } else null
+      if (timeout == null) templ else templ.withQueryTimeout(timeout.toInt)
+    }.getOrElse(templ)
     val resFactory = ResourcesFactory(initResources, closeResources)(res)
     vdo.flatMap(v => Option(v.db)).map(PoolName.apply) getOrElse DefaultCp match {
       case DefaultCp => resFactory
       case PoolName(cp) => resFactory.focus(cp, DefaultCp.connectionPoolName)
     }
   }
-
   def withConn[A](
     poolName: PoolName = DefaultCp,
     template: Resources = resourcesTemplate,
