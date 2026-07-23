@@ -18,7 +18,7 @@ import scala.util.{Failure, Success, Try}
 case class InsufficientStorageException(msg: String) extends Exception(msg)
 
 /** Creates [[FileBufferedFlow]] graph stage and sets async boundary around. This is necessary so upstream can
- * bet consumed asynchronously.
+ * be consumed asynchronously.
  * To enable stage debuging use {{{<logger name = "org.wabase.FileBufferedFlow" level="debug"/>}}}
  **/
 object FileBufferedFlow {
@@ -34,6 +34,9 @@ object FileBufferedFlow {
   * Pulled data are stored in buffer of bufferSize. If buffer is full and there is no downstream demand
   * data are stored in file. If file size exceeds maxFileSize [[InsufficientStorageException]] is thrown.
   * Flow materializes to Future[IOResult] which completes when upstream is finished.
+  * Note - if downstream cancels, materialized Future[IOResult] completes with IOResult containing
+  * Failure of the cancellation cause (e.g. SubscriptionWithCancelException.NoMoreElementsNeeded),
+  * so a routine client disconnect is reported as a failed IOResult.
   * */
 class FileBufferedFlow private (bufferSize: Int, maxFileSize: Long, outBufferSize: Int)
   extends GraphStageWithMaterializedValue[FlowShape[ByteString, ByteString], Future[IOResult]] {
@@ -178,11 +181,14 @@ case class IncompleteResultSource[Mat](result: Source[ByteString, Mat]) extends 
   * Otherwise produces {{{IncompleteResultSources}}}. Running of {{{IncompleteResultSources}}} source will consume
   * this {{{ResultCompletionSink}}} upstream.
   *
-  * @param cleanupFun    cleanupFun is invoked on onUpstreamFinish() and postStop() method calls.
   * @param resultCount   indicates how many copies of {{{SerializedResult}}} sink should materialize.
   *                      This is useful for IncompleteResultSources's result: Source[ByteString, _]
   *                      so that they can be consumed for various
   *                      purposes. Value must be greater than zero.
+  *                      In the {{{IncompleteResultSource}}} case every returned source must be run
+  *                      (or at least materialized and cancelled) - upstream is pulled only when all
+  *                      still-live sources have signalled demand, so an ignored copy stalls the
+  *                      whole pipeline indefinitely.
   * */
 class ResultCompletionSink(resultCount: Int = 1)(implicit ec: scala.concurrent.ExecutionContext)
   extends GraphStageWithMaterializedValue[SinkShape[ByteString], Future[Seq[SerializedResult]]] {
@@ -236,6 +242,9 @@ class ResultCompletionSink(resultCount: Int = 1)(implicit ec: scala.concurrent.E
             val dataCompleted = Promise[Unit]()
             val completionPromise = Promise[Done]()
             var demand = false
+            // Assigned in source's preStart(). Safe to invoke from Sources.push because upstream
+            // is pulled only after every source has signalled demand (see demandCallback), which
+            // implies every source has been materialized and its preStart() has run.
             @volatile var pushCallback: AsyncCallback[ByteString] = _
 
             val source = Source.fromGraph(new GraphStage[SourceShape[ByteString]] {
@@ -278,7 +287,6 @@ class ResultCompletionSink(resultCount: Int = 1)(implicit ec: scala.concurrent.E
           Sources.push(grab(in))
         }
         override def onUpstreamFinish() = {
-          // call cleanup fun also here to ensure that immediate next operations can have cleaned up state.
           Sources.upstreamFinish()
         }
         override def onUpstreamFailure(ex: Throwable) = {
