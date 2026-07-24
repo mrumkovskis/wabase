@@ -49,7 +49,7 @@ object HttpClientFactory extends HttpClientFactory {
             clientCfg, "client-class", "http client",
             Seq(clientCfg, system), Seq(classOf[Config], classOf[ActorSystem]))
       }
-      n -> ((_: InjectionParametersContext) => (req: HttpRequest) => client.doRequest(req))
+      n -> ((_: InjectionParametersContext) => client.doRequest _)
     }.toMap
   }
 }

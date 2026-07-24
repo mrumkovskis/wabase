@@ -198,6 +198,8 @@ object DeferredControl extends Loggable with AppConfig {
   val DEFERRED_DEL   = "DEL"
   val DeferredExists = "EXISTS"
 
+  val MaxDeferredQueueSize = 1024
+
   lazy val defaultTimeout      = toFiniteDuration(appConfig.getDuration("deferred-requests.default-timeout"))
   lazy val deferredWorkerCount = appConfig.getInt("deferred-requests.worker-count")
   lazy val deferredUris        = appConfig.getValue("deferred-requests.requests").valueType match {
@@ -212,6 +214,8 @@ object DeferredControl extends Loggable with AppConfig {
     }
   lazy val deferredCleanupInterval =
     toFiniteDuration(appConfig.getDuration("deferred-requests.cleanup-job-interval"))
+  lazy val deferredResultMaxAge = toFiniteDuration(appConfig.getDuration("deferred-requests.max-result-age"))
+  lazy val deferredRequestMaxAge = toFiniteDuration(appConfig.getDuration("deferred-requests.max-request-age"))
   lazy val deferredModules: Map[String, Int] = {
     val mc = appConfig.getConfig("deferred-requests.modules")
     mc.entrySet().asScala
@@ -227,6 +231,8 @@ object DeferredControl extends Loggable with AppConfig {
     logger.info(s"deferredUris: $deferredUris")
     logger.info(s"deferredTimeouts: $deferredTimeouts")
     logger.info(s"deferredCleanupInterval: $deferredCleanupInterval")
+    logger.info(s"deferredResultMaxAge: $deferredResultMaxAge")
+    logger.info(s"deferredRequestMaxAge: $deferredRequestMaxAge")
     logger.info(s"deferredModules: $deferredModules")
   }
 
@@ -299,7 +305,7 @@ object DeferredControl extends Loggable with AppConfig {
     val exe = Outlet[DeferredContext]("exe")
     val overflow = Outlet[DeferredContext]("overflow")
     val shape = new FanOutShape2(in, exe, overflow)
-    val MaxQueueSize = 1024
+    val MaxQueueSize = MaxDeferredQueueSize
     val QueueOverflowResponse = HttpResponse(StatusCodes.InternalServerError,
       entity = "Server too busy. Please try later again.")
 
@@ -385,7 +391,11 @@ object DeferredControl extends Loggable with AppConfig {
   )(implicit as: ActorSystem) = {
     lazyLogCurrentConf
     logger.info(s"Starting deferred request processor $name, worker count - ($workerCount)")
-    Source.actorRef[DeferredContext](PartialFunction.empty, PartialFunction.empty, 8, OverflowStrategy.dropTail)
+    // NOTE - Source.actorRef does not support OverflowStrategy.backpressure (elements arrive as actor messages).
+    // Buffer is sized like DeferredQueue so that overload is handled by DeferredQueue overflow port
+    // (visible "server too busy" result) instead of elements being dropped silently here.
+    Source.actorRef[DeferredContext](
+      PartialFunction.empty, PartialFunction.empty, MaxDeferredQueueSize, OverflowStrategy.dropTail)
       .to(deferredSink(name, storage, publisher, workerCount))
       .mapMaterializedValue(/*actorRef =>
         ServerNotifications.subscribe(actorRef,
@@ -395,7 +405,6 @@ object DeferredControl extends Loggable with AppConfig {
       .withAttributes(ActorAttributes.supervisionStrategy {
         case ex: Exception =>
           logger.error("DeferredGraph crashed", ex)
-          storage.onRestart()
           Supervision.Resume
       }).run()
   }
@@ -458,8 +467,6 @@ object DeferredControl extends Loggable with AppConfig {
     def getDeferredRequest(hash: String, userIdString: String): Option[DeferredContext]
     def getDeferredResult(hash: String, userIdString: String): Option[HttpResponse]
     def getDeferredHttpRequest(hash: String, userIdString: String): Option[HttpRequest]
-    /** Cleanup not finished requests after server restart */
-    def onRestart(): Unit
   }
 
   import org.tresql._
@@ -566,9 +573,12 @@ object DeferredControl extends Loggable with AppConfig {
       }
 
     def cleanupDeferredRequests: Int = db_write { implicit res =>
-      val old = new java.sql.Timestamp(currentTime - deferredCleanupInterval.toMillis)
+      val oldRes = new java.sql.Timestamp(currentTime - deferredResultMaxAge.toMillis)
       Query("=deferred_request[status in (?, ?) & response_time < ?] {status} [?]",
-        DEFERRED_OK, DEFERRED_ERR, old, DEFERRED_DEL)
+        DEFERRED_OK, DEFERRED_ERR, oldRes, DEFERRED_DEL)
+      val oldReq = new Timestamp(currentTime - deferredRequestMaxAge.toMillis)
+      Query("=deferred_request[status in (?, ?) & request_time < ?] {status} [?]",
+        DEFERRED_QUEUE, DEFERRED_EXE, oldReq, DEFERRED_DEL)
       Query("deferred_request - [status = ?]", DEFERRED_DEL) match {
         case r: DeleteResult => r.count.get
         case _ => 0
@@ -602,14 +612,6 @@ object DeferredControl extends Loggable with AppConfig {
       Query("""deferred_request [request_hash = ? & username = ?] { request }""", hash, userIdString)
         .headOption[java.io.InputStream]
         .map(deserializeHttpMessage(_, None).asInstanceOf[HttpRequest])
-    }
-
-    def onRestart(): Unit = {
-      db_write { implicit res =>
-        @annotation.nowarn("msg=Manifest")
-        val c = Query("""-deferred_request[status in (?, ?)]""", DEFERRED_EXE, DEFERRED_QUEUE).unique[Int]
-        if (c > 0) logger.warn(s"Deleted ($c) uncompleted deferred record(s) on deferred request processor restart")
-      }
     }
   }
 
