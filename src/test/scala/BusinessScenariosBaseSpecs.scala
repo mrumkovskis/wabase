@@ -6,12 +6,14 @@ import org.apache.pekko.http.scaladsl.model.headers.`Content-Type`
 import org.apache.pekko.http.scaladsl.model.headers.RawHeader
 import org.apache.pekko.http.scaladsl.server.directives.ContentTypeResolver
 import com.typesafe.config.ConfigFactory
+import org.apache.pekko.Done
 import org.apache.pekko.NotUsed
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.marshalling.{Marshaller, ToEntityMarshaller}
 import org.apache.pekko.http.scaladsl.model.sse.ServerSentEvent
 import org.apache.pekko.http.scaladsl.unmarshalling.Unmarshal
 import org.apache.pekko.http.scaladsl.unmarshalling.sse.EventStreamUnmarshalling._
+import org.apache.pekko.stream.KillSwitches
 import org.apache.pekko.stream.scaladsl.{Sink, Source}
 import org.apache.pekko.util.ByteString
 import org.mojoz.querease.TresqlMetadata
@@ -24,7 +26,8 @@ import org.wabase.AppMetadata.DbAccessKey
 import java.io.{PrintWriter, StringWriter}
 import java.time.Instant
 import scala.collection.immutable.{Map, Seq}
-import scala.concurrent.{Await, ExecutionContext}
+import scala.concurrent.duration.DurationInt
+import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.util.{Random, Try}
 import org.wabase.client.{ClientException, HttpClientConfig, RestClient, WabaseHttpClient}
 import org.wabase.ds.ConnectionPools.DEFAULT_CP
@@ -32,6 +35,7 @@ import org.wabase.ds.{PoolName, QueryTimeout}
 
 class ServerSentEventsHandler(response: HttpResponse)(implicit as: ActorSystem) {
   implicit val ec: ExecutionContext = as.dispatcher
+  private val killSwitch = KillSwitches.shared(s"sse-handler-${System.identityHashCode(this)}")
   private var eventsReceived: Vector[ServerSentEvent] = Vector.empty
   private def addEvent(event: ServerSentEvent): Unit =
     this.synchronized { eventsReceived :+= event }
@@ -50,8 +54,19 @@ class ServerSentEventsHandler(response: HttpResponse)(implicit as: ActorSystem) 
     events.map(eventToMap)
   override def toString: String =
     s"ServerSentEventsHandler(${eventsReceived.size} event(s))"
-  Unmarshal(response).to[Source[ServerSentEvent, NotUsed]]
-    .map(_.map(addEvent).runWith(Sink.ignore))
+  private val completion: Future[Done] =
+    Unmarshal(response).to[Source[ServerSentEvent, NotUsed]]
+      .flatMap(
+        _.map(addEvent)
+          .via(killSwitch.flow)
+          .runWith(Sink.ignore)
+      )
+      .recover { case _ => Done }
+  /** Cancels the SSE stream and releases the HTTP connection. */
+  def close(): Unit = {
+    killSwitch.shutdown()
+    Try(Await.ready(completion, 3.seconds))
+  }
 }
 
 abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
@@ -804,6 +819,15 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
 
   protected def scenariosAutoLogin  = true
   protected def scenariosAutoLogout = true
+
+  /** Closes every [[ServerSentEventsHandler]] stored in the scenario context. */
+  def closeServerSentEvents(context: Map[String, Any]): Unit = {
+    context.values.foreach {
+      case handler: ServerSentEventsHandler => handler.close()
+      case _ =>
+    }
+  }
+
   def ckeckAllTestCases =
     scenarios.sortBy(_.getCanonicalPath).foreach{scenario =>
       behavior of scenario.getName
@@ -812,8 +836,12 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
       if (scenariosAutoLogin) {
         it should "login" in login()
       }
-      scenario.listFiles.filter(isTestCaseFile).sortBy(_.getName).foreach{testCase =>
+      val testCases =
+        scenario.listFiles.filter(isTestCaseFile).sortBy(_.getName).toVector
+      testCases.zipWithIndex.foreach { case (testCase, idx) =>
+        val isLastInScenario = idx == testCases.size - 1
         it should "handle "+testCase.getName in {
+         try {
           val (newValuesInContext, map) =
             try applyContext(readPojoMap(testCase, getTemplatePath), context)
             catch {
@@ -823,6 +851,9 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
             }
           context ++= newValuesInContext
           context ++= checkTestCase(scenario, testCase, context, map)
+         } finally {
+          if (isLastInScenario) closeServerSentEvents(context)
+         }
         }
       }
       if (scenariosAutoLogout) {
