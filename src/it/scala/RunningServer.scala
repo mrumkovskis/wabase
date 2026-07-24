@@ -17,8 +17,10 @@ class RunningServer extends WabaseHttpClient()(WabaseServer.app.actorSystem) {
     ""
   }
 
-  override protected def doRequest(req: HttpRequest, cookieStorage: CookieMap, timeout: FiniteDuration, maxRedirects: Int): Future[HttpResponse] =
-    super.doRequest(req.addAttribute(HttpClient.ModeKey, HttpClient.ProxyMode), cookieStorage, timeout, maxRedirects)
+  override protected def doRequest(req: HttpRequest, cookieStorage: CookieMap, timeout: FiniteDuration, maxRedirects: Int,
+      throwHttpErrors: Option[Boolean] = None, followRedirects: Option[Boolean] = None): Future[HttpResponse] =
+    super.doRequest(req.addAttribute(HttpClient.ModeKey, HttpClient.ProxyMode), cookieStorage, timeout, maxRedirects,
+      throwHttpErrors = Some(false), followRedirects = None)
 
   private val readyF = ServerState.synchronized {
     if (!ServerState.started) {

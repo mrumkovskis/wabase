@@ -106,21 +106,38 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root)(impli
     decoder.decodeMessage(response)
   }
 
-  def httpGetAwait[R](path: String, params: Map[String, Any] = Map.empty, headers: iSeq[HttpHeader] = iSeq())
-                (implicit unmarshaller: FromResponseUnmarshaller[R]): R =
-    try Await.result(httpGet[R](path, params, headers), awaitTimeout) catch {
+  def httpGetAwait[R](
+    path: String,
+    params: Map[String, Any] = Map.empty,
+    headers: iSeq[HttpHeader] = iSeq(),
+    throwHttpErrors: Boolean = true,
+    followRedirects: Boolean = true,
+  )(implicit unmarshaller: FromResponseUnmarshaller[R]): R =
+    try Await.result(httpGet[R](path, params, headers, throwHttpErrors = throwHttpErrors, followRedirects = followRedirects), awaitTimeout) catch {
       case util.control.NonFatal(e) => requestFailed(s"Request failed (server: $serverPath, path: $path): ${e.getMessage}", e)
     }
 
-  def httpPostAwait[T, R](method: HttpMethod, path: String, content: T, headers: iSeq[HttpHeader] = iSeq())
-                    (implicit marshaller: Marshaller[T, RequestEntity], umarshaller: FromResponseUnmarshaller[R]): R =
-    try Await.result(httpPost[T, R](method, path, content, headers), awaitTimeout) catch {
+  def httpPostAwait[T, R](
+    method: HttpMethod,
+    path: String,
+    content: T,
+    headers: iSeq[HttpHeader] = iSeq(),
+    throwHttpErrors: Boolean = true,
+    followRedirects: Boolean = true,
+  )(implicit marshaller: Marshaller[T, RequestEntity], umarshaller: FromResponseUnmarshaller[R]): R =
+    try Await.result(httpPost[T, R](method, path, content, headers, throwHttpErrors = throwHttpErrors, followRedirects = followRedirects), awaitTimeout) catch {
       case util.control.NonFatal(e) => requestFailed(s"Request failed (server: $serverPath, path: $path): ${e.getMessage}", e)
     }
 
-  def httpGet[R](path: String, params: Map[String, Any] = Map.empty, headers: iSeq[HttpHeader] = iSeq(),
-                 cookieStorage: CookieMap = getCookieStorage, timeout: FiniteDuration = requestTimeout)
-                     (implicit unmarshaller: FromResponseUnmarshaller[R]): Future[R] = {
+  def httpGet[R](
+    path: String,
+    params: Map[String, Any] = Map.empty,
+    headers: iSeq[HttpHeader] = iSeq(),
+    cookieStorage: CookieMap = getCookieStorage,
+    timeout: FiniteDuration = requestTimeout,
+    throwHttpErrors: Boolean = true,
+    followRedirects: Boolean = true,
+  )(implicit unmarshaller: FromResponseUnmarshaller[R]): Future[R] = {
     val plainUri = Uri(requestPath(path))
     lazy val query = Query(params.toList.flatMap{
       case (k, null) => List(k -> "")
@@ -142,14 +159,22 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root)(impli
         }
       } else plainUri
     for{
-      response <- doRequest(HttpRequest(uri = requestUri, headers = headers), cookieStorage, timeout)
+      response <- doRequest(HttpRequest(uri = requestUri, headers = headers), cookieStorage, timeout,
+        throwHttpErrors = Some(throwHttpErrors), followRedirects = Some(followRedirects))
       responseEntity <- Unmarshal(decodeResponse(response)).to[R]
     } yield responseEntity
   }
 
-  def httpPost[T, R](method: HttpMethod, path: String, content: T, headers: iSeq[HttpHeader] = iSeq(),
-                     cookieStorage: CookieMap = getCookieStorage, timeout: FiniteDuration = requestTimeout)
-                         (implicit marshaller: Marshaller[T, RequestEntity], unmarshaller: FromResponseUnmarshaller[R]): Future[R] = {
+  def httpPost[T, R](
+    method: HttpMethod,
+    path: String,
+    content: T,
+    headers: iSeq[HttpHeader] = iSeq(),
+    cookieStorage: CookieMap = getCookieStorage,
+    timeout: FiniteDuration = requestTimeout,
+    throwHttpErrors: Boolean = true,
+    followRedirects: Boolean = true,
+  )(implicit marshaller: Marshaller[T, RequestEntity], unmarshaller: FromResponseUnmarshaller[R]): Future[R] = {
     val requestUri = requestPath(path)
     for{
       requestEntity <- Marshal(content).to[RequestEntity].map { requestEntity =>
@@ -157,7 +182,8 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root)(impli
           .map(ct => requestEntity.withContentType(ct.asInstanceOf[`Content-Type`].contentType)).getOrElse(requestEntity)
       }
       response <- doRequest(HttpRequest(method = method, uri = requestUri, entity = requestEntity,
-        headers = headers.filterNot(_.isInstanceOf[`Content-Type`])), cookieStorage, timeout)
+        headers = headers.filterNot(_.isInstanceOf[`Content-Type`])), cookieStorage, timeout,
+        throwHttpErrors = Some(throwHttpErrors), followRedirects = Some(followRedirects))
       responseEntity <- Unmarshal(decodeResponse(response)).to[R]
     } yield  responseEntity
 
@@ -176,13 +202,40 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root)(impli
   protected def isSuccess(response: HttpResponse) =
     defaultSuccessStatusCodes.contains(response.status.intValue)
 
-  protected def doRequest(req: HttpRequest, cookieStorage: CookieMap, timeout: FiniteDuration, maxRedirects: Int = 20): Future[HttpResponse] = {
+  /** Performs an HTTP request with optional cookie handling, redirect following, and error throwing.
+    *
+    * Relative request URIs are resolved against [[serverPath]]. Cookies from `cookieStorage` are
+    * sent with the request; `Set-Cookie` headers on the response update `cookieStorage`.
+    *
+    * @param req             HTTP request to send
+    * @param cookieStorage   cookie jar used for outbound cookies and updated from the response
+    * @param timeout         maximum time to wait for a response from the connection pool
+    * @param maxRedirects    maximum number of 301/302/303 redirects to follow (default 20);
+    *                        when exhausted, fails with "Too many http redirects"
+    * @param throwHttpErrors controls handling of non-success response statuses (outside 200, 201, 202, 204, 206):
+    *                        - `Some(true)` — fail with [[ClientException]] (body included in the message)
+    *                        - `Some(false)` — return the response as-is
+    *                        - `None` — use the request's `HttpClient.ModeKey` attribute:
+    *                          `ProxyMode` means do not throw, otherwise throw
+    * @param followRedirects controls handling of 301/302/303 responses that have a `Location` header:
+    *                        - `Some(true)` — follow the redirect (303 uses GET; other redirect statuses keep the method)
+    *                        - `Some(false)` — return the redirect response as-is
+    *                        - `None` — use the request's `HttpClient.ModeKey` attribute:
+    *                          `ProxyMode` means do not follow, otherwise follow
+    * @return future of the final HTTP response (after optional redirect following)
+    */
+  protected def doRequest(
+    req: HttpRequest,
+    cookieStorage: CookieMap,
+    timeout: FiniteDuration,
+    maxRedirects: Int = 20,
+    throwHttpErrors: Option[Boolean] = None,
+    followRedirects: Option[Boolean] = None,
+  ): Future[HttpResponse] = {
     val req_abs = if (req.uri.isAbsolute) req else req.withUri(Uri(requestPath(req.uri.toString)))
     val request = if (cookieStorage.map.isEmpty) req_abs else req_abs.withHeaders(req.headers ++ cookieStorage.getCookies)
-    val isProxy = req.attribute(HttpClient.ModeKey) match {
-      case Some(ProxyMode) => true
-      case _ => false
-    }
+    val doThrow = throwHttpErrors.getOrElse(req.attribute(HttpClient.ModeKey) != Some(ProxyMode))
+    val follow  = followRedirects.getOrElse(req.attribute(HttpClient.ModeKey) != Some(ProxyMode))
     logger.debug(s"HTTP ${request.method.value} ${request.uri}")
     Source.single((request, ())).via(flow).completionTimeout(timeout).runWith(Sink.head).recover {
       case util.control.NonFatal(ex) => (Failure(ex), ())
@@ -192,8 +245,10 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root)(impli
       case (Success(response), _) =>
         cookieStorage.setCookiesFromHeaders(response.headers)
         (response.status.intValue, response.header[Location]) match {
-          case _  if isProxy || isSuccess(response)  => Future.successful(response)
+          case _ if isSuccess(response) =>
+            Future.successful(response)
           case (301 | 302 | 303, Some(Location(locationUri))) =>
+           if (follow) {
             response.discardEntityBytes()
             if (maxRedirects > 0) {
               val redirectUri = RestClient.resolveRedirectUri(request.uri, locationUri)
@@ -202,11 +257,17 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root)(impli
                 else request.method
               doRequest(
                 HttpRequest(method = redirectMethod, uri = redirectUri, headers = req.headers),
-                cookieStorage, timeout, maxRedirects - 1).recover {
+                cookieStorage, timeout, maxRedirects - 1, Some(doThrow), Some(follow)
+              ).recover {
                 case util.control.NonFatal(e) => requestFailed(e.getMessage, e, response.status, null, request)
               }
             } else
               requestFailed("Too many http redirects", null, response.status, locationUri.toString, request)
+           } else
+            // Not following — return redirect response as-is
+            Future.successful(response)
+          case _ if !doThrow =>
+            Future.successful(response)
           case _ =>
             Unmarshal(decodeResponse(response).entity).to[String].recover {
               case util.control.NonFatal(e) =>

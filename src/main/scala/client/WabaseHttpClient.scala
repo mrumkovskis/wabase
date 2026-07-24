@@ -63,14 +63,35 @@ class WabaseHttpClient(clientCfg: Config = HttpClientConfig.componentConfs.root)
     httpGetAwait[String](pathForDtoCount(viewClass), params).toInt
   def listRaw[T <: Dto](viewClass: Class[T], params: Map[String, Any]): String = httpGetAwait[String](pathForDto(viewClass, null), params) /*in case response is not JSON*/
 
-  override def httpGet[R](path: String, params: Map[String, Any], headers: iSeq[HttpHeader], cookieStorage: CookieMap = getCookieStorage, timeout: FiniteDuration)
-                              (implicit unmarshaller: FromResponseUnmarshaller[R]): Future[R] = {
-    super.httpGet[(R, iSeq[HttpHeader])](path, params, headers ++ getDefaultApiHeaders(cookieStorage), cookieStorage, timeout).flatMap(handleDeferredResponse[R](cookieStorage))
+  override def httpGet[R](
+    path: String,
+    params: Map[String, Any],
+    headers: iSeq[HttpHeader],
+    cookieStorage: CookieMap = getCookieStorage,
+    timeout: FiniteDuration,
+    throwHttpErrors: Boolean = true,
+    followRedirects: Boolean = true,
+  )(implicit unmarshaller: FromResponseUnmarshaller[R]): Future[R] = {
+    super.httpGet[(R, iSeq[HttpHeader])](
+      path, params, headers ++ getDefaultApiHeaders(cookieStorage), cookieStorage, timeout,
+      throwHttpErrors = throwHttpErrors, followRedirects = followRedirects,
+    ).flatMap(handleDeferredResponse[R](cookieStorage, throwHttpErrors, followRedirects))
   }
 
-  override def httpPost[T, R](method: HttpMethod, path: String, content: T, headers: iSeq[HttpHeader], cookieStorage: CookieMap = getCookieStorage, timeout: FiniteDuration)
-                                  (implicit marshaller: Marshaller[T, MessageEntity], unmarshaller: FromResponseUnmarshaller[R]): Future[R] =
-    super.httpPost(method, path, content, headers ++ getDefaultApiHeaders(cookieStorage), cookieStorage, timeout)(marshaller = marshaller, unmarshaller = unmarshaller)
+  override def httpPost[T, R](
+    method: HttpMethod,
+    path: String,
+    content: T,
+    headers: iSeq[HttpHeader],
+    cookieStorage: CookieMap = getCookieStorage,
+    timeout: FiniteDuration,
+    throwHttpErrors: Boolean = true,
+    followRedirects: Boolean = true,
+  )(implicit marshaller: Marshaller[T, MessageEntity], unmarshaller: FromResponseUnmarshaller[R]): Future[R] =
+    super.httpPost(
+      method, path, content, headers ++ getDefaultApiHeaders(cookieStorage), cookieStorage, timeout,
+      throwHttpErrors = throwHttpErrors, followRedirects = followRedirects,
+    )(marshaller = marshaller, unmarshaller = unmarshaller)
 
   def getDtoListFromJson[T <: Dto](viewClass: Class[T], elements: Seq[Map[String, Any]]): List[T] =
     elements.map(getDtoFromJson(viewClass, _)).toList
@@ -84,7 +105,11 @@ class WabaseHttpClient(clientCfg: Config = HttpClientConfig.componentConfs.root)
   val deferredActor = system.actorOf(Props(classOf[DeferredActor]))
   def deferredResultUri(hash: String) = s"deferred/$hash/result"
 
-  def handleDeferredResponse[R](cookieStorage: CookieMap)(response: (R, iSeq[HttpHeader]))(implicit umarshaller: FromResponseUnmarshaller[R]) : Future[R] = {
+  def handleDeferredResponse[R](
+    cookieStorage: CookieMap,
+    throwHttpErrors: Boolean = true,
+    followRedirects: Boolean = true,
+  )(response: (R, iSeq[HttpHeader]))(implicit umarshaller: FromResponseUnmarshaller[R]) : Future[R] = {
     val (result, headers) = response
     extractDeferredHash(headers) match{
       case None => Future.successful(result)
@@ -95,7 +120,8 @@ class WabaseHttpClient(clientCfg: Config = HttpClientConfig.componentConfs.root)
           case DeferredControl.DEFERRED_OK => // OK
           case DeferredControl.DEFERRED_ERR => // ERR
           case _ => throw ClientException(s"Received error while processing deferred request: \n$deferredResult")
-        }}.flatMap(_ => httpGet[R](deferredResultUri(hash), cookieStorage = cookieStorage))
+        }}.flatMap(_ => httpGet[R](deferredResultUri(hash), cookieStorage = cookieStorage,
+          throwHttpErrors = throwHttpErrors, followRedirects = followRedirects))
     }
   }
 
