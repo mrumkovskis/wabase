@@ -5,6 +5,6 @@ request:
   surname:  Doe
 response_status: 201 Created
 response_headers:
-  Location: /data/person?/p1
+  Location: person?/p1
 response:
   code: p1

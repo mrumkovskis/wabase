@@ -10,6 +10,23 @@ order:
 - code
 
 
+# 303 redirect this — used by person-redirect-key-in-path ITs
+name:   person_redirect
+table:  person
+api:    get, upsert, update+
+key:    code
+fields:
+- code
+- name
+- surname
+upsert:
+- upsert this
+- redirect this
+update+:
+- update this
+- redirect this
+
+
 name:   save_person_email
 table:  person
 api:    save

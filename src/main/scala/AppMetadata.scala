@@ -142,13 +142,59 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       .getOrElse(primaryRootPath(viewName))
   }
 
-  /** Build TresqlUri for view key redirect / Location header (respects `app.key-in-query` via [[TresqlUri]]). */
-  def redirectTresqlUri(kr: KeyResult, httpReq: org.apache.pekko.http.scaladsl.model.HttpRequest = null): TresqlUri.Uri = {
-    val path = redirectPath(kr.viewName, httpReq)
-    val pathStr = path.toString match {
+  /** `app.crud-redirects`: `absolute` uses full view path; `relative` (default) uses last path segment. */
+  lazy val crudRedirectsAbsolute: Boolean =
+    config.getString("app.crud-redirects").toLowerCase(java.util.Locale.ROOT) match {
+      case "absolute" => true
+      case "relative" => false
+      case other =>
+        throw new IllegalArgumentException(
+          s"Unsupported app.crud-redirects value '$other', expected 'absolute' or 'relative'")
+    }
+
+  private def pathSegmentCount(path: Uri.Path): Int = {
+    @annotation.tailrec
+    def count(p: Uri.Path, n: Int): Int = p match {
+      case Uri.Path.Empty => n
+      case Uri.Path.Slash(tail) => count(tail, n)
+      case Uri.Path.Segment(_, tail) => count(tail, n + 1)
+    }
+    count(path, 0)
+  }
+
+  /** Format view path for Location / redirect according to [[crudRedirectsAbsolute]].
+    * In relative mode, if the original request path is longer than the view path (key in path),
+    * prefixes `../` so RFC 3986 resolution against the request URI still targets the view. */
+  def redirectPathString(
+    path: Uri.Path,
+    httpReq: org.apache.pekko.http.scaladsl.model.HttpRequest = null,
+  ): String = {
+    val raw = path.toString match {
       case s if s.length > 1 && s.endsWith("/") => s.dropRight(1)
       case s => s
     }
+    if (crudRedirectsAbsolute) raw
+    else {
+      val stripped = raw.stripPrefix("/").stripSuffix("/")
+      val i = stripped.lastIndexOf('/')
+      val lastSeg = if (i < 0) stripped else stripped.substring(i + 1)
+      val originalPath =
+        Option(httpReq)
+          .flatMap(_.attribute(AppQuerease.OriginalRequestUriAttribute))
+          .map(_.path)
+          .orElse(Option(httpReq).map(_.uri.path))
+      val extraKeySegments = originalPath.map { op =>
+        math.max(0, pathSegmentCount(op) - pathSegmentCount(path))
+      }.getOrElse(0)
+      if (extraKeySegments > 0) ("../" * extraKeySegments) + lastSeg
+      else lastSeg
+    }
+  }
+
+  /** Build TresqlUri for view key redirect / Location header
+    * (respects `app.crud-redirects` and `app.key-in-query` via [[TresqlUri]]). */
+  def redirectTresqlUri(kr: KeyResult, httpReq: org.apache.pekko.http.scaladsl.model.HttpRequest = null): TresqlUri.Uri = {
+    val pathStr = redirectPathString(redirectPath(kr.viewName, httpReq), httpReq)
     TresqlUri.Uri(Seq(pathStr), kr.key)
   }
 

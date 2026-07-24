@@ -1,0 +1,11 @@
+# Update with key in path — Location must stay relative to the view, not include the key segment twice
+path:       /data/person/kip1
+method:     PUT
+request:
+  name:     KeyUpd
+  surname:  InPath
+response_status: 200 OK
+response_headers:
+  Location: ../person?/kip1
+response:
+  code: kip1

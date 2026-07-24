@@ -81,7 +81,7 @@ response: [
     "response": {
       "code": 201,
       "headers": [
-        "Location: /data/person?/p1"
+        "Location: person?/p1"
       ],
       "ct_type": "application/json",
       "content": "{\"code\":\"p1\"}",
@@ -110,7 +110,7 @@ response: [
     "response": {
       "code": 201,
       "headers": [
-        "Location: /data/person?/p2"
+        "Location: person?/p2"
       ],
       "ct_type": "application/json",
       "content": "{\"code\":\"p2\"}",
@@ -382,7 +382,7 @@ response: [
     "response": {
       "code": 200,
       "headers": [
-        "Location: /data/person?/p2"
+        "Location: person?/p2"
       ],
       "ct_type": "application/json",
       "content": "{\"code\":\"p2\"}",

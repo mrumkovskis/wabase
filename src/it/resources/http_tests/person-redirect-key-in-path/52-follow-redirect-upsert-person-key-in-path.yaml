@@ -1,0 +1,11 @@
+# person_redirect upsert returns http 303; expected 200 body implies follow_redirects
+path:       /data/person_redirect/rf2
+method:     PUT
+request:
+  name:     Second
+  surname:  Follow
+response_status: 200 OK
+response:
+  code:     rf2
+  name:     Second
+  surname:  Follow

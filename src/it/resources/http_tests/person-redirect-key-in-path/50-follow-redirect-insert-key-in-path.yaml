@@ -1,0 +1,11 @@
+# Expected 200 + body - follow_redirects defaults to true (303 relative Location is followed)
+path:       /data/person_redirect/rf1
+method:     PUT
+request:
+  name:     Follow
+  surname:  Insert
+response_status: 200 OK
+response:
+  code:     rf1
+  name:     Follow
+  surname:  Insert

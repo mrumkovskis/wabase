@@ -1,0 +1,9 @@
+# redirect this after upsert — 303 with relative Location when key is in the path
+path:       /data/person_redirect/rd1
+method:     PUT
+request:
+  name:     Redi
+  surname:  Rect
+response_status: 303 See Other
+response_headers:
+  Location: ../person_redirect?/rd1

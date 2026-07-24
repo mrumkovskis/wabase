@@ -364,9 +364,15 @@ trait AppServiceBase[User]
     * Controlled by `app.key-in-query` (default true). Override in tests if needed. */
   def keyInQuery: Boolean = AppServiceBase.KeyInQuery
 
-  /** Moves key from special query string (?/key/parts) into the path when [[keyInQuery]] is true. */
-  def maybeKeyFromQueryToPath(context: RequestContext): RequestContext =
-    if (keyInQuery) keyFromQueryToPath(context) else context
+  /** Moves key from special query string (?/key/parts) into the path when [[keyInQuery]] is true.
+    * Records [[AppQuerease.OriginalRequestUriAttribute]] for relative redirect resolution. */
+  def maybeKeyFromQueryToPath(context: RequestContext): RequestContext = {
+    val withOriginal =
+      if (context.request.attribute(AppQuerease.OriginalRequestUriAttribute).isDefined) context
+      else context.withRequest(
+        context.request.addAttribute(AppQuerease.OriginalRequestUriAttribute, context.request.uri))
+    if (keyInQuery) keyFromQueryToPath(withOriginal) else withOriginal
+  }
 
   /** Moves key from special query string (?/key/parts) into the path. */
   def keyFromQueryToPath(context: RequestContext): RequestContext = {

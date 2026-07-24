@@ -2014,6 +2014,8 @@ object DefaultAppQuereaseIo extends AppQuereaseIo[Dto](DefaultAppQuerease)
 object AppQuerease {
   /** Matched view API path (without key) for the current request; used for redirects/Location. */
   val ViewApiPathAttribute: AttributeKey[Uri.Path] = AttributeKey[Uri.Path]("wabase-view-api-path")
+  /** Request URI as received (before key-from-query is moved into the path); used for relative Location. */
+  val OriginalRequestUriAttribute: AttributeKey[Uri] = AttributeKey[Uri]("wabase-original-request-uri")
 
   case class InjectionParametersContext(
     req:  HttpRequest,

@@ -1,0 +1,12 @@
+# Expected 200 + body - auto-follow 303 after update+ with key in path
+path:       /data/person_redirect/rf1
+method:     POST
+request:
+  code:     rf1
+  name:     FollowUpd
+  surname:  Update
+response_status: 200 OK
+response:
+  code:     rf1
+  name:     FollowUpd
+  surname:  Update

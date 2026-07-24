@@ -402,6 +402,87 @@ response: |+
             description: Not Found
           "503":
             description: Service Unavailable
+    /data/person_redirect/{code}:
+      get:
+        summary: Get 'person_redirect' by 'code'
+        description: ""
+        parameters:
+        - name: code
+          in: path
+          description: Code
+          required: true
+          schema:
+            type: string
+            maxLength: 12
+        responses:
+          "200":
+            description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: "#/components/schemas/person_redirect"
+          "400":
+            description: Bad Request
+          "403":
+            description: Forbidden
+          "404":
+            description: Not Found
+          "503":
+            description: Service Unavailable
+      put:
+        summary: Upsert 'person_redirect' by 'code'
+        description: ""
+        parameters:
+        - name: code
+          in: path
+          description: Code
+          required: true
+          schema:
+            type: string
+            maxLength: 12
+        requestBody:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/person_redirect"
+        responses:
+          "200":
+            description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: "#/components/schemas/person_redirect_key_response"
+          "400":
+            description: Bad Request
+          "503":
+            description: Service Unavailable
+      post:
+        summary: Update+ 'person_redirect' by 'code'
+        description: ""
+        parameters:
+        - name: code
+          in: path
+          description: Code
+          required: true
+          schema:
+            type: string
+            maxLength: 12
+        requestBody:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/person_redirect"
+        responses:
+          "200":
+            description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: "#/components/schemas/person_redirect_key_response"
+          "400":
+            description: Bad Request
+          "503":
+            description: Service Unavailable
     /data/person_with_access_control/{code}:
       get:
         summary: Get 'person_with_access_control' by 'code'
@@ -1401,6 +1482,34 @@ response: |+
         required:
         - code
       person_key_response:
+        type: object
+        properties:
+          code:
+            type: string
+            description: Code
+            maxLength: 12
+            readOnly: false
+      person_redirect:
+        type: object
+        properties:
+          code:
+            type: string
+            description: Code
+            maxLength: 12
+            readOnly: false
+          name:
+            type: string
+            description: Name
+            maxLength: 80
+            readOnly: false
+          surname:
+            type: string
+            description: Surname
+            maxLength: 80
+            readOnly: false
+        required:
+        - code
+      person_redirect_key_response:
         type: object
         properties:
           code:

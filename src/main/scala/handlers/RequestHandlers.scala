@@ -11,9 +11,14 @@ import java.util.Locale
 
 object RequestHandlers {
 
-  /** Moves key from special query string (?/key/parts) into the path when `app.key-in-query` is true. */
-  def maybeKeyFromQueryToPath(ctx: WabaseRequestContext): WabaseRequestContext =
-    if (AppServiceBase.KeyInQuery) keyFromQueryToPath(ctx) else ctx
+  /** Moves key from special query string (?/key/parts) into the path when `app.key-in-query` is true.
+    * Always records [[AppQuerease.OriginalRequestUriAttribute]] for relative redirect resolution. */
+  def maybeKeyFromQueryToPath(ctx: WabaseRequestContext): WabaseRequestContext = {
+    val withOriginal = ctx.copy(req =
+      if (ctx.req.attribute(AppQuerease.OriginalRequestUriAttribute).isDefined) ctx.req
+      else ctx.req.addAttribute(AppQuerease.OriginalRequestUriAttribute, ctx.req.uri))
+    if (AppServiceBase.KeyInQuery) keyFromQueryToPath(withOriginal) else withOriginal
+  }
 
   /** Moves key from special query string (?/key/parts) into the path. */
   def keyFromQueryToPath(ctx: WabaseRequestContext): WabaseRequestContext = {

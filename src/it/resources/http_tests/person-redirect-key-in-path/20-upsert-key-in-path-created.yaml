@@ -1,0 +1,12 @@
+# Key in path (not query): relative Location uses view segment only (app.crud-redirects = relative)
+path:       /data/person/kip1
+method:     PUT
+request:
+  name:     Key
+  surname:  InPath
+response_status: 201 Created
+response_headers:
+  # parent-relative: request path is /data/person/kip1 (key in path)
+  Location: ../person?/kip1
+response:
+  code: kip1
