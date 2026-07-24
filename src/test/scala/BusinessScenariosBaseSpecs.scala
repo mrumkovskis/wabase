@@ -517,6 +517,41 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
     case x => x
   }
 
+  /** Default for `follow_redirects` when that key is absent.
+    *
+    * Returns `false` when the scenario appears to assert on the redirect itself
+    * (expected status is 3xx, or a `Location` response header is expected);
+    * otherwise `true` (follow redirects and assert on the final response).
+    */
+  protected def shouldFollowRedirectsByDefault(
+    expectedStatus: String,
+    expectedHeaders: Seq[HttpHeader],
+    expectedResponse: Any,
+    expectedError: Any,
+  ): Boolean = {
+    if (expectedStatus != null && """^3\d\d(\s|$)""".r.findFirstIn(expectedStatus).isDefined) false
+    else if (expectedHeaders.exists(_.is("location"))) false
+    else true
+  }
+
+  /** Default for `throw_http_errors` when that key is absent.
+    *
+    * Returns `true` only when the scenario asserts nothing about the response
+    * (no `response_status`, `response`, `error`, or `response_headers`) — the
+    * client should fail fast on unexpected non-success statuses.
+    */
+  protected def shouldThrowHttpErrorsByDefault(
+    expectedStatus: String,
+    expectedHeaders: Seq[HttpHeader],
+    expectedResponse: Any,
+    expectedError: Any,
+  ): Boolean = {
+    expectedStatus   == null &&
+    expectedResponse == null &&
+    expectedError    == null &&
+    (expectedHeaders == null || expectedHeaders.isEmpty)
+  }
+
   def isBackdoorPath(path: String) = path.startsWith("/backdoor/")
   def backdoorAction(requestInfo: RequestInfo, context: Map[String, Any], map: Map[String, Any]): Any = {
     import requestInfo._
@@ -591,9 +626,17 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
       case (name, value) =>
         RawHeader(name, value.toString)
     }.toList
+    val follow =
+      if (map.contains("follow_redirects")) map.b("follow_redirects")
+      else shouldFollowRedirectsByDefault(expectedStatus, expectedHeaders, expectedResponse, expectedError)
+    val doThrow =
+      if (map.contains("throw_http_errors")) map.b("throw_http_errors")
+      else shouldThrowHttpErrorsByDefault(expectedStatus, expectedHeaders, expectedResponse, expectedError)
     val options = Seq(
       if (fullCompare)      "full compare" else "partial compare",
       if (mergeResponse)    "merge"        else "no merge",
+      if (follow)           "follow redirects"  else "",
+      if (doThrow)          "throw http errors" else "",
       if (debugResponse)    "debug"        else "no debug",
       if (retriesLeft > 0) s"retries left: $retriesLeft" else "",
     ).filter(_ != "")
@@ -604,7 +647,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
       options,
     )
 
-    def httpPostAwaitMultipartFormData(method: HttpMethod, path: String, formData: Multipart.FormData, headers: Seq[HttpHeader]) = {
+    def httpAwaitMultipartFormData(method: HttpMethod, formData: Multipart.FormData) = {
       val boundaryOpt =
         headers.collectFirst { case cth: `Content-Type` => cth }
           .map(_.contentType.mediaType)
@@ -616,22 +659,25 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
         case None =>
           (formData.toEntity, headers.filterNot(_.isInstanceOf[`Content-Type`]))
       }
-      httpPostAwait[RequestEntity, HttpResponse](method, path, entity, requestHeaders)
+      httpPostAwait[RequestEntity, HttpResponse](method, path, entity, requestHeaders, doThrow, follow)
     }
 
+    def httpAwait[T](method: HttpMethod, body: T)(implicit marshaller: Marshaller[T, RequestEntity]) =
+      httpPostAwait[T, HttpResponse](method, path, body, headers, doThrow, follow)
+
     def doRequest: HttpResponse  = (method, requestMap, requestSeq, requestString, requestBytes, requestFormData) match {
-      case ("GET",   null, null, null,   null, null) => httpGetAwait [HttpResponse](path, params, headers)
-      case ("POST",   map, null, null,   null, null) => httpPostAwait[Map[String, Any],     HttpResponse](HttpMethods.POST,path, map, headers)
-      case ("POST",  null,  seq, null,   null, null) => httpPostAwait[Seq[Any],    HttpResponse](HttpMethods.POST,   path, seq,       headers)
-      case ("POST",  null, null, string, null, null) => httpPostAwait[String,      HttpResponse](HttpMethods.POST,   path, string,    headers)
-      case ("POST",  null, null, null,  bytes, null) => httpPostAwait[Array[Byte], HttpResponse](HttpMethods.POST,   path, bytes,     headers)
-      case ("POST",  null, null, null,   null, form) => httpPostAwaitMultipartFormData          (HttpMethods.POST,   path, form,      headers)
-      case ("PUT",    map, null, null,   null, null) => httpPostAwait[Map[String, Any],     HttpResponse](HttpMethods.PUT, path, map, headers)
-      case ("PUT",   null,  seq, null,   null, null) => httpPostAwait[Seq[Any],    HttpResponse](HttpMethods.PUT,    path, seq,       headers)
-      case ("PUT",   null, null, string, null, null) => httpPostAwait[String,      HttpResponse](HttpMethods.PUT,    path, string,    headers)
-      case ("PUT",   null, null, null,  bytes, null) => httpPostAwait[Array[Byte], HttpResponse](HttpMethods.PUT,    path, bytes,     headers)
-      case ("PUT",   null, null, null,   null, form) => httpPostAwaitMultipartFormData          (HttpMethods.PUT,    path, form,      headers)
-      case ("DELETE",null, null, null,   null, null) => httpPostAwait[String,      HttpResponse](HttpMethods.DELETE, path, "",        headers)
+      case ("GET",   null, null, null,   null, null) => httpGetAwait [HttpResponse](path, params, headers, doThrow, follow)
+      case ("POST",   map, null, null,   null, null) => httpAwait[Map[String, Any]](HttpMethods.POST,   map   )
+      case ("POST",  null,  seq, null,   null, null) => httpAwait[Seq[Any]        ](HttpMethods.POST,   seq   )
+      case ("POST",  null, null, string, null, null) => httpAwait[String          ](HttpMethods.POST,   string)
+      case ("POST",  null, null, null,  bytes, null) => httpAwait[Array[Byte]     ](HttpMethods.POST,   bytes )
+      case ("POST",  null, null, null,   null, form) => httpAwaitMultipartFormData (HttpMethods.POST,   form  )
+      case ("PUT",    map, null, null,   null, null) => httpAwait[Map[String, Any]](HttpMethods.PUT,    map   )
+      case ("PUT",   null,  seq, null,   null, null) => httpAwait[Seq[Any]        ](HttpMethods.PUT,    seq   )
+      case ("PUT",   null, null, string, null, null) => httpAwait[String          ](HttpMethods.PUT,    string)
+      case ("PUT",   null, null, null,  bytes, null) => httpAwait[Array[Byte]     ](HttpMethods.PUT,    bytes )
+      case ("PUT",   null, null, null,   null, form) => httpAwaitMultipartFormData (HttpMethods.PUT,    form  )
+      case ("DELETE",null, null, null,   null, null) => httpAwait[String          ](HttpMethods.DELETE, ""    )
       case r => sys.error("Unsupported request type: "+r)
     }
 
@@ -642,7 +688,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
         val ErrorStatusRegex = """^[45]\d{2}""".r
         if (expectedError != null || Option(expectedStatus).flatMap(ErrorStatusRegex.findFirstIn).nonEmpty)
           try doRequest catch {
-            case ce: ClientException => ce.getMessage   // catch client exception in the case ProxyMode not set for request
+            case ce: ClientException => ce.getMessage   // when throwHttpErrors = true, errors surface as ClientException
           }
         else doRequest
       }

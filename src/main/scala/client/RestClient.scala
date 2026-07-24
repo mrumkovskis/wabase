@@ -324,7 +324,7 @@ object RestClient extends Loggable {
     status.value + "\n" + status.defaultMessage + "\n" + content
 
   /** Resolve a Location header URI reference against the request URI (RFC 3986 §5.2). */
-  private [client] def resolveRedirectUri(baseUri: Uri, locationUri: Uri): Uri = {
+  def resolveRedirectUri(baseUri: Uri, locationUri: Uri): Uri = {
     require(baseUri.isAbsolute, s"Base URI must be absolute for redirect resolution: $baseUri")
     if (locationUri.isAbsolute) locationUri
     else locationUri.resolvedAgainst(baseUri)
