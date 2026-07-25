@@ -247,9 +247,9 @@ class Audit extends Loggable {
           reqC <- reqPromise.future
           respC <- respPromise.future
         } yield {
-          ctx.req.addAttribute(AuditEntityKey, HttpEntity.Strict(ctx.req.entity.contentType, reqC))
-          response.addAttribute(AuditEntityKey, HttpEntity.Strict(response.entity.contentType, respC))
-          audit(ctx, response)
+          val reqWithEnt = ctx.req.addAttribute(AuditEntityKey, HttpEntity.Strict(ctx.req.entity.contentType, reqC))
+          val respWithEnt = response.addAttribute(AuditEntityKey, HttpEntity.Strict(response.entity.contentType, respC))
+          audit(ctx.copy(req = reqWithEnt), respWithEnt)
         }
 
         auditF.failed.foreach { ex =>
