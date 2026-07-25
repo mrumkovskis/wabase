@@ -255,33 +255,11 @@ object WabaseService extends Loggable {
     key(keyPath)
   }
 
-  private val fieldFilterParameterNameOpt =
-    Option("app.field-filter-parameter-name").filter(config.hasPath).map(config.getString)
-
   def addResultFilter(context: WabaseRequestContext, params: Map[String, Any]): WabaseRequestContext = {
     if (context.resultFilter != null) context
-    else context.action match {
-      case Action.Get | Action.List | Action.Create =>
-        val allowed = fieldFilterParameterNameOpt.flatMap(params.get).map {
-          case null => null
-          case seq: Seq[_] => seq.map(_.toString).toSet
-          case cols => s"$cols".split(",").map(_.trim).toSet
-        }.orNull
-        context.logger.debug(s"Adding result filter. allowed: ${allowed}")
-        if (allowed != null) {
-          class ColsFilter(viewName: String, nameToViewDef: Map[String, ViewDef])
-            extends ResultRenderer.ViewFieldFilter(viewName, nameToViewDef) {
-            override def shouldInclude(field: String) =
-              allowed.contains(field) && super.shouldInclude(field)
-            override def childFilter(field: String) = viewDef.fieldOpt(field)
-              .map(_.type_.name)
-              .map(new ColsFilter(_, nameToViewDef))
-              .orNull
-          }
-          context.withResultFilter(new ColsFilter(context.viewName, context.wabase.qe.nameToViewDef))
-        } else context
-      case _ => context
-    }
+    else Option(context.wabase.createResultFilter(context.action, context.viewName, params)(context.logger))
+      .map(context.withResultFilter)
+      .getOrElse(context)
   }
 
   def withReqMaxContentSize(ctx: WabaseRequestContext): WabaseRequestContext = {

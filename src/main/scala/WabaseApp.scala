@@ -418,30 +418,40 @@ trait WabaseApp[User] {
   private val fieldFilterParameterNameOpt =
     Option("app.field-filter-parameter-name").filter(config.hasPath).map(config.getString)
 
+  /** Creates field filter from field filter parameter (`app.field-filter-parameter-name` config)
+    * for Get, List and Create actions. Returns null if not applicable. */
+  def createResultFilter(
+    actionName: String,
+    viewName:   String,
+    params:     Map[String, Any],
+  )(log: Logger): ResultRenderer.ResultFilter = actionName match {
+    case Action.Get | Action.List | Action.Create =>
+      val allowed = fieldFilterParameterNameOpt.flatMap(params.get).map {
+        case null => null
+        case seq: Seq[_] => seq.map(_.toString).toSet
+        case cols => s"$cols".split(",").map(_.trim).toSet
+      }.orNull
+      log.debug(s"Adding result filter. allowed: ${allowed}")
+      if (allowed != null) {
+        class ColsFilter(viewName: String, nameToViewDef: Map[String, ViewDef])
+          extends ResultRenderer.ViewFieldFilter(viewName, nameToViewDef) {
+          override def shouldInclude(field: String) =
+            allowed.contains(field) && super.shouldInclude(field)
+          override def childFilter(field: String) = viewDef.fieldOpt(field)
+            .map(_.type_.name)
+            .map(new ColsFilter(_, nameToViewDef))
+            .orNull
+        }
+        new ColsFilter(viewName, qe.nameToViewDef)
+      } else null
+    case _ => null
+  }
+
   protected def addResultFilter(context: AppActionContext): AppActionContext = {
     if (context.resultFilter != null) context
-    else context.actionName match {
-      case Action.Get | Action.List | Action.Create =>
-        val allowed = fieldFilterParameterNameOpt.flatMap(context.params.get).map {
-          case null => null
-          case seq: Seq[_] => seq.map(_.toString).toSet
-          case cols => s"$cols".split(",").map(_.trim).toSet
-        }.orNull
-        context.log.debug(s"Adding result filter. allowed: ${allowed}")
-        if (allowed != null) {
-          class ColsFilter(viewName: String, nameToViewDef: Map[String, ViewDef])
-            extends ResultRenderer.ViewFieldFilter(viewName, nameToViewDef) {
-            override def shouldInclude(field: String) =
-              allowed.contains(field) && super.shouldInclude(field)
-            override def childFilter(field: String) = viewDef.fieldOpt(field)
-              .map(_.type_.name)
-              .map(new ColsFilter(_, nameToViewDef))
-              .orNull
-          }
-          context.withResultFilter(new ColsFilter(context.viewName, qe.nameToViewDef))
-        } else context
-      case _ => context
-    }
+    else Option(createResultFilter(context.actionName, context.viewName, context.params)(context.log))
+      .map(context.withResultFilter)
+      .getOrElse(context)
   }
 
   protected def beforeWabaseAction(
