@@ -131,7 +131,7 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
     scenario.listFiles.exists(isTestCaseFile) &&
       testOnlyScenariousPattern.pattern.matcher(scenario.getName).matches
 
-  val scenarios = for {
+  val scenarios = (for {
     scenarioPath <- scenarioPaths
     scenario <- {
       val scenariosDirectory = new File(resourcePath + scenarioPath)
@@ -139,7 +139,10 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
       recursiveListDirectories(scenariosDirectory)
     }
     if shouldTestScenario(scenario)
-  } yield scenario
+  } yield scenario).sortBy(_.getCanonicalPath).toVector
+
+  def testCases(scenario: File): Vector[File] =
+    scenario.listFiles.filter(isTestCaseFile).sortBy(_.getName).toVector
 
   def assertResponse(response: Any, expectedResponse: Any, path: String, fullCompare: Boolean): Map[String, Any] = {
     def err(message: String) = sys.error(path + ": " + message)
@@ -181,6 +184,8 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
   def templateFunctions: Map[String, Any] => PartialFunction[String, Any] = context => {
     case (randomStringPattern(length)) => Random.alphanumeric.take(length.toInt).mkString
   }
+
+  protected def initialContext(scenario: File): Map[String, Any] = Map.empty[String, Any]
 
   private val placeholderPattern = """.*\{\{(.+)\}\}""".r
   def applyContext(map: Map[String, Any], context: Map[String, Any]): (Map[String, Any], Map[String, Any]) = {
@@ -255,6 +260,9 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
     }))
     (newValues, result)
   }
+
+  def applyContext(testCase: File, context: Map[String, Any]): (Map[String, Any], Map[String, Any]) =
+    applyContext(readPojoMap(testCase, getTemplatePath), context)
 
   protected def isMultipartFormData(mediaType: MediaType) =
     mediaType.mainType == MediaTypes.`multipart/form-data`.mainType &&
@@ -821,29 +829,30 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
   protected def scenariosAutoLogout = true
 
   /** Closes every [[ServerSentEventsHandler]] stored in the scenario context. */
-  def closeServerSentEvents(context: Map[String, Any]): Unit = {
+  protected def closeServerSentEvents(context: Map[String, Any]): Unit = {
     context.values.foreach {
       case handler: ServerSentEventsHandler => handler.close()
       case _ =>
     }
   }
 
+  protected def afterScenario(scenario: File, context: Map[String, Any]) =
+    closeServerSentEvents(context)
+
   def ckeckAllTestCases =
-    scenarios.sortBy(_.getCanonicalPath).foreach{scenario =>
+    scenarios.foreach { scenario =>
       behavior of scenario.getName
       import httpClient._
-      var context = Map.empty[String, Any]
+      var context = initialContext(scenario)
       if (scenariosAutoLogin) {
         it should "login" in login()
       }
-      val testCases =
-        scenario.listFiles.filter(isTestCaseFile).sortBy(_.getName).toVector
-      testCases.zipWithIndex.foreach { case (testCase, idx) =>
-        val isLastInScenario = idx == testCases.size - 1
+      val tests = testCases(scenario)
+      tests.foreach { testCase =>
         it should "handle "+testCase.getName in {
          try {
           val (newValuesInContext, map) =
-            try applyContext(readPojoMap(testCase, getTemplatePath), context)
+            try applyContext(testCase, context)
             catch {
               case util.control.NonFatal(ex) =>
                 logScenarioFailure(scenario, testCase, context, ex)
@@ -852,7 +861,8 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
           context ++= newValuesInContext
           context ++= checkTestCase(scenario, testCase, context, map)
          } finally {
-          if (isLastInScenario) closeServerSentEvents(context)
+          if (testCase == tests.last)
+            afterScenario(scenario, context)
          }
         }
       }
