@@ -90,10 +90,13 @@ class BufferedAuditSpecs extends FlatSpec with Matchers with Eventually {
     )
     writeNewRecord(tinyFilesWriter)
     fileCount(path) shouldBe 1
+    Thread.sleep(2)
     writeNewRecord(tinyFilesWriter)
     fileCount(path) shouldBe 2
+    Thread.sleep(2)
     writeNewRecord(smallFilesWriter)
     fileCount(path) shouldBe 3
+    Thread.sleep(2)
     writeNewRecord(smallFilesWriter)
     fileCount(path) shouldBe 3
     writeNewRecord(smallFilesWriter)

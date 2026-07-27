@@ -59,22 +59,16 @@ class BufferedAuditWriter(
         logger.warn(s"audit file path does not exist, creating '$dir' ...")
         if (!dir.mkdirs()) sys.error(s"Failed to create audit file path '$dir'")
       }
-      var instant = Instant.now()
-      var file: File = null
-      var created = false
-      var attempt = 0
-      while (!created && attempt < 5) {
-        file = new File(dir, filenamePrefix + filenameDateTime.format(instant))
-        if (file.createNewFile) {
-          created = true
-          filename = file.getName
-        } else {
-          attempt += 1
-          instant = instant.plusMillis(1)
-        }
-      }
-      if (!created)
-        sys.error("Failed to create file " + file)
+      val file = new File(dir, filenamePrefix + filenameDateTime.format(Instant.now()))
+      if (!file.createNewFile)
+        sys.error(
+          s"Failed to create file $file" +
+            (if (file.exists) " (already exists — possible millisecond filename collision)"
+             else if (!dir.canWrite) s" (directory not writable: $dir)"
+             else "")
+        )
+      else
+        filename = file.getName
       fileCreationQueue.offer(Notification)
       channel = FileChannel.open(file.toPath, StandardOpenOption.WRITE)
     }
@@ -129,7 +123,12 @@ class BufferedAuditReader(
       file = new File(rootPath.toFile, controlFileName)
       if (!Files.exists(file.toPath)) {
         if (!file.createNewFile)
-          sys.error("Failed to create file " + file)
+          sys.error(
+            s"Failed to create file $file" +
+              (if (file.exists) " (already exists)"
+               else if (!rootPath.toFile.canWrite) s" (directory not writable: $rootPath)"
+               else "")
+          )
       } else if (Files.isDirectory(file.toPath)) {
           sys.error("Expected regular file, found directory: " + file)
       }
