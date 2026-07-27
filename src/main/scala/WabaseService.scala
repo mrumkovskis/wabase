@@ -237,11 +237,11 @@ object WabaseService extends Loggable {
       // } else (None, None))
   }
 
-  /** Extract segments as list from path after segment matching prefix */
-  def key(path: Path, prefix: String): Seq[String] = {
+  /** Extracts path segments after the first segment equal to `segment`. */
+  def keyAfterSegment(path: Path, segment: String): Seq[String] = {
     def key_path(path: Path): Path = path match {
       case Segment(head, tail) =>
-        if (head == prefix) tail
+        if (head == segment) tail
         else key_path(tail)
       case Empty => Empty
       case p => key_path(p.tail)

@@ -96,8 +96,8 @@ object RequestHandlers {
     else {
       val allowed   = wabase.qe.allowedPaths(view_name)
       val matched   = matchedAllowedPath(allowed, req.uri.path)
-      val keyPrefix = matched.flatMap(lastPathSegment(_)).getOrElse(viewNameAndActionStr)
-      val key = WabaseService.key(req.uri.path, keyPrefix)
+      val segment   = matched.flatMap(lastPathSegment(_)).getOrElse(viewNameAndActionStr)
+      val key       = WabaseService.keyAfterSegment(req.uri.path, segment)
       val action = if (create_count_action != null) create_count_action else req.method match {
         case `GET`    => Action.Get
         case `POST`   => ActionForHttpPost
