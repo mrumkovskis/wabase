@@ -1537,6 +1537,13 @@ response: |+
             readOnly: false
         required:
         - code
+      post_uid_key_response:
+        type: object
+        properties:
+          uid:
+            type: string
+            description: Uid
+            readOnly: false
       request_calculation_view:
         type: object
         properties:

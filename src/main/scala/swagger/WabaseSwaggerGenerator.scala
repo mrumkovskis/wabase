@@ -195,9 +195,16 @@ class WabaseSwaggerGenerator(
   def isApiField(f: FieldDef): Boolean =
     !f.api.excluded
 
+  /** Include view body schema when the view has at least one non-excluded API field. */
   def shouldIncludeSchemaForView(v: ViewDef): Boolean = v.fields.exists(isApiField)
+  /** Include `*_key_response` when insert/update-style API returns JSON key and key fields exist. */
+  def shouldIncludeKeyResponseSchema(v: ViewDef): Boolean =
+    marshalKeyAsJson && hasKeyResultMethods(v) && apiKeyFieldNames(v).nonEmpty
   def schemasFromViewDefs(viewDefMap: Map[String, ViewDef]): Map[String, Schema[_]] = {
-    viewDefMap.view.filter { case (_, v) => shouldIncludeSchemaForView(v) }.flatMap { case (viewName, viewDef) =>
+   viewDefMap.view.filter { case (_, v) => shouldIncludeSchemaForView(v) || shouldIncludeKeyResponseSchema(v) }.flatMap { case (viewName, viewDef) =>
+    val bodySchemaOpt =
+     if (!shouldIncludeSchemaForView(viewDef)) None
+     else {
       val filteredFields = viewDef.fields.filter(isApiField)
       val fields: TreeMap[String, Schema[_]] =
         TreeMap()(viewNameToQe(viewDef.name).fieldOrdering(viewDef.name)) ++
@@ -211,23 +218,31 @@ class WabaseSwaggerGenerator(
         .properties(fieldsAsJava)
         .required(Option(requiredFields).filter(_.nonEmpty).map(_.asJava).orNull)
         .asInstanceOf[Schema[Object]] /* cast for scala 2.12 */
-      if (marshalKeyAsJson && hasKeyResultMethods(viewDef) && apiKeyFieldNames(viewDef).nonEmpty) {
+      Some(viewName -> viewSchema)
+     }
+    val keySchemaOpt =
+     if (!shouldIncludeKeyResponseSchema(viewDef)) None
+     else {
         val keyFields: TreeMap[String, Schema[_]] =
           TreeMap()(viewNameToQe(viewDef.name).fieldOrdering(viewDef.name)) ++
           apiKeyFieldNames(viewDef).map { keyFieldName =>
-            viewDef.fieldOpt(keyFieldName).getOrElse(
+            viewDef.fieldOpt(keyFieldName).orElse(
+              viewNameToQe.get(viewDef.name).map(_.viewNameToKeyFields(viewDef.name))
+                .flatMap(_.find(_.fieldName == keyFieldName)))
+            .getOrElse(
               new org.mojoz.metadata.FieldDef(keyFieldName, new org.mojoz.metadata.Type("string")))
           }.map(schemaFromFieldDef(viewDefMap)).toMap
-        val keyFieldsAsJava = new java.util.LinkedHashMap[String, Schema[_]](fields.size, 1)
+        val keyFieldsAsJava = new java.util.LinkedHashMap[String, Schema[_]](keyFields.size, 1)
         keyFields.foreach { case (name, schema) => keyFieldsAsJava.put(name, schema) }
         val keyResponseName = keySchemaName(viewDef.name)
         val keySchema = new ObjectSchema()
           .name(keyResponseName)
           .properties(keyFieldsAsJava)
           .asInstanceOf[Schema[Object]] /* cast for scala 2.12 */
-        Seq(viewName -> viewSchema, keyResponseName -> keySchema)
-      } else Seq(viewName -> viewSchema)
-    }.toMap - "count" // no object schema for "count" service
+        Some(keyResponseName -> keySchema)
+     }
+    bodySchemaOpt.toSeq ++ keySchemaOpt.toSeq
+   }.toMap - "count" // no object schema for "count" service
   }
 
   val schemaRefPrefix = "#/components/schemas/"
