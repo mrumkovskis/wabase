@@ -10,14 +10,16 @@ import org.apache.pekko.http.scaladsl.model.{AttributeKey, HttpEntity, HttpHeade
 import org.apache.pekko.stream.scaladsl._
 import org.apache.pekko.util.ByteString
 import org.mojoz.querease.{QuereaseIo, SaveMethod}
+import org.tresql.Logging
 import org.wabase.WabaseAppConfig.DefaultCp
 import org.wabase.WabaseService.RequestHandler
 import org.wabase.ds.PoolName
-import org.wabase.{CborOrJsonAnyValueDecoder, DbAccess, DefaultAppQuerease, DefaultAppQuereaseIo, Loggable, ResultEncoder, TresqlResourcesConf, WabaseRequestContext, WabaseServer}
+import org.wabase.{CborOrJsonAnyValueDecoder, DbAccess, DefaultAppQuerease, DefaultAppQuereaseIo, Loggable, ResultEncoder, TresqlResourcesConf, WabaseRequestContext, WabaseServer, config, invokeFunction}
 
 import java.nio.file.Files
 import java.time.Instant
 import scala.concurrent.{ExecutionContext, Future, Promise}
+import scala.util.matching.Regex
 import scala.util.{Failure, Success}
 
 class Audit extends Loggable {
@@ -272,4 +274,24 @@ class Audit extends Loggable {
   }
 
   def handleAuditing(innerHandler: RequestHandler): RequestHandler = audit(innerHandler)
+}
+
+object HiddenValues {
+  type HiddenValuesEncoder = Logging#BindVarLogFilter
+  private lazy val conf = config.getConfig("app.hidden-values")
+  private lazy val encoder_fun = conf.getString("encoder")
+  private lazy val names = {
+    val ns = conf.getStringList("names").toArray()
+    new Regex(ns.map(n => "^" + n + "$").mkString("|"))
+  }
+  private lazy val mask = conf.getString("mask")
+  private lazy val _encoder: HiddenValuesEncoder = {
+    val enc = invokeFunction(encoder_fun, Nil)(null).asInstanceOf[HiddenValuesEncoder]
+    enc orElse { case (_, v) => String.valueOf(v) }
+  }
+  def encoder(): HiddenValuesEncoder = {
+    case (n, _) if names.pattern.matcher(n).matches() => mask
+  }
+
+  def encode(value: (String, Any)): String = _encoder(value)
 }

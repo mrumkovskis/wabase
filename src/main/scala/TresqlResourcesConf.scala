@@ -103,10 +103,7 @@ class ClassLoaderTresqlResourcesConf(cl: ClassLoader) extends Loggable {
         override val maxResultSize:         Int = getInt("max-result-size")
         override val queryTimeout:          Int = getSeconds("query-timeout")
         override val recursiveStackDepth:   Int = getInt("recursive-stack-depth")
-        override val bindVarLogFilter:      Logging#BindVarLogFilter =
-          getStringSetOpt("confidential-value-variable-names").map { hide => {
-            case (fullName, _) if hide.contains(fullName) || hide.exists(h => fullName startsWith s"$h.") => "***"
-          }: Logging#BindVarLogFilter}.orNull
+        override val bindVarLogFilter:      Logging#BindVarLogFilter = audit.HiddenValues.encoder()
         override private[wabase] val isDbSet: Boolean = cConf.hasPathOrNull("db") && !tunableOnly
       }
     }
@@ -213,7 +210,7 @@ class ClassLoaderTresqlResourcesConf(cl: ClassLoader) extends Loggable {
         else new SimpleCache(cacheSize)
       val bindVarLogFilter =
         if(conf.bindVarLogFilter != null) conf.bindVarLogFilter
-        else TresqlResources.bindVarLogFilter
+        else audit.HiddenValues.encoder()
 
       ResourcesTemplate(
         conn = null,

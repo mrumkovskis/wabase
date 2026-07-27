@@ -6,6 +6,7 @@ import org.apache.pekko.util.ByteString
 
 import com.typesafe.config.ConfigFactory
 import jakarta.activation.DataSource
+import org.wabase.audit.HiddenValues
 import org.simplejavamail.api.email.EmailPopulatingBuilder
 import org.simplejavamail.api.mailer.Mailer
 import org.simplejavamail.config.ConfigLoader
@@ -58,7 +59,9 @@ class DefaultWabaseEmailSender extends WabaseEmail with Loggable {
     }).toMap
     val props = new Properties()
     map.foreach { case (k, v) => props.setProperty(k, v) }
-    logger.debug("Simple Java Mail properties extracted from conf: " + props)
+    // redact secret-looking values (e.g. smtp password) before logging
+    logger.debug("Simple Java Mail properties extracted from conf: " +
+      map.toSeq.sortBy(_._1).map { case (k, v) => s"$k=${HiddenValues.encode(k -> v)}" }.mkString("{", ", ", "}"))
     props
   }
 

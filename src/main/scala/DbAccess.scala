@@ -293,10 +293,6 @@ object TresqlResources {
   val PostgresSqlDialect: Dialect = {
     case f: QueryBuilder#FunExpr if f.name == "unaccent" => s"f_unaccent(${f.params map (_.sql) mkString ", "})"
   }
-
-  val bindVarLogFilter: Logging#BindVarLogFilter = {
-    case (fullName, _) if fullName == "password" || fullName.startsWith("password.") => "***"
-  }
 }
 
 object DbAccess extends Loggable {
