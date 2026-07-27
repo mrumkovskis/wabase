@@ -13,7 +13,7 @@ import org.apache.pekko.http.scaladsl.model.{AttributeKeys, HttpRequest, HttpRes
 import org.apache.pekko.http.scaladsl.model.sse.ServerSentEvent
 import org.apache.pekko.http.scaladsl.server.{Directives, Route}
 
-import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration.DurationInt
 import scala.util.{Failure, Success}
 
@@ -118,13 +118,9 @@ object ServerNotifications extends EventStreamMarshalling with Loggable {
     subscriptionFun: EventBus => ActorRef => Unit,
     initialPublications: EventBus => Unit,
   )(as: ActorSystem) = {
-    // wait for the result here since this function is called in mapMaterializedValue and in the case of
-    // Failure it will probably be silently omitted
-    val watcher = Await.result(
-      as.actorSelection(as / SubscriberWatcherActorName).resolveOne(1.second),
-      1.second
-    )
-    watcher ! ServerNotifications.EventSubscriberActorMsg(
+    // tell the watcher via its selection - non-blocking (called from mapMaterializedValue) and
+    // re-resolved per message, so it survives watcher restart/recreate
+    as.actorSelection(as / SubscriberWatcherActorName) ! ServerNotifications.EventSubscriberActorMsg(
       act, subscriptionFun, initialPublications)
   }
 
