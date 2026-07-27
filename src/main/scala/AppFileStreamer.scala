@@ -1,9 +1,8 @@
 package org.wabase
 
-import java.io.{File, FileInputStream, FileOutputStream}
+import java.io.File
 import java.math.BigInteger
-import java.nio.channels.FileChannel
-import java.nio.file.Files
+import java.nio.file.{Files, StandardCopyOption}
 import java.security.MessageDigest
 import org.apache.pekko.http.scaladsl.model.EntityStreamSizeException
 import com.typesafe.config.Config
@@ -322,19 +321,10 @@ class FileStreamer(
 
   def copy(source: String, dest: String, mkdirs: Boolean = false): Unit = {
     if (source != dest) {
-      val s = new File(source)
-      val d = new File(dest)
+      val destPath = new File(dest).toPath
       if (mkdirs)
-        d.getParentFile.mkdirs
-      val in = new FileInputStream(new File(source)).getChannel
-      val out = new FileOutputStream(new File(dest)).getChannel
-      try {
-        val buf = in.map(FileChannel.MapMode.READ_ONLY, 0, in.size)
-        out.write(buf)
-      } finally {
-        in.close()
-        out.close()
-      }
+        Option(destPath.getParent).foreach(Files.createDirectories(_))
+      Files.copy(new File(source).toPath, destPath, StandardCopyOption.REPLACE_EXISTING)
     }
   }
 }
