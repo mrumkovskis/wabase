@@ -263,17 +263,20 @@ object Authentication {
 
     def secretKey(keyStr: String) = {
       assert(keyStr != null, "Cannot create key on value null, please check configuration parameters.")
-      Option(decodeBytes(keyStr))
-        .filter(_.length >= 16)
-        //take whole number of power of 2 bytes, i.e. 16, 32, ...
-        .map(a => a.take(Math.pow(2, (Math.log(a.length) / Math.log(2)).toInt).toInt))
+      val bytes = decodeBytes(keyStr)
+      // AES supports 128/192/256-bit keys - use the largest valid length the provided key covers.
+      // (Previously truncated to the nearest lower power of two, silently downgrading e.g. a
+      // 24-byte key to 16, and producing an invalid key length for inputs >= 64 bytes.)
+      Seq(32, 24, 16).find(_ <= bytes.length)
+        .map(bytes.take)
         .getOrElse(sys.error("too short secret key, in base 64 encoded format must be at least 16 bytes long"))
     }
 
     def randomBytes(size: Int) = {
+      // fully random bytes - used as the AES-CBC IV, which must be unpredictable
       val array = Array.ofDim[Byte](size)
       randomGen.get.nextBytes(array)
-      array ++ java.nio.ByteBuffer.allocate(8).putLong(currentTime).array.drop(2)
+      array
     }
 
     def encodeBytes(bytes: Array[Byte]) = Base64.getUrlEncoder.encodeToString(bytes) match {
@@ -287,7 +290,7 @@ object Authentication {
       Base64.getMimeDecoder.decode(string.replace('-', '+').replace('_', '/'))
 
     def encrypt(s: String) = {
-      val rb = randomBytes(10)
+      val rb = randomBytes(16) // 16-byte AES-CBC IV
       val encryptedSession = rb ++ code(s.getBytes("utf-8"),
           new IvParameterSpec(rb), Cipher.ENCRYPT_MODE)
       encodeBytes(hmac(encryptedSession) ++ encryptedSession)
@@ -296,8 +299,8 @@ object Authentication {
       val bytes = decodeBytes(s)
       val hmacBytes = bytes.take(32)
       val encryptedSession = bytes.drop(32)
-      //check hmac
-      if (hmac(encryptedSession).toSeq != hmacBytes.toSeq) sys.error("invalid HMAC")
+      // check hmac with a constant-time comparison to avoid leaking MAC bytes via timing
+      if (!java.security.MessageDigest.isEqual(hmac(encryptedSession), hmacBytes)) sys.error("invalid HMAC")
       new String(code(encryptedSession.drop(16),
           new IvParameterSpec(encryptedSession.take(16)),
           Cipher.DECRYPT_MODE), "utf-8")

@@ -47,7 +47,15 @@ object WabaseAuthentication extends Authentication[WabaseUser] {
   }
 
   // code taken from extractClientIP directive
-  /** Set pekko.http.server.remote-address-attribute = on instead of pekko.http.server.remote-address-header = on */
+  /** Set pekko.http.server.remote-address-attribute = on instead of pekko.http.server.remote-address-header = on
+    *
+    * The returned address is used both to mint and (in [[Authentication.validateSession]]) to validate the
+    * session's IP pin, so it must be trustworthy. `X-Forwarded-For` (first entry) and `X-Real-Ip` are honored
+    * unconditionally: this is only safe behind a trusted reverse proxy that overwrites those headers - if clients
+    * can reach the app directly, these headers are spoofable (an attacker can only pin their own session, not
+    * hijack another's, but the pin becomes meaningless). If no forwarded header is present and
+    * remote-address-attribute is not enabled, this falls back to `Unknown`, so every session pins to the same
+    * "Unknown" value and the IP check silently becomes a no-op. */
   @annotation.nowarn("msg=use remote-address-attribute instead")
   def extractClientIP(req: HttpRequest): RemoteAddress = {
     WabaseService.optionalHttpHeaderValuePF(req) {
@@ -78,6 +86,11 @@ object WabaseAuthentication extends Authentication[WabaseUser] {
   def optUserFromRespAttributes(resp: HttpResponse): Option[WabaseUser] =
     resp.attribute(AttributeKey[WabaseUser](WabaseUserAttributeName))
 
+  /** Merges user data a handler attached to the response (via [[WabaseUserAttributeName]]) back into the
+    * session user before re-encrypting the session cookie. This is how a handler mutates session state.
+    * Null-value semantics are load-bearing: a key with a `null` value in the response user *removes* that key
+    * from the session, a non-null value *updates* it, and keys absent from the response user are left unchanged.
+    * If the response carries no user attribute, the request user is returned unchanged. */
   def mergeReqRespUserData(reqUser: WabaseUser, resp: HttpResponse) =
     optUserFromRespAttributes(resp).map { u =>
       val (rp, cp) = u.properties.partition(_._2 == null)
