@@ -262,7 +262,7 @@ object Authentication {
     def uniqueSessionId = new Random(new SecureRandom).alphanumeric.take(100).mkString
 
     def secretKey(keyStr: String) = {
-      assert(keyStr != null, "Cannot create key on value null, please check configuration parameters.")
+      require(keyStr != null, "Cannot create key on value null, please check configuration parameters.")
       val bytes = decodeBytes(keyStr)
       // AES supports 128/192/256-bit keys - use the largest valid length the provided key covers.
       // (Previously truncated to the nearest lower power of two, silently downgrading e.g. a

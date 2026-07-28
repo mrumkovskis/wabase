@@ -31,7 +31,7 @@ trait Authorization[User] {
     val WaViewProp = "app.wabase-authorization.view"
     if (!config.getIsNull(WaViewProp)) config.getString(WaViewProp) else null
   }
-  assert(wabaseAuth == null || wabaseAuthView == null,
+  require(wabaseAuth == null || wabaseAuthView == null,
     "Cannot specify both configuration parameters - app.wabase-authorization.class and app.wabase-authorization.view")
 
   /** legacy flow - performs authorization, on failure throws Exception, otherwise returns */
