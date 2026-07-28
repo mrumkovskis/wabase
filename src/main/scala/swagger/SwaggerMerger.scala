@@ -20,6 +20,11 @@ object SwaggerMerger {
 
   private def trimmedKey(k: String): String = if (k.endsWith(" =")) k.substring(0, k.length - 2).trim else k
 
+  /** @return (realKey, isReplace) for override map keys; keys ending with ` =` are replace markers. */
+  private def parseOverrideKey(k: String): (String, Boolean) =
+    if (k != null && k.endsWith(" =")) (k.substring(0, k.length - 2).trim, true)
+    else (k, false)
+
   private def isMediaTypeKey(k: String): Boolean = k.contains("/") && !k.startsWith("/")
 
   /**
@@ -27,8 +32,12 @@ object SwaggerMerger {
    *
    * Each root key in `overrides` is classified independently and applied at its own level:
    * `paths` (document), path (`/…`), method (`get`/`post`/…), response (`200`/`default`/`2XX`), or operation
-   * (any other key, applied under every HTTP method of every path). Keys ending with ` =` replace the subtree;
-   * otherwise they are deep-merged.
+   * (any other key, applied under every HTTP method of every path).
+   *
+   * Keys ending with ` =` replace the subtree; otherwise they are deep-merged.
+   * Replace with null (`"404 =": null`, `"get =": null`, `"/x =": null`) removes that key.
+   * For parameters map form, `"limit =": null` removes parameters with that name (any `in`).
+   * Plain `key: null` without ` =` does not remove.
    *
    * @param basePaths The base paths as a sequence of (path string, PathItem)
    * @param overrides The overrides as a Java Map loaded from YAML (via SnakeYAML)
@@ -162,17 +171,15 @@ object SwaggerMerger {
   private def merge(base: JMap[String, Object], ovr: JMap[String, Object], typeNameToSchema: String => Schema[_], isSchemaValues: Boolean = false, isSchemaMap: Boolean = false): JMap[String, Object] = {
     val result = new HashMap[String, Object](base)
     for ((key, value) <- ovr.asScala) {
-      val (realKey, isReplace) = if (key.endsWith(" =")) {
-        (key.substring(0, key.length - 2).trim, true)
-      } else {
-        (key, false)
-      }
+      val (realKey, isReplace) = parseOverrideKey(key)
 
-      if (realKey == "parameters") {
-        val baseParams = if (result.containsKey("parameters")) result.get("parameters").asInstanceOf[JList[Object]] else new ArrayList[Object]()
-        val ovrParams = normalizeParameters(value, typeNameToSchema)
-        val mergedParams = if (isReplace) ovrParams else mergeParameters(baseParams, ovrParams, typeNameToSchema)
-        result.put("parameters", mergedParams)
+      // `key =: null` removes the key; plain `key: null` is a no-op (does not remove)
+      if (isReplace && value == null) {
+        result.remove(realKey)
+      } else if (value == null) {
+        // ignore
+      } else if (realKey == "parameters") {
+        applyParametersOverride(result, value, isReplace, typeNameToSchema)
       } else {
         val newVal: Object = if (isReplace) {
           processValue(realKey, value, isSchemaValues, typeNameToSchema)
@@ -223,14 +230,72 @@ object SwaggerMerger {
     result
   }
 
+  private def applyParametersOverride(
+    result: JMap[String, Object],
+    value: Object,
+    isReplace: Boolean,
+    typeNameToSchema: String => Schema[_],
+  ): Unit = {
+    if (isReplace && value == null) {
+      result.remove("parameters")
+      return
+    }
+    val baseParams =
+      if (result.containsKey("parameters")) result.get("parameters").asInstanceOf[JList[Object]]
+      else new ArrayList[Object]()
+    val (namesToRemove, ovrParams) = normalizeParametersWithRemovals(value, typeNameToSchema)
+    val afterRemove = removeParametersByName(baseParams, namesToRemove)
+    val mergedParams =
+      if (isReplace) ovrParams
+      else mergeParameters(afterRemove, ovrParams, typeNameToSchema)
+    result.put("parameters", mergedParams)
+  }
+
+  /**
+   * Normalizes parameter overrides. Map keys ending with ` =` and a null value are
+   * removals (by parameter name, any `in`); other entries become parameter objects.
+   */
+  private def normalizeParametersWithRemovals(
+    value: Object,
+    typeNameToSchema: String => Schema[_],
+  ): (Set[String], JList[Object]) = {
+    value match {
+      case m: JMap[_, _] =>
+        val namesToRemove = scala.collection.mutable.LinkedHashSet[String]()
+        val restMap = new HashMap[String, Object]()
+        for ((k, v) <- m.asScala) {
+          val (realKey, isReplace) = parseOverrideKey(k.asInstanceOf[String])
+          if (isReplace && v == null) namesToRemove += realKey
+          else restMap.put(realKey, v.asInstanceOf[Object])
+        }
+        (namesToRemove.toSet, normalizeParameters(restMap, typeNameToSchema))
+      case other =>
+        (Set.empty[String], normalizeParameters(other, typeNameToSchema))
+    }
+  }
+
+  private def removeParametersByName(params: JList[Object], names: Set[String]): JList[Object] = {
+    if (names.isEmpty) params
+    else {
+      val kept = new ArrayList[Object]()
+      for (p <- params.asScala) {
+        val pMap = p.asInstanceOf[JMap[String, Object]]
+        val pName = pMap.get("name").asInstanceOf[String]
+        if (!names.contains(pName)) kept.add(p)
+      }
+      kept
+    }
+  }
+
   private def normalizeParameters(value: Object, typeNameToSchema: String => Schema[_]): JList[Object] = {
     val rawList = value match {
       case l: JList[_] => l.asInstanceOf[JList[Object]]
       case m: JMap[_, _] =>
         val list = new ArrayList[Object]()
         for ((k, v) <- m.asScala) {
+          val (name, _) = parseOverrideKey(k.asInstanceOf[String])
           val paramMap = new HashMap[String, Object]()
-          paramMap.put("name", k.asInstanceOf[String])
+          paramMap.put("name", name)
           paramMap.put("in", "query") // default
           v match {
             case vm: JMap[_, _] =>

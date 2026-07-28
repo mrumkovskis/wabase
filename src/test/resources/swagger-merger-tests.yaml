@@ -626,6 +626,161 @@ expected:
           schema:
             type: integer
 ---
+should: Remove response status with = null
+paths:
+  /user:
+    get:
+      responses:
+        "200":
+          description: OK
+        "404":
+          description: Not Found
+        "503":
+          description: Unavailable
+overrides:
+  "404 =": null
+expected:
+  /user:
+    get:
+      responses:
+        "200":
+          description: OK
+        "503":
+          description: Unavailable
+---
+should: Remove method with = null
+paths:
+  /user:
+    get:
+      summary: Get
+    post:
+      summary: Create
+    delete:
+      summary: Delete
+overrides:
+  "delete =": null
+expected:
+  /user:
+    get:
+      summary: Get
+    post:
+      summary: Create
+---
+should: Remove path with = null
+paths:
+  /user:
+    get:
+      summary: User
+  /internal:
+    get:
+      summary: Internal
+overrides:
+  "/internal =": null
+expected:
+  /user:
+    get:
+      summary: User
+---
+should: Remove parameter by name with = null
+paths:
+  /user:
+    get:
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: q
+          in: query
+          schema:
+            type: string
+overrides:
+  get:
+    parameters:
+      "limit =": null
+expected:
+  /user:
+    get:
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: q
+          in: query
+          schema:
+            type: string
+---
+should: Remove all parameters with parameters = null
+paths:
+  /user:
+    get:
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      summary: Get
+overrides:
+  get:
+    "parameters =": null
+expected:
+  /user:
+    get:
+      summary: Get
+---
+should: Plain null without = does not remove response
+paths:
+  /user:
+    get:
+      responses:
+        "200":
+          description: OK
+        "404":
+          description: Not Found
+overrides:
+  "404": null
+expected:
+  /user:
+    get:
+      responses:
+        "200":
+          description: OK
+        "404":
+          description: Not Found
+---
+should: Remove response and keep others with nested = null
+paths:
+  /user:
+    get:
+      summary: Get
+      responses:
+        "200":
+          description: OK
+        "400":
+          description: Bad Request
+        "404":
+          description: Not Found
+overrides:
+  get:
+    responses:
+      "400 =": null
+expected:
+  /user:
+    get:
+      summary: Get
+      responses:
+        "200":
+          description: OK
+        "404":
+          description: Not Found
+---
 should: Mixed method and response root levels
 paths:
   /user1:
