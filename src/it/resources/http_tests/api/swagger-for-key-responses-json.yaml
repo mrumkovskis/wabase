@@ -99,6 +99,16 @@ response: {
               }
             }
           },
+          "201" : {
+            "description" : "Created",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/array_key_response"
+                }
+              }
+            }
+          },
           "400" : {
             "description" : "Bad Request"
           },
@@ -377,6 +387,16 @@ response: {
               }
             }
           },
+          "201" : {
+            "description" : "Created",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/guideline_calculation_helper_key_response"
+                }
+              }
+            }
+          },
           "400" : {
             "description" : "Bad Request"
           },
@@ -394,6 +414,9 @@ response: {
           "200" : {
             "description" : "OK"
           },
+          "201" : {
+            "description" : "Created"
+          },
           "400" : {
             "description" : "Bad Request"
           },
@@ -410,6 +433,9 @@ response: {
         "responses" : {
           "200" : {
             "description" : "OK"
+          },
+          "201" : {
+            "description" : "Created"
           },
           "400" : {
             "description" : "Bad Request"
@@ -514,6 +540,16 @@ response: {
         "responses" : {
           "200" : {
             "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/person_key_response"
+                }
+              }
+            }
+          },
+          "201" : {
+            "description" : "Created",
             "content" : {
               "application/json" : {
                 "schema" : {
@@ -685,6 +721,16 @@ response: {
               }
             }
           },
+          "201" : {
+            "description" : "Created",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/person_redirect_key_response"
+                }
+              }
+            }
+          },
           "400" : {
             "description" : "Bad Request"
           },
@@ -792,6 +838,9 @@ response: {
           "200" : {
             "description" : "OK"
           },
+          "201" : {
+            "description" : "Created"
+          },
           "400" : {
             "description" : "Bad Request"
           },
@@ -847,6 +896,16 @@ response: {
         "responses" : {
           "200" : {
             "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/save_person_email_key_response"
+                }
+              }
+            }
+          },
+          "201" : {
+            "description" : "Created",
             "content" : {
               "application/json" : {
                 "schema" : {
@@ -940,6 +999,16 @@ response: {
               }
             }
           },
+          "201" : {
+            "description" : "Created",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/server_events_key_response"
+                }
+              }
+            }
+          },
           "400" : {
             "description" : "Bad Request"
           },
@@ -1016,6 +1085,16 @@ response: {
         "responses" : {
           "200" : {
             "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/user_key_response"
+                }
+              }
+            }
+          },
+          "201" : {
+            "description" : "Created",
             "content" : {
               "application/json" : {
                 "schema" : {
@@ -1220,6 +1299,16 @@ response: {
               }
             }
           },
+          "201" : {
+            "description" : "Created",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/user_role_key_response"
+                }
+              }
+            }
+          },
           "400" : {
             "description" : "Bad Request"
           },
@@ -1354,6 +1443,16 @@ response: {
         "responses" : {
           "200" : {
             "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/validation_key_response"
+                }
+              }
+            }
+          },
+          "201" : {
+            "description" : "Created",
             "content" : {
               "application/json" : {
                 "schema" : {
@@ -1677,6 +1776,16 @@ response: {
         "responses" : {
           "200" : {
             "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/post_uid_key_response"
+                }
+              }
+            }
+          },
+          "201" : {
+            "description" : "Created",
             "content" : {
               "application/json" : {
                 "schema" : {

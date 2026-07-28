@@ -447,7 +447,17 @@ class WabaseSwaggerGenerator(
   def hasKeyResultMethods(viewDef: ViewDef) = viewDef.apiMethodToRoles.keys.exists(isKeyResultMethod)
   def keySchemaName(viewName: String) = s"${viewName}_key_response"
 
-  def addSuccessResponse(op: Operation, method: String, viewDef: ViewDef, code: String = "200", array: Boolean = false): Operation = {
+  def successResponseCodes(method: String): Seq[String] = method match {
+    case "insert" | "save" | "upsert" | "post" | "put" => Seq("200", "201")
+    case _ => Seq("200")
+  }
+
+  def addSuccessResponses(op: Operation, method: String, viewDef: ViewDef, array: Boolean = false): Operation =
+    successResponseCodes(method).foldLeft(op) { (acc, code) =>
+      addSuccessResponse(acc, method, viewDef, code, array)
+    }
+
+  def addSuccessResponse(op: Operation, method: String, viewDef: ViewDef, code: String, array: Boolean = false): Operation = {
     val responses = getResponses(op)
     val response = new ApiResponse
     if (marshalKeyAsJson && viewDef != null && isKeyResultMethod(method)) {
@@ -545,7 +555,9 @@ class WabaseSwaggerGenerator(
     def addServiceUnavailabeError = delegate.addServiceUnavailabeError(op)
     def addSuccessPlaintextResponse(view: String, code: String = "200"): Operation =
           delegate.addSuccessPlaintextResponse(op, view, code)
-    def addSuccessResponse(method: String, viewDef: ViewDef, code: String = "200", array: Boolean = false): Operation =
+    def addSuccessResponses(method: String, viewDef: ViewDef, array: Boolean = false): Operation =
+          delegate.addSuccessResponses(op, method, viewDef, array)
+    def addSuccessResponse(method: String, viewDef: ViewDef, code: String, array: Boolean = false): Operation =
           delegate.addSuccessResponse(op, method, viewDef, code, array)
     def addSuccessResponse(method: HttpMethod): Operation =
           delegate.addSuccessResponse(op, method)
@@ -612,7 +624,7 @@ class WabaseSwaggerGenerator(
   def operationForCreate(viewDef: ViewDef, keySize: Int = 99): Operation =
     createOperation("create", viewDef, keySize)
       .addParameters("create", viewDef, keySize)
-      .addSuccessResponse("create", viewDef)
+      .addSuccessResponses("create", viewDef)
       .addBadRequestResponse
       .addForbiddenResponse(viewDef)
       .addNotFoundResponse
@@ -630,7 +642,7 @@ class WabaseSwaggerGenerator(
   def operationForGet(viewDef: ViewDef, keySize: Int = 99): Operation =
     createOperation("get", viewDef, keySize)
       .addParameters("get", viewDef, keySize)
-      .addSuccessResponse("get", viewDef)
+      .addSuccessResponses("get", viewDef)
       .addBadRequestResponse
       .addForbiddenResponse(viewDef)
       .addNotFoundResponse
@@ -639,7 +651,7 @@ class WabaseSwaggerGenerator(
   def operationForList(viewDef: ViewDef, keySize: Int = 99): Operation =
     createOperation("list", viewDef, keySize)
       .addParameters("list", viewDef, keySize)
-      .addSuccessResponse("list", viewDef, array = true)
+      .addSuccessResponses("list", viewDef, array = true)
       .addBadRequestResponse
       .addForbiddenResponse(viewDef)
       .addServiceUnavailabeError
@@ -647,7 +659,7 @@ class WabaseSwaggerGenerator(
   def operationForInsert(viewDef: ViewDef, keySize: Int = 99): Operation =
     createOperation("insert", viewDef, keySize)
       .addParameters("insert", viewDef, keySize)
-      .addSuccessResponse("insert", viewDef)
+      .addSuccessResponses("insert", viewDef)
       .addRequestBody(view = viewDef.name, isArrayRequest(viewDef, "insert"))
       .addBadRequestResponse
       .addServiceUnavailabeError
@@ -655,7 +667,7 @@ class WabaseSwaggerGenerator(
   def operationForUpdate(viewDef: ViewDef, keySize: Int = 99): Operation =
     createOperation("update", viewDef, keySize)
       .addParameters("update", viewDef, keySize)
-      .addSuccessResponse("update", viewDef)
+      .addSuccessResponses("update", viewDef)
       .addRequestBody(view = viewDef.name, isArrayRequest(viewDef, "update"))
       .addBadRequestResponse
       .addServiceUnavailabeError
@@ -663,7 +675,7 @@ class WabaseSwaggerGenerator(
   def operationForUpdatePlus(viewDef: ViewDef, keySize: Int = 99): Operation =
     createOperation("update+", viewDef, keySize)
       .addParameters("update+", viewDef, keySize)
-      .addSuccessResponse("update+", viewDef)
+      .addSuccessResponses("update+", viewDef)
       .addRequestBody(view = viewDef.name, isArrayRequest(viewDef, "update+"))
       .addBadRequestResponse
       .addServiceUnavailabeError
@@ -671,7 +683,7 @@ class WabaseSwaggerGenerator(
   def operationForUpsert(viewDef: ViewDef, keySize: Int = 99): Operation =
     createOperation("upsert", viewDef, keySize)
       .addParameters("upsert", viewDef, keySize)
-      .addSuccessResponse("upsert", viewDef)
+      .addSuccessResponses("upsert", viewDef)
       .addRequestBody(view = viewDef.name, isArrayRequest(viewDef, "upsert"))
       .addBadRequestResponse
       .addServiceUnavailabeError
@@ -679,7 +691,7 @@ class WabaseSwaggerGenerator(
   def operationForSave(viewDef: ViewDef, keySize: Int = 99): Operation =
     createOperation("save", viewDef, keySize)
       .addParameters("save", viewDef, keySize)
-      .addSuccessResponse("save", viewDef)
+      .addSuccessResponses("save", viewDef)
       .addRequestBody(view = viewDef.name, isArrayRequest(viewDef, "save"))
       .addBadRequestResponse
       .addServiceUnavailabeError
@@ -693,7 +705,7 @@ class WabaseSwaggerGenerator(
   def operationForPut(viewDef: ViewDef, keySize: Int = 99): Operation =
     createOperation("put", viewDef, keySize)
       .addParameters("put", viewDef, keySize)
-      .addSuccessResponse("put", viewDef)
+      .addSuccessResponses("put", viewDef)
       .addRequestBody(view = viewDef.name, isArrayRequest(viewDef, "put"))
       .addBadRequestResponse
       .addServiceUnavailabeError
@@ -701,7 +713,7 @@ class WabaseSwaggerGenerator(
   def operationForPost(viewDef: ViewDef, keySize: Int = 99): Operation =
     createOperation("post", viewDef, keySize)
       .addParameters("post", viewDef, keySize)
-      .addSuccessResponse("post", viewDef)
+      .addSuccessResponses("post", viewDef)
       .addRequestBody(view = viewDef.name, isArrayRequest(viewDef, "post"))
       .addBadRequestResponse
       .addServiceUnavailabeError
