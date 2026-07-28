@@ -1817,6 +1817,24 @@ response: {
         }
       }
     },
+    "/security-headers" : {
+      "get" : {
+        "responses" : {
+          "200" : {
+            "description" : "OK"
+          }
+        }
+      }
+    },
+    "/security-headers-frame-deny" : {
+      "get" : {
+        "responses" : {
+          "200" : {
+            "description" : "OK"
+          }
+        }
+      }
+    },
     "/server_events_subscription/{topic}" : {
       "get" : {
         "parameters" : [ {

@@ -1,0 +1,12 @@
+on: GET /security-headers
+do: noCacheHeaders xssHeaders frameHeader('SAMEORIGIN') hstsHeaders(31536000, 'true') response(200, 'ok')
+swagger:
+  responses:
+    '200': {}
+
+
+on: GET /security-headers-frame-deny
+do: frameHeader('DENY') response(200, 'ok')
+swagger:
+  responses:
+    '200': {}

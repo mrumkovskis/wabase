@@ -1,0 +1,4 @@
+path:     /security-headers-frame-deny
+response_headers:
+  X-Frame-Options: DENY
+response: ok
