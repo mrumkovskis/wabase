@@ -626,3 +626,191 @@ expected:
           schema:
             type: integer
 ---
+should: Mixed method and response root levels
+paths:
+  /user1:
+    get: {}
+    post: {}
+  /user2:
+    get: {}
+overrides:
+  get:
+    summary: Get entity
+  "200":
+    description: OK
+expected:
+  /user1:
+    get:
+      summary: Get entity
+      responses:
+        "200":
+          description: OK
+    post:
+      responses:
+        "200":
+          description: OK
+  /user2:
+    get:
+      summary: Get entity
+      responses:
+        "200":
+          description: OK
+---
+should: Mixed path and method root levels
+paths:
+  /user:
+    get: {}
+  /role:
+    get: {}
+overrides:
+  /user:
+    get:
+      summary: Get user
+  get:
+    description: Shared get description
+expected:
+  /role:
+    get:
+      description: Shared get description
+  /user:
+    get:
+      summary: Get user
+      description: Shared get description
+---
+should: Mixed path method and operation root levels
+paths:
+  /user:
+    get: {}
+    post: {}
+  /role:
+    get: {}
+overrides:
+  /user:
+    post:
+      summary: Create user
+  get:
+    summary: Get entity
+  description: Shared operation description
+expected:
+  /role:
+    get:
+      summary: Get entity
+      description: Shared operation description
+  /user:
+    get:
+      summary: Get entity
+      description: Shared operation description
+    post:
+      summary: Create user
+      description: Shared operation description
+---
+should: Mixed method and operation root levels with parameters
+paths:
+  /user:
+    get: {}
+    post: {}
+overrides:
+  get:
+    summary: Get user
+  parameters:
+    limit:
+      type: integer
+expected:
+  /user:
+    get:
+      summary: Get user
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+    post:
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+---
+should: Mixed paths key and method root levels
+paths:
+  /old:
+    get: {}
+overrides:
+  paths:
+    /new:
+      get: {}
+  get:
+    summary: From method override
+expected:
+  /new:
+    get:
+      summary: From method override
+  /old:
+    get:
+      summary: From method override
+---
+should: Mixed response and operation root levels
+paths:
+  /user:
+    get:
+      responses:
+        "404":
+          description: Not found
+overrides:
+  "200":
+    description: OK
+  description: Operation description
+expected:
+  /user:
+    get:
+      description: Operation description
+      responses:
+        "200":
+          description: OK
+        "404":
+          description: Not found
+---
+should: Multiple response roots at response level
+paths:
+  /user:
+    get: {}
+    post: {}
+overrides:
+  "200":
+    description: OK
+  "404":
+    description: Not found
+expected:
+  /user:
+    get:
+      responses:
+        "200":
+          description: OK
+        "404":
+          description: Not found
+    post:
+      responses:
+        "200":
+          description: OK
+        "404":
+          description: Not found
+---
+should: Multiple method roots at method level
+paths:
+  /user:
+    get: {}
+    post: {}
+    put: {}
+overrides:
+  get:
+    summary: Get
+  post:
+    summary: Create
+expected:
+  /user:
+    get:
+      summary: Get
+    post:
+      summary: Create
+    put: {}
+---

@@ -26,8 +26,10 @@ object SwaggerMerger {
   /**
    * Merges base Swagger paths with overrides.
    *
-   * The overrides are applied based on their structure, detecting levels such as "paths", individual paths ("/path"),
-   * methods, responses, or deeper. Keys ending with ' =' are trimmed and used to replace the subtree; otherwise, they are merged.
+   * Each root key in `overrides` is classified independently and applied at its own level:
+   * `paths` (document), path (`/…`), method (`get`/`post`/…), response (`200`/`default`/`2XX`), or operation
+   * (any other key, applied under every HTTP method of every path). Keys ending with ` =` replace the subtree;
+   * otherwise they are deep-merged.
    *
    * @param basePaths The base paths as a sequence of (path string, PathItem)
    * @param overrides The overrides as a Java Map loaded from YAML (via SnakeYAML)
@@ -38,38 +40,72 @@ object SwaggerMerger {
     if (overrides.isEmpty) basePaths else mergePaths_(basePaths, overrides, typeNameToSchema)
   }
 
+  private sealed trait OverrideLevel
+  private case object PathsLevel extends OverrideLevel
+  private case object PathLevel extends OverrideLevel
+  private case object MethodLevel extends OverrideLevel
+  private case object ResponseLevel extends OverrideLevel
+  private case object OperationLevel extends OverrideLevel
+
+  private def isPathKey(k: String): Boolean = trimmedKey(k).startsWith("/")
+
+  private def isMethodKey(k: String): Boolean = httpMethods.contains(trimmedKey(k).toLowerCase())
+
+  private def isResponseKey(k: String): Boolean = {
+    val tk = trimmedKey(k)
+    tk == "default" || tk.matches("""\d{3}""") || (tk.length == 3 && tk.charAt(0).isDigit && tk.substring(1).toLowerCase == "xx")
+  }
+
+  private def isPathsKey(k: String): Boolean = trimmedKey(k) == "paths"
+
+  /** Detects the structural level of a single overrides root key. */
+  private def detectOverrideLevel(k: String): OverrideLevel = {
+    if (isPathsKey(k)) PathsLevel
+    else if (isPathKey(k)) PathLevel
+    else if (isMethodKey(k)) MethodLevel
+    else if (isResponseKey(k)) ResponseLevel
+    else OperationLevel
+  }
+
   private def mergePaths_(basePaths: Seq[(String, PathItem)], overrides: JMap[String, Object], typeNameToSchema: String => Schema[_]): Seq[(String, PathItem)] = {
     val baseMap = new HashMap[String, JMap[String, Object]]()
     for ((path, item) <- basePaths) {
       baseMap.put(path, mapper.convertValue(item, classOf[JMap[String, Object]]))
     }
 
-    def isPathKey(k: String): Boolean = trimmedKey(k).startsWith("/")
-
-    def isMethodKey(k: String): Boolean = httpMethods.contains(trimmedKey(k).toLowerCase())
-
-    def isResponseKey(k: String): Boolean = {
-      val tk = trimmedKey(k)
-      tk == "default" || tk.matches("""\d{3}""") || (tk.length == 3 && tk.charAt(0).isDigit && tk.substring(1).toLowerCase == "xx")
+    var mergedMap: JMap[String, JMap[String, Object]] = baseMap
+    for ((key, value) <- overrides.asScala) {
+      val singleOverride = new HashMap[String, Object]()
+      singleOverride.put(key, value)
+      mergedMap = applyOverridesAtLevel(mergedMap, singleOverride, detectOverrideLevel(key), typeNameToSchema)
     }
 
-    val hasPaths = overrides.keySet.asScala.exists { k =>
-      trimmedKey(k) == "paths"
+    for (pathMap <- mergedMap.values.asScala) {
+      sortResponses(pathMap.asInstanceOf[JMap[String, Object]])
     }
 
-    val mergedMap: JMap[String, JMap[String, Object]] = if (hasPaths) {
+    val keys = mergedMap.keySet.asScala.toList.sorted
+    keys.map { path =>
+      val pathMap = mergedMap.get(path)
+      val pathItem = mapper.readValue(mapper.writeValueAsBytes(pathMap), classOf[PathItem])
+      (path, pathItem)
+    }
+  }
+
+  private def applyOverridesAtLevel(
+    baseMap: JMap[String, JMap[String, Object]],
+    overrideMap: JMap[String, Object],
+    level: OverrideLevel,
+    typeNameToSchema: String => Schema[_],
+  ): JMap[String, JMap[String, Object]] = level match {
+    case PathsLevel =>
       val outerBase = new HashMap[String, Object]()
       outerBase.put("paths", baseMap)
-      val mergedOuter = merge(outerBase, overrides, typeNameToSchema)
+      val mergedOuter = merge(outerBase, overrideMap, typeNameToSchema)
       mergedOuter.getOrDefault("paths", new HashMap[String, JMap[String, Object]]()).asInstanceOf[JMap[String, JMap[String, Object]]]
-    } else {
-      val overrideMap = overrides.asInstanceOf[JMap[String, Object]]
-      val isPathLevel = overrideMap.keySet.asScala.exists(isPathKey)
-      val isMethodLevel = !isPathLevel && overrideMap.keySet.asScala.exists(isMethodKey)
-      val isResponseLevel = !isPathLevel && !isMethodLevel && overrideMap.keySet.asScala.exists(isResponseKey)
-      if (isPathLevel) {
+    case PathLevel =>
         merge(baseMap.asInstanceOf[JMap[String, Object]], overrideMap, typeNameToSchema).asInstanceOf[JMap[String, JMap[String, Object]]]
-      } else if (isMethodLevel) {
+    case MethodLevel =>
         val newMap = new HashMap[String, JMap[String, Object]](baseMap)
         for (entry <- newMap.entrySet.asScala) {
           val pMap = entry.getValue.asInstanceOf[JMap[String, Object]]
@@ -77,7 +113,7 @@ object SwaggerMerger {
           entry.setValue(mergedP)
         }
         newMap
-      } else if (isResponseLevel) {
+    case ResponseLevel =>
         val newMap = new HashMap[String, JMap[String, Object]](baseMap)
         for (entry <- newMap.entrySet.asScala) {
           val pMap = entry.getValue.asInstanceOf[JMap[String, Object]]
@@ -97,7 +133,7 @@ object SwaggerMerger {
           }
         }
         newMap
-      } else {
+    case OperationLevel =>
         val newMap = new HashMap[String, JMap[String, Object]](baseMap)
         for (entry <- newMap.entrySet.asScala) {
           val pMap = entry.getValue.asInstanceOf[JMap[String, Object]]
@@ -110,19 +146,6 @@ object SwaggerMerger {
           }
         }
         newMap
-      }
-    }
-
-    for (pathMap <- mergedMap.values.asScala) {
-      sortResponses(pathMap.asInstanceOf[JMap[String, Object]])
-    }
-
-    val keys = mergedMap.keySet.asScala.toList.sorted
-    keys.map { path =>
-      val pathMap = mergedMap.get(path)
-      val pathItem = mapper.readValue(mapper.writeValueAsBytes(pathMap), classOf[PathItem])
-      (path, pathItem)
-    }
   }
 
   private def sortResponses(map: JMap[String, Object]): Unit = {
