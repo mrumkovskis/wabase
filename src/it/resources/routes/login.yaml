@@ -1,2 +1,2 @@
-on: /(login_using_json_or_urlencoded)
+on: POST /(login_using_json_or_urlencoded)
 do: extractFormDataCredentials setDomainAndPathSessionCookie(null, '/') doAction $1

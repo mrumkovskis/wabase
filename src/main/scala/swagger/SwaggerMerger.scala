@@ -4,7 +4,6 @@ import io.swagger.v3.core.util.Json
 import io.swagger.v3.oas.models.media.Schema
 import io.swagger.v3.oas.models.PathItem
 import java.util.{ArrayList, HashMap, List => JList, Map => JMap}
-import scala.collection.mutable.ListBuffer
 import scala.jdk.CollectionConverters._
 
 object SwaggerMerger {
@@ -80,13 +79,10 @@ object SwaggerMerger {
       mergedMap = applyOverridesAtLevel(mergedMap, singleOverride, detectOverrideLevel(key), typeNameToSchema)
     }
 
-    for (pathMap <- mergedMap.values.asScala) {
-      sortResponses(pathMap.asInstanceOf[JMap[String, Object]])
-    }
-
     val keys = mergedMap.keySet.asScala.toList.sorted
     keys.map { path =>
       val pathMap = mergedMap.get(path)
+      sortResponses(pathMap.asInstanceOf[JMap[String, Object]])
       val pathItem = mapper.readValue(mapper.writeValueAsBytes(pathMap), classOf[PathItem])
       (path, pathItem)
     }
@@ -346,7 +342,7 @@ object SwaggerMerger {
   }
 
   def mergeSchema(schema: Schema[_], overrides: JMap[String, Object], typeNameToSchema: String => Schema[_] = null): Schema[_] = {
-    if (overrides.isEmpty) schema
+    if (overrides == null || overrides.isEmpty) schema
     else {
       val schemaMap = mapper.convertValue(schema, classOf[JMap[String, Object]])
       val mergedMap = merge(schemaMap, overrides, typeNameToSchema, false, true)
@@ -354,53 +350,108 @@ object SwaggerMerger {
     }
   }
 
+  /**
+   * Deep-merges path items into a single item. Later items win on conflicting keys
+   * (use view after route so views take priority). Returns empty seq if input is empty,
+   * otherwise a single-element seq.
+   */
   def mergePathItems(pathItems: Seq[PathItem]): Seq[PathItem] = {
     if (pathItems.isEmpty) Seq()
-    else {
-      val result = ListBuffer[PathItem]()
-      var current = pathItems.head
-      for (next <- pathItems.tail) {
-        if (hasPathItemConflict(current, next)) {
-          result += current
-          current = next
-        } else {
-          current = mergePathItem(current, next)
-        }
-      }
-      result += current
-      result.toSeq
-    }
+    else Seq(pathItems.reduceLeft(deepMergePathItem))
   }
 
-  private def hasPathItemConflict(a: PathItem, b: PathItem): Boolean = {
-    val aMap = mapper.convertValue(a, classOf[JMap[String, Object]])
-    val bMap = mapper.convertValue(b, classOf[JMap[String, Object]])
-    val allKeys = aMap.keySet.asScala ++ bMap.keySet.asScala
-    allKeys.exists { k =>
-      hasConflict(aMap.get(k), bMap.get(k))
-    }
-  }
-
-  private def mergePathItem(a: PathItem, b: PathItem): PathItem = {
-    val aMap = mapper.convertValue(a, classOf[JMap[String, Object]])
-    val bMap = mapper.convertValue(b, classOf[JMap[String, Object]])
-    val mergedMap = new HashMap[String, Object](aMap)
-    for ((k, v) <- bMap.asScala) {
-      mergedMap.put(k, mergeObjects(mergedMap.get(k), v))
-    }
+  private def deepMergePathItem(lower: PathItem, higher: PathItem): PathItem = {
+    val lowerMap = mapper.convertValue(lower, classOf[JMap[String, Object]])
+    val higherMap = mapper.convertValue(higher, classOf[JMap[String, Object]])
+    // `merge` treats the second map as overrides: higher priority wins
+    val mergedMap = merge(lowerMap, higherMap, null)
+    sortResponses(mergedMap)
     mapper.convertValue(mergedMap, classOf[PathItem])
   }
 
-  private def hasConflict(a: Object, b: Object): Boolean = {
-    if (a == null || b == null) false
-    else if (a.isInstanceOf[String] || a.isInstanceOf[Number] || a.isInstanceOf[Boolean]) {
-      !a.equals(b)
-    } else true  // complex or list or map
+  private def sortPathItemResponses(pathItem: PathItem): PathItem = {
+    val pathMap = mapper.convertValue(pathItem, classOf[JMap[String, Object]])
+    sortResponses(pathMap)
+    mapper.convertValue(pathMap, classOf[PathItem])
   }
 
-  private def mergeObjects(a: Object, b: Object): Object = {
-    if (a == null) b
-    else if (b == null) a
-    else a // since equal or error, but checked
+  private def emptyOverrides: JMap[String, Object] = new HashMap[String, Object]()
+
+  private def partitionPathsLevelOverrides(overrides: JMap[String, Object]): (JMap[String, Object], JMap[String, Object]) = {
+    val pathsLevel = new HashMap[String, Object]()
+    val rest = new HashMap[String, Object]()
+    if (overrides != null) {
+      for ((k, v) <- overrides.asScala) {
+        if (isPathsKey(k)) pathsLevel.put(k, v)
+        else rest.put(k, v)
+      }
+    }
+    (pathsLevel, rest)
+  }
+
+  /**
+   * Merges path contributions from multiple sources in ascending priority order
+   * (last source wins).
+   *
+   * For each source:
+   *  1. Root `paths` / `paths =` keys are applied first to decide which paths the
+   *     source contributes (`paths =: {}` contributes none — used to skip a source).
+   *  2. Remaining overrides are held and applied after all path items are deep-merged.
+   *
+   * Then:
+   *  1. Path items for the same path name are deep-merged in source order (later wins).
+   *  2. Non-paths overrides are applied in source order, each scoped to that source's
+   *     contributed path names — so later sources (e.g. views) override earlier ones
+   *     (e.g. routes).
+   *
+   * @param sources sequence of (base paths, overrides), low priority first
+   * @param typeNameToSchema optional custom type resolver for overrides
+   */
+  def mergePathSources(
+    sources: Seq[(Seq[(String, PathItem)], JMap[String, Object])],
+    typeNameToSchema: String => Schema[_] = null,
+  ): Seq[(String, PathItem)] = {
+    if (sources.isEmpty) Seq.empty
+    else {
+      val prepared: Seq[(Seq[(String, PathItem)], JMap[String, Object])] = sources.map { case (basePaths, overrides) =>
+        val ovr = if (overrides == null) emptyOverrides else overrides
+        val (pathsLevel, rest) = partitionPathsLevelOverrides(ovr)
+        val contributed =
+          if (pathsLevel.isEmpty) basePaths
+          else mergePaths(basePaths, pathsLevel, typeNameToSchema)
+        (contributed, rest)
+      }
+
+      val resultMap = new java.util.LinkedHashMap[String, PathItem]()
+      for ((paths, _) <- prepared) {
+        for ((name, item) <- paths) {
+          if (resultMap.containsKey(name)) {
+            resultMap.put(name, deepMergePathItem(resultMap.get(name), item))
+          } else {
+            resultMap.put(name, item)
+          }
+        }
+      }
+
+      for ((paths, rest) <- prepared) {
+        if (rest != null && !rest.isEmpty) {
+          val names = paths.map(_._1).toSet
+          val subset = names.toSeq.flatMap { n =>
+            Option(resultMap.get(n)).map(item => n -> item)
+          }
+          val after = mergePaths(subset, rest, typeNameToSchema)
+          names.foreach(resultMap.remove)
+          for ((n, item) <- after) {
+            resultMap.put(n, item)
+          }
+        }
+      }
+
+      // Ensure stable response status code order for every path (including those that
+      // never went through mergePaths, e.g. bases only or deep-merge only).
+      resultMap.asScala.toSeq.sortBy(_._1).map { case (name, item) =>
+        name -> sortPathItemResponses(item)
+      }
+    }
   }
 }

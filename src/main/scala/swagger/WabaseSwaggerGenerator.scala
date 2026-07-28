@@ -838,8 +838,7 @@ class WabaseSwaggerGenerator(
 
   val ActionForHttpPost = config.getString("app.action-for-http.post") // maybe "insert" for legacy app
   val ActionForHttpPut  = config.getString("app.action-for-http.put")  // maybe "update" for legacy app
-  def pathsFromViewDefs: Seq[(String, PathItem)] = {
-    viewdefs.flatMap { viewDef =>
+  private def defaultPathsFromViewDef(viewDef: ViewDef): Seq[(String, PathItem)] = {
       val pathsAndMethodsAndOps =
         pathsAndMethodsAndOperations(viewDef)
       val defaultPaths =
@@ -850,22 +849,51 @@ class WabaseSwaggerGenerator(
           }
           pathName -> pi
         }.toSeq
-      val pathsOverrides =
-        viewDef.extras.get(swaggerOverridesKey).map {
-          case null => Map[String, Any]() // allow to cancel swagger override from super
-          case m: Map[String @unchecked, _] => m
-          case x =>
-            throw new RuntimeException(
-              s"Unexpected class for value of $swaggerOverridesKey in ${viewDef.name}." +
-              s" Expecting map, got ${Option(x).map(_.getClass.getName).orNull}")
-        }.getOrElse(Map.empty)
+      defaultPaths
+  }
+
+  def pathsFromViewDefs: Seq[(String, PathItem)] = {
+   pathSourcesFromViewDefs.flatMap { case (defaultPaths, pathsOverrides) =>
+    if (pathsOverrides.isEmpty)
+      defaultPaths
+    else
       SwaggerMerger.mergePaths(
         defaultPaths,
-        MapUtils.mapToJavaMap(pathsOverrides).asInstanceOf[JMap[String, Object]],
+        pathsOverrides,
         typeNameToSchema,
       )
+   }.sortBy(_._1)
+  }
+
+  private def emptyJavaOverrides: JMap[String, Object] = new java.util.HashMap[String, Object]()
+
+  private def javaSwaggerOverrides(extras: Map[String, Any], context: String): JMap[String, Object] = {
+    val scalaMap =
+      extras.get(swaggerOverridesKey).map {
+        case null => Map[String, Any]() // allow to cancel swagger override from super
+        case m: Map[String @unchecked, _] => m
+        case x =>
+          throw new RuntimeException(
+            s"Unexpected class for value of $swaggerOverridesKey$context." +
+            s" Expecting map, got ${Option(x).map(_.getClass.getName).orNull}")
+      }.getOrElse(Map.empty)
+    if (scalaMap.isEmpty) emptyJavaOverrides
+    else MapUtils.mapToJavaMap(scalaMap).asInstanceOf[JMap[String, Object]]
+  }
+
+  /** Path contributions from routes (base paths + overrides), low priority vs views. */
+  def pathSourcesFromRouteDefs: Seq[(Seq[(String, PathItem)], JMap[String, Object])] = {
+    qes.collect { case q: AppQuerease => q }.flatMap(_.routeDefs).filter(isRelevantRoute).map { rd =>
+      (defaultPathsFromRouteDef(rd), javaSwaggerOverrides(rd.extras, ""))
+    }.toSeq
+  }
+
+  /** Path contributions from views (base paths + overrides), high priority vs routes. */
+  def pathSourcesFromViewDefs: Seq[(Seq[(String, PathItem)], JMap[String, Object])] = {
+    viewdefs.map { viewDef =>
+      (defaultPathsFromViewDef(viewDef), javaSwaggerOverrides(viewDef.extras, s" in ${viewDef.name}"))
     }
-  }.sortBy(_._1)
+  }
 
   def getPaths(pathsMap: JMap[String, _]): Map[String, PathItem] = {
     val mapper = new ObjectMapper()
@@ -874,9 +902,7 @@ class WabaseSwaggerGenerator(
     }.toMap
   }
 
-  def pathsFromRouteDefs: Seq[(String, PathItem)] = {
-    qes.collect { case q: AppQuerease => q }.flatMap(_.routeDefs).filter(isRelevantRoute).flatMap { rd =>
-      val defaultPaths =
+  private def defaultPathsFromRouteDef(rd: RouteDef): Seq[(String, PathItem)] = {
         rd.pathNamesAndParameters.map { pathInfo =>
           val pi = new PathItem
           Option(rd.methods).filter(_.nonEmpty).getOrElse(defaultHttpMethodsForRoute).collect {
@@ -891,24 +917,20 @@ class WabaseSwaggerGenerator(
           }
           pathInfo.name -> pi
         }.toSeq
-      val pathsOverrides =
-        rd.extras.get(swaggerOverridesKey).map {
-          case m: Map[String @unchecked, _] => m
-          case x =>
-            throw new RuntimeException(
-              s"Unexpected class for value of $swaggerOverridesKey." +
-              s" Expecting map, got ${Option(x).map(_.getClass.getName).orNull}")
-        }.getOrElse(Map.empty)
+  }
+
+  def pathsFromRouteDefs: Seq[(String, PathItem)] = {
+    pathSourcesFromRouteDefs.flatMap { case (defaultPaths, pathsOverrides) =>
       if (pathsOverrides.isEmpty)
         defaultPaths
       else
         SwaggerMerger.mergePaths(
           defaultPaths,
-          MapUtils.mapToJavaMap(pathsOverrides).asInstanceOf[JMap[String, Object]],
+          pathsOverrides,
           typeNameToSchema,
         )
-    }.toSeq
-  }.sortBy(_._1)
+    }.sortBy(_._1)
+  }
 
   def dropIrrelevant(qe: Querease, views: List[ViewDef]): List[ViewDef] = {
     val relevantViewsQueue    = collection.mutable.Queue[ViewDef]()
@@ -1042,17 +1064,14 @@ class WabaseSwaggerGenerator(
       openapi.setPaths(p)
       p
     } else openapi.getPaths
+    // Routes first, views last: deep-merge path items prioritizes views; view overrides apply last.
     val pathNamesAndItems =
-      Seq(
-        pathsFromRouteDefs,
-        pathsFromViewDefs,
+      SwaggerMerger.mergePathSources(
+        pathSourcesFromRouteDefs ++ pathSourcesFromViewDefs,
+        typeNameToSchema,
       )
-        .flatMap(identity)
-    pathNamesAndItems.groupBy(_._1).toSeq.sortBy(_._1).map { case (pathName, items) =>
-      val mergedItems = SwaggerMerger.mergePathItems(items.map(_._2))
-      mergedItems.foreach { pathItem =>
-        paths.addPathItem(pathName, addResponseDescriptions(pathItem))
-      }
+    pathNamesAndItems.foreach { case (pathName, pathItem) =>
+      paths.addPathItem(pathName, addResponseDescriptions(pathItem))
     }
     val components = if (openapi.getComponents == null) {
       val p = new Components

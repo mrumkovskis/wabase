@@ -1293,11 +1293,26 @@ response: |+
             description: Created
     /user-with-roles-array:
       get:
-        summary: Get 'user-with-roles-array'
-        description: ""
+        summary: Get user with roles
+        description: Returns user info
         responses:
           "200":
             description: OK
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    roles:
+                      type: array
+                      example:
+                      - admin
+                      - guest
+                      items:
+                        type: string
+                    name:
+                      type: string
+                      example: John
           "400":
             description: Bad Request
           "404":

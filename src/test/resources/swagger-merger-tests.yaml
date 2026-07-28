@@ -814,3 +814,242 @@ expected:
       summary: Create
     put: {}
 ---
+should: Deep merge path items keeps complementary methods
+mode: mergePathItems
+path_items:
+  - get:
+      summary: From route
+  - post:
+      summary: From view
+expected_item:
+  get:
+    summary: From route
+  post:
+    summary: From view
+---
+should: Deep merge path items later wins on same method
+mode: mergePathItems
+path_items:
+  - get:
+      summary: From route
+      description: Route description
+      responses:
+        "200":
+          description: Route OK
+  - get:
+      summary: From view
+      responses:
+        "200":
+          description: View OK
+        "404":
+          description: Not found
+expected_item:
+  get:
+    summary: From view
+    description: Route description
+    responses:
+      "200":
+        description: View OK
+      "404":
+        description: Not found
+---
+should: Deep merge path items merges parameters by name
+mode: mergePathItems
+path_items:
+  - parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get: {}
+  - parameters:
+      - name: id
+        in: path
+        description: Entity id
+      - name: limit
+        in: query
+        schema:
+          type: integer
+    get:
+      summary: Get
+expected_item:
+  parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+      description: Entity id
+    - name: limit
+      in: query
+      schema:
+        type: integer
+  get:
+    summary: Get
+---
+should: mergePathSources prioritizes view base over route base
+mode: mergePathSources
+sources:
+  - paths:
+      /user:
+        get:
+          summary: Route base
+          description: Route desc
+    overrides: {}
+  - paths:
+      /user:
+        get:
+          summary: View base
+    overrides: {}
+expected:
+  /user:
+    get:
+      summary: View base
+      description: Route desc
+---
+should: mergePathSources applies view overrides last
+mode: mergePathSources
+sources:
+  - paths:
+      /user:
+        get:
+          summary: Route base
+    overrides:
+      get:
+        summary: Route override
+        description: Route override desc
+  - paths:
+      /user:
+        get:
+          summary: View base
+    overrides:
+      get:
+        summary: View override
+expected:
+  /user:
+    get:
+      summary: View override
+      description: Route override desc
+---
+should: mergePathSources paths clear skips view without wiping route
+mode: mergePathSources
+sources:
+  - paths:
+      /current-user:
+        get:
+          summary: From route
+    overrides:
+      get:
+        description: Route description
+  - paths:
+      /current-user:
+        get:
+          summary: From view base
+    overrides:
+      "paths =": {}
+expected:
+  /current-user:
+    get:
+      summary: From route
+      description: Route description
+---
+should: mergePathSources paths clear skips route without wiping view
+mode: mergePathSources
+sources:
+  - paths:
+      /role-check/{role}:
+        get:
+          summary: From route base
+        post:
+          summary: Route post
+    overrides:
+      "paths =": {}
+  - paths:
+      /role-check/{role}:
+        get:
+          summary: From view base
+    overrides:
+      get:
+        description: View description
+expected:
+  /role-check/{role}:
+    get:
+      summary: From view base
+      description: View description
+---
+should: mergePathSources complementary methods from route and view
+mode: mergePathSources
+sources:
+  - paths:
+      /user:
+        get:
+          summary: List from route
+    overrides: {}
+  - paths:
+      /user:
+        post:
+          summary: Create from view
+    overrides:
+      post:
+        description: View post description
+expected:
+  /user:
+    get:
+      summary: List from route
+    post:
+      summary: Create from view
+      description: View post description
+---
+should: mergePathSources route-only path and view-only path
+mode: mergePathSources
+sources:
+  - paths:
+      /route-only:
+        get:
+          summary: Route
+    overrides: {}
+  - paths:
+      /view-only:
+        get:
+          summary: View
+    overrides:
+      get:
+        description: View desc
+expected:
+  /route-only:
+    get:
+      summary: Route
+  /view-only:
+    get:
+      summary: View
+      description: View desc
+---
+should: mergePathSources response override from view last
+mode: mergePathSources
+sources:
+  - paths:
+      /user:
+        get:
+          responses:
+            "200":
+              description: Route OK
+    overrides:
+      "200":
+        description: Route override OK
+  - paths:
+      /user:
+        get:
+          responses:
+            "200":
+              description: View base OK
+    overrides:
+      "200":
+        description: View override OK
+expected:
+  /user:
+    get:
+      responses:
+        "200":
+          description: View override OK
+---
