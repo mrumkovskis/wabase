@@ -92,7 +92,7 @@ object SwaggerMerger {
     keys.map { path =>
       val pathMap = mergedMap.get(path)
       sortResponses(pathMap.asInstanceOf[JMap[String, Object]])
-      val pathItem = mapper.readValue(mapper.writeValueAsBytes(pathMap), classOf[PathItem])
+      val pathItem = mapper.convertValue(pathMap, classOf[PathItem])
       (path, pathItem)
     }
   }
