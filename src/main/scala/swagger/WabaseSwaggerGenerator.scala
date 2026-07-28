@@ -494,7 +494,15 @@ class WabaseSwaggerGenerator(
   }
 
   def addBadRequestResponse(op: Operation)     = addErrorResponse(op, "400")
-  def addForbiddenResponse(op: Operation, viewDef: ViewDef) = addErrorResponse(op, "403")
+  /** Whether the view is public (no user/role check); public views do not return 403 from API auth. */
+  def isPublicView(viewDef: ViewDef): Boolean =
+    Option(viewDef).flatMap(v => viewNameToQe.get(v.name)).exists {
+      case qe: AppQuerease => qe.isPublicView(viewDef.name)
+      case _               => false
+    }
+  def addForbiddenResponse(op: Operation, viewDef: ViewDef) =
+    if (isPublicView(viewDef)) op
+    else addErrorResponse(op, "403")
   def addNotFoundResponse(op: Operation)       = addErrorResponse(op, "404")
   def addInternalServerError(op: Operation)    = addErrorResponse(op, "500")
   def addServiceUnavailabeError(op: Operation) = addErrorResponse(op, "503")

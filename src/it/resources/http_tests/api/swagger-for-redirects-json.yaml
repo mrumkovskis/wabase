@@ -146,9 +146,6 @@ response: {
           "400" : {
             "description" : "Bad Request"
           },
-          "403" : {
-            "description" : "Forbidden"
-          },
           "404" : {
             "description" : "Not Found"
           },
@@ -237,9 +234,6 @@ response: {
           "400" : {
             "description" : "Bad Request"
           },
-          "403" : {
-            "description" : "Forbidden"
-          },
           "503" : {
             "description" : "Service Unavailable"
           }
@@ -273,9 +267,6 @@ response: {
           "400" : {
             "description" : "Bad Request"
           },
-          "403" : {
-            "description" : "Forbidden"
-          },
           "404" : {
             "description" : "Not Found"
           },
@@ -305,9 +296,6 @@ response: {
           },
           "400" : {
             "description" : "Bad Request"
-          },
-          "403" : {
-            "description" : "Forbidden"
           },
           "503" : {
             "description" : "Service Unavailable"
@@ -342,9 +330,6 @@ response: {
           },
           "400" : {
             "description" : "Bad Request"
-          },
-          "403" : {
-            "description" : "Forbidden"
           },
           "404" : {
             "description" : "Not Found"
@@ -467,9 +452,6 @@ response: {
           "400" : {
             "description" : "Bad Request"
           },
-          "403" : {
-            "description" : "Forbidden"
-          },
           "503" : {
             "description" : "Service Unavailable"
           }
@@ -503,9 +485,6 @@ response: {
           },
           "400" : {
             "description" : "Bad Request"
-          },
-          "403" : {
-            "description" : "Forbidden"
           },
           "404" : {
             "description" : "Not Found"
@@ -607,9 +586,6 @@ response: {
           "400" : {
             "description" : "Bad Request"
           },
-          "403" : {
-            "description" : "Forbidden"
-          },
           "404" : {
             "description" : "Not Found"
           },
@@ -636,9 +612,6 @@ response: {
           },
           "400" : {
             "description" : "Bad Request"
-          },
-          "403" : {
-            "description" : "Forbidden"
           },
           "404" : {
             "description" : "Not Found"
@@ -676,9 +649,6 @@ response: {
           },
           "400" : {
             "description" : "Bad Request"
-          },
-          "403" : {
-            "description" : "Forbidden"
           },
           "404" : {
             "description" : "Not Found"
@@ -885,9 +855,6 @@ response: {
           "400" : {
             "description" : "Bad Request"
           },
-          "403" : {
-            "description" : "Forbidden"
-          },
           "503" : {
             "description" : "Service Unavailable"
           }
@@ -1043,9 +1010,6 @@ response: {
           "400" : {
             "description" : "Bad Request"
           },
-          "403" : {
-            "description" : "Forbidden"
-          },
           "404" : {
             "description" : "Not Found"
           },
@@ -1075,9 +1039,6 @@ response: {
           },
           "400" : {
             "description" : "Bad Request"
-          },
-          "403" : {
-            "description" : "Forbidden"
           },
           "503" : {
             "description" : "Service Unavailable"
@@ -1153,9 +1114,6 @@ response: {
           },
           "400" : {
             "description" : "Bad Request"
-          },
-          "403" : {
-            "description" : "Forbidden"
           },
           "404" : {
             "description" : "Not Found"
@@ -1247,9 +1205,6 @@ response: {
           "400" : {
             "description" : "Bad Request"
           },
-          "403" : {
-            "description" : "Forbidden"
-          },
           "404" : {
             "description" : "Not Found"
           },
@@ -1276,9 +1231,6 @@ response: {
           },
           "400" : {
             "description" : "Bad Request"
-          },
-          "403" : {
-            "description" : "Forbidden"
           },
           "404" : {
             "description" : "Not Found"
@@ -1368,9 +1320,6 @@ response: {
           },
           "400" : {
             "description" : "Bad Request"
-          },
-          "403" : {
-            "description" : "Forbidden"
           },
           "404" : {
             "description" : "Not Found"
@@ -1709,9 +1658,6 @@ response: {
           },
           "400" : {
             "description" : "Bad Request"
-          },
-          "403" : {
-            "description" : "Forbidden"
           },
           "404" : {
             "description" : "Not Found"
@@ -2060,9 +2006,6 @@ response: {
           },
           "400" : {
             "description" : "Bad Request"
-          },
-          "403" : {
-            "description" : "Forbidden"
           },
           "404" : {
             "description" : "Not Found"

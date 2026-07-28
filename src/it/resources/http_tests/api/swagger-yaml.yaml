@@ -95,8 +95,6 @@ response: |+
                   $ref: "#/components/schemas/array"
           "400":
             description: Bad Request
-          "403":
-            description: Forbidden
           "404":
             description: Not Found
           "503":
@@ -156,8 +154,6 @@ response: |+
                     $ref: "#/components/schemas/audit"
           "400":
             description: Bad Request
-          "403":
-            description: Forbidden
           "503":
             description: Service Unavailable
     /data/check_person/{code}:
@@ -180,8 +176,6 @@ response: |+
                   $ref: "#/components/schemas/person"
           "400":
             description: Bad Request
-          "403":
-            description: Forbidden
           "404":
             description: Not Found
           "503":
@@ -201,8 +195,6 @@ response: |+
                     $ref: "#/components/schemas/guideline_calculation_helper"
           "400":
             description: Bad Request
-          "403":
-            description: Forbidden
           "503":
             description: Service Unavailable
     /data/guideline_calculation_helper/{code}:
@@ -226,8 +218,6 @@ response: |+
                   $ref: "#/components/schemas/guideline_calculation_helper"
           "400":
             description: Bad Request
-          "403":
-            description: Forbidden
           "404":
             description: Not Found
           "503":
@@ -306,8 +296,6 @@ response: |+
                     $ref: "#/components/schemas/person"
           "400":
             description: Bad Request
-          "403":
-            description: Forbidden
           "503":
             description: Service Unavailable
     /data/person/{code}:
@@ -331,8 +319,6 @@ response: |+
                   $ref: "#/components/schemas/person"
           "400":
             description: Bad Request
-          "403":
-            description: Forbidden
           "404":
             description: Not Found
           "503":
@@ -399,8 +385,6 @@ response: |+
                   format: int32
           "400":
             description: Bad Request
-          "403":
-            description: Forbidden
           "404":
             description: Not Found
           "503":
@@ -418,8 +402,6 @@ response: |+
                   $ref: "#/components/schemas/person"
           "400":
             description: Bad Request
-          "403":
-            description: Forbidden
           "404":
             description: Not Found
           "503":
@@ -445,8 +427,6 @@ response: |+
                   $ref: "#/components/schemas/person_redirect"
           "400":
             description: Bad Request
-          "403":
-            description: Forbidden
           "404":
             description: Not Found
           "503":
@@ -571,8 +551,6 @@ response: |+
                     $ref: "#/components/schemas/response_calculation_view"
           "400":
             description: Bad Request
-          "403":
-            description: Forbidden
           "503":
             description: Service Unavailable
     /data/save_person_email:
@@ -671,8 +649,6 @@ response: |+
             description: OK
           "400":
             description: Bad Request
-          "403":
-            description: Forbidden
           "404":
             description: Not Found
           "503":
@@ -692,8 +668,6 @@ response: |+
                     $ref: "#/components/schemas/user"
           "400":
             description: Bad Request
-          "403":
-            description: Forbidden
           "503":
             description: Service Unavailable
       post:
@@ -742,8 +716,6 @@ response: |+
                   $ref: "#/components/schemas/user"
           "400":
             description: Bad Request
-          "403":
-            description: Forbidden
           "404":
             description: Not Found
           "503":
@@ -804,8 +776,6 @@ response: |+
                   format: int32
           "400":
             description: Bad Request
-          "403":
-            description: Forbidden
           "404":
             description: Not Found
           "503":
@@ -823,8 +793,6 @@ response: |+
                   $ref: "#/components/schemas/user"
           "400":
             description: Bad Request
-          "403":
-            description: Forbidden
           "404":
             description: Not Found
           "503":
@@ -883,8 +851,6 @@ response: |+
                   $ref: "#/components/schemas/user_role"
           "400":
             description: Bad Request
-          "403":
-            description: Forbidden
           "404":
             description: Not Found
           "503":
@@ -1104,8 +1070,6 @@ response: |+
             description: OK
           "400":
             description: Bad Request
-          "403":
-            description: Forbidden
           "404":
             description: Not Found
           "503":
@@ -1336,8 +1300,6 @@ response: |+
             description: OK
           "400":
             description: Bad Request
-          "403":
-            description: Forbidden
           "404":
             description: Not Found
           "503":
