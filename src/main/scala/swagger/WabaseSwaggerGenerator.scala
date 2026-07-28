@@ -1,6 +1,5 @@
 package org.wabase.swagger
 
-import com.fasterxml.jackson.databind.ObjectMapper
 import com.typesafe.config.Config
 import io.swagger.v3.core.util.{Json, Json31, Yaml, Yaml31}
 import io.swagger.v3.oas.models._
@@ -852,19 +851,6 @@ class WabaseSwaggerGenerator(
       defaultPaths
   }
 
-  def pathsFromViewDefs: Seq[(String, PathItem)] = {
-   pathSourcesFromViewDefs.flatMap { case (defaultPaths, pathsOverrides) =>
-    if (pathsOverrides.isEmpty)
-      defaultPaths
-    else
-      SwaggerMerger.mergePaths(
-        defaultPaths,
-        pathsOverrides,
-        typeNameToSchema,
-      )
-   }.sortBy(_._1)
-  }
-
   private def emptyJavaOverrides: JMap[String, Object] = new java.util.HashMap[String, Object]()
 
   private def javaSwaggerOverrides(extras: Map[String, Any], context: String): JMap[String, Object] = {
@@ -895,13 +881,6 @@ class WabaseSwaggerGenerator(
     }
   }
 
-  def getPaths(pathsMap: JMap[String, _]): Map[String, PathItem] = {
-    val mapper = new ObjectMapper()
-    pathsMap.asScala.map { case (key, value) =>
-      key -> mapper.convertValue(value, classOf[PathItem])
-    }.toMap
-  }
-
   private def defaultPathsFromRouteDef(rd: RouteDef): Seq[(String, PathItem)] = {
         rd.pathNamesAndParameters.map { pathInfo =>
           val pi = new PathItem
@@ -917,19 +896,6 @@ class WabaseSwaggerGenerator(
           }
           pathInfo.name -> pi
         }.toSeq
-  }
-
-  def pathsFromRouteDefs: Seq[(String, PathItem)] = {
-    pathSourcesFromRouteDefs.flatMap { case (defaultPaths, pathsOverrides) =>
-      if (pathsOverrides.isEmpty)
-        defaultPaths
-      else
-        SwaggerMerger.mergePaths(
-          defaultPaths,
-          pathsOverrides,
-          typeNameToSchema,
-        )
-    }.sortBy(_._1)
   }
 
   def dropIrrelevant(qe: Querease, views: List[ViewDef]): List[ViewDef] = {
