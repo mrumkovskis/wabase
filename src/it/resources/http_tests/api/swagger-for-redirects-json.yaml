@@ -2484,7 +2484,7 @@ response: {
             "readOnly" : false
           }
         },
-        "required" : [ "id", "context", "expression", "message" ]
+        "required" : [ "context", "expression", "id", "message" ]
       }
     }
   }
