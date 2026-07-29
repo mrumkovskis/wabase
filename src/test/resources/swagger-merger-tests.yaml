@@ -1346,6 +1346,87 @@ expected:
         "401":
           description: Unauthorized
 ---
+should: Inherited path override on non-contributed path does not wipe sibling view path
+mode: mergePathSources
+sources:
+  # parent jwt_cert: full key path with get/put/delete + path put body override
+  - paths:
+      /jwt_cert:
+        get:
+          summary: List
+      /jwt_cert/{client_id}/{scope}/{number}:
+        get:
+          summary: Get one
+          parameters:
+            - name: number
+              in: path
+              required: true
+              schema:
+                type: string
+        put:
+          summary: Upsert
+          parameters:
+            - name: number
+              in: path
+              required: true
+              schema:
+                type: string
+        delete:
+          summary: Delete
+    overrides:
+      /jwt_cert/{client_id}/{scope}/{number}:
+        put:
+          requestBody:
+            content:
+              application/pkix-cert:
+                type: string
+                format: binary
+  # child list view: different path, but inherits parent swagger path override
+  - paths:
+      /jwt_cert/{client_id}/{scope}:
+        get:
+          summary: List in context
+    overrides:
+      /jwt_cert/{client_id}/{scope}/{number}:
+        put:
+          requestBody:
+            content:
+              application/pkix-cert:
+                type: string
+                format: binary
+expected:
+  /jwt_cert:
+    get:
+      summary: List
+  /jwt_cert/{client_id}/{scope}:
+    get:
+      summary: List in context
+  /jwt_cert/{client_id}/{scope}/{number}:
+    get:
+      summary: Get one
+      parameters:
+        - name: number
+          in: path
+          required: true
+          schema:
+            type: string
+    put:
+      summary: Upsert
+      parameters:
+        - name: number
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/pkix-cert:
+            schema:
+              type: string
+              format: binary
+    delete:
+      summary: Delete
+---
 
 should: mergePathSources route-only path and view-only path
 mode: mergePathSources

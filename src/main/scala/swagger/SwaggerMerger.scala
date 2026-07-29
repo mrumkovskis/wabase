@@ -514,6 +514,26 @@ object SwaggerMerger {
     pathItemHttpMethods(item).nonEmpty
 
   /**
+   * Keep only override roots that apply to this source's contributed paths.
+   * Path-level keys for paths this source did not generate are dropped (e.g. swagger
+   * inherited via view `extends` must not recreate/overwrite another view's path).
+   */
+  private def scopeOverridesToContributedPaths(
+    overrides: JMap[String, Object],
+    contributedPathNames: Set[String],
+  ): JMap[String, Object] = {
+    val scoped = new HashMap[String, Object]()
+    for ((k, v) <- overrides.asScala) {
+      if (isPathKey(k)) {
+        if (contributedPathNames.contains(trimmedKey(k))) scoped.put(k, v)
+      } else {
+        scoped.put(k, v)
+      }
+    }
+    scoped
+  }
+
+  /**
    * Merges path contributions from multiple sources in ascending priority order
    * (last source wins).
    *
@@ -521,7 +541,8 @@ object SwaggerMerger {
    * 2. Contributed bases are deep-merged (later source wins on conflicts).
    * 3. Each source's remaining overrides are applied only to that source's
    *    **paths and HTTP methods**, then written back without touching other
-   *    sources' operations
+   *    sources' operations. Path-level override keys for paths not contributed by
+   *    this source are ignored (avoids inherited swagger wiping another view's path).
    *
    * @param sources sequence of (base paths, overrides), low priority first
    * @param typeNameToSchema optional custom type resolver for overrides
@@ -556,54 +577,59 @@ object SwaggerMerger {
         if (rest != null && !rest.isEmpty && paths.nonEmpty) {
           val sourceMethodsByPath: Map[String, Set[String]] =
             paths.map { case (name, item) => name -> pathItemHttpMethods(item) }.toMap
-
-          // Slice current merge to this source's paths + methods only
-          val subset = paths.flatMap { case (name, _) =>
-            Option(resultMap.get(name)).map { current =>
-              val scope = sourceMethodsByPath(name)
-              name -> filterPathItemToMethods(current, scope)
+          val contributedNames = sourceMethodsByPath.keySet
+          val scopedRest = scopeOverridesToContributedPaths(rest, contributedNames)
+          if (scopedRest.isEmpty) {
+            // nothing applicable to this source
+          } else {
+            // Slice current merge to this source's paths + methods only
+            val subset = paths.flatMap { case (name, _) =>
+              Option(resultMap.get(name)).map { current =>
+                name -> filterPathItemToMethods(current, sourceMethodsByPath(name))
+              }
             }
-          }
-          val methodsBeforeByPath: Map[String, Set[String]] =
-            subset.map { case (name, item) => name -> pathItemHttpMethods(item) }.toMap
-          val subsetNames = methodsBeforeByPath.keySet
+            val methodsBeforeByPath: Map[String, Set[String]] =
+              subset.map { case (name, item) => name -> pathItemHttpMethods(item) }.toMap
+            val subsetNames = methodsBeforeByPath.keySet
 
-          val after = mergePaths(subset, rest, typeNameToSchema)
-          val afterMap = after.toMap
+            val after = mergePaths(subset, scopedRest, typeNameToSchema)
+            val afterMap = after.toMap
 
-          // Write back updated paths (scoped splice — never drop sibling methods)
-          for ((name, updated) <- after) {
-            if (subsetNames.contains(name)) {
-              val current = resultMap.get(name)
-              if (current != null) {
-                resultMap.put(
-                  name,
-                  spliceScopedPathItem(
-                    current,
-                    updated,
-                    sourceMethodsByPath(name),
-                    methodsBeforeByPath.getOrElse(name, Set.empty),
-                  ),
-                )
+            // Write back updated paths (scoped splice — never drop sibling methods)
+            for ((name, updated) <- after) {
+              if (subsetNames.contains(name)) {
+                val current = resultMap.get(name)
+                if (current != null) {
+                  resultMap.put(
+                    name,
+                    spliceScopedPathItem(
+                      current,
+                      updated,
+                      sourceMethodsByPath(name),
+                      methodsBeforeByPath.getOrElse(name, Set.empty),
+                    ),
+                  )
+                } else {
+                  resultMap.put(name, sortPathItemResponses(updated))
+                }
+              } else if (resultMap.containsKey(name)) {
+                // Should be rare after path scoping; never replace an existing path wholesale
+                resultMap.put(name, deepMergePathItem(resultMap.get(name), updated))
               } else {
                 resultMap.put(name, sortPathItemResponses(updated))
               }
-            } else {
-              // New path introduced by path-level override on this source
-              resultMap.put(name, sortPathItemResponses(updated))
             }
-          }
 
-          // Path removed only if it was in the scoped input but not in mergePaths output
-          // (e.g. `/x =: null`), not merely absent from a partial path patch.
-          for (name <- subsetNames if !afterMap.contains(name)) {
-            Option(resultMap.get(name)).foreach { current =>
-              val remaining = filterPathItemToMethods(
-                current,
-                pathItemHttpMethods(current) -- sourceMethodsByPath.getOrElse(name, Set.empty),
-              )
-              if (pathItemHasHttpMethod(remaining)) resultMap.put(name, remaining)
-              else resultMap.remove(name)
+            // Path removed only if it was in the scoped input but not in mergePaths output
+            for (name <- subsetNames if !afterMap.contains(name)) {
+              Option(resultMap.get(name)).foreach { current =>
+                val remaining = filterPathItemToMethods(
+                  current,
+                  pathItemHttpMethods(current) -- sourceMethodsByPath.getOrElse(name, Set.empty),
+                )
+                if (pathItemHasHttpMethod(remaining)) resultMap.put(name, remaining)
+                else resultMap.remove(name)
+              }
             }
           }
         }
