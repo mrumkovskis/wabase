@@ -111,11 +111,22 @@ object SwaggerMerger {
     case PathLevel =>
         merge(baseMap.asInstanceOf[JMap[String, Object]], overrideMap, typeNameToSchema).asInstanceOf[JMap[String, JMap[String, Object]]]
     case MethodLevel =>
+        // Only update methods already present on each path — do not invent operations.
         val newMap = new HashMap[String, JMap[String, Object]](baseMap)
         for (entry <- newMap.entrySet.asScala) {
           val pMap = entry.getValue.asInstanceOf[JMap[String, Object]]
-          val mergedP = merge(pMap, overrideMap, typeNameToSchema)
-          entry.setValue(mergedP)
+          val scopedOvr = new HashMap[String, Object]()
+          for ((k, v) <- overrideMap.asScala) {
+            val methodName = trimmedKey(k).toLowerCase()
+            if (httpMethods.contains(methodName)) {
+              if (pMap.containsKey(methodName)) scopedOvr.put(k, v)
+            } else {
+              scopedOvr.put(k, v)
+            }
+          }
+          if (!scopedOvr.isEmpty) {
+            entry.setValue(merge(pMap, scopedOvr, typeNameToSchema))
+          }
         }
         newMap
     case ResponseLevel =>
@@ -454,6 +465,44 @@ object SwaggerMerger {
     (pathsLevel, rest)
   }
 
+  private def pathItemHttpMethods(item: PathItem): Set[String] = {
+    val map = mapper.convertValue(item, classOf[JMap[String, Object]])
+    httpMethods.filter(map.containsKey)
+  }
+
+  /** Keeps path-level (non-method) keys and only the given HTTP methods. */
+  private def filterPathItemToMethods(item: PathItem, methods: Set[String]): PathItem = {
+    val map = mapper.convertValue(item, classOf[JMap[String, Object]])
+    val filtered = new HashMap[String, Object]()
+    for ((k, v) <- map.asScala) {
+      if (!httpMethods.contains(k) || methods.contains(k)) filtered.put(k, v)
+    }
+    mapper.convertValue(filtered, classOf[PathItem])
+  }
+
+  /**
+   * Writes `updated` (overrides applied on a method-scoped slice) back into `current`
+   * without touching HTTP methods outside `methodScope`.
+   */
+  private def spliceScopedPathItem(current: PathItem, updated: PathItem, methodScope: Set[String]): PathItem = {
+    val cur = mapper.convertValue(current, classOf[JMap[String, Object]])
+    val upd = mapper.convertValue(updated, classOf[JMap[String, Object]])
+    val result = new HashMap[String, Object](cur)
+    for (m <- methodScope) {
+      if (upd.containsKey(m)) result.put(m, upd.get(m))
+      else result.remove(m)
+    }
+    // Path-level keys (parameters, summary, …) from the scoped merge
+    for ((k, v) <- upd.asScala if !httpMethods.contains(k)) {
+      result.put(k, v)
+    }
+    val pathItem = mapper.convertValue(result, classOf[PathItem])
+    sortPathItemResponses(pathItem)
+  }
+
+  private def pathItemHasHttpMethod(item: PathItem): Boolean =
+    pathItemHttpMethods(item).nonEmpty
+
   /**
    * Merges path contributions from multiple sources in ascending priority order
    * (last source wins).
@@ -466,7 +515,7 @@ object SwaggerMerger {
    * Then:
    *  1. Path items for the same path name are deep-merged in source order (later wins).
    *  2. Non-paths overrides are applied in source order, each scoped to that source's
-   *     contributed path names — so later sources (e.g. views) override earlier ones
+   *     contributed paths and methods, later sources (e.g. views) override earlier ones
    *     (e.g. routes).
    *
    * @param sources sequence of (base paths, overrides), low priority first
@@ -500,14 +549,42 @@ object SwaggerMerger {
 
       for ((paths, rest) <- prepared) {
         if (rest != null && !rest.isEmpty) {
-          val names = paths.map(_._1).toSet
-          val subset = names.toSeq.flatMap { n =>
-            Option(resultMap.get(n)).map(item => n -> item)
+          val sourceMethodsByPath: Map[String, Set[String]] =
+            paths.map { case (name, item) => name -> pathItemHttpMethods(item) }.toMap
+          val sourceNames = sourceMethodsByPath.keySet
+
+          // Apply overrides only to this source's paths and methods (slice of current merge).
+          val subset = sourceNames.toSeq.flatMap { name =>
+            Option(resultMap.get(name)).map { current =>
+              name -> filterPathItemToMethods(current, sourceMethodsByPath(name))
+            }
           }
           val after = mergePaths(subset, rest, typeNameToSchema)
-          names.foreach(resultMap.remove)
-          for ((n, item) <- after) {
-            resultMap.put(n, item)
+          val afterMap = after.toMap
+
+          for (name <- sourceNames) {
+            afterMap.get(name) match {
+              case Some(updated) =>
+                Option(resultMap.get(name)) match {
+                  case Some(current) =>
+                    resultMap.put(name, spliceScopedPathItem(current, updated, sourceMethodsByPath(name)))
+                  case None =>
+                    // Path was absent in the combined map but present after overrides (unusual)
+                    resultMap.put(name, sortPathItemResponses(updated))
+                }
+              case None =>
+                // Path removed for this source (e.g. `/x =: null`) — drop only this source's methods
+                Option(resultMap.get(name)).foreach { current =>
+                  val remaining = filterPathItemToMethods(current, pathItemHttpMethods(current) -- sourceMethodsByPath(name))
+                  if (pathItemHasHttpMethod(remaining)) resultMap.put(name, remaining)
+                  else resultMap.remove(name)
+                }
+            }
+          }
+
+          // Paths newly introduced by this source's path-level overrides
+          for ((name, item) <- after if !sourceNames.contains(name)) {
+            resultMap.put(name, sortPathItemResponses(item))
           }
         }
       }

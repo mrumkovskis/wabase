@@ -1156,6 +1156,89 @@ expected:
       summary: Create from view
       description: View post description
 ---
+should: mergePathSources scopes route overrides to route methods only
+mode: mergePathSources
+sources:
+  - paths:
+      /user:
+        post:
+          summary: Route post
+    overrides:
+      description: Route-only description
+      "200":
+        description: Route OK
+  - paths:
+      /user:
+        get:
+          summary: View get
+          responses:
+            "404":
+              description: Not Found
+    overrides: {}
+expected:
+  /user:
+    get:
+      summary: View get
+      responses:
+        "404":
+          description: Not Found
+    post:
+      summary: Route post
+      description: Route-only description
+      responses:
+        "200":
+          description: Route OK
+---
+should: mergePathSources scopes view overrides to view methods only
+mode: mergePathSources
+sources:
+  - paths:
+      /user:
+        post:
+          summary: Route post
+          responses:
+            "201":
+              description: Created
+    overrides: {}
+  - paths:
+      /user:
+        get:
+          summary: View get
+    overrides:
+      description: View-only description
+      "200":
+        description: View OK
+expected:
+  /user:
+    get:
+      summary: View get
+      description: View-only description
+      responses:
+        "200":
+          description: View OK
+    post:
+      summary: Route post
+      responses:
+        "201":
+          description: Created
+---
+should: Method level override does not add missing methods
+paths:
+  /user:
+    post:
+      summary: Create
+overrides:
+  get:
+    summary: Should not appear
+  post:
+    description: Create desc
+expected:
+  /user:
+    post:
+      summary: Create
+      description: Create desc
+---
+
 should: mergePathSources route-only path and view-only path
 mode: mergePathSources
 sources:
