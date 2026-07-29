@@ -791,6 +791,36 @@ count:
 - if {:value != null} :value
 
 
+name: try_test_1
+fields:
+- value
+get:
+- try:                          #try block op
+  - x = 'T'
+  - :x
+- recover:                      #recover block op
+  - x = 'R'
+  - :x
+insert:
+- try 'T'                       #try op
+- recover:                      #recover block op
+  - x = 'R'
+  - :x
+update:
+- try:                          #try block op
+  - x = 'T'
+  - :x
+- recover 'R'                   #recover op
+delete:
+- try 'T' recover:              #try op recover block op
+  - x = 'R'
+  - :x
+count:
+- try 'T' recover 'R'           #try op recover op
+list:
+- try 'T'                       #try op without recover
+
+
 name: foreach_test_1
 table: if_and_foreach_test ift
 api: get, save, update

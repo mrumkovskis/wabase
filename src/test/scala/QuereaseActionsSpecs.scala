@@ -134,6 +134,33 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
     }
   }
 
+  it should "parse try and recover blocks" in {
+    val vd = querease.viewDef("try_test_1")
+    def tryOp(actionName: String): Action.Try = vd.actions(actionName).steps match {
+      case (Action.Evaluation(None, Nil, t: Action.Try), _) :: Nil => t
+      case x => fail(s"Unexpected steps of action '$actionName': $x")
+    }
+    def srcs(a: AppMetadata.Action) = a.steps.map(_._2)
+    // try block op, recover block op
+    srcs(tryOp("get").action)         should be (List("x = 'T'", ":x"))
+    srcs(tryOp("get").recoverAct)     should be (List("x = 'R'", ":x"))
+    // try op, recover block op
+    srcs(tryOp("insert").action)      should be (List("'T'"))
+    srcs(tryOp("insert").recoverAct)  should be (List("x = 'R'", ":x"))
+    // try block op, recover op
+    srcs(tryOp("update").action)      should be (List("x = 'T'", ":x"))
+    srcs(tryOp("update").recoverAct)  should be (List("'R'"))
+    // try op, recover block op on the same step
+    srcs(tryOp("delete").action)      should be (List("'T'"))
+    srcs(tryOp("delete").recoverAct)  should be (List("x = 'R'", ":x"))
+    // try op, recover op
+    srcs(tryOp("count").action)       should be (List("'T'"))
+    srcs(tryOp("count").recoverAct)   should be (List("'R'"))
+    // try op without recover
+    srcs(tryOp("list").action)        should be (List("'T'"))
+    tryOp("list").recoverAct          should be (null)
+  }
+
   it should "do raw action json encoding" in {
     import org.apache.pekko.util.ByteString
     import org.scalatest.Inspectors._

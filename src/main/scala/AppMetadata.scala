@@ -611,9 +611,11 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
                   def pa = parseAction(objectName, al.asScala.toList, opParser)
                   def addBlock(op: Action.Op) = op.asInstanceOf[Action.BlockOp] match {
                     case bl: Action.If      => if (bl.action == null) bl.copy(action = pa) else bl.copy(elseAct = pa)
+                    case bl: Action.Try     => if (bl.action == null) bl.copy(action = pa) else bl.copy(recoverAct = pa)
                     case bl: Action.Foreach => bl.copy(action = pa)
                     case bl: Action.Db      => bl.copy(action = pa)
                     case bl: Action.Else    => bl.copy(action = pa)
+                    case bl: Action.Recover => bl.copy(action = pa)
                     case bl: Action.Block   => bl.copy(action = pa)
                     case null               => Action.Block(pa)
                   }
@@ -634,26 +636,40 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       }
       parseStep(step)
     }.toList
-    //coalesce else op into if
-    val coalesced_if_else_steps = if (steps.isEmpty) Nil else
+    //coalesce else op into if, recover op into try
+    def stepOp(step: Action.Step): Action.Op = step match {
+      case Action.Evaluation(_, _, op) => op
+      case Action.SetEnv(_, _, op, _)  => op
+      case Action.Return(_, _, op)     => op
+      case _                           => null
+    }
+    def stepWithOp(step: Action.Step, op: Action.Op): Action.Step = step match {
+      case st: Action.Evaluation => st.copy(op    = op)
+      case st: Action.SetEnv     => st.copy(value = op)
+      case st: Action.Return     => st.copy(value = op)
+      case st                    => st
+    }
+    val coalesced_block_steps = if (steps.isEmpty) Nil else
       (steps.tail.foldLeft(steps.head -> List[(Action.Step, String)]()) { case ((prev_st, r), (s, src)) =>
+        // merge current step block op into previous step op, current step is dropped
+        def coalesce(keyword: String, mustFollow: String)(merge: PartialFunction[Action.Op, Action.Op]) = {
+          val (p, psrc) = prev_st
+          val pop = stepOp(p)
+          if (merge.isDefinedAt(pop)) (null, (stepWithOp(p, merge(pop)), psrc) :: r)
+          else sys.error(s"$keyword statement must follow $mustFollow statement, instead found '$p'")
+        }
         (prev_st, s) match {
-          case ((p, psrc), Action.Evaluation(_, _, elseOp: Action.Else)) => p match {
-            case ifEv@Action.Evaluation(_, _, ifOp: Action.If) =>
-              (null, (ifEv.copy(op = ifOp.copy(elseAct = elseOp.action)), psrc) :: r)
-            case ifSetEnv@Action.SetEnv(_, _, ifOp: Action.If, _) =>
-              (null, (ifSetEnv.copy(value = ifOp.copy(elseAct = elseOp.action)), psrc) :: r)
-            case ifReturn@Action.Return(_, _, ifOp: Action.If) =>
-              (null, (ifReturn.copy(value = ifOp.copy(elseAct = elseOp.action)), psrc) :: r)
-            case _ => sys.error(s"else statement must follow if statement, instead found '$p'")
-          }
+          case ((_, _), Action.Evaluation(_, _, elseOp: Action.Else)) =>
+            coalesce("else", "if") { case ifOp: Action.If => ifOp.copy(elseAct = elseOp.action) }
+          case ((_, _), Action.Evaluation(_, _, recoverOp: Action.Recover)) =>
+            coalesce("recover", "try") { case tryOp: Action.Try => tryOp.copy(recoverAct = recoverOp.action) }
           case _ => ((s, src), if (prev_st != null) prev_st :: r else r)
         }
       } match {
         case (null, r) => r
         case (x, r) => x :: r
       }).reverse
-    Action(coalesced_if_else_steps)
+    Action(coalesced_block_steps)
   }
 
   protected def parseDecoder(viewName: String, decStr: String): (RequestDecoder, jLong) = {
@@ -1103,12 +1119,23 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
   def ifElseOp: MemParser[If] = ifBlockOp ~ actionFromOp ~ opt(elseOp) ^^ {
       case cond ~ ifAct ~ elseOp => cond.copy(action = ifAct, elseAct = elseOp.map(_.action).orNull)
     } named "if-else-op"
-  def elseOp: MemParser[Else] = elseBlockOp ~> actionFromOp ^^ (Else(_))
+  // parsers must be named, MemParser memoizes results by parser name and input offset
+  def elseOp: MemParser[Else] = elseBlockOp ~> actionFromOp ^^ (Else(_)) named "else-op"
   def ifBlockOp: MemParser[If] = "if(?=\\s+|[^\\w])".r ~> operation ~ opt(actionFromOp <~ (elseBlockOp ~ "$".r)) ^^ {
     case cond ~ ifActElseBl => If(cond, ifActElseBl.orNull)
   } named "if-block-op"
   def elseBlockOp: MemParser[Else] = "else".r ^^^ Else(null) named "else-block-op"
-  def blockOp: MemParser[BlockOp] = ifBlockOp | elseBlockOp | dbBlockOp | foreachBlockOp named "block-op"
+  // Action.Try must be qualified since scala.util.Try is imported in this file
+  def tryRecoverOp: MemParser[Action.Try] = tryBlockOp ~ actionFromOp ~ opt(recoverOp) ^^ {
+      case tr ~ tryAct ~ recOp => tr.copy(action = tryAct, recoverAct = recOp.map(_.action).orNull)
+    } named "try-recover-op"
+  def recoverOp: MemParser[Recover] = recoverBlockOp ~> actionFromOp ^^ (Recover(_)) named "recover-op"
+  def tryBlockOp: MemParser[Action.Try] = "try(?!\\w)".r ~> opt(actionFromOp <~ (recoverBlockOp ~ "$".r)) ^^ {
+    case tryActRecoverBl => Action.Try(tryActRecoverBl.orNull)
+  } named "try-block-op"
+  def recoverBlockOp: MemParser[Recover] = "recover(?!\\w)".r ^^^ Recover(null) named "recover-block-op"
+  def blockOp: MemParser[BlockOp] =
+    ifBlockOp | elseBlockOp | tryBlockOp | recoverBlockOp | dbBlockOp | foreachBlockOp named "block-op"
   def thisOp: MemParser[This] = opt(opResultType) <~ "this" ^^ This.apply named "this-op"
 
   def bracesOp: MemParser[Op] = "(" ~> operation <~ ")" named "braces-op"
@@ -1161,7 +1188,8 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
   def commit: MemParser[Commit.type] = "commit\\s*$".r ^^^ Commit named "commit-op"
   def rollback: MemParser[Rollback.type] = "rollback\\s*$".r ^^^ Rollback named "rollback-op"
   def operation: MemParser[Op] = (commit | rollback | redirect | response | viewOp | confOp | uniqueOp |
-    httpOp | dbOp | foreachOp | ifElseOp | elseOp | resourceOp | fileOp | toFileOp | templateOp | emailOp |
+    httpOp | dbOp | foreachOp | ifElseOp | elseOp | tryRecoverOp | recoverOp |
+    resourceOp | fileOp | toFileOp | templateOp | emailOp |
     jsonCodecOp | httpHeaderOp | httpCookieOp | extractPartsOp | extractEntityOp |
     thisOp | bracesOp | invocationOp | tresqlOp) named "operation"
 
@@ -1377,6 +1405,8 @@ object AppMetadata extends Loggable {
     case class VariableTransforms(transforms: List[VariableTransform]) extends Op
     case class Foreach(initOp: Op, action: Action, foldOp: FoldOp = null) extends BlockOp
     case class If(cond: Op, action: Action, elseAct: Action = null) extends BlockOp
+    /** Recover action is executed if action throws an exception */
+    case class Try(action: Action, recoverAct: Action = null) extends BlockOp
     case class Resource(nameTresql: Tresql, contentTypeTresql: Tresql = null) extends Op
     case class File(
       idShaTresql: Tresql,
@@ -1411,6 +1441,8 @@ object AppMetadata extends Loggable {
     case class JsonCodec(encode: Boolean, op: Op) extends Op
     /** This operation exists only in parsing stage for if operation */
     case class Else(action: Action) extends BlockOp
+    /** This operation exists only in parsing stage for try operation */
+    case class Recover(action: Action) extends BlockOp
     case class Block(action: Action) extends BlockOp
     case object Commit extends Op
     case object Rollback extends Op
@@ -1444,6 +1476,9 @@ object AppMetadata extends Loggable {
         case If(o, a, e) =>
           val r = traverseAction(a)(stepTrav)(opTrav(state)(o))
           if (e == null) r else traverseAction(e)(stepTrav)(r)
+        case Try(a, rec) =>
+          val r = traverseAction(a)(stepTrav)(state)
+          if (rec == null) r else traverseAction(rec)(stepTrav)(r)
         case o: ToFile => opTrav(state)(o.contentOp)
         case o: Template => opTrav(state)(o.dataOp)
         case Email(r, s, b, a, _) => a.foldLeft(opTrav(opTrav(opTrav(state)(r))(s))(b))(opTrav(_)(_))
