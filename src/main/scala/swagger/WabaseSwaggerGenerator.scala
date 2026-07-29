@@ -115,22 +115,31 @@ class WabaseSwaggerGenerator(
     case n if type_.isComplexType =>
       (new Schema).$ref(refFromViewName(n))
     case "long" => (new IntegerSchema).format("int64")
-    case "int" => new IntegerSchema
+    case "int" => new IntegerSchema // OAS int32
+    case "integer" => // mojoz BigInt / varint — integer without fixed bit-width format
+      val s = new IntegerSchema
+      s.setFormat(null)
+      s
     case "short" => (new IntegerSchema).format("int16")
+    case "float" => (new NumberSchema).format("float")
+    case "double" => (new NumberSchema).format("double")
     case "decimal" => new NumberSchema
     case "boolean" => new BooleanSchema
     case "date" => new DateSchema
     case "dateTime" => new DateTimeSchema
     case "timestamp" => new DateTimeSchema
-    case "timeuuid" => new StringSchema
+    case "timeuuid" => (new StringSchema).format("uuid")
     case "object" => new ObjectSchema
+    case "time" => (new StringSchema).format("time")
     case "string" =>
       val s = new StringSchema
       type_.length.foreach(l => s.maxLength(l))
       s
     case "json" => new ObjectSchema
+    case "bytes" => (new StringSchema).format("byte") // xsd base64Binary
     case "yaml" => new StringSchema
     case n if n.endsWith("String") => new StringSchema
+    case "any" => new Schema() // xsd anyType — unconstrained
     case n => (new ObjectSchema).`type`(n)
   }
 
