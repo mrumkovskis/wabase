@@ -611,7 +611,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
                   def pa = parseAction(objectName, al.asScala.toList, opParser)
                   def addBlock(op: Action.Op) = op.asInstanceOf[Action.BlockOp] match {
                     case bl: Action.If      => if (bl.action == null) bl.copy(action = pa) else bl.copy(elseAct = pa)
-                    case bl: Action.Try     => if (bl.action == null) bl.copy(action = pa) else bl.copy(recoverAct = pa)
+                    case bl: Action.TryOp   => if (bl.action == null) bl.copy(action = pa) else bl.copy(recoverAct = pa)
                     case bl: Action.Foreach => bl.copy(action = pa)
                     case bl: Action.Db      => bl.copy(action = pa)
                     case bl: Action.Else    => bl.copy(action = pa)
@@ -662,7 +662,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
           case ((_, _), Action.Evaluation(_, _, elseOp: Action.Else)) =>
             coalesce("else", "if") { case ifOp: Action.If => ifOp.copy(elseAct = elseOp.action) }
           case ((_, _), Action.Evaluation(_, _, recoverOp: Action.Recover)) =>
-            coalesce("recover", "try") { case tryOp: Action.Try => tryOp.copy(recoverAct = recoverOp.action) }
+            coalesce("recover", "try") { case tryOp: Action.TryOp => tryOp.copy(recoverAct = recoverOp.action) }
           case _ => ((s, src), if (prev_st != null) prev_st :: r else r)
         }
       } match {
@@ -1125,13 +1125,12 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
     case cond ~ ifActElseBl => If(cond, ifActElseBl.orNull)
   } named "if-block-op"
   def elseBlockOp: MemParser[Else] = "else".r ^^^ Else(null) named "else-block-op"
-  // Action.Try must be qualified since scala.util.Try is imported in this file
-  def tryRecoverOp: MemParser[Action.Try] = tryBlockOp ~ actionFromOp ~ opt(recoverOp) ^^ {
+  def tryRecoverOp: MemParser[TryOp] = tryBlockOp ~ actionFromOp ~ opt(recoverOp) ^^ {
       case tr ~ tryAct ~ recOp => tr.copy(action = tryAct, recoverAct = recOp.map(_.action).orNull)
     } named "try-recover-op"
   def recoverOp: MemParser[Recover] = recoverBlockOp ~> actionFromOp ^^ (Recover(_)) named "recover-op"
-  def tryBlockOp: MemParser[Action.Try] = "try(?!\\w)".r ~> opt(actionFromOp <~ (recoverBlockOp ~ "$".r)) ^^ {
-    case tryActRecoverBl => Action.Try(tryActRecoverBl.orNull)
+  def tryBlockOp: MemParser[TryOp] = "try(?!\\w)".r ~> opt(actionFromOp <~ (recoverBlockOp ~ "$".r)) ^^ {
+    case tryActRecoverBl => TryOp(tryActRecoverBl.orNull)
   } named "try-block-op"
   def recoverBlockOp: MemParser[Recover] = "recover(?!\\w)".r ^^^ Recover(null) named "recover-block-op"
   def blockOp: MemParser[BlockOp] =
@@ -1405,8 +1404,9 @@ object AppMetadata extends Loggable {
     case class VariableTransforms(transforms: List[VariableTransform]) extends Op
     case class Foreach(initOp: Op, action: Action, foldOp: FoldOp = null) extends BlockOp
     case class If(cond: Op, action: Action, elseAct: Action = null) extends BlockOp
-    /** Recover action is executed if action throws an exception */
-    case class Try(action: Action, recoverAct: Action = null) extends BlockOp
+    /** Recover action is executed if action throws an exception.
+      * Named TryOp, not Try, to avoid clash with scala.util.Try */
+    case class TryOp(action: Action, recoverAct: Action = null) extends BlockOp
     case class Resource(nameTresql: Tresql, contentTypeTresql: Tresql = null) extends Op
     case class File(
       idShaTresql: Tresql,
@@ -1476,7 +1476,7 @@ object AppMetadata extends Loggable {
         case If(o, a, e) =>
           val r = traverseAction(a)(stepTrav)(opTrav(state)(o))
           if (e == null) r else traverseAction(e)(stepTrav)(r)
-        case Try(a, rec) =>
+        case TryOp(a, rec) =>
           val r = traverseAction(a)(stepTrav)(state)
           if (rec == null) r else traverseAction(rec)(stepTrav)(r)
         case o: ToFile => opTrav(state)(o.contentOp)

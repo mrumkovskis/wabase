@@ -136,8 +136,8 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
 
   it should "parse try and recover blocks" in {
     val vd = querease.viewDef("try_test_1")
-    def tryOp(actionName: String): Action.Try = vd.actions(actionName).steps match {
-      case (Action.Evaluation(None, Nil, t: Action.Try), _) :: Nil => t
+    def tryOp(actionName: String): Action.TryOp = vd.actions(actionName).steps match {
+      case (Action.Evaluation(None, Nil, t: Action.TryOp), _) :: Nil => t
       case x => fail(s"Unexpected steps of action '$actionName': $x")
     }
     def srcs(a: AppMetadata.Action) = a.steps.map(_._2)
