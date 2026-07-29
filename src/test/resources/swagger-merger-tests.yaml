@@ -1238,6 +1238,114 @@ expected:
       summary: Create
       description: Create desc
 ---
+should: Path override on one path keeps all other view paths and methods
+mode: mergePathSources
+sources:
+  - paths:
+      /jwt_cert:
+        get:
+          summary: List
+      /jwt_cert/{client_id}/{scope}/{number}:
+        get:
+          summary: Get one
+        put:
+          summary: Upsert
+        delete:
+          summary: Delete
+    overrides:
+      /jwt_cert/{client_id}/{scope}/{number}:
+        put:
+          requestBody:
+            content:
+              application/pkix-cert:
+                type: string
+                format: binary
+expected:
+  /jwt_cert:
+    get:
+      summary: List
+  /jwt_cert/{client_id}/{scope}/{number}:
+    get:
+      summary: Get one
+    put:
+      summary: Upsert
+      requestBody:
+        content:
+          application/pkix-cert:
+            schema:
+              type: string
+              format: binary
+    delete:
+      summary: Delete
+---
+should: Method override on put keeps all paths including those without put
+mode: mergePathSources
+sources:
+  - paths:
+      /jwt_cert:
+        get:
+          summary: List
+      /jwt_cert/{id}:
+        get:
+          summary: Get one
+        put:
+          summary: Upsert
+        delete:
+          summary: Delete
+    overrides:
+      put:
+        description: Put only
+expected:
+  /jwt_cert:
+    get:
+      summary: List
+  /jwt_cert/{id}:
+    get:
+      summary: Get one
+    put:
+      summary: Upsert
+      description: Put only
+    delete:
+      summary: Delete
+---
+should: View responses replace after deep merge drops route-only status codes
+mode: mergePathSources
+sources:
+  - paths:
+      /login:
+        post:
+          summary: Route post
+          responses:
+            "200":
+              description: OK
+            "201":
+              description: Created
+    overrides: {}
+  - paths:
+      /login:
+        post:
+          summary: View insert
+          responses:
+            "200":
+              description: OK
+            "201":
+              description: Created
+    overrides:
+      "responses =":
+        "200":
+          description: OK
+        "401":
+          description: Unauthorized
+expected:
+  /login:
+    post:
+      summary: View insert
+      responses:
+        "200":
+          description: OK
+        "401":
+          description: Unauthorized
+---
 
 should: mergePathSources route-only path and view-only path
 mode: mergePathSources
