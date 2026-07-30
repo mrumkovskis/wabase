@@ -658,10 +658,10 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
           if (merge.isDefinedAt(pop)) (null, (stepWithOp(p, merge(pop)), psrc) :: r)
           else sys.error(s"$keyword statement must follow $mustFollow statement, instead found '$p'")
         }
-        (prev_st, s) match {
-          case ((_, _), Action.Evaluation(_, _, elseOp: Action.Else)) =>
+        s match {
+          case Action.Evaluation(_, _, elseOp: Action.Else) =>
             coalesce("else", "if") { case ifOp: Action.If => ifOp.copy(elseAct = elseOp.action) }
-          case ((_, _), Action.Evaluation(_, _, recoverOp: Action.Recover)) =>
+          case Action.Evaluation(_, _, recoverOp: Action.Recover) =>
             coalesce("recover", "try") { case tryOp: Action.TryOp => tryOp.copy(recoverAct = recoverOp.action) }
           case _ => ((s, src), if (prev_st != null) prev_st :: r else r)
         }
@@ -1186,7 +1186,11 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
     rep(setCookie | deleteCookie | setHttpHeaders | setUserAttributes) named "set-http-headers-ops"
   def commit: MemParser[Commit.type] = "commit\\s*$".r ^^^ Commit named "commit-op"
   def rollback: MemParser[Rollback.type] = "rollback\\s*$".r ^^^ Rollback named "rollback-op"
-  def operation: MemParser[Op] = (commit | rollback | redirect | response | viewOp | confOp | uniqueOp |
+  /** Variable is not parsed as tresql operation so that Throwable value is not passed to query evaluation */
+  def rethrow: MemParser[Rethrow] = "rethrow(?!\\w)".r ~> variable ^^ { v =>
+    Rethrow((v.variable :: v.members).mkString("."))
+  } named "rethrow-op"
+  def operation: MemParser[Op] = (commit | rollback | rethrow | redirect | response | viewOp | confOp | uniqueOp |
     httpOp | dbOp | foreachOp | ifElseOp | elseOp | tryRecoverOp | recoverOp |
     resourceOp | fileOp | toFileOp | templateOp | emailOp |
     jsonCodecOp | httpHeaderOp | httpCookieOp | extractPartsOp | extractEntityOp |
@@ -1446,6 +1450,9 @@ object AppMetadata extends Loggable {
     case class Block(action: Action) extends BlockOp
     case object Commit extends Op
     case object Rollback extends Op
+    /** Rethrows Throwable from action scope variable, i.e. 'rethrow :wabase_error.exception'.
+      * Name is dot separated path to variable in action scope. */
+    case class Rethrow(name: String) extends Op
 
     case class This(conformTo: Option[OpResultType] = None) extends Op
     /**
@@ -1467,7 +1474,7 @@ object AppMetadata extends Loggable {
       def traverse(state: T): PartialFunction[Op, T] = {
         case _: Tresql | _: RedirectToKey | _: Response |
              _: VariableTransforms | _: File | _: Conf | _: Cookie |
-             _: ExtractParts | _: This | _: Resource | Commit | Rollback | null => state
+             _: ExtractParts | _: This | _: Resource | _: Rethrow | Commit | Rollback | null => state
         case o: ViewCall => opTrav(state)(o.data)
         case Unique(o, _, _) => opTrav(state)(o)
         case Foreach(o, a, foldOp) =>

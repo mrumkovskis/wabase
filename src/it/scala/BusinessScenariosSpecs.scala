@@ -70,6 +70,10 @@ object BusinessScenariosSpecs extends Loggable {
   }
   def toStringArray(coll: Seq[String]): Array[String] = coll.toArray[String]
 
+  /** Throws BusinessException which is mapped to 400 response so that rethrow of original exception
+    * can be distinguished from any other exception (which would be mapped to 500 response) */
+  def businessError(message: String): Nothing = throw new BusinessException(message)
+
   def identityCsrfCookieTransformer(cookie: HttpCookie): HttpCookie = cookie
 
   def queryParamsDecoder(): HttpRequest => Map[String, Any] = (req: HttpRequest) => {

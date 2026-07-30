@@ -1,0 +1,73 @@
+name:   try_recover_ok
+paths:  /try-recover/try_recover_ok
+api:    public list
+list:
+- try:
+  - as any 'from try'
+- recover:
+  - as any 'from recover'
+
+
+name:   try_recover_recovers
+paths:  /try-recover/try_recover_recovers
+api:    public list
+list:
+- try:
+  - error 'deliberate failure'
+- recover:
+  - as any 'from recover'
+
+
+name:   try_recover_error_data
+paths:  /try-recover/try_recover_error_data
+api:    public list
+list:
+- try:
+  - error 'deliberate failure'
+- recover:
+  - as any :wabase_error.errors
+
+
+name:   try_recover_rethrow
+paths:  /try-recover/try_recover_rethrow
+api:    public list
+list:
+- try:
+  - businessError 'rethrown failure'
+- recover:
+  - rethrow :wabase_error.exception
+
+
+name:   try_recover_no_recover
+paths:  /try-recover/try_recover_no_recover
+api:    public list
+list:
+- try:
+  - error 'unhandled failure'
+
+
+name:   try_recover_nested
+paths:  /try-recover/try_recover_nested
+api:    public list
+list:
+- try:
+  - try:
+    - error 'inner failure'
+  - recover:
+    - as any 'from inner recover'
+- recover:
+  - as any 'from outer recover'
+
+
+# try action db changes must be rolled back to savepoint before recover action,
+# recover action must be able to access database after failed try action
+name:   try_recover_savepoint
+paths:  /try-recover/try_recover_savepoint
+api:    public list
+list:
+- try:
+  - +try_recover{code = 'in-try', value = 'try value'}
+  - error 'fail after insert'
+- recover:
+  - +try_recover{code = 'in-recover', value = 'recover value'}
+- as any try_recover{code, value}#(1)

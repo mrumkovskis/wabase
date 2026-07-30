@@ -3,7 +3,7 @@ package org.wabase
 import com.typesafe.scalalogging.Logger
 import org.mojoz.querease.{QuereaseMacros, TresqlMetadata}
 
-import java.sql.Connection
+import java.sql.{Connection, Savepoint}
 import javax.sql.DataSource
 import org.slf4j.LoggerFactory
 import org.mojoz.metadata.ViewDef
@@ -317,6 +317,27 @@ object DbAccess extends Loggable {
     (resources.conn :: resources
       .extraResources.collect { case (_, r) if r.conn != null => r.conn }.toList) foreach connCloser
   }
+
+  /** Sets savepoint on each transaction connection of resources, i.e. on try action start.
+    * Savepoints are unnamed since JDBC Savepoint object identity ensures uniqueness - generated names
+    * would collide between foreach iterations and recursive view calls because duplicate savepoint names
+    * are silently accepted and shadow each other.
+    * Connections in autocommit mode are skipped since savepoints are not applicable to them.
+    * Returned sequence is to be used for savepoint rollback or release. */
+  def setSavepoints(resources: Resources): Seq[(Connection, Savepoint)] =
+    (resources.conn :: resources
+      .extraResources.collect { case (_, r) if r.conn != null => r.conn }.toList)
+      .filter(_ != null)
+      .distinct // the same connection may be shared between main and extra resources, see initConns
+      .flatMap { conn =>
+        try
+          if (!conn.isClosed && !conn.getAutoCommit) Some(conn -> conn.setSavepoint) else None
+        catch {
+          case NonFatal(ex) =>
+            logger.warn(s"Failed to set savepoint on db connection $conn", ex)
+            None
+        }
+      }
   def initResources(initialResources: Resources)(poolName: PoolName, extraDb: Seq[DbAccessKey]): Resources = {
     val dsFactory = () => ConnectionPools(poolName)
     val dsExtraFactories = extraDb.map { case DbAccessKey(db) =>

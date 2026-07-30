@@ -1,0 +1,3 @@
+# recover action result is returned if try action throws
+path:     /try-recover/try_recover_recovers
+response: from recover

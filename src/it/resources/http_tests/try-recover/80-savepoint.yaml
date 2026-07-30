@@ -1,0 +1,8 @@
+# try action insert must be rolled back to savepoint, recover action insert must remain
+path:     /try-recover/try_recover_savepoint
+response: [
+  {
+    "code":  "in-recover",
+    "value": "recover value"
+  }
+]

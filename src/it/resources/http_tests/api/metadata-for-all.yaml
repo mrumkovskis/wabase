@@ -871,6 +871,48 @@ response: {
     "fields": [],
     "filter": []
   },
+  "try_recover_error_data": {
+    "name": "try_recover_error_data",
+    "key": [],
+    "fields": [],
+    "filter": []
+  },
+  "try_recover_nested": {
+    "name": "try_recover_nested",
+    "key": [],
+    "fields": [],
+    "filter": []
+  },
+  "try_recover_no_recover": {
+    "name": "try_recover_no_recover",
+    "key": [],
+    "fields": [],
+    "filter": []
+  },
+  "try_recover_ok": {
+    "name": "try_recover_ok",
+    "key": [],
+    "fields": [],
+    "filter": []
+  },
+  "try_recover_recovers": {
+    "name": "try_recover_recovers",
+    "key": [],
+    "fields": [],
+    "filter": []
+  },
+  "try_recover_rethrow": {
+    "name": "try_recover_rethrow",
+    "key": [],
+    "fields": [],
+    "filter": []
+  },
+  "try_recover_savepoint": {
+    "name": "try_recover_savepoint",
+    "key": [],
+    "fields": [],
+    "filter": []
+  },
   "user": {
     "name": "user",
     "key": ["id"],

@@ -1,0 +1,6 @@
+table:   try_recover
+columns:
+  - code   !    20
+  - value       40
+pk:
+  - code

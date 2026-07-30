@@ -1,0 +1,3 @@
+# inner recover action handles inner try action failure, outer recover action is not executed
+path:     /try-recover/try_recover_nested
+response: from inner recover

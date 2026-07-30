@@ -1,0 +1,4 @@
+# recover action rethrows original exception - BusinessException is mapped to 400,
+# any other exception would be mapped to 500, so exception type is preserved
+path:     /try-recover/try_recover_rethrow
+error:    400 Bad Request

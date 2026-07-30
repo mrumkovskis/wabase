@@ -1,0 +1,8 @@
+# exception data is available to recover action
+path:     /try-recover/try_recover_error_data
+response: [
+  {
+    "error": "class java.lang.RuntimeException",
+    "message": "deliberate failure"
+  }
+]

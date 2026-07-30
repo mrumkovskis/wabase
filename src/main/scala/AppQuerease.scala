@@ -28,7 +28,7 @@ import scala.collection.immutable.Seq
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{ExecutionContext, Future}
 import scala.jdk.CollectionConverters._
-import scala.util.{Failure, Try}
+import scala.util.{Failure, Success, Try}
 import scala.util.control.NonFatal
 
 trait QuereaseProvider {
@@ -1439,6 +1439,76 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     doSteps(op.action.steps, context.copy(stepName = "block"), Future.successful(Scope(Map(), parent = scope)))
   }
 
+  /** Name of variable holding exception data in recover action scope */
+  protected def recoverErrorVarName: String = "wabase_error"
+
+  /** Exception data made available to recover action. */
+  protected def recoverErrorData(ex: Throwable): Map[String, Any] = {
+    // unwrap since every step failure is wrapped into QuereaseActionException by exceptionHandler
+    val cause = ex match {
+      case e: QuereaseActionException if e.getCause != null => e.getCause
+      case e => e
+    }
+    def exToBindVariables(t: Throwable, res: List[Map[String, String]]): List[Map[String, String]] = t match {
+      case null => res.reverse
+      case e    => Map("error" -> e.getClass.toString, "message" -> e.getMessage) :: exToBindVariables(t.getCause, res)
+    }
+    val stack = exToBindVariables(cause, Nil)
+    Map(recoverErrorVarName -> Map("exception" -> ex, "errors" -> stack))
+  }
+
+  /** Exceptions handled by recover action. Authentication and authorization exceptions are not recoverable
+    * so that recover action cannot turn them into successful response. */
+  protected def isRecoverable(ex: Throwable): Boolean = ex match {
+    case _: AuthenticationException | _: AuthorizationException => false
+    case NonFatal(_) => true
+    case _ => false
+  }
+
+  /** Rethrows Throwable from action scope variable, i.e. 'rethrow :wabase_error.exception' in recover action. */
+  protected def doRethrow(
+    op: Action.Rethrow,
+    scope: Scope,
+    context: ActionContext,
+  )(implicit resources: Resources): Future[QuereaseResult] = {
+    def className(v: Any) = if (v == null) "null" else v.getClass.getName
+    useResourcesConnOrEvaluator(resources, res =>
+      Query(s":${op.name}")(res.withParams(scope.toBindeableMap(context.env))) match {
+        case SingleValueResult(th: Throwable) => Future.failed(th)
+        case x => sys.error(s"'rethrow :${op.name}' - variable value must be Throwable, instead got ${className(x)}")
+      }
+    )
+  }
+
+  /** Executes recover action if try action throws recoverable exception, see {{{isRecoverable}}}.
+    * NOTE: savepoint is not set before try action, so if try action fails on db operation, transaction
+    * may be in aborted state and db operations in recover action may fail as well. Use 'db use' block
+    * in recover action if database must be accessed. */
+  protected def doTry(
+    op: Action.TryOp,
+    scope: Scope,
+    context: ActionContext,
+  )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
+    import qr.ec
+    val savepoints = if (op.recoverAct == null) Nil else DbAccess.setSavepoints(qr.resourcesFactory.resources)
+    // doSteps may throw synchronously (i.e. on max stack depth), such exception must be recoverable as well
+    def steps(act: Action, stepName: String, data: Map[String, Any]) =
+      try doSteps(act.steps, context.copy(stepName = stepName), Future.successful(Scope(data, parent = scope)))
+      catch { case NonFatal(ex) => Future.failed(ex) }
+    val tryRes = steps(op.action, "try", Map())
+    if (op.recoverAct == null) tryRes
+    else tryRes.transformWith {
+      case Success(r) =>
+        savepoints.foreach { case (c, s) => c.releaseSavepoint(s) }
+        Future.successful(r)
+      case Failure(ex) if isRecoverable(ex) =>
+        savepoints.foreach { case (c, s) => c.rollback(s) }
+        qr.logger.debug(s"Action '${context.name}' try step failed, doing recover step", ex)
+        steps(op.recoverAct, "recover", recoverErrorData(ex))
+      case Failure(ex) => Future.failed(ex)
+    }
+  }
+
   protected def doConf(
     op: Action.Conf,
     scope: Scope,
@@ -1582,7 +1652,9 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case st: Action.Response => doResponse(st, scope, context)
       case Action.Commit    => doCommit(resources)
       case Action.Rollback  => doRollback(resources)
+      case rt: Action.Rethrow => doRethrow(rt, scope, context)
       case cond: Action.If => doIf(cond, scope, context)
+      case tr: Action.TryOp => doTry(tr, scope, context)
       case foreach: Action.Foreach => doForeach(foreach, scope, context)
       case resource: Action.Resource => doResource(resource, scope, context)
       case file: Action.File => doFile(file, scope, context)
@@ -1602,6 +1674,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case VariableTransforms(vts) =>
         Future.successful(doVarsTransforms(vts, scope.toBindeableMap(env)))
       case _: Action.Else => sys.error(s"Integrity error. Else operation cannot be here, must be coalesced into if operation")
+      case _: Action.Recover => sys.error(s"Integrity error. Recover operation cannot be here, must be coalesced into try operation")
     }
   }
 
@@ -2275,6 +2348,8 @@ object AppQuerease {
 
     rec(d, key.split("\\.").toList)
   }
+
+  def error(msg: String): Nothing = sys.error(msg)
 
   case class Scope(
     data: Map[String, Any],

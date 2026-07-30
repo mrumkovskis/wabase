@@ -1,0 +1,3 @@
+# recover action must not be executed if try action succeeds
+path:     /try-recover/try_recover_ok
+response: from try

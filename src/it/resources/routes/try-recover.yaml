@@ -1,0 +1,4 @@
+on: GET /try-recover/(\w+)
+do: doAction $1
+swagger:
+  paths = : {}    # test only views, skip swagger
