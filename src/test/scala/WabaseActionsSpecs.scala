@@ -1041,6 +1041,57 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     }
   }
 
+  it should "use string literals as variable names" in {
+    for {
+      t1 <- doAction("get", "var_name_test_1", Map()).map {
+        _ shouldBe MapResult(Map(
+          "my-key"          -> "my-key value",
+          "setenv"          -> "setenv value",
+          "addenv"          -> "addenv value",
+          "return"          -> "return value",
+          "name with space" -> "name with space value",
+          "daļa"            -> "daļas vērtība",
+        ))
+      }
+      t2 <- doAction("insert", "var_name_test_1", Map()).map {
+        _ shouldBe MapResult(Map(
+          "my-key"          -> "v1",
+          "setenv"          -> "v2",
+          "copy_of_my_key"  -> "v1",
+          "copy_of_setenv"  -> "v2",
+          "concatenated"    -> "v1v2",
+          "p 1" -> Map("p 2" -> "abc"),
+        ))
+      }
+      t3 <- doAction("update", "var_name_test_1", Map()).map {
+        _ shouldBe MapResult(Map("block name" -> Map("my-key" -> "in block")))
+      }
+    } yield {
+      t1
+    }
+  }
+
+  it should "use keywords as variable names" in {
+    for {
+      t1 <- doAction("get", "var_name_test_2", Map()).map {
+        _ shouldBe MapResult(Map(
+          "setenv"      -> "quoted setenv",
+          "added_value" -> "added",
+          "return"      -> "quoted return",
+        ))
+      }
+      t2 <- doAction("insert", "var_name_test_2", Map()).map {
+        _ shouldBe MapResult(Map(
+          "setenvious"  -> "setenvious value",
+          "returnable"  -> "returnable value",
+          "addenvelope" -> "addenvelope value",
+        ))
+      }
+    } yield {
+      t1
+    }
+  }
+
   it should "do file operations" in {
     def checkFile(fileRes: FileResult) =
       fileRes.fileStreamer.getFileInfo(fileRes.fileInfo.id, fileRes.fileInfo.sha_256)

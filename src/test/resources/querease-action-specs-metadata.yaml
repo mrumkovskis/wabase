@@ -1976,3 +1976,42 @@ fields:
     fields:
     - id
     - number
+
+
+name: var_name_test_1
+api: get, insert, update
+get:                                    # string literal, keyword and non ascii variable names
+- "'my-key'          = 'my-key value'"
+- "'setenv'          = 'setenv value'"
+- "'addenv'          = 'addenv value'"
+- "'return'          = 'return value'"
+- "'name with space' = 'name with space value'"
+- "'daļa'            = 'daļas vērtība'"
+- this
+insert:                                 # name assigned as string literal is referencable as tresql variable
+- "'my-key' = 'v1'"
+- "'setenv' = 'v2'"
+- 'copy_of_my_key = :"my-key"'
+- 'copy_of_setenv = :"setenv"'
+- 'concatenated   = :"my-key" || :"setenv"'
+- "'p 1'.'p 2' = 'abc'"
+- this
+update:                                 # string literal as named block name
+- "'block name'":
+  - "'my-key' = 'in block'"
+  - this
+- this
+
+
+name: var_name_test_2
+api: get, insert
+get:                                    # keyword as variable name does not shadow keyword as step command
+- "'setenv' = 'quoted setenv'"
+- addenv unique { 'added' added_value }
+- "'return' = 'quoted return'"
+- this
+insert:                                 # identifier starting with keyword is variable name, not command
+- setenvious  = 'setenvious value'
+- returnable  = 'returnable value'
+- addenvelope = 'addenvelope value'
+- this

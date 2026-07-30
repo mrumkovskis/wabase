@@ -960,7 +960,7 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
       // setenv or return regexp ends with zero width positive lookahead group
       // so that no symbol - non word character - [^\w] or space
       // is consumed but rather left to the next parser
-      (("(setenv|addenv|return)(?=\\s+|[^\\w])?".r ~ opWithOptVarTransforms) ^^ {
+      (("(setenv|addenv|return)(?=\\s+|[^\\w]|$)".r ~ opWithOptVarTransforms) ^^ {
         case cmd ~ step =>
           val (transforms, op) = step
           if (cmd == "setenv" || cmd == "addenv") SetEnv(None, transforms, op, add = cmd == "addenv")
@@ -971,13 +971,21 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
     def removeVar: Parser[RemoveVar] = ((ident | stringLiteral) <~ "-=") ^^ {
       v => RemoveVar(Option(v))
     } named "remove-var"
+
+    /** Variable name. Accepts quoted names so that keywords and non-ident names can be assigned,
+     * mirroring tresql variable reference, i.e. `'my-key' = ...` is readable as `:'my-key'`. */
+    def varName: MemParser[String] = rep1sep(ident | stringLiteral, ".") ^? ({
+      case segs if !segs.exists(_.contains(".")) => segs.mkString(".")
+    }, segs => s"Variable name segment must not contain '.': ${segs.mkString(".")}"
+    ) named "var-name"
+
     def evaluation: Parser[Evaluation] =
-      (opt(qualifiedIdent <~ "=") ~ opWithOptVarTransforms) ^^ {
+      (opt(varName <~ "=") ~ opWithOptVarTransforms) ^^ {
         case variable ~ tr_op =>
-          Evaluation(variable.map(_.tresql), tr_op._1, tr_op._2)
+          Evaluation(variable, tr_op._1, tr_op._2)
       } named "evaluation"
     def namedBlock(isBlock: Boolean): Parser[Evaluation] =
-      (if (isBlock) qualifiedIdent ^^ { case n => Evaluation(Option(n.tresql), Nil, null) }
+      (if (isBlock) varName ^^ { n => Evaluation(Option(n), Nil, null) }
       else failure("Not block")) named "named-block"
     (removeVar | setEnvOrReturn | evaluation | namedBlock(isBlock)) named "step"
   }
