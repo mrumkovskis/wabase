@@ -255,19 +255,6 @@ response: |+
             description: Bad Request
           "503":
             description: Service Unavailable
-    /data/http_echo:
-      post:
-        summary: Post 'http_echo'
-        description: ""
-        responses:
-          "200":
-            description: OK
-          "201":
-            description: Created
-          "400":
-            description: Bad Request
-          "503":
-            description: Service Unavailable
     /data/http_test:
       post:
         summary: Post 'http_test'
@@ -1290,75 +1277,9 @@ response: |+
               application/yaml:
                 schema:
                   type: object
-    /try-recover/try_recover_error_data:
-      get:
-        summary: List 'try_recover_error_data'
-        description: ""
-        responses:
-          "200":
-            description: OK
-          "400":
-            description: Bad Request
-          "503":
-            description: Service Unavailable
-    /try-recover/try_recover_nested:
-      get:
-        summary: List 'try_recover_nested'
-        description: ""
-        responses:
-          "200":
-            description: OK
-          "400":
-            description: Bad Request
-          "503":
-            description: Service Unavailable
-    /try-recover/try_recover_no_recover:
-      get:
-        summary: List 'try_recover_no_recover'
-        description: ""
-        responses:
-          "200":
-            description: OK
-          "400":
-            description: Bad Request
-          "503":
-            description: Service Unavailable
     /try-recover/try_recover_ok:
       get:
         summary: List 'try_recover_ok'
-        description: ""
-        responses:
-          "200":
-            description: OK
-          "400":
-            description: Bad Request
-          "503":
-            description: Service Unavailable
-    /try-recover/try_recover_recovers:
-      get:
-        summary: List 'try_recover_recovers'
-        description: ""
-        responses:
-          "200":
-            description: OK
-          "400":
-            description: Bad Request
-          "503":
-            description: Service Unavailable
-    /try-recover/try_recover_rethrow:
-      get:
-        summary: List 'try_recover_rethrow'
-        description: ""
-        responses:
-          "200":
-            description: OK
-          "400":
-            description: Bad Request
-          "503":
-            description: Service Unavailable
-    /try-recover/try_recover_savepoint:
-      get:
-        summary: List 'try_recover_savepoint'
         description: ""
         responses:
           "200":

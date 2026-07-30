@@ -8,6 +8,7 @@ list:
   - as any 'from recover'
 
 
+# Same swagger shape as try_recover_ok, no overrides — keep only the first in swagger.
 name:   try_recover_recovers
 paths:  /try-recover/try_recover_recovers
 api:    public list
@@ -16,6 +17,8 @@ list:
   - error 'deliberate failure'
 - recover:
   - as any 'from recover'
+swagger:
+  paths = : {}
 
 
 name:   try_recover_error_data
@@ -26,6 +29,8 @@ list:
   - error 'deliberate failure'
 - recover:
   - as any :wabase_error.errors
+swagger:
+  paths = : {}
 
 
 name:   try_recover_rethrow
@@ -36,6 +41,8 @@ list:
   - businessError 'rethrown failure'
 - recover:
   - rethrow :wabase_error.exception
+swagger:
+  paths = : {}
 
 
 name:   try_recover_no_recover
@@ -44,6 +51,8 @@ api:    public list
 list:
 - try:
   - error 'unhandled failure'
+swagger:
+  paths = : {}
 
 
 name:   try_recover_nested
@@ -57,6 +66,8 @@ list:
     - as any 'from inner recover'
 - recover:
   - as any 'from outer recover'
+swagger:
+  paths = : {}
 
 
 # try action db changes must be rolled back to savepoint before recover action,
@@ -71,3 +82,5 @@ list:
 - recover:
   - +try_recover{code = 'in-recover', value = 'recover value'}
 - as any try_recover{code, value}#(1)
+swagger:
+  paths = : {}

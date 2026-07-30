@@ -6,8 +6,11 @@ post:
 - http post {'data', 'http_echo'} :body
 
 
+# Same swagger shape as http_test, no overrides — keep only the first in swagger.
 name: http_echo
 api: post
 decoder: none
 post:
 - extract entity
+swagger:
+  paths = : {}
