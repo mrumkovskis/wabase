@@ -8,7 +8,7 @@ import org.apache.pekko.http.scaladsl.model.{ContentTypes, HttpEntity, HttpReque
 import org.apache.pekko.http.scaladsl.server.Directives._
 import org.apache.pekko.http.scaladsl.server.{ExceptionHandler, Rejection, RejectionHandler, RequestContext, Route, RouteResult}
 import org.apache.pekko.http.scaladsl.settings.{ParserSettings, RoutingSettings}
-import org.apache.pekko.http.scaladsl.testkit.ScalatestRouteTest
+import org.apache.pekko.http.scaladsl.testkit.{RouteTestTimeout, ScalatestRouteTest}
 import org.apache.pekko.stream.Materializer
 import org.apache.pekko.util.ByteString
 
@@ -152,9 +152,17 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     dbAccess.withConn()(implicit res => Query(s"person[name = '$name' & surname = '$surname'] {count(*)}").unique[Int]) == 1
   }
   //----------------------------------------------------------//
+  it should "warm up - load classes and routes and handlers" in {
+    // Default RouteTestTimeout is 1s (even when dilated with timefactor=1).
+    // First CRUD requests pay class/route initialization cost and often exceed that under CI load.
+    implicit val routeTestTimeout: RouteTestTimeout = RouteTestTimeout(2.seconds)
+    Get("/data/by_id_view_1?/0") ~> route ~> check {
+      status shouldEqual StatusCodes.NotFound
+    }
+  }
+
   it should "get by id" in {
-    val idRoute = route.andThen(identity)   // define variable so that classes are loaded to avoid timeout on slow machines
-    Get("/data/by_id_view_1?/0") ~> idRoute ~> check {
+    Get("/data/by_id_view_1?/0") ~> route ~> check {
       status shouldEqual StatusCodes.NotFound
     }
     Get("/data/by_id_view_1/0") ~> route ~> check {
