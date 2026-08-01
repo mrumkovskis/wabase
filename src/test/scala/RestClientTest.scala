@@ -246,6 +246,33 @@ class RestClientTest  extends FlatSpec with Matchers with ScalatestRouteTest wit
     cookies.getCookies(other) shouldBe empty
   }
 
+  it should "be thread-safe under concurrent jar updates and reads" in {
+    val cookies = new client.CookieMap
+    val uri = Uri(s"http://localhost:$server_port/")
+    val writers = (1 to 8).map { t =>
+      Future {
+        (1 to 200).foreach { i =>
+          val name = s"c${t}_$i"
+          cookies.setCookiesFromHeaders(
+            iSeq(`Set-Cookie`(HttpCookie(name, s"v$i"))),
+            uri,
+          )
+          cookies.getCookies(uri)
+          cookies.map
+        }
+      }
+    }
+    val reader = Future {
+      (1 to 500).foreach { _ =>
+        cookies.getCookies
+        cookies.getCookies(uri)
+        cookies.map.keySet
+      }
+    }
+    Await.result(Future.sequence(writers :+ reader), 10.seconds)
+    cookies.map.size shouldBe 8 * 200
+  }
+
   it should "not send host-only cookies on cross-origin redirect" in {
     // Warm cookie jar via a client that shares getCookieStorage
     val jarClient = new RestClient(HttpClientConfig("slow")) {

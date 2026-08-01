@@ -70,19 +70,28 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root)(impli
   val urlEncoder = java.net.URLEncoder.encode(_: String, "UTF-8")
   val urlDecoder = java.net.URLDecoder.decode(_: String, "UTF-8")
 
+  /** In-memory cookie jar. All public methods are synchronized (safe to share across threads /
+    * async request callbacks). Update cookies via [[setCookies]] / [[setCookiesFromHeaders]].
+    */
   class CookieMap {
-    val map =  scala.collection.mutable.Map.empty[String, HttpCookie]
+    private val lock = new AnyRef
+    private val store = scala.collection.mutable.Map.empty[String, HttpCookie]
     /** Host-only cookies (no `Domain` attribute): cookie name → host that set them. */
     private val hostOnlyHosts = scala.collection.mutable.Map.empty[String, String]
 
-    def getCookies: iSeq[Cookie] =
-      cookieHeader(map.values)
+    /** Immutable snapshot of stored cookies */
+    def map: scala.collection.immutable.Map[String, HttpCookie] =
+      lock.synchronized(store.toMap)
+
+    def getCookies: iSeq[Cookie] = lock.synchronized {
+      cookieHeader(store.values.toList)
+    }
 
     /** Cookies scoped for `uri` (host-only + Domain attribute; path when present). */
-    def getCookies(uri: Uri): iSeq[Cookie] = {
+    def getCookies(uri: Uri): iSeq[Cookie] = lock.synchronized {
       val host = uri.authority.host.address
       val path = uri.path.toString
-      cookieHeader(map.values.filter(c => cookieMatches(c, host, path)))
+      cookieHeader(store.values.iterator.filter(c => cookieMatches(c, host, path)).toList)
     }
 
     private def cookieHeader(cookies: Iterable[HttpCookie]): iSeq[Cookie] = {
@@ -114,26 +123,26 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root)(impli
     def setCookiesFromHeaders(headers: iSeq[HttpHeader], requestUri: Uri = null): Unit = {
       val reqHost =
         Option(requestUri).filter(_.authority.nonEmpty).map(_.authority.host.address)
-      headers.foreach {
+      lock.synchronized { headers.foreach {
         case `Set-Cookie`(cookie) =>
           if ((cookie.maxAge.isEmpty  || cookie.maxAge.get > 0) &&
               (cookie.expires.isEmpty || cookie.expires.get.clicks > System.currentTimeMillis)) {
-            map += (cookie.name -> cookie)
+            store += (cookie.name -> cookie)
             (cookie.domain, reqHost) match {
               case (None, Some(h)) => hostOnlyHosts(cookie.name) = h
               case (Some(_), _)    => hostOnlyHosts -= cookie.name
               case (None, None)    => hostOnlyHosts -= cookie.name
             }
           } else {
-            map -= cookie.name
+            store -= cookie.name
             hostOnlyHosts -= cookie.name
           }
         case _ =>
-      }
+      }}
     }
-    def setCookies(cookiesToSet: Map[String, Any]): Unit = {
-      map ++= cookiesToSet.map(c => c._1 -> HttpCookie(c._1, c._2.toString))
-      cookiesToSet.keys.foreach(hostOnlyHosts -= _)
+    def setCookies(cookies: Map[String, Any]): Unit = lock.synchronized {
+      store ++= cookies.map { case (n, c) => n -> HttpCookie(n, c.toString) }
+      cookies.keys.foreach(hostOnlyHosts -= _)
     }
   }
 
