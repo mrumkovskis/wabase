@@ -14,6 +14,7 @@ import org.apache.pekko.http.scaladsl.model._
 import org.apache.pekko.http.scaladsl.model.headers._
 import org.apache.pekko.http.scaladsl.model.ws.{Message, WebSocketRequest}
 import org.apache.pekko.http.scaladsl.unmarshalling._
+import org.apache.pekko.http.scaladsl.model.ws.WebSocketUpgradeResponse
 import org.apache.pekko.stream.scaladsl.{Flow, Keep, Sink, Source}
 import org.wabase.client.HttpClient.ProxyMode
 import org.wabase.client.RestClient.fullErrorErrorMessage
@@ -366,7 +367,7 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root)(impli
     }
   }
 
-  def listenToWs(actor: ActorRef) = {
+  def listenToWs(actor: ActorRef): Future[WebSocketUpgradeResponse] = {
     val deferredFlow: Flow[Message, Message, Promise[Option[Message]]] =
       Flow.fromSinkAndSourceMat(
         Sink.actorRef(actor, WsClosed, e => WsFailed(e)), // FIXME do not use INTERNAL API
@@ -375,6 +376,7 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root)(impli
     val (upgradeResponse, promise) = Http().singleWebSocketRequest(
       WebSocketRequest(serverWsPath, extraHeaders = getCookieStorage.getCookies), deferredFlow)
     clearCookies
+    upgradeResponse
   }
 }
 
