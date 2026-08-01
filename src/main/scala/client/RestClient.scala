@@ -266,7 +266,7 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root)(impli
     *                        - `None` — use the request's `HttpClient.ModeKey` attribute:
     *                          `ProxyMode` means do not throw, otherwise throw
     * @param followRedirects controls handling of 301/302/303 responses that have a `Location` header:
-    *                        - `Some(true)` — follow the redirect (303 uses GET; other redirect statuses keep the method)
+    *                        - `Some(true)` — follow the redirect
     *                        - `Some(false)` — return the redirect response as-is
     *                        - `None` — use the request's `HttpClient.ModeKey` attribute:
     *                          `ProxyMode` means do not follow, otherwise follow
@@ -305,8 +305,7 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root)(impli
             if (maxRedirects > 0) {
               val redirectUri = RestClient.resolveRedirectUri(request.uri, locationUri)
               val redirectMethod =
-                if (response.status == StatusCodes.SeeOther) HttpMethods.GET
-                else request.method
+                HttpMethods.GET
               val redirectHeaders =
                 RestClient.redirectRequestHeaders(request.uri, redirectUri, req.headers)
               doRequest(
