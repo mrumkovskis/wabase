@@ -131,7 +131,7 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root)(impli
         case _ =>
       }
     }
-    def setCookies(cookiesToSet: Map[String, Any], cookieStorage: CookieMap = cookiesThreadLocal.get()): Unit = {
+    def setCookies(cookiesToSet: Map[String, Any]): Unit = {
       map ++= cookiesToSet.map(c => c._1 -> HttpCookie(c._1, c._2.toString))
       cookiesToSet.keys.foreach(hostOnlyHosts -= _)
     }
