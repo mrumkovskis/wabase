@@ -72,20 +72,68 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root)(impli
 
   class CookieMap {
     val map =  scala.collection.mutable.Map.empty[String, HttpCookie]
+    /** Host-only cookies (no `Domain` attribute): cookie name → host that set them. */
+    private val hostOnlyHosts = scala.collection.mutable.Map.empty[String, String]
 
-    def getCookies = if(map.isEmpty) Nil else iSeq(Cookie(map.map(c=> c._2.pair).toList))
-    def setCookiesFromHeaders(headers: iSeq[HttpHeader]): Unit = {
+    def getCookies: iSeq[Cookie] =
+      cookieHeader(map.values)
+
+    /** Cookies scoped for `uri` (host-only + Domain attribute; path when present). */
+    def getCookies(uri: Uri): iSeq[Cookie] = {
+      val host = uri.authority.host.address
+      val path = uri.path.toString
+      cookieHeader(map.values.filter(c => cookieMatches(c, host, path)))
+    }
+
+    private def cookieHeader(cookies: Iterable[HttpCookie]): iSeq[Cookie] = {
+      val pairs = cookies.map(_.pair).toList
+      if (pairs.isEmpty) Nil else iSeq(Cookie(pairs))
+    }
+
+    private def cookieMatches(cookie: HttpCookie, host: String, path: String): Boolean = {
+      val domainOk = cookie.domain match {
+        case Some(d) if !hostOnlyHosts.contains(cookie.name) =>
+          RestClient.cookieDomainMatches(host, d)
+        case _ =>
+          hostOnlyHosts.get(cookie.name) match {
+            case Some(h) => h.equalsIgnoreCase(host)
+            // Programmatically set cookies (no origin recorded) — keep legacy send-anywhere behaviour
+            case None => true
+          }
+      }
+      val pathOk = cookie.path match {
+        case Some(p) =>
+          path == p ||
+            path.startsWith(if (p.endsWith("/")) p else p + "/") ||
+            (p != "/" && path.startsWith(p))
+        case None => true
+      }
+      domainOk && pathOk
+    }
+
+    def setCookiesFromHeaders(headers: iSeq[HttpHeader], requestUri: Uri = null): Unit = {
+      val reqHost =
+        Option(requestUri).filter(_.authority.nonEmpty).map(_.authority.host.address)
       headers.foreach {
         case `Set-Cookie`(cookie) =>
           if ((cookie.maxAge.isEmpty  || cookie.maxAge.get > 0) &&
-              (cookie.expires.isEmpty || cookie.expires.get.clicks > System.currentTimeMillis))
-               map += (cookie.name -> cookie)
-          else map -=  cookie.name
+              (cookie.expires.isEmpty || cookie.expires.get.clicks > System.currentTimeMillis)) {
+            map += (cookie.name -> cookie)
+            (cookie.domain, reqHost) match {
+              case (None, Some(h)) => hostOnlyHosts(cookie.name) = h
+              case (Some(_), _)    => hostOnlyHosts -= cookie.name
+              case (None, None)    => hostOnlyHosts -= cookie.name
+            }
+          } else {
+            map -= cookie.name
+            hostOnlyHosts -= cookie.name
+          }
         case _ =>
       }
     }
     def setCookies(cookiesToSet: Map[String, Any], cookieStorage: CookieMap = cookiesThreadLocal.get()): Unit = {
       map ++= cookiesToSet.map(c => c._1 -> HttpCookie(c._1, c._2.toString))
+      cookiesToSet.keys.foreach(hostOnlyHosts -= _)
     }
   }
 
@@ -222,6 +270,9 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root)(impli
     *                        - `Some(false)` — return the redirect response as-is
     *                        - `None` — use the request's `HttpClient.ModeKey` attribute:
     *                          `ProxyMode` means do not follow, otherwise follow
+    *                        When following to a different origin (scheme/host/port), `Authorization`,
+    *                        `Cookie`, and `Host` request headers are stripped; cookies from the jar
+    *                        are re-scoped to the redirect URI (host-only + Domain).
     * @return future of the final HTTP response (after optional redirect following)
     */
   protected def doRequest(
@@ -233,7 +284,8 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root)(impli
     followRedirects: Option[Boolean] = None,
   ): Future[HttpResponse] = {
     val req_abs = if (req.uri.isAbsolute) req else req.withUri(Uri(requestPath(req.uri.toString)))
-    val request = if (cookieStorage.map.isEmpty) req_abs else req_abs.withHeaders(req.headers ++ cookieStorage.getCookies)
+    val cookies = cookieStorage.getCookies(req_abs.uri)
+    val request = if (cookies.isEmpty) req_abs else req_abs.withHeaders(req.headers ++ cookies)
     val doThrow = throwHttpErrors.getOrElse(req.attribute(HttpClient.ModeKey) != Some(ProxyMode))
     val follow  = followRedirects.getOrElse(req.attribute(HttpClient.ModeKey) != Some(ProxyMode))
     logger.debug(s"HTTP ${request.method.value} ${request.uri}")
@@ -243,7 +295,7 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root)(impli
       case (Failure(error), _) =>
         requestFailed(error.getMessage, error, null, null, request)
       case (Success(response), _) =>
-        cookieStorage.setCookiesFromHeaders(response.headers)
+        cookieStorage.setCookiesFromHeaders(response.headers, request.uri)
         (response.status.intValue, response.header[Location]) match {
           case _ if isSuccess(response) =>
             Future.successful(response)
@@ -255,8 +307,10 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root)(impli
               val redirectMethod =
                 if (response.status == StatusCodes.SeeOther) HttpMethods.GET
                 else request.method
+              val redirectHeaders =
+                RestClient.redirectRequestHeaders(request.uri, redirectUri, req.headers)
               doRequest(
-                HttpRequest(method = redirectMethod, uri = redirectUri, headers = req.headers),
+                HttpRequest(method = redirectMethod, uri = redirectUri, headers = redirectHeaders),
                 cookieStorage, timeout, maxRedirects - 1, Some(doThrow), Some(follow)
               ).recover {
                 case util.control.NonFatal(e) => requestFailed(e.getMessage, e, response.status, null, request)
@@ -328,5 +382,25 @@ object RestClient extends Loggable {
     require(baseUri.isAbsolute, s"Base URI must be absolute for redirect resolution: $baseUri")
     if (locationUri.isAbsolute) locationUri
     else locationUri.resolvedAgainst(baseUri)
+  }
+
+  /** True when scheme, host, and effective port are the same (case-insensitive scheme/host). */
+  def isSameOrigin(a: Uri, b: Uri): Boolean =
+    a.scheme.equalsIgnoreCase(b.scheme) &&
+      a.authority.host.equalsIgnoreCase(b.authority.host) &&
+      a.effectivePort == b.effectivePort
+
+  /** Headers to send when following a redirect.
+    * On a different origin (scheme/host/port), strips `Authorization`, `Cookie`, and `Host`
+    * so credentials are not leaked cross-origin; cookies are re-applied from the jar for the new URI.
+    */
+  def redirectRequestHeaders(fromUri: Uri, toUri: Uri, headers: iSeq[HttpHeader]): iSeq[HttpHeader] =
+    if (isSameOrigin(fromUri, toUri)) headers
+    else headers.filterNot(h => h.is("authorization") || h.is("cookie") || h.is("host"))
+
+  /** RFC 6265 domain-match (simplified): cookie domain matches request host. */
+  private[client] def cookieDomainMatches(host: String, cookieDomain: String): Boolean = {
+    val dom = if (cookieDomain.startsWith(".")) cookieDomain.drop(1) else cookieDomain
+    host.equalsIgnoreCase(dom) || host.toLowerCase.endsWith("." + dom.toLowerCase)
   }
 }

@@ -4,10 +4,10 @@ package client
 import com.typesafe.config.Config
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.Http
-import org.apache.pekko.http.scaladsl.model.HttpMethods.{POST, PUT}
+import org.apache.pekko.http.scaladsl.model.HttpMethods.{GET, POST, PUT}
 import org.apache.pekko.http.scaladsl.model.Uri
-import org.apache.pekko.http.scaladsl.model.headers.Location
-import org.apache.pekko.http.scaladsl.model.{HttpEntity, HttpRequest, HttpResponse, StatusCodes}
+import org.apache.pekko.http.scaladsl.model.headers.{Authorization, BasicHttpCredentials, Cookie, HttpCookie, Location, RawHeader, `Set-Cookie`}
+import org.apache.pekko.http.scaladsl.model.{HttpEntity, HttpHeader, HttpRequest, HttpResponse, StatusCodes}
 import org.apache.pekko.http.scaladsl.server.Directives._
 import org.apache.pekko.http.scaladsl.server.Route
 import org.apache.pekko.http.scaladsl.testkit.ScalatestRouteTest
@@ -17,6 +17,7 @@ import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers
 import org.wabase.AppQuerease.InjectionParametersContext
 
+import scala.collection.immutable.{Seq => iSeq}
 import scala.concurrent.duration._
 import scala.concurrent.{Await, Future}
 import scala.language.postfixOps
@@ -59,6 +60,48 @@ class RestClientTest  extends FlatSpec with Matchers with ScalatestRouteTest wit
     } ~
     path("resource") {
       extractUri { uri => complete(uri.toString) }
+    } ~
+    path("redirect-same-origin-auth") {
+      get {
+        complete(HttpResponse(
+          status = StatusCodes.Found,
+          headers = List(Location(Uri("/echo-auth")))))
+      }
+    } ~
+    path("echo-auth") {
+      extractRequest { req =>
+        val auth = req.header[Authorization].map(_.value).getOrElse("no-auth")
+        complete(auth)
+      }
+    } ~
+    path("redirect-cross-origin-auth") {
+      get {
+        complete(HttpResponse(
+          status = StatusCodes.Found,
+          // Same host, different port — different origin
+          headers = List(Location(Uri(s"http://127.0.0.1:$server_port/echo-auth")))))
+      }
+    } ~
+    path("set-host-cookie") {
+      get {
+        complete(HttpResponse(
+          status = StatusCodes.OK,
+          headers = List(`Set-Cookie`(HttpCookie("sid", "secret-session"))),
+          entity = "ok"))
+      }
+    } ~
+    path("redirect-cross-origin-cookie") {
+      get {
+        complete(HttpResponse(
+          status = StatusCodes.Found,
+          headers = List(Location(Uri(s"http://127.0.0.1:$server_port/echo-cookie")))))
+      }
+    } ~
+    path("echo-cookie") {
+      extractRequest { req =>
+        val cookie = req.header[Cookie].map(_.value).getOrElse("no-cookie")
+        complete(cookie)
+      }
     }
   }
 
@@ -143,6 +186,84 @@ class RestClientTest  extends FlatSpec with Matchers with ScalatestRouteTest wit
       1.second)
     val body = Await.result(response.entity.toStrict(1.second).map(_.data.utf8String.trim), 1.second)
     body shouldBe s"http://localhost:$server_port/resource?/42"
+  }
+
+  it should "detect same origin by scheme host and port" in {
+    val a = Uri(s"http://localhost:$server_port/a")
+    RestClient.isSameOrigin(a, Uri(s"http://localhost:$server_port/b")) shouldBe true
+    RestClient.isSameOrigin(a, Uri(s"https://localhost:$server_port/b")) shouldBe false
+    RestClient.isSameOrigin(a, Uri(s"http://127.0.0.1:$server_port/b")) shouldBe false
+    RestClient.isSameOrigin(a, Uri(s"http://localhost:${server_port + 1}/b")) shouldBe false
+  }
+
+  it should "strip Authorization Cookie and Host on cross-origin redirect headers" in {
+    val from = Uri("https://api.example.com/v1")
+    val to = Uri("https://other.example.com/v1")
+    val headers: iSeq[HttpHeader] = iSeq(
+      Authorization(BasicHttpCredentials("u", "p")),
+      Cookie("sid", "1"),
+      RawHeader("X-Custom", "keep"),
+      RawHeader("Host", "api.example.com"),
+    )
+    val same = RestClient.redirectRequestHeaders(from, Uri("https://api.example.com/other"), headers)
+    same should have size 4
+    val cross = RestClient.redirectRequestHeaders(from, to, headers)
+    cross.map(_.lowercaseName).toSet shouldBe Set("x-custom")
+  }
+
+  it should "keep Authorization on same-origin redirect" in {
+    val auth = Authorization(BasicHttpCredentials("u", "p"))
+    val resp = client.httpGetAwait[String](
+      "redirect-same-origin-auth",
+      headers = iSeq(auth),
+    )
+    resp should include ("Basic")
+  }
+
+  it should "strip Authorization on cross-origin redirect" in {
+    val auth = Authorization(BasicHttpCredentials("u", "p"))
+    val response = Await.result(
+      client.doRequest(HttpRequest(
+        GET,
+        uri = s"http://localhost:$server_port/redirect-cross-origin-auth",
+        headers = iSeq(auth),
+      )),
+      2.seconds)
+    val body = Await.result(response.entity.toStrict(1.second).map(_.data.utf8String.trim), 1.second)
+    body shouldBe "no-auth"
+  }
+
+  it should "scope host-only cookies to the host that set them" in {
+    val cookies = new client.CookieMap
+    val local = Uri(s"http://localhost:$server_port/set-host-cookie")
+    val other = Uri(s"http://127.0.0.1:$server_port/echo-cookie")
+    cookies.setCookiesFromHeaders(
+      iSeq(`Set-Cookie`(HttpCookie("sid", "secret-session"))),
+      local,
+    )
+    cookies.map.keySet should contain ("sid")
+    cookies.getCookies(local).flatMap(_.cookies.map(_.name)) should contain ("sid")
+    cookies.getCookies(other) shouldBe empty
+  }
+
+  it should "not send host-only cookies on cross-origin redirect" in {
+    // Warm cookie jar via a client that shares getCookieStorage
+    val jarClient = new RestClient(HttpClientConfig("slow")) {
+      override def doRequest(req: HttpRequest): Future[HttpResponse] =
+        doRequest(req, getCookieStorage, requestTimeout)
+    }
+    Await.result(
+      jarClient.doRequest(HttpRequest(GET, uri = s"http://localhost:$server_port/set-host-cookie")),
+      2.seconds)
+    jarClient.getCookieStorage.map.keySet should contain ("sid")
+    val response = Await.result(
+      jarClient.doRequest(HttpRequest(
+        GET,
+        uri = s"http://localhost:$server_port/redirect-cross-origin-cookie",
+      )),
+      2.seconds)
+    val body = Await.result(response.entity.toStrict(1.second).map(_.data.utf8String.trim), 1.second)
+    body shouldBe "no-cookie"
   }
 
   it should "allow query in path, append params" in {
