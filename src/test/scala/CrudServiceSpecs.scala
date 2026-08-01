@@ -155,7 +155,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
   it should "warm up - load classes and routes and handlers" in {
     // Default RouteTestTimeout is 1s (even when dilated with timefactor=1).
     // First CRUD requests pay class/route initialization cost and often exceed that under CI load.
-    implicit val routeTestTimeout: RouteTestTimeout = RouteTestTimeout(2.seconds)
+    implicit val routeTestTimeout: RouteTestTimeout = RouteTestTimeout(3.seconds)
     Get("/data/by_id_view_1?/0") ~> route ~> check {
       status shouldEqual StatusCodes.NotFound
     }
