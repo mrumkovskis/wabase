@@ -56,7 +56,7 @@ lazy val commonSettings = Seq(
       "com.typesafe.scala-logging" %% "scala-logging"         % "3.9.6",
       "com.typesafe"               %% "ssl-config-core"       % "0.7.1",
       "com.zaxxer"                  % "HikariCP"              % "7.1.0",
-      "ch.qos.logback"              % "logback-classic"       % "1.5.25",
+      "ch.qos.logback"              % "logback-classic"       % "1.6.1",
       "org.mojoz"                  %% "mojoz"                 % mojozV,
       "org.mojoz"                  %% "querease"              % quereaseV,
       "commons-validator"           % "commons-validator"     % "1.10.1",
