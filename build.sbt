@@ -53,7 +53,7 @@ lazy val commonSettings = Seq(
       "org.apache.pekko"           %% "pekko-http-spray-json" % pekkoHttpV,
       "org.apache.pekko"           %% "pekko-slf4j"           % pekkoV,
       "org.apache.pekko"           %% "pekko-stream"          % pekkoV,
-      "com.typesafe.scala-logging" %% "scala-logging"         % "3.9.5",
+      "com.typesafe.scala-logging" %% "scala-logging"         % "3.9.6",
       "com.typesafe"               %% "ssl-config-core"       % "0.6.1",
       "com.zaxxer"                  % "HikariCP"              % "7.0.2",
       "ch.qos.logback"              % "logback-classic"       % "1.5.25",
