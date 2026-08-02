@@ -229,7 +229,7 @@ lazy val it = (project in file("src/it"))
   .settings(commonSettings: _*)
   .settings(itResourceSettings: _*)
   .settings(
-    libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.19",
+    libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.20",
     publish / skip := true,
     Compile / run / mainClass   := Some("org.wabase.WabaseServer"),
     Compile / unmanagedSources  += baseDirectory.value / ".." / "test" / "scala" / "BusinessScenariosBaseSpecs.scala",
@@ -241,7 +241,7 @@ lazy val it_legacy = (project in file("src/it_legacy"))
   .settings(commonSettings: _*)
   .settings(itResourceSettings: _*)
   .settings(
-    libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.19",
+    libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.20",
     publish / skip := true,
     Compile / run / mainClass   := Some("org.wabase.WabaseServer"),
     Compile / unmanagedSources  += baseDirectory.value / ".." / "test" / "scala" / "BusinessScenariosBaseSpecs.scala",
