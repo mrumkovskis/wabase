@@ -6,6 +6,7 @@ import org.apache.pekko.util.ByteString
 
 import com.typesafe.config.ConfigFactory
 import jakarta.activation.DataSource
+import jakarta.mail.Message.RecipientType
 import org.wabase.audit.HiddenValues
 import org.simplejavamail.api.email.EmailPopulatingBuilder
 import org.simplejavamail.api.mailer.Mailer
@@ -91,9 +92,14 @@ class DefaultWabaseEmailSender extends WabaseEmail with Loggable {
       if (value != null && value != "")
         setter(value)
     }
-    builder.to(to)
-    optional(builder.cc _, cc)
-    optional(builder.bcc _, bcc)
+    // SJM 9.x: to/cc/bcc matrix replaced by withRecipients(..., RecipientType, addresses)
+    def withRecipients(recipientType: RecipientType, addresses: String): Unit = {
+      if (addresses != null && addresses != "")
+        builder.withRecipients(/*name=*/null: String, /*fixedName=*/false, recipientType, addresses)
+    }
+    withRecipients(RecipientType.TO,  to)
+    withRecipients(RecipientType.CC,  cc)
+    withRecipients(RecipientType.BCC, bcc)
     optional(builder.from _, from)
     optional(builder.withReplyTo _, replyTo)
     builder.withSubject(subject)
