@@ -278,4 +278,39 @@ class MultiPoolTest extends FlatSpec with Matchers with ScalatestRouteTest with 
       }
     }
   }
+
+  behavior of "savepoints"
+
+  it should "roll back and release savepoints" in {
+    db.newTransaction(DEFAULT_CP, db.tresqlResources) { res =>
+      val statement = res.conn.createStatement
+      statement execute "create table savepoint_test(id int)"
+      val savepoints = DbAccess.setSavepoints(res)
+      savepoints.size should be(1)
+      statement execute "insert into savepoint_test values(1)"
+      DbAccess.rollbackSavepoints(savepoints)
+      val rs = statement executeQuery "select count(*) from savepoint_test"
+      rs.next()
+      rs.getInt(1) should be(0)
+      rs.close()
+      DbAccess.releaseSavepoints(DbAccess.setSavepoints(res))
+      statement.close()
+    }
+  }
+
+  it should "not throw if savepoint is invalidated" in {
+    db.newTransaction(DEFAULT_CP, db.tresqlResources) { res =>
+      // hsqldb invalidates savepoint when it is rolled back to, so release after rollback must not throw
+      val rolledBack = DbAccess.setSavepoints(res)
+      DbAccess.rollbackSavepoints(rolledBack)
+      noException should be thrownBy DbAccess.releaseSavepoints(rolledBack)
+      noException should be thrownBy DbAccess.rollbackSavepoints(rolledBack)
+
+      // 'commit' action step invalidates savepoints of try action - neither path may throw
+      val committed = DbAccess.setSavepoints(res)
+      res.conn.commit()
+      noException should be thrownBy DbAccess.rollbackSavepoints(committed)
+      noException should be thrownBy DbAccess.releaseSavepoints(committed)
+    }
+  }
 }

@@ -1499,10 +1499,10 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     if (op.recoverAct == null) tryRes
     else tryRes.transformWith {
       case Success(r) =>
-        savepoints.foreach { case (c, s) => c.releaseSavepoint(s) }
+        DbAccess.releaseSavepoints(savepoints)
         Future.successful(r)
       case Failure(ex) if isRecoverable(ex) =>
-        savepoints.foreach { case (c, s) => c.rollback(s) }
+        DbAccess.rollbackSavepoints(savepoints)
         qr.logger.debug(s"Action '${context.name}' try step failed, doing recover step", ex)
         steps(op.recoverAct, "recover", recoverErrorData(ex))
       case Failure(ex) => Future.failed(ex)

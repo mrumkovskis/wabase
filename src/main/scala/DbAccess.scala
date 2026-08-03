@@ -338,6 +338,30 @@ object DbAccess extends Loggable {
             None
         }
       }
+
+  /** Rolls back savepoints set by {{{setSavepoints}}}, i.e. on try action failure before recover action.
+    * Failure to roll back savepoint is logged and ignored so that original exception is not shadowed -
+    * savepoint may be invalidated by 'commit' or 'rollback' action step, some databases (hsqldb) also
+    * invalidate savepoint when it is rolled back to. */
+  def rollbackSavepoints(savepoints: Seq[(Connection, Savepoint)]): Unit =
+    savepoints foreach { case (conn, savepoint) =>
+      try conn.rollback(savepoint) catch {
+        case NonFatal(ex) =>
+          logger.warn(s"Failed to roll back savepoint on db connection $conn", ex)
+      }
+    }
+
+  /** Releases savepoints set by {{{setSavepoints}}}, i.e. on try action success.
+    * Failure to release savepoint is logged and ignored, see {{{rollbackSavepoints}}}.
+    * NOTE: must not be called after {{{rollbackSavepoints}}} - hsqldb invalidates savepoint on rollback. */
+  def releaseSavepoints(savepoints: Seq[(Connection, Savepoint)]): Unit =
+    savepoints foreach { case (conn, savepoint) =>
+      try conn.releaseSavepoint(savepoint) catch {
+        case NonFatal(ex) =>
+          logger.warn(s"Failed to release savepoint on db connection $conn", ex)
+      }
+    }
+
   def initResources(initialResources: Resources)(poolName: PoolName, extraDb: Seq[DbAccessKey]): Resources = {
     val dsFactory = () => ConnectionPools(poolName)
     val dsExtraFactories = extraDb.map { case DbAccessKey(db) =>
