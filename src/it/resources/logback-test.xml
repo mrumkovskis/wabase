@@ -3,6 +3,12 @@
         <encoder>
             <pattern>%d{dd.MM.yyyy HH:mm:ss.SSS} %-5level %logger{36} %X{sourceThread} - %msg%n</pattern>
         </encoder>
+        <filter class="ch.qos.logback.core.filter.EvaluatorFilter">
+            <!-- Detects expected error messages to hide when running integration tests -->
+            <evaluator class="org.wabase.ItLogMessageNoiseDetector"/>
+            <OnMatch>DENY</OnMatch>
+            <OnMismatch>NEUTRAL</OnMismatch>
+        </filter>
     </appender>
 
     <root level="warn">
