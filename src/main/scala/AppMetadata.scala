@@ -1802,6 +1802,7 @@ object AppMetadata extends Loggable {
     def apply() =
       Set(Api, Auth, Key, Limit, Paths, Validations, ExplicitDb,
           Decoder, Timeout, SqlTimeout, Swagger, QuereaseViewExtrasKey, WabaseViewExtrasKey,
+          "dto", // for plugin - should dto be generated for this view
       ) ++
         Action()
   }
