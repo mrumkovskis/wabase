@@ -446,7 +446,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   def doSteps(
     steps: List[(Action.Step, String)],
     context: ActionContext,
-    curData: Future[Scope],
+    curDataF: Future[Scope],
   )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
     if (context.contextStack.size > maxStackDepth)
       throw new IllegalStateException(s"Action call stack depth exceeds $maxStackDepth (consider configuration parameter wabase.max-stack-depth). Stack - ${context.stackStr}")
@@ -467,101 +467,103 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     }
     def scopeBindVars(scope: Scope) = scope.toBindeableMap(context.env)
     val bindVarLogFilter = resourcesFactory.resources.bindVarLogFilter
-    def doStep(step: Step, stepDataF: Future[Scope], src: String): Future[QuereaseResult] = {
+    def doStep(step: Step, stepScope: Scope, src: String): (Future[QuereaseResult], () => Future[Scope]) = {
       import resourcesFactory._
-      stepDataF flatMap { stepScope =>
-        def doActionStep(vts: List[VariableTransform], op: Action.Op) =
-          doActionOp(op, if (vts.isEmpty) stepScope
-            else Scope(data = doVarsTransforms(vts, scopeBindVars(stepScope)).result), context)
-        qr.logger.debug(s"Doing action '${context.name}' step '$src', $step.")
-        qr.logger.debug(s"Step data: {${loggable(bindVarLogFilter, scopeBindVars(stepScope))}}")
-        step match {
-          case Evaluation(_, vts, op) => doActionStep(vts, op)
-          case SetEnv(_, vts, op, _) => doActionStep(vts, op)
-          case Return(_, vts, op) => doActionStep(vts, op)
-          case RemoveVar(name) => Future.successful(stepScope.data - name.get) map MapResult.apply
-          case validations: Action.Validations =>
-            context.view.map { vd =>
-              Future(doValidationStep(validations, scopeBindVars(stepScope), vd))
-                .map(_ => MapResult(stepScope.data))
-            }.getOrElse(Future.failed(
-              new RuntimeException(s"Validation cannot be performed without view in context -" +
-                s"(${context.name})")))
+      def doActionStep(vts: List[VariableTransform], op: Action.Op) =
+        try doActionOp(op, if (vts.isEmpty) stepScope
+          else Scope(data = doVarsTransforms(vts, scopeBindVars(stepScope)).result), context)
+        catch { case NonFatal(e) => Future.failed(e) }
+      qr.logger.debug(s"Doing action '${context.name}' step '$src', $step.")
+      qr.logger.debug(s"Step data: {${loggable(bindVarLogFilter, scopeBindVars(stepScope))}}")
+      (step match {
+        case Evaluation(name, vts, op) =>
+          val resF = doActionStep(vts, op)
+          (resF, () => for {
+            res <- resF
+            cr <- updateCurRes(
+              stepScope.data, name,
+              if (name.isEmpty) consumeResult(res)
+              else dataForNextStep(res, context, true)
+            )
+          } yield stepScope.copy(data = cr))
+        case SetEnv(name, vts, op, add) =>
+          val resF = doActionStep(vts, op)
+          (resF, () => for {
+            res <- resF
+            cr <- dataForNextStep(res, context, true)
+          } yield cr match {
+            case m: Map[String, Any]@unchecked =>
+              stepScope.copy(data = if (add) stepScope.data ++ m else m)
+            case x =>
+              //in the case of primitive value return step must have name
+              name.map(n => stepScope.copy(data = Map(n -> x))).getOrElse(stepScope)
+          })
+        case RemoveVar(name) =>
+          val resF = Future.successful(stepScope.data - name.get) map MapResult.apply
+          (resF, () => for {
+            res <- resF
+            cr <- dataForNextStep(res, context, true)
+          } yield cr match {
+            case m: Map[String, Any]@unchecked => stepScope.copy(data = m)
+            case x => sys.error(s"Remove var step cannot produce anyting but Map, instead got $x")
+          })
+        case Return(_, vts, op) => doActionStep(vts, op) -> null
+        case validations: Action.Validations =>
+          (context.view.map { vd =>
+            Future(doValidationStep(validations, scopeBindVars(stepScope), vd))
+              .map(_ => NoResult)
+          }.getOrElse(Future.failed(
+            new RuntimeException(s"Validation cannot be performed without view in context -" +
+              s"(${context.name})"))), () => Future.successful(stepScope))
+      }) match { case (rF, ns) =>
+        ( rF.transform(identity, exceptionHandler(_, src, context)),
+          if (ns == null) null // return step - no data for next step since action execution is stopped
+          else () => {
+            val nsf = try ns() catch { case NonFatal(e) => Future.failed(e) }
+            nsf.transform(identity, exceptionHandler(_, src, context))
+          }
+        )
+      }
+    }
+
+    def mayBeKeyForLastStep(data: Scope, lastStep: Step, res: QuereaseResult) = res match {
+      case ir: IdResult =>
+        keyResult(ir, context.viewName, scopeBindVars(data), bindVarLogFilter)
+      case kr: KeyResult => lastStep match {
+        // FIXME enable simple redirect from If
+        case Evaluation(_, _, RedirectToKey(_)) => kr
+        case _ => keyResult(kr.ir, context.viewName, scopeBindVars(data), bindVarLogFilter) // FIXME apply kr.toMap
+      }
+      case TresqlResult(r: DMLResult) if context.stepName == null && context.contextStack.isEmpty =>
+        r match {
+          case _: InsertResult | _: UpdateResult =>
+            r.id.map { id =>
+              val idName = viewNameToIdName.getOrElse(context.viewName, null)
+              keyResult(IdResult(id, idName), context.viewName, scopeBindVars(data), bindVarLogFilter)
+            }.getOrElse {
+              viewDefOption(context.viewName)
+                .filter(hasExplicitKey)
+                .map(_ => keyResult(IdResult(null, null), context.viewName, scopeBindVars(data), bindVarLogFilter))
+                .getOrElse(NoResult)
+            }
+          case _: DeleteResult => QuereaseDeleteResult(r.count.getOrElse(0))
         }
-      } transform(identity, exceptionHandler(_, src, context))
+      case x => x
     }
 
     steps match {
-      case Nil => curData.map(sc => MapResult(sc.data))
-      case (s, src) :: Nil =>
-        doStep(s, curData, src) flatMap {
-          case ir: IdResult =>
-            curData.map(sc => keyResult(ir, context.viewName, scopeBindVars(sc), bindVarLogFilter))
-          case kr: KeyResult =>
-            s match {
-              // FIXME enable simple redirect from If
-              case Evaluation(_, _, RedirectToKey(_)) => Future.successful(kr)
-              case _ => curData.map(sc => keyResult(kr.ir, context.viewName, scopeBindVars(sc), bindVarLogFilter)) // FIXME apply kr.toMap
-            }
-          case TresqlResult(r: DMLResult) if context.stepName == null && context.contextStack.isEmpty =>
-            r match {
-              case _: InsertResult | _: UpdateResult =>
-                r.id.map { id =>
-                  val idName = viewNameToIdName.getOrElse(context.viewName, null)
-                  curData.map(sc => keyResult(IdResult(id, idName), context.viewName, scopeBindVars(sc), bindVarLogFilter))
-                }.getOrElse {
-                  viewDefOption(context.viewName)
-                    .filter(hasExplicitKey)
-                    .map(_ => curData.map(sc => keyResult(IdResult(null, null), context.viewName, scopeBindVars(sc), bindVarLogFilter)))
-                    .getOrElse(Future.successful(NoResult))
-                }
-              case _: DeleteResult =>
-                Future.successful(QuereaseDeleteResult(r.count.getOrElse(0)))
-            }
-          case x => Future.successful(x)
-        } flatMap { res => s match {
-          case Evaluation(n@Some(_), _, _) => curData
-            .flatMap(sc => updateCurRes(sc.data, n, dataForNextStep(res, context, true)))
-            .map(MapResult.apply)
-          case _ => Future.successful(res)
-        }}
+      case Nil => curDataF.map(sc => MapResult(sc.data))
       case (s, src) :: tail =>
-        doStep(s, curData, src) flatMap { stepRes =>
-          s match {
-            case e: Evaluation =>
-              val ns = for {
-                sc <- curData
-                cr <- updateCurRes(
-                  sc.data, e.name,
-                  if (e.name.isEmpty) consumeResult(stepRes)
-                  else dataForNextStep(stepRes, context, true)
-                )
-              } yield sc.copy(data = cr)
-              doSteps(tail, context, ns)
-            case se: SetEnv =>
-              val ns = for {
-                sc <- curData
-                cr <- dataForNextStep(stepRes, context, true)
-              } yield cr match {
-                case m: Map[String, Any]@unchecked =>
-                  sc.copy(data = if (se.add) sc.data ++ m else m)
-                case x =>
-                  //in the case of primitive value return step must have name
-                  se.name.map(n => sc.copy(data = Map(n -> x))).getOrElse(sc)
-              }
-              doSteps(tail, context, ns)
-            case _: RemoveVar =>
-              val ns = for {
-                sc <- curData
-                cr <- dataForNextStep(stepRes, context, true)
-              } yield cr match {
-                case m: Map[String, Any]@unchecked => sc.copy(data = m)
-                case x => sys.error(s"Remove var step cannot produce anyting but Map, instead got $x")
-              }
-              doSteps(tail, context, ns)
-            case _: Return => Future.successful(stepRes)  // stop execution and return
-            case _ => doSteps(tail, context, curData)     // validation continue execution
+        curDataF.flatMap { curData =>
+          val (resF, nsf) = doStep(s, curData, src)
+          if (tail.isEmpty) s match {
+            // on environment change last step call nextStep data function and create map result
+            case Evaluation(_: Some[_], _, _) | _: SetEnv => nsf().map(sc => MapResult.apply(sc.data))
+            case _ => resF.map(mayBeKeyForLastStep(curData, s, _))
           }
+          else
+            if (nsf == null) resF.map(mayBeKeyForLastStep(curData, s, _)) // return
+            else resF.flatMap(_ => doSteps(tail, context, nsf()))
         }
     }
   }

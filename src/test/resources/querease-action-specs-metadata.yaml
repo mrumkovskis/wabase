@@ -556,7 +556,7 @@ filter:
 
 
 name: env_test_5
-api: get
+api: get, insert
 get:
 - x = 1
 - addenv if :cond:  # add variables to action current data according to condition
@@ -569,6 +569,9 @@ get:
   - a = 9
   - b = 10
 - this
+insert:
+- u = 3
+- addenv unique {'c' c}
 
 
 name:     cols_filter_test_1
@@ -2015,3 +2018,13 @@ insert:                                 # identifier starting with keyword is va
 - returnable  = 'returnable value'
 - addenvelope = 'addenvelope value'
 - this
+
+
+name: return_test
+api: get, insert
+get:                                    # return step stops action, following steps must not be evaluated
+- x = 'returned'
+- return :x
+- +simple_table{id = 9912, value = 'step after return must not be evaluated'}
+insert:                                 # check that step after return step was not evaluated
+- as any simple_table[id = 9912]{count(*) cnt}

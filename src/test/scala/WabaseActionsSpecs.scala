@@ -660,6 +660,10 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         doAction("get", "env_test_5", Map("cond" -> false)).map {
           _ shouldBe MapResult(Map("cond" -> false, "x" -> 1, "y" -> -1, "z" -> 4))
         }
+      _ <-
+        doAction("insert", "env_test_5", Map()).map {
+          _ shouldBe MapResult(Map("u" -> 3, "c" -> "c"))
+        }
     } yield  {
       t1
     }
@@ -1038,6 +1042,19 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         .map { _ shouldBe MapResult(Map("var2" -> "data2")) }
     } yield {
       t2
+    }
+  }
+
+  it should "stop action execution on return step" in {
+    for {
+      t1 <- doAction("get", "return_test", Map()).map {
+        _ shouldBe StringResult("returned")
+      }
+      t2 <- doAction("insert", "return_test", Map()).map {
+        _ shouldBe List(Map("cnt" -> 0))
+      }
+    } yield {
+      t1
     }
   }
 
