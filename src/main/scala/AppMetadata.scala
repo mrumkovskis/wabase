@@ -970,7 +970,7 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
       // setenv or return regexp ends with zero width positive lookahead group
       // so that no symbol - non word character - [^\w] or space
       // is consumed but rather left to the next parser
-      (("(setenv|addenv|return)(?=\\s+|[^\\w]|$)".r ~ opWithOptVarTransforms) ^^ {
+      (("(setenv|addenv|return)(?=\\s+|[^\\w])".r ~ opWithOptVarTransforms) ^^ {
         case cmd ~ step =>
           val (transforms, op) = step
           if (cmd == "setenv" || cmd == "addenv") SetEnv(None, transforms, op, add = cmd == "addenv")
