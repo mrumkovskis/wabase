@@ -1045,6 +1045,27 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     }
   }
 
+  it should "not convert result of named evaluation last step" in {
+    for {
+      // named last step binds step result as is - no key result conversion
+      t1 <- doAction("insert", "last_step_named_eval_test", Map(), removeIdsFlag = false).map {
+        _ shouldBe MapResult(Map("x" -> 1))
+      }
+      // unnamed last step result goes through key result conversion
+      t2 <- doAction("insert", "last_step_unnamed_eval_test", Map(), removeIdsFlag = false).map {
+        _ shouldBe NoResult
+      }
+    } yield {
+      t1
+    }
+  }
+
+  it should "return no result for validations last step" in {
+    doAction("insert", "last_step_validation_test", Map(), removeIdsFlag = false).map {
+      _ shouldBe NoResult
+    }
+  }
+
   it should "stop action execution on return step" in {
     for {
       t1 <- doAction("get", "return_test", Map()).map {

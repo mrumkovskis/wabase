@@ -2038,3 +2038,36 @@ get:                                    # return step stops action, following st
 - +simple_table{id = 9912, value = 'step after return must not be evaluated'}
 insert:                                 # check that step after return step was not evaluated
 - as any simple_table[id = 9912]{count(*) cnt}
+
+
+name:   last_step_named_eval_test
+table:  simple_table
+api:    insert
+fields:
+- id
+- value
+insert:                         # last step is named evaluation - step result is bound as is,
+                                # it is not converted to key result like unnamed last step result
+- x = +simple_table{id = 9913, value = 'named'}
+
+
+name:   last_step_unnamed_eval_test
+table:  simple_table
+api:    insert
+fields:
+- id
+- value
+insert:                         # unnamed last step result is converted to key result
+- +simple_table{id = 9914, value = 'unnamed'}
+
+
+name:   last_step_validation_test
+table:  simple_table
+api:    insert
+fields:
+- id
+- value
+insert:                         # last step is validation - it produces no result of its own
+- x = 'not returned'
+- validations:
+  - 1 = 1, 'never fails'
