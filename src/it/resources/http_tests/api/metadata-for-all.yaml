@@ -871,8 +871,20 @@ response: {
     "fields": [],
     "filter": []
   },
+  "try_recover_continues": {
+    "name": "try_recover_continues",
+    "key": [],
+    "fields": [],
+    "filter": []
+  },
   "try_recover_error_data": {
     "name": "try_recover_error_data",
+    "key": [],
+    "fields": [],
+    "filter": []
+  },
+  "try_recover_in_recover": {
+    "name": "try_recover_in_recover",
     "key": [],
     "fields": [],
     "filter": []
@@ -891,6 +903,12 @@ response: {
   },
   "try_recover_ok": {
     "name": "try_recover_ok",
+    "key": [],
+    "fields": [],
+    "filter": []
+  },
+  "try_recover_oneliner": {
+    "name": "try_recover_oneliner",
     "key": [],
     "fields": [],
     "filter": []

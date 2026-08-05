@@ -1,0 +1,4 @@
+# execution continues with steps following recover step and recover step action
+# sees the scope of the failed step
+path:     /try-recover/try_recover_continues
+response: before-recovered-after

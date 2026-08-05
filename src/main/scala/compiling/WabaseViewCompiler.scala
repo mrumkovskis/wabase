@@ -38,7 +38,7 @@ trait WabaseViewCompiler extends ViewCompiler with AppMetadata { this: AppQuerea
         case Action.ViewCall(_, _, data, _) => opTresqlTrav(st)(data) // do not go to process view call since all views are compiled
       })
     lazy val stepTresqlTrav: StepTresqlTraverser[QueriesState] =
-      stepTresqlTraverser(opTresqlTrav)(st => {
+      stepTresqlTraverser(opTresqlTrav, stepTresqlTrav)(st => {
         case Action.Validations(_, validations, db) =>
           val v = viewDef(st.name)
           validationsQueryString(v, validations).flatMap { valStr =>

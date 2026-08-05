@@ -1,3 +1,3 @@
-# try action without recover action - exception must propagate
+# no recover step - exception must propagate
 path:     /try-recover/try_recover_no_recover
 error:    500 Internal Server Error

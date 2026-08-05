@@ -393,6 +393,15 @@ class QuereaseSpecs extends AsyncFlatSpec with Matchers with TestQuereaseInitial
     }.getMessage shouldBe "Unexpected API methods and roles structure for view api_error_test_2"
   }
 
+  it should "reject recover step having no steps to guard" in {
+    intercept[RuntimeException] {
+      new TestQuerease("/querease-specs-bad-metadata.yaml", _.body contains "recover_error_test_1").nameToViewDef
+    }.getMessage should include ("'recover' must not be the first step of a block")
+    intercept[RuntimeException] {
+      new TestQuerease("/querease-specs-bad-metadata.yaml", _.body contains "recover_error_test_2").nameToViewDef
+    }.getMessage should include ("'recover' must not follow another 'recover' step")
+  }
+
   it should "load key fields" in {
     import AppMetadata.AugmentedAppFieldDef
     querease.viewNameToKeyFields("fake_key_test"             ).find(_.fieldName == "id").get.type_.name         shouldBe "long"

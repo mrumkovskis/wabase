@@ -134,31 +134,71 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
     }
   }
 
-  it should "parse try and recover blocks" in {
-    val vd = querease.viewDef("try_test_1")
-    def tryOp(actionName: String): Action.TryOp = vd.actions(actionName).steps match {
-      case (Action.Evaluation(None, Nil, t: Action.TryOp), _) :: Nil => t
-      case x => fail(s"Unexpected steps of action '$actionName': $x")
-    }
-    def srcs(a: AppMetadata.Action) = a.steps.map(_._2)
-    // try block op, recover block op
-    srcs(tryOp("get").action)         should be (List("x = 'T'", ":x"))
-    srcs(tryOp("get").recoverAct)     should be (List("x = 'R'", ":x"))
-    // try op, recover block op
-    srcs(tryOp("insert").action)      should be (List("'T'"))
-    srcs(tryOp("insert").recoverAct)  should be (List("x = 'R'", ":x"))
-    // try block op, recover op
-    srcs(tryOp("update").action)      should be (List("x = 'T'", ":x"))
-    srcs(tryOp("update").recoverAct)  should be (List("'R'"))
-    // try op, recover block op on the same step
-    srcs(tryOp("delete").action)      should be (List("'T'"))
-    srcs(tryOp("delete").recoverAct)  should be (List("x = 'R'", ":x"))
-    // try op, recover op
-    srcs(tryOp("count").action)       should be (List("'T'"))
-    srcs(tryOp("count").recoverAct)   should be (List("'R'"))
-    // try op without recover
-    srcs(tryOp("list").action)        should be (List("'T'"))
-    tryOp("list").recoverAct          should be (null)
+  it should "split action steps into regions at recover steps" in {
+    val vd = querease.viewDef("recover_test_1")
+    def regions(actionName: String) = vd.actions(actionName).regions
+    def srcs(steps: List[(Action.Step, String)]) = steps.map(_._2)
+    def handlerSrcs(r: Action.Region) = srcs(r.handler.action.steps)
+
+    // guarded region followed by unguarded one
+    val get = regions("get")
+    srcs(get.map(_.steps).head)   should be (List("x = 'A'"))
+    handlerSrcs(get.head)         should be (List("x = 'R'"))
+    get.head.handlerSrc           should be (Action.RecoverKey)
+    srcs(get(1).steps)            should be (List("y = 'B'"))
+    get(1).handler                should be (null)
+    get.size                      should be (2)
+
+    // action ends with recover step - no trailing unguarded region
+    val insert = regions("insert")
+    srcs(insert.head.steps)       should be (List("x = 'A'"))
+    handlerSrcs(insert.head)      should be (List("x = 'R'"))
+    insert.size                   should be (1)
+
+    // two recover steps - two guarded regions and unguarded one
+    val update = regions("update")
+    srcs(update.head.steps)       should be (List("x = 'A'"))
+    handlerSrcs(update.head)      should be (List("x = 'R1'"))
+    srcs(update(1).steps)         should be (List("y = 'B'"))
+    handlerSrcs(update(1))        should be (List("y = 'R2'"))
+    srcs(update(2).steps)         should be (List("z = 'C'"))
+    update(2).handler             should be (null)
+    update.size                   should be (3)
+
+    // recover step nested in recover step action is split into regions of its own
+    val delete = regions("delete")
+    srcs(delete.head.steps)       should be (List("x = 'A'"))
+    val nested = delete.head.handler.action.regions
+    srcs(nested.head.steps)       should be (List("y = 'B'"))
+    handlerSrcs(nested.head)      should be (List("y = 'R'"))
+    nested.size                   should be (1)
+    delete.size                   should be (1)
+
+    // no recover step - single unguarded region
+    val count = regions("count")
+    srcs(count.head.steps)        should be (List("x = 'A'", "y = 'B'"))
+    count.head.handler            should be (null)
+    count.size                    should be (1)
+
+    // one step recover, equivalent of recover block with single step action
+    val list = regions("list")
+    srcs(list.head.steps)         should be (List("x = 'A'"))
+    handlerSrcs(list.head)        should be (List("'R'"))
+    list.head.handlerSrc          should be ("recover 'R'")
+    srcs(list(1).steps)           should be (List("y = 'B'"))
+    handlerSrcs(list(1))          should be (List("as any 'R2'"))
+    list.size                     should be (2)
+  }
+
+  it should "not take recover keyword from identifier starting with it" in {
+    val steps = querease.viewDef("recover_test_1").actions("save").steps
+    steps.map(_._1) should be (List(
+      Action.Evaluation(Some("recovery"), Nil, Action.Tresql("'A'")),
+      Action.Evaluation(Some("recover"),  Nil, Action.Tresql("'B'")),
+      Action.Evaluation(Some("recover"),  Nil, Action.Tresql("'C'")),
+    ))
+    // no region is guarded - none of the steps is a recover step
+    querease.viewDef("recover_test_1").actions("save").regions.map(_.handler) should be (List(null))
   }
 
   it should "do raw action json encoding" in {

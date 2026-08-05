@@ -426,6 +426,13 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     qr.logger.debug(s"Env: {${loggable(res.bindVarLogFilter, env)}}")
   }
 
+  /** Region execution outcome - last step result, scope after it and whether 'return' step
+    * stopped execution of enclosing block. */
+  protected case class RegionOk(res: QuereaseResult, scope: Scope, returned: Boolean)
+  /** Left - recoverable exception with the scope of the failed step so that recover step
+    * continues from it. Guarded region does not fail with recoverable exception. */
+  protected type RegionRes = Either[(Throwable, Scope), RegionOk]
+
   private def do_action(
     view: String,
     actionName: String,
@@ -436,15 +443,14 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
     val ctx = ActionContext(view, actionName, env, viewDefOption(view), fieldFilter, null, contextStack)
     logContext(ctx, env, qr)
-    val steps =
+    val action =
       quereaseActionOpt(view, actionName)
-        .map(_.steps)
-        .getOrElse(List(Action.Return(None, Nil, Action.ViewCall(actionName, view, null)) -> ""))
-    doSteps(steps, ctx, Future.successful(scope))
+        .getOrElse(Action(List(Action.Return(None, Nil, Action.ViewCall(actionName, view, null)) -> "")))
+    doSteps(action, ctx, Future.successful(scope))
   }
 
   def doSteps(
-    steps: List[(Action.Step, String)],
+    action: Action,
     context: ActionContext,
     curDataF: Future[Scope],
   )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
@@ -508,6 +514,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
             case x => sys.error(s"Remove var step cannot produce anyting but Map, instead got $x")
           })
         case Return(_, vts, op) => doActionStep(vts, op) -> null
+        case r: Recover => sys.error(
+          s"'${Action.RecoverKey}' step must not be executed as ordinary step - $r")
         case validations: Action.Validations =>
           (context.view.map { vd =>
             Future(doValidationStep(validations, scopeBindVars(stepScope), vd))
@@ -551,21 +559,63 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case x => x
     }
 
-    steps match {
-      case Nil => curDataF.map(sc => MapResult(sc.data))
+    /** Executes steps of one region. Guarded region does not fail on recoverable exception -
+      * it returns Left with the scope of the failed step so that recover step continues from it. */
+    def doRegion(
+      steps: List[(Step, String)],
+      curDataF: Future[Scope],
+      guarded: Boolean,
+      isFinal: Boolean,
+    ): Future[RegionRes] = steps match {
+      case Nil => curDataF.map(sc => Right(RegionOk(MapResult(sc.data), sc, returned = false)))
       case (s, src) :: tail =>
         curDataF.flatMap { curData =>
           val (resF, nsf) = doStep(s, curData, src)
-          if (tail.isEmpty) s match {
-            // on environment change last step call nextStep data function and create map result
-            case Evaluation(_: Some[_], _, _) | _: SetEnv => nsf().map(sc => MapResult.apply(sc.data))
-            case _ => resF.map(mayBeKeyForLastStep(curData, s, _))
+          val stepF: Future[RegionRes] =
+            if (nsf == null) // return step stops execution of enclosing block
+              resF.map(r => Right(RegionOk(mayBeKeyForLastStep(curData, s, r), curData, returned = true)))
+            else if (tail.isEmpty && isFinal) s match {
+              // on environment change last step call nextStep data function and create map result
+              case Evaluation(_: Some[_], _, _) | _: SetEnv =>
+                nsf().map(sc => Right(RegionOk(MapResult(sc.data), sc, returned = false)))
+              // next step scope is not relevant for last step and must not be calculated since
+              // it consumes result of unnamed evaluation step
+              case _ =>
+                resF.map(r => Right(RegionOk(mayBeKeyForLastStep(curData, s, r), curData, returned = false)))
+            }
+            // step result must be awaited before next step - next step scope function of some steps
+            // (i.e. validations) does not depend on step result
+            else resF.flatMap(_ => doRegion(tail, nsf(), guarded, isFinal))
+          stepF.recoverWith {
+            case ex if guarded && isRecoverable(ex) => Future.successful(Left(ex -> curData))
           }
-          else
-            if (nsf == null) resF.map(mayBeKeyForLastStep(curData, s, _)) // return
-            else resF.flatMap(_ => doSteps(tail, context, nsf()))
         }
     }
+
+    /** Executes action regions. Recover step of failed guarded region is executed in the scope of
+      * the failed step, execution continues with the steps following recover step. */
+    def doRegions(regions: List[Region], curDataF: Future[Scope]): Future[QuereaseResult] =
+      regions match {
+        case Nil => curDataF.map(sc => MapResult(sc.data))
+        case Region(regionSteps, handler, handlerSrc) :: rest =>
+          val isLast = rest.isEmpty
+          val savepoints =
+            if (handler == null) Nil else DbAccess.setSavepoints(resourcesFactory.resources)
+          doRegion(regionSteps, curDataF, guarded = handler != null, isFinal = isLast) flatMap {
+            case Right(RegionOk(res, scope, returned)) =>
+              DbAccess.releaseSavepoints(savepoints)
+              if (returned || isLast) Future.successful(res)
+              else doRegions(rest, Future.successful(scope))
+            case Left((ex, scope)) =>
+              DbAccess.rollbackSavepoints(savepoints)
+              qr.logger.debug(
+                s"Action '${context.name}' step '$handlerSrc' failed, doing recover step", ex)
+              doRegions(handler.action.regions ::: rest,
+                Future.successful(scope.copy(data = scope.data ++ recoverErrorData(ex))))
+          }
+      }
+
+    doRegions(action.regions, curDataF)
   }
 
   protected def doValidationStep(validations: Action.Validations,
@@ -704,7 +754,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
               LongResult(countAll_(v, callData))
             case JobCall =>
               quereaseActionOpt(viewName, Job)
-                .map(a => doSteps(a.steps, context, callDataF))
+                .map(a => doSteps(a, context, callDataF))
                 .getOrElse(NoResult)
             case x =>
               sys.error(s"Unknown view action: '$x'")
@@ -1047,9 +1097,9 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         s"ConfResult(_, true|false), AnyResult(_: Boolean). Instead found: $x")
     }.flatMap { cond =>
       if (cond)
-        doSteps(op.action.steps, context.copy(stepName = "if"), Future.successful(Scope(Map(), parent = scope)))
+        doSteps(op.action, context.copy(stepName = "if"), Future.successful(Scope(Map(), parent = scope)))
       else if (op.elseAct != null)
-        doSteps(op.elseAct.steps, context.copy(stepName = "else"), Future.successful(Scope(Map(), parent = scope)))
+        doSteps(op.elseAct, context.copy(stepName = "else"), Future.successful(Scope(Map(), parent = scope)))
       else Future.successful(NoResult)
     }
   }
@@ -1094,7 +1144,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       .map ( _.mapAsync(1) { itData => // paralellism is 1 so that idx is incremented correctly
         val itScope = Scope(itData, Map("__idx" -> idx), parent = scope, transparent = false)
         idx += 1
-        doSteps(op.action.steps, context.copy(stepName = "foreach"), Future.successful(itScope))
+        doSteps(op.action, context.copy(stepName = "foreach"), Future.successful(itScope))
       })
       .flatMap { src =>
         if (op.foldOp == null) Future.successful(SourceResult(src, dataForNextStep(_, context, unwrapSingleValue = true)))
@@ -1424,7 +1474,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     val nqr = new QuereaseResources()(
       newResFact, ec, as, httpReq, qio, fileStreamers, httpClients, parametersProvider, qr.logger)
     logContext(context, env, nqr)
-    doSteps(op.action.steps, context.copy(stepName = "db"),
+    doSteps(op.action, context.copy(stepName = "db"),
       Future.successful(Scope(Map(), parent = scope)))(nqr).map {
       case DbResult(r, cl) => DbResult(r, cl.andThen(_ => closeRes(None)))
       case r => DbResult(r, closeRes)
@@ -1438,7 +1488,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     scope: Scope,
     context: ActionContext,
   )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
-    doSteps(op.action.steps, context.copy(stepName = "block"), Future.successful(Scope(Map(), parent = scope)))
+    doSteps(op.action, context.copy(stepName = "block"), Future.successful(Scope(Map(), parent = scope)))
   }
 
   /** Name of variable holding exception data in recover action scope */
@@ -1480,35 +1530,6 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         case x => sys.error(s"'rethrow :${op.name}' - variable value must be Throwable, instead got ${className(x)}")
       }
     )
-  }
-
-  /** Executes recover action if try action throws recoverable exception, see {{{isRecoverable}}}.
-    * NOTE: savepoint is not set before try action, so if try action fails on db operation, transaction
-    * may be in aborted state and db operations in recover action may fail as well. Use 'db use' block
-    * in recover action if database must be accessed. */
-  protected def doTry(
-    op: Action.TryOp,
-    scope: Scope,
-    context: ActionContext,
-  )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
-    import qr.ec
-    val savepoints = if (op.recoverAct == null) Nil else DbAccess.setSavepoints(qr.resourcesFactory.resources)
-    // doSteps may throw synchronously (i.e. on max stack depth), such exception must be recoverable as well
-    def steps(act: Action, stepName: String, data: Map[String, Any]) =
-      try doSteps(act.steps, context.copy(stepName = stepName), Future.successful(Scope(data, parent = scope)))
-      catch { case NonFatal(ex) => Future.failed(ex) }
-    val tryRes = steps(op.action, "try", Map())
-    if (op.recoverAct == null) tryRes
-    else tryRes.transformWith {
-      case Success(r) =>
-        DbAccess.releaseSavepoints(savepoints)
-        Future.successful(r)
-      case Failure(ex) if isRecoverable(ex) =>
-        DbAccess.rollbackSavepoints(savepoints)
-        qr.logger.debug(s"Action '${context.name}' try step failed, doing recover step", ex)
-        steps(op.recoverAct, "recover", recoverErrorData(ex))
-      case Failure(ex) => Future.failed(ex)
-    }
   }
 
   protected def doConf(
@@ -1656,7 +1677,6 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case Action.Rollback  => doRollback(resources)
       case rt: Action.Rethrow => doRethrow(rt, scope, context)
       case cond: Action.If => doIf(cond, scope, context)
-      case tr: Action.TryOp => doTry(tr, scope, context)
       case foreach: Action.Foreach => doForeach(foreach, scope, context)
       case resource: Action.Resource => doResource(resource, scope, context)
       case file: Action.File => doFile(file, scope, context)
@@ -1676,7 +1696,6 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case VariableTransforms(vts) =>
         Future.successful(doVarsTransforms(vts, scope.toBindeableMap(env)))
       case _: Action.Else => sys.error(s"Integrity error. Else operation cannot be here, must be coalesced into if operation")
-      case _: Action.Recover => sys.error(s"Integrity error. Recover operation cannot be here, must be coalesced into try operation")
     }
   }
 

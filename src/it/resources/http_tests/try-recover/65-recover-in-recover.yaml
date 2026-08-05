@@ -1,0 +1,3 @@
+# recover step nested in recover step action handles failure of recover step action
+path:     /try-recover/try_recover_in_recover
+response: from recover in recover

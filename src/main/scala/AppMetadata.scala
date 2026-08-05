@@ -513,7 +513,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       })
 
     lazy val stepTresqlTrav: StepTresqlTraverser[Seq[DbAccessKey]] =
-      stepTresqlTraverser(opTresqlTrav)(state => {
+      stepTresqlTraverser(opTresqlTrav, stepTresqlTrav)(state => {
         case Validations(_, _, dbkey) => state.copy(value = state.value ++ dbkey.toList)
       })
 
@@ -557,7 +557,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
             args foreach opTrav(())
         })
       lazy val stepTrav: StepTraverser[Unit] =
-        Action.stepTraverser(opTrav)(_ => PartialFunction.empty)
+        Action.stepTraverser(opTrav, stepTrav)(_ => PartialFunction.empty)
       viewDefs.foreach { case (viewName, viewDef) =>
         viewDef.actions.foreach { case (actionName, action) =>
           try Action.traverseAction(action)(stepTrav)(()) catch {
@@ -606,16 +606,17 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
                 case jm: java.util.Map[String@unchecked, _] =>
                   // may be 'if', 'foreach', 'db ...' step
                   parseStep(jm)
+                case al: java.util.ArrayList[_] if operationString == Action.RecoverKey =>
+                  // 'recover' step - handles failure of preceding steps of enclosing block
+                  (Action.Recover(parseAction(objectName, al.asScala.toList, opParser)), operationString)
                 case al: java.util.ArrayList[_] =>
                   // 'if', 'foreach', 'db ...' step
                   def pa = parseAction(objectName, al.asScala.toList, opParser)
                   def addBlock(op: Action.Op) = op.asInstanceOf[Action.BlockOp] match {
                     case bl: Action.If      => if (bl.action == null) bl.copy(action = pa) else bl.copy(elseAct = pa)
-                    case bl: Action.TryOp   => if (bl.action == null) bl.copy(action = pa) else bl.copy(recoverAct = pa)
                     case bl: Action.Foreach => bl.copy(action = pa)
                     case bl: Action.Db      => bl.copy(action = pa)
                     case bl: Action.Else    => bl.copy(action = pa)
-                    case bl: Action.Recover => bl.copy(action = pa)
                     case bl: Action.Block   => bl.copy(action = pa)
                     case null               => Action.Block(pa)
                   }
@@ -636,7 +637,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       }
       parseStep(step)
     }.toList
-    //coalesce else op into if, recover op into try
+    //coalesce else op into if
     def stepOp(step: Action.Step): Action.Op = step match {
       case Action.Evaluation(_, _, op) => op
       case Action.SetEnv(_, _, op, _)  => op
@@ -661,14 +662,23 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
         s match {
           case Action.Evaluation(_, _, elseOp: Action.Else) =>
             coalesce("else", "if") { case ifOp: Action.If => ifOp.copy(elseAct = elseOp.action) }
-          case Action.Evaluation(_, _, recoverOp: Action.Recover) =>
-            coalesce("recover", "try") { case tryOp: Action.TryOp => tryOp.copy(recoverAct = recoverOp.action) }
           case _ => ((s, src), if (prev_st != null) prev_st :: r else r)
         }
       } match {
         case (null, r) => r
         case (x, r) => x :: r
       }).reverse
+    // 'recover' step must have steps to guard, otherwise it can never be executed
+    coalesced_block_steps.map(_._1) match {
+      case (_: Action.Recover) :: _ =>
+        sys.error(s"'$objectName' parsing error. '${Action.RecoverKey}' must not be the first step of a block")
+      case stepList => stepList.sliding(2).foreach {
+        case List(_: Action.Recover, _: Action.Recover) =>
+          sys.error(s"'$objectName' parsing error. '${Action.RecoverKey}' must not follow another " +
+            s"'${Action.RecoverKey}' step")
+        case _ =>
+      }
+    }
     Action(coalesced_block_steps)
   }
 
@@ -972,6 +982,12 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
       v => RemoveVar(Option(v))
     } named "remove-var"
 
+    /** One step 'recover' step, i.e. "recover 'from recover'". Equivalent of 'recover' block op with
+      * single step action. Keyword is followed by zero width positive lookahead group like in
+      * {{{setEnvOrReturn}}} so that identifier starting with keyword is not taken for keyword. */
+    def recoverStep: Parser[Recover] =
+      ("recover(?=\\s+|[^\\w])".r ~> actionFromOp) ^^ (Recover(_)) named "recover-step"
+
     /** Variable name. Accepts quoted names so that keywords and non-ident names can be assigned,
      * mirroring tresql variable reference, i.e. `'my-key' = ...` is readable as `:'my-key'`. */
     def varName: MemParser[String] = rep1sep(ident | stringLiteral, ".") ^? ({
@@ -987,7 +1003,7 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
     def namedBlock(isBlock: Boolean): Parser[Evaluation] =
       (if (isBlock) varName ^^ { n => Evaluation(Option(n), Nil, null) }
       else failure("Not block")) named "named-block"
-    (removeVar | setEnvOrReturn | evaluation | namedBlock(isBlock)) named "step"
+    (removeVar | setEnvOrReturn | recoverStep | evaluation | namedBlock(isBlock)) named "step"
   }
 
   def parseOperation(op: String): Op =
@@ -1133,16 +1149,8 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
     case cond ~ ifActElseBl => If(cond, ifActElseBl.orNull)
   } named "if-block-op"
   def elseBlockOp: MemParser[Else] = "else".r ^^^ Else(null) named "else-block-op"
-  def tryRecoverOp: MemParser[TryOp] = tryBlockOp ~ actionFromOp ~ opt(recoverOp) ^^ {
-      case tr ~ tryAct ~ recOp => tr.copy(action = tryAct, recoverAct = recOp.map(_.action).orNull)
-    } named "try-recover-op"
-  def recoverOp: MemParser[Recover] = recoverBlockOp ~> actionFromOp ^^ (Recover(_)) named "recover-op"
-  def tryBlockOp: MemParser[TryOp] = "try(?!\\w)".r ~> opt(actionFromOp <~ (recoverBlockOp ~ "$".r)) ^^ {
-    case tryActRecoverBl => TryOp(tryActRecoverBl.orNull)
-  } named "try-block-op"
-  def recoverBlockOp: MemParser[Recover] = "recover(?!\\w)".r ^^^ Recover(null) named "recover-block-op"
   def blockOp: MemParser[BlockOp] =
-    ifBlockOp | elseBlockOp | tryBlockOp | recoverBlockOp | dbBlockOp | foreachBlockOp named "block-op"
+    ifBlockOp | elseBlockOp | dbBlockOp | foreachBlockOp named "block-op"
   def thisOp: MemParser[This] = opt(opResultType) <~ "this" ^^ This.apply named "this-op"
 
   def bracesOp: MemParser[Op] = "(" ~> operation <~ ")" named "braces-op"
@@ -1199,7 +1207,7 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
     Rethrow((v.variable :: v.members).mkString("."))
   } named "rethrow-op"
   def operation: MemParser[Op] = (commit | rollback | rethrow | redirect | response | viewOp | confOp | uniqueOp |
-    httpOp | dbOp | foreachOp | ifElseOp | elseOp | tryRecoverOp | recoverOp |
+    httpOp | dbOp | foreachOp | ifElseOp | elseOp |
     resourceOp | fileOp | toFileOp | templateOp | emailOp |
     jsonCodecOp | httpHeaderOp | httpCookieOp | extractPartsOp | extractEntityOp |
     thisOp | bracesOp | invocationOp | tresqlOp) named "operation"
@@ -1350,6 +1358,7 @@ object AppMetadata extends Loggable {
       Set(Get, List, Save, Insert, Update, Upsert, Delete, Create, Count, Job, Head, Options, Post, Put, UpdatePlus)
 
     val ValidationsKey = "validations"
+    val RecoverKey = "recover"
     val DbUseKey = "db use"
     val TransactionKey = "transaction"
     val OffsetKey = "offset"
@@ -1416,9 +1425,6 @@ object AppMetadata extends Loggable {
     case class VariableTransforms(transforms: List[VariableTransform]) extends Op
     case class Foreach(initOp: Op, action: Action, foldOp: FoldOp = null) extends BlockOp
     case class If(cond: Op, action: Action, elseAct: Action = null) extends BlockOp
-    /** Recover action is executed if action throws an exception.
-      * Named TryOp, not Try, to avoid clash with scala.util.Try */
-    case class TryOp(action: Action, recoverAct: Action = null) extends BlockOp
     case class Resource(nameTresql: Tresql, contentTypeTresql: Tresql = null) extends Op
     case class File(
       idShaTresql: Tresql,
@@ -1453,8 +1459,6 @@ object AppMetadata extends Loggable {
     case class JsonCodec(encode: Boolean, op: Op) extends Op
     /** This operation exists only in parsing stage for if operation */
     case class Else(action: Action) extends BlockOp
-    /** This operation exists only in parsing stage for try operation */
-    case class Recover(action: Action) extends BlockOp
     case class Block(action: Action) extends BlockOp
     case object Commit extends Op
     case object Rollback extends Op
@@ -1473,6 +1477,30 @@ object AppMetadata extends Loggable {
     case class Return(name: Option[String], varTrans: List[VariableTransform], value: Op) extends Step
     case class Validations(name: Option[String], validations: Seq[String], db: Option[DbAccessKey]) extends Step
     case class RemoveVar(name: Option[String]) extends Step
+    /** Action is executed if some of preceding steps of enclosing block throws an exception,
+      * see {{{Action.regionsOf}}} */
+    case class Recover(action: Action) extends Step {
+      override def name: Option[String] = None
+    }
+
+    /** Steps to be executed and 'recover' step handling their failure - null if region is not guarded. */
+    case class Region(steps: List[(Step, String)], handler: Recover, handlerSrc: String)
+
+    /** Splits steps into regions at 'recover' steps. Each 'recover' step handles failure of preceding
+      * steps up to previous 'recover' step or block start. Trailing steps not followed by 'recover' step
+      * form unguarded region with null handler.
+      * 'recover' step with no steps to guard can never be executed, so no region is created for it.
+      * Such steps are rejected at parsing stage, this is a defensive measure for action loaded from cache. */
+    def regionsOf(steps: List[(Step, String)]): List[Region] = {
+      def split(rest: List[(Step, String)], cur: List[(Step, String)], res: List[Region]): List[Region] =
+        rest match {
+          case Nil => (if (cur.isEmpty) res else Region(cur.reverse, null, null) :: res).reverse
+          case (_: Recover, _) :: tail if cur.isEmpty => split(tail, Nil, res)
+          case (r: Recover, src) :: tail => split(tail, Nil, Region(cur.reverse, r, src) :: res)
+          case s :: tail => split(tail, s :: cur, res)
+        }
+      split(steps, Nil, Nil)
+    }
 
     type OpTraverser[T] = T => PartialFunction[Op, T]
     type StepTraverser[T] = T => PartialFunction[Step, T]
@@ -1491,9 +1519,6 @@ object AppMetadata extends Loggable {
         case If(o, a, e) =>
           val r = traverseAction(a)(stepTrav)(opTrav(state)(o))
           if (e == null) r else traverseAction(e)(stepTrav)(r)
-        case TryOp(a, rec) =>
-          val r = traverseAction(a)(stepTrav)(state)
-          if (rec == null) r else traverseAction(rec)(stepTrav)(r)
         case o: ToFile => opTrav(state)(o.contentOp)
         case o: Template => opTrav(state)(o.dataOp)
         case Email(r, s, b, a, _) => a.foldLeft(opTrav(opTrav(opTrav(state)(r))(s))(b))(opTrav(_)(_))
@@ -1508,12 +1533,14 @@ object AppMetadata extends Loggable {
       state => extractor(state) orElse traverse(state)
     }
 
-    def stepTraverser[T](opTrav: => OpTraverser[T])(extractor: StepTraverser[T]): StepTraverser[T] = {
+    def stepTraverser[T](opTrav: => OpTraverser[T], stepTrav: => StepTraverser[T])(
+        extractor: StepTraverser[T]): StepTraverser[T] = {
       def traverse(state: T): PartialFunction[Step, T] = {
         case _: Validations | _: RemoveVar => state
         case s: Evaluation => opTrav(state)(s.op)
         case s: SetEnv => opTrav(state)(s.value)
         case s: Return => opTrav(state)(s.value)
+        case s: Recover => traverseAction(s.action)(stepTrav)(state)
       }
       state => extractor(state) orElse traverse(state)
     }
@@ -1604,7 +1631,8 @@ object AppMetadata extends Loggable {
         opTraverser(opTresqlTrav, stepTresqlTrav) { state => extractor(state) orElse traverse(state) }
       }
 
-      def stepTresqlTraverser[T](opTresqlTrav: => OpTresqlTraverser[T])(
+      def stepTresqlTraverser[T](opTresqlTrav: => OpTresqlTraverser[T],
+        stepTresqlTrav: => StepTresqlTraverser[T])(
         extractor: StepTresqlTraverser[T]): StepTresqlTraverser[T] = {
         def traverse(state: State[T]): PartialFunction[Step, State[T]] = {
           {
@@ -1615,12 +1643,15 @@ object AppMetadata extends Loggable {
               state.copy(value = nv)
           }
         }
-        stepTraverser(opTresqlTrav)(state => extractor(state) orElse traverse(state))
+        stepTraverser(opTresqlTrav, stepTresqlTrav)(state => extractor(state) orElse traverse(state))
       }
     }
   }
 
-  case class Action(steps: List[(Action.Step, String)])
+  case class Action(steps: List[(Action.Step, String)]) {
+    /** Action steps split into regions at 'recover' steps, see {{{Action.regionsOf}}} */
+    lazy val regions: List[Action.Region] = Action.regionsOf(steps)
+  }
 
   /** Database name (as used in mojoz metadata) and corresponding connection pool name */
   case class DbAccessKey(

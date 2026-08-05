@@ -1,9 +1,8 @@
 name:   try_recover_ok
 paths:  /try-recover/try_recover_ok
 api:    public list
-list:
-- try:
-  - as any 'from try'
+list:                             # recover step is skipped if no exception is thrown
+- as any 'no failure'
 - recover:
   - as any 'from recover'
 
@@ -12,9 +11,8 @@ list:
 name:   try_recover_recovers
 paths:  /try-recover/try_recover_recovers
 api:    public list
-list:
-- try:
-  - error 'deliberate failure'
+list:                             # recover step handles failure of preceding steps
+- error 'deliberate failure'
 - recover:
   - as any 'from recover'
 swagger:
@@ -24,9 +22,8 @@ swagger:
 name:   try_recover_error_data
 paths:  /try-recover/try_recover_error_data
 api:    public list
-list:
-- try:
-  - error 'deliberate failure'
+list:                             # exception data is available to recover step action
+- error 'deliberate failure'
 - recover:
   - as any :wabase_error.errors
 swagger:
@@ -36,9 +33,8 @@ swagger:
 name:   try_recover_rethrow
 paths:  /try-recover/try_recover_rethrow
 api:    public list
-list:
-- try:
-  - businessError 'rethrown failure'
+list:                             # exception rethrown from recover step action is not handled again
+- businessError 'rethrown failure'
 - recover:
   - rethrow :wabase_error.exception
 swagger:
@@ -48,9 +44,8 @@ swagger:
 name:   try_recover_no_recover
 paths:  /try-recover/try_recover_no_recover
 api:    public list
-list:
-- try:
-  - error 'unhandled failure'
+list:                             # no recover step - exception must propagate
+- error 'unhandled failure'
 swagger:
   paths = : {}
 
@@ -58,10 +53,10 @@ swagger:
 name:   try_recover_nested
 paths:  /try-recover/try_recover_nested
 api:    public list
-list:
-- try:
-  - try:
-    - error 'inner failure'
+list:                             # block has recover step of its own, so failure does not reach
+                                  # recover step of enclosing block
+- db use:
+  - error 'inner failure'
   - recover:
     - as any 'from inner recover'
 - recover:
@@ -70,15 +65,52 @@ swagger:
   paths = : {}
 
 
-# try action db changes must be rolled back to savepoint before recover action,
-# recover action must be able to access database after failed try action
+name:   try_recover_oneliner
+paths:  /try-recover/try_recover_oneliner
+api:    public list
+list:                             # one step recover, equivalent of recover block with single step
+- error 'deliberate failure'
+- recover as any 'from one step recover'
+swagger:
+  paths = : {}
+
+
+name:   try_recover_in_recover
+paths:  /try-recover/try_recover_in_recover
+api:    public list
+list:                             # recover step nested in recover step action
+- error 'outer failure'
+- recover:
+  - error 'inner failure'
+  - recover:
+    - as any 'from recover in recover'
+swagger:
+  paths = : {}
+
+
+name:   try_recover_continues
+paths:  /try-recover/try_recover_continues
+api:    public list
+list:                             # execution continues with steps following recover step,
+                                  # recover step action sees scope of the failed step
+- x = 'before'
+- error 'deliberate failure'
+- recover:
+  - y = :x || '-recovered'
+- z = :y || '-after'
+- as any :z
+swagger:
+  paths = : {}
+
+
+# steps of guarded region must be rolled back to savepoint before recover step action,
+# recover step action must be able to access database after failed step
 name:   try_recover_savepoint
 paths:  /try-recover/try_recover_savepoint
 api:    public list
 list:
-- try:
-  - +try_recover{code = 'in-try', value = 'try value'}
-  - error 'fail after insert'
+- +try_recover{code = 'in-try', value = 'try value'}
+- error 'fail after insert'
 - recover:
   - +try_recover{code = 'in-recover', value = 'recover value'}
 - as any try_recover{code, value}#(1)

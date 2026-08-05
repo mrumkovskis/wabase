@@ -794,34 +794,44 @@ count:
 - if {:value != null} :value
 
 
-name: try_test_1
+name: recover_test_1
 fields:
 - value
-get:
-- try:                          #try block op
-  - x = 'T'
-  - :x
-- recover:                      #recover block op
+get:                            # guarded region followed by unguarded one
+- x = 'A'
+- recover:
   - x = 'R'
-  - :x
-insert:
-- try 'T'                       #try op
-- recover:                      #recover block op
+- y = 'B'
+insert:                         # action ends with recover step - no trailing unguarded region
+- x = 'A'
+- recover:
   - x = 'R'
-  - :x
-update:
-- try:                          #try block op
-  - x = 'T'
-  - :x
-- recover 'R'                   #recover op
-delete:
-- try 'T' recover:              #try op recover block op
-  - x = 'R'
-  - :x
-count:
-- try 'T' recover 'R'           #try op recover op
-list:
-- try 'T'                       #try op without recover
+update:                         # two recover steps - two guarded regions and unguarded one
+- x = 'A'
+- recover:
+  - x = 'R1'
+- y = 'B'
+- recover:
+  - y = 'R2'
+- z = 'C'
+delete:                         # recover step nested in recover step action
+- x = 'A'
+- recover:
+  - y = 'B'
+  - recover:
+    - y = 'R'
+count:                          # no recover step - single unguarded region
+- x = 'A'
+- y = 'B'
+list:                           # one step recover, equivalent of recover block with single step
+- x = 'A'
+- recover 'R'
+- y = 'B'
+- recover as any 'R2'
+save:                           # keyword must not be taken from identifier starting with it
+- recovery = 'A'
+- recover = 'B'
+- "'recover' = 'C'"
 
 
 name: foreach_test_1

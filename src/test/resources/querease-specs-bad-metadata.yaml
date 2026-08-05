@@ -4,3 +4,18 @@ api:    get, get # bad api - duplicate method
 
 name:   api_error_test_2
 api:    get, MANAGER # bad - no methods for manager
+
+
+name:   recover_error_test_1
+get:  # bad - recover step has no steps to guard
+- recover:
+  - x = 'R'
+
+
+name:   recover_error_test_2
+get:  # bad - second recover step has no steps to guard
+- x = 'A'
+- recover:
+  - x = 'R1'
+- recover:
+  - x = 'R2'
