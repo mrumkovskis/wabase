@@ -16,5 +16,13 @@ wabase is web application based on [Apache Pekko™](https://pekko.apache.org/) 
 * Dynamic data validation in javascript.
 * Framework for I18n support.
 
+## Documentation
+
+**[Start Here: The Comprehensive Guide](docs/index.md)**
+
+*   **[Tutorial](docs/guide/01-setup.md)**: Build a Task Management System from scratch.
+*   **[Reference](docs/reference/01-views.md)**: Detailed API and configuration reference.
+*   **[Internals](docs/internals/architecture.md)**: Understand the architecture.
+
 ## use in your sbt project
 add to your build.sbt file - libraryDependencies += "org.wabase" %% "wabase" % "6.0.2"
