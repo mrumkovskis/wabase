@@ -40,6 +40,8 @@ class TestAppLogMessageNoiseDetector extends EventEvaluatorBase[ILoggingEvent] {
     "[GET /public/querease_action_exception]",
     "Error during processing of request: 'Action: extract_parts_test2.insert",
     "request timeout is defined for view person_health, however",
+    "Failed to release savepoint on db connection",
+    "Failed to roll back savepoint on db connection",
   )
   override def evaluate(event: ILoggingEvent): Boolean = {
     val msg = event.getFormattedMessage
