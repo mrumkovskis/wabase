@@ -360,6 +360,9 @@ object ResultRenderer {
   }
 
   class JsonForwarder(renderer: ResultRenderer) {
+    lazy val cborDecodingConfig: Cbor.DecodingConfig = BorerDecodeConfig.defaultCbor
+    lazy val jsonDecodingConfig: Json.DecodingConfig = BorerDecodeConfig.defaultJson
+
     val anyValueForwarder: Decoder[Any] = Decoder { r =>
       import renderer.{renderRawValue => wv, renderArrayStart => wa, renderBreak => wb}
       import BorerDatetimeDecoders._
@@ -430,10 +433,8 @@ object ResultRenderer {
     }
 
     protected def reader(data: ByteString, decodeFrom: Target) = decodeFrom match {
-      case _: Cbor.type => Cbor.reader(data)
-      case _: Json.type => Json.reader(data, Json.DecodingConfig.default.copy(
-        maxNumberAbsExponent = 308, // to accept up to Double.MaxValue
-      ))
+      case _: Cbor.type => Cbor.reader(data, cborDecodingConfig)
+      case _: Json.type => Json.reader(data, jsonDecodingConfig)
     }
 
     def forwardJson(

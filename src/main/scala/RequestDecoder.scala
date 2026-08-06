@@ -1,6 +1,6 @@
 package org.wabase
 
-import com.typesafe.config.Config
+import com.typesafe.config.{Config, ConfigFactory}
 import org.apache.pekko.stream.scaladsl.{Flow, Sink, Source}
 import org.apache.pekko.stream.connectors.csv.scaladsl.{CsvParsing, CsvToMap}
 import org.apache.pekko.stream.connectors.xml.scaladsl.XmlParsing
@@ -29,8 +29,36 @@ import scala.jdk.CollectionConverters._
 import scala.language.{higherKinds, postfixOps}
 import scala.reflect.ClassTag
 
+/** Builds borer [[Cbor.DecodingConfig]] / [[Json.DecodingConfig]] from HOCON. */
+object BorerDecodeConfig {
+  def cbor(cfg: Config): Cbor.DecodingConfig = Cbor.DecodingConfig(
+    readIntegersAlsoAsFloatingPoint       = cfg.getBoolean("read-integers-also-as-floating-point"),
+    readDoubleAlsoAsFloat                 = cfg.getBoolean("read-double-also-as-float"),
+    maxTextStringLength                   = cfg.getInt("max-text-string-length"),
+    maxByteStringLength                   = cfg.getInt("max-byte-string-length"),
+    maxArrayLength                        = cfg.getLong("max-array-length"),
+    maxMapLength                          = cfg.getLong("max-map-length"),
+    maxNestingLevels                      = cfg.getInt("max-nesting-levels"),
+  )
+  def json(cfg: Config): Json.DecodingConfig = Json.DecodingConfig(
+    readIntegersAlsoAsFloatingPoint       = cfg.getBoolean("read-integers-also-as-floating-point"),
+    readDecimalNumbersOnlyAsNumberStrings = cfg.getBoolean("read-decimal-numbers-only-as-number-strings"),
+    maxNumberAbsExponent                  = cfg.getInt("max-number-abs-exponent"),
+    maxStringLength                       = cfg.getInt("max-string-length"),
+    maxNumberMantissaDigits               = cfg.getInt("max-number-mantissa-digits"),
+    initialCharbufferSize                 = cfg.getInt("initial-charbuffer-size"),
+    allowBufferCaching                    = cfg.getBoolean("allow-buffer-caching"),
+    allowDirectParsing                    = cfg.getBoolean("allow-direct-parsing"),
+  )
+  val defaultCbor: Cbor.DecodingConfig = cbor(config.getConfig("borer.cbor.decoding"))
+  val defaultJson: Json.DecodingConfig = json(config.getConfig("borer.json.decoding"))
+}
+
 /** Decodes cbor or json according to view and type metadata */
 class CborOrJsonDecoder(typeDefs: Seq[TypeDef], nameToViewDef: Map[String, ViewDef]) {
+  lazy val cborDecodingConfig: Cbor.DecodingConfig = BorerDecodeConfig.defaultCbor
+  lazy val jsonDecodingConfig: Json.DecodingConfig = BorerDecodeConfig.defaultJson
+
   lazy val typeNameToScalaTypeName =
     typeDefs
       .map(td => td.name -> td.targetNames.get("scala").orNull)
@@ -125,10 +153,8 @@ class CborOrJsonDecoder(typeDefs: Seq[TypeDef], nameToViewDef: Map[String, ViewD
   }}
 
   protected def decoding(data: ByteString, decodeFrom: Target): DecodingSetup.Api[_] = decodeFrom match {
-    case _: Cbor.type => Cbor.decode(data)
-    case _: Json.type => Json.decode(data).withConfig(Json.DecodingConfig.default.copy(
-      maxNumberAbsExponent = 308, // to accept up to Double.MaxValue
-    ))
+    case _: Cbor.type => Cbor.decode(data).withConfig(cborDecodingConfig)
+    case _: Json.type => Json.decode(data).withConfig(jsonDecodingConfig)
   }
 
   protected def to[T: Decoder](decoding: DecodingSetup.Api[_]): T =
@@ -184,7 +210,15 @@ class CborOrJsonLenientDecoder(typeDefs: Seq[TypeDef], nameToViewDef: Map[String
 /** Decodes cbor or json - unrestricted structure and value types, string keys for maps.
  *  When decoding from json, dates and similar will be decoded as strings
  */
-class CborOrJsonAnyValueDecoder() {
+class CborOrJsonAnyValueDecoder(borerConfig: Config) {
+  def this() = this(ConfigFactory.empty)
+  lazy val cborDecodingConfig: Cbor.DecodingConfig =
+    if (borerConfig.isEmpty) BorerDecodeConfig.defaultCbor
+    else BorerDecodeConfig.cbor(borerConfig.withFallback(config.getConfig("borer.cbor.decoding")))
+  lazy val jsonDecodingConfig: Json.DecodingConfig =
+    if (borerConfig.isEmpty) BorerDecodeConfig.defaultJson
+    else BorerDecodeConfig.json(borerConfig.withFallback(config.getConfig("borer.json.decoding")))
+
   def anyValueDecoder[M <: Map[String, Any] : ClassTag](
     mapZero: () => M,
   ): Decoder[Any] = Decoder { r =>
@@ -263,10 +297,8 @@ class CborOrJsonAnyValueDecoder() {
   }
 
   protected def decoding[T: Input.Provider](data: T, decodeFrom: Target) = decodeFrom match {
-    case _: Cbor.type => Cbor.decode(data)
-    case _: Json.type => Json.decode(data).withConfig(Json.DecodingConfig.default.copy(
-      maxNumberAbsExponent = 308, // to accept up to Double.MaxValue
-    ))
+    case _: Cbor.type => Cbor.decode(data).withConfig(cborDecodingConfig)
+    case _: Json.type => Json.decode(data).withConfig(jsonDecodingConfig)
   }
 
   protected def to[T: Decoder](decoding: DecodingSetup.Api[_]): T =
@@ -374,7 +406,8 @@ object JsonDecoderFactory extends JsonDecoderFactory {
   def createJsonStreamDecoder(n: String, jsonCfg: Config): Flow[ByteString, Map[String, Any], NotUsed] = {
     val maxObjectSize = jsonCfg.getInt("max-object-size")
     val ess = new JsonEntityStreamingSupport(maxObjectSize = maxObjectSize)
-    Flow[ByteString].via(ess.framingDecoder).map(CborOrJsonAnyValueDecoder.decodeToMap(_))
+    val decoder = new CborOrJsonAnyValueDecoder(jsonCfg)
+    Flow[ByteString].via(ess.framingDecoder).map(decoder.decodeToMap(_))
   }
 
   def createJsonStreamDecoders: Map[String, Flow[ByteString, Map[String, Any], NotUsed]] = {
