@@ -43,6 +43,20 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root)(impli
   lazy val serverPath   = clientCfg.getString("server-path")
   lazy val serverWsPath = clientCfg.getString("server-ws-path")
 
+  /** Host used as jar key for host-only cookies when no Domain is set (from [[serverPath]]). */
+  lazy val defaultCookieHost: String =
+    RestClient.normalizeCookieDomain(Uri(serverPath).authority.host.address)
+
+  /**
+   * Optional default `Domain` attribute for programmatically set cookies.
+   * `None` means host-only cookies keyed by [[defaultCookieHost]].
+   */
+  lazy val defaultCookieDomain: Option[String] = None
+
+  /** Default cookie path when not specified (default-path of [[serverPath]], RFC 6265 §5.1.4). */
+  lazy val defaultCookiePath: String =
+    RestClient.defaultCookiePath(Uri(serverPath))
+
   protected def getHttpsConnectionContext: Option[HttpsConnectionContext] = {
     Option("ssl-config").filter(clientCfg.hasPath).map(clientCfg.getConfig).map { sslConfig =>
       val sslConfigSettings = SSLConfigFactory.parse(sslConfig)
@@ -76,23 +90,28 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root)(impli
     */
   class CookieMap {
     private val lock = new AnyRef
-    private val store = scala.collection.mutable.Map.empty[String, HttpCookie]
-    /** Host-only cookies (no `Domain` attribute): cookie name → host that set them. */
-    private val hostOnlyHosts = scala.collection.mutable.Map.empty[String, String]
+    private val store = scala.collection.mutable.Map.empty[RestClient.CookieKey, HttpCookie]
 
     /** Immutable snapshot of stored cookies */
-    def map: scala.collection.immutable.Map[String, HttpCookie] =
+    def map: scala.collection.immutable.Map[RestClient.CookieKey, HttpCookie] =
       lock.synchronized(store.toMap)
 
     def getCookies: iSeq[Cookie] = lock.synchronized {
-      cookieHeader(store.values.toList)
+      cookieHeader(store.values)
     }
 
-    /** Cookies scoped for `uri` (host-only + Domain attribute; path when present). */
+    /** Cookies in scope for `uri` (host-only / domain-match + path-match). */
     def getCookies(uri: Uri): iSeq[Cookie] = lock.synchronized {
       val host = uri.authority.host.address
-      val path = uri.path.toString
-      cookieHeader(store.values.iterator.filter(c => cookieMatches(c, host, path)).toList)
+      val path = {
+        val p = uri.path.toString
+        if (p.isEmpty) "/" else p
+      }
+      cookieHeader(
+        store.iterator.collect {
+          case (key, cookie) if RestClient.cookieMatches(key, cookie, host, path) => cookie
+        }.toList
+      )
     }
 
     private def cookieHeader(cookies: Iterable[HttpCookie]): iSeq[Cookie] = {
@@ -100,50 +119,48 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root)(impli
       if (pairs.isEmpty) Nil else iSeq(Cookie(pairs))
     }
 
-    private def cookieMatches(cookie: HttpCookie, host: String, path: String): Boolean = {
-      val domainOk = cookie.domain match {
-        case Some(d) if !hostOnlyHosts.contains(cookie.name) =>
-          RestClient.cookieDomainMatches(host, d)
-        case _ =>
-          hostOnlyHosts.get(cookie.name) match {
-            case Some(h) => h.equalsIgnoreCase(host)
-            // Programmatically set cookies (no origin recorded) — keep legacy send-anywhere behaviour
-            case None => true
-          }
+    def setCookiesFromHeaders(headers: iSeq[HttpHeader], requestUri: Uri = null): Unit = {
+      val reqUri = Option(requestUri).filter(_.isAbsolute)
+      val reqHost = reqUri.filter(_.authority.nonEmpty).map(_.authority.host.address)
+        .getOrElse(defaultCookieHost)
+      val reqDefaultPath = reqUri.map(RestClient.defaultCookiePath).getOrElse(defaultCookiePath)
+      lock.synchronized {
+        headers.foreach {
+          case `Set-Cookie`(cookie) =>
+            val key = RestClient.cookieKeyFor(cookie, reqHost, reqDefaultPath)
+            val alive =
+              (cookie.maxAge.isEmpty || cookie.maxAge.get > 0) &&
+                (cookie.expires.isEmpty || cookie.expires.get.clicks > System.currentTimeMillis)
+            if (alive) store(key) = cookie
+            else store -= key
+          case _ =>
+        }
       }
-      val pathOk = cookie.path match {
-        case Some(p) =>
-          path == p ||
-            path.startsWith(if (p.endsWith("/")) p else p + "/") ||
-            (p != "/" && path.startsWith(p))
-        case None => true
-      }
-      domainOk && pathOk
     }
 
-    def setCookiesFromHeaders(headers: iSeq[HttpHeader], requestUri: Uri = null): Unit = {
-      val reqHost =
-        Option(requestUri).filter(_.authority.nonEmpty).map(_.authority.host.address)
-      lock.synchronized { headers.foreach {
-        case `Set-Cookie`(cookie) =>
-          if ((cookie.maxAge.isEmpty  || cookie.maxAge.get > 0) &&
-              (cookie.expires.isEmpty || cookie.expires.get.clicks > System.currentTimeMillis)) {
-            store += (cookie.name -> cookie)
-            (cookie.domain, reqHost) match {
-              case (None, Some(h)) => hostOnlyHosts(cookie.name) = h
-              case (Some(_), _)    => hostOnlyHosts -= cookie.name
-              case (None, None)    => hostOnlyHosts -= cookie.name
-            }
-          } else {
-            store -= cookie.name
-            hostOnlyHosts -= cookie.name
-          }
-        case _ =>
-      }}
-    }
-    def setCookies(cookies: Map[String, Any]): Unit = lock.synchronized {
-      store ++= cookies.map { case (n, c) => n -> HttpCookie(n, c.toString) }
-      cookies.keys.foreach(hostOnlyHosts -= _)
+    /**
+     * Programmatically set cookies.
+     *
+     * @param cookies name, value
+     * @param domain  `Domain` attribute; when `None`, uses [[defaultCookieDomain]].
+     *                If still `None`, cookie is host-only and the jar key uses [[defaultCookieHost]].
+     * @param path    cookie path; when `None`, uses [[defaultCookiePath]]
+     */
+    def setCookies(
+      cookies: Map[String, Any],
+      domain: Option[String] = None,
+      path: Option[String] = None,
+    ): Unit = {
+      val cookieDomain = domain.orElse(defaultCookieDomain).map(RestClient.normalizeCookieDomain)
+      val keyDomain = cookieDomain.getOrElse(defaultCookieHost)
+      val p = path.getOrElse(defaultCookiePath)
+      lock.synchronized {
+        cookies.foreach { case (n, v) =>
+          val key = RestClient.CookieKey(n, keyDomain, p)
+          // domain=None on HttpCookie ⇒ host-only; resolved host lives on CookieKey
+          store(key) = HttpCookie(n, v.toString, domain = cookieDomain, path = Some(p))
+        }
+      }
     }
   }
 
@@ -387,6 +404,10 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root)(impli
 object RestClient extends Loggable {
   object WsClosed
   case class WsFailed(cause: Throwable)
+
+  /** RFC 6265 cookie store identity: name + domain + path. */
+  case class CookieKey(name: String, domain: String, path: String)
+
   /** For legacy purposes */
   private [wabase] def fullErrorErrorMessage(status: StatusCode, content: String) =
     status.value + "\n" + status.defaultMessage + "\n" + content
@@ -403,6 +424,57 @@ object RestClient extends Loggable {
     a.scheme.equalsIgnoreCase(b.scheme) &&
       a.authority.host.equalsIgnoreCase(b.authority.host) &&
       a.effectivePort == b.effectivePort
+
+  /** Normalize Domain attribute: strip leading `.`, lowercase. */
+  private[client] def normalizeCookieDomain(domain: String): String = {
+    val d = if (domain.startsWith(".")) domain.drop(1) else domain
+    d.toLowerCase
+  }
+
+  /** RFC 6265 §5.1.4 default-path of a request URI. */
+  private[client] def defaultCookiePath(uri: Uri): String = {
+    val uriPath = uri.path.toString
+    if (uriPath.isEmpty || !uriPath.startsWith("/")) "/"
+    else {
+      val idx = uriPath.lastIndexOf('/')
+      if (idx <= 0) "/" else uriPath.substring(0, idx)
+    }
+  }
+
+  /** RFC 6265 §5.1.4 path-match. */
+  private[client] def cookiePathMatches(requestPath: String, cookiePath: String): Boolean = {
+    val rp = if (requestPath.isEmpty) "/" else requestPath
+    val n = cookiePath.length
+    rp.startsWith(cookiePath) && (rp.length == n || cookiePath.charAt(n - 1) == '/' || rp.charAt(n) == '/')
+  }
+
+  /** Build store key for a Set-Cookie using request host / default-path when attrs are absent. */
+  private[client] def cookieKeyFor(
+    cookie: HttpCookie,
+    requestHost: String,
+    requestDefaultPath: String,
+  ): CookieKey = {
+    val domain = cookie.domain.map(normalizeCookieDomain).getOrElse(requestHost.toLowerCase)
+    val path = cookie.path.getOrElse(requestDefaultPath)
+    CookieKey(cookie.name, domain, path)
+  }
+
+  /**
+   * RFC 6265 §5.4 host + path match for a stored cookie.
+   * Host-only when `cookie.domain` is empty (exact match on key.domain);
+   * otherwise domain-match using key.domain.
+   */
+  private[client] def cookieMatches(
+    key: CookieKey,
+    cookie: HttpCookie,
+    requestHost: String,
+    requestPath: String,
+  ): Boolean = {
+    val domainOk =
+      if (cookie.domain.isEmpty) key.domain.equalsIgnoreCase(requestHost)
+      else cookieDomainMatches(requestHost, key.domain)
+    domainOk && cookiePathMatches(requestPath, key.path)
+  }
 
   /**
    * Content-specific request headers that must be removed when a redirect changes the method

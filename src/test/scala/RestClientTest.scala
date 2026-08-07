@@ -302,9 +302,57 @@ class RestClientTest  extends FlatSpec with Matchers with ScalatestRouteTest wit
       iSeq(`Set-Cookie`(HttpCookie("sid", "secret-session"))),
       local,
     )
-    cookies.map.keySet should contain ("sid")
+    cookies.map.keys.map(_.name) should contain ("sid")
     cookies.getCookies(local).flatMap(_.cookies.map(_.name)) should contain ("sid")
     cookies.getCookies(other) shouldBe empty
+  }
+
+  it should "key cookies by name domain and path so same name does not interfere" in {
+    val cookies = new client.CookieMap
+    val hostA = Uri("http://a.example.com/app/x")
+    val hostB = Uri("http://b.example.com/app/x")
+    cookies.setCookiesFromHeaders(
+      iSeq(`Set-Cookie`(HttpCookie("sid", "from-a"))),
+      hostA,
+    )
+    cookies.setCookiesFromHeaders(
+      iSeq(`Set-Cookie`(HttpCookie("sid", "from-b"))),
+      hostB,
+    )
+    cookies.map.size shouldBe 2
+    // default-path of /app/x is /app
+    cookies.map.keySet should contain (RestClient.CookieKey("sid", "a.example.com", "/app"))
+    cookies.map.keySet should contain (RestClient.CookieKey("sid", "b.example.com", "/app"))
+    val aVal = cookies.getCookies(Uri("http://a.example.com/app/y")).flatMap(_.cookies.map(_.value))
+    val bVal = cookies.getCookies(Uri("http://b.example.com/app/y")).flatMap(_.cookies.map(_.value))
+    aVal should contain ("from-a")
+    bVal should contain ("from-b")
+  }
+
+  it should "keep distinct path cookies with the same name and domain" in {
+    val cookies = new client.CookieMap
+    val base = Uri("http://example.com/")
+    cookies.setCookiesFromHeaders(
+      iSeq(
+        `Set-Cookie`(HttpCookie("sid", "root", path = Some("/"))),
+        `Set-Cookie`(HttpCookie("sid", "api", path = Some("/api"))),
+      ),
+      base,
+    )
+    cookies.map.size shouldBe 2
+    cookies.getCookies(Uri("http://example.com/")).flatMap(_.cookies.map(_.value)) should contain ("root")
+    cookies.getCookies(Uri("http://example.com/")).flatMap(_.cookies.map(_.value)) should not contain "api"
+    cookies.getCookies(Uri("http://example.com/api/v1")).flatMap(_.cookies.map(_.value)).toSet shouldBe Set("root", "api")
+  }
+
+  it should "use defaultCookieHost and defaultCookiePath for setCookies when domain/path omitted" in {
+    val cookies = new client.CookieMap
+    cookies.setCookies(Map("lang" -> "en"))
+    cookies.map.keySet should contain (
+      RestClient.CookieKey("lang", client.defaultCookieHost, client.defaultCookiePath)
+    )
+    cookies.map.values.forall(_.domain.isEmpty) shouldBe true
+    cookies.getCookies(Uri(client.serverPath)).flatMap(_.cookies.map(_.name)) should contain ("lang")
   }
 
   it should "be thread-safe under concurrent jar updates and reads" in {
@@ -343,7 +391,7 @@ class RestClientTest  extends FlatSpec with Matchers with ScalatestRouteTest wit
     Await.result(
       jarClient.doRequest(HttpRequest(GET, uri = s"http://localhost:$server_port/set-host-cookie")),
       2.seconds)
-    jarClient.getCookieStorage.map.keySet should contain ("sid")
+    jarClient.getCookieStorage.map.keys.map(_.name) should contain ("sid")
     val response = Await.result(
       jarClient.doRequest(HttpRequest(
         GET,
