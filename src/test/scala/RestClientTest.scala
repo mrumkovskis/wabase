@@ -61,6 +61,27 @@ class RestClientTest  extends FlatSpec with Matchers with ScalatestRouteTest wit
     path("resource") {
       extractUri { uri => complete(uri.toString) }
     } ~
+    path("redirect-drop-content-headers") {
+      put {
+        complete(HttpResponse(
+          status = StatusCodes.SeeOther,
+          headers = List(Location(Uri("/echo-content-headers")))))
+      }
+    } ~
+    path("echo-content-headers") {
+      extractRequest { req =>
+        val names = req.headers
+          .map(_.lowercaseName)
+          .filter(RestClient.contentHeaderNames.contains)
+          .sorted
+          .mkString(",")
+        // also surface entity content-type if present (not Empty)
+        val ct =
+          if (req.entity.isKnownEmpty) ""
+          else req.entity.contentType.toString
+        complete(if (names.isEmpty && ct.isEmpty) "none" else s"$names|$ct")
+      }
+    } ~
     path("redirect-same-origin-auth") {
       get {
         complete(HttpResponse(
@@ -209,6 +230,46 @@ class RestClientTest  extends FlatSpec with Matchers with ScalatestRouteTest wit
     same should have size 4
     val cross = RestClient.redirectRequestHeaders(from, to, headers)
     cross.map(_.lowercaseName).toSet shouldBe Set("x-custom")
+  }
+
+  it should "strip content-related headers when method becomes GET on redirect" in {
+    val from = Uri("https://api.example.com/v1")
+    val sameOrigin = Uri("https://api.example.com/other")
+    val headers: iSeq[HttpHeader] = iSeq(
+      RawHeader("X-Custom", "keep"),
+      RawHeader("Content-Type", "application/json"),
+      RawHeader("Content-Length", "12"),
+      RawHeader("Content-Encoding", "gzip"),
+      RawHeader("Content-Language", "en"),
+      RawHeader("Content-Location", "https://api.example.com/body"),
+      RawHeader("Digest", "sha-256=abc"),
+      RawHeader("Last-Modified", "Mon, 01 Jan 2020 00:00:00 GMT"),
+      Authorization(BasicHttpCredentials("u", "p")),
+    )
+    val dropped = RestClient.redirectRequestHeaders(from, sameOrigin, headers, dropContentHeaders = true)
+    dropped.map(_.lowercaseName).toSet shouldBe Set("x-custom", "authorization")
+    val kept = RestClient.redirectRequestHeaders(from, sameOrigin, headers, dropContentHeaders = false)
+    kept.map(_.lowercaseName).toSet should contain allOf (
+      "content-type", "content-length", "content-encoding", "content-language",
+      "content-location", "digest", "last-modified", "x-custom", "authorization",
+    )
+  }
+
+  it should "not send content headers after 303 redirect to GET" in {
+    val response = Await.result(
+      client.doRequest(HttpRequest(
+        PUT,
+        uri = s"http://localhost:$server_port/redirect-drop-content-headers",
+        entity = HttpEntity("""{"a":1}"""),
+        headers = iSeq(
+          RawHeader("Content-Language", "en"),
+          RawHeader("Content-Encoding", "identity"),
+          RawHeader("X-Custom", "keep"),
+        ),
+      )),
+      2.seconds)
+    val body = Await.result(response.entity.toStrict(1.second).map(_.data.utf8String.trim), 1.second)
+    body shouldBe "none"
   }
 
   it should "keep Authorization on same-origin redirect" in {

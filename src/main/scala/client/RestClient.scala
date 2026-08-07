@@ -280,9 +280,13 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root)(impli
     *                        - `Some(false)` — return the redirect response as-is
     *                        - `None` — use the request's `HttpClient.ModeKey` attribute:
     *                          `ProxyMode` means do not follow, otherwise follow
-    *                        When following to a different origin (scheme/host/port), `Authorization`,
-    *                        `Cookie`, and `Host` request headers are stripped; cookies from the jar
-    *                        are re-scoped to the redirect URI (host-only + Domain).
+    *                        When following, the method becomes GET and the request body is not resent.
+    *                        Content-related headers (`Content-Type`, `Content-Length`,
+    *                        `Content-Encoding`, `Content-Language`, `Content-Location`, `Digest`,
+    *                        `Last-Modified`) are stripped (RFC 9110 §15.4). When following to a
+    *                        different origin (scheme/host/port), `Authorization`, `Cookie`, and
+    *                        `Host` are also stripped; cookies from the jar are re-scoped to the
+    *                        redirect URI (host-only + Domain).
     * @return future of the final HTTP response (after optional redirect following)
     */
   protected def doRequest(
@@ -317,7 +321,7 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root)(impli
               val redirectMethod =
                 HttpMethods.GET
               val redirectHeaders =
-                RestClient.redirectRequestHeaders(request.uri, redirectUri, req.headers)
+                RestClient.redirectRequestHeaders(request.uri, redirectUri, req.headers, dropContentHeaders = true)
               doRequest(
                 HttpRequest(method = redirectMethod, uri = redirectUri, headers = redirectHeaders),
                 cookieStorage, timeout, maxRedirects - 1, Some(doThrow), Some(follow)
@@ -400,13 +404,44 @@ object RestClient extends Loggable {
       a.authority.host.equalsIgnoreCase(b.authority.host) &&
       a.effectivePort == b.effectivePort
 
+  /**
+   * Content-specific request headers that must be removed when a redirect changes the method
+   * to GET or HEAD (RFC 9110 §15.4 step 5).
+   */
+  private[client] val contentHeaderNames: Set[String] = Set(
+    "content-encoding",
+    "content-language",
+    "content-location",
+    "content-type",
+    "content-length",
+    "digest",
+    "last-modified",
+  )
+
+  private[client] def isContentHeader(h: HttpHeader): Boolean =
+    contentHeaderNames.contains(h.lowercaseName)
+
   /** Headers to send when following a redirect.
-    * On a different origin (scheme/host/port), strips `Authorization`, `Cookie`, and `Host`
+    *
+    * @param dropContentHeaders when true (method becomes GET/HEAD), strips content-related headers
+    *                           per RFC 9110 §15.4: `Content-Encoding`, `Content-Language`,
+    *                           `Content-Location`, `Content-Type`, `Content-Length`, `Digest`,
+    *                           `Last-Modified`
+    * On a different origin (scheme/host/port), also strips `Authorization`, `Cookie`, and `Host`
     * so credentials are not leaked cross-origin; cookies are re-applied from the jar for the new URI.
     */
-  def redirectRequestHeaders(fromUri: Uri, toUri: Uri, headers: iSeq[HttpHeader]): iSeq[HttpHeader] =
-    if (isSameOrigin(fromUri, toUri)) headers
-    else headers.filterNot(h => h.is("authorization") || h.is("cookie") || h.is("host"))
+  def redirectRequestHeaders(
+    fromUri: Uri,
+    toUri: Uri,
+    headers: iSeq[HttpHeader],
+    dropContentHeaders: Boolean = true,
+  ): iSeq[HttpHeader] = {
+    val originFiltered =
+      if (isSameOrigin(fromUri, toUri)) headers
+      else headers.filterNot(h => h.is("authorization") || h.is("cookie") || h.is("host"))
+    if (dropContentHeaders) originFiltered.filterNot(isContentHeader)
+    else originFiltered
+  }
 
   /** RFC 6265 domain-match (simplified): cookie domain matches request host. */
   private[client] def cookieDomainMatches(host: String, cookieDomain: String): Boolean = {
