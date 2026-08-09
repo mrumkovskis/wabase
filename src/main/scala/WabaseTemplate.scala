@@ -6,11 +6,15 @@ import org.apache.pekko.util.ByteString
 import com.samskivert.mustache.{Mustache, Template}
 import org.tresql.SimpleCacheBase
 import org.xhtmlrenderer.pdf.{ITextOutputDevice, ITextRenderer, ITextUserAgent}
+import org.xhtmlrenderer.util.{FontUtil, ImageUtil}
 
-import java.io.{ByteArrayOutputStream, InputStream, OutputStream}
-import java.nio.file.FileSystems
+import java.io.{ByteArrayInputStream, ByteArrayOutputStream, InputStream, OutputStream}
+import java.net.{URI, URLDecoder}
+import java.nio.charset.StandardCharsets
+import java.nio.file.{FileSystems, Files, Path, Paths}
 import scala.concurrent.{ExecutionContext, Future}
 import scala.jdk.CollectionConverters._
+import scala.util.Try
 
 trait WabaseTemplate {
   def apply(template: String, data: Iterable[_])(implicit
@@ -170,13 +174,130 @@ class MustacheAndPdfTemplateRenderer extends MustacheTemplateRenderer {
 }
 
 object PdfRenderer {
-  class FontResourceLoader(outputDevice: ITextOutputDevice)
+  val AssetsDirectoriesParam       = "app.template.assets.directories"
+  val AssetsClasspathPrefixesParam = "app.template.assets.classpath-prefixes"
+
+  /** Allowed filesystem roots for template assets (images, fonts, CSS). */
+  lazy val assetsDirectories: Seq[Path] =
+    config.getStringList(AssetsDirectoriesParam).asScala.toSeq
+      .map(_.trim).filter(_.nonEmpty)
+      .map(p => Paths.get(p).toAbsolutePath.normalize)
+
+  /** Allowed classpath path prefixes (normalized to start and end with '/'). */
+  lazy val assetsClasspathPrefixes: Seq[String] =
+    config.getStringList(AssetsClasspathPrefixesParam).asScala.toSeq
+      .map(normalizeClasspathPath)
+      .map(p => if (p.endsWith("/")) p else s"$p/")
+      .filter(p => p != "/")
+
+  /**
+   * Loads PDF/HTML template assets without network or arbitrary filesystem access (SSRF-safe).
+   * Allowed sources: `data:` URIs, classpath paths under configured prefixes,
+   * and files under configured directory roots.
+   */
+  class TemplateAssetsLoader(outputDevice: ITextOutputDevice)
     extends ITextUserAgent(outputDevice, ITextRenderer.DEFAULT_DOTS_PER_PIXEL) {
-    override def resolveAndOpenStream(uri: String): InputStream = {
-      if  (uri != null && uri.contains("fonts/"))
-           getClass.getResourceAsStream(uri)
-      else super.resolveAndOpenStream(uri)
+    override def resolveAndOpenStream(uri: String): InputStream =
+      openAsset(uri).orNull
+  }
+
+  def openAsset(uri: String): Option[InputStream] = {
+    if (uri == null || uri.isEmpty) None
+    else if (uri.regionMatches(true, 0, "data:", 0, 5)) openDataUri(uri)
+    else openClasspathAsset(uri).orElse(openFileAsset(uri))
+  }
+
+  /** Only `data:font/` and `data:image/` base64 (flying-saucer FontUtil / ImageUtil). */
+  protected def openDataUri(uri: String): Option[InputStream] =
+    if (FontUtil.isEmbeddedBase64Font(uri))
+      Option(FontUtil.getEmbeddedBase64Data(uri))
+    else if (ImageUtil.isEmbeddedBase64Image(uri))
+      Option(ImageUtil.getEmbeddedBase64Image(uri)).map(new ByteArrayInputStream(_))
+    else None
+
+  protected def openClasspathAsset(uri: String): Option[InputStream] = {
+    classpathPathOf(uri).filter(isAllowedClasspathPath).flatMap { path =>
+      Option(getClass.getResourceAsStream(path))
+        .orElse(Option(getClass.getResourceAsStream(path.drop(1)))) // without leading '/'
     }
+  }
+
+  protected def openFileAsset(uri: String): Option[InputStream] = {
+    filePathCandidates(uri)
+      .find(p => isAllowedFilePath(p) && Files.isRegularFile(p))
+      .map(Files.newInputStream(_))
+  }
+
+  protected def classpathPathOf(uri: String): Option[String] = {
+    val pathOpt =
+      if (uri.startsWith("classpath:"))
+        Some(uri.substring("classpath:".length))
+      else if (uri.startsWith("jar:")) {
+        val bang = uri.indexOf("!/")
+        if (bang >= 0) Some(uri.substring(bang + 1)) else None
+      } else if (hasDisallowedScheme(uri))
+        None
+      else if (uri.startsWith("file:"))
+        None
+      else
+        Some(uri)
+    pathOpt
+      .flatMap(safeDecodedPath)
+      .map(normalizeClasspathPath)
+      .filterNot(p => p == "/" || p.isEmpty)
+  }
+
+  protected def filePathCandidates(uri: String): Seq[Path] = {
+    if (uri.startsWith("file:")) {
+      Try {
+        val u = new URI(uri)
+        val rawPath =
+          Option(u.getRawPath).filter(_.nonEmpty)
+            .orElse(Option(u.getRawSchemeSpecificPart).filter(_.nonEmpty))
+            .getOrElse("")
+        safeDecodedPath(rawPath).map(_ => Paths.get(u).toAbsolutePath.normalize)
+      }.toOption.flatten.toSeq
+    } else if (schemeOf(uri).isDefined)
+      Seq.empty
+    else {
+      safeDecodedPath(uri).map { decoded =>
+        val raw = Paths.get(decoded)
+        if (raw.isAbsolute) Seq(raw.toAbsolutePath.normalize)
+        else assetsDirectories.map(_.resolve(decoded).toAbsolutePath.normalize)
+      }.getOrElse(Seq.empty)
+    }
+  }
+
+  /**
+   * Single percent-decode pass, then reject residual `..`, `%`, or NUL
+   * (blocks traversal and double-encoding).
+   */
+  protected def safeDecodedPath(raw: String): Option[String] = {
+    val decoded = URLDecoder.decode(raw, StandardCharsets.UTF_8)
+    if (decoded.contains("..") || decoded.contains('%') || decoded.contains('\u0000')) None
+    else Some(decoded)
+  }
+
+  protected def isAllowedClasspathPath(path: String): Boolean =
+    assetsClasspathPrefixes.exists(path.startsWith)
+
+  protected def isAllowedFilePath(path: Path): Boolean =
+    assetsDirectories.exists(dir => path.startsWith(dir))
+
+  protected def hasDisallowedScheme(uri: String): Boolean =
+    schemeOf(uri).exists { s =>
+      val scheme = s.toLowerCase
+      scheme != "classpath" && scheme != "file" && scheme != "jar" && scheme != "data"
+    }
+
+  protected def schemeOf(uri: String): Option[String] =
+    Try(new URI(uri)).toOption.flatMap(u => Option(u.getScheme))
+
+  protected def normalizeClasspathPath(raw: String): String = {
+    val trimmed = raw.trim
+    val withSlash = if (trimmed.startsWith("/")) trimmed else s"/$trimmed"
+    val normalized = Paths.get(withSlash).normalize.toString.replace('\\', '/')
+    if (normalized.startsWith("/")) normalized else s"/$normalized"
   }
 
   def render(htmlContent: String, outputStream: OutputStream) = {
@@ -188,10 +309,10 @@ object PdfRenderer {
     // Register custom ReplacedElementFactory implementation
     sharedContext.getTextRenderer.setSmoothingThreshold(0)
 
-    // Register additional font
-    val fontResourceLoader = new FontResourceLoader(renderer.getOutputDevice)
-    // fontResourceLoader.setSharedContext(renderer.getSharedContext)
-    renderer.getSharedContext.setUserAgentCallback(fontResourceLoader)
+    val assetsLoader = new TemplateAssetsLoader(renderer.getOutputDevice)
+    // Prefer classpath resolution over CWD file: fallback used by NaiveUserAgent
+    assetsLoader.setBaseURL("classpath:/")
+    renderer.getSharedContext.setUserAgentCallback(assetsLoader)
 
     renderer.setDocumentFromString(htmlContent)
     renderer.layout
