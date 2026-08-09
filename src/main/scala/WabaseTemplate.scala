@@ -11,7 +11,7 @@ import org.xhtmlrenderer.util.{FontUtil, ImageUtil}
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream, InputStream, OutputStream}
 import java.net.{URI, URLDecoder}
 import java.nio.charset.StandardCharsets
-import java.nio.file.{FileSystems, Files, Path, Paths}
+import java.nio.file.{Files, Path, Paths}
 import scala.concurrent.{ExecutionContext, Future}
 import scala.jdk.CollectionConverters._
 import scala.util.Try
@@ -58,9 +58,33 @@ trait WabaseTemplateLoader {
 }
 
 class DefaultWabaseTemplateLoader extends WabaseTemplateLoader {
-  val TemplateDirParam = "app.template.dir"
+  val TemplateDirParam       = "app.template.dir"
+  val ClasspathPrefixParam   = "app.template.classpath-prefix"
   val fn_reg_ex = """(\d+?)/([0-9a-fA-F]{64})$""".r // filename in form: id/sha256
-  val template_dir = if (config.hasPath(TemplateDirParam)) config.getString(TemplateDirParam) else null
+
+  val template_dir: String =
+    if (config.hasPath(TemplateDirParam)) config.getString(TemplateDirParam) else null
+
+  /** Absolute normalized filesystem root for templates; None if `app.template.dir` is unset. */
+  lazy val templateDirPath: Option[Path] =
+    Option(template_dir).map(_.trim).filter(_.nonEmpty).map(p => Paths.get(p).toAbsolutePath.normalize)
+
+  /**
+   * Allowed classpath path prefix (normalized to start and end with '/').
+   * Empty / unset disables classpath template loading.
+   */
+  lazy val classpathPrefix: Option[String] = {
+    if (!config.hasPath(ClasspathPrefixParam) || config.getIsNull(ClasspathPrefixParam)) None
+    else {
+      val raw = config.getString(ClasspathPrefixParam).trim
+      if (raw.isEmpty) None
+      else {
+        val normalized = TemplatePathUtils.normalizeClasspathPath(raw)
+        val withSlash = if (normalized.endsWith("/")) normalized else s"$normalized/"
+        Option(withSlash).filter(_ != "/")
+      }
+    }
+  }
 
   override def load(template: String)(implicit
     ec: ExecutionContext,
@@ -90,24 +114,55 @@ class DefaultWabaseTemplateLoader extends WabaseTemplateLoader {
     ec: ExecutionContext,
     as: ActorSystem
   ): Option[Future[Array[Byte]]] = {
-    Option(template_dir)
-      .map(FileSystems.getDefault.getPath(_, template))
-      .filter(_.toFile.exists)
-      .map(FileIO.fromPath(_))
-      .map {
-        _.runFold(ByteString.empty)(_ ++ _).map(_.toArray)
-      }
+    for {
+      root <- templateDirPath
+      path <- resolveUnderRoot(root, template) if Files.isRegularFile(path)
+    } yield FileIO.fromPath(path).runFold(ByteString.empty)(_ ++ _).map(_.toArray)
   }
 
   protected def loadFromResource(template: String)(implicit
     ec: ExecutionContext,
     as: ActorSystem
   ): Option[Future[Array[Byte]]] = {
-    Option(getClass.getResourceAsStream(template))
-      .map(in => StreamConverters.fromInputStream(() => in))
-      .map {
-        _.runFold(ByteString.empty)(_ ++ _).map(_.toArray)
-      }
+    classpathPathOf(template).flatMap { path =>
+      Option(getClass.getResourceAsStream(path))
+        .orElse(Option(getClass.getResourceAsStream(path.drop(1))))
+    }.map { in =>
+      StreamConverters.fromInputStream(() => in).runFold(ByteString.empty)(_ ++ _).map(_.toArray)
+    }
+  }
+
+  /** Decode + reject traversal; require path under `root`. */
+  protected def resolveUnderRoot(root: Path, template: String): Option[Path] =
+    TemplatePathUtils.safeDecodedPath(template).map { decoded =>
+      val raw = Paths.get(decoded)
+      if (raw.isAbsolute) raw.toAbsolutePath.normalize
+      else root.resolve(decoded).toAbsolutePath.normalize
+    }.filter(_.startsWith(root))
+
+  /** Decode + reject traversal; require configured classpath prefix. */
+  protected def classpathPathOf(template: String): Option[String] =
+    for {
+      prefix <- classpathPrefix
+      decoded <- TemplatePathUtils.safeDecodedPath(template)
+      path = TemplatePathUtils.normalizeClasspathPath(decoded)
+      if path != "/" && path.nonEmpty && path.startsWith(prefix)
+    } yield path
+}
+
+/** Shared path checks for template bodies and PDF assets (path traversal / double-encoding). */
+private[wabase] object TemplatePathUtils {
+  def safeDecodedPath(raw: String): Option[String] = {
+    val decoded = URLDecoder.decode(raw, StandardCharsets.UTF_8)
+    if (decoded.contains("..") || decoded.contains('%') || decoded.contains('\u0000')) None
+    else Some(decoded)
+  }
+
+  def normalizeClasspathPath(raw: String): String = {
+    val trimmed = raw.trim
+    val withSlash = if (trimmed.startsWith("/")) trimmed else s"/$trimmed"
+    val normalized = Paths.get(withSlash).normalize.toString.replace('\\', '/')
+    if (normalized.startsWith("/")) normalized else s"/$normalized"
   }
 }
 
@@ -186,7 +241,7 @@ object PdfRenderer {
   /** Allowed classpath path prefixes (normalized to start and end with '/'). */
   lazy val assetsClasspathPrefixes: Seq[String] =
     config.getStringList(AssetsClasspathPrefixesParam).asScala.toSeq
-      .map(normalizeClasspathPath)
+      .map(TemplatePathUtils.normalizeClasspathPath)
       .map(p => if (p.endsWith("/")) p else s"$p/")
       .filter(p => p != "/")
 
@@ -268,15 +323,8 @@ object PdfRenderer {
     }
   }
 
-  /**
-   * Single percent-decode pass, then reject residual `..`, `%`, or NUL
-   * (blocks traversal and double-encoding).
-   */
-  protected def safeDecodedPath(raw: String): Option[String] = {
-    val decoded = URLDecoder.decode(raw, StandardCharsets.UTF_8)
-    if (decoded.contains("..") || decoded.contains('%') || decoded.contains('\u0000')) None
-    else Some(decoded)
-  }
+  protected def safeDecodedPath(raw: String): Option[String] =
+    TemplatePathUtils.safeDecodedPath(raw)
 
   protected def isAllowedClasspathPath(path: String): Boolean =
     assetsClasspathPrefixes.exists(path.startsWith)
@@ -293,12 +341,8 @@ object PdfRenderer {
   protected def schemeOf(uri: String): Option[String] =
     Try(new URI(uri)).toOption.flatMap(u => Option(u.getScheme))
 
-  protected def normalizeClasspathPath(raw: String): String = {
-    val trimmed = raw.trim
-    val withSlash = if (trimmed.startsWith("/")) trimmed else s"/$trimmed"
-    val normalized = Paths.get(withSlash).normalize.toString.replace('\\', '/')
-    if (normalized.startsWith("/")) normalized else s"/$normalized"
-  }
+  protected def normalizeClasspathPath(raw: String): String =
+    TemplatePathUtils.normalizeClasspathPath(raw)
 
   def render(htmlContent: String, outputStream: OutputStream) = {
     val renderer = new ITextRenderer
