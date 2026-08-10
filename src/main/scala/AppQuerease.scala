@@ -1237,6 +1237,11 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   )(implicit qr: QuereaseResources): Future[TemplateResult] = {
     import qr._, resourcesFactory._, context.env
     implicit val fs: FileStreamer = fileStreamers.fs(null)
+    require(op.body == null || op.name == null, "Cannot be set both template body and template name")
+    val byNameTemplate = op.name != null
+    val targetName = Option(op.filenameTresql)
+      .map(t => useResourcesConnOrEvaluator(resources,
+        res => Query(t.tresql)(res.withParams(scope.toBindeableMap(env))).unique[String]))
     def template(res: Any): Future[String] = res match {
       case TresqlResult(r) => Future.successful(r.unique[String])
       case HttpResult(resp, _) => template(resp)
@@ -1249,27 +1254,24 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     }
     def doTemplate(template: String) =
       if (op.dataOp == null) {
-        templateEngine(template, scope.toBindeableMap(env))
+        templateEngine(template, byNameTemplate, scope.toBindeableMap(env), targetName.orNull)
       } else {
         doActionOp(op.dataOp, scope, context)
           .flatMap(dataForNextStep(_, context, false))
           .flatMap {
-            case m: Map[String@unchecked, _] => templateEngine(template, m)
-            case s: Seq[Map[String, _]@unchecked] => templateEngine(template, s)
-            case NoResult => templateEngine(template, Map.empty)
+            case m: Map[String@unchecked, _] => templateEngine(template, byNameTemplate, m, targetName.orNull)
+            case s: Seq[Map[String, _]@unchecked] => templateEngine(template, byNameTemplate, s, targetName.orNull)
+            case NoResult => templateEngine(template, byNameTemplate, Map.empty, targetName.orNull)
             case x =>
               val className = Option(x).map(_.getClass.getName).orNull
               sys.error(s"Unexpected template data class: $className. Expecting Map[String, _] or Seq[_]")
           }
       }
     for {
-      template  <- doActionOp(op.template, scope, context) flatMap template
+      template  <- doActionOp(Option(op.body).getOrElse(op.name), scope, context) flatMap template
       res       <- doTemplate(template)
     } yield
-      Option(op.filenameTresql)
-        .map(t => useResourcesConnOrEvaluator(resources,
-        res => Query(t.tresql)(res.withParams(scope.toBindeableMap(env))).unique[String]))
-        .map { filename => res match {
+        targetName.map { filename => res match {
           case ft: FileTemplateResult => ft.copy(filename = filename)
           case StringTemplateResult(r) => FileTemplateResult(
             filename, ContentTypes.`text/plain(UTF-8)`.toString, r.getBytes("UTF8"))

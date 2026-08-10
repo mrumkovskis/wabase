@@ -46,11 +46,13 @@ class WabaseTemplateLoaderSpecs extends FlatSpec with Matchers with BeforeAndAft
 
   it should "reject filesystem path traversal" in {
     // falls through to raw string body when path is rejected
-    loadUtf8("../../../../etc/passwd") shouldBe "../../../../etc/passwd"
+    intercept[BusinessException](loadUtf8("../../../../etc/passwd"))
+      .getMessage shouldBe "Template not found: ../../../../etc/passwd"
   }
 
   it should "reject encoded traversal for filesystem templates" in {
-    loadUtf8("%2e%2e/%2e%2e/etc/passwd") shouldBe "%2e%2e/%2e%2e/etc/passwd"
+    intercept[BusinessException](loadUtf8("%2e%2e/%2e%2e/etc/passwd"))
+      .getMessage shouldBe "Template not found: %2e%2e/%2e%2e/etc/passwd"
   }
 
   it should "reject files outside template dir even with absolute path" in {
@@ -58,9 +60,7 @@ class WabaseTemplateLoaderSpecs extends FlatSpec with Matchers with BeforeAndAft
     try {
       val secret = other.resolve("secret.txt")
       Files.writeString(secret, "secret")
-      val body = loadUtf8(secret.toAbsolutePath.toString)
-      body should not be "secret"
-      body shouldBe secret.toAbsolutePath.toString
+      intercept[BusinessException](loadUtf8(secret.toAbsolutePath.toString))
     } finally {
       Files.walk(other).sorted(java.util.Comparator.reverseOrder()).forEach(Files.deleteIfExists(_))
     }
@@ -71,18 +71,22 @@ class WabaseTemplateLoaderSpecs extends FlatSpec with Matchers with BeforeAndAft
   }
 
   it should "reject classpath paths outside configured prefix" in {
-    loadUtf8("/resource.txt") shouldBe "/resource.txt"
+    intercept[BusinessException](loadUtf8("/resource.txt"))
+      .getMessage shouldBe "Template not found: /resource.txt"
   }
 
   it should "reject classpath path traversal" in {
-    loadUtf8("/templates/../resource.txt") shouldBe "/templates/../resource.txt"
+    intercept[BusinessException](loadUtf8("/templates/../resource.txt"))
+      .getMessage shouldBe "Template not found: /templates/../resource.txt"
   }
 
   it should "reject residual percent encoding on classpath paths" in {
-    loadUtf8("/templates/%252e%252e/x") shouldBe "/templates/%252e%252e/x"
+    intercept[BusinessException](loadUtf8("/templates/%252e%252e/x"))
+      .getMessage shouldBe "Template not found: /templates/%252e%252e/x"
   }
 
   it should "use template string as body when not found as path" in {
-    loadUtf8("Hello inline {{x}}!") shouldBe "Hello inline {{x}}!"
+    intercept[BusinessException](loadUtf8("Hello inline {{x}}!"))
+      .getMessage shouldBe "Template not found: Hello inline {{x}}!"
   }
 }

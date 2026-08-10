@@ -17,7 +17,7 @@ import scala.jdk.CollectionConverters._
 import scala.util.Try
 
 trait WabaseTemplate {
-  def apply(template: String, data: Iterable[_])(implicit
+  def apply(template: String, byName: Boolean, data: Iterable[_], targetName: String)(implicit
     ec: ExecutionContext,
     as: ActorSystem,
     fs: FileStreamer,
@@ -34,18 +34,13 @@ class DefaultWabaseTemplate extends WabaseTemplate {
   private def factory[T](propName: String)(implicit m: Manifest[T]): T = {
     getObjectOrNewInstance[T](config, propName, "template factory")
   }
-  val templateAndNameR = """(.*)\|([_\p{IsLatin}][_\p{IsLatin}0-9\- \.]*)$""".r
-  override def apply(template: String, data: Iterable[_])(implicit
+  override def apply(template: String, byName: Boolean, data: Iterable[_], targetName: String)(implicit
     ec: ExecutionContext,
     as: ActorSystem,
     fs: FileStreamer
   ): Future[TemplateResult] = {
-    val matcher = templateAndNameR.pattern.matcher(template)
-    val (templ, name) =
-      if   (matcher.matches)
-           (matcher.group(1), matcher.group(2))
-      else (template, template)
-    loader.load(templ).flatMap { renderer(name, _, data) }
+    (if (byName) loader.load(template) else Future.successful(template.getBytes("UTF-8")))
+      .flatMap { renderer(targetName, _, data) }
   }
 }
 
@@ -94,7 +89,7 @@ class DefaultWabaseTemplateLoader extends WabaseTemplateLoader {
     loadFromFileStreamer(template)
       .orElse(loadFromFile(template))
       .orElse(loadFromResource(template))
-      .getOrElse(Future.successful(template.getBytes("UTF-8")))
+      .getOrElse(throw new BusinessException(s"Template not found: $template"))
   }
 
   protected def loadFromFileStreamer(template: String)(implicit

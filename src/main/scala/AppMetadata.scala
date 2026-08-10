@@ -1066,18 +1066,18 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
     } named "to-file-op"
   }
   def templateOp: MemParser[Template] = {
+    val Body = "body"
+    val Name = "name"
     val Data = "data"
     val Filename = "filename"
-    val args = Set(Data, Filename)
-    "template\\s+".r ~> operation ~ namedOps(args) ^^ {
-      case templ ~ args =>
-        args match {
-          case Nil => Template(templ, null, null)
-          case l =>
-            val dataOp = findArg(Data, 0, l)
-            val filename = findArg(Filename, 1, l).map(_.asInstanceOf[Tresql])
-            Template(templ, dataOp.orNull, filename.orNull)
-        }
+    val args = Set(Body, Name, Data, Filename)
+    "template\\s+".r ~> namedOps(args) ^^ { args =>
+      val body = findArg(Body, 0, args)
+      val name = findArg(Name, 0, args)
+      val dataOp = findArg(Data, 1, args)
+      val filename = findArg(Filename, 2, args).map(_.asInstanceOf[Tresql])
+      require((body.isEmpty && name.nonEmpty) || (body.nonEmpty && name.isEmpty), s"One of template parameters body or name must be specified")
+      Template(body.orNull, name.orNull, dataOp.orNull, filename.orNull)
     } named "template-op"
   }
   def emailOp: MemParser[Email] = {
@@ -1163,7 +1163,7 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
   }
   def response: MemParser[Response] = {
     val StResp = "(status|response)\\s+".r
-    (StResp ~ (("ok" | "\\d+".r | variable) ~ setHttpHeadersOps ~ opt(operation))) ^? ({
+    (StResp ~ (("ok" | "\\d+".r | variable) ~ setHttpHeadersOps ~ opt(operation))) ^? {
       case StResp(sor) ~ (c ~ hops ~ body) =>
         val code = c match {
           case "ok" => Tresql("200")
@@ -1171,7 +1171,7 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
           case _ => Tresql(String.valueOf(c))
         }
         Action.Response(code, sor == "status", hops, body.orNull)
-    }) named "response-op"
+    } named "response-op"
   }
   /* Cannot be named mem parser since depends on parameter. */
   def setOrDeleteCookie(cmd: String, mandatoryPars: Set[String] = Set()): Parser[SetHttpHeadersOp] =
@@ -1185,7 +1185,7 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
           case x => sys.error(s"Knipis: allowed 'set_cookie' or 'delete_cookie', found: '$x'")
         }
     }, {
-      case p => sys.error(s"$cmd operation must have 'name' parameteter and currently operation allows only tresql" +
+      p => sys.error(s"$cmd operation must have 'name' parameteter and currently operation allows only tresql" +
         s" parameters, found: $p")
     }) named "set-or-delete-cookie"
   def setCookie: MemParser[SetCookie] =
@@ -1437,7 +1437,7 @@ object AppMetadata extends Loggable {
       contentTypeTresql: Tresql = null,
       fileStreamerName: String = null,
     ) extends Op
-    case class Template(template: Op, dataOp: Op = null, filenameTresql: Tresql = null) extends Op
+    case class Template(body: Op = null, name: Op = null, dataOp: Op = null, filenameTresql: Tresql = null) extends Op
     case class Email(recipients: Op, subject: Op, body: Op, attachmentsOp: List[Op] = Nil, isBatch: Boolean = false) extends Op
     case class Http(method: String,
                     uriTresql: TresqlUri.Tresql,
@@ -1520,7 +1520,7 @@ object AppMetadata extends Loggable {
           val r = traverseAction(a)(stepTrav)(opTrav(state)(o))
           if (e == null) r else traverseAction(e)(stepTrav)(r)
         case o: ToFile => opTrav(state)(o.contentOp)
-        case o: Template => opTrav(state)(o.dataOp)
+        case o: Template => opTrav(opTrav(opTrav(state)(o.body))(o.name))(o.dataOp)
         case Email(r, s, b, a, _) => a.foldLeft(opTrav(opTrav(opTrav(state)(r))(s))(b))(opTrav(_)(_))
         case o: Http => opTrav(state)(o.body)
         case h: HttpHeader => if (h.httpOp == null) state else opTrav(state)(h.httpOp)
@@ -1608,8 +1608,8 @@ object AppMetadata extends Loggable {
               val s1 = opTrTr(contentOp)
               val s2 = us(s1, nv(s1.value)(nameTresql))
               us(s2, nv(s2.value)(contentTypeTresql))
-            case Template(template, dataOp, filenameTresql) =>
-              val s = opTresqlTrav(opTresqlTrav(state)(template))(dataOp)
+            case Template(body, name, dataOp, filenameTresql) =>
+              val s = opTresqlTrav(opTresqlTrav(opTresqlTrav(state)(body))(name))(dataOp)
               us(s, nv(s.value)(filenameTresql))
             case Email(r, s, b, a, _) =>
               a.foldLeft(

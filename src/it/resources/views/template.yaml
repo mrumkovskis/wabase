@@ -2,4 +2,4 @@ name:   template_test
 api:    get
 get:
 - template = '<!DOCTYPE html><html><head><title>{{title}}</title></head><body><h1>{{header}}</h1><p>{{body}}</p></body></html>'
-- template { :template || '|' || :filename }  # XXX concating filename to choose renderer # TODO Content-Type   
+- template body=:template filename=:filename

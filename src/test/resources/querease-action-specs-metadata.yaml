@@ -1316,17 +1316,17 @@ decoder: none
 fields:
 - name
 get:
-- template 'Hello {{name}}!'
+- template body='Hello {{name}}!'
 list:
-- template {'Hello {{title}}. {{name}}!'} {:name name, 'Ms' title}
+- template body={'Hello {{title}}. {{name}}!'} data={:name name, 'Ms' title}
 insert:
-- template ('Hello {{name}}!') filename='file name'
+- template body=('Hello {{name}}!') filename='file name'
 update:
-- template (extract entity) filename='file name' data={:name name, 'update' action}
+- template body=(extract entity) filename='file name' data={:name name, 'update' action}
 delete:
 - template = {'Hello {{name}} in {{action}}!'}
 - template_file = to file :template content_type = 'text/plain; charset=UTF-8'
-- template (file {:template_file.id, :template_file.sha_256}) data={:name name, 'delete' action}
+- template body=(file {:template_file.id, :template_file.sha_256}) data={:name name, 'delete' action}
 
 
 name: email_test1
@@ -1342,15 +1342,15 @@ insert:
     content_type = 'text/csv; charset=UTF-8'
 - email batch
     extract entity using default_csv_decoder file {:recipients.id, :recipients.sha_256}
-    (template 'Subject for {{name}}!')
-    (template 'Content for {{recipient}}.' {trim(:name) recipient})
+    (template body='Subject for {{name}}!')
+    (template body='Content for {{recipient}}.' {trim(:name) recipient})
     (http { '/email_test1', '?', :name name })
     (file {:file.id, :file.sha_256})
-    (template 'Template attachment for {{name}}' {trim(:name) name} 'attachment name')
+    (template body='Template attachment for {{name}}' {trim(:name) name} 'attachment name')
 - email
     ({ 'c@c.c' 'to', 'Minna' name, 'c1@.c1.c1' cc, 'f@f.f' 'from', 'r@r.r' replyTo })
-    (template 'Subject for {{name}}!')
-    (template 'Content for {{recipient}}.' {trim(:name) recipient})
+    (template body='Subject for {{name}}!')
+    (template body='Content for {{recipient}}.' data={trim(:name) recipient})
 - email null[false]{'n@n.n' 'to'} 'no mail' 'no content'
 
 
