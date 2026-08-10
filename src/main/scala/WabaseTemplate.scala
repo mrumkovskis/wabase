@@ -208,7 +208,8 @@ class MustacheTemplateRenderer extends WabaseTemplateRenderer {
         .execute(context)
     } catch {
       case util.control.NonFatal(ex) =>
-        throw new RuntimeException(s"Failed to render template '$templateString' with values $data", ex)
+        throw new RuntimeException(s"Failed to render template '$templateString', " +
+          s"data class: ${Option(data).map(_.getClass.getName).orNull}", ex)
     }
   }
 }
