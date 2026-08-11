@@ -55,7 +55,7 @@ trait WabaseTemplateLoader {
 class DefaultWabaseTemplateLoader extends WabaseTemplateLoader {
   val TemplateDirParam       = "app.template.dir"
   val ClasspathPrefixParam   = "app.template.classpath-prefix"
-  val fn_reg_ex = """(\d+?)/([0-9a-fA-F]{64})$""".r // filename in form: id/sha256
+  val fsFilenameR            = """^(\d{1,19})/([0-9a-f]{64})$""".r // filename in form: id/sha256 - used by FileStreamer
 
   val template_dir: String =
     if (config.hasPath(TemplateDirParam)) config.getString(TemplateDirParam) else null
@@ -97,12 +97,13 @@ class DefaultWabaseTemplateLoader extends WabaseTemplateLoader {
     as: ActorSystem,
     fs: FileStreamer,
   ): Option[Future[Array[Byte]]] = {
-    Option(fs).filter(_ => fn_reg_ex.pattern.matcher(template).matches()).flatMap { fs =>
-      val fn_reg_ex(id, sha) = template: @unchecked
-      fs.getFileInfo(id.toLong, sha).map {
+    Option(fs).flatMap { fs => template match {
+     case fsFilenameR(id, sha) => Try(id.toLong).toOption.flatMap { idLong =>
+      fs.getFileInfo(idLong, sha).map {
         _.source.runFold(ByteString.empty)(_ ++ _).map(_.toArray)
-      }
-    }
+      }}
+     case _ => None
+    }}
   }
 
   protected def loadFromFile(template: String)(implicit
