@@ -162,7 +162,7 @@ private[wabase] object TemplatePathUtils {
 }
 
 trait WabaseTemplateRenderer {
-  def apply(templateName: String, template: Array[Byte], data: Iterable[_]): Future[TemplateResult]
+  def apply(templateName: String, template: Array[Byte], data: Iterable[_])(implicit ec: ExecutionContext): Future[TemplateResult]
 }
 
 class MustacheTemplateCache(maxSize: Int)
@@ -174,7 +174,7 @@ class MustacheTemplateCache(maxSize: Int)
 class MustacheTemplateRenderer extends WabaseTemplateRenderer {
   protected val cache: Option[MustacheTemplateCache] =
     Some(new MustacheTemplateCache(256))
-  override def apply(templateName: String, template: Array[Byte], data: Iterable[_]): Future[TemplateResult] = {
+  override def apply(templateName: String, template: Array[Byte], data: Iterable[_])(implicit ec: ExecutionContext): Future[TemplateResult] = {
     Future.successful(StringTemplateResult(
       render(templateName, template, data)
     ))
@@ -210,7 +210,7 @@ class MustacheTemplateRenderer extends WabaseTemplateRenderer {
 }
 
 class MustacheAndPdfTemplateRenderer extends MustacheTemplateRenderer {
-  override def apply(templateName: String, template: Array[Byte], data: Iterable[_]): Future[TemplateResult] = {
+  override def apply(templateName: String, template: Array[Byte], data: Iterable[_])(implicit ec: ExecutionContext): Future[TemplateResult] = {
     Future.successful {
       val s = super.render(templateName, template, data)
       if (templateName endsWith ".pdf") {
