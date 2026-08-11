@@ -96,11 +96,15 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root)(impli
     def map: scala.collection.immutable.Map[RestClient.CookieKey, HttpCookie] =
       lock.synchronized(store.toMap)
 
+    /** All stored cookies as a `Cookie` header (no URI scoping; not for outbound requests). */
     def getCookies: iSeq[Cookie] = lock.synchronized {
       cookieHeader(store.values)
     }
 
-    /** Cookies in scope for `uri` (host-only / domain-match + path-match). */
+    /**
+     * Cookies in scope for `uri` (host-only / domain-match + path-match + Secure).
+     * Cookies with the `Secure` attribute are omitted unless the URI scheme is `https` or `wss`.
+     */
     def getCookies(uri: Uri): iSeq[Cookie] = lock.synchronized {
       val host = uri.authority.host.address
       val path = {
@@ -109,7 +113,7 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root)(impli
       }
       cookieHeader(
         store.iterator.collect {
-          case (key, cookie) if RestClient.cookieMatches(key, cookie, host, path) => cookie
+          case (key, cookie) if RestClient.cookieMatches(key, cookie, host, path, uri.scheme) => cookie
         }.toList
       )
     }
@@ -303,7 +307,7 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root)(impli
     *                        `Last-Modified`) are stripped (RFC 9110 §15.4). When following to a
     *                        different origin (scheme/host/port), `Authorization`, `Cookie`, and
     *                        `Host` are also stripped; cookies from the jar are re-scoped to the
-    *                        redirect URI (host-only + Domain).
+    *                        redirect URI (host-only + Domain + Secure).
     * @return future of the final HTTP response (after optional redirect following)
     */
   protected def doRequest(
@@ -395,7 +399,7 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root)(impli
         Source.maybe[Message])(Keep.right)
 
     val (upgradeResponse, promise) = Http().singleWebSocketRequest(
-      WebSocketRequest(serverWsPath, extraHeaders = getCookieStorage.getCookies), deferredFlow)
+      WebSocketRequest(serverWsPath, extraHeaders = getCookieStorage.getCookies(Uri(serverWsPath))), deferredFlow)
     clearCookies
     upgradeResponse
   }
@@ -460,21 +464,28 @@ object RestClient extends Loggable {
   }
 
   /**
-   * RFC 6265 §5.4 host + path match for a stored cookie.
+   * RFC 6265 §5.4 host + path + Secure match for a stored cookie.
    * Host-only when `cookie.domain` is empty (exact match on key.domain);
    * otherwise domain-match using key.domain.
+   * Secure cookies are only included for secure request schemes (`https`, `wss`).
    */
   private[client] def cookieMatches(
     key: CookieKey,
     cookie: HttpCookie,
     requestHost: String,
     requestPath: String,
+    requestScheme: String,
   ): Boolean = {
     val domainOk =
       if (cookie.domain.isEmpty) key.domain.equalsIgnoreCase(requestHost)
       else cookieDomainMatches(requestHost, key.domain)
-    domainOk && cookiePathMatches(requestPath, key.path)
+    val secureOk = !cookie.secure || isSecureRequestScheme(requestScheme)
+    domainOk && cookiePathMatches(requestPath, key.path) && secureOk
   }
+
+  /** Schemes over which cookies with the `Secure` attribute may be sent (RFC 6265 §5.4). */
+  private[client] def isSecureRequestScheme(scheme: String): Boolean =
+    scheme.equalsIgnoreCase("https") || scheme.equalsIgnoreCase("wss")
 
   /**
    * Content-specific request headers that must be removed when a redirect changes the method

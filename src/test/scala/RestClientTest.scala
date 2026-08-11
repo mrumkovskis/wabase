@@ -345,6 +345,29 @@ class RestClientTest  extends FlatSpec with Matchers with ScalatestRouteTest wit
     cookies.getCookies(Uri("http://example.com/api/v1")).flatMap(_.cookies.map(_.value)).toSet shouldBe Set("root", "api")
   }
 
+  it should "send Secure cookies only over https or wss" in {
+    val cookies = new client.CookieMap
+    val httpsUri = Uri("https://example.com/app")
+    cookies.setCookiesFromHeaders(
+      iSeq(`Set-Cookie`(HttpCookie("sid", "secret", secure = true, path = Some("/")))),
+      httpsUri,
+    )
+    cookies.getCookies(Uri("https://example.com/app")).flatMap(_.cookies.map(_.name)) should contain ("sid")
+    cookies.getCookies(Uri("wss://example.com/app")).flatMap(_.cookies.map(_.name)) should contain ("sid")
+    cookies.getCookies(Uri("http://example.com/app")) shouldBe empty
+    cookies.getCookies(Uri("ws://example.com/app")) shouldBe empty
+  }
+
+  it should "still send non-Secure cookies over http" in {
+    val cookies = new client.CookieMap
+    cookies.setCookiesFromHeaders(
+      iSeq(`Set-Cookie`(HttpCookie("sid", "plain", secure = false, path = Some("/")))),
+      Uri("http://example.com/"),
+    )
+    cookies.getCookies(Uri("http://example.com/")).flatMap(_.cookies.map(_.name)) should contain ("sid")
+    cookies.getCookies(Uri("https://example.com/")).flatMap(_.cookies.map(_.name)) should contain ("sid")
+  }
+
   it should "use defaultCookieHost and defaultCookiePath for setCookies when domain/path omitted" in {
     val cookies = new client.CookieMap
     cookies.setCookies(Map("lang" -> "en"))
