@@ -213,7 +213,7 @@ class MustacheAndPdfTemplateRenderer extends MustacheTemplateRenderer {
   override def apply(templateName: String, template: Array[Byte], data: Iterable[_])(implicit ec: ExecutionContext): Future[TemplateResult] = {
     Future.successful {
       val s = super.render(templateName, template, data)
-      if (templateName endsWith ".pdf") {
+      if (templateName != null && templateName.endsWith(".pdf")) {
         val baos = new ByteArrayOutputStream
         PdfRenderer.render(s, baos)
         FileTemplateResult(templateName, "application/pdf", baos.toByteArray)
