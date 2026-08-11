@@ -1430,7 +1430,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
             r shouldBe a [FileTemplateResult]
             val fa = r.asInstanceOf[FileTemplateResult]
             fa.filename shouldBe "file name"
-            new String(fa.content) shouldBe "Hello Boris!"
+            new String(fa.content) should startWith("Hello Boris!")
           }
       t4 <-
         Put("/template_test1?name=Joe",

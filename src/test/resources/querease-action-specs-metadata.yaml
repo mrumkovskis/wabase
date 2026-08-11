@@ -1320,7 +1320,7 @@ get:
 list:
 - template body={'Hello {{title}}. {{name}}!'} data={:name name, 'Ms' title}
 insert:
-- template body=('Hello {{name}}!') filename='file name'
+- template name='hello.txt' filename='file name'
 update:
 - template body=(extract entity) filename='file name' data={:name name, 'update' action}
 delete:
