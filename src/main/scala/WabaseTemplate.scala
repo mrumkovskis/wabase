@@ -121,7 +121,6 @@ class DefaultWabaseTemplateLoader extends WabaseTemplateLoader {
   ): Option[Future[Array[Byte]]] = {
     classpathPathOf(template).flatMap { path =>
       Option(getClass.getResourceAsStream(path))
-        .orElse(Option(getClass.getResourceAsStream(path.drop(1))))
     }.map { in =>
       StreamConverters.fromInputStream(() => in).runFold(ByteString.empty)(_ ++ _).map(_.toArray)
     }
@@ -269,7 +268,6 @@ object PdfRenderer {
   protected def openClasspathAsset(uri: String): Option[InputStream] = {
     classpathPathOf(uri).filter(isAllowedClasspathPath).flatMap { path =>
       Option(getClass.getResourceAsStream(path))
-        .orElse(Option(getClass.getResourceAsStream(path.drop(1)))) // without leading '/'
     }
   }
 
