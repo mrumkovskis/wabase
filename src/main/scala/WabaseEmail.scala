@@ -13,9 +13,10 @@ import org.simplejavamail.api.mailer.Mailer
 import org.simplejavamail.config.ConfigLoader
 import org.simplejavamail.email.EmailBuilder
 import org.simplejavamail.mailer.MailerBuilder
+import org.simplejavamail.recipient.RecipientsBuilder
 
 import java.io.{InputStream, OutputStream}
-import java.util.Properties
+import java.util.{Collections => JCollections, Properties}
 import scala.collection.immutable.Seq
 import scala.concurrent.{ExecutionContext, Future}
 import scala.jdk.FutureConverters.CompletionStageOps
@@ -92,10 +93,13 @@ class DefaultWabaseEmailSender extends WabaseEmail with Loggable {
       if (value != null && value != "")
         setter(value)
     }
-    // SJM 9.x: to/cc/bcc matrix replaced by withRecipients(..., RecipientType, addresses)
     def withRecipients(recipientType: RecipientType, addresses: String): Unit = {
       if (addresses != null && addresses != "")
-        builder.withRecipients(/*name=*/null: String, /*fixedName=*/false, recipientType, addresses)
+        builder.withRecipients(
+          new RecipientsBuilder()
+            .withRecipients(/*name=*/null, /*fixedName=*/false, JCollections.singletonList(addresses), recipientType)
+            .buildRecipients()
+        )
     }
     withRecipients(RecipientType.TO,  to)
     withRecipients(RecipientType.CC,  cc)
