@@ -57,12 +57,11 @@ class DefaultWabaseTemplateLoader extends WabaseTemplateLoader {
   val ClasspathPrefixParam   = "app.template.classpath-prefix"
   val fsFilenameR            = """^(\d{1,19})/([0-9a-f]{64})$""".r // filename in form: id/sha256 - used by FileStreamer
 
-  val template_dir: String =
-    if (config.hasPath(TemplateDirParam)) config.getString(TemplateDirParam) else null
-
   /** Absolute normalized filesystem root for templates; None if `app.template.dir` is unset. */
   lazy val templateDirPath: Option[Path] =
-    Option(template_dir).map(_.trim).filter(_.nonEmpty).map(p => Paths.get(p).toAbsolutePath.normalize)
+    if (!config.hasPath(TemplateDirParam) || config.getIsNull(TemplateDirParam)) None
+    else Option(config.getString(TemplateDirParam).trim).filter(_.nonEmpty)
+      .map(p => Paths.get(p).toAbsolutePath.normalize)
 
   /**
    * Allowed classpath path prefix (normalized to start and end with '/').
