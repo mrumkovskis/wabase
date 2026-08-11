@@ -7,7 +7,7 @@ import org.apache.pekko.http.scaladsl.Http
 import org.apache.pekko.http.scaladsl.model.HttpMethods.{GET, POST, PUT}
 import org.apache.pekko.http.scaladsl.model.Uri
 import org.apache.pekko.http.scaladsl.model.headers.{Authorization, BasicHttpCredentials, Cookie, HttpCookie, Location, RawHeader, `Set-Cookie`}
-import org.apache.pekko.http.scaladsl.model.{HttpEntity, HttpHeader, HttpRequest, HttpResponse, StatusCodes}
+import org.apache.pekko.http.scaladsl.model.{DateTime, HttpEntity, HttpHeader, HttpRequest, HttpResponse, StatusCodes}
 import org.apache.pekko.http.scaladsl.server.Directives._
 import org.apache.pekko.http.scaladsl.server.Route
 import org.apache.pekko.http.scaladsl.testkit.ScalatestRouteTest
@@ -434,6 +434,81 @@ class RestClientTest  extends FlatSpec with Matchers with ScalatestRouteTest wit
     cookies.setCookies(Map("a" -> "1"), path = Some(""))
     cookies.setCookies(Map("b" -> "2"), path = Some("relative"))
     cookies.map.keySet.map(_.path).foreach(_ shouldBe client.defaultCookiePath)
+  }
+
+  it should "respect cookie Max-Age and Expires (RFC 6265 §5.3)" in {
+    val cookies = new client.CookieMap
+    val base = Uri("http://example.com/")
+    val uri = Uri("http://example.com/")
+
+    // Max-Age=0 deletes / does not store
+    cookies.setCookiesFromHeaders(
+      iSeq(`Set-Cookie`(HttpCookie("gone", "x", maxAge = Some(0L), path = Some("/")))),
+      base,
+    )
+    cookies.map.keys.map(_.name) should not contain "gone"
+
+    // Past Expires does not store
+    val past = DateTime(System.currentTimeMillis() - 1 * 60 * 1000L)
+    cookies.setCookiesFromHeaders(
+      iSeq(`Set-Cookie`(HttpCookie("past", "x", expires = Some(past), path = Some("/")))),
+      base,
+    )
+    cookies.map.keys.map(_.name) should not contain "past"
+
+    // Future Expires is stored and sent
+    val future = DateTime(System.currentTimeMillis() + 60 * 60 * 1000L)
+    cookies.setCookiesFromHeaders(
+      iSeq(`Set-Cookie`(HttpCookie("live", "1", expires = Some(future), path = Some("/")))),
+      base,
+    )
+    cookies.getCookies(uri).flatMap(_.cookies.map(_.name)) should contain ("live")
+
+    // Max-Age takes precedence over Expires: Max-Age=0 wins over future Expires
+    cookies.setCookiesFromHeaders(
+      iSeq(`Set-Cookie`(HttpCookie("live", "2", maxAge = Some(0L), expires = Some(future), path = Some("/")))),
+      base,
+    )
+    cookies.map.keys.map(_.name) should not contain "live"
+
+    // Max-Age takes precedence: positive Max-Age keeps cookie even if Expires is in the past
+    cookies.setCookiesFromHeaders(
+      iSeq(`Set-Cookie`(HttpCookie("maxage", "1", maxAge = Some(3600L), expires = Some(past), path = Some("/")))),
+      base,
+    )
+    cookies.getCookies(uri).flatMap(_.cookies.map(_.name)) should contain ("maxage")
+
+    // Max-Age relative expiry: short-lived cookie is evicted after it expires
+    cookies.setCookiesFromHeaders(
+      iSeq(`Set-Cookie`(HttpCookie("brief", "1", maxAge = Some(1L), path = Some("/")))),
+      base,
+    )
+    cookies.getCookies(uri).flatMap(_.cookies.map(_.name)) should contain ("brief")
+    Thread.sleep(1100)
+    cookies.getCookies(uri).flatMap(_.cookies.map(_.name)) should not contain "brief"
+    cookies.map.keys.map(_.name) should not contain "brief"
+
+    // Session cookie (no Max-Age / Expires) remains
+    cookies.setCookiesFromHeaders(
+      iSeq(`Set-Cookie`(HttpCookie("session", "1", path = Some("/")))),
+      base,
+    )
+    cookies.getCookies(uri).flatMap(_.cookies.map(_.name)) should contain ("session")
+  }
+
+  it should "compute cookie expiry with Max-Age precedence over Expires" in {
+    val now = 1000 * 1000 * 1000 * 1000L
+    val past = DateTime(now - 10 * 1000L)
+    val future = DateTime(now + 10 * 1000L)
+    RestClient.cookieExpiryMillis(HttpCookie("a", "1", maxAge = Some(30L)), now) shouldBe Some(now + 30 * 1000L)
+    RestClient.cookieExpiryMillis(HttpCookie("a", "1", expires = Some(future)), now) shouldBe Some(future.clicks)
+    RestClient.cookieExpiryMillis(
+      HttpCookie("a", "1", maxAge = Some(5L), expires = Some(past)), now
+    ) shouldBe Some(now + 5 * 1000L)
+    RestClient.cookieExpiryMillis(HttpCookie("a", "1"), now) shouldBe None
+    RestClient.isCookieExpired(Some(now), now) shouldBe true
+    RestClient.isCookieExpired(Some(now + 1), now) shouldBe false
+    RestClient.isCookieExpired(None, now) shouldBe false
   }
 
   it should "send Secure cookies only over https or wss" in {

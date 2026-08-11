@@ -90,7 +90,7 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root)(impli
     */
   class CookieMap {
     private val lock = new AnyRef
-    private case class StoredCookie(cookie: HttpCookie, creationTime: Long)
+    private case class StoredCookie(cookie: HttpCookie, creationTime: Long, expiryTime: Option[Long])
     private val store = scala.collection.mutable.Map.empty[RestClient.CookieKey, StoredCookie]
 
     /** Immutable snapshot of stored cookies */
@@ -98,11 +98,13 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root)(impli
       lock.synchronized(store.toMap).map { case (k, v) => k -> v.cookie }
 
     /**
-     * Cookies in scope for `uri` (host-only / domain-match + path-match + Secure).
+     * Cookies in scope for `uri` (host-only / domain-match + path-match + Secure + not expired).
      * Cookies with the `Secure` attribute are omitted unless the URI scheme is `https` or `wss`.
      * Cookie pairs are ordered per RFC 6265 §5.4: longer paths first, then earlier creation time.
+     * Expired cookies are evicted (RFC 6265 §5.3).
      */
     def getCookies(uri: Uri): iSeq[Cookie] = lock.synchronized {
+      evictExpired()
       val host = uri.authority.host.address
       val path = {
         val p = uri.path.toString
@@ -122,10 +124,26 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root)(impli
       if (pairs.isEmpty) Nil else iSeq(Cookie(pairs))
     }
 
-    /** Insert or replace; preserve creation-time on same (name, domain, path) per RFC 6265 §5.3. */
+    /** RFC 6265 §5.3: remove cookies whose expiry-time is in the past. */
+    private def evictExpired(nowMillis: Long = System.currentTimeMillis()): Unit = {
+      val expiredKeys = store.iterator.collect {
+        case (k, s) if RestClient.isCookieExpired(s.expiryTime, nowMillis) => k
+      }.toList
+      expiredKeys.foreach(store -= _)
+    }
+
+    /**
+     * Insert or replace; preserve creation-time on same (name, domain, path) per RFC 6265 §5.3.
+     * Expired cookies (Max-Age ≤ 0, past Expires) are removed instead of stored.
+     */
     private def putCookie(key: RestClient.CookieKey, cookie: HttpCookie): Unit = {
-      val creation = store.get(key).map(_.creationTime).getOrElse(System.nanoTime())
-      store(key) = StoredCookie(cookie, creation)
+      val now = System.currentTimeMillis()
+      val expiry = RestClient.cookieExpiryMillis(cookie, now)
+      if (RestClient.isCookieExpired(expiry, now)) store -= key
+      else {
+        val creation = store.get(key).map(_.creationTime).getOrElse(System.nanoTime())
+        store(key) = StoredCookie(cookie, creation, expiry)
+      }
     }
 
     def setCookiesFromHeaders(headers: iSeq[HttpHeader], requestUri: Uri = null): Unit = {
@@ -149,11 +167,7 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root)(impli
                 if (withDomain.path.contains(pathAttr)) withDomain
                 else withDomain.withPath(pathAttr)
               val key = RestClient.cookieKeyFor(toStore, reqHost, reqDefaultPath)
-              val alive =
-                (toStore.maxAge.isEmpty || toStore.maxAge.get > 0) &&
-                  (toStore.expires.isEmpty || toStore.expires.get.clicks > System.currentTimeMillis)
-              if (alive) putCookie(key, toStore)
-              else store -= key
+              putCookie(key, toStore)
             }
           case _ =>
         }
@@ -511,6 +525,21 @@ object RestClient extends Loggable {
    */
   private[client] def effectiveCookiePath(pathAttr: Option[String], requestDefaultPath: String): String =
     pathAttr.filter(p => p.nonEmpty && p.charAt(0) == '/').getOrElse(requestDefaultPath)
+
+  /**
+   * Absolute expiry time in epoch millis for a received cookie (RFC 6265 §5.3).
+   * Max-Age (seconds from `nowMillis`) takes precedence over Expires.
+   * `None` means a session cookie (no persistent expiry).
+   */
+  private[client] def cookieExpiryMillis(cookie: HttpCookie, nowMillis: Long = System.currentTimeMillis()): Option[Long] =
+    cookie.maxAge match {
+      case Some(seconds) => Some(nowMillis + seconds * 1000L)
+      case None          => cookie.expires.map(_.clicks)
+    }
+
+  /** True when `expiryTime` is present and not after `nowMillis` (RFC 6265 §5.3). */
+  private[client] def isCookieExpired(expiryTime: Option[Long], nowMillis: Long = System.currentTimeMillis()): Boolean =
+    expiryTime.exists(_ <= nowMillis)
 
   /** RFC 6265 §5.1.4 path-match. */
   private[client] def cookiePathMatches(requestPath: String, cookiePath: String): Boolean = {
