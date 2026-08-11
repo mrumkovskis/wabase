@@ -368,6 +368,79 @@ class RestClientTest  extends FlatSpec with Matchers with ScalatestRouteTest wit
     cookies.getCookies(Uri("https://example.com/")).flatMap(_.cookies.map(_.name)) should contain ("sid")
   }
 
+  it should "accept Domain that the request-host domain-matches (RFC 6265 §5.3)" in {
+    val cookies = new client.CookieMap
+    val from = Uri("http://www.example.com/app")
+    cookies.setCookiesFromHeaders(
+      iSeq(
+        `Set-Cookie`(HttpCookie("a", "1", domain = Some("example.com"), path = Some("/"))),
+        `Set-Cookie`(HttpCookie("b", "2", domain = Some(".example.com"), path = Some("/"))),
+        `Set-Cookie`(HttpCookie("c", "3", domain = Some("www.example.com"), path = Some("/"))),
+      ),
+      from,
+    )
+    cookies.map.keySet.map(_.name) should contain allOf ("a", "b", "c")
+    cookies.map.values.flatMap(_.domain).toSet shouldBe Set("example.com", "www.example.com")
+    // Domain cookie is sent to host and subdomains
+    cookies.getCookies(Uri("http://example.com/")).flatMap(_.cookies.map(_.name)).toSet should contain ("a")
+    cookies.getCookies(Uri("http://www.example.com/")).flatMap(_.cookies.map(_.name)).toSet should
+      contain allOf ("a", "b", "c")
+    cookies.getCookies(Uri("http://api.example.com/")).flatMap(_.cookies.map(_.name)).toSet should
+      contain allOf ("a", "b")
+    cookies.getCookies(Uri("http://api.example.com/")).flatMap(_.cookies.map(_.name)) should not contain "c"
+  }
+
+  it should "reject Domain that the request-host does not domain-match" in {
+    val cookies = new client.CookieMap
+    val from = Uri("http://www.example.com/")
+    cookies.setCookiesFromHeaders(
+      iSeq(
+        `Set-Cookie`(HttpCookie("evil", "x", domain = Some("evil.com"), path = Some("/"))),
+        `Set-Cookie`(HttpCookie("sibling", "y", domain = Some("other.example.com"), path = Some("/"))),
+        `Set-Cookie`(HttpCookie("deeper", "z", domain = Some("baz.www.example.com"), path = Some("/"))),
+        `Set-Cookie`(HttpCookie("ok", "1", domain = Some("example.com"), path = Some("/"))),
+      ),
+      from,
+    )
+    cookies.map.keys.map(_.name).toSet shouldBe Set("ok")
+  }
+
+  it should "not treat host-only cookies as domain cookies for subdomains" in {
+    val cookies = new client.CookieMap
+    cookies.setCookiesFromHeaders(
+      iSeq(`Set-Cookie`(HttpCookie("sid", "host-only", path = Some("/")))),
+      Uri("http://example.com/"),
+    )
+    cookies.getCookies(Uri("http://example.com/x")).flatMap(_.cookies.map(_.name)) should contain ("sid")
+    cookies.getCookies(Uri("http://www.example.com/x")) shouldBe empty
+  }
+
+  it should "domain-match only exact hosts for IP addresses (RFC 6265 §5.1.3)" in {
+    RestClient.cookieDomainMatches("192.0.2.1", "192.0.2.1") shouldBe true
+    RestClient.cookieDomainMatches("192.0.2.1", "2.1") shouldBe false
+    RestClient.cookieDomainMatches("2001:db8::1", "2001:db8::1") shouldBe true
+    RestClient.cookieDomainMatches("2001:db8::1", "db8::1") shouldBe false
+
+    val cookies = new client.CookieMap
+    cookies.setCookiesFromHeaders(
+      iSeq(`Set-Cookie`(HttpCookie("sid", "ip", domain = Some("192.0.2.1"), path = Some("/")))),
+      Uri("http://192.0.2.1/"),
+    )
+    cookies.map.keys.map(_.name) should contain ("sid")
+    // Domain=partial suffix must not be accepted from an IP request-host
+    cookies.setCookiesFromHeaders(
+      iSeq(`Set-Cookie`(HttpCookie("bad", "x", domain = Some("0.2.1"), path = Some("/")))),
+      Uri("http://192.0.2.1/"),
+    )
+    cookies.map.keys.map(_.name) should not contain "bad"
+  }
+
+  it should "not domain-match when only a suffix without a dot boundary" in {
+    RestClient.cookieDomainMatches("notexample.com", "example.com") shouldBe false
+    RestClient.cookieDomainMatches("www.example.com", "example.com") shouldBe true
+    RestClient.cookieDomainMatches("example.com", "example.com") shouldBe true
+  }
+
   it should "use defaultCookieHost and defaultCookiePath for setCookies when domain/path omitted" in {
     val cookies = new client.CookieMap
     cookies.setCookies(Map("lang" -> "en"))

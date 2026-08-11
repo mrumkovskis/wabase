@@ -131,12 +131,21 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root)(impli
       lock.synchronized {
         headers.foreach {
           case `Set-Cookie`(cookie) =>
-            val key = RestClient.cookieKeyFor(cookie, reqHost, reqDefaultPath)
-            val alive =
-              (cookie.maxAge.isEmpty || cookie.maxAge.get > 0) &&
-                (cookie.expires.isEmpty || cookie.expires.get.clicks > System.currentTimeMillis)
-            if (alive) store(key) = cookie
-            else store -= key
+            // RFC 6265 §5.2.3 / §5.3: empty Domain - host-only; otherwise request-host must domain-match
+            val domainAttr = cookie.domain.map(RestClient.normalizeCookieDomain).filter(_.nonEmpty)
+            if (domainAttr.forall(d => RestClient.cookieDomainMatches(reqHost, d))) {
+              // Persist normalized Domain (strip leading `.`, lowercase) when present
+              val toStore = domainAttr match {
+                case Some(d) if !cookie.domain.contains(d) => cookie.withDomain(d)
+                case _ => cookie
+              }
+              val key = RestClient.cookieKeyFor(toStore, reqHost, reqDefaultPath)
+              val alive =
+                (toStore.maxAge.isEmpty || toStore.maxAge.get > 0) &&
+                  (toStore.expires.isEmpty || toStore.expires.get.clicks > System.currentTimeMillis)
+              if (alive) store(key) = toStore
+              else store -= key
+            }
           case _ =>
         }
       }
@@ -429,10 +438,51 @@ object RestClient extends Loggable {
       a.authority.host.equalsIgnoreCase(b.authority.host) &&
       a.effectivePort == b.effectivePort
 
-  /** Normalize Domain attribute: strip leading `.`, lowercase. */
+  /**
+   * Normalize Domain attribute (RFC 6265 §5.2.3): strip leading `.`, lowercase.
+   * Empty result should be treated as absent Domain (host-only).
+   */
   private[client] def normalizeCookieDomain(domain: String): String = {
     val d = if (domain.startsWith(".")) domain.drop(1) else domain
     d.toLowerCase
+  }
+
+  /**
+   * True if `host` is an IPv4 or IPv6 literal.
+   * Used by domain-match so IP addresses only match exactly (RFC 6265 §5.1.3).
+   */
+  private[client] def isIpHost(host: String): Boolean = {
+    val h =
+      if (host.startsWith("[") && host.endsWith("]")) host.substring(1, host.length - 1)
+      else host
+    if (h.indexOf(':') >= 0) true // IPv6
+    else {
+      val parts = h.split('.')
+      parts.length == 4 && parts.forall { p =>
+        p.nonEmpty && p.length <= 3 && p.forall(_.isDigit) && {
+          val n = p.toInt
+          n >= 0 && n <= 255
+        }
+      }
+    }
+  }
+
+  /**
+   * RFC 6265 §5.1.3 domain-match: does `string` domain-match `domainString`?
+   *
+   * Both sides are compared case-insensitively. A leading `.` on `domainString` is ignored.
+   * Suffix matches require a `.` boundary and apply only when `string` is a host name (not an IP).
+   */
+  private[client] def cookieDomainMatches(string: String, domainString: String): Boolean = {
+    val s = string.toLowerCase
+    val d = {
+      val raw = domainString.toLowerCase
+      if (raw.startsWith(".")) raw.drop(1) else raw
+    }
+    if (d.isEmpty) false
+    else if (s == d) true
+    else if (isIpHost(s)) false
+    else s.endsWith("." + d)
   }
 
   /** RFC 6265 §5.1.4 default-path of a request URI. */
@@ -458,7 +508,7 @@ object RestClient extends Loggable {
     requestHost: String,
     requestDefaultPath: String,
   ): CookieKey = {
-    val domain = cookie.domain.map(normalizeCookieDomain).getOrElse(requestHost.toLowerCase)
+    val domain = cookie.domain.map(normalizeCookieDomain).filter(_.nonEmpty).getOrElse(requestHost.toLowerCase)
     val path = cookie.path.getOrElse(requestDefaultPath)
     CookieKey(cookie.name, domain, path)
   }
@@ -466,7 +516,7 @@ object RestClient extends Loggable {
   /**
    * RFC 6265 §5.4 host + path + Secure match for a stored cookie.
    * Host-only when `cookie.domain` is empty (exact match on key.domain);
-   * otherwise domain-match using key.domain.
+   * otherwise domain-match using key.domain (§5.1.3).
    * Secure cookies are only included for secure request schemes (`https`, `wss`).
    */
   private[client] def cookieMatches(
@@ -476,8 +526,9 @@ object RestClient extends Loggable {
     requestPath: String,
     requestScheme: String,
   ): Boolean = {
+    val hostOnly = cookie.domain.forall(_.isEmpty)
     val domainOk =
-      if (cookie.domain.isEmpty) key.domain.equalsIgnoreCase(requestHost)
+      if (hostOnly) key.domain.equalsIgnoreCase(requestHost)
       else cookieDomainMatches(requestHost, key.domain)
     val secureOk = !cookie.secure || isSecureRequestScheme(requestScheme)
     domainOk && cookiePathMatches(requestPath, key.path) && secureOk
@@ -524,11 +575,5 @@ object RestClient extends Loggable {
       else headers.filterNot(h => h.is("authorization") || h.is("cookie") || h.is("host"))
     if (dropContentHeaders) originFiltered.filterNot(isContentHeader)
     else originFiltered
-  }
-
-  /** RFC 6265 domain-match (simplified): cookie domain matches request host. */
-  private[client] def cookieDomainMatches(host: String, cookieDomain: String): Boolean = {
-    val dom = if (cookieDomain.startsWith(".")) cookieDomain.drop(1) else cookieDomain
-    host.equalsIgnoreCase(dom) || host.toLowerCase.endsWith("." + dom.toLowerCase)
   }
 }
