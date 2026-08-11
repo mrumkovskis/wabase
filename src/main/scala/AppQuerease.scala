@@ -1239,7 +1239,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     implicit val fs: FileStreamer = fileStreamers.fs(null)
     require(op.body == null || op.name == null, "Cannot be set both template body and template name")
     val byNameTemplate = op.name != null
-    val targetName = Option(op.filenameTresql)
+    val targetName = Option(op.targetNameTresql)
       .map(t => useResourcesConnOrEvaluator(resources,
         res => Query(t.tresql)(res.withParams(scope.toBindeableMap(env))).unique[String]))
     def template(res: Any): Future[String] = res match {

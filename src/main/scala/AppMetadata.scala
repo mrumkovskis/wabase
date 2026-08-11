@@ -1069,13 +1069,13 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
     val Body = "body"
     val Name = "name"
     val Data = "data"
-    val Filename = "filename"
-    val args = Set(Body, Name, Data, Filename)
+    val Target_name = "target_name"
+    val args = Set(Body, Name, Data, Target_name)
     "template\\s+".r ~> namedOps(args) ^^ { args =>
       val body = findArg(Body, 0, args)
       val name = findArg(Name, 0, args)
       val dataOp = findArg(Data, 1, args)
-      val filename = findArg(Filename, 2, args).map(_.asInstanceOf[Tresql])
+      val filename = findArg(Target_name, 2, args).map(_.asInstanceOf[Tresql])
       require((body.isEmpty && name.nonEmpty) || (body.nonEmpty && name.isEmpty), s"One of template parameters body or name must be specified")
       Template(body.orNull, name.orNull, dataOp.orNull, filename.orNull)
     } named "template-op"
@@ -1437,7 +1437,7 @@ object AppMetadata extends Loggable {
       contentTypeTresql: Tresql = null,
       fileStreamerName: String = null,
     ) extends Op
-    case class Template(body: Op = null, name: Op = null, dataOp: Op = null, filenameTresql: Tresql = null) extends Op
+    case class Template(body: Op = null, name: Op = null, dataOp: Op = null, targetNameTresql: Tresql = null) extends Op
     case class Email(recipients: Op, subject: Op, body: Op, attachmentsOp: List[Op] = Nil, isBatch: Boolean = false) extends Op
     case class Http(method: String,
                     uriTresql: TresqlUri.Tresql,

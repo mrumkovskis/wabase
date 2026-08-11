@@ -1320,9 +1320,9 @@ get:
 list:
 - template body={'Hello {{title}}. {{name}}!'} data={:name name, 'Ms' title}
 insert:
-- template name='hello.txt' filename='file name'
+- template name='hello.txt' target_name='file name'
 update:
-- template body=(extract entity) filename='file name' data={:name name, 'update' action}
+- template body=(extract entity) target_name='file name' data={:name name, 'update' action}
 delete:
 - template = {'Hello {{name}} in {{action}}!'}
 - template_file = to file :template content_type = 'text/plain; charset=UTF-8'
