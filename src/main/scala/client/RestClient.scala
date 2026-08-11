@@ -135,10 +135,14 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root)(impli
             val domainAttr = cookie.domain.map(RestClient.normalizeCookieDomain).filter(_.nonEmpty)
             if (domainAttr.forall(d => RestClient.cookieDomainMatches(reqHost, d))) {
               // Persist normalized Domain (strip leading `.`, lowercase) when present
-              val toStore = domainAttr match {
+              val withDomain = domainAttr match {
                 case Some(d) if !cookie.domain.contains(d) => cookie.withDomain(d)
                 case _ => cookie
               }
+              val pathAttr = RestClient.effectiveCookiePath(withDomain.path, reqDefaultPath)
+              val toStore =
+                if (withDomain.path.contains(pathAttr)) withDomain
+                else withDomain.withPath(pathAttr)
               val key = RestClient.cookieKeyFor(toStore, reqHost, reqDefaultPath)
               val alive =
                 (toStore.maxAge.isEmpty || toStore.maxAge.get > 0) &&
@@ -157,7 +161,8 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root)(impli
      * @param cookies name, value
      * @param domain  `Domain` attribute; when `None`, uses [[defaultCookieDomain]].
      *                If still `None`, cookie is host-only and the jar key uses [[defaultCookieHost]].
-     * @param path    cookie path; when `None`, uses [[defaultCookiePath]]
+     * @param path    cookie path; when `None`, empty, or not starting with `/`,
+     *                uses [[defaultCookiePath]] (RFC 6265 §5.2.4)
      */
     def setCookies(
       cookies: Map[String, Any],
@@ -166,7 +171,7 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root)(impli
     ): Unit = {
       val cookieDomain = domain.orElse(defaultCookieDomain).map(RestClient.normalizeCookieDomain)
       val keyDomain = cookieDomain.getOrElse(defaultCookieHost)
-      val p = path.getOrElse(defaultCookiePath)
+      val p = RestClient.effectiveCookiePath(path, defaultCookiePath)
       lock.synchronized {
         cookies.foreach { case (n, v) =>
           val key = RestClient.CookieKey(n, keyDomain, p)
@@ -495,11 +500,20 @@ object RestClient extends Loggable {
     }
   }
 
+  /**
+   * RFC 6265 §5.2.4: resolve a Path attribute to the cookie-path.
+   * Absent, empty, or values that do not start with `/` become `requestDefaultPath`.
+   */
+  private[client] def effectiveCookiePath(pathAttr: Option[String], requestDefaultPath: String): String =
+    pathAttr.filter(p => p.nonEmpty && p.charAt(0) == '/').getOrElse(requestDefaultPath)
+
   /** RFC 6265 §5.1.4 path-match. */
   private[client] def cookiePathMatches(requestPath: String, cookiePath: String): Boolean = {
     val rp = if (requestPath.isEmpty) "/" else requestPath
-    val n = cookiePath.length
-    rp.startsWith(cookiePath) && (rp.length == n || cookiePath.charAt(n - 1) == '/' || rp.charAt(n) == '/')
+    // After storage, path should always be non-empty and start with `/`; treat empty as `/`.
+    val cp = if (cookiePath.isEmpty) "/" else cookiePath
+    val n = cp.length
+    rp.startsWith(cp) && (rp.length == n || cp.charAt(n - 1) == '/' || rp.charAt(n) == '/')
   }
 
   /** Build store key for a Set-Cookie using request host / default-path when attrs are absent. */
@@ -509,7 +523,7 @@ object RestClient extends Loggable {
     requestDefaultPath: String,
   ): CookieKey = {
     val domain = cookie.domain.map(normalizeCookieDomain).filter(_.nonEmpty).getOrElse(requestHost.toLowerCase)
-    val path = cookie.path.getOrElse(requestDefaultPath)
+    val path = effectiveCookiePath(cookie.path, requestDefaultPath)
     CookieKey(cookie.name, domain, path)
   }
 

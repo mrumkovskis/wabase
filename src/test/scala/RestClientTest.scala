@@ -345,6 +345,40 @@ class RestClientTest  extends FlatSpec with Matchers with ScalatestRouteTest wit
     cookies.getCookies(Uri("http://example.com/api/v1")).flatMap(_.cookies.map(_.value)).toSet shouldBe Set("root", "api")
   }
 
+  it should "use default-path when Path is absent, empty, or does not start with / (RFC 6265 §5.2.4)" in {
+    val cookies = new client.CookieMap
+    // default-path of /app/page is /app
+    val from = Uri("http://example.com/app/page")
+    cookies.setCookiesFromHeaders(
+      iSeq(
+        `Set-Cookie`(HttpCookie("no_path", "1")),
+        `Set-Cookie`(HttpCookie("empty_path", "2", path = Some(""))),
+        `Set-Cookie`(HttpCookie("relative_path", "3", path = Some("foo"))),
+        `Set-Cookie`(HttpCookie("absolute_path", "4", path = Some("/api"))),
+      ),
+      from,
+    )
+    cookies.map.keySet should contain (RestClient.CookieKey("no_path", "example.com", "/app"))
+    cookies.map.keySet should contain (RestClient.CookieKey("empty_path", "example.com", "/app"))
+    cookies.map.keySet should contain (RestClient.CookieKey("relative_path", "example.com", "/app"))
+    cookies.map.keySet should contain (RestClient.CookieKey("absolute_path", "example.com", "/api"))
+    // Stored cookie path attributes are normalized
+    cookies.map.values.filter(_.name != "absolute_path").flatMap(_.path).toSet shouldBe Set("/app")
+    cookies.map.values.find(_.name == "absolute_path").flatMap(_.path) shouldBe Some("/api")
+    // Scope follows default-path /app
+    cookies.getCookies(Uri("http://example.com/app/other")).flatMap(_.cookies.map(_.name)).toSet should
+      contain allOf ("no_path", "empty_path", "relative_path")
+    cookies.getCookies(Uri("http://example.com/")).flatMap(_.cookies.map(_.name)) should not contain "no_path"
+    cookies.getCookies(Uri("http://example.com/api/x")).flatMap(_.cookies.map(_.name)) should contain ("absolute_path")
+  }
+
+  it should "use defaultCookiePath for empty path in setCookies" in {
+    val cookies = new client.CookieMap
+    cookies.setCookies(Map("a" -> "1"), path = Some(""))
+    cookies.setCookies(Map("b" -> "2"), path = Some("relative"))
+    cookies.map.keySet.map(_.path).foreach(_ shouldBe client.defaultCookiePath)
+  }
+
   it should "send Secure cookies only over https or wss" in {
     val cookies = new client.CookieMap
     val httpsUri = Uri("https://example.com/app")
