@@ -90,15 +90,17 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root)(impli
     */
   class CookieMap {
     private val lock = new AnyRef
-    private val store = scala.collection.mutable.Map.empty[RestClient.CookieKey, HttpCookie]
+    private case class StoredCookie(cookie: HttpCookie, creationTime: Long)
+    private val store = scala.collection.mutable.Map.empty[RestClient.CookieKey, StoredCookie]
 
     /** Immutable snapshot of stored cookies */
     def map: scala.collection.immutable.Map[RestClient.CookieKey, HttpCookie] =
-      lock.synchronized(store.toMap)
+      lock.synchronized(store.toMap).map { case (k, v) => k -> v.cookie }
 
     /**
      * Cookies in scope for `uri` (host-only / domain-match + path-match + Secure).
      * Cookies with the `Secure` attribute are omitted unless the URI scheme is `https` or `wss`.
+     * Cookie pairs are ordered per RFC 6265 §5.4: longer paths first, then earlier creation time.
      */
     def getCookies(uri: Uri): iSeq[Cookie] = lock.synchronized {
       val host = uri.authority.host.address
@@ -108,14 +110,22 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root)(impli
       }
       cookieHeader(
         store.iterator.collect {
-          case (key, cookie) if RestClient.cookieMatches(key, cookie, host, path, uri.scheme) => cookie
+          case (key, stored) if RestClient.cookieMatches(key, stored.cookie, host, path, uri.scheme) => key -> stored
         }.toList
       )
     }
 
-    private def cookieHeader(cookies: Iterable[HttpCookie]): iSeq[Cookie] = {
-      val pairs = cookies.map(_.pair).toList
+    private def cookieHeader(entries: Iterable[(RestClient.CookieKey, StoredCookie)]): iSeq[Cookie] = {
+      val pairs = entries.toList
+        .sortBy { case (key, stored) => (-key.path.length, stored.creationTime) }
+        .map { case (_, stored) => stored.cookie.pair }
       if (pairs.isEmpty) Nil else iSeq(Cookie(pairs))
+    }
+
+    /** Insert or replace; preserve creation-time on same (name, domain, path) per RFC 6265 §5.3. */
+    private def putCookie(key: RestClient.CookieKey, cookie: HttpCookie): Unit = {
+      val creation = store.get(key).map(_.creationTime).getOrElse(System.nanoTime())
+      store(key) = StoredCookie(cookie, creation)
     }
 
     def setCookiesFromHeaders(headers: iSeq[HttpHeader], requestUri: Uri = null): Unit = {
@@ -142,7 +152,7 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root)(impli
               val alive =
                 (toStore.maxAge.isEmpty || toStore.maxAge.get > 0) &&
                   (toStore.expires.isEmpty || toStore.expires.get.clicks > System.currentTimeMillis)
-              if (alive) store(key) = toStore
+              if (alive) putCookie(key, toStore)
               else store -= key
             }
           case _ =>
@@ -171,7 +181,7 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root)(impli
         cookies.foreach { case (n, v) =>
           val key = RestClient.CookieKey(n, keyDomain, p)
           // domain=None on HttpCookie ⇒ host-only; resolved host lives on CookieKey
-          store(key) = HttpCookie(n, v.toString, domain = cookieDomain, path = Some(p))
+          putCookie(key, HttpCookie(n, v.toString, domain = cookieDomain, path = Some(p)))
         }
       }
     }

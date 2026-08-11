@@ -345,6 +345,43 @@ class RestClientTest  extends FlatSpec with Matchers with ScalatestRouteTest wit
     cookies.getCookies(Uri("http://example.com/api/v1")).flatMap(_.cookies.map(_.value)).toSet shouldBe Set("root", "api")
   }
 
+  it should "order Cookie header by longer path first then creation time (RFC 6265 §5.4)" in {
+    val cookies = new client.CookieMap
+    val base = Uri("http://example.com/")
+    // Shorter path stored first; longer path must still appear first in Cookie header
+    cookies.setCookiesFromHeaders(
+      iSeq(`Set-Cookie`(HttpCookie("sid", "root", path = Some("/")))),
+      base,
+    )
+    cookies.setCookiesFromHeaders(
+      iSeq(`Set-Cookie`(HttpCookie("sid", "api", path = Some("/api")))),
+      base,
+    )
+    cookies.getCookies(Uri("http://example.com/api/v1")).flatMap(_.cookies.map(_.value)) shouldBe
+      List("api", "root")
+
+    // Equal path length: earlier creation-time first
+    val equalPath = new client.CookieMap
+    equalPath.setCookiesFromHeaders(
+      iSeq(`Set-Cookie`(HttpCookie("first", "1", path = Some("/")))),
+      base,
+    )
+    equalPath.setCookiesFromHeaders(
+      iSeq(`Set-Cookie`(HttpCookie("second", "2", path = Some("/")))),
+      base,
+    )
+    equalPath.getCookies(Uri("http://example.com/")).flatMap(_.cookies.map(_.name)) shouldBe
+      List("first", "second")
+
+    // Replacement of same (name, domain, path) keeps original creation-time ordering
+    equalPath.setCookiesFromHeaders(
+      iSeq(`Set-Cookie`(HttpCookie("first", "1b", path = Some("/")))),
+      base,
+    )
+    equalPath.getCookies(Uri("http://example.com/")).flatMap(_.cookies.map(c => c.name -> c.value)) shouldBe
+      List("first" -> "1b", "second" -> "2")
+  }
+
   it should "use default-path when Path is absent, empty, or does not start with / (RFC 6265 §5.2.4)" in {
     val cookies = new client.CookieMap
     // default-path of /app/page is /app
