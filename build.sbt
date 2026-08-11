@@ -65,7 +65,7 @@ lazy val commonSettings = Seq(
       "org.tresql"                 %% "tresql"                % tresqlV,
       "io.bullet"                  %% "borer-core"            % borerV,
       "io.bullet"                  %% "borer-derivation"      % borerV,
-      "org.bouncycastle"            % "bcprov-jdk18on"        % "1.85"              % Optional,
+      "org.bouncycastle"            % "bcprov-jdk18on"        % "1.85.2"            % Optional,
       "org.bouncycastle"            % "bcpkix-jdk18on"        % "1.85"              % Optional,
       "com.github.jwt-scala"       %% "jwt-core"              % "11.0.4"            % Optional,
       "com.github.jwt-scala"       %% "jwt-json-common"       % "11.0.4"            % Optional,
