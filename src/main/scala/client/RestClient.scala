@@ -96,11 +96,6 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root)(impli
     def map: scala.collection.immutable.Map[RestClient.CookieKey, HttpCookie] =
       lock.synchronized(store.toMap)
 
-    /** All stored cookies as a `Cookie` header (no URI scoping; not for outbound requests). */
-    def getCookies: iSeq[Cookie] = lock.synchronized {
-      cookieHeader(store.values)
-    }
-
     /**
      * Cookies in scope for `uri` (host-only / domain-match + path-match + Secure).
      * Cookies with the `Secure` attribute are omitted unless the URI scheme is `https` or `wss`.

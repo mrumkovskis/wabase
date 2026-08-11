@@ -38,7 +38,8 @@ class WabaseHttpClient(clientCfg: Config = HttpClientConfig.componentConfs.root)
   lazy val CSRFHeaderName = "X-XSRF-TOKEN"
 
   def getDefaultApiHeaders(cookies: CookieMap) = {
-    val cookie = cookies.getCookies.flatMap(_.cookies).find(_.name == CSRFCookieName)
+    // Scope to [[serverPath]] (domain / path / Secure) — same jar filtering as outbound Cookie headers
+    val cookie = cookies.getCookies(Uri(serverPath)).flatMap(_.cookies).find(_.name == CSRFCookieName)
     RawHeader("X-Requested-With", "XMLHttpRequest") :: originHeader :: cookie.map(c => List(RawHeader(CSRFHeaderName, c.value))).getOrElse(Nil)
   }
 

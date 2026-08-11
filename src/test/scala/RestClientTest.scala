@@ -503,7 +503,7 @@ class RestClientTest  extends FlatSpec with Matchers with ScalatestRouteTest wit
     }
     val reader = Future {
       (1 to 500).foreach { _ =>
-        cookies.getCookies
+        cookies.map
         cookies.getCookies(uri)
         cookies.map.keySet
       }
