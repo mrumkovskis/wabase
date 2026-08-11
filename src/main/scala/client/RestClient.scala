@@ -395,7 +395,7 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root)(impli
     content: String = null,
     request: HttpRequest = null
   ): Nothing = {
-    val verboseMessage =
+    lazy val verboseMessage =
       if (request != null)
         s"Request ${Option(request.method).map(_.value).orNull} ${request.uri} failed: $message"
       else message
@@ -403,8 +403,8 @@ class RestClient(clientCfg: Config = HttpClientConfig.componentConfs.root)(impli
       case ce: ClientException => requestFailed(
         Option(message).getOrElse(ce.getMessage),
         ce.getCause,
-        Option(status).getOrElse(ce.status),
-        Option(content).getOrElse(ce.responseContent),
+        Option(ce.status).getOrElse(status),
+        Option(ce.responseContent).getOrElse(content),
         Option(request).getOrElse(ce.request),
       )
       case _ => throw new ClientException(verboseMessage, cause, status, content, request)

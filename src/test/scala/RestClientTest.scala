@@ -123,6 +123,18 @@ class RestClientTest  extends FlatSpec with Matchers with ScalatestRouteTest wit
         val cookie = req.header[Cookie].map(_.value).getOrElse("no-cookie")
         complete(cookie)
       }
+    } ~
+    path("redirect-to-error") {
+      get {
+        complete(HttpResponse(
+          status = StatusCodes.Found,
+          headers = List(Location(Uri("/error-endpoint")))))
+      }
+    } ~
+    path("error-endpoint") {
+      get {
+        complete(HttpResponse(status = StatusCodes.NotFound, entity = "missing"))
+      }
     }
   }
 
@@ -194,6 +206,14 @@ class RestClientTest  extends FlatSpec with Matchers with ScalatestRouteTest wit
       s"http://localhost:$server_port/name?/42"
     RestClient.resolveRedirectUri(base, Uri("../name?/42")).toString shouldBe
       s"http://localhost:$server_port/name?/42"
+  }
+
+  it should "preserve final response status and content in ClientException after redirect" in {
+    val ex = intercept[ClientException] {
+      client.httpGetAwait[String]("redirect-to-error")
+    }
+    ex.status shouldBe StatusCodes.NotFound
+    Option(ex.responseContent).getOrElse("") should include ("missing")
   }
 
   it should "follow redirect with absolute-path Location" in {
