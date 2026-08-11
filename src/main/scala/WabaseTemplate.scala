@@ -148,9 +148,9 @@ class DefaultWabaseTemplateLoader extends WabaseTemplateLoader {
 /** Shared path checks for template bodies and PDF assets (path traversal / double-encoding). */
 private[wabase] object TemplatePathUtils {
   def safeDecodedPath(raw: String): Option[String] = {
-    val decoded = URLDecoder.decode(raw, StandardCharsets.UTF_8)
-    if (decoded.contains("..") || decoded.contains('%') || decoded.contains('\u0000')) None
-    else Some(decoded)
+    Try(URLDecoder.decode(raw, StandardCharsets.UTF_8)).toOption.filterNot { decoded =>
+      decoded.contains("..") || decoded.contains('%') || decoded.contains('\u0000')
+    }
   }
 
   def normalizeClasspathPath(raw: String): String = {
