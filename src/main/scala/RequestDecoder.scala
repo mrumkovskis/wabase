@@ -29,7 +29,7 @@ import scala.jdk.CollectionConverters._
 import scala.language.{higherKinds, postfixOps}
 import scala.reflect.ClassTag
 
-/** Builds borer [[Cbor.DecodingConfig]] / [[Json.DecodingConfig]] from HOCON. */
+/** Builds borer [[io.bullet.borer.Cbor.DecodingConfig]] / [[io.bullet.borer.Json.DecodingConfig]] from HOCON. */
 object BorerDecodeConfig {
   def cbor(cfg: Config): Cbor.DecodingConfig = Cbor.DecodingConfig(
     readIntegersAlsoAsFloatingPoint       = cfg.getBoolean("read-integers-also-as-floating-point"),
