@@ -72,7 +72,7 @@ lazy val commonSettings = Seq(
       "io.github.samueleresca"     %% "pekko-quartz-scheduler"% "1.3.0-pekko-1.1.x" % Optional,
       "io.swagger.core.v3"          % "swagger-jaxrs2-jakarta"% "2.2.54"            % Optional,
       "org.xhtmlrenderer"           % "flying-saucer-pdf"     % "9.5.2"             % Optional,
-      "org.simplejavamail"          % "simple-java-mail"      % "9.3.1"             % Optional,
+      "org.simplejavamail"          % "simple-java-mail"      % "9.3.2"             % Optional,
       "org.graalvm.js"              % "js"                    % "22.3.5"            % Optional,
       "org.graalvm.js"              % "js-scriptengine"       % "22.3.5"            % Optional,
     ) ++ Seq( // for test
