@@ -4,7 +4,6 @@ val pekkoV    = "1.7.0"
 val pekkoConnV= "1.3.0"
 val pekkoHttpV= "1.4.0"
 
-val mojozV    = "7.1.1"
 val quereaseV = "10.1.0"
 val tresqlV   = "13.5.1"
 
@@ -57,7 +56,7 @@ lazy val commonSettings = Seq(
       "com.typesafe"               %% "ssl-config-core"       % "0.7.1",
       "com.zaxxer"                  % "HikariCP"              % "7.1.0",
       "ch.qos.logback"              % "logback-classic"       % "1.6.3",
-      "org.mojoz"                  %% "mojoz"                 % mojozV,
+      "org.mojoz"                  %% "mojoz"                 % "7.2.0",
       "org.mojoz"                  %% "querease"              % quereaseV,
       "commons-validator"           % "commons-validator"     % "1.11.0",
       "org.postgresql"              % "postgresql"            % "42.7.13",
