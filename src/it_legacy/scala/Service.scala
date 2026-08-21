@@ -19,7 +19,6 @@ object TestApp extends AppBase[TestUser]
     with NoAudit[TestUser]
     with PostgreSqlConstraintMessage
 {
-  override protected def initQuerease = DefaultAppQuerease
   override def dbAccessDelegate: DbAccess = TestDbAccess
   override def check[C <: RequestContext[_]](ctx: C, clazz: Class[_]): Unit = {}
   override def relevant[C <: RequestContext[_]](ctx: C, clazz: Class[_]) = ctx

@@ -2,7 +2,6 @@ package wabase.app
 
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.model.{HttpRequest, HttpResponse}
-import org.wabase.{AppQuerease, DefaultAppQuerease}
 import org.wabase.client.{HttpClient, WabaseHttpClient}
 
 import scala.concurrent.Await
@@ -11,8 +10,6 @@ import scala.concurrent.duration._
 import scala.util.control.NonFatal
 
 class RunningServer extends WabaseHttpClient()(ActorSystem("legacy-it-http-client")) {
-
-  override protected def initQuerease: AppQuerease = DefaultAppQuerease
 
   override def login(username: String = null, password: String = null) = {
     ""

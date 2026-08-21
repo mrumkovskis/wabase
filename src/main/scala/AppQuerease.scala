@@ -34,8 +34,10 @@ import scala.util.control.NonFatal
 trait QuereaseProvider {
   final implicit lazy val qe: AppQuerease = initQuerease
   final implicit lazy val qio: AppQuereaseIo[Dto] = initQuereaseIo
-  /** Override this method in subclass to initialize {{{qe}}} */
-  protected def initQuerease: AppQuerease = DefaultAppQuerease
+  /** Override this method in subclass to initialize {{{qe}}}.
+    * Default implementation creates instance of class configured in {{{wabase.querease.class}}} */
+  protected def initQuerease: AppQuerease =
+    getObjectOrNewInstance(config.getString("wabase.querease.class"), "querease").asInstanceOf[AppQuerease]
   protected def initQuereaseIo: AppQuereaseIo[Dto] = new AppQuereaseIo[Dto](qe)
 }
 

@@ -21,7 +21,6 @@ abstract class DataBaseSpecs[User]
   def listTestParams(clzz: Class[_ <: Dto], params: Map[String, Any]): Unit = defaultListParamsForClass += clzz -> params
   def listTest(clzz: Class[_ <: Dto], name: String, params: Map[String, Any]): Unit = createListTest(clzz, name, params)
 
-  override protected def initQuerease: AppQuerease           = DefaultAppQuerease
   def initHttpClient: WabaseHttpClient = new WabaseHttpClient(HttpClientConfig("test"))(actorSystem) {
     override protected def initQuerease: AppQuerease           = qe
   }

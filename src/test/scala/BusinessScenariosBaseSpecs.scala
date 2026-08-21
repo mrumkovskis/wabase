@@ -96,7 +96,6 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
     pattern.r
   }
 
-  override protected def initQuerease: AppQuerease           = DefaultAppQuerease
   def initHttpClient: WabaseHttpClient = new WabaseHttpClient(HttpClientConfig("test"))(actorSystem) {
     override protected def initQuerease: AppQuerease           = qe
   }

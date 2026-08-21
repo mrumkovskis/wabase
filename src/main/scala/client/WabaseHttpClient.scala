@@ -22,11 +22,6 @@ import WabaseUnmarshallers._
 class WabaseHttpClient(clientCfg: Config = HttpClientConfig.componentConfs.root)(implicit system: ActorSystem)
     extends RestClient(clientCfg)(system) with BasicJsonMarshalling with QuereaseProvider {
 
-  /** Override this method in subclass. Method usage instead of direct
-  {{{val qe: AppQuerease}}} initialization ensures that this.qe and subclass qe
-  have the same instance */
-  protected override def initQuerease: AppQuerease = DefaultAppQuerease
-
   import qe.classToViewNameMap
   import org.wabase.{Dto, DtoWithId}
   import WabaseHttpClient._

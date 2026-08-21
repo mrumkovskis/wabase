@@ -1,6 +1,6 @@
 package wabase.app
 
-import org.wabase.{AppQuerease, DefaultAppQuerease, WabaseServer}
+import org.wabase.WabaseServer
 import org.wabase.client.WabaseHttpClient
 
 import scala.concurrent.Await
@@ -9,8 +9,6 @@ import scala.concurrent.duration._
 import scala.util.control.NonFatal
 
 class RunningServer extends WabaseHttpClient()(WabaseServer.app.actorSystem) {
-
-  override protected def initQuerease: AppQuerease = DefaultAppQuerease
 
   override def login(username: String = null, password: String = null) = {
     ""
