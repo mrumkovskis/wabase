@@ -898,11 +898,11 @@ api: get, insert
 get:
 # sum variable must be defined to create initial fold op value
 - sum = 0
-- foreach ({1 x} + {2} + {3}) (:x) fold (sum, x) {:sum + :x} # fold op
+- foreach x in ([{1} + {2} + {3}]) (:x) fold (sum, x) {:sum + :x} # fold op
 insert:
 # sum variable must be defined to create initial fold op value
 - sum = 0
-- foreach ({1 x} + {2} + {3}) fold (sum, x) {:sum + :x} : # fold op block
+- foreach x in ([{1} + {2} + {3}]) fold (sum, x) {:sum + :x} : # fold op block
   - x = :x + 1
   - :x
 

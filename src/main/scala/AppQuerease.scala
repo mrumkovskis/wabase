@@ -1113,11 +1113,14 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     def source(res: Any, vd: ViewDef): Future[Source[Map[String, Any], _]] = {
       def maybeCompatible(map: Map[String, Any]) =
         Option(vd).map(toCompatibleMap(map, _)).getOrElse(map)
+      def maybe_it_var(x: Any) = Option(op.itVar).map(v => Map(v -> x)).getOrElse(x match {
+        case m: Map[String@unchecked, _] => m
+        case _ => sys.error(s"Not iterable result for foreach operation: $x")
+      })
       res match {
-        case s: Source[Map[String, _]@unchecked, _] => Future.successful(s)
-        case i: Iterator[Map[String, _]@unchecked] =>
-          Future.successful(Source.fromIterator(() => i map maybeCompatible))
-        case s: Seq[Map[String, _]@unchecked] => source(s.iterator, vd)
+        case s: Source[_, _] => Future.successful(s map maybe_it_var)
+        case i: Iterator[_] => Future.successful(Source.fromIterator(() => i map maybe_it_var map maybeCompatible))
+        case s: Seq[_] => source(s.iterator, vd)
         case m: Map[String@unchecked, _] => source(Seq(m).iterator, vd)
         case TresqlResult(tr) => tr match {
           case SingleValueResult(sr) => source(sr, vd)
@@ -1131,9 +1134,9 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         case HttpResult(resp, _) => source(HttpEntityResult(resp.entity, null), vd)
         case RequestPartResult(parts, fs) =>
           Future.successful(parts.mapAsync(1)(AppQuerease.saveRequestPart(_, fs)))
-        case IteratorResult(it: Iterator[Map[String, _]@unchecked]) => source(it, vd)
+        case IteratorResult(it) => source(it, vd)
         case SourceResult(src, toBindableValue) => Future.successful {
-          src.mapAsync(1)(toBindableValue).map(_.asInstanceOf[Map[String, Any]])
+          src.mapAsync(1)(toBindableValue).map(maybe_it_var)
         }
         case CompatibleResult(r, rf, _) => source(r, Option(rf).flatMap(f => viewDefOption(f.name)).orNull)
         case x => sys.error(s"Not iterable result for foreach operation: $x")

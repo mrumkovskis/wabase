@@ -988,13 +988,6 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
     def recoverStep: Parser[Recover] =
       ("recover(?=\\s+|[^\\w])".r ~> actionFromOp) ^^ (Recover(_)) named "recover-step"
 
-    /** Variable name. Accepts quoted names so that keywords and non-ident names can be assigned,
-     * mirroring tresql variable reference, i.e. `'my-key' = ...` is readable as `:'my-key'`. */
-    def varName: MemParser[String] = rep1sep(ident | stringLiteral, ".") ^? ({
-      case segs if !segs.exists(_.contains(".")) => segs.mkString(".")
-    }, segs => s"Variable name segment must not contain '.': ${segs.mkString(".")}"
-    ) named "var-name"
-
     def evaluation: Parser[Evaluation] =
       (opt(varName <~ "=") ~ opWithOptVarTransforms) ^^ {
         case variable ~ tr_op =>
@@ -1005,6 +998,13 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
       else failure("Not block")) named "named-block"
     (removeVar | setEnvOrReturn | recoverStep | evaluation | namedBlock(isBlock)) named "step"
   }
+
+  /** Variable name. Accepts quoted names so that keywords and non-ident names can be assigned,
+   * mirroring tresql variable reference, i.e. `'my-key' = ...` is readable as `:'my-key'`. */
+  def varName: MemParser[String] = rep1sep(ident | stringLiteral, ".") ^? ({
+    case segs if !segs.exists(_.contains(".")) => segs.mkString(".")
+  }, segs => s"Variable name segment must not contain '.': ${segs.mkString(".")}"
+  ) named "var-name"
 
   def parseOperation(op: String): Op =
     phrase(operation)(new scala.util.parsing.input.CharSequenceReader(op)) match {
@@ -1134,11 +1134,13 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
     case res ~ el ~ op => FoldOp(res, el, op)
   } named "foreach-fold-op"
   def foreachOp: MemParser[Foreach] = foreachBlockOpBase ~ actionFromOp ~ opt(foreachFoldOp) ^^ {
-    case coll ~ act ~ foldOp => Foreach(coll, act, foldOp.orNull)
+    case coll ~ act ~ foldOp => coll.copy(action = act, foldOp = foldOp.orNull)
   } named "foreach-op"
-  def foreachBlockOpBase: MemParser[Op] = "foreach(?=\\s+|[^\\w])".r ~> operation named "foreach-block-op-base"
+  def foreachBlockOpBase: MemParser[Foreach] = "foreach(?=\\s+|[^\\w])".r ~> opt(varName <~ "in") ~ operation ^^ {
+    case vn ~ op => Foreach(op, null, null, vn.orNull)
+  } named "foreach-block-op-base"
   def foreachBlockOp: MemParser[Foreach] = foreachBlockOpBase ~ opt(foreachFoldOp) ^^ {
-    case coll ~ foldOp => Foreach(coll, null, foldOp = foldOp.orNull)
+    case coll ~ foldOp => coll.copy(action = null, foldOp = foldOp.orNull)
   } named "foreach-block-op"
   def ifElseOp: MemParser[If] = ifBlockOp ~ actionFromOp ~ opt(elseOp) ^^ {
       case cond ~ ifAct ~ elseOp => cond.copy(action = ifAct, elseAct = elseOp.map(_.action).orNull)
@@ -1423,7 +1425,7 @@ object AppMetadata extends Loggable {
       body: Op = null,
     ) extends Op
     case class VariableTransforms(transforms: List[VariableTransform]) extends Op
-    case class Foreach(initOp: Op, action: Action, foldOp: FoldOp = null) extends BlockOp
+    case class Foreach(initOp: Op, action: Action, foldOp: FoldOp = null, itVar: String = null) extends BlockOp
     case class If(cond: Op, action: Action, elseAct: Action = null) extends BlockOp
     case class Resource(nameTresql: Tresql, contentTypeTresql: Tresql = null) extends Op
     case class File(
@@ -1513,7 +1515,7 @@ object AppMetadata extends Loggable {
              _: ExtractParts | _: This | _: Resource | _: Rethrow | Commit | Rollback | null => state
         case o: ViewCall => opTrav(state)(o.data)
         case Unique(o, _, _) => opTrav(state)(o)
-        case Foreach(o, a, foldOp) =>
+        case Foreach(o, a, foldOp, _) =>
           val ns = traverseAction(a)(stepTrav)(opTrav(state)(o))
           if (foldOp == null) ns else opTrav(ns)(foldOp.op)
         case If(o, a, e) =>
