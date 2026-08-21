@@ -1,4 +1,4 @@
-wabase [![Latest version](https://index.scala-lang.org/mrumkovskis/wabase/latest.svg)](https://index.scala-lang.org/mrumkovskis/wabase)
+wabase [![Latest version](https://img.shields.io/maven-central/v/org.wabase/wabase_3)](https://central.sonatype.com/artifact/org.wabase/wabase_3)
 ![Build Status](https://github.com/mrumkovskis/wabase/actions/workflows/ci.yaml/badge.svg)
 ====
 
@@ -16,5 +16,14 @@ wabase is web application based on [Apache Pekko™](https://pekko.apache.org/) 
 * Dynamic data validation in javascript.
 * Framework for I18n support.
 
-## use in your sbt project
-add to your build.sbt file - libraryDependencies += "org.wabase" %% "wabase" % "6.0.2"
+## getting started
+
+```
+sbt new https://github.com/guntiso/wabase-template.g8.git
+```
+
+Or add to your `build.sbt` file:
+
+```
+libraryDependencies += "org.wabase" %% "wabase" % "<version>"
+```
