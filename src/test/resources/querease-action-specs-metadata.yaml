@@ -877,7 +877,7 @@ fields:
 - nr      int
 - value
 list:
-- foreach[]({'value3' value} + {'value2'} + {'value1'}){value}#(1) :
+- foreach value in ([({'value3'} + {'value2'} + {'value1'}){*}#(1)]) :    # union select in array [] to provide scalar values
     - nr = :__idx + 1
 count:
 - foreach(({1 value} + {2} + {3}){value}#(1)) :value + 1
