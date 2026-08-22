@@ -16,11 +16,12 @@ import scala.util.{Failure, Success}
 
 class WabaseScheduler(wabase: AppBase[_], system: ActorSystem) extends Loggable {
   def init(): Future[Any] = {
+    val jobStatusController = createJobStatusController
     if (config.getBoolean("app.job.clean-jobs-on-start"))
-      WabaseJobStatusController.init(wabase.dbAccess)
+      jobStatusController.init()
     val wabaseJobActor = if (config.getIsNull("app.job.actor")) null else try {
       val jobActorClass = Class.forName(config.getString("app.job.actor"))
-      system.actorOf(Props(jobActorClass, wabase, this), config.getString("app.job.actor-name"))
+      system.actorOf(Props(jobActorClass, wabase, this, jobStatusController), config.getString("app.job.actor-name"))
     } catch {
       case NonFatal(ex) => throw new RuntimeException(s"Failed to start job actor", ex)
     }
@@ -69,6 +70,13 @@ class WabaseScheduler(wabase: AppBase[_], system: ActorSystem) extends Loggable 
         ))
       }
   }
+
+  @annotation.nowarn("msg=Manifest")
+  protected def createJobStatusController: WabaseJobStatusController =
+    getObjectOrNewInstance[WabaseJobStatusController](
+      config, "app.job.status-controller", "job status controller",
+      Seq(wabase.dbAccess), Seq(classOf[DbAccess])
+    )
 }
 
 object WabaseScheduler {
@@ -82,24 +90,27 @@ object WabaseScheduler {
   def loggerName(jobName: String): String = s"job.$jobName"
 }
 
-class WabaseJobActor(wabase: AppBase[_], scheduler: WabaseScheduler) extends Actor {
+class WabaseJobActor(
+  wabase: AppBase[_],
+  scheduler: WabaseScheduler,
+  jobStatusController: WabaseJobStatusController,
+) extends Actor {
   override def preStart(): Unit = {
     context.system.log.info(s"Wabase job control actor started...")
   }
   override def receive: Receive = {
     case Tick(jd, params) =>
       val jobName = jd.name
-      val dbAccess = wabase.dbAccess
       try {
-        if (WabaseJobStatusController.acquireIsRunnningLock(jobName)(dbAccess)) {
+        if (jobStatusController.acquireIsRunnningLock(jobName)) {
           context.system.log.info(jobName + " started")
           scheduler.doJob(jd, params).onComplete {
             case Success(_) =>
-              WabaseJobStatusController.updateCronJobStatus(jobName, "SUCC")(dbAccess)
+              jobStatusController.updateCronJobStatus(jobName, "SUCC")
               context.system.log.info(jobName + " ended")
             case Failure(e) =>
               context.system.log.error(e, jobName)
-              WabaseJobStatusController.updateCronJobStatus(jobName, "ERR")(dbAccess)
+              jobStatusController.updateCronJobStatus(jobName, "ERR")
               context.system.log.info(jobName + " ended with error")
           }(context.dispatcher)
           sender() ! JobStarted
@@ -115,14 +126,20 @@ class WabaseJobActor(wabase: AppBase[_], scheduler: WabaseScheduler) extends Act
   }
 }
 
-object WabaseJobStatusController extends Loggable {
+trait WabaseJobStatusController {
+  def init(): Unit
+  def acquireIsRunnningLock(name: String): Boolean
+  def updateCronJobStatus(name: String, status: String): Unit
+}
+
+class DefaultWabaseJobStatusController(dbAccess: DbAccess) extends WabaseJobStatusController with Loggable {
 
   val job_max_time = config.getDuration("app.job.max-time").toSeconds
   val jobStatusCp  = PoolName(config.getString("app.job.job-status-cp"))
 
   override def loggerName: String = "wabase.job-status-controller"
 
-  private def db[A](dbAccess: DbAccess): (Resources => A) => A =
+  private def db[A]: (Resources => A) => A =
     dbAccess.newTransaction(
       poolName = jobStatusCp,
       template = dbAccess.withDbAccessLogger(
@@ -131,11 +148,11 @@ object WabaseJobStatusController extends Loggable {
       )
     )
 
-  def init(dbAccess: DbAccess): Unit = db(dbAccess) { implicit res =>
+  def init(): Unit = db { implicit res =>
     Query("-cron_job_status[status != 'RUN']")
   }
 
-  def updateCronJobStatus(name: String, status: String)(dbAccess: DbAccess): Unit = db(dbAccess) {
+  def updateCronJobStatus(name: String, status: String): Unit = db {
     implicit res => status match {
       case "SUCC" =>
         Query(
@@ -152,7 +169,7 @@ object WabaseJobStatusController extends Loggable {
     }
   }
 
-  def acquireIsRunnningLock(name: String)(dbAccess: DbAccess): Boolean = db(dbAccess) { implicit res =>
+  def acquireIsRunnningLock(name: String): Boolean = db { implicit res =>
     Query(
       """+cron_job_status
         |{id, cron_name, status, report_time}

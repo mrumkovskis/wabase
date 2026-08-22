@@ -83,6 +83,7 @@ lazy val commonSettings = Seq(
   // Binary compatibility exceptions against previous release.
   // 'foreach' op iteration variable - Action.Foreach gained itVar field.
   // Last two are generic signature changes only, erasure is unchanged.
+  // WabaseJobStatusController converted from object to trait; WabaseJobActor gained controller constructor arg.
   mimaBinaryIssueFilters ++= {
     import com.typesafe.tools.mima.core._
     Seq(
@@ -92,6 +93,9 @@ lazy val commonSettings = Seq(
       ProblemFilters.exclude[MissingTypesProblem]("org.wabase.AppMetadata$Action$Foreach$"),
       ProblemFilters.exclude[IncompatibleSignatureProblem]("org.wabase.AppMetadata#Action#Foreach.unapply"),
       ProblemFilters.exclude[IncompatibleSignatureProblem]("org.wabase.OpParser.foreachBlockOpBase"),
+      ProblemFilters.exclude[DirectMissingMethodProblem]("org.wabase.WabaseJobActor.this"),
+      ProblemFilters.exclude[IncompatibleTemplateDefProblem]("org.wabase.WabaseJobStatusController"),
+      ProblemFilters.exclude[MissingClassProblem]("org.wabase.WabaseJobStatusController$"),
     )
   },
 )
