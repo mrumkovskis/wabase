@@ -80,24 +80,6 @@ lazy val commonSettings = Seq(
       "com.vladsch.flexmark"        % "flexmark-all"          % "0.64.8"  %     Test,
     )
   },
-  // Binary compatibility exceptions against previous release.
-  // 'foreach' op iteration variable - Action.Foreach gained itVar field.
-  // Last two are generic signature changes only, erasure is unchanged.
-  // WabaseJobStatusController converted from object to trait; WabaseJobActor gained controller constructor arg.
-  mimaBinaryIssueFilters ++= {
-    import com.typesafe.tools.mima.core._
-    Seq(
-      ProblemFilters.exclude[DirectMissingMethodProblem]("org.wabase.AppMetadata#Action#Foreach.copy"),
-      ProblemFilters.exclude[DirectMissingMethodProblem]("org.wabase.AppMetadata#Action#Foreach.this"),
-      ProblemFilters.exclude[DirectMissingMethodProblem]("org.wabase.AppMetadata#Action#Foreach.apply"),
-      ProblemFilters.exclude[MissingTypesProblem]("org.wabase.AppMetadata$Action$Foreach$"),
-      ProblemFilters.exclude[IncompatibleSignatureProblem]("org.wabase.AppMetadata#Action#Foreach.unapply"),
-      ProblemFilters.exclude[IncompatibleSignatureProblem]("org.wabase.OpParser.foreachBlockOpBase"),
-      ProblemFilters.exclude[DirectMissingMethodProblem]("org.wabase.WabaseJobActor.this"),
-      ProblemFilters.exclude[IncompatibleTemplateDefProblem]("org.wabase.WabaseJobStatusController"),
-      ProblemFilters.exclude[MissingClassProblem]("org.wabase.WabaseJobStatusController$"),
-    )
-  },
 )
 
 lazy val wabase = (project in file("."))
