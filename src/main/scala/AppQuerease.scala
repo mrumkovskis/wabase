@@ -1441,7 +1441,10 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           case HttpResult(response, _) => response.entity
           case fr: FileResult => fileHttpEntity(fr)
             .getOrElse(sys.error(s"Cannot find file data: ${fr.fileInfo}"))
-          case x => sys.error(s"Cannot extract entity from $x. Currently only HttpResult and FileResult are supported")
+          // text/plain content type, since string data format is known to decoder named in 'using' clause only
+          case StringResult(value) => HttpEntity(ContentTypes.`text/plain(UTF-8)`, value)
+          case x => sys.error(
+            s"Cannot extract entity from $x. Currently only HttpResult, FileResult and StringResult are supported")
         }
     } .getOrElse(Future.successful(qr.httpReq.entity))
       .map { ent =>

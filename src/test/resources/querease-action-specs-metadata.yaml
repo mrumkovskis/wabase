@@ -886,6 +886,29 @@ insert:
     :code || ' ' || :value
 
 
+name: foreach_json_scalar_test
+api: list
+decoder: none
+fields:
+- nr      int
+- value   int
+list:
+- foreach value in (from json '[1, 2, 3]') :    # json array of scalars decoded to iterable of scalar values
+    - nr = :__idx + 1
+
+
+name: foreach_scalar_decoder_test
+api: list
+decoder: none
+fields:
+- nr      int
+- value   int
+list:
+# json array of scalars is streamed and decoded to scalar values by scalar_json_decoder
+- foreach value in extract entity using scalar_json_decoder to json [({1} + {2} + {3}){*}#(1)] :
+    - nr = :__idx + 1
+
+
 name: foreach_outer_scope_test
 api: get
 get:

@@ -972,6 +972,12 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       t5 <- doAction("list", "foreach_test_3", Map()).map {
         _ shouldBe List(Map("nr" -> 1, "value" -> "value1"), Map("nr" -> 2, "value" -> "value2"), Map("nr" -> 3, "value" -> "value3"))
       }
+      t6 <- doAction("list", "foreach_json_scalar_test", Map()).map {
+        _ shouldBe List(Map("nr" -> 1, "value" -> 1), Map("nr" -> 2, "value" -> 2), Map("nr" -> 3, "value" -> 3))
+      }
+      t7 <- doAction("list", "foreach_scalar_decoder_test", Map()).map {
+        _ shouldBe List(Map("nr" -> 1, "value" -> 1), Map("nr" -> 2, "value" -> 2), Map("nr" -> 3, "value" -> 3))
+      }
     } yield {
       t4
     }
