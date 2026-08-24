@@ -3,6 +3,7 @@ package org.wabase
 import com.typesafe.config.{Config, ConfigFactory}
 import org.apache.pekko.stream.scaladsl.{Flow, Sink, Source}
 import org.apache.pekko.stream.connectors.csv.scaladsl.{CsvParsing, CsvToMap}
+import org.apache.pekko.stream.connectors.json.scaladsl.JsonReader
 import org.apache.pekko.stream.connectors.xml.scaladsl.XmlParsing
 import org.apache.pekko.util.ByteString
 import io.bullet.borer.compat.pekko.ByteStringProvider
@@ -349,20 +350,15 @@ class CborOrJsonAnyValueDecoder(borerConfig: Config) {
 
 object CborOrJsonAnyValueDecoder extends CborOrJsonAnyValueDecoder
 
-object CsvDecoderConfig {
-  lazy val componentConfs = ComponentConf.getConfigs("data-parsers-csv")
-  lazy val configs: Map[String, Config] = componentConfs.confs.toMap
-  @annotation.nowarn("msg=Manifest")
-  lazy val csvDecoderFactory: CsvDecoderFactory =
-    getObjectOrNewInstance[CsvDecoderFactory](componentConfs.root, "factory-class", "csv decoder factory")
+/** Creates stream decoder for configured request data parser.
+  * Factory is configured by 'factory-class' setting of parser conf, inherited from format conf by default. */
+trait StreamDecoderFactory {
+  def createStreamDecoder(n: String, cfg: Config): Flow[ByteString, Any, NotUsed]
 }
 
-trait CsvDecoderFactory {
-  def createCsvStreamDecoders: Map[String, Flow[ByteString, Map[String, String], NotUsed]]
-}
-
-object CsvDecoderFactory extends CsvDecoderFactory {
-  def createCsvStreamDecoder(n: String, csvCfg: Config): Flow[ByteString, Map[String, String], NotUsed] = {
+/** Decodes csv stream to stream of maps. */
+object CsvDecoderFactory extends StreamDecoderFactory {
+  def createStreamDecoder(n: String, csvCfg: Config): Flow[ByteString, Map[String, String], NotUsed] = {
     def getByte(setting: String) =
       csvCfg.getString(setting) match {
         case b if b.length == 1 => b.toCharArray.head.toByte
@@ -382,54 +378,37 @@ object CsvDecoderFactory extends CsvDecoderFactory {
       .via(CsvParsing.lineScanner(delimiter, quoteChar, escapeChar, maxLineLen))
       .via(toMapConverter)
   }
-
-  def createCsvStreamDecoders: Map[String, Flow[ByteString, Map[String, String], NotUsed]] = {
-    CsvDecoderConfig.configs.map { case (n, csvCfg) =>
-      n -> createCsvStreamDecoder(n, csvCfg)
-    }.toMap
-  }
 }
 
-object JsonDecoderConfig {
-  lazy val componentConfs: ComponentConfs = ComponentConf.getConfigs("data-parsers-json")
-  lazy val configs: Map[String, Config] = componentConfs.confs.toMap
-  @annotation.nowarn("msg=Manifest")
-  lazy val jsonDecoderFactory: JsonDecoderFactory =
-    getObjectOrNewInstance[JsonDecoderFactory](componentConfs.root, "factory-class", "json decoder factory")
-}
-
-trait JsonDecoderFactory {
-  def createJsonStreamDecoders: Map[String, Flow[ByteString, Map[String, Any], NotUsed]]
-}
-
-object JsonDecoderFactory extends JsonDecoderFactory {
-  def createJsonStreamDecoder(n: String, jsonCfg: Config): Flow[ByteString, Map[String, Any], NotUsed] = {
+/** Frames json stream on objects, i.e. decodes stream of json objects to stream of maps. */
+object JsonDecoderFactory extends StreamDecoderFactory {
+  def createStreamDecoder(n: String, jsonCfg: Config): Flow[ByteString, Map[String, Any], NotUsed] = {
     val maxObjectSize = jsonCfg.getInt("max-object-size")
     val ess = new JsonEntityStreamingSupport(maxObjectSize = maxObjectSize)
     val decoder = new CborOrJsonAnyValueDecoder(jsonCfg)
     Flow[ByteString].via(ess.framingDecoder).map(decoder.decodeToMap(_))
   }
+}
 
-  def createJsonStreamDecoders: Map[String, Flow[ByteString, Map[String, Any], NotUsed]] = {
-    JsonDecoderConfig.configs.map { case (n, jsonCfg) =>
-      n -> createJsonStreamDecoder(n, jsonCfg)
-    }.toMap
+/** Frames json stream on array elements, so that scalars and arrays, not only objects, can be decoded.
+  * Json null elements are not supported - stream elements must not be null (reactive streams rule 2.13). */
+object JsonScalarDecoderFactory extends StreamDecoderFactory {
+  def createStreamDecoder(n: String, jsonCfg: Config): Flow[ByteString, Any, NotUsed] = {
+    val decoder = new CborOrJsonAnyValueDecoder(jsonCfg)
+    Flow[ByteString]
+      .via(JsonReader.select("$[*]"))
+      .map { data =>
+        decoder.decode(data) match {
+          case null => throw new BusinessException(
+            s"Failed to decode data: json null is not supported as element of json array for parser $n")
+          case x => x
+        }
+      }
   }
 }
 
-object XmlDecoderConfig {
-  lazy val componentConfs = ComponentConf.getConfigs("data-parsers-xml")
-  lazy val configs: Map[String, Config] = componentConfs.confs.toMap
-  @annotation.nowarn("msg=Manifest")
-  lazy val xmlDecoderFactory: XmlDecoderFactory =
-    getObjectOrNewInstance[XmlDecoderFactory](componentConfs.root, "factory-class", "xml decoder factory")
-}
-
-trait XmlDecoderFactory {
-  def createXmlStreamDecoders: Map[String, Flow[ByteString, Map[String, Any], NotUsed]]
-}
-
-object XmlDecoderFactory extends XmlDecoderFactory {
+/** Decodes xml stream to stream of maps. */
+object XmlDecoderFactory extends StreamDecoderFactory {
   def nodeListToMap(nodeList: NodeList): Map[String, Any] = {
     val children = (0 until nodeList.getLength).map(nodeList.item)
 
@@ -483,17 +462,12 @@ object XmlDecoderFactory extends XmlDecoderFactory {
     }
   def elementToMap(element: Element): Map[String, Any] =
     attributesToMap(element) ++ nodeListToMap(element.getChildNodes)
-  def createXmlStreamDecoder(n: String, xmlCfg: Config): Flow[ByteString, Map[String, Any], NotUsed] = {
+  def createStreamDecoder(n: String, xmlCfg: Config): Flow[ByteString, Map[String, Any], NotUsed] = {
     val path = xmlCfg.getStringList("path").asScala.toVector
     Flow[ByteString]
       .via(XmlParsing.parser)
       .via(XmlParsing.subtree(path))
       .map(elementToMap)
-  }
-  def createXmlStreamDecoders: Map[String, Flow[ByteString, Map[String, Any], NotUsed]] = {
-    XmlDecoderConfig.configs.map { case (n, xmlCfg) =>
-      n -> createXmlStreamDecoder(n, xmlCfg)
-    }.toMap
   }
 }
 
@@ -501,17 +475,53 @@ object RequestDecoders {
   /** Decodes http entity according to view structure (can be null) */
   type RequestDecoder = String => HttpEntity => Source[Any, _]
   type Decoders       = Map[String, RequestDecoder]
+
+  private val confPath = "request-decoders"
+
+  /** Format confs, i.e. child confs of request-decoders conf */
+  lazy val formatConfs: ComponentConfs = ComponentConf.getConfigs(confPath)
+  /** Parser confs by format name and decoder name */
+  lazy val decoderConfs: Map[String, Map[String, Config]] =
+    formatConfs.confs.map { case (format, _) =>
+      format -> ComponentConf.getConfigs(s"$confPath.$format").confs.toMap
+    }.toMap
+  /** Stream decoder factories by format name and decoder name */
+  @annotation.nowarn("msg=Manifest")
+  lazy val streamDecoderFactories: Map[String, Map[String, StreamDecoderFactory]] =
+    decoderConfs.map { case (format, confs) =>
+      format -> confs.map { case (n, cfg) =>
+        n -> getObjectOrNewInstance[StreamDecoderFactory](
+          cfg, "factory-class", s"$format stream decoder factory for '$n'")
+      }
+    }
+  /** Stream decoders by format name and decoder name */
+  lazy val streamDecoders: Map[String, Map[String, Flow[ByteString, Any, NotUsed]]] =
+    decoderConfs.map { case (format, confs) =>
+      format -> confs.map { case (n, cfg) =>
+        n -> streamDecoderFactories(format)(n).createStreamDecoder(n, cfg)
+      }
+    }
+  /** Stream decoders by decoder name. Decoder names must be unique across all formats. */
+  lazy val flatStreamDecoders: Map[String, Flow[ByteString, Any, NotUsed]] = {
+    val byName = streamDecoders.toSeq.flatMap { case (format, ds) => ds.toSeq.map { case (n, d) => (n, format, d) } }
+    byName.groupBy(_._1).filter(_._2.size > 1).foreach { case (n, ds) =>
+      sys.error(s"Duplicate request decoder name '$n' in formats: ${ds.map(_._2).sorted.mkString(", ")}")
+    }
+    byName.map { case (n, _, d) => n -> d }.toMap
+  }
+
   def decoders(qe: AppQuerease): Decoders = {
-    def requestDecoder(transformer: Flow[ByteString, Map[String, Any], _]): RequestDecoder = {
+    def requestDecoder(transformer: Flow[ByteString, Any, _]): RequestDecoder = {
       viewName => httpEnt => {
         val vd = Option(viewName).map(qe.viewDef).orNull
         httpEnt.dataBytes.via(transformer)
-          .map(data => if (vd == null) data else qe.toCompatibleMap(data, vd))
+          .map {
+            case map: Map[String@unchecked, _] if vd != null => qe.toCompatibleMap(map, vd)
+            case data => data
+          }
       }
     }
-    CsvDecoderConfig.csvDecoderFactory.createCsvStreamDecoders.map { case (n, d) => (n, requestDecoder(d)) } ++
-      JsonDecoderConfig.jsonDecoderFactory.createJsonStreamDecoders.map { case (n, d) => (n, requestDecoder(d)) } ++
-      XmlDecoderConfig.xmlDecoderFactory.createXmlStreamDecoders.map { case (n, d) => (n, requestDecoder(d)) }
+    flatStreamDecoders.map { case (n, d) => (n, requestDecoder(d)) }
   }
   def sourceToIterator[T](src: Source[T, _])(implicit as: ActorSystem): Iterator[T] = new Iterator[T] {
     private var currentSource = src

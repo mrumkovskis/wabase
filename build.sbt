@@ -46,6 +46,7 @@ lazy val commonSettings = Seq(
       "org.apache.pekko"           %% "pekko-http"            % pekkoHttpV,
       "org.apache.pekko"           %% "pekko-connectors-csv"  % pekkoConnV, //      % Optional?
       "org.apache.pekko"           %% "pekko-connectors-xml"  % pekkoConnV, //      % Optional?
+      "org.apache.pekko"           %% "pekko-connectors-json-streaming" % pekkoConnV,
       "org.apache.pekko"           %% "pekko-http-spray-json" % pekkoHttpV,
       "org.apache.pekko"           %% "pekko-slf4j"           % pekkoV,
       "org.apache.pekko"           %% "pekko-stream"          % pekkoV,
@@ -78,6 +79,33 @@ lazy val commonSettings = Seq(
       "org.apache.pekko"           %% "pekko-stream-testkit"  % pekkoV    %     Test,
       "org.hsqldb"                  % "hsqldb"                % "2.7.4"   %     Test,
       "com.vladsch.flexmark"        % "flexmark-all"          % "0.64.8"  %     Test,
+    )
+  },
+  // Binary compatibility exceptions against previous release.
+  // Request decoder configuration is consolidated under 'request-decoders' conf and per format decoder
+  // configs and factory traits are replaced by single StreamDecoderFactory trait, factory per parser.
+  mimaBinaryIssueFilters ++= {
+    import com.typesafe.tools.mima.core._
+    Seq(
+      ProblemFilters.exclude[MissingClassProblem]("org.wabase.CsvDecoderConfig"),
+      ProblemFilters.exclude[MissingClassProblem]("org.wabase.CsvDecoderConfig$"),
+      ProblemFilters.exclude[MissingClassProblem]("org.wabase.JsonDecoderConfig"),
+      ProblemFilters.exclude[MissingClassProblem]("org.wabase.JsonDecoderConfig$"),
+      ProblemFilters.exclude[MissingClassProblem]("org.wabase.XmlDecoderConfig"),
+      ProblemFilters.exclude[MissingClassProblem]("org.wabase.XmlDecoderConfig$"),
+      ProblemFilters.exclude[IncompatibleTemplateDefProblem]("org.wabase.CsvDecoderFactory"),
+      ProblemFilters.exclude[IncompatibleTemplateDefProblem]("org.wabase.JsonDecoderFactory"),
+      ProblemFilters.exclude[IncompatibleTemplateDefProblem]("org.wabase.XmlDecoderFactory"),
+      ProblemFilters.exclude[MissingTypesProblem]("org.wabase.CsvDecoderFactory$"),
+      ProblemFilters.exclude[MissingTypesProblem]("org.wabase.JsonDecoderFactory$"),
+      ProblemFilters.exclude[MissingTypesProblem]("org.wabase.XmlDecoderFactory$"),
+      ProblemFilters.exclude[DirectMissingMethodProblem]("org.wabase.CsvDecoderFactory.createCsvStreamDecoder"),
+      ProblemFilters.exclude[DirectMissingMethodProblem]("org.wabase.CsvDecoderFactory.createCsvStreamDecoders"),
+      ProblemFilters.exclude[DirectMissingMethodProblem]("org.wabase.JsonDecoderFactory.createJsonStreamDecoder"),
+      ProblemFilters.exclude[DirectMissingMethodProblem]("org.wabase.JsonDecoderFactory.createJsonStreamDecoders"),
+      ProblemFilters.exclude[DirectMissingMethodProblem]("org.wabase.XmlDecoderFactory.createXmlStreamDecoder"),
+      ProblemFilters.exclude[DirectMissingMethodProblem]("org.wabase.XmlDecoderFactory.createXmlStreamDecoders"),
+      ProblemFilters.exclude[DirectMissingMethodProblem]("org.wabase.RequestDecoders.<clinit>"),
     )
   },
 )
