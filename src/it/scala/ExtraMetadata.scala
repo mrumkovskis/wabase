@@ -1,10 +1,11 @@
 package wabase.app
 
 import org.mojoz.metadata.in.YamlMd
+import org.wabase.AppMetadata
 
 import scala.collection.immutable.Seq
 
-/** Metadata source for the `app.wabase-extra-metadata-loader` config parameter.
+/** Metadata source for the `app.wabase-extra-metadata.loader` config parameter.
   *
   * Definitions are assembled from strings at runtime instead of being read from `tables`, `views`
   * or `routes` resources, so that integration tests prove metadata arrives through the configured
@@ -12,6 +13,10 @@ import scala.collection.immutable.Seq
   *
   * Names given to definition strings end with `.yaml` to satisfy `app.public-api.views-location-pattern`,
   * this makes the extra view public, like views loaded from resources.
+  *
+  * Definitions from `app.wabase-extra-metadata.paths` are appended by delegating to
+  * [[org.wabase.AppMetadata.metadataFromFiles]] - this covers the default loader implementation
+  * and demonstrates how an application keeps file based extra metadata while contributing its own.
   */
 object ExtraMetadata {
   private val tableDefs =
@@ -52,5 +57,5 @@ object ExtraMetadata {
     "extra-metadata-tables.yaml" -> tableDefs,
     "extra-metadata-views.yaml"  -> viewDefs,
     "extra-metadata-routes.yaml" -> routeDefs,
-  )
+  ) ++ AppMetadata.metadataFromFiles()
 }

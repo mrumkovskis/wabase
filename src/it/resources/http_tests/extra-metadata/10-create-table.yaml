@@ -1,4 +1,4 @@
-# table def contributed by wabase-extra-metadata-loader reaches tableMetadata -
+# table def contributed by wabase-extra-metadata.loader reaches tableMetadata -
 # backdoor builds ddl from qe.tableMetadata.tableDef
 path:     /backdoor/create-tables/extra_metadata_data
 response:

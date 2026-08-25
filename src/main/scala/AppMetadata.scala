@@ -20,7 +20,6 @@ import java.util.concurrent.TimeUnit
 import scala.collection.immutable.{Map, Seq, Set}
 import scala.concurrent.duration.FiniteDuration
 import scala.jdk.CollectionConverters._
-
 import scala.util.Try
 import scala.util.control.NonFatal
 import scala.util.matching.Regex
@@ -2023,8 +2022,9 @@ object AppMetadata extends Loggable {
   }
 
   def loadExtraMetadata(): Seq[YamlMd] =
-    invokeFunction(config.getString("app.wabase-extra-metadata-loader"), Nil)(
+    invokeFunction(config.getString("app.wabase-extra-metadata.loader"), Nil)(
       scala.concurrent.ExecutionContext.global).asInstanceOf[Seq[YamlMd]]
 
-  def emptyExtraMetadata(): Seq[YamlMd] = Nil
+  def metadataFromFiles(): Seq[YamlMd] = config.getStringList("app.wabase-extra-metadata.paths")
+    .asScala.toList.flatMap(YamlMd.fromFiles(_))
 }

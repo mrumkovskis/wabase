@@ -1,0 +1,7 @@
+on: GET /extra-metadata-file-hello
+do: response(200, 'Hello from extra metadata files!')
+swagger:
+  '200':
+    content:
+      text/plain:
+        type: string

@@ -4,6 +4,7 @@ response: {
   "audit": ["list"],
   "check_person": ["get"],
   "current_user": ["get"],
+  "extra_metadata_file_view": ["get", "list", "upsert", "delete"],
   "extra_metadata_view": ["count", "create", "delete", "get", "list", "upsert"],
   "guideline_calculation_helper": ["list", "upsert", "get"],
   "http_echo": ["post"],

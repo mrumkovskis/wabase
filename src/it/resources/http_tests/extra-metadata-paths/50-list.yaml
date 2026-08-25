@@ -1,0 +1,9 @@
+# defs from files and defs from strings coexist - this view comes from files,
+# extra_metadata_view of the extra-metadata scenario comes from strings
+path:       /data/extra_metadata_file_view
+response: [
+  {
+    "code":  "f1",
+    "value": "from file"
+  }
+]

@@ -1,0 +1,12 @@
+# metadata name is relative to the configured path, i.e. roles-test-private-views.yaml,
+# so it does not match app.public-api.views-location-pattern and this view is not public -
+# unlike public views it is role checked. Path is set explicitly because this app
+# routes views under /data only (see routes/data.yaml).
+name:   extra_metadata_private_view
+table:  extra_metadata_file_data
+api:    manager get
+paths:  /data/extra_metadata_private_view
+key:    code
+fields:
+- code
+- value

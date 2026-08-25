@@ -1,0 +1,9 @@
+name:   extra_metadata_file_view
+table:  extra_metadata_file_data
+api:    get, list, upsert, delete
+key:    code
+fields:
+- code
+- value
+order:
+- code

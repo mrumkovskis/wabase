@@ -1,0 +1,7 @@
+# metadata name is relative to the configured path, i.e. roles-test-private-views.yaml,
+# so it does not match app.public-api.views-location-pattern - this view is not public
+# and is role checked, while extra_metadata_file_view of the same table is readable
+# without authentication. An absolute filename here would match the pattern by accident
+# and would silently make the view public.
+path:       /data/extra_metadata_private_view?/f1
+error:      401 Unauthorized

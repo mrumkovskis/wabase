@@ -1,0 +1,12 @@
+# view def from files is public - metadata name is relative to the configured path
+# (views/extra-metadata-views.yaml), so it matches app.public-api.views-location-pattern
+# and the view is routable under app.public-api.views-uri-prefix
+path:       /data/extra_metadata_file_view?/f1
+method:     PUT
+request:
+  value:    from file
+response_status: 201 Created
+response_headers:
+  Location: extra_metadata_file_view?/f1
+response:
+  code: f1

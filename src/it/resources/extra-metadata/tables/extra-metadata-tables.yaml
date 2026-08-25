@@ -1,0 +1,6 @@
+table: extra_metadata_file_data
+columns:
+- code   !  20
+- value     40
+pk:
+- code
