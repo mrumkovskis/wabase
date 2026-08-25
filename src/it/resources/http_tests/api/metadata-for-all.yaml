@@ -415,6 +415,46 @@ response: {
     }],
     "filter": []
   },
+  "extra_metadata_view": {
+    "name": "extra_metadata_view",
+    "key": ["code"],
+    "fields": [{
+      "name": "code",
+      "type": "string",
+      "isCollection": false,
+      "isComplexType": false,
+      "nullable": false,
+      "required": false,
+      "sortable": true,
+      "label": "Code",
+      "visible": true,
+      "insertable": true,
+      "updatable": false,
+      "enum": null,
+      "refViewName": null,
+      "comments": null,
+      "jsonType": "string",
+      "length": 20
+    }, {
+      "name": "value",
+      "type": "string",
+      "isCollection": false,
+      "isComplexType": false,
+      "nullable": true,
+      "required": false,
+      "sortable": false,
+      "label": "Value",
+      "visible": true,
+      "insertable": true,
+      "updatable": true,
+      "enum": null,
+      "refViewName": null,
+      "comments": null,
+      "jsonType": "string",
+      "length": 40
+    }],
+    "filter": []
+  },
   "guideline_calculation_helper": {
     "name": "guideline_calculation_helper",
     "key": ["code"],

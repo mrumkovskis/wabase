@@ -1,0 +1,6 @@
+path:       /data/extra_metadata_view?/e1
+method:     PUT
+request:
+  value:    updated
+response:
+  code: e1

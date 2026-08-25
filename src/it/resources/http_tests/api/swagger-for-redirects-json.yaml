@@ -276,6 +276,197 @@ response: {
         }
       }
     },
+    "/data/extra_metadata_view" : {
+      "get" : {
+        "summary" : "List 'extra_metadata_view'",
+        "description" : "",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/extra_metadata_view"
+                  }
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Bad Request"
+          },
+          "503" : {
+            "description" : "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/data/extra_metadata_view/{code}" : {
+      "get" : {
+        "summary" : "Get 'extra_metadata_view' by 'code'",
+        "description" : "",
+        "parameters" : [ {
+          "name" : "code",
+          "in" : "path",
+          "description" : "Code",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "maxLength" : 20
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/extra_metadata_view"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Bad Request"
+          },
+          "404" : {
+            "description" : "Not Found"
+          },
+          "503" : {
+            "description" : "Service Unavailable"
+          }
+        }
+      },
+      "put" : {
+        "summary" : "Upsert 'extra_metadata_view' by 'code'",
+        "description" : "",
+        "parameters" : [ {
+          "name" : "code",
+          "in" : "path",
+          "description" : "Code",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "maxLength" : 20
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/extra_metadata_view"
+              }
+            }
+          }
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/extra_metadata_view"
+                }
+              }
+            }
+          },
+          "201" : {
+            "description" : "Created",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/extra_metadata_view"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Bad Request"
+          },
+          "503" : {
+            "description" : "Service Unavailable"
+          }
+        }
+      },
+      "delete" : {
+        "summary" : "Delete 'extra_metadata_view' by 'code'",
+        "parameters" : [ {
+          "name" : "code",
+          "in" : "path",
+          "description" : "Code",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "maxLength" : 20
+          }
+        } ],
+        "responses" : {
+          "204" : {
+            "description" : "No Content"
+          },
+          "404" : {
+            "description" : "Not Found"
+          }
+        }
+      }
+    },
+    "/data/extra_metadata_view:count" : {
+      "get" : {
+        "summary" : "Count 'extra_metadata_view'",
+        "description" : "",
+        "responses" : {
+          "200" : {
+            "description" : "Count",
+            "content" : {
+              "text/plain" : {
+                "schema" : {
+                  "type" : "integer",
+                  "format" : "int32"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Bad Request"
+          },
+          "404" : {
+            "description" : "Not Found"
+          },
+          "503" : {
+            "description" : "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/data/extra_metadata_view:create" : {
+      "get" : {
+        "summary" : "Create 'extra_metadata_view'",
+        "description" : "",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/extra_metadata_view"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Bad Request"
+          },
+          "404" : {
+            "description" : "Not Found"
+          },
+          "503" : {
+            "description" : "Service Unavailable"
+          }
+        }
+      }
+    },
     "/data/guideline_calculation_helper" : {
       "get" : {
         "summary" : "List 'guideline_calculation_helper'",
@@ -1473,6 +1664,22 @@ response: {
         }
       }
     },
+    "/extra-metadata-hello" : {
+      "get" : {
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "text/plain" : {
+                "schema" : {
+                  "type" : "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/fast-respond" : {
       "get" : {
         "responses" : {
@@ -2233,6 +2440,24 @@ response: {
             "readOnly" : false
           }
         }
+      },
+      "extra_metadata_view" : {
+        "type" : "object",
+        "properties" : {
+          "code" : {
+            "type" : "string",
+            "description" : "Code",
+            "maxLength" : 20,
+            "readOnly" : false
+          },
+          "value" : {
+            "type" : "string",
+            "description" : "Value",
+            "maxLength" : 40,
+            "readOnly" : false
+          }
+        },
+        "required" : [ "code" ]
       },
       "guideline_calculation_helper" : {
         "type" : "object",

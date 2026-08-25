@@ -1,0 +1,11 @@
+path:       /data/extra_metadata_view
+response: [
+  {
+    "code":  "e1",
+    "value": "first"
+  },
+  {
+    "code":  "e2",
+    "value": "second"
+  }
+]

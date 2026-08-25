@@ -31,7 +31,8 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 
   val knownApiMethods: Set[String] = AppMetadata.Action() - AppMetadata.Action.Job
   private val fullKeyOps = Set("get",/*insert*/ "update", "update+", "upsert", "save", "delete", "put")
-  override lazy val yamlMetadata = YamlMd.fromPaths(Seq("jobs", "routes", "tables", "views"))
+  override lazy val yamlMetadata = YamlMd.fromPaths(Seq("jobs", "routes", "tables", "views")) ++
+    AppMetadata.loadExtraMetadata()
   override lazy val uninheritableExtras: Seq[String] = Seq("api")
   lazy val knownViewExtras = KnownViewExtras()
   lazy val knownPrefixes = Set(KnownViewExtras.Auth)
@@ -2021,4 +2022,9 @@ object AppMetadata extends Loggable {
       .map("%02x".format(_)).mkString
   }
 
+  def loadExtraMetadata(): Seq[YamlMd] =
+    invokeFunction(config.getString("app.wabase-extra-metadata-loader"), Nil)(
+      scala.concurrent.ExecutionContext.global).asInstanceOf[Seq[YamlMd]]
+
+  def emptyExtraMetadata(): Seq[YamlMd] = Nil
 }

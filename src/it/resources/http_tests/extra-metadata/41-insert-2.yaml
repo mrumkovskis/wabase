@@ -1,0 +1,6 @@
+path:       /data/extra_metadata_view?/e2
+method:     PUT
+request:
+  value:    second
+response:
+  code: e2

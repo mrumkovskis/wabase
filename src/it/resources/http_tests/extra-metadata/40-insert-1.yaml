@@ -1,0 +1,11 @@
+# view def contributed by wabase-extra-metadata-loader is public (metadata name ends with .yaml)
+# and routable under app.public-api.views-uri-prefix
+path:       /data/extra_metadata_view?/e1
+method:     PUT
+request:
+  value:    first
+response_status: 201 Created
+response_headers:
+  Location: extra_metadata_view?/e1
+response:
+  code: e1
