@@ -2290,21 +2290,18 @@ object AppQuerease {
     ec: ExecutionContext,
     qio: AppQuereaseIo[Dto],
   ): Future[Int] = {
-    qio.qe.viewDefOption(jobName).map { job =>
-      val jobControlActorName = config.getString("app.job.actor-name")
-      import org.apache.pekko.pattern.ask
-      implicit val timeout: Timeout = 5.seconds
-      for {
-        jobControActor <- as.actorSelection(as / jobControlActorName).resolveOne(1.second)
-        msg <- jobControActor ? WabaseScheduler.Tick(job, params)
-      } yield msg match {
-        case WabaseScheduler.JobStarted => StatusCodes.OK
-        case WabaseScheduler.JobRunning => StatusCodes.Conflict
-        case x => throw sys.error(s"Unknown message from scheduler '$x' for job '$jobName'")
-      }
-    }.getOrElse {
-      Future.successful(StatusCodes.NotFound)
-    }.map(_.intValue)
+    val jobControlActorName = config.getString("app.job.actor-name")
+    import org.apache.pekko.pattern.ask
+    implicit val timeout: Timeout = 5.seconds
+    for {
+      jobControActor <- as.actorSelection(as / jobControlActorName).resolveOne(1.second)
+      msg <- jobControActor ? WabaseScheduler.Tick(jobName, params)
+    } yield (msg match {
+      case WabaseScheduler.JobStarted => StatusCodes.OK
+      case WabaseScheduler.JobRunning => StatusCodes.Conflict
+      case WabaseScheduler.NoJob      => StatusCodes.NotFound
+      case x => throw sys.error(s"Unknown message from scheduler '$x' for job '$jobName'")
+    }).intValue
   }
 
   /** Can be used in actions since Thread.sleep cannot be invoked directly due to method overload */

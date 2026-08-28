@@ -2,9 +2,9 @@ package org.wabase
 
 import com.typesafe.scalalogging.Logger
 import org.apache.pekko.actor.{Actor, ActorRef, ActorSystem, Props}
-import org.mojoz.metadata.ViewDef
+import org.mojoz.querease.ViewNotFoundException
 import org.slf4j.LoggerFactory
-import org.wabase.WabaseScheduler.{JobRunning, JobStarted, Tick}
+import org.wabase.WabaseScheduler.{JobRunning, JobStarted, NoJob, Tick}
 import org.tresql._
 import org.wabase.AppMetadata.Action
 import org.wabase.ds.PoolName
@@ -35,13 +35,53 @@ class WabaseScheduler(wabase: AppBase[_], system: ActorSystem) extends Loggable 
       } else logger.warn("Cannot schedule jobs, see that parameter app.job.actor is not null")
     }
     if (!config.getIsNull("app.job.on-start-job")) {
-      val jobDef = wabase.qe.viewDef(config.getString("app.job.on-start-job"))
-      doJob(jobDef, Map())
+      val jobName = config.getString("app.job.on-start-job")
+      doJob(jobName, Map())
     } else Future.successful(NoResult)
   }
 
-  def doJob(job: ViewDef, params: Map[String, Any]): Future[Any] = {
+  def doJob(jobName: String, params: Map[String, Any]): Future[Any] = {
+    try invokeFunction(WabaseScheduler.executor, Seq(
+      (classOf[String], () => jobName),
+      (classOf[Map[String, Any]], () => params),
+      (classOf[AppBase[_]], () => wabase),
+      (classOf[ActorSystem], () => system),
+    ))(system.dispatcher) match {
+      case f: Future[_] => f
+      case x => Future.successful(x)
+    } catch { case NonFatal(e) => Future.failed(e) }
+  }
+
+  @annotation.nowarn("msg=Manifest")
+  protected def createJobStatusController: WabaseJobStatusController =
+    getObjectOrNewInstance[WabaseJobStatusController](
+      config, "app.job.status-controller", "job status controller",
+      Seq(wabase.dbAccess), Seq(classOf[DbAccess])
+    )
+}
+
+object WabaseScheduler {
+  /** Message sent to WabaseJobActor to ask to start job execution */
+  case class Tick(jobName: String, params: Map[String, Any])
+  sealed trait Messages
+  /** message to inform sender that job has been started */
+  case object JobStarted extends Messages
+  /** message to inform sender that job could not be started because it is already running */
+  case object JobRunning extends Messages
+  /** message to inform sender that no such job exists */
+  case object NoJob extends Messages
+
+  def loggerName(jobName: String): String = s"job.$jobName"
+
+  /** Job executor function - see app.job.executor parameter */
+  lazy val executor: String =
+    if (config.getIsNull("app.job.executor"))
+      sys.error("Configuration parameter 'app.job.executor' cannot be null")
+    else config.getString("app.job.executor")
+
+  def doJob(jobName: String, params: Map[String, Any])(wabase: AppBase[_], as: ActorSystem): Future[Any] = {
     val qe = wabase.qe
+    val job = qe.viewDef(jobName)
     val dbAccess = wabase.dbAccess
     val loggerName = WabaseScheduler.loggerName(job.name)
 
@@ -50,8 +90,8 @@ class WabaseScheduler(wabase: AppBase[_], system: ActorSystem) extends Loggable 
         .withDbAccessLogger(dbAccess.tresqlResources.resourcesTemplate, loggerName)
       ResourcesFactory(dbAccess.initResources, dbAccess.closeResources)(resTempl)
     }
-    implicit val executionContext: ExecutionContext = system.dispatcher
-    implicit val actorSystem: ActorSystem = system
+    implicit val executionContext: ExecutionContext = as.dispatcher
+    implicit val actorSystem: ActorSystem = as
     val logger = Logger(LoggerFactory.getLogger(loggerName))
 
     qe.QuereaseAction(job.name, Action.Job, params, Map())(
@@ -70,24 +110,6 @@ class WabaseScheduler(wabase: AppBase[_], system: ActorSystem) extends Loggable 
         ))
       }
   }
-
-  @annotation.nowarn("msg=Manifest")
-  protected def createJobStatusController: WabaseJobStatusController =
-    getObjectOrNewInstance[WabaseJobStatusController](
-      config, "app.job.status-controller", "job status controller",
-      Seq(wabase.dbAccess), Seq(classOf[DbAccess])
-    )
-}
-
-object WabaseScheduler {
-  /** Message sent to WabaseJobActor to ask to start job execution */
-  case class Tick(job: ViewDef, params: Map[String, Any])
-  /** message to inform sender that job has been started */
-  case object JobStarted
-  /** message to inform sender that job could not be started because it is already running */
-  case object JobRunning
-
-  def loggerName(jobName: String): String = s"job.$jobName"
 }
 
 class WabaseJobActor(
@@ -99,12 +121,12 @@ class WabaseJobActor(
     context.system.log.info(s"Wabase job control actor started...")
   }
   override def receive: Receive = {
-    case Tick(jd, params) =>
-      val jobName = jd.name
+    case Tick(jobName, params) =>
       try {
         if (jobStatusController.acquireIsRunnningLock(jobName)) {
           context.system.log.info(jobName + " started")
-          scheduler.doJob(jd, params).onComplete {
+          val rF = scheduler.doJob(jobName, params)
+          rF.onComplete {
             case Success(_) =>
               jobStatusController.updateCronJobStatus(jobName, "SUCC")
               context.system.log.info(jobName + " ended")
@@ -113,7 +135,8 @@ class WabaseJobActor(
               jobStatusController.updateCronJobStatus(jobName, "ERR")
               context.system.log.info(jobName + " ended with error")
           }(context.dispatcher)
-          sender() ! JobStarted
+          sender() ! rF.value.collect({ case Failure(_: ViewNotFoundException) => NoJob})
+            .getOrElse(JobStarted)
         } else sender() ! JobRunning
       } catch {
         case NonFatal(e) =>

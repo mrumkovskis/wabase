@@ -106,6 +106,16 @@ lazy val commonSettings = Seq(
       ProblemFilters.exclude[DirectMissingMethodProblem]("org.wabase.XmlDecoderFactory.createXmlStreamDecoder"),
       ProblemFilters.exclude[DirectMissingMethodProblem]("org.wabase.XmlDecoderFactory.createXmlStreamDecoders"),
       ProblemFilters.exclude[DirectMissingMethodProblem]("org.wabase.RequestDecoders.<clinit>"),
+      // Job is identified by name instead of view definition - view def is resolved by job executor
+      // (see app.job.executor conf parameter) at job execution time.
+      ProblemFilters.exclude[IncompatibleMethTypeProblem]("org.wabase.WabaseScheduler.doJob"),
+      ProblemFilters.exclude[DirectMissingMethodProblem]("org.wabase.WabaseScheduler#Tick.job"),
+      ProblemFilters.exclude[IncompatibleMethTypeProblem]("org.wabase.WabaseScheduler#Tick.copy"),
+      ProblemFilters.exclude[IncompatibleResultTypeProblem]("org.wabase.WabaseScheduler#Tick.copy$default$1"),
+      ProblemFilters.exclude[IncompatibleMethTypeProblem]("org.wabase.WabaseScheduler#Tick.this"),
+      ProblemFilters.exclude[IncompatibleMethTypeProblem]("org.wabase.WabaseScheduler#Tick.apply"),
+      ProblemFilters.exclude[IncompatibleSignatureProblem]("org.wabase.WabaseScheduler#Tick.unapply"),
+      ProblemFilters.exclude[IncompatibleResultTypeProblem]("org.wabase.WabaseScheduler#Tick._1"), // scala 3
     )
   },
 )
