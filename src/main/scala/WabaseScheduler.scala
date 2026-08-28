@@ -2,7 +2,6 @@ package org.wabase
 
 import com.typesafe.scalalogging.Logger
 import org.apache.pekko.actor.{Actor, ActorRef, ActorSystem, Props}
-import org.mojoz.querease.ViewNotFoundException
 import org.slf4j.LoggerFactory
 import org.wabase.WabaseScheduler.{JobRunning, JobStarted, NoJob, Tick}
 import org.tresql._
@@ -79,6 +78,23 @@ object WabaseScheduler {
       sys.error("Configuration parameter 'app.job.executor' cannot be null")
     else config.getString("app.job.executor")
 
+  private val nameValidator = config.getString("app.job.name-validator")
+  // same thread execution context for synchronous function invocation,
+  // can be replaced with ExecutionContext.parasitic when scala 2.12 support is dropped
+  private val syncEc: ExecutionContext = ExecutionContext.fromExecutor((r: Runnable) => r.run())
+
+  def isJobNameValid(jobName: String)(wabase: AppBase[_]): Boolean =
+    invokeFunction(nameValidator, Seq(
+      (classOf[String], () => jobName),
+      (classOf[AppBase[_]], () => wabase),
+    ))(syncEc) match {
+      case b: Boolean => b
+      case x => sys.error(s"Job name validator '$nameValidator' must return Boolean, got '$x'")
+    }
+
+  def isJobDefined(jobName: String)(wabase: AppBase[_]): Boolean =
+    wabase.qe.viewDefOption(jobName).isDefined
+
   def doJob(jobName: String, params: Map[String, Any])(wabase: AppBase[_], as: ActorSystem): Future[Any] = {
     val qe = wabase.qe
     val job = qe.viewDef(jobName)
@@ -122,7 +138,7 @@ class WabaseJobActor(
   }
   override def receive: Receive = {
     case Tick(jobName, params) =>
-      try {
+      if (WabaseScheduler.isJobNameValid(jobName)(wabase)) {
         if (jobStatusController.acquireIsRunnningLock(jobName)) {
           context.system.log.info(jobName + " started")
           val rF = scheduler.doJob(jobName, params)
@@ -135,13 +151,9 @@ class WabaseJobActor(
               jobStatusController.updateCronJobStatus(jobName, "ERR")
               context.system.log.info(jobName + " ended with error")
           }(context.dispatcher)
-          sender() ! rF.value.collect({ case Failure(_: ViewNotFoundException) => NoJob})
-            .getOrElse(JobStarted)
+          sender() ! JobStarted
         } else sender() ! JobRunning
-      } catch {
-        case NonFatal(e) =>
-          throw e
-      }
+      } else sender() ! NoJob
   }
 
   override def postStop(): Unit = {

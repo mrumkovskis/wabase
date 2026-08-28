@@ -14,7 +14,11 @@ object QuartzScheduler extends Loggable {
       scheduler: QuartzSchedulerExtension,
       wabaseJobActor: ActorRef
     ): Unit = {
-      scheduler.schedule(jobName, wabaseJobActor, Tick(jobName, params))
+      if (WabaseScheduler.isJobNameValid(jobName)(wabase))
+        scheduler.schedule(jobName, wabaseJobActor, Tick(jobName, params))
+      else
+        logger.warn(s"Job definition for schedule $jobName not found. " +
+          s"If you would like to schedule please override this method or define wabase job.")
     }
 
     if (config.hasPath("pekko.quartz.schedules")) {
