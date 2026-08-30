@@ -3,7 +3,7 @@ package org.wabase
 import com.typesafe.scalalogging.Logger
 import org.apache.pekko.actor.{Actor, ActorRef, ActorSystem, Props}
 import org.slf4j.LoggerFactory
-import org.wabase.WabaseScheduler.{JobRunning, JobStarted, NoJob, Tick}
+import org.wabase.WabaseScheduler.{JobRunning, JobStarted, JobNotFound, Tick}
 import org.tresql._
 import org.wabase.AppMetadata.Action
 import org.wabase.ds.PoolName
@@ -68,7 +68,7 @@ object WabaseScheduler {
   /** message to inform sender that job could not be started because it is already running */
   case object JobRunning extends Messages
   /** message to inform sender that no such job exists */
-  case object NoJob extends Messages
+  case object JobNotFound extends Messages
 
   def loggerName(jobName: String): String = s"job.$jobName"
 
@@ -83,9 +83,10 @@ object WabaseScheduler {
   // can be replaced with ExecutionContext.parasitic when scala 2.12 support is dropped
   private val syncEc: ExecutionContext = ExecutionContext.fromExecutor((r: Runnable) => r.run())
 
-  def isJobNameValid(jobName: String)(wabase: AppBase[_]): Boolean =
+  def isJobNameValid(jobName: String, params: Map[String, Any])(wabase: AppBase[_]): Boolean =
     invokeFunction(nameValidator, Seq(
       (classOf[String], () => jobName),
+      (classOf[Map[String, Any]], () => params),
       (classOf[AppBase[_]], () => wabase),
     ))(syncEc) match {
       case b: Boolean => b
@@ -138,7 +139,7 @@ class WabaseJobActor(
   }
   override def receive: Receive = {
     case Tick(jobName, params) =>
-      if (WabaseScheduler.isJobNameValid(jobName)(wabase)) {
+      if (WabaseScheduler.isJobNameValid(jobName, params)(wabase)) {
         if (jobStatusController.acquireIsRunnningLock(jobName)) {
           context.system.log.info(jobName + " started")
           val rF = scheduler.doJob(jobName, params)
@@ -153,7 +154,7 @@ class WabaseJobActor(
           }(context.dispatcher)
           sender() ! JobStarted
         } else sender() ! JobRunning
-      } else sender() ! NoJob
+      } else sender() ! JobNotFound
   }
 
   override def postStop(): Unit = {

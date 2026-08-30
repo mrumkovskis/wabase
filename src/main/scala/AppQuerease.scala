@@ -2297,9 +2297,9 @@ object AppQuerease {
       jobControActor <- as.actorSelection(as / jobControlActorName).resolveOne(1.second)
       msg <- jobControActor ? WabaseScheduler.Tick(jobName, params)
     } yield (msg match {
-      case WabaseScheduler.JobStarted => StatusCodes.OK
-      case WabaseScheduler.JobRunning => StatusCodes.Conflict
-      case WabaseScheduler.NoJob      => StatusCodes.NotFound
+      case WabaseScheduler.JobStarted   => StatusCodes.OK
+      case WabaseScheduler.JobRunning   => StatusCodes.Conflict
+      case WabaseScheduler.JobNotFound  => StatusCodes.NotFound
       case x => throw sys.error(s"Unknown message from scheduler '$x' for job '$jobName'")
     }).intValue
   }
