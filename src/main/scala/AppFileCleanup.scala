@@ -41,6 +41,7 @@ class AppFileCleanup(qe: AppQuerease, resourcesTemplate: Resources,
   */
 
   def doCleanup(): Unit = {
+    logger.debug(s"File cleanup started, file streamers: ${fileStreamers.map(_.rootPath).mkString(", ")}")
     fileStreamers foreach { fs =>
       val wd = new File(fs.rootPath)
       val tmp = new File(fs.rootPath + "/tmp")
@@ -52,6 +53,7 @@ class AppFileCleanup(qe: AppQuerease, resourcesTemplate: Resources,
     cleanupFileBodyInfo
     cleanupFiles
     cleanupTmp
+    logger.debug("File cleanup finished")
   }
 
   private def listFilesRecursively(file: File, filter: File => Boolean = _ => true): Seq[File] = {
@@ -59,10 +61,14 @@ class AppFileCleanup(qe: AppQuerease, resourcesTemplate: Resources,
     these.filter(filter) ++ these.filter(_.isDirectory).flatMap(listFilesRecursively(_, filter))
   }
 
-  private def deleteFilesRecursively(file: File): Unit = {
-    if (file.isDirectory)
-      Option(file.listFiles).map(_.toSeq).getOrElse(Nil).foreach(deleteFilesRecursively)
+  private def deleteFilesRecursively(file: File): Int = {
+    val nestedDeleted =
+      if (file.isDirectory)
+        Option(file.listFiles).map(_.toSeq).getOrElse(Nil).map(deleteFilesRecursively).sum
+      else 0
+    val wasFile = file.isFile
     file.delete
+    nestedDeleted + (if (wasFile) 1 else 0)
   }
 
   protected def fileFilter(file: File): Boolean =
@@ -70,41 +76,52 @@ class AppFileCleanup(qe: AppQuerease, resourcesTemplate: Resources,
       Try(System.currentTimeMillis > Files.getLastModifiedTime(file.toPath).toMillis + minAgeMillis).toOption.getOrElse(true)
 
   protected def cleanTrash = {
+    logger.debug("Cleaning trash")
     //remove files which where moved to trash directory in previous cron job run
-    fileStreamers foreach { fs =>
+    val filesDeleted = fileStreamers.map { fs =>
       deleteFilesRecursively(new File(fs.rootPath + "/trash"))
-    }
+    }.sum
+    logger.debug("Trash files deleted: " + filesDeleted)
   }
 
-  protected def cleanupFileInfo =
+  protected def cleanupFileInfo = {
+    logger.debug("Cleaning file_info")
     fileStreamers foreach { fs => deleteAndLog(
       fileInfoCleanupStatement(fs),
       s"${fs.file_info_table} table cleanup - records deleted:",
     )}
+  }
 
-  protected def cleanupFileBodyInfo =
+  protected def cleanupFileBodyInfo = {
+    logger.debug("Cleaning file_body_info")
     fileStreamers  foreach { fs => deleteAndLog(
       fileBodyInfoCleanupStatement(fs),
       s"${fs.file_body_info_table} table cleanup - records deleted:",
     )}
+  }
 
   protected def cleanupFiles = {
+    logger.debug("Cleaning files on disk")
     prepCompareTable
     fillCompareTable()
     compareDataAndMoveFilesToTrash
   }
 
-  protected def prepCompareTable: Unit =
+  protected def prepCompareTable: Unit = {
+    logger.debug("Preparing files_on_disk table")
     deleteAndLog(
       "files_on_disk-[]",
       "files_on_disk table cleanup - records deleted:",
     )
+  }
 
   protected def fillCompareTable(batchSize: Int = 500): Unit = {
+    logger.debug("Filling files_on_disk table")
     // file system list all files applicable for deletion
     val YYYY_MM_DD_SHA = """.*(/\d\d\d\d/\d\d/\d\d/[0-9a-fA-F]{64})$""".r
     val allRootPaths = fileStreamers.map(_.rootPath).distinct
     allRootPaths.filterNot(rp => allRootPaths.exists(rrp => rp.startsWith(rrp + "/"))) foreach { rootPath =>
+      logger.debug(s"Listing files on disk for $rootPath")
       val wd = new File(rootPath)
       val files =
         listFilesRecursively(wd, fileFilter)
@@ -142,6 +159,7 @@ class AppFileCleanup(qe: AppQuerease, resourcesTemplate: Resources,
   }
 
   protected def compareDataAndMoveFilesToTrash: Unit = {
+    logger.debug("Moving unreferenced files to trash")
     // delete files from file system
     val query = fileStreamers.zipWithIndex.map {
       case (fs, idx) =>
@@ -169,11 +187,16 @@ class AppFileCleanup(qe: AppQuerease, resourcesTemplate: Resources,
   }
 
   protected def cleanupTmp = {
-    fileStreamers foreach { fs =>
+    logger.debug("Cleaning tmp")
+    val filesDeleted = fileStreamers.map { fs =>
       val wd = new File(fs.rootPath + "/tmp")
-      if (wd.exists)
-        listFilesRecursively(wd, fileFilter).foreach (_.delete)
-    }
+      if (wd.exists) {
+        val files = listFilesRecursively(wd, fileFilter)
+        files.foreach (_.delete)
+        files.size
+      } else 0
+    }.sum
+    logger.debug("Temporary files deleted: " + filesDeleted)
   }
 
   private lazy val batchLimit: String =

@@ -71,4 +71,8 @@
     <!-- logger name="org.wabase.tresql.params" level="debug"/ -->
     <!-- sql statement with embedded params logger -->
     <!-- logger name="org.wabase.tresql.sql_wp" level="debug"/ -->
+    <!--
+    <logger name="wabase.file-cleanup" level="debug"/>
+    <logger name="wabase.file-cleanup.tresql" level="warn"/>
+    -->
 </configuration>
