@@ -1,13 +1,16 @@
 package org.wabase
 
-import java.io.File
-import java.nio.file.{Files, StandardCopyOption}
+import java.io.{File, IOException}
+import java.nio.file.attribute.BasicFileAttributes
+import java.nio.file.{FileVisitOption, FileVisitResult, Files, Path, SimpleFileVisitor, StandardCopyOption}
+import java.util.EnumSet
 import org.tresql._
 import org.wabase.AppMetadata.DbAccessKey
 import org.wabase.ds.ConnectionPools.DEFAULT_CP
 import org.wabase.ds.PoolName
 
 import scala.annotation.tailrec
+import scala.collection.mutable.ArrayBuffer
 import scala.util.Try
 import scala.language.reflectiveCalls
 
@@ -56,24 +59,71 @@ class AppFileCleanup(qe: AppQuerease, resourcesTemplate: Resources,
     logger.debug("File cleanup finished")
   }
 
-  private def listFilesRecursively(file: File, filter: File => Boolean = _ => true): Seq[File] = {
-    val these = Option(file.listFiles).map(_.toSeq).getOrElse(Nil)
-    these.filter(filter) ++ these.filter(_.isDirectory).flatMap(listFilesRecursively(_, filter))
+  // One GETATTR/stat per path. File.listFiles + isFile/isDirectory/mtime is 2-3 NFS RPCs each.
+  private def foreachFile(
+    root: File,
+    skipTopDirNames: Set[String] = Set.empty,
+  )(visit: (File, BasicFileAttributes) => Unit): Unit = {
+    val start = root.toPath
+    if (!Files.isDirectory(start)) return
+    Files.walkFileTree(
+      start,
+      EnumSet.of(FileVisitOption.FOLLOW_LINKS),
+      Integer.MAX_VALUE,
+      new SimpleFileVisitor[Path] {
+        override def preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult = {
+          val name = dir.getFileName
+          if (name != null && (dir.getParent == start) && skipTopDirNames.contains(name.toString))
+            FileVisitResult.SKIP_SUBTREE
+          else FileVisitResult.CONTINUE
+        }
+        override def visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult = {
+          visit(file.toFile, attrs)
+          FileVisitResult.CONTINUE
+        }
+        override def visitFileFailed(file: Path, exc: IOException): FileVisitResult =
+          FileVisitResult.CONTINUE
+      }
+    )
   }
 
+  private def foreachAgedFile(
+    root: File,
+    skipTopDirNames: Set[String] = Set.empty,
+  )(visit: File => Unit): Unit =
+    foreachFile(root, skipTopDirNames) { (file, attrs) =>
+      if (fileFilter(file, attrs)) visit(file)
+    }
+
   private def deleteFilesRecursively(file: File): Int = {
-    val nestedDeleted =
-      if (file.isDirectory)
-        Option(file.listFiles).map(_.toSeq).getOrElse(Nil).map(deleteFilesRecursively).sum
-      else 0
-    val wasFile = file.isFile
-    file.delete
-    nestedDeleted + (if (wasFile) 1 else 0)
+    val start = file.toPath
+    if (!Files.exists(start)) 0
+    else {
+      var filesDeleted = 0
+      Files.walkFileTree(start, new SimpleFileVisitor[Path] {
+        override def visitFile(f: Path, attrs: BasicFileAttributes): FileVisitResult = {
+          Files.deleteIfExists(f)
+          filesDeleted += 1
+          FileVisitResult.CONTINUE
+        }
+        override def visitFileFailed(f: Path, exc: IOException): FileVisitResult =
+          FileVisitResult.CONTINUE
+        override def postVisitDirectory(dir: Path, exc: IOException): FileVisitResult = {
+          Files.deleteIfExists(dir)
+          FileVisitResult.CONTINUE
+        }
+      })
+      filesDeleted
+    }
   }
 
   protected def fileFilter(file: File): Boolean =
-    file.isFile &&
-      Try(System.currentTimeMillis > Files.getLastModifiedTime(file.toPath).toMillis + minAgeMillis).toOption.getOrElse(true)
+    Try(Files.readAttributes(file.toPath, classOf[BasicFileAttributes])).toOption
+      .exists(fileFilter(file, _))
+
+  protected def fileFilter(file: File, attrs: BasicFileAttributes): Boolean =
+    attrs.isRegularFile &&
+      Try(System.currentTimeMillis > attrs.lastModifiedTime.toMillis + minAgeMillis).getOrElse(true)
 
   protected def cleanTrash = {
     logger.debug("Cleaning trash")
@@ -123,32 +173,29 @@ class AppFileCleanup(qe: AppQuerease, resourcesTemplate: Resources,
     allRootPaths.filterNot(rp => allRootPaths.exists(rrp => rp.startsWith(rrp + "/"))) foreach { rootPath =>
       logger.debug(s"Listing files on disk for $rootPath")
       val wd = new File(rootPath)
-      val files =
-        listFilesRecursively(wd, fileFilter)
-          .map(_.getAbsolutePath)
-          // process files according to the parttern: [fileStreamer.rootPath]/year/mmonth/day/sha256
-          .filter(f => f match {
-            case YYYY_MM_DD_SHA(x) =>
-              allRootPaths.exists(_ + x == f)
-            case _ => false
-          })
-
-      // insert files into files_on_disk
-      db_write { implicit res =>
-        def prepareStatement = res.conn.prepareStatement("INSERT INTO files_on_disk(path) VALUES (?)")
-        val lastBatch =
-          files.foldLeft((prepareStatement, 0)) { case ((stmt, count), file) =>
+      val batch = new ArrayBuffer[String](batchSize)
+      def flush(): Unit = if (batch.nonEmpty) {
+        db_write { implicit res =>
+          val stmt = res.conn.prepareStatement("INSERT INTO files_on_disk(path) VALUES (?)")
+          batch.foreach { file =>
             stmt.setString(1, file)
             stmt.addBatch()
-            if(count >= batchSize) {
-              stmt.executeBatch()
-              res.conn.commit()
-              (prepareStatement, 0)
-            } else (stmt, count + 1)
           }
-        if (lastBatch._2 > 0)
-          lastBatch._1.executeBatch()
+          stmt.executeBatch()
+        }
+        batch.clear()
       }
+      foreachAgedFile(wd, Set("tmp", "trash")) { file =>
+        val path = file.getAbsolutePath
+        // process files according to the parttern: [fileStreamer.rootPath]/year/mmonth/day/sha256
+        path match {
+          case YYYY_MM_DD_SHA(x) if allRootPaths.exists(_ + x == path) =>
+            batch += path
+            if (batch.size >= batchSize) flush()
+          case _ =>
+        }
+      }
+      flush()
       //filesUploaded as count query also for "warming up" DB (something like sql "analyze file_body_info"); independent of logger.debug scope
       @annotation.nowarn("msg=Manifest")
       val filesUploaded = db_write { implicit res =>
@@ -191,9 +238,12 @@ class AppFileCleanup(qe: AppQuerease, resourcesTemplate: Resources,
     val filesDeleted = fileStreamers.map { fs =>
       val wd = new File(fs.rootPath + "/tmp")
       if (wd.exists) {
-        val files = listFilesRecursively(wd, fileFilter)
-        files.foreach (_.delete)
-        files.size
+        var n = 0
+        foreachAgedFile(wd) { file =>
+          file.delete()
+          n += 1
+        }
+        n
       } else 0
     }.sum
     logger.debug("Temporary files deleted: " + filesDeleted)

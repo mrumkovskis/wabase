@@ -85,6 +85,8 @@ lazy val commonSettings = Seq(
 lazy val wabase = (project in file("."))
   .settings(commonSettings: _*)
   .settings(
+    // While 8.1.1 is stuck in PUBLISH, check against last released 8.1.0 instead of inferred 8.1.1.
+    versionPolicyPreviousVersions := Seq("8.1.0"),
     // Explicit Scaladoc base URLs for Apache Pekko jars (sbt-api-mappings does not
     // cover these). Match by Maven path so third-party "pekko-*" artifacts are skipped.
     apiMappings ++= {
