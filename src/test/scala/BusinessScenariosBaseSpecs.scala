@@ -143,6 +143,13 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
   def testCases(scenario: File): Vector[File] =
     scenario.listFiles.filter(isTestCaseFile).sortBy(_.getName).toVector
 
+  private object NotNullCapture {
+    private val Pattern = """not_null\(\)\s*->\s*(\S.*)""".r
+    def unapply(s: String): Option[String] = s.trim match {
+      case Pattern(key) => Some(key.trim)
+      case _ => None
+    }
+  }
   def assertResponse(response: Any, expectedResponse: Any, path: String, fullCompare: Boolean): Map[String, Any] = {
     def err(message: String) = sys.error(path + ": " + message)
 
@@ -164,6 +171,8 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
             case Some(value) => assertResponse(value, expectedValue, path + "/" + key, fullCompare)
           }
         }
+      case (a, s: String) if s.trim == "not_null()" => if (response == null) err(s"Element $a should not be null") else Map.empty
+      case (a, NotNullCapture(key))                 => if (response == null) err(s"Element $a should not be null") else Map(key -> response)
       case (a, s: String) if s.trim.startsWith("->") => Map(s.trim.substring(2).trim -> a)
       case (a, b) if b != null && String.valueOf(a) == b.toString => Map.empty
       case (null, null) => Map.empty

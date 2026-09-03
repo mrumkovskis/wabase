@@ -1,0 +1,14 @@
+path:       /echo
+method:     POST
+request:
+  father:
+    name: Kyle
+    surname: Doe
+  mother:
+    name: Kiki
+    surname: Smith
+response:
+  father:
+    name: not_null()
+    surname: Doe
+  mother: not_null()

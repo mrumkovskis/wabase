@@ -1,0 +1,6 @@
+path:       /echo
+method:     POST
+request:
+  time: <- captured_time
+response:
+  time: <- captured_time

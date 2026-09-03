@@ -1,0 +1,12 @@
+path:       /echo
+method:     POST
+request:
+  id: 42
+  active: true
+  name: Alice
+  note: ""
+response:
+  id: not_null()
+  active: not_null()
+  name: Alice
+  note: not_null()

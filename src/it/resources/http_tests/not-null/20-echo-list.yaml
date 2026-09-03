@@ -1,0 +1,4 @@
+path:       /echo
+method:     POST
+request:    [1, 2, "a"]
+response:   [not_null(), 2, not_null()]

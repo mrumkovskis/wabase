@@ -1,0 +1,9 @@
+path:       /echo
+method:     POST
+request:
+  token: <- captured_token
+  nested: <- captured_nested
+response:
+  token: secret-token
+  nested:
+    n: 1
