@@ -1,5 +1,139 @@
 # View actions
 
+## Actions
+
+An action is a named sequence of [steps](#view-action-execution-steps) in a view definition.
+The action name is a top level key of the view definition, the `api` extra lists the actions
+exposed over http together with the roles allowed to call them.
+
+A view definition may declare actions without defining their steps — such actions use their
+default implementation:
+
+```yaml
+name:   person
+table:  person
+api:    count, create, get, list, upsert, delete
+key:    code
+fields:
+- code
+- name
+- surname
+```
+
+Steps given for an action replace its default implementation:
+
+```yaml
+name:   person_redirect
+table:  person
+api:    get, upsert, update+
+key:    code
+fields:
+- code
+- name
+- surname
+upsert:
+- upsert this
+- redirect this
+update+:
+- update this
+- redirect this
+```
+
+In `api` a role name applies to the action names following it, until the next role name.
+`api: count, USER get, list, MANAGER create, save, MANAGER, BIG_BROTHER delete` allows
+`count` for the default role — `ADMIN` unless overridden, `get` and `list` for `USER`,
+`create` and `save` for `MANAGER`, and `delete` for `MANAGER` and `BIG_BROTHER`. Listing an
+action twice is an error.
+
+### Action names
+
+Only the names below can be used, both as a view definition key and in `api`. An action
+without steps in the view definition falls back to its default implementation — the built in
+querease operation, equivalent of a single [view call](#view-call) step on the view itself.
+Actions with no default implementation must be defined in the view definition.
+
+| Name | Default implementation | Expected key size |
+| --- | --- | --- |
+| `get` | Reads one row by key. | full key |
+| `list` | Reads rows, honours `offset`, `limit` and `sort` parameters. | collection |
+| `count` | Counts rows matching filter. | collection |
+| `create` | Builds new instance from field `initial` expressions. | 0 |
+| `insert` | Saves data as insert. | collection |
+| `update` | Saves data as update. | full key |
+| `update+` | Saves data as update, key may be changed — old key in uri, new key in body. | full key |
+| `upsert` | Saves data, insert or update decided while saving. | full key |
+| `save` | Saves data, insert if all key field values are missing, otherwise update. | 0 to full key |
+| `delete` | Deletes row by key. | full key |
+| `head` | None. | 0 to full key |
+| `options` | None. | 0 to full key |
+| `post` | None. | collection |
+| `put` | None. | full key |
+| `job` | None. Cannot be used in `api`, see [job](#job). | — |
+
+Full key size is the number of `key` fields exposed over the api — those not marked
+`field api: excluded`. The collection range starts at `min search key field count` and ends
+at the number of key fields, less one if the view declares any of `get`, `update`, `update+`,
+`upsert`, `save`, `delete` or `put` in `api`. If such an action is declared and
+`min search key field count` equals the number of key fields, collection actions accept an
+empty key only. A request with key size outside the expected range is rejected with
+`400 Bad Request`.
+
+`insert`, `update` and `upsert` fall back to the `save` action of the view if it is defined —
+the executing action name is still the requested one, so `save this` in such a shared action
+performs insert, update or upsert accordingly.
+
+The action names are also the [view call](#view-call) step keywords, `job` being spelled
+`call` there.
+
+### Action resolution
+
+The action named by the request is not necessarily the action executed. It is resolved
+against the actions declared in `api` of the view, by the first matching rule:
+
+| Requested | Resolved to |
+| --- | --- |
+| `get` | `get` if declared and key is not shorter than full key, else `list` if declared, else `get`. |
+| declared in `api` | Itself. |
+| `put` | `upsert` if declared, else `update` if declared or view has auto generated key, else `upsert`. |
+| `upsert` | `update` if declared or view has auto generated key, else `upsert`. |
+| `post` | `insert` if key is empty or `update+` is not declared, else `update+`. |
+| any other | Itself. |
+
+The rules are ordered, so `put`, `upsert` and `post` are resolved to another action only when
+the view does not declare them — a view declaring `put` in `api` executes its own `put`
+action. `get` is the exception, it is resolved before the declared action rule and may
+therefore become `list` even when the view declares `get`.
+
+Roles of a resolved `insert`, `update` or `upsert` action default to the roles of `save`.
+
+### Http method mapping
+
+Without a `:count` or `:create` suffix in the request path the action is chosen by the http
+method, see [route processing](routes.md#action).
+
+| Http method | Action |
+| --- | --- |
+| `GET` | `get` |
+| `POST` | `app.action-for-http.post` |
+| `PUT` | `app.action-for-http.put` |
+| `DELETE` | `delete` |
+| `HEAD` | `head` |
+| `OPTIONS` | `options` |
+
+The resulting action is then resolved as described above. Configuration defaults suit an
+application defining `post`, `put` and `update+` actions:
+
+| Setting | Default | Legacy application |
+| --- | --- | --- |
+| `app.action-for-http.post` | `post` | `insert` |
+| `app.action-for-http.put` | `put` | `update` |
+| `app.action-for-key-update` | `update+` | `update` |
+| `app.action-legacy-mapping` | `false` | `true` |
+
+`app.action-for-key-update` names the action taking the old key from the uri and the new key
+from the request body. `app.action-legacy-mapping` set to `true` skips the key size check,
+allowing key sizes of legacy applications.
+
 ## View action execution steps
 
 ### Variable name
