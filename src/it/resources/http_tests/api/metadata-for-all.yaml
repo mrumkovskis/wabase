@@ -415,6 +415,72 @@ response: {
     }],
     "filter": []
   },
+  "email_batch_test": {
+    "name": "email_batch_test",
+    "key": [],
+    "fields": [{
+      "name": "name",
+      "type": "string",
+      "isCollection": false,
+      "isComplexType": false,
+      "nullable": true,
+      "required": false,
+      "sortable": false,
+      "label": "Name",
+      "visible": true,
+      "insertable": true,
+      "updatable": true,
+      "enum": null,
+      "refViewName": null,
+      "comments": null,
+      "jsonType": "string"
+    }],
+    "filter": []
+  },
+  "email_test": {
+    "name": "email_test",
+    "key": [],
+    "fields": [{
+      "name": "name",
+      "type": "string",
+      "isCollection": false,
+      "isComplexType": false,
+      "nullable": true,
+      "required": false,
+      "sortable": false,
+      "label": "Name",
+      "visible": true,
+      "insertable": true,
+      "updatable": true,
+      "enum": null,
+      "refViewName": null,
+      "comments": null,
+      "jsonType": "string"
+    }],
+    "filter": []
+  },
+  "email_html_test": {
+    "name": "email_html_test",
+    "key": [],
+    "fields": [{
+      "name": "name",
+      "type": "string",
+      "isCollection": false,
+      "isComplexType": false,
+      "nullable": true,
+      "required": false,
+      "sortable": false,
+      "label": "Name",
+      "visible": true,
+      "insertable": true,
+      "updatable": true,
+      "enum": null,
+      "refViewName": null,
+      "comments": null,
+      "jsonType": "string"
+    }],
+    "filter": []
+  },
   "extra_metadata_file_view": {
     "name": "extra_metadata_file_view",
     "key": ["code"],

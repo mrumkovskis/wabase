@@ -116,6 +116,12 @@ lazy val commonSettings = Seq(
       ProblemFilters.exclude[IncompatibleMethTypeProblem]("org.wabase.WabaseScheduler#Tick.apply"),
       ProblemFilters.exclude[IncompatibleSignatureProblem]("org.wabase.WabaseScheduler#Tick.unapply"),
       ProblemFilters.exclude[IncompatibleResultTypeProblem]("org.wabase.WabaseScheduler#Tick._1"), // scala 3
+      // Email action op has new 'html' option - body is sent as html instead of plain text.
+      ProblemFilters.exclude[DirectMissingMethodProblem]("org.wabase.AppMetadata#Action#Email.this"),
+      ProblemFilters.exclude[DirectMissingMethodProblem]("org.wabase.AppMetadata#Action#Email.apply"),
+      ProblemFilters.exclude[DirectMissingMethodProblem]("org.wabase.AppMetadata#Action#Email.copy"),
+      ProblemFilters.exclude[MissingTypesProblem]("org.wabase.AppMetadata$Action$Email$"),
+      ProblemFilters.exclude[IncompatibleSignatureProblem]("org.wabase.AppMetadata#Action#Email.unapply"),
     )
   },
 )
@@ -264,6 +270,11 @@ lazy val it = (project in file("src/it"))
   .settings(itResourceSettings: _*)
   .settings(
     libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.20",
+    // In-process SMTP server for email tests. Exclusions - jakarta mail api and implementation
+    // are already provided by simple-java-mail (as jakarta.mail-api and angus-mail).
+    libraryDependencies += ("com.icegreen" % "greenmail" % "2.1.3" % Test)
+      .exclude("org.eclipse.angus", "jakarta.mail")
+      .exclude("junit", "junit"),
     publish / skip := true,
     Compile / run / mainClass   := Some("org.wabase.WabaseServer"),
     Compile / unmanagedSources  += baseDirectory.value / ".." / "test" / "scala" / "BusinessScenariosBaseSpecs.scala",

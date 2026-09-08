@@ -717,12 +717,15 @@ template 'Subject for {{name}}!'
 ### email
 
 ```
-email [batch] <data tresql> <subject expr> <body expr> (<attachment expr> […])
+email [batch] [html] <data tresql> <subject expr> <body expr> (<attachment expr> […])
 ```
 
 If the `batch` option is used, email is sent for each row returned by the recipient's
 operation. Otherwise the recipient's operation must return no more than one row. Currently
 tresql or extract entity with decoder statement is supported for recipients.
+
+If the `html` option is used, body expression result is sent as html, otherwise as plain text.
+Note that no plain text alternative part is added to html message.
 
 Following data tresql columns will be used in corresponding email fields: `to`, `cc`, `bcc`,
 `from`, `replyTo`.

@@ -1082,8 +1082,10 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
   }
   def emailOp: MemParser[Email] = {
     def dataOp = extractEntityOp | tresqlOp
-    "email\\s+".r ~> opt("batch") ~ dataOp ~ operation ~ operation ~ rep(operation) ^^ {
-      case batch ~ data ~ subj ~ body ~ att => Email(data, subj, body, att, batch.isDefined)
+    // word boundary so that recipient tresql starting with 'html...' is not mistaken for option
+    "email\\s+".r ~> opt("batch") ~ opt("html\\b".r) ~ dataOp ~ operation ~ operation ~ rep(operation) ^^ {
+      case batch ~ html ~ data ~ subj ~ body ~ att =>
+        Email(data, subj, body, att, batch.isDefined, html.isDefined)
     } named "email-op"
   }
   def httpOp: MemParser[Http] = {
@@ -1440,7 +1442,8 @@ object AppMetadata extends Loggable {
       fileStreamerName: String = null,
     ) extends Op
     case class Template(body: Op = null, name: Op = null, dataOp: Op = null, targetNameTresql: Tresql = null) extends Op
-    case class Email(recipients: Op, subject: Op, body: Op, attachmentsOp: List[Op] = Nil, isBatch: Boolean = false) extends Op
+    case class Email(recipients: Op, subject: Op, body: Op, attachmentsOp: List[Op] = Nil,
+                     isBatch: Boolean = false, isHtml: Boolean = false) extends Op
     case class Http(method: String,
                     uriTresql: TresqlUri.Tresql,
                     headerTresql: Tresql = null,
@@ -1523,7 +1526,7 @@ object AppMetadata extends Loggable {
           if (e == null) r else traverseAction(e)(stepTrav)(r)
         case o: ToFile => opTrav(state)(o.contentOp)
         case o: Template => opTrav(opTrav(opTrav(state)(o.body))(o.name))(o.dataOp)
-        case Email(r, s, b, a, _) => a.foldLeft(opTrav(opTrav(opTrav(state)(r))(s))(b))(opTrav(_)(_))
+        case Email(r, s, b, a, _, _) => a.foldLeft(opTrav(opTrav(opTrav(state)(r))(s))(b))(opTrav(_)(_))
         case o: Http => opTrav(state)(o.body)
         case h: HttpHeader => if (h.httpOp == null) state else opTrav(state)(h.httpOp)
         case Db(a, _, _) => traverseAction(a)(stepTrav)(state)
@@ -1613,7 +1616,7 @@ object AppMetadata extends Loggable {
             case Template(body, name, dataOp, filenameTresql) =>
               val s = opTresqlTrav(opTresqlTrav(opTresqlTrav(state)(body))(name))(dataOp)
               us(s, nv(s.value)(filenameTresql))
-            case Email(r, s, b, a, _) =>
+            case Email(r, s, b, a, _, _) =>
               a.foldLeft(
                 opTresqlTrav(opTresqlTrav(opTresqlTrav(state)(r))(s))(b)
               )(opTresqlTrav(_)(_))

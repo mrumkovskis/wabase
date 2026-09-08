@@ -1,0 +1,35 @@
+name: email_test
+api: insert
+fields:
+- name
+insert:
+- email
+    ({ 'to@wabase.test' 'to', 'cc@wabase.test' cc, 'bcc@wabase.test' bcc,
+       'sender@wabase.test' 'from', 'reply@wabase.test' replyTo })
+    (template body='Subject for {{name}}!')
+    (template body='Content for {{name}}.')
+    (template body='Attachment for {{name}}' target_name='attachment.txt')
+    (template body='Attachment for {{name}}' target_name='rēķins un čips.txt')
+
+
+name: email_batch_test
+api: insert
+fields:
+- name
+insert:
+- email batch
+    ({ 'batch-1@wabase.test' 'to', 'sender@wabase.test' 'from', 'Baiba' recipient } +
+     { 'batch-2@wabase.test' 'to', 'sender@wabase.test' 'from', 'Migel' recipient })
+    (template body='Subject for {{recipient}}!')
+    (template body='Content for {{recipient}} from {{name}}.')
+
+
+name: email_html_test
+api: insert
+fields:
+- name
+insert:
+- email html
+    ({ 'html@wabase.test' 'to', 'sender@wabase.test' 'from' })
+    (template body='Subject for {{name}}!')
+    (template body='<h1>Hello {{name}}</h1><p>Content for {{name}}.</p>')

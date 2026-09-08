@@ -1,0 +1,29 @@
+sleep:    100 ms # mail is sent asynchronously
+retries:  10
+path:     /backdoor/inbox
+response: [
+  {
+    "mailbox":  "batch-1@wabase.test",
+    "from":     "sender@wabase.test",
+    "to":       "batch-1@wabase.test",
+    "cc":       null,
+    "bcc":      null,
+    "reply_to": "sender@wabase.test",
+    "subject":  "Subject for Baiba!",
+    "body":     "Content for Baiba from Hannah.",
+    "body_content_type": "text/plain",
+    "attachments": []
+  },
+  {
+    "mailbox":  "batch-2@wabase.test",
+    "from":     "sender@wabase.test",
+    "to":       "batch-2@wabase.test",
+    "cc":       null,
+    "bcc":      null,
+    "reply_to": "sender@wabase.test",
+    "subject":  "Subject for Migel!",
+    "body":     "Content for Migel from Hannah.",
+    "body_content_type": "text/plain",
+    "attachments": []
+  }
+]

@@ -180,6 +180,60 @@ response: |+
             description: Not Found
           "503":
             description: Service Unavailable
+    /data/email_batch_test:
+      post:
+        summary: Insert 'email_batch_test'
+        description: ""
+        requestBody:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/email_batch_test"
+        responses:
+          "200":
+            description: OK
+          "201":
+            description: Created
+          "400":
+            description: Bad Request
+          "503":
+            description: Service Unavailable
+    /data/email_html_test:
+      post:
+        summary: Insert 'email_html_test'
+        description: ""
+        requestBody:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/email_html_test"
+        responses:
+          "200":
+            description: OK
+          "201":
+            description: Created
+          "400":
+            description: Bad Request
+          "503":
+            description: Service Unavailable
+    /data/email_test:
+      post:
+        summary: Insert 'email_test'
+        description: ""
+        requestBody:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/email_test"
+        responses:
+          "200":
+            description: OK
+          "201":
+            description: Created
+          "400":
+            description: Bad Request
+          "503":
+            description: Service Unavailable
     /data/extra_metadata_file_view:
       get:
         summary: List 'extra_metadata_file_view'
@@ -1732,6 +1786,27 @@ response: |+
             description: Roles
             items:
               type: string
+            readOnly: false
+      email_batch_test:
+        type: object
+        properties:
+          name:
+            type: string
+            description: Name
+            readOnly: false
+      email_html_test:
+        type: object
+        properties:
+          name:
+            type: string
+            description: Name
+            readOnly: false
+      email_test:
+        type: object
+        properties:
+          name:
+            type: string
+            description: Name
             readOnly: false
       extra_metadata_file_view:
         type: object

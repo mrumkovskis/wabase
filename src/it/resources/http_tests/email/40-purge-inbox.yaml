@@ -1,0 +1,3 @@
+method:   POST
+path:     /backdoor/purge-inbox
+response:

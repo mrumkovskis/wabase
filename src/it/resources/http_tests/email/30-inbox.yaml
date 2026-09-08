@@ -1,0 +1,80 @@
+sleep:    100 ms # mail is sent asynchronously
+retries:  10
+path:     /backdoor/inbox
+response: [
+  {
+    "mailbox":  "bcc@wabase.test",
+    "from":     "sender@wabase.test",
+    "to":       "to@wabase.test",
+    "cc":       "cc@wabase.test",
+    "bcc":      null,
+    "reply_to": "reply@wabase.test",
+    "subject":  "Subject for Hannah!",
+    "body":     "Content for Hannah.",
+    "body_content_type": "text/plain",
+    "attachments": [
+      {
+        "filename":     "attachment.txt",
+        "disposition":  "attachment; filename=attachment.txt",
+        "content_type": "text/plain",
+        "content":      "Attachment for Hannah"
+      },
+      {
+        "filename":     "rēķins un čips.txt",
+        "disposition":  "attachment; filename*=UTF-8''r%C4%93%C4%B7ins%20un%20%C4%8Dips.txt",
+        "content_type": "text/plain",
+        "content":      "Attachment for Hannah"
+      }
+    ]
+  },
+  {
+    "mailbox":  "cc@wabase.test",
+    "from":     "sender@wabase.test",
+    "to":       "to@wabase.test",
+    "cc":       "cc@wabase.test",
+    "bcc":      null,
+    "reply_to": "reply@wabase.test",
+    "subject":  "Subject for Hannah!",
+    "body":     "Content for Hannah.",
+    "body_content_type": "text/plain",
+    "attachments": [
+      {
+        "filename":     "attachment.txt",
+        "disposition":  "attachment; filename=attachment.txt",
+        "content_type": "text/plain",
+        "content":      "Attachment for Hannah"
+      },
+      {
+        "filename":     "rēķins un čips.txt",
+        "disposition":  "attachment; filename*=UTF-8''r%C4%93%C4%B7ins%20un%20%C4%8Dips.txt",
+        "content_type": "text/plain",
+        "content":      "Attachment for Hannah"
+      }
+    ]
+  },
+  {
+    "mailbox":  "to@wabase.test",
+    "from":     "sender@wabase.test",
+    "to":       "to@wabase.test",
+    "cc":       "cc@wabase.test",
+    "bcc":      null,
+    "reply_to": "reply@wabase.test",
+    "subject":  "Subject for Hannah!",
+    "body":     "Content for Hannah.",
+    "body_content_type": "text/plain",
+    "attachments": [
+      {
+        "filename":     "attachment.txt",
+        "disposition":  "attachment; filename=attachment.txt",
+        "content_type": "text/plain",
+        "content":      "Attachment for Hannah"
+      },
+      {
+        "filename":     "rēķins un čips.txt",
+        "disposition":  "attachment; filename*=UTF-8''r%C4%93%C4%B7ins%20un%20%C4%8Dips.txt",
+        "content_type": "text/plain",
+        "content":      "Attachment for Hannah"
+      }
+    ]
+  }
+]
