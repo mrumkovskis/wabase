@@ -32,4 +32,5 @@ insert:
 - email html
     ({ 'html@wabase.test' 'to', 'sender@wabase.test' 'from' })
     (template body='Subject for {{name}}!')
-    (template body='<h1>Hello {{name}}</h1><p>Content for {{name}}.</p>')
+    (template body='<h1>Hello {{name}}</h1><p>Content for {{name}}.</p><img src="cid:logo.svg">')
+    (embedded template body='<svg xmlns="http://www.w3.org/2000/svg"/>' target_name='logo.svg')

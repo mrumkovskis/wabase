@@ -1082,8 +1082,15 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
   }
   def emailOp: MemParser[Email] = {
     def dataOp = extractEntityOp | tresqlOp
+    // word boundary so that attachment tresql starting with 'embedded...' is not mistaken for option
+    def embedded = "embedded\\b".r
+    // embedded option can be placed either inside or outside attachment braces
+    def attachmentOp: Parser[Email.Attachment] = (
+      (("(" ~> embedded ~> operation <~ ")") | (embedded ~> operation)) ^^ (Email.Attachment(_, isEmbeddedImage = true)) |
+      operation ^^ (Email.Attachment(_, isEmbeddedImage = false))
+    ) named "email-attachment-op"
     // word boundary so that recipient tresql starting with 'html...' is not mistaken for option
-    "email\\s+".r ~> opt("batch") ~ opt("html\\b".r) ~ dataOp ~ operation ~ operation ~ rep(operation) ^^ {
+    "email\\s+".r ~> opt("batch") ~ opt("html\\b".r) ~ dataOp ~ operation ~ operation ~ rep(attachmentOp) ^^ {
       case batch ~ html ~ data ~ subj ~ body ~ att =>
         Email(data, subj, body, att, batch.isDefined, html.isDefined)
     } named "email-op"
@@ -1442,8 +1449,14 @@ object AppMetadata extends Loggable {
       fileStreamerName: String = null,
     ) extends Op
     case class Template(body: Op = null, name: Op = null, dataOp: Op = null, targetNameTresql: Tresql = null) extends Op
-    case class Email(recipients: Op, subject: Op, body: Op, attachmentsOp: List[Op] = Nil,
+    case class Email(recipients: Op, subject: Op, body: Op, attachmentsOp: List[Email.Attachment] = Nil,
                      isBatch: Boolean = false, isHtml: Boolean = false) extends Op
+    object Email {
+      /** Email attachment operation. If isEmbeddedImage is set, attachment is embedded into html body.
+        * Content id of embedded image is attachment file name,
+        * i.e. it can be referenced as `<img src="cid:file name">` */
+      case class Attachment(op: Op, isEmbeddedImage: Boolean = false)
+    }
     case class Http(method: String,
                     uriTresql: TresqlUri.Tresql,
                     headerTresql: Tresql = null,
@@ -1526,7 +1539,8 @@ object AppMetadata extends Loggable {
           if (e == null) r else traverseAction(e)(stepTrav)(r)
         case o: ToFile => opTrav(state)(o.contentOp)
         case o: Template => opTrav(opTrav(opTrav(state)(o.body))(o.name))(o.dataOp)
-        case Email(r, s, b, a, _, _) => a.foldLeft(opTrav(opTrav(opTrav(state)(r))(s))(b))(opTrav(_)(_))
+        case Email(r, s, b, a, _, _) =>
+          a.foldLeft(opTrav(opTrav(opTrav(state)(r))(s))(b))((st, at) => opTrav(st)(at.op))
         case o: Http => opTrav(state)(o.body)
         case h: HttpHeader => if (h.httpOp == null) state else opTrav(state)(h.httpOp)
         case Db(a, _, _) => traverseAction(a)(stepTrav)(state)
@@ -1619,7 +1633,7 @@ object AppMetadata extends Loggable {
             case Email(r, s, b, a, _, _) =>
               a.foldLeft(
                 opTresqlTrav(opTresqlTrav(opTresqlTrav(state)(r))(s))(b)
-              )(opTresqlTrav(_)(_))
+              )((st, at) => opTresqlTrav(st)(at.op))
             case Http(_, uriTresql, headerTresql, body, _, _, _) =>
               val s1 = us(state, nv(state.value)(Tresql(uriTresql.uriTresql)))
               val s2 = us(s1, nv(s1.value)(headerTresql))

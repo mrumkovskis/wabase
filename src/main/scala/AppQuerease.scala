@@ -1323,10 +1323,10 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         }
         subj_body(bindVars ++ email).flatMap { sb =>
           val List(subject, body) = sb
-          Future.traverse(op.attachmentsOp)(doActionOp(_, Scope(scope.data ++ email), context)
+          Future.traverse(op.attachmentsOp)(a => doActionOp(a.op, Scope(scope.data ++ email), context)
             .flatMap(
               renderedResult(_, null, null, Option(false), context).map {
-                case (src, fn, ct, _) => EmailAttachment(fn, ct.value, src)
+                case (src, fn, ct, _) => EmailAttachment(fn, ct.value, src, a.isEmbeddedImage)
               }
             )
           ).flatMap { att =>

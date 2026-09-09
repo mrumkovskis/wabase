@@ -122,6 +122,13 @@ lazy val commonSettings = Seq(
       ProblemFilters.exclude[DirectMissingMethodProblem]("org.wabase.AppMetadata#Action#Email.copy"),
       ProblemFilters.exclude[MissingTypesProblem]("org.wabase.AppMetadata$Action$Email$"),
       ProblemFilters.exclude[IncompatibleSignatureProblem]("org.wabase.AppMetadata#Action#Email.unapply"),
+      // Email action op attachments are wrapped in Email.Attachment to carry 'embedded' option -
+      // attachment is embedded into html body as image instead of being added as regular attachment.
+      ProblemFilters.exclude[IncompatibleSignatureProblem]("org.wabase.AppMetadata#Action#Email.attachmentsOp"),
+      ProblemFilters.exclude[IncompatibleSignatureProblem]("org.wabase.AppMetadata#Action#Email.copy$default$4"),
+      ProblemFilters.exclude[IncompatibleSignatureProblem]("org.wabase.AppMetadata#Action#Email.<init>$default$4"),
+      ProblemFilters.exclude[IncompatibleSignatureProblem]("org.wabase.AppMetadata#Action#Email.apply$default$4"),
+      ProblemFilters.exclude[IncompatibleSignatureProblem]("org.wabase.AppMetadata#Action#Email._4"), // scala 3
     )
   },
 )

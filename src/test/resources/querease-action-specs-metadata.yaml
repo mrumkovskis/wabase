@@ -1370,10 +1370,12 @@ insert:
     (http { '/email_test1', '?', :name name })
     (file {:file.id, :file.sha_256})
     (template body='Template attachment for {{name}}' {trim(:name) name} 'attachment name')
-- email
+    (embedded template body='Embedded image for {{name}}' {trim(:name) name} 'logo.png')
+- email html
     ({ 'c@c.c' 'to', 'Minna' name, 'c1@.c1.c1' cc, 'f@f.f' 'from', 'r@r.r' replyTo })
     (template body='Subject for {{name}}!')
-    (template body='Content for {{recipient}}.' data={trim(:name) recipient})
+    (template body='<p>Content for {{recipient}}.</p><img src="cid:logo.png">' data={trim(:name) recipient})
+    embedded (template body='Embedded image for {{recipient}}' {trim(:name) recipient} 'logo.png')
 - email null[false]{'n@n.n' 'to'} 'no mail' 'no content'
 
 

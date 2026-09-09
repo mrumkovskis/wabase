@@ -117,6 +117,7 @@ object BusinessScenariosSpecs extends Loggable {
         Map(
           "filename"     -> part.getFileName,
           "disposition"  -> contentDisposition(part),
+          "content_id"   -> Option(part.getHeader("Content-ID")).map(_.mkString(" ")).orNull,
           "content_type" -> new ContentType(part.getContentType).getBaseType,
           "content"      -> new String(part.getInputStream.readAllBytes, "UTF-8"),
         )

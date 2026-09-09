@@ -62,6 +62,7 @@ object CacheIo {
   implicit val varTransformCodec: Codec[VariableTransform] = deriveCodec[VariableTransform]
   implicit val opResultTypeCodec: Codec[OpResultType] = deriveAllCodecs[OpResultType]
   implicit val foldOpCodec: Codec[FoldOp] = deriveCodec[FoldOp]
+  implicit val emailAttachmentCodec: Codec[Action.Email.Attachment] = deriveCodec[Action.Email.Attachment]
   implicit val trUriCodec: Codec[TresqlUri.Tresql] = deriveCodec[TresqlUri.Tresql]
   implicit val confTypeCodec: Codec[ConfType] = deriveAllCodecs[ConfType]
   // for codecs below must specify type explicitly for derive macro to work

@@ -105,7 +105,7 @@ object WabaseActionsSpecs {
       Future.traverse(attachments) { att =>
         att.content.runFold(ByteString.empty)(_ ++ _)
           .map(_.decodeString("UTF8"))(ec)
-          .map(d => (att.filename, att.content_type, d))(ec)
+          .map(d => (att.filename, att.content_type, d, att.isEmbeddedImage))(ec)
       }.map { att =>
         val email = Map(
           "to" -> to,
@@ -115,6 +115,7 @@ object WabaseActionsSpecs {
           "replyTo" -> replyTo,
           "subject" -> subject,
           "body" -> body,
+          "html" -> html,
           "attachments" -> att,
         )
         mailBox.emails += (to -> email)
@@ -1465,10 +1466,12 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
                 "from" -> null,
                 "bcc" -> null,
                 "cc" -> null,
+                "html" -> false,
                 "attachments" -> List(
-                  (null, "text/plain; charset=UTF-8", "attachment from http for Hannah"),
-                  ("file_attachment", "application/json", """[{"attachment":"attachment from file"}]"""),
-                  ("attachment name", "text/plain; charset=UTF-8", "Template attachment for Hannah")
+                  (null, "text/plain; charset=UTF-8", "attachment from http for Hannah", false),
+                  ("file_attachment", "application/json", """[{"attachment":"attachment from file"}]""", false),
+                  ("attachment name", "text/plain; charset=UTF-8", "Template attachment for Hannah", false),
+                  ("logo.png", "text/plain; charset=UTF-8", "Embedded image for Hannah", true)
                 )
               ),
               "b@b.b" -> Map(
@@ -1479,21 +1482,26 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
                 "from" -> null,
                 "bcc" -> null,
                 "cc" -> null,
+                "html" -> false,
                 "attachments" -> List(
-                  (null, "text/plain; charset=UTF-8", "attachment from http for Baiba"),
-                  ("file_attachment", "application/json", """[{"attachment":"attachment from file"}]"""),
-                  ("attachment name", "text/plain; charset=UTF-8", "Template attachment for Baiba")
+                  (null, "text/plain; charset=UTF-8", "attachment from http for Baiba", false),
+                  ("file_attachment", "application/json", """[{"attachment":"attachment from file"}]""", false),
+                  ("attachment name", "text/plain; charset=UTF-8", "Template attachment for Baiba", false),
+                  ("logo.png", "text/plain; charset=UTF-8", "Embedded image for Baiba", true)
                 )
               ),
               "c@c.c" -> Map(
-                "body" -> "Content for Minna.",
+                "body" -> """<p>Content for Minna.</p><img src="cid:logo.png">""",
                 "subject" -> "Subject for Minna!",
                 "replyTo" -> "r@r.r",
                 "to" -> "c@c.c",
                 "from" -> "f@f.f",
                 "bcc" -> null,
                 "cc" -> "c1@.c1.c1",
-                "attachments" -> Nil),
+                "html" -> true,
+                "attachments" -> List(
+                  ("logo.png", "text/plain; charset=UTF-8", "Embedded image for Minna", true)
+                )),
             )
           }
     } yield t1

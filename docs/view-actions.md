@@ -717,7 +717,7 @@ template 'Subject for {{name}}!'
 ### email
 
 ```
-email [batch] [html] <data tresql> <subject expr> <body expr> (<attachment expr> […])
+email [batch] [html] <data tresql> <subject expr> <body expr> ([embedded] <attachment expr> […])
 ```
 
 If the `batch` option is used, email is sent for each row returned by the recipient's
@@ -726,6 +726,13 @@ tresql or extract entity with decoder statement is supported for recipients.
 
 If the `html` option is used, body expression result is sent as html, otherwise as plain text.
 Note that no plain text alternative part is added to html message.
+
+If the `embedded` option is used, attachment is embedded into html body as image instead of being
+added as a regular attachment. Content id of embedded image is attachment file name, so it can be
+referenced from html body as `<img src="cid:attachment file name">`. Attachment file name is set by
+`to file` operation `filename` parameter, `template` operation target name parameter or comes from
+file metadata in the case of `file` operation. The `embedded` option can be placed either inside or
+outside attachment braces.
 
 Following data tresql columns will be used in corresponding email fields: `to`, `cc`, `bcc`,
 `from`, `replyTo`.
@@ -749,6 +756,12 @@ email
     ({ 'c@c.c' 'to', 'Minna' name, 'c1@.c1.c1' cc, 'f@f.f' 'from', 'r@r.r' replyTo })
     (template 'Subject for {{name}}!')
     (template 'Content for {{recipient}}.' {trim(:name) recipient})
+
+email html
+    ({ 'c@c.c' 'to', 'Minna' name })
+    (template 'Subject for {{name}}!')
+    (template '<p>Hi {{name}}!</p><img src="cid:logo.png">' {trim(:name) name})
+    (embedded file {:logo.id, :logo.sha_256})
 
 email null[false]{'n@n.n' 'to'} 'no mail' 'no content'
 ```
