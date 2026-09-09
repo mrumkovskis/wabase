@@ -4,6 +4,12 @@ val pekkoV    = "1.7.0"
 val pekkoConnV= "1.3.0"
 val pekkoHttpV= "1.4.0"
 
+// In-process SMTP server for email tests. Exclusions - jakarta mail api and implementation
+// are already provided by simple-java-mail (as jakarta.mail-api and angus-mail).
+val greenmailDependency = ("com.icegreen" % "greenmail" % "2.1.3")
+  .exclude("org.eclipse.angus", "jakarta.mail")
+  .exclude("junit", "junit")
+
 javacOptions ++= Seq("-source", "11", "-target", "11", "-Xlint")
 initialize := {
   val _ = initialize.value
@@ -79,6 +85,7 @@ lazy val commonSettings = Seq(
       "org.apache.pekko"           %% "pekko-stream-testkit"  % pekkoV    %     Test,
       "org.hsqldb"                  % "hsqldb"                % "2.7.4"   %     Test,
       "com.vladsch.flexmark"        % "flexmark-all"          % "0.64.8"  %     Test,
+      greenmailDependency                                                 %     Test,
     )
   },
   // Binary compatibility exceptions against previous release.
@@ -277,14 +284,11 @@ lazy val it = (project in file("src/it"))
   .settings(itResourceSettings: _*)
   .settings(
     libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.20",
-    // In-process SMTP server for email tests. Exclusions - jakarta mail api and implementation
-    // are already provided by simple-java-mail (as jakarta.mail-api and angus-mail).
-    libraryDependencies += ("com.icegreen" % "greenmail" % "2.1.3" % Test)
-      .exclude("org.eclipse.angus", "jakarta.mail")
-      .exclude("junit", "junit"),
+    libraryDependencies += greenmailDependency,
     publish / skip := true,
     Compile / run / mainClass   := Some("org.wabase.WabaseServer"),
     Compile / unmanagedSources  += baseDirectory.value / ".." / "test" / "scala" / "BusinessScenariosBaseSpecs.scala",
+    Compile / unmanagedSources  += baseDirectory.value / ".." / "test" / "scala" / "GreenMailServer.scala",
     Compile / unmanagedSources  += baseDirectory.value / ".." / "test" / "scala" / "TemplateUtil.scala",
   )
 
@@ -294,9 +298,11 @@ lazy val it_legacy = (project in file("src/it_legacy"))
   .settings(itResourceSettings: _*)
   .settings(
     libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.20",
+    libraryDependencies += greenmailDependency,
     publish / skip := true,
     Compile / run / mainClass   := Some("org.wabase.WabaseServer"),
     Compile / unmanagedSources  += baseDirectory.value / ".." / "test" / "scala" / "BusinessScenariosBaseSpecs.scala",
+    Compile / unmanagedSources  += baseDirectory.value / ".." / "test" / "scala" / "GreenMailServer.scala",
     Compile / unmanagedSources  += baseDirectory.value / ".." / "test" / "scala" / "TemplateUtil.scala",
   )
 

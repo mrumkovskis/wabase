@@ -1,10 +1,6 @@
 package wabase.app
 
-import com.icegreen.greenmail.util.{GreenMail, ServerSetup}
 import com.typesafe.config.ConfigFactory
-import jakarta.mail.internet.{ContentType, MimeMessage}
-import jakarta.mail.Message.RecipientType
-import jakarta.mail.{Multipart, Part}
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.Http
 import org.apache.pekko.http.scaladsl.client.RequestBuilding.Post
@@ -26,7 +22,6 @@ import org.wabase.swagger.WabaseSwaggerGenerator
 
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{Await, ExecutionContext, Future}
-import scala.jdk.CollectionConverters._
 import scala.util.Try
 
 object BusinessScenariosSpecs extends Loggable {
@@ -80,50 +75,6 @@ object BusinessScenariosSpecs extends Loggable {
   def businessError(message: String): Nothing = throw new BusinessException(message)
 
   def identityCsrfCookieTransformer(cookie: HttpCookie): HttpCookie = cookie
-
-  /** Flattens (possibly nested) multipart message into leaf parts. */
-  private def leafParts(part: Part): Seq[Part] = part.getContent match {
-    case multipart: Multipart => (0 until multipart.getCount).flatMap(i => leafParts(multipart.getBodyPart(i)))
-    case _ => Seq(part)
-  }
-
-  private def addresses(msg: MimeMessage, recipientType: RecipientType): String =
-    Option(msg.getRecipients(recipientType)).map(_.map(_.toString).mkString(", ")).orNull
-
-  /** Content-Disposition header as sent, folding whitespace collapsed. Exposed to verify
-    * encoding of non-ascii attachment file names (rfc 2231) as seen by mail client. */
-  private def contentDisposition(part: Part): String =
-    Option(part.getHeader("Content-Disposition"))
-      .map(_.mkString(" ").replaceAll("\\s+", " ").trim).orNull
-
-  /** Received message as map for comparison in scenario. Attachment content is decoded as utf-8 -
-    * email test attachments are text. Attachment content type is stripped of parameters (charset,
-    * name) since these are added by mail library, not by wabase. */
-  def receivedMailToMap(mailbox: String, msg: MimeMessage): Map[String, Any] = {
-    val (attachments, bodies) = leafParts(msg).partition { part =>
-      part.getFileName != null || Part.ATTACHMENT.equalsIgnoreCase(part.getDisposition)
-    }
-    Map(
-      "mailbox"     -> mailbox,
-      "from"        -> Option(msg.getFrom).map(_.map(_.toString).mkString(", ")).orNull,
-      "to"          -> addresses(msg, RecipientType.TO),
-      "cc"          -> addresses(msg, RecipientType.CC),
-      "bcc"         -> addresses(msg, RecipientType.BCC),
-      "reply_to"    -> Option(msg.getReplyTo).map(_.map(_.toString).mkString(", ")).orNull,
-      "subject"     -> msg.getSubject,
-      "body"        -> bodies.headOption.map(p => String.valueOf(p.getContent)).orNull,
-      "body_content_type" -> bodies.headOption.map(p => new ContentType(p.getContentType).getBaseType).orNull,
-      "attachments" -> attachments.map { part =>
-        Map(
-          "filename"     -> part.getFileName,
-          "disposition"  -> contentDisposition(part),
-          "content_id"   -> Option(part.getHeader("Content-ID")).map(_.mkString(" ")).orNull,
-          "content_type" -> new ContentType(part.getContentType).getBaseType,
-          "content"      -> new String(part.getInputStream.readAllBytes, "UTF-8"),
-        )
-      }.toList,
-    )
-  }
 
   def queryParamsDecoder(): HttpRequest => Map[String, Any] = (req: HttpRequest) => {
     if (req.uri.path.toString() == "/json-query-param") {
@@ -186,20 +137,14 @@ object SwaggerTests {
 class BusinessScenariosSpecs extends BusinessScenariosBaseSpecs("http_tests") {
   import BusinessScenariosSpecs._
   lazy val server = new RunningServer
-  /** In-process smtp server, mail is sent to it according to 'simplejavamail' conf settings. */
-  lazy val greenMail = new GreenMail(new ServerSetup(
-    config.getInt("simplejavamail.smtp.port"),
-    config.getString("simplejavamail.smtp.host"),
-    ServerSetup.PROTOCOL_SMTP,
-  ))
   override def initHttpClient = server
   override def beforeAll() = {
-    greenMail.start()
+    GreenMailServer.startIfEnabled(config)
     server
   }
   override def afterAll() = {
     try server.unbind() // unbind for cross-scala tests
-    finally greenMail.stop()
+    finally GreenMailServer.stop()
   }
 
   override def scenariosAutoLogin  = false
@@ -207,16 +152,7 @@ class BusinessScenariosSpecs extends BusinessScenariosBaseSpecs("http_tests") {
 
   override def backdoorAction(requestInfo: RequestInfo, context: Map[String, Any], map: Map[String, Any]): Any = {
     import requestInfo.path
-    if (path == "/backdoor/purge-inbox") {
-      greenMail.purgeEmailFromAllMailboxes()
-    } else if (path == "/backdoor/inbox") {
-      val imapHostManager = greenMail.getManagers.getImapHostManager
-      greenMail.getUserManager.listUser.asScala.toSeq.flatMap { user =>
-        imapHostManager.getInbox(user).getMessages.asScala.toSeq.map { stored =>
-          receivedMailToMap(user.getEmail, stored.getMimeMessage)
-        }
-      }.sortBy(mail => (String.valueOf(mail("mailbox")), String.valueOf(mail("subject"))))
-    } else if (path.startsWith("/backdoor/create-sequences/")) {
+    if (path.startsWith("/backdoor/create-sequences/")) {
       val seqNames   = path.substring("/backdoor/create-sequences/".length).split(",").toSeq
       val statements = seqNames.map { seqName => s"create sequence $seqName start with 1;" }
       executeStatements(statements: _*)

@@ -602,6 +602,10 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
         ResultEncoder.encodeAnyToJsonString(sseHandler.eventsAsSeqOfMaps)
       case sse_events_clear if sse_events_clear.startsWith("/backdoor/clear_server_sent_events/") && requestInfo.method == "POST" =>
         sseHandler.clearEvents()
+      case "/backdoor/inbox" =>
+        GreenMailServer.inbox()
+      case "/backdoor/purge-inbox" =>
+        GreenMailServer.purgeInbox()
       case "/backdoor/tresql_row" =>
         transformToStringValues(db.withConn()(implicit res => Query(requestString, context).toListOfMaps.headOption.getOrElse(Map())))
       case "/backdoor/tresql_list" =>
