@@ -967,10 +967,7 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
         ((varsTransformsOrVar | op) ^^ (Nil -> _))) named "op-with-opt-vts"
     }
     def setEnvOrReturn: Parser[Step] = {
-      // setenv or return regexp ends with zero width positive lookahead group
-      // so that no symbol - non word character - [^\w] or space
-      // is consumed but rather left to the next parser
-      (("(setenv|addenv|return)(?=\\s+|[^\\w])".r ~ opWithOptVarTransforms) ^^ {
+      (("(setenv|addenv|return)\\b".r ~ opWithOptVarTransforms) ^^ {
         case cmd ~ step =>
           val (transforms, op) = step
           if (cmd == "setenv" || cmd == "addenv") SetEnv(None, transforms, op, add = cmd == "addenv")
@@ -983,10 +980,9 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
     } named "remove-var"
 
     /** One step 'recover' step, i.e. "recover 'from recover'". Equivalent of 'recover' block op with
-      * single step action. Keyword is followed by zero width positive lookahead group like in
-      * {{{setEnvOrReturn}}} so that identifier starting with keyword is not taken for keyword. */
+      * single step action. */
     def recoverStep: Parser[Recover] =
-      ("recover(?=\\s+|[^\\w])".r ~> actionFromOp) ^^ (Recover(_)) named "recover-step"
+      ("recover\\b".r ~> actionFromOp) ^^ (Recover(_)) named "recover-step"
 
     def evaluation: Parser[Evaluation] =
       (opt(varName <~ "=") ~ opWithOptVarTransforms) ^^ {
@@ -1025,7 +1021,7 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
   def viewOp: MemParser[ViewCall] = opt(opResultType) ~ ActionRegex ~ ViewNameRegex ~ opt(operation) ^^ {
     case rt ~ action ~ view ~ op => ViewCall(action, view, op.orNull, rt)
   }  named "view-op"
-  def uniqueOp: MemParser[Unique] = opt(opResultType) ~ (("unique_opt" | "unique") ~ operation) ^^ {
+  def uniqueOp: MemParser[Unique] = opt(opResultType) ~ ("(unique_opt|unique)\\b".r ~ operation) ^^ {
     case rt ~ (mode ~ op) => Unique(op, mode == "unique_opt", rt)
   } named "unique-op"
   def invocationOp: MemParser[Invocation] = Parser { in =>
@@ -1090,7 +1086,7 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
       operation ^^ (Email.Attachment(_, isEmbeddedImage = false))
     ) named "email-attachment-op"
     // word boundary so that recipient tresql starting with 'html...' is not mistaken for option
-    "email\\s+".r ~> opt("batch") ~ opt("html\\b".r) ~ dataOp ~ operation ~ operation ~ rep(attachmentOp) ^^ {
+    "email\\b".r ~> opt("batch\\b".r) ~ opt("html\\b".r) ~ dataOp ~ operation ~ operation ~ rep(attachmentOp) ^^ {
       case batch ~ html ~ data ~ subj ~ body ~ att =>
         Email(data, subj, body, att, batch.isDefined, html.isDefined)
     } named "email-op"
@@ -1099,16 +1095,16 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
     def tu(uri: Exp) = TresqlUri.Tresql(uri.tresql)
     def http_cln = opt("[" ~> HttpClientFileStreamerNameRegex <~ "]")
     def http_no_entity: MemParser[Http] =
-      opt("get" | "delete" | "head" | "options" | "trace" | "connect") ~ http_cln ~ bracesTresql ~ opt(tresqlOp) ^^ {
+      opt("(get|delete|head|options|trace|connect)\\b".r) ~ http_cln ~ bracesTresql ~ opt(tresqlOp) ^^ {
         case method ~ client ~ uri ~ headers =>
           Http(method.getOrElse("get"), tu(uri), headers.orNull, body = null, httpClientName = client.orNull)
       } named "http-get-delete-op"
     def http_with_entity: MemParser[Http] =
-      ("post" | "put" | "patch") ~ http_cln ~ bracesTresql ~ opt(operation) ~ opt(tresqlOp) ^^ {
+      "(post|put|patch)\\b".r ~ http_cln ~ bracesTresql ~ opt(operation) ~ opt(tresqlOp) ^^ {
         case method ~ client ~ uri ~ op ~ headers =>
           Http(method, tu(uri), headers.orNull, op.orNull, httpClientName = client.orNull)
       } named "http-post-put-op"
-    opt(opResultType) ~ ("(http|http_proxy)(?=\\s+)".r ~ (http_with_entity | http_no_entity)) ^^ {
+    opt(opResultType) ~ ("(http|http_proxy)\\b".r ~ (http_with_entity | http_no_entity)) ^^ {
       case conformTo ~ (mode ~ http) => http.copy(conformTo = conformTo, isProxy = mode == "http_proxy")
     } named "http-op"
   }
@@ -1118,7 +1114,7 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
   def dbBlockOp: MemParser[Db] = (Action.DbUseKey | Action.TransactionKey) ~ opt("[" ~> ident <~ "]") ^^ {
     case op_type ~ db => Db(null, op_type == Action.DbUseKey, db.map(AppMetadata.DbAccessKey.apply).toList)
   } named "db-block-op"
-  def jsonCodecOp: MemParser[JsonCodec] = "(from|to)(?=\\s+)".r ~ "json\\s+".r ~ operation ^^ {
+  def jsonCodecOp: MemParser[JsonCodec] = "(from|to)\\b".r ~ "json\\b".r ~ operation ^^ {
     case mode ~ _ ~ op => JsonCodec(mode == "to", op)
   } named "json-op"
   def confOp: MemParser[Conf] = {
@@ -1127,16 +1123,16 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
       case pt ~ param => Conf(param, ConfTypes.parse(pt.orNull))
     }
   } named "conf-op"
-  def httpHeaderOp: MemParser[Op] = ("extract" ~> opt("optional") <~ "header") ~ "[^:\\s]+".r ~ opt(httpOp | tresqlOp) ^^ {
+  def httpHeaderOp: MemParser[Op] = ("extract\\b".r ~> opt("optional\\b".r) <~ "header\\b".r) ~ "[^:\\s]+".r ~ opt(httpOp | tresqlOp) ^^ {
     case opt ~ h ~ httpOp => HttpHeader(h, httpOp.orNull, opt.isDefined)
   } named "http-hop"
-  def httpCookieOp: MemParser[Op] = ("extract" ~ "cookie") ~> ".*".r ^^ (Cookie(_)) named "http-cop"
+  def httpCookieOp: MemParser[Op] = ("extract\\b".r ~ "cookie\\b".r) ~> ".*".r ^^ (Cookie(_)) named "http-cop"
   def extractPartsOp: MemParser[ExtractParts] =
     "extract\\s+parts".r ~> opt("[" ~> HttpClientFileStreamerNameRegex <~ "]") ^^ {
       case fs => ExtractParts(fs.orNull)
     } named "extract-parts"
   def extractEntityOp: MemParser[ExtractHttpEntity] =
-    (opt(opResultType) <~ "extract\\s+entity".r) ~ opt("using" ~> ident) ~ opt(operation) ^^ {
+    (opt(opResultType) <~ "extract\\s+entity".r) ~ opt("using\\b".r ~> ident) ~ opt(operation) ^^ {
       case conformTo ~ decoder ~ op => ExtractHttpEntity(conformTo, decoder.orNull, op.orNull)
     } named "extract-entity"
   def foreachFoldOp: MemParser[FoldOp] = ("fold" ~ "(") ~> (varName <~ ",") ~ (varName <~ ")") ~ operation ^^ {
@@ -1145,7 +1141,7 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
   def foreachOp: MemParser[Foreach] = foreachBlockOpBase ~ actionFromOp ~ opt(foreachFoldOp) ^^ {
     case coll ~ act ~ foldOp => coll.copy(action = act, foldOp = foldOp.orNull)
   } named "foreach-op"
-  def foreachBlockOpBase: MemParser[Foreach] = "foreach(?=\\s+|[^\\w])".r ~> opt(varName <~ "in") ~ operation ^^ {
+  def foreachBlockOpBase: MemParser[Foreach] = "foreach\\b".r ~> opt(varName <~ "in\\b".r) ~ operation ^^ {
     case vn ~ op => Foreach(op, null, null, vn.orNull)
   } named "foreach-block-op-base"
   def foreachBlockOp: MemParser[Foreach] = foreachBlockOpBase ~ opt(foreachFoldOp) ^^ {
@@ -1156,10 +1152,10 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
     } named "if-else-op"
   // parsers must be named, MemParser memoizes results by parser name and input offset
   def elseOp: MemParser[Else] = elseBlockOp ~> actionFromOp ^^ (Else(_)) named "else-op"
-  def ifBlockOp: MemParser[If] = "if(?=\\s+|[^\\w])".r ~> operation ~ opt(actionFromOp <~ (elseBlockOp ~ "$".r)) ^^ {
+  def ifBlockOp: MemParser[If] = "if\\b".r ~> operation ~ opt(actionFromOp <~ (elseBlockOp ~ "$".r)) ^^ {
     case cond ~ ifActElseBl => If(cond, ifActElseBl.orNull)
   } named "if-block-op"
-  def elseBlockOp: MemParser[Else] = "else".r ^^^ Else(null) named "else-block-op"
+  def elseBlockOp: MemParser[Else] = "else\\b".r ^^^ Else(null) named "else-block-op"
   def blockOp: MemParser[BlockOp] =
     ifBlockOp | elseBlockOp | dbBlockOp | foreachBlockOp named "block-op"
   def thisOp: MemParser[This] = opt(opResultType) <~ "this" ^^ This.apply named "this-op"
@@ -1173,7 +1169,7 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
     }))) named "redirect-op"
   }
   def response: MemParser[Response] = {
-    val StResp = "(status|response)\\s+".r
+    val StResp = "(status|response)\\b".r
     (StResp ~ (("ok" | "\\d+".r | variable) ~ setHttpHeadersOps ~ opt(operation))) ^? {
       case StResp(sor) ~ (c ~ hops ~ body) =>
         val code = c match {
@@ -1214,7 +1210,7 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
   def commit: MemParser[Commit.type] = "commit\\s*$".r ^^^ Commit named "commit-op"
   def rollback: MemParser[Rollback.type] = "rollback\\s*$".r ^^^ Rollback named "rollback-op"
   /** Variable is not parsed as tresql operation so that Throwable value is not passed to query evaluation */
-  def rethrow: MemParser[Rethrow] = "rethrow(?!\\w)".r ~> variable ^^ { v =>
+  def rethrow: MemParser[Rethrow] = "rethrow\\b".r ~> variable ^^ { v =>
     Rethrow((v.variable :: v.members).mkString("."))
   } named "rethrow-op"
   def operation: MemParser[Op] = (commit | rollback | rethrow | redirect | response | viewOp | confOp | uniqueOp |
@@ -1228,11 +1224,11 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
     case object NoType extends ResType
     case object NoBindType extends ResType
     case class ViewType(vn: String) extends ResType
-    def noType: Parser[ResType] = "any" ^^^ NoType
-    def nonBindableType: Parser[ResType] = "result" ^^^ NoBindType
+    def noType: Parser[ResType] = "any\\b".r ^^^ NoType
+    def nonBindableType: Parser[ResType] = "result\\b".r ^^^ NoBindType
     def viewType: Parser[ResType] = opt("`") ~> ViewNameRegex <~ opt("`") ^^ ViewType.apply
 
-    "as" ~> ((noType | nonBindableType | viewType) ~ opt("*")) ^^ {
+    "as\\b".r ~> ((noType | nonBindableType | viewType) ~ opt("*")) ^^ {
       case NoType ~ isColl => ViewResultType(null, isColl.nonEmpty)
       case NoBindType ~ _ => NonBindableResultType
       case ViewType(typ) ~ isColl => ViewResultType(typ, isColl.nonEmpty)
