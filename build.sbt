@@ -136,6 +136,8 @@ lazy val commonSettings = Seq(
       ProblemFilters.exclude[IncompatibleSignatureProblem]("org.wabase.AppMetadata#Action#Email.<init>$default$4"),
       ProblemFilters.exclude[IncompatibleSignatureProblem]("org.wabase.AppMetadata#Action#Email.apply$default$4"),
       ProblemFilters.exclude[IncompatibleSignatureProblem]("org.wabase.AppMetadata#Action#Email._4"), // scala 3
+      // Extract entity action op source is specified in 'from' clause, field 'op' renamed to 'source'.
+      ProblemFilters.exclude[DirectMissingMethodProblem]("org.wabase.AppMetadata#Action#ExtractHttpEntity.op"),
     )
   },
 )

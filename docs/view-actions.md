@@ -745,7 +745,7 @@ Example:
 recipients = to file ({ 'a@a.a' 'to', 'Hannah' name } + { 'b@b.b' 'to', 'Baiba' name })
     content_type = 'text/csv; charset=UTF-8'
 email batch
-    extract entity using default_csv_decoder file {:recipients.id, :recipients.sha_256}
+    extract entity from (file {:recipients.id, :recipients.sha_256}) using default_csv_decoder
     (template 'Subject for {{name}}!')
     (template 'Content for {{recipient}}.' {trim(:name) recipient})
     (http { '/email_test1', '?', :name name })
@@ -873,11 +873,11 @@ extract cookie current_lang
 Extracts entity from http request, response or file optionally using decoder.
 
 ```
-[<result type>] extract entity [using <decoder name>] [<expression>]
+[<result type>] extract entity [from <expression>] [using <decoder name>]
 ```
 
-Supported expressions are file, http. If expression is omitted, the http request entity is
-used.
+Supported expressions are file, http. If `from <expression>` is omitted, the http request
+entity is used.
 
 ##### Decoder configuration
 
@@ -895,7 +895,7 @@ Example:
 http post '/extract_http_entity_test1' extract entity   # entity is extracted from incoming request
 foreach extract entity:
   - name = {:name || ' ' || :name}
-as extract_http_entity_test4 * extract entity using default_csv_decoder file [main] {:data_file.id, :data_file.sha_256}
+as extract_http_entity_test4 * extract entity from (file [main] {:data_file.id, :data_file.sha_256}) using default_csv_decoder
 foreach (extract entity using test_xml_decoder) this
 ```
 

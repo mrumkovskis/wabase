@@ -1132,8 +1132,8 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
       case fs => ExtractParts(fs.orNull)
     } named "extract-parts"
   def extractEntityOp: MemParser[ExtractHttpEntity] =
-    (opt(opResultType) <~ "extract\\s+entity".r) ~ opt("using\\b".r ~> ident) ~ opt(operation) ^^ {
-      case conformTo ~ decoder ~ op => ExtractHttpEntity(conformTo, decoder.orNull, op.orNull)
+    (opt(opResultType) <~ "extract\\s+entity".r) ~ opt("from\\b".r ~> operation) ~ opt("using\\b".r ~> ident) ^^ {
+      case conformTo ~ op ~ decoder => ExtractHttpEntity(conformTo, decoder.orNull, op.orNull)
     } named "extract-entity"
   def foreachFoldOp: MemParser[FoldOp] = ("fold" ~ "(") ~> (varName <~ ",") ~ (varName <~ ")") ~ operation ^^ {
     case res ~ el ~ op => FoldOp(res, el, op)
@@ -1462,7 +1462,7 @@ object AppMetadata extends Loggable {
                     isProxy: Boolean = false) extends CastableOp
     case class HttpHeader(name: String, httpOp: Op = null, isOpt: Boolean = false) extends Op
     case class Cookie(name: String) extends Op
-    case class ExtractHttpEntity(conformTo: Option[OpResultType] = None, decoder: String = null, op: Op = null) extends Op
+    case class ExtractHttpEntity(conformTo: Option[OpResultType] = None, decoder: String = null, source: Op = null) extends Op
     /** This op can be used if view property 'decode request' is false, for multipart request it extracts parts,
      * for simple request creates one part with body as a Source.
      * File streamer name indicates which file streamer to use for parts serialization.

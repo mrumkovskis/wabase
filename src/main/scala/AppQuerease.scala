@@ -1435,7 +1435,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     context: ActionContext,
   )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
     import qr._
-    Option(exe.op).map { op =>
+    Option(exe.source).map { op =>
       doActionOp(op, scope, context)
         .map {
           case HttpResult(response, _) => response.entity
@@ -1601,10 +1601,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     val fs = fileStreamers.fs(op.fileStreamerName)
     if (entity.contentType.mediaType.isMultipart) {
       import org.apache.pekko.http.scaladsl.unmarshalling.MultipartUnmarshallers._
-      import org.apache.pekko.http.scaladsl.server.directives.MarshallingDirectives
-      val um = MarshallingDirectives.as[Multipart.FormData]
-      implicit val ec = as.dispatcher
-      um(httpReq).map { formdata =>
+      org.apache.pekko.http.scaladsl.unmarshalling.Unmarshal(entity).to[Multipart.FormData].map { formdata =>
         val src = formdata.parts.map {
           case filePart if filePart.filename.isDefined =>
             RequestPart(filePart.name, filePart.filename.get, filePart.entity)

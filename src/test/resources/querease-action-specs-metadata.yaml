@@ -905,7 +905,7 @@ fields:
 - value   int
 list:
 # json array of scalars is streamed and decoded to scalar values by scalar_json_decoder
-- foreach value in extract entity using scalar_json_decoder to json [({1} + {2} + {3}){*}#(1)] :
+- foreach value in extract entity from (to json [({1} + {2} + {3}){*}#(1)]) using scalar_json_decoder :
     - nr = :__idx + 1
 
 
@@ -1364,7 +1364,7 @@ insert:
 - recipients = to file ({ 'a@a.a' 'to', 'Hannah' name } + { 'b@b.b' 'to', 'Baiba' name })
     content_type = 'text/csv; charset=UTF-8'
 - email batch
-    extract entity using default_csv_decoder file {:recipients.id, :recipients.sha_256}
+    extract entity from (file {:recipients.id, :recipients.sha_256}) using default_csv_decoder
     (template body='Subject for {{name}}!')
     (template body='Content for {{recipient}}.' {trim(:name) recipient})
     (http { '/email_test1', '?', :name name })
@@ -1758,13 +1758,13 @@ fields:
 list:
 - "{'N1' name, 'S1' surname} + {'N2', 'S2'}"      # yaml parser wants to put tresql in quotes
 insert:
-# extract entity using default_json_decoder command ensures Map[String, Any] source over data to save memory
-- foreach extract entity using default_json_decoder http get '/extract_http_entity_test4':
+# extract entity from <command> using default_json_decoder ensures Map[String, Any] source over data to save memory
+- foreach extract entity from (http get '/extract_http_entity_test4') using default_json_decoder:
   - name = {:name || ' ' || :name}
   - surname = {:surname || ' ' || :surname}
 update:
 - data_file = to file (http get '/extract_http_entity_test4')
-- foreach extract entity using default_json_decoder file {:data_file.id, :data_file.sha_256}:
+- foreach extract entity from (file {:data_file.id, :data_file.sha_256}) using default_json_decoder:
   - name = {:name || '-' || :name}
   - surname = {:surname || '-' || :surname}
 
@@ -1777,13 +1777,13 @@ fields:
 - name
 - surname
 insert:
-# extract entity using default_csv_decoder command ensures Map[String, Any] source over data to save memory
-- foreach as any * extract entity using default_csv_decoder (http get '/extract_http_entity_test4' {'Accept', 'text/csv; charset=UTF-8'}):
+# extract entity from <command> using default_csv_decoder ensures Map[String, Any] source over data to save memory
+- foreach as any * extract entity from (http get '/extract_http_entity_test4' {'Accept', 'text/csv; charset=UTF-8'}) using default_csv_decoder:
   - name = :name || ' ' || :name
   - surname = :surname || ' ' || :surname
 update:
 - data_file = to file [main] extract entity
-- foreach as extract_http_entity_test4 * extract entity using default_csv_decoder file [main] {:data_file.id, :data_file.sha_256}:
+- foreach as extract_http_entity_test4 * extract entity from (file [main] {:data_file.id, :data_file.sha_256}) using default_csv_decoder:
   - name = :name || '-' || :name
   - surname = :surname || '-' || :surname
 
@@ -1797,8 +1797,8 @@ fields:
   - surname
 insert:
   - data_file = to file [main] extract entity
-  # extract entity using test_xml_decoder command ensures Map[String, Any] source over data to save memory
-  - foreach as extract_http_entity_test4 * extract entity using test_xml_decoder file [main] {:data_file.id, :data_file.sha_256}:
+  # extract entity from <command> using test_xml_decoder ensures Map[String, Any] source over data to save memory
+  - foreach as extract_http_entity_test4 * extract entity from (file [main] {:data_file.id, :data_file.sha_256}) using test_xml_decoder:
       - name = :name || '-' || :name
       - surname = :surname || '-' || :surname
 update:
