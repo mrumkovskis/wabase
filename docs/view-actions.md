@@ -876,8 +876,8 @@ Extracts entity from http request, response or file optionally using decoder.
 [<result type>] extract entity [from <expression>] [using <decoder name>]
 ```
 
-Supported expressions are file, http. If `from <expression>` is omitted, the http request
-entity is used.
+Supported expressions are the ones returning file, http, http entity or string result. If
+`from <expression>` is omitted, the http request entity is used.
 
 ##### Decoder configuration
 
@@ -904,11 +904,14 @@ foreach (extract entity using test_xml_decoder) this
 Extracts multipart form data from http request as a `Source[RequestPart, _]` or in the case
 of simple request as a source with one part — `Source.single(RequestPart(...))`.
 
+If `from <expression>` is specified, parts are extracted from expression result entity
+instead of http request entity. Supported expressions are the same as for extract entity op.
+
 When assigned to variable returns map of file or single value references, where key is file
 or field name and value is file info (see to file operation) or field value.
 
 ```
-extract parts <file streamer for part data>
+extract parts [<[file streamer for part data]>] [from <expression>]
 ```
 
 Example:
@@ -917,6 +920,8 @@ Example:
 extract parts
 extract parts [main]
 result = extract parts
+extract parts [main] from (http get '/parts_test1')
+result = extract parts from (file {:data_file.id, :data_file.sha_256})
 ```
 
 ### db use, transaction, commit, rollback

@@ -138,6 +138,12 @@ lazy val commonSettings = Seq(
       ProblemFilters.exclude[IncompatibleSignatureProblem]("org.wabase.AppMetadata#Action#Email._4"), // scala 3
       // Extract entity action op source is specified in 'from' clause, field 'op' renamed to 'source'.
       ProblemFilters.exclude[DirectMissingMethodProblem]("org.wabase.AppMetadata#Action#ExtractHttpEntity.op"),
+      // Extract parts action op has new 'from' clause - parts are extracted from source op result entity.
+      ProblemFilters.exclude[DirectMissingMethodProblem]("org.wabase.AppMetadata#Action#ExtractParts.this"),
+      ProblemFilters.exclude[DirectMissingMethodProblem]("org.wabase.AppMetadata#Action#ExtractParts.apply"),
+      ProblemFilters.exclude[DirectMissingMethodProblem]("org.wabase.AppMetadata#Action#ExtractParts.copy"),
+      ProblemFilters.exclude[MissingTypesProblem]("org.wabase.AppMetadata$Action$ExtractParts$"),
+      ProblemFilters.exclude[IncompatibleSignatureProblem]("org.wabase.AppMetadata#Action#ExtractParts.unapply"),
     )
   },
 )

@@ -1612,6 +1612,24 @@ insert:
   - as any org.wabase.QuereaseActionTestManagerObj.processRequestParts extract parts
 
 
+name: extract_parts_test3
+decoder: none
+key:    (filename)
+api: insert, update
+insert:
+# parts are extracted from file entity specified in 'from' clause, not from http request
+- data_file = to file [main] (extract entity) 'multipart_data'
+- res = extract parts [main] from (file [main] {:data_file.id, :data_file.sha_256})
+- as any
+    { :res.file1.filename name, :res.file1.sha_256 value } ++
+    { :res.file2.filename name, :res.file2.sha_256 value }
+update:
+# file name of single part comes from source file info, not from http request uri
+- data_file = to file [main] (extract entity) 'stored_name.txt'
+- res = extract parts [main] from (file [main] {:data_file.id, :data_file.sha_256})
+- as any unique { :res.filename file, :res.sha_256 sha_256 }
+
+
 name: fake_key_test
 key: id, sha_256
 api: get

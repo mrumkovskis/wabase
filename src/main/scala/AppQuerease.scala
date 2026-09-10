@@ -28,7 +28,7 @@ import scala.collection.immutable.Seq
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{ExecutionContext, Future}
 import scala.jdk.CollectionConverters._
-import scala.util.{Failure, Success, Try}
+import scala.util.{Failure, Try}
 import scala.util.control.NonFatal
 
 trait QuereaseProvider {
@@ -1429,24 +1429,26 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     Future.successful(cookie)
   }
 
+  /** Extracts http entity from op result of 'from' clause of extract entity and extract parts ops. */
+  protected def opHttpEntity(result: QuereaseResult): HttpEntity = result match {
+    case HttpResult(response, _) => response.entity
+    case fr: FileResult => fileHttpEntity(fr).getOrElse(sys.error(s"Cannot find file data: ${fr.fileInfo}"))
+    case HttpEntityResult(entity, _) => entity
+    // text/plain content type, since string data format is known to decoder named in 'using' clause only
+    case StringResult(value) => HttpEntity(ContentTypes.`text/plain(UTF-8)`, value)
+    case x => sys.error(s"Cannot extract entity from $x. " +
+      "Currently only HttpResult, HttpEntityResult, FileResult and StringResult are supported")
+  }
+
   protected def doExtractEntity(
     exe: Action.ExtractHttpEntity,
     scope: Scope,
     context: ActionContext,
   )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
     import qr._
-    Option(exe.source).map { op =>
-      doActionOp(op, scope, context)
-        .map {
-          case HttpResult(response, _) => response.entity
-          case fr: FileResult => fileHttpEntity(fr)
-            .getOrElse(sys.error(s"Cannot find file data: ${fr.fileInfo}"))
-          // text/plain content type, since string data format is known to decoder named in 'using' clause only
-          case StringResult(value) => HttpEntity(ContentTypes.`text/plain(UTF-8)`, value)
-          case x => sys.error(
-            s"Cannot extract entity from $x. Currently only HttpResult, FileResult and StringResult are supported")
-        }
-    } .getOrElse(Future.successful(qr.httpReq.entity))
+    Option(exe.source)
+      .map(doActionOp(_, scope, context).map(opHttpEntity))
+      .getOrElse(Future.successful(qr.httpReq.entity))
       .map { ent =>
         val res = HttpEntityResult(
           ent,
@@ -1597,33 +1599,50 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     context: ActionContext,
   )(implicit qr: QuereaseResources): Future[RequestPartResult] = {
     import qr._, context.env
-    val entity = httpReq.entity
     val fs = fileStreamers.fs(op.fileStreamerName)
-    if (entity.contentType.mediaType.isMultipart) {
-      import org.apache.pekko.http.scaladsl.unmarshalling.MultipartUnmarshallers._
-      org.apache.pekko.http.scaladsl.unmarshalling.Unmarshal(entity).to[Multipart.FormData].map { formdata =>
-        val src = formdata.parts.map {
-          case filePart if filePart.filename.isDefined =>
-            RequestPart(filePart.name, filePart.filename.get, filePart.entity)
-          case dataPart =>
-            RequestPart(dataPart.name, null, dataPart.entity)
-        }
-        RequestPartResult(src, fs)
-      }
-    } else {
-      val filename = viewDefOption(context.viewName)
-        .filter(_.keyFieldNames.size == 1)
-        .flatMap(vd => scope.toBindeableMap(env).get(vd.keyFieldNames.head).map(String.valueOf))
-        .getOrElse(httpReq.uri.path.reverse.head.toString)
-      Future.successful(
-        RequestPartResult(
-          Source.single(
-            RequestPart(null, if (filename.isEmpty) null else filename, entity)
-          ),
-          fs
-        )
-      )
+    // file name of 'from' clause op result entity, null if not provided by op result
+    def sourceFileName(result: QuereaseResult): String = result match {
+      case fr: FileResult => fr.fileInfo.filename
+      case HttpResult(response, _) =>
+        response.header[`Content-Disposition`]
+          .filter(_.dispositionType == attachment)
+          .flatMap(_.params.get("filename"))
+          .orNull
+      case _ => null
     }
+    Option(op.source)
+      .map(doActionOp(_, scope, context).map(res => (opHttpEntity(res), sourceFileName(res))))
+      .getOrElse(Future.successful((httpReq.entity, null)))
+      .flatMap { case (entity, sourceFilename) =>
+        if (entity.contentType.mediaType.isMultipart) {
+          import org.apache.pekko.http.scaladsl.unmarshalling.MultipartUnmarshallers._
+          org.apache.pekko.http.scaladsl.unmarshalling.Unmarshal(entity).to[Multipart.FormData].map { formdata =>
+            val src = formdata.parts.map {
+              case filePart if filePart.filename.isDefined =>
+                RequestPart(filePart.name, filePart.filename.get, filePart.entity)
+              case dataPart =>
+                RequestPart(dataPart.name, null, dataPart.entity)
+            }
+            RequestPartResult(src, fs)
+          }
+        } else {
+          // file name of request entity is taken from view key value or request uri
+          val filename =
+            if (op.source != null) sourceFilename
+            else viewDefOption(context.viewName)
+              .filter(_.keyFieldNames.size == 1)
+              .flatMap(vd => scope.toBindeableMap(env).get(vd.keyFieldNames.head).map(String.valueOf))
+              .getOrElse(httpReq.uri.path.reverse.head.toString)
+          Future.successful(
+            RequestPartResult(
+              Source.single(
+                RequestPart(null, if (filename == null || filename.isEmpty) null else filename, entity)
+              ),
+              fs
+            )
+          )
+        }
+      }
   }
 
   protected def doRedirectToKey(

@@ -1782,6 +1782,22 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       .fileUploadForm(createEntity("Hi people!" * 150, ContentTypes.`text/plain(UTF-8)`), "test.txt")) ~> route ~> check {
       status == StatusCodes.ContentTooLarge
     }
+    Post("/extract_parts_test3", concatForms(
+      WabaseHttpClient.fileUploadForm(createEntity("Hi people!", ContentTypes.`text/plain(UTF-8)`), "test1.txt", "file1"),
+      WabaseHttpClient.fileUploadForm(createEntity("How are you!", ContentTypes.`text/plain(UTF-8)`), "test2.txt", "file2"),
+    )) ~> route ~> check {
+      val r = entityAs[String]
+      jsonAssert(r, Seq(
+        Map("name" -> "test1.txt", "value" -> "228c55536f6bcca78166c30c29199c4b6a52c8ed560cdc1db62ec1ac8af5df30"),
+        Map("name" -> "test2.txt", "value" -> "8be8a3875c871e2f3990640f18d914836152dfacfd34880a13358e04c6471ea9")
+      ))
+    }
+    Put("/extract_parts_test3/uri-name.txt", createEntity("Hi from source file!", ContentTypes.`text/plain(UTF-8)`)) ~>
+      route ~> check {
+      val r = entityAs[String]
+      jsonAssert(r, Map("file" -> "stored_name.txt",
+        "sha_256" -> "6c6e0ca48acee8667dc863d27ec4d85b73baa2eb81a395cb62039445c55536c4"))
+    }
     var fileId: Any = null
     var fileSha: Any = null
     Put("/upload_test/file.txt", createEntity("upload download", ContentTypes.`text/plain(UTF-8)`)) ~>

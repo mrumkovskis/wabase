@@ -1128,8 +1128,8 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
   } named "http-hop"
   def httpCookieOp: MemParser[Op] = ("extract\\b".r ~ "cookie\\b".r) ~> ".*".r ^^ (Cookie(_)) named "http-cop"
   def extractPartsOp: MemParser[ExtractParts] =
-    "extract\\s+parts".r ~> opt("[" ~> HttpClientFileStreamerNameRegex <~ "]") ^^ {
-      case fs => ExtractParts(fs.orNull)
+    ("extract\\s+parts".r ~> opt("[" ~> HttpClientFileStreamerNameRegex <~ "]")) ~ opt("from\\b".r ~> operation) ^^ {
+      case fs ~ op => ExtractParts(fs.orNull, op.orNull)
     } named "extract-parts"
   def extractEntityOp: MemParser[ExtractHttpEntity] =
     (opt(opResultType) <~ "extract\\s+entity".r) ~ opt("from\\b".r ~> operation) ~ opt("using\\b".r ~> ident) ^^ {
@@ -1466,8 +1466,9 @@ object AppMetadata extends Loggable {
     /** This op can be used if view property 'decode request' is false, for multipart request it extracts parts,
      * for simple request creates one part with body as a Source.
      * File streamer name indicates which file streamer to use for parts serialization.
+     * Source op result entity is used instead of http request entity if 'from' clause is specified.
      * */
-    case class ExtractParts(fileStreamerName: String = null) extends Op
+    case class ExtractParts(fileStreamerName: String = null, source: Op = null) extends Op
     case class Db(action: Action, doRollback: Boolean, dbs: List[DbAccessKey]) extends BlockOp
     case class Conf(param: String, paramType: ConfType = null) extends Op
     case class JsonCodec(encode: Boolean, op: Op) extends Op
@@ -1524,7 +1525,7 @@ object AppMetadata extends Loggable {
       def traverse(state: T): PartialFunction[Op, T] = {
         case _: Tresql | _: RedirectToKey | _: Response |
              _: VariableTransforms | _: File | _: Conf | _: Cookie |
-             _: ExtractParts | _: This | _: Resource | _: Rethrow | Commit | Rollback | null => state
+             _: This | _: Resource | _: Rethrow | Commit | Rollback | null => state
         case o: ViewCall => opTrav(state)(o.data)
         case Unique(o, _, _) => opTrav(state)(o)
         case Foreach(o, a, foldOp, _) =>
@@ -1544,6 +1545,7 @@ object AppMetadata extends Loggable {
         case JsonCodec(_, o) => opTrav(state)(o)
         case i: Invocation => i.args.foldLeft(state)(opTrav(_)(_))
         case ExtractHttpEntity(_, _, o) => opTrav(state)(o)
+        case ExtractParts(_, o) => opTrav(state)(o)
       }
       state => extractor(state) orElse traverse(state)
     }
@@ -1641,6 +1643,7 @@ object AppMetadata extends Loggable {
               processView(stepTresqlTrav)(ns.copy(action = method, name = vn))
             case Invocation(_, _, o, _) => o.foldLeft(state)(opTresqlTrav(_)(_))
             case ExtractHttpEntity(_, _, o) => opTrTr(o)
+            case ExtractParts(_, o) => opTrTr(o)
           }
         }
         opTraverser(opTresqlTrav, stepTresqlTrav) { state => extractor(state) orElse traverse(state) }
