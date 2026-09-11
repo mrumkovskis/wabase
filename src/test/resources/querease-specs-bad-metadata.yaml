@@ -19,3 +19,16 @@ get:  # bad - second recover step has no steps to guard
   - x = 'R1'
 - recover:
   - x = 'R2'
+
+
+name:   throw_error_test_1
+get:  # bad - 'rethrow' is not inside recover step action
+- x = 'A'
+- rethrow
+
+
+name:   throw_error_test_2
+get:  # bad - 'rethrow' does not take arguments
+- x = 'A'
+- recover:
+  - rethrow :wabase_error.exception

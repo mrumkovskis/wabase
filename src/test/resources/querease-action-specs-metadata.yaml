@@ -834,6 +834,33 @@ save:                           # keyword must not be taken from identifier star
 - "'recover' = 'C'"
 
 
+name: throw_test_1
+fields:
+- value
+get:                            # 'rethrow' fails action with Throwable handled by enclosing recover step
+- org.wabase.QuereaseActionTestManagerObj.businessException
+- recover:
+  - rethrow
+list:                           # 'throw' fails action with Throwable from action scope variable
+- org.wabase.QuereaseActionTestManagerObj.businessException
+- recover:
+  - throw :wabase_error.exception
+count:                          # 'throw' of throwable captured into action scope variable
+- org.wabase.QuereaseActionTestManagerObj.businessException
+- recover:
+  - failure = :wabase_error.exception
+  - throw :failure
+delete:                         # 'throw' of non Throwable value - action is failed with it as message
+- err = 'not a throwable'
+- throw :err
+save:                           # 'throw' of message expression
+- name = 'John'
+- throw 'not allowed for ' || :name
+insert:                         # 'throw' of non string value - action is failed with it as message
+- n = 5
+- throw :n
+
+
 name: foreach_test_1
 table: if_and_foreach_test ift
 api: get, save, update

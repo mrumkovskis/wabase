@@ -36,7 +36,7 @@ api:    public list
 list:                             # exception rethrown from recover step action is not handled again
 - businessError 'rethrown failure'
 - recover:
-  - rethrow :wabase_error.exception
+  - rethrow
 swagger:
   paths = : {}
 

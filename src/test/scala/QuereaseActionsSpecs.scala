@@ -653,6 +653,56 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
         "More than one row for 'unique_opt' result, step: unique_source_result_test.list"))
     }
   }
+
+  behavior of "rethrow, throw ops"
+
+  it should "be parsed as throw op" in {
+    val vd = querease.viewDef("throw_test_1")
+    def recoverSteps(actionName: String) =
+      vd.actions(actionName).steps(1)._1.asInstanceOf[Action.Recover].action.steps.map(_._1)
+    recoverSteps("get")           should be (List(Action.Evaluation(None, Nil, Action.Throw())))
+    recoverSteps("list")          should be (
+      List(Action.Evaluation(None, Nil, Action.Throw(":wabase_error.exception"))))
+    vd.actions("delete").steps(1)._1 should be (Action.Evaluation(None, Nil, Action.Throw(":err")))
+    vd.actions("save").steps(1)._1   should be (
+      Action.Evaluation(None, Nil, Action.Throw("'not allowed for ' || :name")))
+  }
+
+  it should "fail action with throwable handled by recover step" in {
+    recoverToExceptionIf[BusinessException] {
+      doAction("throw_test_1", "get", Map(), Map())
+    }.map(_.getMessage should be("Invocation error"))
+  }
+
+  it should "fail action with throwable from action scope variable" in {
+    recoverToExceptionIf[BusinessException] {
+      doAction("throw_test_1", "list", Map(), Map())
+    }.map(_.getMessage should be("Invocation error"))
+  }
+
+  it should "fail action with throwable captured into action scope variable" in {
+    recoverToExceptionIf[BusinessException] {
+      doAction("throw_test_1", "count", Map(), Map())
+    }.map(_.getMessage should be("Invocation error"))
+  }
+
+  it should "fail action with non throwable value as message" in {
+    recoverToExceptionIf[BusinessException] {
+      doAction("throw_test_1", "delete", Map(), Map())
+    }.map(_.getMessage should be("not a throwable"))
+  }
+
+  it should "fail action with non string value as message" in {
+    recoverToExceptionIf[BusinessException] {
+      doAction("throw_test_1", "insert", Map(), Map())
+    }.map(_.getMessage should be("5"))
+  }
+
+  it should "fail action with message expression" in {
+    recoverToExceptionIf[BusinessException] {
+      doAction("throw_test_1", "save", Map(), Map())
+    }.map(_.getMessage should be("not allowed for John"))
+  }
 }
 
 @annotation.nowarn("msg=Manifest")

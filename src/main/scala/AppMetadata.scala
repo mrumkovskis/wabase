@@ -574,9 +574,28 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val objectHash = AppMetadata.sha256(Map(opParser.viewName -> stepData))
     actionCache.get(objectHash).getOrElse {
       val act = parseAction(objectHash, stepData, opParser)
+      checkRethrowScope(opParser.viewName, act)
       if (isActionCacheUpdatable) actionCache.put(objectHash, act)
       act
     }
+  }
+
+  /** 'rethrow' has no Throwable to rethrow unless it is inside 'recover' step action,
+    * so such actions are rejected at parsing stage. State of traversal indicates whether
+    * 'recover' step action is being traversed. */
+  protected def checkRethrowScope(viewName: String, action: Action): Unit = {
+    import Action._
+    def opTrav: OpTraverser[Boolean] = opTraverser(opTrav, stepTrav) { inRecover => {
+      case Throw(null) if !inRecover =>
+        sys.error(s"'$viewName' parsing error. 'rethrow' must be inside '$RecoverKey' step action, " +
+          s"use 'throw <expression>' to fail action with Throwable or message returned by expression")
+    }}
+    def stepTrav: StepTraverser[Boolean] = stepTraverser(opTrav, stepTrav) { inRecover => {
+      case s: Recover =>
+        traverseAction(s.action)(stepTrav)(true)
+        inRecover // restore state for steps following 'recover' step
+    }}
+    traverseAction(action)(stepTrav)(false)
   }
 
   protected def parseAction(objectName: String, stepData: Seq[Any], opParser: OpParser): Action = {
@@ -1209,11 +1228,13 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
     rep(setCookie | deleteCookie | setHttpHeaders | setUserAttributes) named "set-http-headers-ops"
   def commit: MemParser[Commit.type] = "commit\\s*$".r ^^^ Commit named "commit-op"
   def rollback: MemParser[Rollback.type] = "rollback\\s*$".r ^^^ Rollback named "rollback-op"
-  /** Variable is not parsed as tresql operation so that Throwable value is not passed to query evaluation */
-  def rethrow: MemParser[Rethrow] = "rethrow\\b".r ~> variable ^^ { v =>
-    Rethrow((v.variable :: v.members).mkString("."))
-  } named "rethrow-op"
-  def operation: MemParser[Op] = (commit | rollback | rethrow | redirect | response | viewOp | confOp | uniqueOp |
+  /** Expression is not parsed as tresql operation so that Throwable value is not passed
+    * to query result processing */
+  def throwOp: MemParser[Throw] = {
+    val th = "throw\\b".r ~> expr ^^ { e => Throw(e.tresql) }
+    ("rethrow\\b".r ^^^ Throw()) | th
+  } named "throw-op"
+  def operation: MemParser[Op] = (commit | rollback | throwOp | redirect | response | viewOp | confOp | uniqueOp |
     httpOp | dbOp | foreachOp | ifElseOp | elseOp |
     resourceOp | fileOp | toFileOp | templateOp | emailOp |
     jsonCodecOp | httpHeaderOp | httpCookieOp | extractPartsOp | extractEntityOp |
@@ -1477,9 +1498,12 @@ object AppMetadata extends Loggable {
     case class Block(action: Action) extends BlockOp
     case object Commit extends Op
     case object Rollback extends Op
-    /** Rethrows Throwable from action scope variable, i.e. 'rethrow :wabase_error.exception'.
-      * Name is dot separated path to variable in action scope. */
-    case class Rethrow(name: String) extends Op
+    /** Fails action with a Throwable.
+      * If tresql is null, Throwable handled by enclosing 'recover' step is rethrown, i.e. 'rethrow'.
+      * Otherwise tresql is evaluated - action is failed with result if it is Throwable,
+      * i.e. 'throw :my_error', or with BusinessException with result as message,
+      * i.e. "throw 'not allowed'". */
+    case class Throw(tresql: String = null) extends Op
 
     case class This(conformTo: Option[OpResultType] = None) extends Op
     /**
@@ -1525,7 +1549,7 @@ object AppMetadata extends Loggable {
       def traverse(state: T): PartialFunction[Op, T] = {
         case _: Tresql | _: RedirectToKey | _: Response |
              _: VariableTransforms | _: File | _: Conf | _: Cookie |
-             _: This | _: Resource | _: Rethrow | Commit | Rollback | null => state
+             _: This | _: Resource | _: Throw | Commit | Rollback | null => state
         case o: ViewCall => opTrav(state)(o.data)
         case Unique(o, _, _) => opTrav(state)(o)
         case Foreach(o, a, foldOp, _) =>

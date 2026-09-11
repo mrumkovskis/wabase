@@ -258,7 +258,7 @@ The failure is available to the recover expression as variable `wabase_error` wi
 
 | Field | Value |
 | --- | --- |
-| `exception` | The `Throwable` itself, for use with [rethrow](#rethrow). |
+| `exception` | The `Throwable` itself, for use with [throw](#throw). |
 | `errors` | List of maps with keys `error` — exception class name — and `message`, one per exception in the cause chain. |
 
 Example:
@@ -1092,24 +1092,54 @@ job_res = call test_job1
 ### rethrow
 
 ```
-rethrow <variable>
+rethrow
 ```
 
-Fails the action with a `Throwable` held in an action variable. It is an error if the
-variable value is not a `Throwable`.
+Fails the action with the `Throwable` handled by the enclosing [recover](#recover) step,
+i.e. the one held in `wabase_error.exception`. Takes no arguments — use [throw](#throw)
+to fail the action with another `Throwable` or with a message.
 
-Intended for [recover](#recover) steps, to handle some failures and let the rest propagate.
-An exception rethrown from a recover step action is not handled again by that step.
+Used in recover steps, to handle some failures and let the rest propagate. An exception
+rethrown from a recover step action is not handled again by that step.
 
-The variable is deliberately not evaluated as a tresql operation, so that the `Throwable`
-value is not passed to query evaluation.
+`rethrow` outside of a recover step action has nothing to rethrow and is rejected when
+view metadata is loaded.
 
 Example:
 
 ```
 - businessError 'rethrown failure'
 - recover:
-  - rethrow :wabase_error.exception
+  - rethrow
+```
+
+### throw
+
+```
+throw <expression>
+```
+
+Evaluates the expression and fails the action with the result:
+
+| Result | Action failure |
+| --- | --- |
+| `Throwable` | The `Throwable` itself, i.e. `throw :my_error`. |
+| Any other value | `BusinessException` with the value as message, i.e. `throw 'not allowed'`. Mapped to a 400 response with the message as body. |
+
+The expression is deliberately not parsed as a tresql operation, so that a `Throwable` value
+is not passed to query result processing. It is evaluated on the current db connection.
+
+Examples:
+
+```
+- throw 'not allowed for ' || :name
+```
+
+```
+- recover:
+  - failure = :wabase_error.exception
+  - log_failure :failure
+  - throw :failure
 ```
 
 ### this

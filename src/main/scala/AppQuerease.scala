@@ -1530,19 +1530,31 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     case _ => false
   }
 
-  /** Rethrows Throwable from action scope variable, i.e. 'rethrow :wabase_error.exception' in recover action. */
-  protected def doRethrow(
-    op: Action.Rethrow,
+  /** Fails action with Throwable - either the one handled by enclosing recover action, i.e. 'rethrow',
+    * or the one returned by expression, i.e. 'throw :my_error'. If expression result is not Throwable
+    * action is failed with BusinessException with result as message, i.e. "throw 'not allowed'". */
+  @annotation.nowarn("msg=Manifest")
+  protected def doThrow(
+    op: Action.Throw,
     scope: Scope,
     context: ActionContext,
   )(implicit resources: Resources): Future[QuereaseResult] = {
-    def className(v: Any) = if (v == null) "null" else v.getClass.getName
-    useResourcesConnOrEvaluator(resources, res =>
-      Query(s":${op.name}")(res.withParams(scope.toBindeableMap(context.env))) match {
+    val isRethrow = op.tresql == null
+    val tresql    = if (isRethrow) s":$recoverErrorVarName.exception" else op.tresql
+    useResourcesConnOrEvaluator(resources, res => {
+      val params = scope.toBindeableMap(context.env)
+      // 'rethrow' outside recover action is rejected at parsing stage,
+      // this is a defensive measure for action loaded from cache
+      if (isRethrow && !params.contains(recoverErrorVarName))
+        sys.error(s"'rethrow' must be inside recover action, no ':$recoverErrorVarName' variable in action scope")
+      Query(tresql)(res.withParams(params)) match {
         case SingleValueResult(th: Throwable) => Future.failed(th)
-        case x => sys.error(s"'rethrow :${op.name}' - variable value must be Throwable, instead got ${className(x)}")
+        case r => r.head[Any] match {
+          case null => sys.error(s"'throw $tresql' - result must be Throwable or message, instead got null")
+          case msg  => Future.failed(new BusinessException(msg.toString))
+        }
       }
-    )
+    })
   }
 
   protected def doConf(
@@ -1702,7 +1714,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case st: Action.Response => doResponse(st, scope, context)
       case Action.Commit    => doCommit(resources)
       case Action.Rollback  => doRollback(resources)
-      case rt: Action.Rethrow => doRethrow(rt, scope, context)
+      case th: Action.Throw => doThrow(th, scope, context)
       case cond: Action.If => doIf(cond, scope, context)
       case foreach: Action.Foreach => doForeach(foreach, scope, context)
       case resource: Action.Resource => doResource(resource, scope, context)

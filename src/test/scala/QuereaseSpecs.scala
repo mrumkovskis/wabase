@@ -402,6 +402,19 @@ class QuereaseSpecs extends AsyncFlatSpec with Matchers with TestQuereaseInitial
     }.getMessage should include ("'recover' must not follow another 'recover' step")
   }
 
+  it should "reject 'rethrow' outside recover step action" in {
+    intercept[RuntimeException] {
+      new TestQuerease("/querease-specs-bad-metadata.yaml", _.body contains "throw_error_test_1").nameToViewDef
+    }.getMessage should include ("'rethrow' must be inside 'recover' step action")
+  }
+
+  it should "reject 'rethrow' with argument" in {
+    // argument is not consumed by 'rethrow', step must not parse as argumentless 'rethrow'
+    intercept[RuntimeException] {
+      new TestQuerease("/querease-specs-bad-metadata.yaml", _.body contains "throw_error_test_2").nameToViewDef
+    }.getMessage should include ("failure")
+  }
+
   it should "load key fields" in {
     import AppMetadata.AugmentedAppFieldDef
     querease.viewNameToKeyFields("fake_key_test"             ).find(_.fieldName == "id").get.type_.name         shouldBe "long"
