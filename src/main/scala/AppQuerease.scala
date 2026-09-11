@@ -137,6 +137,12 @@ class QuereaseEnvException(envString: String, cause: Exception) extends Exceptio
   override def getMessage: String = s"Error occured while processing env: ${cause.getMessage}. Env: $envString"
 }
 
+/** Thrown by {{{unique}}} and {{{unique_opt}}} action ops if more than one row is encountered.
+  * Signals broken uniqueness assumption of action definition or of data, so is not mapped to any
+  * http status code by default exception handlers - i.e. results in http status 500.
+  * Application can map it to some other status code, for example 409, by adding own exception handler. */
+class NotUniqueException(message: String, cause: Throwable = null) extends RuntimeException(message, cause)
+
 class AppQuerease extends Querease with AppMetadata with Loggable {
 
  private [wabase] val FieldRefRegexp_ = FieldRefRegexp
@@ -897,32 +903,40 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     context: ActionContext,
   )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
     import qr.{ec, as}
+    val opName = if (op.opt) "unique_opt" else "unique"
+    def noRows: Nothing =
+      throw new NotFoundException(s"No rows for '$opName' result, step: ${context.name}")
+    def tooManyRows(cause: Throwable = null): Nothing =
+      throw new NotUniqueException(s"More than one row for '$opName' result, step: ${context.name}", cause)
     def createGetResult(res: QuereaseResult): Future[QuereaseResult] = (res match {
       case TresqlResult(r) if !r.isInstanceOf[DMLResult] =>
-        if (op.opt) r.uniqueOption map TresqlSingleRowResult.apply getOrElse NoResult
-        else TresqlSingleRowResult(r.unique)
+        try {
+          if (op.opt) r.uniqueOption map TresqlSingleRowResult.apply getOrElse NoResult
+          else TresqlSingleRowResult(r.unique)
+        } catch {
+          case e: TooManyRowsException   => tooManyRows(e)
+          case _: NoSuchElementException => noRows
+        }
       case IteratorResult(r) =>
         try r.hasNext match {
           case true =>
             val v = r.next()
-            if (r.hasNext) sys.error("More than one row for unique result") else v match {
+            if (r.hasNext) tooManyRows() else v match {
               case m: Map[String@unchecked, _] => MapResult(m)
               case x => AnyResult(x)
             }
-          case false => if (op.opt) NoResult else throw new NoSuchElementException(s"No rows in result")
+          case false => if (op.opt) NoResult else noRows
         } finally r match {
           case c: AutoCloseable => c.close()
           case _ =>
         }
-      case SourceResult(src, _) => src.runWith(
-        if (op.opt) Sink.headOption[QuereaseResult] else Sink.head[QuereaseResult])
-        .map {
-          case None => NoResult
-          case Some(r: QuereaseResult) => r
-          case r: QuereaseResult => r
+      case SourceResult(src, _) =>
+        src.take(2).runWith(Sink.seq[QuereaseResult]).map { rows =>
+          if (rows.size > 1) tooManyRows()
+          else rows.headOption.getOrElse(if (op.opt) NoResult else noRows)
         }
       case c: CompatibleResult => createGetResult(c.result).map { r => c.copy(result = r) }
-      case r => sys.error(s"unique opt can only process Iterator type, instead encountered: $r")
+      case r => sys.error(s"'$opName' can be applied to row set result only, instead encountered: $r")
     }) match {
       case f: Future[QuereaseResult@unchecked] => f
       case r: QuereaseResult => Future.successful(r)

@@ -384,11 +384,16 @@ Example:
 
 ### unique, unique_opt
 
-Tresql expression combined with `unique` or `unique_opt`:
+Returns single row from row set result, checking row count — `unique` requires exactly one
+row, `unique_opt` allows also empty result. More than one row is an error, no row is picked
+and no rows are dropped:
 
 ```
-[<result type>] (unique | unique_opt) <tresql expression>
+[<result type>] (unique | unique_opt) <operation>
 ```
+
+Operation is most often a tresql expression, but any operation producing a row set is
+accepted — view call, `list`, `foreach`, invocation returning an iterator.
 
 Example:
 
@@ -396,7 +401,52 @@ Example:
 unique { 'Mr. Mario' name, 'Moderna' 'vaccine', '2022-04-11' 'manipulation_date' }
 unique_opt |med_db:person_health[name = :name]{id}
 as `result_render_test` unique { 'text' string_field, '2024-01-31'::date date_field, 'x' filtered_field }
+unique_opt list this
 ```
+
+#### Result and errors
+
+| Rows | `unique` | `unique_opt` |
+| --- | --- | --- |
+| 0 | `NotFoundException` | no result |
+| 1 | the row | the row |
+| more than 1 | `NotUniqueException` | `NotUniqueException` |
+
+`unique_opt` differs from `unique` in the empty result case only — more than one row is an
+error for both of them.
+
+The single row is returned as a result of the same kind as the row set it was taken from —
+tresql single row result for tresql expression, map or scalar value for iterator or stream
+producing operations.
+
+No result (`unique_opt` on empty row set) is not an error:
+
+- as the result of the whole action it is marshalled as http status `404 Not Found`,
+  unless status code is set explicitly by [response](#response-status) op;
+- assigned to a variable (`x = unique_opt …`) it sets variable value to `null`;
+- passed to the next step it is an empty result.
+
+`org.mojoz.querease.NotFoundException` is mapped to http status `404 Not Found` by default
+exception handlers, so `unique` on empty row set and `unique_opt` on empty row set differ in
+response body only.
+
+`org.wabase.NotUniqueException` is not mapped to any status code by default exception
+handlers, i.e. results in http status `500 Internal Server Error`. This is deliberate — more
+than one row means that uniqueness assumption of action definition or of data is broken,
+which is a defect to be fixed, not a client error to be reported. Application can map it to
+some other status code, for example `409 Conflict`, by adding own exception handler:
+
+```scala
+ExceptionHandler {
+  case e: NotUniqueException => complete(HttpResponse(StatusCodes.Conflict, entity = e.getMessage))
+}
+```
+
+If more than one row is a legitimate outcome and the first row is the wanted one, do not rely
+on `unique` — limit the row set in tresql instead, for example `person[…]{…}#(1)@(1)`.
+
+Operations not producing a row set (for example dml statements or single value results) are
+not accepted by `unique` and `unique_opt`, such action definition fails at runtime.
 
 ### Invocation
 

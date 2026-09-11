@@ -2114,3 +2114,27 @@ insert:                         # last step is validation - it produces no resul
 - x = 'not returned'
 - validations:
   - 1 = 1, 'never fails'
+
+
+name:   unique_no_rows_test
+api:    get, list
+get:
+- unique {1 nr}[false]              # no rows - NotFoundException
+list:
+- unique_opt {1 nr}[false]          # no rows - NoResult
+
+
+name:   unique_too_many_rows_test
+api:    get, list
+get:
+- unique [({1 nr} + {2 nr}){*}#(1)]      # more than one row - NotUniqueException
+list:
+- unique_opt [({1 nr} + {2 nr}){*}#(1)]  # more than one row - NotUniqueException, unique_opt does not help
+
+
+name:   unique_source_result_test
+api:    get, list
+get:
+- unique (foreach(({1 nr}){nr}) :nr)                    # one row in source result
+list:
+- unique_opt (foreach(({1 nr} + {2 nr}){nr}#(1)) :nr)   # more than one row - NotUniqueException

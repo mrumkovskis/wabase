@@ -3,7 +3,7 @@ package org.wabase
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.model.HttpRequest
 import org.apache.pekko.stream.scaladsl.StreamConverters
-import org.mojoz.querease.{ValidationException, ValidationResult}
+import org.mojoz.querease.{NotFoundException, ValidationException, ValidationResult}
 import org.scalatest.flatspec.{AsyncFlatSpec, AsyncFlatSpecLike}
 import org.scalatest.matchers.should.Matchers
 import org.tresql.{Query, Resources, Result, SingleValueResult, convAny, convLong}
@@ -612,6 +612,45 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
     doAction("dynamic_sql_test", "list", Map(), Map()).map {
       case TresqlResult(res) => res.toListOfMaps should be(List(Map("name" -> "Ms. Zina", "surname" -> "Mina")))
       case x => sys.error("Unexpected action result class: " + Option(x).map(_.getClass.getName).orNull)
+    }
+  }
+
+  behavior of "unique, unique_opt ops"
+
+  it should "throw NotFoundException on no rows" in {
+    recoverToExceptionIf[NotFoundException] {
+      doAction("unique_no_rows_test", "get", Map(), Map())
+    }.map(_.getMessage should be("No rows for 'unique' result, step: unique_no_rows_test.get"))
+  }
+
+  it should "return NoResult on no rows" in {
+    doAction("unique_no_rows_test", "list", Map(), Map()).map(_ should be(NoResult))
+  }
+
+  it should "throw NotUniqueException on more than one row" in {
+    recoverToExceptionIf[NotUniqueException] {
+      doAction("unique_too_many_rows_test", "get", Map(), Map())
+    }.map(_.getMessage should be("More than one row for 'unique' result, step: unique_too_many_rows_test.get"))
+      .flatMap { _ =>
+        recoverToExceptionIf[NotUniqueException] {
+          doAction("unique_too_many_rows_test", "list", Map(), Map())
+        }.map(_.getMessage should be(
+          "More than one row for 'unique_opt' result, step: unique_too_many_rows_test.list"))
+      }
+  }
+
+  it should "process source result" in {
+    doAction("unique_source_result_test", "get", Map(), Map()).map {
+      case TresqlResult(res)        => res.unique[Any].toString should be("1")
+      case r: TresqlSingleRowResult => r.map(_.toMap) should be(Map("nr" -> 1))
+      case MapResult(res)           => res should be(Map("nr" -> 1))
+      case AnyResult(res)           => res.toString should be("1")
+      case x => sys.error("Unexpected action result class: " + Option(x).map(_.getClass.getName).orNull)
+    }.flatMap { _ =>
+      recoverToExceptionIf[NotUniqueException] {
+        doAction("unique_source_result_test", "list", Map(), Map())
+      }.map(_.getMessage should be(
+        "More than one row for 'unique_opt' result, step: unique_source_result_test.list"))
     }
   }
 }
