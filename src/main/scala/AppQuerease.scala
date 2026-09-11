@@ -17,7 +17,7 @@ import org.mojoz.metadata.ViewDef
 import org.wabase.AppFileStreamer.FileInfo
 import org.wabase.AppMetadata.Action.{VariableTransform, VariableTransforms}
 import org.wabase.AppMetadata.DbAccessKey
-import org.wabase.AppQuerease.{InjectionParametersContext, InjectionParametersProvider, Scope, configValueAsScala, httpResponseToMap, listOfStringTuples, loggable, updComplexKey}
+import org.wabase.AppQuerease.{ActionContext, InjectionParametersContext, InjectionParametersProvider, Scope, configValueAsScala, httpResponseToMap, listOfStringTuples, loggable, updComplexKey}
 import org.wabase.client.HttpClient
 import org.wabase.ds.{ConnectionPools, PoolName}
 
@@ -365,19 +365,6 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         }
     }
     def value[A](a: => A): QuereaseAction[A] = (_: ExecutionContext, _: ActorSystem) => Future.successful(a)
-  }
-
-  case class ActionContext(
-    viewName: String,
-    actionName: String,
-    env: Map[String, Any],
-    view: Option[ViewDef],
-    fieldFilter: FieldFilter = null,
-    stepName: String = null,
-    contextStack: List[ActionContext] = Nil,
-  ) {
-    val name = s"$viewName.$actionName" + Option(stepName).map(s => s".$s").getOrElse("")
-    def stackStr: String = (name :: contextStack.map(_.name)).mkString("[", ",", "]")
   }
 
   private[wabase] def quereaseActionOpt(objectName: String, actionName: String) = {
@@ -783,7 +770,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     val invocationData = scope.toBindeableMap(env)
     def invokeFunction(className: String, function: String, pf: InvocationParameterFun): Any = {
       this.invokeFunction(className, function, invocationData, pf,
-        InjectionParametersContext(httpReq, invocationData), qr)
+        InjectionParametersContext(httpReq, invocationData, context), qr)
     }
 
     def wrongRes(x: Any) =
@@ -1375,7 +1362,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           .getOrElse(
             if (httpClients.httpClients.size == 1) httpClients.httpClients.head._2
             else sys.error(s"Http client name not specified, expected one http client, got: $httpClients"))
-        val httpClient = httpClientFactory(InjectionParametersContext(httpReq, opData))
+        val httpClient = httpClientFactory(InjectionParametersContext(httpReq, opData, context))
         val maybeProxyReq =
           if (op.isProxy) req.addAttribute(HttpClient.ModeKey, HttpClient.ProxyMode) else req
         doHttpRequest(httpClient, viewDefOption(context.viewName).map(_.maxContentSize).orNull, maybeProxyReq)
@@ -2137,9 +2124,26 @@ object AppQuerease {
   /** Request URI as received (before key-from-query is moved into the path); used for relative Location. */
   val OriginalRequestUriAttribute: AttributeKey[Uri] = AttributeKey[Uri]("wabase-original-request-uri")
 
+  case class ActionContext(
+    viewName: String,
+    actionName: String,
+    env: Map[String, Any],
+    view: Option[ViewDef],
+    fieldFilter: FieldFilter = null,
+    stepName: String = null,
+    contextStack: List[ActionContext] = Nil,
+  ) {
+    val name = s"$viewName.$actionName" + Option(stepName).map(s => s".$s").getOrElse("")
+    def stackStr: String = (name :: contextStack.map(_.name)).mkString("[", ",", "]")
+  }
+
   case class InjectionParametersContext(
     req:  HttpRequest,
     data: Map[String, Any]  = Map(),	  // action current step data
+    /** Action context of the invoking step, null if invocation is not performed from action.
+      * NOTE: {{{ctx.env}}} and envs of {{{ctx.contextStack}}} contain unfiltered bind variable
+      * values, do not log them as is, use {{{loggable}}} with resources bind var log filter instead. */
+    ctx:  ActionContext     = null,
   )
   type InjectionParametersProvider = InjectionParametersContext => PartialFunction[Parameter, Any]
 

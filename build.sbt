@@ -88,64 +88,6 @@ lazy val commonSettings = Seq(
       greenmailDependency                                                 %     Test,
     )
   },
-  // Binary compatibility exceptions against previous release.
-  // Request decoder configuration is consolidated under 'request-decoders' conf and per format decoder
-  // configs and factory traits are replaced by single StreamDecoderFactory trait, factory per parser.
-  mimaBinaryIssueFilters ++= {
-    import com.typesafe.tools.mima.core._
-    Seq(
-      ProblemFilters.exclude[MissingClassProblem]("org.wabase.CsvDecoderConfig"),
-      ProblemFilters.exclude[MissingClassProblem]("org.wabase.CsvDecoderConfig$"),
-      ProblemFilters.exclude[MissingClassProblem]("org.wabase.JsonDecoderConfig"),
-      ProblemFilters.exclude[MissingClassProblem]("org.wabase.JsonDecoderConfig$"),
-      ProblemFilters.exclude[MissingClassProblem]("org.wabase.XmlDecoderConfig"),
-      ProblemFilters.exclude[MissingClassProblem]("org.wabase.XmlDecoderConfig$"),
-      ProblemFilters.exclude[IncompatibleTemplateDefProblem]("org.wabase.CsvDecoderFactory"),
-      ProblemFilters.exclude[IncompatibleTemplateDefProblem]("org.wabase.JsonDecoderFactory"),
-      ProblemFilters.exclude[IncompatibleTemplateDefProblem]("org.wabase.XmlDecoderFactory"),
-      ProblemFilters.exclude[MissingTypesProblem]("org.wabase.CsvDecoderFactory$"),
-      ProblemFilters.exclude[MissingTypesProblem]("org.wabase.JsonDecoderFactory$"),
-      ProblemFilters.exclude[MissingTypesProblem]("org.wabase.XmlDecoderFactory$"),
-      ProblemFilters.exclude[DirectMissingMethodProblem]("org.wabase.CsvDecoderFactory.createCsvStreamDecoder"),
-      ProblemFilters.exclude[DirectMissingMethodProblem]("org.wabase.CsvDecoderFactory.createCsvStreamDecoders"),
-      ProblemFilters.exclude[DirectMissingMethodProblem]("org.wabase.JsonDecoderFactory.createJsonStreamDecoder"),
-      ProblemFilters.exclude[DirectMissingMethodProblem]("org.wabase.JsonDecoderFactory.createJsonStreamDecoders"),
-      ProblemFilters.exclude[DirectMissingMethodProblem]("org.wabase.XmlDecoderFactory.createXmlStreamDecoder"),
-      ProblemFilters.exclude[DirectMissingMethodProblem]("org.wabase.XmlDecoderFactory.createXmlStreamDecoders"),
-      ProblemFilters.exclude[DirectMissingMethodProblem]("org.wabase.RequestDecoders.<clinit>"),
-      // Job is identified by name instead of view definition - view def is resolved by job executor
-      // (see app.job.executor conf parameter) at job execution time.
-      ProblemFilters.exclude[IncompatibleMethTypeProblem]("org.wabase.WabaseScheduler.doJob"),
-      ProblemFilters.exclude[DirectMissingMethodProblem]("org.wabase.WabaseScheduler#Tick.job"),
-      ProblemFilters.exclude[IncompatibleMethTypeProblem]("org.wabase.WabaseScheduler#Tick.copy"),
-      ProblemFilters.exclude[IncompatibleResultTypeProblem]("org.wabase.WabaseScheduler#Tick.copy$default$1"),
-      ProblemFilters.exclude[IncompatibleMethTypeProblem]("org.wabase.WabaseScheduler#Tick.this"),
-      ProblemFilters.exclude[IncompatibleMethTypeProblem]("org.wabase.WabaseScheduler#Tick.apply"),
-      ProblemFilters.exclude[IncompatibleSignatureProblem]("org.wabase.WabaseScheduler#Tick.unapply"),
-      ProblemFilters.exclude[IncompatibleResultTypeProblem]("org.wabase.WabaseScheduler#Tick._1"), // scala 3
-      // Email action op has new 'html' option - body is sent as html instead of plain text.
-      ProblemFilters.exclude[DirectMissingMethodProblem]("org.wabase.AppMetadata#Action#Email.this"),
-      ProblemFilters.exclude[DirectMissingMethodProblem]("org.wabase.AppMetadata#Action#Email.apply"),
-      ProblemFilters.exclude[DirectMissingMethodProblem]("org.wabase.AppMetadata#Action#Email.copy"),
-      ProblemFilters.exclude[MissingTypesProblem]("org.wabase.AppMetadata$Action$Email$"),
-      ProblemFilters.exclude[IncompatibleSignatureProblem]("org.wabase.AppMetadata#Action#Email.unapply"),
-      // Email action op attachments are wrapped in Email.Attachment to carry 'embedded' option -
-      // attachment is embedded into html body as image instead of being added as regular attachment.
-      ProblemFilters.exclude[IncompatibleSignatureProblem]("org.wabase.AppMetadata#Action#Email.attachmentsOp"),
-      ProblemFilters.exclude[IncompatibleSignatureProblem]("org.wabase.AppMetadata#Action#Email.copy$default$4"),
-      ProblemFilters.exclude[IncompatibleSignatureProblem]("org.wabase.AppMetadata#Action#Email.<init>$default$4"),
-      ProblemFilters.exclude[IncompatibleSignatureProblem]("org.wabase.AppMetadata#Action#Email.apply$default$4"),
-      ProblemFilters.exclude[IncompatibleSignatureProblem]("org.wabase.AppMetadata#Action#Email._4"), // scala 3
-      // Extract entity action op source is specified in 'from' clause, field 'op' renamed to 'source'.
-      ProblemFilters.exclude[DirectMissingMethodProblem]("org.wabase.AppMetadata#Action#ExtractHttpEntity.op"),
-      // Extract parts action op has new 'from' clause - parts are extracted from source op result entity.
-      ProblemFilters.exclude[DirectMissingMethodProblem]("org.wabase.AppMetadata#Action#ExtractParts.this"),
-      ProblemFilters.exclude[DirectMissingMethodProblem]("org.wabase.AppMetadata#Action#ExtractParts.apply"),
-      ProblemFilters.exclude[DirectMissingMethodProblem]("org.wabase.AppMetadata#Action#ExtractParts.copy"),
-      ProblemFilters.exclude[MissingTypesProblem]("org.wabase.AppMetadata$Action$ExtractParts$"),
-      ProblemFilters.exclude[IncompatibleSignatureProblem]("org.wabase.AppMetadata#Action#ExtractParts.unapply"),
-    )
-  },
 )
 
 lazy val wabase = (project in file("."))
