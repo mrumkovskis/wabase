@@ -354,7 +354,7 @@ class QuereaseSpecs extends AsyncFlatSpec with Matchers with TestQuereaseInitial
       "get"   -> Set("ADMIN"),
       "list"  -> Set("ADMIN"),
       "count" -> Set("ADMIN"),
-      "create"-> Set("ADMIN"),
+      "new"   -> Set("ADMIN"),
       "save"  -> Set("ADMIN"),
       "insert"-> Set("ADMIN"),
       "update"-> Set("ADMIN"),
@@ -364,7 +364,7 @@ class QuereaseSpecs extends AsyncFlatSpec with Matchers with TestQuereaseInitial
       "count" -> Set("ADMIN"),
       "get"   -> Set("USER"),
       "list"  -> Set("USER"),
-      "create"-> Set("MANAGER"),
+      "new"   -> Set("MANAGER"),
       "save"  -> Set("MANAGER"),
       "delete"-> Set("MANAGER", "BIG_BROTHER"),
     )
@@ -372,7 +372,7 @@ class QuereaseSpecs extends AsyncFlatSpec with Matchers with TestQuereaseInitial
       "get"   -> Set("USER"),
       "list"  -> Set("USER"),
       "save"  -> Set("MANAGER_1", "MANAGER_2"),
-      "create"-> Set("MANAGER_1", "MANAGER_2"),
+      "new"   -> Set("MANAGER_1", "MANAGER_2"),
       "delete"-> Set("MANAGER_1", "MANAGER_2"),
     )
     querease.viewDef("api_roles_test_4").apiMethodToRoles shouldBe Map(

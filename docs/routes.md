@@ -40,7 +40,7 @@ ordered parameter of `maybeDeferred`.
 Example:
 
 ```yaml
-on: /data/((?:create:|count:)?\w+)(/.+)?
+on: /data/(\w+(?::(?:new|count))?)(/.+)?
 do: authenticateOpt doAction $1
 
 on: GET /slow-respond
@@ -169,7 +169,7 @@ startup time.
 | `doRequest(handlerName)` | Invokes handler `handlerName` with key taken from path after the handler name segment. |
 | `startJob(jobName)` | `POST` only. Starts named job with query and entity parameters. Responds `200`, `409` when job is already running, `404` when job is not found. |
 
-`view_action` is `<view name>` optionally suffixed with `:count` or `:create`. Without
+`view_action` is `<view name>` optionally suffixed with `:count` or `:new`. Without
 a suffix the action is chosen by http method — `GET` to get, `DELETE` to delete, `HEAD`
 to head, `OPTIONS` to options, and `POST` / `PUT` according to `app.action-for-http.post`
 and `app.action-for-http.put`.

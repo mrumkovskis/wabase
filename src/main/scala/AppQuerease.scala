@@ -737,7 +737,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
             case Delete =>
               getKeyValues(viewName, callData, logFilter = resources.bindVarLogFilter) // check mappings for key exist
               LongResult(delete(v, callData, null, env))
-            case Create =>
+            case New =>
               TresqlSingleRowResult(create(v, callData))
             case Count =>
               LongResult(countAll_(v, callData))

@@ -12,7 +12,7 @@ default implementation:
 ```yaml
 name:   person
 table:  person
-api:    count, create, get, list, upsert, delete
+api:    count, new, get, list, upsert, delete
 key:    code
 fields:
 - code
@@ -40,9 +40,9 @@ update+:
 ```
 
 In `api` a role name applies to the action names following it, until the next role name.
-`api: count, USER get, list, MANAGER create, save, MANAGER, BIG_BROTHER delete` allows
+`api: count, USER get, list, MANAGER new, save, MANAGER, BIG_BROTHER delete` allows
 `count` for the default role — `ADMIN` unless overridden, `get` and `list` for `USER`,
-`create` and `save` for `MANAGER`, and `delete` for `MANAGER` and `BIG_BROTHER`. Listing an
+`new` and `save` for `MANAGER`, and `delete` for `MANAGER` and `BIG_BROTHER`. Listing an
 action twice is an error.
 
 ### Action names
@@ -57,7 +57,7 @@ Actions with no default implementation must be defined in the view definition.
 | `get` | Reads one row by key. | full key |
 | `list` | Reads rows, honours `offset`, `limit` and `sort` parameters. | collection |
 | `count` | Counts rows matching filter. | collection |
-| `create` | Builds new instance from field `initial` expressions. | 0 |
+| `new` | Builds new instance from field `initial` expressions. | 0 |
 | `insert` | Saves data as insert. | collection |
 | `update` | Saves data as update. | full key |
 | `update+` | Saves data as update, key may be changed — old key in uri, new key in body. | full key |
@@ -108,7 +108,7 @@ Roles of a resolved `insert`, `update` or `upsert` action default to the roles o
 
 ### Http method mapping
 
-Without a `:count` or `:create` suffix in the request path the action is chosen by the http
+Without a `:count` or `:new` suffix in the request path the action is chosen by the http
 method, see [route processing](routes.md#action).
 
 | Http method | Action |
@@ -451,7 +451,7 @@ Calls view action. Optional expression argument must return `MapResult`, if omit
 action data is used.
 
 ```
-[<result type>] <get | list | insert | update | delete | save | count | create> <view name | this> [<expression>]
+[<result type>] <get | list | insert | update | delete | save | count | new> <view name | this> [<expression>]
 ```
 
 `this` argument means the current view name.

@@ -646,14 +646,14 @@ delete:
 
 
 name: invocation_test_1
-api: get, save, count, create, delete
+api: get, save, count, new, delete
 fields:
 - s1
 - s2
 - n1
 - n2
 get:
-- setenv create this      # set action current data to variables returned by operation
+- setenv new this      # set action current data to variables returned by operation
 - s3 = org.wabase.QuereaseActionTestManager.concatStrings
 - status ok { :s3 }
 save:
@@ -666,7 +666,7 @@ count:
 - org.wabase.QuereaseActionTestManager.unitFutureMethod
 - org.wabase.QuereaseActionTestManagerObj.unitMethod
 - org.wabase.QuereaseActionTestManager.httpReqMethod
-create:
+new:
 - s1 = 'val1'
 - s2 = 'val2'
 delete:
@@ -682,16 +682,16 @@ fields:
 - value:
    - initial: "'value_val'"
 get:
-- x = create this
+- x = new this
 - :x -> org.wabase.QuereaseActionTestManager.rowLikeMethod
 list:
-- x = create this
+- x = new this
 - :x -> org.wabase.QuereaseActionTestManager.resultMethod
 insert:
-- x = create this
+- x = new this
 - :x -> org.wabase.QuereaseActionTestManager.iteratorMethod
 update:
-- x = create this
+- x = new this
 - :x -> org.wabase.QuereaseActionTestManager.seqMethod
 delete:
 - test.QuereaseActionJavaManager.identity
@@ -1565,10 +1565,10 @@ count:
 
 
 name: invocation_test_3
-api: get, list, delete, create, count, insert, update
+api: get, list, delete, new, count, insert, update
 paths:
   - /invocation_test_3
-  - /create/invocation_test_3
+  - /new/invocation_test_3
   - /count/invocation_test_3
 key: name
 fields:
@@ -1579,7 +1579,7 @@ get:
 - as any org.wabase.QuereaseActionTestManagerObj.int_array # no special type
 delete:
 - as any org.wabase.QuereaseActionTestManagerObj.free_result_render_test # no special type
-create:
+new:
 - as any org.wabase.QuereaseActionTestManagerObj.free_result_render_list_test # no special list type
 count:
 - as any org.wabase.QuereaseActionTestManagerObj.person_dtos_list # no special type

@@ -33,7 +33,7 @@ object ExtraMetadata {
     """
       |name:   extra_metadata_view
       |table:  extra_metadata_data
-      |api:    count, create, get, list, upsert, delete
+      |api:    count, new, get, list, upsert, delete
       |key:    code
       |fields:
       |- code

@@ -615,16 +615,16 @@ class WabaseSwaggerGenerator(
     }
   }
 
-  def isPathForCount(path: String)  = path.endsWith(":count")  || path.contains(":count/")
-  def isPathForCreate(path: String) = path.endsWith(":create") || path.contains(":create/")
+  def isPathForCount(path: String) = path.endsWith(":count") || path.contains(":count/")
+  def isPathForNew(path: String)   = path.endsWith(":new")   || path.contains(":new/")
   def rootPathsForView(method: String, viewDef: ViewDef): Seq[String] = {
     qes.collectFirst { case q: AppQuerease => q.allowedPaths(viewDef.name) }
       .getOrElse(Nil)
       .map(_.toString)
       .filter { path => method match {
         case "count"  => isPathForCount(path)
-        case "create" => isPathForCreate(path)
-        case _        => !isPathForCount(path) && !isPathForCreate(path)
+        case "new"    => isPathForNew(path)
+        case _        => !isPathForCount(path) && !isPathForNew(path)
       }}
   }
 
@@ -637,10 +637,10 @@ class WabaseSwaggerGenerator(
 
   def isArrayRequest(viewDef: ViewDef, method: String) = false
 
-  def operationForCreate(viewDef: ViewDef, keySize: Int = 99): Operation =
-    createOperation("create", viewDef, keySize)
-      .addParameters("create", viewDef, keySize)
-      .addSuccessResponses("create", viewDef)
+  def operationForNew(viewDef: ViewDef, keySize: Int = 99): Operation =
+    createOperation("new", viewDef, keySize)
+      .addParameters("new", viewDef, keySize)
+      .addSuccessResponses("new", viewDef)
       .addBadRequestResponse
       .addForbiddenResponse(viewDef)
       .addNotFoundResponse
@@ -798,7 +798,7 @@ class WabaseSwaggerGenerator(
 
   val methodsAndDefaultActions: Seq[(HttpMethod, String)] =
     Seq(
-      HttpMethods.GET -> "create",
+      HttpMethods.GET -> "new",
       HttpMethods.GET -> "count",
     ) ++
     allSupportedHttpMethods.map(method => method -> methodToDefaultAction(method))
@@ -809,7 +809,7 @@ class WabaseSwaggerGenerator(
     (0 to viewNameToApiKeyFieldNames.get(viewDef.name).map(_.size).getOrElse(0)).toSet
 
   val methodToOperationBuilder: Map[String, (ViewDef, Int) => Operation] = Map(
-    "create"  -> operationForCreate,
+    "new"     -> operationForNew,
     "count"   -> operationForCount,
     "get"     -> operationForGet,
     "list"    -> operationForList,

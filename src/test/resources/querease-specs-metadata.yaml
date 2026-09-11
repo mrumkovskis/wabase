@@ -55,16 +55,16 @@ idx:
 
 
 name:   api_roles_test_1
-api:    create, count, get, list, insert, update, save, delete
+api:    new, count, get, list, insert, update, save, delete
 
 
 name:   api_roles_test_2
-api:    count, USER get, list, MANAGER create, save, MANAGER, BIG_BROTHER delete
+api:    count, USER get, list, MANAGER new, save, MANAGER, BIG_BROTHER delete
 
 
 name:   api_roles_test_3
 api:
-- USER get, list, MANAGER_1, MANAGER_2 create, save, delete
+- USER get, list, MANAGER_1, MANAGER_2 new, save, delete
 
 
 name:   api_roles_test_4

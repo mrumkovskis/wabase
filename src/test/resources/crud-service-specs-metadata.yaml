@@ -26,13 +26,13 @@ columns:
 
 
 name:   by_id_view_1
-api:    get list count create save delete
+api:    get list count new save delete
 paths:
   - /data/by_id_view_1
   - /data/by_id_view_1:count
   - /data/count/by_id_view_1
-  - /data/by_id_view_1:create
-  - /data/create/by_id_view_1
+  - /data/by_id_view_1:new
+  - /data/new/by_id_view_1
 table:  person
 fields:
 - id
@@ -45,11 +45,11 @@ order:
 
 
 name:   by_key_view_1
-api:    get list count create insert update update+ delete
+api:    get list count new insert update update+ delete
 paths:
   - /data/by_key_view_1
-  - /data/by_key_view_1:create
-  - /data/create/by_key_view_1
+  - /data/by_key_view_1:new
+  - /data/new/by_key_view_1
 table:  person
 fields:
 - name
@@ -57,7 +57,7 @@ fields:
 
 
 name:   by_key_view_2
-api:    get list count create insert update update+ delete
+api:    get list count new insert update update+ delete
 paths:  /data/by_key_view_2
 table:  person
 key:    name
@@ -67,7 +67,7 @@ fields:
 
 
 name:   by_key_view_3
-api:    get list count create save update+ delete
+api:    get list count new save update+ delete
 paths:  /data/by_key_view_3
 table:  person
 key:    name
@@ -81,7 +81,7 @@ save:
 
 
 name:   by_hidden_key_view_1
-api:    get list count create save update+ delete
+api:    get list count new save update+ delete
 paths:  /data/by_hidden_key_view_1
 key:    name, surname
 table:  person
@@ -104,10 +104,10 @@ delete:
 
 
 name:   by_hidden_key_view_2
-api:    get count create insert update delete
+api:    get count new insert update delete
 paths:
   - /data/by_hidden_key_view_2
-  - /data/create/by_hidden_key_view_2
+  - /data/new/by_hidden_key_view_2
   - /data/count/by_hidden_key_view_2
 key:    name
 table:  person
@@ -134,7 +134,7 @@ delete:
 
 
 name:   by_hidden_key_view_3
-api:    get count create save delete
+api:    get count new save delete
 paths:  /data/by_hidden_key_view_3
 key:    name, surname
 table:  person
@@ -153,7 +153,7 @@ get:
 
 
 name:   by_key_redirect_view_1
-api:    get list count create save update+ delete
+api:    get list count new save update+ delete
 paths:  /data/by_key_redirect_view_1
 table:  person
 key:    name
@@ -169,7 +169,7 @@ update+:
 
 
 name:   by_key_redirect_view_2
-api:    get list count create save delete
+api:    get list count new save delete
 paths:  /data/by_key_redirect_view_2
 table:  person
 key:    name
@@ -182,7 +182,7 @@ save:
 
 
 name:   by_readonly_key_view_1
-api:    get list count create save delete
+api:    get list count new save delete
 paths:  /data/by_readonly_key_view_1
 table:  person
 key:    name
@@ -192,7 +192,7 @@ fields:
 
 
 name:   by_magic_key_view_1
-api:    get list count create insert update update+ delete
+api:    get list count new insert update update+ delete
 paths:  /data/by_magic_key_view_1
 table:  person
 key:    name
@@ -211,7 +211,7 @@ update+:
 
 
 name:   by_magic_key_view_2
-api:    get list count create insert update delete
+api:    get list count new insert update delete
 paths:  /data/by_magic_key_view_2
 table:  person
 key:    name
@@ -227,7 +227,7 @@ update:
 
 
 name:   by_date_key_view
-api:    get list count create save delete
+api:    get list count new save delete
 paths:  /data/by_date_key_view
 table:  person
 key:    birthdate
@@ -237,7 +237,7 @@ fields:
 
 
 name:   by_datetime_key_view
-api:    get list count create save delete
+api:    get list count new save delete
 paths:  /data/by_datetime_key_view
 table:  person
 key:    date_time
@@ -247,7 +247,7 @@ fields:
 
 
 name:   by_local_datetime_key_view
-api:    get list count create save delete
+api:    get list count new save delete
 paths:  /data/by_local_datetime_key_view
 table:  person
 key:    l_date_time
@@ -257,7 +257,7 @@ fields:
 
 
 name:   json_test_any
-api:    get list count create save delete
+api:    get list count new save delete
 paths:  /data/json_test_any
 table:  json_io_test
 fields:

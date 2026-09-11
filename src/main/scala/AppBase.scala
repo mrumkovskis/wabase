@@ -56,7 +56,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
       case Action.Upsert => Save
       case Action.Save   => Save
       case Action.Delete => Remove
-      case Action.Create => Create
+      case Action.New    => Create
       case Action.Count  => BList
       case _             => null
     }
@@ -453,7 +453,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
     implicit user: User, state: ApplicationState, timeoutSeconds: QueryTimeout, poolName: PoolName
   ) = {
     checkApiSync(viewName, null, "get", user, Nil)
-    implicit val extraDbs = extraDb(AugmentedAppViewDef(viewDef(viewName)).actionToDbAccessKeys(Action.Create))
+    implicit val extraDbs = extraDb(AugmentedAppViewDef(viewDef(viewName)).actionToDbAccessKeys(Action.New))
     dbUse {
       implicit val clazz = viewNameToClassMap(viewName)
       rest(
@@ -867,7 +867,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
               roles.exists(relevantRoles.contains)
           })
           .filter(_._2.nonEmpty)
-          .map { case (v, methodsToRoles) => v.name -> methodsToRoles.keys.toSeq }
+          .map { case (v, methodsToRoles) => v.name -> methodsToRoles.keys.toSeq.sorted }
     }
   }
 

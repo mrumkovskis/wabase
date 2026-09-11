@@ -68,7 +68,7 @@ trait AppServiceBase[User]
   def crudPath = pathPrefix("data")
   def viewWithIdPath = path(Segment / LongNumber)
   def viewWithKeyPath = path(Segment / Segments) | path(Segment ~ PathEnd) & provide(Nil: List[String])
-  def createPath = (path("create" / Segment) | path("""(.+):create""".r)) & get
+  def newPath = (path("new" / Segment) | path("""(.+):new""".r)) & get
   def viewWithoutIdPath = path(Segment ~ (PathEnd | Slash))
   def getByIdPath = viewWithIdPath & get
   def getByKeyPath = viewWithKeyPath & get
@@ -173,12 +173,12 @@ trait AppServiceBase[User]
       }
     }
 
-  def createAction(viewName: String)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
+  def newAction(viewName: String)(implicit user: User, state: ApplicationState, timeout: QueryTimeout) =
     parameterMultiMap { params =>
-      if (useActions(viewName, Action.Create)) {
+      if (useActions(viewName, Action.New)) {
         extractRequest { implicit httpReq =>
           implicit val routeLogger: Logger = WabaseService.routeLogger(httpReq)
-          complete(app.doWabaseAction(Action.Create, viewName, Nil, filterPars(params)))
+          complete(app.doWabaseAction(Action.New, viewName, Nil, filterPars(params)))
         }
       } else {
         complete(app.create(viewName, filterPars(params)))
@@ -340,7 +340,7 @@ trait AppServiceBase[User]
     extractTimeout { implicit timeout =>
       getByIdPath     { getByIdAction     } ~
       countPath       { countAction       } ~
-      createPath      { createAction      } ~
+      newPath         { newAction         } ~
       deleteByIdPath  { deleteByIdAction  } ~
       deleteByKeyPath { deleteByKeyAction } ~
       putByIdPath     { putByIdAction     } ~

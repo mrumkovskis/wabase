@@ -459,9 +459,9 @@ response: |+
             description: Not Found
           "503":
             description: Service Unavailable
-    /data/extra_metadata_view:create:
+    /data/extra_metadata_view:new:
       get:
-        summary: Create 'extra_metadata_view'
+        summary: New 'extra_metadata_view'
         description: ""
         responses:
           "200":
@@ -672,9 +672,9 @@ response: |+
             description: Not Found
           "503":
             description: Service Unavailable
-    /data/person:create:
+    /data/person:new:
       get:
-        summary: Create 'person'
+        summary: New 'person'
         description: ""
         responses:
           "200":
@@ -1063,9 +1063,9 @@ response: |+
             description: Not Found
           "503":
             description: Service Unavailable
-    /data/user:create:
+    /data/user:new:
       get:
-        summary: Create 'user'
+        summary: New 'user'
         description: ""
         responses:
           "200":

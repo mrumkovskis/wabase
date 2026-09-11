@@ -63,7 +63,7 @@ recover:  testErrorHandler
 on:       /do/([\w\.]+).*
 do:       doRequest $1
 
-# for view matching path first group must match [(create|count):]<view_name> (WabaseService.viewActionKey transformer)
+# for view matching path first group must match <view_name>[:(new|count)] (WabaseService.viewActionKey transformer)
 on:       /public/([\w:]+)(.*)
 do:       authenticateOpt doAction $1
 
@@ -102,10 +102,10 @@ do:       doAction $1
 ################# views ###############
 
 name: view1
-api: get, update, update+, delete, list, create, count
+api: get, update, update+, delete, list, new, count
 paths:
   - /public/view1
-  - /public/view1:create
+  - /public/view1:new
   - /public/view1:count
 explicit db: true
 key: id
@@ -123,7 +123,7 @@ delete:
 - "'deleted ' || :id"
 list:
 - null {'"' || :list_filter_param || '"'}     # escape syntax due to yaml parser - '"' || :list_filter_param || '"' does not work
-create:
+new:
 - null {"[" || :p1 || ', "' || :p2 || '"]'}
 count:
   - 1

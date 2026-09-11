@@ -278,23 +278,23 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     }
   }
 
-  it should "create" in {
-    Get("/data/by_id_view_1:create") ~> route ~> check {
+  it should "new" in {
+    Get("/data/by_id_view_1:new") ~> route ~> check {
       status shouldEqual StatusCodes.OK
       header[`Content-Type`].get.contentType shouldBe ContentTypes.`application/json`
       entityAs[String] shouldBe """{"id":null,"name":null,"surname":null}"""
     }
-    Get("/data/create/by_id_view_1") ~> route ~> check {
+    Get("/data/new/by_id_view_1") ~> route ~> check {
       status shouldEqual StatusCodes.OK
       header[`Content-Type`].get.contentType shouldBe ContentTypes.`application/json`
       entityAs[String] shouldBe """{"id":null,"name":null,"surname":null}"""
     }
-    Get("/data/by_key_view_1:create") ~> route ~> check {
+    Get("/data/by_key_view_1:new") ~> route ~> check {
       status shouldEqual StatusCodes.OK
       header[`Content-Type`].get.contentType shouldBe ContentTypes.`application/json`
       entityAs[String] shouldBe """{"name":null,"surname":null}"""
     }
-    Get("/data/create/by_key_view_1") ~> route ~> check {
+    Get("/data/new/by_key_view_1") ~> route ~> check {
       status shouldEqual StatusCodes.OK
       header[`Content-Type`].get.contentType shouldBe ContentTypes.`application/json`
       entityAs[String] shouldBe """{"name":null,"surname":null}"""
@@ -575,7 +575,7 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     hasPerson("Hidden-1") shouldBe false
 
     // whole key hidden
-    Get("/data/create/by_hidden_key_view_2") ~> route ~> check {
+    Get("/data/new/by_hidden_key_view_2") ~> route ~> check {
       status shouldEqual StatusCodes.OK
       header[`Content-Type`].get.contentType shouldBe ContentTypes.`application/json`
       entityAs[String] shouldBe """{"surname":"Surname"}"""
@@ -881,8 +881,8 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     Get("/api") ~> route ~> check {
       status shouldEqual StatusCodes.OK
       val apiMap =  CborOrJsonAnyValueDecoder.decode(ByteString(responseAs[String])).asInstanceOf[Map[String, Any]]
-      apiMap("by_id_view_1") shouldBe Seq("count", "create", "delete", "get", "save", "list")
-      apiMap("by_hidden_key_view_2") shouldBe Seq("count", "insert", "create", "delete", "get", "update")
+      apiMap("by_id_view_1") shouldBe Seq("count", "delete", "get", "list", "new", "save")
+      apiMap("by_hidden_key_view_2") shouldBe Seq("count", "delete", "get", "insert", "new", "update")
       apiMap.get("no_api_view") shouldBe None
       apiMap.get("roles_test") shouldBe Some(Seq("list"))
     }
@@ -921,9 +921,9 @@ class CrudServiceSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
       status shouldEqual StatusCodes.BadRequest
       responseAs[String] shouldBe "Request '/data/count/no_api_view' not in this API: count no_api_view"
     }
-    Get("/data/create/no_api_view") ~> route ~> check {
+    Get("/data/new/no_api_view") ~> route ~> check {
       status shouldEqual StatusCodes.BadRequest
-      responseAs[String] shouldBe "Request '/data/create/no_api_view' not in this API: create no_api_view"
+      responseAs[String] shouldBe "Request '/data/new/no_api_view' not in this API: new no_api_view"
     }
     Post("/data/no_api_view", "{}") ~> route ~> check {
       status shouldEqual StatusCodes.BadRequest

@@ -1,6 +1,6 @@
 name:   person
 table:  person
-api:    count, create, get, list, upsert, delete
+api:    count, new, get, list, upsert, delete
 key:    code
 fields:
 - code

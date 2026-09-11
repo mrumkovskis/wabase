@@ -94,7 +94,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
           def maybePaths(apis: Seq[String]) = apis.collect {
             case api if vd.apiMethodToRoles.contains(api) => pathWithPrefix(prefix, s"${vd.name}:$api")
           }
-          Seq(pathWithPrefix(prefix, vd.name)) ++ maybePaths(Seq(Action.Count, Action.Create))
+          Seq(pathWithPrefix(prefix, vd.name)) ++ maybePaths(Seq(Action.Count, Action.New))
         case paths  => paths.map(p => if (p.startsWith("/")) Uri.Path(p) else pathWithPrefix(pathPrefix, p))
       }
       (n, paths)
@@ -108,14 +108,14 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val s = path.toString
     s.endsWith(":count") || s.contains(":count/")
   }
-  def isPathForCreate(path: Uri.Path): Boolean = {
+  def isPathForNew(path: Uri.Path): Boolean = {
     val s = path.toString
-    s.endsWith(":create") || s.contains(":create/")
+    s.endsWith(":new") || s.contains(":new/")
   }
 
-  /** Resource paths for a view, excluding count/create variants. */
+  /** Resource paths for a view, excluding count/new variants. */
   def rootPaths(viewName: String): Seq[Uri.Path] =
-    allowedPaths(viewName).filterNot(p => isPathForCount(p) || isPathForCreate(p))
+    allowedPaths(viewName).filterNot(p => isPathForCount(p) || isPathForNew(p))
 
   def primaryRootPath(viewName: String): Uri.Path =
     rootPaths(viewName).headOption.getOrElse(Uri.Path(viewName))
@@ -1353,7 +1353,7 @@ object AppMetadata extends Loggable {
     val Update = "update"
     val Upsert = "upsert"
     val Delete = "delete"
-    val Create = "create"
+    val New    = "new"
     val Count  = "count"
     val Job    = "job"
     val Head   = "head"
@@ -1362,7 +1362,7 @@ object AppMetadata extends Loggable {
     val Put    = "put"
     val UpdatePlus = "update+" // Update with key update - post to old key uri, new key in body
     def apply() =
-      Set(Get, List, Save, Insert, Update, Upsert, Delete, Create, Count, Job, Head, Options, Post, Put, UpdatePlus)
+      Set(Get, List, Save, Insert, Update, Upsert, Delete, New, Count, Job, Head, Options, Post, Put, UpdatePlus)
 
     val ValidationsKey = "validations"
     val RecoverKey = "recover"

@@ -1722,7 +1722,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       val r = entityAs[String]
       jsonAssert(r, Map("1" -> Map("key" -> "value")))
     }
-    Get("/create/invocation_test_3") ~> route ~> check {
+    Get("/new/invocation_test_3") ~> route ~> check {
       val r = entityAs[String]
       jsonAssert(r, List(Map("1" -> List(Map("key1" -> "value1"))), Map("2" -> List(Map("key2" -> "value2")))))
     }

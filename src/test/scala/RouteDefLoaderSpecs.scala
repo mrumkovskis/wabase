@@ -35,9 +35,9 @@ class RouteDefLoaderSpecs extends FlatSpec with Matchers {
     RegexPath.convert("/a(/\\w+)?")     shouldBe List(("/a", List()), ("/a/{p1}", List(("p1", "^\\w+$"))))
     RegexPath.convert("/(abc)/.+/.*")   shouldBe Seq(("/abc/{p1}/{p2}", Seq(("p1", "^.+$"), ("p2", "^.*$"))))
     RegexPath.convert("/abc/(.+)(.+)")  shouldBe Seq(("/abc/{p1}{p2}", Seq(("p1", "^.+$"), ("p2", "^.+$"))))
-    RegexPath.convert("/data/(\\w+(?::(?:create|count))?)(/.+)?") shouldBe Seq(
-      ("/data/{p1}", Seq(("p1", "^\\w+(?::(?:create|count))?$"))),
-      ("/data/{p1}/{p2}", Seq(("p1", "^\\w+(?::(?:create|count))?$"), ("p2", "^.+$")))
+    RegexPath.convert("/data/(\\w+(?::(?:new|count))?)(/.+)?") shouldBe Seq(
+      ("/data/{p1}", Seq(("p1", "^\\w+(?::(?:new|count))?$"))),
+      ("/data/{p1}/{p2}", Seq(("p1", "^\\w+(?::(?:new|count))?$"), ("p2", "^.+$")))
     )
     RegexPath.convert("/data/(?<name>\\w+)/(?<id>\\d+)") shouldBe Seq(
       ("/data/{name}/{id}", Seq(("name", "^\\w+$"), ("id", "^\\d+$")))

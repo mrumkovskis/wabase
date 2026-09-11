@@ -8,7 +8,7 @@ get:
 
 name:     user
 table:    user
-api:      count, create, get, list, save, delete
+api:      count, new, get, list, save, delete
 fields:
 - id
 - name

@@ -1,4 +1,4 @@
-on: /data/(\w+(?::(?:create|count))?)(/.+)?
+on: /data/(\w+(?::(?:new|count))?)(/.+)?
 do: authenticateOpt audit doAction $1
 swagger:
   paths = : {}    # skip here - derived from views

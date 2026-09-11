@@ -104,7 +104,7 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
       decodeJs) shouldBe Map("id" -> 5, "value" -> "upd-Value5-ins")
     entityForRequest(RequestBuilding.Delete("/public/view1/10")) shouldBe "deleted 10"
     callRoute("/public/view1?list_filter_param=val", decoder = decodeJs) shouldBe "val"
-    callRoute("/public/view1:create?p1=111&p2=aaa", decoder = decodeJs) shouldBe Seq(111, "aaa")
+    callRoute("/public/view1:new?p1=111&p2=aaa", decoder = decodeJs) shouldBe Seq(111, "aaa")
     callRoute("/public/view1:count", decoder = decodeJs) shouldBe 1
     response(Get("/public/querease_action_exception")).status shouldBe StatusCodes.InternalServerError
     response(Post("/public/querease_action_exception")).status shouldBe StatusCodes.Unauthorized

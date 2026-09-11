@@ -425,7 +425,7 @@ trait WabaseApp[User] {
     viewName:   String,
     params:     Map[String, Any],
   )(log: Logger): ResultRenderer.ResultFilter = actionName match {
-    case Action.Get | Action.List | Action.Create =>
+    case Action.Get | Action.List | Action.New =>
       val allowed = fieldFilterParameterNameOpt.flatMap(params.get).map {
         case null => null
         case seq: Seq[_] => seq.map(_.toString).toSet
@@ -690,7 +690,7 @@ class WabaseViewApi(
     def isMixedActionKeySize(viewDef: ViewDef) =
       keySize >= viewDef.minKeySizeForCollection && keySize <= apiKeySize(viewDef)
     actionName match {
-      case Action.Create                                            => keySize == 0 // ?
+      case Action.New                                               => keySize == 0 // ?
       case Action.Save | Action.Head | Action.Options               => isMixedActionKeySize(viewDef)
       case Action.List | Action.Post | Action.Insert | Action.Count => isCollectionActionKeySize(viewDef)
       case _                                                        => keySize == apiKeySize(viewDef)

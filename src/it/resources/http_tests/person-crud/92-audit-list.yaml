@@ -35,7 +35,7 @@ response: [
   {
     "request_time": "-> _",
     "request": {
-      "uri": "http://localhost:8080/data/person:create",
+      "uri": "http://localhost:8080/data/person:new",
       "method": "GET",
       "headers": [
         "Host: localhost:8080",

@@ -77,14 +77,14 @@ object RequestHandlers {
       .sortBy(_.toString.length)
       .lastOption
 
-  val CreateCountActionAndViewRegex = """(?U)([_\p{IsLatin}][\-\w]*)(?::(count|create))?""".r
+  val NewCountActionAndViewRegex = """(?U)([_\p{IsLatin}][\-\w]*)(?::(count|new))?""".r
   val ActionForHttpPost = config.getString("app.action-for-http.post") // maybe "insert" for legacy app
   val ActionForHttpPut  = config.getString("app.action-for-http.put")  // maybe "update" for legacy app
   def viewActionKey(view_action: String, ctx: WabaseRequestContext): WabaseRequestContext = {
     import ctx._
     val viewDefs = wabase.qe.nameToViewDef
-    val (viewNameAndActionStr, view_name, create_count_action) = try {
-      val CreateCountActionAndViewRegex(vn, cca) = view_action: @unchecked
+    val (viewNameAndActionStr, view_name, new_count_action) = try {
+      val NewCountActionAndViewRegex(vn, cca) = view_action: @unchecked
       if (viewDefs.contains(vn)) (view_action, vn, cca)
       else (null, null, null)
     } catch {
@@ -98,7 +98,7 @@ object RequestHandlers {
       val matched   = matchedAllowedPath(allowed, req.uri.path)
       val segment   = matched.flatMap(lastPathSegment(_)).getOrElse(viewNameAndActionStr)
       val key       = WabaseService.keyAfterSegment(req.uri.path, segment)
-      val action = if (create_count_action != null) create_count_action else req.method match {
+      val action = if (new_count_action != null) new_count_action else req.method match {
         case `GET`    => Action.Get
         case `POST`   => ActionForHttpPost
         case `PUT`    => ActionForHttpPut
@@ -108,9 +108,9 @@ object RequestHandlers {
         case x        => error(StatusCodes.MethodNotAllowed, s"Unsupported http method $x for request '${req.uri}'")
       }
       val apiAction = wabase.apiMethod(viewDefs(view_name), action, key.size)
-      // Store root path (not count/create) for redirects; fall back to primary root when unmatched
+      // Store root path (not count/new) for redirects; fall back to primary root when unmatched
       val viewApiPath =
-        matched.filterNot(p => wabase.qe.isPathForCount(p) || wabase.qe.isPathForCreate(p))
+        matched.filterNot(p => wabase.qe.isPathForCount(p) || wabase.qe.isPathForNew(p))
           .orElse(wabase.qe.rootPaths(view_name).headOption)
           .getOrElse(wabase.qe.primaryRootPath(view_name))
       val reqWithPath = req.addAttribute(AppQuerease.ViewApiPathAttribute, viewApiPath)
