@@ -1,0 +1,8 @@
+# expression is false - message evaluates to object, parentheses around object literal are optional
+path:       /data/validation/103
+method:     PUT
+request:
+  context:    validation_params_step
+  expression: "code.length <= 5"
+  message:    "{msg: 'Code %1$s is longer than %2$s', params: [code, 5]}"
+response:

@@ -1,0 +1,8 @@
+# message template with parameters from object returned by expression
+path:       /data/validation_params_step
+method:     POST
+request:
+  code:       A1
+  qty:        150
+error:
+  [{"location": [], "messages": [{"msg": "Quantity %1$s exceeds %2$s", "params": [150, 100]}]}]

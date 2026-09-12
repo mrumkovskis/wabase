@@ -7,6 +7,7 @@ import ch.qos.logback.core.boolex.EventEvaluatorBase
 class ItLogMessageNoiseDetector extends EventEvaluatorBase[ILoggingEvent] {
   private val badStartsWith = Set(
     "[GET /try-recover/try_recover_no_recover]",
+    "[POST /data/validation_params_step]",
   )
   override def evaluate(event: ILoggingEvent): Boolean = {
     val msg = event.getFormattedMessage

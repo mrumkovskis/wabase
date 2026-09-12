@@ -1,0 +1,8 @@
+# message template with parameters from object message
+path:       /data/validation_params_step
+method:     POST
+request:
+  code:       ABCDEFG
+  qty:        5
+error:
+  [{"location": [], "messages": [{"msg": "Code %1$s is longer than %2$s", "params": ["ABCDEFG", 5]}]}]

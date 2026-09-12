@@ -11,6 +11,8 @@
 # Cast bind variables where database cannot infer their type. Avoid decimal cast on hsqldb -
 # tresql renders it as numeric without scale, which rounds fractions, use double instead.
 
+# script (javascript) validations of this view are stored in validation table, see validation it tests 60-81 -
+# they are evaluated on save before action steps
 name:   validation_params_step
 table:  validation_params
 api:    get, save

@@ -1,0 +1,8 @@
+# message template with parameters from array message
+path:       /data/validation_params_step
+method:     POST
+request:
+  code:       A1
+  qty:        0
+error:
+  [{"location": [], "messages": [{"msg": "Field %1$s must be positive, got %2$s", "params": ["qty", 0]}]}]

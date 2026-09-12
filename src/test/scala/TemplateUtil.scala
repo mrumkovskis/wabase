@@ -107,7 +107,10 @@ trait TemplateUtil { this: QuereaseProvider =>
     }).filter(i => i._1 != "template").map{
       case (k, null) => k -> null
       case (k, v: MapTemplate @unchecked) => k -> process(v)
-      case (k, v: List[MapTemplate] @unchecked) if v.nonEmpty && v.head.isInstanceOf[MapTemplate] => k -> v.map(process)
+      case (k, v: List[_]) if v.exists(_.isInstanceOf[Map[_, _]]) => k -> v.map { // list may contain also other values
+        case m: MapTemplate @unchecked => process(m)
+        case x => x
+      }
       case (k, v) => k -> v
     }
     val loaderSettings = LoadSettings.builder()

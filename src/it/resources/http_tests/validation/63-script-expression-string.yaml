@@ -1,0 +1,8 @@
+# expression evaluates to string - validation message with its parameters is nested as first parameter
+path:       /data/validation/104
+method:     PUT
+request:
+  context:    validation_params_step
+  expression: "code == 'nope' ? 'reserved word' : true"
+  message:    "['Code %1$s', code]"
+response:

@@ -1,0 +1,8 @@
+# expression is false - message which is not valid javascript is used as is
+path:       /data/validation/105
+method:     PUT
+request:
+  context:    validation_params_step
+  expression: "code != 'no'"
+  message:    "Code is too short"
+response:

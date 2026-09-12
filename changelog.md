@@ -33,3 +33,19 @@ validation error response changed from `[{"location": [...], "messages": ["..."]
 `[{"location": [...], "messages": [{"msg": "...", "params": [...]}]}]`, clients must be updated.
 All messages of one validations step or view have the same parameter count, missing parameters are padded
 with nulls. Parameters at the same position must be of compatible types across validations of a step or view.
+
+Script (javascript) validation messages support parameters. Validation message may evaluate to string - message template
+without parameters, array - message template followed by parameters, i.e. `['Should be %1$s, found %2$s', 43, my_int_field]`,
+or object with `msg` and optional `params`, i.e. `{msg: 'Should be %1$s', params: [43]}`. Message which is not valid
+javascript is used as is. Validation expression may evaluate to `true` - validation passes, `false` - fails with validation
+message, array or object - fails with this message, validation message is not used, string - fails with message
+`Error (validation "%1$s"): %2$s`, where first parameter is validation message as `{msg, params}` object and second one -
+expression result (previously message text was concatenated).
+Wrong validation definition is developer error and throws `RuntimeException` (http status `500 Internal Server Error`,
+logged as error) instead of reporting validation error - expression evaluating to other value (i.e. `null`, `undefined`,
+number), expression evaluation failure (previously `BusinessException`), message evaluating to other value or malformed
+array or object. `BusinessException` thrown by custom function is propagated as is.
+Custom functions `current_date()` and `now()` return strings in the format of date and timestamp variables, so they can be
+compared with them (previously `java.sql.Date` and `java.sql.Timestamp` objects, which could not be compared in javascript).
+Script validation documented in `docs/script-validation.md`.
+Unused i18n resource `Validation error " %1$s ": Wrong validation result type: %2$s` removed.

@@ -1,0 +1,8 @@
+# expression evaluates to object - it is the message itself, validation message is not used
+path:       /data/validation/102
+method:     PUT
+request:
+  context:    validation_params_step
+  expression: "qty <= 100 || {msg: 'Quantity %1$s exceeds %2$s', params: [qty, 100]}"
+  message:    "not used"
+response:

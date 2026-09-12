@@ -380,6 +380,8 @@ In Scala code, failures are available as `ValidationException.details`, a list o
 `org.mojoz.querease.ValidationResult(location, messages)` with messages of type
 `org.mojoz.querease.ValidationMessage(msg, params)`.
 
+Javascript validations stored in database are described in [script validation](script-validation.md).
+
 ### Return
 
 ```

@@ -1,0 +1,8 @@
+# string returned by expression - validation message is nested as {msg, params} parameter
+path:       /data/validation_params_step
+method:     POST
+request:
+  code:       nope
+  qty:        5
+error:
+  [{"location": [], "messages": [{"msg": "Error (validation \"%1$s\"): %2$s", "params": [{"msg": "Code %1$s", "params": ["nope"]}, "reserved word"]}]}]

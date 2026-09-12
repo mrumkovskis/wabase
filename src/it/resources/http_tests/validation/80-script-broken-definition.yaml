@@ -1,0 +1,8 @@
+# broken validation definition - expression evaluates to number instead of boolean
+path:       /data/validation/106
+method:     PUT
+request:
+  context:    validation_params_step
+  expression: "qty"
+  message:    "not used"
+response:

@@ -1,0 +1,8 @@
+# message which is not valid javascript is used as is
+path:       /data/validation_params_step
+method:     POST
+request:
+  code:       "no"
+  qty:        5
+error:
+  [{"location": [], "messages": [{"msg": "Code is too short", "params": []}]}]

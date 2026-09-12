@@ -1,0 +1,8 @@
+# expression is false - message evaluates to array: message template followed by parameters
+path:       /data/validation/101
+method:     PUT
+request:
+  context:    validation_params_step
+  expression: "qty > 0"
+  message:    "['Field %1$s must be positive, got %2$s', 'qty', qty]"
+response:

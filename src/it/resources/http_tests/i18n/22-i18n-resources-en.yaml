@@ -2,9 +2,6 @@ path:       /i18n
 method:     GET
 response:   [
   {
-    "Validation error \" %1$s \": Wrong validation result type: %2$s": "Validation error \"%1$s\": Wrong validation result type: %2$s"
-  },
-  {
     "Field \"%s\" must not be empty": "Field \"%s\" must not be empty"
   },
   {
