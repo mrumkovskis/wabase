@@ -620,12 +620,11 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       useResourcesConnOrEvaluator(res, r =>
         Query(validations.db.flatMap(k => Option(k.db))
           .map("|" + _ + ":").mkString("", "", vs), toSaveableMap(params, view))(r))
-        .map(_.s("msg"))
-        .filter(_ != null).filter(_ != "")
+        .flatMap(validationMessage)
         .toList match {
         case messages if messages.nonEmpty =>
           throw new ValidationException(
-            messages.mkString("\n"),
+            messages.map(_.msg).mkString("\n"),
             List(ValidationResult(validations.name.toList, messages))
           )
         case _ =>

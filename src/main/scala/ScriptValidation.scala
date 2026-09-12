@@ -6,7 +6,7 @@ import org.graalvm.polyglot.HostAccess.Export
 
 import javax.script.ScriptEngine
 import org.graalvm.polyglot.{Context, Engine, HostAccess}
-import org.mojoz.querease.{ValidationException, ValidationResult}
+import org.mojoz.querease.{ValidationException, ValidationResult, ValidationMessage}
 import org.slf4j.LoggerFactory
 import org.tresql.Query
 import org.wabase.WabaseScriptValidation.Validation
@@ -64,17 +64,17 @@ class WabaseScriptValidation(db: DbAccess, qe: AppQuerease)(implicit ec: Executi
         }
         result match {
           case TRUE => Nil // OK
-          case FALSE => List(ValidationResult(Nil, List(errorMsg(v.message))))
-          case s: String => List(ValidationResult(Nil, List(s"""Error (validation "${errorMsg(v.message)}"): $s""")))
+          case FALSE => List(ValidationResult(Nil, List(ValidationMessage(errorMsg(v.message), Nil))))
+          case s: String => List(ValidationResult(Nil, List(ValidationMessage(s"""Error (validation "${errorMsg(v.message)}"): $s""", Nil))))
           case x => List(ValidationResult(Nil, List(
-            "Validation error \"" + errorMsg(v.message) + "\": " +
+            ValidationMessage("Validation error \"" + errorMsg(v.message) + "\": " +
               "Wrong validation result type: " +
-              Option(x).map(_.getClass.getName).getOrElse(x)
-          )))
+              Option(x).map(_.getClass.getName).getOrElse(x), Nil
+          ))))
         }
       }
       if (validationResults.nonEmpty)
-        throw new ValidationException(validationResults.flatMap(_.messages).mkString("\n"), validationResults)
+        throw new ValidationException(validationResults.flatMap(_.messages).map(_.msg).mkString("\n"), validationResults)
     }
   }
 }

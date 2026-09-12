@@ -1,0 +1,22 @@
+# view level validations - parent and child views are padded independently,
+# child messages are located by child field name and index
+path:       /data/validation_params_view?/forbidden
+method:     PUT
+request:
+  qty:        70
+  lines:
+  - line_no:  1
+    qty:      5
+  - line_no:  2
+    qty:      0
+error:
+  [ { "location": []
+    , "messages":
+      [ {"msg": "Quantity over 50",  "params": [70]}
+      , {"msg": "Code is forbidden", "params": [null]}
+      ]
+    }
+  , { "location": ["lines", 1]
+    , "messages": [ {"msg": "Line quantity must be positive", "params": [2, 0, "line"]} ]
+    }
+  ]

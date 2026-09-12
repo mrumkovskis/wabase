@@ -3,7 +3,7 @@ package org.wabase
 import org.apache.pekko.http.scaladsl.model.StatusCodes.{BadRequest, Forbidden, InternalServerError, NotFound, Unauthorized, UnprocessableContent}
 import org.apache.pekko.http.scaladsl.model.{ContentTypes, EntityStreamSizeException, HttpEntity, HttpResponse, MediaTypes, StatusCodes, Uri}
 import org.mojoz.metadata.ViewDef
-import org.mojoz.querease.{ValidationException, ValidationResult}
+import org.mojoz.querease.{ValidationException, ValidationResult, ValidationMessage}
 import org.tresql.MissingBindVariableException
 import org.wabase.AppServiceBase.AppExceptionHandler.PostgresTimeoutExceptionHandler
 import org.wabase.AppServiceBase.AppExceptionHandler.PostgresTimeoutExceptionHandler.{TimeoutFriendlyMessage, TimeoutSignature}
@@ -66,7 +66,8 @@ object WabaseErrorHandler {
         debug(badRequestMsg(e.getMessage, ctx.req.entity), e)
         if (e.details != null && e.details.nonEmpty) {
           import io.bullet.borer._, io.bullet.borer.derivation.MapBasedCodecs._, ResultEncoder._, JsonEncoder._
-          implicit val enc = deriveEncoder[ValidationResult]
+          implicit val vm_enc = deriveEncoder[ValidationMessage]
+          implicit val vr_enc = deriveEncoder[ValidationResult]
           HttpResponse(BadRequest,
             entity = HttpEntity(ContentTypes.`application/json`, Json.encode(e.details).toUtf8String))
         } else HttpResponse(BadRequest, entity = e.getMessage)

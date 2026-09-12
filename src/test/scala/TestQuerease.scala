@@ -3,7 +3,7 @@ package org.wabase
 import java.sql.{Connection, DriverManager}
 import org.mojoz.metadata.in.YamlMd
 import org.mojoz.metadata.out.DdlGenerator
-import org.mojoz.querease.TresqlMetadata
+import org.mojoz.querease.{TresqlMetadata, ValidationMessage}
 import org.scalatest.{BeforeAndAfterAll, Suite}
 import org.tresql.dialects.HSQLDialect
 import org.tresql.{Dialect, LogTopic, Logging, QueryBuilder, Resources, ResourcesTemplate, ThreadLocalResources}
@@ -37,6 +37,9 @@ class TestTresqlConf extends TresqlResourcesConf {
 }
 
 trait TestQuereaseInitializer extends BeforeAndAfterAll with Loggable { this: Suite =>
+
+  /** Shorthand for expected validation message, see [[org.mojoz.querease.ValidationMessage]] */
+  def vm(msg: String, params: Any*): ValidationMessage = ValidationMessage(msg, params.toList)
 
   protected var tresqlThreadLocalResources: ThreadLocalResources = _
   protected var querease: TestQuerease = _

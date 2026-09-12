@@ -277,16 +277,16 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
       doAction("person", "save", p.toMap(querease), Map())
     }.map(_.details should be(List(ValidationResult(Nil,
       List(
-        "person cannot have more than 3 accounts, got '4'",
-        "person cannot have more than 3 accounts, got '4' with total balance (0.00)",
-        "person cannot have more than 3 accounts, instead '4' encountered"
+        vm("person cannot have more than 3 accounts, got '4'"),
+        vm("person cannot have more than 3 accounts, got '4' with total balance (0.00)"),
+        vm("person cannot have more than 3 accounts, instead '4' encountered")
       )
     )))).flatMap { _ =>
       p.accounts = Nil
       recoverToExceptionIf[ValidationException] {
         doAction("person", "save", p.toMap(querease), Map())
       }.map(_.details should be(List(ValidationResult(Nil,
-        List("person must have at least one account")
+        List(vm("person must have at least one account"))
       ))))
     }
   }
@@ -300,7 +300,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
     recoverToExceptionIf[ValidationException] {
       doAction("person", "save", p.toMap(querease), Map())
     }.map(_.details should be(List(ValidationResult(Nil,
-      List("Wrong balance for accounts 'AAA(10.00 != 0.00)'")
+      List(vm("Wrong balance for accounts 'AAA(10.00 != 0.00)'"))
     )))).flatMap { _ =>
       val pa1 = new PersonAccounts
       pa1.number = "BBB"
@@ -309,7 +309,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
       recoverToExceptionIf[ValidationException] {
         doAction("person", "save", p.toMap(querease), Map())
       }.map(_.details should be(List(ValidationResult(Nil,
-        List("Wrong balance for accounts 'AAA(10.00 != 0.00),BBB(2.00 != 0.00)'")
+        List(vm("Wrong balance for accounts 'AAA(10.00 != 0.00),BBB(2.00 != 0.00)'"))
       ))))
     }
   }
@@ -366,14 +366,14 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
     recoverToExceptionIf[ValidationException] {
       doAction("payment", "save", p.toMap(querease), Map())
     }.map(_.details should be(List(ValidationResult(List("amount"),
-      List("Wrong amount 0. Amount must be greater than 0")
+      List(vm("Wrong amount 0. Amount must be greater than 0"))
     )))).flatMap { _ =>
       p.originator = "BBB"
       p.amount = 10
       recoverToExceptionIf[ValidationException] {
         doAction("payment", "save", p.toMap(querease), Map())
       }.map(_.details should be(List(ValidationResult(List("balance"),
-        List("Insufficient funds for account 'BBB'")
+        List(vm("Insufficient funds for account 'BBB'"))
       ))))
     }
   }
@@ -510,13 +510,13 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
     ph.manipulation_date = java.sql.Date.valueOf("2021-06-05")
     recoverToExceptionIf[ValidationException] {
       doAction("person_health", "save", ph.toMap(querease), Map())
-    }.map(_.details should be (List(ValidationResult(Nil, List("Person 'Gunza' must be registered")))))
+    }.map(_.details should be (List(ValidationResult(Nil, List(vm("Person 'Gunza' must be registered"))))))
 
     val m =
       Map("current_person" -> "Gunzagi", "vaccine" -> "AstraZeneca", "manipulation_date" -> java.sql.Date.valueOf("2021-06-05"))
     recoverToExceptionIf[ValidationException] {
       doAction("person_health_priv", "save", m, Map())
-    }.map(_.details should be (List(ValidationResult(List("check_person"), List("Person 'Gunzagi' must be registered")))))
+    }.map(_.details should be (List(ValidationResult(List("check_person"), List(vm("Person 'Gunzagi' must be registered"))))))
   }
 
   it should "register person health data" in {
@@ -564,7 +564,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
   it should "switch db context when calling action on another view" in {
     recoverToExceptionIf[ValidationException] {
       doAction("db_context_person", "update", Map("id" -> 0), Map())
-    }.map(_.details should be (List(ValidationResult(List("check_health_exists"), List("Person health record to be updated must exist")))))
+    }.map(_.details should be (List(ValidationResult(List("check_health_exists"), List(vm("Person health record to be updated must exist"))))))
   }
 
 

@@ -278,9 +278,25 @@ Example:
 ```
 validations [<validation name>] [ [<db name>] ]:
   - [build cursors]
-  - [cursor definition, ] <require condition>, <error message>
+  - [<cursor definitions>, ] <require condition>, <error message> [, <message parameter> …]
   - …
 ```
+
+Each validation consists of a boolean require condition and an error message expression,
+optionally preceded by cursor definitions and followed by message parameter expressions.
+A validation fails if its require condition does not evaluate to true. If the error message
+expression evaluates to null or empty string, the message defaults to
+`Requirement failed: "<require condition>"`.
+
+`build cursors` builds cursors from nested data structures of the validated data, so that
+validations can query child collections. Cursor definitions can be used in the require
+condition, error message and message parameter expressions.
+
+All validations of a `validations` step are evaluated in the database given in brackets or in
+the current one, and failures of the whole step are reported together, in the order the
+validations are declared. The step fails the action with
+`org.mojoz.querease.ValidationException` if any validation fails, otherwise execution
+continues with the next step.
 
 Example:
 
@@ -294,8 +310,63 @@ Example:
 
 - validations balance [transaction_db]:
   - balance(# s) { account[number = :originator] {balance} }, ((balance{s}) = null | (balance{s}) >= :amount),
-      "Insufficient funds for account '" || :originator || "'"
+      "Insufficient funds for account '" || :originator || "'", (balance{s}), :amount::decimal
 ```
+
+#### Message parameters
+
+Expressions following the error message are evaluated as message parameters, returned together
+with the message. Parameters carry the values a client needs to build its own message — for
+example a localized one — or to point out offending values, without parsing message text.
+
+All messages of one `validations` step have the same parameter count — the highest number of
+parameter expressions among its validations. Messages of validations with fewer parameter
+expressions are padded with nulls:
+
+```
+- validations order:
+  - :qty > 0, 'Quantity must be positive', 'qty'::string, :qty::int
+  - :price <= 1000, 'Price exceeds limit', 'price'::string, :price::double, 1000
+  - :code != 'forbidden', 'Code is forbidden'
+```
+
+The validations of a step are evaluated in a single union query, one row per validation, so
+the parameters at the same position must be of compatible types across the step — strings with
+strings, numbers with numbers, dates with dates. Parameters at the same position are returned
+in the type of the union column, for example integer parameter as floating point number if
+another validation has floating point parameter at the same position. Put parameters of
+incompatible types into separate `validations` steps. Cast bind variables and literals if the
+database cannot infer their type, like `:qty::int` or `'qty'::string`.
+
+#### Error response
+
+`ValidationException` is mapped to http status `400 Bad Request` by default exception handlers,
+with a json body listing the failures. Each entry has `location` and `messages`; each message
+has `msg` and `params`. Location of `validations` step failures is the validation name, or an
+empty list if the step is not named. For the example above:
+
+```json
+[ { "location": ["order"]
+  , "messages":
+    [ {"msg": "Quantity must be positive", "params": ["qty", 0.0, null]}
+    , {"msg": "Price exceeds limit",       "params": ["price", 1500.75, 1000]}
+    , {"msg": "Code is forbidden",         "params": [null, null, null]}
+    ]
+  }
+]
+```
+
+The same response is produced for validations declared on the view definition itself under the
+`validations` key, which are evaluated on save of the view and of its child views, and for
+field checks like mandatory field or maximum length. For these, `location` is the path to the
+validated object or field — empty list for the view itself, `["lines", 1]` for the second
+element of child collection `lines`, `["lines", 1, "qty"]` for its field. Parameters of view
+validations are padded per view, so parent and child view messages may have different
+parameter counts. Field check messages have no parameters.
+
+In Scala code, failures are available as `ValidationException.details`, a list of
+`org.mojoz.querease.ValidationResult(location, messages)` with messages of type
+`org.mojoz.querease.ValidationMessage(msg, params)`.
 
 ### Return
 

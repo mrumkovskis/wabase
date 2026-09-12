@@ -1,0 +1,74 @@
+# Validation error message parameters - expressions following error message expression
+# are returned as message parameters, i.e. [{"msg": "...", "params": [...]}].
+# Parameter count of all messages in one validations block (view) is the same - missing
+# parameters are padded with nulls.
+# All validations of one block are evaluated in a single union query, so parameters at the
+# same position must be of compatible types across the block (i.e. string with string,
+# number with number) - parameters of other types go to a separate validations block.
+# Cast string literals to string, otherwise hsqldb unions them as blank padded char(n).
+# Cast bind variables where database cannot infer their type. Avoid decimal cast on hsqldb -
+# tresql renders it as numeric without scale, which rounds fractions, use double instead.
+
+name:   validation_params_step
+table:  validation_params
+api:    get, save
+key:    code
+fields:
+- code
+- qty
+- price
+- valid_from
+- valid_till
+save:
+- validations order:
+  - :qty > 0, 'Quantity must be positive, got ' || :qty, 'qty'::string, :qty::int
+  - :price <= 1000, 'Price exceeds limit', 'price'::string, :price::double, 1000
+  - :code != 'forbidden', 'Code is forbidden'
+- validations period:
+  - :valid_from::date <= :valid_till::date, 'Period start is after end', :valid_from::date, :valid_till::date
+- save this
+swagger:
+  paths = : {}
+
+
+# cursor defined in validation is available to parameter expressions
+name:   validation_params_cursor
+table:  validation_params
+api:    save
+key:    code
+fields:
+- code
+- qty
+save:
+- validations stock:
+  - total(# q) { validation_params[code != :code] {coalesce(sum(qty), 0)} },
+      (total{q}) + :qty <= 100, 'Total quantity exceeds 100', (total{q}), :qty::int
+- save this
+swagger:
+  paths = : {}
+
+
+# view level validations are evaluated by querease on save, parameter count is padded
+# per view - parent and child messages may have different parameter counts
+name:   validation_params_view
+table:  validation_params
+api:    save
+key:    code
+fields:
+- code
+- qty
+- lines * validation_params_line_view
+validations:
+  - :qty <= 50, 'Quantity over 50', :qty::int
+  - :code != 'forbidden', 'Code is forbidden'
+swagger:
+  paths = : {}
+
+
+name:   validation_params_line_view
+table:  validation_params_line
+fields:
+- line_no
+- qty
+validations:
+  - :qty > 0, 'Line quantity must be positive', :line_no::int, :qty::int, 'line'::string

@@ -1,0 +1,15 @@
+# first validations block passes, second one fails - location is the block name,
+# date parameters are returned from their own block
+path:       /data/validation_params_step
+method:     POST
+request:
+  code:       A1
+  qty:        5
+  price:      20
+  valid_from: 2026-03-01
+  valid_till: 2026-02-01
+error:
+  [ { "location": ["period"]
+    , "messages": [ {"msg": "Period start is after end", "params": ["2026-03-01", "2026-02-01"]} ]
+    }
+  ]

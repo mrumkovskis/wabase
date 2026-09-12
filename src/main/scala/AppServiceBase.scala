@@ -29,7 +29,7 @@ import java.util.Locale
 import org.apache.pekko.http.scaladsl.server.util.Tuple
 import org.apache.pekko.http.scaladsl.unmarshalling.FromRequestUnmarshaller
 import org.apache.pekko.util.ByteString
-import org.mojoz.querease.{ValidationException, ValidationResult}
+import org.mojoz.querease.{ValidationException, ValidationResult, ValidationMessage}
 import org.wabase.ds.ConnectionPools.DefaultQueryTimeout
 import org.wabase.ds.QueryTimeout
 import org.wabase.handlers.CSRFException
@@ -819,7 +819,8 @@ object AppServiceBase {
       case e: ValidationException =>
         logger.trace(e.getMessage, e)
         import io.bullet.borer._, io.bullet.borer.derivation.MapBasedCodecs._, ResultEncoder._, JsonEncoder._
-        implicit val enc = deriveEncoder[ValidationResult]
+        implicit val vm_enc = deriveEncoder[ValidationMessage]
+        implicit val vr_enc = deriveEncoder[ValidationResult]
         complete(HttpResponse(BadRequest, entity = Json.encode(e.details).toUtf8String))
     }
 

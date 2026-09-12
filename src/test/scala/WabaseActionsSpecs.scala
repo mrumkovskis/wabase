@@ -345,7 +345,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     )
     recoverToExceptionIf[ValidationException](
       doAction("save", "purchase", purchase)
-    ).map(_.details should be(List(ValidationResult(List("is_vaccinated"), List("Pardon, customer 'Ravus' is not vaccinated...")))))
+    ).map(_.details should be(List(ValidationResult(List("is_vaccinated"), List(vm("Pardon, customer 'Ravus' is not vaccinated..."))))))
   }
 
   it should "fail purchase due to insufficient funds" in {
@@ -377,7 +377,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
           doAction("save", "purchase", purchase)
         }
       }
-    ).map(_.details should be(List(ValidationResult(List("has_funds"), List("Insufficient funds, available (0.00)")))))
+    ).map(_.details should be(List(ValidationResult(List("has_funds"), List(vm("Insufficient funds, available (0.00)"))))))
   }
 
   it should "make purchase" in {
@@ -2155,9 +2155,9 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       ))
     ).map { ex =>
       ex.details shouldBe List(
-        ValidationResult(List("name"), List("""Field "Name" is mandatory.""")),
-        ValidationResult(List("accounts", 0, "number"), List("""Field "Number" is mandatory.""")),
-        ValidationResult(List("accounts", 1, "number"), List(s"""Field "Number" value length 65 exceeds maximum limit 64.""")),
+        ValidationResult(List("name"), List(vm("""Field "Name" is mandatory."""))),
+        ValidationResult(List("accounts", 0, "number"), List(vm("""Field "Number" is mandatory."""))),
+        ValidationResult(List("accounts", 1, "number"), List(vm(s"""Field "Number" value length 65 exceeds maximum limit 64."""))),
       )
       ex.getMessage shouldBe List(
         """Field "Name" is mandatory.""",

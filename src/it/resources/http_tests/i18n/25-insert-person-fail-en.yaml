@@ -4,6 +4,6 @@ request:
   email:    too_long_mai__________________________________________________l@longhost.com
 error:
   [ { "location":[]
-    , "messages":["Email value exceeds 75 symbols - too_long_mai__________________________________________________l@longhost.com"]
+    , "messages":[{"msg":"Email value exceeds 75 symbols - too_long_mai__________________________________________________l@longhost.com","params":[]}]
     }
   ]

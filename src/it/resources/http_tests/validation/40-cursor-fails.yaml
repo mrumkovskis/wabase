@@ -1,0 +1,11 @@
+# parameter expression refers to cursor defined in validation
+path:       /data/validation_params_cursor
+method:     POST
+request:
+  code:       B1
+  qty:        50
+error:
+  [ { "location": ["stock"]
+    , "messages": [ {"msg": "Total quantity exceeds 100", "params": [60, 50]} ]
+    }
+  ]

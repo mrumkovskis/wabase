@@ -2,7 +2,7 @@ package org.wabase
 
 import java.util.Locale
 import org.mojoz.metadata.{FieldDef, ViewDef}
-import org.mojoz.querease.{NotFoundException, QuereaseIteratorResult, ValidationException, ValidationResult}
+import org.mojoz.querease.{NotFoundException, QuereaseIteratorResult, ValidationException, ValidationResult, ValidationMessage}
 import com.typesafe.config.Config
 
 import scala.concurrent.{Await, Future, Promise}
@@ -938,7 +938,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
         .flatMap(fld =>
           validationErrorMessage(vn, fld, inst.getOrElse(fld.fieldName, null))(state.locale)
             .filter(_ != null)
-            .map(msg => ValidationResult((fld.fieldName :: path).reverse, List(msg)))
+            .map(msg => ValidationResult((fld.fieldName :: path).reverse, List(ValidationMessage(msg, Nil))))
             .toList
         ).toList
 
@@ -956,7 +956,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
       }.toList
     }
     val errors = valFields(viewName, instance, Nil)(1)
-    if (errors.nonEmpty) throw new ValidationException(errors.flatMap(_.messages).mkString("\n"), errors)
+    if (errors.nonEmpty) throw new ValidationException(errors.flatMap(_.messages).map(_.msg).mkString("\n"), errors)
   }
 
   def validateFields(instance: Dto)(implicit state: ApplicationState): Unit = {

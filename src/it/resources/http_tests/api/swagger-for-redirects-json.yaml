@@ -3094,6 +3094,103 @@ response: {
           }
         },
         "required" : [ "context", "expression", "id", "message" ]
+      },
+      "validation_params_cursor" : {
+        "type" : "object",
+        "properties" : {
+          "code" : {
+            "type" : "string",
+            "description" : "Code",
+            "maxLength" : 20,
+            "readOnly" : false
+          },
+          "qty" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Qty",
+            "readOnly" : false
+          }
+        },
+        "required" : [ "code" ]
+      },
+      "validation_params_line_view" : {
+        "type" : "object",
+        "properties" : {
+          "line_no" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Line no",
+            "readOnly" : false
+          },
+          "qty" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Qty",
+            "readOnly" : false
+          }
+        },
+        "required" : [ "line_no" ]
+      },
+      "validation_params_step" : {
+        "type" : "object",
+        "properties" : {
+          "code" : {
+            "type" : "string",
+            "description" : "Code",
+            "maxLength" : 20,
+            "readOnly" : false
+          },
+          "qty" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Qty",
+            "readOnly" : false
+          },
+          "price" : {
+            "type" : "number",
+            "description" : "Price",
+            "readOnly" : false
+          },
+          "valid_from" : {
+            "type" : "string",
+            "format" : "date",
+            "description" : "Valid from",
+            "readOnly" : false
+          },
+          "valid_till" : {
+            "type" : "string",
+            "format" : "date",
+            "description" : "Valid till",
+            "readOnly" : false
+          }
+        },
+        "required" : [ "code" ]
+      },
+      "validation_params_view" : {
+        "type" : "object",
+        "properties" : {
+          "code" : {
+            "type" : "string",
+            "description" : "Code",
+            "maxLength" : 20,
+            "readOnly" : false
+          },
+          "qty" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Qty",
+            "readOnly" : false
+          },
+          "lines" : {
+            "type" : "array",
+            "description" : "Lines",
+            "items" : {
+              "$ref" : "#/components/schemas/validation_params_line_view"
+            },
+            "readOnly" : false
+          }
+        },
+        "required" : [ "code" ]
       }
     }
   }

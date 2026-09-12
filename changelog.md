@@ -21,3 +21,13 @@ Email action op has new `html` option - `email [batch] [html] <recipients> <subj
 Body is sent as html instead of plain text (no plain text alternative part is added).
 Since `Action.Email` has new field, previously generated querease action cache (`querease-action-cache.cbor`)
 must be regenerated.
+
+Querease upgraded to 11.0.0. Validations accept error message parameter expressions following the
+error message expression - `[<cursor definitions>, ] <require condition>, <error message> [, <message parameter> …]`.
+Validation messages are returned as objects with message and parameters instead of plain strings -
+`org.mojoz.querease.ValidationResult.messages` is `List[ValidationMessage]` (previously `List[String]`),
+where `ValidationMessage` has fields `msg` and `params`. Accordingly, json body of `400 Bad Request`
+validation error response changed from `[{"location": [...], "messages": ["..."]}]` to
+`[{"location": [...], "messages": [{"msg": "...", "params": [...]}]}]`, clients must be updated.
+All messages of one validations step or view have the same parameter count, missing parameters are padded
+with nulls. Parameters at the same position must be of compatible types across validations of a step or view.

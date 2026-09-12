@@ -1,0 +1,21 @@
+# all validations of the block fail - messages carry string and numeric parameters,
+# messages with fewer parameter expressions are padded with nulls up to block's parameter count.
+# Parameters at the same position share one union column type - integer qty is returned as
+# double since price at the same position is double.
+path:       /data/validation_params_step
+method:     POST
+request:
+  code:       forbidden
+  qty:        0
+  price:      1500.75
+  valid_from: 2026-03-01
+  valid_till: 2026-02-01
+error:
+  [ { "location": ["order"]
+    , "messages":
+      [ {"msg": "Quantity must be positive, got 0", "params": ["qty", 0.0, null]}
+      , {"msg": "Price exceeds limit",              "params": ["price", 1500.75, 1000]}
+      , {"msg": "Code is forbidden",                "params": [null, null, null]}
+      ]
+    }
+  ]

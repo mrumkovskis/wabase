@@ -1,0 +1,5 @@
+path:       /data/validation_params_cursor
+method:     POST
+request:
+  code:       B1
+  qty:        40

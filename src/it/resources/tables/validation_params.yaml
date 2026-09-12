@@ -1,0 +1,17 @@
+table:   validation_params
+columns:
+- code        ! 20
+- qty           int
+- price         decimal 12 2
+- valid_from    date
+- valid_till    date
+pk:
+- code
+
+
+table:   validation_params_line
+columns:
+- id
+- code        ! validation_params.code
+- line_no     ! int
+- qty           int

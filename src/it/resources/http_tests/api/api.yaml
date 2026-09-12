@@ -36,5 +36,8 @@ response: {
   "user": ["count", "delete", "get", "list", "new", "save"],
   "user-with-roles-array": ["get"],
   "user_role": ["get", "save"],
-  "validation": ["upsert"]
+  "validation": ["upsert"],
+  "validation_params_cursor": ["save"],
+  "validation_params_step": ["get", "save"],
+  "validation_params_view": ["save"]
 }

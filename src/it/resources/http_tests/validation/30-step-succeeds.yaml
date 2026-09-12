@@ -1,0 +1,8 @@
+path:       /data/validation_params_step
+method:     POST
+request:
+  code:       A1
+  qty:        60
+  price:      10
+  valid_from: 2026-01-01
+  valid_till: 2026-02-01
