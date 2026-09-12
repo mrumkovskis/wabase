@@ -302,33 +302,45 @@ Example:
 
 ```
 - validations beneficiary:
-  - exists(^person_choice[^name = :beneficiary_name]{1}), "Beneficiary not found - '" ||
-      concat_ws('', :beneficiary_name, "'")
+  - exists(^person_choice[^name = :beneficiary_name]{1}), 'Beneficiary %1$s not found', :beneficiary_name::string
 
 - validations amount:
-  - :amount > 0, 'Wrong amount ' || :amount || '. Amount must be greater than 0'
+  - :amount > 0, 'Wrong amount %1$s. Amount must be greater than 0', :amount::decimal
 
 - validations balance [transaction_db]:
   - balance(# s) { account[number = :originator] {balance} }, ((balance{s}) = null | (balance{s}) >= :amount),
-      "Insufficient funds for account '" || :originator || "'", (balance{s}), :amount::decimal
+      'Insufficient funds for account %1$s, balance %2$s', :originator::string, (balance{s})
 ```
 
 #### Message parameters
 
-Expressions following the error message are evaluated as message parameters, returned together
-with the message. Parameters carry the values a client needs to build its own message — for
-example a localized one — or to point out offending values, without parsing message text.
+Message parameters are meant for internationalization. The error message is a static template —
+usable as i18n resource key — with placeholders `%1$s`, `%2$s`, … in `java.lang.String.format`
+syntax, the same as in wabase i18n bundles. Expressions following the error message are
+evaluated as parameters and returned together with the message, which is not translated.
+Translation looks the template up in i18n bundle and replaces placeholders with parameter
+values, see [I18n](routes.md#i18n) handlers.
 
-All messages of one `validations` step have the same parameter count — the highest number of
-parameter expressions among its validations. Messages of validations with fewer parameter
-expressions are padded with nulls:
+Put values into the message through placeholders, not by concatenation — a message containing
+values cannot be found in i18n bundle:
 
 ```
 - validations order:
-  - :qty > 0, 'Quantity must be positive', 'qty'::string, :qty::int
-  - :price <= 1000, 'Price exceeds limit', 'price'::string, :price::double, 1000
+  - :qty > 0, 'Field %1$s must be positive, got %2$s', 'qty'::string, :qty::int
+  - :price <= 1000, 'Field %1$s value %2$s exceeds limit %3$s', 'price'::string, :price::double, 1000
   - :code != 'forbidden', 'Code is forbidden'
 ```
+
+With i18n bundle entry:
+
+```
+Field\ %1$s\ must\ be\ positive,\ got\ %2$s = Lauka %1$s vērtībai jābūt pozitīvai, saņemts %2$s
+```
+
+All messages of one `validations` step have the same parameter count — the highest number of
+parameter expressions among its validations. Messages of validations with fewer parameter
+expressions are padded with nulls, so `Code is forbidden` in the example above has parameters
+`[null, null, null]`.
 
 The validations of a step are evaluated in a single union query, one row per validation, so
 the parameters at the same position must be of compatible types across the step — strings with
@@ -348,9 +360,9 @@ empty list if the step is not named. For the example above:
 ```json
 [ { "location": ["order"]
   , "messages":
-    [ {"msg": "Quantity must be positive", "params": ["qty", 0.0, null]}
-    , {"msg": "Price exceeds limit",       "params": ["price", 1500.75, 1000]}
-    , {"msg": "Code is forbidden",         "params": [null, null, null]}
+    [ {"msg": "Field %1$s must be positive, got %2$s",    "params": ["qty", 0.0, null]}
+    , {"msg": "Field %1$s value %2$s exceeds limit %3$s", "params": ["price", 1500.75, 1000]}
+    , {"msg": "Code is forbidden",                        "params": [null, null, null]}
     ]
   }
 ]
@@ -362,7 +374,7 @@ field checks like mandatory field or maximum length. For these, `location` is th
 validated object or field — empty list for the view itself, `["lines", 1]` for the second
 element of child collection `lines`, `["lines", 1, "qty"]` for its field. Parameters of view
 validations are padded per view, so parent and child view messages may have different
-parameter counts. Field check messages have no parameters.
+parameter counts. Field check messages are translated and have no parameters.
 
 In Scala code, failures are available as `ValidationException.details`, a list of
 `org.mojoz.querease.ValidationResult(location, messages)` with messages of type

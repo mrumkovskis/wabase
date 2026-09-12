@@ -13,9 +13,9 @@ request:
 error:
   [ { "location": ["order"]
     , "messages":
-      [ {"msg": "Quantity must be positive, got 0", "params": ["qty", 0.0, null]}
-      , {"msg": "Price exceeds limit",              "params": ["price", 1500.75, 1000]}
-      , {"msg": "Code is forbidden",                "params": [null, null, null]}
+      [ {"msg": "Field %1$s must be positive, got %2$s",    "params": ["qty", 0.0, null]}
+      , {"msg": "Field %1$s value %2$s exceeds limit %3$s", "params": ["price", 1500.75, 1000]}
+      , {"msg": "Code is forbidden",                        "params": [null, null, null]}
       ]
     }
   ]

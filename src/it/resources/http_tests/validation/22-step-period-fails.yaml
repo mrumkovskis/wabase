@@ -10,6 +10,6 @@ request:
   valid_till: 2026-02-01
 error:
   [ { "location": ["period"]
-    , "messages": [ {"msg": "Period start is after end", "params": ["2026-03-01", "2026-02-01"]} ]
+    , "messages": [ {"msg": "Period start %1$s is after end %2$s", "params": ["2026-03-01", "2026-02-01"]} ]
     }
   ]

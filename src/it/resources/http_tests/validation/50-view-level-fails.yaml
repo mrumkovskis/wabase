@@ -12,11 +12,11 @@ request:
 error:
   [ { "location": []
     , "messages":
-      [ {"msg": "Quantity over 50",  "params": [70]}
-      , {"msg": "Code is forbidden", "params": [null]}
+      [ {"msg": "Quantity %1$s over 50", "params": [70]}
+      , {"msg": "Code is forbidden",  "params": [null]}
       ]
     }
   , { "location": ["lines", 1]
-    , "messages": [ {"msg": "Line quantity must be positive", "params": [2, 0, "line"]} ]
+    , "messages": [ {"msg": "Line %1$s quantity %2$s must be positive", "params": [2, 0]} ]
     }
   ]

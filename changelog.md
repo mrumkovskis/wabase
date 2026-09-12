@@ -24,6 +24,8 @@ must be regenerated.
 
 Querease upgraded to 11.0.0. Validations accept error message parameter expressions following the
 error message expression - `[<cursor definitions>, ] <require condition>, <error message> [, <message parameter> …]`.
+Parameters are intended for i18n - error message is a static template with `%1$s`, `%2$s`, … placeholders,
+which are replaced with parameter values on translation.
 Validation messages are returned as objects with message and parameters instead of plain strings -
 `org.mojoz.querease.ValidationResult.messages` is `List[ValidationMessage]` (previously `List[String]`),
 where `ValidationMessage` has fields `msg` and `params`. Accordingly, json body of `400 Bad Request`

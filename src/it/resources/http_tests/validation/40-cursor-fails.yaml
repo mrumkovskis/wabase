@@ -6,6 +6,6 @@ request:
   qty:        50
 error:
   [ { "location": ["stock"]
-    , "messages": [ {"msg": "Total quantity exceeds 100", "params": [60, 50]} ]
+    , "messages": [ {"msg": "Total quantity %1$s + %2$s exceeds 100", "params": [60, 50]} ]
     }
   ]

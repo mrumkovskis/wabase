@@ -1,5 +1,7 @@
 # Validation error message parameters - expressions following error message expression
 # are returned as message parameters, i.e. [{"msg": "...", "params": [...]}].
+# Error message is a static i18n template with placeholders %1$s, %2$s, ... which are replaced
+# with parameter values on translation.
 # Parameter count of all messages in one validations block (view) is the same - missing
 # parameters are padded with nulls.
 # All validations of one block are evaluated in a single union query, so parameters at the
@@ -21,11 +23,11 @@ fields:
 - valid_till
 save:
 - validations order:
-  - :qty > 0, 'Quantity must be positive, got ' || :qty, 'qty'::string, :qty::int
-  - :price <= 1000, 'Price exceeds limit', 'price'::string, :price::double, 1000
+  - :qty > 0, 'Field %1$s must be positive, got %2$s', 'qty'::string, :qty::int
+  - :price <= 1000, 'Field %1$s value %2$s exceeds limit %3$s', 'price'::string, :price::double, 1000
   - :code != 'forbidden', 'Code is forbidden'
 - validations period:
-  - :valid_from::date <= :valid_till::date, 'Period start is after end', :valid_from::date, :valid_till::date
+  - :valid_from::date <= :valid_till::date, 'Period start %1$s is after end %2$s', :valid_from::date, :valid_till::date
 - save this
 swagger:
   paths = : {}
@@ -42,7 +44,7 @@ fields:
 save:
 - validations stock:
   - total(# q) { validation_params[code != :code] {coalesce(sum(qty), 0)} },
-      (total{q}) + :qty <= 100, 'Total quantity exceeds 100', (total{q}), :qty::int
+      (total{q}) + :qty <= 100, 'Total quantity %1$s + %2$s exceeds 100', (total{q}), :qty::int
 - save this
 swagger:
   paths = : {}
@@ -59,7 +61,7 @@ fields:
 - qty
 - lines * validation_params_line_view
 validations:
-  - :qty <= 50, 'Quantity over 50', :qty::int
+  - :qty <= 50, 'Quantity %1$s over 50', :qty::int
   - :code != 'forbidden', 'Code is forbidden'
 swagger:
   paths = : {}
@@ -71,4 +73,4 @@ fields:
 - line_no
 - qty
 validations:
-  - :qty > 0, 'Line quantity must be positive', :line_no::int, :qty::int, 'line'::string
+  - :qty > 0, 'Line %1$s quantity %2$s must be positive', :line_no::int, :qty::int
