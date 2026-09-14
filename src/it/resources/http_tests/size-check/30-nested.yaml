@@ -1,0 +1,8 @@
+path:       /echo
+method:     POST
+request:
+  outer:
+    inner: [a, b, c, d]
+response:
+  outer:
+    inner: size(4)

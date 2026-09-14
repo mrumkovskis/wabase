@@ -1,0 +1,24 @@
+path:       /echo
+method:     POST
+request:
+  exact:  [1, 2, 3]
+  eq:     [1, 2, 3]
+  gt:     [1, 2, 3]
+  gte:    [1, 2]
+  lt:     [1]
+  lte:    [1, 2]
+  ne:     [1]
+  nlt:    [1]
+  range:  [1, 2, 3]
+  empty:  []
+response:
+  exact:  size(3)
+  eq:     "size(=3)"
+  gt:     "size(>2)"
+  gte:    "size(>=2)"
+  lt:     "size(<2)"
+  lte:    "size(<=2)"
+  ne:     "size(!=0)"
+  nlt:    "size(<>0)"
+  range:  size(2..4)
+  empty:  size(0)

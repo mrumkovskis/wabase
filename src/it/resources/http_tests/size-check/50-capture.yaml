@@ -1,0 +1,6 @@
+path:       /echo
+method:     POST
+request:
+  items: [1, 2, 3]
+response:
+  items: size(3) -> captured_items

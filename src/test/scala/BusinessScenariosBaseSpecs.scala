@@ -150,6 +150,57 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
       case _ => None
     }
   }
+  /** Parses `size(n)`, `size(>n)` / `size(>=n)` / `size(<n)` / `size(<=n)` / `size(!=n)` / `size(<>n)` / `size(=n)`,
+    * `size(a..b)`, optionally followed by ` -> captureKey`.
+    */
+  private object SizeCheck {
+    private val CaptureSplit = """^(.*?)\s*->\s*(\S.*)$""".r
+    private val Eq    = """size\(\s*(\d+)\s*\)""".r
+    private val Cmp   = """size\(\s*(>=|<=|!=|<>|==|=|>|<)\s*(\d+)\s*\)""".r
+    private val Range = """size\(\s*(\d+)\s*\.\.\s*(\d+)\s*\)""".r
+    def unapply(s: String): Option[(Int => Boolean, String, Option[String])] = {
+      val trimmed = s.trim
+      val (expr, capture) = trimmed match {
+        case CaptureSplit(left, key) if left.trim.startsWith("size(") => (left.trim, Some(key.trim))
+        case _ => (trimmed, None)
+      }
+      expr match {
+        case Eq(n) =>
+          val expected = n.toInt
+          val pred: Int => Boolean = _ == expected
+          Some((pred, n, capture))
+        case Cmp(op, n) =>
+          val expected = n.toInt
+          val pred: Int => Boolean = op match {
+            case ">"        => _ > expected
+            case ">="       => _ >= expected
+            case "<"        => _ < expected
+            case "<="       => _ <= expected
+            case "!=" | "<>" => _ != expected
+            case "=" | "==" => _ == expected
+          }
+          Some((pred, s"$op$n", capture))
+        case Range(from, to) =>
+          val lo = from.toInt
+          val hi = to.toInt
+          Some(((sz: Int) => sz >= lo && sz <= hi, s"$from..$to", capture))
+        case _ => None
+      }
+    }
+  }
+  private def collectionSize(value: Any): Option[Int] = value match {
+    case s: Seq[_]                       => Some(s.size)
+    case a: Array[_]                     => Some(a.length)
+    case j: java.util.Collection[_]      => Some(j.size())
+    case _                               => None
+  }
+  /** JSON bodies are kept as raw strings only when the expected value is an ordinary string,
+    * not a `size(...)` check (which must see the decoded array).
+    */
+  private def shouldKeepAsRawString(expected: Any): Boolean = expected match {
+    case s: String => SizeCheck.unapply(s).isEmpty
+    case _         => false
+  }
   def assertResponse(response: Any, expectedResponse: Any, path: String, fullCompare: Boolean): Map[String, Any] = {
     def err(message: String) = sys.error(path + ": " + message)
 
@@ -173,6 +224,12 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
         }
       case (a, s: String) if s.trim == "not_null()" => if (response == null) err(s"Element $a should not be null") else Map.empty
       case (a, NotNullCapture(key))                 => if (response == null) err(s"Element $a should not be null") else Map(key -> response)
+      case (a, SizeCheck(pred, spec, capture)) =>
+        collectionSize(a) match {
+          case Some(sz) if pred(sz) => capture.map(key => Map(key -> a)).getOrElse(Map.empty)
+          case Some(sz) => err(s"Array size $sz should match size($spec)")
+          case None     => err(s"Element $a should be an array to match size($spec)")
+        }
       case (a, s: String) if s.trim.startsWith("->") => Map(s.trim.substring(2).trim -> a)
       case (a, b) if b != null && String.valueOf(a) == b.toString => Map.empty
       case (null, null) => Map.empty
@@ -746,19 +803,19 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
             val responseValue =
               if (httpResponse.status.isSuccess())
                 expectedResponse match {
-                  case _: String => resString
+                  case _: String if shouldKeepAsRawString(expectedResponse) => resString
                   case _ => mayBeDecodeResp(resString)
                 }
               else
                 expectedError match {
-                  case _: String => RestClient.fullErrorErrorMessage(httpResponse.status, resString)
+                  case _: String if shouldKeepAsRawString(expectedError) => RestClient.fullErrorErrorMessage(httpResponse.status, resString)
                   case _ => mayBeDecodeResp(resString)
                 }
             (strictResponse, responseValue)
         }
       case resString: String =>
         expectedResponse match {
-          case _: String => (resString, resString)
+          case _: String if shouldKeepAsRawString(expectedResponse) => (resString, resString)
           case _ => (resString, mayBeDecodeResp(resString))
         }
       case _ => (unprocessedResponse, unprocessedResponse)

@@ -1,0 +1,4 @@
+path:       /echo
+method:     POST
+request:    [1, 2, 3]
+response:   size(2..4)

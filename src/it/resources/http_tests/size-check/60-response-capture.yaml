@@ -1,0 +1,4 @@
+path:       /echo
+method:     POST
+request:    [1, 2]
+response:   "size(>=2) -> captured_list"
