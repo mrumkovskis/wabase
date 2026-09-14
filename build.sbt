@@ -65,7 +65,7 @@ lazy val commonSettings = Seq(
       "commons-validator"           % "commons-validator"     % "1.11.0",
       "org.postgresql"              % "postgresql"            % "42.7.13",
       "com.lambdaworks"             % "scrypt"                % "1.4.0",
-      "org.tresql"                 %% "tresql"                % "13.5.1",
+      "org.tresql"                 %% "tresql"                % "13.6.0-SNAPSHOT",
       "io.bullet"                  %% "borer-core"            % borerV,
       "io.bullet"                  %% "borer-derivation"      % borerV,
       "org.bouncycastle"            % "bcprov-jdk18on"        % "1.85.2"            % Optional,
