@@ -24,7 +24,7 @@ import org.wabase.ds.{ConnectionPools, PoolName}
 import java.lang.reflect.Parameter
 import java.sql.Connection
 import scala.annotation.tailrec
-import scala.collection.immutable.Seq
+import scala.collection.immutable.{ListMap, Seq}
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{ExecutionContext, Future}
 import scala.jdk.CollectionConverters._
@@ -2386,6 +2386,31 @@ object AppQuerease {
       }
     }
     res.head._2.toVector
+  }
+
+  def columnPairsToMap(result: Result[_]): Map[String, Any] = {
+    def value(v: Any): Any = v match {
+      case r: DynamicArraySelectResult => r.map(row => value(row(0))).toVector
+      case r: Result[_] => r.map {
+        case res: Result[_] => value(res.rowView)
+        case row: RowLike => value(row)
+      }.toVector
+      case row: RowLike =>
+        val colCount = row.columnCount
+        require(colCount % 2 == 0, "Columns must make collection of full pairs - key as string, value")
+        ListMap((0 until colCount by 2).map(i => String.valueOf(row(i)) -> value(row(i + 1))): _*)
+      case a: java.sql.Array => a.getArray
+      case i: Iterator[_] => i.map(value).toVector
+      case v => v
+    }
+    def short(x: Any) = { val s = String.valueOf(x); if (s.length > 200) s.take(200) + "..." else s }
+    value(result) match {
+      case Vector(obj: Map[String, Any]@unchecked) => obj
+      case Vector() => Map()
+      case Vector(x) => sys.error(s"Result row must consist of key, value column pairs, instead got: ${short(x)}")
+      case v: Vector[_] => sys.error(s"Result must contain one row, instead got ${v.size} rows, first row: ${short(v.head)}")
+      case x => sys.error(s"Result must contain one row, instead got: ${short(x)}")
+    }
   }
 
   private[wabase] def loggable(logFilter: Logging#BindVarLogFilter, x: Any): String = {

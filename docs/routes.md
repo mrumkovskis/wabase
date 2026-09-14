@@ -109,7 +109,9 @@ reflectively. Every ordered parameter must be given explicitly, for example
 ## Provided handlers
 
 Handlers below are grouped as in `app.wabase-call-alias`. Unless stated otherwise they
-are implemented in `org.wabase.handlers`.
+are implemented in `org.wabase.handlers`. The last, miscellaneous block of
+`app.wabase-call-alias` does not hold route handlers, it holds functions callable from view
+action definitions, see [action functions](action-function.md).
 
 ### Audit
 
@@ -279,18 +281,3 @@ Example:
 on: GET /security-headers
 do: noCacheHeaders xssHeaders frameHeader('SAMEORIGIN') hstsHeaders(31536000, 'true') response(200, 'ok')
 ```
-
-### Miscellaneous
-
-The last block of `app.wabase-call-alias` does not hold route handlers. These are
-functions callable from view action definitions, aliased so that they can be referenced
-by short name there.
-
-| Alias | Description |
-| --- | --- |
-| `buildCookieHeaderValue` | Builds a `Cookie` header value from a tresql result. |
-| `sleep(millis)` | Sleeps. Exists because `Thread.sleep` cannot be invoked directly from an action due to method overload. |
-| `startJobAction(jobName)` | Starts named job, returns http status code as int. |
-| `toHierarchy(levelParamName, nestedParamName)` | Builds nested maps from a flat, hierarchy ordered tresql result. |
-| `publishEvent(topic, value)` | Publishes a value to a server notification topic. |
-| `error(msg)` | Fails the action with given message. |

@@ -2011,6 +2011,32 @@ list:
   } hierarchy {trim(value) value, level}#(path)
 
 
+name: column_pairs_to_map_test
+api: get, list, insert, update, delete
+get:                                    # odd columns are keys, even columns values, nested results and arrays
+- as any columnPairsToMap {
+    'name' k1, 'John' v1,
+    'accounts' k2, |({'number' k, 'X64' v} + {'number', 'X94'})#(2) 'accounts',
+    'roles' k3, |[({'guest'} + {'admin'})#(1)] 'roles',
+    'contacts' k4, |[({'type' k, 'email' v} + {'type', 'phone'})#(2)] 'contacts'
+  }
+list:                                   # no rows
+- as any org.wabase.AppQuerease.columnPairsToMap ({'name' k, 'John' v}[false])
+insert:                                 # more than one row
+- as any columnPairsToMap (({'name' k, 'John' v} + {'name', 'Jane'})#(2))
+update:                                 # odd column count
+- as any columnPairsToMap {'name' k, 'John' v, 'surname' k2}
+delete:                                 # step result bound to variable
+- res = as any columnPairsToMap {'id' k, 1 v, 'value' k2, 'one' v2}
+- :res
+
+
+name: column_pairs_to_map_test2
+api: list
+list:                                   # empty child query
+- as any columnPairsToMap {'name' k1, 'John' v1, 'accounts' k2, |({'number' k, 'X64' v})[false] 'accounts'}
+
+
 name: source_check
 api: get, post
 get:

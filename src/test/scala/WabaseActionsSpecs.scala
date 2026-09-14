@@ -2058,6 +2058,28 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     }
   }
 
+  it should "convert column pairs to map" in {
+    for {
+      t1 <- doAction("get", "column_pairs_to_map_test", Map())
+        .map(_ shouldBe AnyResult(Map(
+          "name" -> "John",
+          "accounts" -> List(Map("number" -> "X64"), Map("number" -> "X94")),
+          "roles" -> List("admin", "guest"),
+          "contacts" -> List(Map("type" -> "email"), Map("type" -> "phone")),
+        )))
+      t2 <- doAction("list", "column_pairs_to_map_test", Map())
+        .map(_ shouldBe AnyResult(Map()))
+      t3 <- recoverToExceptionIf[RuntimeException](doAction("insert", "column_pairs_to_map_test", Map()))
+        .map(_.getMessage shouldBe "Result must contain one row, instead got 2 rows, first row: ListMap(name -> Jane)")
+      t4 <- recoverToExceptionIf[IllegalArgumentException](doAction("update", "column_pairs_to_map_test", Map()))
+        .map(_.getMessage shouldBe "requirement failed: Columns must make collection of full pairs - key as string, value")
+      t5 <- doAction("delete", "column_pairs_to_map_test", Map())
+        .map(_ shouldBe MapResult(Map("id" -> 1, "value" -> "one")))
+      t6 <- doAction("list", "column_pairs_to_map_test2", Map())
+        .map(_ shouldBe AnyResult(Map("name" -> "John", "accounts" -> Nil)))
+    } yield t6
+  }
+
   it should "have correct source in exception" in {
     for {
       t1 <- recoverToExceptionIf[QuereaseActionException](doAction("get", "source_check", Map(), unwrapException = false))

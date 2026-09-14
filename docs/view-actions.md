@@ -570,7 +570,8 @@ parameter type.
 11. `AppQuerease`
 12. `WabaseHttpClients`
 
-Function aliases are defined under configuration parameter `app.wabase-call-alias`.
+Function aliases are defined under configuration parameter `app.wabase-call-alias`. Built in
+functions are described in [action functions](action-function.md).
 
 Examples:
 
