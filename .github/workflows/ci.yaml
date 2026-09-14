@@ -4,9 +4,11 @@ jobs:
   Build-and-test:
     runs-on:  ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        os:   [ubuntu-24.04]   # TODO macos-latest, windows-latest
-        java: [11] #, 17, 21]  # TODO
+        os:     [ubuntu-24.04]    # TODO macos-latest, windows-latest
+        java:   [11] #, 17, 21]   # TODO
+        scala:  ["2.12.21", "2.13.18", "3.3.8"]
     steps:
     - name: Checkout
       uses: actions/checkout@v7
@@ -19,4 +21,12 @@ jobs:
     - name: Set up sbt
       uses: sbt/setup-sbt@v1
     - name: Compile and test and check version policy
-      run:  sbt -Dhsqldb.method_class_names="test.HsqldbCustomFunctions.*" clean update +compile +test:compile +test +it/test:compile +it/test +it_legacy/test:compile +it_legacy/test +versionPolicyCheck
+      # sbt -Dhsqldb.method_class_names="test.HsqldbCustomFunctions.*" clean update +compile +test:compile +test +it/test:compile +it/test +it_legacy/test:compile +it_legacy/test +versionPolicyCheck
+      run: >
+        sbt -Dhsqldb.method_class_names="test.HsqldbCustomFunctions.*"
+        "++${{ matrix.scala }}"
+        clean update compile
+        test:compile            test
+        it/test:compile         it/test
+        it_legacy/test:compile  it_legacy/test
+        versionPolicyCheck
