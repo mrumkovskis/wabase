@@ -53,7 +53,7 @@ class ValidationEngineTests extends FlatSpec with Matchers {
   def failures(expression: String, message: String): List[ValidationMessage] =
     intercept[ValidationException] {
       TestValidationEngine.validate(validationTestDto(expression, message))
-    }.details.flatMap { case ValidationResult(Nil, messages) => messages }
+    }.details.flatMap { case ValidationResult(_, messages) => messages }
   def definitionError(expression: String, message: String): RuntimeException = {
     val ex = intercept[RuntimeException] {
       TestValidationEngine.validate(validationTestDto(expression, message))
