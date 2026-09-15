@@ -42,6 +42,10 @@ class TestAppLogMessageNoiseDetector extends EventEvaluatorBase[ILoggingEvent] {
     "request timeout is defined for view person_health, however",
     "Failed to release savepoint on db connection",
     "Failed to roll back savepoint on db connection",
+    "Job definition for schedule missing_job not found",
+    "Job 'test_job1' interval 0",
+    "Job 'no_interval_job' has no interval",
+    "No app.job.schedules configured",
   )
   override def evaluate(event: ILoggingEvent): Boolean = {
     val msg = event.getFormattedMessage

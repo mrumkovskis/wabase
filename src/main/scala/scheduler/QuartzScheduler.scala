@@ -7,6 +7,11 @@ import org.wabase.WabaseScheduler.Tick
 
 import scala.jdk.CollectionConverters._
 
+/** Quartz-based job scheduler for cron expressions and other complex schedules.
+  *
+  * Requires optional dependency `pekko-quartz-scheduler`. For a constant interval
+  * with simpler configuration and no extra dependency, use [[FixedRateScheduler]].
+  */
 object QuartzScheduler extends Loggable {
 
   def init(wabase: AppBase[_], as: ActorSystem, jobControlActor: ActorRef): Unit = {

@@ -5,6 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+Fixed-rate job scheduler added (`org.wabase.scheduler.FixedRateScheduler`). Set
+`app.job.scheduler-initializer = org.wabase.scheduler.FixedRateScheduler.init` and define jobs under
+`app.job.schedules.<job-name>` with required `interval` and optional `enabled`, `initial-delay` and
+`params`. Unless `initial-delay` is set, the first run is delayed by a random 1 to min(interval, 59)
+seconds so jobs do not all start at once after process start.
+
 Business scenario YAML tests support array size checks at response and field
 level, like `not_null()`: `size(n)`, `size(>n)`, `size(>=n)`, `size(<n)`,
 `size(<=n)`, `size(!=n)` (or `size(<>n)`), `size(=n)`, and inclusive range
