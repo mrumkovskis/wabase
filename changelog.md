@@ -173,3 +173,177 @@ Hidden values redact secrets in audit and email debug logs.
 
 HikariCP 7.1.0, logback-classic 1.6.2, postgresql 42.7.13, borer 1.17.0 (Scala 3),
 simple-java-mail 9.3.1, jwt-scala 11.0.4.
+
+## [7.0.0] - 2024-12-25
+Scala 3 support (cross-built for 3.3.4, 2.13.15, 2.12.20). Mojoz 5.3.3, querease 7.0.1,
+tresql 12.0.1.
+
+View actions gain http, file, email, template, job, `db` / transaction, `conf`, json codec,
+extract header / entity, `keep` result, invocation with parameter injection, multiple roles
+per api method, and field filter (`cols`). Wabase scheduler and `cron_job_status` job lock.
+Mustache templates (loader / renderer). Buffered audit. File streamer without a user.
+Result renderers. Evaluator connection pool (`app.wabase.evaluator.pool`) when no db block
+is open. Cursors (`build_cursors`). `java.time` types (`LocalDate`, `LocalDateTime`,
+`OffsetDateTime`, `Instant`). Horizontal authorization tests for get and list.
+
+Akka 2.6.21, Akka HTTP 10.2.10.
+
+## [6.4.6] - 2025-12-12
+Connection pool initialization error handling fix.
+
+## [6.4.5] - 2024-12-04
+Mojoz 4.3.3, querease 6.3.4. sbt 1.10.6.
+
+## [6.4.4] - 2024-11-29
+Mojoz 4.3.2, querease 6.3.3.
+
+## [6.4.3] - 2024-11-28
+Mojoz 4.3.1, querease 6.3.2. Scala 2.13.15, hsqldb 2.7.4, sbt 1.10.5.
+
+## [6.4.2] - 2024-09-23
+Buffered audit reader improvement and fix.
+
+## [6.4.1] - 2024-09-13
+Querease 6.3.1. Scala 2.12.20, postgresql 42.7.4.
+
+## [6.4.0] - 2024-08-16
+CSRF errors include the requested URL; CSRF error message is customizable again.
+`wsNotificationsAction` undeprecated. Scala 2.13.14.
+
+## [6.3.0] - 2024-04-07
+Mojoz 4.3.0, querease 6.3.0. `uploadMultipleAsSource` directive. CSRF throws exceptions
+instead of rejections. JDBC drivers loaded sequentially from one place.
+Akka 2.6.21, Akka HTTP 10.2.10, HikariCP 4.0.3, logback-classic 1.3.14, postgresql 42.7.3.
+
+## [6.2.1] - 2024-03-05
+Querease 6.2.2. Do not validate readonly fields. Result serializer string chunker fix.
+Scala 2.13.13 / 2.12.19, logback-classic 1.2.13, postgresql 42.5.5.
+
+## [6.2.0] - 2023-02-24
+Buffered streams fixes. Do not reflect HTML from a bad URI (XSS).
+
+## [6.1.2] - 2023-02-03
+Business tests `full_compare` option for result filter testing. Rest client accepts
+HTTP 206 Partial Content.
+
+## [6.1.1] - 2022-11-16
+Querease 6.2.1, tresql 11.2.2.
+
+## [6.1.0] - 2022-11-10
+Mojoz 4.2.0, querease 6.2.0, tresql 11.2.1.
+
+## [6.0.4] - 2022-10-16
+Update does not use savable as filter for the old-value getter. Querease 6.1.4 with save
+fix for recursive hierarchy. Scala 2.13.10.
+
+## [6.0.3] - 2022-09-23
+`NoResult` as null; unwrap `IdResult` if key is defined. Number-like string keys.
+Variable removal from action data. FileBufferedFlow starts a new buffer file after
+downstream catches up. Querease 6.1.3, tresql 11.1.3. Akka 2.6.20, Akka HTTP 10.2.10.
+
+## [6.0.2] - 2022-08-17
+Tresql 11.1.2.
+
+## [6.0.1] - 2022-08-16
+Querease 6.1.2. Optional millis for timestamps in serializer and business tests.
+Rest client allows key and query in path. `afterWabaseAction` call fix.
+XlsXml / CSV renderer flush fix.
+
+## [6.0.0] - 2022-08-09
+View actions (querease actions) become the main way to define get / list / insert / update /
+save / delete / count / create: `if` / `foreach`, `status`, `redirect this`, `this` view,
+`commit`, named steps, invocation. CRUD by key in the path or query string; `count:view`
+and `create:view` URI segments; hidden (api-excluded) keys; datetime keys.
+`useLegacyFlow(viewName, actionName)` for applications that still use the old handlers.
+
+Querease 6.1.1, tresql 11.1.1. Marshalling of querease results according to the view
+without spray-json DTOs. `java.time.LocalDate` / `LocalTime` / `LocalDateTime` and
+`java.sql.Time`. Datasource initialization from factory functions. `NotFoundException`
+on missing row for save/delete, handled by exception handlers (http 400 for
+`BusinessException`). `authFieldNames` automagic (`is_update_relevant`,
+`is_delete_relevant`) removed. `getByNamePath` detached and deprecated.
+`defaultApiRoleName` already `ADMIN` from 2.0.0.
+
+Scala 2.13.8 / 2.12.16, Akka 2.6.19, Akka HTTP 10.2.9.
+
+## [5.5.0] - 2024-04-07
+`uploadMultipleAsSource` directive. Querease 5.1.0. Akka 2.6.21, Akka HTTP 10.2.10,
+HikariCP 4.0.3, logback-classic 1.3.14, postgresql 42.7.3. Scala 2.13.13 / 2.12.19.
+JDBC drivers loaded sequentially from one place.
+
+## [5.4.1] - 2024-01-22
+CSRF errors include the requested URL.
+
+## [5.4] - 2024-01-18
+CSRF throws exceptions instead of rejections; CSRF exceptions logged at info.
+
+## [5.3.2] - 2022-07-27
+Business tests SQL date format fix.
+
+## [5.3.1] - 2022-01-18
+`BusinessException` message auto-format for `printStackTrace()`; use `messageTemplate`
+for the unformatted message. `Dto.fill(JsObject)` error handling and type conversion
+improvements. Audit does not log business exceptions as errors.
+
+## [5.2.0] - 2021-09-03
+Rest client: explicit timeout on HTTP requests and better timeout error handling.
+
+## [5.1.1] - 2021-07-22
+Akka 2.6.15, postgresql 42.2.23, Scala 2.12.14.
+
+## [5.1.0] - 2021-06-01
+Querease 5.0.1. Unwrap `SqlException` from `ChildSaveException` for constraint messages.
+Handle `PostgresTimeoutException` wrapped in `TresqlException`. Rest client redirect
+logging and errors. Scala 2.13.6, Akka 2.6.14, Akka HTTP 10.2.4.
+
+## [5.0.1] - 2021-05-21
+Tresql 10.1.2. `uploadMultiple` directive (fixed content type, default filename).
+CSFR renamed to CSRF. CSV export escapes field labels. Executor removed from list
+methods and list context. Akka 2.6.11, Akka HTTP 10.2.3.
+
+## [4.0.5] - 2021-05-21
+Reverts closing the list connection on service failure (4.0.4) to restore binary
+compatibility with 4.0.3.
+
+## [4.0.4] - 2021-05-20
+Close list connection on service failure (reverted in 4.0.5).
+
+## [4.0.3] - 2021-03-06
+Audit `viewContext` refactoring. Error-on-error processing.
+
+## [4.0.2] - 2021-02-24
+`SameSite` attribute on cookies. JSON converter preserves field order. Scala 2.12.13.
+
+## [4.0.0] - 2021-01-20
+Deferred request timeout limit (`deferredTimeout`, `extractTimeout` on crud action).
+Content-Disposition header fixes; fallback filename strips accents.
+`decodeParam` sanitizes the message on exception (reflected XSS).
+Get with implied id if list api is not defined. OdsStreamer flexibility.
+
+## [3.0.2] - 2020-12-14
+Scala 2.13.4, Akka HTTP 10.2.2. sbt-version-policy / `versionPolicyCheck`, semver.
+
+## [3.0.1] - 2020-11-24
+Tresql 10.1.1.
+
+## [3.0.0] - 2020-11-24
+Rest client method rename: `httpGet` / `httpPost` / `httpGetAsync` / `httpPostAsync` to
+`httpGetAwait` / `httpPostAwait` / `httpGet` / `httpPost`. Rest client errors bubble the
+causing status. Db constraint message localization (`PostgreSqlConstraintMessage`).
+Tresql resources re-initialized from template when taking a connection from the pool.
+Child-view save uses the proper field when parent and child share a name.
+Akka 2.6.10, Akka HTTP 10.2.1, HikariCP 3.4.5.
+
+## [2.0.0] - 2020-09-22
+I18n: property bundles, chaining, UTF-8 `.properties`, `initI18n`, locale on validation.
+Default api role name `ADMIN` (`defaultApiRoleName`). `ApplicationState` case class instead
+of a raw `Map`. Querease 5.0.0, validations as query strings (stack overflow protection).
+Validation exception handler. Child view validation. Dynamic error messages (javascript if
+the message starts with a quote). `getByNameAction` uses application get instead of list.
+Akka 2.6.9, Akka HTTP 10.2.0. Cross-build Scala 2.12.12.
+
+## [1.0.0] - 2020-08-03
+Initial release. Akka HTTP JSON REST services on querease / tresql SQL. File upload and
+download, deferred requests, request audit, stateless session, field validations, pluggable
+business logic. Scala 2.13.3, Akka 2.6.5, Akka HTTP 10.1.12, mojoz 1.2.1, querease 4.0.0,
+tresql 10.0.0.
