@@ -1,5 +1,8 @@
 name: Build and test
 on:   [push]
+env:
+  # Re-check SNAPSHOT metadata even when the sbt cache is restored
+  COURSIER_TTL: 0
 jobs:
   Build-and-test:
     runs-on:  ${{ matrix.os }}

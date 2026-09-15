@@ -107,7 +107,7 @@ lazy val wabase = (project in file("."))
           Some(s"https://pekko.apache.org/api/pekko/$pekkoV/")
       jars.flatMap(j => baseUrl(j.getName).map(u => j -> url(u))).toMap
     },
-    updateOptions := updateOptions.value.withLatestSnapshots(false),
+    updateOptions := updateOptions.value.withLatestSnapshots(true),
   )
   /*
   .settings(
