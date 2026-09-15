@@ -166,7 +166,7 @@ trait WabaseJobStatusController {
   def init(): Unit
   @annotation.nowarn("cat=deprecation")
   def acquireIsRunningLock(name: String): Boolean = acquireIsRunnningLock(name)
-  @deprecated("Use acquireIsRunningLock instead", "8.2.0")
+  @deprecated("Use acquireIsRunningLock instead", "9.0.0")
   def acquireIsRunnningLock(name: String): Boolean = acquireIsRunningLock(name)
   def updateCronJobStatus(name: String, status: String): Unit
 }
@@ -228,6 +228,6 @@ class DefaultWabaseJobStatusController(dbAccess: DbAccess) extends WabaseJobStat
     }
   }
 
-  @deprecated("Use acquireIsRunningLock instead", "8.2.0")
+  @deprecated("Use acquireIsRunningLock instead", "9.0.0")
   override def acquireIsRunnningLock(name: String): Boolean = acquireIsRunningLock(name)
 }
