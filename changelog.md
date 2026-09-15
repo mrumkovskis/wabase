@@ -5,6 +5,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+No-op job status controller added (`org.wabase.NoOpWabaseJobStatusController`).
+Always allows the job to start and does not use `cron_job_status`. Intended for
+a single node when a lock / status table is not needed. Set
+`app.job.status-controller = org.wabase.NoOpWabaseJobStatusController`.
+
 Fixed-rate job scheduler added (`org.wabase.scheduler.FixedRateScheduler`). Set
 `app.job.scheduler-initializer = org.wabase.scheduler.FixedRateScheduler.init` and define jobs under
 `app.job.schedules.<job-name>` with required `interval` and optional `enabled`, `initial-delay` and

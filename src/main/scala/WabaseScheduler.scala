@@ -162,15 +162,33 @@ class WabaseJobActor(
   }
 }
 
+/** Controls whether a job may start and records its outcome.
+  *
+  * [[WabaseJobActor]] calls [[acquireIsRunningLock]] before running a job and
+  * [[updateCronJobStatus]] when it finishes. Configure the implementation with
+  * `app.job.status-controller`.
+  */
 trait WabaseJobStatusController {
+  /** Called on scheduler start when `app.job.clean-jobs-on-start` is true. */
   def init(): Unit
+  /** Try to take the running lock for `name`. `true` — start the job; `false` — already running. */
   @annotation.nowarn("cat=deprecation")
   def acquireIsRunningLock(name: String): Boolean = acquireIsRunnningLock(name)
   @deprecated("Use acquireIsRunningLock instead", "9.0.0")
   def acquireIsRunnningLock(name: String): Boolean = acquireIsRunningLock(name)
+  /** Record job outcome. `status` is `"SUCC"` or `"ERR"`. */
   def updateCronJobStatus(name: String, status: String): Unit
 }
 
+/** Database lock and status for jobs that may run on more than one node.
+  *
+  * Uses table `cron_job_status` (pool `app.job.job-status-cp`). A job starts only
+  * if its status is not `RUN`, or the `RUN` lock is older than `app.job.max-time`
+  * (node died without releasing it).
+  *
+  * [[init]] deletes rows whose status is not `RUN`. For a single node with no
+  * need for this table, use [[NoOpWabaseJobStatusController]].
+  */
 class DefaultWabaseJobStatusController(dbAccess: DbAccess) extends WabaseJobStatusController with Loggable {
 
   val job_max_time = config.getDuration("app.job.max-time").toSeconds
@@ -230,4 +248,24 @@ class DefaultWabaseJobStatusController(dbAccess: DbAccess) extends WabaseJobStat
 
   @deprecated("Use acquireIsRunningLock instead", "9.0.0")
   override def acquireIsRunnningLock(name: String): Boolean = acquireIsRunningLock(name)
+}
+
+/** Always allows the job to start and does not record status.
+  *
+  * No lock and no `cron_job_status` table. Use when jobs run on a single node
+  * and overlapping runs are acceptable or prevented by the schedule. Does not
+  * stop the same job from overlapping on this node if a new tick arrives while
+  * a previous run is still in progress — use [[DefaultWabaseJobStatusController]]
+  * or synchronization when a job must not overlap.
+  *
+  * Enable with:
+  * {{{
+  * app.job.status-controller = org.wabase.NoOpWabaseJobStatusController
+  * app.job.clean-jobs-on-start = false
+  * }}}
+  */
+class NoOpWabaseJobStatusController extends WabaseJobStatusController {
+  def init(): Unit = ()
+  override def acquireIsRunningLock(name: String): Boolean = true
+  def updateCronJobStatus(name: String, status: String): Unit = ()
 }
