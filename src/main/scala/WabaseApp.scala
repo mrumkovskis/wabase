@@ -290,14 +290,14 @@ trait WabaseApp[User] {
   protected def getActionHandler(context: AppActionContext): ActionHandler = {
     import context._
     actionName match {
-      case Action.List    => list
-      case Action.Save    => save
-      case Action.Insert  => save
-      case Action.Update  => save
-      case Action.Upsert  => save
-      case Action.UpdatePlus => save
-      case Action.Delete  => delete
-      case x              => simpleAction
+      case Action.List        => list
+      case Action.Save        => save
+      case Action.Insert      => save
+      case Action.Update      => save
+      case Action.Upsert      => save
+      case Action.UpdatePlus  => save
+      case Action.Delete      => delete
+      case _                  => simpleAction
     }
   }
 
