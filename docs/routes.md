@@ -109,9 +109,10 @@ reflectively. Every ordered parameter must be given explicitly, for example
 ## Provided handlers
 
 Handlers below are grouped as in `app.wabase-call-alias`. Unless stated otherwise they
-are implemented in `org.wabase.handlers`. The last, miscellaneous block of
+are implemented in `org.wabase.handlers`. The miscellaneous block of
 `app.wabase-call-alias` does not hold route handlers, it holds functions callable from view
-action definitions, see [action functions](action-function.md).
+action definitions, see [action functions](action-functions.md). The error handlers block
+holds route `recover` handlers, see [Error handling](#error-handling).
 
 ### Audit
 
@@ -280,4 +281,120 @@ Example:
 ```yaml
 on: GET /security-headers
 do: noCacheHeaders xssHeaders frameHeader('SAMEORIGIN') hstsHeaders(31536000, 'true') response(200, 'ok')
+```
+
+## Error handling
+
+Failures of a route handler chain are turned into http responses by the route error
+handler, specified by the optional `recover` property:
+
+```yaml
+on: /localized-data/(\w+(?::(?:new|count))?)(/.+)?
+do: authenticateOpt audit doAction $1
+recover: localizedErrorHandler
+```
+
+Error handler as a type:
+
+```scala
+type ErrorHandler = PartialFunction[Throwable, Future[HttpResponse]]
+```
+
+`recover` value is a function invocation returning `WabaseService.ErrorHandler`. The
+function can have only one parameter — `WabaseRequestContext`, ordered parameters are
+not supported. Handler aliases are resolved the same way as for `do`, see
+[Handler aliases](#handler-aliases).
+
+When `recover` is not specified, error handler from `app.wabase-error-handler` is used,
+by default `errorHandler`. Error handler is created only when an error occurs.
+
+Error handler is always sealed — exceptions not handled by it are logged and responded
+with `500`.
+
+Related configuration:
+
+| Parameter | Description |
+| --- | --- |
+| `app.wabase-error-handler` | Default error handler for routes without `recover`. |
+| `app.wabase-error-handler-and-then` | Optional `WabaseRequestContext => HttpResponse => Future[HttpResponse]` function applied to error handler response, for example for error auditing. |
+| `app.error-handler.log-raw-request-body` | Log raw (length capped, not redacted) request body on error. For development troubleshooting only. |
+| `app.error-handler.expose-internal-messages` | Return internal exception messages (for example missing bind variable) to the client. |
+
+### Provided error handlers
+
+`org.wabase.WabaseErrorHandler`
+
+| Alias | Description |
+| --- | --- |
+| `errorHandler` | Default error handler, maps known exceptions to responses, see below. |
+| `localizedErrorHandler` | Translates `BusinessException` and `ValidationException` messages to request locale, other exceptions are passed to `errorHandler`. |
+
+`errorHandler` main mappings:
+
+| Exception | Response |
+| --- | --- |
+| `HttpException` | Exception status and message. |
+| `AuthenticationException` | `401` |
+| `AuthorizationException` | `403` |
+| `EntityStreamSizeException` | `413` |
+| `UnprocessableEntityException` | `422` with message. |
+| `BusinessException` | `400` with message. |
+| `ValidationException` | `400` with json validation details, or message when there are no details. |
+| `ViewNotFoundException`, `NotFoundException` | `404` |
+| `MissingBindVariableException`, `QuereaseEnvException` | `400`, message returned only when `app.error-handler.expose-internal-messages` is set. |
+| `CSRFException` | `400` |
+| db constraint violation | `400` with translated friendly message. |
+| PostgreSQL statement timeout | `500` with translated message. |
+
+`QuereaseActionException` and `TresqlException` are unwrapped and their causes are
+handled as above. See `WabaseErrorHandler` for the details.
+
+`localizedErrorHandler` translates `BusinessException` message template with exception
+parameters and each `ValidationException` detail message with its parameters. Therefore
+messages should be thrown as untranslated templates, for example
+`new BusinessException("Order %s is closed", null, orderNr)`. `UnprocessableEntityException`
+is responded with `422`, other business exceptions with `400`.
+
+### Custom error handler
+
+Custom error handler is a function taking `WabaseRequestContext` and returning
+`WabaseService.ErrorHandler`. Typically it handles application specific exceptions and
+chains to one of provided handlers with `orElse`:
+
+```scala
+package my.app
+
+import org.apache.pekko.http.scaladsl.model.{HttpResponse, StatusCodes}
+import org.wabase.{WabaseErrorHandler, WabaseRequestContext, WabaseService}
+import scala.concurrent.Future
+
+object MyErrorHandler {
+  def errorHandler(ctx: WabaseRequestContext): WabaseService.ErrorHandler = {
+    val eh: PartialFunction[Throwable, HttpResponse] = {
+      case e: OrderLockedException => HttpResponse(StatusCodes.Conflict, entity = e.getMessage)
+    }
+    eh.andThen(Future.successful(_)) orElse WabaseErrorHandler.localizedErrorHandler(ctx)
+  }
+}
+```
+
+Handler order matters — the first handler defined for the exception is used. Put custom
+cases before provided handler to add or override mappings.
+
+Custom error handler can be used in route directly or via alias:
+
+```yaml
+on: /orders/(\w+)
+do: authenticate doAction $1
+recover: my.app.MyErrorHandler.errorHandler
+```
+
+```
+app.wabase-call-alias.myErrorHandler = my.app.MyErrorHandler.errorHandler
+```
+
+To use it for all routes without `recover`, set `app.wabase-error-handler`:
+
+```
+app.wabase-error-handler = myErrorHandler
 ```
