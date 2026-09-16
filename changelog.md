@@ -5,6 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+`update+` action is now handled by the `save` handler (was `simpleAction`), so field and script
+validations, readonly value protection, old value lookup (by old key) and friendly constraint error
+messages now apply to it as for `update`. Script validation defines values whose names are not valid
+javascript variable names (e.g. `old key`) as global object properties, accessible as `this['old key']`,
+instead of failing with syntax error.
+
 No-op job status controller added (`org.wabase.NoOpWabaseJobStatusController`).
 Always allows the job to start and does not use `cron_job_status`. Intended for
 a single node when a lock / status table is not needed. Set

@@ -295,6 +295,7 @@ trait WabaseApp[User] {
       case Action.Insert  => save
       case Action.Update  => save
       case Action.Upsert  => save
+      case Action.UpdatePlus => save
       case Action.Delete  => delete
       case x              => simpleAction
     }

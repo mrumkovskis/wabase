@@ -89,7 +89,8 @@ object BusinessScenariosSpecs extends Loggable {
 
 object ScriptValidations {
   def loadValidations(viewName: String, actionName: String, dbAccess: DbAccess)(implicit qe: AppQuerease) = {
-    if (viewName == "save_person_email" || viewName == "validation_params_step") {
+    if (viewName == "save_person_email" || viewName == "validation_params_step" ||
+        viewName == "person_redirect" && actionName == "update+") {
       WabaseScriptValidation.loadValidations(viewName, actionName, dbAccess)
     } else Nil
   }

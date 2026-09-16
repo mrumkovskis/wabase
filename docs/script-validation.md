@@ -38,10 +38,10 @@ A new script engine is created for each validated request, validations of one re
 
 ## When validations are evaluated
 
-Script validations are evaluated by `save`, `insert`, `update` and `upsert` actions, before
-action steps are executed — also before [validations](view-actions.md#validation) steps of the
-action — and after field checks like mandatory field or maximum length. Other actions, including
-`update+`, do not evaluate script validations.
+Script validations are evaluated by `save`, `insert`, `update`, `update+` and `upsert` actions,
+before action steps are executed — also before [validations](view-actions.md#validation) steps of
+the action — and after field checks like mandatory field or maximum length. Other actions do not
+evaluate script validations.
 
 All validations of the view are evaluated, and failures of all of them are reported together.
 If no validation fails, the action continues.
@@ -99,6 +99,11 @@ global javascript variable with the field name, encoded as json:
 | `null` | `null` |
 | date, timestamp | string, e.g. `'2026-03-01'`, `'2026-03-01 10:20:30'`, `'2026-03-01 10:20:30.123'` |
 | child view collection | array of objects, e.g. `lines[1].qty` |
+
+Name which is not a valid javascript variable name — not an identifier or a reserved word — is
+defined as a property of the global object instead, accessible as `this['name']`. For example,
+`update+` action passes old key from uri as `old key`, and its field is accessible as
+`this['old key'].code`.
 
 Dates and timestamps are strings, which compare in time order: `valid_from <= valid_till`. Fractional
 seconds are present only if not zero, without trailing zeros, which does not break the order.

@@ -1,0 +1,9 @@
+# script validation for person_redirect, loaded for update+ action only (see ScriptValidations.loadValidations)
+# old key is not a valid javascript variable name - accessible as property of global object
+path:       /data/validation/1
+method:     PUT
+request:
+  context:    person_redirect
+  expression: "name != 'Invalid'"
+  message:    "['Name %1$s is not allowed for %2$s', name, this['old key'].code]"
+response:

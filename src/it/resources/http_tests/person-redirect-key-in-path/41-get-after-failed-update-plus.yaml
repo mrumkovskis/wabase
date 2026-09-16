@@ -1,0 +1,6 @@
+# failed update+ did not change data
+path:       /data/person_redirect/rd1
+response:
+  code:     rd1
+  name:     RediUpd
+  surname:  Rect

@@ -142,12 +142,23 @@ object WabaseScriptValidation {
         .option("js.nashorn-compat", "true"),
     )
   }
+  private val JsIdentifier = "[A-Za-z_$][A-Za-z0-9_$]*"
+  private val JsReservedWords = Set(
+    "break", "case", "catch", "class", "const", "continue", "debugger", "default", "delete", "do",
+    "else", "enum", "export", "extends", "false", "finally", "for", "function", "if", "import", "in",
+    "instanceof", "new", "null", "return", "super", "switch", "this", "throw", "true", "try",
+    "typeof", "var", "void", "while", "with", "yield", "let", "static", "implements", "interface",
+    "package", "private", "protected", "public", "await",
+  )
   def initScriptEngine(instance: Map[String, Any],
                        engine: ScriptEngine, customFunctions: AnyRef): ScriptEngine = {
     val instancePropsToVars =
       instance
         .map {
-          case (k, v) => s"var $k = ${ResultEncoder.encodeAnyToJsonString(v)};"
+          case (k, v) if k.matches(JsIdentifier) && !JsReservedWords.contains(k) =>
+            s"var $k = ${ResultEncoder.encodeAnyToJsonString(v)};"
+          case (k, v) => // not usable as variable name, e.g. 'old key' - define as global object property
+            s"this[${ResultEncoder.encodeAnyToJsonString(k)}] = ${ResultEncoder.encodeAnyToJsonString(v)};"
         }.mkString("\n")
     val functionDefs = customFunctions.getClass.getMethods
       .collect { case m if m.getAnnotation(classOf[Export]) != null =>

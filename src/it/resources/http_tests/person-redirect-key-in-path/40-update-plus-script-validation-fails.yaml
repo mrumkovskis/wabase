@@ -1,0 +1,9 @@
+# update+ is handled by save - script validations are evaluated
+path:       /data/person_redirect/rd1
+method:     POST
+request:
+  code:     rd1
+  name:     Invalid
+  surname:  Rect
+error:
+  [{"location": [], "messages": [{"msg": "Name %1$s is not allowed for %2$s", "params": ["Invalid", "rd1"]}]}]
