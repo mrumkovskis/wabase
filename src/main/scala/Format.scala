@@ -19,7 +19,7 @@ object Format extends ValueConverter {
     def parse(str: String): Date =
       try get.parse(str)
       catch {
-        case NonFatal(e) => throw new BusinessException(s"${e.getMessage}. Expected format - '$pattern'")
+        case NonFatal(e) => throw new BusinessException("%1$s. Expected format - '%2$s'", null, e.getMessage, pattern)
       }
   }
 

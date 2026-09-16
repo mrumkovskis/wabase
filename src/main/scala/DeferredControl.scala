@@ -265,7 +265,7 @@ object DeferredControl extends Loggable with AppConfig {
     val limit = viewName.flatMap(timeouts.get).getOrElse(defaultTimeout).toSeconds.toInt
     if (timeout.isDefined)
       timeout.filter(_ <= limit).map(QueryTimeout.apply).getOrElse {
-        throw new BusinessException(s"Max request timeout exceeded: ${timeout.get} > $limit")
+        throw new BusinessException("Max request timeout exceeded: %1$s > %2$s", null, timeout.get, limit)
       }
     else QueryTimeout(limit)
   }

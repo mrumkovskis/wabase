@@ -1,4 +1,4 @@
-path:       /data/save_person_email?/p1
+path:       /localized-data/save_person_email?/p1
 method:     PUT
 request:
   email:    please-fail

@@ -7,7 +7,7 @@ import javax.script.ScriptEngine
 import org.graalvm.polyglot.{Context, Engine, HostAccess}
 import org.mojoz.querease.{ValidationException, ValidationResult, ValidationMessage}
 import org.tresql.Query
-import org.wabase.WabaseScriptValidation.{StringResultMessage, Validation, businessException, toScala, validationMessage}
+import org.wabase.WabaseScriptValidation.{Validation, businessException, toScala, validationMessage}
 
 import java.time.LocalDate
 import java.util.Locale
@@ -65,29 +65,24 @@ class WabaseScriptValidation(db: DbAccess, qe: AppQuerease)(implicit ec: Executi
             // business exception from custom function is intended failure
             throw businessException(ex).getOrElse(definitionError(v, "Expression evaluation failed", ex))
         }
-        val message = result match {
-          case TRUE => null // OK
-          case FALSE => errorMsg(v)
-          case s: String =>
-            val m = errorMsg(v)
-            ValidationMessage(StringResultMessage, List(Map("msg" -> m.msg, "params" -> m.params), s))
+        val messages = result match {
+          case TRUE => Nil // OK
+          case FALSE => List(errorMsg(v))
+          // validation message followed by expression result as message template without parameters
+          case s: String => List(errorMsg(v), ValidationMessage(s, Nil))
           case x @ (_: List[_] | _: Map[_, _]) =>
-            validationMessage(x).getOrElse(throw definitionError(v, s"Wrong validation result: $x"))
+            List(validationMessage(x).getOrElse(throw definitionError(v, s"Wrong validation result: $x")))
           case x => throw definitionError(v, s"Wrong validation result type: ${typeName(x)}")
         }
-        Option(message).map(m => ValidationResult(Nil, List(m))).toList
+        if (messages.isEmpty) Nil else List(ValidationResult(Nil, messages))
       }
       if (validationResults.nonEmpty)
-        throw new ValidationException(validationResults.flatMap(_.messages).map(_.msg).mkString("\n"), validationResults)
+        throw new ValidationException(validationExceptionMessage(validationResults), validationResults)
     }
   }
 }
 
 object WabaseScriptValidation {
-  /** Error message template for validation expression returning string, parameters are validation message
-    * as {msg, params} map and expression result */
-  val StringResultMessage = """Error (validation "%1$s"): %2$s"""
-
   /** Converts polyglot values - live views of javascript arrays and objects - to plain scala values */
   def toScala(value: Any): Any = value match {
     case l: java.util.List[_]   => l.asScala.map(toScala).toList

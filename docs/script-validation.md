@@ -149,7 +149,7 @@ The expression is evaluated and its result determines the outcome:
 | `true` | Validation passes. |
 | `false` | Validation fails with validation [message](#message). |
 | array or object | Validation fails with this message — the result is evaluated by [message](#message) rules for array or object, validation message is not used. |
-| string | Validation fails with message `Error (validation "%1$s"): %2$s`, where first parameter is validation message as `{msg, params}` object and second parameter is the string. |
+| string | Validation fails with two messages — validation [message](#message) followed by the string as message template without parameters. |
 | anything else | [Definition error](#definition-errors). |
 
 Only `true` passes — javascript truthiness is not applied, so number `1`, non empty string or
@@ -204,12 +204,12 @@ location:
 
 ```json
 [ {"location": [], "messages": [{"msg": "Field %1$s must be positive, got %2$s", "params": ["qty", 0]}]}
-, {"location": [], "messages": [{"msg": "Error (validation \"%1$s\"): %2$s", "params": [{"msg": "Code %1$s", "params": ["nope"]}, "reserved word"]}]}
+, {"location": [], "messages": [{"msg": "Code %1$s", "params": ["nope"]}, {"msg": "reserved word", "params": []}]}
 ]
 ```
 
-Parameter which is `{msg, params}` object is a message itself — translate it first, then use it as
-parameter value.
+Message parameters are always a flat list of scalar values. Validation expression returning string
+produces two messages in one element — validation message first, then the string.
 
 ## Definition errors
 

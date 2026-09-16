@@ -73,9 +73,9 @@ Script (javascript) validation messages support parameters. Validation message m
 without parameters, array - message template followed by parameters, i.e. `['Should be %1$s, found %2$s', 43, my_int_field]`,
 or object with `msg` and optional `params`, i.e. `{msg: 'Should be %1$s', params: [43]}`. Message which is not valid
 javascript is used as is. Validation expression may evaluate to `true` - validation passes, `false` - fails with validation
-message, array or object - fails with this message, validation message is not used, string - fails with message
-`Error (validation "%1$s"): %2$s`, where first parameter is validation message as `{msg, params}` object and second one -
-expression result (previously message text was concatenated).
+message, array or object - fails with this message, validation message is not used, string - fails with two messages,
+validation message followed by expression result as message template without parameters (previously message text was
+concatenated). Message parameters are always a flat list.
 Wrong validation definition is developer error and throws `RuntimeException` (http status `500 Internal Server Error`,
 logged as error) instead of reporting validation error - expression evaluating to other value (i.e. `null`, `undefined`,
 number), expression evaluation failure (previously `BusinessException`), message evaluating to other value or malformed
@@ -84,6 +84,34 @@ Custom functions `current_date()` and `now()` return strings in the format of da
 compared with them (previously `java.sql.Date` and `java.sql.Timestamp` objects, which could not be compared in javascript).
 Script validation documented in `docs/script-validation.md`.
 Unused i18n resource `Validation error " %1$s ": Wrong validation result type: %2$s` removed.
+
+Error messages are translated when error response is created instead of when exception is thrown. New error handler
+`org.wabase.WabaseErrorHandler.localizedErrorHandler` (set as route `recover` handler) translates `BusinessException`
+message template with parameters and each validation message with parameters to request language, validation response
+messages are returned with empty parameters. `UnprocessableEntityException` is mapped to http status `422`, other
+`BusinessException`s to `400`. Default error handlers do not translate - validation messages are returned as templates with
+parameters, `BusinessException` message is returned formatted with parameters, but not translated.
+Messages which previously were translated on throw are no longer translated with default error handlers - field validation
+messages, friendly constraint violation messages, ldap authentication messages and `Record not found, cannot edit`.
+Field validation message methods of `AppBase` - `fieldRequiredErrorMessage`, `fieldValueTooLongErrorMessage`,
+`fieldValueNotInEnumErrorMessage`, `badEmailAddressErrorMessage`, `validationErrorMessage` - return `ValidationMessage`
+(previously translated `String`) and have no implicit `Locale` parameter. Implicit `Locale` parameter removed also from
+`DbConstraintMessage.friendlyConstraintErrorMessage`, `PostgreSqlConstraintMessage.raiseFriendlyConstraintErrorMessage` and
+`LdapAuthentication.ldapLogin`, `Locale` parameter removed from `WabaseApp.throwOldValueNotFound`.
+`PostgreSqlConstraintMessage` no longer requires `I18n` self type. Applications overriding or calling these methods must be
+updated.
+`BusinessException` messages built by string concatenation are replaced with message templates and parameters, so they can
+be translated by application resource bundle (message text is not changed). `ValidationException` message contains
+validation message templates formatted with parameters (previously templates without parameters), it is intended for logging.
+`I18n.translate` and `I18n.translateFromBundle` parameters changed from `String*` to `Any*` and are formatted with translation
+locale, so format specifiers other than `%s`, i.e. `%d`, `%.2f`, can be used.
+Script validation constant `WabaseScriptValidation.StringResultMessage` removed.
+User facing message templates are available as constants - `AppBase.RecordNotFoundCannotEditMessage`,
+`FieldRequiredMessage`, `FieldValueTooLongMessage`, `FieldValueNotInEnumMessage`, `BadEmailAddressMessage`,
+`Authentication.WrongPasswordOrUsernameMessage`, `AuthenticationFailedMessage`, `UnexpectedAuthenticationErrorMessage`,
+`AppFileStreamer.CannotProcessFileMessage`.
+Fixed i18n resource key `Field "%1$s" value must be from available value list.` (had redundant `$`, so enum validation
+message was not translated) and removed invalid key `Error (validation "%1$s")` (unescaped `:` in key).
 
 Tresql upgraded to 13.6.0. `Result.rowView` exposes the current row as `RowLike` that is not a
 `Result`, so nested results can be distinguished when traversing from outside.

@@ -27,10 +27,17 @@ update+:
 - redirect this
 
 
+# also available on localized-data route to test localized error handler, see i18n it tests
 name:   save_person_email
+paths:
+  - /data/save_person_email
+  - /localized-data/save_person_email
 table:  person
 api:    save
 key:    code
 fields:
 - code
 - email
+swagger:                                                # test only paths, skip swagger
+  /localized-data/save_person_email = :        null
+  /localized-data/save_person_email/{code} = : null

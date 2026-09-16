@@ -27,6 +27,13 @@ object AppBase {
   trait AppConfig {
     lazy val appConfig: Config = config.getConfig("app")
   }
+
+  /* User facing message templates, registered in wabase_en and wabase_lv resource bundles */
+  val RecordNotFoundCannotEditMessage = "Record not found, cannot edit"
+  val FieldRequiredMessage            = """Field %1$s is mandatory."""
+  val FieldValueTooLongMessage        = """Field "%1$s" value length %2$s exceeds maximum limit %3$s."""
+  val FieldValueNotInEnumMessage      = """Field "%1$s" value must be from available value list."""
+  val BadEmailAddressMessage          = """Field "%1$s" is not valid e-mail address"""
 }
 
 case class ApplicationState(state: Map[String, Any], locale: Locale = Locale.getDefault)
@@ -483,7 +490,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
       val maxLimitForView = viewDef(viewName).limit
       if (maxLimitForView > 0 && limit > maxLimitForView)
         throw new BusinessException(
-          s"limit $limit exceeds max limit allowed for $viewName: $maxLimitForView")
+          "limit %1$s exceeds max limit allowed for %2$s: %3$s", null, limit, viewName, maxLimitForView)
       if (offset < 0)
         throw new BusinessException("offset must not be negative")
       val forcedLimit = Option(limit).filter(_ > 0) getOrElse Option(maxLimitForView).filter(_ > 0).map(_ + 1).getOrElse(0)
@@ -595,7 +602,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
         }
       }
       if (idOpt.isDefined && old == null)
-        throw new BusinessException(translate("Record not found, cannot edit")(state.locale))
+        throw new BusinessException(RecordNotFoundCannotEditMessage)
       if (old != null)
         // overwrite incoming values of non-updatable fields with old values from db
         // TODO for lookups and children?
@@ -613,7 +620,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
             implicit val clazz = instance.getClass
             rest(createSaveCtx(SaveContext(viewName, old, instance, params, user, promise, state, extraPropsToSave = extraPropsToSave)))
           }
-        })(state.locale)
+        })
         val result = createSaveResult(res)
         promise.success(result)
         result
@@ -641,7 +648,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
               case Some(oldValue) => rest(ctx.copy(old = oldValue))
             }
           }
-        }(state.locale)
+        }
         promise.success(())
         createDeleteResult(res)
       } catch {
@@ -876,8 +883,8 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
       .filter(v => v.apiMethodToRoles.contains("get") && !v.apiMethodToRoles.contains("list"))
       .map(_ => 0)
 
-  def fieldRequiredErrorMessage(viewName: String, field: FieldDef)(implicit locale: Locale): String =
-    translate("""Field %1$s is mandatory.""", field.label)
+  def fieldRequiredErrorMessage(viewName: String, field: FieldDef): ValidationMessage =
+    ValidationMessage(FieldRequiredMessage, List(field.label))
   def isFieldRequiredViolated(viewName: String, field: FieldDef, value: Any): Boolean =
     field.required &&
     (value match {
@@ -886,25 +893,25 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
       case _ => false
     })
 
-  def fieldValueTooLongErrorMessage(viewName: String, field: FieldDef, value: Any)(implicit locale: Locale): String =
-    translate("""Field "%1$s" value length %2$s exceeds maximum limit %3$s.""",
-      field.label, value.toString.length.toString, field.type_.length.get.toString)
+  def fieldValueTooLongErrorMessage(viewName: String, field: FieldDef, value: Any): ValidationMessage =
+    ValidationMessage(FieldValueTooLongMessage,
+      List(field.label, value.toString.length.toString, field.type_.length.get.toString))
   def isFieldValueMaxLengthViolated(viewName: String, field: FieldDef, value: Any): Boolean =
     value != null &&
     field.type_.name == "string" &&
     field.type_.length.isDefined &&
     value.toString.length > field.type_.length.get
 
-  def fieldValueNotInEnumErrorMessage(viewName: String, field: FieldDef, value: Any)(implicit locale: Locale): String =
-    translate("""Field "%1$s" value must be from available value list.""", field.label)
+  def fieldValueNotInEnumErrorMessage(viewName: String, field: FieldDef, value: Any): ValidationMessage =
+    ValidationMessage(FieldValueNotInEnumMessage, List(field.label))
   def isFieldValueEnumViolated(viewName: String, field: FieldDef, value: Any): Boolean =
     value != null &&
     field.enum_ != null &&
     field.enum_.size > 0 &&
     !field.enum_.contains(value.toString)
 
-  def badEmailAddressErrorMessage(viewName: String, field: FieldDef, value: Any)(implicit locale: Locale): String =
-    translate("""Field "%1$s" is not valid e-mail address""", field.label)
+  def badEmailAddressErrorMessage(viewName: String, field: FieldDef, value: Any): ValidationMessage =
+    ValidationMessage(BadEmailAddressMessage, List(field.label))
   def isEmailAddressField(viewName: String, field: FieldDef): Boolean =
     field.type_.name == "email"  ||
     field.type_.name == "epasts" ||
@@ -915,7 +922,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
     isEmailAddressField(viewName, field) &&
     !is_valid_email(value.toString)
 
-  def validationErrorMessage(viewName: String, field: FieldDef, value: Any)(implicit locale: Locale): Option[String] = {
+  def validationErrorMessage(viewName: String, field: FieldDef, value: Any): Option[ValidationMessage] = {
     if (isFieldRequiredViolated(viewName, field, value))
       Option(fieldRequiredErrorMessage(viewName, field))
     else if (isFieldValueMaxLengthViolated(viewName, field, value))
@@ -936,9 +943,8 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
       val errorMessages = viewDef.fields
         .filterNot(_.api.readonly)
         .flatMap(fld =>
-          validationErrorMessage(vn, fld, inst.getOrElse(fld.fieldName, null))(state.locale)
-            .filter(_ != null)
-            .map(msg => ValidationResult((fld.fieldName :: path).reverse, List(ValidationMessage(msg, Nil))))
+          validationErrorMessage(vn, fld, inst.getOrElse(fld.fieldName, null))
+            .map(msg => ValidationResult((fld.fieldName :: path).reverse, List(msg)))
             .toList
         ).toList
 
@@ -956,7 +962,7 @@ trait AppBase[User] extends WabaseAppCompat[User] with Authorization[User] with 
       }.toList
     }
     val errors = valFields(viewName, instance, Nil)(1)
-    if (errors.nonEmpty) throw new ValidationException(errors.flatMap(_.messages).map(_.msg).mkString("\n"), errors)
+    if (errors.nonEmpty) throw new ValidationException(validationExceptionMessage(errors), errors)
   }
 
   def validateFields(instance: Dto)(implicit state: ApplicationState): Unit = {

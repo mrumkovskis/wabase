@@ -1,0 +1,6 @@
+# same as data route, but error messages are translated to request language by localized error handler
+on: /localized-data/(\w+(?::(?:new|count))?)(/.+)?
+do: authenticateOpt audit doAction $1
+recover: org.wabase.WabaseErrorHandler.localizedErrorHandler
+swagger:
+  paths = : {}    # test only route, skip swagger

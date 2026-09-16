@@ -18,6 +18,9 @@ import org.wabase.ds.PoolName
 import scala.util.Failure
 
 object AppFileStreamer {
+  /** User facing message template, registered in wabase_en and wabase_lv resource bundles */
+  val CannotProcessFileMessage = "Cannot process file, please contact administrator: %1$s"
+
   private class FieldOrdering(val nameToIndex: Map[String, Int]) extends Ordering[String] {
     override def compare(x: String, y: String) =
       nameToIndex.getOrElse(x, 999) - nameToIndex.getOrElse(y, 999)
@@ -246,8 +249,7 @@ class FileStreamer(
       val sha = fi.sha_256
       def badFileException =
         // TODO log! (BusinessExceptions are not logged)
-        new BusinessException(
-          "Cannot process file, please contact administrator: " + sha)
+        new BusinessException(AppFileStreamer.CannotProcessFileMessage, null, sha)
 
       @annotation.nowarn("msg=Manifest")
       def oldPathOpt = db_read { implicit res =>

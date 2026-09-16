@@ -1,6 +1,5 @@
 package org.wabase
 
-import java.util.Locale
 
 import org.apache.pekko.http.scaladsl.model._
 import org.apache.pekko.http.scaladsl.model.Uri
@@ -204,6 +203,11 @@ object Authentication {
   import com.lambdaworks.crypto.SCryptUtil
   import java.security.MessageDigest
 
+  /* User facing message templates, registered in wabase_en and wabase_lv resource bundles */
+  val WrongPasswordOrUsernameMessage       = "Wrong password or username"
+  val AuthenticationFailedMessage          = "Authentication failed"
+  val UnexpectedAuthenticationErrorMessage = "Unexpected authentication error"
+
   case class Session[User](user: User, ip: String = null, expirationTime: Long, userAgent: Option[String])
 
   /** Removes session info from request, used by [[org.wabase.DeferredControl]]
@@ -363,7 +367,7 @@ object Authentication {
     val ldapUrl = Try(appConfig.getString("ldap-url")).toOption.getOrElse("")
     val accountPostfix = Try(appConfig.getString("account-postfix")).toOption.getOrElse("")
 
-    def ldapLogin(username: String, password: String)(implicit locale: Locale): Unit = {
+    def ldapLogin(username: String, password: String): Unit = {
       val env = new java.util.Hashtable[String, String]()
       env.put(Context.INITIAL_CONTEXT_FACTORY, "com.sun.jndi.ldap.LdapCtxFactory")
       env.put(Context.PROVIDER_URL, ldapUrl)
@@ -371,10 +375,10 @@ object Authentication {
       env.put(Context.SECURITY_AUTHENTICATION, "simple");
 
       if (username == null || "".equals(username)) {
-        throw new BusinessException(app.translate("Wrong password or username"))
+        throw new BusinessException(WrongPasswordOrUsernameMessage)
       }
       if (password == null || "".equals(password)) {
-        throw new BusinessException(app.translate("Wrong password or username"))
+        throw new BusinessException(WrongPasswordOrUsernameMessage)
       }
       env.put(Context.SECURITY_PRINCIPAL, username + accountPostfix)
       env.put(Context.SECURITY_CREDENTIALS, password)
@@ -386,10 +390,10 @@ object Authentication {
       } catch {
         case e: AuthenticationException =>
           logger.error("Authentication failed", e)
-          throw new BusinessException(app.translate("Authentication failed"))
+          throw new BusinessException(AuthenticationFailedMessage)
         case e: Exception =>
           logger.error("Unexpected authentication error", e)
-          throw new BusinessException(app.translate("Unexpected authentication error"))
+          throw new BusinessException(UnexpectedAuthenticationErrorMessage)
       }
     }
   }

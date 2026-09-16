@@ -128,7 +128,7 @@ class CborOrJsonDecoder(typeDefs: Seq[TypeDef], nameToViewDef: Map[String, ViewD
           } catch {
             case util.control.NonFatal(ex) =>
               throw new BusinessException(
-                s"Failed to read ${field.name} of type ${field.type_.name}: ${ex.getMessage}", ex)
+                "Failed to read %1$s of type %2$s: %3$s", ex, field.name, field.type_.name, ex.getMessage)
           }
         case None =>
           r.skipElement() // no such field in this view - skip
@@ -150,7 +150,7 @@ class CborOrJsonDecoder(typeDefs: Seq[TypeDef], nameToViewDef: Map[String, ViewD
     } else r.unexpectedDataItem(expected = "Map")
   } catch {
     case util.control.NonFatal(ex) =>
-      throw new BusinessException(s"Failed to read to map for $viewName: ${ex.getMessage}", ex)
+      throw new BusinessException("Failed to read to map for %1$s: %2$s", ex, viewName, ex.getMessage)
   }}
 
   protected def decoding(data: ByteString, decodeFrom: Target): DecodingSetup.Api[_] = decodeFrom match {
@@ -162,7 +162,7 @@ class CborOrJsonDecoder(typeDefs: Seq[TypeDef], nameToViewDef: Map[String, ViewD
     try decoding.to[T].value catch {
       case boer: Borer.Error[_] => boer.getCause match {
         case biex: BusinessException => throw biex
-        case _ => throw new BusinessException(s"Failed to decode data: ${boer.getMessage}", boer)
+        case _ => throw new BusinessException("Failed to decode data: %1$s", boer, boer.getMessage)
       }
       case util.control.NonFatal(ex) => throw ex
     }
@@ -306,7 +306,7 @@ class CborOrJsonAnyValueDecoder(borerConfig: Config) {
     try decoding.to[T].value catch {
       case boer: Borer.Error[_] => boer.getCause match {
         case biex: BusinessException => throw biex
-        case _ => throw new BusinessException(s"Failed to decode data: ${boer.getMessage}", boer)
+        case _ => throw new BusinessException("Failed to decode data: %1$s", boer, boer.getMessage)
       }
       case util.control.NonFatal(ex) => throw ex
     }
@@ -400,7 +400,7 @@ object JsonScalarDecoderFactory extends StreamDecoderFactory {
       .map { data =>
         decoder.decode(data) match {
           case null => throw new BusinessException(
-            s"Failed to decode data: json null is not supported as element of json array for parser $n")
+            "Failed to decode data: json null is not supported as element of json array for parser %1$s", null, n)
           case x => x
         }
       }

@@ -1,8 +1,6 @@
 package org.wabase
 
-import java.util.Locale
 import java.sql.SQLException
-import java.lang.RuntimeException
 import org.mojoz.metadata.{TableDef, ViewDef}
 import org.tresql.ChildSaveException
 import org.snakeyaml.engine.v2.api.LoadSettings
@@ -13,13 +11,13 @@ import scala.jdk.CollectionConverters._
 import scala.util.control.NonFatal
 
 trait DbConstraintMessage {
-  def friendlyConstraintErrorMessage[T](f: => T)(implicit locale: Locale): T = friendlyConstraintErrorMessage(null, f)
-  def friendlyConstraintErrorMessage[T](viewDef: ViewDef, f: => T)(implicit locale: Locale): T
+  def friendlyConstraintErrorMessage[T](f: => T): T = friendlyConstraintErrorMessage(null, f)
+  def friendlyConstraintErrorMessage[T](viewDef: ViewDef, f: => T): T
 }
 
 object DbConstraintMessage {
  trait NoCustomConstraintMessage extends DbConstraintMessage {
-  override def friendlyConstraintErrorMessage[T](viewDef: ViewDef, f: => T)(implicit locale: Locale): T = f
+  override def friendlyConstraintErrorMessage[T](viewDef: ViewDef, f: => T): T = f
  }
  trait PostgreSqlConstraintMessageBuilder extends Loggable {
   case class ConstraintViolationInfo(
@@ -187,23 +185,23 @@ object DbConstraintMessage {
 
  object PostgreSqlConstraintMessageBuilder extends PostgreSqlConstraintMessageBuilder
 
-  trait PostgreSqlConstraintMessage extends PostgreSqlConstraintMessageBuilder with DbConstraintMessage with QuereaseProvider { this: I18n =>
+  trait PostgreSqlConstraintMessage extends PostgreSqlConstraintMessageBuilder with DbConstraintMessage with QuereaseProvider {
 
+    /** Throws [[BusinessException]] with friendly message template and details as parameter, not translated */
     def raiseFriendlyConstraintErrorMessage(
-      exception: Throwable, sqlCause: SQLException, viewDef: ViewDef)(implicit locale: Locale): Nothing =
+      exception: Throwable, sqlCause: SQLException, viewDef: ViewDef): Nothing =
       raiseFriendlyConstraintErrorMessage(exception, sqlCause, viewDef, Option(viewDef).map(_.table).orNull)
 
     def raiseFriendlyConstraintErrorMessage(
-      exception: Throwable, sqlCause: SQLException, viewDef: ViewDef, tableName: String)(implicit locale: Locale): Nothing =
+      exception: Throwable, sqlCause: SQLException, viewDef: ViewDef, tableName: String): Nothing =
       friendlyMessageAndDetails(exception, sqlCause, Option(viewDef), tableName, qe.tableMetadata.tableDefOption) match {
         case (null, _) =>
           throw exception
         case (friendlyMessage, details) =>
-          val translated = translate(friendlyMessage, details)
-          throw new BusinessException(translated, exception, details)
+          throw new BusinessException(friendlyMessage, exception, details)
       }
 
-    override def friendlyConstraintErrorMessage[T](viewDef: ViewDef, f: => T)(implicit locale: Locale): T = {
+    override def friendlyConstraintErrorMessage[T](viewDef: ViewDef, f: => T): T = {
       try f catch {
         case e: SQLException => raiseFriendlyConstraintErrorMessage(e, e, viewDef)
         case NonFatal(e) => getSqlCauseAndContext(e) match {

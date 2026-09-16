@@ -281,7 +281,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           try convertToType(v, f.type_)
           catch {
             case util.control.NonFatal(ex) => throw new BusinessException(
-              s"Failed to convert value for key field ${f.name} to type ${f.type_.name}", ex)
+              "Failed to convert value for key field %1$s to type %2$s", ex, f.name, f.type_.name)
           }
         },
       data,
@@ -623,10 +623,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
         .flatMap(validationMessage)
         .toList match {
         case messages if messages.nonEmpty =>
-          throw new ValidationException(
-            messages.map(_.msg).mkString("\n"),
-            List(ValidationResult(validations.name.toList, messages))
-          )
+          val results = List(ValidationResult(validations.name.toList, messages))
+          throw new ValidationException(validationExceptionMessage(results), results)
         case _ =>
       }
     }

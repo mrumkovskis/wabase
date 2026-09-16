@@ -33,12 +33,14 @@ class PostgreSqlConstraintMessageSpec extends FlatSpec with Matchers {
     val viewDef = ConstraintTestApp.qe.viewDefOption(viewName).orNull
     ConstraintTestApp.friendlyConstraintErrorMessage(viewDef, {
       throw e
-    })(new java.util.Locale(locale))
+    })
   }
 
+  // friendly message is not translated, translate it as localized error handler does
   def getMessageFromException(e: Exception, locale: String, viewName: String = "view1"): String = {
     try getFriendlyException(e, locale, viewName) catch {
-      case e: BusinessException => e.getMessage
+      case e: BusinessException =>
+        ConstraintTestApp.translate(e.messageTemplate, e.getParams(): _*)(new java.util.Locale(locale))
     }
   }
 

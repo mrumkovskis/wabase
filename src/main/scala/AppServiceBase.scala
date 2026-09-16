@@ -475,7 +475,7 @@ trait AppFileServiceBase[User] {
               f(Tuple3(bytes, fileInfo.fileName, fileInfo.contentType.toString))
           }(ctx).flatMap {
             case rejected @ RouteResult.Rejected(rejs) if rejs.contains(MissingFormFieldRejection("file")) =>
-              Future.failed(new BusinessException(s"No part named 'file' with 'filename' found in multipart upload"))
+              Future.failed(new BusinessException("No part named 'file' with 'filename' found in multipart upload"))
             case other =>
               Future.successful(other)
           }(ctx.executionContext)
@@ -646,10 +646,15 @@ object AppServiceBase {
     escapeReflectedXss: String => String,
   )(
     key: String, value: String) = {
-    def throwBadType(type_ : String, cause: Exception = null) =
-      throw new BusinessException(escapeReflectedXss(
-        s"Failed to decode as $type_: parameter: '$key', value: '$value'" +
-          (if (cause == null) "" else " - caused by " + cause.toString)))
+    def throwBadType(type_ : String, cause: Exception = null) = {
+      def esc(s: Any) = escapeReflectedXss(String.valueOf(s))
+      if (cause == null)
+        throw new BusinessException("Failed to decode as %1$s: parameter: '%2$s', value: '%3$s'", null,
+          esc(type_), esc(key), esc(value))
+      else
+        throw new BusinessException("Failed to decode as %1$s: parameter: '%2$s', value: '%3$s' - caused by %4$s", null,
+          esc(type_), esc(key), esc(value), esc(cause))
+    }
     def handleType[T](goodPath: String => T, typeStr:String)= {
       try value match {
         case "" | "null" | null => null

@@ -89,14 +89,17 @@ trait I18n {
   def bundle(name: String)(implicit locale: Locale): ResourceBundle =
     ResourceBundle.getBundle(name, locale, loaderControl)
 
-  def translate(str: String, params: String*)(implicit locale: Locale): String = {
+  /** Translates message template and formats it with parameters using locale. Parameters are passed to format
+    * as is, so format specifiers other than %s (i.e. %d, %.2f) can be used. If formatting fails, translated
+    * template is returned. */
+  def translate(str: String, params: Any*)(implicit locale: Locale): String = {
     translateFromBundle(I18nResourceName, str, params: _*)
   }
 
-  def translateFromBundle(name: String, str: String, params: String*)(implicit locale: Locale): String = {
+  def translateFromBundle(name: String, str: String, params: Any*)(implicit locale: Locale): String = {
     Try(bundle(name).getString(str))
       .recover { case _ => str }
-      .map(s => Try(s.format(params: _*)).getOrElse(s))
+      .map(s => Try(s.formatLocal(locale, params: _*)).getOrElse(s))
       .getOrElse(str)
   }
 

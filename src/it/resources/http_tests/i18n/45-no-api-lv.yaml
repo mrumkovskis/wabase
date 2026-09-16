@@ -1,0 +1,6 @@
+# business exception message template is formatted with parameters by localized error handler
+path:       /localized-data/save_person_email/p1
+method:     POST
+request:
+  email:    p1@example.com
+error:      "Request '/localized-data/save_person_email/p1' not in this API: insert save_person_email/{1}"

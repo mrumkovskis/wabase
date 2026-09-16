@@ -278,4 +278,10 @@ package object wabase extends Loggable {
     getObjAndFunction(cn_fn._1, cn_fn._2)
     cn_fn
   }
+
+  /** Validation exception message (for logging) - message templates formatted with parameters, one per line */
+  def validationExceptionMessage(results: List[org.mojoz.querease.ValidationResult]): String =
+    results.flatMap(_.messages).map { m =>
+      scala.util.Try(m.msg.format(m.params.map(_.asInstanceOf[AnyRef]): _*)).getOrElse(m.msg)
+    }.mkString("\n")
 }

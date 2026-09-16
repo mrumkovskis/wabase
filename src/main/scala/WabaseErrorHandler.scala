@@ -11,7 +11,6 @@ import org.wabase.audit.HiddenValues
 import org.wabase.handlers.CSRFException
 
 import java.sql.SQLException
-import java.util.Locale
 import scala.concurrent.Future
 
 object WabaseErrorHandler {
@@ -21,15 +20,21 @@ object WabaseErrorHandler {
   /** return internal exception messages (e.g. missing bind variable) to the client */
   private val exposeInternalMessages = config.getBoolean("app.error-handler.expose-internal-messages")
   private val MaxRawPayloadChars     = 8192
+
+  private def applicationLocale(ctx: WabaseRequestContext) = Option(ctx.applicationState)
+    .map(_.locale)
+    .getOrElse(I18nService.applicationLocale(handlers.RequestHandlers.extractState(ctx)))
+  private def debug(ctx: WabaseRequestContext, msg: String, e: Throwable) =
+    ctx.logger.debug(s"[${ctxDebugInfo(ctx)}] $msg".trim, e)
+
   def errorHandler(ctx: WabaseRequestContext): WabaseService.ErrorHandler = {
-    def debug(msg: String, e: Throwable) = ctx.logger.debug(s"[${ctxDebugInfo(ctx)}] $msg".trim, e)
-    def applicationLocale = I18nService.applicationLocale(handlers.RequestHandlers.extractState(ctx))
+    def debug(msg: String, e: Throwable) = WabaseErrorHandler.debug(ctx, msg, e)
+    def locale() = applicationLocale(ctx)
     def friendlyConstraintErrorMessageResponse(exception: Throwable, sqlCause: SQLException, viewDefOpt: Option[ViewDef], tableName: String) = {
       import ctx.wabase.qe.tableMetadata
       dbConstraintMessageBuilder.friendlyMessageAndDetails(exception, sqlCause, viewDefOpt, tableName, tableMetadata.tableDefOption) match {
         case (friendlyMessage, details) =>
-          val locale: Locale = applicationLocale
-          val translated = ctx.wabase.translate(friendlyMessage, details)(locale)
+          val translated = ctx.wabase.translate(friendlyMessage, details)(locale())
           debug(badRequestMsg(exception.getMessage, ctx.req.entity), exception)
           HttpResponse(BadRequest, entity = translated)
       }
@@ -83,7 +88,7 @@ object WabaseErrorHandler {
              ctx.logger.error(msg, e)
         else ctx.logger.error(msg)
         HttpResponse(InternalServerError,
-          entity = ctx.wabase.translate(TimeoutFriendlyMessage)(applicationLocale))
+          entity = ctx.wabase.translate(TimeoutFriendlyMessage)(locale()))
       case e: SQLException if dbConstraintMessageBuilder.nameAndViolation(e)._1 != null =>
         val viewDefOpt = ctx.wabase.qe.viewDefOption(ctx.viewName)
         val tableName  = viewDefOpt.map(_.table).orNull
@@ -109,6 +114,35 @@ object WabaseErrorHandler {
           Future.successful(HttpResponse(status = StatusCodes.InternalServerError))
         }:WabaseService.ErrorHandler)(e.getCause)
     }
+  }
+
+  def localizedErrorHandler(ctx: WabaseRequestContext): WabaseService.ErrorHandler = {
+    def debug(msg: String, e: Throwable) = WabaseErrorHandler.debug(ctx, msg, e)
+    def locale() = applicationLocale(ctx)
+
+    val eh: PartialFunction[Throwable, HttpResponse] = {
+      case e: BusinessException =>
+        debug(badRequestMsg(e.getMessage, ctx.req.entity), e)
+        val status = e match {
+          case _: UnprocessableEntityException => UnprocessableContent
+          case _                               => BadRequest
+        }
+        HttpResponse(status, entity =
+          ctx.wabase.translate(e.messageTemplate, e.getParams(): _*)(locale()))
+      case e: ValidationException =>
+        debug(badRequestMsg(e.getMessage, ctx.req.entity), e)
+        if (e.details != null && e.details.nonEmpty) {
+          import io.bullet.borer._, io.bullet.borer.derivation.MapBasedCodecs._, ResultEncoder._, JsonEncoder._
+          implicit val vm_enc = deriveEncoder[ValidationMessage]
+          implicit val vr_enc = deriveEncoder[ValidationResult]
+          val localizedDetails = e.details.map(vr => vr.copy(messages = vr.messages.map(vm =>
+            vm.copy(msg = ctx.wabase.translate(vm.msg, vm.params: _*)(locale()), Nil))
+          ))
+          HttpResponse(BadRequest,
+            entity = HttpEntity(ContentTypes.`application/json`, Json.encode(localizedDetails).toUtf8String))
+        } else HttpResponse(BadRequest, entity = ctx.wabase.translate(e.getMessage)(locale()))
+    }
+    eh.andThen(Future.successful(_)) orElse errorHandler(ctx)
   }
 
   private def redactValue(name: String, value: Any): String = HiddenValues.encode(name -> value)

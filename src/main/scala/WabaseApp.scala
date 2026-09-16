@@ -245,8 +245,8 @@ trait WabaseApp[User] {
     qe.QuereaseAction(viewName, Action.Get, values, env,
       context.resultFilter)(rf, httpReq, qio, fileStreamers, httpClients, injectionParametersProvider, log).map(oldVal)
   }
-  protected def throwOldValueNotFound(message: String, locale: Locale): Nothing =
-    throw new org.mojoz.querease.NotFoundException(translate(message)(locale))
+  protected def throwOldValueNotFound(message: String): Nothing =
+    throw new org.mojoz.querease.NotFoundException(message)
 
   val ActionForKeyUpdate = config.getString("app.action-for-key-update") // "update+", maybe "update" for legacy app
   def save(context: AppActionContext): ActionHandlerResult = {
@@ -272,7 +272,7 @@ trait WabaseApp[User] {
         qe.QuereaseAction(viewName, context.actionName, saveable, env, context.resultFilter)(rf,
             httpReq, qio, fileStreamers, httpClients, injectionParametersProvider, log)
           .map(WabaseResult(saveableContext, _))
-          .recover { case ex => friendlyConstraintErrorMessage(viewDef, throw ex)(state.locale) }
+          .recover { case ex => friendlyConstraintErrorMessage(viewDef, throw ex) }
       }
   }
 
@@ -283,7 +283,7 @@ trait WabaseApp[User] {
       qe.QuereaseAction(viewName, actionName, values, env, context.resultFilter)(
           rf, httpReq, qio, fileStreamers, httpClients, injectionParametersProvider, log)
         .map(WabaseResult(richContext, _))
-        .recover { case ex => friendlyConstraintErrorMessage(throw ex)(state.locale) }
+        .recover { case ex => friendlyConstraintErrorMessage(throw ex) }
     }
   }
 
@@ -374,9 +374,8 @@ trait WabaseApp[User] {
   def checkKeySize(viewDef: ViewDef, keySize: Int, actionName: String): Unit = actionName match {
     case Action.List | Action.Count =>
       if (keySize < viewDef.minKeySizeForCollection || keySize > viewDef.maxKeySizeForCollection) {
-        throw new BusinessException(
-          s"Invalid key size for $actionName of '${viewDef.name}'. " +
-            s"Expecting ${expectedKeySizeDescr(viewDef.minKeySizeForCollection, viewDef.maxKeySizeForCollection)}, got $keySize")
+        throw new BusinessException("Invalid key size for %1$s of '%2$s'. Expecting %3$s, got %4$s", null,
+          actionName, viewDef.name, expectedKeySizeDescr(viewDef.minKeySizeForCollection, viewDef.maxKeySizeForCollection), keySize)
       }
     case _ =>
       val expectedKeySize = qe.viewNameToApiKeyFields.get(viewDef.name).map(_.size).getOrElse(-1)
@@ -385,9 +384,8 @@ trait WabaseApp[User] {
 
   def checkKeySize(viewDef: ViewDef, expectedKeySize: Int, keySize: Int, actionName: String): Unit = {
     if (keySize != expectedKeySize) {
-      throw new BusinessException(
-        s"Invalid key size for $actionName of '${viewDef.name}'. " +
-          s"Expecting $expectedKeySize, got $keySize")
+      throw new BusinessException("Invalid key size for %1$s of '%2$s'. Expecting %3$s, got %4$s", null,
+        actionName, viewDef.name, expectedKeySize, keySize)
     }
   }
 
@@ -410,7 +408,7 @@ trait WabaseApp[User] {
           try f.fieldName -> prepareKeyValue(f, v)
           catch {
             case util.control.NonFatal(ex) => throw new BusinessException(
-              s"Failed to convert value for key field ${f.name} to type ${f.type_.name}", ex)
+              "Failed to convert value for key field %1$s to type %2$s", ex, f.name, f.type_.name)
           }
         }.toMap
     } else Map.empty
@@ -556,10 +554,13 @@ trait WabaseApp[User] {
   def sanitizedViewName(viewName: String) =
     if (validViewNameRegex.pattern.matcher(viewName).matches()) viewName else "Strange name"
   protected def noApiException(viewName: String, requestPath: Uri.Path, method: String, keySize: Int, user: User): Exception =
-    new BusinessException(s"${requestPath match {
-      case null =>                  "Not in this API"
-      case path => s"Request '$path' not in this API"
-    }}: $method ${(Seq(sanitizedViewName(viewName)) ++ (1 to keySize).map(n => s"{$n}")).mkString("/")}")
+  {
+    val resource = (Seq(sanitizedViewName(viewName)) ++ (1 to keySize).map(n => s"{$n}")).mkString("/")
+    requestPath match {
+      case null => new BusinessException("Not in this API: %1$s %2$s", null, method, resource)
+      case path => new BusinessException("Request '%1$s' not in this API: %2$s %3$s", null, path, method, resource)
+    }
+  }
   protected def apiUnauthorizedException(viewName: String, method: String, user: User): Exception =
     if  (user == null)
          new AuthenticationException("Unauthorized")
@@ -608,7 +609,7 @@ trait WabaseApp[User] {
     val maxLimitForView = viewDef.limit
     if (maxLimitForView > 0 && limit > maxLimitForView)
       throw new BusinessException(
-        s"limit $limit exceeds max limit allowed for ${viewDef.name}: $maxLimitForView")
+        "limit %1$s exceeds max limit allowed for %2$s: %3$s", null, limit, viewDef.name, maxLimitForView)
   }
   protected def checkOffset(viewDef: ViewDef, offset: Int): Unit =
     if (offset < 0)
@@ -626,7 +627,7 @@ trait WabaseApp[User] {
           else "(strange name)"
         }
       if (notSortable.nonEmpty)
-        throw new BusinessException(s"Not sortable: ${viewDef.name} by " + notSortableSafe.mkString(", "), null)
+        throw new BusinessException("Not sortable: %1$s by %2$s", null, viewDef.name, notSortableSafe.mkString(", "))
     }
   }
   private val scriptValidationEnabled: Boolean = config.getBoolean("app.script-validations.enabled")

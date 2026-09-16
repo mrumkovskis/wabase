@@ -88,7 +88,7 @@ class DefaultWabaseTemplateLoader extends WabaseTemplateLoader {
     loadFromFileStreamer(template)
       .orElse(loadFromFile(template))
       .orElse(loadFromResource(template))
-      .getOrElse(throw new BusinessException(s"Template not found: $template"))
+      .getOrElse(throw new BusinessException("Template not found: %1$s", null, template))
   }
 
   protected def loadFromFileStreamer(template: String)(implicit

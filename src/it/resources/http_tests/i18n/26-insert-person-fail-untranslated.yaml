@@ -1,0 +1,7 @@
+# data route has default error handler - validation message is returned as template with parameters
+path:       /data/save_person_email?/p1
+method:     PUT
+request:
+  email:    please-fail
+error:
+  [{"location":["email"],"messages":[{"msg":"Field \"%1$s\" is not valid e-mail address","params":["Email"]}]}]

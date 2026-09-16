@@ -63,7 +63,7 @@ class ValidationEngineTests extends FlatSpec with Matchers {
     ex
   }
   def stringResult(message: String, messageParams: List[Any], result: String) =
-    vm("""Error (validation "%1$s"): %2$s""", Map("msg" -> message, "params" -> messageParams), result)
+    List(ValidationMessage(message, messageParams), vm(result))
 
   def validationTestDto(expression: String, message: String) = {
     val t = new ValidationEngineTestDto
@@ -97,9 +97,9 @@ class ValidationEngineTests extends FlatSpec with Matchers {
 
   "validation engine" should "support variables" in {
     failures("my_string_field", "string throws") shouldBe
-      List(stringResult("string throws", Nil, "mystring"))
+      stringResult("string throws", Nil, "mystring")
     failures("my_string_field + ', ' + my_int_field", "dynamic message") shouldBe
-      List(stringResult("dynamic message", Nil, "mystring, 42"))
+      stringResult("dynamic message", Nil, "mystring, 42")
     intercept[ValidationException] {
       TestValidationEngine.validate(validationTestDto(
         "my_int_field === 43",
@@ -173,9 +173,9 @@ class ValidationEngineTests extends FlatSpec with Matchers {
       List(vm("Should be %1$s, found %2$s", 43, 42))
     failures("my_int_field === 43 || {msg: 'Should be %1$s', params: [43]}", "not used") shouldBe
       List(vm("Should be %1$s", 43))
-    // expression evaluated to string - message with parameters is nested
+    // expression evaluated to string - validation message followed by string as message
     failures("my_string_field", "['Field %1$s', 'my_string_field']") shouldBe
-      List(stringResult("Field %1$s", List("my_string_field"), "mystring"))
+      stringResult("Field %1$s", List("my_string_field"), "mystring")
     TestValidationEngine.validate(validationTestDto(
       "my_int_field === 42 || ['Should be %1$s, found %2$s', 42, my_int_field]",
       "not used"
