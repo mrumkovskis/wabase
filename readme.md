@@ -6,15 +6,15 @@ wabase is web application based on [Apache Pekko™](https://pekko.apache.org/) 
 
 ## Main features
 
-* [Apache Pekko HTTP](https://pekko.apache.org/docs/pekko-http/current/) routes for [querease](https://github.com/guntiso/querease), [tresql](https://github.com/mrumkovskis/tresql) backed sql database calls.
-* Framework for pluggable functional style business logic.
-* File upload download services linked with sql database.
-* Deferred http request support.
+* [Routes](docs/routes.md) for [querease](https://github.com/guntiso/querease), [tresql](https://github.com/mrumkovskis/tresql) backed sql database calls.
+* [View actions](docs/view-actions.md) and [action functions](docs/action-functions.md) for pluggable functional style business logic.
+* [File upload download](docs/routes.md#file) services linked with sql database.
+* [Deferred](docs/routes.md#deferred) http request support.
 * Data export in MS Excel, CSV, odt formats.
-* Framework for request audit.
-* Stateless session management.
-* Dynamic data validation in javascript.
-* Framework for I18n support.
+* Framework for request [audit](docs/routes.md#audit).
+* Stateless [session](docs/routes.md#authentication) management.
+* Dynamic data [validation in javascript](docs/script-validation.md).
+* Framework for [I18n](docs/routes.md#i18n) support.
 
 ## getting started
 
