@@ -160,7 +160,8 @@ Current locale comes from application state, so these are normally preceded by
 
 `metadata`, `swaggerJson` and `swaggerYaml` are conditional — they respond `304` on
 matching `If-None-Match` / `If-Modified-Since`, using metadata version and application
-startup time.
+startup time. Generation, overrides and merge for swagger are described in
+[swagger](swagger.md).
 
 ### Action
 

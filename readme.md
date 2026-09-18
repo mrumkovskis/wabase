@@ -8,6 +8,7 @@ wabase is web application based on [Apache Pekko™](https://pekko.apache.org/) 
 
 * [Routes](docs/routes.md) for [querease](https://github.com/guntiso/querease), [tresql](https://github.com/mrumkovskis/tresql) backed sql database calls.
 * [View actions](docs/view-actions.md) and [action functions](docs/action-functions.md) for pluggable functional style business logic.
+* [Swagger](docs/swagger.md) generated from routes and views.
 * [File upload download](docs/routes.md#file) services linked with sql database.
 * [Deferred](docs/routes.md#deferred) http request support.
 * Data export in MS Excel, CSV, odt formats.
