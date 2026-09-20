@@ -18,8 +18,6 @@ filter:
 - category
 - code
 - item
-swagger:                                                # test only, skip swagger paths
-  paths = : {}
 
 
 # No '(' in key => minSearchKeyFieldCount equals full key size.
@@ -41,8 +39,6 @@ filter:
 - category
 - code
 - item
-swagger:
-  paths = : {}
 
 
 # Same min search key as search_key, but no full-key ops in api.
@@ -64,5 +60,3 @@ filter:
 - category
 - code
 - item
-swagger:
-  paths = : {}
