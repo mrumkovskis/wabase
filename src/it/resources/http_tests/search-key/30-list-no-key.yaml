@@ -1,0 +1,3 @@
+# min search key is 1, so list without a key is rejected
+path:       /data/search_key
+error:      "Request '/data/search_key' not in this API: list search_key"

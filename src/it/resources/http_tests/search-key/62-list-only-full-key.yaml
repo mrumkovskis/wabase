@@ -1,0 +1,10 @@
+# no get in api, so full key is still list (array of one)
+path:       /data/search_key_list?/a/x/1
+response: [
+  {
+    "category": "a",
+    "code": "x",
+    "item": "1",
+    "note": "ax1"
+  }
+]

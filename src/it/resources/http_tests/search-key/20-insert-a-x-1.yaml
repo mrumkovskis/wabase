@@ -1,0 +1,11 @@
+path:       /data/search_key?/a/x/1
+method:     PUT
+request:
+  note:     ax1
+response_status: 201 Created
+response_headers:
+  Location: search_key?/a/x/1
+response:
+  category: a
+  code:     x
+  item:     "1"

@@ -1,0 +1,68 @@
+# minSearchKeyFieldCount is the key fields before '('.
+# key: category(, code, item) => min 1, full key 3.
+# With get/upsert/delete in api, collection actions accept key size 1 to 2.
+name:   search_key
+table:  search_key
+api:    count, get, list, upsert, delete
+key:    category(, code, item)
+fields:
+- category
+- code
+- item
+- note
+order:
+- category
+- code
+- item
+filter:
+- category
+- code
+- item
+swagger:                                                # test only, skip swagger paths
+  paths = : {}
+
+
+# No '(' in key => minSearchKeyFieldCount equals full key size.
+# With get in api, collection actions accept empty key only.
+name:   search_key_full
+table:  search_key
+api:    count, get, list
+key:    category, code, item
+fields:
+- category
+- code
+- item
+- note
+order:
+- category
+- code
+- item
+filter:
+- category
+- code
+- item
+swagger:
+  paths = : {}
+
+
+# Same min search key as search_key, but no full-key ops in api.
+# Collection actions accept key size 1 to 3 (full key is still list).
+name:   search_key_list
+table:  search_key
+api:    count, list
+key:    category(, code, item)
+fields:
+- category
+- code
+- item
+- note
+order:
+- category
+- code
+- item
+filter:
+- category
+- code
+- item
+swagger:
+  paths = : {}

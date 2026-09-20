@@ -1,0 +1,7 @@
+# GET with full key is get
+path:       /data/search_key?/a/x/1
+response:
+  category: a
+  code:     x
+  item:     "1"
+  note:     ax1

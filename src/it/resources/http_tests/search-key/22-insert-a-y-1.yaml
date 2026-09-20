@@ -1,0 +1,8 @@
+path:       /data/search_key?/a/y/1
+method:     PUT
+request:
+  note:     ay1
+response:
+  category: a
+  code:     y
+  item:     "1"

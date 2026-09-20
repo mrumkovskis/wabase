@@ -1,0 +1,21 @@
+path:       /data/search_key_list?/a
+response: [
+  {
+    "category": "a",
+    "code": "x",
+    "item": "1",
+    "note": "ax1"
+  },
+  {
+    "category": "a",
+    "code": "x",
+    "item": "2",
+    "note": "ax2"
+  },
+  {
+    "category": "a",
+    "code": "y",
+    "item": "1",
+    "note": "ay1"
+  }
+]

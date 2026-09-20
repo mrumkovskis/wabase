@@ -1,0 +1,3 @@
+# full key is reserved for get when get is in api
+path:       /data/search_key:count?/a/x/1
+error:      "Request '/data/search_key:count/a/x/1' not in this API: count search_key/{1}/{2}/{3}"

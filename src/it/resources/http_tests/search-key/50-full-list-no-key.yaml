@@ -1,0 +1,28 @@
+# min search key equals full key and get is in api => list accepts empty key only
+path:       /data/search_key_full
+response: [
+  {
+    "category": "a",
+    "code": "x",
+    "item": "1",
+    "note": "ax1"
+  },
+  {
+    "category": "a",
+    "code": "x",
+    "item": "2",
+    "note": "ax2"
+  },
+  {
+    "category": "a",
+    "code": "y",
+    "item": "1",
+    "note": "ay1"
+  },
+  {
+    "category": "b",
+    "code": "x",
+    "item": "1",
+    "note": "bx1"
+  }
+]

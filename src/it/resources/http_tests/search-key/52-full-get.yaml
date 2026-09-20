@@ -1,0 +1,6 @@
+path:       /data/search_key_full?/a/x/1
+response:
+  category: a
+  code:     x
+  item:     "1"
+  note:     ax1

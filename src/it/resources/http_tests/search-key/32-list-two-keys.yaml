@@ -1,0 +1,16 @@
+# GET with 2 keys (collection max when get is in api) is list
+path:       /data/search_key?/a/x
+response: [
+  {
+    "category": "a",
+    "code": "x",
+    "item": "1",
+    "note": "ax1"
+  },
+  {
+    "category": "a",
+    "code": "x",
+    "item": "2",
+    "note": "ax2"
+  }
+]

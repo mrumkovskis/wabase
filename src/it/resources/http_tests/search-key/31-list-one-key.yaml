@@ -1,0 +1,22 @@
+# GET with 1 key (min search key) is list, filtered by category
+path:       /data/search_key?/a
+response: [
+  {
+    "category": "a",
+    "code": "x",
+    "item": "1",
+    "note": "ax1"
+  },
+  {
+    "category": "a",
+    "code": "x",
+    "item": "2",
+    "note": "ax2"
+  },
+  {
+    "category": "a",
+    "code": "y",
+    "item": "1",
+    "note": "ay1"
+  }
+]

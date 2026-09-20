@@ -1,0 +1,2 @@
+path:       /data/search_key?/a/x/1/z
+error:      "Request '/data/search_key/a/x/1/z' not in this API: get search_key/{1}/{2}/{3}/{4}"

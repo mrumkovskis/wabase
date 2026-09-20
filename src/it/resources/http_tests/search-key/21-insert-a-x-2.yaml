@@ -1,0 +1,8 @@
+path:       /data/search_key?/a/x/2
+method:     PUT
+request:
+  note:     ax2
+response:
+  category: a
+  code:     x
+  item:     "2"

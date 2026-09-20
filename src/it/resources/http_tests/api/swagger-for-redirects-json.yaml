@@ -3005,6 +3005,96 @@ response: {
         },
         "required" : [ "code" ]
       },
+      "search_key" : {
+        "type" : "object",
+        "properties" : {
+          "category" : {
+            "type" : "string",
+            "description" : "Category",
+            "maxLength" : 12,
+            "readOnly" : false
+          },
+          "code" : {
+            "type" : "string",
+            "description" : "Code",
+            "maxLength" : 12,
+            "readOnly" : false
+          },
+          "item" : {
+            "type" : "string",
+            "description" : "Item",
+            "maxLength" : 12,
+            "readOnly" : false
+          },
+          "note" : {
+            "type" : "string",
+            "description" : "Note",
+            "maxLength" : 40,
+            "readOnly" : false
+          }
+        },
+        "required" : [ "category", "code", "item" ]
+      },
+      "search_key_full" : {
+        "type" : "object",
+        "properties" : {
+          "category" : {
+            "type" : "string",
+            "description" : "Category",
+            "maxLength" : 12,
+            "readOnly" : false
+          },
+          "code" : {
+            "type" : "string",
+            "description" : "Code",
+            "maxLength" : 12,
+            "readOnly" : false
+          },
+          "item" : {
+            "type" : "string",
+            "description" : "Item",
+            "maxLength" : 12,
+            "readOnly" : false
+          },
+          "note" : {
+            "type" : "string",
+            "description" : "Note",
+            "maxLength" : 40,
+            "readOnly" : false
+          }
+        },
+        "required" : [ "category", "code", "item" ]
+      },
+      "search_key_list" : {
+        "type" : "object",
+        "properties" : {
+          "category" : {
+            "type" : "string",
+            "description" : "Category",
+            "maxLength" : 12,
+            "readOnly" : false
+          },
+          "code" : {
+            "type" : "string",
+            "description" : "Code",
+            "maxLength" : 12,
+            "readOnly" : false
+          },
+          "item" : {
+            "type" : "string",
+            "description" : "Item",
+            "maxLength" : 12,
+            "readOnly" : false
+          },
+          "note" : {
+            "type" : "string",
+            "description" : "Note",
+            "maxLength" : 40,
+            "readOnly" : false
+          }
+        },
+        "required" : [ "category", "code", "item" ]
+      },
       "server_events" : {
         "type" : "object",
         "properties" : {

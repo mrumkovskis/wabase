@@ -1,0 +1,2 @@
+path:       /data/search_key_full?/a
+error:      "Request '/data/search_key_full/a' not in this API: list search_key_full/{1}"

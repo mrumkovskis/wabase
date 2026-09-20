@@ -1,0 +1,3 @@
+# count is a collection action, empty key is below min search key
+path:       /data/search_key:count
+error:      "Request '/data/search_key:count' not in this API: count search_key"

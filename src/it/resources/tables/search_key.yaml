@@ -1,0 +1,8 @@
+table:   search_key
+columns:
+- category  !  12
+- code      !  12
+- item      !  12
+- note         40
+pk:
+- category, code, item

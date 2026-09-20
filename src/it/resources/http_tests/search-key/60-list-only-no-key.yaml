@@ -1,0 +1,3 @@
+# list-only view, min search key 1 => empty key rejected
+path:       /data/search_key_list
+error:      "Request '/data/search_key_list' not in this API: list search_key_list"

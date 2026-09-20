@@ -1,0 +1,3 @@
+path:       /data/search_key?/a
+method:     DELETE
+error:      "Request '/data/search_key/a' not in this API: delete search_key/{1}"

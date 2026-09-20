@@ -1,0 +1,3 @@
+# no get in api, collection max is full key
+path:       /data/search_key_list:count?/a/x/1
+response:   1
