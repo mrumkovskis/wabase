@@ -43,7 +43,8 @@ Default generator:
   strings)
 - `servers` from `app.host`
 - no security schemes
-- views that declare `api`, plus nested complex-type views they reference
+- views that declare `api` — paths they expose; schemas only when `$ref`'d from a
+  generated path, including nested `$ref`s of those schemas
 - all routes
 
 Path contributions from routes are merged first, then views — views win on
@@ -170,9 +171,20 @@ view body.
 
 ## Schemas
 
-`components.schemas` holds an object schema for each included view that has at
-least one field not marked `field api: excluded`, and `{view}_key_response` when
-insert-style actions return a json key.
+`components.schemas` holds only types reachable from generated paths: a `$ref`
+from a path (or from a schema already included) to `#/components/schemas/{name}`.
+A view with `api` and fields is omitted when no path `$ref`s it — typically
+when its `swagger` extra skips paths (`paths = : {}`) and no route `$ref`s the
+view. Nested complex-type views are included when a reachable schema `$ref`s
+them. `{view}_key_response` is included when an insert-style success response
+`$ref`s it.
+
+A skipped-path view that is still used, such as `current_user` served from a
+dedicated route, must be `$ref`'d from that route's swagger extra.
+
+The schema itself is an object for a view that has at least one field not marked
+`field api: excluded`, and `{view}_key_response` when insert-style actions
+return a json key.
 
 | Field | Schema |
 | --- | --- |
@@ -220,6 +232,8 @@ swagger:
 ```
 
 This source contributes no paths. Remaining overrides have nothing to apply to.
+The view is also omitted from `components.schemas` unless another generated path
+`$ref`s it.
 
 ```yaml
 swagger:

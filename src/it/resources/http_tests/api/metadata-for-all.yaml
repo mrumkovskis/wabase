@@ -1363,6 +1363,96 @@ response: {
     }],
     "filter": []
   },
+  "swagger_schema_nested": {
+    "name": "swagger_schema_nested",
+    "key": [],
+    "fields": [{
+      "name": "label",
+      "type": "string",
+      "isCollection": false,
+      "isComplexType": false,
+      "nullable": true,
+      "required": false,
+      "sortable": false,
+      "label": "Label",
+      "visible": true,
+      "insertable": true,
+      "updatable": true,
+      "enum": null,
+      "refViewName": null,
+      "comments": null,
+      "jsonType": "string",
+      "length": 20
+    }],
+    "filter": []
+  },
+  "swagger_schema_orphan": {
+    "name": "swagger_schema_orphan",
+    "key": [],
+    "fields": [{
+      "name": "nested",
+      "type": "swagger_schema_orphan_nested",
+      "isCollection": false,
+      "isComplexType": true,
+      "nullable": true,
+      "required": false,
+      "sortable": false,
+      "label": "Nested",
+      "visible": true,
+      "insertable": true,
+      "updatable": true,
+      "enum": null,
+      "refViewName": null,
+      "comments": null,
+      "jsonType": "string"
+    }],
+    "filter": []
+  },
+  "swagger_schema_orphan_nested": {
+    "name": "swagger_schema_orphan_nested",
+    "key": [],
+    "fields": [{
+      "name": "label",
+      "type": "string",
+      "isCollection": false,
+      "isComplexType": false,
+      "nullable": true,
+      "required": false,
+      "sortable": false,
+      "label": "Label",
+      "visible": true,
+      "insertable": true,
+      "updatable": true,
+      "enum": null,
+      "refViewName": null,
+      "comments": null,
+      "jsonType": "string",
+      "length": 20
+    }],
+    "filter": []
+  },
+  "swagger_schema_parent": {
+    "name": "swagger_schema_parent",
+    "key": [],
+    "fields": [{
+      "name": "nested",
+      "type": "swagger_schema_nested",
+      "isCollection": false,
+      "isComplexType": true,
+      "nullable": true,
+      "required": false,
+      "sortable": false,
+      "label": "Nested",
+      "visible": true,
+      "insertable": true,
+      "updatable": true,
+      "enum": null,
+      "refViewName": null,
+      "comments": null,
+      "jsonType": "string"
+    }],
+    "filter": []
+  },
   "template_test": {
     "name": "template_test",
     "key": [],

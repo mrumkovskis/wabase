@@ -40,3 +40,9 @@ swagger:
       content:
         application/yaml:
           type: object
+
+
+on: GET /swagger-schema-names
+do: swaggerSchemaNames
+swagger:
+  paths = : {}

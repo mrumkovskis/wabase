@@ -1,0 +1,29 @@
+# Reachable nested schema: parent is in api (paths generated), child has no api.
+name:   swagger_schema_parent
+api:    get
+fields:
+- nested swagger_schema_nested
+get:
+- as any unique { null nested }
+
+
+name:   swagger_schema_nested
+fields:
+- label  20
+
+
+# Unreachable: api view skips swagger paths and is not $ref'd from a route.
+# Nested child must not appear in components.schemas either.
+name:   swagger_schema_orphan
+api:    get
+fields:
+- nested swagger_schema_orphan_nested
+get:
+- as any unique { null nested }
+swagger:
+  paths = : {}
+
+
+name:   swagger_schema_orphan_nested
+fields:
+- label  20

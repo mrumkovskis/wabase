@@ -25,6 +25,8 @@ response: {
   "search_key_full": ["count", "get", "list"],
   "search_key_list": ["count", "list"],
   "server_events": ["post"],
+  "swagger_schema_orphan": ["get"],
+  "swagger_schema_parent": ["get"],
   "template_test": ["get"],
   "try_recover_continues": ["list"],
   "try_recover_error_data": ["list"],

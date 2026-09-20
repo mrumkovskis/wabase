@@ -319,49 +319,6 @@ response: {
         }
       }
     },
-    "/data/email_test" : {
-      "post" : {
-        "summary" : "Insert 'email_test'",
-        "description" : "",
-        "requestBody" : {
-          "content" : {
-            "application/json" : {
-              "schema" : {
-                "$ref" : "#/components/schemas/email_test"
-              }
-            }
-          }
-        },
-        "responses" : {
-          "200" : {
-            "description" : "OK",
-            "content" : {
-              "application/json" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/email_test"
-                }
-              }
-            }
-          },
-          "201" : {
-            "description" : "Created",
-            "content" : {
-              "application/json" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/email_test"
-                }
-              }
-            }
-          },
-          "400" : {
-            "description" : "Bad Request"
-          },
-          "503" : {
-            "description" : "Service Unavailable"
-          }
-        }
-      }
-    },
     "/data/email_html_test" : {
       "post" : {
         "summary" : "Insert 'email_html_test'",
@@ -392,6 +349,49 @@ response: {
               "application/json" : {
                 "schema" : {
                   "$ref" : "#/components/schemas/email_html_test"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Bad Request"
+          },
+          "503" : {
+            "description" : "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/data/email_test" : {
+      "post" : {
+        "summary" : "Insert 'email_test'",
+        "description" : "",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/email_test"
+              }
+            }
+          }
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/email_test"
+                }
+              }
+            }
+          },
+          "201" : {
+            "description" : "Created",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/email_test"
                 }
               }
             }
@@ -1468,6 +1468,33 @@ response: {
           },
           "400" : {
             "description" : "Bad Request"
+          },
+          "503" : {
+            "description" : "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/data/swagger_schema_parent" : {
+      "get" : {
+        "summary" : "Get 'swagger_schema_parent'",
+        "description" : "",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/swagger_schema_parent"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Bad Request"
+          },
+          "404" : {
+            "description" : "Not Found"
           },
           "503" : {
             "description" : "Service Unavailable"
@@ -2772,7 +2799,7 @@ response: {
           }
         }
       },
-      "email_test" : {
+      "email_html_test" : {
         "type" : "object",
         "properties" : {
           "name" : {
@@ -2782,7 +2809,7 @@ response: {
           }
         }
       },
-      "email_html_test" : {
+      "email_test" : {
         "type" : "object",
         "properties" : {
           "name" : {
@@ -3005,96 +3032,6 @@ response: {
         },
         "required" : [ "code" ]
       },
-      "search_key" : {
-        "type" : "object",
-        "properties" : {
-          "category" : {
-            "type" : "string",
-            "description" : "Category",
-            "maxLength" : 12,
-            "readOnly" : false
-          },
-          "code" : {
-            "type" : "string",
-            "description" : "Code",
-            "maxLength" : 12,
-            "readOnly" : false
-          },
-          "item" : {
-            "type" : "string",
-            "description" : "Item",
-            "maxLength" : 12,
-            "readOnly" : false
-          },
-          "note" : {
-            "type" : "string",
-            "description" : "Note",
-            "maxLength" : 40,
-            "readOnly" : false
-          }
-        },
-        "required" : [ "category", "code", "item" ]
-      },
-      "search_key_full" : {
-        "type" : "object",
-        "properties" : {
-          "category" : {
-            "type" : "string",
-            "description" : "Category",
-            "maxLength" : 12,
-            "readOnly" : false
-          },
-          "code" : {
-            "type" : "string",
-            "description" : "Code",
-            "maxLength" : 12,
-            "readOnly" : false
-          },
-          "item" : {
-            "type" : "string",
-            "description" : "Item",
-            "maxLength" : 12,
-            "readOnly" : false
-          },
-          "note" : {
-            "type" : "string",
-            "description" : "Note",
-            "maxLength" : 40,
-            "readOnly" : false
-          }
-        },
-        "required" : [ "category", "code", "item" ]
-      },
-      "search_key_list" : {
-        "type" : "object",
-        "properties" : {
-          "category" : {
-            "type" : "string",
-            "description" : "Category",
-            "maxLength" : 12,
-            "readOnly" : false
-          },
-          "code" : {
-            "type" : "string",
-            "description" : "Code",
-            "maxLength" : 12,
-            "readOnly" : false
-          },
-          "item" : {
-            "type" : "string",
-            "description" : "Item",
-            "maxLength" : 12,
-            "readOnly" : false
-          },
-          "note" : {
-            "type" : "string",
-            "description" : "Note",
-            "maxLength" : 40,
-            "readOnly" : false
-          }
-        },
-        "required" : [ "category", "code", "item" ]
-      },
       "server_events" : {
         "type" : "object",
         "properties" : {
@@ -3106,6 +3043,27 @@ response: {
           "value" : {
             "type" : "string",
             "description" : "Value",
+            "readOnly" : false
+          }
+        }
+      },
+      "swagger_schema_nested" : {
+        "type" : "object",
+        "properties" : {
+          "label" : {
+            "type" : "string",
+            "description" : "Label",
+            "maxLength" : 20,
+            "readOnly" : false
+          }
+        }
+      },
+      "swagger_schema_parent" : {
+        "type" : "object",
+        "properties" : {
+          "nested" : {
+            "$ref" : "#/components/schemas/swagger_schema_nested",
+            "description" : "Nested",
             "readOnly" : false
           }
         }
@@ -3184,103 +3142,6 @@ response: {
           }
         },
         "required" : [ "context", "expression", "id", "message" ]
-      },
-      "validation_params_cursor" : {
-        "type" : "object",
-        "properties" : {
-          "code" : {
-            "type" : "string",
-            "description" : "Code",
-            "maxLength" : 20,
-            "readOnly" : false
-          },
-          "qty" : {
-            "type" : "integer",
-            "format" : "int32",
-            "description" : "Qty",
-            "readOnly" : false
-          }
-        },
-        "required" : [ "code" ]
-      },
-      "validation_params_line_view" : {
-        "type" : "object",
-        "properties" : {
-          "line_no" : {
-            "type" : "integer",
-            "format" : "int32",
-            "description" : "Line no",
-            "readOnly" : false
-          },
-          "qty" : {
-            "type" : "integer",
-            "format" : "int32",
-            "description" : "Qty",
-            "readOnly" : false
-          }
-        },
-        "required" : [ "line_no" ]
-      },
-      "validation_params_step" : {
-        "type" : "object",
-        "properties" : {
-          "code" : {
-            "type" : "string",
-            "description" : "Code",
-            "maxLength" : 20,
-            "readOnly" : false
-          },
-          "qty" : {
-            "type" : "integer",
-            "format" : "int32",
-            "description" : "Qty",
-            "readOnly" : false
-          },
-          "price" : {
-            "type" : "number",
-            "description" : "Price",
-            "readOnly" : false
-          },
-          "valid_from" : {
-            "type" : "string",
-            "format" : "date",
-            "description" : "Valid from",
-            "readOnly" : false
-          },
-          "valid_till" : {
-            "type" : "string",
-            "format" : "date",
-            "description" : "Valid till",
-            "readOnly" : false
-          }
-        },
-        "required" : [ "code" ]
-      },
-      "validation_params_view" : {
-        "type" : "object",
-        "properties" : {
-          "code" : {
-            "type" : "string",
-            "description" : "Code",
-            "maxLength" : 20,
-            "readOnly" : false
-          },
-          "qty" : {
-            "type" : "integer",
-            "format" : "int32",
-            "description" : "Qty",
-            "readOnly" : false
-          },
-          "lines" : {
-            "type" : "array",
-            "description" : "Lines",
-            "items" : {
-              "$ref" : "#/components/schemas/validation_params_line_view"
-            },
-            "readOnly" : false
-          }
-        },
-        "required" : [ "code" ]
       }
     }
   }

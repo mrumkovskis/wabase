@@ -923,6 +923,23 @@ response: |+
             description: Bad Request
           "503":
             description: Service Unavailable
+    /data/swagger_schema_parent:
+      get:
+        summary: Get 'swagger_schema_parent'
+        description: ""
+        responses:
+          "200":
+            description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: "#/components/schemas/swagger_schema_parent"
+          "400":
+            description: Bad Request
+          "404":
+            description: Not Found
+          "503":
+            description: Service Unavailable
     /data/template_test:
       get:
         summary: Get 'template_test'
@@ -2036,105 +2053,6 @@ response: |+
             description: Code
             maxLength: 12
             readOnly: false
-      search_key:
-        type: object
-        properties:
-          category:
-            type: string
-            description: Category
-            maxLength: 12
-            readOnly: false
-          code:
-            type: string
-            description: Code
-            maxLength: 12
-            readOnly: false
-          item:
-            type: string
-            description: Item
-            maxLength: 12
-            readOnly: false
-          note:
-            type: string
-            description: Note
-            maxLength: 40
-            readOnly: false
-        required:
-        - category
-        - code
-        - item
-      search_key_full:
-        type: object
-        properties:
-          category:
-            type: string
-            description: Category
-            maxLength: 12
-            readOnly: false
-          code:
-            type: string
-            description: Code
-            maxLength: 12
-            readOnly: false
-          item:
-            type: string
-            description: Item
-            maxLength: 12
-            readOnly: false
-          note:
-            type: string
-            description: Note
-            maxLength: 40
-            readOnly: false
-        required:
-        - category
-        - code
-        - item
-      search_key_key_response:
-        type: object
-        properties:
-          category:
-            type: string
-            description: Category
-            maxLength: 12
-            readOnly: false
-          code:
-            type: string
-            description: Code
-            maxLength: 12
-            readOnly: false
-          item:
-            type: string
-            description: Item
-            maxLength: 12
-            readOnly: false
-      search_key_list:
-        type: object
-        properties:
-          category:
-            type: string
-            description: Category
-            maxLength: 12
-            readOnly: false
-          code:
-            type: string
-            description: Code
-            maxLength: 12
-            readOnly: false
-          item:
-            type: string
-            description: Item
-            maxLength: 12
-            readOnly: false
-          note:
-            type: string
-            description: Note
-            maxLength: 40
-            readOnly: false
-        required:
-        - category
-        - code
-        - item
       server_events:
         type: object
         properties:
@@ -2152,6 +2070,21 @@ response: |+
           topic:
             type: string
             description: Topic
+            readOnly: false
+      swagger_schema_nested:
+        type: object
+        properties:
+          label:
+            type: string
+            description: Label
+            maxLength: 20
+            readOnly: false
+      swagger_schema_parent:
+        type: object
+        properties:
+          nested:
+            $ref: "#/components/schemas/swagger_schema_nested"
+            description: Nested
             readOnly: false
       user:
         type: object
@@ -2248,108 +2181,4 @@ response: |+
             type: integer
             format: int64
             description: Id
-            readOnly: false
-      validation_params_cursor:
-        type: object
-        properties:
-          code:
-            type: string
-            description: Code
-            maxLength: 20
-            readOnly: false
-          qty:
-            type: integer
-            format: int32
-            description: Qty
-            readOnly: false
-        required:
-        - code
-      validation_params_cursor_key_response:
-        type: object
-        properties:
-          code:
-            type: string
-            description: Code
-            maxLength: 20
-            readOnly: false
-      validation_params_line_view:
-        type: object
-        properties:
-          line_no:
-            type: integer
-            format: int32
-            description: Line no
-            readOnly: false
-          qty:
-            type: integer
-            format: int32
-            description: Qty
-            readOnly: false
-        required:
-        - line_no
-      validation_params_step:
-        type: object
-        properties:
-          code:
-            type: string
-            description: Code
-            maxLength: 20
-            readOnly: false
-          qty:
-            type: integer
-            format: int32
-            description: Qty
-            readOnly: false
-          price:
-            type: number
-            description: Price
-            readOnly: false
-          valid_from:
-            type: string
-            format: date
-            description: Valid from
-            readOnly: false
-          valid_till:
-            type: string
-            format: date
-            description: Valid till
-            readOnly: false
-        required:
-        - code
-      validation_params_step_key_response:
-        type: object
-        properties:
-          code:
-            type: string
-            description: Code
-            maxLength: 20
-            readOnly: false
-      validation_params_view:
-        type: object
-        properties:
-          code:
-            type: string
-            description: Code
-            maxLength: 20
-            readOnly: false
-          qty:
-            type: integer
-            format: int32
-            description: Qty
-            readOnly: false
-          lines:
-            type: array
-            description: Lines
-            items:
-              $ref: "#/components/schemas/validation_params_line_view"
-            readOnly: false
-        required:
-        - code
-      validation_params_view_key_response:
-        type: object
-        properties:
-          code:
-            type: string
-            description: Code
-            maxLength: 20
             readOnly: false

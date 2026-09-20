@@ -1,0 +1,46 @@
+# Schemas are those $ref'd from generated paths, plus nested $refs of those schemas
+# (audit_request / audit_user / audit_response from audit).
+# current_user skips its own view paths but is $ref'd from GET /current-user.
+# search_key*, validation_params_* and swagger_schema_orphan* skip swagger paths
+# (or have no api) and are not $ref'd, so omitted.
+path:     /swagger-schema-names
+response: [
+  "array",
+  "array_key_response",
+  "audit",
+  "audit_request",
+  "audit_response",
+  "audit_user",
+  "current_user",
+  "email_batch_test",
+  "email_html_test",
+  "email_test",
+  "extra_metadata_file_view",
+  "extra_metadata_file_view_key_response",
+  "extra_metadata_private_view",
+  "extra_metadata_view",
+  "extra_metadata_view_key_response",
+  "guideline_calculation_helper",
+  "guideline_calculation_helper_key_response",
+  "login_using_json_or_urlencoded",
+  "person",
+  "person_key_response",
+  "person_redirect",
+  "person_redirect_key_response",
+  "person_with_access_control",
+  "post_uid_key_response",
+  "request_calculation_view",
+  "response_calculation_view",
+  "save_person_email",
+  "save_person_email_key_response",
+  "server_events",
+  "server_events_key_response",
+  "swagger_schema_nested",
+  "swagger_schema_parent",
+  "user",
+  "user_key_response",
+  "user_role",
+  "user_role_key_response",
+  "validation",
+  "validation_key_response"
+]

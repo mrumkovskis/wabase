@@ -925,10 +925,38 @@ class WabaseSwaggerGenerator(
     views.filter(v => relevantViewNamesSet(v.name))
   }
 
-  def collectRefs(pathItem: PathItem): Set[String] = {
+  def collectRefs(obj: Any): Set[String] = {
     val refs = mutable.Set[String]()
-    extractRefs(pathItem, refs)
+    extractRefs(obj, refs)
     refs.toSet
+  }
+
+  def schemaNameFromRef(ref: String): String = viewNameFromRef(ref)
+
+  /** View for a schema name. `*_key_response` resolves to the view that owns that key schema. */
+  def viewDefForSchemaName(schemaName: String): Option[ViewDef] = {
+    def lookup(name: String): Option[ViewDef] =
+      qes.iterator.map(_.nameToViewDef.get(name)).collectFirst { case Some(v) => v }
+    lookup(schemaName).orElse {
+      if (schemaName.endsWith("_key_response"))
+        lookup(schemaName.dropRight("_key_response".length))
+      else None
+    }
+  }
+
+  /** Schema names `$ref`'d from `rootRefs`, following `$ref`s inside generated schemas. */
+  def reachableSchemaNames(rootRefs: Set[String], schemas: Map[String, Schema[_]]): Set[String] = {
+    val seen = mutable.Set[String]()
+    val queue = mutable.Queue[String]()
+    rootRefs.foreach(r => queue += schemaNameFromRef(r))
+    while (queue.nonEmpty) {
+      val name = queue.dequeue()
+      if (seen.add(name))
+        schemas.get(name).foreach { schema =>
+          collectRefs(schema).foreach(r => queue += schemaNameFromRef(r))
+        }
+    }
+    seen.toSet
   }
 
   private def extractRefs(obj: Any, refs: mutable.Set[String]): Unit = {
@@ -1055,11 +1083,10 @@ class WabaseSwaggerGenerator(
     } else openapi.getComponents
 
     val refs = pathNamesAndItems.map(_._2).flatMap(collectRefs).toSet
-    val viewNamesFromRefs = refs.map(viewNameFromRef)
-    val referencedViews = viewNamesFromRefs.flatMap { v =>
-      qes.map(_.nameToViewDef.get(v)).filter(_.nonEmpty).headOption.map(_.get).toSeq
-    }
-    schemasFromViewDefs(viewDefMap ++ referencedViews.map { v => v.name -> v}).toSeq.sortBy(_._1).foreach { i =>
+    val referencedViews = refs.map(schemaNameFromRef).flatMap(viewDefForSchemaName)
+    val allSchemas = schemasFromViewDefs(viewDefMap ++ referencedViews.map { v => v.name -> v })
+    val reachable = reachableSchemaNames(refs, allSchemas)
+    allSchemas.toSeq.filter { case (n, _) => reachable(n) }.sortBy(_._1).foreach { i =>
       components.addSchemas(i._1, i._2)
     }
 

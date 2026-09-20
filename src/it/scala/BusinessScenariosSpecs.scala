@@ -133,6 +133,17 @@ object SwaggerTests {
       }
     })
   }
+
+  /** Sorted `components.schemas` names from the same generator as `swaggerJson`. */
+  def swaggerSchemaNames(ctx: WabaseRequestContext): HttpResponse = {
+    import scala.jdk.CollectionConverters._
+    val names = Option(WabaseService.createSwaggerGenerator(ctx).swaggerDocument.getComponents)
+      .flatMap(c => Option(c.getSchemas))
+      .map(_.keySet.asScala.toSeq.sorted)
+      .getOrElse(Nil)
+    HttpResponse(entity = HttpEntity(ContentTypes.`application/json`,
+      ResultEncoder.encodeAnyToJsonByteString(names)))
+  }
 }
 
 class BusinessScenariosSpecs extends BusinessScenariosBaseSpecs("http_tests") {

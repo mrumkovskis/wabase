@@ -5,6 +5,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+Swagger `components.schemas` includes only types `$ref`'d from generated paths
+(and nested `$ref`s of those schemas). Views with `api` whose paths are skipped
+and which no route `$ref`s are omitted. Documented in `docs/swagger.md`.
+
 `update+` action is now handled by the `save` handler (was `simpleAction`), so field and script
 validations, readonly value protection, old value lookup (by old key) and friendly constraint error
 messages now apply to it as for `update`. Script validation defines values whose names are not valid
