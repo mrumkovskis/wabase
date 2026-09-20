@@ -21,6 +21,16 @@ a single node when a lock / status table is not needed. Set
 `app.job.status-controller = org.wabase.NoOpWabaseJobStatusController`.
 `WabaseJobStatusController` and `DefaultWabaseJobStatusController` documented.
 
+`DefaultWabaseJobStatusController` uses the `cron_job_status` schema with `job_name`,
+status `running` / `success` / `error`, run counts, last run times and details.
+The previous implementation is `LegacyWabaseJobStatusController` (`cron_name`,
+`RUN` / `SUCC` / `ERR`). `updateCronJobStatus` takes a `details` argument
+(stored in `last_success_details` / `last_error_details`, trimmed to 2000 characters).
+The two-argument form is deprecated.
+A successful job whose result is a string stores that result as details.
+Legacy status codes `RUN`, `SUCC` and `ERR` are accepted and stored as `running`,
+`success` and `error`.
+
 Fixed-rate job scheduler added (`org.wabase.scheduler.FixedRateScheduler`). Set
 `app.job.scheduler-initializer = org.wabase.scheduler.FixedRateScheduler.init` and define jobs under
 `app.job.schedules.<job-name>` with required `interval` and optional `enabled`, `initial-delay` and

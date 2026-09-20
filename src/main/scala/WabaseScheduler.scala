@@ -144,12 +144,17 @@ class WabaseJobActor(
           context.system.log.info(jobName + " started")
           val rF = scheduler.doJob(jobName, params)
           rF.onComplete {
-            case Success(_) =>
-              jobStatusController.updateCronJobStatus(jobName, "SUCC")
+            case Success(result) =>
+              val details = result match {
+                case s: String => s
+                case StringResult(s) => s
+                case _ => null
+              }
+              jobStatusController.updateCronJobStatus(jobName, "SUCC", details)
               context.system.log.info(jobName + " ended")
             case Failure(e) =>
               context.system.log.error(e, jobName)
-              jobStatusController.updateCronJobStatus(jobName, "ERR")
+              jobStatusController.updateCronJobStatus(jobName, "ERR", e.getMessage)
               context.system.log.info(jobName + " ended with error")
           }(context.dispatcher)
           sender() ! JobStarted
@@ -176,20 +181,117 @@ trait WabaseJobStatusController {
   def acquireIsRunningLock(name: String): Boolean = acquireIsRunnningLock(name)
   @deprecated("Use acquireIsRunningLock instead", "9.0.0")
   def acquireIsRunnningLock(name: String): Boolean = acquireIsRunningLock(name)
-  /** Record job outcome. `status` is `"SUCC"` or `"ERR"`. */
-  def updateCronJobStatus(name: String, status: String): Unit
+  /** Record job outcome. `status` is `"success"` or `"error"` (aliases `"SUCC"`, `"ERR"`). */
+  @deprecated("Use updateCronJobStatus(name, status, details) instead", "9.0.0")
+  def updateCronJobStatus(name: String, status: String): Unit =
+    updateCronJobStatus(name, status, null)
+  /** Record job outcome with optional details (last success or error details). */
+  def updateCronJobStatus(name: String, status: String, details: String): Unit
 }
 
 /** Database lock and status for jobs that may run on more than one node.
   *
   * Uses table `cron_job_status` (pool `app.job.job-status-cp`). A job starts only
+  * if its status is not `running`, or the `running` lock is older than `app.job.max-time`
+  * (node died without releasing it). Status values stored are `running`, `success`
+  * and `error`. Legacy codes `RUN`, `SUCC` and `ERR` are accepted and stored as
+  * those values.
+  *
+  * [[init]] deletes rows whose status is not `running`. For a single node with no
+  * need for this table, use [[NoOpWabaseJobStatusController]]. For the previous
+  * table schema (`cron_name`, `RUN` / `SUCC` / `ERR`), use
+  * [[LegacyWabaseJobStatusController]].
+  */
+class DefaultWabaseJobStatusController(dbAccess: DbAccess) extends WabaseJobStatusController with Loggable {
+
+  val job_max_time = config.getDuration("app.job.max-time").toSeconds
+  val jobStatusCp  = PoolName(config.getString("app.job.job-status-cp"))
+
+  override def loggerName: String = "wabase.job-status-controller"
+
+  private def db[A]: (Resources => A) => A =
+    dbAccess.newTransaction(
+      poolName = jobStatusCp,
+      template = dbAccess.withDbAccessLogger(
+        dbAccess.tresqlResources.resourcesTemplate,
+        loggerName
+      )
+    )
+
+  private def storedJobStatus(status: String): String = status match {
+    case "running" | "RUN"  => "running"
+    case "success" | "SUCC" => "success"
+    case "error"   | "ERR"  => "error"
+    case other =>
+      throw new IllegalArgumentException(
+        s"Unsupported job status '$other'. Use running, success, error (or RUN, SUCC, ERR).")
+  }
+
+  def init(): Unit = db { implicit res =>
+    Query("-cron_job_status[status != 'running']")
+  }
+
+  /** Truncate job status details to 2000 characters. `null` is left unchanged. */
+  protected def trimDetails(details: String): String =
+    if (details == null || details.length <= 2000) details
+    else details.substring(0, 2000)
+
+  override def updateCronJobStatus(name: String, status: String, details: String): Unit = db {
+    implicit res =>
+      lazy val trimmedDetails = trimDetails(details)
+      storedJobStatus(status) match {
+        case "success" =>
+          Query(
+            """=cron_job_status[job_name = ?]
+              |{ status, last_run_status, last_success_time, last_success_details, success_count }
+              |[ 'success', 'success', now(), ?, success_count + 1 ]""".stripMargin, name, trimmedDetails)
+        case "error" =>
+          Query(
+            """=cron_job_status[job_name = ?]
+              |{ status, last_run_status, last_error_time, last_error_details, error_count }
+              |[ 'error', 'error', now(), ?, error_count + 1 ]""".stripMargin, name, trimmedDetails)
+        case "running" =>
+          Query(
+            """=cron_job_status[job_name = ?]
+              |{ status, last_start_time }
+              |[ 'running', now() ]""".stripMargin, name)
+      }
+  }
+
+  override def acquireIsRunningLock(name: String): Boolean = db { implicit res =>
+    Query(
+      """+cron_job_status
+        |{job_name, stats_since, status}
+        |{?, now(), 'success'}
+        |[!(cron_job_status existing[job_name = ?])]""".stripMargin, name, name)
+    // Single statement to do it properly - for 'Read Committed' transaction isolation level (default in postgres)
+    // Because of multiple nodes and shutdowns - ignore 'running' lock held for too long:
+    if (Query(s"""=cron_job_status[
+                    job_name = ? &
+                    (status != 'running' | last_start_time < now() - seconds_to_interval($job_max_time))
+                  ] {status, last_start_time, start_count} ['running', now(), start_count + 1]""", name)
+      .affectedRowCount > 0)
+      true
+    else {
+      Query("=cron_job_status[job_name = ?]{collision_count}[collision_count + 1]", name)
+      false
+    }
+  }
+
+  @deprecated("Use acquireIsRunningLock instead", "9.0.0")
+  override def acquireIsRunnningLock(name: String): Boolean = acquireIsRunningLock(name)
+}
+
+/** Previous `cron_job_status` schema (`cron_name`, status `RUN` / `SUCC` / `ERR`).
+  *
+  * Uses table `cron_job_status` (pool `app.job.job-status-cp`). A job starts only
   * if its status is not `RUN`, or the `RUN` lock is older than `app.job.max-time`
   * (node died without releasing it).
   *
-  * [[init]] deletes rows whose status is not `RUN`. For a single node with no
-  * need for this table, use [[NoOpWabaseJobStatusController]].
+  * [[init]] deletes rows whose status is not `RUN`. For the current table schema,
+  * use [[DefaultWabaseJobStatusController]].
   */
-class DefaultWabaseJobStatusController(dbAccess: DbAccess) extends WabaseJobStatusController with Loggable {
+class LegacyWabaseJobStatusController(dbAccess: DbAccess) extends WabaseJobStatusController with Loggable {
 
   val job_max_time = config.getDuration("app.job.max-time").toSeconds
   val jobStatusCp  = PoolName(config.getString("app.job.job-status-cp"))
@@ -209,7 +311,7 @@ class DefaultWabaseJobStatusController(dbAccess: DbAccess) extends WabaseJobStat
     Query("-cron_job_status[status != 'RUN']")
   }
 
-  def updateCronJobStatus(name: String, status: String): Unit = db {
+  def updateCronJobStatus(name: String, status: String, details: String): Unit = db {
     implicit res => status match {
       case "SUCC" =>
         Query(
@@ -267,5 +369,5 @@ class DefaultWabaseJobStatusController(dbAccess: DbAccess) extends WabaseJobStat
 class NoOpWabaseJobStatusController extends WabaseJobStatusController {
   def init(): Unit = ()
   override def acquireIsRunningLock(name: String): Boolean = true
-  def updateCronJobStatus(name: String, status: String): Unit = ()
+  def updateCronJobStatus(name: String, status: String, details: String): Unit = ()
 }

@@ -16,16 +16,21 @@ pk: sha_256
 table: cron_job_status
 comments: Automatic process status control
 columns:
-  - id
-  - cron_name       ! 50
-  - status          ! 5 (RUN, ERR, SUCC)
-  - report_time     !
-  - up_count        ! int = 0
-  - succ_down_count ! int = 0
-  - err_down_count  ! int = 0
-  - collision_count ! int = 0
-uk:
-  - cron_name
+- job_name            ! 60
+- stats_since         ! dateTime
+- status              ! (running, success, error)
+- start_count         ! long = 0
+- success_count       ! long = 0
+- error_count         ! long = 0
+- collision_count     ! long = 0
+- last_run_status       (success, error)
+- last_start_time       dateTime
+- last_success_time     dateTime
+- last_success_details
+- last_error_time       dateTime
+- last_error_details
+pk:
+- job_name
 
 table: person
 columns:

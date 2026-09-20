@@ -1,0 +1,9 @@
+path:     /backdoor/tresql_row
+request:  "cron_job_status[job_name = 'create_person']{job_name, status, last_run_status, success_count, error_count, start_count}"
+response:
+  job_name: create_person
+  status: success
+  last_run_status: success
+  success_count: 1
+  error_count: 0
+  start_count: 1
