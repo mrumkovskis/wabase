@@ -16,3 +16,19 @@ columns:
 - last_error_details
 pk:
 - job_name
+
+
+table:    cron_job_history
+comments: Job run history
+columns:
+- uuid                ! 36
+- job_name            ! 60
+- start_time          ! dateTime
+- end_time              dateTime
+- status              ! (running, success, error)
+- details
+pk:
+- uuid
+idx:
+- start_time
+- job_name, start_time

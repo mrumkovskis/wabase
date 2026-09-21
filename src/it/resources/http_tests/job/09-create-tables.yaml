@@ -1,2 +1,2 @@
-path:     /backdoor/create-tables/cron_job_status,person
+path:     /backdoor/create-tables/cron_job_status,cron_job_history,person
 response:

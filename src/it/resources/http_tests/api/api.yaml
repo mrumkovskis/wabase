@@ -12,6 +12,7 @@ response: {
   "guideline_calculation_helper": ["get", "list", "upsert"],
   "http_echo": ["post"],
   "http_test": ["post"],
+  "job_history": ["get", "list"],
   "json_query_param": ["get"],
   "login_using_json_or_urlencoded": ["insert"],
   "logout": ["insert"],

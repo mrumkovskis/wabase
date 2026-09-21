@@ -1,0 +1,10 @@
+path:       /data/job_history
+params:
+  job_name: create_persons
+response:
+- uuid:        not_null()
+  job_name:    create_persons
+  start_time:  not_null()
+  end_time:    not_null()
+  status:      success
+  details:     null

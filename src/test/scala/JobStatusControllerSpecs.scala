@@ -113,6 +113,46 @@ class JobStatusControllerSpecs extends FlatSpec with Matchers with BeforeAndAfte
     controller.updateCronJobStatus("job_a", "error", longDetails)
     jobRow("job_a")("last_error_details").asInstanceOf[String] shouldBe longDetails.take(2000)
   }
+
+  it should "not write cron_job_history" in {
+    controller.acquireIsRunningLock("job_a") shouldBe true
+    controller.updateCronJobStatus("job_a", "success", "ok")
+    historyRows("job_a") shouldBe empty
+  }
+
+  behavior of "WabaseJobStatusHistoryLogger"
+
+  it should "insert and finish cron_job_history by uuid" in {
+    val uuid1 = "11111111-1111-1111-1111-111111111111"
+    val uuid2 = "22222222-2222-2222-2222-222222222222"
+    jobStatusLogger.jobStarted(uuid1, "job_a")
+    val running = historyRows("job_a")
+    running.size shouldBe 1
+    running.head("uuid") shouldBe uuid1
+    running.head("status") shouldBe "running"
+    running.head("end_time") == null shouldBe true
+    jobStatusLogger.jobFinished(uuid1, "job_a", "SUCC", "done")
+    val done = historyRows("job_a")
+    done.size shouldBe 1
+    done.head("status") shouldBe "success"
+    done.head("details") shouldBe "done"
+    done.head("end_time") != null shouldBe true
+    jobStatusLogger.jobStarted(uuid2, "job_a")
+    jobStatusLogger.jobFinished(uuid2, "job_a", "ERR", "boom")
+    val all = historyRows("job_a")
+    all.size shouldBe 2
+    all.map(_("status")) shouldBe List("error", "success")
+    all.head("uuid") shouldBe uuid2
+    all.head("details") shouldBe "boom"
+  }
+
+  it should "trim history details to 2000 characters" in {
+    val uuid = "11111111-1111-1111-1111-111111111111"
+    val longDetails = "x" * 2500
+    jobStatusLogger.jobStarted(uuid, "job_a")
+    jobStatusLogger.jobFinished(uuid, "job_a", "success", longDetails)
+    historyRows("job_a").head("details").asInstanceOf[String] shouldBe longDetails.take(2000)
+  }
 }
 
 object JobStatusControllerSpecsHelper {
@@ -132,6 +172,9 @@ object JobStatusControllerSpecsHelper {
   val controller = new DefaultWabaseJobStatusController(db) {
     override val jobStatusCp: PoolName = PoolName("job-status-test")
   }
+  val jobStatusLogger = new WabaseJobStatusHistoryLogger(db) {
+    override val jobStatusCp: PoolName = PoolName("job-status-test")
+  }
 
   val schemaSql: String = DdlGenerator.hsqldb().schema(JobStatusSpecsQuerease.tableMetadata.tableDefs)
   executeStatements(schemaSql.split(";\\s+").filter(_.trim.nonEmpty).map(_.trim.stripSuffix(";") + ";").toIndexedSeq: _*)
@@ -145,6 +188,7 @@ object JobStatusControllerSpecsHelper {
 
   def clearDb(): Unit = newTransaction { implicit res =>
     Query("cron_job_status - []")
+    Query("cron_job_history - []")
   }
 
   def jobRow(name: String): Map[String, Any] = newTransaction { implicit res =>
@@ -155,6 +199,13 @@ object JobStatusControllerSpecsHelper {
         |  last_error_time, last_error_details
         |}""".stripMargin, name
     ).toListOfMaps.head
+  }
+
+  def historyRows(name: String): List[Map[String, Any]] = newTransaction { implicit res =>
+    Query(
+      "cron_job_history[job_name = ?]{uuid, job_name, start_time, end_time, status, details}",
+      name
+    ).toListOfMaps.sortBy(r => String.valueOf(r("start_time"))).reverse
   }
 
   def longVal(v: Any): Long = v.asInstanceOf[Number].longValue

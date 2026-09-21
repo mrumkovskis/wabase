@@ -19,3 +19,22 @@ swagger:
     content:
       application/json:
         type: person
+
+name:   job_history
+table:  cron_job_history
+api:    get, list
+key:    uuid
+fields:
+- uuid
+- job_name
+- start_time
+- end_time
+- status
+- details
+order:
+- start_time
+filter:
+- job_name
+- status
+swagger:
+  paths = : {}

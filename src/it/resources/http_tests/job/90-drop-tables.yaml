@@ -1,2 +1,2 @@
-path:     /backdoor/drop-tables/cron_job_status,person
+path:     /backdoor/drop-tables/cron_job_history,cron_job_status,person
 response:

@@ -1,0 +1,8 @@
+path:       /data/job_history?/{{create_person_run_id}}
+response:
+  uuid:        "{{create_person_run_id}}"
+  job_name:    create_person
+  start_time:  not_null()
+  end_time:    not_null()
+  status:      success
+  details:     null

@@ -29,7 +29,10 @@ The previous implementation is `LegacyWabaseJobStatusController` (`cron_name`,
 The two-argument form is deprecated.
 A successful job whose result is a string stores that result as details.
 Legacy status codes `RUN`, `SUCC` and `ERR` are accepted and stored as `running`,
-`success` and `error`.
+`success` and `error`. Job run history is recorded by `WabaseJobStatusLogger`
+(`app.job.status-logger`, default `NoOpWabaseJobStatusLogger`).
+`WabaseJobStatusHistoryLogger` writes `cron_job_history` (`uuid`, `job_name`,
+`start_time`, `end_time`, `status`, `details`). The actor assigns a UUID per run.
 
 Fixed-rate job scheduler added (`org.wabase.scheduler.FixedRateScheduler`). Set
 `app.job.scheduler-initializer = org.wabase.scheduler.FixedRateScheduler.init` and define jobs under

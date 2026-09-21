@@ -16,11 +16,12 @@ import scala.util.{Failure, Success}
 class WabaseScheduler(wabase: AppBase[_], system: ActorSystem) extends Loggable {
   def init(): Future[Any] = {
     val jobStatusController = createJobStatusController
+    val jobStatusLogger = createJobStatusLogger
     if (config.getBoolean("app.job.clean-jobs-on-start"))
       jobStatusController.init()
     val wabaseJobActor = if (config.getIsNull("app.job.actor")) null else try {
       val jobActorClass = Class.forName(config.getString("app.job.actor"))
-      system.actorOf(Props(jobActorClass, wabase, this, jobStatusController), config.getString("app.job.actor-name"))
+      system.actorOf(Props(jobActorClass, wabase, this, jobStatusController, jobStatusLogger), config.getString("app.job.actor-name"))
     } catch {
       case NonFatal(ex) => throw new RuntimeException(s"Failed to start job actor", ex)
     }
@@ -55,6 +56,13 @@ class WabaseScheduler(wabase: AppBase[_], system: ActorSystem) extends Loggable 
   protected def createJobStatusController: WabaseJobStatusController =
     getObjectOrNewInstance[WabaseJobStatusController](
       config, "app.job.status-controller", "job status controller",
+      Seq(wabase.dbAccess), Seq(classOf[DbAccess])
+    )
+
+  @annotation.nowarn("msg=Manifest")
+  protected def createJobStatusLogger: WabaseJobStatusLogger =
+    getObjectOrNewInstance[WabaseJobStatusLogger](
+      config, "app.job.status-logger", "job status logger",
       Seq(wabase.dbAccess), Seq(classOf[DbAccess])
     )
 }
@@ -133,6 +141,7 @@ class WabaseJobActor(
   wabase: AppBase[_],
   scheduler: WabaseScheduler,
   jobStatusController: WabaseJobStatusController,
+  jobStatusLogger: WabaseJobStatusLogger,
 ) extends Actor {
   override def preStart(): Unit = {
     context.system.log.info(s"Wabase job control actor started...")
@@ -141,7 +150,8 @@ class WabaseJobActor(
     case Tick(jobName, params) =>
       if (WabaseScheduler.isJobNameValid(jobName, params)(wabase)) {
         if (jobStatusController.acquireIsRunningLock(jobName)) {
-          context.system.log.info(jobName + " started")
+          val uuid = java.util.UUID.randomUUID().toString
+          jobStatusLogger.jobStarted(uuid, jobName)
           val rF = scheduler.doJob(jobName, params)
           rF.onComplete {
             case Success(result) =>
@@ -151,11 +161,10 @@ class WabaseJobActor(
                 case _ => null
               }
               jobStatusController.updateCronJobStatus(jobName, "SUCC", details)
-              context.system.log.info(jobName + " ended")
+              jobStatusLogger.jobFinished(uuid, jobName, "SUCC", details)
             case Failure(e) =>
-              context.system.log.error(e, jobName)
               jobStatusController.updateCronJobStatus(jobName, "ERR", e.getMessage)
-              context.system.log.info(jobName + " ended with error")
+              jobStatusLogger.jobFinished(uuid, jobName, "ERR", e.getMessage, e)
           }(context.dispatcher)
           sender() ! JobStarted
         } else sender() ! JobRunning
@@ -200,7 +209,8 @@ trait WabaseJobStatusController {
   * [[init]] deletes rows whose status is not `running`. For a single node with no
   * need for this table, use [[NoOpWabaseJobStatusController]]. For the previous
   * table schema (`cron_name`, `RUN` / `SUCC` / `ERR`), use
-  * [[LegacyWabaseJobStatusController]].
+  * [[LegacyWabaseJobStatusController]]. Job run history is recorded by
+  * [[WabaseJobStatusLogger]].
   */
 class DefaultWabaseJobStatusController(dbAccess: DbAccess) extends WabaseJobStatusController with Loggable {
 
@@ -371,3 +381,80 @@ class NoOpWabaseJobStatusController extends WabaseJobStatusController {
   override def acquireIsRunningLock(name: String): Boolean = true
   def updateCronJobStatus(name: String, status: String, details: String): Unit = ()
 }
+
+/** Records each job run. [[WabaseJobActor]] calls [[jobStarted]] after taking the
+  * running lock and [[jobFinished]] when the job completes. Configure with
+  * `app.job.status-logger`.
+  */
+trait WabaseJobStatusLogger extends Loggable {
+  override def loggerName: String = "wabase.job-status-logger"
+  def jobStarted(uuid: String, name: String): Unit =
+    logger.info(name + " started")
+  def jobFinished(uuid: String, name: String, status: String, details: String): Unit =
+    jobFinished(uuid, name, status, details, null)
+  def jobFinished(uuid: String, name: String, status: String, details: String, error: Throwable): Unit = {
+    if (error != null)
+      logger.error(name, error)
+    status match {
+      case "ERR" | "error" =>
+        logger.info(name + " failed")
+      case _ =>
+        logger.info(name + " completed")
+    }
+  }
+}
+
+/** Writes job runs to `cron_job_history` (pool `app.job.job-status-cp`).
+  *
+  * Columns: `uuid`, `job_name`, `start_time`, `end_time`, `status`, `details`.
+  * Status values stored are `running`, `success` and `error`. Legacy codes
+  * `RUN`, `SUCC` and `ERR` are accepted and stored as those values. Details are
+  * trimmed to 2000 characters.
+  */
+class WabaseJobStatusHistoryLogger(dbAccess: DbAccess) extends WabaseJobStatusLogger {
+
+  val jobStatusCp = PoolName(config.getString("app.job.job-status-cp"))
+
+  private def db[A]: (Resources => A) => A =
+    dbAccess.newTransaction(
+      poolName = jobStatusCp,
+      template = dbAccess.withDbAccessLogger(
+        dbAccess.tresqlResources.resourcesTemplate,
+        loggerName
+      )
+    )
+
+  private def storedJobStatus(status: String): String = status match {
+    case "running" | "RUN"  => "running"
+    case "success" | "SUCC" => "success"
+    case "error"   | "ERR"  => "error"
+    case other =>
+      throw new IllegalArgumentException(
+        s"Unsupported job status '$other'. Use running, success, error (or RUN, SUCC, ERR).")
+  }
+
+  /** Truncate job status details to 2000 characters. `null` is left unchanged. */
+  protected def trimDetails(details: String): String =
+    if (details == null || details.length <= 2000) details
+    else details.substring(0, 2000)
+
+  override def jobStarted(uuid: String, name: String): Unit = {
+    super.jobStarted(uuid, name)
+    db { implicit res =>
+      Query("+cron_job_history{uuid, job_name, start_time, status}{?, ?, now(), 'running'}", uuid, name)
+    }
+  }
+
+  override def jobFinished(uuid: String, name: String, status: String, details: String, error: Throwable): Unit = {
+    super.jobFinished(uuid, name, status, details, error)
+    db { implicit res =>
+      Query(
+        """=cron_job_history[uuid = ?]
+          |{end_time, status, details}[now(), ?, ?]""".stripMargin,
+        uuid, storedJobStatus(status), trimDetails(details))
+    }
+  }
+}
+
+/** Does not record job run history. Default [[WabaseJobStatusLogger]]. */
+class NoOpWabaseJobStatusLogger extends WabaseJobStatusLogger
