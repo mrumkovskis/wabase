@@ -5,6 +5,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+Jobs already running on this node can be queued. `app.job.queue-size` (default `0`,
+queue disabled) is the maximum number of waiting runs kept per job name. The run in
+progress does not take a slot. A waiting run with the same parameters is kept once;
+a duplicate is not added. When the running job finishes, the oldest waiting run of
+that job name is started. `startJob` / `startJobAction` return `202` when the request
+was queued (including a duplicate of a run already waiting) and `409` when it was not
+queued (queue disabled or full, or the running lock is held on another node).
+
 Swagger `components.schemas` includes only types `$ref`'d from generated paths
 (and nested `$ref`s of those schemas). Views with `api` whose paths are skipped
 and which no route `$ref`s are omitted. Documented in `docs/swagger.md`.

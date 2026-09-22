@@ -33,6 +33,8 @@ object ActionHandlers {
       val code: StatusCode = result
       code match {
         case StatusCodes.OK => okResponse
+        case StatusCodes.Accepted =>
+          HttpResponse(status = code, entity = HttpEntity(s"Job '$jobName' queued."))
         case StatusCodes.Conflict =>
           HttpResponse(status = code, entity = HttpEntity(s"Job '$jobName' is already running."))
         case StatusCodes.NotFound =>

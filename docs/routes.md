@@ -171,7 +171,7 @@ startup time. Generation, overrides and merge for swagger are described in
 | --- | --- |
 | `doAction(view_action)` | Main crud entry point. Resolves view, action and key from `view_action`, request path and http method, then runs the view action and marshals its result. |
 | `doRequest(handlerName)` | Invokes handler `handlerName` with key taken from path after the handler name segment. |
-| `startJob(jobName)` | `POST` only. Starts named job with query and entity parameters. Responds `200`, `409` when job is already running, `404` when job is not found. |
+| `startJob(jobName)` | `POST` only. Starts named job with query and entity parameters. Responds `200` when the job started, `202` when it was queued (`app.job.queue-size`), `409` when it is already running and was not queued, `404` when the job is not found. |
 
 `view_action` is `<view name>` optionally suffixed with `:count` or `:new`. Without
 a suffix the action is chosen by http method — `GET` to get, `DELETE` to delete, `HEAD`

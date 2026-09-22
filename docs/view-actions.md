@@ -1175,6 +1175,19 @@ Example:
 job_res = call test_job1
 ```
 
+#### Job queue
+
+Scheduled ticks and `startJob` / `startJobAction` are handled by `WabaseJobActor`, which runs
+one instance of a job name at a time. Further requests for that job name, while it is running
+on this actor, are kept in a queue of at most `app.job.queue-size` waiting runs (default `0`,
+which disables the queue). The run in progress does not take a slot. A waiting run with the
+same parameters is kept once — a duplicate request is not added again. When the running job
+finishes, the oldest waiting run of that job name is started. Different job names run
+independently, each with its own queue.
+
+A request that is not queued (the queue is disabled or full, or another node holds the running
+lock) is rejected. `call` runs a job in the current action and does not use this queue.
+
 ### rethrow
 
 ```

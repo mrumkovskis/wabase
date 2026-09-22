@@ -59,12 +59,18 @@ Asks the scheduler actor (configuration parameter `app.job.actor-name`) to start
 taken from the parameters expression, which must return a map. If it is omitted, the current
 action data is passed.
 
+While that job name is running on this node, further requests can be queued up to
+`app.job.queue-size` waiting runs (default `0` disables the queue). The run in progress
+does not take a slot. A waiting run with the same parameters is kept once — a duplicate
+is not added. Different job names are queued separately. See [job queue](view-actions.md#job-queue).
+
 Returns http status code as int:
 
 | Status | Meaning |
 | --- | --- |
 | `200` | Job started. |
-| `409` | Job is already running. |
+| `202` | Job queued. It will run after the current run. Same parameters already waiting are not added again; the response is still `202`. |
+| `409` | Job is already running and this request was not queued (queue disabled or full, or the running lock is held on another node). |
 | `404` | Job not found. |
 
 Scheduler must respond within 5 seconds, otherwise the action fails.

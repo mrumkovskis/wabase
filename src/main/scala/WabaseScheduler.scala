@@ -3,11 +3,12 @@ package org.wabase
 import com.typesafe.scalalogging.Logger
 import org.apache.pekko.actor.{Actor, ActorRef, ActorSystem, Props}
 import org.slf4j.LoggerFactory
-import org.wabase.WabaseScheduler.{JobRunning, JobStarted, JobNotFound, Tick}
+import org.wabase.WabaseScheduler.{JobNotFound, JobQueued, JobRunning, JobStarted, Messages, Tick}
 import org.tresql._
 import org.wabase.AppMetadata.Action
 import org.wabase.ds.PoolName
 
+import scala.collection.mutable
 import scala.concurrent.{ExecutionContext, Future}
 import scala.language.existentials
 import scala.util.control.NonFatal
@@ -73,7 +74,11 @@ object WabaseScheduler {
   sealed trait Messages
   /** message to inform sender that job has been started */
   case object JobStarted extends Messages
-  /** message to inform sender that job could not be started because it is already running */
+  /** Job will run after the current run. Added to the queue, or the same parameters were already waiting. */
+  case object JobQueued extends Messages
+  /** Job was not started and was not queued. It is already running and the queue is disabled or full,
+    * or another node holds the running lock.
+    */
   case object JobRunning extends Messages
   /** message to inform sender that no such job exists */
   case object JobNotFound extends Messages
@@ -137,43 +142,175 @@ object WabaseScheduler {
   }
 }
 
+/** Waiting runs of one job name. The run in progress is not stored here.
+  *
+  * At most `maxSize` entries. [[offer]] does not add parameters equal (`==`) to
+  * ones already waiting. A `maxSize` of zero or less stores nothing.
+  *
+  * Not thread-safe. [[WabaseJobActor]] keeps one instance per job name and uses it
+  * from the actor thread only.
+  */
+class WabaseJobQueue(val maxSize: Int) {
+  private val pending = mutable.ListBuffer.empty[Map[String, Any]]
+
+  def size: Int = pending.size
+
+  /** `Queued` when added, `Duplicate` when equal parameters are already waiting,
+    * `Full` when `maxSize` distinct runs are already waiting, `Disabled` when
+    * `maxSize` is zero or less.
+    */
+  def offer(params: Map[String, Any]): WabaseJobQueue.Result =
+    if (maxSize <= 0) WabaseJobQueue.Disabled
+    else if (pending.exists(_ == params)) WabaseJobQueue.Duplicate
+    else if (pending.size >= maxSize) WabaseJobQueue.Full
+    else {
+      pending += params
+      WabaseJobQueue.Queued
+    }
+
+  /** Put `params` at the front. Does not apply `maxSize`. A duplicate already waiting is left in place.
+    * Used to put back a run that was taken out and could not be started.
+    */
+  def offerFront(params: Map[String, Any]): Unit =
+    if (!pending.exists(_ == params))
+      pending.insert(0, params)
+
+  def poll(): Option[Map[String, Any]] =
+    if (pending.isEmpty) None
+    else Some(pending.remove(0))
+}
+
+object WabaseJobQueue {
+  sealed trait Result
+  case object Queued extends Result
+  case object Duplicate extends Result
+  case object Full extends Result
+  case object Disabled extends Result
+}
+
+/** Receives [[WabaseScheduler.Tick]] and runs the job.
+  *
+  * One instance of a job name runs at a time. Further ticks for that name, while this
+  * actor is running it, are kept in a [[WabaseJobQueue]] of at most `app.job.queue-size`
+  * waiting runs (the run in progress does not take a slot). Equal parameters already
+  * waiting are not added again. `0` disables the queue. When the running job finishes,
+  * the oldest waiting run of that name is started. Different job names run independently.
+  *
+  * A tick is queued only while this actor is already executing that job name. A running
+  * lock held on another node is rejected, and the next tick tries again.
+  */
 class WabaseJobActor(
   wabase: AppBase[_],
   scheduler: WabaseScheduler,
   jobStatusController: WabaseJobStatusController,
   jobStatusLogger: WabaseJobStatusLogger,
 ) extends Actor {
+
+  private lazy val configuredJobQueueSize: Int = math.max(0, config.getInt("app.job.queue-size"))
+
+  /** Maximum waiting runs per job name. `0` disables the queue. */
+  protected def jobQueueSize: Int = configuredJobQueueSize
+
+  private val running = mutable.Set.empty[String]
+  private val queues = mutable.Map.empty[String, WabaseJobQueue]
+
+  private case class JobFinished(jobName: String)
+
   override def preStart(): Unit = {
     context.system.log.info(s"Wabase job control actor started...")
   }
+
   override def receive: Receive = {
     case Tick(jobName, params) =>
-      if (WabaseScheduler.isJobNameValid(jobName, params)(wabase)) {
-        if (jobStatusController.acquireIsRunningLock(jobName)) {
-          val uuid = java.util.UUID.randomUUID().toString
-          jobStatusLogger.jobStarted(uuid, jobName)
-          val rF = scheduler.doJob(jobName, params)
-          rF.onComplete {
-            case Success(result) =>
-              val details = result match {
-                case s: String => s
-                case StringResult(s) => s
-                case _ => null
-              }
-              jobStatusController.updateCronJobStatus(jobName, "SUCC", details)
-              jobStatusLogger.jobFinished(uuid, jobName, "SUCC", details)
-            case Failure(e) =>
-              jobStatusController.updateCronJobStatus(jobName, "ERR", e.getMessage)
-              jobStatusLogger.jobFinished(uuid, jobName, "ERR", e.getMessage, e)
-          }(context.dispatcher)
-          sender() ! JobStarted
-        } else sender() ! JobRunning
-      } else sender() ! JobNotFound
+      val replyTo = sender()
+      val reply =
+        if (WabaseScheduler.isJobNameValid(jobName, params)(wabase)) accept(jobName, params)
+        else JobNotFound
+      replyTo ! reply
+    case JobFinished(jobName) =>
+      running -= jobName
+      tryStartQueued(jobName)
   }
 
   override def postStop(): Unit = {
     context.system.log.info(s"Wabase job control actor stopped")
   }
+
+  private def queueFor(jobName: String): WabaseJobQueue =
+    queues.getOrElseUpdate(jobName, new WabaseJobQueue(jobQueueSize))
+
+  private def accept(jobName: String, params: Map[String, Any]): Messages = {
+    val stableParams = params.toMap
+    if (running.contains(jobName))
+      replyFor(jobName, queueFor(jobName).offer(stableParams))
+    else queues.get(jobName).filter(_.size > 0) match {
+      case Some(q) =>
+        val offered = q.offer(stableParams)
+        tryStartQueued(jobName) match {
+          case Some(started) if started == stableParams => JobStarted
+          case _ => replyFor(jobName, offered)
+        }
+      case None =>
+        startNow(jobName, stableParams)
+    }
+  }
+
+  private def replyFor(jobName: String, offered: WabaseJobQueue.Result): Messages = offered match {
+    case WabaseJobQueue.Queued =>
+      context.system.log.info(
+        s"Job '$jobName' queued (${queueFor(jobName).size} of $jobQueueSize waiting)")
+      JobQueued
+    case WabaseJobQueue.Duplicate =>
+      context.system.log.debug(s"Job '$jobName' with the same parameters is already queued")
+      JobQueued
+    case WabaseJobQueue.Full =>
+      context.system.log.info(
+        s"Job '$jobName' queue is full ($jobQueueSize), request not queued")
+      JobRunning
+    case WabaseJobQueue.Disabled =>
+      JobRunning
+  }
+
+  /** Start the oldest waiting run, if this actor is not already running `jobName`. */
+  private def tryStartQueued(jobName: String): Option[Map[String, Any]] =
+    if (running.contains(jobName)) None
+    else queueFor(jobName).poll() match {
+      case None => None
+      case Some(params) =>
+        startNow(jobName, params) match {
+          case JobStarted => Some(params)
+          case _ =>
+            queueFor(jobName).offerFront(params)
+            None
+        }
+    }
+
+  private def startNow(jobName: String, params: Map[String, Any]): Messages =
+    if (running.contains(jobName)) JobRunning
+    else if (jobStatusController.acquireIsRunningLock(jobName)) {
+      running += jobName
+      val uuid = java.util.UUID.randomUUID().toString
+      jobStatusLogger.jobStarted(uuid, jobName)
+      val rF =
+        try scheduler.doJob(jobName, params)
+        catch { case NonFatal(e) => Future.failed(e) }
+      rF.onComplete { result =>
+        try result match {
+          case Success(value) =>
+            val details = value match {
+              case s: String => s
+              case StringResult(s) => s
+              case _ => null
+            }
+            jobStatusController.updateCronJobStatus(jobName, "SUCC", details)
+            jobStatusLogger.jobFinished(uuid, jobName, "SUCC", details)
+          case Failure(e) =>
+            jobStatusController.updateCronJobStatus(jobName, "ERR", e.getMessage)
+            jobStatusLogger.jobFinished(uuid, jobName, "ERR", e.getMessage, e)
+        } finally self ! JobFinished(jobName)
+      }(context.dispatcher)
+      JobStarted
+    } else JobRunning
 }
 
 /** Controls whether a job may start and records its outcome.

@@ -3292,11 +3292,14 @@ response: {
           "200" : {
             "description" : "Job started"
           },
+          "202" : {
+            "description" : "Job queued"
+          },
           "404" : {
             "description" : "Job not found"
           },
           "409" : {
-            "description" : "Job is already running"
+            "description" : "Job is already running and was not queued"
           }
         }
       }
