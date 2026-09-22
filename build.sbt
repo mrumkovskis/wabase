@@ -36,7 +36,7 @@ lazy val commonSettings = Seq(
     val borerV    = scalaVersion.value match {
       case v if v startsWith "2.12" => "1.7.2"
       case v if v startsWith "2.13" => "1.8.0"
-      case v if v startsWith "3"    => "1.17.0"
+      case v if v startsWith "3"    => "1.18.0"
     }
     (
       if (scalaVersion.value.startsWith("3."))
