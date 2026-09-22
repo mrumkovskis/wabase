@@ -6,7 +6,7 @@ val pekkoHttpV= "1.4.0"
 
 // In-process SMTP server for email tests. Exclusions - jakarta mail api and implementation
 // are already provided by simple-java-mail (as jakarta.mail-api and angus-mail).
-val greenmailDependency = ("com.icegreen" % "greenmail" % "2.1.3")
+val greenmailDependency = ("com.icegreen" % "greenmail" % "2.1.14")
   .exclude("org.eclipse.angus", "jakarta.mail")
   .exclude("junit", "junit")
 
