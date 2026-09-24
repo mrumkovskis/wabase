@@ -1,90 +1,31 @@
 package org.wabase
 
+import com.typesafe.config.Config
 import io.bullet.borer.Json
 import org.apache.pekko.http.scaladsl.marshalling.{Marshaller, ToEntityMarshaller}
 import org.apache.pekko.http.scaladsl.model.MediaTypes.`application/json`
 import org.apache.pekko.http.scaladsl.model.{HttpEntity, HttpRequest}
 import org.apache.pekko.http.scaladsl.server.LanguageNegotiator
 
-import java.util.{Collections, Locale, PropertyResourceBundle, ResourceBundle}
+import java.util
+import java.util.{ListResourceBundle, Locale, MissingResourceException, ResourceBundle}
 import scala.jdk.CollectionConverters._
 import scala.util.Try
+import scala.collection.mutable.ArrayBuffer
+import org.snakeyaml.engine.v2.api.{Load, LoadSettings}
+import org.tresql.Query
+import org.wabase.ds.PoolName
+
+import scala.annotation.tailrec
 
 case class I18Bundle(bundle: Iterator[(String, String)])
 
-trait I18n {
+trait I18n { this: WabaseApp[_] with DbAccess =>
 
-  val I18nWabaseResourceName = "wabase"
+  val I18nResourceName = "i18n"
 
-  /** Application default resource bundle. Subclass can override this value */
-  val I18nResourceName = I18nWabaseResourceName
-
-  /** Application resource bundle dependencies. */
-  def i18nResourceDependencies: Map[String, String] = Map()
-
-  private lazy val loaderControl =
-    new ResourceBundle.Control {
-      override def getFormats(baseName: String): java.util.List[String] =
-        ResourceBundle.Control.FORMAT_PROPERTIES
-      override def newBundle(baseName: String,
-                             locale: Locale,
-                             format: String,
-                             loader: ClassLoader,
-                             reload: Boolean): ResourceBundle = {
-        if (baseName == null || locale == null || format == null || loader == null)
-          throw new NullPointerException()
-        if (ResourceBundle.Control.FORMAT_PROPERTIES.contains(format)) {
-          import java.io._
-          import java.net._
-          def getInputStream(baseName: String) = {
-            def getStream(locale: Locale) = {
-              val bundleName: String = toBundleName(baseName, locale)
-              val resourceName: String = toResourceName(bundleName, "properties")
-              if (reload) {
-                val url: URL = loader.getResource(resourceName)
-                if (url != null) {
-                  val connection: URLConnection = url.openConnection()
-                  if (connection != null) {
-                    // Disable caches to get fresh data for
-                    // reloading.
-                    connection.setUseCaches(false)
-                    connection.getInputStream()
-                  } else null
-                } else null
-              } else {
-                loader.getResourceAsStream(resourceName)
-              }
-            }
-            val stream = getStream(locale)
-            if  (stream == null && baseName == I18nWabaseResourceName)
-                 getStream(Locale.ENGLISH) // default to en for wabase built-in messages
-            else stream
-          }
-          @annotation.tailrec
-          def resourceNameChain(baseName: String, chain: List[String] = Nil): List[String] = {
-            val fallbackName = i18nResourceDependencies.getOrElse(baseName, I18nWabaseResourceName)
-            if  (baseName == fallbackName)
-                 baseName :: chain
-            else resourceNameChain(fallbackName, baseName :: chain)
-          }
-          val streams =
-            resourceNameChain(baseName)
-            .map(getInputStream)
-            .filter(_ != null)
-          val stream =
-            if  (streams.isEmpty) null
-            else new java.io.SequenceInputStream(Collections.enumeration(streams.asJava))
-          if (stream != null) {
-            val br = new BufferedReader(new InputStreamReader(stream, "UTF-8"))
-            val bundle: ResourceBundle = new PropertyResourceBundle(br)
-            br.close()
-            bundle
-          } else null
-        } else {
-          super.newBundle(baseName, locale, format, loader, reload)
-        }
-      }
-    }
+  protected lazy val loaderControl =
+    new I18n.ResourceBundleLoader(I18nResourceName, config.getConfig(I18nResourceName), this)
 
   def bundle(name: String)(implicit locale: Locale): ResourceBundle =
     ResourceBundle.getBundle(name, locale, loaderControl)
@@ -92,15 +33,14 @@ trait I18n {
   /** Translates message template and formats it with parameters using locale. Parameters are passed to format
     * as is, so format specifiers other than %s (i.e. %d, %.2f) can be used. If formatting fails, translated
     * template is returned. */
-  def translate(str: String, params: Any*)(implicit locale: Locale): String = {
+  def translate(str: String, params: Any*)(implicit locale: Locale): String =
     translateFromBundle(I18nResourceName, str, params: _*)
-  }
 
   def translateFromBundle(name: String, str: String, params: Any*)(implicit locale: Locale): String = {
     Try(bundle(name).getString(str))
-      .recover { case _ => str }
+      .recover { case _: MissingResourceException => str }
       .map(s => Try(s.formatLocal(locale, params: _*)).getOrElse(s))
-      .getOrElse(str)
+      .get
   }
 
   /** Calls {{{i18nResourcesFromBundle(ResourceName)}}} */
@@ -117,9 +57,184 @@ trait I18n {
   }
 }
 
+object I18n {
+  /** Language, script, country(region) regexps are taken from
+   * [[https://docs.oracle.com/en/java/javase/11/docs/api/java.base/java/util/Locale.html]]
+   * */
+  val LocaleRegex = "([a-zA-Z]{2,8})(?:[\\-_]([a-zA-Z]{4}))?(?:[\\-_]([a-zA-Z]{2}|[0-9]{3}))?(?:[\\-_]([^\\-_]+))?".r
+  def buildLocale(str: String): Locale = {
+    val LocaleRegex(lang, script, country, variant) = str: @unchecked
+    val builder = new Locale.Builder
+    builder.setLanguage(lang)
+    builder.setScript(script)
+    builder.setRegion(country)
+    builder.setVariant(variant)
+    builder.build()
+  }
+
+  private def prependList[E](l: java.util.List[E], e: E) = {
+    java.util.List.copyOf(l.asScala.+:(e).asJava)
+  }
+
+  class ResourceBundleLoader(configPath: String, config: Config, wabase: WabaseApp[_] with DbAccess) extends
+    ResourceBundle.Control {
+    protected val fallbackLocale: Locale =
+      if (config.getIsNull("fallback-locale")) null else buildLocale(config.getString("fallback-locale"))
+    protected val timeToLive: Long = config.getDuration("time-to-live").toMillis
+    protected val tunablePaths: Set[String] = Set("cp", "query", "fallback-locale", "time-to-live")
+    protected val componentConfs: ComponentConfs = ComponentConf.getConfigs(configPath, tunablePaths)
+    protected val configs: Seq[(String, ResourceBundle.Control)] = {
+      val name_loader = componentConfs.confs.map { case (name, conf) =>
+        @annotation.nowarn("msg=Manifest")
+        val loader = getObjectOrNewInstance[ResourceBundle.Control](
+          conf, "bundle-loader-class", "resource bundle loader",
+          // runtime classes: `WabaseApp[_] with DbAccess` erases to WabaseApp in Scala 2 but to DbAccess in Scala 3
+          Seq(s"$configPath.$name", conf, wabase))
+        (name, loader)
+      }
+      bundleOrder().flatMap(n => name_loader.get(n).map(n -> _))
+    }
+    private val name = configPath.substring(configPath.lastIndexOf(".") + 1)
+    private def bundleOrder(): Seq[String] = config.getValue("bundle-order").unwrapped() match {
+      case s: String => s.split(",").map(_.trim).toSeq
+      case l: java.util.List[_] => l.asScala.map(String.valueOf).toSeq
+      case x => sys.error(s"Invalid bundle-order value, expected array of strings, or comma separated strings, got: '$x'")
+    }
+
+    private def firstBundle(bl: ResourceBundle.Control, name: String, locale: Locale,
+                            loader: ClassLoader, reload: Boolean): ResourceBundle = {
+      @tailrec
+      def fb(formats: List[String]): ResourceBundle = formats match {
+        case Nil => null
+        case format :: tail =>
+          val b = bl.newBundle(name, locale, format, loader, reload)
+          if (b != null) b else fb(tail)
+      }
+      fb(bl.getFormats(name).asScala.toList)
+    }
+
+    override def getFormats(baseName: String): util.List[String] = util.Collections.singletonList("wabase-i18n")
+
+    override def getFallbackLocale(baseName: String, locale: Locale): Locale =
+      if (fallbackLocale == null) super.getFallbackLocale(baseName, locale)
+      else if (locale.equals(fallbackLocale)) null else fallbackLocale
+
+    override def getTimeToLive(baseName: String, locale: Locale): Long = timeToLive
+
+    override def needsReload(baseName: String, locale: Locale, format: String,
+                             loader: ClassLoader, bundle: ResourceBundle, loadTime: Long): Boolean = true
+
+    override def newBundle(
+      baseName: String,
+      locale: Locale,
+      format: String,
+      loader: ClassLoader,
+      reload: Boolean): ResourceBundle = {
+      if (baseName == name)
+        if (configs.nonEmpty) {
+          val bundles = configs
+            .map { case (name, bl) => firstBundle(bl, name, locale, loader, reload) }
+            .filter(_ != null)
+          if (bundles.nonEmpty) new CombinedResourceBundle(bundles) else null
+        } else {
+          val cp = if (config.getIsNull("cp")) null else config.getString("cp")
+          val query = if (config.getIsNull("query")) null else config.getString("query")
+          firstBundle(new DbBundleControl(wabase, cp, query, timeToLive, fallbackLocale),
+            baseName, locale, loader, reload)
+        }
+      else configs
+        .collectFirst { case (cn, bl) if cn == baseName =>
+          firstBundle(bl, baseName, locale, loader, reload)
+        }
+        .orNull
+    }
+  }
+
+  class CombinedResourceBundle(bundles: Seq[ResourceBundle]) extends ListResourceBundle {
+    override def getContents: Array[Array[AnyRef]] = {
+      bundles
+        .foldLeft(ArrayBuffer[Array[AnyRef]]() -> Set[String]()) { case (r, b) =>
+          b.getKeys.asScala.foldLeft(r) { case (r1@(res, exk), k) =>
+            if (exk(k)) r1
+            else (res += Array(k, b.getObject(k)), exk + k)
+          }
+        }
+        ._1.toArray
+    }
+  }
+  class IteratorResourceBundle(it: Iterator[(String, AnyRef)]) extends ListResourceBundle {
+    override def getContents: Array[Array[AnyRef]] =
+      it.map { case (key, value) => Array(key, value) }.toArray
+  }
+  class YamlBundleControl(ttl: Long, fallbackLoc: Locale) extends ResourceBundle.Control {
+    override def getTimeToLive(baseName: String, locale: Locale): Long = ttl
+    override def getFallbackLocale(baseName: String, locale: Locale): Locale = fallbackLoc
+    override def getFormats(baseName: String): util.List[String] =
+      prependList(super.getFormats(baseName), "yaml")
+
+    override def newBundle(
+      baseName: String,
+      locale: Locale,
+      format: String,
+      loader: ClassLoader,
+      reload: Boolean
+    ): ResourceBundle = {
+      if (format == "yaml") {
+        def loadYaml(in: java.io.InputStream): Iterator[(String, AnyRef)] = {
+          val settings = LoadSettings.builder()
+            .setLabel("i18n bundle")
+            .setAllowDuplicateKeys(false)
+            .build()
+          new Load(settings).loadFromInputStream(in) match {
+            case null => null
+            case m: java.util.Map[String, AnyRef]@unchecked => m.asScala.iterator
+            case x => sys.error("Expected Map[String, Any], got class: " + x.getClass)
+          }
+        }
+        val fileName = toResourceName(toBundleName(baseName, locale), "yaml")
+        val in = loader.getResourceAsStream(fileName)
+        val it = if (in != null) try loadYaml(in) finally in.close() else null
+        if (it != null) new IteratorResourceBundle(it) else null
+      } else {
+        super.newBundle(baseName, locale, format, loader, reload)
+      }
+    }
+  }
+  class DbBundleControl(
+    dbAccess: DbAccess,
+    cp: String,
+    query: String,
+    ttl: Long,
+    fallbackLoc: Locale
+  ) extends YamlBundleControl(ttl, fallbackLoc) {
+    override def getFormats(baseName: String): util.List[String] =
+      prependList(super.getFormats(baseName), "jdbc")
+
+    override def newBundle(
+      baseName: String,
+      locale: Locale,
+      format: String,
+      loader: ClassLoader,
+      reload: Boolean
+    ): ResourceBundle = {
+      if (format == "jdbc") {
+        if (cp != null && query != null) {
+          @annotation.nowarn("msg=Manifest")
+          val content = dbAccess.withConn(PoolName(cp)) { implicit res =>
+            import org.tresql.CoreTypes._   // for scala 3
+            Query(query)(res.withParams(Map("name" -> baseName, "locale" -> locale.toString)))
+              .list[(String, String)]
+          }
+          if (content.nonEmpty) new IteratorResourceBundle(content.iterator)
+          else null
+        } else null
+      } else super.newBundle(baseName, locale, format, loader, reload)
+    }
+  }
+}
+
 object I18nService {
   val ApplicationLanguageCookiePostfix = config.getString("app.language-cookie-postfix")
-  val LocaleRegex = "([a-zA-Z]{2,8})(?:[\\-_]([a-zA-Z]{4}))?(?:[\\-_]([a-zA-Z]{2}|[0-9]{3}))?(?:[\\-_]([^\\-_]+))?".r
 
   def currentLangFromHeader(request: HttpRequest): Option[String] = {
     LanguageNegotiator(request.headers)
@@ -129,19 +244,9 @@ object I18nService {
       .map(_.mkString("-"))
   }
 
-  private def buildLocale(str: String): Locale = {
-    val LocaleRegex(lang, script, country, variant) = str
-    val builder = new Locale.Builder
-    builder.setLanguage(lang)
-    builder.setScript(script)
-    builder.setRegion(country)
-    builder.setVariant(variant)
-    builder.build()
-  }
-
   def applicationLocale(state: ApplicationState): Locale =
     state.state.get(AppServiceBase.ApplicationStateCookiePrefix + ApplicationLanguageCookiePostfix)
-      .map(l => buildLocale(String.valueOf(l)))
+      .map(l => I18n.buildLocale(String.valueOf(l)))
       .getOrElse(Locale.getDefault)
 
   implicit def i18BundleMarshaller: ToEntityMarshaller[I18Bundle] = Marshaller.combined { bundle =>

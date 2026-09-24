@@ -21,7 +21,6 @@ class PostgreSqlConstraintMessageSpec extends FlatSpec with Matchers {
     object PgTestQuerease extends TestQuerease("/constraint-message-spec.yaml")
 
     override protected def initQuerease = PgTestQuerease
-    override val I18nResourceName = "test"
   }
 
   def childSaveException(table: String, code: String, message: String) =

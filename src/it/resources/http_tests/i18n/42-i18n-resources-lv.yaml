@@ -38,10 +38,16 @@ response:   [
     "Invalid data (constraint %s violated)": "Datu pārbaudes kļūda (%s)"
   },
   {
+    "it yaml only": "Tikai YAML (lv)"
+  },
+  {
     "Field \"%1$s\" is not valid e-mail address": "Lauka \"%1$s\" vērtība neatbilst e-pasta adreses šablonam"
   },
   {
     "Value should be unique (constraint %s violated)": "Vērtībai jābūt unikālai (%s)"
+  },
+  {
+    "it db only": "Tikai DB (lv)"
   },
   {
     "contains": "satur"
@@ -63,5 +69,8 @@ response:   [
   },
   {
     "to": "līdz"
+  },
+  {
+    "it shared": "kopīgs no DB (lv)"
   }
 ]

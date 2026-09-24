@@ -1,0 +1,6 @@
+path:       /i18n-bundle/it_yaml
+method:     GET
+response:   [
+  { "it yaml only": "Tikai YAML (lv)" },
+  { "it shared": "kopīgs no YAML (lv)" }
+]

@@ -1,0 +1,15 @@
+table:   bundle
+comments: I18n resource bundles loaded by jdbc bundle loader
+columns:
+  - id
+  - name                 ! 100 : Bundle base name
+  - locale               ! 20  : Bundle locale
+
+
+table:   translation
+comments: I18n resource bundle translations loaded by jdbc bundle loader
+columns:
+- id
+- bundle.id            !
+- key                  ! 250 : Translation key
+- value                ! 1000 : Translation value

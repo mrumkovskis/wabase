@@ -1,0 +1,11 @@
+path:     /backdoor/tresql_transaction
+request:  "[
+  +bundle {id, name, locale} [1, 'it_db', 'en'],
+  +bundle {id, name, locale} [2, 'it_db', 'lv'],
+  +translation {id, bundle_id, key, value} [1, 1, 'it db only', 'DB only (en)'],
+  +translation {id, bundle_id, key, value} [2, 1, 'it shared', 'shared from DB (en)'],
+  +translation {id, bundle_id, key, value} [3, 2, 'it db only', 'Tikai DB (lv)'],
+  +translation {id, bundle_id, key, value} [4, 2, 'it shared', 'kopīgs no DB (lv)']
+  ]"
+response:
+  result: ok

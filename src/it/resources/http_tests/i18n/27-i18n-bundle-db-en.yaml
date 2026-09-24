@@ -1,0 +1,6 @@
+path:       /i18n-bundle/it_db
+method:     GET
+response:   [
+  { "it db only": "DB only (en)" },
+  { "it shared": "shared from DB (en)" }
+]

@@ -153,6 +153,8 @@ class BusinessScenariosSpecs extends BusinessScenariosBaseSpecs("http_tests") {
   override def beforeAll() = {
     GreenMailServer.startIfEnabled(config)
     server
+    // i18n jdbc bundle tables must exist before any translation
+    createTables(Seq("bundle", "translation"))
   }
   override def afterAll() = {
     try server.unbind() // unbind for cross-scala tests
@@ -162,6 +164,13 @@ class BusinessScenariosSpecs extends BusinessScenariosBaseSpecs("http_tests") {
   override def scenariosAutoLogin  = false
   override def scenariosAutoLogout = false
 
+  def createTables(tableNames: Seq[String]): Unit = {
+    val tableDefs  = tableNames.map { tableName => qe.tableMetadata.tableDef(tableName, null) }.toVector
+    val generator  = DdlGenerator.hsqldb()
+    val statements = generator.schema(tableDefs).split(";[\r\n]+").toSeq
+    executeStatements(statements: _*)
+  }
+
   override def backdoorAction(requestInfo: RequestInfo, context: Map[String, Any], map: Map[String, Any]): Any = {
     import requestInfo.path
     if (path.startsWith("/backdoor/create-sequences/")) {
@@ -169,11 +178,7 @@ class BusinessScenariosSpecs extends BusinessScenariosBaseSpecs("http_tests") {
       val statements = seqNames.map { seqName => s"create sequence $seqName start with 1;" }
       executeStatements(statements: _*)
     } else if (path.startsWith("/backdoor/create-tables/")) {
-      val tableNames = path.substring("/backdoor/create-tables/".length).split(",").toSeq
-      val tableDefs  = tableNames.map { tableName => qe.tableMetadata.tableDef(tableName, null) }.toVector
-      val generator  = DdlGenerator.hsqldb()
-      val statements = generator.schema(tableDefs).split(";[\r\n]+").toSeq
-      executeStatements(statements: _*)
+      createTables(path.substring("/backdoor/create-tables/".length).split(",").toSeq)
     } else if (path.startsWith("/backdoor/drop-sequences/")) {
       val seqNames   = path.substring("/backdoor/drop-sequences/".length).split(",").toSeq
       val statements = seqNames.map { seqName => s"drop sequence $seqName;" }

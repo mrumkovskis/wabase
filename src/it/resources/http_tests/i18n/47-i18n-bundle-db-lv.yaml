@@ -1,0 +1,6 @@
+path:       /i18n-bundle/it_db
+method:     GET
+response:   [
+  { "it db only": "Tikai DB (lv)" },
+  { "it shared": "kopīgs no DB (lv)" }
+]
