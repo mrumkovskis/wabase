@@ -48,7 +48,7 @@ class ClassLoaderTresqlResourcesConf(cl: ClassLoader) extends Loggable {
             ConfigFactory.parseString(s"db = ${Option(n).map("\"" + _ + "\"").orNull}")
         }.toMap
 
-      (cpConfs ++ resConfs.confs.toMap)
+      (cpConfs ++ resConfs.confs)
         .map { case (cpName, cpOrResConf) =>
           val n = if (cpName == DefaultCpName) null else cpName
           n -> tresqlResourcesConf(n, cpOrResConf.withFallback(config))

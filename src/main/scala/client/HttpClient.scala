@@ -23,7 +23,7 @@ object HttpClientConfig {
   val httpTunablePaths =
     Set("server-port", "server-path", "server-ws", "request-timeout", "await-timeout", "ssl-config")
   lazy val componentConfs = ComponentConf.getConfigs(rootPath, httpTunablePaths)
-  lazy val configs: Map[String, Config] = componentConfs.confs.toMap - "ssl-config"
+  lazy val configs: Map[String, Config] = componentConfs.confs - "ssl-config"
   @annotation.nowarn("msg=Manifest")
   lazy val httpClientFactory: HttpClientFactory =
     getObjectOrNewInstance[HttpClientFactory](componentConfs.root, "factory-class", "http client factory")

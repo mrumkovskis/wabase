@@ -6,7 +6,7 @@ import scala.jdk.CollectionConverters._
 
 case class ComponentConfs(
   root: Config,
-  confs: Seq[(String, Config)],
+  confs: Map[String, Config],
 )
 
 trait ComponentConf {
@@ -89,7 +89,7 @@ class ClassLoaderComponentConf(cl: ClassLoader) extends ComponentConf {
             .withFallback(dedicCfgRxT)
             .withFallback(tunedCfgR.getConfig(n).withFallback(tunedCfgR))
         n -> childConf
-      }.toSeq
+      }.toMap
     )
   }
 }

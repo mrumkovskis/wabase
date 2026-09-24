@@ -483,8 +483,8 @@ object RequestDecoders {
   /** Parser confs by format name and decoder name */
   lazy val decoderConfs: Map[String, Map[String, Config]] =
     formatConfs.confs.map { case (format, _) =>
-      format -> ComponentConf.getConfigs(s"$confPath.$format").confs.toMap
-    }.toMap
+      format -> ComponentConf.getConfigs(s"$confPath.$format").confs
+    }
   /** Stream decoder factories by format name and decoder name */
   @annotation.nowarn("msg=Manifest")
   lazy val streamDecoderFactories: Map[String, Map[String, StreamDecoderFactory]] =
