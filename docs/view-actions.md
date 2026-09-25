@@ -447,8 +447,35 @@ Example:
 
 ```
 foreach x in ([{1} + {2} + {3}]) (:x) fold (sum, x) {:sum + :x}
-email ({ 'c@c.c' 'to' }) (template 'Subject') (template 'Content')
+email ({ 'c@c.c' 'to' }) (template body='Subject') (template body='Content')
 ```
+
+### Named arguments
+
+Operations [to file](#save-file), [template](#template-processing), [email](#email) and
+[http](#http) accept arguments by name:
+
+```
+<operation> [<positional argument> …] [<argument name> = <argument value> …]
+```
+
+- Positional arguments come first, named arguments follow in any order.
+- An argument can be specified only once — either by position or by name.
+- Missing mandatory arguments, unknown argument names and positional arguments beyond
+  the last allowed position are errors.
+
+Argument value parsing is greedy, so a value followed by another argument may consume that
+argument as part of its expression. Enclose such a value in [braces](#braces):
+
+```
+http post headers=([]) body=(unique { 'Mr. Mario' name }) uri='/person_health'   # braces required
+http post headers=[] body=…                  # error - body and uri are parsed as part of headers expression
+```
+
+String literals and values enclosed in braces or curly braces can be followed by other
+arguments without additional braces. A value is enclosed in braces as a whole — in
+`headers=(:a) + (:b)` only `(:a)` is taken as the headers value, use `headers=((:a) + (:b))`
+instead.
 
 ### Tresql
 
@@ -828,7 +855,8 @@ to file [<[client name]>] <content op> [[ filename = ] <file name tresql>] [[con
 ```
 
 Returns saved file info object with following fields: `id`, `filename`, `upload_time`,
-`content_type`, `sha_256`, `size`.
+`content_type`, `sha_256`, `size`. File name and content type can be passed as
+[named arguments](#named-arguments).
 
 Example:
 
@@ -840,21 +868,34 @@ to file ({ 'a@a.a' 'to', 'Hannah' name }) content_type = 'text/csv; charset=UTF-
 ### Template processing
 
 ```
-template <template tresql> [[data = ] <expression>] [[filename = ] <expression>]
+template (body | name) = <expression> [[data = ] <expression>] [[target_name = ] <tresql>]
 ```
+
+Exactly one of `body` (template body) or `name` (template name resolved by the template
+loader, see `template` section in `reference.conf`) must be specified. Since it cannot be
+told by position which one is meant, the first argument must always be named. `data` and
+`target_name` can be passed by position or by name, see [named arguments](#named-arguments).
+`target_name` is the file name of the result, for example the email attachment file name.
 
 Example:
 
 ```
-template 'Hello {{name}} in {{action}}!' filename='file name' data={:name name, 'update' action}
-template 'Subject for {{name}}!'
+template body='Hello {{name}} in {{action}}!' target_name='file name' data={:name name, 'update' action}
+template body='Subject for {{name}}!'
+template name='hello.txt' target_name='file name'
+template body=(file {:template_file.id, :template_file.sha_256}) {:name name, 'delete' action}
 ```
 
 ### email
 
 ```
-email [batch] [html] <data tresql> <subject expr> <body expr> ([embedded] <attachment expr> […])
+email [batch] [html] [recipients = ] <data tresql> [subject = ] <subject expr> [body = ] <body expr>
+    [[attachments = ] ([embedded] <attachment expr> […])]
 ```
+
+Arguments can be passed by position or by name, see [named arguments](#named-arguments).
+`recipients`, `subject` and `body` are mandatory. `attachments` takes all following attachment
+expressions up to the next named argument or the end of the operation.
 
 If the `batch` option is used, email is sent for each row returned by the recipient's
 operation. Otherwise the recipient's operation must return no more than one row. Currently
@@ -882,31 +923,56 @@ recipients = to file ({ 'a@a.a' 'to', 'Hannah' name } + { 'b@b.b' 'to', 'Baiba' 
     content_type = 'text/csv; charset=UTF-8'
 email batch
     extract entity from (file {:recipients.id, :recipients.sha_256}) using default_csv_decoder
-    (template 'Subject for {{name}}!')
-    (template 'Content for {{recipient}}.' {trim(:name) recipient})
+    (template body='Subject for {{name}}!')
+    (template body='Content for {{recipient}}.' {trim(:name) recipient})
     (http { '/email_test1', '?', :name name })
     (file {:file.id, :file.sha_256})
-    (template 'Template attachment for {{name}}' {trim(:name) name} 'attachment name')
+    (template body='Template attachment for {{name}}' {trim(:name) name} 'attachment name')
 
 email
     ({ 'c@c.c' 'to', 'Minna' name, 'c1@.c1.c1' cc, 'f@f.f' 'from', 'r@r.r' replyTo })
-    (template 'Subject for {{name}}!')
-    (template 'Content for {{recipient}}.' {trim(:name) recipient})
+    (template body='Subject for {{name}}!')
+    (template body='Content for {{recipient}}.' {trim(:name) recipient})
 
 email html
     ({ 'c@c.c' 'to', 'Minna' name })
-    (template 'Subject for {{name}}!')
-    (template '<p>Hi {{name}}!</p><img src="cid:logo.png">' {trim(:name) name})
+    (template body='Subject for {{name}}!')
+    (template body='<p>Hi {{name}}!</p><img src="cid:logo.png">' {trim(:name) name})
     (embedded file {:logo.id, :logo.sha_256})
 
 email null[false]{'n@n.n' 'to'} 'no mail' 'no content'
 ```
 
+Named arguments example:
+
+```
+email batch
+    recipients=(extract entity from (file {:recipients.id, :recipients.sha_256}) using default_csv_decoder)
+    subject=(template body='Subject for {{name}}!')
+    body=(template body='Content for {{recipient}}.' {trim(:name) recipient})
+    attachments=
+      (http { '/email_test1', '?', :name name })
+      (embedded template body='Embedded image for {{name}}' {trim(:name) name} 'logo.png')
+
+# positional arguments followed by named arguments, attachments end at the next named argument
+email html
+    ({ 'c@c.c' 'to', 'Minna' name })
+    (template body='Subject for {{name}}!')
+    attachments=(embedded file {:logo.id, :logo.sha_256})
+    body=(template body='<p>Hi {{name}}!</p><img src="cid:logo.png">' {trim(:name) name})
+
+email recipients=(null[false]{'n@n.n' 'to'}) subject='no mail' body='no content'
+```
+
 ### http
 
 ```
-[<result type>] (http | http_proxy) (get|post|put|delete|head|options|patch|trace|connect) [<[client name]>] <tresql uri> [<body expression>] <header tresql>
+[<result type>] (http | http_proxy) [get|delete|head|options|trace|connect] [<[client name]>] [uri = ] <tresql uri> [[headers = ] <header tresql>]
+[<result type>] (http | http_proxy) (post|put|patch) [<[client name]>] [uri = ] <tresql uri> [[body = ] <body expression>] [[headers = ] <header tresql>]
 ```
+
+If the method is omitted, `get` is used. Arguments can be passed by position or by name, see
+[named arguments](#named-arguments). `uri` is mandatory.
 
 Client name parameter comes from configuration `http-client` parameter section, see
 `reference.conf`.
@@ -943,6 +1009,13 @@ http post
 http [default-wabase-http-client] {'/download_test', :id, :sha_256}   # http with client name
 cookie = buildCookieHeaderValue ({ 'current_lang', 'lv' } + { 'current_user', 'dzidzis' })   # sets cookie value
 http get { '/extract_http_cookie_test', '1' } ({ 'Cookie', :cookie })   # uses cookie header value
+http get uri='/invocation_test_1'                    # named uri
+http get uri={ '/extract_http_header_test', '1' }
+    headers={ 'Test-Header1', 'header1_value'} + { 'Test-Header2', 'header2_value'}
+http post [default-wabase-http-client]               # named arguments in any order
+    headers=([])                                      # braces required since other arguments follow
+    body=(unique { 'Mr. Mario' name, 'Moderna' 'vaccine' })
+    uri='/person_health'
 ```
 
 #### http_proxy

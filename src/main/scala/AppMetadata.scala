@@ -1070,29 +1070,25 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
     case conformTo ~ (fileStreamer ~ e) => File(e, conformTo, fileStreamer.orNull)
   } named "file-op"
   def toFileOp: MemParser[ToFile] = {
-    val Filename = "filename"
-    val ContentType = "content_type"
-    val (args, idxs) = Set[String]() -> Map(0 -> Filename, 1 -> ContentType)
-    "to file" ~>
-      opt("[" ~> HttpClientFileStreamerNameRegex <~ "]") ~ operation ~ namedOps(args, positionalNames = idxs) ^^ {
+    val Filename = Arg("filename", tresqlOp)
+    val ContentType = Arg("content_type", tresqlOp)
+    "to file" ~> opt("[" ~> HttpClientFileStreamerNameRegex <~ "]") ~ operation ~
+      namedOps(Nil, positional = positional(Filename, ContentType)) ^^ {
       case fileStreamer ~ op ~ args =>
-        ToFile(op, args.get(Filename).map(_.asInstanceOf[Tresql]).orNull,
-          args.get(ContentType).map(_.asInstanceOf[Tresql]).orNull, fileStreamer.orNull)
+        ToFile(op, args.orNull(Filename), args.orNull(ContentType), fileStreamer.orNull)
     } named "to-file-op"
   }
   def templateOp: MemParser[Template] = {
-    val Body = "body"
-    val Name = "name"
-    val Data = "data"
-    val Target_name = "target_name"
-    val (args, idxs) = Set(Body, Name) -> Map(1 -> Data, 2 -> Target_name)
-    "template\\s+".r ~> namedOps(args, positionalNames = idxs) ^^ { args =>
+    val Body = Arg("body", operation)
+    val Name = Arg("name", operation)
+    val Data = Arg("data", operation)
+    val TargetName = Arg("target_name", tresqlOp)
+    // first argument must be named since it can be either body or name
+    "template\\s+".r ~> namedOps(Seq(Body, Name), positional = Map(1 -> Data, 2 -> TargetName)) ^^ { args =>
       val body = args.get(Body)
       val name = args.get(Name)
-      val dataOp = args.get(Data)
-      val filename = args.get(Target_name).map(_.asInstanceOf[Tresql])
       require((body.isEmpty && name.nonEmpty) || (body.nonEmpty && name.isEmpty), s"Exactly one of template parameters 'body' or 'name' must be specified")
-      Template(body.orNull, name.orNull, dataOp.orNull, filename.orNull)
+      Template(body.orNull, name.orNull, args.orNull(Data), args.orNull(TargetName))
     } named "template-op"
   }
   def emailOp: MemParser[Email] = {
@@ -1104,25 +1100,44 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
       (("(" ~> embedded ~> operation <~ ")") | (embedded ~> operation)) ^^ (Email.Attachment(_, isEmbeddedImage = true)) |
       operation ^^ (Email.Attachment(_, isEmbeddedImage = false))
     ) named "email-attachment-op"
+    // braces allow recipients to be followed by named arguments
+    val Recipients = Arg("recipients", ("(" ~> dataOp <~ ")") | dataOp)
+    val Subject = Arg("subject", operation)
+    val Body = Arg("body", operation)
+    // attachments are parsed until next named argument
+    val Attachments = Arg("attachments", rep1(not(ident ~ "=") ~> attachmentOp))
     // word boundary so that recipient tresql starting with 'html...' is not mistaken for option
-    "email\\b".r ~> opt("batch\\b".r) ~ opt("html\\b".r) ~ dataOp ~ operation ~ operation ~ rep(attachmentOp) ^^ {
-      case batch ~ html ~ data ~ subj ~ body ~ att =>
-        Email(data, subj, body, att, batch.isDefined, html.isDefined)
+    "email\\b".r ~> opt("batch\\b".r) ~ opt("html\\b".r) ~
+      namedOps(Nil, mandatory = Seq(Recipients, Subject, Body),
+        positional = positional(Recipients, Subject, Body, Attachments)) ^^ {
+      case batch ~ html ~ args =>
+        Email(args(Recipients), args(Subject), args(Body), args.get(Attachments).getOrElse(Nil),
+          batch.isDefined, html.isDefined)
     } named "email-op"
   }
   def httpOp: MemParser[Http] = {
-    def tu(uri: Exp) = TresqlUri.Tresql(uri.tresql)
+    def tu(uri: Tresql) = TresqlUri.Tresql(uri.tresql)
     def http_cln = opt("[" ~> HttpClientFileStreamerNameRegex <~ "]")
-    def http_no_entity: MemParser[Http] =
-      opt("(get|delete|head|options|trace|connect)\\b".r) ~ http_cln ~ bracesTresql ~ opt(tresqlOp) ^^ {
-        case method ~ client ~ uri ~ headers =>
-          Http(method.getOrElse("get"), tu(uri), headers.orNull, body = null, httpClientName = client.orNull)
+    def bracesTresql: MemParser[Tresql] = (("(" ~> expr <~ ")") | expr) ^^ (t => Tresql(t.tresql)) named "braces-tresql-op"
+    val Uri = Arg("uri", bracesTresql)
+    val Body = Arg("body", operation)
+    val Headers = Arg("headers", bracesTresql)
+    def args(positionalArgs: Arg[_]*) =
+      namedOps(Nil, mandatory = Seq(Uri), positional = positional(positionalArgs: _*))
+    def http_no_entity: MemParser[Http] = {
+      opt("(get|delete|head|options|trace|connect)\\b".r) ~ http_cln ~ args(Uri, Headers) ^^ {
+        case method ~ client ~ args =>
+          Http(method.getOrElse("get"), tu(args(Uri)), args.orNull(Headers),
+            body = null, httpClientName = client.orNull)
       } named "http-get-delete-op"
-    def http_with_entity: MemParser[Http] =
-      "(post|put|patch)\\b".r ~ http_cln ~ bracesTresql ~ opt(operation) ~ opt(tresqlOp) ^^ {
-        case method ~ client ~ uri ~ op ~ headers =>
-          Http(method, tu(uri), headers.orNull, op.orNull, httpClientName = client.orNull)
+    }
+    def http_with_entity: MemParser[Http] = {
+      "(post|put|patch)\\b".r ~ http_cln ~ args(Uri, Body, Headers) ^^ {
+        case method ~ client ~ args =>
+          Http(method, tu(args(Uri)), args.orNull(Headers), args.orNull(Body), httpClientName = client.orNull)
       } named "http-post-put-op"
+    }
+
     opt(opResultType) ~ ("(http|http_proxy)\\b".r ~ (http_with_entity | http_no_entity)) ^^ {
       case conformTo ~ (mode ~ http) => http.copy(conformTo = conformTo, isProxy = mode == "http_proxy")
     } named "http-op"
@@ -1180,7 +1195,6 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
   def thisOp: MemParser[This] = opt(opResultType) <~ "this" ^^ This.apply named "this-op"
 
   def bracesOp: MemParser[Op] = "(" ~> operation <~ ")" named "braces-op"
-  def bracesTresql: MemParser[Exp] = (("(" ~> expr <~ ")") | expr) named "braces-tresql-op"
 
   def redirect: MemParser[Op] = {
     (RedirectOpRegex ~> ((RedirectToKeyRegex ^^ (s => RedirectToKey(s))) | ((setHttpHeadersOps ~ tresqlOp) ^^ {
@@ -1201,7 +1215,8 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
   }
   /* Cannot be named mem parser since depends on parameter. */
   def setOrDeleteCookie(cmd: String, mandatoryPars: Set[String] = Set()): Parser[SetHttpHeadersOp] =
-    ((cmd ~ "(") ~> namedOps(allowedCookiePars, mandatoryPars, ",") <~ ")") ^? ({
+    ((cmd ~ "(") ~> namedOps(allowedCookiePars.toList.map(Arg(_, operation)),
+      mandatoryPars.toList.map(Arg(_, operation)), ",") <~ ")") ^^ (_.values) ^? ({
       case pars if pars.forall(_._2.isInstanceOf[Tresql]) =>
         def pt =
           Tresql(pars.map { case (n, p) => s"(${p.asInstanceOf[Tresql].tresql}) $n" }.mkString("{", ", ", "}"))
@@ -1256,34 +1271,49 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
       case x => sys.error(s"Knipis, unexpected op result type: $x")
     } named "op-result-type"
   }
+  /** Operation argument. Argument value type is defined by argument parser. */
+  case class Arg[T](name: String, parser: Parser[T])
+  /** Parsed operation arguments in order of appearance. */
+  class Args(val values: ListMap[String, Any]) {
+    def get[T](arg: Arg[T]): Option[T] = values.get(arg.name).map(_.asInstanceOf[T])
+    def apply[T](arg: Arg[T]): T = get(arg).getOrElse(sys.error(s"Knipis: parameter ${arg.name} not found"))
+    def orNull[T >: Null](arg: Arg[T]): T = get(arg).orNull
+  }
+  /** Positional arguments starting from index 0 without gaps */
+  private def positional(args: Arg[_]*): Map[Int, Arg[_]] = args.zipWithIndex.map(_.swap).toMap
   private def namedOps(
-    allowedNonPositionalNames: Set[String],
-    mandatoryNames: Set[String] = Set(),
+    allowedNonPositional: Seq[Arg[_]],
+    mandatory: Seq[Arg[_]] = Nil,
     separator: String = null,
-    positionalNames: Map[Int, String] = Map(),
-  ): Parser[ListMap[String, Op]] = { // do not make mem parser since name may depend on parameters
-    val allowedNames = allowedNonPositionalNames ++ positionalNames.values
-    val namedOp: Parser[(String, Op)] =
-      opt(ident <~ "=") ~ operation ^? ( {
-        case Some(name) ~ op if allowedNames(name) || allowedNames.isEmpty => (name, op)
-        case None ~ op => (null, op)
-      }, {
-        case n ~ _ => s"Illegal argument name - ${n.orNull}, allowed arguments - ${allowedNames.mkString(", ")}"
-      }) named "named-op"
-    (if (separator == null) rep(namedOp) else repsep(namedOp, separator)) ^^ { pars =>
+    positional: Map[Int, Arg[_]] = Map(),
+  ): Parser[Args] = { // do not make mem parser since name may depend on parameters
+    val allowed = (allowedNonPositional ++ positional.values).map(a => a.name -> a).toMap[String, Arg[_]]
+    val named: Parser[(String, Any)] =
+      (ident <~ "=") into { n =>
+        allowed.get(n).map(a => (a.parser: Parser[Any]) ^^ (n -> _))
+          .getOrElse(failure(s"Illegal argument name - $n, allowed arguments - ${allowed.keys.mkString(", ")}"))
+      }
+    // the argument's position picks its parser; resolution to a name stays in the ^^ below
+    def arg(i: Int): Parser[(String, Any)] =
+      named | ((positional.get(i).map(_.parser).getOrElse(operation): Parser[Any]) ^^ (null.asInstanceOf[String] -> _))
+    val sep: Parser[Any] = if (separator == null) success(()) else literal(separator)
+    def argsFrom(i: Int): Parser[List[(String, Any)]] =
+      arg(i) ~ opt(sep ~> argsFrom(i + 1)) ^^ { case a ~ rest => a :: rest.getOrElse(Nil) }
+    opt(argsFrom(0)) ^^ (_.getOrElse(Nil)) ^^ { pars =>
       val resolvedPars = pars.zipWithIndex.map { case (no@(n, o), i) =>
         if (n != null) no
         else
-          if (positionalNames.isEmpty) sys.error(s"Positional parameters not allowed for $o")
-          else positionalNames.getOrElse(i, sys.error(s"Parameter name under index $i not found for $o")) -> o
+          if (positional.isEmpty) sys.error(s"Positional parameters not allowed for $o")
+          else positional.getOrElse(i, sys.error(s"Parameter name under index $i not found for $o")).name -> o
       }
       val names = resolvedPars.map(_._1)
       val duplicateNames = names.diff(names.distinct).distinct
       if (duplicateNames.nonEmpty)
         sys.error(s"Duplicate parameters (${duplicateNames.mkString(",")}) specified - (${names.mkString(",")})")
-      if (!mandatoryNames.subsetOf(names.toSet))
+      val mandatoryNames = mandatory.map(_.name)
+      if (!mandatoryNames.forall(names.contains))
         sys.error(s"Not all mandatory parameters (${mandatoryNames.mkString(",")}) specified - (${names.mkString(",")})")
-      ListMap(resolvedPars: _*)
+      new Args(ListMap(resolvedPars: _*))
     }
   } named "named-ops"
 

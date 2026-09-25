@@ -1097,7 +1097,7 @@ count:
 name: http_test_1
 api: get, delete
 get:
-- http '/invocation_test_1'
+- http get uri='/invocation_test_1'   # named uri argument
 delete:
 - res = as any http '/invocation_test_1:count'
 - :res
@@ -1116,10 +1116,12 @@ get:
 list:
 - http '/invocation_test_1'
 insert:
-  # http post ends with empty array explicitly indicating no headers
-- res = http post [default-wabase-http-client] '/person_health'
-          unique { 'Mr. Mario' name, 'Moderna' 'vaccine', '2022-04-11' 'manipulation_date' }
-          []
+  # named args in non positional order; empty headers array explicitly indicates no headers
+  # headers in braces, otherwise tresql parser would continue parsing following args as part of [] expression
+- res = http post [default-wabase-http-client]
+          headers=([])
+          body=(unique { 'Mr. Mario' name, 'Moderna' 'vaccine', '2022-04-11' 'manipulation_date' })
+          uri='/person_health'
 - status ok :res
 update:
 - health_id = unique_opt |med_db:person_health[name = :name]{id}
@@ -1300,8 +1302,8 @@ get:
 - status ok { :h1 || ' ' || :h2 }
 list:
 - h3 = extract optional header Test-Header3        # optional header, returns null if header not found
-- h1_h2 = as any http get { '/extract_http_header_test', '1' }
-    ({ 'Test-Header1', 'header1_value'} + { 'Test-Header2', 'header2_value'}) # headers
+- h1_h2 = as any http get uri={ '/extract_http_header_test', '1' }
+    headers={ 'Test-Header1', 'header1_value'} + { 'Test-Header2', 'header2_value'} # named args
 - h = { 'Test-Header1', 'header1_value'} + { 'Test-Header2', 'header2_value'} # headers as variable to avoid db usage in http op
 - h_var = as any http get { '/extract_http_header_test', '1' } :h
 - :h1_h2
@@ -1395,20 +1397,23 @@ insert:
 - file = to file {'attachment from file' attachment} 'file_attachment'
 - recipients = to file ({ 'a@a.a' 'to', 'Hannah' name } + { 'b@b.b' 'to', 'Baiba' name })
     content_type = 'text/csv; charset=UTF-8'
+  # named args
 - email batch
-    extract entity from (file {:recipients.id, :recipients.sha_256}) using default_csv_decoder
-    (template body='Subject for {{name}}!')
-    (template body='Content for {{recipient}}.' {trim(:name) recipient})
-    (http { '/email_test1', '?', :name name })
-    (file {:file.id, :file.sha_256})
-    (template body='Template attachment for {{name}}' {trim(:name) name} 'attachment name')
-    (embedded template body='Embedded image for {{name}}' {trim(:name) name} 'logo.png')
+    recipients=(extract entity from (file {:recipients.id, :recipients.sha_256}) using default_csv_decoder)
+    subject=(template body='Subject for {{name}}!')
+    body=(template body='Content for {{recipient}}.' {trim(:name) recipient})
+    attachments=
+      (http { '/email_test1', '?', :name name })
+      (file {:file.id, :file.sha_256})
+      (template body='Template attachment for {{name}}' {trim(:name) name} 'attachment name')
+      (embedded template body='Embedded image for {{name}}' {trim(:name) name} 'logo.png')
+  # positional args followed by named args, attachments are parsed until next named arg
 - email html
     ({ 'c@c.c' 'to', 'Minna' name, 'c1@.c1.c1' cc, 'f@f.f' 'from', 'r@r.r' replyTo })
     (template body='Subject for {{name}}!')
-    (template body='<p>Content for {{recipient}}.</p><img src="cid:logo.png">' data={trim(:name) recipient})
-    embedded (template body='Embedded image for {{recipient}}' {trim(:name) recipient} 'logo.png')
-- email null[false]{'n@n.n' 'to'} 'no mail' 'no content'
+    attachments=embedded (template body='Embedded image for {{recipient}}' {trim(:name) recipient} 'logo.png')
+    body=(template body='<p>Content for {{recipient}}.</p><img src="cid:logo.png">' data={trim(:name) recipient})
+- email recipients=(null[false]{'n@n.n' 'to'}) subject='no mail' body='no content'
 
 
 name: not_decode_request_insert_test
