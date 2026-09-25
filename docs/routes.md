@@ -1,5 +1,25 @@
 # Route processing
 
+- [Handlers](#handlers)
+  - [Handler implementation](#handler-implementation)
+  - [Handler aliases](#handler-aliases)
+- [Provided handlers](#provided-handlers)
+  - [Audit](#audit)
+  - [CSRF defence](#csrf-defence)
+  - [I18n](#i18n)
+  - [Metadata](#metadata)
+  - [Action](#action)
+  - [Authentication](#authentication)
+  - [Deferred](#deferred)
+  - [File](#file)
+  - [Event notifications](#event-notifications)
+  - [Request](#request)
+  - [Response](#response)
+  - [Security headers](#security-headers)
+- [Error handling](#error-handling)
+  - [Provided error handlers](#provided-error-handlers)
+  - [Custom error handler](#custom-error-handler)
+
 Routes are defined in YAML files under `routes/`:
 
 ```
