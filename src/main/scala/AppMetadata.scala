@@ -1108,7 +1108,7 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
     val Attachments = Arg("attachments", rep1(not(ident ~ "=") ~> attachmentOp))
     // word boundary so that recipient tresql starting with 'html...' is not mistaken for option
     "email\\b".r ~> opt("batch\\b".r) ~ opt("html\\b".r) ~
-      namedOps(Nil, mandatory = Seq(Recipients, Subject, Body),
+      namedOps(Nil, mandatory = Set(Recipients.name, Subject.name, Body.name),
         positional = positional(Recipients, Subject, Body, Attachments)) ^^ {
       case batch ~ html ~ args =>
         Email(args(Recipients), args(Subject), args(Body), args.get(Attachments).getOrElse(Nil),
@@ -1123,7 +1123,7 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
     val Body = Arg("body", operation)
     val Headers = Arg("headers", bracesTresql)
     def args(positionalArgs: Arg[_]*) =
-      namedOps(Nil, mandatory = Seq(Uri), positional = positional(positionalArgs: _*))
+      namedOps(Nil, mandatory = Set(Uri.name), positional = positional(positionalArgs: _*))
     def http_no_entity: MemParser[Http] = {
       opt("(get|delete|head|options|trace|connect)\\b".r) ~ http_cln ~ args(Uri, Headers) ^^ {
         case method ~ client ~ args =>
@@ -1216,7 +1216,7 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
   /* Cannot be named mem parser since depends on parameter. */
   def setOrDeleteCookie(cmd: String, mandatoryPars: Set[String] = Set()): Parser[SetHttpHeadersOp] =
     ((cmd ~ "(") ~> namedOps(allowedCookiePars.toList.map(Arg(_, operation)),
-      mandatoryPars.toList.map(Arg(_, operation)), ",") <~ ")") ^^ (_.values) ^? ({
+      mandatoryPars, ",") <~ ")") ^^ (_.values) ^? ({
       case pars if pars.forall(_._2.isInstanceOf[Tresql]) =>
         def pt =
           Tresql(pars.map { case (n, p) => s"(${p.asInstanceOf[Tresql].tresql}) $n" }.mkString("{", ", ", "}"))
@@ -1283,7 +1283,7 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
   private def positional(args: Arg[_]*): Map[Int, Arg[_]] = args.zipWithIndex.map(_.swap).toMap
   private def namedOps(
     allowedNonPositional: Seq[Arg[_]],
-    mandatory: Seq[Arg[_]] = Nil,
+    mandatory: Set[String] = Set(),
     separator: String = null,
     positional: Map[Int, Arg[_]] = Map(),
   ): Parser[Args] = { // do not make mem parser since name may depend on parameters
@@ -1310,9 +1310,9 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
       val duplicateNames = names.diff(names.distinct).distinct
       if (duplicateNames.nonEmpty)
         sys.error(s"Duplicate parameters (${duplicateNames.mkString(",")}) specified - (${names.mkString(",")})")
-      val mandatoryNames = mandatory.map(_.name)
-      if (!mandatoryNames.forall(names.contains))
-        sys.error(s"Not all mandatory parameters (${mandatoryNames.mkString(",")}) specified - (${names.mkString(",")})")
+      val missing = mandatory -- names
+      if (missing.nonEmpty)
+        sys.error(s"Missing mandatory parameters (${missing.mkString(",")}) - specified (${names.mkString(",")})")
       new Args(ListMap(resolvedPars: _*))
     }
   } named "named-ops"
