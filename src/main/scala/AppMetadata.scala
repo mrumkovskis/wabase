@@ -17,7 +17,7 @@ import org.wabase.AppMetadata.Action.{OpTraverser, StepTraverser, Validations, V
 
 import java.io.InputStream
 import java.util.concurrent.TimeUnit
-import scala.collection.immutable.{Map, Seq, Set}
+import scala.collection.immutable.{ListMap, Map, Seq, Set}
 import scala.concurrent.duration.FiniteDuration
 import scala.jdk.CollectionConverters._
 import scala.util.Try
@@ -1072,12 +1072,12 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
   def toFileOp: MemParser[ToFile] = {
     val Filename = "filename"
     val ContentType = "content_type"
-    val args = Set(Filename, ContentType)
+    val (args, idxs) = Set[String]() -> Map(0 -> Filename, 1 -> ContentType)
     "to file" ~>
-      opt("[" ~> HttpClientFileStreamerNameRegex <~ "]") ~ operation ~ namedOps(args) ^^ {
+      opt("[" ~> HttpClientFileStreamerNameRegex <~ "]") ~ operation ~ namedOps(args, positionalNames = idxs) ^^ {
       case fileStreamer ~ op ~ args =>
-        ToFile(op, findArg(Filename, 0, args).map(_.asInstanceOf[Tresql]).orNull,
-          findArg(ContentType, 1, args).map(_.asInstanceOf[Tresql]).orNull, fileStreamer.orNull)
+        ToFile(op, args.get(Filename).map(_.asInstanceOf[Tresql]).orNull,
+          args.get(ContentType).map(_.asInstanceOf[Tresql]).orNull, fileStreamer.orNull)
     } named "to-file-op"
   }
   def templateOp: MemParser[Template] = {
@@ -1085,13 +1085,13 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
     val Name = "name"
     val Data = "data"
     val Target_name = "target_name"
-    val args = Set(Body, Name, Data, Target_name)
-    "template\\s+".r ~> namedOps(args) ^^ { args =>
-      val body = findArg(Body, 0, args)
-      val name = findArg(Name, 0, args)
-      val dataOp = findArg(Data, 1, args)
-      val filename = findArg(Target_name, 2, args).map(_.asInstanceOf[Tresql])
-      require((body.isEmpty && name.nonEmpty) || (body.nonEmpty && name.isEmpty), s"One of template parameters body or name must be specified")
+    val (args, idxs) = Set(Body, Name) -> Map(1 -> Data, 2 -> Target_name)
+    "template\\s+".r ~> namedOps(args, positionalNames = idxs) ^^ { args =>
+      val body = args.get(Body)
+      val name = args.get(Name)
+      val dataOp = args.get(Data)
+      val filename = args.get(Target_name).map(_.asInstanceOf[Tresql])
+      require((body.isEmpty && name.nonEmpty) || (body.nonEmpty && name.isEmpty), s"Exactly one of template parameters 'body' or 'name' must be specified")
       Template(body.orNull, name.orNull, dataOp.orNull, filename.orNull)
     } named "template-op"
   }
@@ -1257,28 +1257,35 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
     } named "op-result-type"
   }
   private def namedOps(
-    allowedNames: Set[String],
+    allowedNonPositionalNames: Set[String],
     mandatoryNames: Set[String] = Set(),
-    separator: String = null
-  ): Parser[List[(String, Op)]] = { // do not make mem parser since name may depend on parameters
+    separator: String = null,
+    positionalNames: Map[Int, String] = Map(),
+  ): Parser[ListMap[String, Op]] = { // do not make mem parser since name may depend on parameters
+    val allowedNames = allowedNonPositionalNames ++ positionalNames.values
     val namedOp: Parser[(String, Op)] =
       opt(ident <~ "=") ~ operation ^? ( {
         case Some(name) ~ op if allowedNames(name) || allowedNames.isEmpty => (name, op)
-        case _ ~ op => (null, op)
+        case None ~ op => (null, op)
       }, {
-        case n ~ _ => s"Illegal argument name - $n, allowed arguments - $allowedNames"
+        case n ~ _ => s"Illegal argument name - ${n.orNull}, allowed arguments - ${allowedNames.mkString(", ")}"
       }) named "named-op"
-    (if (separator == null) rep(namedOp) else repsep(namedOp, separator)) ^? ({
-      case l if mandatoryNames.isEmpty ||
-        l.size - (l.map(_._1).toSet -- mandatoryNames).size == mandatoryNames.size => l
-    } , {
-      case l => sys.error(s"Not all mandatory parameters (${mandatoryNames.mkString(",")}) specified - (${
-        l.map(_._1).mkString(",")}), ")
-    })
+    (if (separator == null) rep(namedOp) else repsep(namedOp, separator)) ^^ { pars =>
+      val resolvedPars = pars.zipWithIndex.map { case (no@(n, o), i) =>
+        if (n != null) no
+        else
+          if (positionalNames.isEmpty) sys.error(s"Positional parameters not allowed for $o")
+          else positionalNames.getOrElse(i, sys.error(s"Parameter name under index $i not found for $o")) -> o
+      }
+      val names = resolvedPars.map(_._1)
+      val duplicateNames = names.diff(names.distinct).distinct
+      if (duplicateNames.nonEmpty)
+        sys.error(s"Duplicate parameters (${duplicateNames.mkString(",")}) specified - (${names.mkString(",")})")
+      if (!mandatoryNames.subsetOf(names.toSet))
+        sys.error(s"Not all mandatory parameters (${mandatoryNames.mkString(",")}) specified - (${names.mkString(",")})")
+      ListMap(resolvedPars: _*)
+    }
   } named "named-ops"
-
-  private def findArg(name: String, idx: Int, l: List[(String, Op)]) =
-    l.find(_._1 == name).orElse(l.lift(idx).filter(_._1 == null)).map(_._2)
 
   def actionFromOp: MemParser[Action] = new Parser[Action] {
     def apply(in: Input): ParseResult[Action] = {
