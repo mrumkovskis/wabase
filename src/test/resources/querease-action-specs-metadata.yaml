@@ -329,7 +329,7 @@ save:
 - validations check_person [wabase_db]:
   - (person[name = :name]{count(1)}) > 0, "Person '" || :name || "' must be registered"
 - save this
-- redirect {'person_health', '?/', :name, :manipulation_date::date, '?', 'val1' par1, 'val2' par2 }
+- redirect {'person_health', '?/', :name, :manipulation_date::date, '?', 'val1' par1, 'val2' par2 }  # column list uri syntax
 
 
 name: person_health_priv
@@ -601,7 +601,7 @@ save:
 count:
 - status ok unique_opt {:status}[false]  # should return 200 with no message in response
 list:
-- status 303 { '/data', '?/', 'path', :status }
+- status 303 /data/'?/'/path/:status
 delete:
 - x = status ok
 - :x
@@ -612,13 +612,13 @@ api:    get, save, list, count
 fields:
   - id
 get:
-  - redirect { 'data/path', '?/', :id }
+  - redirect data/path/'?/'/:id
 save:
-  - redirect { 'data/path', '?', :id id }
+  - redirect data/path?:id
 count:
-  - redirect { 'data/path' }
+  - redirect data/path
 list:
-  - redirect { 'data/path', '?' }
+  - redirect data/path?
 
 
 name:   status_test_3
@@ -626,13 +626,13 @@ api:    get, save, list, count
 fields:
   - id
 save:
-  - status 303 { 303 }
+  - status 303 { 303 }  # column list uri syntax
 get:
-  - redirect { 'data/path/' || :id }
+  - redirect data/path/:id
 list:
-  - status 303 { 'data/path', '?/', :id, '?', 'val-of-par1' par1 }
+  - status 303 { 'data/path', '?/', :id, '?', 'val-of-par1' par1 }  # column list uri syntax
 count:
-  - redirect { null, '?/', :id, '?', (:id + 1) par1 }
+  - redirect { null, '?/', :id, '?', (:id + 1) par1 }  # column list uri syntax
 
 
 name:   status_test_4
@@ -640,11 +640,11 @@ api:    get, save, list, count, delete
 fields:
   - id
 save:
-  - redirect { 'data/path', '?/', :id }
+  - redirect data/path/'?/'/:id
 get:
-  - redirect { 'data/path', '?', :id id }
+  - redirect data/path?:id
 list:
-  - redirect { 'data/path/' || :id }
+  - redirect { 'data/path/' || :id }  # column list uri syntax, null id makes whole uri null
 delete:
   - complex_val = {'a value' a, 'b value' b}
   - status ok :complex_val
@@ -1125,9 +1125,9 @@ insert:
 - status ok :res
 update:
 - health_id = unique_opt |med_db:person_health[name = :name]{id}
-- http put [default-wabase-http-client] { '/person_health/' || :health_id.id }
+- http put [default-wabase-http-client] /person_health/:health_id.id
     http get [default-wabase-http-client]
-      {'/http_test_2/' || :name, '?', :manipulation_date manipulation_date, :vaccine vaccine, :health_id.id id }
+      /http_test_2/(:name)?:manipulation_date&:vaccine&id=:health_id.id
 
 
 name: http_test_3
@@ -1179,7 +1179,7 @@ fields:
 - area
 - trees
 save:
-- save this as forest http { '/http_forest', :nr, '?', :owner owner, :area area, :trees trees }
+- save this as forest http /http_forest/(:nr)?:owner&:area&:trees
 
 
 name: http_forest
@@ -1193,8 +1193,8 @@ fields:
 get:
 - unique { :nr nr, :owner owner, :area::decimal area, :trees trees }
 update:
-- forest = as forest http { '/forest', :nr, :xx? }  # optional variable (xx) in url must work
-- :forest + this /* all data reference */ -> http put {'/forest', :nr } get http_forest
+- forest = as forest http /forest/:nr/:xx?  # optional variable (xx) in url must work
+- :forest + this /* all data reference */ -> http put /forest/:nr get http_forest
 
 
 name: json_codec_1
@@ -1219,7 +1219,7 @@ name: json_codec_2
 api: get
 fields:
 get:
-- from json http get { '/http_forest', 'Nr1', '?', 'Owner5' owner, 12.4 area, 'Fig' trees }
+- from json http get /http_forest/Nr1?owner=Owner5&area=12.4&trees=Fig
 
 
 name: last_step_assignment_test
@@ -1267,7 +1267,7 @@ get:
   - get this
 - setenv:res
 - forests = foreach :forests :
-  - tree_list = as tree * http { '/tree', '?', :nr nr }
+  - tree_list = as tree * http /tree?:nr
 
 
 name: not_found_test
@@ -1302,14 +1302,14 @@ get:
 - status ok { :h1 || ' ' || :h2 }
 list:
 - h3 = extract optional header Test-Header3        # optional header, returns null if header not found
-- h1_h2 = as any http get uri={ '/extract_http_header_test', '1' }
+- h1_h2 = as any http get uri=/extract_http_header_test/1
     headers={ 'Test-Header1', 'header1_value'} + { 'Test-Header2', 'header2_value'} # named args
 - h = { 'Test-Header1', 'header1_value'} + { 'Test-Header2', 'header2_value'} # headers as variable to avoid db usage in http op
-- h_var = as any http get { '/extract_http_header_test', '1' } :h
+- h_var = as any http get /extract_http_header_test/1 :h
 - :h1_h2
     + :h_var + :h3  # variable transformations not tresql, return is optional
 insert:
-  - resp = as result http put { '/extract_http_header_test', '1' }
+  - resp = as result http put /extract_http_header_test/1
   - h1 = extract header Header1 :resp
   - h2 = extract header Header2 :resp
   - h3 = extract optional header Header3 :resp
@@ -1318,7 +1318,7 @@ update:
 - status ok
     set_headers({'Header1', 'header1-value'} + {'Header2', 'header2-value'})
 delete:
-- extract header X http put { '/extract_http_header_test', '1' }    # must throw http exception with bad request status
+- extract header X http put /extract_http_header_test/1    # must throw http exception with bad request status
 
 
 name: extract_http_cookie_test
@@ -1333,9 +1333,9 @@ get:
 list:
   - no_cookie = extract cookie no-cookie
   - cookie = buildCookieHeaderValue ({ 'current_lang', 'lv' } + { 'current_user', 'dzidzis' })
-  - lang_user = as any http get { '/extract_http_cookie_test', '1' } ({ 'Cookie', :cookie }) # cookies
+  - lang_user = as any http get /extract_http_cookie_test/1 ({ 'Cookie', :cookie }) # cookies
   - c = { 'Cookie', :cookie } # cookies as variable to avoid db usage in http op
-  - c_var = as any http get { '/extract_http_cookie_test', '1' } :c
+  - c_var = as any http get /extract_http_cookie_test/1 :c
   - return :lang_user + :c_var + :no_cookie
 
 
@@ -1403,7 +1403,7 @@ insert:
     subject=(template body='Subject for {{name}}!')
     body=(template body='Content for {{recipient}}.' {trim(:name) recipient})
     attachments=
-      (http { '/email_test1', '?', :name name })
+      (http /email_test1?:name)
       (file {:file.id, :file.sha_256})
       (template body='Template attachment for {{name}}' {trim(:name) name} 'attachment name')
       (embedded template body='Embedded image for {{name}}' {trim(:name) name} 'logo.png')
@@ -1427,8 +1427,8 @@ insert:
 - status ok { if_defined_or_else(:name?, 'error', 'ok') }
 update:
 - res =
-    as any http post { '/not_decode_request_insert_test' }
-      http get {'/not_decode_request_insert_test', '?', 'value' name }
+    as any http post (/not_decode_request_insert_test)
+      http get /not_decode_request_insert_test?name=value
 - :res
 
 
@@ -1441,8 +1441,8 @@ get:
   - unique { :name name }
 insert:
   - res =
-      as any http put { '/not_decode_request_update_test' }
-        http get {'/not_decode_request_update_test', '?', 'value' name }
+      as any http put (/not_decode_request_update_test)
+        http get /not_decode_request_update_test?name=value
   - :res
 update:
   - status ok { if_defined_or_else(:name?, 'error', 'ok') }
@@ -1456,7 +1456,7 @@ fields:
 get:
   - res =
       as any http post
-        {'/form_urlencoded_test'}                                   /* uri */
+        (/form_urlencoded_test)                                     /* uri */
         { :name name, :surname surname }                            /* body */
         { 'Content-Type', 'application/x-www-form-urlencoded' }     /* headers - two column tresql - header name, header value */
   - :res
@@ -1472,7 +1472,7 @@ fields:
   - surname
 get:
   - res = as any http post
-      { '/form_urlencoded_' || 'test' }
+      { '/form_urlencoded_' || 'test' }  /* column list uri syntax */
       { :name name, :surname surname }
       { 'Content-Type', 'application/x-www-form-urlencoded' }
   - :res
@@ -1485,7 +1485,7 @@ fields:
   - name
   - surname
 get:
-  - res = as any http post { '/form_urlencoded_test' } '' { 'Content-Type', 'application/x-www-form-urlencoded' }
+  - res = as any http post /form_urlencoded_test '' { 'Content-Type', 'application/x-www-form-urlencoded' }
   - :res
 
 
@@ -1497,7 +1497,7 @@ fields:
 list:
 - "[build_cursors(this, :books)]books { title, year }"   # quotes used to get around yaml parser bug
 get:
-- forests = as any http {'/forest'}
+- forests = as any http /forest
 - unique_opt [build_cursors(forest, :forests)]forests{group_concat('(' || nr || ', ' || owner || ')')#(1) title}
 
 
@@ -1714,7 +1714,7 @@ decoder: none 8 # second parameter denotes content size limit for request and fo
 key: id, sha_256
 api: get
 get:
-  - http [default-wabase-http-client] {'/download_test', :id, :sha_256}
+  - http [default-wabase-http-client] /download_test/:id/:sha_256
 
 
 name: custom_decoder_test
@@ -1985,7 +1985,7 @@ get:
 insert:
 # http_proxy command returns map with following keys - status, headers, content_type, content.
 # command does not terminate action execution on http error
-- result = as any http_proxy get {'/http_proxy_test1', '?', :status status}
+- result = as any http_proxy get /http_proxy_test1?:status
 - result.result = if {:result.status < 400} 'This is ok' else 'This is ere'
 - :result
 
@@ -2002,7 +2002,7 @@ get:
 name: result_view_escape_test
 api: get
 get:
-- res = as `result` http get {'/result', '?', :id? id, :value? value}   # result must be backticked to indicate view name
+- res = as `result` http get /result?:id?&:value?   # result must be backticked to indicate view name
 - :res
 
 

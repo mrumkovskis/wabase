@@ -5,6 +5,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+Uri argument of `http`, `http_proxy`, `redirect` and `status` / `response` with a `3xx` code
+can be written in url like syntax, e.g. `/http_forest/(:nr)?:owner&area=12.4` instead of
+`{ '/http_forest', :nr, '?', :owner owner, 12.4 area }`. Identifiers and hyphenated words are
+strings, variables and other expressions are evaluated, `'?/'` path segment starts resource key.
+Uri as tresql query returning uri components is still supported. Uri followed by other
+arguments must be enclosed in braces, `http post (/a) { :x x }`; uri which has consumed a
+following named argument, `{…}` or `[…]` is reported as a parse error. `status` / `response`
+body is parsed as uri only for a `3xx` code written as a number. Syntax and mapping from tresql
+query form are documented in `docs/view-actions.md` (uri section).
+
 Jobs already running on this node can be queued. `app.job.queue-size` (default `0`,
 queue disabled) is the maximum number of waiting runs kept per job name. The run in
 progress does not take a slot. A waiting run with the same parameters is kept once;

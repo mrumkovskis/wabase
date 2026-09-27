@@ -927,7 +927,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
 }
 
 class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
-  extends QueryParsers { self =>
+  extends TresqlUriParsers { self =>
   import AppMetadata.Action._
   import AppMetadata.Action
 
@@ -1119,7 +1119,7 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
     def tu(uri: Tresql) = TresqlUri.Tresql(uri.tresql)
     def http_cln = opt("[" ~> HttpClientFileStreamerNameRegex <~ "]")
     def bracesTresql: MemParser[Tresql] = (("(" ~> expr <~ ")") | expr) ^^ (t => Tresql(t.tresql)) named "braces-tresql-op"
-    val Uri = Arg("uri", bracesTresql)
+    val Uri = Arg("uri", bracesUriTresql)
     val Body = Arg("body", operation)
     val Headers = Arg("headers", bracesTresql)
     def args(positionalArgs: Arg[_]*) =
@@ -1196,15 +1196,28 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
 
   def bracesOp: MemParser[Op] = "(" ~> operation <~ ")" named "braces-op"
 
+  /** Uri in url like syntax `path/:id?par=:v` or column list syntax `{'path', :id, '?', :v par}`.
+    * Must be enclosed in parentheses if followed by named arguments. */
+  def bracesUriTresql: MemParser[Tresql] = (("(" ~> uriParser <~ ")") | uriParser) ^^ { u =>
+    Tresql(u.tresql, traverser(dbExtractor)(Nil)(u))
+  } named "braces-tresql-uri-op"
+
   def redirect: MemParser[Op] = {
-    (RedirectOpRegex ~> ((RedirectToKeyRegex ^^ (s => RedirectToKey(s))) | ((setHttpHeadersOps ~ tresqlOp) ^^ {
+    (RedirectOpRegex ~> ((RedirectToKeyRegex ^^ (s => RedirectToKey(s))) | ((setHttpHeadersOps ~ bracesUriTresql) ^^ {
       case hops ~ tr => Response(Tresql("303"), true, hops, tr)
     }))) named "redirect-op"
   }
   def response: MemParser[Response] = {
     val StResp = "(status|response)\\b".r
-    (StResp ~ (("ok" | "\\d+".r | variable) ~ setHttpHeadersOps ~ opt(operation))) ^? {
-      case StResp(sor) ~ (c ~ hops ~ body) =>
+    // body of redirection is uri, for variable code it is known only at runtime so parsed as operation
+    def body(code: Any): Parser[Op] = code match {
+      case c: String if c.matches("3\\d\\d") => bracesUriTresql
+      case _ => operation
+    }
+    (StResp ~ (("ok" | "\\d+".r | variable) into { c =>
+      setHttpHeadersOps ~ opt(body(c)) ^^ { case hops ~ b => (c, hops, b) }
+    })) ^? {
+      case StResp(sor) ~ ((c, hops, body)) =>
         val code = c match {
           case "ok" => Tresql("200")
           case v: ast.Variable => Tresql(v.tresql)

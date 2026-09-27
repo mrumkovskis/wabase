@@ -30,6 +30,7 @@
   - [file (read, write)](#file-read-write)
   - [Template processing](#template-processing)
   - [email](#email)
+  - [uri](#uri)
   - [http](#http)
   - [Http request processing (headers, cookie, entity, parts)](#http-request-processing-headers-cookie-entity-parts)
   - [db use, transaction, commit, rollback](#db-use-transaction-commit-rollback)
@@ -676,6 +677,11 @@ response|status <status code> [<set cookies>] [<delete cookies>] [<set http head
 `status` is different from `response` that string data for status mode is marshalled as
 `text/plain` not json.
 
+For a redirection status code written as a number (`3xx`) the expression is a [uri](#uri)
+(response `Location`). For `ok`, other codes and a code given as a variable the expression is
+an ordinary expression, which for a redirection code determined at runtime must be a tresql
+query returning uri components.
+
 #### Status code
 
 ```
@@ -722,7 +728,7 @@ Full response examples:
 
 ```
 status ok
-status 303 { '/data', '?/', 'path', :status }   # redirect command is shorthand of status 303
+status 303 /data/'?/'/path/:status   # redirect command is shorthand of status 303
 status ok :status
 status ok { :uri || 'about' }
 response ok
@@ -742,8 +748,10 @@ status ok
 Shorthand of `response 303 …`
 
 ```
-redirect [<set cookies>] [<delete cookies>] [<set http headers>] [<set user attributes>] <tresql>
+redirect [<set cookies>] [<delete cookies>] [<set http headers>] [<set user attributes>] <uri>
 ```
+
+See [uri](#uri) for the uri syntax.
 
 Redirects to current view get api method using key values if get api is allowed, otherwise
 returns http 404 not found:
@@ -755,13 +763,15 @@ redirect (<view name> | this)
 Examples:
 
 ```
-redirect { 'data/path', '?', :id id }
+redirect data/path?:id
+redirect data/path/'?/'/:id                # redirect with key
+redirect { 'data/path', '?/', :id }       # uri as tresql query
 redirect
       set_headers({'h1', 'v1'} + {'h2', 'v2'})
       delete_cookie(name = 'x', domain = 'abc.com')
       set_cookie(name = 'test', value = 'test_val', secure = true, http_only = true, max_age = 1000)
       set_cookie(name = 'test1', value = 'test_val1', expires = '2025-04-3 13:30:25'::timestamp)
-      {'/redirect_path', 'view'}
+      /redirect_path/view
 ```
 
 ### if else
@@ -965,7 +975,7 @@ email batch
     extract entity from (file {:recipients.id, :recipients.sha_256}) using default_csv_decoder
     (template body='Subject for {{name}}!')
     (template body='Content for {{recipient}}.' {trim(:name) recipient})
-    (http { '/email_test1', '?', :name name })
+    (http /email_test1?:name)
     (file {:file.id, :file.sha_256})
     (template body='Template attachment for {{name}}' {trim(:name) name} 'attachment name')
 
@@ -991,7 +1001,7 @@ email batch
     subject=(template body='Subject for {{name}}!')
     body=(template body='Content for {{recipient}}.' {trim(:name) recipient})
     attachments=
-      (http { '/email_test1', '?', :name name })
+      (http /email_test1?:name)
       (embedded template body='Embedded image for {{name}}' {trim(:name) name} 'logo.png')
 
 # positional arguments followed by named arguments, attachments end at the next named argument
@@ -1004,34 +1014,100 @@ email html
 email recipients=(null[false]{'n@n.n' 'to'}) subject='no mail' body='no content'
 ```
 
+### uri
+
+Uri argument of [http](#http), [redirect](#redirect) and [status 3xx](#response-status) operations
+is written in url like syntax:
+
+```
+[/]<path segment>[/<path segment>…][?[<query parameter>[&<query parameter>…]]]
+```
+
+Query parameter:
+
+```
+<name>=<value>          # name is identifier, hyphenated word or quoted string: page-size=10, 'a b'=1
+<variable>              # name is inferred from variable name: :id is the same as id=:id
+```
+
+Path segment and query parameter value:
+
+- identifier or hyphenated word is a string: `data/order-items`, `sort=created-at`,
+- number is a string of its value: `v2/1`, `area=12.4` (leading zeros are lost, quote as `'007'`),
+- string, variable or any other tresql expression is evaluated: `'Nr 1'`, `:id`, `:path?`,
+  `'prefix-' || :x`, `(:id + 1)`,
+- hyphenated word must consist of identifiers and integers only, `:id-1` is minus operation,
+  use braces for minus of identifiers: `(a - b)`,
+- subquery must be enclosed in braces: `(person[id = :id]{name})`,
+- words which are not identifiers must be quoted: `'2fa'`, `'null'`, `'in'`,
+- absolute url start must be quoted since `//` starts a comment: `'https://host'/api/:id`.
+
+Optional variable (`:x?`) is omitted from the uri if the variable is not defined.
+
+Leading `/` makes the path absolute: `/forest/:nr`.
+
+Resource key section is started with the `'?/'` path segment. Key segments follow it, depending
+on `app.key-in-query` configuration key is encoded in the query string (`data/person?/42`) or
+in the path (`data/person/42`):
+
+```
+data/person/'?/'/:id
+```
+
+Question mark following a variable is parsed as part of the variable, making it optional. The
+same question mark separates query parameters, so `/forest/:nr?:owner` means optional `:nr`
+followed by the query parameter `owner`. Enclose the variable in braces to keep it mandatory:
+`/forest/(:nr)?:owner`. Question mark without query parameters is allowed: `data/path?`.
+
+Uri followed by other operation arguments must be enclosed in braces, otherwise the following
+arguments can be parsed as part of the uri. Named argument, `{…}` or `[…]` following uri
+causes a parse error, but argument in braces following identifier is parsed as function call
+(`a/b ({ 'Cookie', :c })` is `b({ 'Cookie', :c })`) and is not detected:
+
+```
+http post (/form_urlencoded_test) { :name name }   # body follows uri
+http (a/b) headers = { 'Accept', 'text/csv' }       # named argument follows uri
+http (a/b) ({ 'Cookie', :cookie })                  # headers in braces follow uri
+http a/b headers = …                                 # error - uri must be enclosed in braces
+```
+
+Uri can also be written as tresql query returning uri components as columns. Path segments come
+first, `'?/'` starts key segments, `'?'` starts query parameters, query parameter name is column
+alias. This form allows, for example, to take uri components from the database:
+
+```
+{<path segment> [, <path segment>, … ] [, '?/', <key segment>, …] [, '?', (<query parameter value> <query parameter name>), …]}
+config[name = 'svc']{base_url, 'items', :id, '?', api_key key}
+```
+
+Url like syntax is translated to this form. Mapping examples:
+
+| Tresql query | Url like syntax |
+| --- | --- |
+| `'/forest'` | `/forest` or `'/forest'` |
+| `{'/download', :id, :sha_256}` | `/download/:id/:sha_256` |
+| `{ '/forest', :nr, :xx? }` | `/forest/:nr/:xx?` |
+| `{ '/tree', '?', :nr nr }` | `/tree?:nr` |
+| `{ '/tree', '?', :nr tree_nr }` | `/tree?tree_nr=:nr` |
+| `{ '/http_forest', 'Nr1', '?', 'Owner5' owner, 12.4 area }` | `/http_forest/Nr1?owner=Owner5&area=12.4` |
+| `{ '/http_forest', :nr, '?', :owner owner }` | `/http_forest/(:nr)?:owner` |
+| `{ '/result', '?', :id? id, :value? value }` | `/result?:id?&:value?` |
+| `{ 'data/path', '?/', :id }` | `data/path/'?/'/:id` |
+| `{ 'data/path/' \|\| :id }` | `data/path/:id` (`'data/path/' \|\| :id` evaluates to null if `:id` is null) |
+| `{ '/test', '?', 'value' 'page-size' }` | `/test?page-size=value` |
+
 ### http
 
 ```
-[<result type>] (http | http_proxy) [get|delete|head|options|trace|connect] [<[client name]>] [uri = ] <tresql uri> [[headers = ] <header tresql>]
-[<result type>] (http | http_proxy) (post|put|patch) [<[client name]>] [uri = ] <tresql uri> [[body = ] <body expression>] [[headers = ] <header tresql>]
+[<result type>] (http | http_proxy) [get|delete|head|options|trace|connect] [<[client name]>] [uri = ] <uri> [[headers = ] <header tresql>]
+[<result type>] (http | http_proxy) (post|put|patch) [<[client name]>] [uri = ] <uri> [[body = ] <body expression>] [[headers = ] <header tresql>]
 ```
 
 If the method is omitted, `get` is used. Arguments can be passed by position or by name, see
-[named arguments](#named-arguments). `uri` is mandatory.
+[named arguments](#named-arguments). `uri` is mandatory, see [uri](#uri) for its syntax.
 
 Client name parameter comes from configuration `http-client` parameter section, see
 `reference.conf`.
-
-Tresql format http uri:
-
-```
-{<uri start> [, <path element>, … ] [, '?', (<query parameter value> [<query parameter name>], …) ]}
-```
-
-Tresql uri example:
-
-```
-'/forest'
-{'/download', :id, :sha_256}
-{ '/tree', '?', :nr nr }
-{ '/http_forest', '?', 'Nr1' nr, 'Owner5' owner, 12.4 area, 'Fig' trees }
-{ '/forest', :nr, :xx? }   # query parameters can be optional
-```
 
 Header tresql is statement with two string type columns representing header name and value,
 can be joined with union.
@@ -1039,18 +1115,19 @@ can be joined with union.
 Examples:
 
 ```
-http { '/email_test1', '?', :name name }              # get method is implied
-http post { '/not_decode_request_insert_test' }       # uri
-      http get {'/not_decode_request_insert_test', '?', 'value' name }   # post body is http get result
+http /email_test1?:name                               # get method is implied
+http post (/not_decode_request_insert_test)           # uri in braces since body follows
+      http get /not_decode_request_insert_test?name=value   # post body is http get result
 http post
-        {'/form_urlencoded_test'}                     # uri
+        (/form_urlencoded_test)                       # uri
         { :name name, :surname surname }              # body
         { 'Content-Type', 'application/x-www-form-urlencoded' }   # headers
-http [default-wabase-http-client] {'/download_test', :id, :sha_256}   # http with client name
+http [default-wabase-http-client] /download_test/:id/:sha_256   # http with client name
+http get { '/http_forest', :nr, '?', 'Owner5' owner }   # uri as tresql query
 cookie = buildCookieHeaderValue ({ 'current_lang', 'lv' } + { 'current_user', 'dzidzis' })   # sets cookie value
-http get { '/extract_http_cookie_test', '1' } ({ 'Cookie', :cookie })   # uses cookie header value
+http get /extract_http_cookie_test/1 ({ 'Cookie', :cookie })   # uses cookie header value
 http get uri='/invocation_test_1'                    # named uri
-http get uri={ '/extract_http_header_test', '1' }
+http get uri=(/extract_http_header_test/1)
     headers={ 'Test-Header1', 'header1_value'} + { 'Test-Header2', 'header2_value'}
 http post [default-wabase-http-client]               # named arguments in any order
     headers=([])                                      # braces required since other arguments follow
@@ -1081,7 +1158,7 @@ Example:
 
 ```
 # command does not terminate action execution on http error
-- result = as any http_proxy get {'/http_proxy_test1', '?', :status status}
+- result = as any http_proxy get /http_proxy_test1?:status
 - result.result = if {:result.status < 400} 'This is ok' else 'This is ere'
 - :result
 ```

@@ -3,7 +3,7 @@ api: post
 decoder: none
 post:
 - body = extract entity
-- http post {'data', 'http_echo'} :body
+- http post data/http_echo :body
 
 
 # Same swagger shape as http_test, no overrides — keep only the first in swagger.

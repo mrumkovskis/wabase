@@ -220,7 +220,7 @@ explicit db: true
 head:
 - response ok set_headers({'Last-Modified', 'Mon, 29 Sep 2025 22:18:54 EET'})
 get:
-- extract header Last-Modified http head {'/head'}
+- extract header Last-Modified http head /head
 
 
 name: null_test
