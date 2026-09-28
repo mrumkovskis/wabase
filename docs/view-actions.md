@@ -1084,20 +1084,20 @@ config[name = 'svc']{base_url, 'items', :id, '?', api_key key}
 
 Url like syntax is translated to this form. Mapping examples:
 
-| Tresql query | Url like syntax |
+| Url like syntax | Tresql query |
 | --- | --- |
-| `'/forest'` | `/forest` or `'/forest'` |
-| `{'/download', :id, :sha_256}` | `/download/:id/:sha_256` |
-| `{ '/forest', :nr, :xx? }` | `/forest/:nr/:xx?` |
-| `{ '/tree', '?', :nr nr }` | `/tree?:nr` |
-| `{ '/tree', '?', :nr tree_nr }` | `/tree?tree_nr=:nr` |
-| `{ '/http_forest', 'Nr1', '?', 'Owner5' owner, 12.4 area }` | `/http_forest/Nr1?owner=Owner5&area=12.4` |
-| `{ '/http_forest', :nr, '?', :owner owner }` | `/http_forest/:nr?:owner` |
-| `{ '/http_forest', :nr?, '?', :owner owner }` | `/http_forest/:nr??:owner` |
-| `{ '/result', '?', :id? id, :value? value }` | `/result?:id?&:value?` |
-| `{ 'data/path', '?/', :id }` | `data/path/'?/'/:id` |
-| `{ 'data/path/' \|\| :id }` | `data/path/:id` (`'data/path/' \|\| :id` evaluates to null if `:id` is null) |
-| `{ '/test', '?', 'value' 'page-size' }` | `/test?page-size=value` |
+| `/forest` or `'/forest'` | `'/forest'` |
+| `/download/:id/:sha_256` | `{'/download', :id, :sha_256}` |
+| `/forest/:nr/:xx?` | `{ '/forest', :nr, :xx? }` |
+| `/tree?:nr` | `{ '/tree', '?', :nr nr }` |
+| `/tree?tree_nr=:nr` | `{ '/tree', '?', :nr tree_nr }` |
+| `/http_forest/Nr1?owner=Owner5&area=12.4` | `{ '/http_forest', 'Nr1', '?', 'Owner5' owner, 12.4 area }` |
+| `/http_forest/:nr?:owner` | `{ '/http_forest', :nr, '?', :owner owner }` |
+| `/http_forest/:nr??:owner` | `{ '/http_forest', :nr?, '?', :owner owner }` |
+| `/result?:id?&:value?` | `{ '/result', '?', :id? id, :value? value }` |
+| `data/path/'?/'/:id` | `{ 'data/path', '?/', :id }` |
+| `data/path/:id` | `{ 'data/path/' \|\| :id }` (evaluates to null if `:id` is null) |
+| `/test?page-size=value` | `{ '/test', '?', 'value' 'page-size' }` |
 
 ### http
 
