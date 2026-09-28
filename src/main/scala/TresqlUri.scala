@@ -54,38 +54,10 @@ trait TresqlUriParsers extends QueryParsers {
   private def queryParamAlias(name: String): String =
     if (name.matches("""\p{L}[\p{L}\p{N}_]*""")) name else "\"" + name + "\""
 
-  private def regroup(op: String, exp: Exp): Exp = {
-    def rg(exp: Exp): Exp = exp match {
-      case BinOp(o, l, r) if o == op => BinOp(o, rg(l),rg(r))
-      case BinOp(o, l, r) =>
-        val (nl, nr) = (rg(l), rg(r))
-        nl match {
-          case BinOp(ol, ll, rl) if ol == op => nr match {
-            case BinOp(or, lr, rr) if or == op => BinOp(ol, ll, BinOp(or, rg(BinOp(o, rl, lr)), rr))
-            case _ => BinOp(ol, ll, rg(BinOp(o, rl, nr)))
-          }
-          case _ => nr match {
-            case BinOp(or, lr, rr) if or == op => BinOp(or, rg(BinOp(o, nl, lr)), rr)
-            case _ => BinOp(o, nl, nr)
-          }
-        }
-      case e => e
-    }
-    rg(exp)
-  }
-
-  private def splitBinOp(op: String, binOp: Exp): List[Exp] = {
-    def split(exp: Exp): List[Exp] = exp match {
-      case BinOp(o, l, r) if o == op => split(l) ::: split(r)
-      case e => e :: Nil
-    }
-    split(regroup(op, binOp))
-  }
-
   /** Raw path segment expressions, not converted by [[uriComponentValue]] so that
     * optional variable or outer join marker (trailing `?`) of the last segment can be detected */
   def pathSegments: MemParser[List[Exp]] = expr ^^ {
-    case b: BinOp => splitBinOp("/", b)
+    case b: BinOp => BinOp.splitBinOp("/", b)
     case e => List(e)
   } ^^ (_.flatMap {
     case PQuery(objs, Filters(Nil), null, null, null, null, null) if objs forall {
@@ -102,7 +74,7 @@ trait TresqlUriParsers extends QueryParsers {
       case e => Col(uriComponentValue(e), Ast.toAlias(e))
     }
     expr into { e =>
-      if (consumesFollowing(e)) err(UriNotEnclosedMsg) else success(splitBinOp("&", e).map(qp))
+      if (consumesFollowing(e)) err(UriNotEnclosedMsg) else success(BinOp.splitBinOp("&", e).map(qp))
     }
   } named "uri-query-params"
 
