@@ -52,7 +52,7 @@ class FileCleanupSpecs extends FlatSpec with Matchers with BeforeAndAfterEach {
   }
 
   def ageUploadInfo(fileStreamer: AppFileStreamer[_], fileInfo: AppFileStreamer.FileInfoHelper) =
-    newTransaction(implicit res => Query(s"""${fileStreamer.file_info_table}[${fileInfo.id}]{upload_time} = [date_sub(upload_time, sql("interval 1 day"))]"""))
+    newTransaction(implicit res => Query(s"""${fileStreamer.file_info_table}[id = ${fileInfo.id}]{upload_time} = [date_sub(upload_time, sql("interval 1 day"))]"""))
   def ageFile(fileInfo: AppFileStreamer.FileInfoHelper) = {
     val path = Paths.get(fileInfo.path)
     val view = Files.getFileAttributeView(path, classOf[BasicFileAttributeView])
@@ -64,7 +64,7 @@ class FileCleanupSpecs extends FlatSpec with Matchers with BeforeAndAfterEach {
 
   @annotation.nowarn("msg=Manifest")
   def fileInfoExists(fileStreamer: AppFileStreamer[_], fileInfo: AppFileStreamer.FileInfoHelper) =
-    newTransaction(implicit res => Query(s"${fileStreamer.file_info_table}[${fileInfo.id}]{count(1)}").unique[Long] == 1)
+    newTransaction(implicit res => Query(s"${fileStreamer.file_info_table}[id = ${fileInfo.id}]{count(1)}").unique[Long] == 1)
   @annotation.nowarn("msg=Manifest")
   def fileBodyInfoExists(fileStreamer: AppFileStreamer[_], fileInfo: AppFileStreamer.FileInfoHelper) =
     newTransaction(implicit res => Query(s"${fileStreamer.file_body_info_table}[${fileStreamer.shaColName} = '${fileInfo.sha_256}']{count(1)}").unique[Long] == 1)

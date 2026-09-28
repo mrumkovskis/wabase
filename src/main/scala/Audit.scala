@@ -94,10 +94,12 @@ object Audit {
         .flatMap(viewDefOption)
         .flatMap(v => Option(v.table).map(v.db -> _))
         .flatMap{ case (db, tableName) =>
-       val tableCols = tableMetadata.tableDef(tableName, db).cols
+       val tableDef = tableMetadata.tableDef(tableName, db)
+       val tableCols = tableDef.cols
+       val pkCol = tableDef.pk.map(_.cols).filter(_.size == 1).map(_.head).getOrElse("id")
        val relevantFieldsFromTable = tableCols.map(_.name).filter(relevantKeys(viewName)).filterNot(fieldsInPojo.contains)
        if (relevantFieldsFromTable.nonEmpty)
-         Query(s"${Option(db).map(db => s"db:").getOrElse("")}$tableName[?]{${relevantFieldsFromTable.mkString(",")}}", viewId)(dbAccess.tresqlResources)
+         Query(s"${Option(db).map(db => s"$db:").getOrElse("")}$tableName[$pkCol = ?]{${relevantFieldsFromTable.mkString(",")}}", viewId)(dbAccess.tresqlResources)
            .toListOfMaps.headOption.map(_.filter(_._2 != null))
        else None
      }
