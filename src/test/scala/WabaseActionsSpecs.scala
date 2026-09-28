@@ -747,6 +747,27 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
           .map {
             _ shouldBe List(Map("a" -> "a value", "b" -> "b value"))
           }
+      _ <-
+        doAction("get", "status_test_5", Map("id" -> 1)).map {
+          _ shouldBe ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq("api", "order-items", "1"), Nil, ListMap())))
+        }
+      _ <-
+        doAction("save", "status_test_5", Map()).map {
+          _ shouldBe ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq("order-items", "v2-beta-3"), Nil,
+            ListMap("page-size" -> "10", "sort" -> "created-at"))))
+        }
+      _ <-
+        doAction("list", "status_test_5", Map("id" -> 5)).map {
+          _ shouldBe ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq("order-items", "4"), Nil, ListMap("x-y" -> "4"))))
+        }
+      _ <-
+        doAction("count", "status_test_5", Map()).map {
+          _ shouldBe ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq("order-items"), Nil, ListMap("q-r" -> "s"))))
+        }
+      _ <-
+        doAction("count", "status_test_5", Map("id" -> null)).map {
+          _ shouldBe ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq("order-items", null), Nil, ListMap("q-r" -> "s"))))
+        }
     } yield {
       t1
     }

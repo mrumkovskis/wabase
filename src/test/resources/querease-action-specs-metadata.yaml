@@ -650,6 +650,20 @@ delete:
   - status ok :complex_val
 
 
+name:   status_test_5
+api:    get, save, list, count
+fields:
+  - id
+get:
+  - redirect api/order-items/:id              # hyphenated segment + variable
+save:
+  - status 303 order-items/v2-beta-3?page-size=10&sort=created-at
+list:
+  - redirect order-items/:id-1?x-y=:id-1      # minus after variable stays arithmetic
+count:
+  - redirect order-items/:id??'q-r'=s         # optional last variable + quoted hyphenated param
+
+
 name: invocation_test_1
 api: get, save, count, new, delete
 fields:
