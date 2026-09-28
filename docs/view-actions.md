@@ -1054,10 +1054,12 @@ in the path (`data/person/42`):
 data/person/'?/'/:id
 ```
 
-Question mark following a variable is parsed as part of the variable, making it optional. The
-same question mark separates query parameters, so `/forest/:nr?:owner` means optional `:nr`
-followed by the query parameter `owner`. Enclose the variable in braces to keep it mandatory:
-`/forest/(:nr)?:owner`. Question mark without query parameters is allowed: `data/path?`.
+Question mark following the last path segment variable is parsed as part of the variable, making
+it optional, but if query parameters follow it, it only separates them and the variable is
+mandatory: `/forest/:nr?:owner` means mandatory `:nr` followed by the query parameter `owner`.
+Use two question marks to keep the variable optional when query parameters follow:
+`/forest/:nr??:owner`. Without query parameters the variable stays optional: `/forest/:nr/:xx?`.
+Question mark without query parameters is allowed: `data/path?`.
 
 Uri followed by other operation arguments must be enclosed in braces, otherwise the following
 arguments can be parsed as part of the uri. Named argument, `{…}` or `[…]` following uri
@@ -1090,7 +1092,8 @@ Url like syntax is translated to this form. Mapping examples:
 | `{ '/tree', '?', :nr nr }` | `/tree?:nr` |
 | `{ '/tree', '?', :nr tree_nr }` | `/tree?tree_nr=:nr` |
 | `{ '/http_forest', 'Nr1', '?', 'Owner5' owner, 12.4 area }` | `/http_forest/Nr1?owner=Owner5&area=12.4` |
-| `{ '/http_forest', :nr, '?', :owner owner }` | `/http_forest/(:nr)?:owner` |
+| `{ '/http_forest', :nr, '?', :owner owner }` | `/http_forest/:nr?:owner` |
+| `{ '/http_forest', :nr?, '?', :owner owner }` | `/http_forest/:nr??:owner` |
 | `{ '/result', '?', :id? id, :value? value }` | `/result?:id?&:value?` |
 | `{ 'data/path', '?/', :id }` | `data/path/'?/'/:id` |
 | `{ 'data/path/' \|\| :id }` | `data/path/:id` (`'data/path/' \|\| :id` evaluates to null if `:id` is null) |

@@ -6,9 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 Uri argument of `http`, `http_proxy`, `redirect` and `status` / `response` with a `3xx` code
-can be written in url like syntax, e.g. `/http_forest/(:nr)?:owner&area=12.4` instead of
+can be written in url like syntax, e.g. `/http_forest/:nr?:owner&area=12.4` instead of
 `{ '/http_forest', :nr, '?', :owner owner, 12.4 area }`. Identifiers and hyphenated words are
 strings, variables and other expressions are evaluated, `'?/'` path segment starts resource key.
+Last path segment variable followed by `?` and query parameters is mandatory, `??` keeps it
+optional: `/http_forest/:nr??:owner`.
 Uri as tresql query returning uri components is still supported. Uri followed by other
 arguments must be enclosed in braces, `http post (/a) { :x x }`; uri which has consumed a
 following named argument, `{…}` or `[…]` is reported as a parse error. `status` / `response`

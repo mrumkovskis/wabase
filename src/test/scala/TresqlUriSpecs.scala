@@ -122,9 +122,21 @@ class TresqlUriSpecs extends AnyFlatSpec with Matchers {
     n(parse("/a/:id")) shouldBe n("null{'/a', :id}")
     n(parse("/:x/y")) shouldBe n("null{'/' || :x, 'y'}")
     n(parse("a/(:nr)?:owner")) shouldBe n("null{'a', (:nr), '?', :owner owner}")
+    // last segment variable is mandatory if '?' is followed by query parameters, '??' keeps it optional
+    n(parse("a/:id")) shouldBe n("null{'a', :id}")
+    n(parse("a/:id?")) shouldBe n("null{'a', :id?}")
+    n(parse("a/:id?x=1")) shouldBe n("null{'a', :id, '?', 1 x}")
+    n(parse("a/:id??x=1")) shouldBe n("null{'a', :id?, '?', 1 x}")
+    n(parse("a/:id??")) shouldBe n("null{'a', :id?}")
+    n(parse("a/:id?/b?x=1")) shouldBe n("null{'a', :id?, 'b', '?', 1 x}")
     def url(uri: String, bindVars: Map[String, Any]) =
       new TresqlUri().uri(new TresqlUri().tresqlUriValue(TresqlUri.Tresql(parse(uri)))(TresqlQuery, bindVars, res)).toString
     url("/a/:id", Map("id" -> 5)) shouldBe "/a/5"
+    url("/a/:id?", Map()) shouldBe "/a"
+    url("/a/:id??x=1", Map()) shouldBe "/a?x=1"
+    url("/a/:id??x=1", Map("id" -> 5)) shouldBe "/a/5?x=1"
+    url("/a/:id?x=1", Map("id" -> 5)) shouldBe "/a/5?x=1"
+    intercept[Exception](url("/a/:id?x=1", Map()))
     url("/order-items?x=1", Map()) shouldBe "/order-items?x=1"
     url("/http_forest/(:nr)?:owner&'o-p'=1", Map("nr" -> "N1", "owner" -> "O")) shouldBe "/http_forest/N1?owner=O&o-p=1"
   }
@@ -140,7 +152,7 @@ class TresqlUriSpecs extends AnyFlatSpec with Matchers {
       case Response(_, _, _, Tresql(t, _, _)) => t
       case x => fail(s"Unexpected operation: $x")
     })
-    uri("http a/:id?x=1") shouldBe n("null{'a', :id?, '?', 1 x}")
+    uri("http a/:id?x=1") shouldBe n("null{'a', :id, '?', 1 x}")
     uri("http get a/'?/'/:id") shouldBe n("null{'a', '?/', :id}")
     uri("http (a/b)") shouldBe n("null{'a', 'b'}")
     uri("http [client] /a/b") shouldBe n("null{'/a', 'b'}")
@@ -183,7 +195,7 @@ class TresqlUriSpecs extends AnyFlatSpec with Matchers {
     // subquery in braces is allowed
     uri("http a/(b[id = :id]{name})?x=(c{count(*)})") shouldBe n("null{'a', (b[id = :id]{name}), '?', (c{count(*)}) x}")
     // redirect and status
-    uri("redirect a/'?/'/:id?x=1") shouldBe n("null{'a', '?/', :id?, '?', 1 x}")
+    uri("redirect a/'?/'/:id?x=1") shouldBe n("null{'a', '?/', :id, '?', 1 x}")
     uri("redirect {'data/path', '?', :id id}") shouldBe n("null{'data/path', '?', :id id}")
     uri("status 303 a/(:id)?x=1") shouldBe n("null{'a', (:id), '?', 1 x}")
     uri("status 303 { 'data/path', '?/', :id, '?', 'v' par1 }") shouldBe n("null{'data/path', '?/', :id, '?', 'v' par1}")

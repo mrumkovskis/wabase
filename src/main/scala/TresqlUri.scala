@@ -128,17 +128,23 @@ trait TresqlUriParsers extends QueryParsers {
     case _ ~ segExps if segExps.exists(consumesFollowing) =>
       err(UriNotEnclosedMsg) // err - no backtracking, message must reach user
     case abs ~ segExps =>
-      // trailing '?' may already be consumed by expr parser as optional variable or outer join marker
-      val queryParPrefix: Parser[_] = segExps.last match {
-        case v: Variable if v.opt => success(())
-        case o: Obj if o.outerJoin == "l" => success(())
-        case _ => "?"
-      }
-      val segVals = segExps.map(uriComponentValue)
-      val segs = (if (abs.isDefined) absolutePath(segVals) else segVals).map(Col(_))
-      opt(queryParPrefix ~> queryParameters) ^^
-        (qp => segs ::: qp.map(p => Col(StringConst("?")) :: p).getOrElse(Nil)) ^^ { cols =>
+      def uri(segExps: List[Exp], queryPars: Option[List[Col]]) = {
+        val segVals = segExps.map(uriComponentValue)
+        val segs = (if (abs.isDefined) absolutePath(segVals) else segVals).map(Col(_))
+        val cols = segs ::: queryPars.map(p => Col(StringConst("?")) :: p).getOrElse(Nil)
         PQuery(List(Obj(Null, null, null, null)), Filters(Nil), Cols(cols), null, null, null, null)
+      }
+      // trailing '?' may already be consumed by expr parser as optional variable or outer join marker
+      segExps.last match {
+        // '?' followed by query parameters is query prefix, i.e. variable is mandatory - a/:id?x=1,
+        // variable remains optional if not followed by query parameters - a/:id?, or if followed by '??' - a/:id??x=1
+        case v: Variable if v.opt =>
+          opt("?") ~ opt(queryParameters) ^^ {
+            case None ~ (qp @ Some(_)) => uri(segExps.init :+ v.copy(opt = false), qp)
+            case _ ~ qp => uri(segExps, qp)
+          }
+        case o: Obj if o.outerJoin == "l" => opt(queryParameters) ^^ (uri(segExps, _))
+        case _ => opt("?" ~> queryParameters) ^^ (uri(segExps, _))
       }
   } named "tresql-uri-parser"
 }
