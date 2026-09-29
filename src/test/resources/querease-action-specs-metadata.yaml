@@ -1111,9 +1111,9 @@ count:
 name: http_test_1
 api: get, delete
 get:
-- http get uri='/invocation_test_1'   # named uri argument
+- http get uri=/invocation_test_1   # named uri argument
 delete:
-- res = as any http '/invocation_test_1:count'
+- res = as any http '/invocation_test_1:count'    # uri must be quoted, otherwise :count would be parsed as a bind variable
 - :res
 
 
@@ -1128,14 +1128,14 @@ fields:
 get:
 - unique {:name name, :manipulation_date::date manipulation_date, :vaccine vaccine, :id::long id}
 list:
-- http '/invocation_test_1'
+- http /invocation_test_1
 insert:
   # named args in non positional order; empty headers array explicitly indicates no headers
   # headers in braces, otherwise tresql parser would continue parsing following args as part of [] expression
 - res = http post [default-wabase-http-client]
           headers=([])
           body=(unique { 'Mr. Mario' name, 'Moderna' 'vaccine', '2022-04-11' 'manipulation_date' })
-          uri='/person_health'
+          uri=/person_health
 - status ok :res
 update:
 - health_id = unique_opt |med_db:person_health[name = :name]{id}
@@ -1829,11 +1829,11 @@ list:
 - "{'N1' name, 'S1' surname} + {'N2', 'S2'}"      # yaml parser wants to put tresql in quotes
 insert:
 # extract entity from <command> using default_json_decoder ensures Map[String, Any] source over data to save memory
-- foreach extract entity from (http get '/extract_http_entity_test4') using default_json_decoder:
+- foreach extract entity from (http get /extract_http_entity_test4) using default_json_decoder:
   - name = {:name || ' ' || :name}
   - surname = {:surname || ' ' || :surname}
 update:
-- data_file = to file (http get '/extract_http_entity_test4')
+- data_file = to file (http get /extract_http_entity_test4)
 - foreach extract entity from (file {:data_file.id, :data_file.sha_256}) using default_json_decoder:
   - name = {:name || '-' || :name}
   - surname = {:surname || '-' || :surname}
@@ -1896,16 +1896,16 @@ list:
     { '2025-08-31' manipulation_date, 'Encepur N' vaccine, true had_virus }
   ) {manipulation_date, vaccine, had_virus}#(1,2,3)
 insert:
-- vaccine = to file http get '/invocation_type_conversion_test/1'
-- vaccines = to file http get '/invocation_type_conversion_test'
+- vaccine = to file http get /invocation_type_conversion_test/1
+- vaccines = to file http get /invocation_type_conversion_test
 - org.wabase.QuereaseActionTestPersonManager.multipleArgConversions(
-    file {:vaccine.id, :vaccine.sha_256}, http get '/invocation_type_conversion_test/1',
-    http get '/invocation_type_conversion_test', file {:vaccines.id, :vaccines.sha_256}
+    file {:vaccine.id, :vaccine.sha_256}, http get /invocation_type_conversion_test/1,
+    http get /invocation_type_conversion_test, file {:vaccines.id, :vaccines.sha_256}
   )
 update:
 - org.wabase.QuereaseActionTestPersonManager.multipleArgConversions(
-    http get '/invocation_type_conversion_test/1', unique { '2025-08-30' manipulation_date, 'TicoVac' vaccine, false had_virus },
-    http get '/invocation_type_conversion_test', [](
+    http get /invocation_type_conversion_test/1, unique { '2025-08-30' manipulation_date, 'TicoVac' vaccine, false had_virus },
+    http get /invocation_type_conversion_test, [](
         { '2025-08-30' manipulation_date, 'IXIARO' vaccine, false had_virus } +
         { '2025-08-31' manipulation_date, 'Encepur N' vaccine, true had_virus }
       ) {manipulation_date, vaccine, had_virus}#(1,2,3)

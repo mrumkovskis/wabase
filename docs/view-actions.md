@@ -509,7 +509,7 @@ Argument value parsing is greedy, so a value followed by another argument may co
 argument as part of its expression. Enclose such a value in [braces](#braces):
 
 ```
-http post headers=([]) body=(unique { 'Mr. Mario' name }) uri='/person_health'   # braces required
+http post headers=([]) body=(unique { 'Mr. Mario' name }) uri=/person_health     # braces required
 http post headers=[] body=…                  # error - body and uri are parsed as part of headers expression
 ```
 
@@ -1129,13 +1129,13 @@ http [default-wabase-http-client] /download_test/:id/:sha_256   # http with clie
 http get { '/http_forest', :nr, '?', 'Owner5' owner }   # uri as tresql query
 cookie = buildCookieHeaderValue ({ 'current_lang', 'lv' } + { 'current_user', 'dzidzis' })   # sets cookie value
 http get /extract_http_cookie_test/1 ({ 'Cookie', :cookie })   # uses cookie header value
-http get uri='/invocation_test_1'                    # named uri
+http get uri=/invocation_test_1                      # named uri
 http get uri=(/extract_http_header_test/1)
     headers={ 'Test-Header1', 'header1_value'} + { 'Test-Header2', 'header2_value'}
 http post [default-wabase-http-client]               # named arguments in any order
     headers=([])                                      # braces required since other arguments follow
     body=(unique { 'Mr. Mario' name, 'Moderna' 'vaccine' })
-    uri='/person_health'
+    uri=/person_health
 ```
 
 #### http_proxy
