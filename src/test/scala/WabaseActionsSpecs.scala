@@ -722,7 +722,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         }
       _ <-
         doAction("count", "status_test_3", Map("id" -> 4)).map {
-          _ shouldBe ResponseResult(303, RedirectValue(TresqlUri.Uri(Seq(null), List("4"), ListMap("par1" -> "5"))))
+          _ shouldBe ResponseResult(303, RedirectValue(TresqlUri.Uri(Nil, List("4"), ListMap("par1" -> "5"))))
         }
       _ <-
         doAction("save", "status_test_4", Map("id" -> null)).map {

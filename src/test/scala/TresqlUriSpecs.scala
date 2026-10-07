@@ -128,7 +128,16 @@ class TresqlUriSpecs extends AnyFlatSpec with Matchers {
     n(parse("a/:id?x=1")) shouldBe n("null{'a', :id, '?', 1 x}")
     n(parse("a/:id??x=1")) shouldBe n("null{'a', :id?, '?', 1 x}")
     n(parse("a/:id??")) shouldBe n("null{'a', :id?}")
-    n(parse("a/:id?/b?x=1")) shouldBe n("null{'a', :id?, 'b', '?', 1 x}")
+    // :id? must be put into braces in order not to confuse with key separator ?/
+    n(parse("a/(:id?)/b?x=1")) shouldBe n("null{'a', (:id?), 'b', '?', 1 x}")
+    // key separator ?/ - '?' is removed from preceding segment, i.e. variable is mandatory
+    n(parse("a/:id?/b")) shouldBe n("null{'a', :id, '?/', 'b'}")
+    n(parse("data/path?/:id")) shouldBe n("null{'data', 'path', '?/', :id}")
+    n(parse("order-items?/:id")) shouldBe n("null{'order-items', '?/', :id}")
+    n(parse("a/'b'?/:id")) shouldBe n("null{'a', 'b', '?/', :id}")
+    // '??/' keeps variable before key separator optional
+    n(parse("a/:id??/:k")) shouldBe n("null{'a', :id?, '?/', :k}")
+    n(parse("a/:id??/:k?x=1")) shouldBe n("null{'a', :id?, '?/', :k, '?', 1 x}")
     def url(uri: String, bindVars: Map[String, Any]) =
       new TresqlUri().uri(new TresqlUri().tresqlUriValue(TresqlUri.Tresql(parse(uri)))(TresqlQuery, bindVars, res)).toString
     url("/a/:id", Map("id" -> 5)) shouldBe "/a/5"
@@ -137,6 +146,12 @@ class TresqlUriSpecs extends AnyFlatSpec with Matchers {
     url("/a/:id??x=1", Map("id" -> 5)) shouldBe "/a/5?x=1"
     url("/a/:id?x=1", Map("id" -> 5)) shouldBe "/a/5?x=1"
     intercept[Exception](url("/a/:id?x=1", Map()))
+    url("/a/:id?/:k", Map("id" -> 5, "k" -> 7)) shouldBe "/a/5?/7"
+    intercept[Exception](url("/a/:id?/:k", Map("k" -> 7)))
+    url("/a/:id??/:k", Map("id" -> 5, "k" -> 7)) shouldBe "/a/5?/7"
+    url("/a/:id??/:k", Map("k" -> 7)) shouldBe "/a?/7"
+    // key only uri, relative to current path
+    url("?/:id?par1=:id + 1", Map("id" -> 4)) shouldBe "?/4?par1=5"
     url("/order-items?x=1", Map()) shouldBe "/order-items?x=1"
     url("/http_forest/(:nr)?:owner&'o-p'=1", Map("nr" -> "N1", "owner" -> "O")) shouldBe "/http_forest/N1?owner=O&o-p=1"
   }

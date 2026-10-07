@@ -3,10 +3,11 @@ package org.wabase
 import org.apache.pekko.http.scaladsl.model.Uri
 import org.apache.pekko.http.scaladsl.model.Uri.{Path, Query}
 import org.tresql.{Resources, RowLike, SingleValueResult, Query => TresqlQuery}
-import org.tresql.ast.{Ast, BigDecimalConst, BinOp, Cast, Col, Cols, Exp, Filters, Ident, IntConst, Null, Obj, StringConst, TerOp, In, UnOp, Variable, Query => PQuery}
+import org.tresql.ast.{Ast, BigDecimalConst, BinOp, Cast, Col, Cols, Exp, Filters, Ident, In, IntConst, Null, Obj, StringConst, TerOp, UnOp, Variable, Query => PQuery}
 import org.tresql.parsing.QueryParsers
 
 import java.net.URLEncoder
+import scala.annotation.tailrec
 import scala.collection.immutable.{ListMap, Seq}
 
 object TresqlUri {
@@ -56,16 +57,42 @@ trait TresqlUriParsers extends QueryParsers {
 
   /** Raw path segment expressions, not converted by [[uriComponentValue]] so that
     * optional variable or outer join marker (trailing `?`) of the last segment can be detected */
-  def pathSegments: MemParser[List[Exp]] = expr ^^ {
-    case b: BinOp => BinOp.splitBinOp("/", b)
-    case e => List(e)
-  } ^^ (_.flatMap {
-    case PQuery(objs, Filters(Nil), null, null, null, null, null) if objs forall {
-      case Obj(_, _, DefaultJoin, _, _) | Obj(_, _, null, _, _) => true
-      case _ => false
-    } => objs
-    case x => List(x)
-  }) named "uri-path-segments"
+  def pathSegments: MemParser[List[Exp]] = {
+    def ps = expr ^^ {
+      case b: BinOp => BinOp.splitBinOp("/", b)
+      case e => List(e)
+    } ^^ (_.flatMap {
+      case PQuery(objs, Filters(Nil), null, null, null, null, null) if objs forall {
+        case Obj(_, _, DefaultJoin, _, _) | Obj(_, _, null, _, _) => true
+        case _ => false
+      } => objs
+      case x => List(x)
+    })
+    def keyIdx(exps: List[Exp]) = {
+      @tailrec def isSep(e: Exp): Boolean = e match {
+        case v: Variable => v.opt || v.variable == "?"
+        case o: Obj => o.outerJoin == "l"
+        case b: BinOp => isSep(b.rop)
+        case _ => false
+      }
+      exps.indexWhere(isSep)
+    }
+    // '?' consumed as optional variable or outer join marker is key separator, remove it from segment
+    def stripSep(e: Exp): Option[Exp]= e match {
+      case v: Variable if v.variable == "?" => None
+      case v: Variable if v.opt => Option(v.copy(opt = false))
+      case o: Obj if o.outerJoin != null => Option(o.copy(outerJoin = null))
+      case b: BinOp => stripSep(b.rop).map(rop => b.copy(rop = rop))
+      case x => Option(x)
+    }
+    ps ~ opt("?/" ~ ps) ^^ {
+      case path ~ Some(sep ~ key) => path ::: (StringConst(sep) :: key)
+      case path ~ None =>
+        val (p, k) = path.splitAt(keyIdx(path) + 1)
+        if (p.nonEmpty && k.nonEmpty) p.init ::: (stripSep(p.last).toList ::: (StringConst("?/") :: k))
+        else path
+    } named "uri-path-segments"
+  }
 
   def queryParameters: MemParser[List[Col]] = {
     def qp(p: Exp) = p match {
@@ -224,7 +251,8 @@ class TresqlUri(
     uri(tresqlUriValue(value)(q, env, res))
 
   def uri(value: TresqlUri.Uri): Uri = {
-    require(value.segments != null && value.segments.nonEmpty, "Uri segments must not be empty!")
+    require(value.segments != null && (value.segments.nonEmpty || value.key.nonEmpty || value.params.nonEmpty),
+      "Uri must not be empty!")
     val uriRegex = """(?U)(https?://[^/]+)?(?:(?:$)|(.+))?""".r
     val uriRegex(uriStart, uriPath) = value.segments.mkString("/"): @unchecked
     val path = Option(uriPath).map(Path(_)).getOrElse(Path.Empty)

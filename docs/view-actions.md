@@ -728,7 +728,7 @@ Full response examples:
 
 ```
 status ok
-status 303 /data/'?/'/path/:status   # redirect command is shorthand of status 303
+status 303 /data?/path/:status       # redirect command is shorthand of status 303
 status ok :status
 status ok { :uri || 'about' }
 response ok
@@ -764,7 +764,7 @@ Examples:
 
 ```
 redirect data/path?:id
-redirect data/path/'?/'/:id                # redirect with key
+redirect data/path?/:id                   # redirect with key
 redirect { 'data/path', '?/', :id }       # uri as tresql query
 redirect
       set_headers({'h1', 'v1'} + {'h2', 'v2'})
@@ -1020,7 +1020,7 @@ Uri argument of [http](#http), [redirect](#redirect) and [status 3xx](#response-
 is written in url like syntax:
 
 ```
-[/]<path segment>[/<path segment>…][?[<query parameter>[&<query parameter>…]]]
+[/]<path segment>[/<path segment>…][?/<key segment>[/<key segment>…]][?[<query parameter>[&<query parameter>…]]]
 ```
 
 Query parameter:
@@ -1046,13 +1046,20 @@ Optional variable (`:x?`) is omitted from the uri if the variable is not defined
 
 Leading `/` makes the path absolute: `/forest/:nr`.
 
-Resource key section is started with the `'?/'` path segment. Key segments follow it, depending
-on `app.key-in-query` configuration key is encoded in the query string (`data/person?/42`) or
-in the path (`data/person/42`):
+Resource key section is started with `?/`. Key segments follow it, depending on
+`app.key-in-query` configuration key is encoded in the query string (`data/person?/42`) or
+in the path (`data/person/42`). Quoted `'?/'` path segment is also supported:
 
 ```
-data/person/'?/'/:id
+data/person?/:id
+data/person/'?/'/:id                  # the same
+data/person?/:id?page-size=10         # key followed by query parameters
+?/:id?par1=:id + 1                    # key only
 ```
+
+Key only uri is relative to current path when key is encoded in the query string (`?/42?par1=43`).
+If `app.key-in-query` is `false`, key is appended to the empty path, making the uri absolute
+(`/42?par1=43`).
 
 Question mark following the last path segment variable is parsed as part of the variable, making
 it optional, but if query parameters follow it, it only separates them and the variable is
@@ -1060,6 +1067,10 @@ mandatory: `/forest/:nr?:owner` means mandatory `:nr` followed by the query para
 Use two question marks to keep the variable optional when query parameters follow:
 `/forest/:nr??:owner`. Without query parameters the variable stays optional: `/forest/:nr/:xx?`.
 Question mark without query parameters is allowed: `data/path?`.
+
+The same applies to key separator: `/forest/:nr?/:id` means mandatory `:nr` followed by key
+`:id`, `/forest/:nr??/:id` keeps `:nr` optional. Therefore optional variable in the middle of the
+path must be enclosed in braces, otherwise it is parsed as key separator: `/forest/(:nr?)/trees`.
 
 Uri followed by other operation arguments must be enclosed in braces, otherwise the following
 arguments can be parsed as part of the uri. Named argument, `{…}` or `[…]` following uri
@@ -1095,8 +1106,11 @@ Url like syntax is translated to this form. Mapping examples:
 | `/http_forest/:nr?:owner` | `{ '/http_forest', :nr, '?', :owner owner }` |
 | `/http_forest/:nr??:owner` | `{ '/http_forest', :nr?, '?', :owner owner }` |
 | `/result?:id?&:value?` | `{ '/result', '?', :id? id, :value? value }` |
-| `data/path/'?/'/:id` | `{ 'data/path', '?/', :id }` |
-| `data/path/:id` | `{ 'data/path/' \|\| :id }` (evaluates to null if `:id` is null) |
+| `data/path?/:id` or `data/path/'?/'/:id` | `{ 'data', 'path', '?/', :id }` |
+| `/forest/:nr?/:id` | `{ '/forest', :nr, '?/', :id }` |
+| `/forest/:nr??/:id` | `{ '/forest', :nr?, '?/', :id }` |
+| `?/:id?par1=:id + 1` | `{ '?/', :id, '?', :id + 1 par1 }` |
+| `data/path/:id` | `{ 'data', 'path', :id }` |
 | `/test?page-size=value` | `{ '/test', '?', 'value' 'page-size' }` |
 
 ### http
