@@ -47,7 +47,7 @@ class AppFileCleanup(qe: AppQuerease, resourcesTemplate: Resources,
     logger.debug(s"File cleanup started, file streamers: ${fileStreamers.map(_.rootPath).mkString(", ")}")
     fileStreamers foreach { fs =>
       val wd = new File(fs.rootPath)
-      val tmp = new File(fs.rootPath + "/tmp")
+      val tmp = new File(fs.tmpPath)
       if (!wd.exists)  logger.error("Filestreamer directory doesn't exist: " + wd.getAbsolutePath)
       if (!tmp.exists) logger.error("Filestreamer tmp directory doesn't exist: " + tmp.getAbsolutePath)
     }
@@ -236,7 +236,7 @@ class AppFileCleanup(qe: AppQuerease, resourcesTemplate: Resources,
   protected def cleanupTmp = {
     logger.debug("Cleaning tmp")
     val filesDeleted = fileStreamers.map { fs =>
-      val wd = new File(fs.rootPath + "/tmp")
+      val wd = new File(fs.tmpPath)
       if (wd.exists) {
         var n = 0
         foreachAgedFile(wd) { file =>

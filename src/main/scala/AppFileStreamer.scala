@@ -115,6 +115,7 @@ object AppFileStreamer {
 
 trait AppFileStreamerConfig {
   def rootPath: String
+  def tmpPath: String
   def file_info_table: String
   def file_body_info_table: String
   def shaColName: String
@@ -126,6 +127,7 @@ trait AppFileStreamer[User] extends AppFileStreamerConfig with Loggable { this: 
   override def file_info_table: String      = fileStreamer.file_info_table
   override def file_body_info_table: String = fileStreamer.file_body_info_table
   override def shaColName: String           = fileStreamer.shaColName
+  override def tmpPath: String              = fileStreamer.tmpPath
 
   lazy val fileStreamerConfig: Config = {
     import FileStreamerConfig.configs
@@ -171,6 +173,8 @@ class FileStreamer(
   override def loggerName: String = Option(name).getOrElse(super.loggerName)
 
   override val rootPath: String             = fsCfg.getString("files.path").replaceAll("/+$", "")
+  override val tmpPath: String              =
+    Option("files.tmp-path").filter(fsCfg.hasPath).map(fsCfg.getString).getOrElse(rootPath + "/tmp").replaceAll("/+$", "")
   override val file_info_table: String      = fsCfg.getString("file-info-table")
   override val file_body_info_table: String = fsCfg.getString("file-body-info-table")
   override val shaColName: String           = fsCfg.getString("sha-col-name")
@@ -201,7 +205,7 @@ class FileStreamer(
   import AppFileStreamer._
 
   def createTempFile = {
-    val tempPath = new File(rootPath + "/" + "tmp")
+    val tempPath = new File(tmpPath)
     tempPath.mkdirs
     try File.createTempFile("tmp", null, tempPath) catch {
       case util.control.NonFatal(ex) =>
@@ -332,7 +336,7 @@ class FileStreamer(
 }
 
 object FileStreamerConfig {
-  val fsConfigTunablePaths = Set("files.path", "jdbc.query-timeout")
+  val fsConfigTunablePaths = Set("files.path", "files.tmp-path", "jdbc.query-timeout")
   lazy val componentConfs = ComponentConf.getConfigs("file-streamer", fsConfigTunablePaths)
   lazy val configs: Map[String, Config] = componentConfs.confs.toMap - "files" - "jdbc"
   @annotation.nowarn("msg=Manifest")
