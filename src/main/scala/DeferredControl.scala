@@ -561,7 +561,7 @@ object DeferredControl extends Loggable with AppConfig {
             userIdString)
           .list[java.io.InputStream, Timestamp, Timestamp, String, Int, String]
           .map(r => DeferredContext(userIdString, r._6,
-            WabaseRequestContext(null, deserializeHttpMessage(r._1, None).asInstanceOf[HttpRequest]),
+            WabaseRequestContext(null, deserializeHttpRequest(r._1)),
             null, r._2, null, r._3, r._4, r._5))
       }
 
@@ -585,7 +585,7 @@ object DeferredControl extends Loggable with AppConfig {
           hash, userIdString)
         .headOption[java.io.InputStream, Timestamp, Timestamp, String, Int]
         .map(r => DeferredContext(userIdString, hash,
-          WabaseRequestContext(null, deserializeHttpMessage(r._1, None).asInstanceOf[HttpRequest]),
+          WabaseRequestContext(null, deserializeHttpRequest(r._1)),
           null, r._2, null, r._3, r._4, r._5))
     }
 
@@ -596,7 +596,7 @@ object DeferredControl extends Loggable with AppConfig {
                  hash, userIdString, DEFERRED_OK, DEFERRED_ERR)
         .headOption[java.io.InputStream, Long, String]
         .map { case (in, id, sha) =>
-            deserializeHttpMessage(in, Some((fileStreamer, (id, sha)))).asInstanceOf[HttpResponse]
+            deserializeHttpResponse(in, fileStreamer, id, sha)
         }
     }
 
@@ -604,11 +604,11 @@ object DeferredControl extends Loggable with AppConfig {
     def getDeferredHttpRequest(hash: String, userIdString: String) = db_read { implicit res =>
       Query("""deferred_request [request_hash = ? & username = ?] { request }""", hash, userIdString)
         .headOption[java.io.InputStream]
-        .map(deserializeHttpMessage(_, None).asInstanceOf[HttpRequest])
+        .map(deserializeHttpRequest)
     }
   }
 
-  import org.apache.pekko.http.scaladsl.model.{HttpMessage, HttpEntity, HttpRequest, HttpResponse,
+  import org.apache.pekko.http.scaladsl.model.{HttpEntity, HttpRequest, HttpResponse,
     Uri, ContentType, HttpMethod, HttpProtocol, StatusCode}
   import org.apache.pekko.http.scaladsl.model.headers.RawHeader
 
@@ -659,57 +659,54 @@ object DeferredControl extends Loggable with AppConfig {
               .runWith(fs.fileSink("deferred result", body.contentType.value))
       }
 
-    def deserializeHttpMessage(
-                                in: java.io.InputStream,
-                                fileBody: Option[(FileStreamer, (Long, String))]): HttpMessage =
-      fileBody.map {
-        case (fs, (fid, sha)) =>
-          deserialize(in) match {
-            case (status: StatusCode, headers: scala.collection.immutable.Seq[(String, String)]@unchecked, protocol: HttpProtocol) =>
-              fs.getFileInfo(fid, sha)
-                .map { fi =>
-                  HttpResponse(status = status
-                    , headers = headers map (h => RawHeader(h._1, h._2))
-                    , entity =
-                        HttpEntity.Default(
-                          // This will always be MediaType.Binary, if 2nd param is true
-                          // application/octet-stream as a fallback
-                          MediaType.custom(Option(fi.content_type).filter(_ != "null").filter(_ != "")
-                            .getOrElse("application/octet-stream"), true)
-                            .asInstanceOf[MediaType.Binary],
-                          fi.size,
-                          fi.source
-                        )
-                    , protocol = protocol
-                  )
-                }.getOrElse(HttpResponse(status = StatusCodes.NotFound, entity = "Result not found"))
-            case x => sys.error(s"Cannot deserialize http message: $x")
-          }
-      }.getOrElse {
-        deserialize(in) match {
-          case
-            ( method: HttpMethod,
-              uri: Uri,
-              headers: scala.collection.immutable.Seq[(String, String)]@unchecked,
-              (contentType: String, content: ByteString),
-              protocol: HttpProtocol
-            ) =>
-            HttpRequest(
-              method,
-              uri,
-              headers map (h => RawHeader(h._1, h._2)),
-              HttpEntity.Strict(
-                ContentType
-                  .parse(contentType)
-                  .fold(
-                    err => sys.error(s"Unparsable content type: $err"),
-                    identity
-                  ),
-                content),
-              protocol
-            )
-          case x => sys.error(s"Cannot deserialize http message: $x")
-        }
+    def deserializeHttpResponse(in: java.io.InputStream, fs: FileStreamer, fid: Long, sha: String): HttpResponse =
+      deserialize(in) match {
+        case (status: StatusCode, headers: scala.collection.immutable.Seq[(String, String)]@unchecked, protocol: HttpProtocol) =>
+          fs.getFileInfo(fid, sha)
+            .map { fi =>
+              HttpResponse(status = status
+                , headers = headers map (h => RawHeader(h._1, h._2))
+                , entity =
+                    HttpEntity.Default(
+                      // This will always be MediaType.Binary, if 2nd param is true
+                      // application/octet-stream as a fallback
+                      MediaType.custom(Option(fi.content_type).filter(_ != "null").filter(_ != "")
+                        .getOrElse("application/octet-stream"), true)
+                        .asInstanceOf[MediaType.Binary],
+                      fi.size,
+                      fi.source
+                    )
+                , protocol = protocol
+              )
+            }.getOrElse(HttpResponse(status = StatusCodes.NotFound, entity = "Result not found"))
+        case x => sys.error(s"Cannot deserialize http message: $x")
       }
+
+    def deserializeHttpRequest(in: java.io.InputStream): HttpRequest = {
+      deserialize(in) match {
+        case
+          ( method: HttpMethod,
+            uri: Uri,
+            headers: scala.collection.immutable.Seq[(String, String)]@unchecked,
+            (contentType: String, content: ByteString),
+            protocol: HttpProtocol
+          ) =>
+          HttpRequest(
+            method,
+            uri,
+            headers map (h => RawHeader(h._1, h._2)),
+            HttpEntity.Strict(
+              ContentType
+                .parse(contentType)
+                .fold(
+                  err => sys.error(s"Unparsable content type: $err"),
+                  identity
+                ),
+              content),
+            protocol
+          )
+        case x => sys.error(s"Cannot deserialize http message: $x")
+      }
+    }
   }
 }
