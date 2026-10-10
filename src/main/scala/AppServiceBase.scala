@@ -433,15 +433,7 @@ trait AppServiceBase[User]
   override def dbAccess = app.dbAccess
 
   protected def fileStreamerConfigs: Seq[AppFileStreamerConfig] = {
-    Option(this)
-      .collect { case fs: AppFileServiceBase[_] => fs.fileStreamer }
-      .toList ++
-      Option(this)
-        .flatMap {
-          case dc: DeferredControl => dc.deferredFileStreamerConfig
-          case _ => None
-        }
-        .toList
+    app.fileStreamers.fileStreamers.values.toSeq
   }
 }
 

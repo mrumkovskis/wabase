@@ -170,11 +170,13 @@ class FileStreamer(
   name: String = null,
 ) extends AppFileStreamerConfig with Loggable {
 
-  override def loggerName: String = Option(name).getOrElse(super.loggerName)
+  override def loggerName: String = if (fsCfg.hasPath("logger-name")) fsCfg.getString("logger-name") else
+    Option(name).getOrElse(super.loggerName)
 
-  override val rootPath: String             = fsCfg.getString("files.path").replaceAll("/+$", "")
+  override val rootPath: String             = fsCfg.getString("files.root").replaceAll("/+$", "")
   override val tmpPath: String              =
     Option("files.tmp-path").filter(fsCfg.hasPath).map(fsCfg.getString).getOrElse(rootPath + "/tmp").replaceAll("/+$", "")
+  val pathFormat: String                    = fsCfg.getString("files.path-format")
   override val file_info_table: String      = fsCfg.getString("file-info-table")
   override val file_body_info_table: String = fsCfg.getString("file-body-info-table")
   override val shaColName: String           = fsCfg.getString("sha-col-name")
@@ -286,7 +288,7 @@ class FileStreamer(
       }
       oldFileInfoF map {
         case None =>
-          val tailPath = new java.text.SimpleDateFormat("yyyy/MM/dd").format(new jDate)
+          val tailPath = new java.text.SimpleDateFormat(pathFormat).format(new jDate)
           val fullPath = new File(rootPath + "/" + tailPath)
           fullPath.mkdirs
           val targetFile = new File(fullPath.toString + "/" + sha)
@@ -336,7 +338,7 @@ class FileStreamer(
 }
 
 object FileStreamerConfig {
-  val fsConfigTunablePaths = Set("files.path", "files.tmp-path", "jdbc.query-timeout")
+  val fsConfigTunablePaths = Set("files.root", "files.tmp-path", "jdbc.query-timeout")
   lazy val componentConfs = ComponentConf.getConfigs("file-streamer", fsConfigTunablePaths)
   lazy val configs: Map[String, Config] = componentConfs.confs.toMap - "files" - "jdbc"
   @annotation.nowarn("msg=Manifest")

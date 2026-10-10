@@ -99,6 +99,7 @@ trait DeferredStorageFactory {
 
 object DbDeferredStorageFactory extends DeferredStorageFactory {
   override def initialize(wabase: WabaseService.Wabase)(implicit as: ActorSystem): DeferredControl.DeferredStorage = {
-    new DeferredControl.DbDeferredStorage(config.getConfig("app"), wabase, new ServerStatistics.NoServerStatistics {})
+    new DeferredControl.DbDeferredStorage(config.getConfig("app"), wabase, wabase.fileStreamers,
+      new ServerStatistics.NoServerStatistics {})
   }
 }

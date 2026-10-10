@@ -19,6 +19,7 @@ object TestApp extends AppBase[TestUser]
     with NoAudit[TestUser]
     with PostgreSqlConstraintMessage
 {
+  override lazy val fileStreamerConfig = FileStreamerConfig.configs("wabase_it_legacy_fs")
   override def dbAccessDelegate: DbAccess = TestDbAccess
   override def check[C <: RequestContext[_]](ctx: C, clazz: Class[_]): Unit = {}
   override def relevant[C <: RequestContext[_]](ctx: C, clazz: Class[_]) = ctx

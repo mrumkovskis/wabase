@@ -53,21 +53,18 @@ class DeferredTests extends AnyFlatSpec with Matchers with TestQuereaseInitializ
       override protected def initQuerease: AppQuerease = querease
       override protected def initQuereaseIo: AppQuereaseIo[Dto] = new AppQuereaseIo[Dto](querease)
     }
+    deferredResultFileRootPath =
+      new File(System.getProperty("java.io.tmpdir"),"deferred-tests/" + UUID.randomUUID().toString).getPath
     val appl = new TestApp {
       override val DefaultCp: PoolName = PoolName(deferredTestsDb)
       override def dbAccessDelegate = db
       override protected def initQuerease = querease
-      private val root_path =
-        new File(System.getProperty("java.io.tmpdir"),"deferred-tests/" + UUID.randomUUID().toString).getPath
       override lazy val fileStreamerConfig =
-        ConfigFactory.parseString(s"files.path = $root_path")
-          .withFallback(config.getConfig("app.deferred-requests.storage"))
+        ConfigFactory.parseString(s"""files.root = $deferredResultFileRootPath\nfiles.path-format = yyyy/MM/dd""")
+          .withFallback(config.getConfig("file-streamer.deferred-requests"))
     }
 
     streamerConfQe = appl
-
-    deferredResultFileRootPath =
-      new File(System.getProperty("java.io.tmpdir"),"wabase-deferred-results-tests/" + UUID.randomUUID().toString).getPath
 
     def deferredTestExceptionHandler(logger: com.typesafe.scalalogging.Logger) = ExceptionHandler {
       case e: DeferredTestException =>
@@ -83,13 +80,12 @@ class DeferredTests extends AnyFlatSpec with Matchers with TestQuereaseInitializ
       override def listOrGetAction(viewName: String)(
         implicit user: TestUsr, state: ApplicationState, timeout: QueryTimeout): Route =
         complete(s"$viewName:${timeout.timeoutSeconds}")
-      override protected def initDeferredStorage = new DbDeferredStorage(appConfig, dbAccess, this)(actorSystem) {
-        private val root_path = deferredResultFileRootPath
-        override lazy val fileStreamerConfig =
-          ConfigFactory.parseString(s"files.path = $root_path")
-            .withFallback(config.getConfig("app.deferred-requests.storage.file-streamer"))
-        override protected def logDeferredResultMarshallingException(e: Throwable): Unit =
-          logger.debug(deferredResultMarshallingExceptionMessage(e), e)
+      override protected def initDeferredStorage = {
+        val wfs = WabaseFileStreamers(Map("deferred-requests" -> new FileStreamer(appl.fileStreamerConfig, app)))
+        new DbDeferredStorage(appConfig, dbAccess, wfs, this)(actorSystem) {
+          override protected def logDeferredResultMarshallingException(e: Throwable): Unit =
+            logger.debug(deferredResultMarshallingExceptionMessage(e), e)
+        }
       }
       override lazy val appExceptionHandler =
         deferredTestExceptionHandler(this.logger)

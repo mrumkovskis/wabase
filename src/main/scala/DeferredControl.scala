@@ -170,10 +170,6 @@ trait DeferredControl
 
   protected def requestHash(username: String, req: HttpRequest) =
     DeferredControl.requestHash(username, req, removeSessionInfoFromRequest)
-
-  def deferredFileStreamerConfig: Option[AppFileStreamerConfig] = {
-    Option(deferredStorage).collect { case ds: DbDeferredStorage => ds }
-  }
 }
 
 object DeferredControl extends Loggable with AppConfig {
@@ -470,20 +466,17 @@ object DeferredControl extends Loggable with AppConfig {
   }
 
   import org.tresql._
-  class DbDeferredStorage(conf: Config, db: DbAccess, stats: ServerStatistics)(implicit val as: ActorSystem)
-    extends DeferredStorage with AppFileStreamer[String] with DbAccessProvider {
+  class DbDeferredStorage(conf: Config, db: DbAccess, fss: WabaseFileStreamers, stats: ServerStatistics)(
+    implicit val as: ActorSystem) extends DeferredStorage {
 
     private implicit val ec: ExecutionContext = as.dispatcher
-    override def dbAccess = db
-    import stats._
 
     private lazy val Cp =
       Option("deferred-requests.storage.cp").filter(conf.hasPath).map(conf.getString).map(PoolName.apply)
         .getOrElse(db.DefaultCp)
 
-    override lazy val fileStreamerConfig: Config = conf.getConfig("deferred-requests.storage.file-streamer")
+    private lazy val fileStreamer = fss.fs(conf.getString("deferred-requests.storage.file-streamer"))
 
-    override def loggerName: String = DeferredControl.loggerName
     private def db_read[A]: (Resources => A) => A =
       db.withRollbackConn(
         poolName = Cp,
@@ -508,7 +501,7 @@ object DeferredControl extends Loggable with AppConfig {
       if (isDuplicate)
         ctx.copy(status = DeferredExists) /*request already in exe phase or queued*/
       else {
-        statsRegisterDeferredRequest
+        stats.statsRegisterDeferredRequest
         implicit val usr = userIdString
         Query("""-deferred_request[username = ? & request_hash = ?]""", userIdString, hash)
         Query("""+deferred_request
@@ -540,10 +533,10 @@ object DeferredControl extends Loggable with AppConfig {
         case _: HttpResponseMarshallingException => true
         case e => isMarshallingException(e.getCause)
       }
-      val (header, fif) = serializeHttpResponse(this, result)
+      val (header, fif) = serializeHttpResponse(fileStreamer, result)
       fif.map { fi =>
         db_write { implicit res =>
-          statsRegisterDeferredResult
+          stats.statsRegisterDeferredResult
           Query("""=deferred_request[request_hash = ?]
             {status, response_time, response_headers, response_entity_file_id, response_entity_file_sha_256 }
             [?, ?, ?, ?, ?]""",
@@ -603,7 +596,7 @@ object DeferredControl extends Loggable with AppConfig {
                  hash, userIdString, DEFERRED_OK, DEFERRED_ERR)
         .headOption[java.io.InputStream, Long, String]
         .map { case (in, id, sha) =>
-            deserializeHttpMessage(in, Some((this, userIdString, (id, sha)))).asInstanceOf[HttpResponse]
+            deserializeHttpMessage(in, Some((fileStreamer, (id, sha)))).asInstanceOf[HttpResponse]
         }
     }
 
@@ -651,10 +644,8 @@ object DeferredControl extends Loggable with AppConfig {
         case x => sys.error(
           s"HttpMessage not serializable, check whether message entity is HttpEntity.Strict:$x")
     }
-    def serializeHttpResponse(fs: AppFileStreamer[String],
-                              resp: HttpResponse)(implicit user: String,
-                                                  executor: ExecutionContext,
-                                                  materializer: Materializer): (Array[Byte], Future[FileInfo]) =
+    def serializeHttpResponse(fs: FileStreamer, resp: HttpResponse)(
+      implicit executor: ExecutionContext, materializer: Materializer): (Array[Byte], Future[FileInfo]) =
       resp match {
         case HttpResponse(status, headers, body, protocol) =>
           serialize (
@@ -670,12 +661,12 @@ object DeferredControl extends Loggable with AppConfig {
 
     def deserializeHttpMessage(
                                 in: java.io.InputStream,
-                                fileBody: Option[(AppFileStreamer[String], String, (Long, String))]): HttpMessage =
+                                fileBody: Option[(FileStreamer, (Long, String))]): HttpMessage =
       fileBody.map {
-        case (fs, usr, (fid, sha)) =>
+        case (fs, (fid, sha)) =>
           deserialize(in) match {
             case (status: StatusCode, headers: scala.collection.immutable.Seq[(String, String)]@unchecked, protocol: HttpProtocol) =>
-              fs.getFileInfo(fid, sha)(usr)
+              fs.getFileInfo(fid, sha)
                 .map { fi =>
                   HttpResponse(status = status
                     , headers = headers map (h => RawHeader(h._1, h._2))

@@ -49,7 +49,7 @@ class FileUploadSpecs extends AnyFlatSpec with TestQuereaseInitializer with Scal
       private val root_path =
         new File(System.getProperty("java.io.tmpdir"),"file-upload-specs/" + UUID.randomUUID().toString).getPath
       override lazy val fileStreamerConfig =
-        ConfigFactory.parseString(s"files.path = $root_path")
+        ConfigFactory.parseString(s"files.root = $root_path")
           .withFallback(FileStreamerConfig.configs("main"))
     }
 

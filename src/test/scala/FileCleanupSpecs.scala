@@ -349,7 +349,7 @@ object FileCleanupSpecsHelper {
       with DbAccessProvider {
     override def dbAccess = db
     override lazy val fileStreamerConfig =
-      ConfigFactory.parseString(s"files.path = $attachmentsRootPath/$attachmentsRootPathTail").withFallback(config)
+      ConfigFactory.parseString(s"files.root = $attachmentsRootPath/$attachmentsRootPathTail").withFallback(config)
     val file_ref_table: String = config.getString("file-ref-table")
   }
   class TestFileStreamer1(attachmentsRootPathTail: String) extends TestFileStreamer(fsCfg1, attachmentsRootPathTail) {
