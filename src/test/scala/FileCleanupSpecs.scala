@@ -53,8 +53,8 @@ class FileCleanupSpecs extends FlatSpec with Matchers with BeforeAndAfterEach {
 
   def ageUploadInfo(fileStreamer: AppFileStreamer[_], fileInfo: AppFileStreamer.FileInfoHelper) =
     newTransaction(implicit res => Query(s"""${fileStreamer.file_info_table}[id = ${fileInfo.id}]{upload_time} = [date_sub(upload_time, sql("interval 1 day"))]"""))
-  def ageFile(fileInfo: AppFileStreamer.FileInfoHelper) = {
-    val path = Paths.get(fileInfo.path)
+  def ageFile(root: String, fileInfo: AppFileStreamer.FileInfoHelper) = {
+    val path = Paths.get(s"$root/${fileInfo.path}")
     val view = Files.getFileAttributeView(path, classOf[BasicFileAttributeView])
     val attributes = view.readAttributes()
     val creationTime = attributes.creationTime()
@@ -68,21 +68,26 @@ class FileCleanupSpecs extends FlatSpec with Matchers with BeforeAndAfterEach {
   @annotation.nowarn("msg=Manifest")
   def fileBodyInfoExists(fileStreamer: AppFileStreamer[_], fileInfo: AppFileStreamer.FileInfoHelper) =
     newTransaction(implicit res => Query(s"${fileStreamer.file_body_info_table}[${fileStreamer.shaColName} = '${fileInfo.sha_256}']{count(1)}").unique[Long] == 1)
-  def fileExists(file: AppFileStreamer.FileInfoHelper) = new java.io.File(file.path).exists()
+  def fileExists(root: String, file: AppFileStreamer.FileInfoHelper) = new java.io.File(s"$root/${file.path}").exists()
 
-  val filestreamerConfigs: List[List[TestFileStreamer]] = List(
+  val filestreamerConfigs: List[List[TestFileStreamer]] = List("days", "hours", "minutes").flatMap { pf =>
     List(
-      new TestFileStreamer1("nested/level1"),
-      new TestFileStreamer2("nested/level1/level2"),
-    ),
-    List(
-      new TestFileStreamer1("shared"),
-      new TestFileStreamer2("shared"),
-    ),
-    List(
-      new TestFileStreamer1("siblings/fs1"),
-      new TestFileStreamer2("siblings/fs2"),
-    ),
+      List(
+        new TestFileStreamer1("nested/level1", pf),
+        new TestFileStreamer2("nested/level1/level2", pf),
+      ),
+      List(
+        new TestFileStreamer1("shared", pf),
+        new TestFileStreamer2("shared", pf),
+      ),
+      List(
+        new TestFileStreamer1("siblings/fs1", pf),
+        new TestFileStreamer2("siblings/fs2", pf),
+      ),
+    )
+  } :+ List( // different path formats in shared root
+    new TestFileStreamer1("shared", "days"),
+    new TestFileStreamer2("shared", "minutes"),
   )
 
   private def deleteFilesRecursively(file: File): Unit = {
@@ -110,7 +115,8 @@ class FileCleanupSpecs extends FlatSpec with Matchers with BeforeAndAfterEach {
   }
 
   filestreamerConfigs foreach { fileStreamerList =>
-    val fsConfigName = fileStreamerList.head.attachmentsRootPathTail.split("/")(0) + " paths"
+    val fsConfigName = fileStreamerList.head.attachmentsRootPathTail.split("/")(0) + " paths, " +
+      fileStreamerList.map(_.pathFormat).distinct.mkString("/") + " path format"
 
     val fileCleaner =
       new TestFileCleanup(FileCleanupSpecsQuerease, FileCleanupSpecsHelper.db.rt, fileStreamerList: _*)
@@ -127,31 +133,31 @@ class FileCleanupSpecs extends FlatSpec with Matchers with BeforeAndAfterEach {
     it should ("cleanup file body info with references removed, for " + fsConfigName) in {
       fileStreamerList.foreach { fs =>
         val fi = saveFileAndRef(fs, "textFile.txt", txtContentType)
-        ageFile(fi)
+        ageFile(fs.rootPath, fi)
 
         fileInfoExists(fs, fi) shouldBe true
         fileBodyInfoExists(fs, fi) shouldBe true
-        fileExists(fi) shouldBe true
+        fileExists(fs.rootPath, fi) shouldBe true
 
         doCleanup
 
         fileInfoExists(fs, fi) shouldBe true
         fileBodyInfoExists(fs, fi) shouldBe true
-        fileExists(fi) shouldBe true
+        fileExists(fs.rootPath, fi) shouldBe true
 
         ageUploadInfo(fs, fi)
         doCleanup
 
         fileInfoExists(fs, fi) shouldBe true
         fileBodyInfoExists(fs, fi) shouldBe true
-        fileExists(fi) shouldBe true
+        fileExists(fs.rootPath, fi) shouldBe true
 
         removeRefs(fs, fi)
         doCleanup
 
         fileInfoExists(fs, fi) shouldBe false
         fileBodyInfoExists(fs, fi) shouldBe false
-        fileExists(fi) shouldBe false
+        fileExists(fs.rootPath, fi) shouldBe false
       }
     }
 
@@ -159,46 +165,45 @@ class FileCleanupSpecs extends FlatSpec with Matchers with BeforeAndAfterEach {
       fileStreamerList.foreach { fs =>
         val fi_1 = saveFile(fs, "textFile.txt", txtContentType)
         val fi_2 = saveFile(fs, "textFile.txt", txtContentType)
-        ageFile(fi_1)
+        ageFile(fs.rootPath, fi_1)
 
         fileInfoExists(fs, fi_1) shouldBe true
         fileBodyInfoExists(fs, fi_1) shouldBe true
-        fileExists(fi_1) shouldBe true
+        fileExists(fs.rootPath, fi_1) shouldBe true
         fileInfoExists(fs, fi_2) shouldBe true
         fileBodyInfoExists(fs, fi_2) shouldBe true
-        fileExists(fi_2) shouldBe true
+        fileExists(fs.rootPath, fi_2) shouldBe true
 
         doCleanup
 
         fileInfoExists(fs, fi_1) shouldBe true
         fileBodyInfoExists(fs, fi_1) shouldBe true
-        fileExists(fi_1) shouldBe true
+        fileExists(fs.rootPath, fi_1) shouldBe true
         fileInfoExists(fs, fi_2) shouldBe true
         fileBodyInfoExists(fs, fi_2) shouldBe true
-        fileExists(fi_2) shouldBe true
+        fileExists(fs.rootPath, fi_2) shouldBe true
 
         ageUploadInfo(fs, fi_1)
         doCleanup
 
         fileInfoExists(fs, fi_1) shouldBe false
         fileBodyInfoExists(fs, fi_1) shouldBe true
-        fileExists(fi_1) shouldBe true
+        fileExists(fs.rootPath, fi_1) shouldBe true
         fileInfoExists(fs, fi_2) shouldBe true
         fileBodyInfoExists(fs, fi_2) shouldBe true
-        fileExists(fi_2) shouldBe true
+        fileExists(fs.rootPath, fi_2) shouldBe true
 
         ageUploadInfo(fs, fi_2)
         doCleanup
 
         fileInfoExists(fs, fi_1) shouldBe false
         fileBodyInfoExists(fs, fi_1) shouldBe false
-        fileExists(fi_1) shouldBe false
+        fileExists(fs.rootPath, fi_1) shouldBe false
         fileInfoExists(fs, fi_2) shouldBe false
         fileBodyInfoExists(fs, fi_2) shouldBe false
-        fileExists(fi_2) shouldBe false
+        fileExists(fs.rootPath, fi_2) shouldBe false
 
-        val fi_2_new_path = fi_2.path.replace(fs.rootPath + "/", fs.rootPath + "/trash/")
-        fileExists(fi_2.copy(path = fi_2_new_path)) shouldBe true
+        fileExists(fs.rootPath + "/trash", fi_2) shouldBe true
       }
     }
 
@@ -207,44 +212,44 @@ class FileCleanupSpecs extends FlatSpec with Matchers with BeforeAndAfterEach {
         val fi_1 = saveFile(fs_1, "textFile.txt", txtContentType)
         val fi_2 = saveFile(fs_2, "textFile.txt", txtContentType)
 
-        ageFile(fi_1)
-        ageFile(fi_2)
+        ageFile(fs_1.rootPath, fi_1)
+        ageFile(fs_2.rootPath, fi_2)
 
         fileInfoExists(fs_1, fi_1) shouldBe true
         fileBodyInfoExists(fs_1, fi_1) shouldBe true
-        fileExists(fi_1) shouldBe true
+        fileExists(fs_1.rootPath, fi_1) shouldBe true
         fileInfoExists(fs_2, fi_2) shouldBe true
         fileBodyInfoExists(fs_2, fi_2) shouldBe true
-        fileExists(fi_2) shouldBe true
+        fileExists(fs_2.rootPath, fi_2) shouldBe true
 
         doCleanup
 
         fileInfoExists(fs_1, fi_1) shouldBe true
         fileBodyInfoExists(fs_1, fi_1) shouldBe true
-        fileExists(fi_1) shouldBe true
+        fileExists(fs_1.rootPath, fi_1) shouldBe true
         fileInfoExists(fs_2, fi_2) shouldBe true
         fileBodyInfoExists(fs_2, fi_2) shouldBe true
-        fileExists(fi_2) shouldBe true
+        fileExists(fs_2.rootPath, fi_2) shouldBe true
 
         ageUploadInfo(fs_1, fi_1)
         doCleanup
 
         fileInfoExists(fs_1, fi_1) shouldBe false
         fileBodyInfoExists(fs_1, fi_1) shouldBe false
-        fileExists(fi_1) shouldBe (fs_1.rootPath == fs_2.rootPath)
+        fileExists(fs_1.rootPath, fi_1) shouldBe (fs_1.rootPath == fs_2.rootPath && fi_1.path == fi_2.path) // same physical file
         fileInfoExists(fs_2, fi_2) shouldBe true
         fileBodyInfoExists(fs_2, fi_2) shouldBe true
-        fileExists(fi_2) shouldBe true
+        fileExists(fs_2.rootPath, fi_2) shouldBe true
 
         ageUploadInfo(fs_2, fi_2)
         doCleanup
 
         fileInfoExists(fs_1, fi_1) shouldBe false
         fileBodyInfoExists(fs_1, fi_1) shouldBe false
-        fileExists(fi_1) shouldBe false
+        fileExists(fs_1.rootPath, fi_1) shouldBe false
         fileInfoExists(fs_2, fi_2) shouldBe false
         fileBodyInfoExists(fs_2, fi_2) shouldBe false
-        fileExists(fi_2) shouldBe false
+        fileExists(fs_2.rootPath, fi_2) shouldBe false
       }
       // test nested paths both ways
       test(fileStreamerList(0), fileStreamerList(1))
@@ -254,23 +259,23 @@ class FileCleanupSpecs extends FlatSpec with Matchers with BeforeAndAfterEach {
     it should ("cleanup file body info with upload time expired, for " + fsConfigName) in {
       fileStreamerList.foreach { fs =>
         val fi = saveFile(fs, "textFile.txt", txtContentType)
-        ageFile(fi)
+        ageFile(fs.rootPath, fi)
 
         fileInfoExists(fs, fi) shouldBe true
         fileBodyInfoExists(fs, fi) shouldBe true
-        fileExists(fi) shouldBe true
+        fileExists(fs.rootPath, fi) shouldBe true
 
         doCleanup
         fileInfoExists(fs, fi) shouldBe true
         fileBodyInfoExists(fs, fi) shouldBe true
-        fileExists(fi) shouldBe true
+        fileExists(fs.rootPath, fi) shouldBe true
 
         ageUploadInfo(fs, fi)
         doCleanup
 
         fileInfoExists(fs, fi) shouldBe false
         fileBodyInfoExists(fs, fi) shouldBe false
-        fileExists(fi) shouldBe false
+        fileExists(fs.rootPath, fi) shouldBe false
       }
     }
 
@@ -279,21 +284,21 @@ class FileCleanupSpecs extends FlatSpec with Matchers with BeforeAndAfterEach {
         val fi = saveFile(fs, "textFile.txt", txtContentType)
         fileInfoExists(fs, fi) shouldBe true
         fileBodyInfoExists(fs, fi) shouldBe true
-        fileExists(fi) shouldBe true
+        fileExists(fs.rootPath, fi) shouldBe true
 
         ageUploadInfo(fs, fi)
         doCleanup
 
         fileInfoExists(fs, fi) shouldBe false
         fileBodyInfoExists(fs, fi) shouldBe false
-        fileExists(fi) shouldBe true
+        fileExists(fs.rootPath, fi) shouldBe true
 
-        ageFile(fi)
+        ageFile(fs.rootPath, fi)
         doCleanup
 
         fileInfoExists(fs, fi) shouldBe false
         fileBodyInfoExists(fs, fi) shouldBe false
-        fileExists(fi) shouldBe false
+        fileExists(fs.rootPath, fi) shouldBe false
       }
     }
 
@@ -302,20 +307,20 @@ class FileCleanupSpecs extends FlatSpec with Matchers with BeforeAndAfterEach {
         val fi = saveFile(fs, "textFile.txt", txtContentType)
         fileInfoExists(fs, fi) shouldBe true
         fileBodyInfoExists(fs, fi) shouldBe true
-        fileExists(fi) shouldBe true
+        fileExists(fs.rootPath, fi) shouldBe true
 
-        new java.io.File(fi.path).delete()
+        new java.io.File(s"${fs.rootPath}/${fi.path}").delete()
 
         fileInfoExists(fs, fi) shouldBe true
         fileBodyInfoExists(fs, fi) shouldBe true
-        fileExists(fi) shouldBe false
+        fileExists(fs.rootPath, fi) shouldBe false
 
         ageUploadInfo(fs, fi)
         doCleanup
 
         fileInfoExists(fs, fi) shouldBe false
         fileBodyInfoExists(fs, fi) shouldBe false
-        fileExists(fi) shouldBe false
+        fileExists(fs.rootPath, fi) shouldBe false
       }
     }
   }
@@ -345,16 +350,20 @@ object FileCleanupSpecsHelper {
 
   val TestCp: PoolName = PoolName("file-cleanup-test")
   val extraDbs: Seq[DbAccessKey] = Nil
-  class TestFileStreamer(config: Config, val attachmentsRootPathTail: String) extends AppFileStreamer[String]
+  class TestFileStreamer(config: Config, val attachmentsRootPathTail: String, val pathFormat: String)
+      extends AppFileStreamer[String]
       with DbAccessProvider {
     override def dbAccess = db
     override lazy val fileStreamerConfig =
-      ConfigFactory.parseString(s"files.root = $attachmentsRootPath/$attachmentsRootPathTail").withFallback(config)
+      ConfigFactory.parseString(s"files.root = $attachmentsRootPath/$attachmentsRootPathTail\nfiles.path-format = $pathFormat")
+        .withFallback(config)
     val file_ref_table: String = config.getString("file-ref-table")
   }
-  class TestFileStreamer1(attachmentsRootPathTail: String) extends TestFileStreamer(fsCfg1, attachmentsRootPathTail) {
+  class TestFileStreamer1(attachmentsRootPathTail: String, pathFormat: String)
+      extends TestFileStreamer(fsCfg1, attachmentsRootPathTail, pathFormat) {
   }
-  class TestFileStreamer2(attachmentsRootPathTail: String) extends TestFileStreamer(fsCfg2, attachmentsRootPathTail) {
+  class TestFileStreamer2(attachmentsRootPathTail: String, pathFormat: String)
+      extends TestFileStreamer(fsCfg2, attachmentsRootPathTail, pathFormat) {
   }
   object FileCleanupSpecsQuerease extends AppQuerease {
     override lazy val yamlMetadata = YamlMd.fromResource("/filestreamer-specs-table-metadata.yaml")

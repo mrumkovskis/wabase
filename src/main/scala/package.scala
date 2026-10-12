@@ -70,7 +70,7 @@ package object wabase extends Loggable {
       sys.error(s"Incompatible class ${r.getClass.getName}, expecting $m")
   } catch {
     case util.control.NonFatal(ex) =>
-      throw new RuntimeException(s"Failed to get $description instance, please cofigure $configPath properly: ${ex.getMessage}", ex)
+      throw new RuntimeException(s"Failed to get $description instance, please configure $configPath properly: ${ex.getMessage}", ex)
   }
 
   def getObjectOrNewInstance(className: String, description: String): AnyRef =
@@ -85,6 +85,7 @@ package object wabase extends Loggable {
       if (cn endsWith "$")
         getObjectOrNewInstance(loadCl(cn), description, potentialParameters, parameterClasses)
       else try  getNewInstance(loadCl(cn), description, potentialParameters, parameterClasses) catch {
+        case ConstructorFailure(cause) => throw cause // class found, constructor failed - other candidates are irrelevant
         case util.control.NonFatal(ex1) =>
           try getObject(loadCl(cn + "$")) catch {
             case util.control.NonFatal(ex2) =>
@@ -108,10 +109,19 @@ package object wabase extends Loggable {
     try getObject(clazz) catch {
       case util.control.NonFatal(ex1) =>
         try getNewInstance(clazz, description, potentialParameters, parameterClasses) catch {
+          case ConstructorFailure(cause) => throw cause
           case util.control.NonFatal(ex2) =>
             logger.debug(s"Failed to get $description instance, tried both object and empty constructor", ex1)
             throw new RuntimeException(s"Failed to get $description instance", ex2)
         }
+    }
+  }
+
+  /** Extracts exception thrown by constructor itself from getNewInstance failure */
+  private object ConstructorFailure {
+    def unapply(ex: Throwable): Option[Throwable] = ex.getCause match {
+      case ite: InvocationTargetException => Option(ite.getCause)
+      case _ => None
     }
   }
 

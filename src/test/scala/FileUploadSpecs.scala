@@ -14,15 +14,17 @@ import org.apache.pekko.http.scaladsl.testkit.{RouteTestTimeout, ScalatestRouteT
 import org.apache.pekko.stream.scaladsl.Source
 import org.apache.pekko.util.ByteString
 import org.scalatest.flatspec.AnyFlatSpec
+import org.scalatest.matchers.should.Matchers
 import org.wabase.client.WabaseHttpClient
 import org.wabase.ds.PoolName
 
-import scala.concurrent.duration
+import scala.concurrent.{Await, Future, duration}
 import scala.concurrent.duration.{Duration, FiniteDuration}
 
-class FileUploadSpecs extends AnyFlatSpec with TestQuereaseInitializer with ScalatestRouteTest {
+class FileUploadSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitializer with ScalatestRouteTest {
 
   var streamerConfQe: QuereaseProvider with AppFileStreamerConfig = _
+  var app: TestApp = _
 
   var service: TestAppService = _
 
@@ -54,6 +56,7 @@ class FileUploadSpecs extends AnyFlatSpec with TestQuereaseInitializer with Scal
     }
 
     streamerConfQe = appl
+    app = appl
 
     def entityStreamSizeExceptionHandler(logger: com.typesafe.scalalogging.Logger) = ExceptionHandler {
       case e: EntityStreamSizeException =>
@@ -134,5 +137,36 @@ class FileUploadSpecs extends AnyFlatSpec with TestQuereaseInitializer with Scal
     Post(uploadPath, entity) ~> route ~> check {
       assertResult(status)(StatusCodes.ContentTooLarge)
     }
+  }
+
+  private def saveFile(content: String): Future[AppFileStreamer.FileInfo] = {
+    implicit val user: TestUsr = usr
+    Source.single(ByteString(content)).runWith(app.fileSink("test.txt", "text/plain"))
+  }
+  private def storedFile(fi: AppFileStreamer.FileInfo): File =
+    new File(app.rootPath + "/" + app.getFileInfo(fi.id, fi.sha_256)(usr).get.path)
+  private def tmpFileCount = Option(new File(app.tmpPath).list).map(_.length).getOrElse(0)
+
+  it should "store again stored file that went missing" in {
+    val content = "File upload specs - missing stored file"
+    val fi_1 = Await.result(saveFile(content), responseTimeout)
+    storedFile(fi_1).delete() shouldBe true
+
+    val fi_2 = Await.result(saveFile(content), responseTimeout)
+    fi_2.sha_256 shouldBe fi_1.sha_256
+    val f = storedFile(fi_2)
+    f.exists shouldBe true
+    new String(Files.readAllBytes(f.toPath), "UTF-8") shouldBe content
+  }
+
+  it should "reject upload if stored file is corrupt and delete temp file" in {
+    val content = "File upload specs - corrupt stored file"
+    val fi = Await.result(saveFile(content), responseTimeout)
+    Files.write(storedFile(fi).toPath, "corrupt".getBytes("UTF-8"))
+
+    val tmpCountBefore = tmpFileCount
+    val ex = intercept[Exception](Await.result(saveFile(content), responseTimeout))
+    ex.getMessage shouldBe AppFileStreamer.CannotProcessFileMessage.format(fi.sha_256)
+    tmpFileCount shouldBe tmpCountBefore
   }
 }

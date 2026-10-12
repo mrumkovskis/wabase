@@ -6,7 +6,6 @@ import java.nio.file.{FileVisitOption, FileVisitResult, Files, Path, SimpleFileV
 import java.util.EnumSet
 import org.tresql._
 import org.wabase.AppMetadata.DbAccessKey
-import org.wabase.ds.ConnectionPools.DEFAULT_CP
 import org.wabase.ds.PoolName
 
 import scala.annotation.tailrec
@@ -165,10 +164,12 @@ class AppFileCleanup(qe: AppQuerease, resourcesTemplate: Resources,
     )
   }
 
+  // [fileStreamer.rootPath]/yyyy/MM/dd[/HH[/mm]]/sha256, captures path tail after root
+  private val DatePathSha = """.*(/\d\d\d\d/\d\d(?:/\d\d){1,3}/[0-9a-fA-F]{64})$""".r
+
   protected def fillCompareTable(batchSize: Int = 500): Unit = {
     logger.debug("Filling files_on_disk table")
     // file system list all files applicable for deletion
-    val YYYY_MM_DD_SHA = """.*(/\d\d\d\d/\d\d/\d\d/[0-9a-fA-F]{64})$""".r
     val allRootPaths = fileStreamers.map(_.rootPath).distinct
     allRootPaths.filterNot(rp => allRootPaths.exists(rrp => rp.startsWith(rrp + "/"))) foreach { rootPath =>
       logger.debug(s"Listing files on disk for $rootPath")
@@ -187,9 +188,9 @@ class AppFileCleanup(qe: AppQuerease, resourcesTemplate: Resources,
       }
       foreachAgedFile(wd, Set("tmp", "trash")) { file =>
         val path = file.getAbsolutePath
-        // process files according to the parttern: [fileStreamer.rootPath]/year/mmonth/day/sha256
+        // process files according to the pattern: [fileStreamer.rootPath]/yyyy/MM/dd[/HH[/mm]]/sha256
         path match {
-          case YYYY_MM_DD_SHA(x) if allRootPaths.exists(_ + x == path) =>
+          case DatePathSha(x) if allRootPaths.exists(_ + x == path) =>
             batch += path
             if (batch.size >= batchSize) flush()
           case _ =>
@@ -219,16 +220,17 @@ class AppFileCleanup(qe: AppQuerease, resourcesTemplate: Resources,
     db_read { implicit res: Resources =>
       @annotation.nowarn("msg=Manifest")
       val filesMoved = Query(query, pathsParams).list[String]
-        .map(new File(_))
-        .foldLeft(0){case (counter, fullPathFile) =>
-          val wd = fullPathFile.getParentFile.getParentFile.getParentFile.getParentFile
-          val file = fullPathFile.getAbsolutePath.substring(wd.getAbsolutePath.length + 1)
-          val moveToFile = new File(wd.getAbsolutePath + "/trash/" + file)
-          val moveToDir = moveToFile.getParentFile
-          if (!moveToDir.exists) moveToDir.mkdirs
-          Files.move(fullPathFile.toPath, moveToFile.toPath, StandardCopyOption.ATOMIC_MOVE)
-          counter + 1
-        }
+        .foldLeft(0) { case (counter, path) => path match {
+          case DatePathSha(tail) =>
+            val moveToFile = new File(path.dropRight(tail.length) + "/trash" + tail)
+            val moveToDir = moveToFile.getParentFile
+            if (!moveToDir.exists) moveToDir.mkdirs
+            Files.move(new File(path).toPath, moveToFile.toPath, StandardCopyOption.ATOMIC_MOVE)
+            counter + 1
+          case _ => // files_on_disk contains only paths matching DatePathSha
+            logger.error(s"Unexpected file path, not moved to trash: $path")
+            counter
+        }}
       logger.debug("Files moved to trash: " + filesMoved)
     }
   }

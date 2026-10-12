@@ -51,13 +51,19 @@ object AppFileStreamer {
         "content_type" -> content_type, "sha_256" -> sha_256, "size" -> size
       )(fieldOrdering)
   }
+  /**
+   * @param path      stored file name relative to file streamer root (files.root)
+   * @param sourceFor storage function to read file by name relative to file streamer root
+   */
   case class FileInfoHelper(
     file_info: FileInfo,
     path: String,
+    sourceFor: String => Source[ByteString, Future[IOResult]],
   ) {
-    def this(r: RowLike) = this(
+    def this(r: RowLike, sourceFor: String => Source[ByteString, Future[IOResult]]) = this(
       file_info = new FileInfo(r),
       path = r.string("path"),
+      sourceFor,
     )
     def id           = file_info.id
     def filename     = file_info.filename
@@ -65,8 +71,7 @@ object AppFileStreamer {
     def content_type = file_info.content_type
     def size         = file_info.size
     def sha_256      = file_info.sha_256
-    def source: Source[ByteString, Future[IOResult]] =
-      FileIO.fromPath(java.nio.file.Paths.get(path))
+    def source: Source[ByteString, Future[IOResult]] = sourceFor(path)
     def toMap = file_info.toMap ++ Map("path" -> path)
   }
 
@@ -160,7 +165,8 @@ trait AppFileStreamer[User] extends AppFileStreamerConfig with Loggable { this: 
   }
   def getFileInfo(id: Long, sha256: String)(implicit user: User): Option[FileInfoHelper] =
     fileStreamer.getFileInfo(id, sha256)
-  def copy(source: String, dest: String, mkdirs: Boolean = false): Unit =
+  /** Copies file within storage, source and dest are relative to file streamer root (files.root) */
+  def copy(source: String, dest: String, mkdirs: Boolean = false): Future[Unit] =
     fileStreamer.copy(source, dest, mkdirs)
 }
 
@@ -173,14 +179,16 @@ class FileStreamer(
   override def loggerName: String = if (fsCfg.hasPath("logger-name")) fsCfg.getString("logger-name") else
     Option(name).getOrElse(super.loggerName)
 
-  override val rootPath: String             = fsCfg.getString("files.root").replaceAll("/+$", "")
+  override val rootPath: String             = org.wabase.fs.Storage.root(fsCfg)
   override val tmpPath: String              =
     Option("files.tmp-path").filter(fsCfg.hasPath).map(fsCfg.getString).getOrElse(rootPath + "/tmp").replaceAll("/+$", "")
-  val pathFormat: String                    = fsCfg.getString("files.path-format")
   override val file_info_table: String      = fsCfg.getString("file-info-table")
   override val file_body_info_table: String = fsCfg.getString("file-body-info-table")
   override val shaColName: String           = fsCfg.getString("sha-col-name")
   val connectionPoolName: String            = Option("cp").filter(fsCfg.hasPath).map(fsCfg.getString).orNull
+
+  private val storage = getObjectOrNewInstance[org.wabase.fs.Storage](
+    fsCfg, "files.storage-class", "file streamer file storage", Seq(fsCfg))
 
   private val fileInfoInsert =
     s"+$file_info_table {id, upload_time, content_type, $shaColName, filename} " +
@@ -253,60 +261,43 @@ class FileStreamer(
     def moveAndCheckFile(fi: FileInfo): Future[FileInfo] = {
       val size = fi.size
       val sha = fi.sha_256
-      def badFileException =
-        // TODO log! (BusinessExceptions are not logged)
-        new BusinessException(AppFileStreamer.CannotProcessFileMessage, null, sha)
+      def badFileException = new RuntimeException(AppFileStreamer.CannotProcessFileMessage.format(sha))
 
       @annotation.nowarn("msg=Manifest")
-      def oldPathOpt = db_read { implicit res =>
+      val oldPathOpt = db_read { implicit res =>
         Query(s"$file_body_info_table[$shaColName=?]{path}", sha).uniqueOption[String]
       }
-      val oldFileInfoF: Future[Option[FileInfo]] = oldPathOpt match {
-        case Some(oldPath) =>
-          val old = new File(rootPath + "/" + oldPath + "/" + sha).toPath
-          if (Files.exists(old)) {
-            if (Files.isRegularFile(old) && Files.isReadable(old)) {
-              val sizeAndShaF = FileIO.fromPath(old).runWith(sizeAndSha256sink)
-              for {
-                (oldSize, oldSha) <- sizeAndShaF
-              } yield {
-                if (size == oldSize && sha == oldSha) {
-                  // old file ok
-                  val id = db_write { implicit res =>
-                    Query(fileInfoInsert, fi.toMap) match { case r: InsertResult => r.id.get }
-                  }
-                  Files.delete(tempFile.toPath)
-                  db_read { implicit res =>
-                    Query(fileInfoSelect, Map("id" -> id, "sha_256" -> sha))
-                      .map(new FileInfo(_)).find(_ => true)
-                  }
-                } else throw badFileException // bad sha or size
-              }
-            } else Future.failed(badFileException) // not readable or is directory
-          } else Future.successful(None) // missing, will add
-        case None => Future.successful(None) // new, will add
-      }
-      oldFileInfoF map {
+      val oldFileInfoF: Future[Option[FileInfo]] = oldPathOpt.map { oldPath =>
+        storage.verify(oldPath + "/" + sha, size, sha).map {
+          case Some(true) =>
+            // old file ok
+            val id = db_write { implicit res =>
+              Query(fileInfoInsert, fi.toMap) match { case r: InsertResult => r.id.get }
+            }
+            Files.delete(tempFile.toPath)
+            db_read { implicit res =>
+              Query(fileInfoSelect, Map("id" -> id, "sha_256" -> sha))
+                .map(new FileInfo(_)).find(_ => true)
+            }
+          case Some(false) => throw badFileException // not accessible, bad sha or size
+          case None => None // missing, will add
+        }
+      }.getOrElse(Future.successful(None)) // new, will add
+      oldFileInfoF flatMap {
         case None =>
-          val tailPath = new java.text.SimpleDateFormat(pathFormat).format(new jDate)
-          val fullPath = new File(rootPath + "/" + tailPath)
-          fullPath.mkdirs
-          val targetFile = new File(fullPath.toString + "/" + sha)
-          if (!tempFile.renameTo(targetFile))
-            if (!targetFile.exists || !Files.isRegularFile(targetFile.toPath))
-              throw badFileException
-          // if we are here, file body is accepted and copied, db has to be updated
-          db_write { implicit res =>
-            if (oldPathOpt.isDefined)
+          storage.storeFile(tempFile, sha).map { tailPath =>
+            // if we are here, file body is accepted and copied, db has to be updated
+            db_write { implicit res =>
+              if (oldPathOpt.isDefined)
                 Query(s"=$file_body_info_table[$shaColName = ?] {path = ?}", sha, tailPath)
-            else
+              else
                 Query(s"+$file_body_info_table{$shaColName, size, path} [?, ?, ?]", sha, size, tailPath)
-            val id = Query(fileInfoInsert, fi.toMap) match { case r: InsertResult => r.id.get }
-            Query(fileInfoSelect, Map("id" -> id, "sha_256" -> sha))
-              .map(new FileInfo(_)).find(_ => true)
+              val id = Query(fileInfoInsert, fi.toMap) match { case r: InsertResult => r.id.get }
+              Query(fileInfoSelect, Map("id" -> id, "sha_256" -> sha))
+                .map(new FileInfo(_)).find(_ => true)
+            }
           }
-        case someFi =>
-          someFi
+        case _ => oldFileInfoF
       } map(_.get)
     }
 
@@ -314,26 +305,25 @@ class FileStreamer(
       .fromFunction[ByteString, ByteString](identity)
       .alsoToMat(toFile)(Keep.right)
       .toMat(sizeAndSha256sink)(fileInfo)
-      .mapMaterializedValue(_.flatMap(moveAndCheckFile))
+      .mapMaterializedValue(_.flatMap(moveAndCheckFile).andThen {
+        case Failure(e) =>
+          if (tempFile.exists && !tempFile.delete) logger.error(s"Unable to delete temp file $tempFile on error:", e)
+      })
   }
 
   def getFileInfo(id: Long, sha256: String): Option[FileInfoHelper] = {
     db_read { implicit res =>
       Query(fileInfoSelect, Map("id" -> id, "sha_256" -> sha256))
-        .map(new FileInfoHelper(_)).find(_ => true)
+        .map(new FileInfoHelper(_, storage.sourceFor)).find(_ => true)
     }
         .map { fi => fi.copy(
-          path = rootPath + "/" + fi.path + "/" + fi.sha_256
+          path = fi.path + "/" + fi.sha_256
         )}
   }
 
-  def copy(source: String, dest: String, mkdirs: Boolean = false): Unit = {
-    if (source != dest) {
-      val destPath = new File(dest).toPath
-      if (mkdirs)
-        Option(destPath.getParent).foreach(Files.createDirectories(_))
-      Files.copy(new File(source).toPath, destPath, StandardCopyOption.REPLACE_EXISTING)
-    }
+  /** Copies file within storage, source and dest are relative to file streamer root (files.root) */
+  def copy(source: String, dest: String, mkdirs: Boolean = false): Future[Unit] = {
+    storage.copy(source, dest, mkdirs)
   }
 }
 

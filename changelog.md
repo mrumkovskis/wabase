@@ -180,6 +180,24 @@ level: `size(n)`, `size(>n)`, `size(>=n)`, `size(<n)`,
 `size(<=n)`, `size(!=n)` (or `size(<>n)`), `size(=n)`, and inclusive range
 `size(a..b)`. Optional capture works the same way: `size(3) -> captured_items`.
 
+File streamer storage is pluggable: `file-streamer.files.storage-class` (default
+`org.wabase.fs.FsStorage`) implements `org.wabase.fs.Storage`. File streamer config
+`files.path` is renamed to `files.root`. `files.path-format` (`days` - default, `hours`,
+`minutes`) sets the date path of stored files: `yyyy/MM/dd`, `yyyy/MM/dd/HH` or
+`yyyy/MM/dd/HH/mm`. Stored file paths are kept in `file_body_info`, so the format can be
+changed for existing storage; file cleanup handles all formats. Invalid value is reported as
+`ConfigException.BadValue` at startup. `files.tmp-path` sets the temporary upload directory
+(default `files.root/tmp`, should be on the same file system as `files.root`).
+Deferred request storage uses a named file streamer: `app.deferred-requests.storage.file-streamer`
+is the name of a `file-streamer` entry (default `deferred-requests`) instead of a config block.
+Breaking: `FileInfoHelper.path` is relative to file streamer root (was absolute),
+`FileInfoHelper` takes a source function as an additional parameter,
+`AppFileStreamer.copy` / `FileStreamer.copy` take paths relative to file streamer root and
+return `Future[Unit]`. Temporary upload file is deleted when storing fails.
+
+`getObjectOrNewInstance` rethrows exception thrown by the class constructor instead of trying
+other class name variants, so configuration errors of instantiated components are reported.
+
 ## [8.1.2] - 2026-09-02
 `AppFileCleanup` optimized for NFS — fewer metadata operations on networked file stores.
 

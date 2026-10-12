@@ -60,8 +60,9 @@ class DeferredTests extends AnyFlatSpec with Matchers with TestQuereaseInitializ
       override def dbAccessDelegate = db
       override protected def initQuerease = querease
       override lazy val fileStreamerConfig =
-        ConfigFactory.parseString(s"""files.root = $deferredResultFileRootPath\nfiles.path-format = yyyy/MM/dd""")
+        ConfigFactory.parseString(s"""files.root = $deferredResultFileRootPath\nfiles.path-format = days""")
           .withFallback(config.getConfig("file-streamer.deferred-requests"))
+          .withFallback(FileStreamerConfig.componentConfs.root)
     }
 
     streamerConfQe = appl
