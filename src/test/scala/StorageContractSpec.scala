@@ -21,8 +21,11 @@ abstract class StorageContractSpec(storageName: String) extends FlatSpec with Ma
 
   /** New empty storage with path-format = days */
   def newStorage(): Storage
+  /** Whether verify detects wrong content of correct size (storage provides content checksum) */
+  def verifiesContent: Boolean = true
 
   override def afterAll(): Unit = {
+    Await.result(org.apache.pekko.http.scaladsl.Http().shutdownAllConnectionPools(), maxWait)
     Await.result(system.terminate(), maxWait)
     super.afterAll()
   }
@@ -66,7 +69,8 @@ abstract class StorageContractSpec(storageName: String) extends FlatSpec with Ma
     val name = s"$tailPath/$contentSha"
     await(storage.verify(name, content.length, contentSha)) shouldBe Some(true)
     await(storage.verify(name, content.length + 1, contentSha)) shouldBe Some(false)
-    await(storage.verify(name, content.length, "0" * 64)) shouldBe Some(false)
+    if (verifiesContent)
+      await(storage.verify(name, content.length, "0" * 64)) shouldBe Some(false)
     await(storage.verify(s"$tailPath/${"1" * 64}", content.length, contentSha)) shouldBe None
   }
 

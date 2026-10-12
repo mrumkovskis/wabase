@@ -17,20 +17,24 @@ trait Storage {
    * */
   def sourceFor(fullName: String): Source[ByteString, Any]
   /**
-   * Save file into storage under specified name. On success source file is consumed - moved into storage
+   * Save file into storage, file is named by its sha-256. On success source file is consumed - moved into storage
    * or deleted after upload. Stored file must have fresh modification time even if file with the same name
    * is already stored - file cleanup relies on it.
-   * @param src   source (temporary) file
-   * @param name  destination file name
+   * @param src     source (temporary) file
+   * @param sha256  sha-256 (hex) of the file content, used as stored file name
    * @return future of stored file directory path (or prefix) (excluding root and file name)
    * */
-  def storeFile(src: File, name: String)(implicit
+  def storeFile(src: File, sha256: String)(implicit
     ec: ExecutionContext,
     mat: Materializer,
   ): Future[String]
   /**
-   * Check stored file against expected size and sha-256
+   * Check stored file against expected size and sha-256. How thoroughly content is checked depends on storage:
+   * file system storage reads the file and calculates sha-256, S3 storage compares size and checksum
+   * provided by S3 (size only if S3 does not provide checksum).
    * @param fullName  file name relative to storage root
+   * @param size      expected file size
+   * @param sha256    expected sha-256 (hex) of the file content
    * @return future of None if file is missing, Some(true) if file is present and valid,
    *         Some(false) if file is present but not accessible or corrupt
    * */

@@ -18,14 +18,14 @@ class FsStorage(cfg: Config) extends DatePathStorage(cfg) {
     FileIO.fromPath(java.nio.file.Paths.get(root + "/" + fullName))
   }
 
-  override def storeFile(src: File, name: String)(implicit
+  override def storeFile(src: File, sha256: String)(implicit
     ec: ExecutionContext,
     mat: Materializer,
   ): Future[String] = try {
     val tailPath = new java.text.SimpleDateFormat(pathFormat).format(new jDate)
     val fullPath = new File(root + "/" + tailPath)
     fullPath.mkdirs
-    val targetFile = new File(fullPath.toString + "/" + name)
+    val targetFile = new File(fullPath.toString + "/" + sha256)
     if (src.renameTo(targetFile))
       Future.successful(tailPath)
     else if (targetFile.isFile) {

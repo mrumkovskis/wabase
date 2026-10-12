@@ -26,6 +26,10 @@ class FileUploadSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitial
   var streamerConfQe: QuereaseProvider with AppFileStreamerConfig = _
   var app: TestApp = _
   var testDb: DbAccess = _
+  var s3App: TestApp = _
+  private val s3Server = new S3TestServer
+  private val s3Bucket = "file-upload-specs"
+  private val s3TmpPath = Files.createTempDirectory("file-upload-specs-s3-tmp").toFile
 
   var service: TestAppService = _
 
@@ -60,6 +64,16 @@ class FileUploadSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitial
     testDb = db
     app = appl
 
+    s3Server.start().createBucket(s3Bucket)
+    s3App = new TestApp {
+      override val DefaultCp: PoolName = PoolName(uploadTestsDb)
+      override def dbAccessDelegate = db
+      override protected def initQuerease = querease
+      override lazy val fileStreamerConfig =
+        s3Server.filesConfig(s"$s3Bucket/uploads", s3TmpPath.getAbsolutePath)
+          .withFallback(FileStreamerConfig.configs("main"))
+    }
+
     def entityStreamSizeExceptionHandler(logger: com.typesafe.scalalogging.Logger) = ExceptionHandler {
       case e: EntityStreamSizeException =>
         logger.debug("File upload specs: Stream size exception", e)
@@ -76,6 +90,7 @@ class FileUploadSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitial
 
   override def afterAll(): Unit = {
     super.afterAll()
+    s3Server.stop()
     val p = new File(streamerConfQe.rootPath).toPath
     Files.walk(p).sorted(java.util.Comparator.reverseOrder()).map[java.io.File](_.toFile).forEach(_.delete)
   }
@@ -231,5 +246,24 @@ class FileUploadSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitial
     app.getFileInfo(fi_2.id, fi_2.sha_256)(usr).map(_.path) shouldBe Some(storedPath(fi_2))
     readFile(fi_2) shouldBe content
     storedFile(fi_2).lastModified should be > oldTime // stored again, not deduplicated
+  }
+
+  it should "upload, deduplicate and download file with S3 storage" in {
+    implicit val user: TestUsr = usr
+    val content = "File upload specs - S3 storage"
+    def upload = Await.result(
+      Source.single(ByteString(content)).runWith(s3App.fileSink("s3.txt", "text/plain")), responseTimeout)
+    def download(fi: AppFileStreamer.FileInfo) = Await.result(
+      s3App.getFileInfo(fi.id, fi.sha_256).get.source.runFold(ByteString.empty)(_ ++ _), responseTimeout).utf8String
+
+    val fi_1 = upload
+    download(fi_1) shouldBe content
+    s3TmpPath.list.length shouldBe 0 // temp file uploaded and deleted
+
+    val fi_2 = upload // deduplicated - stored file verified with S3 HEAD
+    fi_2.id should not be fi_1.id
+    s3App.getFileInfo(fi_2.id, fi_2.sha_256).get.path shouldBe s3App.getFileInfo(fi_1.id, fi_1.sha_256).get.path
+    download(fi_2) shouldBe content
+    s3TmpPath.list.length shouldBe 0
   }
 }

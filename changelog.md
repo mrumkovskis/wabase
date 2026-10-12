@@ -204,6 +204,16 @@ is `Source[ByteString, Any]` (was `Source[ByteString, Future[IOResult]]`),
 `ExecutionContext` and `Materializer`, always create missing parent directories (`mkdirs` parameter
 removed) and return `Future[Unit]`. Temporary upload file is deleted when storing fails.
 
+S3 file storage added: `files.storage-class = org.wabase.fs.S3Storage` (requires `pekko-connectors-s3`
+dependency). `files.root` is `bucket[/prefix]`, `files.tmp-path` is mandatory (local directory for
+temporary upload files). Optional `files.s3` block holds pekko-connectors-s3 settings (endpoint,
+credentials, region, access style) and falls back to `pekko.connectors.s3`. `files.s3-checksum`
+(default `true`) sends `x-amz-checksum-sha256` with single part upload so that S3 rejects corrupted
+upload, disable it for S3 compatible storages without checksum support. Files larger than
+`files.s3-multipart-threshold` (default 16 MiB) are uploaded using multipart upload, without checksum.
+Deduplication verifies stored file with a single metadata (HEAD) request. File cleanup does not
+support S3 storage yet. `Storage.storeFile` takes file sha-256 as file name.
+
 File streamer deduplicates uploaded file only if `file_info` with the same sha was uploaded within
 half of `app.file-cleanup.min-age`. Such file body can not be removed by file cleanup while upload
 is in progress. Older file body is not verified but stored again, file body info refers to the new

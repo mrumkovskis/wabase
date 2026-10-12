@@ -78,6 +78,8 @@ lazy val commonSettings = Seq(
       "org.simplejavamail"          % "simple-java-mail"      % "9.3.5"             % Optional,
       "org.graalvm.js"              % "js"                    % "22.3.5"            % Optional,
       "org.graalvm.js"              % "js-scriptengine"       % "22.3.5"            % Optional,
+      "org.apache.pekko"           %% "pekko-connectors-s3"   % pekkoConnV          % Optional,
+      "org.apache.pekko"           %% "pekko-http-xml"        % pekkoHttpV          % Optional,
     ) ++ Seq( // for test
       "org.scalatest"              %% "scalatest"             % "3.2.20"  %     Test,
       "org.apache.pekko"           %% "pekko-http-testkit"    % pekkoHttpV%     Test,
@@ -86,6 +88,7 @@ lazy val commonSettings = Seq(
       "org.hsqldb"                  % "hsqldb"                % "2.7.4"   %     Test,
       "com.vladsch.flexmark"        % "flexmark-all"          % "0.64.8"  %     Test,
       greenmailDependency                                                 %     Test,
+      "org.gaul"                    % "s3proxy"               % "2.8.0"   %     Test,
     )
   },
 )
