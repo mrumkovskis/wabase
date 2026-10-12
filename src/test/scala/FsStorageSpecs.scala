@@ -1,16 +1,13 @@
 package org.wabase
 
 import com.typesafe.config.{ConfigException, ConfigFactory}
-import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
-import org.scalatest.matchers.should.Matchers
+import org.wabase.fs.Storage
 
 import java.io.File
 import java.nio.file.Files
-import scala.concurrent.Await
-import scala.concurrent.duration._
 
-class FsStorageSpecs extends FlatSpec with Matchers {
-  behavior of "FsStorage"
+class FsStorageSpecs extends StorageContractSpec("FsStorage") {
+  override def newStorage(): Storage = fsStorage(newRoot)
 
   it should "report invalid path format" in {
     val cfg = ConfigFactory.parseString(
@@ -31,7 +28,6 @@ class FsStorageSpecs extends FlatSpec with Matchers {
     new org.wabase.fs.FsStorage(cfg)
   }
   private def newRoot = Files.createTempDirectory("fs-storage-specs").toFile.getAbsolutePath
-  private val maxWait = 10.seconds
 
   it should "refresh modification time of already stored file if move fails" in {
     val root = newRoot
@@ -44,13 +40,13 @@ class FsStorageSpecs extends FlatSpec with Matchers {
     target.setLastModified(oldTime) shouldBe true
 
     // missing source - rename fails, target with the same name exists
-    Await.result(fsStorage(root).storeFile(new File(s"$root/missing"), name), maxWait) shouldBe tailPath
+    await(fsStorage(root).storeFile(new File(s"$root/missing"), name)) shouldBe tailPath
     target.lastModified should be > oldTime + 24 * 3600 * 1000L
   }
 
   it should "fail to store file if move fails and file is not already stored" in {
     val root = newRoot
     an [RuntimeException] should be thrownBy
-      Await.result(fsStorage(root).storeFile(new File(s"$root/missing"), "b" * 64), maxWait)
+      await(fsStorage(root).storeFile(new File(s"$root/missing"), "b" * 64))
   }
 }

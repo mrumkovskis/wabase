@@ -58,9 +58,9 @@ object AppFileStreamer {
   case class FileInfoHelper(
     file_info: FileInfo,
     path: String,
-    sourceFor: String => Source[ByteString, Future[IOResult]],
+    sourceFor: String => Source[ByteString, Any],
   ) {
-    def this(r: RowLike, sourceFor: String => Source[ByteString, Future[IOResult]]) = this(
+    def this(r: RowLike, sourceFor: String => Source[ByteString, Any]) = this(
       file_info = new FileInfo(r),
       path = r.string("path"),
       sourceFor,
@@ -71,7 +71,7 @@ object AppFileStreamer {
     def content_type = file_info.content_type
     def size         = file_info.size
     def sha_256      = file_info.sha_256
-    def source: Source[ByteString, Future[IOResult]] = sourceFor(path)
+    def source: Source[ByteString, Any] = sourceFor(path)
     def toMap = file_info.toMap ++ Map("path" -> path)
   }
 
@@ -166,8 +166,8 @@ trait AppFileStreamer[User] extends AppFileStreamerConfig with Loggable { this: 
   def getFileInfo(id: Long, sha256: String)(implicit user: User): Option[FileInfoHelper] =
     fileStreamer.getFileInfo(id, sha256)
   /** Copies file within storage, source and dest are relative to file streamer root (files.root) */
-  def copy(source: String, dest: String, mkdirs: Boolean = false): Future[Unit] =
-    fileStreamer.copy(source, dest, mkdirs)
+  def copy(source: String, dest: String)(implicit executor: ExecutionContext, materializer: Materializer): Future[Unit] =
+    fileStreamer.copy(source, dest)
 }
 
 class FileStreamer(
@@ -348,8 +348,8 @@ class FileStreamer(
   }
 
   /** Copies file within storage, source and dest are relative to file streamer root (files.root) */
-  def copy(source: String, dest: String, mkdirs: Boolean = false): Future[Unit] = {
-    storage.copy(source, dest, mkdirs)
+  def copy(source: String, dest: String)(implicit executor: ExecutionContext, materializer: Materializer): Future[Unit] = {
+    storage.copy(source, dest)
   }
 }
 

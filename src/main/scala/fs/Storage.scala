@@ -1,6 +1,6 @@
 package org.wabase.fs
 
-import org.apache.pekko.stream.{IOResult, Materializer}
+import org.apache.pekko.stream.Materializer
 import org.apache.pekko.stream.scaladsl.Source
 import org.apache.pekko.util.ByteString
 
@@ -15,14 +15,19 @@ trait Storage {
    * Source for reading stored file
    * @param fullName  file name relative to storage root
    * */
-  def sourceFor(fullName: String): Source[ByteString, Future[IOResult]]
+  def sourceFor(fullName: String): Source[ByteString, Any]
   /**
-   * Save file into storage under specified name
-   * @param src   source file
+   * Save file into storage under specified name. On success source file is consumed - moved into storage
+   * or deleted after upload. Stored file must have fresh modification time even if file with the same name
+   * is already stored - file cleanup relies on it.
+   * @param src   source (temporary) file
    * @param name  destination file name
    * @return future of stored file directory path (or prefix) (excluding root and file name)
    * */
-  def storeFile(src: File, name: String): Future[String]
+  def storeFile(src: File, name: String)(implicit
+    ec: ExecutionContext,
+    mat: Materializer,
+  ): Future[String]
   /**
    * Check stored file against expected size and sha-256
    * @param fullName  file name relative to storage root
@@ -34,12 +39,14 @@ trait Storage {
     mat: Materializer,
   ): Future[Option[Boolean]]
   /**
-   * Copy stored file
+   * Copy stored file, existing destination is replaced. Missing parent directories are created (if applicable).
    * @param src     source file name relative to storage root
    * @param dest    destination file name relative to storage root
-   * @param mkdirs  create missing parent directories (if applicable to storage)
    * */
-  def copy(src: String, dest: String, mkdirs: Boolean): Future[Unit]
+  def copy(src: String, dest: String)(implicit
+    ec: ExecutionContext,
+    mat: Materializer,
+  ): Future[Unit]
 }
 
 object Storage {

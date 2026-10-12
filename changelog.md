@@ -198,9 +198,11 @@ changed for existing storage; file cleanup handles all formats. Invalid value is
 Deferred request storage uses a named file streamer: `app.deferred-requests.storage.file-streamer`
 is the name of a `file-streamer` entry (default `deferred-requests`) instead of a config block.
 Breaking: `FileInfoHelper.path` is relative to file streamer root (was absolute),
-`FileInfoHelper` takes a source function as an additional parameter,
-`AppFileStreamer.copy` / `FileStreamer.copy` take paths relative to file streamer root and
-return `Future[Unit]`. Temporary upload file is deleted when storing fails.
+`FileInfoHelper` takes a source function as an additional parameter and `FileInfoHelper.source`
+is `Source[ByteString, Any]` (was `Source[ByteString, Future[IOResult]]`),
+`AppFileStreamer.copy` / `FileStreamer.copy` take paths relative to file streamer root, take implicit
+`ExecutionContext` and `Materializer`, always create missing parent directories (`mkdirs` parameter
+removed) and return `Future[Unit]`. Temporary upload file is deleted when storing fails.
 
 File streamer deduplicates uploaded file only if `file_info` with the same sha was uploaded within
 half of `app.file-cleanup.min-age`. Such file body can not be removed by file cleanup while upload
