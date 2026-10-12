@@ -23,10 +23,17 @@ class FsStorage(cfg: Config) extends DatePathStorage(cfg) {
     val fullPath = new File(root + "/" + tailPath)
     fullPath.mkdirs
     val targetFile = new File(fullPath.toString + "/" + name)
-    if (!src.renameTo(targetFile) && (!targetFile.exists || !Files.isRegularFile(targetFile.toPath)))
-      Future.failed(new RuntimeException(s"Could not save file: $targetFile"))
-    else
+    if (src.renameTo(targetFile))
       Future.successful(tailPath)
+    else if (targetFile.isFile) {
+      // file with the same name (sha) is already stored - refresh its modification time
+      // so that file cleanup does not consider it aged
+      if (targetFile.setLastModified(System.currentTimeMillis)) {
+        src.delete()
+        Future.successful(tailPath)
+      } else Future.failed(new RuntimeException(s"Could not refresh modification time of stored file: $targetFile"))
+    } else
+      Future.failed(new RuntimeException(s"Could not save file: $targetFile"))
   } catch {
     case NonFatal(e) => Future.failed(e)
   }

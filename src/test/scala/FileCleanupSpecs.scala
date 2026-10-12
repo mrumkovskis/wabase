@@ -302,6 +302,28 @@ class FileCleanupSpecs extends FlatSpec with Matchers with BeforeAndAfterEach {
       }
     }
 
+    it should ("not move unreferenced file to trash if it is stored again after listing, for " + fsConfigName) in {
+      fileStreamerList.foreach { fs =>
+        val fi = saveFile(fs, s"unreferenced-${fs.file_info_table}.txt", txtContentType)
+        // file is unreferenced but fresh - as if stored again at the same path after files_on_disk was filled
+        newTransaction { implicit res =>
+          Query(s"-${fs.file_info_table}[id = ${fi.id}]")
+          Query(s"-${fs.file_body_info_table}[${fs.shaColName} = ?]", fi.sha_256)
+          Query("files_on_disk - []")
+          Query("+files_on_disk {path} [?]", new File(s"${fs.rootPath}/${fi.path}").getAbsolutePath)
+        }
+
+        fileCleaner.moveUnreferencedFilesToTrash()
+        fileExists(fs.rootPath, fi) shouldBe true
+        fileExists(fs.rootPath + "/trash", fi) shouldBe false
+
+        ageFile(fs.rootPath, fi)
+        fileCleaner.moveUnreferencedFilesToTrash()
+        fileExists(fs.rootPath, fi) shouldBe false
+        fileExists(fs.rootPath + "/trash", fi) shouldBe true
+      }
+    }
+
     it should ("cleanup file body info if file on disk missing, for " + fsConfigName) in {
       fileStreamerList.foreach { fs =>
         val fi = saveFile(fs, "textFile.txt", txtContentType)
@@ -378,5 +400,6 @@ object FileCleanupSpecsHelper {
       extends AppFileCleanup(qe, res, fileStreamers: _*) with QuereaseProvider {
     override implicit lazy val connectionPool: PoolName = TestCp
     override protected lazy val batchSizeOpt: Option[Int] = Some(1)
+    def moveUnreferencedFilesToTrash(): Unit = compareDataAndMoveFilesToTrash
   }
 }

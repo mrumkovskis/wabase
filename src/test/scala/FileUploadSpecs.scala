@@ -25,6 +25,7 @@ class FileUploadSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitial
 
   var streamerConfQe: QuereaseProvider with AppFileStreamerConfig = _
   var app: TestApp = _
+  var testDb: DbAccess = _
 
   var service: TestAppService = _
 
@@ -56,6 +57,7 @@ class FileUploadSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitial
     }
 
     streamerConfQe = appl
+    testDb = db
     app = appl
 
     def entityStreamSizeExceptionHandler(logger: com.typesafe.scalalogging.Logger) = ExceptionHandler {
@@ -143,8 +145,10 @@ class FileUploadSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitial
     implicit val user: TestUsr = usr
     Source.single(ByteString(content)).runWith(app.fileSink("test.txt", "text/plain"))
   }
+  private def storedPath(fi: AppFileStreamer.FileInfo): String =
+    app.getFileInfo(fi.id, fi.sha_256)(usr).get.path
   private def storedFile(fi: AppFileStreamer.FileInfo): File =
-    new File(app.rootPath + "/" + app.getFileInfo(fi.id, fi.sha_256)(usr).get.path)
+    new File(app.rootPath + "/" + storedPath(fi))
   private def tmpFileCount = Option(new File(app.tmpPath).list).map(_.length).getOrElse(0)
 
   it should "store again stored file that went missing" in {
@@ -168,5 +172,64 @@ class FileUploadSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitial
     val ex = intercept[Exception](Await.result(saveFile(content), responseTimeout))
     ex.getMessage shouldBe AppFileStreamer.CannotProcessFileMessage.format(fi.sha_256)
     tmpFileCount shouldBe tmpCountBefore
+  }
+
+  private def newTransaction[A](f: org.tresql.Resources => A): A =
+    testDb.newTransaction(PoolName(uploadTestsDb))(f)
+  private def ageUploadInfo(fi: AppFileStreamer.FileInfo) = newTransaction { implicit res =>
+    org.tresql.Query(
+      s"""${app.file_info_table}[id = ?]{upload_time} = [date_sub(upload_time, sql("interval 1 day"))]""", fi.id)
+  }
+  private def readFile(fi: AppFileStreamer.FileInfo): String =
+    new String(Files.readAllBytes(storedFile(fi).toPath), "UTF-8")
+  private val oldTime = System.currentTimeMillis - 2 * 24 * 3600 * 1000L
+
+  it should "deduplicate file uploaded within dedup window" in {
+    val content = "File upload specs - dedup within window"
+    val fi_1 = Await.result(saveFile(content), responseTimeout)
+    val stored = storedFile(fi_1)
+    stored.setLastModified(oldTime) shouldBe true // marker - stored file is not written again
+
+    val tmpCountBefore = tmpFileCount
+    val fi_2 = Await.result(saveFile(content), responseTimeout)
+    fi_2.id should not be fi_1.id
+    storedFile(fi_2) shouldBe stored
+    stored.lastModified shouldBe oldTime
+    tmpFileCount shouldBe tmpCountBefore // temp file deleted
+  }
+
+  it should "store file again if stored body is out of dedup window" in {
+    val content = "File upload specs - dedup out of window"
+    val fi_1 = Await.result(saveFile(content), responseTimeout)
+    ageUploadInfo(fi_1)
+    // corrupt stored file - it is not verified out of dedup window, but stored again
+    Files.write(storedFile(fi_1).toPath, "corrupt".getBytes("UTF-8"))
+
+    val fi_2 = Await.result(saveFile(content), responseTimeout)
+    readFile(fi_2) shouldBe content
+    readFile(fi_1) shouldBe content // single file body info - old file info refers to new file body
+
+    // fi_2 is recent - dedup window applies again
+    val stored = storedFile(fi_2)
+    stored.setLastModified(oldTime) shouldBe true
+    val fi_3 = Await.result(saveFile(content), responseTimeout)
+    storedFile(fi_3) shouldBe stored
+    stored.lastModified shouldBe oldTime
+  }
+
+  it should "store file again if file body info is removed by file cleanup but file is still on disk" in {
+    val content = "File upload specs - body info removed"
+    val fi_1 = Await.result(saveFile(content), responseTimeout)
+    val stored = storedFile(fi_1)
+    stored.setLastModified(oldTime) shouldBe true
+    newTransaction { implicit res =>
+      org.tresql.Query(s"-${app.file_info_table}[id = ?]", fi_1.id)
+      org.tresql.Query(s"-${app.file_body_info_table}[${app.shaColName} = ?]", fi_1.sha_256)
+    }
+
+    val fi_2 = Await.result(saveFile(content), responseTimeout)
+    app.getFileInfo(fi_2.id, fi_2.sha_256)(usr).map(_.path) shouldBe Some(storedPath(fi_2))
+    readFile(fi_2) shouldBe content
+    storedFile(fi_2).lastModified should be > oldTime // stored again, not deduplicated
   }
 }

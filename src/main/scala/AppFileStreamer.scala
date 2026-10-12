@@ -214,6 +214,28 @@ class FileStreamer(
 
   import AppFileStreamer._
 
+  /**
+   * Stored file body is reused (deduplicated) only if file_info with the same sha was uploaded within this window.
+   * Such file_info is not deleted by file cleanup (it deletes file_info older than min-age only) and therefore
+   * file body info and file body are not deleted either while upload is in progress.
+   * Half of min-age is a safety margin for upload duration and clock differences.
+   */
+  val dedupWindowSeconds: Long = FileCleanup.minAge.getSeconds / 2
+
+  private val recentFileInfoFilter =
+    s"f.$shaColName = :sha_256 & f.upload_time > now() - seconds_to_interval($dedupWindowSeconds)"
+  private val dedupPathSelect =
+    s"$file_body_info_table b[b.$shaColName = :sha_256 & exists($file_info_table f[$recentFileInfoFilter])] {path}"
+  private val recentFileInfoCount =
+    s"$file_info_table f[$recentFileInfoFilter] {count(1)}"
+
+  /** Inserts file_info and returns it with file body info */
+  private def insertFileInfo(fi: FileInfo)(implicit res: Resources): Option[FileInfo] = {
+    val id = Query(fileInfoInsert, fi.toMap) match { case r: InsertResult => r.id.get }
+    Query(fileInfoSelect, Map("id" -> id, "sha_256" -> fi.sha_256))
+      .map(new FileInfo(_)).find(_ => true)
+  }
+
   def createTempFile = {
     val tempPath = new File(tmpPath)
     tempPath.mkdirs
@@ -261,44 +283,48 @@ class FileStreamer(
     def moveAndCheckFile(fi: FileInfo): Future[FileInfo] = {
       val size = fi.size
       val sha = fi.sha_256
+      val shaParams = Map("sha_256" -> sha)
       def badFileException = new RuntimeException(AppFileStreamer.CannotProcessFileMessage.format(sha))
 
-      @annotation.nowarn("msg=Manifest")
-      val oldPathOpt = db_read { implicit res =>
-        Query(s"$file_body_info_table[$shaColName=?]{path}", sha).uniqueOption[String]
-      }
-      val oldFileInfoF: Future[Option[FileInfo]] = oldPathOpt.map { oldPath =>
-        storage.verify(oldPath + "/" + sha, size, sha).map {
-          case Some(true) =>
-            // old file ok
-            val id = db_write { implicit res =>
-              Query(fileInfoInsert, fi.toMap) match { case r: InsertResult => r.id.get }
-            }
-            Files.delete(tempFile.toPath)
-            db_read { implicit res =>
-              Query(fileInfoSelect, Map("id" -> id, "sha_256" -> sha))
-                .map(new FileInfo(_)).find(_ => true)
-            }
-          case Some(false) => throw badFileException // not accessible, bad sha or size
-          case None => None // missing, will add
-        }
-      }.getOrElse(Future.successful(None)) // new, will add
-      oldFileInfoF flatMap {
-        case None =>
-          storage.storeFile(tempFile, sha).map { tailPath =>
-            // if we are here, file body is accepted and copied, db has to be updated
-            db_write { implicit res =>
-              if (oldPathOpt.isDefined)
-                Query(s"=$file_body_info_table[$shaColName = ?] {path = ?}", sha, tailPath)
-              else
+      // stores temp file as new file body
+      def storeNew: Future[Option[FileInfo]] =
+        storage.storeFile(tempFile, sha).map { tailPath =>
+          // if we are here, file body is accepted and stored, db has to be updated
+          db_write { implicit res =>
+            // update or insert - body info may be missing or deleted by file cleanup meanwhile
+            Query(s"=$file_body_info_table[$shaColName = ?] {path = ?}", sha, tailPath) match {
+              case r: UpdateResult if r.count.getOrElse(0) == 0 =>
                 Query(s"+$file_body_info_table{$shaColName, size, path} [?, ?, ?]", sha, size, tailPath)
-              val id = Query(fileInfoInsert, fi.toMap) match { case r: InsertResult => r.id.get }
-              Query(fileInfoSelect, Map("id" -> id, "sha_256" -> sha))
-                .map(new FileInfo(_)).find(_ => true)
+              case _ =>
             }
+            insertFileInfo(fi)
           }
-        case _ => oldFileInfoF
-      } map(_.get)
+        }
+
+      // reuses stored file body if it is still within dedup window
+      @annotation.nowarn("msg=Manifest")
+      def insertDeduplicated: Option[FileInfo] = db_write { implicit res =>
+        // re-check, verify may have taken long
+        if (Query(recentFileInfoCount, shaParams).unique[Long] > 0) insertFileInfo(fi) else None
+      }
+
+      @annotation.nowarn("msg=Manifest")
+      val dedupPathOpt = db_read { implicit res =>
+        Query(dedupPathSelect, shaParams).uniqueOption[String]
+      }
+      dedupPathOpt.map { path =>
+        storage.verify(path + "/" + sha, size, sha).flatMap {
+          case Some(true) => insertDeduplicated match {
+            case someFi @ Some(_) =>
+              Files.delete(tempFile.toPath)
+              Future.successful(someFi)
+            case None => storeNew      // dedup window passed during verify
+          }
+          case Some(false) => Future.failed(badFileException) // not accessible, bad sha or size
+          case None => storeNew        // file body missing, will add
+        }
+      }.getOrElse(storeNew)            // new, or stored body is out of dedup window
+       .map(_.get)
     }
 
     Flow

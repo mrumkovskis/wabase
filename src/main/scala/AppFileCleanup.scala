@@ -2,7 +2,7 @@ package org.wabase
 
 import java.io.{File, IOException}
 import java.nio.file.attribute.BasicFileAttributes
-import java.nio.file.{FileVisitOption, FileVisitResult, Files, Path, SimpleFileVisitor, StandardCopyOption}
+import java.nio.file.{FileVisitOption, FileVisitResult, Files, NoSuchFileException, Path, SimpleFileVisitor, StandardCopyOption}
 import java.util.EnumSet
 import org.tresql._
 import org.wabase.AppMetadata.DbAccessKey
@@ -13,10 +13,19 @@ import scala.collection.mutable.ArrayBuffer
 import scala.util.Try
 import scala.language.reflectiveCalls
 
+/**
+ * Cleans unreferenced file_info, file_body_info records and files of file streamers.
+ *
+ * Cleanup relies on these invariants to not delete files which are being uploaded concurrently:
+ *  - file_info records are deleted only by file cleanup, when they are older than min-age and not referenced
+ *    (file streamer deduplicates only file bodies with recent file_info, see [[FileStreamer.dedupWindowSeconds]]);
+ *  - file storage writes file anew, or at least refreshes its modification time, every time file is stored,
+ *    so file stored again at the same path is not considered aged.
+ */
 class AppFileCleanup(qe: AppQuerease, resourcesTemplate: Resources,
                      fileStreamers: AppFileStreamerConfig*) extends Loggable {
 
-  lazy val minAgeMillis: Long = config.getDuration("app.file-cleanup.min-age").toMillis
+  lazy val minAgeMillis: Long = FileCleanup.minAge.toMillis
   protected lazy val refsToIgnore: Set[(String, String)] = Set.empty
   protected lazy val batchSizeOpt: Option[Int] = None
 
@@ -222,11 +231,23 @@ class AppFileCleanup(qe: AppQuerease, resourcesTemplate: Resources,
       val filesMoved = Query(query, pathsParams).list[String]
         .foldLeft(0) { case (counter, path) => path match {
           case DatePathSha(tail) =>
-            val moveToFile = new File(path.dropRight(tail.length) + "/trash" + tail)
-            val moveToDir = moveToFile.getParentFile
-            if (!moveToDir.exists) moveToDir.mkdirs
-            Files.move(new File(path).toPath, moveToFile.toPath, StandardCopyOption.ATOMIC_MOVE)
-            counter + 1
+            val file = new File(path)
+            // re-check age just before move: file could have been stored again at the same path
+            // after files_on_disk was filled (possible if min-age is shorter than path-format period)
+            if (fileFilter(file)) {
+              val moveToFile = new File(path.dropRight(tail.length) + "/trash" + tail)
+              val moveToDir = moveToFile.getParentFile
+              if (!moveToDir.exists) moveToDir.mkdirs
+              try {
+                Files.move(file.toPath, moveToFile.toPath, StandardCopyOption.ATOMIC_MOVE)
+                counter + 1
+              } catch {
+                case _: NoSuchFileException => counter // removed meanwhile
+              }
+            } else {
+              logger.debug(s"File too young or missing, not moved to trash: $path")
+              counter
+            }
           case _ => // files_on_disk contains only paths matching DatePathSha
             logger.error(s"Unexpected file path, not moved to trash: $path")
             counter
@@ -300,6 +321,9 @@ class AppFileCleanup(qe: AppQuerease, resourcesTemplate: Resources,
 }
 
 object FileCleanup {
+  /** Files and file_info records younger than this are not cleaned. File streamer dedup window depends on it. */
+  lazy val minAge: java.time.Duration = config.getDuration("app.file-cleanup.min-age")
+
   /**
    * File cleanup invocation.
    *

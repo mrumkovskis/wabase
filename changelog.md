@@ -202,6 +202,14 @@ Breaking: `FileInfoHelper.path` is relative to file streamer root (was absolute)
 `AppFileStreamer.copy` / `FileStreamer.copy` take paths relative to file streamer root and
 return `Future[Unit]`. Temporary upload file is deleted when storing fails.
 
+File streamer deduplicates uploaded file only if `file_info` with the same sha was uploaded within
+half of `app.file-cleanup.min-age`. Such file body can not be removed by file cleanup while upload
+is in progress. Older file body is not verified but stored again, file body info refers to the new
+copy and the old copy is removed by file cleanup. File cleanup re-checks file age before moving it
+to trash and skips files which are removed meanwhile. File cleanup relies on `file_info` records
+being deleted only by file cleanup (older than `min-age` and not referenced). Index on
+`file_info.sha_256` is recommended.
+
 `getObjectOrNewInstance` rethrows exception thrown by the class constructor instead of trying
 other class name variants, so configuration errors of instantiated components are reported.
 
