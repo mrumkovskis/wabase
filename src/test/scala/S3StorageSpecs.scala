@@ -33,6 +33,22 @@ class S3StorageSpecs extends StorageContractSpec("S3Storage") {
     read(storage, s"$tailPath/$contentSha") shouldBe content
   }
 
+  it should "list and trash aged files in bucket without prefix" in {
+    val otherBucket = "s3-storage-specs-no-prefix-trash"
+    server.createBucket(otherBucket)
+    val storage = s3Storage(otherBucket)
+    storage.location shouldBe s"s3://$otherBucket"
+    val tailPath = await(storage.storeFile(tmpFile(), contentSha))
+    val name = s"$tailPath/$contentSha"
+    ageFiles()
+    await(storage.trashAged(name, java.time.Duration.ZERO)) shouldBe Some(true)
+    await(storage.storeFile(tmpFile(), contentSha))
+    ageFiles()
+    listAged(storage, java.time.Duration.ZERO) shouldBe Seq(name)
+    await(storage.cleanTrash()) shouldBe 1
+    read(storage, name) shouldBe content
+  }
+
   it should "store large file using multipart upload" in {
     val storage = s3Storage(s"$bucket/${UUID.randomUUID()}", "files.s3-multipart-threshold = 10")
     val data = ByteString("multipart " * 100)
@@ -51,7 +67,9 @@ class S3StorageSpecs extends StorageContractSpec("S3Storage") {
   it should "require tmp-path" in {
     val cfg = server.filesConfig(bucket, localTmpPath).withoutPath("files.tmp-path")
     val ex = intercept[RuntimeException] {
-      getObjectOrNewInstance[Storage](cfg, "files.storage-class", "file streamer file storage", Seq(cfg))
+      @annotation.nowarn("msg=Manifest")
+      val storage = getObjectOrNewInstance[Storage](cfg, "files.storage-class", "file streamer file storage", Seq(cfg))
+      storage
     }
     ex.getCause shouldBe a [ConfigException.Missing]
     ex.getMessage should include ("files.tmp-path")

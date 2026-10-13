@@ -10,6 +10,7 @@ import org.apache.pekko.util.ByteString
 import org.wabase.jDate
 
 import java.io.File
+import java.time.Duration
 import java.util.Base64
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.control.NonFatal
@@ -51,7 +52,9 @@ class S3Storage(cfg: Config) extends DatePathStorage(cfg) {
   ))
 
   private def key(name: String) = if (prefix.isEmpty) name else s"$prefix/$name"
-  private def location(name: String) = s"s3://$bucket/${key(name)}"
+  override val location: String = if (prefix.isEmpty) s"s3://$bucket" else s"s3://$bucket/$prefix"
+  private def uri(name: String): String = s"$location/$name"
+  private def listPrefix(name: String): Option[String] = Option(key(name)).filter(_.nonEmpty)
 
   /** Base64 of sha-256 bytes as required by x-amz-checksum-sha256 header */
   private def checksumOf(sha256: String): Option[String] =
@@ -64,7 +67,7 @@ class S3Storage(cfg: Config) extends DatePathStorage(cfg) {
   ): Future[T] =
     (try f catch { case NonFatal(e) => Future.failed(e) }).recoverWith {
       case NonFatal(e) =>
-        Future.failed(new RuntimeException(s"S3 $operation failed for ${location(name)}: ${e.getMessage}", e))
+        Future.failed(new RuntimeException(s"S3 $operation failed for ${uri(name)}: ${e.getMessage}", e))
     }
 
   override def sourceFor(fullName: String): Source[ByteString, Any] =
@@ -127,4 +130,48 @@ class S3Storage(cfg: Config) extends DatePathStorage(cfg) {
         .run()
         .map(_ => ())
     }
+
+  override def listAged(minAge: Duration): Source[String, Any] = {
+    val keyPrefix = listPrefix("")
+    val dropLength = keyPrefix.map(_.length).getOrElse(0)
+    S3.listBucket(bucket, keyPrefix)
+      .withAttributes(s3Attrs)
+      .collect {
+        case c if isStoredName(c.key.substring(dropLength)) && isAged(c.lastModified.toEpochMilli, minAge) =>
+          c.key.substring(dropLength)
+      }
+      .mapError { case NonFatal(e) => new RuntimeException(s"S3 list failed for $location/: ${e.getMessage}", e) }
+  }
+
+  override def trashAged(fullName: String, minAge: Duration)(implicit
+    ec: ExecutionContext,
+    mat: Materializer,
+  ): Future[Option[Boolean]] = checkStoredName(fullName).flatMap { _ =>
+    withContext("trash", fullName) {
+      S3.getObjectMetadata(bucket, key(fullName))
+        .withAttributes(s3Attrs)
+        .runWith(Sink.head)
+        .flatMap {
+          case None => Future.successful(None)
+          case Some(meta) if !isAged(meta.lastModified.clicks, minAge) => Future.successful(Some(false))
+          case Some(_) =>
+            // S3 has no move - copy and delete
+            S3.multipartCopy(bucket, key(fullName), bucket, key(s"$Trash/$fullName"))
+              .withAttributes(s3Attrs)
+              .run()
+              .flatMap(_ => S3.deleteObject(bucket, key(fullName)).withAttributes(s3Attrs).runWith(Sink.ignore))
+              .map(_ => Some(true))
+        }
+    }
+  }
+
+  override def cleanTrash()(implicit
+    ec: ExecutionContext,
+    mat: Materializer,
+  ): Future[Int] = withContext("trash cleanup", s"$Trash/") {
+    S3.listBucket(bucket, listPrefix(s"$Trash/"))
+      .withAttributes(s3Attrs)
+      .flatMapConcat(c => S3.deleteObject(bucket, c.key).withAttributes(s3Attrs))
+      .runFold(0)((count, _) => count + 1)
+  }
 }

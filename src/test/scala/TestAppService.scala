@@ -46,9 +46,17 @@ class TestAppLogMessageNoiseDetector extends EventEvaluatorBase[ILoggingEvent] {
     "Job 'no_interval_job' has no interval",
     "No app.job.schedules configured",
   )
+  /** (starts with, contains) pairs, for messages too general to be hidden by start alone */
+  private val badStartsWithContaining = Seq(
+    // FsStorageSpecs reads missing files intentionally
+    "Error during preStart in [org.apache.pekko.stream.impl.io.FileSource" -> "/fs-storage-specs",
+  )
   override def evaluate(event: ILoggingEvent): Boolean = {
     val msg = event.getFormattedMessage
-    msg != null && badStartsWith.exists(msg.startsWith)
+    msg != null && (
+      badStartsWith.exists(msg.startsWith) ||
+      badStartsWithContaining.exists { case (start, part) => msg.startsWith(start) && msg.contains(part) }
+    )
   }
 }
 

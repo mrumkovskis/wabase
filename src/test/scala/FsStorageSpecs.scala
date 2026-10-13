@@ -15,7 +15,10 @@ class FsStorageSpecs extends StorageContractSpec("FsStorage") {
         |files.path-format = weeks
         |files.storage-class = org.wabase.fs.FsStorage""".stripMargin)
     val ex = intercept[RuntimeException] {
-      getObjectOrNewInstance[org.wabase.fs.Storage](cfg, "files.storage-class", "file streamer file storage", Seq(cfg))
+      @annotation.nowarn("msg=Manifest")
+      val storage =
+        getObjectOrNewInstance[org.wabase.fs.Storage](cfg, "files.storage-class", "file streamer file storage", Seq(cfg))
+      storage
     }
     ex.getMessage should include ("Invalid path format 'weeks', must be one of: days, hours, minutes")
     ex.getCause shouldBe a [ConfigException.BadValue]

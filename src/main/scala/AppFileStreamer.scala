@@ -187,6 +187,7 @@ class FileStreamer(
   override val shaColName: String           = fsCfg.getString("sha-col-name")
   val connectionPoolName: String            = Option("cp").filter(fsCfg.hasPath).map(fsCfg.getString).orNull
 
+  @annotation.nowarn("msg=Manifest")
   private val storage = getObjectOrNewInstance[org.wabase.fs.Storage](
     fsCfg, "files.storage-class", "file streamer file storage", Seq(fsCfg))
 

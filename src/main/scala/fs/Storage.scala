@@ -7,10 +7,29 @@ import org.apache.pekko.util.ByteString
 import com.typesafe.config.Config
 
 import java.io.File
+import java.time.Duration
 import scala.concurrent.{ExecutionContext, Future}
 
-/** File storage. File names are relative to storage root (files.root) */
+/**
+ * File storage. File names are relative to storage root (files.root).
+ *
+ * Stored files are named `yyyy/MM/dd[/HH[/mm]]/sha256` (see [[DatePathStorage]]).
+ * File cleanup methods ([[listAged]], [[trashAged]]) operate only on names matching this layout,
+ * other files in storage are never touched, except files in `trash` which are deleted by [[cleanTrash]].
+ */
 trait Storage {
+  /**
+   * Storage location, unique for storage root, without trailing slash,
+   * for example `file:/data/files` or `s3://bucket/prefix`.
+   * Used by file cleanup to identify storages sharing the same root.
+   *
+   * Location must identify storage conservatively: storages with equal location are treated by file cleanup
+   * as one storage (listed once, unreferenced files are cleaned through one of them only), which is safe.
+   * Different locations must never refer to the same files - file referenced by one storage
+   * could then be considered unreferenced by another and moved to trash. Therefore location does not include
+   * access details like S3 endpoint url, which may be written differently for the same storage.
+   * */
+  def location: String
   /**
    * Source for reading stored file
    * @param fullName  file name relative to storage root
@@ -51,6 +70,35 @@ trait Storage {
     ec: ExecutionContext,
     mat: Materializer,
   ): Future[Unit]
+  /**
+   * Stored files older than min-age. Only names matching stored file layout `yyyy/MM/dd[/HH[/mm]]/sha256`
+   * are returned (of any path format, not only configured one, so that files stored before path format change
+   * are cleaned too). Files in `trash` and `tmp`, also files of other storages nested in this storage root
+   * are not listed.
+   * @param minAge  minimal age of last modification time
+   * @return source of file names relative to storage root
+   * */
+  def listAged(minAge: Duration): Source[String, Any]
+  /**
+   * Move stored file to trash (`trash/` + fullName) if it is still older than min-age.
+   * Age is re-checked just before move since file could have been stored again after it was listed.
+   * @param fullName  file name relative to storage root, must match stored file layout
+   * @param minAge    minimal age of last modification time
+   * @return future of None if file is missing, Some(true) if file is moved to trash,
+   *         Some(false) if file is too young. Fails if name does not match stored file layout.
+   * */
+  def trashAged(fullName: String, minAge: Duration)(implicit
+    ec: ExecutionContext,
+    mat: Materializer,
+  ): Future[Option[Boolean]]
+  /**
+   * Delete all files from trash (moved there by [[trashAged]] in previous file cleanup run)
+   * @return future of deleted file count
+   * */
+  def cleanTrash()(implicit
+    ec: ExecutionContext,
+    mat: Materializer,
+  ): Future[Int]
 }
 
 object Storage {
