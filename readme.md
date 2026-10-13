@@ -16,6 +16,7 @@ wabase is web application based on [Apache Pekko™](https://pekko.apache.org/) 
 * Stateless [session](docs/routes.md#authentication) management.
 * Dynamic data [validation in javascript](docs/script-validation.md).
 * Framework for [I18n](docs/routes.md#i18n) support.
+* [Business scenario](docs/business-scenarios.md) YAML tests.
 
 ## getting started
 

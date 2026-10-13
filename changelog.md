@@ -173,7 +173,9 @@ Action context moved to `AppQuerease` object and is available in the injection p
 context.
 
 View actions, routes and action functions documented in `docs/view-actions.md`,
-`docs/routes.md` and `docs/action-functions.md`.
+`docs/routes.md` and `docs/action-functions.md`. Business scenario configuration,
+YAML step checks, and the default `/backdoor` paths are documented in
+`docs/business-scenarios.md`.
 
 Business scenario YAML tests support `not_null()` and array size checks at response and field
 level: `size(n)`, `size(>n)`, `size(>=n)`, `size(<n)`,
