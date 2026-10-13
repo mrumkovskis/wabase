@@ -1,0 +1,6 @@
+path:       /echo
+method:     POST
+request:
+  roles: <- captured_roles
+response:
+  roles: [guest, admin, owner]

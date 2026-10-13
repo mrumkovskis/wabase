@@ -1,0 +1,15 @@
+path:       /echo
+method:     POST
+request:
+  - code: p2
+    name: Jane
+  - code: p3
+    name: Jim
+  - code: p1
+    name: John
+response:
+  contains():
+    - code: p1
+      name: John
+    - code: p2
+      name: Jane

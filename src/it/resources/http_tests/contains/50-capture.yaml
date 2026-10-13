@@ -1,0 +1,7 @@
+path:       /echo
+method:     POST
+request:
+  roles: [guest, admin, owner]
+response:
+  roles:
+    contains() -> captured_roles: [admin, guest]

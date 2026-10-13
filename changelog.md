@@ -180,6 +180,11 @@ level: `size(n)`, `size(>n)`, `size(>=n)`, `size(<n)`,
 `size(<=n)`, `size(!=n)` (or `size(<>n)`), `size(=n)`, and inclusive range
 `size(a..b)`. Optional capture works the same way: `size(3) -> captured_items`.
 
+Business scenario YAML tests support `contains()` array checks at response and field level.
+The value is a list of elements the array must include, in any order; further response
+elements are allowed. Each listed element consumes one response element. Optional capture
+uses the same arrow: `contains() -> captured_items`.
+
 File streamer storage is pluggable: `file-streamer.files.storage-class` (default
 `org.wabase.fs.FsStorage`) implements `org.wabase.fs.Storage`. File streamer config
 `files.path` is renamed to `files.root`. `files.path-format` (`days` - default, `hours`,

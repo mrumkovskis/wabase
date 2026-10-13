@@ -1,0 +1,14 @@
+full_compare: false
+path:       /echo
+method:     POST
+request:
+  - code: p1
+    name: John
+    surname: Doe
+  - code: p2
+    name: Jane
+    surname: Roe
+response:
+  contains():
+    - code: p2
+    - name: John

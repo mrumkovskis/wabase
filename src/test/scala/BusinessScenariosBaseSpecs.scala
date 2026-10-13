@@ -28,6 +28,7 @@ import java.time.Instant
 import scala.collection.immutable.{Map, Seq}
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.jdk.CollectionConverters._
 import scala.util.{Random, Try}
 import org.wabase.client.{ClientException, HttpClientConfig, RestClient, WabaseHttpClient}
 import org.wabase.ds.ConnectionPools.DEFAULT_CP
@@ -194,6 +195,66 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
     case j: java.util.Collection[_]      => Some(j.size())
     case _                               => None
   }
+  /** `contains()` array check. The expectation is a one-key map, `contains(): [a, b]`
+    * or `contains() -> name: [a, b]`. The array must include every listed element, in any
+    * order, and may include others. Each listed element consumes one response element.
+    */
+  private object ContainsExpectation {
+    private val Key = """contains\(\s*\)(?:\s*->\s*(\S.*))?""".r
+    def unapply(expected: Any): Option[(Any, Option[String])] = expected match {
+      case m: Map[_, _] @unchecked if m.size == 1 =>
+        m.head match {
+          case (key: String, value) => key.trim match {
+            case Key(capture) => Some((value, Option(capture).map(_.trim).filter(_.nonEmpty)))
+            case _ => None
+          }
+          case _ => None
+        }
+      case _ => None
+    }
+  }
+  private def asList(value: Any): Option[List[Any]] = value match {
+    case s: scala.collection.Seq[_] => Some(s.toList)
+    case a: Array[_]                => Some(a.toList)
+    case j: java.util.Collection[_] => Some(j.asScala.toList)
+    case _                          => None
+  }
+  private def tryAssertResponse(response: Any, expected: Any, path: String, fullCompare: Boolean): Option[Map[String, Any]] =
+    try Some(assertResponse(response, expected, path, fullCompare))
+    catch { case util.control.NonFatal(_) => None }
+  /** Assigns each expected element to a distinct response element. Order of the
+    * expected list does not matter: a broad pattern does not keep an element a
+    * later pattern needs.
+    */
+  private def matchContains(
+    actual: List[Any], expected: List[Any], path: String, fullCompare: Boolean,
+  ): Map[String, Any] = {
+    val used = Array.ofDim[Boolean](actual.size)
+    def search(index: Int): Option[Map[String, Any]] =
+      if (index == expected.size) Some(Map.empty)
+      else {
+        val expectedElement = expected(index)
+        var matched: Option[Map[String, Any]] = None
+        var i = 0
+        while (i < actual.size && matched.isEmpty) {
+          if (!used(i)) {
+            tryAssertResponse(actual(i), expectedElement, path, fullCompare).foreach { captures =>
+              used(i) = true
+              search(index + 1) match {
+                case Some(rest) => matched = Some(captures ++ rest)
+                case None       => used(i) = false
+              }
+            }
+          }
+          i += 1
+        }
+        matched
+      }
+    search(0).getOrElse {
+      val what = if (expected.size == 1) String.valueOf(expected.head) else s"all of $expected"
+      sys.error(s"$path: Array should contain $what. Response: $actual")
+    }
+  }
   /** JSON bodies are kept as raw strings only when the expected value is an ordinary string,
     * not a `size(...)` check (which must see the decoded array).
     */
@@ -221,6 +282,17 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
             case None => err(s"Object should contain key: $key")
             case Some(value) => assertResponse(value, expectedValue, path + "/" + key, fullCompare)
           }
+        }
+      case (a, ContainsExpectation(value, capture)) =>
+        asList(value) match {
+          case None => err(s"contains() value $value should be a list")
+          case Some(expectedElements) =>
+            asList(a) match {
+              case None => err(s"Element $a should be an array to match contains()")
+              case Some(actualElements) =>
+                val captures = matchContains(actualElements, expectedElements, path, fullCompare)
+                capture.fold(captures)(key => captures + (key -> a))
+            }
         }
       case (a, s: String) if s.trim == "not_null()" => if (response == null) err(s"Element $a should not be null") else Map.empty
       case (a, NotNullCapture(key))                 => if (response == null) err(s"Element $a should not be null") else Map(key -> response)

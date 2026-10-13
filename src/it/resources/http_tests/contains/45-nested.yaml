@@ -1,0 +1,12 @@
+path:       /echo
+method:     POST
+request:
+  groups:
+    - [b, a, c]
+    - [1]
+    - x
+response:
+  groups:
+    contains():
+      - contains(): [a, b]
+      - x

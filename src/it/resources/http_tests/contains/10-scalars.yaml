@@ -1,0 +1,9 @@
+path:       /echo
+method:     POST
+request:
+  name: jasmine
+  roles: [guest, admin, owner]
+response:
+  name: jasmine
+  roles:
+    contains(): [admin, guest]

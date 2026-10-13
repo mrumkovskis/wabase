@@ -1,0 +1,8 @@
+path:       /echo
+method:     POST
+request:    [b, a, c, a]
+response:
+  contains():
+    - a
+    - not_null()
+    - a
