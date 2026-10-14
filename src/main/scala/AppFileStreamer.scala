@@ -2,7 +2,7 @@ package org.wabase
 
 import java.io.File
 import java.math.BigInteger
-import java.nio.file.{Files, StandardCopyOption}
+import java.nio.file.Files
 import java.security.MessageDigest
 import org.apache.pekko.http.scaladsl.model.EntityStreamSizeException
 import com.typesafe.config.Config
@@ -193,6 +193,15 @@ class FileStreamer(
   override val storage: org.wabase.fs.Storage = getObjectOrNewInstance[org.wabase.fs.Storage](
     fsCfg, "files.storage-class", "file streamer file storage", Seq(fsCfg))
 
+  storage match {
+    case s: org.wabase.fs.DatePathStorage if FileCleanup.minAge.compareTo(s.pathPeriod) < 0 =>
+      // aged file could then be stored again at the same path while file cleanup moves it to trash
+      logger.warn(
+        s"app.file-cleanup.min-age (${FileCleanup.minAge}) is shorter than files.path-format period " +
+        s"(${s.pathPeriod}) of file streamer storage ${s.location}, aged file can be stored again at the same path")
+    case _ =>
+  }
+
   private val fileInfoInsert =
     s"+$file_info_table {id, upload_time, content_type, $shaColName, filename} " +
       s"[#$file_info_table, :upload_time, :content_type, :sha_256, :filename]"
@@ -287,7 +296,6 @@ class FileStreamer(
       val size = fi.size
       val sha = fi.sha_256
       val shaParams = Map("sha_256" -> sha)
-      def badFileException = new RuntimeException(AppFileStreamer.CannotProcessFileMessage.format(sha))
 
       // stores temp file as new file body
       def storeNew: Future[Option[FileInfo]] =
@@ -323,7 +331,9 @@ class FileStreamer(
               Future.successful(someFi)
             case None => storeNew      // dedup window passed during verify
           }
-          case Some(false) => Future.failed(badFileException) // not accessible, bad sha or size
+          case Some(false) =>          // not accessible, bad sha or size - replace with uploaded file
+            logger.warn(s"Stored file $path/$sha is corrupt or not accessible, storing uploaded file anew")
+            storeNew
           case None => storeNew        // file body missing, will add
         }
       }.getOrElse(storeNew)            // new, or stored body is out of dedup window

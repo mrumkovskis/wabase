@@ -16,6 +16,9 @@ import scala.concurrent.{ExecutionContext, Future}
  * Stored files are named `yyyy/MM/dd[/HH[/mm]]/sha256` (see [[DatePathStorage]]).
  * File cleanup methods ([[listAged]], [[trashAged]]) operate only on names matching this layout,
  * other files in storage are never touched, except files in `trash` which are deleted by [[cleanTrash]].
+ *
+ * Methods must not block the calling thread: blocking work (file system calls) is to be run on
+ * a dispatcher for blocking operations, e.g. `mat.system.dispatchers.lookup(ActorAttributes.IODispatcher.dispatcher)`.
  */
 trait Storage {
   /**
@@ -82,6 +85,9 @@ trait Storage {
   /**
    * Move stored file to trash (`trash/` + fullName) if it is still older than min-age.
    * Age is re-checked just before move since file could have been stored again after it was listed.
+   * This is possible only if min-age is shorter than the period of stored file path (day, hour or minute
+   * according to path format) - otherwise file stored again gets a newer path. Check and move are not atomic,
+   * so min-age should not be shorter than path period, then aged file is never stored again at the same path.
    * @param fullName  file name relative to storage root, must match stored file layout
    * @param minAge    minimal age of last modification time
    * @return future of None if file is missing, Some(true) if file is moved to trash,

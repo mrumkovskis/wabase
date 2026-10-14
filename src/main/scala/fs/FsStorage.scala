@@ -14,11 +14,14 @@ import java.nio.file.{DirectoryStream, FileVisitResult, Files, NoSuchFileExcepti
 import java.time.Duration
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Try
-import scala.util.control.NonFatal
 
 class FsStorage(cfg: Config) extends DatePathStorage(cfg) {
 
   override val location: String = "file:" + new File(root).getAbsoluteFile.toPath.normalize.toString
+
+  /** Runs blocking file system operation on blocking IO dispatcher (the one used by FileIO and [[listAged]]) */
+  private def blockingIO[T](body: => T)(implicit mat: Materializer): Future[T] =
+    Future(body)(mat.system.dispatchers.lookup(ActorAttributes.IODispatcher.dispatcher))
 
   override def sourceFor(fullName: String): Source[ByteString, Any] = {
     FileIO.fromPath(java.nio.file.Paths.get(root + "/" + fullName))
@@ -27,55 +30,50 @@ class FsStorage(cfg: Config) extends DatePathStorage(cfg) {
   override def storeFile(src: File, sha256: String)(implicit
     ec: ExecutionContext,
     mat: Materializer,
-  ): Future[String] = try {
+  ): Future[String] = blockingIO {
     val tailPath = new java.text.SimpleDateFormat(pathFormat).format(new jDate)
     val fullPath = new File(root + "/" + tailPath)
     fullPath.mkdirs
     val targetFile = new File(fullPath.toString + "/" + sha256)
     if (src.renameTo(targetFile))
-      Future.successful(tailPath)
+      tailPath
     else if (targetFile.isFile) {
       // file with the same name (sha) is already stored - refresh its modification time
       // so that file cleanup does not consider it aged
       if (targetFile.setLastModified(System.currentTimeMillis)) {
         src.delete()
-        Future.successful(tailPath)
-      } else Future.failed(new RuntimeException(s"Could not refresh modification time of stored file: $targetFile"))
+        tailPath
+      } else throw new RuntimeException(s"Could not refresh modification time of stored file: $targetFile")
     } else
-      Future.failed(new RuntimeException(s"Could not save file: $targetFile"))
-  } catch {
-    case NonFatal(e) => Future.failed(e)
+      throw new RuntimeException(s"Could not save file: $targetFile")
   }
 
   override def verify(fullName: String, size: Long, sha256: String)(implicit
     ec: ExecutionContext,
     mat: Materializer,
-  ): Future[Option[Boolean]] = try {
+  ): Future[Option[Boolean]] = {
     val f = new File(root + "/" + fullName).toPath
-    if (!Files.exists(f))
-      Future.successful(None)
-    else if (!Files.isRegularFile(f) || !Files.isReadable(f))
-      Future.successful(Some(false))
-    else
-      FileIO.fromPath(f).runWith(sizeAndSha256sink).map { case (fileSize, fileSha) =>
-        Some(fileSize == size && fileSha == sha256)
-      }
-  } catch {
-    case NonFatal(e) => Future.failed(e)
+    blockingIO {
+      if (!Files.exists(f))
+        Future.successful(None)
+      else if (!Files.isRegularFile(f) || !Files.isReadable(f))
+        Future.successful(Some(false))
+      else
+        FileIO.fromPath(f).runWith(sizeAndSha256sink).map { case (fileSize, fileSha) =>
+          Some(fileSize == size && fileSha == sha256)
+        }
+    }.flatten
   }
 
   override def copy(src: String, dest: String)(implicit
     ec: ExecutionContext,
     mat: Materializer,
-  ): Future[Unit] = try {
+  ): Future[Unit] = blockingIO {
     if (src != dest) {
       val destPath = new File(root + "/" + dest).toPath
       Option(destPath.getParent).foreach(Files.createDirectories(_))
       Files.copy(new File(root + "/" + src).toPath, destPath, StandardCopyOption.REPLACE_EXISTING)
     }
-    Future.successful(())
-  } catch {
-    case NonFatal(e) => Future.failed(e)
   }
 
   /**
@@ -128,27 +126,29 @@ class FsStorage(cfg: Config) extends DatePathStorage(cfg) {
     ec: ExecutionContext,
     mat: Materializer,
   ): Future[Option[Boolean]] = checkStoredName(fullName).flatMap { _ =>
-    val file = new File(root + "/" + fullName).toPath
-    Try(Files.readAttributes(file, classOf[BasicFileAttributes])).toOption match {
-      case None => Future.successful(None)
-      case Some(attrs) if !attrs.isRegularFile => Future.successful(None)
-      case Some(attrs) if !isAged(attrs.lastModifiedTime.toMillis, minAge) => Future.successful(Some(false))
-      case Some(_) =>
-        val trashFile = new File(root + "/" + Trash + "/" + fullName).toPath
-        Files.createDirectories(trashFile.getParent)
-        try {
-          Files.move(file, trashFile, StandardCopyOption.ATOMIC_MOVE)
-          Future.successful(Some(true))
-        } catch {
-          case _: NoSuchFileException => Future.successful(None) // removed meanwhile
-        }
+    blockingIO {
+      val file = new File(root + "/" + fullName).toPath
+      Try(Files.readAttributes(file, classOf[BasicFileAttributes])).toOption match {
+        case None => None
+        case Some(attrs) if !attrs.isRegularFile => None
+        case Some(attrs) if !isAged(attrs.lastModifiedTime.toMillis, minAge) => Some(false)
+        case Some(_) =>
+          val trashFile = new File(root + "/" + Trash + "/" + fullName).toPath
+          Files.createDirectories(trashFile.getParent)
+          try {
+            Files.move(file, trashFile, StandardCopyOption.ATOMIC_MOVE)
+            Some(true)
+          } catch {
+            case _: NoSuchFileException => None // removed meanwhile
+          }
+      }
     }
   }
 
   override def cleanTrash()(implicit
     ec: ExecutionContext,
     mat: Materializer,
-  ): Future[Int] = try {
+  ): Future[Int] = blockingIO {
     val trash = new File(root + "/" + Trash).toPath
     var filesDeleted = 0
     if (Files.exists(trash))
@@ -165,8 +165,6 @@ class FsStorage(cfg: Config) extends DatePathStorage(cfg) {
           FileVisitResult.CONTINUE
         }
       })
-    Future.successful(filesDeleted)
-  } catch {
-    case NonFatal(e) => Future.failed(e)
+    filesDeleted
   }
 }

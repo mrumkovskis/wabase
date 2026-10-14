@@ -178,15 +178,17 @@ class FileUploadSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitial
     new String(Files.readAllBytes(f.toPath), "UTF-8") shouldBe content
   }
 
-  it should "reject upload if stored file is corrupt and delete temp file" in {
+  it should "store again stored file that is corrupt" in {
     val content = "File upload specs - corrupt stored file"
-    val fi = Await.result(saveFile(content), responseTimeout)
-    Files.write(storedFile(fi).toPath, "corrupt".getBytes("UTF-8"))
+    val fi_1 = Await.result(saveFile(content), responseTimeout)
+    Files.write(storedFile(fi_1).toPath, "corrupt".getBytes("UTF-8"))
 
     val tmpCountBefore = tmpFileCount
-    val ex = intercept[Exception](Await.result(saveFile(content), responseTimeout))
-    ex.getMessage shouldBe AppFileStreamer.CannotProcessFileMessage.format(fi.sha_256)
-    tmpFileCount shouldBe tmpCountBefore
+    val fi_2 = Await.result(saveFile(content), responseTimeout)
+    fi_2.sha_256 shouldBe fi_1.sha_256
+    readFile(fi_2) shouldBe content
+    readFile(fi_1) shouldBe content // single file body info - old file info refers to new file body
+    tmpFileCount shouldBe tmpCountBefore // temp file consumed
   }
 
   private def newTransaction[A](f: org.tresql.Resources => A): A =

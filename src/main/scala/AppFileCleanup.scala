@@ -16,7 +16,6 @@ import scala.annotation.tailrec
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Try
 import scala.util.control.NonFatal
-import scala.language.reflectiveCalls
 
 /**
  * Cleans unreferenced file_info, file_body_info records and files of file streamers.

@@ -193,7 +193,10 @@ File streamer storage is pluggable: `file-streamer.files.storage-class` (default
 `minutes`) sets the date path of stored files: `yyyy/MM/dd`, `yyyy/MM/dd/HH` or
 `yyyy/MM/dd/HH/mm`. Stored file paths are kept in `file_body_info`, so the format can be
 changed for existing storage; file cleanup handles all formats. Invalid value is reported as
-`ConfigException.BadValue` at startup. `files.tmp-path` sets the temporary upload directory
+`ConfigException.BadValue` at startup. `app.file-cleanup.min-age` should not be shorter than the
+path format period (day, hour or minute), so that an aged file is never stored again at the same
+path while file cleanup moves it to trash; a warning is logged at file streamer startup otherwise
+(`DatePathStorage.pathPeriod`). `files.tmp-path` sets the temporary upload directory
 (default `files.root/tmp`, should be on the same file system as `files.root`).
 Deferred request storage uses a named file streamer: `app.deferred-requests.storage.file-streamer`
 is the name of a `file-streamer` entry (default `deferred-requests`) instead of a config block.
@@ -217,7 +220,10 @@ Deduplication verifies stored file with a single metadata (HEAD) request.
 File streamer deduplicates uploaded file only if `file_info` with the same sha was uploaded within
 half of `app.file-cleanup.min-age`. Such file body can not be removed by file cleanup while upload
 is in progress. Older file body is not verified but stored again, file body info refers to the new
-copy and the old copy is removed by file cleanup. File cleanup re-checks file age before moving it
+copy and the old copy is removed by file cleanup. Stored file body which fails verification (missing,
+corrupt or not accessible) is replaced by the uploaded file with a warning logged, instead of
+rejecting the upload with "Cannot process file" (`AppFileStreamer.CannotProcessFileMessage` is kept
+for applications). File cleanup re-checks file age before moving it
 to trash and skips files which are removed meanwhile. File cleanup relies on `file_info` records
 being deleted only by file cleanup (older than `min-age` and not referenced). Index on
 `file_info.sha_256` is recommended.

@@ -10,13 +10,19 @@ abstract class DatePathStorage(cfg: Config) extends Storage {
   protected val Hours                 = "hours"
   protected val Minutes               = "minutes"
   protected val root: String          = Storage.root(cfg)
-  protected val pathFormat: String    = cfg.getString("files.path-format") match {
-    case Days     => "yyyy/MM/dd"
-    case Hours    => "yyyy/MM/dd/HH"
-    case Minutes  => "yyyy/MM/dd/HH/mm"
+  private val formatAndPeriod: (String, Duration) = cfg.getString("files.path-format") match {
+    case Days     => ("yyyy/MM/dd",       Duration.ofDays(1))
+    case Hours    => ("yyyy/MM/dd/HH",    Duration.ofHours(1))
+    case Minutes  => ("yyyy/MM/dd/HH/mm", Duration.ofMinutes(1))
     case x => throw new ConfigException.BadValue(cfg.getValue("files.path-format").origin, "files.path-format",
       s"Invalid path format '$x', must be one of: $Days, $Hours, $Minutes")
   }
+  protected val pathFormat: String    = formatAndPeriod._1
+  /**
+   * Period of stored file path (day, hour or minute according to files.path-format).
+   * File cleanup min-age should not be shorter than this, see [[Storage.trashAged]].
+   */
+  val pathPeriod: Duration            = formatAndPeriod._2
   protected val Trash                 = "trash"
 
   /** Whether name matches stored file layout yyyy/MM/dd[/HH[/mm]]/sha256 of any path format */
