@@ -74,7 +74,7 @@ trait Storage {
    * Stored files older than min-age. Only names matching stored file layout `yyyy/MM/dd[/HH[/mm]]/sha256`
    * are returned (of any path format, not only configured one, so that files stored before path format change
    * are cleaned too). Files in `trash` and `tmp`, also files of other storages nested in this storage root
-   * are not listed.
+   * are not listed. Fails if storage root does not exist.
    * @param minAge  minimal age of last modification time
    * @return source of file names relative to storage root
    * */

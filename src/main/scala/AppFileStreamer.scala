@@ -124,6 +124,7 @@ trait AppFileStreamerConfig {
   def file_info_table: String
   def file_body_info_table: String
   def shaColName: String
+  def storage: org.wabase.fs.Storage
 }
 
 trait AppFileStreamer[User] extends AppFileStreamerConfig with Loggable { this: DbAccessProvider =>
@@ -133,6 +134,7 @@ trait AppFileStreamer[User] extends AppFileStreamerConfig with Loggable { this: 
   override def file_body_info_table: String = fileStreamer.file_body_info_table
   override def shaColName: String           = fileStreamer.shaColName
   override def tmpPath: String              = fileStreamer.tmpPath
+  override def storage: org.wabase.fs.Storage = fileStreamer.storage
 
   lazy val fileStreamerConfig: Config = {
     import FileStreamerConfig.configs
@@ -188,7 +190,7 @@ class FileStreamer(
   val connectionPoolName: String            = Option("cp").filter(fsCfg.hasPath).map(fsCfg.getString).orNull
 
   @annotation.nowarn("msg=Manifest")
-  private val storage = getObjectOrNewInstance[org.wabase.fs.Storage](
+  override val storage: org.wabase.fs.Storage = getObjectOrNewInstance[org.wabase.fs.Storage](
     fsCfg, "files.storage-class", "file streamer file storage", Seq(fsCfg))
 
   private val fileInfoInsert =

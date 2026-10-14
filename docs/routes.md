@@ -249,7 +249,8 @@ Both require the deferred module to be initialized.
 | `fileDownloadUsing(id, hash, fsName)` | `fileDownload` using named file streamer. |
 
 `doFileCleanup` is listed in the same block, but it is `org.wabase.FileCleanup.doCleanup`
-and takes querease, resources and file streamers — it is a view action function, not a
+and takes querease, resources and file streamers (with implicit execution context and actor
+system, also injected) and returns `Future[Unit]` — it is a view action function, not a
 route handler. Its view definition must have `explicit db: true`.
 
 ### Event notifications

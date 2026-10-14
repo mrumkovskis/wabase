@@ -115,9 +115,14 @@ class FsStorage(cfg: Config) extends DatePathStorage(cfg) {
   // dispatcher of the whole island applies, so default IO dispatcher of unfoldResource is not effective,
   // flatMapConcat substreams run in the parent interpreter. Downstream stages fused with it may run
   // on IO dispatcher too.
-  override def listAged(minAge: Duration): Source[String, Any] =
-    walkAged(new File(root).toPath, "", 0, minAge)
-      .withAttributes(Attributes(ActorAttributes.IODispatcher))
+  override def listAged(minAge: Duration): Source[String, Any] = {
+    val rootPath = new File(root).toPath
+    Source.single(rootPath).flatMapConcat { p =>
+      // missing root is misconfiguration (or unmounted storage), not an empty storage
+      if (Files.isDirectory(p)) walkAged(p, "", 0, minAge)
+      else Source.failed(new NoSuchFileException(p.toString, null, "Storage root directory does not exist"))
+    }.withAttributes(Attributes(ActorAttributes.IODispatcher))
+  }
 
   override def trashAged(fullName: String, minAge: Duration)(implicit
     ec: ExecutionContext,

@@ -47,6 +47,12 @@ class FsStorageSpecs extends StorageContractSpec("FsStorage") {
     target.lastModified should be > oldTime + 24 * 3600 * 1000L
   }
 
+  it should "fail to list aged files if root does not exist" in {
+    val root = newRoot + "/missing"
+    val ex = intercept[java.nio.file.NoSuchFileException](listAged(fsStorage(root), java.time.Duration.ZERO))
+    ex.getMessage should include ("Storage root directory does not exist")
+  }
+
   it should "fail to store file if move fails and file is not already stored" in {
     val root = newRoot
     an [RuntimeException] should be thrownBy

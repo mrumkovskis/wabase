@@ -12,7 +12,7 @@ import org.apache.pekko.stream.scaladsl.Source
 import org.apache.pekko.util.ByteString
 import org.mojoz.metadata.in.YamlMd
 import org.mojoz.metadata.out.DdlGenerator
-import org.scalatest.BeforeAndAfterEach
+import org.scalatest.{BeforeAndAfterAll, BeforeAndAfterEach}
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers
 import org.tresql._
@@ -22,10 +22,23 @@ import org.wabase.ds.{PoolName, QueryTimeout}
 import scala.concurrent._
 import scala.concurrent.duration._
 
-class FileCleanupSpecs extends FlatSpec with Matchers with BeforeAndAfterEach {
+class FileCleanupSpecs extends FlatSpec with Matchers with BeforeAndAfterEach with BeforeAndAfterAll {
   behavior of "AppFileCleanup"
 
   import FileCleanupSpecsHelper._
+
+  implicit val system: ActorSystem = ActorSystem("file-cleanup-specs")
+  implicit val executor: ExecutionContext = system.dispatcher
+
+  private var s3ServerStarted = false
+  private lazy val s3Server = { s3ServerStarted = true; new S3TestServer().start() }
+
+  override def afterAll(): Unit = {
+    if (s3ServerStarted) s3Server.stop()
+    Await.result(org.apache.pekko.http.scaladsl.Http().shutdownAllConnectionPools(), maxWait)
+    Await.result(system.terminate(), maxWait)
+    super.afterAll()
+  }
 
   val schemaSql: String = DdlGenerator.hsqldb().schema(FileCleanupSpecsQuerease.tableMetadata.tableDefs)
   executeStatements(schemaSql.split(";\\s+").map(_ + ";").toIndexedSeq: _*)
@@ -34,8 +47,6 @@ class FileCleanupSpecs extends FlatSpec with Matchers with BeforeAndAfterEach {
   val maxWait = 1.minute
   val txtContentType = ContentTypes.`text/plain(UTF-8)`
   def saveFile(fileStreamer: AppFileStreamer[String], fileName: String, contentType: ContentType) = {
-    implicit val system = ActorSystem("file-cleanup-specs")
-    implicit val executor = system.dispatcher
     implicit val user: String = "Guest"
     val fileInfoF = Source.single(ByteString(s"Content of $fileName"))
       .runWith(fileStreamer.fileSink(fileName,contentType.toString())).map(f => fileStreamer.getFileInfo(f.id, f.sha_256))
@@ -127,7 +138,7 @@ class FileCleanupSpecs extends FlatSpec with Matchers with BeforeAndAfterEach {
     }
     def doCleanup = {
       comfortFileCleaner
-      fileCleaner.doCleanup()
+      Await.result(fileCleaner.doCleanup(), maxWait)
     }
 
     it should ("cleanup file body info with references removed, for " + fsConfigName) in {
@@ -310,15 +321,15 @@ class FileCleanupSpecs extends FlatSpec with Matchers with BeforeAndAfterEach {
           Query(s"-${fs.file_info_table}[id = ${fi.id}]")
           Query(s"-${fs.file_body_info_table}[${fs.shaColName} = ?]", fi.sha_256)
           Query("files_on_disk - []")
-          Query("+files_on_disk {path} [?]", new File(s"${fs.rootPath}/${fi.path}").getAbsolutePath)
+          Query("+files_on_disk {path} [?]", s"${fs.storage.location}/${fi.path}")
         }
 
-        fileCleaner.moveUnreferencedFilesToTrash()
+        Await.result(fileCleaner.moveUnreferencedFilesToTrash(), maxWait)
         fileExists(fs.rootPath, fi) shouldBe true
         fileExists(fs.rootPath + "/trash", fi) shouldBe false
 
         ageFile(fs.rootPath, fi)
-        fileCleaner.moveUnreferencedFilesToTrash()
+        Await.result(fileCleaner.moveUnreferencedFilesToTrash(), maxWait)
         fileExists(fs.rootPath, fi) shouldBe false
         fileExists(fs.rootPath + "/trash", fi) shouldBe true
       }
@@ -345,6 +356,39 @@ class FileCleanupSpecs extends FlatSpec with Matchers with BeforeAndAfterEach {
         fileExists(fs.rootPath, fi) shouldBe false
       }
     }
+  }
+
+  it should "cleanup files in S3 storage" in {
+    val bucket = "file-cleanup-specs"
+    s3Server.createBucket(bucket)
+    val tmpPath = Files.createTempDirectory("file-cleanup-specs-s3-tmp").toFile.getAbsolutePath
+    val fs = new TestS3FileStreamer(s3Server.filesConfig(s"$bucket/files", tmpPath))
+    // S3 last modified time can not be changed - files and file_info records are aged by zero min-age
+    val cleaner = new TestFileCleanup(FileCleanupSpecsQuerease, FileCleanupSpecsHelper.db.rt, fs) {
+      override lazy val minAgeMillis: Long = 0L
+    }
+    def stored(name: String, size: Long, sha: String) =
+      Await.result(fs.storage.verify(name, size, sha), maxWait).contains(true)
+    def exists(fi: AppFileStreamer.FileInfoHelper) = stored(fi.path, fi.size, fi.sha_256)
+    def trashed(fi: AppFileStreamer.FileInfoHelper) = stored(s"trash/${fi.path}", fi.size, fi.sha_256)
+
+    val referenced   = saveFileAndRef(fs, "referenced.txt", txtContentType)
+    val unreferenced = saveFile(fs, "unreferenced.txt", txtContentType)
+    exists(referenced) shouldBe true
+    exists(unreferenced) shouldBe true
+    Thread.sleep(1100) // S3 last modified and upload time must be older than now
+
+    Await.result(cleaner.doCleanup(), maxWait)
+    fileInfoExists(fs, referenced) shouldBe true
+    exists(referenced) shouldBe true
+    fileInfoExists(fs, unreferenced) shouldBe false
+    fileBodyInfoExists(fs, unreferenced) shouldBe false
+    exists(unreferenced) shouldBe false
+    trashed(unreferenced) shouldBe true
+
+    Await.result(cleaner.doCleanup(), maxWait)
+    trashed(unreferenced) shouldBe false
+    exists(referenced) shouldBe true
   }
 }
 
@@ -381,6 +425,10 @@ object FileCleanupSpecsHelper {
         .withFallback(config)
     val file_ref_table: String = config.getString("file-ref-table")
   }
+  class TestS3FileStreamer(s3FilesConfig: Config)
+      extends TestFileStreamer(fsCfg1, "s3", "days") {
+    override lazy val fileStreamerConfig = s3FilesConfig.withFallback(fsCfg1)
+  }
   class TestFileStreamer1(attachmentsRootPathTail: String, pathFormat: String)
       extends TestFileStreamer(fsCfg1, attachmentsRootPathTail, pathFormat) {
   }
@@ -399,7 +447,10 @@ object FileCleanupSpecsHelper {
   class TestFileCleanup(qe: AppQuerease, res: Resources, fileStreamers: AppFileStreamerConfig*)
       extends AppFileCleanup(qe, res, fileStreamers: _*) with QuereaseProvider {
     override implicit lazy val connectionPool: PoolName = TestCp
-    override protected lazy val batchSizeOpt: Option[Int] = Some(1)
-    def moveUnreferencedFilesToTrash(): Unit = compareDataAndMoveFilesToTrash
+    override protected lazy val deleteLimitOpt: Option[Int] = Some(1)
+    // every test exercises batching and paging of files_on_disk
+    override protected lazy val batchSize: Int = 1
+    def moveUnreferencedFilesToTrash()(implicit ec: ExecutionContext, as: ActorSystem): Future[Unit] =
+      compareDataAndMoveFilesToTrash
   }
 }

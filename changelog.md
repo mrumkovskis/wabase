@@ -211,8 +211,8 @@ credentials, region, access style) and falls back to `pekko.connectors.s3`. `fil
 (default `true`) sends `x-amz-checksum-sha256` with single part upload so that S3 rejects corrupted
 upload, disable it for S3 compatible storages without checksum support. Files larger than
 `files.s3-multipart-threshold` (default 16 MiB) are uploaded using multipart upload, without checksum.
-Deduplication verifies stored file with a single metadata (HEAD) request. File cleanup does not
-support S3 storage yet. `Storage.storeFile` takes file sha-256 as file name.
+Deduplication verifies stored file with a single metadata (HEAD) request.
+`Storage.storeFile` takes file sha-256 as file name.
 
 File streamer deduplicates uploaded file only if `file_info` with the same sha was uploaded within
 half of `app.file-cleanup.min-age`. Such file body can not be removed by file cleanup while upload
@@ -221,6 +221,27 @@ copy and the old copy is removed by file cleanup. File cleanup re-checks file ag
 to trash and skips files which are removed meanwhile. File cleanup relies on `file_info` records
 being deleted only by file cleanup (older than `min-age` and not referenced). Index on
 `file_info.sha_256` is recommended.
+
+File cleanup works through file streamer storage, S3 storage is supported. Only stored files
+named `yyyy/MM/dd[/HH[/mm]]/sha256` (any path format) under storage root are cleaned, other files
+are never touched. File streamers with equal storage location (`Storage.location`, e.g.
+`file:/data/files`, `s3://bucket/prefix`) are cleaned as one storage, nested storage roots are
+supported. Trash is `trash/` under storage root (on S3 file is copied and deleted). Unreferenced
+files are moved to trash `app.file-cleanup.parallelism` (default 4) at a time per storage.
+Failure of one storage (e.g. missing file system root, unreachable S3) is logged, other storages
+are cleaned and cleanup fails at the end. `files_on_disk.path` holds storage location followed by
+file name (was absolute file path) - check that column is long enough (512 is enough).
+`files_on_disk` is read in pages ordered by path, so cleanup memory use does not depend on file
+count, and it is emptied when cleanup of stored files is done. `app.file-cleanup.batch-size`
+(default 500) sets `files_on_disk` insert batch and page size.
+Temporary files are cleaned in local `files.tmp-path` as before.
+Breaking: `FileCleanup.doCleanup` and `AppFileCleanup.doCleanup` take implicit `ExecutionContext`
+and `ActorSystem` and return `Future[Unit]` (injected when invoked as view action function, e.g.
+`doFileCleanup`); `AppFileCleanup` protected steps `cleanTrash`, `cleanupFiles`, `fillCompareTable`,
+`compareDataAndMoveFilesToTrash` are asynchronous, `fillCompareTable` has no batch size parameter
+(see `batchSize`), `batchSizeOpt` renamed to `deleteLimitOpt`, `fileFilter(file)` removed.
+`AppFileStreamerConfig` has `storage`. `Storage` has file cleanup operations `location`,
+`listAged`, `trashAged`, `cleanTrash`.
 
 `getObjectOrNewInstance` rethrows exception thrown by the class constructor instead of trying
 other class name variants, so configuration errors of instantiated components are reported.
