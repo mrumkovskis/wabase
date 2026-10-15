@@ -9,12 +9,13 @@ import java.net.URI
 
 /**
  * In-memory S3 server for tests (S3Proxy with jclouds transient blob store).
+ * Listens on `port`, by default on a free port - see [[port]] for actual value.
  *
  * S3Proxy does not support checksum headers (x-amz-checksum-*): by default request with such header is rejected
  * as not implemented, with ignoreUnknownHeaders header is accepted but checksum is neither validated nor returned.
  * Header is ignored here, so S3Storage checksum code is executed but S3 checksum validation is not tested.
  */
-class S3TestServer {
+class S3TestServer(listenPort: Int = 0) {
   val accessKey = "access"
   val secretKey = "secret"
 
@@ -24,7 +25,7 @@ class S3TestServer {
   private val s3Proxy = S3Proxy.builder()
     .blobStore(blobStoreContext.getBlobStore)
     .awsAuthentication(AuthenticationType.AWS_V2_OR_V4, accessKey, secretKey)
-    .endpoint(URI.create("http://127.0.0.1:0"))
+    .endpoint(URI.create(s"http://127.0.0.1:$listenPort"))
     .ignoreUnknownHeaders(true)
     .build()
 
@@ -39,12 +40,14 @@ class S3TestServer {
     blobStoreContext.close()
   }
 
+  def port: Int = s3Proxy.getPort
+
   def createBucket(bucket: String): Unit =
     blobStoreContext.getBlobStore.createContainerInLocation(null, bucket)
 
   /** pekko-connectors-s3 settings for this server, to be used as `files.s3` of S3Storage */
   def s3Config: Config = ConfigFactory.parseString(
-    s"""endpoint-url = "http://127.0.0.1:${s3Proxy.getPort}"
+    s"""endpoint-url = "http://127.0.0.1:$port"
        |access-style = path
        |aws.credentials {
        |  provider = static

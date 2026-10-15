@@ -3,3 +3,14 @@ do:       fileUpload $1
 
 on:       GET /download/(?<id>\d*)/(?<sha256>.*)
 do:       fileDownload($1, $2)
+
+# s3 file streamer (see reference.conf), not in swagger - same as upload and download
+on:       POST /upload-s3/(?<filename>.*)
+do:       fileUploadUsing($1, 's3')
+swagger:
+  paths = : {}
+
+on:       GET /download-s3/(?<id>\d*)/(?<sha256>.*)
+do:       fileDownloadUsing($1, $2, 's3')
+swagger:
+  paths = : {}

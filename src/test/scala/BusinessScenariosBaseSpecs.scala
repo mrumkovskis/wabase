@@ -151,6 +151,16 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
       case _ => None
     }
   }
+  /** Parses `expectedValue -> captureKey` - value is compared as usual and captured if equal.
+    * Plain `-> captureKey` (nothing before arrow) is capture without comparison, handled separately.
+    */
+  private object ValueCapture {
+    private val Pattern = """^(.*?\S)\s*->\s*(\S.*)$""".r
+    def unapply(s: String): Option[(String, String)] = s.trim match {
+      case Pattern(value, key) => Some((value, key.trim))
+      case _ => None
+    }
+  }
   /** Parses `size(n)`, `size(>n)` / `size(>=n)` / `size(<n)` / `size(<=n)` / `size(!=n)` / `size(<>n)` / `size(=n)`,
     * `size(a..b)`, optionally followed by ` -> captureKey`.
     */
@@ -303,6 +313,8 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
           case None     => err(s"Element $a should be an array to match size($spec)")
         }
       case (a, s: String) if s.trim.startsWith("->") => Map(s.trim.substring(2).trim -> a)
+      case (a, ValueCapture(expected, key)) =>
+        if (String.valueOf(a) == expected) Map(key -> a) else err(s"Element $a should be equal to $expected")
       case (a, b) if b != null && String.valueOf(a) == b.toString => Map.empty
       case (null, null) => Map.empty
       case (a, b) => err(s"Element $a should be equal to $b")

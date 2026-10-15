@@ -152,14 +152,35 @@ class BusinessScenariosSpecs extends BusinessScenariosBaseSpecs("http_tests") {
   override def initHttpClient = server
   override def beforeAll() = {
     GreenMailServer.startIfEnabled(config)
+    startS3ServerIfEnabled()
     server
     // i18n jdbc bundle tables must exist before any translation
     createTables(Seq("bundle", "translation"))
   }
   override def afterAll() = {
     try server.unbind() // unbind for cross-scala tests
-    finally GreenMailServer.stop()
+    finally {
+      try GreenMailServer.stop()
+      finally stopS3Server()
+    }
   }
+
+  /** In-process S3 server for 's3' file streamer (see reference.conf) - started on configured endpoint
+    * port with [[S3TestServer]] credentials, bucket from files.root is created. Must be started before
+    * server, S3Storage is created with file streamers on server start. */
+  private var s3Server: S3TestServer = null
+  private def startS3ServerIfEnabled(): Unit = {
+    val s3FilesPath = "file-streamer.s3.files"
+    if (config.hasPath(s3FilesPath)) {
+      val files  = config.getConfig(s3FilesPath)
+      val port   = new java.net.URI(files.getString("s3.endpoint-url")).getPort
+      val bucket = files.getString("root").split("/", 2).head
+      s3Server = new S3TestServer(port).start()
+      s3Server.createBucket(bucket)
+    }
+  }
+  private def stopS3Server(): Unit =
+    if (s3Server != null) try s3Server.stop() finally s3Server = null
 
   override def scenariosAutoLogin  = false
   override def scenariosAutoLogout = false

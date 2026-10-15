@@ -10,6 +10,10 @@ val greenmailDependency = ("com.icegreen" % "greenmail" % "2.1.14")
   .exclude("org.eclipse.angus", "jakarta.mail")
   .exclude("junit", "junit")
 
+// S3 storage: pekko-connectors-s3 is Optional in wabase, in-process S3Proxy server for S3 storage tests.
+val pekkoS3Dependency = "org.apache.pekko" %% "pekko-connectors-s3" % pekkoConnV
+val s3ProxyDependency = "org.gaul"          % "s3proxy"             % "2.8.0"
+
 javacOptions ++= Seq("-source", "11", "-target", "11", "-Xlint")
 initialize := {
   val _ = initialize.value
@@ -78,7 +82,7 @@ lazy val commonSettings = Seq(
       "org.simplejavamail"          % "simple-java-mail"      % "9.3.5"             % Optional,
       "org.graalvm.js"              % "js"                    % "22.3.5"            % Optional,
       "org.graalvm.js"              % "js-scriptengine"       % "22.3.5"            % Optional,
-      "org.apache.pekko"           %% "pekko-connectors-s3"   % pekkoConnV          % Optional,
+      pekkoS3Dependency                                                 % Optional,
       "org.apache.pekko"           %% "pekko-http-xml"        % pekkoHttpV          % Optional,
     ) ++ Seq( // for test
       "org.scalatest"              %% "scalatest"             % "3.2.20"  %     Test,
@@ -88,7 +92,7 @@ lazy val commonSettings = Seq(
       "org.hsqldb"                  % "hsqldb"                % "2.7.4"   %     Test,
       "com.vladsch.flexmark"        % "flexmark-all"          % "0.64.8"  %     Test,
       greenmailDependency                                                 %     Test,
-      "org.gaul"                    % "s3proxy"               % "2.8.0"   %     Test,
+      s3ProxyDependency                                                   %     Test,
     )
   },
 )
@@ -238,10 +242,13 @@ lazy val it = (project in file("src/it"))
   .settings(
     libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.20",
     libraryDependencies += greenmailDependency,
+    libraryDependencies += pekkoS3Dependency, // s3 file streamer on in-process S3Proxy server (org.wabase.S3TestServer)
+    libraryDependencies += s3ProxyDependency,
     publish / skip := true,
     Compile / run / mainClass   := Some("org.wabase.WabaseServer"),
     Compile / unmanagedSources  += baseDirectory.value / ".." / "test" / "scala" / "BusinessScenariosBaseSpecs.scala",
     Compile / unmanagedSources  += baseDirectory.value / ".." / "test" / "scala" / "GreenMailServer.scala",
+    Compile / unmanagedSources  += baseDirectory.value / ".." / "test" / "scala" / "S3TestServer.scala",
     Compile / unmanagedSources  += baseDirectory.value / ".." / "test" / "scala" / "TemplateUtil.scala",
   )
 
