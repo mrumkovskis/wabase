@@ -144,59 +144,48 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
   def testCases(scenario: File): Vector[File] =
     scenario.listFiles.filter(isTestCaseFile).sortBy(_.getName).toVector
 
-  private object NotNullCapture {
-    private val Pattern = """not_null\(\)\s*->\s*(\S.*)""".r
-    def unapply(s: String): Option[String] = s.trim match {
-      case Pattern(key) => Some(key.trim)
-      case _ => None
-    }
-  }
-  /** Parses `expectedValue -> captureKey` - value is compared as usual and captured if equal.
-    * Plain `-> captureKey` (nothing before arrow) is capture without comparison, handled separately.
+  /** Parses a capture directive. A string expectation is a capture only when it starts with
+    * the arrow: `-> captureKey` captures the value without comparing it, `-> captureKey = expectation`
+    * compares `expectation` as usual and captures the value if the comparison succeeds.
+    * An expectation that does not start with the arrow is compared as data and may contain `->`.
+    * Everything after `=` is the expectation, so data starting with an arrow can be expected
+    * as `-> _ = -> some data`.
     */
-  private object ValueCapture {
-    private val Pattern = """^(.*?\S)\s*->\s*(\S.*)$""".r
-    def unapply(s: String): Option[(String, String)] = s.trim match {
-      case Pattern(value, key) => Some((value, key.trim))
+  private object Capture {
+    private val Pattern = """^->\s*([^\s=]+)\s*(?:=\s*(\S.*))?$""".r
+    def unapply(s: String): Option[(String, Option[String])] = s.trim match {
+      case Pattern(key, expectation) => Some((key, Option(expectation).map(_.trim)))
       case _ => None
     }
   }
   /** Parses `size(n)`, `size(>n)` / `size(>=n)` / `size(<n)` / `size(<=n)` / `size(!=n)` / `size(<>n)` / `size(=n)`,
-    * `size(a..b)`, optionally followed by ` -> captureKey`.
+    * `size(a..b)`. Capture is a prefix, see [[Capture]].
     */
   private object SizeCheck {
-    private val CaptureSplit = """^(.*?)\s*->\s*(\S.*)$""".r
     private val Eq    = """size\(\s*(\d+)\s*\)""".r
     private val Cmp   = """size\(\s*(>=|<=|!=|<>|==|=|>|<)\s*(\d+)\s*\)""".r
     private val Range = """size\(\s*(\d+)\s*\.\.\s*(\d+)\s*\)""".r
-    def unapply(s: String): Option[(Int => Boolean, String, Option[String])] = {
-      val trimmed = s.trim
-      val (expr, capture) = trimmed match {
-        case CaptureSplit(left, key) if left.trim.startsWith("size(") => (left.trim, Some(key.trim))
-        case _ => (trimmed, None)
-      }
-      expr match {
-        case Eq(n) =>
-          val expected = n.toInt
-          val pred: Int => Boolean = _ == expected
-          Some((pred, n, capture))
-        case Cmp(op, n) =>
-          val expected = n.toInt
-          val pred: Int => Boolean = op match {
-            case ">"        => _ > expected
-            case ">="       => _ >= expected
-            case "<"        => _ < expected
-            case "<="       => _ <= expected
-            case "!=" | "<>" => _ != expected
-            case "=" | "==" => _ == expected
-          }
-          Some((pred, s"$op$n", capture))
-        case Range(from, to) =>
-          val lo = from.toInt
-          val hi = to.toInt
-          Some(((sz: Int) => sz >= lo && sz <= hi, s"$from..$to", capture))
-        case _ => None
-      }
+    def unapply(s: String): Option[(Int => Boolean, String)] = s.trim match {
+      case Eq(n) =>
+        val expected = n.toInt
+        val pred: Int => Boolean = _ == expected
+        Some((pred, n))
+      case Cmp(op, n) =>
+        val expected = n.toInt
+        val pred: Int => Boolean = op match {
+          case ">"        => _ > expected
+          case ">="       => _ >= expected
+          case "<"        => _ < expected
+          case "<="       => _ <= expected
+          case "!=" | "<>" => _ != expected
+          case "=" | "==" => _ == expected
+        }
+        Some((pred, s"$op$n"))
+      case Range(from, to) =>
+        val lo = from.toInt
+        val hi = to.toInt
+        Some(((sz: Int) => sz >= lo && sz <= hi, s"$from..$to"))
+      case _ => None
     }
   }
   private def collectionSize(value: Any): Option[Int] = value match {
@@ -206,16 +195,18 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
     case _                               => None
   }
   /** `contains()` array check. The expectation is a one-key map, `contains(): [a, b]`
-    * or `contains() -> name: [a, b]`. The array must include every listed element, in any
-    * order, and may include others. Each listed element consumes one response element.
+    * or `-> name = contains(): [a, b]` to capture the array. The array must include every
+    * listed element, in any order, and may include others. Each listed element consumes
+    * one response element.
     */
   private object ContainsExpectation {
-    private val Key = """contains\(\s*\)(?:\s*->\s*(\S.*))?""".r
+    private val Key = """contains\(\s*\)""".r
     def unapply(expected: Any): Option[(Any, Option[String])] = expected match {
       case m: Map[_, _] @unchecked if m.size == 1 =>
         m.head match {
           case (key: String, value) => key.trim match {
-            case Key(capture) => Some((value, Option(capture).map(_.trim).filter(_.nonEmpty)))
+            case Key()                         => Some((value, None))
+            case Capture(capture, Some(Key())) => Some((value, Some(capture)))
             case _ => None
           }
           case _ => None
@@ -266,13 +257,27 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
     }
   }
   /** JSON bodies are kept as raw strings only when the expected value is an ordinary string,
-    * not a `size(...)` check (which must see the decoded array).
+    * not a `size(...)` check (which must see the decoded array). A capture directive is
+    * stripped first, so `-> name = size(3)` is decoded, while a capture without comparison
+    * keeps the raw body.
     */
   private def shouldKeepAsRawString(expected: Any): Boolean = expected match {
-    case s: String => SizeCheck.unapply(s).isEmpty
+    case s: String =>
+      val check = s.trim match {
+        case Capture(_, expectation) => expectation.getOrElse("")
+        case plain                   => plain
+      }
+      SizeCheck.unapply(check).isEmpty
     case _         => false
   }
-  def assertResponse(response: Any, expectedResponse: Any, path: String, fullCompare: Boolean): Map[String, Any] = {
+  def assertResponse(response: Any, expectedResponse: Any, path: String, fullCompare: Boolean): Map[String, Any] =
+    assertExpectation(response, expectedResponse, path, fullCompare, captureAllowed = true)
+  /** `captureAllowed` is false while the expectation of a capture directive is compared, so that
+    * data starting with an arrow can be expected as `-> _ = -> some data`.
+    */
+  private def assertExpectation(
+    response: Any, expectedResponse: Any, path: String, fullCompare: Boolean, captureAllowed: Boolean,
+  ): Map[String, Any] = {
     def err(message: String) = sys.error(path + ": " + message)
 
     (response, expectedResponse) match {
@@ -304,17 +309,19 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
                 capture.fold(captures)(key => captures + (key -> a))
             }
         }
+      case (a, Capture(key, expectation)) if captureAllowed =>
+        expectation.fold(Map.empty[String, Any]) { expected =>
+          assertExpectation(a, expected, path, fullCompare, captureAllowed = false)
+        } + (key -> a)
+      case (_, s: String) if captureAllowed && s.trim.startsWith("->") =>
+        err(s"Invalid capture '${s.trim}', expected '-> name' or '-> name = <expectation>'")
       case (a, s: String) if s.trim == "not_null()" => if (response == null) err(s"Element $a should not be null") else Map.empty
-      case (a, NotNullCapture(key))                 => if (response == null) err(s"Element $a should not be null") else Map(key -> response)
-      case (a, SizeCheck(pred, spec, capture)) =>
+      case (a, SizeCheck(pred, spec)) =>
         collectionSize(a) match {
-          case Some(sz) if pred(sz) => capture.map(key => Map(key -> a)).getOrElse(Map.empty)
+          case Some(sz) if pred(sz) => Map.empty
           case Some(sz) => err(s"Array size $sz should match size($spec)")
           case None     => err(s"Element $a should be an array to match size($spec)")
         }
-      case (a, s: String) if s.trim.startsWith("->") => Map(s.trim.substring(2).trim -> a)
-      case (a, ValueCapture(expected, key)) =>
-        if (String.valueOf(a) == expected) Map(key -> a) else err(s"Element $a should be equal to $expected")
       case (a, b) if b != null && String.valueOf(a) == b.toString => Map.empty
       case (null, null) => Map.empty
       case (a, b) => err(s"Element $a should be equal to $b")

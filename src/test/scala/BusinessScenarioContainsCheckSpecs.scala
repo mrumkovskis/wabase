@@ -86,7 +86,7 @@ class BusinessScenarioContainsCheckSpecs extends BusinessScenariosBaseSpecs() {
     check(
       List(Map("id" -> 1, "name" -> "a"), Map("id" -> 2, "name" -> "b")),
       Map("contains()" -> List(
-        Map("id" -> "not_null() -> picked"),
+        Map("id" -> "-> picked = not_null()"),
         Map("id" -> 1, "name" -> "a"),
       )),
       fullCompare = false,
@@ -96,19 +96,19 @@ class BusinessScenarioContainsCheckSpecs extends BusinessScenariosBaseSpecs() {
   it should "capture the whole array and captures from matched elements" in {
     check(
       List("b", "a", "c"),
-      Map("contains() -> captured" -> List("a", "c")),
+      Map("-> captured = contains()" -> List("a", "c")),
     ) shouldBe Map("captured" -> List("b", "a", "c"))
     check(
       List("b", "a"),
-      Map("  contains() -> captured_roles  " -> List("a")),
+      Map("  -> captured_roles = contains()  " -> List("a")),
     ) shouldBe Map("captured_roles" -> List("b", "a"))
     check(
       List(List(1, 2, 3), "x"),
-      Map("contains()" -> List("size(3) -> nums")),
+      Map("contains()" -> List("-> nums = size(3)")),
     ) shouldBe Map("nums" -> List(1, 2, 3))
     check(
       List(1),
-      Map("contains() -> item" -> List("not_null() -> item")),
+      Map("-> item = contains()" -> List("-> item = not_null()")),
     ) shouldBe Map("item" -> List(1))
   }
 

@@ -2,7 +2,7 @@ path:       /data/job_history
 params:
   job_name: create_person
 response:
-- uuid:        not_null() -> create_person_run_id
+- uuid:        -> create_person_run_id = not_null()
   job_name:    create_person
   start_time:  not_null()
   end_time:    not_null()

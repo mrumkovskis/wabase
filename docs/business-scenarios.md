@@ -232,28 +232,40 @@ and order.
 
 ### Capture and substitution
 
-`-> name` stores the matched value in the scenario context under `name`.
-The same arrow can be added to the checks above. `-> _` stores the value under
-`_` and is the usual way to accept a field without checking it.
+An expectation that starts with `->` is a capture. `-> name` stores the value in
+the scenario context under `name` without comparing it. `-> _` is the usual way
+to accept a field without checking it.
 
-| Form | What is stored |
+`-> name = <expectation>` compares `<expectation>` as usual and stores the value
+if the comparison succeeds. The expectation after `=` can be data or any of the
+checks above.
+
+| Form | What is checked and stored |
 | --- | --- |
-| `-> file_id` | The value in that position. |
-| `not_null() -> captured_token` | The non-null value. |
-| `size(3) -> captured_items` | The array. |
-| `contains() -> captured_roles` | The whole array, as a key: `contains() -> captured_roles:`. |
+| `-> file_id` | Nothing is checked. The value in that position is stored. |
+| `-> sha_256 = f0ca7ef6` | The value, compared as data. |
+| `-> captured_token = not_null()` | The non-null value. |
+| `-> captured_items = size(3)` | The array. |
+| `-> captured_roles = contains()` | The whole array, as a key: `-> captured_roles = contains():`. |
 
 ```yaml
 response:
-  token: not_null() -> captured_token
+  token: -> captured_token = not_null()
+  sha_256: -> sha_256 = f0ca7ef6
   upload_time: -> _
 ```
 
 ```yaml
 response:
   roles:
-    contains() -> captured_roles: [admin, guest]
+    -> captured_roles = contains(): [admin, guest]
 ```
+
+Only the leading `->` starts a capture, so an expectation may contain `->` as
+data: `label: a -> b` compares the value to `a -> b`. Data that starts with
+`->` has to be captured to be compared, because everything after `=` is the
+expectation: `label: -> _ = -> b` compares the value to `-> b`. An expectation
+that starts with `->` and is not a valid capture fails the step.
 
 A later step reads context with `<- name`. The scalar must be only that
 reference. The stored value keeps its type, so a captured list can be sent as
@@ -334,7 +346,7 @@ Returns the current instant:
 ```yaml
 path: /backdoor/current_time
 response:
-  current_time: not_null() -> captured_time
+  current_time: -> captured_time = not_null()
 ```
 
 `current_time` is `Instant.now.toString`.

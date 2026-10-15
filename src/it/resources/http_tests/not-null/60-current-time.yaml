@@ -1,3 +1,3 @@
 path: /backdoor/current_time
 response:
-  current_time: not_null() -> captured_time
+  current_time: -> captured_time = not_null()

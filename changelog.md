@@ -180,12 +180,23 @@ YAML step checks, and the default `/backdoor` paths are documented in
 Business scenario YAML tests support `not_null()` and array size checks at response and field
 level: `size(n)`, `size(>n)`, `size(>=n)`, `size(<n)`,
 `size(<=n)`, `size(!=n)` (or `size(<>n)`), `size(=n)`, and inclusive range
-`size(a..b)`. Optional capture works the same way: `size(3) -> captured_items`.
+`size(a..b)`. Optional capture works the same way: `-> captured_items = size(3)`.
 
 Business scenario YAML tests support `contains()` array checks at response and field level.
 The value is a list of elements the array must include, in any order; further response
 elements are allowed. Each listed element consumes one response element. Optional capture
-uses the same arrow: `contains() -> captured_items`.
+uses the same arrow: `-> captured_items = contains()`.
+
+Business scenario YAML test value capture is written as a prefix. `-> name` stores the value
+in the scenario context without comparing it (unchanged), `-> name = <expectation>` compares
+`<expectation>` as usual and stores the value if the comparison succeeds. The expectation after
+`=` can be data (`-> sha_256 = f0ca7ef6`), `not_null()`, a size check
+(`-> captured_items = size(3)`) or, as a key, `contains()` (`-> captured_roles = contains():`).
+The trailing arrow forms (`f0ca7ef6 -> sha_256`, `not_null() -> captured_token`,
+`size(3) -> captured_items`, `contains() -> captured_roles`) are not supported any more, so an
+expectation may contain `->` as data. Data that starts with `->` is compared when captured,
+`-> _ = -> b`, because everything after `=` is the expectation. An expectation that starts with
+`->` and is not a valid capture fails the step.
 
 File streamer storage is pluggable: `file-streamer.files.storage-class` (default
 `org.wabase.fs.FsStorage`) implements `org.wabase.fs.Storage`. File streamer config

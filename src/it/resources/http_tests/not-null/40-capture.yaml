@@ -5,5 +5,5 @@ request:
   nested:
     n: 1
 response:
-  token: not_null() -> captured_token
-  nested: not_null() -> captured_nested
+  token: -> captured_token = not_null()
+  nested: -> captured_nested = not_null()

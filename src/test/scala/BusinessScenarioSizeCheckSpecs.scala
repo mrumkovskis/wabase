@@ -42,9 +42,9 @@ class BusinessScenarioSizeCheckSpecs extends BusinessScenariosBaseSpecs() {
     check(List(List(1, 2), "x", Nil), List("size(2)", "x", "size(0)")) shouldBe Map.empty
   }
 
-  it should "capture the array when size check has -> key" in {
-    check(List(1, 2, 3), "size(3) -> captured") shouldBe Map("captured" -> List(1, 2, 3))
-    check(Map("items" -> List(1, 2)), Map("items" -> "size(>=2) -> captured_items")) shouldBe
+  it should "capture the array when size check is prefixed with -> key =" in {
+    check(List(1, 2, 3), "-> captured = size(3)") shouldBe Map("captured" -> List(1, 2, 3))
+    check(Map("items" -> List(1, 2)), Map("items" -> "-> captured_items = size(>=2)")) shouldBe
       Map("captured_items" -> List(1, 2))
   }
 

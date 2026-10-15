@@ -7,6 +7,6 @@ response:
   id: -> file_id
   filename: file.txt
   content_type: text/plain
-  sha_256: f0ca7ef61aed3763f9bec72e14379549179c5d31cc25f23a6e62fcdc43f3374c -> sha_256
+  sha_256: -> sha_256 = f0ca7ef61aed3763f9bec72e14379549179c5d31cc25f23a6e62fcdc43f3374c
   size: 12
   upload_time: -> _
