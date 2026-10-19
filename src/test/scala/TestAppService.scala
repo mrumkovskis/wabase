@@ -50,6 +50,10 @@ class TestAppLogMessageNoiseDetector extends EventEvaluatorBase[ILoggingEvent] {
   private val badStartsWithContaining = Seq(
     // FsStorageSpecs reads missing files intentionally
     "Error during preStart in [org.apache.pekko.stream.impl.io.FileSource" -> "/fs-storage-specs",
+    // MultiPoolTest late_init pool db does not exist at startup intentionally
+    "Error initializing Db connection pool for " -> "jdbc:hsqldb:mem:late_init;ifexists=true",
+    // FileUploadSpecs corrupts stored file intentionally
+    "Stored file " -> " is corrupt or not accessible, storing uploaded file anew",
   )
   override def evaluate(event: ILoggingEvent): Boolean = {
     val msg = event.getFormattedMessage

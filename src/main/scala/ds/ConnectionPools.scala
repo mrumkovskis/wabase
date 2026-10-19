@@ -29,7 +29,7 @@ object ConnectionPools extends Loggable {
   private lazy val cps = {
     val c = config.getConfig("jdbc.cp")
     val s: Seq[(PoolName, DataSource)] =
-      c.root().asScala.keys.map(v => (PoolName(v), createDataSource(c.getConfig(v)))).toSeq ++
+      c.root().asScala.keys.map(v => (PoolName(v), initDataSource(c.getConfig(v)))).toSeq.filter(_._2 != null) ++
         Seq(PoolName(null) -> DisabledDataSource)
     scala.collection.concurrent.TrieMap(s: _*)
   }
@@ -39,7 +39,7 @@ object ConnectionPools extends Loggable {
     invokeFunction(factory_class_function, Seq((classOf[Config], () => config))).asInstanceOf[DataSource]
   }
 
-  private def createDataSource(conf: Config) = try createDataSourceFromFactory(conf) catch {
+  private def initDataSource(conf: Config) = try createDataSourceFromFactory(conf) catch {
     case NonFatal(ex) =>
       logger.error(s"Error initializing Db connection pool for $conf", ex)
       null
@@ -52,16 +52,16 @@ object ConnectionPools extends Loggable {
     apply(key(poolName))
 
   def apply(pool: PoolName): DataSource = {
-    val ds = cps.getOrElse(pool, {
-      require(pool == null || pool.connectionPoolName == null,
-        s"""Unable to find connection pool "${pool.connectionPoolName}"""")
-      cps(DEFAULT_CP)
-    })
-    if (ds != null) ds
-    else apply(pool, () => createDataSourceFromFactory(config.getConfig(s"jdbc.cp.${pool.connectionPoolName}")))
+    val poolOrDefault = if (pool == null) DEFAULT_CP else pool
+    cps.getOrElse(poolOrDefault,
+      apply(poolOrDefault, () => {
+        val path = s"jdbc.cp.${poolOrDefault.connectionPoolName}"
+        require(config.hasPath(path), s"""Unable to find connection pool "${poolOrDefault.connectionPoolName}"""")
+        createDataSourceFromFactory(config.getConfig(path))
+      }))
   }
 
-  def apply(pool: PoolName, factoryFun: () => DataSource): DataSource = {
+  def apply(pool: PoolName, factoryFun: () => DataSource): DataSource = synchronized {
     cps.getOrElse(pool, {
       val ds = factoryFun()
       cps.put(pool, ds)

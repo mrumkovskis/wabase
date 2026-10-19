@@ -8,7 +8,7 @@ import org.scalatest.matchers.should.Matchers
 import org.tresql.ThreadLocalResources
 import org.wabase.AppMetadata.DbAccessKey
 import org.wabase.ds.ConnectionPools.DEFAULT_CP
-import org.wabase.ds.{PoolName, QueryTimeout}
+import org.wabase.ds.{ConnectionPools, PoolName, QueryTimeout}
 
 class MultiPoolTest extends FlatSpec with Matchers with ScalatestRouteTest with BeforeAndAfterAll {
   behavior of "dbUse() and transaction()"
@@ -312,5 +312,20 @@ class MultiPoolTest extends FlatSpec with Matchers with ScalatestRouteTest with 
       noException should be thrownBy DbAccess.rollbackSavepoints(committed)
       noException should be thrownBy DbAccess.releaseSavepoints(committed)
     }
+  }
+
+  behavior of "connection pools"
+
+  it should "initialize pool later if initialization failed at startup" in {
+    implicit val pool = PoolName("late_init")
+    implicit val extraDb: Seq[DbAccessKey] = Nil
+    an[Exception] should be thrownBy ConnectionPools(pool)
+    an[Exception] should be thrownBy dbUse(db.tresqlResources.conn.getSchema)
+    // create db so that pool with ifexists=true jdbc url can connect
+    java.sql.DriverManager.getConnection("jdbc:hsqldb:mem:late_init", "SA", "").close()
+    val ds = ConnectionPools(pool)
+    ds should not be null
+    ConnectionPools(pool) should be theSameInstanceAs ds
+    dbUse(db.tresqlResources.conn.getSchema) should be("PUBLIC")
   }
 }
