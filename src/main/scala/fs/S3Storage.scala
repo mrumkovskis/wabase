@@ -7,7 +7,6 @@ import org.apache.pekko.stream.connectors.s3.{S3Attributes, S3Headers, S3Setting
 import org.apache.pekko.stream.connectors.s3.scaladsl.S3
 import org.apache.pekko.stream.scaladsl.{FileIO, Sink, Source}
 import org.apache.pekko.util.ByteString
-import org.wabase.jDate
 
 import java.io.File
 import java.time.Duration
@@ -77,7 +76,7 @@ class S3Storage(cfg: Config) extends DatePathStorage(cfg) {
     ec: ExecutionContext,
     mat: Materializer,
   ): Future[String] = {
-    val tailPath = new java.text.SimpleDateFormat(pathFormat).format(new jDate)
+    val tailPath = currentTailPath
     val name = s"$tailPath/$sha256"
     withContext("upload", name) {
       val size = src.length

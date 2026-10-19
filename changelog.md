@@ -166,7 +166,7 @@ Request decoders are configured under `request-decoders` with a factory per form
 Scalar json decoder frames a json stream on array elements so scalars and arrays, not only
 objects, can be decoded.
 
-`app.file-cleanup.min-age` (default 24 h) — files and `file_info` records younger than this
+`app.file-cleanup.min-age` (default 25 h) — files and `file_info` records younger than this
 are not cleaned.
 
 Action context moved to `AppQuerease` object and is available in the injection parameters
@@ -202,12 +202,15 @@ File streamer storage is pluggable: `file-streamer.files.storage-class` (default
 `org.wabase.fs.FsStorage`) implements `org.wabase.fs.Storage`. File streamer config
 `files.path` is renamed to `files.root`. `files.path-format` (`days` - default, `hours`,
 `minutes`) sets the date path of stored files: `yyyy/MM/dd`, `yyyy/MM/dd/HH` or
-`yyyy/MM/dd/HH/mm`. Stored file paths are kept in `file_body_info`, so the format can be
+`yyyy/MM/dd/HH/mm`, in UTC (was local time) so that the path period does not change with daylight
+saving time. In time zones east of UTC new files may be stored in a directory written before upgrade,
+so file cleanup should not run for UTC offset plus `app.file-cleanup.min-age` after upgrade. Stored file paths are kept in `file_body_info`, so the format can be
 changed for existing storage; file cleanup handles all formats. Invalid value is reported as
-`ConfigException.BadValue` at startup. `app.file-cleanup.min-age` should not be shorter than the
+`ConfigException.BadValue` at startup. `app.file-cleanup.min-age` must not be shorter than the
 path format period (day, hour or minute), so that an aged file is never stored again at the same
-path while file cleanup moves it to trash; a warning is logged at file streamer startup otherwise
-(`DatePathStorage.pathPeriod`). `files.tmp-path` sets the temporary upload directory
+path while file cleanup moves it to trash; file streamer fails at startup with
+`ConfigException.BadValue` otherwise, and logs a warning if `min-age` is longer than the period by less
+than 1 h (`FileCleanup.checkMinAge`, `FileCleanup.ClockSkewMargin`, `DatePathStorage.pathPeriod`). `files.tmp-path` sets the temporary upload directory
 (default `files.root/tmp`, should be on the same file system as `files.root`).
 Deferred request storage uses a named file streamer: `app.deferred-requests.storage.file-streamer`
 is the name of a `file-streamer` entry (default `deferred-requests`) instead of a config block.
@@ -229,8 +232,9 @@ Deduplication verifies stored file with a single metadata (HEAD) request.
 `Storage.storeFile` takes file sha-256 as file name.
 
 File streamer deduplicates uploaded file only if `file_info` with the same sha was uploaded within
-half of `app.file-cleanup.min-age`. Such file body can not be removed by file cleanup while upload
-is in progress. Older file body is not verified but stored again, file body info refers to the new
+`app.file-cleanup.min-age` minus 1 h (half of `min-age` if it is shorter than 2 h,
+`FileCleanup.dedupWindow`). Such file body can not be removed by file cleanup until deduplicated
+`file_info` is inserted. Older file body is not verified but stored again, file body info refers to the new
 copy and the old copy is removed by file cleanup. Stored file body which fails verification (missing,
 corrupt or not accessible) is replaced by the uploaded file with a warning logged, instead of
 rejecting the upload with "Cannot process file" (`AppFileStreamer.CannotProcessFileMessage` is kept

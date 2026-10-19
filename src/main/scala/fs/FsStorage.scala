@@ -6,7 +6,6 @@ import org.apache.pekko.stream.{ActorAttributes, Attributes, Materializer}
 import org.apache.pekko.stream.scaladsl.{FileIO, Source}
 import org.apache.pekko.util.ByteString
 import org.wabase.AppFileStreamer.sizeAndSha256sink
-import org.wabase.jDate
 
 import java.io.{File, IOException}
 import java.nio.file.attribute.BasicFileAttributes
@@ -31,7 +30,7 @@ class FsStorage(cfg: Config) extends DatePathStorage(cfg) {
     ec: ExecutionContext,
     mat: Materializer,
   ): Future[String] = blockingIO {
-    val tailPath = new java.text.SimpleDateFormat(pathFormat).format(new jDate)
+    val tailPath = currentTailPath
     val fullPath = new File(root + "/" + tailPath)
     fullPath.mkdirs
     val targetFile = new File(fullPath.toString + "/" + sha256)

@@ -2,7 +2,8 @@ package org.wabase.fs
 
 import com.typesafe.config.{Config, ConfigException}
 
-import java.time.Duration
+import java.time.{Duration, Instant, ZoneOffset}
+import java.time.format.DateTimeFormatter
 import scala.concurrent.Future
 
 abstract class DatePathStorage(cfg: Config) extends Storage {
@@ -20,9 +21,16 @@ abstract class DatePathStorage(cfg: Config) extends Storage {
   protected val pathFormat: String    = formatAndPeriod._1
   /**
    * Period of stored file path (day, hour or minute according to files.path-format).
-   * File cleanup min-age should not be shorter than this, see [[Storage.trashAged]].
+   * File cleanup min-age must not be shorter than this, see [[Storage.trashAged]] and
+   * [[org.wabase.FileCleanup.checkMinAge]].
    */
   val pathPeriod: Duration            = formatAndPeriod._2
+  private val pathFormatter           = DateTimeFormatter.ofPattern(pathFormat).withZone(ZoneOffset.UTC)
+  /**
+   * Path (relative to root, without file name) where file stored now is placed.
+   * UTC based, so that path period is constant - local time daylight saving shift would make it longer.
+   */
+  protected def currentTailPath: String = pathFormatter.format(Instant.now)
   protected val Trash                 = "trash"
 
   /** Whether name matches stored file layout yyyy/MM/dd[/HH[/mm]]/sha256 of any path format */

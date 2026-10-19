@@ -50,13 +50,16 @@ abstract class StorageContractSpec(storageName: String) extends FlatSpec with Ma
   /** Lets just stored files become older than zero min-age */
   protected def ageFiles(): Unit = Thread.sleep(20)
   protected val Trash = "trash"
+  protected def utcDatePath: String =
+    java.time.format.DateTimeFormatter.ofPattern("yyyy/MM/dd").withZone(java.time.ZoneOffset.UTC).format(java.time.Instant.now)
   protected val anHour = JDuration.ofHours(1)
 
   it should "store file, consume source file and read it back" in {
     val storage = newStorage()
     val src = tmpFile()
+    val before = utcDatePath
     val tailPath = await(storage.storeFile(src, contentSha))
-    tailPath should fullyMatch regex """\d{4}/\d{2}/\d{2}"""
+    Set(before, utcDatePath) should contain (tailPath) // UTC date, may pass midnight while storing
     src.exists shouldBe false
     read(storage, s"$tailPath/$contentSha") shouldBe content
   }

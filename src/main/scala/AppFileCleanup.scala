@@ -397,6 +397,38 @@ object FileCleanup {
   /** Files and file_info records younger than this are not cleaned. File streamer dedup window depends on it. */
   lazy val minAge: java.time.Duration = config.getDuration("app.file-cleanup.min-age")
 
+  /** Margin for clock differences of app servers, database and file storage */
+  val ClockSkewMargin: Duration = Duration.ofHours(1)
+
+  /**
+   * File body is reused (deduplicated) only if file_info with the same sha was uploaded within this window.
+   * Such file_info is not deleted by file cleanup for at least min-age minus dedup window - this margin covers
+   * clock differences (file_info upload time is set by app server, compared to database time) and transaction
+   * duration. It is [[ClockSkewMargin]], or half of min-age if min-age is shorter than twice the margin.
+   */
+  def dedupWindow(minAge: Duration): Duration =
+    minAge.minus(if (minAge.compareTo(ClockSkewMargin.multipliedBy(2)) < 0) minAge.dividedBy(2) else ClockSkewMargin)
+
+  /**
+   * Checks that min-age is not shorter than path period of file storage, so that file stored now
+   * (at path of current period) is never aged and therefore can not be moved to trash while being stored again.
+   * @return warning message if min-age is longer than path period by less than [[ClockSkewMargin]]
+   * @throws com.typesafe.config.ConfigException.BadValue if min-age is shorter than path period
+   */
+  def checkMinAge(minAge: Duration, pathPeriod: Duration, location: String): Option[String] = {
+    val path = "app.file-cleanup.min-age"
+    if (minAge.compareTo(pathPeriod) < 0)
+      throw new com.typesafe.config.ConfigException.BadValue(path,
+        s"$path ($minAge) must not be shorter than files.path-format period ($pathPeriod) " +
+        s"of file streamer storage $location, otherwise aged file can be stored again at the same path " +
+        s"while file cleanup moves it to trash")
+    else if (minAge.compareTo(pathPeriod.plus(ClockSkewMargin)) < 0)
+      Some(
+        s"$path ($minAge) should be longer than files.path-format period ($pathPeriod) " +
+        s"of file streamer storage $location by at least $ClockSkewMargin to cover clock differences")
+    else None
+  }
+
   /**
    * File cleanup invocation.
    *

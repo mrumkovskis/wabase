@@ -195,7 +195,7 @@ class FileUploadSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitial
     testDb.newTransaction(PoolName(uploadTestsDb))(f)
   private def ageUploadInfo(fi: AppFileStreamer.FileInfo) = newTransaction { implicit res =>
     org.tresql.Query(
-      s"""${app.file_info_table}[id = ?]{upload_time} = [date_sub(upload_time, sql("interval 1 day"))]""", fi.id)
+      s"""${app.file_info_table}[id = ?]{upload_time} = [date_sub(upload_time, sql("interval 2 day"))]""", fi.id)
   }
   private def readFile(fi: AppFileStreamer.FileInfo): String =
     new String(Files.readAllBytes(storedFile(fi).toPath), "UTF-8")

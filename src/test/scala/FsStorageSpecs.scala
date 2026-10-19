@@ -35,7 +35,7 @@ class FsStorageSpecs extends StorageContractSpec("FsStorage") {
   it should "refresh modification time of already stored file if move fails" in {
     val root = newRoot
     val name = "a" * 64
-    val tailPath = new java.text.SimpleDateFormat("yyyy/MM/dd").format(new java.util.Date)
+    val tailPath = utcDatePath
     val target = new File(s"$root/$tailPath/$name")
     target.getParentFile.mkdirs
     Files.write(target.toPath, "content".getBytes("UTF-8"))

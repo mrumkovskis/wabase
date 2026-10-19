@@ -63,13 +63,13 @@ class FileCleanupSpecs extends FlatSpec with Matchers with BeforeAndAfterEach wi
   }
 
   def ageUploadInfo(fileStreamer: AppFileStreamer[_], fileInfo: AppFileStreamer.FileInfoHelper) =
-    newTransaction(implicit res => Query(s"""${fileStreamer.file_info_table}[id = ${fileInfo.id}]{upload_time} = [date_sub(upload_time, sql("interval 1 day"))]"""))
+    newTransaction(implicit res => Query(s"""${fileStreamer.file_info_table}[id = ${fileInfo.id}]{upload_time} = [date_sub(upload_time, sql("interval 2 day"))]"""))
   def ageFile(root: String, fileInfo: AppFileStreamer.FileInfoHelper) = {
     val path = Paths.get(s"$root/${fileInfo.path}")
     val view = Files.getFileAttributeView(path, classOf[BasicFileAttributeView])
     val attributes = view.readAttributes()
     val creationTime = attributes.creationTime()
-    val newTime = FileTime.from(creationTime.toInstant.minus(1, ChronoUnit.DAYS))
+    val newTime = FileTime.from(creationTime.toInstant.minus(2, ChronoUnit.DAYS))
     view.setTimes(newTime, newTime, newTime)
   }
 
@@ -356,6 +356,29 @@ class FileCleanupSpecs extends FlatSpec with Matchers with BeforeAndAfterEach wi
         fileExists(fs.rootPath, fi) shouldBe false
       }
     }
+  }
+
+  it should "check min-age against path format period" in {
+    import java.time.Duration.{ofHours, ofMinutes, ofDays}
+    val ex = intercept[com.typesafe.config.ConfigException.BadValue] {
+      FileCleanup.checkMinAge(ofHours(23), ofDays(1), "file:/files")
+    }
+    ex.getMessage should include ("app.file-cleanup.min-age (PT23H) must not be shorter than files.path-format period (PT24H)")
+    ex.getMessage should include ("file:/files")
+    FileCleanup.checkMinAge(ofDays(1), ofDays(1), "file:/files").get should include ("by at least PT1H")
+    FileCleanup.checkMinAge(ofMinutes(30), ofMinutes(1), "file:/files") shouldBe defined
+    FileCleanup.checkMinAge(ofHours(25), ofDays(1), "file:/files") shouldBe None
+    FileCleanup.checkMinAge(ofHours(2), ofHours(1), "file:/files") shouldBe None
+    FileCleanup.checkMinAge(FileCleanup.minAge, ofDays(1), "file:/files") shouldBe None // default config
+  }
+
+  it should "compute dedup window from min-age" in {
+    import java.time.Duration.{ofHours, ofMinutes, ZERO}
+    FileCleanup.dedupWindow(ofHours(25)) shouldBe ofHours(24)
+    FileCleanup.dedupWindow(ofHours(2)) shouldBe ofHours(1)
+    FileCleanup.dedupWindow(ofMinutes(90)) shouldBe ofMinutes(45)
+    FileCleanup.dedupWindow(ofMinutes(10)) shouldBe ofMinutes(5)
+    FileCleanup.dedupWindow(ZERO) shouldBe ZERO
   }
 
   it should "cleanup files in S3 storage" in {

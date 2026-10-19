@@ -194,11 +194,8 @@ class FileStreamer(
     fsCfg, "files.storage-class", "file streamer file storage", Seq(fsCfg))
 
   storage match {
-    case s: org.wabase.fs.DatePathStorage if FileCleanup.minAge.compareTo(s.pathPeriod) < 0 =>
-      // aged file could then be stored again at the same path while file cleanup moves it to trash
-      logger.warn(
-        s"app.file-cleanup.min-age (${FileCleanup.minAge}) is shorter than files.path-format period " +
-        s"(${s.pathPeriod}) of file streamer storage ${s.location}, aged file can be stored again at the same path")
+    case s: org.wabase.fs.DatePathStorage =>
+      FileCleanup.checkMinAge(FileCleanup.minAge, s.pathPeriod, s.location).foreach(logger.warn(_))
     case _ =>
   }
 
@@ -229,10 +226,10 @@ class FileStreamer(
   /**
    * Stored file body is reused (deduplicated) only if file_info with the same sha was uploaded within this window.
    * Such file_info is not deleted by file cleanup (it deletes file_info older than min-age only) and therefore
-   * file body info and file body are not deleted either while upload is in progress.
-   * Half of min-age is a safety margin for upload duration and clock differences.
+   * file body info and file body are not deleted either until deduplicated file_info is inserted.
+   * See [[FileCleanup.dedupWindow]].
    */
-  val dedupWindowSeconds: Long = FileCleanup.minAge.getSeconds / 2
+  val dedupWindowSeconds: Long = FileCleanup.dedupWindow(FileCleanup.minAge).getSeconds
 
   private val recentFileInfoFilter =
     s"f.$shaColName = :sha_256 & f.upload_time > now() - seconds_to_interval($dedupWindowSeconds)"

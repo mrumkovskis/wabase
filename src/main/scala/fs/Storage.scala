@@ -87,7 +87,8 @@ trait Storage {
    * Age is re-checked just before move since file could have been stored again after it was listed.
    * This is possible only if min-age is shorter than the period of stored file path (day, hour or minute
    * according to path format) - otherwise file stored again gets a newer path. Check and move are not atomic,
-   * so min-age should not be shorter than path period, then aged file is never stored again at the same path.
+   * so min-age must not be shorter than path period (UTC based, see [[DatePathStorage.pathPeriod]]),
+   * then aged file is never stored again at the same path.
    * @param fullName  file name relative to storage root, must match stored file layout
    * @param minAge    minimal age of last modification time
    * @return future of None if file is missing, Some(true) if file is moved to trash,
