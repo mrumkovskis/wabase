@@ -1,5 +1,6 @@
 package org.wabase
 
+import com.typesafe.config.{Config, ConfigValueType}
 import com.typesafe.scalalogging.Logger
 import org.apache.pekko.actor.{Actor, ActorRef, ActorSystem, Props}
 import org.slf4j.LoggerFactory
@@ -10,6 +11,7 @@ import org.wabase.ds.PoolName
 
 import scala.collection.mutable
 import scala.concurrent.{ExecutionContext, Future}
+import scala.jdk.CollectionConverters._
 import scala.language.existentials
 import scala.util.control.NonFatal
 import scala.util.{Failure, Success}
@@ -35,9 +37,17 @@ class WabaseScheduler(wabase: AppBase[_], system: ActorSystem) extends Loggable 
         ))(system.dispatcher)
       } else logger.warn("Cannot schedule jobs, see that parameter app.job.actor is not null")
     }
-    if (!config.getIsNull("app.job.on-start-job")) {
-      val jobName = config.getString("app.job.on-start-job")
-      doJob(jobName, Map())
+    runOnStartJobs()
+  }
+
+  protected def onStartJobs: Seq[String] = WabaseScheduler.onStartJobNames(config)
+
+  /** Starts all on-start jobs in parallel. Result fails if any job fails, other jobs are not affected. */
+  protected def runOnStartJobs(): Future[Any] = {
+    val jobNames = onStartJobs
+    if (jobNames.nonEmpty) {
+      implicit val ec: ExecutionContext = system.dispatcher
+      Future.sequence(jobNames.map(doJob(_, Map())): Seq[Future[Any]])
     } else Future.successful(NoResult)
   }
 
@@ -84,6 +94,16 @@ object WabaseScheduler {
   case object JobNotFound extends Messages
 
   def loggerName(jobName: String): String = s"job.$jobName"
+
+  /** Job names from app.job.on-start-job - null, a string of names separated by whitespace or comma, or a list */
+  def onStartJobNames(conf: Config): Seq[String] = {
+    val key = "app.job.on-start-job"
+    if (conf.getIsNull(key)) Nil
+    else conf.getValue(key).valueType match {
+      case ConfigValueType.STRING => conf.getString(key).split("[\\s,]+").filter(_ != "").toList
+      case _                      => conf.getStringList(key).asScala.toList
+    }
+  }
 
   /** Job executor function - see app.job.executor parameter */
   lazy val executor: String =
