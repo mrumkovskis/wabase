@@ -53,6 +53,9 @@ class TestAppLogMessageNoiseDetector extends EventEvaluatorBase[ILoggingEvent] {
     val msg = event.getFormattedMessage
     msg != null && (
       badStartsWith.exists(msg.startsWith) ||
+      // MultiPoolTest late_init pool db does not exist at startup intentionally
+      (msg.startsWith("Error initializing Db connection pool for ") &&
+        msg.contains("jdbc:hsqldb:mem:late_init;ifexists=true")) ||
       (event.getThreadName != null &&
         event.getThreadName.startsWith(transformerSpecThreadPrefix) &&
         transformerSpecSnippets.exists(msg.contains))

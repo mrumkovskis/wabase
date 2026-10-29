@@ -27,3 +27,5 @@ Tresql primary-key filters name the column. Audit extra-field load compares the 
 `getObjectOrNewInstance` rethrows an exception thrown by the class constructor instead of trying other class name variants.
 
 Audit `request_time` is the request start time stored on the request.
+
+A JDBC pool whose startup initialization failed is created on a later use. Concurrent first use initializes it once.
