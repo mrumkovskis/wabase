@@ -544,7 +544,7 @@ object DeferredControl extends Loggable with AppConfig {
       fif.map { fi =>
         db_write { implicit res =>
           statsRegisterDeferredResult
-          Query("""=deferred_request[?]
+          Query("""=deferred_request[request_hash = ?]
             {status, response_time, response_headers, response_entity_file_id, response_entity_file_sha_256 }
             [?, ?, ?, ?, ?]""",
             hash, status, responseTime,  header, fi.id, fi.sha_256)
