@@ -125,10 +125,9 @@ class Audit extends Loggable {
   }
 
   def createAuditRecord(ctx: WabaseRequestContext, response: HttpResponse): AuditRecord = {
-    val ts = ctx.req.getAttribute(AuditTimestampKey).orElse(Instant.now)
     AuditRecord(
       request_time =
-        Instant.now.toString,
+        ctx.req.getAttribute(AuditTimestampKey).orElse(Instant.now).toString,
       request   =
         RequestAudit(
           uri     = ctx.req.uri.toString,
