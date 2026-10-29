@@ -944,7 +944,7 @@ class WabaseSwaggerGenerator(
     }
   }
 
-  /** Schema names `$ref`'d from `rootRefs`, following `$ref`s inside generated schemas. */
+  /** Schema names `\$ref`'d from `rootRefs`, following `\$ref`s inside generated schemas. */
   def reachableSchemaNames(rootRefs: Set[String], schemas: Map[String, Schema[_]]): Set[String] = {
     val seen = mutable.Set[String]()
     val queue = mutable.Queue[String]()

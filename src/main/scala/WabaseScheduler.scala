@@ -336,7 +336,8 @@ class WabaseJobActor(
 /** Controls whether a job may start and records its outcome.
   *
   * [[WabaseJobActor]] calls [[acquireIsRunningLock]] before running a job and
-  * [[updateCronJobStatus]] when it finishes. Configure the implementation with
+  * [[updateCronJobStatus(name:String,status:String,details:String)* updateCronJobStatus]]
+  * when it finishes. Configure the implementation with
   * `app.job.status-controller`.
   */
 trait WabaseJobStatusController {
@@ -540,8 +541,9 @@ class NoOpWabaseJobStatusController extends WabaseJobStatusController {
 }
 
 /** Records each job run. [[WabaseJobActor]] calls [[jobStarted]] after taking the
-  * running lock and [[jobFinished]] when the job completes. Configure with
-  * `app.job.status-logger`.
+  * running lock and
+  * [[jobFinished(uuid:String,name:String,status:String,details:String,error:Throwable)* jobFinished]]
+  * when the job completes. Configure with `app.job.status-logger`.
   */
 trait WabaseJobStatusLogger extends Loggable {
   override def loggerName: String = "wabase.job-status-logger"
