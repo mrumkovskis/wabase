@@ -55,11 +55,20 @@ class TestAppLogMessageNoiseDetector extends EventEvaluatorBase[ILoggingEvent] {
     // FileUploadSpecs corrupts stored file intentionally
     "Stored file " -> " is corrupt or not accessible, storing uploaded file anew",
   )
+  // BorerNestedArraysTransformerSpecs fails the stream on purpose.
+  private val transformerSpecThreadPrefix = "borer-nested-arrays-transformer-specs"
+  private val transformerSpecSnippets = List(
+    "JSON String longer than configured maximum of 1048576 characters",
+    "Array length 2 is greater than the configured maximum of 1",
+  )
   override def evaluate(event: ILoggingEvent): Boolean = {
     val msg = event.getFormattedMessage
     msg != null && (
       badStartsWith.exists(msg.startsWith) ||
-      badStartsWithContaining.exists { case (start, part) => msg.startsWith(start) && msg.contains(part) }
+      badStartsWithContaining.exists { case (start, part) => msg.startsWith(start) && msg.contains(part) } ||
+      (event.getThreadName != null &&
+        event.getThreadName.startsWith(transformerSpecThreadPrefix) &&
+        transformerSpecSnippets.exists(msg.contains))
     )
   }
 }

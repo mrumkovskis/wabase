@@ -1,8 +1,8 @@
 val scalaV    = "2.13.18" // "3.3.7"
 
-val pekkoV    = "1.7.0"
+val pekkoV    = "1.7.1"
 val pekkoConnV= "1.3.0"
-val pekkoHttpV= "1.4.0"
+val pekkoHttpV= "1.4.2"
 
 // In-process SMTP server for email tests. Exclusions - jakarta mail api and implementation
 // are already provided by simple-java-mail (as jakarta.mail-api and angus-mail).
@@ -30,7 +30,7 @@ lazy val commonSettings = Seq(
   name := "wabase",
   scalaVersion := scalaV,
   crossScalaVersions := Seq(
-    "3.3.8",
+    "3.3.9",
     "2.13.18",
     "2.12.21",
   ),
@@ -61,13 +61,13 @@ lazy val commonSettings = Seq(
       "org.apache.pekko"           %% "pekko-slf4j"           % pekkoV,
       "org.apache.pekko"           %% "pekko-stream"          % pekkoV,
       "com.typesafe.scala-logging" %% "scala-logging"         % "3.9.6",
-      "com.typesafe"               %% "ssl-config-core"       % "0.7.1",
+      "com.typesafe"               %% "ssl-config-core"       % "0.7.2",
       "com.zaxxer"                  % "HikariCP"              % "7.1.0",
-      "ch.qos.logback"              % "logback-classic"       % "1.6.3",
+      "ch.qos.logback"              % "logback-classic"       % "1.6.6",
       "org.mojoz"                  %% "mojoz"                 % "7.2.1",
       "org.mojoz"                  %% "querease"              % "11.0.0-SNAPSHOT",
       "commons-validator"           % "commons-validator"     % "1.11.0",
-      "org.postgresql"              % "postgresql"            % "42.7.13",
+      "org.postgresql"              % "postgresql"            % "42.7.14",
       "com.lambdaworks"             % "scrypt"                % "1.4.0",
       "org.tresql"                 %% "tresql"                % "14.0.0-SNAPSHOT",
       "io.bullet"                  %% "borer-core"            % borerV,
@@ -79,10 +79,10 @@ lazy val commonSettings = Seq(
       "io.github.samueleresca"     %% "pekko-quartz-scheduler"% "1.3.0-pekko-1.1.x" % Optional,
       "io.swagger.core.v3"          % "swagger-jaxrs2-jakarta"% "2.2.55"            % Optional,
       "org.xhtmlrenderer"           % "flying-saucer-pdf"     % "9.5.2"             % Optional,
-      "org.simplejavamail"          % "simple-java-mail"      % "9.3.5"             % Optional,
+      "org.simplejavamail"          % "simple-java-mail"      % "9.3.9"             % Optional,
       "org.graalvm.js"              % "js"                    % "22.3.5"            % Optional,
       "org.graalvm.js"              % "js-scriptengine"       % "22.3.5"            % Optional,
-      pekkoS3Dependency                                                 % Optional,
+      pekkoS3Dependency                                                             % Optional,
       "org.apache.pekko"           %% "pekko-http-xml"        % pekkoHttpV          % Optional,
     ) ++ Seq( // for test
       "org.scalatest"              %% "scalatest"             % "3.2.20"  %     Test,

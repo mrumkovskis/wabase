@@ -1,3 +1,3 @@
-addSbtPlugin("ch.epfl.scala" % "sbt-version-policy" % "3.3.0")
+addSbtPlugin("ch.epfl.scala" % "sbt-version-policy" % "3.4.0")
 
 addSbtPlugin("com.thoughtworks.sbt-api-mappings" % "sbt-api-mappings" % "3.1.0")

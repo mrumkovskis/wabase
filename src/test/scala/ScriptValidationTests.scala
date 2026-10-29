@@ -95,6 +95,18 @@ class ValidationEngineTests extends FlatSpec with Matchers {
     }.getMessage should be ("false throws")
   }
 
+  "validation engine" should "bind names that are not javascript identifiers as global properties" in {
+    val engine = WabaseScriptValidation.scriptEngineFactory()
+    WabaseScriptValidation.initScriptEngine(
+      Map("old key" -> Map("code" -> "abc"), "my_string_field" -> "x", "new" -> 1),
+      engine,
+      WabaseScriptValidation.customFunctions(),
+    )
+    engine.eval("this['old key'].code") shouldBe "abc"
+    engine.eval("my_string_field") shouldBe "x"
+    engine.eval("this['new']").asInstanceOf[Number].intValue shouldBe 1
+  }
+
   "validation engine" should "support variables" in {
     failures("my_string_field", "string throws") shouldBe
       stringResult("string throws", Nil, "mystring")
