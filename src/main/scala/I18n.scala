@@ -116,6 +116,7 @@ trait I18n {
 
 object I18nService {
   val ApplicationLanguageCookiePostfix = config.getString("app.language-cookie-postfix")
+  val LocaleRegex = "([a-zA-Z]{2,8})(?:[\\-_]([a-zA-Z]{4}))?(?:[\\-_]([a-zA-Z]{2}|[0-9]{3}))?(?:[\\-_]([^\\-_]+))?".r
 
   def currentLangFromHeader(request: HttpRequest): Option[String] = {
     LanguageNegotiator(request.headers)
@@ -125,9 +126,20 @@ object I18nService {
       .map(_.mkString("-"))
   }
 
+  private def buildLocale(str: String): Locale = str match {
+    case LocaleRegex(lang, script, country, variant) =>
+      val builder = new Locale.Builder
+      builder.setLanguage(lang)
+      builder.setScript(script)
+      builder.setRegion(country)
+      builder.setVariant(variant)
+      builder.build()
+    case other => throw new MatchError(other)
+  }
+
   def applicationLocale(state: ApplicationState): Locale =
     state.state.get(AppServiceBase.ApplicationStateCookiePrefix + ApplicationLanguageCookiePostfix)
-      .map(l => new Locale(String.valueOf(l)))
+      .map(l => buildLocale(String.valueOf(l)))
       .getOrElse(Locale.getDefault)
 
   implicit def i18BundleMarshaller: ToEntityMarshaller[I18Bundle] = Marshaller.combined { bundle =>
