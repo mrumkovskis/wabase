@@ -2,7 +2,7 @@ val scalaV    = "2.13.18" // "3.3.7"
 
 val pekkoV    = "1.7.1"
 val pekkoConnV= "1.3.0"
-val pekkoHttpV= "1.4.0"
+val pekkoHttpV= "1.4.2"
 
 javacOptions ++= Seq("-source", "11", "-target", "11", "-Xlint")
 initialize := {
