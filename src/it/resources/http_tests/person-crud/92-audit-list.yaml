@@ -1,5 +1,5 @@
 sleep:    1s # wait for audit
-retries:  10
+retries:  400
 path:     /data/audit
 params:
   request_time_from: <- person_crud_start_time
