@@ -15,3 +15,5 @@ File cleanup minimum age is `app.file-cleanup.min-age` (default 24 h).
 `fold` variables use the same name parser as other op variables.
 
 Op keywords match at a word boundary, so an identifier that starts with a keyword is left as an identifier.
+
+Script validation binds a value whose name is not a JavaScript identifier, such as `old key`, as `this['old key']`.
