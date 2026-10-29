@@ -56,7 +56,7 @@ lazy val commonSettings = Seq(
       "org.mojoz"                  %% "mojoz"                 % "7.2.1",
       "org.mojoz"                  %% "querease"              % "10.2.1",
       "commons-validator"           % "commons-validator"     % "1.11.0",
-      "org.postgresql"              % "postgresql"            % "42.7.13",
+      "org.postgresql"              % "postgresql"            % "42.7.14",
       "com.lambdaworks"             % "scrypt"                % "1.4.0",
       "org.tresql"                 %% "tresql"                % "13.5.1",
       "io.bullet"                  %% "borer-core"            % borerV,
