@@ -102,7 +102,7 @@ class WabaseJobActor(
     case Tick(jd, params) =>
       val jobName = jd.name
       try {
-        if (jobStatusController.acquireIsRunnningLock(jobName)) {
+        if (jobStatusController.acquireIsRunningLock(jobName)) {
           context.system.log.info(jobName + " started")
           scheduler.doJob(jd, params).onComplete {
             case Success(_) =>
@@ -128,7 +128,10 @@ class WabaseJobActor(
 
 trait WabaseJobStatusController {
   def init(): Unit
-  def acquireIsRunnningLock(name: String): Boolean
+  @annotation.nowarn("cat=deprecation")
+  def acquireIsRunningLock(name: String): Boolean = acquireIsRunnningLock(name)
+  @deprecated("Use acquireIsRunningLock instead", "8.1.3")
+  def acquireIsRunnningLock(name: String): Boolean = acquireIsRunningLock(name)
   def updateCronJobStatus(name: String, status: String): Unit
 }
 
@@ -169,7 +172,7 @@ class DefaultWabaseJobStatusController(dbAccess: DbAccess) extends WabaseJobStat
     }
   }
 
-  def acquireIsRunnningLock(name: String): Boolean = db { implicit res =>
+  override def acquireIsRunningLock(name: String): Boolean = db { implicit res =>
     Query(
       """+cron_job_status
         |{id, cron_name, status, report_time}
@@ -188,4 +191,7 @@ class DefaultWabaseJobStatusController(dbAccess: DbAccess) extends WabaseJobStat
       false
     }
   }
+
+  @deprecated("Use acquireIsRunningLock instead", "8.1.3")
+  override def acquireIsRunnningLock(name: String): Boolean = acquireIsRunningLock(name)
 }

@@ -7,3 +7,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 getByNameAction route uses application get method instead of list, so manager methods before after are on ViewContext instead of ListContext.
 BorerNestedArraysTransformer decodes with `borer.transform.cbor.decoding` and `borer.transform.json.decoding` (same defaults as request decoding).
+
+`acquireIsRunningLock` is the job status lock method. `acquireIsRunnningLock` remains and is deprecated.
