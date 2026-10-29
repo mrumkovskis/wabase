@@ -734,7 +734,8 @@ object BorerNestedArraysTransformer {
    * size must not exceed parameter `bufferSizeHint` value, otherwise flow will fail with
    * [[scala.RuntimeException]] — see `TransformerFlow.createLogic`.
    *
-   * Produced flow is used for performance reasons as an alternative to method [[blockingTransform]].
+   * Produced flow is used for performance reasons as an alternative to method
+   * [[[blockingTransform(src:org\.apache\.pekko\.stream\.scaladsl\.Source[org\.apache\.pekko\.util\.ByteString,_],createEncoder:org\.wabase\.ResultEncoder\.EncoderFactory,transformFrom:io\.bullet\.borer\.Target)* blockingTransform]]].
    * Decoding uses [[defaultCborDecodingConfig]] and [[defaultJsonDecodingConfig]] unless the
    * overload that takes those configs is used.
    */
