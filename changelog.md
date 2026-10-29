@@ -13,3 +13,5 @@ BorerNestedArraysTransformer decodes with `borer.transform.cbor.decoding` and `b
 File cleanup minimum age is `app.file-cleanup.min-age` (default 24 h).
 
 `fold` variables use the same name parser as other op variables.
+
+Op keywords match at a word boundary, so an identifier that starts with a keyword is left as an identifier.
