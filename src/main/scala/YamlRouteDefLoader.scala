@@ -80,7 +80,7 @@ class YamlRouteDefLoader(
         }
       val PathRegex(m, p) = route: @unchecked
       val method = if (m.trim.isEmpty) Set[HttpMethod]() else m.split("\\s+").map(httpMethods(_)).toSet
-      val (path, pathNamesAndParameters): (Regex, Seq[PathNameAndParameters]) = regexAndPathNamesAndParameters(p, rdMap)
+      val (path, pathNamesAndParameters) = regexAndPathNamesAndParameters(p, rdMap)
       val pathParameterNames =
         if  (pathNamesAndParameters.size == 1)
              pathNamesAndParameters.head.parameters.map(_.name)
