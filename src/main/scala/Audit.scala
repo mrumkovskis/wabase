@@ -97,7 +97,7 @@ object Audit {
        val tableCols = tableMetadata.tableDef(tableName, db).cols
        val relevantFieldsFromTable = tableCols.map(_.name).filter(relevantKeys(viewName)).filterNot(fieldsInPojo.contains)
        if (relevantFieldsFromTable.nonEmpty)
-         Query(s"${Option(db).map(db => s"db:").getOrElse("")}$tableName[?]{${relevantFieldsFromTable.mkString(",")}}", viewId)(dbAccess.tresqlResources)
+         Query(s"${Option(db).map(db => s"$db:").getOrElse("")}$tableName[?]{${relevantFieldsFromTable.mkString(",")}}", viewId)(dbAccess.tresqlResources)
            .toListOfMaps.headOption.map(_.filter(_._2 != null))
        else None
      }

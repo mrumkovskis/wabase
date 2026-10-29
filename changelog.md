@@ -19,3 +19,5 @@ Op keywords match at a word boundary, so an identifier that starts with a keywor
 Script validation binds a value whose name is not a JavaScript identifier, such as `old key`, as `this['old key']`.
 
 `I18nService.applicationLocale` parses a language tag with a script, region, or variant (`en-US`, `zh-Hant-TW`). A tag that does not match this shape fails.
+
+Audit of extra fields from a view stored in a non-default database uses that database name as the tresql prefix.
