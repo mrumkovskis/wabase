@@ -1130,7 +1130,7 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
     (opt(opResultType) <~ "extract\\s+entity".r) ~ opt("using" ~> ident) ~ opt(operation) ^^ {
       case conformTo ~ decoder ~ op => ExtractHttpEntity(conformTo, decoder.orNull, op.orNull)
     } named "extract-entity"
-  def foreachFoldOp: MemParser[FoldOp] = ("fold" ~ "(") ~> (ident <~ ",") ~ (ident <~ ")") ~ operation ^^ {
+  def foreachFoldOp: MemParser[FoldOp] = ("fold" ~ "(") ~> (varName <~ ",") ~ (varName <~ ")") ~ operation ^^ {
     case res ~ el ~ op => FoldOp(res, el, op)
   } named "foreach-fold-op"
   def foreachOp: MemParser[Foreach] = foreachBlockOpBase ~ actionFromOp ~ opt(foreachFoldOp) ^^ {

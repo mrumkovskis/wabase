@@ -11,3 +11,5 @@ BorerNestedArraysTransformer decodes with `borer.transform.cbor.decoding` and `b
 `acquireIsRunningLock` is the job status lock method. `acquireIsRunnningLock` remains and is deprecated.
 
 File cleanup minimum age is `app.file-cleanup.min-age` (default 24 h).
+
+`fold` variables use the same name parser as other op variables.
