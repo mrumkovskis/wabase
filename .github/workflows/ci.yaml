@@ -8,7 +8,7 @@ jobs:
       matrix:
         os:     [ubuntu-24.04]    # TODO macos-latest, windows-latest
         java:   [11] #, 17, 21]   # TODO
-        scala:  ["2.12.21", "2.13.18", "3.3.8"]
+        scala:  ["2.12.21", "2.13.18", "3.3.9"]
     steps:
     - name: Checkout
       uses: actions/checkout@v7

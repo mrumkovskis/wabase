@@ -20,7 +20,7 @@ lazy val commonSettings = Seq(
   name := "wabase",
   scalaVersion := scalaV,
   crossScalaVersions := Seq(
-    "3.3.8",
+    "3.3.9",
     "2.13.18",
     "2.12.21",
   ),
