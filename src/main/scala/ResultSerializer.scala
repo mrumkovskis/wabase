@@ -560,10 +560,21 @@ class BorerNestedArraysTransformer(reader: Reader, handler: ResultEncoder) {
 
 import io.bullet.borer.compat.pekko.ByteStringProvider
 object BorerNestedArraysTransformer {
+  /** CBOR decoding for data re-read by this transformer. `borer.transform.cbor.decoding`. */
+  lazy val defaultCborDecodingConfig: Cbor.DecodingConfig =
+    BorerDecodeConfig.cbor(config.getConfig("borer.transform.cbor.decoding"))
+  /** JSON decoding for data re-read by this transformer. `borer.transform.json.decoding`. */
+  lazy val defaultJsonDecodingConfig: Json.DecodingConfig =
+    BorerDecodeConfig.json(config.getConfig("borer.transform.json.decoding"))
 
-  private def borerReader[T: Input.Provider](source: T, format: Target) = format match {
-    case _: Cbor.type => Cbor.reader(source)
-    case _: Json.type => Json.reader(source)
+  private def borerReader[T: Input.Provider](
+    source: T,
+    format: Target,
+    cborDecodingConfig: Cbor.DecodingConfig,
+    jsonDecodingConfig: Json.DecodingConfig,
+  ) = format match {
+    case _: Cbor.type => Cbor.reader(source, cborDecodingConfig)
+    case _: Json.type => Json.reader(source, jsonDecodingConfig)
   }
 
   private class TransformerSource(
@@ -571,14 +582,27 @@ object BorerNestedArraysTransformer {
     createEncoder:        EncoderFactory,
     transformFrom:        Target,
     bufferSizeHint:       Int,
+    cborDecodingConfig:   Cbor.DecodingConfig,
+    jsonDecodingConfig:   Json.DecodingConfig,
   ) extends GraphStage[SourceShape[ByteString]] {
+    // Previous constructor, kept for binary compatibility with 8.1.2.
+    def this(
+      createTransformable: () => InputStream,
+      createEncoder:       EncoderFactory,
+      transformFrom:       Target,
+      bufferSizeHint:      Int,
+    ) = this(
+      createTransformable, createEncoder, transformFrom, bufferSizeHint,
+      BorerNestedArraysTransformer.defaultCborDecodingConfig,
+      BorerNestedArraysTransformer.defaultJsonDecodingConfig,
+    )
     val out = Outlet[ByteString]("BorerNestedArraysTransformerSource.out")
     override val shape: SourceShape[ByteString] = SourceShape(out)
     override def createLogic(attrs: Attributes): GraphStageLogic = new GraphStageLogic(shape) {
       private val buf         = new ByteStringBuilder
       private val encoder     = createEncoder(buf.asOutputStream)
       private val transformer = new BorerNestedArraysTransformer(
-        borerReader(createTransformable(), transformFrom),
+        borerReader(createTransformable(), transformFrom, cborDecodingConfig, jsonDecodingConfig),
         encoder,
       )
       override def preStart(): Unit = {
@@ -601,10 +625,22 @@ object BorerNestedArraysTransformer {
   }
 
   private class TransformerFlow(
-    createEncoder:  EncoderFactory,
-    transformFrom:  Target,
-    bufferSizeHint: Int,
+    createEncoder:      EncoderFactory,
+    transformFrom:      Target,
+    bufferSizeHint:     Int,
+    cborDecodingConfig: Cbor.DecodingConfig,
+    jsonDecodingConfig: Json.DecodingConfig,
   ) extends GraphStage[FlowShape[ByteString, ByteString]] {
+    // Previous constructor, kept for binary compatibility with 8.1.2.
+    def this(
+      createEncoder:  EncoderFactory,
+      transformFrom:  Target,
+      bufferSizeHint: Int,
+    ) = this(
+      createEncoder, transformFrom, bufferSizeHint,
+      BorerNestedArraysTransformer.defaultCborDecodingConfig,
+      BorerNestedArraysTransformer.defaultJsonDecodingConfig,
+    )
     val in = Inlet[ByteString]("BorerNestedArraysTransformerFlow.in")
     val out = Outlet[ByteString]("BorerNestedArraysTransformerFlow.out")
     override val shape = FlowShape.of(in, out)
@@ -629,7 +665,7 @@ object BorerNestedArraysTransformer {
       }
       private val encoder     = createEncoder(outBuf.asOutputStream)
       private lazy val transformer = new BorerNestedArraysTransformer(
-        borerReader(transformable, transformFrom),
+        borerReader(transformable, transformFrom, cborDecodingConfig, jsonDecodingConfig),
         encoder,
       )
       override def preStart(): Unit = {
@@ -674,8 +710,24 @@ object BorerNestedArraysTransformer {
     createEncoder:        EncoderFactory,
     transformFrom:        Target = Cbor,
     bufferSizeHint:       Int = 1024,
+  ): Source[ByteString, NotUsed] =
+    source(
+      createTransformable, createEncoder, transformFrom, bufferSizeHint,
+      defaultCborDecodingConfig, defaultJsonDecodingConfig,
+    )
+
+  def source(
+    createTransformable:  () => InputStream,
+    createEncoder:        EncoderFactory,
+    transformFrom:        Target,
+    bufferSizeHint:       Int,
+    cborDecodingConfig:   Cbor.DecodingConfig,
+    jsonDecodingConfig:   Json.DecodingConfig,
   ): Source[ByteString, NotUsed] = Source.fromGraph(
-    new TransformerSource(createTransformable, createEncoder, transformFrom, bufferSizeHint)
+    new TransformerSource(
+      createTransformable, createEncoder, transformFrom, bufferSizeHint,
+      cborDecodingConfig, jsonDecodingConfig,
+    )
   )
 
   /** Returned flow's incoming cbor or json data item (token)
@@ -683,24 +735,44 @@ object BorerNestedArraysTransformer {
    * [[scala.RuntimeException]] — see `TransformerFlow.createLogic`.
    *
    * Produced flow is used for performance reasons as an alternative to method [[blockingTransform]].
+   * Decoding uses [[defaultCborDecodingConfig]] and [[defaultJsonDecodingConfig]] unless the
+   * overload that takes those configs is used.
    */
   def flow(
     createEncoder:  EncoderFactory,
     transformFrom:  Target = Cbor,
     bufferSizeHint: Int = 1024,
+  ): Flow[ByteString, ByteString, NotUsed] =
+    flow(createEncoder, transformFrom, bufferSizeHint, defaultCborDecodingConfig, defaultJsonDecodingConfig)
+
+  def flow(
+    createEncoder:      EncoderFactory,
+    transformFrom:      Target,
+    bufferSizeHint:     Int,
+    cborDecodingConfig: Cbor.DecodingConfig,
+    jsonDecodingConfig: Json.DecodingConfig,
   ): Flow[ByteString, ByteString, NotUsed] = Flow.fromGraph(
-    new TransformerFlow(createEncoder, transformFrom, bufferSizeHint)
+    new TransformerFlow(createEncoder, transformFrom, bufferSizeHint, cborDecodingConfig, jsonDecodingConfig)
   )
 
   def transform[T: Input.Provider](
     transformable:  T,
     createEncoder:  EncoderFactory,
     transformFrom:  Target = Cbor,
+  ): ByteString =
+    transform(transformable, createEncoder, transformFrom, defaultCborDecodingConfig, defaultJsonDecodingConfig)
+
+  def transform[T: Input.Provider](
+    transformable:      T,
+    createEncoder:      EncoderFactory,
+    transformFrom:      Target,
+    cborDecodingConfig: Cbor.DecodingConfig,
+    jsonDecodingConfig: Json.DecodingConfig,
   ): ByteString = {
     val buf = new ByteStringBuilder
     val encoder = createEncoder(buf.asOutputStream)
     val transformer = new BorerNestedArraysTransformer(
-      borerReader(transformable, transformFrom),
+      borerReader(transformable, transformFrom, cborDecodingConfig, jsonDecodingConfig),
       encoder,
     )
     transformer.transform()
@@ -713,12 +785,24 @@ object BorerNestedArraysTransformer {
     src: Source[ByteString, _],
     createEncoder: EncoderFactory,
     transformFrom: Target = Cbor,
+  )(implicit ec: ExecutionContext, mat: Materializer): Source[ByteString, Future[Done]] =
+    blockingTransform(src, createEncoder, transformFrom, defaultCborDecodingConfig, defaultJsonDecodingConfig)
+
+  def blockingTransform(
+    src: Source[ByteString, _],
+    createEncoder: EncoderFactory,
+    transformFrom: Target,
+    cborDecodingConfig: Cbor.DecodingConfig,
+    jsonDecodingConfig: Json.DecodingConfig,
   )(implicit ec: ExecutionContext, mat: Materializer): Source[ByteString, Future[Done]] = {
     val in = src.runWith(StreamConverters.asInputStream())
     StreamConverters.asOutputStream()
       .mapMaterializedValue { out =>
         Future {
-          try new BorerNestedArraysTransformer(borerReader(in, transformFrom), createEncoder(out)).transform()
+          try new BorerNestedArraysTransformer(
+            borerReader(in, transformFrom, cborDecodingConfig, jsonDecodingConfig),
+            createEncoder(out),
+          ).transform()
           finally out.close()
           Done
         }.andThen {

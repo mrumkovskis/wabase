@@ -43,9 +43,20 @@ class TestAppLogMessageNoiseDetector extends EventEvaluatorBase[ILoggingEvent] {
     "Failed to release savepoint on db connection",
     "Failed to roll back savepoint on db connection",
   )
+  // BorerNestedArraysTransformerSpecs fails the stream on purpose.
+  private val transformerSpecThreadPrefix = "borer-nested-arrays-transformer-specs"
+  private val transformerSpecSnippets = List(
+    "JSON String longer than configured maximum of 1048576 characters",
+    "Array length 2 is greater than the configured maximum of 1",
+  )
   override def evaluate(event: ILoggingEvent): Boolean = {
     val msg = event.getFormattedMessage
-    msg != null && badStartsWith.exists(msg.startsWith)
+    msg != null && (
+      badStartsWith.exists(msg.startsWith) ||
+      (event.getThreadName != null &&
+        event.getThreadName.startsWith(transformerSpecThreadPrefix) &&
+        transformerSpecSnippets.exists(msg.contains))
+    )
   }
 }
 
