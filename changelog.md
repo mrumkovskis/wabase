@@ -23,3 +23,5 @@ Script validation binds a value whose name is not a JavaScript identifier, such 
 Audit of extra fields from a view stored in a non-default database uses that database name as the tresql prefix.
 
 Tresql primary-key filters name the column. Audit extra-field load compares the single primary-key column, or `id`. Deferred request result update filters on `request_hash`.
+
+`getObjectOrNewInstance` rethrows an exception thrown by the class constructor instead of trying other class name variants.
