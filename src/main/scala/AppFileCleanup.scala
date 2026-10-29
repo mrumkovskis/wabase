@@ -17,7 +17,7 @@ import scala.language.reflectiveCalls
 class AppFileCleanup(qe: AppQuerease, resourcesTemplate: Resources,
                      fileStreamers: AppFileStreamerConfig*) extends Loggable {
 
-  lazy val minAgeMillis: Long = 1000L * 60 * 60 * 24
+  lazy val minAgeMillis: Long = config.getDuration("app.file-cleanup.min-age").toMillis
   protected lazy val refsToIgnore: Set[(String, String)] = Set.empty
   protected lazy val batchSizeOpt: Option[Int] = None
 

@@ -9,3 +9,5 @@ getByNameAction route uses application get method instead of list, so manager me
 BorerNestedArraysTransformer decodes with `borer.transform.cbor.decoding` and `borer.transform.json.decoding` (same defaults as request decoding).
 
 `acquireIsRunningLock` is the job status lock method. `acquireIsRunnningLock` remains and is deprecated.
+
+File cleanup minimum age is `app.file-cleanup.min-age` (default 24 h).
