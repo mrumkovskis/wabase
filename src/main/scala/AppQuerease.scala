@@ -1925,18 +1925,12 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     import scala.concurrent.duration._
     implicit val ec = as.dispatcher
 
-    def decodeToMap(bs: ByteString) =
-      if (viewName == null) CborOrJsonAnyValueDecoder.decode(bs)
-      else cborOrJsonDecoder.decodeToMap(bs, viewName)(viewNameToMapZero)
-    def decodeToSeqOfMaps(bs: ByteString) =
-      if (viewName == null) CborOrJsonAnyValueDecoder.decode(bs)
-      else cborOrJsonDecoder.decodeToSeqOfMaps(bs, viewName)(viewNameToMapZero)
-    def decodeUsingDecoder = decoder(viewName)(ent)
-
-    if (decoder != null) Future.successful(decodeUsingDecoder)
+    if (decoder != null) Future.successful(decoder(viewName)(ent))
     else ent.toStrict(1.second).map { se =>
       if (ent.contentType == ContentTypes.`application/json`)
-        if (isCollection) decodeToSeqOfMaps(se.data) else decodeToMap(se.data)
+        if (viewName == null) CborOrJsonAnyValueDecoder.decode(se.data)
+        else if (isCollection) cborOrJsonDecoder.decodeToSeqOfMaps(se.data, viewName)(viewNameToMapZero)
+        else cborOrJsonDecoder.decodeToMap(se.data, viewName)(viewNameToMapZero)
       else se.data.decodeString("UTF-8")
     }
   }
