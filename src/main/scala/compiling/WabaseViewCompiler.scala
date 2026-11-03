@@ -48,6 +48,10 @@ trait WabaseViewCompiler extends ViewCompiler with AppMetadata { this: AppQuerea
                 st.copy(value = st.tresqlExtractor(st.value)(Action.Tresql(tresql)))
               }
           }.getOrElse(st)
+        case Action.Auth =>
+          authQueryString(viewDef(st.name), st.action).map { q =>
+            st.copy(value = st.tresqlExtractor(st.value)(Action.Tresql(q)))
+          }.getOrElse(st)
       })
     val state = State[QueriesState](
       actionName, objName, Map(),

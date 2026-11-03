@@ -390,7 +390,9 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val keyFields = Option(viewDef.keyFields).map(_.map(toAppFieldDef(viewDef, _))).orNull
 
     import viewDef._
-    val auth = toAuth(viewDef, Auth, knownAuthOps)
+    val (auth, actionAuth) = toAuthAndActionAuth(viewDef, Auth, knownAuthOps)
+    if (actionAuth.isEmpty) actionAuthByView.remove(name)
+    else actionAuthByView.update(name, actionAuth)
 
     def badApiStructure = s"Unexpected API methods and roles structure for view ${viewDef.name}"
     val api =
@@ -431,7 +433,8 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val opParser = new OpParser(viewDef.name, tableMetadata, resourceClassLoader)
     val actions = Action().foldLeft(Map[String, Action]()) { (res, actionName) =>
       val a = parseOrCacheAction(getSeq(actionName, viewDef.extras), opParser)
-      if (a.steps.nonEmpty) res + (actionName -> a) else res
+      if (a.steps.isEmpty) res
+      else res + (actionName -> withImpliedAuthStep(actionName, a, auth, name))
     }
     val maxKeySize            = viewDef.keyFieldNames.size
     val hasFullKeyOps         = fullKeyOps.exists(apiToRoles.contains)
@@ -470,6 +473,69 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       .updateWabaseExtras(_ =>
         AppViewDef(limit, paths, explicitDb, decoder, maxContentSize, timeout, sqlTimeout,
           auth, apiToRoles, actions, Map.empty, minKeySizeForCollection, maxKeySizeForCollection))
+  }
+
+  /** Step-only auth (`auth count`, `auth upsert`, `auth update+`, `auth head`, …) and
+    * unqualified `auth`. Step-only expressions are not copied into [[AuthFilters]]. */
+  private val actionAuthByView =
+    scala.collection.concurrent.TrieMap.empty[String, Map[String, Seq[String]]]
+
+  /** Expressions of one step-only auth specifier for `viewName`. */
+  protected def actionAuthExpressions(viewName: String, actionName: String): Seq[String] =
+    actionAuthByView.get(viewName).flatMap(_.get(actionName)).getOrElse(Nil)
+
+  /** Unqualified `auth` expressions. Already included in the persistence filters, so the auth
+    * step adds them only for actions that do not read those filters. */
+  private def unqualifiedAuthExpressions(viewName: String): Seq[String] =
+    actionAuthByView.get(viewName).flatMap(_.get(UnqualifiedAuthOp)).getOrElse(Nil)
+
+  /** Auth expressions for an action name. Unqualified `auth` applies to every action.
+    * `save` uses expressions shared by insert and update (`auth` and `auth save`).
+    * `upsert` uses that intersection plus `auth upsert`.
+    * `list` uses list auth. `count` uses list auth plus `auth count`.
+    * `update+` uses update auth plus `auth update+`.
+    * `head`, `options`, `post`, `put`, `new` and `job` use unqualified `auth` plus their own specifier.
+    * Override to change which expressions are checked; persistence filters are unaffected. */
+  protected def authExpressions(actionName: String, auth: AuthFilters, viewName: String): Seq[String] = {
+    import Action._
+    val sharedSave = {
+      val updateAuth = auth.forUpdate.toSet
+      auth.forInsert.filter(updateAuth)
+    }
+    val exprs = actionName match {
+      case Get => auth.forGet
+      case List => auth.forList
+      case Count => auth.forList ++ actionAuthExpressions(viewName, Count)
+      case Insert => auth.forInsert
+      case Update => auth.forUpdate
+      case UpdatePlus => auth.forUpdate ++ actionAuthExpressions(viewName, UpdatePlus)
+      case Delete => auth.forDelete
+      case Save => sharedSave
+      case Upsert => sharedSave ++ actionAuthExpressions(viewName, Upsert)
+      case _ => unqualifiedAuthExpressions(viewName) ++ actionAuthExpressions(viewName, actionName)
+    }
+    exprs.filter(_ != null).map(_.trim).filter(_.nonEmpty)
+  }
+
+  /** `app.auth.imply-step`, default true when the key is absent. */
+  protected lazy val implyAuthStep: Boolean =
+    !config.hasPath("app.auth.imply-step") || config.getBoolean("app.auth.imply-step")
+
+  /** Prepend `auth` when implication is enabled, the action has steps and respective auth, and no
+    * auth step in the tree. The implied step is not stored in the action cache. */
+  private def withImpliedAuthStep(
+    actionName: String, action: Action, auth: AuthFilters, viewName: String,
+  ): Action =
+    if (!implyAuthStep || actionContainsAuth(action) || authExpressions(actionName, auth, viewName).isEmpty) action
+    else action.copy(steps = (Action.Auth, Action.AuthKey) :: action.steps)
+
+  private def actionContainsAuth(action: Action): Boolean = {
+    import Action._
+    def opTrav: OpTraverser[Boolean] =
+      opTraverser(opTrav, stepTrav)(_ => PartialFunction.empty)
+    def stepTrav: StepTraverser[Boolean] =
+      stepTraverser(opTrav, stepTrav) { _ => { case Auth => true } }
+    traverseAction(action)(stepTrav)(false)
   }
 
   override protected def keyFields(view: ViewDef): Seq[FieldDef] =
@@ -515,6 +581,15 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     lazy val stepTresqlTrav: StepTresqlTraverser[Seq[DbAccessKey]] =
       stepTresqlTraverser(opTresqlTrav, stepTresqlTrav)(state => {
         case Validations(_, _, dbkey) => state.copy(value = state.value ++ dbkey.toList)
+        case Action.Auth =>
+          // |db: inside auth expressions; do not build the auth query here (nameToViewDef is initializing)
+          val dbPrefix = """\|(\w+):""".r
+          val dbs = state.viewDefs.get(state.name).toList.flatMap { vd =>
+            authExpressions(state.action, vd.auth, state.name).flatMap { e =>
+              dbPrefix.findAllMatchIn(e).map(m => DbAccessKey(m.group(1))).toList
+            }
+          }
+          state.copy(value = state.value ++ dbs)
       })
 
     val state = State[Seq[DbAccessKey]](action, name, viewDefs,
@@ -1003,6 +1078,10 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
     def recoverStep: Parser[Recover] =
       ("recover\\b".r ~> actionFromOp) ^^ (Recover(_)) named "recover-step"
 
+    /** Whole step `auth`. Placed before evaluation so `auth = ...` and `author` stay evaluations. */
+    def authStep: Parser[Step] =
+      (s"${AuthKey}\\s*$$".r ^^^ Auth) named "auth-step"
+
     def evaluation: Parser[Evaluation] =
       (opt(varName <~ "=") ~ opWithOptVarTransforms) ^^ {
         case variable ~ tr_op =>
@@ -1011,7 +1090,7 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
     def namedBlock(isBlock: Boolean): Parser[Evaluation] =
       (if (isBlock) varName ^^ { n => Evaluation(Option(n), Nil, null) }
       else failure("Not block")) named "named-block"
-    (removeVar | setEnvOrReturn | recoverStep | evaluation | namedBlock(isBlock)) named "step"
+    (removeVar | setEnvOrReturn | recoverStep | authStep | evaluation | namedBlock(isBlock)) named "step"
   }
 
   /** Variable name. Accepts quoted names so that keywords and non-ident names can be assigned,
@@ -1437,6 +1516,7 @@ object AppMetadata extends Loggable {
 
     val ValidationsKey = "validations"
     val RecoverKey = "recover"
+    val AuthKey = "auth"
     val DbUseKey = "db use"
     val TransactionKey = "transaction"
     val OffsetKey = "offset"
@@ -1571,6 +1651,10 @@ object AppMetadata extends Loggable {
     case class Recover(action: Action) extends Step {
       override def name: Option[String] = None
     }
+    /** Checks respective auth of the executing action. Does not change action data. */
+    case object Auth extends Step {
+      override def name: Option[String] = None
+    }
 
     /** Steps to be executed and 'recover' step handling their failure - null if region is not guarded. */
     case class Region(steps: List[(Step, String)], handler: Recover, handlerSrc: String)
@@ -1627,7 +1711,7 @@ object AppMetadata extends Loggable {
     def stepTraverser[T](opTrav: => OpTraverser[T], stepTrav: => StepTraverser[T])(
         extractor: StepTraverser[T]): StepTraverser[T] = {
       def traverse(state: T): PartialFunction[Step, T] = {
-        case _: Validations | _: RemoveVar => state
+        case _: Validations | _: RemoveVar | Auth => state
         case s: Evaluation => opTrav(state)(s.op)
         case s: SetEnv => opTrav(state)(s.value)
         case s: Return => opTrav(state)(s.value)
@@ -1897,15 +1981,19 @@ object AppMetadata extends Loggable {
     override val maxNameLen = 63 // default maximum identifier length on postgres
   }
 
+  /** Map key for unqualified `auth` expressions kept beside the step-only specifiers. */
+  private[wabase] val UnqualifiedAuthOp = "auth.*"
+
   object KnownAuthOps {
-    val Get = "get"
-    val List = "list"
-    val Save = "save"
-    val Insert = "insert"
-    val Update = "update"
-    val Delete = "delete"
-    def apply() =
-      Set(Get, List, Save, Insert, Update, Delete)
+    val Get    = Action.Get
+    val List   = Action.List
+    val Save   = Action.Save
+    val Insert = Action.Insert
+    val Update = Action.Update
+    val Delete = Action.Delete
+    /** Every action name. `get`, `list`, `save`, `insert`, `update` and `delete` fill
+      * persistence filters. The other names are checked by the auth step only. */
+    def apply(): Set[String] = Action()
   }
 
   object KnownViewExtras {
@@ -1993,38 +2081,66 @@ object AppMetadata extends Loggable {
     def getBooleanExtra(name: String, viewDef: ViewDef) =
       getBooleanExtraOpt(name, viewDef) getOrElse false
 
-    def toAuth(viewDef: ViewDef, authPrefix: String, knownAuthOps: Set[String]) = {
+    def toAuth(viewDef: ViewDef, authPrefix: String, knownAuthOps: Set[String]): AuthFilters =
+      toAuthAndActionAuth(viewDef, authPrefix, knownAuthOps)._1
+
+    /** Persistence filters, and auth expressions that belong to the auth step only.
+      * Step-only specifiers are `count`, `upsert`, `update+`, `head`, `options`, `post`,
+      * `put`, `new` and `job`. Unqualified `auth` is included only when an action outside
+      * the persistence filters has steps; those actions do not read [[AuthFilters]]. */
+    def toAuthAndActionAuth(
+      viewDef: ViewDef, authPrefix: String, knownAuthOps: Set[String],
+    ): (AuthFilters, Map[String, Seq[String]]) = {
       import KnownAuthOps._
-      viewDef.extras.keySet
+      val (filters, extra) = viewDef.extras.keySet
         .filter(k => k == authPrefix || k.startsWith(authPrefix + " "))
-        .foldLeft(AuthEmpty)((a, k) => {
-          val filters = getStringSeq(k, viewDef.extras)
+        .foldLeft((AuthEmpty, Map.empty[String, Seq[String]])) { case ((a, extra), k) =>
+          val exprs = getStringSeq(k, viewDef.extras)
           if (k == authPrefix)
-            a.copy(
-              forGet = a.forGet ++ filters,
-              forList = a.forList ++ filters,
-              forInsert = a.forInsert ++ filters,
-              forUpdate = a.forUpdate ++ filters,
-              forDelete = a.forDelete ++ filters)
+            (a.copy(
+              forGet = a.forGet ++ exprs,
+              forList = a.forList ++ exprs,
+              forInsert = a.forInsert ++ exprs,
+              forUpdate = a.forUpdate ++ exprs,
+              forDelete = a.forDelete ++ exprs),
+              extra + (UnqualifiedAuthOp -> (extra.getOrElse(UnqualifiedAuthOp, Nil) ++ exprs)))
           else {
             val ops = k.substring(authPrefix.length).trim.split("[\\s,]+").toList.filter(_ != "")
             val unknownAuthOps = ops.toSet -- knownAuthOps
             if (unknownAuthOps.nonEmpty)
               sys.error(
                 s"Unknown auth specifier(s), viewDef: ${viewDef.name}, specifier(s): ${unknownAuthOps.mkString(", ")}")
-            ops.foldLeft(a)((a, op) => op match {
-              case Get =>
-                a.copy(forGet = a.forGet ++ filters)
-              case List => a.copy(forList = a.forList ++ filters)
-              case Save => a.copy(
-                forInsert = a.forInsert ++ filters,
-                forUpdate = a.forUpdate ++ filters)
-              case Insert => a.copy(forInsert = a.forInsert ++ filters)
-              case Update => a.copy(forUpdate = a.forUpdate ++ filters)
-              case Delete => a.copy(forDelete = a.forDelete ++ filters)
-            })
+            ops.foldLeft((a, extra)) { case ((a, extra), op) =>
+              op match {
+                case Get => (a.copy(forGet = a.forGet ++ exprs), extra)
+                case List => (a.copy(forList = a.forList ++ exprs), extra)
+                case Save => (a.copy(
+                  forInsert = a.forInsert ++ exprs,
+                  forUpdate = a.forUpdate ++ exprs), extra)
+                case Insert => (a.copy(forInsert = a.forInsert ++ exprs), extra)
+                case Update => (a.copy(forUpdate = a.forUpdate ++ exprs), extra)
+                case Delete => (a.copy(forDelete = a.forDelete ++ exprs), extra)
+                case _ => (a, extra + (op -> (extra.getOrElse(op, Nil) ++ exprs)))
+              }
+            }
           }
-        })
+        }
+      val unqualified = extra.getOrElse(UnqualifiedAuthOp, Nil).filter(s => s != null && s.trim.nonEmpty)
+      val stepOnly = extra - UnqualifiedAuthOp
+      val needsUnqualified =
+        unqualified.nonEmpty && Action().exists { action =>
+          !readsPersistenceAuth(action) && getSeq(action, viewDef.extras).nonEmpty
+        }
+      (filters, if (needsUnqualified) stepOnly + (UnqualifiedAuthOp -> unqualified) else stepOnly)
+    }
+
+    /** Actions whose auth step reads [[AuthFilters]], which already include unqualified `auth`. */
+    private def readsPersistenceAuth(action: String): Boolean = {
+      import Action._
+      action match {
+        case Get | List | Count | Insert | Update | UpdatePlus | Delete | Save | Upsert => true
+        case _ => false
+      }
     }
   }
 

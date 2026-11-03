@@ -2216,3 +2216,198 @@ get:
 - unique (foreach(({1 nr}){nr}) :nr)                    # one row in source result
 list:
 - unique_opt (foreach(({1 nr} + {2 nr}){nr}#(1)) :nr)   # more than one row - NotUniqueException
+
+
+name: auth_step_parse
+table: person
+fields:
+- id
+- name
+get:
+- author = 'A'
+- auth_flag = true
+- auth = 1
+- "'auth' = 'quoted'"
+
+
+name: auth_literal
+table: person
+auth get: true
+auth list: false
+fields:
+- id
+get:
+- "'ok'"
+list:
+- "'ok'"
+count:
+- 1
+
+
+name: auth_bind
+table: person
+auth get: :flag = true
+fields:
+- id
+- name
+get:
+- x = :name
+
+
+name: auth_explicit_nested
+table: person
+auth get: :flag = true
+fields:
+- id
+get:
+- if true:
+  - auth
+- "'ok'"
+
+
+name: auth_explicit_later
+table: person
+auth get: true
+fields:
+- id
+get:
+- x = 1
+- auth
+
+
+name: auth_no_steps
+table: person
+auth get: true
+fields:
+- id
+- name
+
+
+name: auth_explicit_empty
+table: person
+fields:
+- id
+get:
+- auth
+- "'ok'"
+
+
+name: auth_col
+table: person p
+auth get: upper(p.surname) = upper(:surname)
+auth list: p.surname = 'AuthMatch'
+fields:
+- id
+- name
+- surname
+get:
+- "'ok'"
+list:
+- "'ok'"
+
+
+name: auth_exists
+table: person p
+auth get: exists(person x[x.id = :id]{1})
+fields:
+- id
+get:
+- "'ok'"
+
+
+name: auth_save_fallback
+table: person p
+auth: :shared = true
+auth insert: :insert_only = true
+auth update: :update_only = true
+fields:
+- id
+- name
+- surname
+save:
+- "'saved'"
+
+
+name: auth_recover
+table: person
+auth get: false
+fields:
+- id
+get:
+- x = 1
+- recover:
+  - y = 'recovered'
+
+
+name: auth_post
+table: person
+auth get: true
+fields:
+- id
+post:
+- "'ok'"
+
+
+name: auth_persistence
+table: person p
+auth get: :get_ok = true
+auth insert: :insert_ok = true
+auth update: :update_ok = true
+auth delete: :delete_ok = true
+fields:
+- id
+- name
+- surname
+get:
+- "'ok'"
+delete:
+- "'ok'"
+
+
+name: auth_unqualified_post
+table: person
+auth: true
+fields:
+- id
+post:
+- "'ok'"
+
+
+name: auth_ops
+table: person p
+auth: :shared = true
+auth list: :list_ok = true
+auth count: :count_ok = true
+auth insert: :insert_only = true
+auth update: :update_only = true
+auth upsert: :upsert_ok = true
+auth update+: :update_plus_ok = true
+auth post: :post_ok = true
+auth put: :put_ok = true
+auth head: :head_ok = true
+auth options: :options_ok = true
+auth new: :new_ok = true
+auth job: :job_ok = true
+fields:
+- id
+- name
+list:
+- "'ok'"
+count:
+- "'ok'"
+upsert:
+- "'ok'"
+update+:
+- "'ok'"
+post:
+- "'ok'"
+put:
+- "'ok'"
+head:
+- "'ok'"
+options:
+- "'ok'"
+new:
+- "'ok'"
+job:
+- "'ok'"

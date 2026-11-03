@@ -11,6 +11,7 @@
   - [Set env](#set-env)
   - [Named block](#named-block)
   - [Recover](#recover)
+  - [Auth](#auth)
   - [Validation](#validation)
   - [Return](#return)
 - [View action operations](#view-action-operations)
@@ -293,7 +294,8 @@ start, the recover expression is executed in the scope of the failed step, and e
 continues with the steps following the recover step.
 
 Authentication and authorization exceptions are not recoverable, so that a recover step
-cannot turn them into a successful response.
+cannot turn them into a successful response. This includes `AuthorizationException` raised
+by an [auth](#auth) step.
 
 The failure is available to the recover expression as variable `wabase_error` with fields:
 
@@ -312,6 +314,82 @@ Example:
 
 - x = 'A'
 - recover 'R'     # one step recover, equivalent of recover block with single step
+```
+
+### Auth
+
+```
+auth
+```
+
+An `auth` step checks the auth expressions of the executing action and then continues with the
+same data. It fails with `org.wabase.AuthorizationException` (`Forbidden`), mapped to http
+status `403`, when the check returns no row, or a single value that is `false` or null.
+A value of `1` (the query projects `{1}`) is success.
+
+Respective auth is taken from the view auth already used by persistence:
+
+| Action | Expressions |
+| --- | --- |
+| `get` | `auth get` |
+| `list` | `auth list` |
+| `count` | `auth list` and `auth count` |
+| `insert` | `auth insert` |
+| `update` | `auth update` |
+| `update+` | `auth update` and `auth update+` |
+| `delete` | `auth delete` |
+| `save` | expressions present in both insert and update auth (`auth` and `auth save`) |
+| `upsert` | those shared expressions and `auth upsert` |
+| `head`, `options`, `post`, `put`, `new`, `job` | unqualified `auth` and `auth` followed by that action name |
+
+Unqualified `auth` applies to every action. It is copied into the get, list, insert, update and
+delete persistence filters, so `count` sees it through list auth, `update+` sees it through
+update auth, and `save` / `upsert` see it in the shared expressions. The auth step also applies
+it to `head`, `options`, `post`, `put`, `new` and `job`. Specifiers `auth count`, `auth upsert`,
+`auth update+`, `auth head`, `auth options`, `auth post`, `auth put`, `auth new` and `auth job`
+add expressions for that action only and are not added to persistence filters. An explicit
+`auth` step whose executing action has no expressions fails the action.
+
+Expressions with no column reference — bind variables, literals, functions, and column
+references only inside a subquery — are checked as `null[<filter>]{1}`. Tresql `null` is one
+row, so `:role = 'admin'` and `true` do not depend on the view table containing a row.
+Expressions that reference a column (`p.surname`, `upper(p.surname)`, a column passed to a
+function) are checked against the view query, including the view filter, limited to one row.
+For `get`, `update`, `update+` and `delete`, key equalities `<alias>.<column> = :<field>` are
+added. `save`, `upsert`, `list`, `count` and `insert` do not add key equalities. The query runs
+on the current connection.
+
+If an action has steps and a respective auth expression, and those steps contain no `auth` step
+(including inside `if`, `foreach`, `db` or `recover`), `auth` is implied as the first step.
+`app.auth.imply-step` (default `true`) turns this implication off when set to `false`. An
+explicit `auth` step still runs. An action with no steps keeps its default view call.
+Persistence auth on `get`, `list`, `count`, `insert`, `update` and `delete` is unchanged
+and still applies when the action reads or writes through the view.
+
+`insert`, `update` and `upsert` that fall back to the `save` steps keep that implied step, and
+the check uses the requested action. Insert therefore checks insert auth (`auth insert` and
+`auth save`), which can be stricter than the shared `save` expressions. Upsert checks that
+shared auth and `auth upsert`.
+
+Column auth on insert is evaluated as a view query over existing rows. Persistence insert auth
+still applies the same expressions to the new values. A bind variable such as
+`:surname != 'Readonly'` agrees in both places. Column auth on list or count succeeds when at
+least one view row matches, so a filter that matches nothing fails the step. The step is an
+early gate; the list or get that follows still applies its own auth filter.
+
+`auth` is a whole step. `author`, `auth_flag` and `auth = 1` are ordinary evaluations. Quote
+the name to assign a variable called auth: `'auth' = 'quoted'`.
+
+```
+auth get: :flag = true
+get:
+- 'ok'          # auth is implied as the first step
+
+auth get: p.surname = :surname
+get:
+- if true:
+  - auth        # explicit auth anywhere in the steps suppresses the implied first step
+- name
 ```
 
 ### Validation

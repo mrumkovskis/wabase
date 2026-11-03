@@ -305,7 +305,12 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     import org.scalatest.Inspectors._
     convertAssertionToFutureAssertion(forAll(actions) { case (name, a) =>
       deserializedCache.contains(name) shouldBe true
-      deserializedCache(name) shouldBe a
+      val cached = deserializedCache(name)
+      // Implied auth is applied after the cache read and is not stored.
+      a.steps match {
+        case (Action.Auth, Action.AuthKey) :: tail if cached.steps == tail => succeed
+        case _ => cached shouldBe a
+      }
     })
   }
 

@@ -518,6 +518,13 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
           }.getOrElse(Future.failed(
             new RuntimeException(s"Validation cannot be performed without view in context -" +
               s"(${context.name})"))), () => Future.successful(stepScope))
+        case Auth =>
+          (context.view.map { vd =>
+            Future(doAuthStep(scopeBindVars(stepScope), vd, context.actionName))
+              .map(_ => NoResult)
+          }.getOrElse(Future.failed(
+            new RuntimeException(s"Auth cannot be performed without view in context -" +
+              s"(${context.name})"))), () => Future.successful(stepScope))
       }) match { case (rF, ns) =>
         ( rF.transform(identity, exceptionHandler(_, src, context)),
           if (ns == null) null // return step - no data for next step since action execution is stopped
@@ -611,6 +618,90 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       }
 
     doRegions(action.regions, curDataF)
+  }
+
+  /** Tresql that checks respective auth of `actionName` against `view`.
+    * Expressions with no free column reference are checked on tresql `null` (one row), so the
+    * check does not depend on the view table containing a row. Expressions that reference columns
+    * are checked against the view query, including the view filter, limited to one row.
+    * Key equalities are added for `get`, `update`, `update+` and `delete` only.
+    * Empty when the action has no respective auth. Runs on the current connection. */
+  protected def authQueryString(view: ViewDef, actionName: String): Option[String] = {
+    val exprs = authExpressions(actionName, view.auth, view.name)
+    if (exprs.isEmpty) None
+    else Some(buildAuthQueryString(view, actionName, exprs))
+  }
+
+  private def buildAuthQueryString(view: ViewDef, actionName: String, exprs: Seq[String]): String = {
+    val qual = baseFieldsQualifier(view)
+    def nullTableQuery = {
+      val filter = exprs.map(e => transformFilter(e, view, qual)).map(e => s"($e)").mkString(" & ")
+      s"null[$filter]{1}"
+    }
+    if (!exprs.exists(authExpressionReferencesColumns)) nullTableQuery
+    else try {
+      val (from, pathToAlias) = fromAndPathToAlias(view)
+      val filters =
+        Option(view.filter).getOrElse(Nil).filter(s => s != null && s != "")
+          .map(transformFilter(_, view, qual, pathToAlias)) ++
+        exprs.map(e => transformFilter(e, view, qual, pathToAlias)) ++
+        authKeyPredicates(view, actionName, qual)
+      s"$from${filters.map(f => "[" + f + "]").mkString}{1}@(1)"
+    } catch {
+      case NonFatal(_) => nullTableQuery
+    }
+  }
+
+  /** Column reference outside a nested query. Parse failure is treated as column-referencing. */
+  private def authExpressionReferencesColumns(expr: String): Boolean =
+    try parser.traverser[Boolean](found => {
+      case _: org.tresql.ast.Query => found
+      case _: org.tresql.ast.Ident | _: org.tresql.ast.IdentAll => true
+    })(false)(parser.parseExp(expr))
+    catch { case NonFatal(_) => true }
+
+  private def authKeyPredicates(view: ViewDef, actionName: String, qualifier: String): Seq[String] = {
+    import Action._
+    val singleRow = actionName match {
+      case Get | Update | UpdatePlus | Delete => true
+      case _ => false
+    }
+    if (!singleRow) Nil
+    else {
+      val q = Option(qualifier).filter(_.nonEmpty)
+      viewNameToKeyColNames.getOrElse(view.name, Nil)
+        .zip(viewNameToKeyFieldNames.getOrElse(view.name, Nil))
+        .map { case (col, field) =>
+          val c = q.map(a => s"$a.$col").getOrElse(col)
+          s"$c = :$field"
+        }
+    }
+  }
+
+  /** Runs respective auth. No row, or a single boolean false or null, is forbidden.
+    * Explicit auth with no expressions for the executing action is an error. */
+  protected def doAuthStep(
+    params: Map[String, Any],
+    view: ViewDef,
+    actionName: String,
+  )(implicit res: Resources): Unit = {
+    val q = authQueryString(view, actionName).getOrElse(
+      sys.error(s"No auth defined for ${view.name}.$actionName"))
+    val forbidden = useResourcesConnOrEvaluator(res, r => {
+      val result = Query(q, toSaveableMap(params, view))(r)
+      try authResultForbidden(result.toListOfMaps) finally result.close()
+    })
+    if (forbidden) throw new AuthorizationException("Forbidden")
+  }
+
+  private def authResultForbidden(rows: List[Map[String, Any]]): Boolean = rows match {
+    case Nil => true
+    case row :: _ if row.size == 1 => row.head._2 match {
+      case null => true
+      case b: java.lang.Boolean => !b.booleanValue
+      case _ => false
+    }
+    case _ => false
   }
 
   protected def doValidationStep(validations: Action.Validations,
@@ -1520,8 +1611,10 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   }
 
   /** Exceptions handled by recover action. Authentication and authorization exceptions are not recoverable
-    * so that recover action cannot turn them into successful response. */
+    * so that recover action cannot turn them into successful response.
+    * Step failure is wrapped into QuereaseActionException by exceptionHandler before this check. */
   protected def isRecoverable(ex: Throwable): Boolean = ex match {
+    case e: QuereaseActionException if e.getCause != null => isRecoverable(e.getCause)
     case _: AuthenticationException | _: AuthorizationException => false
     case NonFatal(_) => true
     case _ => false

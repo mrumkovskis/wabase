@@ -6,7 +6,7 @@ import org.apache.pekko.stream.scaladsl.StreamConverters
 import org.mojoz.querease.{NotFoundException, ValidationException, ValidationResult}
 import org.scalatest.flatspec.{AsyncFlatSpec, AsyncFlatSpecLike}
 import org.scalatest.matchers.should.Matchers
-import org.tresql.{Query, Resources, Result, SingleValueResult, convAny, convLong}
+import org.tresql.{MissingBindVariableException, Query, Resources, Result, SingleValueResult, convAny, convLong}
 import org.wabase.QuereaseActionsDtos.{Person, PersonWithHealthDataHealth}
 
 import java.io.InputStream
@@ -199,6 +199,228 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
     ))
     // no region is guarded - none of the steps is a recover step
     querease.viewDef("recover_test_1").actions("save").regions.map(_.handler) should be (List(null))
+  }
+
+  def actionQueryStrings(viewName: String): Seq[String] =
+    querease.allQueryStrings(querease.viewDef(viewName))
+      .filter(_.category == "action-queries").map(_.query)
+
+  it should "parse auth as a step keyword only when it is the whole step" in {
+    val steps = querease.viewDef("auth_step_parse").actions("get").steps
+    steps.map(_._1) shouldBe List(
+      Action.Evaluation(Some("author"), Nil, Action.Tresql("'A'")),
+      Action.Evaluation(Some("auth_flag"), Nil, Action.Tresql("true")),
+      Action.Evaluation(Some("auth"), Nil, Action.Tresql("1")),
+      Action.Evaluation(Some("auth"), Nil, Action.Tresql("'quoted'")),
+    )
+    steps.exists(_._1 == Action.Auth) shouldBe false
+  }
+
+  it should "imply auth as the first step when the action has steps and respective auth" in {
+    val literal = querease.viewDef("auth_literal")
+    literal.actions("get").steps.map(_._2) shouldBe List(Action.AuthKey, "'ok'")
+    literal.actions("get").steps.head._1 shouldBe Action.Auth
+    literal.actions("list").steps.head._1 shouldBe Action.Auth
+    literal.actions("count").steps.head._1 shouldBe Action.Auth
+
+    val nested = querease.viewDef("auth_explicit_nested").actions("get").steps
+    nested.map(_._2) shouldBe List("if true", "'ok'")
+    nested.head._1 match {
+      case Action.Evaluation(_, _, Action.If(_, action, _)) =>
+        action.steps.map(_._1) shouldBe List(Action.Auth)
+      case other => fail(s"Unexpected step: $other")
+    }
+
+    val later = querease.viewDef("auth_explicit_later").actions("get").steps
+    later.map(_._2) shouldBe List("x = 1", "auth")
+    later.last._1 shouldBe Action.Auth
+
+    querease.viewDef("auth_no_steps").actions.contains("get") shouldBe false
+    querease.viewDef("auth_post").actions("post").steps.map(_._2) shouldBe List("'ok'")
+    querease.viewDef("auth_unqualified_post").actions("post").steps.map(_._2) shouldBe List(Action.AuthKey, "'ok'")
+    querease.viewDef("auth_ops").actions("post").steps.head._1 shouldBe Action.Auth
+    querease.viewDef("auth_ops").actions("count").steps.head._1 shouldBe Action.Auth
+    querease.viewDef("auth_ops").actions("job").steps.head._1 shouldBe Action.Auth
+    querease.viewDef("env_test_1").actions("save").steps.exists(_._1 == Action.Auth) shouldBe false
+    querease.viewDef("env_test_1").actions("list").steps.exists(_._1 == Action.Auth) shouldBe false
+    querease.viewDef("env_test_2").actions("save").steps.exists(_._1 == Action.Auth) shouldBe false
+    querease.viewDef("env_test_4").actions("save").steps.exists(_._1 == Action.Auth) shouldBe false
+
+    val save = querease.viewDef("auth_save_fallback").actions("save")
+    save.steps.head._1 shouldBe Action.Auth
+    querease.viewDef("auth_save_fallback").actions.contains("insert") shouldBe false
+  }
+
+  it should "not imply auth when app.auth.imply-step is false" in {
+    val qe = new TestQuerease("/querease-action-specs-metadata.yaml") {
+      override protected lazy val implyAuthStep = false
+      override lazy val viewNameToClassMap = QuereaseActionsDtos.viewNameToClass
+    }
+    qe.viewDef("auth_literal").actions("get").steps.map(_._2) shouldBe List("'ok'")
+    qe.viewDef("auth_literal").actions("list").steps.map(_._2) shouldBe List("'ok'")
+    qe.viewDef("auth_unqualified_post").actions("post").steps.map(_._2) shouldBe List("'ok'")
+    qe.viewDef("auth_explicit_later").actions("get").steps.map(_._2) shouldBe List("x = 1", "auth")
+    qe.viewDef("auth_explicit_nested").actions("get").steps.head._1 match {
+      case Action.Evaluation(_, _, Action.If(_, action, _)) =>
+        action.steps.map(_._1) shouldBe List(Action.Auth)
+      case other => fail(s"Unexpected step: $other")
+    }
+  }
+
+  it should "build auth queries for the compiler" in {
+    actionQueryStrings("auth_literal") should contain allOf ("null[(true)]{1}", "null[(false)]{1}")
+    val col = actionQueryStrings("auth_col").mkString("\n")
+    col should include ("person p")
+    col should include ("upper(p.surname) = upper(:surname)")
+    col should include ("p.id = :id")
+    col should include ("{1}@(1)")
+    actionQueryStrings("auth_col").exists(_.startsWith("null")) shouldBe false
+    val existsQ = actionQueryStrings("auth_exists").find(_.contains("exists")).getOrElse("")
+    existsQ should startWith ("null[")
+    val saveQ = actionQueryStrings("auth_save_fallback").mkString("\n")
+    saveQ should include (":shared = true")
+    saveQ should not include (":insert_only")
+    saveQ should not include (":update_only")
+    val ops = actionQueryStrings("auth_ops")
+    ops.exists(q => q.contains(":post_ok = true") && q.contains(":shared = true")) shouldBe true
+    ops.exists(q => q.contains(":count_ok = true") && q.contains(":list_ok = true") && q.contains(":shared = true")) shouldBe true
+    ops.exists(q => q.contains(":upsert_ok = true") && q.contains(":shared = true") && !q.contains(":insert_only") && !q.contains(":update_only")) shouldBe true
+    ops.exists(q => q.contains(":update_plus_ok = true") && q.contains(":update_only = true") && q.contains(":shared = true")) shouldBe true
+    ops.exists(q => q.contains(":head_ok = true") && q.contains(":shared = true")) shouldBe true
+  }
+
+  it should "keep persistence auth filters" in {
+    import org.tresql.OrtMetadata._
+    querease.persistenceMetadata("auth_persistence").filters shouldBe Some(Filters(
+      Some("(:insert_ok = true)"),
+      Some("(:update_ok = true)"),
+      Some("(:delete_ok = true)"),
+    ))
+    val opsAuth = querease.viewDef("auth_ops").auth
+    opsAuth.forList should contain (":shared = true")
+    opsAuth.forList should contain (":list_ok = true")
+    opsAuth.forList.exists(_.contains("count_ok")) shouldBe false
+    opsAuth.forInsert.exists(_.contains("upsert_ok")) shouldBe false
+    opsAuth.forInsert.exists(_.contains("count_ok")) shouldBe false
+    opsAuth.forInsert.exists(_.contains("post_ok")) shouldBe false
+    opsAuth.forUpdate.exists(_.contains("update_plus_ok")) shouldBe false
+    opsAuth.forUpdate should contain (":update_only = true")
+    val opsFilters = querease.persistenceMetadata("auth_ops").filters.get
+    opsFilters.insert.get should include (":shared = true")
+    opsFilters.insert.get should include (":insert_only = true")
+    opsFilters.insert.get should not include ("upsert_ok")
+    opsFilters.insert.get should not include ("post_ok")
+    opsFilters.update.get should include (":update_only = true")
+    opsFilters.update.get should not include ("update_plus_ok")
+    opsFilters.delete.get should include (":shared = true")
+    opsFilters.delete.get should not include ("upsert_ok")
+  }
+
+  behavior of "auth step"
+
+  def authOk(view: String, action: String, data: Map[String, Any] = Map(), env: Map[String, Any] = Map()) =
+    doAction(view, action, data, env).mapTo[TresqlResult].flatMap(_.result.unique[Any] shouldBe "ok")
+
+  it should "pass literal and bind variable auth on an empty table" in {
+    for {
+      _ <- authOk("auth_literal", "get")
+      _ <- recoverToExceptionIf[AuthorizationException](doAction("auth_literal", "list", Map(), Map()))
+        .map(_.getMessage shouldBe "Forbidden")
+      _ <- recoverToExceptionIf[AuthorizationException](doAction("auth_literal", "count", Map(), Map()))
+        .map(_.getMessage shouldBe "Forbidden")
+      _ <- recoverToExceptionIf[AuthorizationException](
+        doAction("auth_bind", "get", Map("name" -> "Ann", "flag" -> false), Map()))
+        .map(_.getMessage shouldBe "Forbidden")
+      _ <- recoverToExceptionIf[MissingBindVariableException](
+        doAction("auth_bind", "get", Map("name" -> "Ann"), Map()))
+      _ <- doAction("auth_bind", "get", Map("name" -> "Ann", "flag" -> true), Map()).map {
+        case MapResult(res) => res shouldBe Map("name" -> "Ann", "flag" -> true, "x" -> "Ann")
+        case other => fail(s"Unexpected result: $other")
+      }
+      _ <- doAction("auth_bind", "get", Map("name" -> "Ann"), Map("flag" -> true)).map {
+        case MapResult(res) => res shouldBe Map("name" -> "Ann", "x" -> "Ann")
+        case other => fail(s"Unexpected result: $other")
+      }
+    } yield succeed
+  }
+
+  it should "check column auth against view rows and the key" in {
+    implicit val resources: Resources = qr.resourcesFactory.resources
+    Query("person - [surname = 'AuthMatch']")
+    val checked = for {
+      _ <- recoverToExceptionIf[AuthorizationException](doAction("auth_col", "list", Map(), Map()))
+      _ = Query("+person {id, name, surname, sex, birthdate} [nextval('seq'), 'Auth', 'AuthMatch', 'M', '1990-01-01']")
+      id = Query("person[surname = 'AuthMatch']{id}").unique[Long]
+      _ <- authOk("auth_col", "list")
+      _ <- recoverToExceptionIf[AuthorizationException](
+        doAction("auth_col", "get", Map("id" -> id, "surname" -> "Other"), Map()))
+      _ <- authOk("auth_col", "get", Map("id" -> id, "surname" -> "AuthMatch"))
+      // Unbound :id is null in the view query, so p.id = :id matches no row.
+      _ <- recoverToExceptionIf[AuthorizationException](
+        doAction("auth_col", "get", Map("surname" -> "AuthMatch"), Map()))
+        .map(_.getMessage shouldBe "Forbidden")
+      _ <- recoverToExceptionIf[AuthorizationException](
+        doAction("auth_exists", "get", Map("id" -> (id + 1)), Map()))
+      _ <- authOk("auth_exists", "get", Map("id" -> id))
+    } yield succeed
+    checked.andThen { case _ => Query("person - [surname = 'AuthMatch']") }
+  }
+
+  it should "check save intersection for save and the requested action for insert and update" in {
+    val shared = Map("shared" -> true, "name" -> "N", "surname" -> "S")
+    for {
+      _ <- doAction("auth_save_fallback", "save", shared, Map()).mapTo[TresqlResult]
+        .flatMap(_.result.unique[Any] shouldBe "saved")
+      _ <- recoverToExceptionIf[AuthorizationException](
+        doAction("auth_save_fallback", "insert", shared + ("insert_only" -> false), Map()))
+      _ <- doAction("auth_save_fallback", "insert", shared + ("insert_only" -> true), Map())
+        .mapTo[TresqlResult].flatMap(_.result.unique[Any] shouldBe "saved")
+      _ <- recoverToExceptionIf[AuthorizationException](
+        doAction("auth_save_fallback", "update", shared + ("update_only" -> false), Map()))
+      _ <- doAction("auth_save_fallback", "update", shared + ("update_only" -> true), Map())
+        .mapTo[TresqlResult].flatMap(_.result.unique[Any] shouldBe "saved")
+      _ <- doAction("auth_post", "post", Map(), Map()).mapTo[TresqlResult]
+        .flatMap(_.result.unique[Any] shouldBe "ok")
+    } yield succeed
+  }
+
+  it should "reject explicit auth when the action has no auth expressions" in {
+    recoverToExceptionIf[RuntimeException](doAction("auth_explicit_empty", "get", Map(), Map()))
+      .map(_.getMessage shouldBe "No auth defined for auth_explicit_empty.get")
+  }
+
+  it should "check step-only auth ops without changing persistence auth" in {
+    val listOk = Map("shared" -> true, "list_ok" -> true)
+    val inherited = listOk + ("update_only" -> true)
+    for {
+      _ <- authOk("auth_ops", "list", listOk)
+      _ <- recoverToExceptionIf[MissingBindVariableException](doAction("auth_ops", "count", listOk, Map()))
+      _ <- recoverToExceptionIf[AuthorizationException](
+        doAction("auth_ops", "count", listOk + ("count_ok" -> false), Map()))
+      _ <- authOk("auth_ops", "count", listOk + ("count_ok" -> true))
+      _ <- recoverToExceptionIf[MissingBindVariableException](
+        doAction("auth_ops", "post", Map("post_ok" -> true), Map()))
+      _ <- authOk("auth_ops", "post", Map("shared" -> true, "post_ok" -> true))
+      _ <- recoverToExceptionIf[AuthorizationException](
+        doAction("auth_ops", "post", Map("shared" -> true, "post_ok" -> false), Map()))
+      _ <- authOk("auth_ops", "head", Map("shared" -> true, "head_ok" -> true))
+      _ <- authOk("auth_ops", "put", Map("shared" -> true, "put_ok" -> true))
+      _ <- authOk("auth_ops", "options", Map("shared" -> true, "options_ok" -> true))
+      _ <- authOk("auth_ops", "new", Map("shared" -> true, "new_ok" -> true))
+      _ <- authOk("auth_ops", "job", Map("shared" -> true, "job_ok" -> true))
+      _ <- recoverToExceptionIf[AuthorizationException](
+        doAction("auth_ops", "upsert", Map("shared" -> true, "upsert_ok" -> false), Map()))
+      _ <- authOk("auth_ops", "upsert", Map("shared" -> true, "upsert_ok" -> true))
+      _ <- recoverToExceptionIf[MissingBindVariableException](
+        doAction("auth_ops", "update+", inherited, Map()))
+      _ <- authOk("auth_ops", "update+", inherited + ("update_plus_ok" -> true))
+      _ <- authOk("auth_unqualified_post", "post")
+    } yield succeed
+  }
+
+  it should "leave authorization failure unrecoverable" in {
+    recoverToExceptionIf[AuthorizationException](doAction("auth_recover", "get", Map(), Map()))
+      .map(_.getMessage shouldBe "Forbidden")
   }
 
   it should "do raw action json encoding" in {
