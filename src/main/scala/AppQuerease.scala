@@ -678,8 +678,9 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     }
   }
 
-  /** Runs respective auth. No row, or a single boolean false or null, is forbidden.
+  /** Runs respective auth. No row, or a false value, is forbidden.
     * Explicit auth with no expressions for the executing action is an error. */
+  @annotation.nowarn("msg=Manifest")
   protected def doAuthStep(
     params: Map[String, Any],
     view: ViewDef,
@@ -687,21 +688,11 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
   )(implicit res: Resources): Unit = {
     val q = authQueryString(view, actionName).getOrElse(
       sys.error(s"No auth defined for ${view.name}.$actionName"))
-    val forbidden = useResourcesConnOrEvaluator(res, r => {
+    val allowed = useResourcesConnOrEvaluator(res, r => {
       val result = Query(q, toSaveableMap(params, view))(r)
-      try authResultForbidden(result.toListOfMaps) finally result.close()
+      result.uniqueOption[Boolean].getOrElse(false)
     })
-    if (forbidden) throw new AuthorizationException("Forbidden")
-  }
-
-  private def authResultForbidden(rows: List[Map[String, Any]]): Boolean = rows match {
-    case Nil => true
-    case row :: _ if row.size == 1 => row.head._2 match {
-      case null => true
-      case b: java.lang.Boolean => !b.booleanValue
-      case _ => false
-    }
-    case _ => false
+    if (!allowed) throw new AuthorizationException("Forbidden")
   }
 
   protected def doValidationStep(validations: Action.Validations,
