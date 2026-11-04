@@ -27,8 +27,8 @@ class WabaseScriptValidation(db: DbAccess, qe: AppQuerease)(implicit ec: Executi
     val ordParFun = ordPars.zipWithIndex
       .map { case (v, vIdx) => { case (_, pIdx) if pIdx == vIdx => v }: InvocationParameterFun }
       .foldLeft(PartialFunction.empty: InvocationParameterFun)(_ orElse _)
-    invokeFunction(config.getString(fun),
-      pars ++ Seq((classOf[DbAccess], () => db), (classOf[AppQuerease], () => qe)), ordParFun)
+    invokeFunction(config.getString(fun), ordParFun orElse
+      invocationParameterFun(pars ++ Seq((classOf[DbAccess], () => db), (classOf[AppQuerease], () => qe))))
       .asInstanceOf[T]
   }
 

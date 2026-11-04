@@ -281,6 +281,16 @@ and `ActorSystem` and return `Future[Unit]` (injected when invoked as view actio
 `getObjectOrNewInstance` rethrows exception thrown by the class constructor instead of trying
 other class name variants, so configuration errors of instantiated components are reported.
 
+Breaking: `invokeFunction` overloads with fallback parameters are removed -
+`invokeFunction(className, function, fallbackParameters, parameterFun)` and
+`invokeFunction(classAndFunctionName, fallbackParameters, parameterFun)`. Compose the parameter
+function instead: `invokeFunction(classAndFunctionName, parameterFun orElse
+invocationParameterFun(fallbackParameters))`. `invocationParameterFun` (package `org.wabase`)
+turns a parameter list into an `InvocationParameterFun` that fails when no parameter type matches,
+so it must come last. `AppQuerease.actionInvocationParameterFun` returns the parameter function
+used for action function invocation (step data, injection parameters provider and context
+resources).
+
 ## [8.1.2] - 2026-09-02
 `AppFileCleanup` optimized for NFS — fewer metadata operations on networked file stores.
 

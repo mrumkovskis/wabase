@@ -86,8 +86,8 @@ object ServerNotifications extends EventStreamMarshalling with Loggable {
 
   private def invokeCreateServerEventFunction(event: Any)(as: ActorSystem) = {
     invokeFunction(ServerEventFunction,
-      Seq((classOf[ActorSystem], () => as)),
-      { case (_, idx) if idx == 0 => event }: InvocationParameterFun
+      ({ case (_, idx) if idx == 0 => event }: InvocationParameterFun) orElse
+        invocationParameterFun(Seq((classOf[ActorSystem], () => as)))
     )(as.dispatcher) match {
       case e: ServerSentEvent => e
       case x => sys.error(s"ServerSentEvent type expected but got: '$x' of type ${x.getClass}")

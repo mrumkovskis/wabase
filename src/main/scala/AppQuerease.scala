@@ -854,8 +854,8 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     import op._, qr._, context.env
     val invocationData = scope.toBindeableMap(env)
     def invokeFunction(className: String, function: String, pf: InvocationParameterFun): Any = {
-      this.invokeFunction(className, function, invocationData, pf,
-        InjectionParametersContext(httpReq, invocationData, context), qr)
+      org.wabase.invokeFunction(className, function, actionInvocationParameterFun(invocationData, qr, pf,
+        InjectionParametersContext(httpReq, invocationData, context)))
     }
 
     def wrongRes(x: Any) =
@@ -2155,14 +2155,12 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     CompatibleResult(res, fil, isColl)
   }
 
-  private def invokeFunction(
-    className: String,
-    function: String,
+  private def actionInvocationParameterFun(
     stepData: Map[String, Any],
+    qr: QuereaseResources,
     parameterFun: InvocationParameterFun,
     injectionContext: InjectionParametersContext,
-    qr: QuereaseResources,
-  ): Any = {
+  ): InvocationParameterFun = {
     import qr._
     val stepParameters = Seq(
       (classOf[scala.collection.immutable.Map[_, _]], () => stepData),
@@ -2179,12 +2177,13 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       (classOf[WabaseFileStreamers], () => fileStreamers),
       (classOf[HttpRequest], () => httpReq),
       (classOf[AppQuereaseIo[Dto]], () => qio),
-      (classOf[AppQuerease], () => AppQuerease.this),
+      (classOf[AppQuerease], () => this),
       (classOf[WabaseHttpClients], () => httpClients),
     )
-    val providerFun = parametersProvider(injectionContext)
-    org.wabase.invokeFunction(className, function, stepParameters ++ contextParams,
-      parameterFun orElse { case (p, _) if providerFun.isDefinedAt(p) => providerFun(p) })
+    val pf = parametersProvider(injectionContext)
+    val providerFun: InvocationParameterFun = { case (p, _) if pf.isDefinedAt(p) => pf(p) }
+    val contextFun = invocationParameterFun(stepParameters ++ contextParams)
+    parameterFun orElse providerFun orElse contextFun
   }
 }
 

@@ -376,7 +376,7 @@ object WabaseService extends Loggable {
     implicit val ec: ExecutionContext = wrc.as.dispatcher
     def missingHandlerError = sys.error(s"Handler argument missing for invocation: '$cn.$fn'")
     val (paramList, paramFunction) = handlerParameters(wrc, ih, invocationArgs, missingHandlerError)
-    val result = invokeFunction(cn, fn, paramList, paramFunction)
+    val result = invokeFunction(cn, fn, paramFunction orElse invocationParameterFun(paramList))
     handlerResult(wrc, result).flatMap {
       case c: WabaseRequestContext => if (ih == null) missingHandlerError else ih(c)
       case r: HttpResponse => Future.successful(r)

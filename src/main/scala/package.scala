@@ -242,24 +242,15 @@ package object wabase extends Loggable {
   }
 
   def invokeFunction(
-    className: String,
-    function: String,
-    fallbackParameters: Seq[(Class[_], () => Any)],
-    parameterFun: InvocationParameterFun,
-  )(implicit ec: ExecutionContext): Any = {
-    val default: InvocationParameterFun = {
-      case p => invocationParameter(fallbackParameters)(p)
-    }
-    invokeFunction(className, function, parameterFun orElse default)
-  }
-
-  def invokeFunction(
     classAndFunctionName: String,
-    fallbackParameters: Seq[(Class[_], () => Any)],
     parameterFun: InvocationParameterFun,
   )(implicit ec: ExecutionContext): Any = {
     val (cn, fn) = classNameFunctionName(classAndFunctionName)
-    invokeFunction(cn, fn, fallbackParameters, parameterFun)
+    invokeFunction(cn, fn, parameterFun)
+  }
+
+  def invocationParameterFun(parameters: Seq[(Class[_], () => Any)]): InvocationParameterFun = {
+    case p => invocationParameter(parameters)(p)
   }
 
   def resolveFunctionAliasOpt(alias: String, cl: ClassLoader): Option[String] = {
