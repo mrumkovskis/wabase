@@ -434,7 +434,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     val actions = Action().foldLeft(Map[String, Action]()) { (res, actionName) =>
       val a = parseOrCacheAction(getSeq(actionName, viewDef.extras), opParser)
       if (a.steps.isEmpty) res
-      else res + (actionName -> withImpliedAuthStep(actionName, a, auth, name))
+      else res + (actionName -> a)
     }
     val maxKeySize            = viewDef.keyFieldNames.size
     val hasFullKeyOps         = fullKeyOps.exists(apiToRoles.contains)
@@ -515,27 +515,6 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
       case _ => unqualifiedAuthExpressions(viewName) ++ actionAuthExpressions(viewName, actionName)
     }
     exprs.filter(_ != null).map(_.trim).filter(_.nonEmpty)
-  }
-
-  /** `app.auth.imply-step`, default true when the key is absent. */
-  protected lazy val implyAuthStep: Boolean =
-    !config.hasPath("app.auth.imply-step") || config.getBoolean("app.auth.imply-step")
-
-  /** Prepend `auth` when implication is enabled, the action has steps and respective auth, and no
-    * auth step in the tree. The implied step is not stored in the action cache. */
-  private def withImpliedAuthStep(
-    actionName: String, action: Action, auth: AuthFilters, viewName: String,
-  ): Action =
-    if (!implyAuthStep || actionContainsAuth(action) || authExpressions(actionName, auth, viewName).isEmpty) action
-    else action.copy(steps = (Action.Auth, Action.AuthKey) :: action.steps)
-
-  private def actionContainsAuth(action: Action): Boolean = {
-    import Action._
-    def opTrav: OpTraverser[Boolean] =
-      opTraverser(opTrav, stepTrav)(_ => PartialFunction.empty)
-    def stepTrav: StepTraverser[Boolean] =
-      stepTraverser(opTrav, stepTrav) { _ => { case Auth => true } }
-    traverseAction(action)(stepTrav)(false)
   }
 
   override protected def keyFields(view: ViewDef): Seq[FieldDef] =

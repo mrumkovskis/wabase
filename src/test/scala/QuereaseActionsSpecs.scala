@@ -216,7 +216,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
     steps.exists(_._1 == Action.Auth) shouldBe false
   }
 
-  it should "imply auth as the first step when the action has steps and respective auth" in {
+  it should "keep an explicit auth step and not add one" in {
     val literal = querease.viewDef("auth_literal")
     literal.actions("get").steps.map(_._2) shouldBe List(Action.AuthKey, "'ok'")
     literal.actions("get").steps.head._1 shouldBe Action.Auth
@@ -237,6 +237,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
 
     querease.viewDef("auth_no_steps").actions.contains("get") shouldBe false
     querease.viewDef("auth_post").actions("post").steps.map(_._2) shouldBe List("'ok'")
+    querease.viewDef("auth_persistence").actions("get").steps.map(_._2) shouldBe List("'ok'")
     querease.viewDef("auth_unqualified_post").actions("post").steps.map(_._2) shouldBe List(Action.AuthKey, "'ok'")
     querease.viewDef("auth_ops").actions("post").steps.head._1 shouldBe Action.Auth
     querease.viewDef("auth_ops").actions("count").steps.head._1 shouldBe Action.Auth
@@ -249,22 +250,6 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
     val save = querease.viewDef("auth_save_fallback").actions("save")
     save.steps.head._1 shouldBe Action.Auth
     querease.viewDef("auth_save_fallback").actions.contains("insert") shouldBe false
-  }
-
-  it should "not imply auth when app.auth.imply-step is false" in {
-    val qe = new TestQuerease("/querease-action-specs-metadata.yaml") {
-      override protected lazy val implyAuthStep = false
-      override lazy val viewNameToClassMap = QuereaseActionsDtos.viewNameToClass
-    }
-    qe.viewDef("auth_literal").actions("get").steps.map(_._2) shouldBe List("'ok'")
-    qe.viewDef("auth_literal").actions("list").steps.map(_._2) shouldBe List("'ok'")
-    qe.viewDef("auth_unqualified_post").actions("post").steps.map(_._2) shouldBe List("'ok'")
-    qe.viewDef("auth_explicit_later").actions("get").steps.map(_._2) shouldBe List("x = 1", "auth")
-    qe.viewDef("auth_explicit_nested").actions("get").steps.head._1 match {
-      case Action.Evaluation(_, _, Action.If(_, action, _)) =>
-        action.steps.map(_._1) shouldBe List(Action.Auth)
-      case other => fail(s"Unexpected step: $other")
-    }
   }
 
   it should "build auth queries for the compiler" in {
@@ -382,6 +367,11 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
       _ <- doAction("auth_post", "post", Map(), Map()).mapTo[TresqlResult]
         .flatMap(_.result.unique[Any] shouldBe "ok")
     } yield succeed
+  }
+
+  it should "not run auth unless the action has an auth step" in {
+    doAction("auth_persistence", "get", Map(), Map()).mapTo[TresqlResult]
+      .flatMap(_.result.unique[Any] shouldBe "ok")
   }
 
   it should "reject explicit auth when the action has no auth expressions" in {

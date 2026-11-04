@@ -2237,10 +2237,13 @@ auth list: false
 fields:
 - id
 get:
+- auth
 - "'ok'"
 list:
+- auth
 - "'ok'"
 count:
+- auth
 - 1
 
 
@@ -2251,6 +2254,7 @@ fields:
 - id
 - name
 get:
+- auth
 - x = :name
 
 
@@ -2301,8 +2305,10 @@ fields:
 - name
 - surname
 get:
+- auth
 - "'ok'"
 list:
+- auth
 - "'ok'"
 
 
@@ -2312,6 +2318,7 @@ auth get: exists(person x[x.id = :id]{1})
 fields:
 - id
 get:
+- auth
 - "'ok'"
 
 
@@ -2325,6 +2332,7 @@ fields:
 - name
 - surname
 save:
+- auth
 - "'saved'"
 
 
@@ -2334,6 +2342,7 @@ auth get: false
 fields:
 - id
 get:
+- auth
 - x = 1
 - recover:
   - y = 'recovered'
@@ -2370,6 +2379,7 @@ auth: true
 fields:
 - id
 post:
+- auth
 - "'ok'"
 
 
@@ -2392,22 +2402,32 @@ fields:
 - id
 - name
 list:
+- auth
 - "'ok'"
 count:
+- auth
 - "'ok'"
 upsert:
+- auth
 - "'ok'"
 update+:
+- auth
 - "'ok'"
 post:
+- auth
 - "'ok'"
 put:
+- auth
 - "'ok'"
 head:
+- auth
 - "'ok'"
 options:
+- auth
 - "'ok'"
 new:
+- auth
 - "'ok'"
 job:
+- auth
 - "'ok'"

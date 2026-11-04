@@ -359,17 +359,14 @@ For `get`, `update`, `update+` and `delete`, key equalities `<alias>.<column> = 
 added. `save`, `upsert`, `list`, `count` and `insert` do not add key equalities. The query runs
 on the current connection.
 
-If an action has steps and a respective auth expression, and those steps contain no `auth` step
-(including inside `if`, `foreach`, `db` or `recover`), `auth` is implied as the first step.
-`app.auth.imply-step` (default `true`) turns this implication off when set to `false`. An
-explicit `auth` step still runs. An action with no steps keeps its default view call.
-Persistence auth on `get`, `list`, `count`, `insert`, `update` and `delete` is unchanged
-and still applies when the action reads or writes through the view.
+The check runs only where an `auth` step is written. An action with no steps keeps its default
+view call. Persistence auth on `get`, `list`, `count`, `insert`, `update` and `delete` is
+unchanged and still applies when the action reads or writes through the view.
 
-`insert`, `update` and `upsert` that fall back to the `save` steps keep that implied step, and
-the check uses the requested action. Insert therefore checks insert auth (`auth insert` and
-`auth save`), which can be stricter than the shared `save` expressions. Upsert checks that
-shared auth and `auth upsert`.
+`insert`, `update` and `upsert` that fall back to `save` steps run the `auth` step written
+there, and the check uses the requested action. Insert therefore checks insert auth
+(`auth insert` and `auth save`), which can be stricter than the shared `save` expressions.
+Upsert checks that shared auth and `auth upsert`.
 
 Column auth on insert is evaluated as a view query over existing rows. Persistence insert auth
 still applies the same expressions to the new values. A bind variable such as
@@ -383,12 +380,13 @@ the name to assign a variable called auth: `'auth' = 'quoted'`.
 ```
 auth get: :flag = true
 get:
-- 'ok'          # auth is implied as the first step
+- auth
+- 'ok'
 
 auth get: p.surname = :surname
 get:
 - if true:
-  - auth        # explicit auth anywhere in the steps suppresses the implied first step
+  - auth
 - name
 ```
 

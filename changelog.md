@@ -10,10 +10,8 @@ of the executing action and fails with `AuthorizationException` (http `403`) whe
 returns no row, or a single value that is false or null. Bind-variable and literal auth is
 checked on tresql `null` (one row). Auth that references columns is checked against the view
 query; `get`, `update`, `update+` and `delete` also require the key. `save` and `upsert` check
-expressions shared by insert and update auth. When an action has steps and respective auth, and
-no `auth` step, `auth` is implied first. `app.auth.imply-step` (default `true`) turns that
-implication off when set to `false`; an explicit `auth` step still runs. `insert`, `update`
-and `upsert` that run `save` steps still check the requested action.
+expressions shared by insert and update auth. The check runs only from an explicit `auth` step.
+`insert`, `update` and `upsert` that run `save` steps check the requested action.
 Unqualified `auth` applies to every action.
 Auth specifiers `count`, `upsert`, `update+`, `head`, `options`, `post`, `put`, `new` and `job`
 are checked by the auth step only. `count` also checks list auth, `update+` also checks update auth, and
