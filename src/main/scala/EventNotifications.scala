@@ -84,7 +84,10 @@ object ServerNotifications extends EventStreamMarshalling with Loggable {
   private val ServerEventFunction = config.getString("app.server-notifications.event-function")
   val SubscriberWatcherActorName = config.getString("app.server-notifications.event-subscriber-watcher-actor-name")
 
-  private def invokeCreateServerEventFunction(event: Any)(as: ActorSystem) = {
+  /** Creates server sent event with configured function `app.server-notifications.event-function`
+    * (default [[createServerEvent]]) - used for server notifications and messaging result events.
+    */
+  private[wabase] def invokeCreateServerEventFunction(event: Any)(as: ActorSystem): ServerSentEvent = {
     invokeFunction(ServerEventFunction,
       ({ case (_, idx) if idx == 0 => event }: InvocationParameterFun) orElse
         invocationParameterFun(Seq((classOf[ActorSystem], () => as)))

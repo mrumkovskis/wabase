@@ -1,0 +1,36 @@
+name: msg_it_send
+api: post
+decoder: none
+key: topic
+fields:
+- topic
+- value
+post:
+- msg send to=:topic (:value)
+- status 202
+
+
+name: msg_it_events
+api: get
+key: topic
+fields:
+- topic
+- group
+- last
+get:   # server sent events of message values, committed, until message with value last (continuous - value not sent)
+- foreach msg read group=:group from=:topic committer=true to={:value = coalesce(:'..'.last, '')}:  # coalesce - typed parameter for hsqldb
+  - :value
+
+
+name: msg_it_offsets
+api: get
+key: topic
+fields:      # group - parameter, other fields - result columns
+- topic
+- group
+- group_id
+- partition int
+- offset    long
+- metadata
+get:
+- msg committed offsets {:group group_id, :topic topic, 0 partition}

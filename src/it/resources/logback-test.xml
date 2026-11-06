@@ -16,6 +16,8 @@
     </root>
 
     <logger name="com.zaxxer.hikari" level="warn"/>
+    <!-- embedded kafka zookeeper connection noise (ServerCnxnFactory, ClientCnxn) -->
+    <logger name="org.apache.zookeeper" level="error"/>
     <logger name="org.apache.pekko.stream.scaladsl.RestartWithBackoffSource" level="error"/>
     <logger name="wabase.app.BusinessScenariosSpecs" level="warn"/>
 

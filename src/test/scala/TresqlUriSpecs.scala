@@ -193,6 +193,11 @@ class TresqlUriSpecs extends AnyFlatSpec with Matchers {
       case h: Http => n(h.uriTresql.uriTresql) shouldBe n("null{'a', 'b'}")
       case x => fail(s"Unexpected operation: $x")
     }
+    // databases used by headers tresql are registered
+    op("http (a/b) headers = (|other_db:dual{x})") match {
+      case h: Http => h.headerTresql.dbs.map(_.db) shouldBe List("other_db")
+      case x => fail(s"Unexpected operation: $x")
+    }
     intercept[RuntimeException](op("http a/b headers = {x}")).getMessage should include("enclosed in parentheses")
     intercept[RuntimeException](op("http a/b?x=y headers = {x}")).getMessage should include("enclosed in parentheses")
     // body or filter after uri would be parsed as query columns or filter

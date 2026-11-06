@@ -148,6 +148,7 @@ object WabaseScheduler {
         resourcesFactory, httpReq = null, qio = wabase.qio,
         fileStreamers = wabase.fileStreamers,
         httpClients = wabase.httpClients,
+        msgProviders = wabase.msgProviders,
         parameterProvider = wabase.injectionParametersProvider, logger)
       .run(executionContext, actorSystem)
       .flatMap { res =>
@@ -155,7 +156,7 @@ object WabaseScheduler {
         qe.consumeResult(res)(QuereaseResources()(
           resourcesFactory, executionContext, actorSystem,
           httpReq = null, wabase.qio, wabase.fileStreamers,
-          wabase.httpClients, wabase.injectionParametersProvider,
+          wabase.httpClients, wabase.msgProviders, wabase.injectionParametersProvider,
           logger,
         ))
       }

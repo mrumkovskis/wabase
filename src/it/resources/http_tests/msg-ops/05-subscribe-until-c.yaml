@@ -1,0 +1,8 @@
+# server sent events of msg read result - committed, completes after message with value 'c'
+path:       /data/msg_it_events/msg_it_topic?group=msg_it_group&last=c
+response_headers:
+  Content-Type: text/event-stream
+  Cache-Control: no-cache
+  X-Accel-Buffering: no
+response_status: 200 OK
+response: -> msg_events_1

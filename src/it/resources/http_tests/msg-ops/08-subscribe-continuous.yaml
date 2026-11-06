@@ -1,0 +1,4 @@
+# continuous stream - continues from committed offset
+path:       /data/msg_it_events/msg_it_topic?group=msg_it_group&last=-
+response_status: 200 OK
+response: -> msg_events_2

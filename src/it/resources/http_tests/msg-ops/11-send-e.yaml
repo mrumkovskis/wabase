@@ -1,0 +1,4 @@
+method:       POST
+path:         /data/msg_it_send/msg_it_topic?value=e
+status_code:  202 Accepted
+response:

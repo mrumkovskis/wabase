@@ -14,6 +14,16 @@ val greenmailDependency = ("com.icegreen" % "greenmail" % "2.1.14")
 val pekkoS3Dependency = "org.apache.pekko" %% "pekko-connectors-s3" % pekkoConnV
 val s3ProxyDependency = "org.gaul"          % "s3proxy"             % "2.8.0"
 
+// Kafka messaging provider: pekko-connectors-kafka is Optional in wabase, in-process Kafka broker for messaging tests.
+// Kafka 3.9.x is the last line running on Java 11, embedded-kafka version must match kafka-clients of pekko-connectors-kafka.
+val pekkoKafkaDependency    = "org.apache.pekko"         %% "pekko-connectors-kafka" % "1.2.0"
+val embeddedKafkaDependency = "io.github.embeddedkafka" %% "embedded-kafka"         % "3.9.2"
+// Kafka broker is built for scala 2.13 only, for scala 3 its scala 2.13 dependencies conflict with scala 3 ones of wabase
+def embeddedKafkaDependencyFor(scalaVersion: String) =
+  if (scalaVersion startsWith "3.")
+    embeddedKafkaDependency.exclude("com.typesafe.scala-logging", "scala-logging_2.13")
+  else embeddedKafkaDependency
+
 javacOptions ++= Seq("-source", "11", "-target", "11", "-Xlint")
 initialize := {
   val _ = initialize.value
@@ -83,6 +93,7 @@ lazy val commonSettings = Seq(
       "org.graalvm.js"              % "js"                    % "22.3.5"            % Optional,
       "org.graalvm.js"              % "js-scriptengine"       % "22.3.5"            % Optional,
       pekkoS3Dependency                                                             % Optional,
+      pekkoKafkaDependency                                                          % Optional,
       "org.apache.pekko"           %% "pekko-http-xml"        % pekkoHttpV          % Optional,
     ) ++ Seq( // for test
       "org.scalatest"              %% "scalatest"             % "3.2.20"  %     Test,
@@ -93,6 +104,7 @@ lazy val commonSettings = Seq(
       "com.vladsch.flexmark"        % "flexmark-all"          % "0.64.8"  %     Test,
       greenmailDependency                                                 %     Test,
       s3ProxyDependency                                                   %     Test,
+      embeddedKafkaDependencyFor(scalaVersion.value)                      %     Test,
     )
   },
 )
@@ -244,6 +256,8 @@ lazy val it = (project in file("src/it"))
     libraryDependencies += greenmailDependency,
     libraryDependencies += pekkoS3Dependency, // s3 file streamer on in-process S3Proxy server (org.wabase.S3TestServer)
     libraryDependencies += s3ProxyDependency,
+    libraryDependencies += pekkoKafkaDependency, // kafka messaging provider on in-process broker (embedded kafka)
+    libraryDependencies += embeddedKafkaDependencyFor(scalaVersion.value) % Test,
     publish / skip := true,
     Compile / run / mainClass   := Some("org.wabase.WabaseServer"),
     Compile / unmanagedSources  += baseDirectory.value / ".." / "test" / "scala" / "BusinessScenariosBaseSpecs.scala",

@@ -1,0 +1,4 @@
+# client disconnects - consumer is stopped, leaves group
+method:       POST
+path:         /backdoor/close_server_sent_events/msg_events_2
+response:

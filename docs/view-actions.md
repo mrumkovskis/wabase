@@ -35,6 +35,9 @@
   - [http](#http)
   - [Http request processing (headers, cookie, entity, parts)](#http-request-processing-headers-cookie-entity-parts)
   - [db use, transaction, commit, rollback](#db-use-transaction-commit-rollback)
+  - [msg read](#msg-read)
+  - [msg send](#msg-send)
+  - [msg admin calls](#msg-admin-calls)
   - [conf](#conf)
   - [Json processing](#json-processing)
   - [job](#job)
@@ -569,8 +572,8 @@ email ({ 'c@c.c' 'to' }) (template body='Subject') (template body='Content')
 
 ### Named arguments
 
-Operations [to file](#save-file), [template](#template-processing), [email](#email) and
-[http](#http) accept arguments by name:
+Operations [to file](#save-file), [template](#template-processing), [email](#email),
+[http](#http), [msg read](#msg-read) and [msg send](#msg-send) accept arguments by name:
 
 ```
 <operation> [<positional argument> …] [<argument name> = <argument value> …]
@@ -881,6 +884,9 @@ foreach [<variable name> in] <collection expression> [<fold>] :
   - <expression>
   - …
 ```
+
+Foreach on [msg read](#msg-read) processes incoming messages one by one and returns a stream of
+iteration results, see [messaging](messaging.md#processing-messages---foreach).
 
 Without a loop variable each element must be a `Map[String, Any]` and becomes the iteration
 data itself, so its keys are addressed directly. With a loop variable each element is bound
@@ -1377,6 +1383,115 @@ transaction save this
 
 - +simple_table{id = nextval('seq'), value = :value}
 - rollback
+```
+
+Messages are processed after the action has completed, without action's connection - message processing
+opens its own `db use` / `transaction`, see [messaging database resources](messaging.md#database-resources).
+
+### msg read
+
+Reads messages from messaging provider, see [messaging](messaging.md) for configuration and semantics.
+
+```
+msg read [<[provider name]>]
+  [group = <group name>]
+  [from = ] <subscription rows>                        # {topic} | {pattern} | {topic, partition[, offset | timestamp]}
+  [to = {<boolean expression>}]                        # last message, inclusive, evaluated for each message
+  [timeout = {<duration> within, <duration> idle}]
+  [committer = true | {delivery, max_batch, max_interval, parallelism, commit_when}]
+  [commit_metadata = <string expression>]              # evaluated for each message
+  [key = <key variable name>]                          # message key bind variable
+  [using = <value codec> | {<key codec> key, <value codec> value}]
+  [restart = true | {min_backoff, max_backoff, random_factor, max_restarts, max_restarts_within}]
+  [at_most_once = true | false]
+```
+
+`from` is mandatory, it can be specified by position as the first argument. Arguments are tresql expressions,
+see [named arguments](#named-arguments) and [parameter evaluation](messaging.md#parameter-evaluation):
+
+- `{...}` arguments are tresql with column aliases as names, e.g. `{'orders' topic, 0 partition}`.
+- comparison must be enclosed in curly braces - `to={:value = 'end'}`, top level `:value = 'end'` is tresql
+  assignment.
+- `to`, `commit_metadata` and foreach body are evaluated for each message with [message bind
+  variables](messaging.md#message-bind-variables) - value fields or `value`, `__metadata`, key under `key` name.
+- provider name - default provider (`main`) if omitted.
+- `committer` and `at_most_once = true` are mutually exclusive, `restart` and `committer` are not supported together
+  (use [msg send](#msg-send) `restart`).
+
+Result is a stream of messages, consumed by [msg send](#msg-send), [foreach](#foreach), a following step
+(collected into a list of maps `{topic, partition, offset, timestamp, key, headers, value}`) or http response
+(server sent events). Without `to` or `timeout` the stream is infinite - it can be streamed, but not collected.
+
+Examples:
+
+```
+msg read from='orders' group='g' timeout={'5s' idle}               # collected - read until 5s without messages
+msg read from={'orders' topic, 0 partition, 10 offset} to={:__metadata.offset = 20}
+msg read [other] group=:group from=:topic committer=true            # server sent events, committed
+foreach msg read from={'orders' topic, 0 partition} timeout={'1s' idle}:
+  - :id || ' ' || :status
+msgs = msg read from=msg_topic[active]{name topic} group='g' using='avro' timeout={'10s' within}
+```
+
+### msg send
+
+Sends result of the operation (or block) as messages, see [messaging](messaging.md#sending-messages).
+
+```
+msg send [<[provider name]>]
+  [to = ] <topic | {topic, partition, timestamp}>
+  [key = {<field name> name | <key value> value, <true | false> should_remove}]
+  [headers = {<name> name, <value> value} ++ …]
+  [using = <value codec> | {<key codec> key, <value codec> value}]
+  [restart = true | {min_backoff, max_backoff, random_factor, max_restarts, max_restarts_within}]
+  <operation>
+
+msg send … :
+  - <expression>
+  - …
+```
+
+`to` is mandatory, it can be specified by position as the first argument. An operation following the arguments
+must be enclosed in braces if it starts with `<identifier> =`.
+
+- each element of stream, rows or collection is sent as a message, single value - one message, `null` - nothing,
+- incoming message (msg read without foreach) is forwarded - value and key,
+- committing reads are committed after sending,
+- `restart` restarts reading, processing, sending and committing on failure, the operation must return a messaging
+  result, see [restart](messaging.md#restart-on-failure).
+
+Result is sent message count.
+
+Examples:
+
+```
+msg send to='notifications' (unique {:id id, 'created' event})     # one message
+msg send to={'audit' topic, 0 partition} key={'id' name} audit_log[time > :since]{id, action}   # rows
+msg send to='orders_copy' msg read group='copy' from='orders' committer=true to={:id = 100}       # forward
+res = msg send to=:dst restart=true:
+  - foreach msg read group='g' from=:src committer=true:
+    - if {:status != 'draft'} (unique {:id id, :status status})
+```
+
+### msg admin calls
+
+Messaging provider metadata, result is rows, see [messaging](messaging.md#admin-calls).
+
+```
+msg topics [<[provider name]>]
+msg topic partitions [<[provider name]>] <topic rows>
+msg beginning offsets [<[provider name]>] {<topic> topic, <partition> partition} ++ …
+msg end offsets [<[provider name]>] {<topic> topic, <partition> partition} ++ …
+msg committed offsets [<[provider name]>] {<group> group_id, <topic> topic, <partition> partition} ++ …
+```
+
+Examples:
+
+```
+msg topics
+msg topic partitions 'orders'
+msg end offsets {'orders' topic, 0 partition} ++ {'orders' topic, 1 partition}
+msg committed offsets [other] {:group group_id, 'orders' topic, 0 partition}
 ```
 
 ### conf

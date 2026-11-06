@@ -10,7 +10,6 @@ import org.mojoz.querease.FilterType._
 import org.mojoz.querease.{FilterType, QuereaseMetadata, TresqlJoinsParser, TresqlMetadata, ViewNotFoundException}
 import org.tresql.{Cache, CacheBase, QueryParser, SimpleCache, SimpleCacheBase, ast}
 import org.tresql.ast.{Exp, Variable}
-import org.tresql.parsing.QueryParsers
 import org.wabase.AppMetadata.JobCall
 import org.wabase.AppMetadata.Action.TresqlExtraction.{OpTresqlTraverser, State, StepTresqlTraverser, opTresqlTraverser, stepTresqlTraverser}
 import org.wabase.AppMetadata.Action.{OpTraverser, StepTraverser, Validations, ViewCall, traverseAction}
@@ -689,6 +688,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
                     case bl: Action.If      => if (bl.action == null) bl.copy(action = pa) else bl.copy(elseAct = pa)
                     case bl: Action.Foreach => bl.copy(action = pa)
                     case bl: Action.Db      => bl.copy(action = pa)
+                    case bl: Action.MsgSend => bl.copy(action = pa)
                     case bl: Action.Else    => bl.copy(action = pa)
                     case bl: Action.Block   => bl.copy(action = pa)
                     case null               => Action.Block(pa)
@@ -991,7 +991,8 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
     .mkString("(?U)(", "|", """)(?=\s+)"""))
   val ViewNameRegex = "(?U)\\w+".r
   val ConfPropRegex = """\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*(?:[.-]\p{javaJavaIdentifierStart}\p{javaJavaIdentifierPart}*+)*""".r
-  val HttpClientFileStreamerNameRegex = """\w+(-\w+)*""".r
+  /** Name of configured resource - http client, file streamer, messaging provider */
+  val ResourceNameRegex = """\w+(-\w+)*""".r
   val RedirectOpRegex = """redirect\s+""".r
   val RedirectToKeyRegex = """[_\p{IsLatin}][_\p{IsLatin}0-9]*$""".r
 
@@ -1124,14 +1125,14 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
     case nameTresql ~ ctTresql => Resource(nameTresql, ctTresql.orNull)
   } named "resource-op"
   def fileOp: MemParser[File] = opt(opResultType) ~
-    ("file\\s+".r ~> opt("[" ~> HttpClientFileStreamerNameRegex <~ "]") ~ tresqlOp) ^^ {
+    ("file\\s+".r ~> resourceName ~ tresqlOp) ^^ {
     case conformTo ~ (fileStreamer ~ e) => File(e, conformTo, fileStreamer.orNull)
   } named "file-op"
   def toFileOp: MemParser[ToFile] = {
     val Filename = Arg("filename", tresqlOp)
     val ContentType = Arg("content_type", tresqlOp)
-    "to file" ~> opt("[" ~> HttpClientFileStreamerNameRegex <~ "]") ~ operation ~
-      namedOps(Nil, positional = positional(Filename, ContentType)) ^^ {
+    "to file" ~> resourceName ~ operation ~
+      namedArgs(Nil, positional = positional(Filename, ContentType)) ^^ {
       case fileStreamer ~ op ~ args =>
         ToFile(op, args.orNull(Filename), args.orNull(ContentType), fileStreamer.orNull)
     } named "to-file-op"
@@ -1142,7 +1143,7 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
     val Data = Arg("data", operation)
     val TargetName = Arg("target_name", tresqlOp)
     // first argument must be named since it can be either body or name
-    "template\\s+".r ~> namedOps(Seq(Body, Name), positional = Map(1 -> Data, 2 -> TargetName)) ^^ { args =>
+    "template\\s+".r ~> namedArgs(Seq(Body, Name), positional = Map(1 -> Data, 2 -> TargetName)) ^^ { args =>
       val body = args.get(Body)
       val name = args.get(Name)
       require((body.isEmpty && name.nonEmpty) || (body.nonEmpty && name.isEmpty), s"Exactly one of template parameters 'body' or 'name' must be specified")
@@ -1166,7 +1167,7 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
     val Attachments = Arg("attachments", rep1(not(ident ~ "=") ~> attachmentOp))
     // word boundary so that recipient tresql starting with 'html...' is not mistaken for option
     "email\\b".r ~> opt("batch\\b".r) ~ opt("html\\b".r) ~
-      namedOps(Nil, mandatory = Set(Recipients.name, Subject.name, Body.name),
+      namedArgs(Nil, mandatory = Set(Recipients.name, Subject.name, Body.name),
         positional = positional(Recipients, Subject, Body, Attachments)) ^^ {
       case batch ~ html ~ args =>
         Email(args(Recipients), args(Subject), args(Body), args.get(Attachments).getOrElse(Nil),
@@ -1175,22 +1176,20 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
   }
   def httpOp: MemParser[Http] = {
     def tu(uri: Tresql) = TresqlUri.Tresql(uri.tresql)
-    def http_cln = opt("[" ~> HttpClientFileStreamerNameRegex <~ "]")
-    def bracesTresql: MemParser[Tresql] = (("(" ~> expr <~ ")") | expr) ^^ (t => Tresql(t.tresql)) named "braces-tresql-op"
     val Uri = Arg("uri", bracesUriTresql)
     val Body = Arg("body", operation)
     val Headers = Arg("headers", bracesTresql)
     def args(positionalArgs: Arg[_]*) =
-      namedOps(Nil, mandatory = Set(Uri.name), positional = positional(positionalArgs: _*))
+      namedArgs(Nil, mandatory = Set(Uri.name), positional = positional(positionalArgs: _*))
     def http_no_entity: MemParser[Http] = {
-      opt("(get|delete|head|options|trace|connect)\\b".r) ~ http_cln ~ args(Uri, Headers) ^^ {
+      opt("(get|delete|head|options|trace|connect)\\b".r) ~ resourceName ~ args(Uri, Headers) ^^ {
         case method ~ client ~ args =>
           Http(method.getOrElse("get"), tu(args(Uri)), args.orNull(Headers),
             body = null, httpClientName = client.orNull)
       } named "http-get-delete-op"
     }
     def http_with_entity: MemParser[Http] = {
-      "(post|put|patch)\\b".r ~ http_cln ~ args(Uri, Body, Headers) ^^ {
+      "(post|put|patch)\\b".r ~ resourceName ~ args(Uri, Body, Headers) ^^ {
         case method ~ client ~ args =>
           Http(method, tu(args(Uri)), args.orNull(Headers), args.orNull(Body), httpClientName = client.orNull)
       } named "http-post-put-op"
@@ -1200,6 +1199,51 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
       case conformTo ~ (mode ~ http) => http.copy(conformTo = conformTo, isProxy = mode == "http_proxy")
     } named "http-op"
   }
+  /** Tresql argument, optionally enclosed in parentheses. Must be enclosed in parentheses if expression would
+    * continue into the following argument or operation. */
+  def bracesTresql: MemParser[Tresql] = (("(" ~> expr <~ ")") | expr) ^^ { e =>
+    Tresql(e.tresql, traverser(dbExtractor)(Nil)(e))
+  } named "braces-tresql-op"
+  /** Optional resource name in brackets, i.e. `http [client]`, `file [streamer]`, `msg read [provider]` */
+  def resourceName: MemParser[Option[String]] = opt("[" ~> ResourceNameRegex <~ "]") named "resource-name"
+  def msgReadOp: MemParser[MsgRead] = {
+    val From = Arg("from", bracesTresql)
+    val named = Seq("group", "to", "timeout", "committer", "commit_metadata", "key", "using", "restart", "at_most_once")
+      .map(Arg(_, bracesTresql))
+    ("msg\\s+read\\b".r ~> resourceName ~
+      namedArgs(named, mandatory = Set(From.name), positional = positional(From)) <~
+      noIllegalArg(From +: named)) ^^ {
+      case provider ~ args =>
+        def a(n: String) = args.values.getOrElse(n, null).asInstanceOf[Tresql]
+        val op = MsgRead(provider.orNull, a("from"), a("group"), a("to"), a("timeout"), a("committer"),
+          a("commit_metadata"), a("key"), a("using"), a("restart"), a("at_most_once"))
+        if (op.committer != null && op.atMostOnce != null && op.atMostOnce.tresql.trim == "true")
+          sys.error("msg read parameters 'committer' and 'at_most_once' are mutually exclusive")
+        op
+    }
+  } named "msg-read-op"
+  def msgSendBlockOp: MemParser[MsgSend] = {
+    val To = Arg("to", bracesTresql)
+    val named = Seq("key", "headers", "using", "restart").map(Arg(_, bracesTresql))
+    ("msg\\s+send\\b".r ~> resourceName ~
+      namedArgs(named, mandatory = Set(To.name), positional = positional(To)) <~
+      noIllegalArg(To +: named)) ^^ {
+      case provider ~ args =>
+        def a(n: String) = args.values.getOrElse(n, null).asInstanceOf[Tresql]
+        MsgSend(provider.orNull, a("to"), a("key"), a("headers"), a("using"), a("restart"))
+    }
+  } named "msg-send-block-op"
+  def msgSendOp: MemParser[MsgSend] = msgSendBlockOp ~ actionFromOp ^^ {
+    case send ~ act => send.copy(action = act)
+  } named "msg-send-op"
+  def msgAdminOp: MemParser[MsgAdmin] = {
+    val Command = MsgAdmin.Commands.map(_.replace(" ", "\\s+")).mkString("msg\\s+(", "|", ")\\b").r
+    (Command ~ resourceName) >> { case cmd ~ provider =>
+      val command = cmd.replaceFirst("^msg\\s+", "").replaceAll("\\s+", " ")
+      if (command == MsgAdmin.Topics) success(MsgAdmin(command, provider.orNull))
+      else bracesTresql ^^ (args => MsgAdmin(command, provider.orNull, args))
+    }
+  } named "msg-admin-op"
   def dbOp: MemParser[Db] = dbBlockOp ~ actionFromOp ^^ {
     case db ~ act => db.copy(action = act)
   } named "db-op"
@@ -1220,7 +1264,7 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
   } named "http-hop"
   def httpCookieOp: MemParser[Op] = ("extract\\b".r ~ "cookie\\b".r) ~> ".*".r ^^ (Cookie(_)) named "http-cop"
   def extractPartsOp: MemParser[ExtractParts] =
-    ("extract\\s+parts".r ~> opt("[" ~> HttpClientFileStreamerNameRegex <~ "]")) ~ opt("from\\b".r ~> operation) ^^ {
+    ("extract\\s+parts".r ~> resourceName) ~ opt("from\\b".r ~> operation) ^^ {
       case fs ~ op => ExtractParts(fs.orNull, op.orNull)
     } named "extract-parts"
   def extractEntityOp: MemParser[ExtractHttpEntity] =
@@ -1249,7 +1293,7 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
   } named "if-block-op"
   def elseBlockOp: MemParser[Else] = "else\\b".r ^^^ Else(null) named "else-block-op"
   def blockOp: MemParser[BlockOp] =
-    ifBlockOp | elseBlockOp | dbBlockOp | foreachBlockOp named "block-op"
+    ifBlockOp | elseBlockOp | dbBlockOp | foreachBlockOp | msgSendBlockOp named "block-op"
   def thisOp: MemParser[This] = opt(opResultType) <~ "this" ^^ This.apply named "this-op"
 
   def bracesOp: MemParser[Op] = "(" ~> operation <~ ")" named "braces-op"
@@ -1286,7 +1330,7 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
   }
   /* Cannot be named mem parser since depends on parameter. */
   def setOrDeleteCookie(cmd: String, mandatoryPars: Set[String] = Set()): Parser[SetHttpHeadersOp] =
-    ((cmd ~ "(") ~> namedOps(allowedCookiePars.toList.map(Arg(_, operation)),
+    ((cmd ~ "(") ~> namedArgs(allowedCookiePars.toList.map(Arg(_, operation)),
       mandatoryPars, ",") <~ ")") ^^ (_.values) ^? ({
       case pars if pars.forall(_._2.isInstanceOf[Tresql]) =>
         def pt =
@@ -1321,7 +1365,7 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
     ("rethrow\\b".r ^^^ Throw()) | th
   } named "throw-op"
   def operation: MemParser[Op] = (commit | rollback | throwOp | redirect | response | viewOp | confOp | uniqueOp |
-    httpOp | dbOp | foreachOp | ifElseOp | elseOp |
+    httpOp | dbOp | foreachOp | ifElseOp | elseOp | msgReadOp | msgSendOp | msgAdminOp |
     resourceOp | fileOp | toFileOp | templateOp | emailOp |
     jsonCodecOp | httpHeaderOp | httpCookieOp | extractPartsOp | extractEntityOp |
     thisOp | bracesOp | invocationOp | tresqlOp) named "operation"
@@ -1352,30 +1396,52 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
   }
   /** Positional arguments starting from index 0 without gaps */
   private def positional(args: Arg[_]*): Map[Int, Arg[_]] = args.zipWithIndex.map(_.swap).toMap
-  private def namedOps(
-    allowedNonPositional: Seq[Arg[_]],
+  /** Checks that arguments are not followed by `<ident> =` - misspelled argument name is an error instead of being
+    * parsed as following operation, which therefore must be enclosed in parentheses if it starts with `<ident> =`.
+    * Consumes no input.
+    */
+  private def noIllegalArg(allowed: Seq[Arg[_]]): Parser[Unit] =
+    opt(guard(ident <~ "=")) >> {
+      case Some(n) => err(s"Illegal argument name - $n, allowed arguments - ${allowed.map(_.name).mkString(", ")}")
+      case None => success(())
+    }
+  /** Parses operation arguments - named `name = value` or positional.
+    * Argument which is neither named nor positional ends arguments, it is left for the following parser,
+    * i.e. operation following arguments - `msg send` operation, `foreach` operation, argument of enclosing
+    * operation (e.g. `email` argument after nested `template` operation) etc.
+    * Illegal argument name is a failure, so that enclosing operation can continue with it, operations which must
+    * report misspelled argument names use [[noIllegalArg]] after arguments.
+    * Value of named argument is committed - its parse error is reported (e.g. reserved word as bind variable).
+    * @param namedOnly       arguments which can be specified only by name
+    * @param positional      arguments by position, they can be specified also by name
+    */
+  private def namedArgs(
+    namedOnly: Seq[Arg[_]],
     mandatory: Set[String] = Set(),
     separator: String = null,
     positional: Map[Int, Arg[_]] = Map(),
   ): Parser[Args] = { // do not make mem parser since name may depend on parameters
-    val allowed = (allowedNonPositional ++ positional.values).map(a => a.name -> a).toMap[String, Arg[_]]
+    val allowed = (namedOnly ++ positional.values).map(a => a.name -> a).toMap[String, Arg[_]]
     val named: Parser[(String, Any)] =
       (ident <~ "=") into { n =>
-        allowed.get(n).map(a => (a.parser: Parser[Any]) ^^ (n -> _))
-          .getOrElse(failure(s"Illegal argument name - $n, allowed arguments - ${allowed.keys.mkString(", ")}"))
+        // value of known argument is committed - its parse failure is reported, not hidden by ending arguments
+        allowed.get(n).map(a => commit((a.parser: Parser[Any]) ^^ (n -> _))).getOrElse {
+          failure(s"Illegal argument name - $n, allowed arguments - ${allowed.keys.mkString(", ")}")
+        }
       }
     // the argument's position picks its parser; resolution to a name stays in the ^^ below
-    def arg(i: Int): Parser[(String, Any)] =
-      named | ((positional.get(i).map(_.parser).getOrElse(operation): Parser[Any]) ^^ (null.asInstanceOf[String] -> _))
+    def arg(i: Int): Parser[(String, Any)] = {
+      val positionalArg: Parser[Any] =
+        positional.get(i).map(_.parser).getOrElse(failure(s"No positional argument at index $i"))
+      named | (positionalArg ^^ (null.asInstanceOf[String] -> _))
+    }
     val sep: Parser[Any] = if (separator == null) success(()) else literal(separator)
     def argsFrom(i: Int): Parser[List[(String, Any)]] =
       arg(i) ~ opt(sep ~> argsFrom(i + 1)) ^^ { case a ~ rest => a :: rest.getOrElse(Nil) }
     opt(argsFrom(0)) ^^ (_.getOrElse(Nil)) ^^ { pars =>
       val resolvedPars = pars.zipWithIndex.map { case (no@(n, o), i) =>
         if (n != null) no
-        else
-          if (positional.isEmpty) sys.error(s"Positional parameters not allowed for $o")
-          else positional.getOrElse(i, sys.error(s"Parameter name under index $i not found for $o")).name -> o
+        else positional(i).name -> o // unnamed argument is parsed only by positional argument parser
       }
       val names = resolvedPars.map(_._1)
       val duplicateNames = names.diff(names.distinct).distinct
@@ -1386,7 +1452,7 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
         sys.error(s"Missing mandatory parameters (${missing.mkString(",")}) - specified (${names.mkString(",")})")
       new Args(ListMap(resolvedPars: _*))
     }
-  } named "named-ops"
+  } named "named-args"
 
   def actionFromOp: MemParser[Action] = new Parser[Action] {
     def apply(in: Input): ParseResult[Action] = {
@@ -1600,6 +1666,66 @@ object AppMetadata extends Loggable {
      * */
     case class ExtractParts(fileStreamerName: String = null, source: Op = null) extends Op
     case class Db(action: Action, doRollback: Boolean, dbs: List[DbAccessKey]) extends BlockOp
+    /** Reads messages from messaging provider, see `org.wabase.msg`. Tresql parameters not specified are `null`.
+      * @param providerName  messaging provider name, default provider if `null`
+      * @param from          subscription rows - `{topic, partition, offset, timestamp, pattern} ++ ...`
+      * @param group         subscription group
+      * @param to            evaluated for each message, message for which it returns true is the last one
+      * @param timeout       `{within, idle}` durations
+      * @param committer     committer settings `{delivery, max_batch, max_interval, parallelism, commit_when}`
+      * @param commitMetadata evaluated for each message, committed together with offset
+      * @param key           name under which message key is added to message value map
+      * @param using         codec names `{key, value}` or value codec name
+      * @param restart       `{min_backoff, max_backoff, random_factor, max_restarts, max_restarts_within}` or boolean, not with committer
+      * @param atMostOnce    messages are committed before they are emitted
+      */
+    case class MsgRead(
+      providerName: String = null, // defaults for null values - fields with default values are not written to cache
+      from: Tresql = null,
+      group: Tresql = null,
+      to: Tresql = null,
+      timeout: Tresql = null,
+      committer: Tresql = null,
+      commitMetadata: Tresql = null,
+      key: Tresql = null,
+      using: Tresql = null,
+      restart: Tresql = null,
+      atMostOnce: Tresql = null,
+    ) extends Op
+    /** Sends messages - result of action (source, messaging result, tresql result or single value) to messaging provider.
+      * Tresql parameters not specified are `null`.
+      * @param providerName  messaging provider name, default provider if `null`
+      * @param to            `{topic, partition, timestamp}`
+      * @param key           `{name, value, should_remove}`
+      * @param headers       header rows `{name, value} ++ ...`
+      * @param using         codec names `{key, value}` or value codec name
+      * @param restart       restart of whole pipeline (action - msg read, processing, send, commit) on failure
+      *                      `{min_backoff, max_backoff, random_factor, max_restarts, max_restarts_within}` or boolean
+      * @param action        action producing message values
+      */
+    case class MsgSend(
+      providerName: String = null,
+      to: Tresql = null,
+      key: Tresql = null,
+      headers: Tresql = null,
+      using: Tresql = null,
+      restart: Tresql = null,
+      action: Action = null,
+    ) extends BlockOp
+    /** Messaging provider metadata call.
+      * @param command       one of [[MsgAdmin.Commands]]
+      * @param providerName  messaging provider name, default provider if `null`
+      * @param args          command argument rows, `null` for `topics` command
+      */
+    case class MsgAdmin(command: String, providerName: String = null, args: Tresql = null) extends Op
+    object MsgAdmin {
+      val Topics            = "topics"
+      val TopicPartitions   = "topic partitions"
+      val BeginningOffsets  = "beginning offsets"
+      val EndOffsets        = "end offsets"
+      val CommittedOffsets  = "committed offsets"
+      val Commands: Seq[String] = Seq(Topics, TopicPartitions, BeginningOffsets, EndOffsets, CommittedOffsets)
+    }
     case class Conf(param: String, paramType: ConfType = null) extends Op
     case class JsonCodec(encode: Boolean, op: Op) extends Op
     /** This operation exists only in parsing stage for if operation */
@@ -1662,7 +1788,7 @@ object AppMetadata extends Loggable {
       def traverse(state: T): PartialFunction[Op, T] = {
         case _: Tresql | _: RedirectToKey | _: Response |
              _: VariableTransforms | _: File | _: Conf | _: Cookie |
-             _: This | _: Resource | _: Throw | Commit | Rollback | null => state
+             _: This | _: Resource | _: Throw | Commit | Rollback | _: MsgRead | _: MsgAdmin | null => state
         case o: ViewCall => opTrav(state)(o.data)
         case Unique(o, _, _) => opTrav(state)(o)
         case Foreach(o, a, foldOp, _) =>
@@ -1679,6 +1805,7 @@ object AppMetadata extends Loggable {
         case h: HttpHeader => if (h.httpOp == null) state else opTrav(state)(h.httpOp)
         case Db(a, _, _) => traverseAction(a)(stepTrav)(state)
         case Block(a) => traverseAction(a)(stepTrav)(state)
+        case MsgSend(_, _, _, _, _, _, a) => if (a == null) state else traverseAction(a)(stepTrav)(state)
         case JsonCodec(_, o) => opTrav(state)(o)
         case i: Invocation => i.args.foldLeft(state)(opTrav(_)(_))
         case ExtractHttpEntity(_, _, o) => opTrav(state)(o)
@@ -1774,6 +1901,13 @@ object AppMetadata extends Loggable {
               val s2 = us(s1, nv(s1.value)(headerTresql))
               opTresqlTrav(s2)(body)
             case HttpHeader(_, httpOp, _) => opTresqlTrav(state)(httpOp)
+            case r: MsgRead =>
+              Seq(r.from, r.group, r.to, r.timeout, r.committer, r.commitMetadata, r.key, r.using, r.restart,
+                r.atMostOnce).foldLeft(state)((s, t) => us(s, nv(s.value)(t)))
+            case s: MsgSend =>
+              val s1 = Seq(s.to, s.key, s.headers, s.using, s.restart).foldLeft(state)((st, t) => us(st, nv(st.value)(t)))
+              if (s.action == null) s1 else traverseAction(s.action)(stepTresqlTrav)(s1)
+            case a: MsgAdmin => us(state, nv(state.value)(a.args))
             case ViewCall(method, view, data, _) =>
               val vn = if (view == "this") state.name else view
               val ns = opTrTr(data)

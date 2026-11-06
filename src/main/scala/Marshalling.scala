@@ -15,7 +15,11 @@ import org.apache.pekko.stream.Materializer
 import java.net.URLEncoder
 import java.text.Normalizer
 import scala.concurrent.{ExecutionContext, Future}
-import org.apache.pekko.http.scaladsl.model.headers.{ContentDispositionType, ContentDispositionTypes, Location, RawHeader, `Content-Disposition`}
+import scala.concurrent.duration.FiniteDuration
+import java.util.concurrent.TimeUnit
+import org.apache.pekko.http.scaladsl.marshalling.sse.EventStreamMarshalling
+import org.apache.pekko.http.scaladsl.model.sse.ServerSentEvent
+import org.apache.pekko.http.scaladsl.model.headers.{CacheDirectives, ContentDispositionType, ContentDispositionTypes, Location, RawHeader, `Cache-Control`, `Content-Disposition`}
 import org.apache.pekko.http.scaladsl.server.directives.FileAndResourceDirectives.ResourceFile
 import org.apache.pekko.http.scaladsl.unmarshalling.{FromEntityUnmarshaller, FromResponseUnmarshaller, Unmarshaller}
 import org.apache.pekko.stream.scaladsl.{Flow, Keep, Sink, Source, StreamConverters}
@@ -515,12 +519,30 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with QuereaseMarshalling 
       case rr: TresqlSingleRr => sys.error("TresqlSingleRowResult must be serialized before marshalling.")
       case it: IteratorResult => sys.error("IteratorResult must be serialized before marshalling.")
       case sr: SourceResult   => sys.error("Source result  must me serialized before marshalling.")
+      case mr: MessagingResult => (toResponseMessagingResultMarshaller: ToResponseMarshaller[MessagingResult])(mr)
       case fr: FileInfoResult => sys.error("File info result marshalling not supported.")
       case db: DbResult       => sys.error("Db result cannot be marshalled directly, unwrap inner result and try marshalling.")
       case r: QuereaseResultWithCleanup =>
         sys.error(s"QuereaseResult marshaller for class ${r.getClass.getName} not implemented")
     }
   }
+
+  /** Server sent events stream of messaging result - events are created with server notifications event function
+    * (`app.server-notifications.event-function`, default [[ServerNotifications.createServerEvent]] - string as is,
+    * other values as json; incoming message - [[org.wabase.msg.InMessage.toMap]]),
+    * see [[AppQuereaseMsgOps.messagingSource]]. Response headers like server notifications - no caching,
+    * no proxy buffering.
+    */
+  implicit def toResponseMessagingResultMarshaller(implicit as: ActorSystem): ToResponseMarshaller[MessagingResult] =
+    Marshaller { implicit ec => (mr: MessagingResult) =>
+      val events = app.qe.messagingSource(mr)
+        .map(ServerNotifications.invokeCreateServerEventFunction(_)(as))
+        .keepAlive(MarshallingConfig.msgSseKeepAlive, () => ServerSentEvent.heartbeat)
+      EventStreamMarshalling.toEventStream(events).map(_.map(_.map { entity =>
+        HttpResponse(entity = entity, headers = List(`Cache-Control`(CacheDirectives.`no-cache`),
+          RawHeader("X-Accel-Buffering", "no")))
+      }))
+    }
 
   implicit def toResponseQuereaseIteratorMarshaller(implicit as: ActorSystem): ToResponseMarshaller[QuereaseIteratorResult[Dto]] = {
     def marsh(viewName: String)(implicit ec: ExecutionContext): ToResponseMarshaller[QuereaseIteratorResult[Dto]] =
@@ -557,4 +579,6 @@ object MarshallingConfig extends AppBase.AppConfig with Loggable {
     vals
   }
   lazy val useBlockingTransformer: Boolean = appConfig.getBoolean("use-serialized-result-blocking-transformer")
+  lazy val msgSseKeepAlive: FiniteDuration =
+    FiniteDuration(appConfig.getDuration("msg-sse-keep-alive").toNanos, TimeUnit.NANOSECONDS)
 }

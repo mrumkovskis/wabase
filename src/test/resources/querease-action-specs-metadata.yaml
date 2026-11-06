@@ -2431,3 +2431,14 @@ new:
 job:
 - auth
 - "'ok'"
+
+
+name: msg_parse_test
+fields:
+- value
+get:                            # msg send block form
+- msg send [other] to={'t' topic} using='avro':
+  - x = 'A'
+  - :x
+- res = msg send to={'t' topic}:
+  - "'B'"

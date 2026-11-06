@@ -374,4 +374,50 @@ class MarshallingSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     response(FileTemplateResult("file", "text/plain", "result".getBytes("UTF-8")))
      .header[`Content-Disposition`] shouldEqual Some(`Content-Disposition`(attachment, Map("filename" -> "file")))
   }
+
+  private class TestMsgControl extends org.wabase.msg.Control {
+    val stopped = scala.concurrent.Promise[org.apache.pekko.Done]()
+    def drainOn(streamCompletion: Future[Any]): Unit = ()
+    def stop(): Future[org.apache.pekko.Done] = { stopped.trySuccess(org.apache.pekko.Done); stopped.future }
+  }
+  private class TestMsgCommitter extends org.wabase.msg.MsgCommitter {
+    val committed = new java.util.concurrent.ConcurrentLinkedQueue[org.wabase.msg.Committable]
+    def flow = org.apache.pekko.stream.scaladsl.Flow[org.wabase.msg.Committable]
+      .map { c => committed.add(c); org.apache.pekko.Done }
+  }
+
+  it should "marshal messaging result as server sent events, commit and stop consumer" in {
+    import org.apache.pekko.stream.scaladsl.Source
+    import org.wabase.msg.{CommittableMessage, Header, InMessage}
+    import scala.jdk.CollectionConverters._
+    val svc = service
+    import svc.toResponseWabaseResultMarshaller
+    val ctx = svc.app.AppActionContext(null, null, null, null, null)(null, null, null, system, null, null, logger)
+    val control = new TestMsgControl
+    val committer = new TestMsgCommitter
+    val in = InMessage("t", "k", Map("id" -> 1), 0, 5, List(Header("h", "v")), 1000)
+    val mr = MessagingResult(Source(List[Any](
+      CommittableMessage(in, TestCommittable(5)),
+      CommittableMessage("x", TestCommittable(6)),
+      CommittableMessage(null, TestCommittable(7)), // filtered - committed, not emitted
+    )).mapMaterializedValue(_ => control), Some(committer))
+    val response = Await.result(Marshal(svc.app.WabaseResult(ctx, mr)).to[HttpResponse], 1.second)
+    response.entity.contentType.mediaType shouldEqual MediaTypes.`text/event-stream`
+    response.headers.map(h => h.name -> h.value).toSet shouldBe Set("Cache-Control" -> "no-cache", "X-Accel-Buffering" -> "no")
+    Await.result(response.entity.toStrict(5.seconds), 5.seconds).data.utf8String shouldBe
+      """data:{"topic":"t","partition":0,"offset":5,"timestamp":1000,"key":"k",""" +
+        """"headers":[{"name":"h","value":"v"}],"value":{"id":1}}""" + "\n\n" +
+      "data:x\n\n" // string as is, like server notifications
+    Await.result(control.stopped.future, 5.seconds)
+    committer.committed.asScala.toList shouldBe List(TestCommittable(5), TestCommittable(6), TestCommittable(7))
+  }
+
+  it should "stop consumer when server sent events client disconnects" in {
+    import org.apache.pekko.stream.scaladsl.{Sink, Source}
+    val control = new TestMsgControl
+    val mr = MessagingResult(Source.repeat[Any]("x").mapMaterializedValue(_ => control), None)
+    Await.result(service.app.qe.messagingSource(mr)(system.dispatcher).take(2).runWith(Sink.seq), 5.seconds) shouldBe
+      List("x", "x") // take - cancellation like client disconnect
+    Await.result(control.stopped.future, 5.seconds)
+  }
 }

@@ -8,6 +8,7 @@ import org.scalatest.flatspec.{AsyncFlatSpec, AsyncFlatSpecLike}
 import org.scalatest.matchers.should.Matchers
 import org.tresql.{MissingBindVariableException, Query, Resources, Result, SingleValueResult, convAny, convLong}
 import org.wabase.QuereaseActionsDtos.{Person, PersonWithHealthDataHealth}
+import org.wabase.msg.WabaseMsgProviders
 
 import java.io.InputStream
 import scala.concurrent.duration.DurationInt
@@ -115,7 +116,7 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
       )
     qr = new QuereaseResources()(ResourcesFactory(null, null)(tresqlResources),
       scala.concurrent.ExecutionContext.global, ActorSystem("querease-action-specs"), null, qio,
-      WabaseFileStreamers(Map("main" -> null)), null, _ => PartialFunction.empty, logger)
+      WabaseFileStreamers(Map("main" -> null)), null, WabaseMsgProviders.empty, _ => PartialFunction.empty, logger)
   }
 
   def doAction(view: String, action: String, data: Map[String, Any], env: Map[String, Any]) = {
@@ -199,6 +200,27 @@ class QuereaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuerease
     ))
     // no region is guarded - none of the steps is a recover step
     querease.viewDef("recover_test_1").actions("save").regions.map(_.handler) should be (List(null))
+  }
+
+  it should "parse msg send block" in {
+    val steps = querease.viewDef("msg_parse_test").actions("get").steps
+    steps.map(_._2) shouldBe List("msg send [other] to={'t' topic} using='avro'", "res = msg send to={'t' topic}")
+    steps.head._1 match {
+      case Action.Evaluation(None, Nil, s: Action.MsgSend) =>
+        s.providerName shouldBe "other"
+        s.using shouldBe Action.Tresql("'avro'")
+        s.action.steps.map(_._2) shouldBe List("x = 'A'", ":x")
+      case other => fail(s"Unexpected step: $other")
+    }
+    steps(1)._1 match {
+      case Action.Evaluation(Some("res"), Nil, s: Action.MsgSend) =>
+        s.providerName shouldBe null
+        s.action.steps.map(_._2) shouldBe List("'B'")
+      case other => fail(s"Unexpected step: $other")
+    }
+    // tresql parameters and block action tresqls are extracted
+    actionQueryStrings("msg_parse_test").map(_.replaceAll("\\s+", "")) should contain allOf (
+      "null{'t'topic}", "'avro'", "'A'", "'B'")
   }
 
   def actionQueryStrings(viewName: String): Seq[String] =

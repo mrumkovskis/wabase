@@ -153,6 +153,7 @@ class BusinessScenariosSpecs extends BusinessScenariosBaseSpecs("http_tests") {
   override def beforeAll() = {
     GreenMailServer.startIfEnabled(config)
     startS3ServerIfEnabled()
+    startKafkaIfEnabled()
     server
     // i18n jdbc bundle tables must exist before any translation
     createTables(Seq("bundle", "translation"))
@@ -161,7 +162,8 @@ class BusinessScenariosSpecs extends BusinessScenariosBaseSpecs("http_tests") {
     try server.unbind() // unbind for cross-scala tests
     finally {
       try GreenMailServer.stop()
-      finally stopS3Server()
+      finally try stopS3Server()
+      finally stopKafka()
     }
   }
 
@@ -181,6 +183,23 @@ class BusinessScenariosSpecs extends BusinessScenariosBaseSpecs("http_tests") {
   }
   private def stopS3Server(): Unit =
     if (s3Server != null) try s3Server.stop() finally s3Server = null
+
+  /** In-process kafka broker for 'main' messaging provider (see reference.conf) - started on bootstrap-servers port.
+    * Must be started before server, messaging providers are created on server start. */
+  private var kafka: io.github.embeddedkafka.EmbeddedK = null
+  private def startKafkaIfEnabled(): Unit = {
+    val msgProviderPath = "msg-provider.main"
+    if (config.hasPath(msgProviderPath)) {
+      val port = config.getString(s"$msgProviderPath.bootstrap-servers").split(":").last.toInt
+      kafka = io.github.embeddedkafka.EmbeddedKafka.start()(io.github.embeddedkafka.EmbeddedKafkaConfig(
+        kafkaPort = port,
+        zooKeeperPort = 0,
+        customBrokerProperties = Map("group.initial.rebalance.delay.ms" -> "0"),
+      ))
+    }
+  }
+  private def stopKafka(): Unit =
+    if (kafka != null) try kafka.stop(clearLogs = true) finally kafka = null // EmbeddedKafka.stop() stops all
 
   override def scenariosAutoLogin  = false
   override def scenariosAutoLogout = false

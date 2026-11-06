@@ -750,6 +750,8 @@ abstract class BusinessScenariosBaseSpecs(val scenarioPaths: String*)
         ResultEncoder.encodeAnyToJsonString(sseHandler.eventsAsSeqOfMaps)
       case sse_events_clear if sse_events_clear.startsWith("/backdoor/clear_server_sent_events/") && requestInfo.method == "POST" =>
         sseHandler.clearEvents()
+      case sse_close if sse_close.startsWith("/backdoor/close_server_sent_events/") && requestInfo.method == "POST" =>
+        sseHandler.close() // like client disconnect
       case "/backdoor/inbox" =>
         GreenMailServer.inbox()
       case "/backdoor/purge-inbox" =>

@@ -15,6 +15,7 @@ import org.wabase.AppQuerease.InjectionParametersContext
 import org.wabase.client.HttpClientConfig
 import org.wabase.ds.ConnectionPools.DEFAULT_CP
 import org.wabase.ds.{PoolName, QueryTimeout}
+import org.wabase.msg.{MsgProviderConfig, WabaseMsgProviders}
 
 import java.util.Locale
 import scala.concurrent.duration.DurationInt
@@ -69,6 +70,20 @@ trait WabaseApp[User] {
       case _ => ActorSystem("wabase-http-clients")
     }
     WabaseHttpClients(HttpClientConfig.httpClientFactory.createHttpClients)
+  }
+  /** Messaging providers, see [[MsgProviderConfig]]. Providers are closed on actor system coordinated shutdown.
+    * If no providers are configured, actor system is not used.
+    */
+  implicit lazy val msgProviders: WabaseMsgProviders = {
+    val configs = MsgProviderConfig.configs
+    if (configs.isEmpty) WabaseMsgProviders.empty
+    else {
+      val system: ActorSystem = this match {
+        case execution: Execution => execution.actorSystem
+        case _ => ActorSystem("wabase-msg-providers") // providers are closed on termination of this actor system
+      }
+      WabaseMsgProviders(configs, system)
+    }
   }
   implicit lazy val fileStreamers: WabaseFileStreamers =
     WabaseFileStreamers(FileStreamerConfig.fileStreamerFactory.createFileStreamers(this))
@@ -200,7 +215,7 @@ trait WabaseApp[User] {
   def simpleAction(context: AppActionContext): ActionHandlerResult = {
     import context._
     qe.QuereaseAction(viewName, actionName, values, env, context.resultFilter)(
-        rf, httpReq, qio, fileStreamers, httpClients, injectionParametersProvider, log)
+        rf, httpReq, qio, fileStreamers, httpClients, msgProviders, injectionParametersProvider, log)
       .map(WabaseResult(context, _))
   }
 
@@ -243,7 +258,7 @@ trait WabaseApp[User] {
 
     }
     qe.QuereaseAction(viewName, Action.Get, values, env,
-      context.resultFilter)(rf, httpReq, qio, fileStreamers, httpClients, injectionParametersProvider, log).map(oldVal)
+      context.resultFilter)(rf, httpReq, qio, fileStreamers, httpClients, msgProviders, injectionParametersProvider, log).map(oldVal)
   }
   protected def throwOldValueNotFound(message: String): Nothing =
     throw new org.mojoz.querease.NotFoundException(message)
@@ -270,7 +285,7 @@ trait WabaseApp[User] {
         validateFields(viewName, saveable)
         this.scriptValidations(saveableContext)(state.locale)
         qe.QuereaseAction(viewName, context.actionName, saveable, env, context.resultFilter)(rf,
-            httpReq, qio, fileStreamers, httpClients, injectionParametersProvider, log)
+            httpReq, qio, fileStreamers, httpClients, msgProviders, injectionParametersProvider, log)
           .map(WabaseResult(saveableContext, _))
           .recover { case ex => friendlyConstraintErrorMessage(viewDef, throw ex) }
       }
@@ -281,7 +296,7 @@ trait WabaseApp[User] {
     maybeGetOldValue(context).flatMap { oldValue =>
       val richContext = context.copy(oldValue = oldValue)
       qe.QuereaseAction(viewName, actionName, values, env, context.resultFilter)(
-          rf, httpReq, qio, fileStreamers, httpClients, injectionParametersProvider, log)
+          rf, httpReq, qio, fileStreamers, httpClients, msgProviders, injectionParametersProvider, log)
         .map(WabaseResult(richContext, _))
         .recover { case ex => friendlyConstraintErrorMessage(throw ex) }
     }

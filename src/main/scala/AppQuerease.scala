@@ -20,6 +20,7 @@ import org.wabase.AppMetadata.DbAccessKey
 import org.wabase.AppQuerease.{ActionContext, InjectionParametersContext, InjectionParametersProvider, Scope, configValueAsScala, httpResponseToMap, listOfStringTuples, loggable, updComplexKey}
 import org.wabase.client.HttpClient
 import org.wabase.ds.{ConnectionPools, PoolName}
+import org.wabase.msg.{Control, MsgCommitter, WabaseMsgProviders}
 
 import java.lang.reflect.Parameter
 import java.sql.Connection
@@ -51,6 +52,7 @@ case class QuereaseResources()(implicit
   val qio: AppQuereaseIo[Dto],
   val fileStreamers: WabaseFileStreamers,
   val httpClients: WabaseHttpClients,
+  val msgProviders: WabaseMsgProviders,
   val parametersProvider: InjectionParametersProvider,
   val logger: Logger,
 )
@@ -78,6 +80,17 @@ case class TresqlSingleRowResult(row: RowLike) extends QuereaseCloseableResult {
 case class MapResult(result: Map[String, Any]) extends QuereaseResult
 case class IteratorResult(result: Iterator[Any]) extends QuereaseCloseableResult
 case class SourceResult(src: Source[QuereaseResult, _], toBindableValue: QuereaseResult => Future[Any]) extends QuereaseCloseableResult
+/** Result of msg read operation (and foreach on it).
+  * @param source     elements - [[org.wabase.msg.InMessage]], [[org.wabase.msg.CommittableMessage]] of InMessage or,
+  *                   after foreach, foreach body result (any value) or CommittableMessage of it
+  * @param committer  present if source elements are committable, committables must be passed to committer sink
+  *                   (or [[org.wabase.msg.MsgSender.committableSink]]) when stream is consumed
+  * @param keyName    msg read `key` parameter - name of message bind variable for message key, or null
+  * Not closeable - stream stages do not use action's db resources (message processing runs on evaluator connection
+  * or opens its own db / transaction), so action's resources are released when action completes.
+  */
+case class MessagingResult(source: Source[Any, Control], committer: Option[MsgCommitter], keyName: String = null)
+  extends QuereaseResult
 case class LongResult(value: Long) extends QuereaseResult
 case class StringResult(value: String) extends QuereaseResult
 case class NumberResult(value: java.lang.Number) extends QuereaseResult
@@ -143,7 +156,7 @@ class QuereaseEnvException(envString: String, cause: Exception) extends Exceptio
   * Application can map it to some other status code, for example 409, by adding own exception handler. */
 class NotUniqueException(message: String, cause: Throwable = null) extends RuntimeException(message, cause)
 
-class AppQuerease extends Querease with AppMetadata with Loggable {
+class AppQuerease extends Querease with AppMetadata with AppQuereaseMsgOps with Loggable {
 
  private [wabase] val FieldRefRegexp_ = FieldRefRegexp
 
@@ -187,7 +200,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case dialect => defaultResources.withDialect(dialect)
     }
   }
-  private def useResourcesConnOrEvaluator[T](resources: Resources, f: Resources => T): T =
+  private[wabase] def useResourcesConnOrEvaluator[T](resources: Resources, f: Resources => T): T =
     if (resources.conn != null)
       f(resources)
     else {
@@ -323,6 +336,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       qio: AppQuereaseIo[Dto],
       fileStreamers: WabaseFileStreamers,
       httpClients: WabaseHttpClients,
+      msgProviders: WabaseMsgProviders,
       parameterProvider: InjectionParametersProvider,
       logger: Logger,
     ): QuereaseAction[QuereaseResult] = {
@@ -337,7 +351,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
                     resourcesFactory.initResources(resourcesFactory.resources)(poolName, extraDbs))
                 }
               new QuereaseResources()(resFac, ec, as, httpReq, qio, fileStreamers, httpClients,
-                parameterProvider, logger)
+                msgProviders, parameterProvider, logger)
             }(ec).flatMap { implicit qr: QuereaseResources =>
               def processResult(res: QuereaseResult, cleanup: Option[Throwable] => Unit): QuereaseResult = res match {
                 case sr@ResponseResult(_, ResultValue(result), _, _) =>
@@ -840,7 +854,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       } else {
         val nqr = qr.copy()(resourcesFactory = resourcesFactory
           .focus(if (v.db != null) v.db else defaultCpName, defaultCpName),
-          ec, as, httpReq, qio, fileStreamers, httpClients, parametersProvider, qr.logger)
+          ec, as, httpReq, qio, fileStreamers, httpClients, msgProviders, parametersProvider, qr.logger)
         do_action(viewName, op.method, callScope, env, context.fieldFilter, context :: context.contextStack)(nqr)
       }
     }.map(result => op.conformTo.map(comp_res(result, _)).getOrElse(result))
@@ -1225,23 +1239,30 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       }
     }
     @volatile var idx = 0
-    doActionOp(op.initOp, scope, context).flatMap(source(_, null))
-      .map ( _.mapAsync(1) { itData => // paralellism is 1 so that idx is incremented correctly
-        val itScope = Scope(itData, Map("__idx" -> idx), parent = scope, transparent = false)
-        idx += 1
-        doSteps(op.action, context.copy(stepName = "foreach"), Future.successful(itScope))
-      })
-      .flatMap { src =>
-        if (op.foldOp == null) Future.successful(SourceResult(src, dataForNextStep(_, context, unwrapSingleValue = true)))
-        else src.runFold(Future.successful(scope(op.foldOp.resVar))) { (resF, qres) =>
-          for {
-            res <- resF
-            el <- dataForNextStep(qres, context, unwrapSingleValue = true)
-            foldOpRes <- doActionOp(op.foldOp.op, Scope(Map(op.foldOp.resVar -> res, op.foldOp.elVar -> el)), context)
-            new_res <- dataForNextStep(foldOpRes, context, unwrapSingleValue = true)
-          } yield new_res
-        }.flatten.map(AnyResult.apply)
-      }
+    doActionOp(op.initOp, scope, context).flatMap {
+      case mr: MessagingResult => doForeachMessaging(op, mr, scope, context) // retains MessagingResult
+      case DbResult(mr: MessagingResult, cleanup) => // messaging result is not closeable - release db resources
+        cleanup(None)
+        doForeachMessaging(op, mr, scope, context)
+      case CompatibleResult(mr: MessagingResult, _, _) => doForeachMessaging(op, mr, scope, context)
+      case res => source(res, null)
+        .map ( _.mapAsync(1) { itData => // paralellism is 1 so that idx is incremented correctly
+          val itScope = Scope(itData, Map("__idx" -> idx), parent = scope, transparent = false)
+          idx += 1
+          doSteps(op.action, context.copy(stepName = "foreach"), Future.successful(itScope))
+        })
+        .flatMap { src =>
+          if (op.foldOp == null) Future.successful(SourceResult(src, dataForNextStep(_, context, unwrapSingleValue = true)))
+          else src.runFold(Future.successful(scope(op.foldOp.resVar))) { (resF, qres) =>
+            for {
+              res <- resF
+              el <- dataForNextStep(qres, context, unwrapSingleValue = true)
+              foldOpRes <- doActionOp(op.foldOp.op, Scope(Map(op.foldOp.resVar -> res, op.foldOp.elVar -> el)), context)
+              new_res <- dataForNextStep(foldOpRes, context, unwrapSingleValue = true)
+            } yield new_res
+          }.flatten.map(AnyResult.apply)
+        }
+    }
   }
 
   protected def doResource(
@@ -1564,7 +1585,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
        .copy()(resources = resourcesFactory.initResources(resourcesFactory.resources)(poolName, extraDbs))
     val closeRes = resourcesFactory.closeResources(newResFact.resources, op.doRollback, _)
     val nqr = new QuereaseResources()(
-      newResFact, ec, as, httpReq, qio, fileStreamers, httpClients, parametersProvider, qr.logger)
+      newResFact, ec, as, httpReq, qio, fileStreamers, httpClients, msgProviders, parametersProvider, qr.logger)
     logContext(context, env, nqr)
     doSteps(op.action, context.copy(stepName = "db"),
       Future.successful(Scope(Map(), parent = scope)))(nqr).map {
@@ -1813,6 +1834,9 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case j: Action.JsonCodec => doJsonCodec(j, scope, context)
       case ep: Action.ExtractParts => doExtractParts(ep, scope, context)
       case th: Action.This => doThis(th, scope, context)
+      case mr: Action.MsgRead => doMsgRead(mr, scope, context)
+      case ms: Action.MsgSend => doMsgSend(ms, scope, context)
+      case ma: Action.MsgAdmin => doMsgAdmin(ma, scope, context)
       case VariableTransforms(vts) =>
         Future.successful(doVarsTransforms(vts, scope.toBindeableMap(env)))
       case _: Action.Else => sys.error(s"Integrity error. Else operation cannot be here, must be coalesced into if operation")
@@ -2019,7 +2043,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
     }
   }
 
-  private def dataForNextStep(res: QuereaseResult, context: ActionContext,
+  private[wabase] def dataForNextStep(res: QuereaseResult, context: ActionContext,
                               unwrapSingleValue: Boolean)(implicit qr: QuereaseResources): Future[_] = {
     import qr._
     def v(view: String) = viewDef(
@@ -2048,6 +2072,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case srr: TresqlSingleRowResult => srr.map(_.toMap)
       case MapResult(mr) => mr
       case IteratorResult(ir) => (ir map mapValue).toVector
+      case mr: MessagingResult => runMessaging(mr, Sink.seq[Any]).map(_.toVector)
       case SourceResult(src, toBindableValue) => src.mapAsync(1)(toBindableValue)
         .runFold(scala.collection.mutable.ArrayBuffer[Any]()) (_ += _).map(_.toVector)
       case LongResult(nr) => nr
@@ -2126,6 +2151,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       case IteratorResult(ir) => consumeResult(ir)
       case it: Iterator[_] => while(it.hasNext) consumeResult(it.next())
       case SourceResult(src, _) => src.mapAsync(1)(consumeResult).runWith(Sink.ignore)
+      case mr: MessagingResult => runMessaging(mr, Sink.ignore)
       case AnyResult(ar) => consumeResult(ar)
       case ResponseResult(_, ResultValue(r), _, _) => consumeResult(r)
       case ent: HttpEntity => ent.discardBytes()
@@ -2179,6 +2205,7 @@ class AppQuerease extends Querease with AppMetadata with Loggable {
       (classOf[AppQuereaseIo[Dto]], () => qio),
       (classOf[AppQuerease], () => this),
       (classOf[WabaseHttpClients], () => httpClients),
+      (classOf[WabaseMsgProviders], () => msgProviders),
     )
     val pf = parametersProvider(injectionContext)
     val providerFun: InvocationParameterFun = { case (p, _) if pf.isDefinedAt(p) => pf(p) }

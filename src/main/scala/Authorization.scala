@@ -50,7 +50,7 @@ trait Authorization[User] {
           s"Only allowed boolean value.")
         qe.QuereaseAction(wabaseAuthView, Action.Get, Map("roles" -> roles),
             current_user_param(user), null)(res_fac, httpReq, qio, fileStreamers,
-            httpClients, injectionParametersProvider, log)
+            httpClients, msgProviders, injectionParametersProvider, log)
           .run(ec, as)
           .map {
             case AnyResult(result: Boolean)                 => result

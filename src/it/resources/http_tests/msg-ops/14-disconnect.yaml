@@ -1,0 +1,3 @@
+method:       POST
+path:         /backdoor/close_server_sent_events/msg_events_3
+response:

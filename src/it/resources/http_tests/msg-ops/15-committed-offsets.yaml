@@ -1,0 +1,2 @@
+path:       /data/msg_it_offsets/msg_it_topic?group=msg_it_group
+response:   [{"group_id": "msg_it_group", "topic": "msg_it_topic", "partition": 0, "offset": 5, "metadata": null}]

@@ -1,0 +1,3 @@
+sleep:      3000 ms   # group join, partition assignment
+path:       /backdoor/server_sent_events/msg_events_1
+response:   [{"data": "a"}, {"data": "b"}, {"data": "c"}]

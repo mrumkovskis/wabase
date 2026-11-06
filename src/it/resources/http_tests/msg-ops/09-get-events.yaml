@@ -1,0 +1,3 @@
+sleep:      3000 ms
+path:       /backdoor/server_sent_events/msg_events_2
+response:   [{"data": "d"}]

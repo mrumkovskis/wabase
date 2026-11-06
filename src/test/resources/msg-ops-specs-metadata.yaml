@@ -1,0 +1,194 @@
+table: msg_ops_dummy
+columns:
+- id
+- value
+
+
+name: msg_read_to
+fields:
+- topic
+get:
+- msg read from={:topic topic} to={:value = 'c'}
+
+
+name: msg_read_map
+fields:
+- topic
+get:
+- msg read from={:topic topic} key='k' to={:id = 2 & :k = 'k2'} timeout={'10s' within}
+
+
+name: msg_read_metadata
+fields:
+- topic
+get:
+- msg read from={:topic topic, 0 partition, 1 offset} to={:__metadata.offset = 2}
+
+
+name: msg_read_idle
+fields:
+- topic
+get:
+- msg read from={:topic topic, 0 partition} timeout={'500ms' idle}  # assignment - no group join delay
+
+
+name: msg_read_commit
+fields:
+- topic
+- group
+get:
+- msg read group=:group from={:topic topic} committer={'OffsetFirstObserved' commit_when} commit_metadata=('m-' || :value) to={:value = 'b'}
+
+
+name: msg_read_step
+fields:
+- topic
+get:
+- msgs = msg read from=:topic timeout={'5s' idle}  # group subscription - idle includes group join
+- :msgs.size
+
+
+name: msg_read_errors
+fields:
+- topic
+get:
+- msg read from={:topic topic} committer={1 max_bach}
+list:
+- msg read [unknown] from={:topic topic}
+
+
+name: msg_admin_topics
+get:
+- msg topics
+
+
+name: msg_admin_partitions
+fields:
+- topic
+get:
+- msg topic partitions [main] {:topic topic}
+
+
+name: msg_admin_offsets
+fields:
+- topic
+get:
+- msg beginning offsets {:topic topic, 0 partition} ++ {:topic topic, 1 partition}
+list:
+- msg end offsets [main] {:topic topic, 0 partition} ++ {:topic topic, 1 partition}
+
+
+name: msg_admin_committed
+fields:
+- topic
+- group
+get:
+- msg committed offsets {:group group_id, :topic topic, 0 partition} ++ {'g-none' group_id, :topic topic, 0 partition}
+
+
+name: msg_read_from_table
+fields:
+- id
+get:  # parameters are evaluated with action's resources - may access action's database tables
+- msg read from=msg_ops_dummy[id = :id]{value topic, 0 partition} timeout={'500ms' idle}
+
+
+name: msg_send_rows
+fields:
+- topic
+get:
+- msg send to={:topic topic, 1 partition} key={'id' name, true should_remove} headers={'h' name, 'v' value}:
+  - "{1 id, 'a' name} ++ {2 id, 'b' name}"
+list:  # scalar - one message, explicit key
+- msg send to=:topic key={'k' value} ('x')
+
+
+name: msg_send_forward
+fields:
+- src
+- dst
+- group
+get:  # forward read messages with commit, value and key retained
+- msg send to=:dst msg read group=:group from=:src committer=true to={:value = 'c'}
+
+
+name: msg_foreach
+fields:
+- topic
+get:
+- foreach msg read from={:topic topic, 0 partition} to={:value = 'c'}:
+  - :value || '!'
+list:  # item variable, metadata, index
+- foreach m in msg read from={:topic topic, 0 partition} timeout={'500ms' idle}:
+  - unique {:m m, :__metadata.offset off, :__idx idx}
+count:  # fold
+- n = 0
+- foreach msg read from={:topic topic, 0 partition} timeout={'500ms' idle} fold (n, x) {:n + :x}:
+  - :value
+
+
+name: msg_foreach_send
+fields:
+- src
+- dst
+- group
+get:  # transform, filter (b) and forward with commit
+- msg send to=:dst:
+  - foreach msg read group=:group from=:src committer=true to={:value = 'd'}:
+    - if {:value != 'b'}:
+      - :value || '!'
+
+
+name: msg_foreach_db
+fields:
+- topic
+get:  # body opens its own transaction - action's connection is not used for message processing
+- foreach msg read from={:topic topic, 0 partition} timeout={'500ms' idle}:
+  - transaction:
+    - +msg_ops_dummy {id = :id, value = :name}
+  - :name
+
+
+name: msg_foreach_collect
+fields:
+- topic
+- group
+get:  # collect committable foreach result with filtered message (b)
+- msgs = foreach msg read group=:group from=:topic committer=true to={:value = 'c'}:
+  - if {:value != 'b'}:
+    - :value
+- :msgs.size
+
+
+name: msg_read_restart
+fields:
+- src
+- dst
+get:  # decoding failure restarts reader - messages before failure are read again
+- msg send to=:dst msg read from={:src topic, 0 partition}
+    restart={'50ms' min_backoff, '100ms' max_backoff, 0 random_factor, 2 max_restarts, '10s' max_restarts_within}
+
+
+name: msg_send_restart
+fields:
+- src
+- dst
+- group
+get:  # transient processing failure restarts read, processing, send and commit
+- msg send to=:dst restart={'50ms' min_backoff, '100ms' max_backoff, 0 random_factor}:
+  - foreach msg read group=:group from=:src committer=true to={:value = 'd'}:
+    - org.wabase.MsgOpsTestFunctions.failOnce
+list:  # restart requires messaging result
+- msg send to=:dst restart=true ('x')
+
+
+name: msg_review_fixes
+fields:
+- topic
+get:   # foreach over rows - no result of 'if' without 'else' is not sent
+- msg send to=:topic:
+  - foreach ({1 x} ++ {2 x}):
+    - if {:x = 1}:
+      - :x
+list:  # foreach over messaging result wrapped in db result
+- foreach (db use msg read from={:topic topic, 0 partition} timeout={'500ms' idle}) (:value || '?')
