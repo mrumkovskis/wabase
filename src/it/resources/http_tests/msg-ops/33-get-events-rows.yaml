@@ -1,0 +1,2 @@
+path:       /backdoor/server_sent_events/msg_events_rows
+response:   [{"data": "r1"}, {"data": "r2"}]

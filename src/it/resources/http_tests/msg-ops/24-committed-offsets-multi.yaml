@@ -1,0 +1,3 @@
+# committed after sent to all destinations
+path:       /data/msg_it_offsets/msg_it_orders?group=msg_it_multi
+response:   [{"group_id": "msg_it_multi", "topic": "msg_it_orders", "partition": 0, "offset": 4, "metadata": null}]

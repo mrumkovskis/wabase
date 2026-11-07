@@ -32,3 +32,37 @@ get:  # bad - 'rethrow' does not take arguments
 - x = 'A'
 - recover:
   - rethrow :wabase_error.exception
+
+
+name:   msg_multi_send_error_1
+get:  # bad - no 'to' block
+- msg multi send:
+  - "'x'"
+
+
+name:   msg_multi_send_error_2
+get:  # bad - destination is not msg send
+- msg multi send:
+  - "'x'"
+  - to:
+    - "'y'"
+
+
+name:   msg_multi_send_error_3
+get:  # bad - destination with restart
+- msg multi send:
+  - "'x'"
+  - to:
+    - msg send to='t' restart=true
+
+
+name:   msg_multi_send_error_4
+get:  # bad - msg send without operation outside multi send
+- msg send to='t'
+
+
+name:   msg_multi_send_error_5
+get:  # bad - no source steps
+- msg multi send:
+  - to:
+    - msg send to='t'

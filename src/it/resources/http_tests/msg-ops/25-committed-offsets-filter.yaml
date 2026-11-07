@@ -1,0 +1,3 @@
+# filtered messages committed too
+path:       /data/msg_it_offsets/msg_it_orders?group=msg_it_filter
+response:   [{"group_id": "msg_it_filter", "topic": "msg_it_orders", "partition": 0, "offset": 4, "metadata": null}]

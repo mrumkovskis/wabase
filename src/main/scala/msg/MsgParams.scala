@@ -433,6 +433,9 @@ object MsgSendParams {
     )
   }
 
+  /** msg multi send `restart` parameter, see [[MsgSendParams.restart]] */
+  def multiSendRestart(restart: Any): Option[RestartSettings] = restartParam("multi send", restart)
+
   /** Result of `filter` evaluation for an outgoing element - boolean, `null` is false (element is not sent) */
   def isSent(filter: Any): Boolean = {
     val p = Param(Op, "filter")

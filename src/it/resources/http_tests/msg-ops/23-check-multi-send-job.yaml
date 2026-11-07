@@ -1,0 +1,10 @@
+# job reads orders until end - group join, partition assignment
+sleep:    8000 ms
+path:     /backdoor/tresql_row
+request:  "cron_job_status[job_name = 'msg_it_multi_send']{job_name, status, last_run_status, success_count, error_count}"
+response:
+  job_name: msg_it_multi_send
+  status: success
+  last_run_status: success
+  success_count: 1
+  error_count: 0

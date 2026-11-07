@@ -19,6 +19,7 @@ events and committed, so that processing continues where it stopped.
 - [Database resources](#database-resources)
 - [Sending messages](#sending-messages)
   - [Send filter](#send-filter)
+- [Multi send - fan-out](#multi-send---fan-out)
 - [Restart on failure](#restart-on-failure)
 - [Server sent events](#server-sent-events)
 - [Admin calls](#admin-calls)
@@ -357,6 +358,81 @@ Query result rows are sent as they are read from the cursor, they are not collec
 - JDBC driver may still fetch all rows at once - for example PostgreSQL fetches rows in batches only with autocommit
   off and `tresql.fetch-size` (`tresql.<db>.fetch-size`) set.
 
+## Multi send - fan-out
+
+Sends each element of the source operation to several destinations - routing (destination filter or operation),
+copying, transformation per destination, splitting:
+
+```
+msg multi send [restart=<restart settings or true>]:
+  - <source operation step>
+  - …
+  - to:
+    - msg send [<provider>] to=… [key=…] [headers=…] [using=…] [filter=…] [<operation>]
+    - msg send … :                                      # or block
+      - <expression>
+    - …
+```
+
+```
+- msg multi send restart=true:
+  - msg read group='router' from='orders' committer=true
+  - to:
+    - msg send to='orders-eu' key={'id' name}:                        # adjusted per destination
+      - if {:region = 'eu'} (unique {:id id, :amount amount, 'EUR' currency})
+    - msg send to='orders-us' filter={:region != 'eu'} (unique {:id id, :amount amount})
+    - msg send [other] to='audit'                                     # element as is, other provider
+- db use:                                                             # source and destinations share connection
+  - msg multi send:
+    - foreach audit_log[time > :since]{id, action, user_id}:          # any source - db rows, http, foreach
+      - unique {:id id, :action action, :user_id user_id}
+    - to:
+      - msg send to='audit' key={'id' name}
+      - msg send to='user_events' filter={:user_id != null}
+```
+
+Block - source operation steps followed by `to` block with destinations. `to` has this meaning only as the last step
+of `msg multi send` block, elsewhere it is a named block. Multi send has no single operation form.
+
+Source - result of source steps, as `msg send` operation: messaging result (`msg read`, foreach on it), stream,
+rows, collection, single value. Foreach is optional - only for processing common to all destinations (e.g. db write
+done once). Query result size limit does not apply, as for `msg send`.
+
+Destination - `msg send` with its parameters, evaluated once, before the source (`to` too - topic per element is
+not supported), and optional operation; `restart` is not allowed, it is specified on `msg multi send`:
+- operation is body of implicit foreach over source elements - bind variables as of [send filter](#send-filter)
+  (message bind variables for incoming message, otherwise map fields or `value`), `__idx`, parent scope with `..`;
+  without operation the element is sent as is,
+- operation result `null` or no result - nothing is sent to the destination; rows - each row is a message,
+  collection - each element is a message (to send a list as one message, wrap it in a map, e.g.
+  `unique {:items items}`),
+- operation result is collected per element before sending - large data belongs to the source, which is streamed
+  (e.g. `foreach` over rows as source instead of destination operation returning many rows),
+- incoming message key is retained unless `key` is specified, with or without operation,
+- `filter` is evaluated before operation, on evaluator connection.
+
+Delivery:
+- for each element destinations are evaluated in order (filters and operations), then messages are sent to
+  destinations in order; incoming message is committed after it is sent to all destinations (also if filtered
+  out) - at least once across destinations: after restart a destination may receive a message again. Side effects
+  of destination operations (db writes) are at least once too.
+- `restart` - only with messaging source, restarts reading, processing, sending and committing, as `msg send`.
+- non messaging source (db rows, http) - sending is not tied to the source, after failure messages may already be
+  sent to some destinations; mark rows as sent in the same transaction, or use transactional outbox with messaging
+  source.
+
+Database resources of destination operations:
+- messaging source - as foreach body on messaging result: tresql on evaluator connection, db access in own `db` /
+  `transaction`,
+- other sources - action's resources, like foreach body (action waits for the send). Query result rows are then read
+  only when requested, so that the connection is not used concurrently. Wrap multi send in `db use` /
+  `transaction` so that source and destination operations use the same database (`db` around the source covers
+  only the source). Some JDBC drivers do not support statements while a result set is open (e.g. MySQL streaming
+  result sets) or read the rest of the result into memory (SQL Server without `selectMethod=cursor`).
+
+Result - rows `{provider, topic, count}` of sent message counts, one row per destination in destination order
+(several destinations may have the same topic). The operation completes when all messages are sent and committed.
+
 ## Restart on failure
 
 ```
@@ -476,90 +552,15 @@ trait Control {
 
 ## Limitations
 
-- one outgoing message per incoming message, one destination topic per `msg send` - fan-out is not supported
-  (see [future improvements](#future-improvements)). To send messages of one topic to several destinations, use
-  several `msg send` operations (e.g. jobs), each reading the topic with its own consumer group.
+- `msg send` sends one message per element to one topic - use [multi send](#multi-send---fan-out) for several
+  destinations or several messages per element.
+- destination topic is evaluated once per operation, topic per message is not supported.
 - encoders cannot add headers to outgoing messages (headers can be set with `msg send headers=`).
 - `msg read` `restart` cannot be combined with `committer` - use `msg send` `restart`.
 
 ## Future improvements
 
 Proposals, not implemented.
-
-### Multi send - fan-out
-
-Sends each element of the source operation to several destinations, routing (destination filter), copying and
-per destination transformation (including splitting):
-
-```
-- msg multi send restart=true:
-  - msg read group='router' from='orders' committer=true
-  to:
-  - msg send to='orders-eu' key={'id' name}:                          # adjusted per destination
-    - if {:region = 'eu'} (unique {:id id, :amount amount, 'EUR' currency})
-  - msg send to='orders-us' filter={:region != 'eu'} (unique {:id id, :amount amount})
-  - msg send [other] to='audit'                                       # element as is, other provider
-- db use:                                                             # source and destinations share connection
-  - msg multi send:
-    - foreach audit_log[time > :since]{id, action, user_id}:          # any source - db rows, http, foreach
-      - unique {:id id, :action action, :user_id user_id}
-    to:
-    - msg send to='audit' key={'id' name}
-    - msg send to='user_events' filter={:user_id != null}
-```
-
-Syntax - step with two keys like `if` / `else`: `msg multi send [restart=...]` with source operation (block), and `to`
-with list of destination `msg send` operations.
-
-Source - any operation, as `msg send` operation: messaging result (`msg read`, foreach on it), stream, rows,
-collection, single value. Outer foreach is optional - only for processing common to all destinations (e.g. db
-write done once).
-
-Destination - `msg send` with its parameters (provider, `to`, `key`, `headers`, `using`, `filter`), evaluated once
-before the source, and optional operation:
-- operation is body of implicit foreach over source elements - scope is element scope (message bind variables for
-  incoming message, foreach item scope for other elements, `__idx`, parent with `..`); without operation the
-  element is sent as is,
-- operation result `null` or no result - nothing is sent to the destination (filter); rows - each row is a message
-  (splitting),
-- incoming message key is retained unless `key` is specified, with or without operation,
-- `restart` is not allowed - restart is specified on `msg multi send`.
-
-Delivery:
-- for each element destinations are evaluated in order (filters and operations), then messages are sent; committable
-  is committed after the element is sent to all destinations (filtered ones included) - at least once across
-  destinations, after restart a destination may receive a message again. Side effects of destination operations
-  (db writes) are at least once too.
-- `restart` - only with messaging source, restarts source, processing, sending and committing, as `msg send restart`.
-- non messaging source (db rows, http) - sending is not tied to the source, after failure messages may be already
-  sent to some destinations; mark rows as sent in the same transaction or use transactional outbox with messaging
-  source.
-
-Database resources:
-- messaging source - stream runs after action has completed, destination operations use evaluator pool, as foreach
-  body on messaging result,
-- other sources - action waits for the send (result is returned after the stream completes), destination operations
-  run with action's resources, like foreach body. Wrap multi send in `db use` / `transaction` so that source and
-  destination operations use the same database (resources of `db` before the source only cover the source).
-
-Implementation - one stage per destination `sender.optionalFlow[(element, P)]` (`None` - filtered, element with
-several messages - several sends, `P` passed after the last), stages are chained, `P` (committable) after the last
-stage goes to committer. Works across providers without provider API change, order per destination is preserved,
-stages process different elements concurrently. Filters and operations of all destinations of an element are
-evaluated in one future with one evaluator connection. Kafka `ProducerMessage.multi` within one provider - optional
-optimisation.
-
-Result - rows `{provider, topic, count}` of sent message counts, one row per destination in destination order
-(several destinations may have the same topic), filtered elements are not counted.
-
-Destination `to` is evaluated once, before the source, as `msg send` `to` - routing is done with destination
-filters or operations among destinations known in advance. Topic evaluated per element (e.g. topic per tenant) is
-not supported, possible extension if needed.
-
-Name `to:` continues the step like `else` of `if` - "multi send source to destinations", meaning destination as
-`msg send to=` (`msg read to=` - termination - is a parameter of other operation, not a block key).
-
-### Other
 
 - read side filter (`msg read filter=`) - raw message server sent events filtered per client; send
   [filter](#send-filter) covers sending, foreach `if` covers transformed events.

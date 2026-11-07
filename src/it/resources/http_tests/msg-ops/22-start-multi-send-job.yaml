@@ -1,0 +1,4 @@
+# msg multi send, msg send filter
+path:       /start-job/msg_it_multi_send
+method:     POST
+response:

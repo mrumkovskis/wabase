@@ -4,7 +4,8 @@ import io.bullet.borer.Cbor
 import org.scalatest.flatspec.{AnyFlatSpec => FlatSpec}
 import org.scalatest.matchers.should.Matchers
 import org.wabase.AppMetadata.Action
-import org.wabase.AppMetadata.Action.{Db, Evaluation, Foreach, MsgAdmin, MsgRead, MsgSend, Op, Template, Tresql}
+import org.wabase.AppMetadata.Action.{Block, Db, Evaluation, Foreach, MsgAdmin, MsgMultiSend, MsgRead, MsgSend, Op,
+  Template, Tresql}
 
 class MsgOpsParserSpecs extends FlatSpec with Matchers {
   // table metadata - invocation operation (tried on backtracking) checks table names
@@ -129,10 +130,14 @@ class MsgOpsParserSpecs extends FlatSpec with Matchers {
       .getMessage should include ("Illegal argument name - tpo")
   }
 
-  it should "require to and operation" in {
+  it should "require to and operation" in { // operation is optional only for msg multi send destination
     intercept[RuntimeException](op("msg send key={'k' name} (:x)"))
       .getMessage should include ("Missing mandatory parameters (to)")
     intercept[RuntimeException](op("msg send to=({'t' topic})"))
+      .getMessage should include ("msg send requires operation")
+    // malformed operation reports its own error
+    intercept[RuntimeException](op("msg send to=({'t' topic}) (:x"))
+      .getMessage should not include ("requires operation")
   }
 
   behavior of "msg metadata calls"
@@ -183,6 +188,35 @@ class MsgOpsParserSpecs extends FlatSpec with Matchers {
     op("msg send to='t' (x = 1)") shouldBe a [MsgSend]
   }
 
+  behavior of "msg multi send"
+
+  it should "parse msg send without operation as destination, reject single operation form" in {
+    val dest = parser.parseMsgSendDestination("msg send to='t' filter={:x = 1}", isBlock = false)
+    (n(dest.to), n(dest.filter), dest.action) shouldBe ((n("'t'"), n("null{:x = 1}"), null))
+    parser.parseMsgSendDestination("msg send to='t' (:x)", isBlock = false).action should not be null
+    parser.parseMsgSendDestination("msg send to='t' key={'id' name}", isBlock = true).action shouldBe null
+    // malformed operation is a syntax error, not destination without operation
+    intercept[RuntimeException](parser.parseMsgSendDestination("msg send to='t' (:x", isBlock = false))
+    // inline destination operation as in docs
+    op("msg send to='orders-us' key={'id' name} (if {:region = 'us'} (unique {:id id, :amount amount}))") match {
+      case s: MsgSend => s.action.steps.map(_._1.getClass.getSimpleName) shouldBe List("Evaluation")
+      case x => fail(s"Unexpected operation: $x")
+    }
+    intercept[RuntimeException](op("msg multi send restart=true :x"))
+      .getMessage should include ("msg multi send requires block")
+  }
+
+  it should "reject wrong block structure" in {
+    def error(view: String) = intercept[RuntimeException] {
+      new TestQuerease("/querease-specs-bad-metadata.yaml", _.body contains view).nameToViewDef
+    }.getMessage
+    error("msg_multi_send_error_1") should include ("msg multi send block must end with 'to' block")
+    error("msg_multi_send_error_2") should include ("msg multi send destination must be msg send operation")
+    error("msg_multi_send_error_3") should include ("msg multi send destination must not have 'restart'")
+    error("msg_multi_send_error_4") should include ("msg send requires operation")
+    error("msg_multi_send_error_5") should include ("msg multi send requires source operation steps")
+  }
+
   behavior of "msg operations"
 
   it should "be serializable to action cache" in {
@@ -191,6 +225,10 @@ class MsgOpsParserSpecs extends FlatSpec with Matchers {
       Evaluation(None, Nil, op("msg read [p] from={'t' topic} using='avro'")),
       Evaluation(Some("r"), Nil, op("msg send to=({'t' topic}) msg topics")),
       Evaluation(None, Nil, op("msg end offsets {'t' topic, 0 partition}")),
+      Evaluation(None, Nil, MsgMultiSend(Tresql("true"),
+        Action(List(Evaluation(None, Nil, op("msg read from='s'")) -> "src")),
+        Action(List(Evaluation(None, Nil,
+          parser.parseMsgSendDestination("msg send to='t' filter={:x = 1}", isBlock = false)) -> "src")))),
     ).map(_ -> "src"))
     Cbor.decode(Cbor.encode(action).toByteArray).to[Action].value shouldBe action
   }

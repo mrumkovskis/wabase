@@ -1,0 +1,3 @@
+path:       /data/msg_it_events/msg_it_us?group=msg_it_check&last=end
+response_status: 200 OK
+response: -> msg_events_us

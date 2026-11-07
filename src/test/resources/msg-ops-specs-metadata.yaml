@@ -230,3 +230,110 @@ get:   # query rows are streamed from db block's cursor, which is closed after m
   - msg send to=:topic msg_ops_dummy[id >= 1000]{id, value}#(id)
 list:  # single row with single column - value is sent
 - msg send to=:topic msg_ops_dummy[id = 1000]{value}
+
+
+name: msg_multi_send
+fields:
+- src
+- group
+- eu
+- us
+- all
+- dst
+- dst2
+get:  # routing (filter, operation), transformation, copy; committing messaging source
+- msg multi send:
+  - msg read group=:group from=:src committer=true key='k' to={:status = 'end'}
+  - to:
+    - msg send to=:eu filter={:region = 'eu'}
+    - msg send to=:us key={'id' name}:
+      - if {:region = 'us'} (unique {:id::int id, :status status})
+    - msg send to=:all
+list: # rows source, splitting (operation returning rows), __idx, parent scope
+- tag = 't'
+- msg multi send:
+  - ({1 id} ++ {2 id})
+  - to:
+    - msg send to=:dst ({:id::int id, :__idx::int idx, :'..'.tag tag} ++ {:id::int + 10 id, :__idx::int idx, :'..'.tag tag})
+    - msg send to=:dst2 filter={:id::int = 2}
+count: # restart requires messaging result
+- msg multi send restart=true:
+  - "'x'"
+  - to:
+    - msg send to=:dst
+
+
+name: msg_multi_send_db
+fields:
+- dst
+get:  # destination operation queries action's connection while query source rows are read
+- msg multi send:
+  - msg_ops_dummy[id >= 1000 & id < 1010]{id}#(id)
+  - to:
+    - msg send to=:dst (msg_ops_dummy[id = :id]{value})
+
+
+name: msg_multi_send_restart
+fields:
+- src
+- dst
+- copy
+- group
+get:  # transient failure in destination operation restarts read, processing, send and commit
+- msg multi send restart={'50ms' min_backoff, '100ms' max_backoff, 0 random_factor}:
+  - msg read group=:group from=:src committer=true to={:value = 'd'}
+  - to:
+    - msg send to=:copy
+    - msg send to=:dst (org.wabase.MsgOpsTestFunctions.failOnce)
+
+
+name: msg_multi_send_split
+fields:
+- src
+- dst
+- copy
+- group
+get:  # incoming message split into several messages - committed after the last one, also before the last stage
+- msg multi send:
+  - msg read group=:group from=:src committer=true to={:value = 'c'}
+  - to:
+    - msg send to=:dst ({:value || '1' v} ++ {:value || '2' v})
+    - msg send to=:copy
+
+
+name: msg_send_compat_src
+fields:
+- src
+- group
+get:
+- msg read group=:group from=:src committer=true to={:value = 'c'}
+
+
+name: msg_send_compat
+fields:
+- src
+- dst
+- group
+get:  # messaging result of view call with result type (CompatibleResult) - committed after sending
+- msg send to=:dst (as any get msg_send_compat_src)
+list: # the same with restart
+- msg send to=:dst restart={'50ms' min_backoff, '100ms' max_backoff, 0 random_factor}:
+  - as any get msg_send_compat_src
+count: # multi send
+- msg multi send:
+  - as any get msg_send_compat_src
+  - to:
+    - msg send to=:dst
+
+
+name: msg_multi_send_idx
+fields:
+- src
+- dst
+- group
+get:  # __idx counts messages filtered by foreach, like foreach
+- msg multi send:
+  - foreach msg read group=:group from=:src committer=true to={:value = 'c'}:
+    - if {:value != 'b'} (:value)
+  - to:
+    - msg send to=:dst (:value || :__idx)

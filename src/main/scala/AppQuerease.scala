@@ -1836,6 +1836,7 @@ class AppQuerease extends Querease with AppMetadata with AppQuereaseMsgOps with 
       case th: Action.This => doThis(th, scope, context)
       case mr: Action.MsgRead => doMsgRead(mr, scope, context)
       case ms: Action.MsgSend => doMsgSend(ms, scope, context)
+      case mms: Action.MsgMultiSend => doMsgMultiSend(mms, scope, context)
       case ma: Action.MsgAdmin => doMsgAdmin(ma, scope, context)
       case VariableTransforms(vts) =>
         Future.successful(doVarsTransforms(vts, scope.toBindeableMap(env)))

@@ -1,0 +1,4 @@
+method:       POST
+path:         /data/msg_it_send/msg_it_orders?value=eu-3
+status_code:  202 Accepted
+response:

@@ -34,3 +34,21 @@ fields:      # group - parameter, other fields - result columns
 - metadata
 get:
 - msg committed offsets {:group group_id, :topic topic, 0 partition}
+
+
+name: msg_it_multi_send
+job:   # no api - not in api / metadata snapshots, started with POST /start-job/msg_it_multi_send
+# fan-out of messaging source - destination filter, destination operation, committed after all destinations
+- msg multi send:
+  - msg read group='msg_it_multi' from='msg_it_orders' committer=true to={:value = 'end'}
+  - to:
+    - msg send to='msg_it_eu' filter={:value ~ 'eu%'}
+    - msg send to='msg_it_marked' (:value || '!')
+# msg send filter - forwarded messages filtered, all committed
+- msg send to='msg_it_us' filter={:value ~ 'us%' | :value = 'end'}
+    msg read group='msg_it_filter' from='msg_it_orders' committer=true to={:value = 'end'}
+# rows source, destination operation on action's connection
+- msg multi send:
+  - ({1 id} ++ {2 id})
+  - to:
+    - msg send to='msg_it_rows' ('r' || :id)

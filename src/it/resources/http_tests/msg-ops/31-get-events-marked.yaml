@@ -1,0 +1,2 @@
+path:       /backdoor/server_sent_events/msg_events_marked
+response:   [{"data": "eu-1!"}, {"data": "us-2!"}, {"data": "eu-3!"}, {"data": "end!"}]

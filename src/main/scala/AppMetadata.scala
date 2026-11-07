@@ -651,6 +651,43 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
     traverseAction(action)(stepTrav)(false)
   }
 
+  /** `msg multi send` block - source operation steps followed by `to` block with destinations - `msg send`
+    * operations (operation optional, see [[OpParser.parseMsgSendDestination]]) without `restart`.
+    */
+  protected def msgMultiSendBlock(
+    objectName: String,
+    op: Action.MsgMultiSend,
+    block: List[Any],
+    opParser: OpParser,
+  ): Action.MsgMultiSend = {
+    def error(msg: String) = sys.error(s"'$objectName' parsing error. msg multi send $msg")
+    def isMsgSend(s: String) = s.matches("(?s)\\s*msg\\s+send\\b.*")
+    def destination(d: Any): (Action.Step, String) = {
+      val (src, send): (String, Action.MsgSend) = d match {
+        case s: String if isMsgSend(s) => (s, opParser.parseMsgSendDestination(s, isBlock = false))
+        case jm: java.util.Map[String@unchecked, _] if jm.size == 1 => jm.asScala.head match {
+          case (s, al: java.util.List[_]) if isMsgSend(s) =>
+            (s, opParser.parseMsgSendDestination(s, isBlock = true)
+              .copy(action = parseAction(objectName, al.asScala.toList, opParser)))
+          case (s, _) => error(s"destination must be msg send operation, found: $s")
+        }
+        case x => error(s"destination must be msg send operation, found: $x")
+      }
+      if (send.restart != null) error(s"destination must not have 'restart' - specify it on msg multi send: $src")
+      (Action.Evaluation(None, Nil, send), src)
+    }
+    block.lastOption match {
+      case Some(jm: java.util.Map[String@unchecked, _]) if jm.size == 1 && jm.containsKey("to") =>
+        if (block.size < 2) error("requires source operation steps before 'to' block")
+        val dests = jm.get("to") match {
+          case al: java.util.List[_] if !al.isEmpty => al.asScala.toList
+          case _ => error("'to' block requires msg send destinations")
+        }
+        op.copy(action = parseAction(objectName, block.init, opParser), destinations = Action(dests.map(destination)))
+      case _ => error("block must end with 'to' block with msg send destinations")
+    }
+  }
+
   protected def parseAction(objectName: String, stepData: Seq[Any], opParser: OpParser): Action = {
     // matches - 'validations validation_name [db:cp]'
     val validationRegex = new Regex(s"(?U)${Action.ValidationsKey}(?:\\s+(\\w+))?(?:\\s+\\[(?:\\s*(\\w+)?\\s*(?::\\s*(\\w+)\\s*)?)\\])?")
@@ -689,6 +726,7 @@ trait AppMetadata extends QuereaseMetadata { this: AppQuerease =>
                     case bl: Action.Foreach => bl.copy(action = pa)
                     case bl: Action.Db      => bl.copy(action = pa)
                     case bl: Action.MsgSend => bl.copy(action = pa)
+                    case bl: Action.MsgMultiSend => msgMultiSendBlock(objectName, bl, al.asScala.toList, opParser)
                     case bl: Action.Else    => bl.copy(action = pa)
                     case bl: Action.Block   => bl.copy(action = pa)
                     case null               => Action.Block(pa)
@@ -1086,6 +1124,16 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
       case x => sys.error(x.toString)
     }
 
+  /** Parses `msg multi send` destination - `msg send` with optional operation, or block header (`msg send ...:`)
+    * whose operation is the block.
+    */
+  def parseMsgSendDestination(dest: String, isBlock: Boolean): MsgSend =
+    phrase(if (isBlock) msgSendBlockOp else msgSendDestinationOp)(
+      new scala.util.parsing.input.CharSequenceReader(dest)) match {
+      case Success(r, _) => r
+      case x => sys.error(x.toString)
+    }
+
   // operation parsers
   def tresqlOp: MemParser[Tresql] = opt(opResultType) ~ expr ^^ { case rt ~ e =>
     val te = transformer {
@@ -1233,9 +1281,25 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
         MsgSend(provider.orNull, a("to"), a("key"), a("headers"), a("using"), a("restart"), a("filter"))
     }
   } named "msg-send-block-op"
-  def msgSendOp: MemParser[MsgSend] = msgSendBlockOp ~ actionFromOp ^^ {
+  def msgSendOp: MemParser[MsgSend] = msgSendBlockOp ~ (actionFromOp | ("\\z".r ~> err(
+    "msg send requires operation, only msg multi send destination may have no operation"))) ^^ {
     case send ~ act => send.copy(action = act)
   } named "msg-send-op"
+  /** `msg multi send` destination - msg send with optional operation */
+  def msgSendDestinationOp: MemParser[MsgSend] = msgSendBlockOp ~ opt(actionFromOp) ^^ {
+    case send ~ act => send.copy(action = act.orNull)
+  } named "msg-send-destination-op"
+  def msgMultiSendBlockOp: MemParser[MsgMultiSend] = {
+    val Restart = Arg("restart", bracesTresql)
+    ("msg\\s+multi\\s+send\\b".r ~> namedArgs(Seq(Restart)) <~ noIllegalArg(Seq(Restart))) ^^ { args =>
+      MsgMultiSend(args.orNull(Restart))
+    }
+  } named "msg-multi-send-block-op"
+  /** Multi send has no single operation form - it requires block with source and destinations */
+  def msgMultiSendOp: MemParser[MsgMultiSend] =
+    "msg\\s+multi\\s+send\\b".r ~> err(
+      "msg multi send requires block - source operation steps followed by 'to' block with msg send destinations"
+    ) named "msg-multi-send-op"
   def msgAdminOp: MemParser[MsgAdmin] = {
     val Command = MsgAdmin.Commands.map(_.replace(" ", "\\s+")).mkString("msg\\s+(", "|", ")\\b").r
     (Command ~ resourceName) >> { case cmd ~ provider =>
@@ -1293,7 +1357,7 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
   } named "if-block-op"
   def elseBlockOp: MemParser[Else] = "else\\b".r ^^^ Else(null) named "else-block-op"
   def blockOp: MemParser[BlockOp] =
-    ifBlockOp | elseBlockOp | dbBlockOp | foreachBlockOp | msgSendBlockOp named "block-op"
+    ifBlockOp | elseBlockOp | dbBlockOp | foreachBlockOp | msgSendBlockOp | msgMultiSendBlockOp named "block-op"
   def thisOp: MemParser[This] = opt(opResultType) <~ "this" ^^ This.apply named "this-op"
 
   def bracesOp: MemParser[Op] = "(" ~> operation <~ ")" named "braces-op"
@@ -1365,7 +1429,7 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
     ("rethrow\\b".r ^^^ Throw()) | th
   } named "throw-op"
   def operation: MemParser[Op] = (commit | rollback | throwOp | redirect | response | viewOp | confOp | uniqueOp |
-    httpOp | dbOp | foreachOp | ifElseOp | elseOp | msgReadOp | msgSendOp | msgAdminOp |
+    httpOp | dbOp | foreachOp | ifElseOp | elseOp | msgReadOp | msgSendOp | msgMultiSendOp | msgAdminOp |
     resourceOp | fileOp | toFileOp | templateOp | emailOp |
     jsonCodecOp | httpHeaderOp | httpCookieOp | extractPartsOp | extractEntityOp |
     thisOp | bracesOp | invocationOp | tresqlOp) named "operation"
@@ -1715,6 +1779,17 @@ object AppMetadata extends Loggable {
       filter: Tresql = null,
       action: Action = null,
     ) extends BlockOp
+    /** Sends each element of source operation result to several destinations (fan-out).
+      * @param restart       restart of whole pipeline on failure, see [[MsgSend.restart]]
+      * @param action        source operation steps
+      * @param destinations  `to` block - steps with [[MsgSend]] operations without restart, operation of destination
+      *                      (if any) is executed for each source element
+      */
+    case class MsgMultiSend(
+      restart: Tresql = null,
+      action: Action = null,
+      destinations: Action = null,
+    ) extends BlockOp
     /** Messaging provider metadata call.
       * @param command       one of [[MsgAdmin.Commands]]
       * @param providerName  messaging provider name, default provider if `null`
@@ -1809,6 +1884,7 @@ object AppMetadata extends Loggable {
         case Db(a, _, _) => traverseAction(a)(stepTrav)(state)
         case Block(a) => traverseAction(a)(stepTrav)(state)
         case MsgSend(_, _, _, _, _, _, _, a) => if (a == null) state else traverseAction(a)(stepTrav)(state)
+        case MsgMultiSend(_, a, d) => traverseAction(d)(stepTrav)(traverseAction(a)(stepTrav)(state))
         case JsonCodec(_, o) => opTrav(state)(o)
         case i: Invocation => i.args.foldLeft(state)(opTrav(_)(_))
         case ExtractHttpEntity(_, _, o) => opTrav(state)(o)
@@ -1910,6 +1986,9 @@ object AppMetadata extends Loggable {
             case s: MsgSend =>
               val s1 = Seq(s.to, s.key, s.headers, s.using, s.restart, s.filter).foldLeft(state)((st, t) => us(st, nv(st.value)(t)))
               if (s.action == null) s1 else traverseAction(s.action)(stepTresqlTrav)(s1)
+            case m: MsgMultiSend =>
+              val s1 = us(state, nv(state.value)(m.restart))
+              traverseAction(m.destinations)(stepTresqlTrav)(traverseAction(m.action)(stepTresqlTrav)(s1))
             case a: MsgAdmin => us(state, nv(state.value)(a.args))
             case ViewCall(method, view, data, _) =>
               val vn = if (view == "this") state.name else view

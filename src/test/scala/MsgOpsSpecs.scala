@@ -394,6 +394,111 @@ class MsgOpsSpecs extends FlatSpec with Matchers with TestQuereaseInitializer {
       "msg send parameter 'restart' requires messaging result (msg read) of operation, got: org.wabase.TresqlResult"
   }
 
+  behavior of "msg multi send"
+
+  private def rows(res: QuereaseResult): List[Map[String, Any]] = res match {
+    case IteratorResult(it) => it.map { case r: Map[String@unchecked, _] => r }.toList
+    case x => fail(s"IteratorResult expected, got: $x")
+  }
+
+  it should "route, transform and copy messages, commit after all destinations" in {
+    val src = newTopic()
+    val (eu, us, all) = (newTopic(), newTopic(), newTopic())
+    send(src,
+      "k1" -> Map("id" -> 1, "region" -> "eu", "status" -> "new"),
+      "k2" -> Map("id" -> 2, "region" -> "us", "status" -> "new"),
+      "k3" -> Map("id" -> 3, "region" -> "us", "status" -> "new"),
+      "k4" -> Map("id" -> 4, "region" -> "eu", "status" -> "end"))
+    rows(action("msg_multi_send",
+      Map("src" -> src, "group" -> "g-multi", "eu" -> eu, "us" -> us, "all" -> all))) shouldBe List(
+      Map("provider" -> "main", "topic" -> eu, "count" -> 2),
+      Map("provider" -> "main", "topic" -> us, "count" -> 2),
+      Map("provider" -> "main", "topic" -> all, "count" -> 4),
+    )
+    readAll(eu, 2).map(m => (m.key, m.value)) shouldBe List(
+      ("k1", Map("id" -> 1, "region" -> "eu", "status" -> "new")),
+      ("k4", Map("id" -> 4, "region" -> "eu", "status" -> "end")))
+    readAll(us, 2).map(m => (m.key, m.value)) shouldBe List(
+      ("2", Map("id" -> 2, "status" -> "new")), ("3", Map("id" -> 3, "status" -> "new")))
+    readAll(all, 4).map(_.key) shouldBe List("k1", "k2", "k3", "k4")
+    await(provider.admin.committedOffsets("g-multi", Set(TopicPartition(src, 0)))) shouldBe
+      Map(TopicPartition(src, 0) -> OffsetAndMetadata(4, null))
+  }
+
+  it should "split incoming message into several messages, commit after the last one" in {
+    val (src, dst, copy) = (newTopic(), newTopic(), newTopic())
+    send(src, "a", "b", "c", "d")
+    rows(action("msg_multi_send_split", Map("src" -> src, "dst" -> dst, "copy" -> copy, "group" -> "g-split")))
+      .map(_("count")) shouldBe List(6, 3)
+    readAll(dst, 6).map(_.value) shouldBe
+      List("a1", "a2", "b1", "b2", "c1", "c2").map(v => Map("v" -> v))
+    readAll(copy, 3).map(_.value) shouldBe List("a", "b", "c")
+    await(provider.admin.committedOffsets("g-split", Set(TopicPartition(src, 0)))) shouldBe
+      Map(TopicPartition(src, 0) -> OffsetAndMetadata(3, null))
+  }
+
+  it should "split rows source elements, bind index and parent scope" in {
+    val (dst, dst2) = (newTopic(), newTopic())
+    rows(action("msg_multi_send", Map("dst" -> dst, "dst2" -> dst2), "list")) shouldBe List(
+      Map("provider" -> "main", "topic" -> dst, "count" -> 4),
+      Map("provider" -> "main", "topic" -> dst2, "count" -> 1),
+    )
+    readAll(dst, 4).map(_.value) shouldBe List(
+      Map("id" -> 1, "idx" -> 0, "tag" -> "t"), Map("id" -> 11, "idx" -> 0, "tag" -> "t"),
+      Map("id" -> 2, "idx" -> 1, "tag" -> "t"), Map("id" -> 12, "idx" -> 1, "tag" -> "t"))
+    readAll(dst2, 1).map(_.value) shouldBe List(Map("id" -> 2))
+  }
+
+  it should "query action's database in destination operation of query source" in {
+    val dst = newTopic()
+    insertDummyRows()
+    rows(action("msg_multi_send_db", Map("dst" -> dst))).map(_("count")) shouldBe List(10)
+    readAll(dst, 10).map(_.value) shouldBe (1000 until 1010).map(i => s"v$i")
+  }
+
+  it should "restart reading, processing, sending to all destinations and committing after failure" in {
+    val (src, dst, copy) = (newTopic(), newTopic(), newTopic())
+    send(src, "a", "b", "c", "d", "e")
+    val failuresBefore = MsgOpsTestFunctions.failures.get
+    MsgOpsTestFunctions.failOn.set("b")
+    val counts = rows(action("msg_multi_send_restart",
+      Map("src" -> src, "dst" -> dst, "copy" -> copy, "group" -> "g-multi-restart"))).map(_("count").asInstanceOf[Long])
+    MsgOpsTestFunctions.failures.get shouldBe failuresBefore + 1
+    // messages sent before failure but not committed are sent again - at least once
+    readAll(copy, counts.head.toInt).map(_.value).distinct shouldBe List("a", "b", "c", "d")
+    readAll(dst, counts(1).toInt).map(_.value).distinct shouldBe List("a!", "b!", "c!", "d!")
+    counts.foreach(_ should (be >= 4L and be <= 6L))
+    await(provider.admin.committedOffsets("g-multi-restart", Set(TopicPartition(src, 0)))) shouldBe
+      Map(TopicPartition(src, 0) -> OffsetAndMetadata(4, null))
+  }
+
+  it should "require messaging result for restart" in {
+    intercept[RuntimeException](action("msg_multi_send", Map("dst" -> "d"), "count")).getMessage shouldBe
+      "msg multi send parameter 'restart' requires messaging result (msg read) of operation, got: org.wabase.TresqlResult"
+  }
+
+  it should "send messaging result of view call with result type, commit after sending" in {
+    def check(actionName: String, group: String)(sent: QuereaseResult => Long): Unit = {
+      val (src, dst) = (newTopic(), newTopic())
+      send(src, "a", "b", "c", "d")
+      sent(action("msg_send_compat", Map("src" -> src, "dst" -> dst, "group" -> group), actionName)) shouldBe 3
+      readAll(dst, 3).map(_.value) shouldBe List("a", "b", "c")
+      await(provider.admin.committedOffsets(group, Set(TopicPartition(src, 0)))) shouldBe
+        Map(TopicPartition(src, 0) -> OffsetAndMetadata(3, null))
+    }
+    val count: QuereaseResult => Long = { case LongResult(n) => n; case x => fail(s"Unexpected result: $x") }
+    check("get", "g-compat")(count)
+    check("list", "g-compat-restart")(count)
+    check("count", "g-compat-multi")(r => rows(r).head("count").asInstanceOf[Long])
+  }
+
+  it should "count filtered messages in index" in {
+    val (src, dst) = (newTopic(), newTopic())
+    send(src, "a", "b", "c")
+    rows(action("msg_multi_send_idx", Map("src" -> src, "dst" -> dst, "group" -> "g-idx"))).head("count") shouldBe 2
+    readAll(dst, 2).map(_.value) shouldBe List("a0", "c2") // b filtered by foreach, still counted
+  }
+
   behavior of "msg operations review fixes"
 
   it should "not send no result elements of stream" in {

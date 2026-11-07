@@ -37,6 +37,7 @@
   - [db use, transaction, commit, rollback](#db-use-transaction-commit-rollback)
   - [msg read](#msg-read)
   - [msg send](#msg-send)
+  - [msg multi send](#msg-multi-send)
   - [msg admin calls](#msg-admin-calls)
   - [conf](#conf)
   - [Json processing](#json-processing)
@@ -1475,6 +1476,41 @@ msg send to='orders_eu' filter={:region = 'eu'} msg read group='eu' from='orders
 res = msg send to=:dst restart=true:
   - foreach msg read group='g' from=:src committer=true:
     - if {:status != 'draft'} (unique {:id id, :status status})
+```
+
+### msg multi send
+
+Sends each element of the source operation result to several destinations, see
+[multi send](messaging.md#multi-send---fan-out).
+
+```
+msg multi send [restart = true | {min_backoff, max_backoff, random_factor, max_restarts, max_restarts_within}]:
+  - <source operation step>
+  - …
+  - to:
+    - msg send … [<operation>]
+    - …
+```
+
+- block only - source steps followed by `to` block (the last step), `to` block contains [msg send](#msg-send)
+  destinations without `restart`,
+- destination operation is optional, it is executed for each source element with element bind variables -
+  `null` or no result is not sent, rows - message per row; without operation the element is sent as is,
+- destination parameters are evaluated once, before the source, `filter` and operation - for each element,
+- incoming message is committed after it is sent to all destinations,
+- `restart` - as of msg send, the source must return messaging result.
+
+Result is rows `{provider, topic, count}` - sent message count per destination, in destination order.
+
+Example:
+
+```
+msg multi send:
+  - msg read group='router' from='orders' committer=true
+  - to:
+    - msg send to='orders-eu' filter={:region = 'eu'}
+    - msg send to='orders-us' key={'id' name} (if {:region = 'us'} (unique {:id id, :amount amount}))
+    - msg send [other] to='audit'
 ```
 
 ### msg admin calls
