@@ -227,6 +227,25 @@ class MsgOpsSpecs extends FlatSpec with Matchers with TestQuereaseInitializer {
       Map(TopicPartition(in, 0) -> OffsetAndMetadata(3, null))
   }
 
+  it should "stream query rows, unwrap single value" in {
+    val topic = newTopic()
+    val conn = java.sql.DriverManager.getConnection(s"jdbc:hsqldb:mem:$dbNamePrefix")
+    try {
+      val st = conn.prepareStatement("insert into msg_ops_dummy(id, value) values (?, ?)")
+      (1000 until 1500).foreach { i => st.setInt(1, i); st.setString(2, s"v$i"); st.executeUpdate() }
+      conn.commit()
+    } finally conn.close()
+    action("msg_send_db", Map("topic" -> topic)) match { // db result is closed after send, as in processResult
+      case DbResult(r, cleanup) => cleanup(None); r shouldBe LongResult(500)
+      case x => fail(s"DbResult expected, got: $x")
+    }
+    val sent = readAll(topic, 500).map(_.value)
+    sent.head shouldBe Map("id" -> 1000, "value" -> "v1000")
+    sent.last shouldBe Map("id" -> 1499, "value" -> "v1499")
+    action("msg_send_db", Map("topic" -> topic), "list") shouldBe LongResult(1)
+    readAll(topic, 501).last.value shouldBe "v1000"
+  }
+
   behavior of "foreach on msg read"
 
   it should "transform messages" in {

@@ -192,3 +192,13 @@ get:   # foreach over rows - no result of 'if' without 'else' is not sent
       - :x
 list:  # foreach over messaging result wrapped in db result
 - foreach (db use msg read from={:topic topic, 0 partition} timeout={'500ms' idle}) (:value || '?')
+
+
+name: msg_send_db
+fields:
+- topic
+get:   # query rows are streamed from db block's cursor, which is closed after messages are sent
+- db use:
+  - msg send to=:topic msg_ops_dummy[id >= 1000]{id, value}#(id)
+list:  # single row with single column - value is sent
+- msg send to=:topic msg_ops_dummy[id = 1000]{value}

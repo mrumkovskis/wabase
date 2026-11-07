@@ -2,9 +2,9 @@ package org.wabase
 
 import com.typesafe.config.ConfigFactory
 import org.apache.pekko.NotUsed
-import org.apache.pekko.stream.RestartSettings
+import org.apache.pekko.stream.{ActorAttributes, Attributes, RestartSettings}
 import org.apache.pekko.stream.scaladsl.{Flow, Keep, RestartSource, Sink, Source}
-import org.tresql.{ArrayResult, Query, Resources, Result, SingleValueResult}
+import org.tresql.{ArrayResult, Query, Resources, Result, RowLike, SingleValueResult}
 import org.wabase.AppMetadata.Action
 import org.wabase.AppQuerease.{ActionContext, Scope}
 import org.wabase.msg._
@@ -194,17 +194,56 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
         MsgStreams.run(messagingSend(mr, params, sender, sent), Sink.ignore).map(_ => sent.get)
       case SourceResult(src, toBindableValue) =>
         src.mapAsync(1)(toBindableValue).filter(v => v != null && v != NoResult).map(out).runWith(sender.sink)
-      case r =>
-        dataForNextStep(r, context, unwrapSingleValue = true).flatMap { data =>
-          val values = data match {
-            case null | NoResult => Nil
-            case s: Seq[_] => s
-            case x => List(x)
+      case r => rowsSource(r, context) match {
+        case Some(src) => src.filter(v => v != null && v != NoResult).map(out).runWith(sender.sink)
+        case None =>
+          dataForNextStep(r, context, unwrapSingleValue = true).flatMap { data =>
+            val values = data match {
+              case null | NoResult => Nil
+              case s: Seq[_] => s
+              case x => List(x)
+            }
+            Source(values.filter(_ != null).toList).map(out).runWith(sender.sink)
           }
-          Source(values.filter(_ != null).toList).map(out).runWith(sender.sink)
-        }
+      }
     }
   }
+
+  /** Streams rows of query result or elements of iterator result, so that large results are not collected into
+    * memory. Values are the same as of [[dataForNextStep]] with `unwrapSingleValue` - row maps (compatible with view
+    * of [[CompatibleResult]]), single row with single column is unwrapped to its value.
+    * Query result is read on IO dispatcher and closed on stream termination. Connection remains open until message
+    * send completes - send result (count) is returned after that, action's resources are closed after the action.
+    * @return None for other results
+    */
+  private def rowsSource(res: QuereaseResult, context: ActionContext)(
+    implicit qr: QuereaseResources): Option[Source[Any, NotUsed]] = {
+    import qr.ec
+    def isRows(r: Result[_]) = !r.isInstanceOf[ArrayResult[_]] // DML, single value and array results are not rows
+    def rows(r: Result[RowLike], toMap: RowLike => Map[String, Any]): Source[Any, NotUsed] =
+      Source.fromIterator { () =>
+        val it = r.map(toMap)
+        if (!it.hasNext) Iterator.empty
+        else {
+          val first = it.next()
+          if (!it.hasNext && first.size == 1) Iterator.single(first.head._2) else Iterator.single(first) ++ it
+        }
+      }.addAttributes(Attributes(ActorAttributes.IODispatcher)).async
+        .watchTermination() { (mat, done) => done.onComplete(_ => r.close()); mat }
+    res match {
+      case TresqlResult(r) if isRows(r) => Some(rows(r, _.toMap))
+      case CompatibleResult(TresqlResult(r), filter, _) if filter != null && isRows(r) =>
+        val name = if (filter.name == "this") context.view.map(_.name).getOrElse(filter.name) else filter.name
+        val vd = viewDef(name)
+        Some(rows(r, toCompatibleMap(_, vd)))
+      case IteratorResult(it) => Some(Source.fromIterator(() => it).mapAsync(1) {
+        case r: QuereaseResult => dataForNextStep(r, context, unwrapSingleValue = true)
+        case x => Future.successful(x)
+      })
+      case _ => None
+    }
+  }
+
 
   /** Calls provider admin ([[MsgAdmin]]), returns rows ([[IteratorResult]]), see [[MsgAdminParams]] for argument
     * and result row columns.
