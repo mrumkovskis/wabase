@@ -89,13 +89,14 @@ class MsgOpsParserSpecs extends FlatSpec with Matchers {
 
   it should "parse parameters and operation" in {
     op("msg send [p] to={'t' topic, 1 partition} key={'id' name, :id value, true should_remove} " +
-       "headers=({'h1' name, 'v1' value} ++ {'h2' name, :v value}) using='cbor' (:data)") match {
+       "headers=({'h1' name, 'v1' value} ++ {'h2' name, :v value}) using='cbor' filter={:x = 1} (:data)") match {
       case s: MsgSend =>
         s.providerName shouldBe "p"
         n(s.to)        shouldBe n("null{'t' topic, 1 partition}")
         n(s.key)       shouldBe n("null{'id' name, :id value, true should_remove}")
         n(s.headers)   shouldBe n("null{'h1' name, 'v1' value} ++ null{'h2' name, :v value}")
         n(s.using)     shouldBe n("'cbor'")
+        n(s.filter)    shouldBe n("null{:x = 1}")
         s.action.steps.map(_._1) shouldBe List(Evaluation(None, Nil, Tresql(":data")))
       case x => fail(s"Unexpected operation: $x")
     }

@@ -1444,6 +1444,7 @@ msg send [<[provider name]>]
   [headers = {<name> name, <value> value} ++ …]
   [using = <value codec> | {<key codec> key, <value codec> value}]
   [restart = true | {min_backoff, max_backoff, random_factor, max_restarts, max_restarts_within}]
+  [filter = {<boolean expression>}]
   <operation>
 
 msg send … :
@@ -1456,6 +1457,8 @@ must be enclosed in braces if it starts with `<identifier> =`.
 
 - each element of stream, rows or collection is sent as a message, single value - one message, `null` - nothing,
 - incoming message (msg read without foreach) is forwarded - value and key,
+- `filter` is evaluated for each element with element bind variables, element is sent only if true, filtered
+  incoming message is committed, see [send filter](messaging.md#send-filter),
 - committing reads are committed after sending,
 - `restart` restarts reading, processing, sending and committing on failure, the operation must return a messaging
   result, see [restart](messaging.md#restart-on-failure).
@@ -1468,6 +1471,7 @@ Examples:
 msg send to='notifications' (unique {:id id, 'created' event})     # one message
 msg send to={'audit' topic, 0 partition} key={'id' name} audit_log[time > :since]{id, action}   # rows
 msg send to='orders_copy' msg read group='copy' from='orders' committer=true to={:id = 100}       # forward
+msg send to='orders_eu' filter={:region = 'eu'} msg read group='eu' from='orders' committer=true  # filtered forward
 res = msg send to=:dst restart=true:
   - foreach msg read group='g' from=:src committer=true:
     - if {:status != 'draft'} (unique {:id id, :status status})

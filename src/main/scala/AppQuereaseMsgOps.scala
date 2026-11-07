@@ -107,10 +107,14 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
     }.flatMap { case (params, sender) =>
       def body(): Future[QuereaseResult] =
         doSteps(op.action, context.copy(stepName = "msg send"), Future.successful(Scope(Map(), parent = scope)))
+      // filter is evaluated on evaluator connection - like other per message tresql, also for non messaging results,
+      // so that action's connection is not used concurrently with streamed query result
+      val msgRes = withoutConnections(qr.resourcesFactory.resources)
+      val filter: ElementFilter = filterEvaluation(op.filter, _, scope, context, msgRes)
       body().flatMap { res =>
         params.restart match {
-          case None => sendResult(res, params, sender, context)
-          case Some(settings) => sendWithRestart(res, () => body(), settings, params, sender)
+          case None => sendResult(res, params, sender, filter, context)
+          case Some(settings) => sendWithRestart(res, () => body(), settings, params, sender, filter)
         }
       }
     }.map(LongResult.apply)
@@ -125,6 +129,7 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
     settings: RestartSettings,
     params: MsgSendParams,
     sender: MsgSender,
+    filter: ElementFilter,
   )(implicit qr: QuereaseResources): Future[Long] = {
     import qr.{as, ec}
     def messaging(res: QuereaseResult): MessagingResult = res match {
@@ -137,7 +142,7 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
     val sent = new AtomicLong
     RestartSource.onFailuresWithBackoff(settings) { () =>
       val mr = Option(firstResult.getAndSet(null)).map(Future.successful).getOrElse(body().map(messaging))
-      Source.futureSource(mr.map(r => MsgStreams.stopOnTermination(messagingSend(r, params, sender, sent))))
+      Source.futureSource(mr.map(r => MsgStreams.stopOnTermination(messagingSend(r, params, sender, filter, sent))))
     }.runWith(Sink.ignore).map(_ => sent.get)
   }
 
@@ -149,10 +154,12 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
     mr: MessagingResult,
     params: MsgSendParams,
     sender: MsgSender,
+    filter: ElementFilter,
     sent: AtomicLong,
   ): Source[Any, Control] = mr.committer match {
     case Some(committer) =>
       mr.source
+        .via(filter(mr.keyName))
         .map {
           case CommittableMessage(v, c) => (Option(v).map(outMessage(_, params)), c)
           case x => sys.error(s"Committable message expected, got: $x")
@@ -162,6 +169,7 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
         .via(committer.flow)
     case None =>
       mr.source
+        .via(filter(mr.keyName))
         .collect { case v if v != null => (outMessage(v, params), NotUsed) }
         .via(sender.flow[NotUsed])
         .map(_ => sent.incrementAndGet())
@@ -182,20 +190,24 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
     res: QuereaseResult,
     params: MsgSendParams,
     sender: MsgSender,
+    filter: ElementFilter,
     context: ActionContext,
   )(implicit qr: QuereaseResources): Future[Long] = {
     import qr.{as, ec}
-    def out(v: Any) = outMessage(v, params)
+    def send(values: Source[Any, _]): Future[Long] = values
+      .filter(v => v != null && v != NoResult)
+      .via(filter(null))
+      .map(outMessage(_, params))
+      .runWith(sender.sink)
     res match {
       case DbResult(r, cleanup) =>
-        sendResult(r, params, sender, context).andThen { case r => cleanup(r.failed.toOption) }
+        sendResult(r, params, sender, filter, context).andThen { case r => cleanup(r.failed.toOption) }
       case mr: MessagingResult =>
         val sent = new AtomicLong
-        MsgStreams.run(messagingSend(mr, params, sender, sent), Sink.ignore).map(_ => sent.get)
-      case SourceResult(src, toBindableValue) =>
-        src.mapAsync(1)(toBindableValue).filter(v => v != null && v != NoResult).map(out).runWith(sender.sink)
+        MsgStreams.run(messagingSend(mr, params, sender, filter, sent), Sink.ignore).map(_ => sent.get)
+      case SourceResult(src, toBindableValue) => send(src.mapAsync(1)(toBindableValue))
       case r => rowsSource(r, context) match {
-        case Some(src) => src.filter(v => v != null && v != NoResult).map(out).runWith(sender.sink)
+        case Some(src) => send(src)
         case None =>
           dataForNextStep(r, context, unwrapSingleValue = true).flatMap { data =>
             val values = data match {
@@ -203,7 +215,7 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
               case s: Seq[_] => s
               case x => List(x)
             }
-            Source(values.filter(_ != null).toList).map(out).runWith(sender.sink)
+            send(Source(values.filter(_ != null).toList)) // stream elements must not be null
           }
       }
     }
@@ -243,7 +255,6 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
       case _ => None
     }
   }
-
 
   /** Calls provider admin ([[MsgAdmin]]), returns rows ([[IteratorResult]]), see [[MsgAdminParams]] for argument
     * and result row columns.
@@ -297,6 +308,44 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
         (el, MsgReadParams.isLast(evalMsgParam(to, bindVars, res)))
       }(qr.ec)
     }
+
+  /** msg send `filter` evaluation for each element (see [[MsgSendParams.isSent]]) with [[elementScope]] bind
+    * variables. Element which is not sent is dropped, committable message is retained with `null` message,
+    * so that its committable is committed. Identity flow if filter is null.
+    * @param res  resources without connections - tresql is evaluated on evaluator connection
+    */
+  protected def filterEvaluation(
+    filter: Action.Tresql,
+    keyName: String,
+    scope: Scope,
+    context: ActionContext,
+    res: Resources,
+  )(implicit qr: QuereaseResources): Flow[Any, Any, NotUsed] =
+    if (filter == null) Flow[Any]
+    else {
+      import qr.ec
+      def isSent(el: Any): Future[Boolean] = Future {
+        MsgSendParams.isSent(evalMsgParam(filter, elementScope(el, keyName, scope).toBindeableMap(context.env), res))
+      }
+      Flow[Any].mapAsync(1) {
+        case cm@CommittableMessage(null, _) => Future.successful(Some(cm))
+        case cm@CommittableMessage(m, c) => isSent(m).map(s => Some(if (s) cm else CommittableMessage(null, c)))
+        case m => isSent(m).map(s => if (s) Some(m) else None)
+      }.collect { case Some(el) => el }
+    }
+
+  /** Bind variables of outgoing element - [[messageScope]] for incoming message, otherwise map fields or `value`,
+    * like foreach item. Scope is not transparent - parent variables are accessible with `..` prefix.
+    */
+  protected def elementScope(el: Any, keyName: String, parent: Scope): Scope = el match {
+    case in: InMessage => messageScope(in, keyName, parent)
+    case x =>
+      val data = x match {
+        case m: Map[String@unchecked, _] => m
+        case v => Map(ValueVar -> v)
+      }
+      Scope(data, Map(), parent, transparent = false)
+  }
 
   /** Message bind variables - value under `itVar` if specified (foreach `<var> in`), otherwise map value fields or
     * `value`, metadata ([[InMessage.metadata]]) as `__metadata`, message key as `keyName` if not null and value does
@@ -453,6 +502,8 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
 }
 
 object AppQuereaseMsgOps {
+  /** msg send filter flow by message key bind variable name (msg read `key`), see `filterEvaluation` */
+  private type ElementFilter = String => Flow[Any, Any, NotUsed]
   /** Message bind variable of non map message value */
   val ValueVar = "value"
   /** Message bind variable of message metadata, see [[InMessage.metadata]] */

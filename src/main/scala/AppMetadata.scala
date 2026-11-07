@@ -1224,13 +1224,13 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
   } named "msg-read-op"
   def msgSendBlockOp: MemParser[MsgSend] = {
     val To = Arg("to", bracesTresql)
-    val named = Seq("key", "headers", "using", "restart").map(Arg(_, bracesTresql))
+    val named = Seq("key", "headers", "using", "restart", "filter").map(Arg(_, bracesTresql))
     ("msg\\s+send\\b".r ~> resourceName ~
       namedArgs(named, mandatory = Set(To.name), positional = positional(To)) <~
       noIllegalArg(To +: named)) ^^ {
       case provider ~ args =>
         def a(n: String) = args.values.getOrElse(n, null).asInstanceOf[Tresql]
-        MsgSend(provider.orNull, a("to"), a("key"), a("headers"), a("using"), a("restart"))
+        MsgSend(provider.orNull, a("to"), a("key"), a("headers"), a("using"), a("restart"), a("filter"))
     }
   } named "msg-send-block-op"
   def msgSendOp: MemParser[MsgSend] = msgSendBlockOp ~ actionFromOp ^^ {
@@ -1701,6 +1701,8 @@ object AppMetadata extends Loggable {
       * @param using         codec names `{key, value}` or value codec name
       * @param restart       restart of whole pipeline (action - msg read, processing, send, commit) on failure
       *                      `{min_backoff, max_backoff, random_factor, max_restarts, max_restarts_within}` or boolean
+      * @param filter        boolean evaluated for each outgoing element with element bind variables,
+      *                      element is sent only if true
       * @param action        action producing message values
       */
     case class MsgSend(
@@ -1710,6 +1712,7 @@ object AppMetadata extends Loggable {
       headers: Tresql = null,
       using: Tresql = null,
       restart: Tresql = null,
+      filter: Tresql = null,
       action: Action = null,
     ) extends BlockOp
     /** Messaging provider metadata call.
@@ -1805,7 +1808,7 @@ object AppMetadata extends Loggable {
         case h: HttpHeader => if (h.httpOp == null) state else opTrav(state)(h.httpOp)
         case Db(a, _, _) => traverseAction(a)(stepTrav)(state)
         case Block(a) => traverseAction(a)(stepTrav)(state)
-        case MsgSend(_, _, _, _, _, _, a) => if (a == null) state else traverseAction(a)(stepTrav)(state)
+        case MsgSend(_, _, _, _, _, _, _, a) => if (a == null) state else traverseAction(a)(stepTrav)(state)
         case JsonCodec(_, o) => opTrav(state)(o)
         case i: Invocation => i.args.foldLeft(state)(opTrav(_)(_))
         case ExtractHttpEntity(_, _, o) => opTrav(state)(o)
@@ -1905,7 +1908,7 @@ object AppMetadata extends Loggable {
               Seq(r.from, r.group, r.to, r.timeout, r.committer, r.commitMetadata, r.key, r.using, r.restart,
                 r.atMostOnce).foldLeft(state)((s, t) => us(s, nv(s.value)(t)))
             case s: MsgSend =>
-              val s1 = Seq(s.to, s.key, s.headers, s.using, s.restart).foldLeft(state)((st, t) => us(st, nv(st.value)(t)))
+              val s1 = Seq(s.to, s.key, s.headers, s.using, s.restart, s.filter).foldLeft(state)((st, t) => us(st, nv(st.value)(t)))
               if (s.action == null) s1 else traverseAction(s.action)(stepTresqlTrav)(s1)
             case a: MsgAdmin => us(state, nv(state.value)(a.args))
             case ViewCall(method, view, data, _) =>

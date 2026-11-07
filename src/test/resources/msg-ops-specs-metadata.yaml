@@ -194,6 +194,34 @@ list:  # foreach over messaging result wrapped in db result
 - foreach (db use msg read from={:topic topic, 0 partition} timeout={'500ms' idle}) (:value || '?')
 
 
+name: msg_send_filter
+fields:
+- src
+- dst
+- group
+- skip
+get:  # forward filtered messages keeping key, filtered messages committed; key bind variable
+- msg send to=:dst filter={:status != 'draft' & :k != 'k4'}
+    msg read group=:group from=:src committer=true key='k' to={:status = 'end'}
+list: # filter rows - map fields, parent scope with '..'
+- msg send to=:dst filter={:id::int != :'..'.skip::int} ({1 id} ++ {2 id} ++ {3 id})
+
+
+name: msg_send_filter_value
+fields:
+- src
+- dst
+- group
+get:  # foreach result - scalar bound as value, committed after filtering
+- msg send to=:dst filter={:value != 'b!'}:
+  - foreach msg read group=:group from=:src committer=true to={:value = 'c'}:
+    - :value || '!'
+list: # single value filtered out
+- msg send to=:dst filter={:value != 'b'} ('b')
+count: # filter must be boolean
+- msg send to=:dst filter=(:'..'.dst) ('x')
+
+
 name: msg_send_db
 fields:
 - topic

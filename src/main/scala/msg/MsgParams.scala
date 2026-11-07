@@ -432,6 +432,18 @@ object MsgSendParams {
       msgKey, hs, kc, vc, restartParam(Op, restart),
     )
   }
+
+  /** Result of `filter` evaluation for an outgoing element - boolean, `null` is false (element is not sent) */
+  def isSent(filter: Any): Boolean = {
+    val p = Param(Op, "filter")
+    p.single(filter) match {
+      case null => false
+      case b: Boolean => b
+      case b: java.lang.Boolean => b
+      case x => p.error(s"boolean expected, got ${x.getClass.getName}: $x " +
+        "(comparison must be enclosed in braces, for example filter={:status != 'draft'})")
+    }
+  }
 }
 
 /** Evaluated msg admin call arguments and call results as rows, see [[MsgAdmin]]. */

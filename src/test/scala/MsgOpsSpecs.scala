@@ -227,6 +227,38 @@ class MsgOpsSpecs extends FlatSpec with Matchers with TestQuereaseInitializer {
       Map(TopicPartition(in, 0) -> OffsetAndMetadata(3, null))
   }
 
+  it should "filter forwarded messages, keep key, commit filtered ones" in {
+    val src = newTopic()
+    val dst = newTopic()
+    send(src, "k1" -> Map("status" -> "a"), "k2" -> Map("status" -> "draft"), "k3" -> Map("status" -> "b"),
+      "k4" -> Map("status" -> "c"), "k5" -> Map("status" -> "end"))
+    action("msg_send_filter", Map("src" -> src, "dst" -> dst, "group" -> "g-filter")) shouldBe LongResult(3)
+    readAll(dst, 3).map(m => (m.key, m.value)) shouldBe
+      List(("k1", Map("status" -> "a")), ("k3", Map("status" -> "b")), ("k5", Map("status" -> "end")))
+    await(provider.admin.committedOffsets("g-filter", Set(TopicPartition(src, 0)))) shouldBe
+      Map(TopicPartition(src, 0) -> OffsetAndMetadata(5, null))
+  }
+
+  it should "filter rows and single values" in {
+    val dst = newTopic()
+    action("msg_send_filter", Map("dst" -> dst, "skip" -> 2), "list") shouldBe LongResult(2)
+    readAll(dst, 2).map(_.value) shouldBe List(Map("id" -> 1), Map("id" -> 3))
+    action("msg_send_filter_value", Map("dst" -> dst), "list") shouldBe LongResult(0)
+    intercept[MsgParamException](action("msg_send_filter_value", Map("dst" -> dst), "count"))
+      .getMessage should include ("msg send parameter 'filter': boolean expected")
+  }
+
+  it should "filter foreach results, commit filtered ones" in {
+    val src = newTopic()
+    val dst = newTopic()
+    send(src, "a", "b", "c")
+    action("msg_send_filter_value", Map("src" -> src, "dst" -> dst, "group" -> "g-filter-value")) shouldBe
+      LongResult(2)
+    readAll(dst, 2).map(_.value) shouldBe List("a!", "c!")
+    await(provider.admin.committedOffsets("g-filter-value", Set(TopicPartition(src, 0)))) shouldBe
+      Map(TopicPartition(src, 0) -> OffsetAndMetadata(3, null))
+  }
+
   it should "stream query rows, unwrap single value" in {
     val topic = newTopic()
     val conn = java.sql.DriverManager.getConnection(s"jdbc:hsqldb:mem:$dbNamePrefix")

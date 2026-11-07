@@ -18,6 +18,7 @@ events and committed, so that processing continues where it stopped.
 - [Committing](#committing)
 - [Database resources](#database-resources)
 - [Sending messages](#sending-messages)
+  - [Send filter](#send-filter)
 - [Restart on failure](#restart-on-failure)
 - [Server sent events](#server-sent-events)
 - [Admin calls](#admin-calls)
@@ -310,11 +311,12 @@ msg send [<provider>]
   [headers={<name> name, <value> value} ++ ...]
   [using=<codec names>]
   [restart=<restart settings or true>]
+  [filter={<boolean expression>}]
   <operation>                                           # or block - ':' followed by steps
 ```
 
-See [view actions](view-actions.md#msg-send) for parameter syntax. Parameters are evaluated before the operation.
-Operation result is sent:
+See [view actions](view-actions.md#msg-send) for parameter syntax. Parameters are evaluated before the operation,
+except `filter`. Operation result is sent:
 
 - messaging result (`msg read`, foreach on `msg read`), stream, rows, collection - each element as a message,
 - single value (map, scalar) - one message,
@@ -326,6 +328,25 @@ specified. Committing reads are committed after messages are sent, in offset ord
 `key` - `name` takes the key from a field of map value (`should_remove` removes the field from the value), `value`
 is the key itself. Key is encoded with key codec - `string` by default, use for example `using={'json' key}` for map
 keys. Header values must be strings, bytes or null, other values are converted to string.
+
+### Send filter
+
+`filter` is evaluated for each element, element is sent only if it is true (`null` is false). Filtered incoming
+message is committed, like message filtered out by foreach body:
+
+```
+- msg send to='orders_eu' filter={:region = 'eu'} msg read group='eu' from='orders' committer=true
+- msg send to='active_users' filter={:active} users{id, name, active}
+```
+
+- bind variables - for incoming message (`msg read` without foreach) [message bind
+  variables](#message-bind-variables) (value fields, `__metadata`, message key under `msg read` `key` name), so
+  forwarded messages are filtered without transformation, keeping their key; for other elements (foreach result,
+  rows) - map fields or `value`, like foreach item. Operation scope variables are accessible with `..` prefix.
+  Incoming message metadata is not available after foreach - use `if` in foreach body instead.
+- comparison must be enclosed in braces, like `msg read` `to`.
+- evaluated on [evaluator connection](#evaluator-connection-pool), also for non messaging results (rows are read
+  from action's connection meanwhile), so the evaluator pool must be configured.
 
 Result is sent message count. The operation completes when all messages are sent and committed - with an infinite
 stream never (e.g. a job forwarding messages).
@@ -540,6 +561,8 @@ Name `to:` continues the step like `else` of `if` - "multi send source to destin
 
 ### Other
 
+- read side filter (`msg read filter=`) - raw message server sent events filtered per client; send
+  [filter](#send-filter) covers sending, foreach `if` covers transformed events.
 - encoders adding headers (e.g. schema id of schema registries using headers) - optional trait
   `MsgHeaderEncoder extends MsgEncoder { def encodeWithHeaders(...): (Array[Byte], Seq[Header]) }`,
   checked by providers, existing encoders and providers unchanged.
