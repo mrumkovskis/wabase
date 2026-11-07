@@ -15,6 +15,7 @@ there.
 | [`publishEvent`](#publishevent) | `org.wabase.ServerNotifications.publishEvent` |
 | [`error`](#error) | `org.wabase.AppQuerease.error` |
 | [`columnPairsToMap`](#columnpairstomap) | `org.wabase.AppQuerease.columnPairsToMap` |
+| [`randomUUID`](#randomuuid) | `org.wabase.AppQuerease.randomUUID` |
 
 ## buildCookieHeaderValue
 
@@ -219,4 +220,20 @@ Result:
   "roles": ["admin", "guest"],
   "contacts": [{"type": "email"}, {"type": "phone"}]
 }
+```
+
+## randomUUID
+
+```
+randomUUID
+```
+
+Returns a random (version 4) UUID as a string, e.g. `3f2b8c1e-9a4d-4e7b-8c2f-1d5e6a7b8c9d`.
+Each call returns a new value.
+
+Example:
+
+```
+- request_id = randomUUID
+- +request_log {id = nextval('seq'), request_id = :request_id}
 ```

@@ -2553,6 +2553,9 @@ object AppQuerease {
 
   def error(msg: String): Nothing = sys.error(msg)
 
+  /** Random (version 4) UUID as string */
+  def randomUUID: String = java.util.UUID.randomUUID.toString
+
   case class Scope(
     data: Map[String, Any],
     initBindVars: Map[String, Any] = Map(),

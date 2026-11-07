@@ -2101,6 +2101,25 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     } yield t6
   }
 
+  it should "generate random uuid" in {
+    val uuidPattern = "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"
+    for {
+      t1 <- doAction("get", "random_uuid_test", Map()).map {
+        case StringResult(uuid) => uuid should fullyMatch regex uuidPattern
+        case x => fail(s"Unexpected result: $x")
+      }
+      t2 <- doAction("list", "random_uuid_test", Map()).map {
+        case List(row: Map[String @unchecked, _]) =>
+          val u1 = row("u1").toString
+          val u2 = row("u2").toString
+          u1 should fullyMatch regex uuidPattern
+          u2 should fullyMatch regex uuidPattern
+          u1 should not be u2
+        case x => fail(s"Unexpected result: $x")
+      }
+    } yield t2
+  }
+
   it should "have correct source in exception" in {
     for {
       t1 <- recoverToExceptionIf[QuereaseActionException](doAction("get", "source_check", Map(), unwrapException = false))

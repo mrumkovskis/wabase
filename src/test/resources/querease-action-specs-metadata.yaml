@@ -2062,6 +2062,16 @@ list:                                   # empty child query
 - as any columnPairsToMap {'name' k1, 'John' v1, 'accounts' k2, |({'number' k, 'X64' v})[false] 'accounts'}
 
 
+name: random_uuid_test
+api: get, list
+get:
+- randomUUID
+list:                                   # step result bound to variables
+- u1 = randomUUID
+- u2 = org.wabase.AppQuerease.randomUUID
+- as any {:u1 u1, :u2 u2}
+
+
 name: source_check
 api: get, post
 get:
