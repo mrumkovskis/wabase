@@ -259,14 +259,23 @@ class MsgOpsSpecs extends FlatSpec with Matchers with TestQuereaseInitializer {
       Map(TopicPartition(src, 0) -> OffsetAndMetadata(3, null))
   }
 
-  it should "stream query rows, unwrap single value" in {
-    val topic = newTopic()
+  /** Inserts msg_ops_dummy rows 1000 - 1499 (read by msg_send_db view) if not inserted yet */
+  private def insertDummyRows(): Unit = {
     val conn = java.sql.DriverManager.getConnection(s"jdbc:hsqldb:mem:$dbNamePrefix")
     try {
-      val st = conn.prepareStatement("insert into msg_ops_dummy(id, value) values (?, ?)")
-      (1000 until 1500).foreach { i => st.setInt(1, i); st.setString(2, s"v$i"); st.executeUpdate() }
-      conn.commit()
+      val rs = conn.createStatement.executeQuery("select count(*) from msg_ops_dummy where id >= 1000")
+      rs.next()
+      if (rs.getInt(1) == 0) {
+        val st = conn.prepareStatement("insert into msg_ops_dummy(id, value) values (?, ?)")
+        (1000 until 1500).foreach { i => st.setInt(1, i); st.setString(2, s"v$i"); st.executeUpdate() }
+        conn.commit()
+      }
     } finally conn.close()
+  }
+
+  it should "stream query rows, unwrap single value" in {
+    val topic = newTopic()
+    insertDummyRows()
     action("msg_send_db", Map("topic" -> topic)) match { // db result is closed after send, as in processResult
       case DbResult(r, cleanup) => cleanup(None); r shouldBe LongResult(500)
       case x => fail(s"DbResult expected, got: $x")
@@ -276,6 +285,24 @@ class MsgOpsSpecs extends FlatSpec with Matchers with TestQuereaseInitializer {
     sent.last shouldBe Map("id" -> 1499, "value" -> "v1499")
     action("msg_send_db", Map("topic" -> topic), "list") shouldBe LongResult(1)
     readAll(topic, 501).last.value shouldBe "v1000"
+  }
+
+  it should "send query result exceeding max result size" in {
+    val topic = newTopic()
+    insertDummyRows()
+    val actionQr = qr
+    val limitedRes = actionQr.resourcesFactory.resources.withMaxResultSize(100)
+    qr = new QuereaseResources()(actionQr.resourcesFactory.copy()(resources = limitedRes),
+      actionQr.ec, actionQr.as, actionQr.httpReq, actionQr.qio, actionQr.fileStreamers, actionQr.httpClients,
+      actionQr.msgProviders, actionQr.parametersProvider, actionQr.logger)
+    try {
+      intercept[org.tresql.TooManyRowsException](
+        org.tresql.Query("msg_ops_dummy[id >= 1000]")(limitedRes).toListOfMaps)
+      action("msg_send_db", Map("topic" -> topic)) match {
+        case DbResult(r, cleanup) => cleanup(None); r shouldBe LongResult(500)
+        case x => fail(s"DbResult expected, got: $x")
+      }
+    } finally qr = actionQr
   }
 
   behavior of "foreach on msg read"

@@ -105,8 +105,10 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
         Option(params.valueCodec).map(provider.codecs(_)).orNull,
       ))
     }.flatMap { case (params, sender) =>
+      // operation result is streamed, not collected - query result size limit does not apply
+      val bodyQr = withoutResultSizeLimit
       def body(): Future[QuereaseResult] =
-        doSteps(op.action, context.copy(stepName = "msg send"), Future.successful(Scope(Map(), parent = scope)))
+        doSteps(op.action, context.copy(stepName = "msg send"), Future.successful(Scope(Map(), parent = scope)))(bodyQr)
       // filter is evaluated on evaluator connection - like other per message tresql, also for non messaging results,
       // so that action's connection is not used concurrently with streamed query result
       val msgRes = withoutConnections(qr.resourcesFactory.resources)
@@ -416,6 +418,19 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
       doActionOp(op.foldOp.op, Scope(Map(op.foldOp.resVar -> acc, op.foldOp.elVar -> el)), context)
         .flatMap(dataForNextStep(_, context, unwrapSingleValue = true))
     }).map(AnyResult.apply)
+  }
+
+  /** Resources without query result size limit (`maxResultSize` 0), also for extra databases. `db` / `transaction`
+    * resources are initialized from them, so the limit does not apply in nested db operations too.
+    */
+  private def withoutResultSizeLimit(implicit qr: QuereaseResources): QuereaseResources = {
+    val res = qr.resourcesFactory.resources
+    val unlimited = res.extraResources.keys
+      .foldLeft(res.withMaxResultSize(0))((r, db) => r.withUpdatedExtra(db)(_.withMaxResultSize(0)))
+    new QuereaseResources()(
+      qr.resourcesFactory.copy()(resources = unlimited),
+      qr.ec, qr.as, qr.httpReq, qr.qio, qr.fileStreamers, qr.httpClients, qr.msgProviders, qr.parametersProvider,
+      qr.logger)
   }
 
   /** Resources for message processing - action's resources without connections, see [[withoutConnections]] */

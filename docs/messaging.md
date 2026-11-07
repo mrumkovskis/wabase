@@ -352,8 +352,8 @@ Result is sent message count. The operation completes when all messages are sent
 stream never (e.g. a job forwarding messages).
 
 Query result rows are sent as they are read from the cursor, they are not collected into memory. For large results:
-- `tresql.max-result-size` (default 10000, `0` - unlimited) applies - exceeding it fails the send with
-  `TooManyRowsException` after rows sent so far, raise it for the database (`tresql.<db>.max-result-size`),
+- `tresql.max-result-size` does not apply to queries of the operation (also in nested `db` / `transaction`) - its
+  result is streamed. Intermediate results collected by operation steps are not limited either.
 - JDBC driver may still fetch all rows at once - for example PostgreSQL fetches rows in batches only with autocommit
   off and `tresql.fetch-size` (`tresql.<db>.fetch-size`) set.
 
