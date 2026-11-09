@@ -8,21 +8,24 @@ import org.tresql.{ArrayResult, Query, Resources, Result, RowLike, SingleValueRe
 import org.wabase.AppMetadata.Action
 import org.wabase.AppQuerease.{ActionContext, Scope}
 import org.wabase.msg._
+import org.wabase.msg.MsgParams.MsgParamException
 
 import org.apache.pekko.Done
 
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicLong, AtomicReference}
 import scala.collection.immutable.ListMap
 import scala.concurrent.{ExecutionContext, Future}
+import scala.util.control.NonFatal
 
 /** Messaging operations of view actions - msg read, msg send, msg admin calls, see docs/messaging.md.
   *
   * Tresql evaluation and action integration (scopes, steps, results) is here, provider independent parameter
   * conversion and stream stages are in [[org.wabase.msg.MsgParams]], [[org.wabase.msg.MsgStreams]].
   *
-  * Message processing (per message tresql, foreach body) never uses action's db connection - it runs with action's
-  * resources without connections, tresql is evaluated on evaluator connection, body accessing tables opens its own
-  * db / transaction (see docs/messaging.md, Database resources).
+  * Message processing (per message tresql, foreach body) runs with resources of the operation - action's (or `db`
+  * block's) connection, evaluator connection if there is none (explicit db view). Messaging result returned by
+  * action keeps the resources until its stream terminates (see AppQuerease.processResult, [[withCleanup]]),
+  * see docs/messaging.md, Database resources.
   */
 trait AppQuereaseMsgOps { this: AppQuerease =>
   import AppQuereaseMsgOps._
@@ -36,11 +39,11 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
     import qr.{ec, msgProviders}
     import context.env
     Future {
-      // parameters are evaluated while action is running - with action's resources
       val bindVars = scope.toBindeableMap(env)
-      def eval(t: Action.Tresql) = evalMsgParam(t, bindVars, qr.resourcesFactory.resources)
-      // message processing runs after action has completed, its connection is closed by then
-      val msgRes = withoutConnections(qr.resourcesFactory.resources)
+      // parameters and per message tresql are evaluated with operation's resources, which are released after
+      // the stream terminates if messaging result is returned by action
+      val msgRes = qr.resourcesFactory.resources
+      def eval(t: Action.Tresql) = evalMsgParam(t, bindVars, msgRes)
       val params = MsgReadParams.fromValues(
         group       = eval(op.group),
         from        = eval(op.from),
@@ -80,7 +83,8 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
   }
 
   /** Sends result of operation (body) as messages, returns sent message count ([[LongResult]]).
-    * Parameters are evaluated before body, with operation scope.
+    * `restart` is evaluated before body, with operation scope. Other parameters (`filter`, then `to`, `key`,
+    * `headers`, `using`) are evaluated for each element with [[elementScope]] bind variables, see [[sendMessage]].
     * Result elements are sent as messages - [[MessagingResult]] (committable - committed after sending, in incoming
     * message order), [[SourceResult]], rows, collection; single value (map, scalar) - one message, `null` elements
     * are not sent. See [[outMessage]] for message creation.
@@ -96,26 +100,27 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
     import qr.ec
     import context.env
     Future {
-      val bindVars = scope.toBindeableMap(env)
-      def eval(t: Action.Tresql) = evalMsgParam(t, bindVars, qr.resourcesFactory.resources)
-      val params =
-        MsgSendParams.fromValues(eval(op.to), eval(op.key), eval(op.headers), eval(op.using), eval(op.restart))
-      (params, createSender(op.providerName, params))
-    }.flatMap { case (params, sender) =>
+      val restart = MsgSendParams.sendRestart(
+        evalMsgParam(op.restart, scope.toBindeableMap(env), qr.resourcesFactory.resources))
+      val provider = qr.msgProviders.provider(op.providerName)
+      (restart, provider, createSender(provider))
+    }.flatMap { case (restart, provider, sender) =>
       // operation result is streamed, not collected - query result size limit does not apply
       val bodyQr = withoutResultSizeLimit
       def body(): Future[QuereaseResult] =
         doSteps(op.action, context.copy(stepName = "msg send"), Future.successful(Scope(Map(), parent = scope)))(bodyQr)
-      // filter is evaluated on evaluator connection - like other per message tresql, also for non messaging results,
-      // so that action's connection is not used concurrently with streamed query result
-      val msgRes = withoutConnections(qr.resourcesFactory.resources)
-      val filter: ElementFilter = filterEvaluation(op.filter, _, scope, context, msgRes)
-      body().flatMap { res =>
-        params.restart match {
-          case None => sendResult(res, params, sender, filter, context)
+      // per element parameters are evaluated with action's resources - concurrently with reading of query result
+      // rows on the same connection, JDBC driver must be thread safe
+      val res = qr.resourcesFactory.resources
+      val filter: ElementFilter = filterEvaluation(op.filter, _, scope, context, res)
+      val message: ElementMessage = (el, keyName) =>
+        Future(sendMessage(op, provider, el, elementScope(el, keyName, scope).toBindeableMap(env), res))
+      body().flatMap { result =>
+        restart match {
+          case None => sendResult(result, message, sender, filter, context)
           case Some(settings) =>
             val sent = new AtomicLong
-            restartMessaging(res, () => body(), settings, "msg send")(messagingSend(_, params, sender, filter, sent))
+            restartMessaging(result, () => body(), settings, "msg send")(messagingSend(_, message, sender, filter, sent))
               .map(_ => sent.get)
         }
       }
@@ -123,6 +128,8 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
   }
 
   /** Runs pipeline of messaging result, restartable - body result is evaluated again for each restart.
+    * Parameter error ([[MsgParamException]] - e.g. invalid value, unknown codec, missing bind variable) is permanent -
+    * it is not restarted, the operation fails with it.
     * @param first     body result of the first attempt (checked before restarting, so that wrong body is not restarted)
     * @param opName    operation name for error message
     * @param pipeline  send (and commit) pipeline of messaging result
@@ -137,15 +144,20 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
     def messaging(res: QuereaseResult): MessagingResult = res match {
       case mr: MessagingResult => mr
       case CompatibleResult(mr: MessagingResult, _, _) => mr
-      case DbResult(r, cleanup) => cleanup(None); messaging(r)
+      case DbResult(r, cleanup) => // db resources are released when messaging stream terminates
+        try withCleanup(messaging(r), cleanup) catch { case NonFatal(e) => cleanup(Option(e)); throw e }
       case x => sys.error(
         s"$opName parameter 'restart' requires messaging result (msg read) of operation, got: ${x.getClass.getName}")
     }
     val firstResult = new AtomicReference(messaging(first))
+    val permanentFailure = new AtomicReference[Throwable]
     RestartSource.onFailuresWithBackoff(settings) { () =>
       val mr = Option(firstResult.getAndSet(null)).map(Future.successful).getOrElse(body().map(messaging))
       Source.futureSource(mr.map(r => MsgStreams.stopOnTermination(pipeline(r))))
-    }.runWith(Sink.ignore)
+        .recoverWithRetries(1, { case e: MsgParamException => permanentFailure.set(e); Source.empty })
+    }.runWith(Sink.ignore).flatMap { done =>
+      Option(permanentFailure.get).map(Future.failed[Done]).getOrElse(Future.successful(done))
+    }
   }
 
   /** Send (and commit) pipeline of messaging result, increments `sent` for each sent message.
@@ -154,38 +166,43 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
     */
   private def messagingSend(
     mr: MessagingResult,
-    params: MsgSendParams,
+    message: ElementMessage,
     sender: MsgSender,
     filter: ElementFilter,
     sent: AtomicLong,
-  ): Source[Any, Control] = mr.committer match {
-    case Some(committer) =>
-      mr.source
-        .via(filter(mr.keyName))
-        .map {
-          case CommittableMessage(v, c) => (Option(v).map(outMessage(_, params)), c)
-          case x => sys.error(s"Committable message expected, got: $x")
-        }
-        .via(sender.optionalFlow[Committable])
-        .map { case (result, c) => if (result.isDefined) sent.incrementAndGet(); c }
-        .via(committer.flow)
-    case None =>
-      mr.source
-        .via(filter(mr.keyName))
-        .collect { case v if v != null => (outMessage(v, params), NotUsed) }
-        .via(sender.flow[NotUsed])
-        .map(_ => sent.incrementAndGet())
+  )(implicit qr: QuereaseResources): Source[Any, Control] = {
+    import qr.ec
+    mr.committer match {
+      case Some(committer) =>
+        mr.source
+          .via(filter(mr.keyName))
+          .mapAsync(1) {
+            case CommittableMessage(null, c) => Future.successful((None, c))
+            case CommittableMessage(v, c) => message(v, mr.keyName).map(m => (Some(m), c))
+            case x => Future.failed(new IllegalStateException(s"Committable message expected, got: $x"))
+          }
+          .via(sender.optionalFlow[Committable])
+          .map { case (result, c) => if (result.isDefined) sent.incrementAndGet(); c }
+          .via(committer.flow)
+      case None =>
+        mr.source
+          .via(filter(mr.keyName))
+          .collect { case v if v != null => v }
+          .mapAsync(1)(message(_, mr.keyName).map((_, NotUsed)))
+          .via(sender.flow[NotUsed])
+          .map(_ => sent.incrementAndGet())
+    }
   }
 
   /** Sends each element of source operation (body) result to destinations, returns rows `{provider, topic, count}`
-    * of sent message counts, one row per destination in destination order ([[IteratorResult]]).
-    * Destination parameters and `restart` are evaluated before body. For each element destinations are evaluated in
-    * order - `filter` (on evaluator connection) and operation with [[elementScope]] bind variables (`null` or no
+    * of sent message counts per destination and topic, in destination order, topics in order of the first message,
+    * destination without sent messages - one row with `null` topic and 0 count ([[IteratorResult]]).
+    * `restart` is evaluated before body. For each element destinations are evaluated in order - `filter`,
+    * parameters (`to`, `key`, `headers`, `using`) and operation with [[elementScope]] bind variables (`null` or no
     * result - nothing is sent, rows - message per row), then messages are sent by destination stages in order,
     * committable (messaging result) is committed after the element is sent to all destinations.
-    * Destination operations of messaging result run with message processing resources (without action's
-    * connections), of other results - with action's resources, query result rows are then read only when requested
-    * (no read-ahead), so that the connection is not used concurrently.
+    * Filters and destination operations run with action's resources - concurrently with reading of query result
+    * rows on the same connection, JDBC driver must be thread safe.
     * Source and restart are as of [[doMsgSend]].
     */
   protected def doMsgMultiSend(
@@ -196,14 +213,13 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
     import qr.{as, ec}
     import context.env
     Future {
-      val bindVars = scope.toBindeableMap(env)
-      def eval(t: Action.Tresql) = evalMsgParam(t, bindVars, qr.resourcesFactory.resources)
-      val restart = MsgSendParams.multiSendRestart(eval(op.restart))
+      val restart = MsgSendParams.multiSendRestart(
+        evalMsgParam(op.restart, scope.toBindeableMap(env), qr.resourcesFactory.resources))
       val destinations = op.destinations.steps.map {
         case (Action.Evaluation(_, _, s: Action.MsgSend), _) =>
-          val params = MsgSendParams.fromValues(eval(s.to), eval(s.key), eval(s.headers), eval(s.using))
-          MultiSendDestination(Option(s.providerName).getOrElse(MsgProviderConfig.defaultProviderName), s, params,
-            createSender(s.providerName, params), new AtomicLong)
+          val provider = qr.msgProviders.provider(s.providerName)
+          new MultiSendDestination(Option(s.providerName).getOrElse(MsgProviderConfig.defaultProviderName), s,
+            provider, createSender(provider))
         case (_, src) => sys.error(s"msg multi send destination must be msg send operation, found: $src")
       }
       (restart, destinations)
@@ -211,9 +227,9 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
       val bodyQr = withoutResultSizeLimit // source is streamed, not collected
       def body(): Future[QuereaseResult] = doSteps(op.action, context.copy(stepName = "msg multi send"),
         Future.successful(Scope(Map(), parent = scope)))(bodyQr)
-      val msgRes = withoutConnections(qr.resourcesFactory.resources)
+      val msgRes = qr.resourcesFactory.resources
       def messagingPipeline(mr: MessagingResult): Source[Any, Control] = {
-        val flow = multiSendFlow[Any](destinations, mr.keyName, scope, context, msgRes, withResources(msgRes))
+        val flow = multiSendFlow[Any](destinations, mr.keyName, scope, context, msgRes, qr)
         mr.committer match {
           case Some(committer) =>
             mr.source
@@ -233,9 +249,7 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
         case mr: MessagingResult => MsgStreams.run(messagingPipeline(mr), Sink.ignore).map(_ => Done)
         case CompatibleResult(mr: MessagingResult, _, _) => send(mr)
         case r =>
-          // destination operations use action's connection - no read-ahead of query result
-          val readAhead = destinations.forall(_.op.action == null)
-          elementSource(r, context, readAhead).flatMap { src =>
+          elementSource(r, context).flatMap { src =>
             src.filter(v => v != null && v != NoResult).map((_, NotUsed))
               .via(multiSendFlow[Any](destinations, null, scope, context, msgRes, qr))
               .runWith(Sink.ignore)
@@ -247,9 +261,7 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
           case Some(settings) => restartMessaging(res, () => body(), settings, "msg multi send")(messagingPipeline(_))
         }
       }.map { _ =>
-        IteratorResult(destinations.map { d =>
-          ListMap("provider" -> d.providerName, "topic" -> d.params.topic, "count" -> d.sent.get)
-        }.iterator)
+        IteratorResult(destinations.flatMap(_.rows).iterator)
       }
     }
   }
@@ -279,11 +291,14 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
         else Future(MsgSendParams.isSent(evalMsgParam(d.op.filter, bindVars(), msgRes)))
       isSent.flatMap {
         case false => Future.successful(Nil)
-        case true if d.op.action == null => Future.successful(List(outMessage(el, d.params)))
+        case true if d.op.action == null =>
+          Future(sendMessage(d.op, d.provider, el, bindVars(), msgRes)).map(List(_))
         case true =>
-          doSteps(d.op.action, destContext, Future.successful(elScope))(destQr)
-            .flatMap(dataForNextStep(_, destContext, unwrapSingleValue = true)(destQr))
-            .map(resultValues(_).map(transformedMessage(el, _, d.params)))
+          Future(sendParams(d.op, bindVars(), msgRes)).flatMap { params =>
+            doSteps(d.op.action, destContext, Future.successful(elScope))(destQr)
+              .flatMap(dataForNextStep(_, destContext, unwrapSingleValue = true)(destQr))
+              .map(resultValues(_).map(transformedMessage(el, _, params, d.provider)))
+          }
       }
     }
     def messages(el: Any): Future[Msgs] = {
@@ -308,44 +323,73 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
           else ms.zipWithIndex.map { case (m, j) => (Option(m), (st, j == ms.size - 1)) }.toList
         }
         .via(d.sender.optionalFlow[((Msgs, P), Boolean)])
-        .map { case (result, st) => if (result.isDefined) d.sent.incrementAndGet(); st }
+        .map { case (result, st) => result.foreach(r => d.sent(r.topic)); st }
         .collect { case (st, true) => st }
     }.map(_._2)
   }
 
-  /** Sender of provider (default if name is null) with codecs of send parameters (from configuration if not
-    * specified)
+  /** Sender of provider with codecs from configuration - messages specify codecs of `using` parameter */
+  private def createSender(provider: MsgProvider): MsgSender = provider.createSender(ConfigFactory.empty)
+
+  /** msg send parameters `to`, `key`, `headers`, `using`, evaluated with bind variables of element.
+    * Missing bind variable (e.g. operation variable without `..` prefix) is reported as [[MsgParamException]] -
+    * parameter error, not restarted, see [[restartMessaging]].
     */
-  private def createSender(providerName: String, params: MsgSendParams)(implicit qr: QuereaseResources): MsgSender = {
-    val provider = qr.msgProviders.provider(providerName)
-    provider.createSender(ConfigFactory.empty,
-      Option(params.keyCodec).map(provider.codecs(_)).orNull,
-      Option(params.valueCodec).map(provider.codecs(_)).orNull,
-    )
+  private def sendParams(op: Action.MsgSend, bindVars: Map[String, Any], res: Resources): MsgSendParams = {
+    val Seq(to, key, headers, usingCodecs) =
+      try evalMsgParams(Seq(op.to, op.key, op.headers, op.using), bindVars, res) catch {
+        case NonFatal(e) if causes(e).exists(_.isInstanceOf[org.tresql.MissingBindVariableException]) =>
+          throw new MsgParamException(s"msg send parameter evaluation failed: ${e.getMessage}", e)
+      }
+    MsgSendParams.fromValues(to, key, headers, usingCodecs)
   }
+
+  private def causes(e: Throwable): Iterator[Throwable] =
+    Iterator.iterate(e)(_.getCause).takeWhile(_ != null).take(32)
+
+  /** Outgoing message of element - msg send parameters are evaluated with element bind variables
+    * (see [[sendParams]]), see [[outMessage]].
+    */
+  protected def sendMessage(
+    op: Action.MsgSend,
+    provider: MsgProvider,
+    el: Any,
+    bindVars: Map[String, Any],
+    res: Resources,
+  ): OutMessage = outMessage(el, sendParams(op, bindVars, res), provider)
 
   /** Outgoing message from destination operation result value - key of incoming message is retained
     * if `key` parameter is not specified, see [[outMessage]].
     */
-  private def transformedMessage(el: Any, value: Any, params: MsgSendParams): OutMessage = (el, value) match {
-    case (in: InMessage, v) if !v.isInstanceOf[InMessage] => outMessage(in.copy(value = v), params)
-    case (_, v) => outMessage(v, params)
-  }
+  private def transformedMessage(el: Any, value: Any, params: MsgSendParams, provider: MsgProvider): OutMessage =
+    (el, value) match {
+      case (in: InMessage, v) if !v.isInstanceOf[InMessage] => outMessage(in.copy(value = v), params, provider)
+      case (_, v) => outMessage(v, params, provider)
+    }
 
-  /** Outgoing message from result element, see [[MsgSendParams.outMessage]].
+  /** Outgoing message from result element, see [[MsgSendParams.outMessage]], with encoders of `using` codecs
+    * (sender's - from configuration, if not specified).
     * [[InMessage]] (msg read without foreach) is forwarded - its value is sent, its key is retained
     * if `key` parameter is not specified.
     */
-  protected def outMessage(value: Any, params: MsgSendParams): OutMessage = value match {
-    case in: InMessage =>
-      val m = params.outMessage(in.value)
-      if (params.key.isEmpty) m.copy(key = in.key) else m
-    case v => params.outMessage(v)
+  protected def outMessage(value: Any, params: MsgSendParams, provider: MsgProvider): OutMessage = {
+    val m = value match {
+      case in: InMessage =>
+        val m = params.outMessage(in.value)
+        if (params.key.isEmpty) m.copy(key = in.key) else m
+      case v => params.outMessage(v)
+    }
+    def codec(name: String) =
+      if (name == null) null
+      else try provider.codecs(name) catch {
+        case NonFatal(e) => throw new MsgParamException(s"msg send parameter 'using': ${e.getMessage}", e)
+      }
+    m.copy(keyEncoder = codec(params.keyCodec), valueEncoder = codec(params.valueCodec))
   }
 
   private def sendResult(
     res: QuereaseResult,
-    params: MsgSendParams,
+    message: ElementMessage,
     sender: MsgSender,
     filter: ElementFilter,
     context: ActionContext,
@@ -354,16 +398,16 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
     def send(values: Source[Any, _]): Future[Long] = values
       .filter(v => v != null && v != NoResult)
       .via(filter(null))
-      .map(outMessage(_, params))
+      .mapAsync(1)(message(_, null))
       .runWith(sender.sink)
     res match {
       case DbResult(r, cleanup) => // Future.unit - cleanup also if send throws before returning future
-        Future.unit.flatMap(_ => sendResult(r, params, sender, filter, context))
+        Future.unit.flatMap(_ => sendResult(r, message, sender, filter, context))
           .andThen { case r => cleanup(r.failed.toOption) }
       case mr: MessagingResult =>
         val sent = new AtomicLong
-        MsgStreams.run(messagingSend(mr, params, sender, filter, sent), Sink.ignore).map(_ => sent.get)
-      case CompatibleResult(mr: MessagingResult, _, _) => sendResult(mr, params, sender, filter, context)
+        MsgStreams.run(messagingSend(mr, message, sender, filter, sent), Sink.ignore).map(_ => sent.get)
+      case CompatibleResult(mr: MessagingResult, _, _) => sendResult(mr, message, sender, filter, context)
       case r => elementSource(r, context).flatMap(send)
     }
   }
@@ -372,12 +416,12 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
     * (see [[rowsSource]]), other results as [[dataForNextStep]] - rows, collection or single value.
     * Elements may be `null` or [[NoResult]] (from source result).
     */
-  private def elementSource(res: QuereaseResult, context: ActionContext, readAhead: Boolean = true)(
+  private def elementSource(res: QuereaseResult, context: ActionContext)(
     implicit qr: QuereaseResources): Future[Source[Any, _]] = {
     import qr.ec
     res match {
       case SourceResult(src, toBindableValue) => Future.successful(src.mapAsync(1)(toBindableValue))
-      case r => rowsSource(r, context, readAhead) match {
+      case r => rowsSource(r, context) match {
         case Some(src) => Future.successful(src)
         case None =>
           dataForNextStep(r, context, unwrapSingleValue = true).map { data =>
@@ -397,13 +441,13 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
   /** Streams rows of query result or elements of iterator result, so that large results are not collected into
     * memory. Values are the same as of [[dataForNextStep]] with `unwrapSingleValue` - row maps (compatible with view
     * of [[CompatibleResult]]), single row with single column is unwrapped to its value.
-    * Query result is read on IO dispatcher and closed on stream termination. Connection remains open until message
-    * send completes - send result (count) is returned after that, action's resources are closed after the action.
-    * @param readAhead  read rows ahead asynchronously (on IO dispatcher), false if processing of rows uses the same
-    *                   connection - rows are read when requested, connection is not used concurrently
+    * Query result is read ahead on IO dispatcher and closed on stream termination. Rows may be read concurrently with
+    * processing of rows on the same connection (filter, destination operation) - JDBC driver must be thread safe.
+    * Connection remains open until message send completes - send result (count) is returned after that, action's
+    * resources are closed after the action.
     * @return None for other results
     */
-  private def rowsSource(res: QuereaseResult, context: ActionContext, readAhead: Boolean = true)(
+  private def rowsSource(res: QuereaseResult, context: ActionContext)(
     implicit qr: QuereaseResources): Option[Source[Any, NotUsed]] = {
     import qr.ec
     def isRows(r: Result[_]) = !r.isInstanceOf[ArrayResult[_]] // DML, single value and array results are not rows
@@ -416,7 +460,7 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
           if (!it.hasNext && first.size == 1) Iterator.single(first.head._2) else Iterator.single(first) ++ it
         }
       }
-      (if (readAhead) src.addAttributes(Attributes(ActorAttributes.IODispatcher)).async else src)
+      src.addAttributes(Attributes(ActorAttributes.IODispatcher)).async
         .watchTermination() { (mat, done) => done.onComplete(_ => r.close()); mat }
     }
     res match {
@@ -466,7 +510,7 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
   }
 
   /** Maps message to `(message, isLast)`, `isLast` is result of `to` evaluation with message bind variables.
-    * @param res         resources without connections - tresql is evaluated on evaluator connection
+    * @param res         operation's resources - tresql is evaluated on its connection, evaluator connection if none
     * @param terminated  set when stream is terminated - following messages are dropped, `to` is not evaluated
     */
   protected def toEvaluation(
@@ -489,7 +533,7 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
   /** msg send `filter` evaluation for each element (see [[MsgSendParams.isSent]]) with [[elementScope]] bind
     * variables. Element which is not sent is dropped, committable message is retained with `null` message,
     * so that its committable is committed. Identity flow if filter is null.
-    * @param res  resources without connections - tresql is evaluated on evaluator connection
+    * @param res  operation's resources - tresql is evaluated on its connection, evaluator connection if none
     */
   protected def filterEvaluation(
     filter: Action.Tresql,
@@ -549,7 +593,7 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
 
   /** Foreach on [[MessagingResult]] - body is executed for each message, result is MessagingResult of body results
     * (committable - `CommittableMessage(body result, committable)`), or fold result if fold op is specified.
-    * Body runs with message processing resources (without action's connections), see [[messageScope]] for message
+    * Body runs with operation's resources (action's or `db` block's connection), see [[messageScope]] for message
     * bind variables (elements which are not [[InMessage]] - result of previous foreach - are bound like foreach items).
     * Body result `null` or no result filters message out - it is not emitted, but committable is still committed.
     */
@@ -560,7 +604,6 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
     context: ActionContext,
   )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
     import qr.ec
-    val msgQr = messageProcessingResources
     val ctx = context.copy(stepName = "foreach")
     @volatile var idx = 0L // mapAsync parallelism is 1
     def process(el: Any): Future[Any] = {
@@ -574,8 +617,8 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
           Scope(data, Map(IdxVar -> idx), scope, transparent = false)
       }
       idx += 1
-      doSteps(op.action, ctx, Future.successful(itScope))(msgQr)
-        .flatMap(dataForNextStep(_, ctx, unwrapSingleValue = true)(msgQr))
+      doSteps(op.action, ctx, Future.successful(itScope))
+        .flatMap(dataForNextStep(_, ctx, unwrapSingleValue = true))
         .map {
           case NoResult => null
           case x => x
@@ -603,10 +646,6 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
     withResources(res.extraResources.keys
       .foldLeft(res.withMaxResultSize(0))((r, db) => r.withUpdatedExtra(db)(_.withMaxResultSize(0))))
   }
-
-  /** Resources for message processing - action's resources without connections, see [[withoutConnections]] */
-  private def messageProcessingResources(implicit qr: QuereaseResources): QuereaseResources =
-    withResources(withoutConnections(qr.resourcesFactory.resources))
 
   /** Action's querease resources with other tresql resources */
   private def withResources(res: Resources)(implicit qr: QuereaseResources): QuereaseResources =
@@ -675,33 +714,56 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
     * Tresql is evaluated on resources connection, on evaluator connection if there is none.
     */
   private[wabase] def evalMsgParam(t: Action.Tresql, bindVars: Map[String, Any], res: Resources): Any =
-    if (t == null) null
-    else useResourcesConnOrEvaluator(res, r => Query(t.tresql)(r.withParams(bindVars)) match {
-      case SingleValueResult(v) => v
-      case ar: ArrayResult[_] => ar.values.toList
-      case rows: Result[_] => rows.toListOfMaps
+    evalMsgParams(Seq(t), bindVars, res).head
+
+  /** Evaluates msg operation parameters, see [[evalMsgParam]], on one connection */
+  private[wabase] def evalMsgParams(ts: Seq[Action.Tresql], bindVars: Map[String, Any], res: Resources): Seq[Any] =
+    if (ts.forall(_ == null)) ts.map(_ => null)
+    else useResourcesConnOrEvaluator(res, r => ts.map { t =>
+      if (t == null) null
+      else Query(t.tresql)(r.withParams(bindVars)) match {
+        case SingleValueResult(v) => v
+        case ar: ArrayResult[_] => ar.values.toList
+        case rows: Result[_] => rows.toListOfMaps
+      }
     })
 
-  /** Resources for message processing - action's resources without db connections. Message processing runs after
-    * action has completed (MessagingResult is not closeable), action's connection (if view is not explicit db)
-    * is closed by then. Tresql is evaluated on evaluator connection, db / transaction op opens its own connection.
+  /** Messaging result which calls `cleanup` (releases db resources of operation - action, `db` block) when its
+    * stream terminates - completes, fails (with the failure) or is cancelled, for messaging result consumed after
+    * the operation has completed. Messaging result is consumed once (resources are not re-initialized), restart
+    * evaluates operation again (see [[restartMessaging]]). Resources of a stream which is never materialized are
+    * not released.
     */
-  private def withoutConnections(res: Resources): Resources =
-    res.extraResources.keys.foldLeft(res.withConn(null))((r, db) => r.withUpdatedExtra(db)(_.withConn(null)))
+  private[wabase] def withCleanup(mr: MessagingResult, cleanup: Option[Throwable] => Unit)(
+    implicit ec: ExecutionContext): MessagingResult =
+    mr.copy(source = mr.source.watchTermination() { (control, terminated) =>
+      terminated.onComplete(t => cleanup(t.failed.toOption))
+      control
+    })
 
 }
 
 object AppQuereaseMsgOps {
-  /** msg multi send destination - evaluated parameters, sender, sent message counter */
-  private case class MultiSendDestination(
-    providerName: String,
-    op: Action.MsgSend,
-    params: MsgSendParams,
-    sender: MsgSender,
-    sent: AtomicLong,
-  )
+  /** msg multi send destination - operation, provider, sender, sent message counts by topic */
+  private class MultiSendDestination(
+    val providerName: String,
+    val op: Action.MsgSend,
+    val provider: MsgProvider,
+    val sender: MsgSender,
+  ) {
+    private val counts = scala.collection.mutable.LinkedHashMap.empty[String, Long]
+    def sent(topic: String): Unit = synchronized(counts(topic) = counts.getOrElse(topic, 0L) + 1)
+    /** Result rows `{provider, topic, count}` - per topic, `null` topic and 0 count if no messages are sent */
+    def rows: List[Map[String, Any]] = synchronized {
+      (if (counts.isEmpty) List((null, 0L)) else counts.toList).map { case (topic, count) =>
+        ListMap("provider" -> providerName, "topic" -> topic, "count" -> count)
+      }
+    }
+  }
   /** msg send filter flow by message key bind variable name (msg read `key`), see `filterEvaluation` */
   private type ElementFilter = String => Flow[Any, Any, NotUsed]
+  /** msg send outgoing message of element by message key bind variable name (msg read `key`), see `sendMessage` */
+  private type ElementMessage = (Any, String) => Future[OutMessage]
   /** Message bind variable of non map message value */
   val ValueVar = "value"
   /** Message bind variable of message metadata, see [[InMessage.metadata]] */

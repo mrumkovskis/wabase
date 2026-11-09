@@ -18,6 +18,7 @@ events and committed, so that processing continues where it stopped.
 - [Committing](#committing)
 - [Database resources](#database-resources)
 - [Sending messages](#sending-messages)
+  - [Parameter evaluation](#parameter-evaluation)
   - [Send filter](#send-filter)
 - [Multi send - fan-out](#multi-send---fan-out)
 - [Restart on failure](#restart-on-failure)
@@ -148,7 +149,8 @@ default. If the same codec class is used for key and value and must distinguish 
 Decoding failure fails the stream with `MsgDecodingException` (with topic, partition, offset), encoding failure with
 `MsgEncodingException`.
 
-`using` parameter - tresql returning codec names, evaluated once per operation:
+`using` parameter - tresql returning codec names, evaluated once per operation for `msg read`, for each message
+for `msg send` (see [parameter evaluation](#parameter-evaluation)):
 
 ```
 using='avro'                        # value codec avro, key codec from configuration
@@ -163,11 +165,11 @@ using={:format value}               # value codec from bind variable, from confi
 
 ### Evaluator connection pool
 
-Message processing runs after the action has completed, without action's database connection (see
-[database resources](#database-resources)). Tresql evaluated per message (`to`, `commit_metadata`, foreach body) uses
-connection from evaluator pool `app.wabase.evaluator.pool` (default `_evaluator_`), which must be configured in
-`jdbc.cp`, otherwise the stream fails with `Unable to find connection pool`. A connection is borrowed for each
-evaluation - size the pool accordingly.
+Tresql evaluated per message (`to`, `commit_metadata`, foreach body, send `filter`) runs on the operation's database
+connection (see [database resources](#database-resources)). Only when there is none - view with `explicit db: true`
+outside `db` / `transaction` - it uses connection from evaluator pool `app.wabase.evaluator.pool` (default
+`_evaluator_`), which must then be configured in `jdbc.cp`, otherwise the stream fails with `Unable to find
+connection pool`. A connection is borrowed for each evaluation - size the pool accordingly.
 
 ## Reading messages
 
@@ -284,15 +286,24 @@ commit_metadata=('processed by ' || :'..'.node)       # committed together with 
 
 ## Database resources
 
-A messaging result is consumed after the action has completed: action's database connection is released (without
-`explicit db: true` - action's transaction is committed) before streaming starts. Therefore:
+Messaging operations use database resources of the operation - action's connection, or of enclosing `db` /
+`transaction` block. Parameters evaluated once (`from`, `group`, `committer`, ...) and tresql evaluated per message
+(`to`, `commit_metadata`, foreach body, `msg send` parameters) run on that connection and may access its database. Without a
+connection (`explicit db: true` view outside `db` block) tresql runs on [evaluator
+connection](#evaluator-connection-pool).
 
-- parameters evaluated once (`from`, `group`, `committer`, ...) are evaluated while the action runs - with action's
-  connection and may access action's database,
-- tresql evaluated per message (`to`, `commit_metadata`, foreach body) runs on [evaluator
-  connection](#evaluator-connection-pool) and can access only tables of evaluator database,
-- foreach body accessing the database opens its own `db` / `transaction` - the connection is held only while the
-  message is processed, and the message transaction is committed before the message offset:
+Messaging result consumed within the action (`msg send`, `msg multi send`, foreach with fold, assignment to variable)
+uses the connection while the action runs, as other steps. Messaging result returned by the action (server sent
+events, job) or by a `db` / `transaction` block is consumed after it has completed - the connection is kept until the
+message stream terminates (completes, fails or is cancelled, e.g. client disconnects) and is released then: the
+transaction is committed, or rolled back if the stream fails. Therefore:
+
+- the transaction stays open while the stream runs - writes of the action done before `msg read` (and of foreach
+  body) are not visible to others and their locks are held until the stream terminates, a stream failure rolls them
+  back (messages may already be sent or committed by then); a continuous stream holds a pooled connection per
+  subscriber. Manage it - write in own `db` / `transaction` block, which commits per message before the message
+  offset is committed, use `explicit db: true` so that a stream holds no connection (per message tresql then runs on
+  evaluator connection), or keep the stream short (`to`, `timeout`):
 
 ```
 - foreach msg read group='g' from='orders' committer=true:
@@ -300,8 +311,15 @@ A messaging result is consumed after the action has completed: action's database
     - =order[id = :id] {status = :status}
 ```
 
-A continuous stream holds no database connection. `explicit db: true` is recommended for views using `msg read` -
-only to avoid opening an action connection which is not needed.
+- per message tresql stages may use the connection concurrently (e.g. `to` of the next message while foreach body
+  processes the previous one) - supported by common JDBC drivers, statements are serialized on the connection.
+- messaging result is consumed once - `restart` evaluates the operation again, with new resources of `db` blocks.
+- the connection of a returned messaging result which is never run (e.g. response not sent) is not released.
+- in a returned stream (server sent events) foreach body writes must be in own `transaction` / `db` block - when
+  the stream is cancelled (client disconnects), the connection is committed and released without waiting for the
+  message being processed, so its work running on the action's connection may be partially committed (statements
+  done before the release), the rest fails. The message is not committed and is processed again on the next read.
+  Read only per message tresql (`to`, `commit_metadata`, queries in body) is not affected.
 
 ## Sending messages
 
@@ -316,8 +334,7 @@ msg send [<provider>]
   <operation>                                           # or block - ':' followed by steps
 ```
 
-See [view actions](view-actions.md#msg-send) for parameter syntax. Parameters are evaluated before the operation,
-except `filter`. Operation result is sent:
+See [view actions](view-actions.md#msg-send) for parameter syntax. Operation result is sent:
 
 - messaging result (`msg read`, foreach on `msg read`), stream, rows, collection - each element as a message,
 - single value (map, scalar) - one message,
@@ -329,6 +346,34 @@ specified. Committing reads are committed after messages are sent, in offset ord
 `key` - `name` takes the key from a field of map value (`should_remove` removes the field from the value), `value`
 is the key itself. Key is encoded with key codec - `string` by default, use for example `using={'json' key}` for map
 keys. Header values must be strings, bytes or null, other values are converted to string.
+
+### Parameter evaluation
+
+`restart` is evaluated once, before the operation. Other parameters are evaluated for each element - `filter` first,
+then `to`, `key`, `headers`, `using` for elements which are sent, so that topic, partition, key, headers and codecs
+may depend on the element:
+
+```
+- msg send to=:'..'.topic (:value)                             # operation variable - '..' prefix
+- msg send to=('orders-' || :region) key={:id || '-' || :line value} headers={'type' name, :type value}
+    using={:format value} msg read group='router' from='orders' committer=true
+```
+
+- bind variables - as of [send filter](#send-filter): for incoming message (`msg read` without foreach) [message
+  bind variables](#message-bind-variables), for other elements map fields or `value`. Scope is not transparent -
+  operation scope variables (e.g. view fields) are accessible with `..` prefix only (`to=:'..'.topic`).
+- why `..` - like foreach item, element scope is created by data: its variable names come from the element (row,
+  message from external producer), not from the view. With a transparent scope a field missing in the element would
+  silently resolve to an operation variable of the same name, and message content could replace an operation
+  variable - e.g. a producer adding `topic` field would decide the destination of `to=:topic`. Element and
+  operation variables are therefore separate. `msg read` parameters are evaluated once in operation scope, so
+  they access operation variables directly (`from={:topic topic}`), while `msg send` parameters, evaluated per
+  element, use `..` for the same variable.
+- constant parameters are evaluated for each element too - each parameter is tresql evaluation with operation's
+  [database resources](#database-resources) (parameters of an element are evaluated on one connection).
+- invalid parameter (e.g. missing topic, unknown codec, missing bind variable - operation variable without `..`)
+  fails the stream when the first element is sent, not before the operation. Parameter error is permanent - it is
+  not restarted with `restart`, the operation fails with it.
 
 ### Send filter
 
@@ -346,8 +391,8 @@ message is committed, like message filtered out by foreach body:
   rows) - map fields or `value`, like foreach item. Operation scope variables are accessible with `..` prefix.
   Incoming message metadata is not available after foreach - use `if` in foreach body instead.
 - comparison must be enclosed in braces, like `msg read` `to`.
-- evaluated on [evaluator connection](#evaluator-connection-pool), also for non messaging results (rows are read
-  from action's connection meanwhile), so the evaluator pool must be configured.
+- evaluated with operation's [database resources](#database-resources) - concurrently with reading of query result
+  rows on the same connection, JDBC driver must be thread safe.
 
 Result is sent message count. The operation completes when all messages are sent and committed - with an infinite
 stream never (e.g. a job forwarding messages).
@@ -398,8 +443,8 @@ Source - result of source steps, as `msg send` operation: messaging result (`msg
 rows, collection, single value. Foreach is optional - only for processing common to all destinations (e.g. db write
 done once). Query result size limit does not apply, as for `msg send`.
 
-Destination - `msg send` with its parameters, evaluated once, before the source (`to` too - topic per element is
-not supported), and optional operation; `restart` is not allowed, it is specified on `msg multi send`:
+Destination - `msg send` with its parameters, evaluated for each element as of [msg send](#parameter-evaluation),
+and optional operation; `restart` is not allowed, it is specified on `msg multi send`:
 - operation is body of implicit foreach over source elements - bind variables as of [send filter](#send-filter)
   (message bind variables for incoming message, otherwise map fields or `value`), `__idx`, parent scope with `..`;
   without operation the element is sent as is,
@@ -409,7 +454,8 @@ not supported), and optional operation; `restart` is not allowed, it is specifie
 - operation result is collected per element before sending - large data belongs to the source, which is streamed
   (e.g. `foreach` over rows as source instead of destination operation returning many rows),
 - incoming message key is retained unless `key` is specified, with or without operation,
-- `filter` is evaluated before operation, on evaluator connection.
+- `filter` is evaluated first, then parameters (`to`, `key`, `headers`, `using`), then operation - with the same
+  element bind variables (`__idx` included).
 
 Delivery:
 - for each element destinations are evaluated in order (filters and operations), then messages are sent to
@@ -421,17 +467,16 @@ Delivery:
   sent to some destinations; mark rows as sent in the same transaction, or use transactional outbox with messaging
   source.
 
-Database resources of destination operations:
-- messaging source - as foreach body on messaging result: tresql on evaluator connection, db access in own `db` /
-  `transaction`,
-- other sources - action's resources, like foreach body (action waits for the send). Query result rows are then read
-  only when requested, so that the connection is not used concurrently. Wrap multi send in `db use` /
-  `transaction` so that source and destination operations use the same database (`db` around the source covers
-  only the source). Some JDBC drivers do not support statements while a result set is open (e.g. MySQL streaming
-  result sets) or read the rest of the result into memory (SQL Server without `selectMethod=cursor`).
+Database resources of destination filters and operations - action's resources, like foreach body (action waits for
+the send), see [database resources](#database-resources). With query source, filters and operations run concurrently
+with reading of query result rows on the same connection - JDBC driver must be thread safe. Wrap multi send in
+`db use` / `transaction` so that source and destination operations use the same database (`db` around the source
+covers only the source). Some JDBC drivers do not support statements while a result set is open (e.g. MySQL
+streaming result sets) or read the rest of the result into memory (SQL Server without `selectMethod=cursor`).
 
-Result - rows `{provider, topic, count}` of sent message counts, one row per destination in destination order
-(several destinations may have the same topic). The operation completes when all messages are sent and committed.
+Result - rows `{provider, topic, count}` of sent message counts per destination and topic, in destination order,
+topics of destination in order of the first sent message; destination without sent messages - one row with `null`
+topic and 0 count (several destinations may have the same topic). The operation completes when all messages are sent and committed.
 
 ## Restart on failure
 
@@ -451,6 +496,21 @@ restarts the operation fails with the last failure.
   committing reads. The operation must return a messaging result and is evaluated again for each restart - a new
   consumer continues from the committed offset; steps of the operation before `msg read` are executed again too.
   Messages sent but not committed before the failure are sent again; the result count includes them.
+
+Which restart to use:
+
+| Consumption | Failure source | Restart |
+|---|---|---|
+| server sent events, foreach result, collected messages - without `committer` | reader (broker connection) | `msg read restart` |
+| `msg send` / `msg multi send` of non committing read | reader (broker connection) | `msg read restart` |
+| `msg send` / `msg multi send` | reader, processing (foreach body, `to`, `filter`), sending, committing | `msg send restart` / `msg multi send restart` |
+| any, with `committer` | any | `msg send restart` / `msg multi send restart` (`msg read restart` not supported) |
+
+`msg read restart` restarts only the reader - failure of a later stage (processing, sending, committing) fails the
+stream. `msg send restart` evaluates the operation again and rebuilds the whole pipeline, so the operation must
+return a messaging result. Messaging result returned by action (server sent events) or collected has no pipeline
+restart - with `committer` a failure fails the stream (action), a server sent events client reconnects and continues
+from the committed offset.
 
 A permanent failure (e.g. message which cannot be decoded) is repeated until max restarts are exhausted.
 
@@ -513,7 +573,7 @@ Providers implement `org.wabase.msg.MsgProvider` (Kafka - `org.wabase.msg.kafka.
 ```scala
 trait MsgProvider {
   def createReader(config: Config, keyDecoder: MsgDecoder = null, valueDecoder: MsgDecoder = null): MsgReader
-  def createSender(config: Config, keyEncoder: MsgEncoder = null, valueEncoder: MsgEncoder = null): MsgSender
+  def createSender(config: Config): MsgSender     // encoders - of message (OutMessage), else from config
   def createCommitter(config: Config): MsgCommitter
   def admin: MsgAdmin
   def codecs: MsgCodecs
@@ -554,7 +614,6 @@ trait Control {
 
 - `msg send` sends one message per element to one topic - use [multi send](#multi-send---fan-out) for several
   destinations or several messages per element.
-- destination topic is evaluated once per operation, topic per message is not supported.
 - encoders cannot add headers to outgoing messages (headers can be set with `msg send headers=`).
 - `msg read` `restart` cannot be combined with `committer` - use `msg send` `restart`.
 
@@ -567,5 +626,5 @@ Proposals, not implemented.
 - encoders adding headers (e.g. schema id of schema registries using headers) - optional trait
   `MsgHeaderEncoder extends MsgEncoder { def encodeWithHeaders(...): (Array[Byte], Seq[Header]) }`,
   checked by providers, existing encoders and providers unchanged.
-- startup check - warning if views use `msg read` with per message tresql and evaluator pool is not configured
-  (currently the stream fails when the first message is processed).
+- startup check - warning if `explicit db` views use `msg read` with per message tresql and evaluator pool is not
+  configured (currently the stream fails when the first message is processed).

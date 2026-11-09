@@ -92,8 +92,9 @@ class KafkaProviderSpecs extends FlatSpec with Matchers with BeforeAndAfterAll {
       def decode(topic: String, headers: Seq[Header], data: Array[Byte]): Any =
         s"${headers.map(_.value).mkString}/${str(data)}"
     }
-    await(provider.createSender(ConfigFactory.empty, CborMsgCodec, codec)
-      .send(OutMessage(topic, List(1, 2), "v", headers = List(Header("h", "x")))))
+    await(provider.createSender(ConfigFactory.empty)
+      .send(OutMessage(topic, List(1, 2), "v", headers = List(Header("h", "x")),
+        keyEncoder = CborMsgCodec, valueEncoder = codec)))
     val m = await(provider.createReader(ConfigFactory.empty, CborMsgCodec, codec)
       .source(Assignment(Set(TopicPartition(topic, 0)), None)).runWith(Sink.head))
     (m.key, m.value) shouldBe ((List(1, 2), "x/x:v"))
@@ -111,9 +112,9 @@ class KafkaProviderSpecs extends FlatSpec with Matchers with BeforeAndAfterAll {
       await(p.createSender(ConfigFactory.empty).send(OutMessage(topic, "k", "v")))
       // operation config overrides provider config
       await(p.createSender(ConfigFactory.parseString("value-codec = json")).send(OutMessage(topic, "k", "v")))
-      // explicit codec overrides config
-      await(p.createSender(ConfigFactory.parseString("value-codec = json"), null, CborMsgCodec)
-        .send(OutMessage(topic, "k", List(1))))
+      // message encoder overrides config
+      await(p.createSender(ConfigFactory.parseString("value-codec = json"))
+        .send(OutMessage(topic, "k", List(1), valueEncoder = CborMsgCodec)))
       val raw = readRaw()
       raw.take(2) shouldBe List(("\"k\"", "v"), ("\"k\"", "\"v\""))
       raw(2)._1 shouldBe "\"k\""
@@ -131,14 +132,14 @@ class KafkaProviderSpecs extends FlatSpec with Matchers with BeforeAndAfterAll {
 
   it should "fail stream with message position on decoding and encoding failure" in {
     val topic = newTopic()
-    await(provider.createSender(ConfigFactory.empty, StringMsgCodec, StringMsgCodec)
-      .send(OutMessage(topic, null, "not json")))
+    await(provider.createSender(ConfigFactory.empty)
+      .send(OutMessage(topic, null, "not json", valueEncoder = StringMsgCodec)))
     val ex = intercept[MsgDecodingException](await(reader.source(Assignment(Set(TopicPartition(topic, 0)), None))
       .runWith(Sink.head)))
     (ex.topic, ex.partition, ex.offset) shouldBe ((topic, 0, 0L))
     ex.getMessage should startWith (s"Failed to decode message value at $topic-0@0: ")
-    intercept[MsgEncodingException](await(provider.createSender(ConfigFactory.empty, StringMsgCodec, BytesMsgCodec)
-      .send(OutMessage(topic, null, "not bytes"))))
+    intercept[MsgEncodingException](await(provider.createSender(ConfigFactory.empty)
+      .send(OutMessage(topic, null, "not bytes", valueEncoder = BytesMsgCodec))))
       .getMessage should startWith (s"Failed to encode message value for topic $topic: ")
   }
 

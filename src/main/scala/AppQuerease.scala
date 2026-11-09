@@ -86,8 +86,9 @@ case class SourceResult(src: Source[QuereaseResult, _], toBindableValue: Quereas
   * @param committer  present if source elements are committable, committables must be passed to committer sink
   *                   (or [[org.wabase.msg.MsgSender.committableSink]]) when stream is consumed
   * @param keyName    msg read `key` parameter - name of message bind variable for message key, or null
-  * Not closeable - stream stages do not use action's db resources (message processing runs on evaluator connection
-  * or opens its own db / transaction), so action's resources are released when action completes.
+  * Message processing (per message tresql, foreach body) uses db resources of the operation - when messaging result
+  * is returned by action (or `db` block), the resources are released when its stream terminates, see
+  * [[AppQuereaseMsgOps.withCleanup]].
   */
 case class MessagingResult(source: Source[Any, Control], committer: Option[MsgCommitter], keyName: String = null)
   extends QuereaseResult
@@ -363,6 +364,9 @@ class AppQuerease extends Querease with AppMetadata with AppQuereaseMsgOps with 
                   // close outer resources
                   cleanup(None)
                   processResult(result, cl)
+                // stream uses action's resources - release them when it terminates
+                case mr: MessagingResult => withCleanup(mr, cleanup)(ec)
+                case cr@CompatibleResult(mr: MessagingResult, _, _) => cr.copy(result = withCleanup(mr, cleanup)(ec))
                 case r: QuereaseCloseableResult if !doCleanup => QuereaseResultWithCleanup(r, cleanup)
                 case r: QuereaseResult =>
                   cleanup(None)
@@ -1241,9 +1245,8 @@ class AppQuerease extends Querease with AppMetadata with AppQuereaseMsgOps with 
     @volatile var idx = 0
     doActionOp(op.initOp, scope, context).flatMap {
       case mr: MessagingResult => doForeachMessaging(op, mr, scope, context) // retains MessagingResult
-      case DbResult(mr: MessagingResult, cleanup) => // messaging result is not closeable - release db resources
-        cleanup(None)
-        doForeachMessaging(op, mr, scope, context)
+      case DbResult(mr: MessagingResult, cleanup) => // db resources are released when messaging stream terminates
+        doForeachMessaging(op, withCleanup(mr, cleanup), scope, context)
       case CompatibleResult(mr: MessagingResult, _, _) => doForeachMessaging(op, mr, scope, context)
       case res => source(res, null)
         .map ( _.mapAsync(1) { itData => // paralellism is 1 so that idx is incremented correctly

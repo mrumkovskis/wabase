@@ -14,9 +14,11 @@ import scala.concurrent.{ExecutionContext, Future}
   * `config` parameter of factory methods contains operation specific settings,
   * provider uses its own configuration as a fallback.
   *
-  * Key and value codecs passed to [[createReader]], [[createSender]] may be `null`, then codecs are resolved
-  * by [[codecs]] from `key-codec`, `value-codec` of operation config, falling back to provider config,
-  * then to [[MsgCodec.defaultKeyCodec]], [[MsgCodec.defaultValueCodec]].
+  * Key and value decoders passed to [[createReader]] may be `null`, then decoders are resolved by [[codecs]] from
+  * `key-codec`, `value-codec` of operation config, falling back to provider config, then to
+  * [[MsgCodec.defaultKeyCodec]], [[MsgCodec.defaultValueCodec]]. Sender's encoders ([[createSender]]) are resolved
+  * from config the same way, message may specify its own encoders ([[OutMessage.keyEncoder]],
+  * [[OutMessage.valueEncoder]]) - incoming message cannot carry its decoder, outgoing message can carry its encoder.
   *
   * Generic operation config keys (provider specific keys may be used as well):
   *  - `committer { max-batch, max-interval, parallelism, delivery, when }` - committer settings, see [[createCommitter]]
@@ -29,11 +31,7 @@ trait MsgProvider {
     keyDecoder: MsgDecoder = null,
     valueDecoder: MsgDecoder = null,
   ): MsgReader
-  def createSender(
-    config: Config,
-    keyEncoder: MsgEncoder = null,
-    valueEncoder: MsgEncoder = null,
-  ): MsgSender
+  def createSender(config: Config): MsgSender
   def createCommitter(config: Config): MsgCommitter
   def admin: MsgAdmin
   /** Codecs of the provider - built-in and configured, see [[MsgCodecs]]. */
@@ -90,7 +88,8 @@ trait MsgSender {
   /** Sends messages, preserving order, passes through value `P` together with send result.
     * `None` message is not sent, `P` is passed through in order with `None` result
     * (for example, committable of incoming message which is filtered out, like kafka `PassThroughMessage`).
-    * Message key and value are encoded with encoders of the sender, see [[OutMessage]].
+    * Message key and value are encoded with encoders of the message, if not specified - of the sender,
+    * see [[OutMessage]].
     * Encoding failure fails the stream with [[MsgEncodingException]].
     */
   def optionalFlow[P]: Flow[(Option[OutMessage], P), (Option[SendResult], P), NotUsed]

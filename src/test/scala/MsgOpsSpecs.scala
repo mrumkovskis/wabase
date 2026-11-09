@@ -147,6 +147,55 @@ class MsgOpsSpecs extends FlatSpec with Matchers with TestQuereaseInitializer {
     values(read("msg_read_from_table", Map("id" -> 1))) shouldBe List("a", "b")
   }
 
+  /** Inserts committed msg_ops_dummy rows if not inserted yet */
+  private def insertRows(rows: (Int, String)*): Unit = {
+    val conn = java.sql.DriverManager.getConnection(s"jdbc:hsqldb:mem:$dbNamePrefix")
+    try {
+      rows.foreach { case (id, value) =>
+        val st = conn.prepareStatement(
+          "merge into msg_ops_dummy t using (values(?, ?)) s(id, value) on t.id = s.id " +
+          "when not matched then insert values (s.id, s.value)")
+        st.setInt(1, id); st.setString(2, value); st.executeUpdate()
+      }
+      conn.commit()
+    } finally conn.close()
+  }
+
+  it should "evaluate per message tresql with action's resources" in {
+    insertRows(40 -> "stop", 41 -> "x41", 42 -> "x42")
+    val topic = newTopic()
+    send(topic, 41, 40, 42)
+    values(read("msg_read_db_tresql", Map("topic" -> topic))).map(String.valueOf) shouldBe List("41", "40")
+    val topic2 = newTopic()
+    send(topic2, 41, 42)
+    read("msg_read_db_tresql", Map("topic" -> topic2), "list") shouldBe List("x41", "x42")
+  }
+
+  it should "release action's resources when returned messaging result stream terminates" in {
+    insertRows(40 -> "stop")
+    val topic = newTopic()
+    send(topic, 1, 40, 2)
+    val opened = new java.util.concurrent.atomic.AtomicInteger
+    val closed = new java.util.concurrent.atomic.AtomicInteger
+    val factory = ResourcesFactory(
+      res => (pool, extra) => { opened.incrementAndGet(); qr.resourcesFactory.initResources(res)(pool, extra) },
+      (res, rollback, err) => { closed.incrementAndGet(); qr.resourcesFactory.closeResources(res, rollback, err) },
+    )(qr.resourcesFactory.resources)
+    val res = await(querease.QuereaseAction("msg_read_db_tresql", "get", Map("topic" -> topic), Map.empty)(
+      factory, null, qio, qr.fileStreamers, null, qr.msgProviders, qr.parametersProvider, logger)
+      .run(system.dispatcher, system))
+    opened.get shouldBe 1
+    closed.get shouldBe 0 // 'to' is evaluated on action's connection while stream runs
+    val mr = res match {
+      case mr: MessagingResult => mr
+      case x => fail(s"MessagingResult expected, got: $x")
+    }
+    values(await(querease.runMessaging(mr, Sink.seq[Any]))).map(String.valueOf) shouldBe List("1", "40")
+    val deadline = System.currentTimeMillis + 5000
+    while (closed.get == 0 && System.currentTimeMillis < deadline) Thread.sleep(10)
+    closed.get shouldBe 1
+  }
+
   it should "collect messages for the next step" in {
     val topic = newTopic()
     send(topic, "a", "b", "c")
@@ -201,6 +250,26 @@ class MsgOpsSpecs extends FlatSpec with Matchers with TestQuereaseInitializer {
   private def readAll(topic: String, count: Int, partition: Int = 0): Seq[InMessage] =
     await(provider.createReader(ConfigFactory.empty)
       .source(Subscription.Assignment(Set(TopicPartition(topic, partition)), None)).take(count).runWith(Sink.seq))
+
+  private def routingTopics(regions: String*): String = {
+    val prefix = s"msg-ops-route-${topicCounter.incrementAndGet()}-"
+    regions.foreach(r => EmbeddedKafka.createCustomTopic(prefix + r)(kafkaConfig).get)
+    prefix
+  }
+
+  it should "evaluate parameters for each message" in {
+    val src = newTopic()
+    val prefix = routingTopics("eu", "us")
+    send(src,
+      Map("region" -> "eu", "k" -> "a", "kc" -> "string"),
+      Map("region" -> "us", "k" -> "b", "kc" -> "json"),
+      Map("region" -> "eu", "k" -> "c", "kc" -> "json"))
+    action("msg_send_per_message", Map("src" -> src, "prefix" -> prefix)) shouldBe LongResult(3)
+    readAll(prefix + "eu", 2).map(m => (m.key, m.value, m.headers)) shouldBe List( // key read with string codec
+      ("a!", Map("region" -> "eu", "k" -> "a", "kc" -> "string"), List(Header("region", "eu"))),
+      ("\"c!\"", Map("region" -> "eu", "k" -> "c", "kc" -> "json"), List(Header("region", "eu"))))
+    readAll(prefix + "us", 1).map(m => (m.key, m.headers)) shouldBe List(("\"b!\"", List(Header("region", "us"))))
+  }
 
   it should "send rows with key, headers and partition" in {
     val topic = newTopic(partitions = 2)
@@ -366,8 +435,8 @@ class MsgOpsSpecs extends FlatSpec with Matchers with TestQuereaseInitializer {
     val src = newTopic()
     val dst = newTopic()
     send(src, "a")
-    await(Source.single(OutMessage(src, null, "{not json")) // value decoding of default json codec fails
-      .runWith(provider.createSender(ConfigFactory.empty, null, provider.codecs("string")).sink))
+    await(Source.single(OutMessage(src, null, "{not json", valueEncoder = provider.codecs("string")))
+      .runWith(provider.createSender(ConfigFactory.empty).sink)) // value decoding of default json codec fails
     intercept[MsgDecodingException](action("msg_read_restart", Map("src" -> src, "dst" -> dst)))
     readAll(dst, 3).map(_.value) shouldBe List("a", "a", "a") // initial read + 2 restarts
   }
@@ -389,6 +458,17 @@ class MsgOpsSpecs extends FlatSpec with Matchers with TestQuereaseInitializer {
       Map(TopicPartition(src, 0) -> OffsetAndMetadata(4, null))
   }
 
+  it should "not restart on parameter error" in {
+    val src = newTopic()
+    send(src, "a")
+    val (codecErr, millis) = timed(intercept[MsgParamException](
+      action("msg_send_restart", Map("src" -> src, "dst" -> "d"), "count")))
+    codecErr.getMessage should startWith ("msg send parameter 'using': Message codec 'jsn' not found")
+    millis should be < 5000L
+    intercept[MsgParamException](action("msg_send_restart", Map("src" -> src, "dst" -> "d"), "insert"))
+      .getMessage should startWith ("msg send parameter evaluation failed")
+  }
+
   it should "require messaging result for msg send restart" in {
     intercept[RuntimeException](action("msg_send_restart", Map("src" -> "s", "dst" -> "d"), "list")).getMessage shouldBe
       "msg send parameter 'restart' requires messaging result (msg read) of operation, got: org.wabase.TresqlResult"
@@ -399,6 +479,18 @@ class MsgOpsSpecs extends FlatSpec with Matchers with TestQuereaseInitializer {
   private def rows(res: QuereaseResult): List[Map[String, Any]] = res match {
     case IteratorResult(it) => it.map { case r: Map[String@unchecked, _] => r }.toList
     case x => fail(s"IteratorResult expected, got: $x")
+  }
+
+  it should "send to topic of element, count messages per destination and topic" in {
+    val prefix = routingTopics("eu", "us")
+    rows(action("msg_send_per_message", Map("prefix" -> prefix), "list")) shouldBe List(
+      Map("provider" -> "main", "topic" -> (prefix + "eu"), "count" -> 2),
+      Map("provider" -> "main", "topic" -> (prefix + "us"), "count" -> 1),
+      Map("provider" -> "main", "topic" -> null, "count" -> 0),
+    )
+    readAll(prefix + "eu", 2).map(m => (m.key, m.value)) shouldBe
+      List(("1", Map("id" -> 1, "region" -> "eu")), ("3", Map("id" -> 3, "region" -> "eu")))
+    readAll(prefix + "us", 1).map(_.key) shouldBe List("2")
   }
 
   it should "route, transform and copy messages, commit after all destinations" in {

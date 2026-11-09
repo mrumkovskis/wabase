@@ -44,9 +44,11 @@ import scala.util.control.NonFatal
   *   }
   * }
   * }}}
-  * Keys and values are decoded and encoded by provider with decoders, encoders passed to [[createReader]],
-  * [[createSender]] or, if they are `null`, with codecs named in configuration (in stream stages, not as kafka deserializers, so that decoding failure is a stream failure
-  * with message position, see [[MsgDecodingException]]). Auto commit of consumer is disabled.
+  * Keys and values are decoded by provider with decoders passed to [[createReader]] or, if they are `null`, with
+  * codecs named in configuration, encoded with encoders of message ([[OutMessage.keyEncoder]],
+  * [[OutMessage.valueEncoder]]) or, if they are `null`, with codecs named in configuration (in stream stages, not as
+  * kafka serializers / deserializers, so that decoding failure is a stream failure with message position, see
+  * [[MsgDecodingException]]). Auto commit of consumer is disabled.
   * Consumer `stop-timeout` (wait for pending commits after source is cancelled) is `0` for plain and at most once
   * sources (no commits after message is emitted) unless `stop-timeout` is configured, committable sources use
   * configured value (pekko default 30s). Msg operations set it to `0` - their committable streams are not cancelled,
@@ -173,10 +175,10 @@ class KafkaProvider(val name: String, val config: Config)(implicit system: Actor
       control: Control
     }
 
-  def createSender(opConfig: Config, keyEncoder: MsgEncoder, valueEncoder: MsgEncoder): MsgSender = new MsgSender {
+  def createSender(opConfig: Config): MsgSender = new MsgSender {
     private val cfg = effectiveConfig(opConfig)
-    private val ke  = codecs.keyEncoder(keyEncoder, cfg)
-    private val ve  = codecs.valueEncoder(valueEncoder, cfg)
+    private val ke  = codecs.keyEncoder(cfg)
+    private val ve  = codecs.valueEncoder(cfg)
     private val settings =
       if (opConfig == null || !opConfig.hasPath("producer") && !opConfig.hasPath("bootstrap-servers"))
         producerSettings(config).withProducer(sharedProducer)

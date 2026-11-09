@@ -40,11 +40,14 @@ case class InMessage(
 
 /** Message to be sent to a messaging provider.
   *
-  * `key` and `value` are encoded by provider with key and value [[MsgEncoder]] passed to [[MsgProvider.createSender]],
+  * `key` and `value` are encoded by provider with [[keyEncoder]], [[valueEncoder]] of message if specified,
+  * otherwise with key and value [[MsgEncoder]] of sender ([[MsgProvider.createSender]]),
   * header values must be `String` (encoded as UTF-8), `Array[Byte]` or `null`, see [[MsgConversions.encode]].
   *
-  * @param partition  target partition, if not specified, provider selects partition (for example, by key hash)
-  * @param timestamp  message timestamp, epoch millis, if not specified, provider assigns it
+  * @param partition     target partition, if not specified, provider selects partition (for example, by key hash)
+  * @param timestamp     message timestamp, epoch millis, if not specified, provider assigns it
+  * @param keyEncoder    key encoder of message or `null` - sender's key encoder
+  * @param valueEncoder  value encoder of message or `null` - sender's value encoder
   */
 case class OutMessage(
   topic: String,
@@ -53,6 +56,8 @@ case class OutMessage(
   partition: Option[Int] = None,
   timestamp: Option[Long] = None,
   headers: Seq[Header] = Nil,
+  keyEncoder: MsgEncoder = null,
+  valueEncoder: MsgEncoder = null,
 ) extends Msg
 
 /** Message together with committable of incoming message.

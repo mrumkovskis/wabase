@@ -142,12 +142,14 @@ class MsgCodecs(config: Config) {
   /** Explicit decoder if not `null`, otherwise `value-codec` from `cfg` or [[MsgCodec.defaultValueCodec]]. */
   def valueDecoder(explicit: MsgDecoder, cfg: Config): MsgDecoder =
     if (explicit != null) explicit else fromConfig(cfg, valueCodecPath).getOrElse(MsgCodec.defaultValueCodec)
-  /** Explicit encoder if not `null`, otherwise `key-codec` from `cfg` or [[MsgCodec.defaultKeyCodec]]. */
-  def keyEncoder(explicit: MsgEncoder, cfg: Config): MsgEncoder =
-    if (explicit != null) explicit else fromConfig(cfg, keyCodecPath).getOrElse(MsgCodec.defaultKeyCodec)
-  /** Explicit encoder if not `null`, otherwise `value-codec` from `cfg` or [[MsgCodec.defaultValueCodec]]. */
-  def valueEncoder(explicit: MsgEncoder, cfg: Config): MsgEncoder =
-    if (explicit != null) explicit else fromConfig(cfg, valueCodecPath).getOrElse(MsgCodec.defaultValueCodec)
+  /** Encoder `key-codec` from `cfg` or [[MsgCodec.defaultKeyCodec]], message may override it
+    * ([[OutMessage.keyEncoder]]). Provider passes operation config with fallback to provider config.
+    */
+  def keyEncoder(cfg: Config): MsgEncoder = fromConfig(cfg, keyCodecPath).getOrElse(MsgCodec.defaultKeyCodec)
+  /** Encoder `value-codec` from `cfg` or [[MsgCodec.defaultValueCodec]], message may override it
+    * ([[OutMessage.valueEncoder]]).
+    */
+  def valueEncoder(cfg: Config): MsgEncoder = fromConfig(cfg, valueCodecPath).getOrElse(MsgCodec.defaultValueCodec)
 }
 
 object MsgCodecs {
@@ -231,16 +233,18 @@ object MsgConversions {
       .decode(ByteBuffer.wrap(bytes)).toString
     catch { case _: CharacterCodingException => bytes }
 
-  /** Encodes outgoing message key and value with encoders, header values (`String` as UTF-8, `Array[Byte]` as is).
-    * Encoders receive headers of outgoing message.
+  /** Encodes outgoing message key and value with encoders of message ([[OutMessage.keyEncoder]],
+    * [[OutMessage.valueEncoder]]) or, if not specified, with encoders passed (sender's), header values (`String` as UTF-8,
+    * `Array[Byte]` as is). Encoders receive headers of outgoing message.
     */
   def encode(message: OutMessage, keyEncoder: MsgEncoder, valueEncoder: MsgEncoder): EncodedMessage = {
     import message.{topic, headers}
     def encoding[T](what: String)(f: => T): T =
       try f catch { case NonFatal(e) => throw new MsgEncodingException(topic, what, e) }
     EncodedMessage(
-      key     = encoding("key")  (keyEncoder.encode(topic, headers, message.key)),
-      value   = encoding("value")(valueEncoder.encode(topic, headers, message.value)),
+      key     = encoding("key")  (Option(message.keyEncoder).getOrElse(keyEncoder).encode(topic, headers, message.key)),
+      value   = encoding("value")(
+        Option(message.valueEncoder).getOrElse(valueEncoder).encode(topic, headers, message.value)),
       headers = headers.map { h =>
         h.name -> encoding(s"header '${h.name}'")(h.value match {
           case null => null

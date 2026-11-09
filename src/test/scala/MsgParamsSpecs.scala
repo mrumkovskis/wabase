@@ -141,7 +141,7 @@ class MsgParamsSpecs extends FlatSpec with Matchers {
     err(MsgReadParams.fromValues(null, "t", null, true, null, null, null, true)) shouldBe "msg read parameter " +
       "'restart': 'restart' and 'committer' are not supported together - committables of failed consumer cannot be committed, " +
       "use msg send 'restart' to restart reading, processing, sending and committing together"
-    MsgSendParams.fromValues("t", null, null, null, Map("max_restarts" -> 1)).restart.map(_.maxRestarts) shouldBe Some(1)
+    MsgSendParams.sendRestart(Map("max_restarts" -> 1)).map(_.maxRestarts) shouldBe Some(1)
   }
 
   behavior of "MsgSendParams"

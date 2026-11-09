@@ -93,14 +93,40 @@ get:  # parameters are evaluated with action's resources - may access action's d
 - msg read from=msg_ops_dummy[id = :id]{value topic, 0 partition} timeout={'500ms' idle}
 
 
+name: msg_read_db_tresql
+fields:
+- topic
+get:  # per message tresql runs with action's resources - 'to' queries action's database
+- msg read from={:topic topic, 0 partition} to={exists(msg_ops_dummy[id = :value::int & value = 'stop'])}
+    timeout={'10s' idle}
+list:  # foreach body queries action's database without db block
+- foreach msg read from={:topic topic, 0 partition} timeout={'500ms' idle}:
+  - msg_ops_dummy[id = :value::int]{value}
+
+
+name: msg_send_per_message
+fields:
+- src
+- prefix
+get:  # parameters evaluated per message - topic, key, header, key codec; operation variables with '..'
+- msg send to=(:'..'.prefix || :region) key={:k || '!' value} headers={'region' name, :region value}
+    using={:kc key} msg read from={:'..'.src topic, 0 partition} timeout={'1s' idle}
+list: # multi send - topic per element, result rows per destination and topic
+- msg multi send:
+  - ({1 id, 'eu' region} ++ {2 id, 'us' region} ++ {3 id, 'eu' region})
+  - to:
+    - msg send to=(:'..'.prefix || :region) key={:id value}
+    - msg send to=(:'..'.prefix || 'none') filter={:id = 0}
+
+
 name: msg_send_rows
 fields:
 - topic
 get:
-- msg send to={:topic topic, 1 partition} key={'id' name, true should_remove} headers={'h' name, 'v' value}:
+- msg send to={:'..'.topic topic, 1 partition} key={'id' name, true should_remove} headers={'h' name, 'v' value}:
   - "{1 id, 'a' name} ++ {2 id, 'b' name}"
 list:  # scalar - one message, explicit key
-- msg send to=:topic key={'k' value} ('x')
+- msg send to=:'..'.topic key={'k' value} ('x')
 
 
 name: msg_send_forward
@@ -109,7 +135,7 @@ fields:
 - dst
 - group
 get:  # forward read messages with commit, value and key retained
-- msg send to=:dst msg read group=:group from=:src committer=true to={:value = 'c'}
+- msg send to=:'..'.dst msg read group=:group from=:src committer=true to={:value = 'c'}
 
 
 name: msg_foreach
@@ -133,7 +159,7 @@ fields:
 - dst
 - group
 get:  # transform, filter (b) and forward with commit
-- msg send to=:dst:
+- msg send to=:'..'.dst:
   - foreach msg read group=:group from=:src committer=true to={:value = 'd'}:
     - if {:value != 'b'}:
       - :value || '!'
@@ -165,7 +191,7 @@ fields:
 - src
 - dst
 get:  # decoding failure restarts reader - messages before failure are read again
-- msg send to=:dst msg read from={:src topic, 0 partition}
+- msg send to=:'..'.dst msg read from={:src topic, 0 partition}
     restart={'50ms' min_backoff, '100ms' max_backoff, 0 random_factor, 2 max_restarts, '10s' max_restarts_within}
 
 
@@ -175,18 +201,24 @@ fields:
 - dst
 - group
 get:  # transient processing failure restarts read, processing, send and commit
-- msg send to=:dst restart={'50ms' min_backoff, '100ms' max_backoff, 0 random_factor}:
+- msg send to=:'..'.dst restart={'50ms' min_backoff, '100ms' max_backoff, 0 random_factor}:
   - foreach msg read group=:group from=:src committer=true to={:value = 'd'}:
     - org.wabase.MsgOpsTestFunctions.failOnce
 list:  # restart requires messaging result
-- msg send to=:dst restart=true ('x')
+- msg send to=:'..'.dst restart=true ('x')
+count:  # parameter error (unknown codec) is not restarted
+- msg send to=:'..'.dst restart={'50ms' min_backoff, '100ms' max_backoff, 0 random_factor} using='jsn'
+    msg read from={:src topic, 0 partition} timeout={'5s' idle}
+insert: # missing bind variable (operation variable without '..') is not restarted
+- msg send to=:dst restart={'50ms' min_backoff, '100ms' max_backoff, 0 random_factor}
+    msg read from={:src topic, 0 partition} timeout={'5s' idle}
 
 
 name: msg_review_fixes
 fields:
 - topic
 get:   # foreach over rows - no result of 'if' without 'else' is not sent
-- msg send to=:topic:
+- msg send to=:'..'.topic:
   - foreach ({1 x} ++ {2 x}):
     - if {:x = 1}:
       - :x
@@ -201,10 +233,10 @@ fields:
 - group
 - skip
 get:  # forward filtered messages keeping key, filtered messages committed; key bind variable
-- msg send to=:dst filter={:status != 'draft' & :k != 'k4'}
+- msg send to=:'..'.dst filter={:status != 'draft' & :k != 'k4'}
     msg read group=:group from=:src committer=true key='k' to={:status = 'end'}
 list: # filter rows - map fields, parent scope with '..'
-- msg send to=:dst filter={:id::int != :'..'.skip::int} ({1 id} ++ {2 id} ++ {3 id})
+- msg send to=:'..'.dst filter={:id::int != :'..'.skip::int} ({1 id} ++ {2 id} ++ {3 id})
 
 
 name: msg_send_filter_value
@@ -213,13 +245,13 @@ fields:
 - dst
 - group
 get:  # foreach result - scalar bound as value, committed after filtering
-- msg send to=:dst filter={:value != 'b!'}:
+- msg send to=:'..'.dst filter={:value != 'b!'}:
   - foreach msg read group=:group from=:src committer=true to={:value = 'c'}:
     - :value || '!'
 list: # single value filtered out
-- msg send to=:dst filter={:value != 'b'} ('b')
+- msg send to=:'..'.dst filter={:value != 'b'} ('b')
 count: # filter must be boolean
-- msg send to=:dst filter=(:'..'.dst) ('x')
+- msg send to=:'..'.dst filter=(:'..'.dst) ('x')
 
 
 name: msg_send_db
@@ -227,9 +259,9 @@ fields:
 - topic
 get:   # query rows are streamed from db block's cursor, which is closed after messages are sent
 - db use:
-  - msg send to=:topic msg_ops_dummy[id >= 1000]{id, value}#(id)
+  - msg send to=:'..'.topic msg_ops_dummy[id >= 1000]{id, value}#(id)
 list:  # single row with single column - value is sent
-- msg send to=:topic msg_ops_dummy[id = 1000]{value}
+- msg send to=:'..'.topic msg_ops_dummy[id = 1000]{value}
 
 
 name: msg_multi_send
@@ -245,22 +277,22 @@ get:  # routing (filter, operation), transformation, copy; committing messaging 
 - msg multi send:
   - msg read group=:group from=:src committer=true key='k' to={:status = 'end'}
   - to:
-    - msg send to=:eu filter={:region = 'eu'}
-    - msg send to=:us key={'id' name}:
+    - msg send to=:'..'.eu filter={:region = 'eu'}
+    - msg send to=:'..'.us key={'id' name}:
       - if {:region = 'us'} (unique {:id::int id, :status status})
-    - msg send to=:all
+    - msg send to=:'..'.all
 list: # rows source, splitting (operation returning rows), __idx, parent scope
 - tag = 't'
 - msg multi send:
   - ({1 id} ++ {2 id})
   - to:
-    - msg send to=:dst ({:id::int id, :__idx::int idx, :'..'.tag tag} ++ {:id::int + 10 id, :__idx::int idx, :'..'.tag tag})
-    - msg send to=:dst2 filter={:id::int = 2}
+    - msg send to=:'..'.dst ({:id::int id, :__idx::int idx, :'..'.tag tag} ++ {:id::int + 10 id, :__idx::int idx, :'..'.tag tag})
+    - msg send to=:'..'.dst2 filter={:id::int = 2}
 count: # restart requires messaging result
 - msg multi send restart=true:
   - "'x'"
   - to:
-    - msg send to=:dst
+    - msg send to=:'..'.dst
 
 
 name: msg_multi_send_db
@@ -270,7 +302,7 @@ get:  # destination operation queries action's connection while query source row
 - msg multi send:
   - msg_ops_dummy[id >= 1000 & id < 1010]{id}#(id)
   - to:
-    - msg send to=:dst (msg_ops_dummy[id = :id]{value})
+    - msg send to=:'..'.dst (msg_ops_dummy[id = :id]{value})
 
 
 name: msg_multi_send_restart
@@ -283,8 +315,8 @@ get:  # transient failure in destination operation restarts read, processing, se
 - msg multi send restart={'50ms' min_backoff, '100ms' max_backoff, 0 random_factor}:
   - msg read group=:group from=:src committer=true to={:value = 'd'}
   - to:
-    - msg send to=:copy
-    - msg send to=:dst (org.wabase.MsgOpsTestFunctions.failOnce)
+    - msg send to=:'..'.copy
+    - msg send to=:'..'.dst (org.wabase.MsgOpsTestFunctions.failOnce)
 
 
 name: msg_multi_send_split
@@ -297,8 +329,8 @@ get:  # incoming message split into several messages - committed after the last 
 - msg multi send:
   - msg read group=:group from=:src committer=true to={:value = 'c'}
   - to:
-    - msg send to=:dst ({:value || '1' v} ++ {:value || '2' v})
-    - msg send to=:copy
+    - msg send to=:'..'.dst ({:value || '1' v} ++ {:value || '2' v})
+    - msg send to=:'..'.copy
 
 
 name: msg_send_compat_src
@@ -315,15 +347,15 @@ fields:
 - dst
 - group
 get:  # messaging result of view call with result type (CompatibleResult) - committed after sending
-- msg send to=:dst (as any get msg_send_compat_src)
+- msg send to=:'..'.dst (as any get msg_send_compat_src)
 list: # the same with restart
-- msg send to=:dst restart={'50ms' min_backoff, '100ms' max_backoff, 0 random_factor}:
+- msg send to=:'..'.dst restart={'50ms' min_backoff, '100ms' max_backoff, 0 random_factor}:
   - as any get msg_send_compat_src
 count: # multi send
 - msg multi send:
   - as any get msg_send_compat_src
   - to:
-    - msg send to=:dst
+    - msg send to=:'..'.dst
 
 
 name: msg_multi_send_idx
@@ -336,4 +368,4 @@ get:  # __idx counts messages filtered by foreach, like foreach
   - foreach msg read group=:group from=:src committer=true to={:value = 'c'}:
     - if {:value != 'b'} (:value)
   - to:
-    - msg send to=:dst (:value || :__idx)
+    - msg send to=:'..'.dst (:value || :__idx)

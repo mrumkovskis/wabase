@@ -6,7 +6,7 @@ fields:
 - topic
 - value
 post:
-- msg send to=:topic (:value)
+- msg send to=:'..'.topic (:value)
 - status 202
 
 

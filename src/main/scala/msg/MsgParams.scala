@@ -354,7 +354,7 @@ object MsgReadParams {
   */
 case class MsgKey(name: String, value: Option[Any], shouldRemove: Boolean)
 
-/** Evaluated msg send parameters, evaluated once per operation.
+/** Evaluated msg send parameters, evaluated for each outgoing element.
   * @param keyCodec    key codec name or null - resolved from configuration
   * @param valueCodec  value codec name or null - resolved from configuration
   */
@@ -366,9 +366,8 @@ case class MsgSendParams(
   headers: Seq[Header] = Nil,
   keyCodec: String = null,
   valueCodec: String = null,
-  restart: Option[RestartSettings] = None,
 ) {
-  /** Outgoing message with value, key from [[key]] */
+  /** Outgoing message with value, key from [[key]], without encoders */
   def outMessage(value: Any): OutMessage = {
     val (k, v) = key match {
       case None => (null, value)
@@ -400,7 +399,7 @@ object MsgSendParams {
     * @param headers  rows - `name`, `value`, value must be string, bytes or null, other values are converted to string
     * @param usingCodecs row - `key`, `value` codec names or value codec name
     */
-  def fromValues(to: Any, key: Any, headers: Any, usingCodecs: Any, restart: Any = null): MsgSendParams = {
+  def fromValues(to: Any, key: Any, headers: Any, usingCodecs: Any): MsgSendParams = {
     val tp = Param(Op, "to")
     val toRow = Option(tp.row(to)).map(tp.columns(_, ToColumns, shorthand = "topic")).getOrElse(Map.empty[String, Any])
     val topic = tp.string("topic", toRow.getOrElse("topic", null))
@@ -429,11 +428,14 @@ object MsgSendParams {
       topic,
       Option(tp.int("partition", toRow.getOrElse("partition", null))).map(_.intValue),
       Option(tp.epochMillis("timestamp", toRow.getOrElse("timestamp", null))).map(_.longValue),
-      msgKey, hs, kc, vc, restartParam(Op, restart),
+      msgKey, hs, kc, vc,
     )
   }
 
-  /** msg multi send `restart` parameter, see [[MsgSendParams.restart]] */
+  /** msg send `restart` parameter, evaluated once per operation */
+  def sendRestart(restart: Any): Option[RestartSettings] = restartParam(Op, restart)
+
+  /** msg multi send `restart` parameter, see [[sendRestart]] */
   def multiSendRestart(restart: Any): Option[RestartSettings] = restartParam("multi send", restart)
 
   /** Result of `filter` evaluation for an outgoing element - boolean, `null` is false (element is not sent) */

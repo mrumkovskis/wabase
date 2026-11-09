@@ -20,7 +20,7 @@ class TestMsgProvider(val name: String, val config: Config, val system: ActorSys
   val committed = new ConcurrentLinkedQueue[Committable]
   @volatile var closed = false
   def createReader(config: Config, keyDecoder: MsgDecoder, valueDecoder: MsgDecoder): MsgReader = ???
-  def createSender(config: Config, keyEncoder: MsgEncoder, valueEncoder: MsgEncoder): MsgSender = new MsgSender {
+  def createSender(config: Config): MsgSender = new MsgSender {
     def optionalFlow[P]: Flow[(Option[OutMessage], P), (Option[SendResult], P), NotUsed] =
       Flow[(Option[OutMessage], P)].zipWithIndex.map { case ((om, p), idx) =>
         (om.map { m =>
@@ -256,20 +256,19 @@ class MsgProviderSpecs extends FlatSpec with Matchers with BeforeAndAfterAll {
         |""".stripMargin)
     codecs.keyDecoder(BytesMsgCodec, cfg) shouldBe BytesMsgCodec
     codecs.keyDecoder(null, cfg) shouldBe codecs("prefixed")
-    codecs.keyEncoder(null, cfg) shouldBe codecs("prefixed")
+    codecs.keyEncoder(cfg) shouldBe codecs("prefixed")
     val inline = codecs.valueDecoder(null, cfg).asInstanceOf[TestPrefixMsgCodec]
     inline.prefix shouldBe "v:"
-    codecs.valueEncoder(null, ConfigFactory.parseString(cfg.root.render)) should be theSameInstanceAs inline // cached
-    codecs.valueEncoder(null, ConfigFactory.parseString(
+    codecs.valueEncoder(ConfigFactory.parseString(cfg.root.render)) should be theSameInstanceAs inline // cached
+    codecs.valueEncoder(ConfigFactory.parseString(
       "value-codec { factory-class = org.wabase.TestPrefixMsgCodec, prefix = \"w:\" }"))
       .asInstanceOf[TestPrefixMsgCodec].prefix shouldBe "w:"
-    codecs.valueEncoder(BytesMsgCodec, cfg) shouldBe BytesMsgCodec
     codecs.keyDecoder(null, ConfigFactory.empty) shouldBe MsgCodec.defaultKeyCodec
     codecs.valueDecoder(null, null) shouldBe MsgCodec.defaultValueCodec
-    codecs.valueEncoder(null, ConfigFactory.empty) shouldBe MsgCodec.defaultValueCodec
-    intercept[RuntimeException](codecs.valueEncoder(null, ConfigFactory.parseString("value-codec = xml")))
+    codecs.valueEncoder(ConfigFactory.empty) shouldBe MsgCodec.defaultValueCodec
+    intercept[RuntimeException](codecs.valueEncoder(ConfigFactory.parseString("value-codec = xml")))
       .getMessage should startWith ("Message codec 'xml' not found")
-    intercept[RuntimeException](codecs.valueEncoder(null, ConfigFactory.parseString("value-codec = [x]")))
+    intercept[RuntimeException](codecs.valueEncoder(ConfigFactory.parseString("value-codec = [x]")))
       .getMessage shouldBe "Message codec name or object expected at 'value-codec', got: LIST"
   }
 }
