@@ -313,7 +313,9 @@ transaction is committed, or rolled back if the stream fails. Therefore:
 
 - per message tresql stages may use the connection concurrently (e.g. `to` of the next message while foreach body
   processes the previous one) - supported by common JDBC drivers, statements are serialized on the connection.
-- messaging result is consumed once - `restart` evaluates the operation again, with new resources of `db` blocks.
+- messaging result is consumed once - `msg send` `restart` evaluates the operation again, with new resources of
+  `db` blocks; `msg read` `restart` runs the stream again with the same resources, they are released after the
+  last attempt.
 - the connection of a returned messaging result which is never run (e.g. response not sent) is not released.
 - in a returned stream (server sent events) foreach body writes must be in own `transaction` / `db` block - when
   the stream is cancelled (client disconnects), the connection is committed and released without waiting for the
@@ -489,11 +491,21 @@ Columns are optional, defaults - min backoff 1s, max backoff 30s, random factor 
 `max_restarts_within` defaults to min backoff. Failures are restarted, completion (`to`, `timeout`) is not. After max
 restarts the operation fails with the last failure.
 
-- `msg read restart` - restarts the reader. It reads from its subscription start again (committed offset, specified
-  offset or `auto.offset.reset`), so messages before the failure may be emitted again. Not supported with
-  `committer` - committables of the failed consumer cannot be committed.
-- `msg send restart` - restarts the whole pipeline: operation (`msg read`, foreach), sending and committing. Use it for
-  committing reads. The operation must return a messaging result and is evaluated again for each restart - a new
+- `msg read restart` without `committer` - restarts the reader. It reads from its subscription start again
+  (committed offset, specified offset or `auto.offset.reset`), so messages before the failure may be emitted again.
+- `msg read restart` with `committer` - restarts reading, processing and committing together after **reader and
+  commit failures**. A committable can be committed only by the consumer which has read the message, so the failed
+  consumer's messages which are not committed yet cannot be committed any more - a new consumer continues from the
+  committed offset, the messages are read and processed again (foreach body, `to`, sending). Processing failures
+  (foreach body, `to`, `commit_metadata`, `msg send` parameters, sending) are not restarted - the stream fails.
+  The stream is restarted where it is consumed - sent by `msg send`, emitted to http response, collected, folded;
+  collected and folded results include messages of failed attempts. Database resources of the operation are the
+  same for all attempts, foreach index `__idx` starts from 0 for each attempt. Timeout `within` is total duration
+  including restarts - when it expires the stream completes, a failure being restarted at that time is not
+  reported (restarts are logged). A backoff in progress is not interrupted, so the stream may complete up to max
+  backoff later.
+- `msg send restart` - restarts the whole pipeline: operation (`msg read`, foreach), sending and committing, after
+  any failure. The operation must return a messaging result and is evaluated again for each restart - a new
   consumer continues from the committed offset; steps of the operation before `msg read` are executed again too.
   Messages sent but not committed before the failure are sent again; the result count includes them.
 
@@ -501,16 +513,26 @@ Which restart to use:
 
 | Consumption | Failure source | Restart |
 |---|---|---|
-| server sent events, foreach result, collected messages - without `committer` | reader (broker connection) | `msg read restart` |
-| `msg send` / `msg multi send` of non committing read | reader (broker connection) | `msg read restart` |
+| any | reader (broker connection), committing | `msg read restart` |
 | `msg send` / `msg multi send` | reader, processing (foreach body, `to`, `filter`), sending, committing | `msg send restart` / `msg multi send restart` |
-| any, with `committer` | any | `msg send restart` / `msg multi send restart` (`msg read restart` not supported) |
 
-`msg read restart` restarts only the reader - failure of a later stage (processing, sending, committing) fails the
-stream. `msg send restart` evaluates the operation again and rebuilds the whole pipeline, so the operation must
-return a messaging result. Messaging result returned by action (server sent events) or collected has no pipeline
-restart - with `committer` a failure fails the stream (action), a server sent events client reconnects and continues
-from the committed offset.
+```
+- foreach msg read group='g' from='orders' committer=true restart=true:   # consume into database
+  - transaction:
+    - =order[id = :id] {status = :status}
+```
+
+`msg read restart` does not restart processing failures - failure of foreach body or sending fails the stream
+(action). `msg send restart` evaluates the operation again and rebuilds the whole pipeline, so the operation must
+return a messaging result. Both can be specified - reader and commit failures are restarted by `msg read restart`
+(until its max restarts), other failures by `msg send restart`.
+
+Message processing (foreach body, per message tresql) left running by the failed stream completes before
+processing of the stream restarted by `msg read restart` starts. Its message was not committed, so it is processed
+again. `msg send restart` evaluates the operation again, so processing of its operation (foreach body, `to`) left
+running by the failed stream may overlap with processing of the restarted stream, on the same connection.
+
+Reader configuration errors (e.g. missing group) fail `msg read` - they are not restarted.
 
 A permanent failure (e.g. message which cannot be decoded) is repeated until max restarts are exhausted.
 
@@ -615,7 +637,7 @@ trait Control {
 - `msg send` sends one message per element to one topic - use [multi send](#multi-send---fan-out) for several
   destinations or several messages per element.
 - encoders cannot add headers to outgoing messages (headers can be set with `msg send headers=`).
-- `msg read` `restart` cannot be combined with `committer` - use `msg send` `restart`.
+- `msg read` `restart` with `committer` does not restart processing failures - use `msg send` `restart`.
 
 ## Future improvements
 

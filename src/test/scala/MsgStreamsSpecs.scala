@@ -160,4 +160,88 @@ class MsgStreamsSpecs extends FlatSpec with Matchers with BeforeAndAfterAll {
     intercept[RuntimeException](await(res)).getMessage shouldBe "failed"
     attempts.get shouldBe 3 // initial + 2 restarts
   }
+
+  behavior of "MsgStreams.restartPipeline"
+
+  private val restartSettings = org.apache.pekko.stream.RestartSettings(10.millis, 20.millis, 0)
+
+  it should "restart reader and commit failures with new pipeline, stop consumers of attempts" in {
+    import scala.jdk.CollectionConverters._
+    val attempts = new AtomicInteger
+    val controls = new java.util.concurrent.ConcurrentLinkedQueue[TestControl]
+    val source = MsgStreams.restartPipeline(restartSettings) { () =>
+      val control = new TestControl
+      controls.add(control)
+      val attempt = attempts.incrementAndGet()
+      (if (attempt == 1) Source.failed[Int](new RuntimeException("reader failed")) else Source(List(attempt)))
+        .mapMaterializedValue(_ => control: Control)
+        .via(MsgStreams.readerFailures)
+        .via(MsgStreams.processingFailures)
+        .map(n => if (n == 2) throw new RuntimeException("commit failed") else n) // commit stage
+    }
+    await(MsgStreams.run(source, Sink.seq[Int])) shouldBe List(3)
+    attempts.get shouldBe 3
+    controls.asScala.toList.map(_.stopped) shouldBe List(true, true, true)
+  }
+
+  it should "not restart processing failure" in {
+    val attempts = new AtomicInteger
+    val res = MsgStreams.restartPipeline(restartSettings) { () =>
+      attempts.incrementAndGet()
+      Source(List(1, 2)).mapMaterializedValue(_ => new TestControl: Control)
+        .via(MsgStreams.readerFailures)
+        .map(n => if (n == 2) throw new IllegalStateException("processing failed") else n)
+        .via(MsgStreams.processingFailures)
+    }.runWith(Sink.seq)
+    intercept[IllegalStateException](await(res)).getMessage shouldBe "processing failed"
+    attempts.get shouldBe 1
+  }
+
+  it should "not restart parameter error of reader and pipeline build failure" in {
+    val attempts = new AtomicInteger
+    val paramError = MsgStreams.restartPipeline(restartSettings) { () =>
+      attempts.incrementAndGet()
+      Source.failed[Int](new MsgParams.MsgParamException("bad parameter"))
+        .mapMaterializedValue(_ => new TestControl: Control)
+        .via(MsgStreams.readerFailures)
+        .via(MsgStreams.processingFailures)
+    }.runWith(Sink.seq)
+    intercept[MsgParams.MsgParamException](await(paramError)).getMessage shouldBe "bad parameter"
+    val buildFailure = MsgStreams.restartPipeline[Int](restartSettings) { () =>
+      attempts.incrementAndGet()
+      sys.error("build failed")
+    }.runWith(Sink.seq)
+    intercept[RuntimeException](await(buildFailure)).getMessage shouldBe "build failed"
+    attempts.get shouldBe 2
+  }
+
+  it should "fail with reader failure after max restarts" in {
+    val attempts = new AtomicInteger
+    val res = MsgStreams.restartPipeline(restartSettings.withMaxRestarts(2, 10.seconds)) { () =>
+      attempts.incrementAndGet()
+      Source.failed[Int](new IllegalStateException("reader failed"))
+        .mapMaterializedValue(_ => new TestControl: Control)
+        .via(MsgStreams.readerFailures)
+        .via(MsgStreams.processingFailures)
+    }.runWith(Sink.seq)
+    intercept[IllegalStateException](await(res)).getMessage shouldBe "reader failed"
+    attempts.get shouldBe 3 // initial + 2 restarts
+  }
+
+  behavior of "MsgStreams.Sequential"
+
+  it should "start call after previous call completes" in {
+    val calls = new MsgStreams.Sequential
+    val started = new AtomicInteger
+    val first = scala.concurrent.Promise[Int]()
+    val f1 = calls { started.incrementAndGet(); first.future }
+    val f2 = calls { started.incrementAndGet(); Future.successful(2) }
+    started.get shouldBe 1
+    f2.isCompleted shouldBe false
+    first.failure(new RuntimeException("first failed"))
+    await(f2) shouldBe 2
+    intercept[RuntimeException](await(f1)).getMessage shouldBe "first failed"
+    intercept[RuntimeException](await(calls[Int](sys.error("thrown")))).getMessage shouldBe "thrown"
+    await(calls(Future.successful(3))) shouldBe 3
+  }
 }

@@ -3,7 +3,7 @@ package org.wabase
 import com.typesafe.config.ConfigFactory
 import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.{ActorAttributes, Attributes, RestartSettings}
-import org.apache.pekko.stream.scaladsl.{Flow, Keep, RestartSource, Sink, Source}
+import org.apache.pekko.stream.scaladsl.{Flow, RestartSource, Sink, Source}
 import org.tresql.{ArrayResult, Query, Resources, Result, RowLike, SingleValueResult}
 import org.wabase.AppMetadata.Action
 import org.wabase.AppQuerease.{ActionContext, Scope}
@@ -14,7 +14,8 @@ import org.apache.pekko.Done
 
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicLong, AtomicReference}
 import scala.collection.immutable.ListMap
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.duration.{Deadline, Duration}
+import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.util.control.NonFatal
 
 /** Messaging operations of view actions - msg read, msg send, msg admin calls, see docs/messaging.md.
@@ -62,22 +63,51 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
         Option(params.valueCodec).map(provider.codecs(_)).orNull,
       )
       val sub = params.subscription
+      // committables of failed consumer cannot be committed - restart of committable source restarts the whole
+      // pipeline (reading, processing, committing), when messaging result is consumed. Otherwise reader is restarted.
+      val withinDeadline = new AtomicReference[Deadline] // set by the first attempt - restarts do not extend `within`
+      val pipelineRestart = params.restart.filter(_ => params.committer.isDefined)
+      def commitMetadata(in: InMessage): String = MsgReadParams.commitMetadata(evalMsgParam(
+        op.commitMetadata, messageScope(in, params.keyName, scope).toBindeableMap(env), msgRes))
       def readerSource: Source[Any, Control] =
         if (params.atMostOnce) reader.atMostOnceSource(sub)
         else if (params.committer.isEmpty) reader.source(sub)
         else if (op.commitMetadata == null) reader.committableSource(sub)
-        else reader.committableSourceWithMetadata(sub, in => MsgReadParams.commitMetadata(evalMsgParam(
-          op.commitMetadata, messageScope(in, params.keyName, scope).toBindeableMap(env), msgRes)))
-      val source = params.restart.map(MsgStreams.restartOnFailure(_)(() => readerSource)).getOrElse(readerSource)
-      // after termination messages are dropped (drain mode) - `to` is not evaluated for them
-      val terminated = new AtomicBoolean
+        else reader.committableSourceWithMetadata(sub, in =>
+          try commitMetadata(in) catch { // per message evaluation is not a reader failure - not restarted
+            case NonFatal(e) if pipelineRestart.isDefined => throw MsgStreams.ProcessingFailure(e)
+          })
+      val toCalls = new MsgStreams.Sequential
+      // the first reader source is built here, so that reader configuration error (e.g. missing group) fails
+      // msg read - not consumer of the result, where it would be restarted
+      val firstReader = new AtomicReference[Source[Any, Control]](readerSource)
+      def nextReader(): Source[Any, Control] = Option(firstReader.getAndSet(null)).getOrElse(readerSource)
+      def source(): Source[Any, Control] = if (Option(withinDeadline.get).exists(_.isOverdue())) {
+        // `within` expired during restart backoff - stream completes, consumer is not created
+        Source.empty[Any].mapMaterializedValue(_ => new Control {
+          def drainOn(streamCompletion: Future[Any]): Unit = ()
+          def stop(): Future[Done] = Future.successful(Done)
+        })
+      } else {
+        val messages =
+          if (pipelineRestart.isDefined) nextReader().via(MsgStreams.readerFailures)
+          else params.restart.map(MsgStreams.restartOnFailure(_)(() => nextReader())).getOrElse(nextReader())
+        val within = params.within.map { w =>
+          withinDeadline.compareAndSet(null, w.fromNow)
+          withinDeadline.get.timeLeft max Duration.Zero
+        }
+        // after termination messages are dropped (drain mode) - `to` is not evaluated for them
+        val terminated = new AtomicBoolean
+        messages
+          .via(toEvaluation(op.to, params.keyName, scope, context, msgRes, terminated, toCalls))
+          .via(MsgStreams.termination[Any](within, params.idle, drain = params.committer.isDefined,
+            onStop = () => terminated.set(true)))
+      }
       MessagingResult(
-        source
-          .via(toEvaluation(op.to, params.keyName, scope, context, msgRes, terminated))
-          .via(MsgStreams.termination[Any](params.within, params.idle, drain = params.committer.isDefined,
-            onStop = () => terminated.set(true))),
+        () => source(),
         params.committer.map(_ => provider.createCommitter(params.committerConfig)),
         params.keyName,
+        pipelineRestart,
       )
     }
   }
@@ -112,9 +142,10 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
       // per element parameters are evaluated with action's resources - concurrently with reading of query result
       // rows on the same connection, JDBC driver must be thread safe
       val res = qr.resourcesFactory.resources
-      val filter: ElementFilter = filterEvaluation(op.filter, _, scope, context, res)
-      val message: ElementMessage = (el, keyName) =>
-        Future(sendMessage(op, provider, el, elementScope(el, keyName, scope).toBindeableMap(env), res))
+      val (filterCalls, messageCalls) = (new MsgStreams.Sequential, new MsgStreams.Sequential)
+      val filter: ElementFilter = filterEvaluation(op.filter, _, scope, context, res, filterCalls)
+      val message: ElementMessage = (el, keyName) => messageCalls(
+        Future(sendMessage(op, provider, el, elementScope(el, keyName, scope).toBindeableMap(env), res)))
       body().flatMap { result =>
         restart match {
           case None => sendResult(result, message, sender, filter, context)
@@ -150,19 +181,17 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
         s"$opName parameter 'restart' requires messaging result (msg read) of operation, got: ${x.getClass.getName}")
     }
     val firstResult = new AtomicReference(messaging(first))
-    val permanentFailure = new AtomicReference[Throwable]
-    RestartSource.onFailuresWithBackoff(settings) { () =>
+    val restartSettings = settings.withRestartOn((e: Throwable) => !e.isInstanceOf[MsgParamException])
+    RestartSource.onFailuresWithBackoff(restartSettings) { () =>
       val mr = Option(firstResult.getAndSet(null)).map(Future.successful).getOrElse(body().map(messaging))
       Source.futureSource(mr.map(r => MsgStreams.stopOnTermination(pipeline(r))))
-        .recoverWithRetries(1, { case e: MsgParamException => permanentFailure.set(e); Source.empty })
-    }.runWith(Sink.ignore).flatMap { done =>
-      Option(permanentFailure.get).map(Future.failed[Done]).getOrElse(Future.successful(done))
-    }
+    }.runWith(Sink.ignore)
   }
 
   /** Send (and commit) pipeline of messaging result, increments `sent` for each sent message.
     * Committables are committed with committer flow after messages are sent, in incoming message order,
     * `null` (filtered) messages are not sent, but committed. Commit failure fails the pipeline.
+    * See [[messagingStream]] for msg read restart and cleanup.
     */
   private def messagingSend(
     mr: MessagingResult,
@@ -172,25 +201,28 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
     sent: AtomicLong,
   )(implicit qr: QuereaseResources): Source[Any, Control] = {
     import qr.ec
-    mr.committer match {
-      case Some(committer) =>
-        mr.source
-          .via(filter(mr.keyName))
-          .mapAsync(1) {
-            case CommittableMessage(null, c) => Future.successful((None, c))
-            case CommittableMessage(v, c) => message(v, mr.keyName).map(m => (Some(m), c))
-            case x => Future.failed(new IllegalStateException(s"Committable message expected, got: $x"))
-          }
-          .via(sender.optionalFlow[Committable])
-          .map { case (result, c) => if (result.isDefined) sent.incrementAndGet(); c }
-          .via(committer.flow)
-      case None =>
-        mr.source
-          .via(filter(mr.keyName))
-          .collect { case v if v != null => v }
-          .mapAsync(1)(message(_, mr.keyName).map((_, NotUsed)))
-          .via(sender.flow[NotUsed])
-          .map(_ => sent.incrementAndGet())
+    messagingStream[Any](mr) { source =>
+      mr.committer match {
+        case Some(committer) =>
+          source
+            .via(filter(mr.keyName))
+            .mapAsync(1) {
+              case CommittableMessage(null, c) => Future.successful((None, c))
+              case CommittableMessage(v, c) => message(v, mr.keyName).map(m => (Some(m), c))
+              case x => Future.failed(new IllegalStateException(s"Committable message expected, got: $x"))
+            }
+            .via(sender.optionalFlow[Committable])
+            .map { case (result, c) => if (result.isDefined) sent.incrementAndGet(); c }
+            .via(beforeCommit(mr))
+            .via(committer.flow)
+        case None =>
+          source
+            .via(filter(mr.keyName))
+            .collect { case v if v != null => v }
+            .mapAsync(1)(message(_, mr.keyName).map((_, NotUsed)))
+            .via(sender.flow[NotUsed])
+            .map(_ => sent.incrementAndGet())
+      }
     }
   }
 
@@ -228,19 +260,21 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
       def body(): Future[QuereaseResult] = doSteps(op.action, context.copy(stepName = "msg multi send"),
         Future.successful(Scope(Map(), parent = scope)))(bodyQr)
       val msgRes = qr.resourcesFactory.resources
-      def messagingPipeline(mr: MessagingResult): Source[Any, Control] = {
-        val flow = multiSendFlow[Any](destinations, mr.keyName, scope, context, msgRes, qr)
+      val calls = new MsgStreams.Sequential
+      def messagingPipeline(mr: MessagingResult): Source[Any, Control] = messagingStream[Any](mr) { source =>
+        val flow = multiSendFlow[Any](destinations, mr.keyName, scope, context, msgRes, qr, calls)
         mr.committer match {
           case Some(committer) =>
-            mr.source
+            source
               .map {
                 case CommittableMessage(v, c) => (v, c)
                 case x => sys.error(s"Committable message expected, got: $x")
               }
               .via(flow)
               .collect { case c: Committable => c }
+              .via(beforeCommit(mr))
               .via(committer.flow)
-          case None => mr.source.map((_, NotUsed)).via(flow)
+          case None => source.map((_, NotUsed)).via(flow)
         }
       }
       def send(res: QuereaseResult): Future[Done] = res match {
@@ -251,7 +285,7 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
         case r =>
           elementSource(r, context).flatMap { src =>
             src.filter(v => v != null && v != NoResult).map((_, NotUsed))
-              .via(multiSendFlow[Any](destinations, null, scope, context, msgRes, qr))
+              .via(multiSendFlow[Any](destinations, null, scope, context, msgRes, qr, calls))
               .runWith(Sink.ignore)
           }
       }
@@ -270,6 +304,7 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
     * stages in order, `P` (e.g. committable) is emitted after the element is sent to all destinations.
     * `null` value (filtered by foreach) is not sent, its `P` is passed through.
     * @param destQr  resources of destination operations
+    * @param calls   evaluation of destination messages of elements, sequential also across stream restarts
     */
   private def multiSendFlow[P](
     destinations: Seq[MultiSendDestination],
@@ -278,6 +313,7 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
     context: ActionContext,
     msgRes: Resources,
     destQr: QuereaseResources,
+    calls: MsgStreams.Sequential,
   )(implicit qr: QuereaseResources): Flow[(Any, P), P, NotUsed] = {
     import qr.ec
     type Msgs = Vector[Seq[OutMessage]] // messages per destination
@@ -314,7 +350,7 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
       }
     }
     val evaluated: Flow[(Any, P), (Msgs, P), NotUsed] =
-      Flow[(Any, P)].mapAsync(1) { case (el, p) => messages(el).map(_ -> p) }
+      Flow[(Any, P)].mapAsync(1) { case (el, p) => calls(messages(el)).map(_ -> p) }
     destinations.zipWithIndex.foldLeft(evaluated) { case (flow, (d, i)) =>
       flow
         .mapConcat { case st@(msgs, _) => // message of element (or none), with flag - last message of element
@@ -512,6 +548,7 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
   /** Maps message to `(message, isLast)`, `isLast` is result of `to` evaluation with message bind variables.
     * @param res         operation's resources - tresql is evaluated on its connection, evaluator connection if none
     * @param terminated  set when stream is terminated - following messages are dropped, `to` is not evaluated
+    * @param calls       `to` evaluations, sequential also across stream restarts
     */
   protected def toEvaluation(
     to: Action.Tresql,
@@ -520,20 +557,22 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
     context: ActionContext,
     res: Resources,
     terminated: AtomicBoolean,
+    calls: MsgStreams.Sequential,
   )(implicit qr: QuereaseResources): Flow[Any, (Any, Boolean), NotUsed] =
     if (to == null) Flow[Any].map(el => (el, false))
     else Flow[Any].mapAsync(1) { el =>
       if (terminated.get) Future.successful((el, false))
-      else Future {
+      else calls(Future {
         val bindVars = messageScope(inMessage(el), keyName, scope).toBindeableMap(context.env)
         (el, MsgReadParams.isLast(evalMsgParam(to, bindVars, res)))
-      }(qr.ec)
+      }(qr.ec))
     }
 
   /** msg send `filter` evaluation for each element (see [[MsgSendParams.isSent]]) with [[elementScope]] bind
     * variables. Element which is not sent is dropped, committable message is retained with `null` message,
     * so that its committable is committed. Identity flow if filter is null.
-    * @param res  operation's resources - tresql is evaluated on its connection, evaluator connection if none
+    * @param res    operation's resources - tresql is evaluated on its connection, evaluator connection if none
+    * @param calls  filter evaluations, sequential also across stream restarts
     */
   protected def filterEvaluation(
     filter: Action.Tresql,
@@ -541,13 +580,14 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
     scope: Scope,
     context: ActionContext,
     res: Resources,
+    calls: MsgStreams.Sequential,
   )(implicit qr: QuereaseResources): Flow[Any, Any, NotUsed] =
     if (filter == null) Flow[Any]
     else {
       import qr.ec
-      def isSent(el: Any): Future[Boolean] = Future {
+      def isSent(el: Any): Future[Boolean] = calls(Future {
         MsgSendParams.isSent(evalMsgParam(filter, elementScope(el, keyName, scope).toBindeableMap(context.env), res))
-      }
+      })
       Flow[Any].mapAsync(1) {
         case cm@CommittableMessage(null, _) => Future.successful(Some(cm))
         case cm@CommittableMessage(m, c) => isSent(m).map(s => Some(if (s) cm else CommittableMessage(null, c)))
@@ -596,6 +636,8 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
     * Body runs with operation's resources (action's or `db` block's connection), see [[messageScope]] for message
     * bind variables (elements which are not [[InMessage]] - result of previous foreach - are bound like foreach items).
     * Body result `null` or no result filters message out - it is not emitted, but committable is still committed.
+    * Body is executed for one message at a time, also across stream restarts (msg read `restart`) - body left
+    * running by failed stream completes before body of the restarted stream starts.
     */
   private[wabase] def doForeachMessaging(
     op: Action.Foreach,
@@ -605,8 +647,8 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
   )(implicit qr: QuereaseResources): Future[QuereaseResult] = {
     import qr.ec
     val ctx = context.copy(stepName = "foreach")
-    @volatile var idx = 0L // mapAsync parallelism is 1
-    def process(el: Any): Future[Any] = {
+    val bodyCalls = new MsgStreams.Sequential
+    def process(el: Any, idx: Long): Future[Any] = bodyCalls {
       val itScope = el match {
         case in: InMessage => messageScope(in, mr.keyName, scope, op.itVar, idx)
         case x =>
@@ -616,7 +658,6 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
           }
           Scope(data, Map(IdxVar -> idx), scope, transparent = false)
       }
-      idx += 1
       doSteps(op.action, ctx, Future.successful(itScope))
         .flatMap(dataForNextStep(_, ctx, unwrapSingleValue = true))
         .map {
@@ -624,13 +665,17 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
           case x => x
         }
     }
-    val source = mr.source
-      .mapAsync(1) {
-        case CommittableMessage(m, c) => process(m).map(v => Some(CommittableMessage(v, c))) // null v - committed
-        case m => process(m).map(Option(_))                                               // null - filtered
-      }
-      .collect { case Some(el) => el }
-    val res = mr.copy(source = source)
+    def source(): Source[Any, Control] = {
+      val idx = new AtomicLong // index starts from 0 for each attempt of restarted stream
+      mr.source()
+        .mapAsync(1) {
+          case CommittableMessage(m, c) => // null v - committed
+            process(m, idx.getAndIncrement()).map(v => Some(CommittableMessage(v, c)))
+          case m => process(m, idx.getAndIncrement()).map(Option(_)) // null - filtered
+        }
+        .collect { case Some(el) => el }
+    }
+    val res = mr.copy(source = () => source())
     if (op.foldOp == null) Future.successful(res)
     else runMessaging(res, Sink.foldAsync[Any, Any](scope(op.foldOp.resVar)) { (acc, el) =>
       doActionOp(op.foldOp.op, Scope(Map(op.foldOp.resVar -> acc, op.foldOp.elVar -> el)), context)
@@ -654,56 +699,79 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
       qr.ec, qr.as, qr.httpReq, qr.qio, qr.fileStreamers, qr.httpClients, qr.msgProviders, qr.parametersProvider,
       qr.logger)
 
-  /** Runs messaging result into sink of element values, stops consumer after stream completes, see [[MsgStreams.run]].
-    * [[InMessage]] is converted to map ([[InMessage.toMap]]), committable messages are committed with result's
-    * committer, `null` values (filtered messages) are committed, but not passed to sink.
-    * Returned future completes after all messages are committed.
+  /** Runnable stream of messaging result - `pipeline` (processing and committing) of its source:
+    *  - msg read `restart` of committable source ([[MessagingResult.restart]]) - pipeline is built and run again
+    *    after reader and commit failures (see [[MsgStreams.restartPipeline]]), commit stage of pipeline must be
+    *    preceded by [[beforeCommit]]. Processing failures are not restarted.
+    *  - [[MessagingResult.cleanup]] is called when the stream terminates (after the last attempt).
+    * Consumer must be stopped with materialized control after the stream terminates, see [[MsgStreams.run]],
+    * [[MsgStreams.stopOnTermination]].
+    */
+  private def messagingStream[T](mr: MessagingResult)(pipeline: Source[Any, Control] => Source[T, Control])(
+    implicit ec: ExecutionContext): Source[T, Control] =
+    mr.restart
+      .map(MsgStreams.restartPipeline(_)(() => pipeline(mr.source())))
+      .getOrElse( // stream is not created - cleanup here
+        try pipeline(mr.source()) catch { case NonFatal(e) => mr.cleanup(Option(e)); throw e })
+      .watchTermination() { (control, terminated) =>
+        terminated.onComplete(t => mr.cleanup(t.failed.toOption))
+        control
+      }
+
+  /** Stage before commit stage of [[messagingStream]] pipeline - marks failures of preceding stages as processing
+    * failures if pipeline is restarted, so that they are not restarted (commit failures are).
+    */
+  private def beforeCommit[T](mr: MessagingResult): Flow[T, T, NotUsed] =
+    if (mr.restart.isDefined) MsgStreams.processingFailures[T] else Flow[T]
+
+  /** Element values of messaging result: [[InMessage]] is converted to map ([[InMessage.toMap]]), committable
+    * messages are committed with result's committer as they are emitted, `null` values (filtered messages) are
+    * committed, but not emitted. Stream completes after all messages are committed, commit failure fails the stream.
+    * Materialized control stops consumer after pending commits complete (also if stream fails or is cancelled).
+    */
+  private def messagingValues(mr: MessagingResult)(implicit ec: ExecutionContext): Source[Any, Control] =
+    messagingStream[Any](mr) { source =>
+      mr.committer match {
+        case None => source.map(messageValue).filter(_ != null)
+        case Some(committer) =>
+          val committed = Promise[Done]() // pipeline is built for each run (attempt)
+          source
+            .map {
+              case CommittableMessage(m, c) => (messageValue(m), c)
+              case x => sys.error(s"Committable message expected, got: $x")
+            }
+            .via(beforeCommit(mr))
+            // side sink - if downstream cancels (e.g. http client disconnects), pending committables are committed
+            .alsoTo(Flow[(Any, Committable)].map(_._2).via(committer.flow)
+              .to(Sink.onComplete { done => committed.complete(done); () }))
+            .collect { case (v, _) if v != null => v } // stream elements must not be null
+            .concat(Source.future(committed.future).mapConcat(_ => Nil))
+            .mapMaterializedValue { control =>
+              new Control {
+                private lazy val stopped = committed.future.transformWith(_ => control.stop())
+                def drainOn(streamCompletion: Future[Any]): Unit = control.drainOn(streamCompletion)
+                def stop(): Future[Done] = stopped
+              }
+            }
+      }
+    }
+
+  /** Runs messaging result into sink of element values, stops consumer after stream completes, see
+    * [[messagingValues]], [[MsgStreams.run]]. Returned future completes after all messages are committed.
     */
   private[wabase] def runMessaging[M](mr: MessagingResult, sink: Sink[Any, Future[M]])(implicit
     qr: QuereaseResources): Future[M] = {
-    import qr.as
-    def value(v: Any) = messageValue(v)
-    val valueSink: Sink[Any, Future[M]] = mr.committer match {
-      case None => Flow[Any].map(value).filter(_ != null).toMat(sink)(Keep.right)
-      case Some(committer) =>
-        Flow[Any].map {
-          case CommittableMessage(m, c) => (value(m), c)
-          case x => sys.error(s"Committable message expected, got: $x")
-        }
-          .alsoToMat(Flow[(Any, Committable)].map(_._2).toMat(committer.sink)(Keep.right))(Keep.right)
-          .collect { case (v, _) if v != null => v } // stream elements must not be null
-          .toMat(sink)(Keep.both)
-          .mapMaterializedValue { case (committed, result) =>
-            committed.flatMap(_ => result)(qr.ec)
-          }
-    }
-    MsgStreams.run(mr.source, valueSink)
+    import qr.{as, ec}
+    MsgStreams.run(messagingValues(mr), sink)
   }
 
-  /** Source of messaging result element values for streams run by others (http entity - SSE marshaller):
-    * [[InMessage]] is converted to map ([[InMessage.toMap]]), committable messages are committed with result's
-    * committer as they are emitted (not acknowledged by the receiver), `null` values (filtered messages) are
-    * committed, but not emitted. Consumer is stopped ([[Control.stop]]) after stream terminates (completes, fails
-    * or is cancelled, e.g. http client disconnects) and pending commits complete.
+  /** Source of messaging result element values for streams run by others (http entity - SSE marshaller), see
+    * [[messagingValues]] - messages are committed as they are emitted (not acknowledged by the receiver).
+    * Consumer is stopped ([[Control.stop]]) after stream terminates (completes, fails or is cancelled, e.g. http
+    * client disconnects) and pending commits complete.
     */
-  def messagingSource(mr: MessagingResult)(implicit ec: ExecutionContext): Source[Any, NotUsed] = {
-    val values: Source[Any, (Control, Future[Any])] = mr.committer match {
-      case None =>
-        mr.source.map(messageValue).filter(_ != null).mapMaterializedValue(c => (c, Future.successful(Done)))
-      case Some(committer) =>
-        mr.source
-          .map {
-            case CommittableMessage(m, c) => (messageValue(m), c)
-            case x => sys.error(s"Committable message expected, got: $x")
-          }
-          .alsoToMat(Flow[(Any, Committable)].map(_._2).toMat(committer.sink)(Keep.right))(Keep.both)
-          .collect { case (v, _) if v != null => v } // stream elements must not be null
-    }
-    values.watchTermination()(Keep.both).mapMaterializedValue { case ((control, committed), terminated) =>
-      terminated.transformWith(_ => committed).onComplete(_ => control.stop())
-      NotUsed
-    }
-  }
+  def messagingSource(mr: MessagingResult)(implicit ec: ExecutionContext): Source[Any, NotUsed] =
+    MsgStreams.stopOnTermination(messagingValues(mr))
 
   private def messageValue(v: Any): Any = v match {
     case in: InMessage => in.toMap
@@ -730,16 +798,12 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
 
   /** Messaging result which calls `cleanup` (releases db resources of operation - action, `db` block) when its
     * stream terminates - completes, fails (with the failure) or is cancelled, for messaging result consumed after
-    * the operation has completed. Messaging result is consumed once (resources are not re-initialized), restart
-    * evaluates operation again (see [[restartMessaging]]). Resources of a stream which is never materialized are
-    * not released.
+    * the operation has completed, see [[messagingStream]]. Stream restarted by msg read `restart` uses the same
+    * resources, they are released after the last attempt. Restart of msg send evaluates operation again (see
+    * [[restartMessaging]]). Resources of a stream which is never materialized are not released.
     */
-  private[wabase] def withCleanup(mr: MessagingResult, cleanup: Option[Throwable] => Unit)(
-    implicit ec: ExecutionContext): MessagingResult =
-    mr.copy(source = mr.source.watchTermination() { (control, terminated) =>
-      terminated.onComplete(t => cleanup(t.failed.toOption))
-      control
-    })
+  private[wabase] def withCleanup(mr: MessagingResult, cleanup: Option[Throwable] => Unit): MessagingResult =
+    mr.copy(cleanup = failure => try mr.cleanup(failure) finally cleanup(failure))
 
 }
 

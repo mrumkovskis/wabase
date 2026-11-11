@@ -197,7 +197,8 @@ import MsgParams._
   * @param keyCodec    key codec name or null - resolved from configuration
   * @param valueCodec  value codec name or null - resolved from configuration
   * @param keyName     name of message bind variable for message key or null
-  * @param restart     restart of reader source on failure with backoff, `None` - no restart
+  * @param restart     restart on failure with backoff - of reader source, with `committer` - of reading, processing
+  *                    and committing (reader and commit failures), `None` - no restart
   */
 case class MsgReadParams(
   subscription: Subscription,
@@ -276,11 +277,8 @@ object MsgReadParams {
     val kp = Param(Op, "key")
     val keyName = kp.string(ScalarColumn, kp.single(key))
     val (kc, vc) = codecNames(Op, usingCodecs)
-    val restartSettings = restartParam(Op, restart)
-    if (restartSettings.isDefined && committerConfig.isDefined) Param(Op, "restart").error(
-      "'restart' and 'committer' are not supported together - committables of failed consumer cannot be committed, " +
-        "use msg send 'restart' to restart reading, processing, sending and committing together")
-    MsgReadParams(subscription(from, g), within, idle, committerConfig, kc, vc, amo, keyName, restartSettings)
+    MsgReadParams(subscription(from, g), within, idle, committerConfig, kc, vc, amo, keyName,
+      restartParam(Op, restart))
   }
 
 

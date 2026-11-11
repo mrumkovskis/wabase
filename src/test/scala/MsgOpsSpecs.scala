@@ -27,6 +27,24 @@ class MsgOpsSpecs extends FlatSpec with Matchers with TestQuereaseInitializer {
        |committer.max-batch = 1
        |""".stripMargin) // pekko default consumer stop-timeout (30s), msg ops must not be delayed by it
   private lazy val provider: MsgProvider = WabaseMsgProviders.createProvider("main", providerConfig, system)
+  /** Provider without default group */
+  private lazy val noGroupProvider: MsgProvider =
+    WabaseMsgProviders.createProvider("nogroup", providerConfig.withoutPath("group-id"), system)
+  /** Main provider with committer which fails once after [[failCommit]] is set */
+  private val failCommit = new java.util.concurrent.atomic.AtomicBoolean
+  private lazy val flakyProvider: MsgProvider = new MsgProvider {
+    def createReader(config: Config, keyDecoder: MsgDecoder, valueDecoder: MsgDecoder): MsgReader =
+      provider.createReader(config, keyDecoder, valueDecoder)
+    def createSender(config: Config): MsgSender = provider.createSender(config)
+    def createCommitter(config: Config): MsgCommitter = new MsgCommitter {
+      def flow = org.apache.pekko.stream.scaladsl.Flow[Committable]
+        .map(c => if (failCommit.compareAndSet(true, false)) throw new RuntimeException("commit failed") else c)
+        .via(provider.createCommitter(config).flow)
+    }
+    def admin: MsgAdmin = provider.admin
+    def codecs: MsgCodecs = provider.codecs
+    def close(): Future[org.apache.pekko.Done] = Future.successful(org.apache.pekko.Done)
+  }
   implicit var qr: QuereaseResources = _
 
   override def beforeAll(): Unit = {
@@ -53,7 +71,7 @@ class MsgOpsSpecs extends FlatSpec with Matchers with TestQuereaseInitializer {
     )(tresqlResources)
     qr = new QuereaseResources()(resourcesFactory,
       system.dispatcher, system, null, qio, WabaseFileStreamers(Map("main" -> null)), null,
-      WabaseMsgProviders(Map("main" -> provider)), _ => PartialFunction.empty, logger)
+      WabaseMsgProviders(Map("main" -> provider, "flaky" -> flakyProvider, "nogroup" -> noGroupProvider)), _ => PartialFunction.empty, logger)
   }
   override def afterAll(): Unit = {
     try super.afterAll()
@@ -210,7 +228,7 @@ class MsgOpsSpecs extends FlatSpec with Matchers with TestQuereaseInitializer {
     intercept[MsgParamException](action("msg_read_errors", Map("topic" -> topic))).getMessage shouldBe
       "msg read parameter 'committer': unknown column 'max_bach', allowed: delivery, max_batch, max_interval, parallelism, commit_when"
     intercept[RuntimeException](action("msg_read_errors", Map("topic" -> topic), "list")).getMessage shouldBe
-      "Messaging provider 'unknown' not found. Available names: [main]"
+      "Messaging provider 'unknown' not found. Available names: [flaky, main, nogroup]"
   }
 
   behavior of "msg admin calls"
@@ -441,6 +459,81 @@ class MsgOpsSpecs extends FlatSpec with Matchers with TestQuereaseInitializer {
     readAll(dst, 3).map(_.value) shouldBe List("a", "a", "a") // initial read + 2 restarts
   }
 
+  it should "restart committing read after commit failure" in {
+    import scala.jdk.CollectionConverters._
+    val topic = newTopic()
+    send(topic, "a", "b", "c", "d")
+    MsgOpsTestFunctions.recorded.clear()
+    failCommit.set(true)
+    val collected = action("msg_read_commit_restart", Map("topic" -> topic, "group" -> "g-read-restart")) match {
+      case TresqlResult(r) => r.unique[Int]
+      case x => fail(s"Unexpected result: $x")
+    }
+    failCommit.get shouldBe false
+    // commit of a fails - new consumer reads from a again, messages processed before restart are processed again
+    val processed = MsgOpsTestFunctions.recorded.asScala.toList
+    processed.distinct shouldBe List("a", "b", "c")
+    processed.count(_ == "a") shouldBe 2
+    processed.takeRight(3) shouldBe List("a", "b", "c")
+    collected should (be >= 3 and be <= processed.size) // includes messages emitted by failed attempt
+    await(provider.admin.committedOffsets("g-read-restart", Set(TopicPartition(topic, 0)))) shouldBe
+      Map(TopicPartition(topic, 0) -> OffsetAndMetadata(3, null))
+  }
+
+  it should "not restart committing read after processing failure" in {
+    import scala.jdk.CollectionConverters._
+    val topic = newTopic()
+    send(topic, "a", "b", "c")
+    MsgOpsTestFunctions.recorded.clear()
+    val failure = intercept[Exception](
+      read("msg_read_commit_restart", Map("topic" -> topic, "group" -> "g-read-proc"), "list"))
+    Iterator.iterate[Throwable](failure)(_.getCause).takeWhile(_ != null).map(_.getMessage).toList should
+      contain ("processing failed on b")
+    Thread.sleep(500) // restart would process messages again
+    MsgOpsTestFunctions.recorded.asScala.toList shouldBe List("a", "b")
+  }
+
+  it should "restart committing read after reader failure until max restarts" in {
+    import scala.jdk.CollectionConverters._
+    val topic = newTopic()
+    send(topic, "a")
+    await(Source.single(OutMessage(topic, null, "{not json", valueEncoder = provider.codecs("string")))
+      .runWith(provider.createSender(ConfigFactory.empty).sink)) // value decoding of default json codec fails
+    MsgOpsTestFunctions.recorded.clear()
+    intercept[MsgDecodingException](
+      read("msg_read_commit_restart", Map("topic" -> topic, "group" -> "g-read-decode"), "count"))
+    val processed = MsgOpsTestFunctions.recorded.asScala.toList
+    processed.distinct shouldBe List("a")
+    processed.size should (be >= 1 and be <= 3) // initial read + 2 restarts, a is read again if not committed yet
+  }
+
+  it should "not extend timeout within by restarts of committing read" in {
+    val topic = newTopic()
+    await(Source.single(OutMessage(topic, null, "{not json", valueEncoder = provider.codecs("string")))
+      .runWith(provider.createSender(ConfigFactory.empty).sink)) // decoding fails - restarted without limit
+    val (msgs, millis) = timed(read("msg_read_commit_restart", Map("topic" -> topic, "group" -> "g-read-within"), "insert"))
+    msgs shouldBe Nil // stream completes when 'within' expires, also during restart backoff
+    millis should (be >= 1500L and be < 15000L)
+  }
+
+  it should "start foreach index from 0 for each attempt of committing read" in {
+    import scala.jdk.CollectionConverters._
+    val topic = newTopic()
+    send(topic, "a", "b", "c")
+    MsgOpsTestFunctions.recorded.clear()
+    failCommit.set(true)
+    action("msg_read_commit_restart", Map("topic" -> topic, "group" -> "g-read-idx"), "update")
+    failCommit.get shouldBe false
+    MsgOpsTestFunctions.recorded.asScala.toList.takeRight(3) shouldBe List("a:0", "b:1", "c:2")
+  }
+
+  it should "fail msg read on reader configuration error, not restart it" in {
+    val (e, millis) = timed(intercept[RuntimeException](
+      action("msg_read_commit_restart", Map("topic" -> newTopic()), "delete")))
+    e.getMessage should include ("group is required")
+    millis should be < 5000L
+  }
+
   it should "restart reading, processing, sending and committing after failure" in {
     val src = newTopic()
     val dst = newTopic()
@@ -619,5 +712,24 @@ object MsgOpsTestFunctions {
       throw new RuntimeException(s"transient failure on $value")
     }
     value + "!"
+  }
+  val recorded = new java.util.concurrent.ConcurrentLinkedQueue[String]
+  /** Records and returns message value */
+  def record(data: Map[String, Any]): String = {
+    val value = String.valueOf(data("value"))
+    recorded.add(value)
+    value
+  }
+  /** Records message value with foreach index */
+  def recordIdx(data: Map[String, Any]): String = {
+    val value = String.valueOf(data("value"))
+    recorded.add(s"$value:${data("__idx")}")
+    value
+  }
+  /** Records message value, fails for value 'b' */
+  def recordFailOnB(data: Map[String, Any]): String = {
+    val value = record(data)
+    if (value == "b") throw new RuntimeException(s"processing failed on $value")
+    value
   }
 }

@@ -396,7 +396,7 @@ class MarshallingSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     val control = new TestMsgControl
     val committer = new TestMsgCommitter
     val in = InMessage("t", "k", Map("id" -> 1), 0, 5, List(Header("h", "v")), 1000)
-    val mr = MessagingResult(Source(List[Any](
+    val mr = MessagingResult(() => Source(List[Any](
       CommittableMessage(in, TestCommittable(5)),
       CommittableMessage("x", TestCommittable(6)),
       CommittableMessage(null, TestCommittable(7)), // filtered - committed, not emitted
@@ -415,7 +415,7 @@ class MarshallingSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
   it should "stop consumer when server sent events client disconnects" in {
     import org.apache.pekko.stream.scaladsl.{Sink, Source}
     val control = new TestMsgControl
-    val mr = MessagingResult(Source.repeat[Any]("x").mapMaterializedValue(_ => control), None)
+    val mr = MessagingResult(() => Source.repeat[Any]("x").mapMaterializedValue(_ => control), None)
     Await.result(service.app.qe.messagingSource(mr)(system.dispatcher).take(2).runWith(Sink.seq), 5.seconds) shouldBe
       List("x", "x") // take - cancellation like client disconnect
     Await.result(control.stopped.future, 5.seconds)

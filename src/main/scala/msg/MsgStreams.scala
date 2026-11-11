@@ -6,10 +6,13 @@ import org.apache.pekko.stream.scaladsl.{Flow, Keep, RestartSource, Sink, Source
 import org.apache.pekko.stream.stage.{GraphStage, GraphStageLogic, InHandler, OutHandler, TimerGraphStageLogic}
 import org.apache.pekko.stream.{Attributes, FlowShape, Inlet, Materializer, Outlet}
 
+import org.wabase.msg.MsgParams.MsgParamException
+
 import java.util.concurrent.atomic.AtomicReference
-import scala.concurrent.Future
+import scala.concurrent.{Future, Promise}
 import scala.concurrent.duration.FiniteDuration
 import scala.util.Failure
+import scala.util.control.{NoStackTrace, NonFatal}
 
 /** Stream stages and helpers of msg operations, provider independent. */
 object MsgStreams {
@@ -72,11 +75,78 @@ object MsgStreams {
       .mapMaterializedValue(_ => control)
   }
 
+  /** Failure of reader (consumer), marked by [[readerFailures]] - restarted by [[restartPipeline]] */
+  final case class ReaderFailure(cause: Throwable) extends RuntimeException(String.valueOf(cause), cause)
+    with NoStackTrace
+  /** Failure of message processing (stages between reader and commit), marked by [[processingFailures]] -
+    * not restarted by [[restartPipeline]]
+    */
+  final case class ProcessingFailure(cause: Throwable) extends RuntimeException(String.valueOf(cause), cause)
+    with NoStackTrace
+
+  /** Marks failures as [[ReaderFailure]], must be placed directly after reader source of restarted pipeline,
+    * see [[restartPipeline]]. Parameter errors ([[MsgParamException]]) and [[ProcessingFailure]] (per message
+    * evaluation done by the reader) are not reader failures.
+    */
+  def readerFailures[T]: Flow[T, T, NotUsed] = Flow[T].mapError {
+    case e@(_: ProcessingFailure | _: MsgParamException) => e
+    case NonFatal(e) => ReaderFailure(e)
+  }
+
+  /** Marks failures which are not reader failures as [[ProcessingFailure]], must be placed directly before commit
+    * stage of restarted pipeline, see [[restartPipeline]].
+    */
+  def processingFailures[T]: Flow[T, T, NotUsed] = Flow[T].mapError {
+    case e@(_: ReaderFailure | _: ProcessingFailure) => e
+    case NonFatal(e) => ProcessingFailure(e)
+  }
+
+  /** Restarts pipeline (reader source, processing, commit) on failure with backoff - committables of failed
+    * consumer cannot be committed, so reading and committing are restarted together, new consumer continues from
+    * the committed offset. Pipeline is built for each attempt, its consumer is stopped ([[Control.stop]]) when the
+    * attempt terminates.
+    *
+    * Restarted are reader failures ([[readerFailures]]) and failures of stages after [[processingFailures]]
+    * (commit). [[ProcessingFailure]] and pipeline build failure are permanent - stream fails with the cause.
+    * Completion is not restarted. After max restarts stream fails with the last failure.
+    * Materialized control stops current pipeline and prevents further restarts.
+    */
+  def restartPipeline[T](settings: RestartSettings)(pipeline: () => Source[T, Control]): Source[T, Control] = {
+    val control = new RestartControl
+    val restartSettings = settings.withRestartOn((e: Throwable) => !e.isInstanceOf[ProcessingFailure])
+    RestartSource.onFailuresWithBackoff(restartSettings) { () =>
+      if (control.isStopped) Source.empty[T]
+      else try stopOnTermination(pipeline().mapMaterializedValue(control.set))
+      catch { case NonFatal(e) => Source.failed[T](ProcessingFailure(e)) }
+    }
+      .mapError {
+        case ReaderFailure(e) => e
+        case ProcessingFailure(e) => e
+      }
+      .mapMaterializedValue(_ => control)
+  }
+
+  /** Runs asynchronous calls one after another - next call starts after the previous one completes.
+    * For calls of `mapAsync(1)` stage of restarted stream: when stream fails, the call in flight continues,
+    * so the first call of the restarted stream would run concurrently with it (on the same db connection).
+    */
+  final class Sequential {
+    private val last = new AtomicReference[Future[Any]](Future.unit)
+    def apply[T](call: => Future[T]): Future[T] = {
+      val result = Promise[T]()
+      last.getAndSet(result.future).onComplete { _ =>
+        result.completeWith(try call catch { case NonFatal(e) => Future.failed(e) })
+      }(MsgProvider.syncEc)
+      result.future
+    }
+  }
+
   /** Control of restarted source - delegates to control of current source */
   private final class RestartControl extends Control {
     private val current = new AtomicReference[Control]()
     private val completion = new AtomicReference[Future[Any]]()
     @volatile private var stopped = false
+    def isStopped: Boolean = stopped
     /** Sets control of (re)started source, stops it if stop was requested */
     def set(c: Control): Control = {
       Option(completion.get).foreach(c.drainOn)

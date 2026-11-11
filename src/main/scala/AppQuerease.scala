@@ -7,6 +7,7 @@ import org.apache.pekko.http.scaladsl.model.headers.{Cookie, HttpCookie, HttpCoo
 import org.apache.pekko.http.scaladsl.model.{AttributeKey, ContentType, ContentTypes, ErrorInfo, HttpCharsets, HttpEntity, HttpHeader, HttpMethods, HttpRequest, HttpResponse, MediaTypes, Multipart, StatusCodes, UniversalEntity, Uri}
 import org.apache.pekko.http.scaladsl.server.directives.ContentTypeResolver
 import org.apache.pekko.http.scaladsl.server.directives.FileAndResourceDirectives.ResourceFile
+import org.apache.pekko.stream.RestartSettings
 import org.apache.pekko.stream.scaladsl.{Sink, Source, StreamConverters}
 import org.apache.pekko.util.{ByteString, Timeout}
 import com.typesafe.scalalogging.Logger
@@ -80,18 +81,29 @@ case class TresqlSingleRowResult(row: RowLike) extends QuereaseCloseableResult {
 case class MapResult(result: Map[String, Any]) extends QuereaseResult
 case class IteratorResult(result: Iterator[Any]) extends QuereaseCloseableResult
 case class SourceResult(src: Source[QuereaseResult, _], toBindableValue: QuereaseResult => Future[Any]) extends QuereaseCloseableResult
-/** Result of msg read operation (and foreach on it).
-  * @param source     elements - [[org.wabase.msg.InMessage]], [[org.wabase.msg.CommittableMessage]] of InMessage or,
+/** Result of msg read operation (and foreach on it), consumed with [[AppQuereaseMsgOps.runMessaging]],
+  * [[AppQuereaseMsgOps.messagingSource]] or by msg send operations.
+  * @param source     creates source of the stream, called for each attempt if stream is restarted (`restart`).
+  *                   Elements - [[org.wabase.msg.InMessage]], [[org.wabase.msg.CommittableMessage]] of InMessage or,
   *                   after foreach, foreach body result (any value) or CommittableMessage of it
-  * @param committer  present if source elements are committable, committables must be passed to committer sink
-  *                   (or [[org.wabase.msg.MsgSender.committableSink]]) when stream is consumed
+  * @param committer  present if source elements are committable, committables must be committed when stream is
+  *                   consumed
   * @param keyName    msg read `key` parameter - name of message bind variable for message key, or null
+  * @param restart    msg read `restart` of committable source - reading, processing and committing are restarted
+  *                   together on reader and commit failures, see [[org.wabase.msg.MsgStreams.restartPipeline]]
+  *                   (restart of non committable source is part of `source`)
+  * @param cleanup    called when the stream terminates (completes, fails - with the failure, or is cancelled).
   * Message processing (per message tresql, foreach body) uses db resources of the operation - when messaging result
   * is returned by action (or `db` block), the resources are released when its stream terminates, see
   * [[AppQuereaseMsgOps.withCleanup]].
   */
-case class MessagingResult(source: Source[Any, Control], committer: Option[MsgCommitter], keyName: String = null)
-  extends QuereaseResult
+case class MessagingResult(
+  source: () => Source[Any, Control],
+  committer: Option[MsgCommitter],
+  keyName: String = null,
+  restart: Option[RestartSettings] = None,
+  cleanup: Option[Throwable] => Unit = _ => (),
+) extends QuereaseResult
 case class LongResult(value: Long) extends QuereaseResult
 case class StringResult(value: String) extends QuereaseResult
 case class NumberResult(value: java.lang.Number) extends QuereaseResult
@@ -365,8 +377,8 @@ class AppQuerease extends Querease with AppMetadata with AppQuereaseMsgOps with 
                   cleanup(None)
                   processResult(result, cl)
                 // stream uses action's resources - release them when it terminates
-                case mr: MessagingResult => withCleanup(mr, cleanup)(ec)
-                case cr@CompatibleResult(mr: MessagingResult, _, _) => cr.copy(result = withCleanup(mr, cleanup)(ec))
+                case mr: MessagingResult => withCleanup(mr, cleanup)
+                case cr@CompatibleResult(mr: MessagingResult, _, _) => cr.copy(result = withCleanup(mr, cleanup))
                 case r: QuereaseCloseableResult if !doCleanup => QuereaseResultWithCleanup(r, cleanup)
                 case r: QuereaseResult =>
                   cleanup(None)

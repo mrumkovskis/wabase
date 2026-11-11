@@ -195,6 +195,32 @@ get:  # decoding failure restarts reader - messages before failure are read agai
     restart={'50ms' min_backoff, '100ms' max_backoff, 0 random_factor, 2 max_restarts, '10s' max_restarts_within}
 
 
+name: msg_read_commit_restart
+fields:
+- topic
+- group
+get:  # commit failure (flaky provider) restarts reading, processing and committing
+- msgs = foreach msg read [flaky] group=:group from=:topic committer=true to={:value = 'c'} restart={'50ms' min_backoff, '100ms' max_backoff, 0 random_factor}:
+  - org.wabase.MsgOpsTestFunctions.record
+- :msgs.size
+list:  # processing failure is not restarted
+- foreach msg read group=:group from=:topic committer=true to={:value = 'c'} restart={'50ms' min_backoff, '100ms' max_backoff, 0 random_factor}:
+  - org.wabase.MsgOpsTestFunctions.recordFailOnB
+count:  # reader failure (decoding) is restarted until max restarts
+- foreach msg read group=:group from=:topic committer=true restart={'50ms' min_backoff, '100ms' max_backoff, 0 random_factor, 2 max_restarts, '10s' max_restarts_within}:
+  - org.wabase.MsgOpsTestFunctions.record
+insert:  # timeout 'within' includes restarts
+- foreach msg read group=:group from=:topic committer=true timeout={'2s' within} restart={'50ms' min_backoff, '100ms' max_backoff, 0 random_factor}:
+  - org.wabase.MsgOpsTestFunctions.record
+update:  # foreach index starts from 0 for each attempt
+- msgs = foreach msg read [flaky] group=:group from=:topic committer=true to={:value = 'c'} restart={'50ms' min_backoff, '100ms' max_backoff, 0 random_factor}:
+  - org.wabase.MsgOpsTestFunctions.recordIdx
+- :msgs.size
+delete:  # reader configuration error (missing group) fails msg read - not restarted by msg send restart
+- msg send to='x' restart={'50ms' min_backoff, '100ms' max_backoff, 0 random_factor}:
+  - msg read [nogroup] from=:topic committer=true
+
+
 name: msg_send_restart
 fields:
 - src

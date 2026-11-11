@@ -138,9 +138,8 @@ class MsgParamsSpecs extends FlatSpec with Matchers {
       ((1.second, 30.seconds, 2, 1.second))
     err(restart(Map("min_backof" -> "1s"))) shouldBe "msg read parameter 'restart': unknown column 'min_backof', " +
       "allowed: min_backoff, max_backoff, random_factor, max_restarts, max_restarts_within"
-    err(MsgReadParams.fromValues(null, "t", null, true, null, null, null, true)) shouldBe "msg read parameter " +
-      "'restart': 'restart' and 'committer' are not supported together - committables of failed consumer cannot be committed, " +
-      "use msg send 'restart' to restart reading, processing, sending and committing together"
+    val committing = MsgReadParams.fromValues(null, "t", null, true, null, null, null, true)
+    (committing.committer.isDefined, committing.restart.isDefined) shouldBe ((true, true))
     MsgSendParams.sendRestart(Map("max_restarts" -> 1)).map(_.maxRestarts) shouldBe Some(1)
   }
 

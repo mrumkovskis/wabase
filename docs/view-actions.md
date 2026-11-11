@@ -1422,8 +1422,9 @@ see [named arguments](#named-arguments) and [parameter evaluation](messaging.md#
 - `to`, `commit_metadata` and foreach body are evaluated for each message with [message bind
   variables](messaging.md#message-bind-variables) - value fields or `value`, `__metadata`, key under `key` name.
 - provider name - default provider (`main`) if omitted.
-- `committer` and `at_most_once = true` are mutually exclusive, `restart` and `committer` are not supported together
-  (use [msg send](#msg-send) `restart`).
+- `committer` and `at_most_once = true` are mutually exclusive.
+- `restart` restarts the reader on failure, with `committer` - reading, processing and committing after reader and
+  commit failures (processing failures are not restarted), see [restart](messaging.md#restart-on-failure).
 
 Result is a stream of messages, consumed by [msg send](#msg-send), [foreach](#foreach), a following step
 (collected into a list of maps `{topic, partition, offset, timestamp, key, headers, value}`) or http response
