@@ -143,6 +143,17 @@ class MsgParamsSpecs extends FlatSpec with Matchers {
     MsgSendParams.sendRestart(Map("max_restarts" -> 1)).map(_.maxRestarts) shouldBe Some(1)
   }
 
+  it should "evaluate decode error strategy" in {
+    def params(d: Any) = MsgReadParams.fromValues(null, "t", null, null, null, null, null, null, d)
+    params(null).decodeError shouldBe None
+    params(null).readerConfig.hasPath("decode-error") shouldBe false
+    params("fail").decodeError shouldBe Some("fail")
+    params("skip").readerConfig.getString("decode-error") shouldBe "skip"
+    MsgProvider.skipDecodeErrors(params("skip").readerConfig) shouldBe true
+    MsgProvider.skipDecodeErrors(params("fail").readerConfig) shouldBe false
+    err(params("ignore")) shouldBe "msg read parameter 'decode_error': 'fail' or 'skip' expected, got: 'ignore'"
+  }
+
   behavior of "MsgSendParams"
 
   it should "evaluate parameters and create outgoing messages" in {

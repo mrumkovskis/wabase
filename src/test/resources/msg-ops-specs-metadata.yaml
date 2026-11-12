@@ -190,8 +190,8 @@ name: msg_read_restart
 fields:
 - src
 - dst
-get:  # decoding failure restarts reader - messages before failure are read again
-- msg send to=:'..'.dst msg read from={:src topic, 0 partition}
+get:  # reader failure (flaky provider) restarts reader - messages before failure are read again
+- msg send to=:'..'.dst msg read [flaky] from={:src topic, 0 partition}
     restart={'50ms' min_backoff, '100ms' max_backoff, 0 random_factor, 2 max_restarts, '10s' max_restarts_within}
 
 
@@ -206,11 +206,11 @@ get:  # commit failure (flaky provider) restarts reading, processing and committ
 list:  # processing failure is not restarted
 - foreach msg read group=:group from=:topic committer=true to={:value = 'c'} restart={'50ms' min_backoff, '100ms' max_backoff, 0 random_factor}:
   - org.wabase.MsgOpsTestFunctions.recordFailOnB
-count:  # reader failure (decoding) is restarted until max restarts
-- foreach msg read group=:group from=:topic committer=true restart={'50ms' min_backoff, '100ms' max_backoff, 0 random_factor, 2 max_restarts, '10s' max_restarts_within}:
+count:  # reader failure (flaky provider) is restarted until max restarts
+- foreach msg read [flaky] group=:group from=:topic committer=true restart={'50ms' min_backoff, '100ms' max_backoff, 0 random_factor, 2 max_restarts, '10s' max_restarts_within}:
   - org.wabase.MsgOpsTestFunctions.record
 insert:  # timeout 'within' includes restarts
-- foreach msg read group=:group from=:topic committer=true timeout={'2s' within} restart={'50ms' min_backoff, '100ms' max_backoff, 0 random_factor}:
+- foreach msg read [flaky] group=:group from=:topic committer=true timeout={'2s' within} restart={'50ms' min_backoff, '100ms' max_backoff, 0 random_factor}:
   - org.wabase.MsgOpsTestFunctions.record
 update:  # foreach index starts from 0 for each attempt
 - msgs = foreach msg read [flaky] group=:group from=:topic committer=true to={:value = 'c'} restart={'50ms' min_backoff, '100ms' max_backoff, 0 random_factor}:
@@ -219,6 +219,26 @@ update:  # foreach index starts from 0 for each attempt
 delete:  # reader configuration error (missing group) fails msg read - not restarted by msg send restart
 - msg send to='x' restart={'50ms' min_backoff, '100ms' max_backoff, 0 random_factor}:
   - msg read [nogroup] from=:topic committer=true
+
+
+name: msg_read_decode_error
+fields:
+- topic
+- group
+- dst
+get:  # decoding failure is not restarted
+- foreach msg read group=:group from=:topic committer=true to={:value = 'c'} restart={'50ms' min_backoff, '100ms' max_backoff, 0 random_factor}:
+  - org.wabase.MsgOpsTestFunctions.record
+list:  # message which cannot be decoded is skipped and committed
+- foreach msg read group=:group from=:topic committer=true to={:value = 'c'} decode_error='skip':
+  - org.wabase.MsgOpsTestFunctions.record
+count:  # skipped by reader without committer
+- msg read from={:topic topic, 0 partition} to={:value = 'c'} decode_error='skip'
+insert:  # decoding failure is not restarted by msg send restart
+- msg send to=:'..'.dst restart={'50ms' min_backoff, '100ms' max_backoff, 0 random_factor}:
+  - msg read group=:group from=:topic committer=true
+update:  # decoding failure is not restarted by reader restart
+- msg read from={:topic topic, 0 partition} restart={'50ms' min_backoff, '100ms' max_backoff, 0 random_factor}
 
 
 name: msg_send_restart
@@ -389,9 +409,16 @@ fields:
 - src
 - dst
 - group
-get:  # __idx counts messages filtered by foreach, like foreach
+get:  # __idx does not count messages filtered by foreach, like foreach
 - msg multi send:
   - foreach msg read group=:group from=:src committer=true to={:value = 'c'}:
     - if {:value != 'b'} (:value)
   - to:
     - msg send to=:'..'.dst (:value || :__idx)
+list:  # message skipped by reader (decoding error) is committed, not sent and not counted by __idx
+- msg multi send:
+  - msg read group=:group from=:src committer=true to={:value = 'c'} decode_error='skip'
+  - to:
+    - msg send to=:'..'.dst (:value || :__idx)
+count:  # message skipped by reader is committed, not sent
+- msg send to=:'..'.dst msg read group=:group from=:src committer=true to={:value = 'c'} decode_error='skip'

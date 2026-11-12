@@ -30,11 +30,20 @@ class MsgOpsSpecs extends FlatSpec with Matchers with TestQuereaseInitializer {
   /** Provider without default group */
   private lazy val noGroupProvider: MsgProvider =
     WabaseMsgProviders.createProvider("nogroup", providerConfig.withoutPath("group-id"), system)
-  /** Main provider with committer which fails once after [[failCommit]] is set */
+  /** Main provider with committer which fails once after [[failCommit]] is set, and reader which fails on
+    * message with value 'boom' */
   private val failCommit = new java.util.concurrent.atomic.AtomicBoolean
   private lazy val flakyProvider: MsgProvider = new MsgProvider {
-    def createReader(config: Config, keyDecoder: MsgDecoder, valueDecoder: MsgDecoder): MsgReader =
-      provider.createReader(config, keyDecoder, valueDecoder)
+    def createReader(config: Config, keyDecoder: MsgDecoder, valueDecoder: MsgDecoder): MsgReader = new MsgReader {
+      private val reader = provider.createReader(config, keyDecoder, valueDecoder)
+      private def check(m: InMessage): InMessage =
+        if (m != null && m.value == "boom") throw new RuntimeException("reader failed") else m
+      def source(s: Subscription) = reader.source(s).map(check)
+      def atMostOnceSource(s: Subscription) = reader.atMostOnceSource(s).map(check)
+      def committableSource(s: Subscription) = reader.committableSource(s).map { m => check(m.message); m }
+      def committableSourceWithMetadata(s: Subscription, metadata: InMessage => String) =
+        reader.committableSourceWithMetadata(s, metadata).map { m => check(m.message); m }
+    }
     def createSender(config: Config): MsgSender = provider.createSender(config)
     def createCommitter(config: Config): MsgCommitter = new MsgCommitter {
       def flow = org.apache.pekko.stream.scaladsl.Flow[Committable]
@@ -452,10 +461,9 @@ class MsgOpsSpecs extends FlatSpec with Matchers with TestQuereaseInitializer {
   it should "restart reader after failure" in {
     val src = newTopic()
     val dst = newTopic()
-    send(src, "a")
-    await(Source.single(OutMessage(src, null, "{not json", valueEncoder = provider.codecs("string")))
-      .runWith(provider.createSender(ConfigFactory.empty).sink)) // value decoding of default json codec fails
-    intercept[MsgDecodingException](action("msg_read_restart", Map("src" -> src, "dst" -> dst)))
+    send(src, "a", "boom")
+    intercept[RuntimeException](action("msg_read_restart", Map("src" -> src, "dst" -> dst)))
+      .getMessage shouldBe "reader failed"
     readAll(dst, 3).map(_.value) shouldBe List("a", "a", "a") // initial read + 2 restarts
   }
 
@@ -496,12 +504,11 @@ class MsgOpsSpecs extends FlatSpec with Matchers with TestQuereaseInitializer {
   it should "restart committing read after reader failure until max restarts" in {
     import scala.jdk.CollectionConverters._
     val topic = newTopic()
-    send(topic, "a")
-    await(Source.single(OutMessage(topic, null, "{not json", valueEncoder = provider.codecs("string")))
-      .runWith(provider.createSender(ConfigFactory.empty).sink)) // value decoding of default json codec fails
+    send(topic, "a", "boom")
     MsgOpsTestFunctions.recorded.clear()
-    intercept[MsgDecodingException](
-      read("msg_read_commit_restart", Map("topic" -> topic, "group" -> "g-read-decode"), "count"))
+    intercept[RuntimeException](
+      read("msg_read_commit_restart", Map("topic" -> topic, "group" -> "g-read-fail"), "count"))
+      .getMessage shouldBe "reader failed"
     val processed = MsgOpsTestFunctions.recorded.asScala.toList
     processed.distinct shouldBe List("a")
     processed.size should (be >= 1 and be <= 3) // initial read + 2 restarts, a is read again if not committed yet
@@ -509,11 +516,44 @@ class MsgOpsSpecs extends FlatSpec with Matchers with TestQuereaseInitializer {
 
   it should "not extend timeout within by restarts of committing read" in {
     val topic = newTopic()
-    await(Source.single(OutMessage(topic, null, "{not json", valueEncoder = provider.codecs("string")))
-      .runWith(provider.createSender(ConfigFactory.empty).sink)) // decoding fails - restarted without limit
+    send(topic, "boom") // reader fails - restarted without limit
     val (msgs, millis) = timed(read("msg_read_commit_restart", Map("topic" -> topic, "group" -> "g-read-within"), "insert"))
     msgs shouldBe Nil // stream completes when 'within' expires, also during restart backoff
     millis should (be >= 1500L and be < 15000L)
+  }
+
+  private def sendUndecodable(topic: String): Unit = // value decoding of default json codec fails
+    await(Source.single(OutMessage(topic, null, "{not json", valueEncoder = provider.codecs("string")))
+      .runWith(provider.createSender(ConfigFactory.empty).sink))
+
+  it should "not restart decoding failure" in {
+    import scala.jdk.CollectionConverters._
+    val topic = newTopic()
+    send(topic, "a")
+    sendUndecodable(topic)
+    MsgOpsTestFunctions.recorded.clear()
+    intercept[MsgDecodingException](read("msg_read_decode_error", Map("topic" -> topic, "group" -> "g-decode")))
+    Thread.sleep(500) // restart would process messages again
+    MsgOpsTestFunctions.recorded.asScala.toList shouldBe List("a")
+    // msg send restart, reader restart (without max restarts - would not complete)
+    intercept[MsgDecodingException](
+      action("msg_read_decode_error", Map("topic" -> topic, "group" -> "g-decode-send", "dst" -> newTopic()), "insert"))
+    intercept[MsgDecodingException](read("msg_read_decode_error", Map("topic" -> topic), "update"))
+  }
+
+  it should "skip and commit message which cannot be decoded" in {
+    import scala.jdk.CollectionConverters._
+    val topic = newTopic()
+    send(topic, "a")
+    sendUndecodable(topic)
+    send(topic, "b", "c")
+    MsgOpsTestFunctions.recorded.clear()
+    read("msg_read_decode_error", Map("topic" -> topic, "group" -> "g-decode-skip"), "list") shouldBe
+      List("a", "b", "c")
+    MsgOpsTestFunctions.recorded.asScala.toList shouldBe List("a", "b", "c")
+    await(provider.admin.committedOffsets("g-decode-skip", Set(TopicPartition(topic, 0)))) shouldBe
+      Map(TopicPartition(topic, 0) -> OffsetAndMetadata(4, null))
+    values(read("msg_read_decode_error", Map("topic" -> topic), "count")) shouldBe List("a", "b", "c")
   }
 
   it should "start foreach index from 0 for each attempt of committing read" in {
@@ -677,11 +717,26 @@ class MsgOpsSpecs extends FlatSpec with Matchers with TestQuereaseInitializer {
     check("count", "g-compat-multi")(r => rows(r).head("count").asInstanceOf[Long])
   }
 
-  it should "count filtered messages in index" in {
+  it should "not count filtered messages in index" in {
     val (src, dst) = (newTopic(), newTopic())
     send(src, "a", "b", "c")
     rows(action("msg_multi_send_idx", Map("src" -> src, "dst" -> dst, "group" -> "g-idx"))).head("count") shouldBe 2
-    readAll(dst, 2).map(_.value) shouldBe List("a0", "c2") // b filtered by foreach, still counted
+    readAll(dst, 2).map(_.value) shouldBe List("a0", "c1") // b filtered by foreach, not counted
+  }
+
+  it should "commit, not send and not count in index message skipped by reader" in {
+    def check(actionName: String, group: String, expected: List[String])(sent: QuereaseResult => Any): Unit = {
+      val (src, dst) = (newTopic(), newTopic())
+      send(src, "a")
+      sendUndecodable(src)
+      send(src, "c")
+      sent(action("msg_multi_send_idx", Map("src" -> src, "dst" -> dst, "group" -> group), actionName)) shouldBe 2
+      readAll(dst, 2).map(_.value) shouldBe expected
+      await(provider.admin.committedOffsets(group, Set(TopicPartition(src, 0)))) shouldBe
+        Map(TopicPartition(src, 0) -> OffsetAndMetadata(3, null)) // skipped message is committed
+    }
+    check("list", "g-idx-skip", List("a0", "c1"))(rows(_).head("count"))
+    check("count", "g-send-skip", List("a", "c")) { case LongResult(n) => n; case x => fail(s"Unexpected result: $x") }
   }
 
   behavior of "msg operations review fixes"

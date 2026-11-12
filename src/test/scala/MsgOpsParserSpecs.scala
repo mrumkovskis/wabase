@@ -52,6 +52,10 @@ class MsgOpsParserSpecs extends FlatSpec with Matchers {
         n(r.to)   shouldBe n(":x = 1")
       case x => fail(s"Unexpected operation: $x")
     }
+    op("msg read from='t' decode_error='skip'") match {
+      case r: MsgRead => n(r.decodeError) shouldBe n("'skip'")
+      case x => fail(s"Unexpected operation: $x")
+    }
     // from as positional argument
     op("msg read [p] {'t' topic} to=(:x = 1)") match {
       case r: MsgRead => (r.providerName, n(r.from), n(r.to)) shouldBe (("p", n("null{'t' topic}"), n(":x = 1")))

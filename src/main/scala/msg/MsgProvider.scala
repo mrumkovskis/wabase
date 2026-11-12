@@ -22,6 +22,7 @@ import scala.concurrent.{ExecutionContext, Future}
   *
   * Generic operation config keys (provider specific keys may be used as well):
   *  - `committer { max-batch, max-interval, parallelism, delivery, when }` - committer settings, see [[createCommitter]]
+  *  - `decode-error` - `fail` or `skip` message which cannot be decoded, see [[MsgProvider.DecodeErrorPath]]
   *  - `stop-timeout` - how long consumer waits for pending commits after its source is cancelled, see
   *    [[MsgProvider.StopTimeoutPath]]
   */
@@ -49,6 +50,24 @@ object MsgProvider {
     */
   val StopTimeoutPath = "stop-timeout"
 
+  /** Operation config key - what reader does with message which cannot be decoded:
+    *  - `fail` (default) - stream fails with [[MsgDecodingException]]
+    *  - `skip` - message is logged (warning with message position) and skipped, see [[MsgReader]]
+    */
+  val DecodeErrorPath = "decode-error"
+  val DecodeErrorFail = "fail"
+  val DecodeErrorSkip = "skip"
+  /** Whether decode error strategy is skip, error message (`Left`) for unknown strategy */
+  def decodeErrorSkip(strategy: String): Either[String, Boolean] = strategy match {
+    case DecodeErrorSkip => Right(true)
+    case DecodeErrorFail => Right(false)
+    case x => Left(s"'$DecodeErrorFail' or '$DecodeErrorSkip' expected, got: '$x'")
+  }
+  /** Whether reader skips messages which cannot be decoded, see [[DecodeErrorPath]] */
+  def skipDecodeErrors(config: Config): Boolean =
+    config.hasPath(DecodeErrorPath) && decodeErrorSkip(config.getString(DecodeErrorPath))
+      .fold(e => sys.error(s"Reader configuration '$DecodeErrorPath': $e"), identity)
+
   // same thread execution context for future callbacks without blocking,
   // can be replaced with ExecutionContext.parasitic when scala 2.12 support is dropped
   private[msg] val syncEc: ExecutionContext = ExecutionContext.fromExecutor((r: Runnable) => r.run())
@@ -56,7 +75,11 @@ object MsgProvider {
 
 /** Source of messages specified by subscription.
   * Message key and value are decoded with decoders of the reader, see [[InMessage]].
-  * Decoding failure fails the stream with [[MsgDecodingException]].
+  * Decoding failure fails the stream with [[MsgDecodingException]], it is permanent - the same message fails again
+  * if the stream is restarted. If reader is configured to skip such messages ([[MsgProvider.DecodeErrorPath]]),
+  * plain and at most once sources do not emit them, committable sources emit [[CommittableMessage]] with `null`
+  * message, so that skipped message is committed in order (like message which is filtered out), with commit
+  * metadata of the previous message of its partition read by the source (empty if there is none).
   */
 trait MsgReader {
   /** Messages are not committed. */

@@ -1256,7 +1256,8 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
   def resourceName: MemParser[Option[String]] = opt("[" ~> ResourceNameRegex <~ "]") named "resource-name"
   def msgReadOp: MemParser[MsgRead] = {
     val From = Arg("from", bracesTresql)
-    val named = Seq("group", "to", "timeout", "committer", "commit_metadata", "key", "using", "restart", "at_most_once")
+    val named = Seq("group", "to", "timeout", "committer", "commit_metadata", "key", "using", "restart", "at_most_once",
+      "decode_error")
       .map(Arg(_, bracesTresql))
     ("msg\\s+read\\b".r ~> resourceName ~
       namedArgs(named, mandatory = Set(From.name), positional = positional(From)) <~
@@ -1264,7 +1265,7 @@ class OpParser(val viewName: String, tmd: TableMetadata, cl: ClassLoader)
       case provider ~ args =>
         def a(n: String) = args.values.getOrElse(n, null).asInstanceOf[Tresql]
         val op = MsgRead(provider.orNull, a("from"), a("group"), a("to"), a("timeout"), a("committer"),
-          a("commit_metadata"), a("key"), a("using"), a("restart"), a("at_most_once"))
+          a("commit_metadata"), a("key"), a("using"), a("restart"), a("at_most_once"), a("decode_error"))
         if (op.committer != null && op.atMostOnce != null && op.atMostOnce.tresql.trim == "true")
           sys.error("msg read parameters 'committer' and 'at_most_once' are mutually exclusive")
         op
@@ -1740,8 +1741,9 @@ object AppMetadata extends Loggable {
       * @param commitMetadata evaluated for each message, committed together with offset
       * @param key           name under which message key is added to message value map
       * @param using         codec names `{key, value}` or value codec name
-      * @param restart       `{min_backoff, max_backoff, random_factor, max_restarts, max_restarts_within}` or boolean, not with committer
+      * @param restart       `{min_backoff, max_backoff, random_factor, max_restarts, max_restarts_within}` or boolean
       * @param atMostOnce    messages are committed before they are emitted
+      * @param decodeError   `'fail'` (default) or `'skip'` - message which cannot be decoded is skipped (committed)
       */
     case class MsgRead(
       providerName: String = null, // defaults for null values - fields with default values are not written to cache
@@ -1755,6 +1757,7 @@ object AppMetadata extends Loggable {
       using: Tresql = null,
       restart: Tresql = null,
       atMostOnce: Tresql = null,
+      decodeError: Tresql = null,
     ) extends Op
     /** Sends messages - result of action (source, messaging result, tresql result or single value) to messaging provider.
       * Tresql parameters not specified are `null`.
@@ -1982,7 +1985,7 @@ object AppMetadata extends Loggable {
             case HttpHeader(_, httpOp, _) => opTresqlTrav(state)(httpOp)
             case r: MsgRead =>
               Seq(r.from, r.group, r.to, r.timeout, r.committer, r.commitMetadata, r.key, r.using, r.restart,
-                r.atMostOnce).foldLeft(state)((s, t) => us(s, nv(s.value)(t)))
+                r.atMostOnce, r.decodeError).foldLeft(state)((s, t) => us(s, nv(s.value)(t)))
             case s: MsgSend =>
               val s1 = Seq(s.to, s.key, s.headers, s.using, s.restart, s.filter).foldLeft(state)((st, t) => us(st, nv(st.value)(t)))
               if (s.action == null) s1 else traverseAction(s.action)(stepTresqlTrav)(s1)

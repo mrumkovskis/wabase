@@ -210,14 +210,15 @@ case class MsgReadParams(
   atMostOnce: Boolean = false,
   keyName: String = null,
   restart: Option[RestartSettings] = None,
+  decodeError: Option[String] = None,
 ) {
   /** Reader config for [[MsgProvider.createReader]].
     * Consumers of committable sources in msg operations are stopped only after stream completes and all commits
     * are done (see [[MsgStreams.termination]], [[MsgStreams.run]]), so stop timeout is 0.
     */
-  def readerConfig: Config =
-    if (committer.isDefined) ConfigFactory.parseMap(Map(MsgProvider.StopTimeoutPath -> "0s").asJava)
-    else ConfigFactory.empty
+  def readerConfig: Config = ConfigFactory.parseMap((
+    committer.map(_ => MsgProvider.StopTimeoutPath -> "0s").toList ++
+      decodeError.map(MsgProvider.DecodeErrorPath -> _)).toMap.asJava)
   /** Committer config for [[MsgProvider.createCommitter]] */
   def committerConfig: Config = committer getOrElse ConfigFactory.empty
 }
@@ -239,6 +240,7 @@ object MsgReadParams {
     * @param usingCodecs row - `key`, `value` codec names or value codec name
     * @param atMostOnce  boolean, `null` - false
     * @param restart     restart settings, see [[MsgParams.restartParam]]
+    * @param decodeError `'fail'` or `'skip'` - see [[MsgProvider.DecodeErrorPath]], `null` - provider configuration
     */
   def fromValues(
     group: Any,
@@ -249,6 +251,7 @@ object MsgReadParams {
     usingCodecs: Any,
     atMostOnce: Any,
     restart: Any = null,
+    decodeError: Any = null,
   ): MsgReadParams = {
     val gp = Param(Op, "group")
     val g = Option(gp.string(ScalarColumn, gp.single(group)))
@@ -277,8 +280,11 @@ object MsgReadParams {
     val kp = Param(Op, "key")
     val keyName = kp.string(ScalarColumn, kp.single(key))
     val (kc, vc) = codecNames(Op, usingCodecs)
+    val dp = Param(Op, "decode_error")
+    val de = Option(dp.string(ScalarColumn, dp.single(decodeError)))
+      .map(v => MsgProvider.decodeErrorSkip(v).fold[String](dp.error(_), _ => v))
     MsgReadParams(subscription(from, g), within, idle, committerConfig, kc, vc, amo, keyName,
-      restartParam(Op, restart))
+      restartParam(Op, restart), de)
   }
 
 

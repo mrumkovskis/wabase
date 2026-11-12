@@ -185,6 +185,7 @@ msg read [<provider>]
   [using=<codec names>]
   [restart=<restart settings or true>]
   [at_most_once=<true|false>]
+  [decode_error=<'fail'|'skip'>]
 ```
 
 See [view actions](view-actions.md#msg-read) for parameter syntax. `msg read` returns a messaging result - a stream
@@ -240,7 +241,7 @@ Tresql evaluated per message (`to`, `commit_metadata`, foreach body) gets messag
 - map value - its fields, other value - `value`; with foreach item variable (`foreach m in msg read ...`) - value
   under item variable,
 - `__metadata` - map `{topic, partition, offset, timestamp, key, headers}`, headers are list of `{name, value}`,
-- `__idx` - message index (foreach body only),
+- `__idx` - message index (foreach body only), filtered and skipped messages are not counted,
 - message key under name specified by `key` parameter, if value has no such field.
 
 Like foreach item scope, the scope is not transparent - operation scope variables are accessible with `..` prefix,
@@ -283,6 +284,23 @@ commit_metadata=('processed by ' || :'..'.node)       # committed together with 
   Cannot be combined with `committer`.
 - with server sent events messages are committed when they are emitted to the response stream, not when the
   client receives them - events in flight of a disconnected client may be lost.
+
+### Decoding errors
+
+A message whose key or value cannot be decoded (e.g. invalid json) fails the stream with message position in
+the error message. The failure is permanent - the message fails again when it is read again, so it is not
+restarted by `restart`, and a committing consumer cannot get past the message.
+
+- `decode_error='fail'` - default, the stream fails.
+- `decode_error='skip'` - the message is logged (warning with topic, partition, offset) and skipped: it is not
+  emitted, `to` and foreach body are not evaluated for it, with `committer` it is committed in offset order like
+  a filtered message (with `commit_metadata` - with metadata of the previous message of its partition). The
+  message is lost - use it when undecodable messages can be ignored.
+- `to` cannot match a skipped message - if the last message expected by `to` cannot be decoded, the read does not
+  end, so specify `timeout` as well. Without `committer` skipped messages do not restart `timeout idle`.
+- skipped messages are not counted by `__idx`.
+
+The default can be set in provider configuration (`decode-error = skip`), the parameter overrides it.
 
 ## Database resources
 
@@ -534,7 +552,8 @@ running by the failed stream may overlap with processing of the restarted stream
 
 Reader configuration errors (e.g. missing group) fail `msg read` - they are not restarted.
 
-A permanent failure (e.g. message which cannot be decoded) is repeated until max restarts are exhausted.
+Decoding failure is permanent - it is not restarted, see [decoding errors](#decoding-errors). Other permanent
+failures of the reader are repeated until max restarts are exhausted.
 
 ## Server sent events
 

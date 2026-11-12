@@ -143,6 +143,32 @@ class KafkaProviderSpecs extends FlatSpec with Matchers with BeforeAndAfterAll {
       .getMessage should startWith (s"Failed to encode message value for topic $topic: ")
   }
 
+  it should "skip message which cannot be decoded if configured" in {
+    val topic = newTopic()
+    val sender = provider.createSender(ConfigFactory.empty)
+    await(sender.send(OutMessage(topic, null, "not json", valueEncoder = StringMsgCodec)))
+    await(sender.send(OutMessage(topic, null, "v")))
+    val skipping = provider.createReader(ConfigFactory.parseString("decode-error = skip"))
+    val sub = Assignment(Set(TopicPartition(topic, 0)), Some("g-skip-decode"))
+    await(skipping.source(sub).map(_.value).runWith(Sink.head)) shouldBe "v"
+    // committable sources emit skipped message as null, so that it is committed
+    await(skipping.committableSource(sub).take(2).map(m => Option(m.message).map(_.value)).runWith(Sink.seq)) shouldBe
+      List(None, Some("v"))
+    await(skipping.committableSourceWithMetadata(sub, _ => "meta").take(2)
+      .map(m => Option(m.message).map(_.value)).runWith(Sink.seq)) shouldBe List(None, Some("v"))
+    // skipped message is committed with metadata of the previous message
+    val topic2 = newTopic()
+    await(sender.send(OutMessage(topic2, null, "v")))
+    await(sender.send(OutMessage(topic2, null, "not json", valueEncoder = StringMsgCodec)))
+    val sub2 = Assignment(Set(TopicPartition(topic2, 0)), Some("g-skip-metadata"))
+    await(skipping.committableSourceWithMetadata(sub2, _ => "meta").take(2).map(_.committable)
+      .runWith(provider.createCommitter(ConfigFactory.empty).sink))
+    await(provider.admin.committedOffsets("g-skip-metadata", Set(TopicPartition(topic2, 0)))) shouldBe
+      Map(TopicPartition(topic2, 0) -> OffsetAndMetadata(2, "meta"))
+    intercept[RuntimeException](provider.createReader(ConfigFactory.parseString("decode-error = ignore")))
+      .getMessage should include ("decode-error")
+  }
+
   it should "read from offset and from timestamp" in {
     val topic = newTopic()
     send(topic, "a", "b", "c") shouldBe 3

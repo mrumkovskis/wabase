@@ -65,13 +65,20 @@ object MsgStreams {
       NotUsed
     }
 
+  /** Permanent failure - repeated if stream is restarted, so it is not restarted: parameter error
+    * ([[MsgParamException]]), decoding failure ([[MsgDecodingException]] - the same message would fail again).
+    */
+  def isPermanent(e: Throwable): Boolean = e.isInstanceOf[MsgParamException] || e.isInstanceOf[MsgDecodingException]
+
   /** Restarts source on failure with backoff ([[RestartSource.onFailuresWithBackoff]]), source completion is not
-    * restarted. Materialized control stops current source and prevents further restarts.
+    * restarted, permanent failure ([[isPermanent]]) is not restarted.
+    * Materialized control stops current source and prevents further restarts.
     * Source can be materialized once (materialized control is shared).
     */
   def restartOnFailure[T](settings: RestartSettings)(source: () => Source[T, Control]): Source[T, Control] = {
     val control = new RestartControl
-    RestartSource.onFailuresWithBackoff(settings)(() => source().mapMaterializedValue(control.set))
+    val restartSettings = settings.withRestartOn((e: Throwable) => !isPermanent(e))
+    RestartSource.onFailuresWithBackoff(restartSettings)(() => source().mapMaterializedValue(control.set))
       .mapMaterializedValue(_ => control)
   }
 
@@ -85,11 +92,12 @@ object MsgStreams {
     with NoStackTrace
 
   /** Marks failures as [[ReaderFailure]], must be placed directly after reader source of restarted pipeline,
-    * see [[restartPipeline]]. Parameter errors ([[MsgParamException]]) and [[ProcessingFailure]] (per message
+    * see [[restartPipeline]]. Permanent failures ([[isPermanent]]) and [[ProcessingFailure]] (per message
     * evaluation done by the reader) are not reader failures.
     */
   def readerFailures[T]: Flow[T, T, NotUsed] = Flow[T].mapError {
-    case e@(_: ProcessingFailure | _: MsgParamException) => e
+    case e: ProcessingFailure => e
+    case e if isPermanent(e) => e
     case NonFatal(e) => ReaderFailure(e)
   }
 

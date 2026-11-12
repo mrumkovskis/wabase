@@ -54,6 +54,7 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
         usingCodecs = eval(op.using),
         atMostOnce  = eval(op.atMostOnce),
         restart     = eval(op.restart),
+        decodeError = eval(op.decodeError),
       )
       if (op.commitMetadata != null && params.committer.isEmpty)
         sys.error("msg read parameter 'commit_metadata' requires 'committer'")
@@ -159,8 +160,8 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
   }
 
   /** Runs pipeline of messaging result, restartable - body result is evaluated again for each restart.
-    * Parameter error ([[MsgParamException]] - e.g. invalid value, unknown codec, missing bind variable) is permanent -
-    * it is not restarted, the operation fails with it.
+    * Parameter error ([[MsgParamException]] - e.g. invalid value, unknown codec, missing bind variable) and
+    * decoding failure ([[MsgDecodingException]]) are permanent - not restarted, the operation fails with them.
     * @param first     body result of the first attempt (checked before restarting, so that wrong body is not restarted)
     * @param opName    operation name for error message
     * @param pipeline  send (and commit) pipeline of messaging result
@@ -181,7 +182,7 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
         s"$opName parameter 'restart' requires messaging result (msg read) of operation, got: ${x.getClass.getName}")
     }
     val firstResult = new AtomicReference(messaging(first))
-    val restartSettings = settings.withRestartOn((e: Throwable) => !e.isInstanceOf[MsgParamException])
+    val restartSettings = settings.withRestartOn((e: Throwable) => !MsgStreams.isPermanent(e))
     RestartSource.onFailuresWithBackoff(restartSettings) { () =>
       val mr = Option(firstResult.getAndSet(null)).map(Future.successful).getOrElse(body().map(messaging))
       Source.futureSource(mr.map(r => MsgStreams.stopOnTermination(pipeline(r))))
@@ -337,18 +338,17 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
           }
       }
     }
-    def messages(el: Any): Future[Msgs] = {
-      val i = idx
-      idx += 1 // like foreach - filtered (null) elements are counted too
-      if (el == null) Future.successful(noMessages)
+    def messages(el: Any): Future[Msgs] =
+      if (el == null) Future.successful(noMessages) // like foreach - filtered, skipped elements are not counted
       else {
+        val i = idx
+        idx += 1
         val elScope = elementScope(el, keyName, scope, i)
         lazy val bindVars = elScope.toBindeableMap(context.env) // filter bind variables, built once per element
         destinations.foldLeft(Future.successful(Vector.empty[Seq[OutMessage]])) { (msgsF, d) =>
           msgsF.flatMap(msgs => destinationMessages(d, el, elScope, () => bindVars).map(msgs :+ _))
         }
       }
-    }
     val evaluated: Flow[(Any, P), (Msgs, P), NotUsed] =
       Flow[(Any, P)].mapAsync(1) { case (el, p) => calls(messages(el)).map(_ -> p) }
     destinations.zipWithIndex.foldLeft(evaluated) { case (flow, (d, i)) =>
@@ -560,9 +560,10 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
     calls: MsgStreams.Sequential,
   )(implicit qr: QuereaseResources): Flow[Any, (Any, Boolean), NotUsed] =
     if (to == null) Flow[Any].map(el => (el, false))
-    else Flow[Any].mapAsync(1) { el =>
-      if (terminated.get) Future.successful((el, false))
-      else calls(Future {
+    else Flow[Any].mapAsync(1) {
+      case el@CommittableMessage(null, _) => Future.successful((el, false)) // skipped by reader (decoding error)
+      case el if terminated.get => Future.successful((el, false))
+      case el => calls(Future {
         val bindVars = messageScope(inMessage(el), keyName, scope).toBindeableMap(context.env)
         (el, MsgReadParams.isLast(evalMsgParam(to, bindVars, res)))
       }(qr.ec))
@@ -666,9 +667,11 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
         }
     }
     def source(): Source[Any, Control] = {
-      val idx = new AtomicLong // index starts from 0 for each attempt of restarted stream
+      // index starts from 0 for each attempt of restarted stream, filtered and skipped messages are not counted
+      val idx = new AtomicLong
       mr.source()
         .mapAsync(1) {
+          case cm@CommittableMessage(null, _) => Future.successful(Some(cm)) // skipped, filtered - committed
           case CommittableMessage(m, c) => // null v - committed
             process(m, idx.getAndIncrement()).map(v => Some(CommittableMessage(v, c)))
           case m => process(m, idx.getAndIncrement()).map(Option(_)) // null - filtered

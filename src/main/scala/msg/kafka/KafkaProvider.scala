@@ -120,8 +120,16 @@ class KafkaProvider(val name: String, val config: Config)(implicit system: Actor
     private val vd  = codecs.valueDecoder(valueDecoder, cfg)
     private def toInMessage(r: ConsumerRecord[Array[Byte], Array[Byte]]): InMessage =
       KafkaProvider.toInMessage(r, kd, vd)
+    private val skipDecodeErrors = MsgProvider.skipDecodeErrors(cfg)
+    /** Decoded message, `None` - message cannot be decoded and is skipped */
+    private def decoded(r: ConsumerRecord[Array[Byte], Array[Byte]]): Option[InMessage] =
+      try Some(toInMessage(r)) catch {
+        case e: MsgDecodingException if skipDecodeErrors =>
+          logger.warn(s"Kafka provider '$name': message skipped. ${e.getMessage}")
+          None
+      }
     private def toCommittableMessage(m: ConsumerMessage.CommittableMessage[Array[Byte], Array[Byte]]) =
-      CommittableMessage(toInMessage(m.record), KafkaCommittableOffset(m.committableOffset))
+      CommittableMessage(decoded(m.record).orNull, KafkaCommittableOffset(m.committableOffset)) // null - skipped
     private def settings(subscription: Subscription, groupRequired: Boolean, committable: Boolean) = {
       val group = subscription.group orElse defaultGroup(cfg)
       val needsGroup = groupRequired || (subscription match {
@@ -136,10 +144,10 @@ class KafkaProvider(val name: String, val config: Config)(implicit system: Actor
     }
     def source(subscription: Subscription): Source[InMessage, Control] =
       registered(Consumer.plainSource(settings(subscription, false, false), kafkaSubscription(subscription)))
-        .map(toInMessage)
+        .mapConcat(decoded(_).toList)
     def atMostOnceSource(subscription: Subscription): Source[InMessage, Control] =
       registered(Consumer.atMostOnceSource(settings(subscription, true, false), kafkaSubscription(subscription)))
-        .map(toInMessage)
+        .mapConcat(decoded(_).toList)
     def committableSource(subscription: Subscription): Source[CommittableMessage[InMessage], Control] =
       registered(Consumer.committableSource(settings(subscription, true, true), kafkaSubscription(subscription)))
         .map(toCommittableMessage)
@@ -149,19 +157,29 @@ class KafkaProvider(val name: String, val config: Config)(implicit system: Actor
     ): Source[CommittableMessage[InMessage], Control] = {
       // metadata function receives decoded message, it is reused by the following stage to avoid decoding twice
       // (metadata function is called right before the message is emitted, decoding is repeated if record differs)
-      val lastDecoded = new AtomicReference[(ConsumerRecord[Array[Byte], Array[Byte]], InMessage)]()
+      val lastDecoded = new AtomicReference[(ConsumerRecord[Array[Byte], Array[Byte]], Option[InMessage])]()
+      // skipped message is committed with metadata of the previous message of its partition, so that
+      // committed metadata is not overwritten with empty value
+      val lastMetadata = new ConcurrentHashMap[(String, Int), String]
       registered(Consumer.commitWithMetadataSource(
         settings(subscription, true, true), kafkaSubscription(subscription), (r: ConsumerRecord[Array[Byte], Array[Byte]]) => {
-          val m = toInMessage(r)
+          val m = decoded(r)
           lastDecoded.set((r, m))
-          metadata(m)
+          val partition = (r.topic, r.partition)
+          m match {
+            case Some(msg) =>
+              val md = metadata(msg)
+              if (md == null) lastMetadata.remove(partition) else lastMetadata.put(partition, md)
+              md
+            case None => lastMetadata.getOrDefault(partition, "")
+          }
         }
       )).map { m =>
-        val decoded = lastDecoded.get match {
+        val msg = lastDecoded.get match {
           case (r, msg) if r eq m.record => msg
-          case _ => toInMessage(m.record)
+          case _ => decoded(m.record)
         }
-        CommittableMessage(decoded, KafkaCommittableOffset(m.committableOffset))
+        CommittableMessage(msg.orNull, KafkaCommittableOffset(m.committableOffset)) // null - skipped
       }
     }
   }
