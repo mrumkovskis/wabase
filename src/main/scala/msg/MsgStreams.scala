@@ -9,7 +9,7 @@ import org.apache.pekko.stream.{Attributes, FlowShape, Inlet, Materializer, Outl
 import org.wabase.msg.MsgParams.MsgParamException
 
 import java.util.concurrent.atomic.AtomicReference
-import scala.concurrent.{Future, Promise}
+import scala.concurrent.Future
 import scala.concurrent.duration.FiniteDuration
 import scala.util.Failure
 import scala.util.control.{NoStackTrace, NonFatal}
@@ -139,13 +139,11 @@ object MsgStreams {
     * so the first call of the restarted stream would run concurrently with it (on the same db connection).
     */
   final class Sequential {
-    private val last = new AtomicReference[Future[Any]](Future.unit)
-    def apply[T](call: => Future[T]): Future[T] = {
-      val result = Promise[T]()
-      last.getAndSet(result.future).onComplete { _ =>
-        result.completeWith(try call catch { case NonFatal(e) => Future.failed(e) })
-      }(MsgProvider.syncEc)
-      result.future
+    private var last: Future[Any] = Future.unit
+    def apply[T](call: => Future[T]): Future[T] = synchronized {
+      val next = last.transformWith(_ => try call catch { case NonFatal(e) => Future.failed(e) })(MsgProvider.syncEc)
+      last = next
+      next
     }
   }
 

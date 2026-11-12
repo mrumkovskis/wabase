@@ -244,4 +244,21 @@ class MsgStreamsSpecs extends FlatSpec with Matchers with BeforeAndAfterAll {
     intercept[RuntimeException](await(calls[Int](sys.error("thrown")))).getMessage shouldBe "thrown"
     await(calls(Future.successful(3))) shouldBe 3
   }
+
+  it should "run calls of parallel callers once, one at a time" in {
+    import system.dispatcher
+    val calls = new MsgStreams.Sequential
+    val (running, overlaps, executed) = (new AtomicInteger, new AtomicInteger, new AtomicInteger)
+    val results = Future.traverse((1 to 200).toList) { n =>
+      Future(calls(Future {
+        if (running.incrementAndGet() > 1) overlaps.incrementAndGet()
+        executed.incrementAndGet()
+        Thread.sleep(1)
+        running.decrementAndGet()
+        n
+      })).flatten
+    }
+    await(results) shouldBe (1 to 200).toList // each caller gets result of its own call
+    (executed.get, overlaps.get) shouldBe ((200, 0))
+  }
 }
