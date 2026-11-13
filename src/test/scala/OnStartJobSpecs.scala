@@ -33,6 +33,12 @@ class OnStartJobSpecs
       started = started :+ jobName
       runs(jobName).future
     }
+    val failures = new java.util.concurrent.LinkedBlockingQueue[(String, String)]
+    override protected def onStartJobFailed(jobName: String, error: Throwable): Unit = {
+      super.onStartJobFailed(jobName, error)
+      failures.put(jobName -> error.getMessage)
+    }
+    def nextFailure(): (String, String) = failures.poll(3, SECONDS)
     def run(): Future[Any] = runOnStartJobs()
   }
 
@@ -81,5 +87,30 @@ class OnStartJobSpecs
     the[RuntimeException] thrownBy Await.result(result, 3.seconds) should have message "boom"
     scheduler.runs("job2").success("ok2")
     scheduler.runs("job2").future.value.get.get shouldBe "ok2"
+    scheduler.nextFailure() shouldBe ("job1" -> "boom")
+    scheduler.failures.isEmpty shouldBe true
+  }
+
+  it should "report job failure while jobs before it are still running" in {
+    val scheduler = new RecordingScheduler(List("job1", "job2", "job3"))
+    val result = scheduler.run()
+    scheduler.runs("job3").failure(new RuntimeException("boom3"))
+    scheduler.nextFailure() shouldBe ("job3" -> "boom3")
+    scheduler.runs("job2").failure(new RuntimeException("boom2"))
+    scheduler.nextFailure() shouldBe ("job2" -> "boom2")
+    scheduler.runs("job1").isCompleted shouldBe false
+    scheduler.runs("job1").success("ok1")
+    // which failure is reported by the result depends on scala version
+    (the[RuntimeException] thrownBy Await.result(result, 3.seconds)).getMessage should (be ("boom2") or be ("boom3"))
+    scheduler.failures.isEmpty shouldBe true
+  }
+
+  it should "report failure of a job which fails to start" in {
+    val scheduler = new RecordingScheduler(List("job1")) {
+      override def doJob(jobName: String, params: Map[String, Any]): Future[Any] =
+        Future.failed(new RuntimeException("no start"))
+    }
+    the[RuntimeException] thrownBy Await.result(scheduler.run(), 3.seconds) should have message "no start"
+    scheduler.nextFailure() shouldBe ("job1" -> "no start")
   }
 }

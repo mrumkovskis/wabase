@@ -42,14 +42,29 @@ class WabaseScheduler(wabase: AppBase[_], system: ActorSystem) extends Loggable 
 
   protected def onStartJobs: Seq[String] = WabaseScheduler.onStartJobNames(config)
 
-  /** Starts all on-start jobs in parallel. Result fails if any job fails, other jobs are not affected. */
+  /** Starts all on-start jobs in parallel. Failure of each job is reported with [[onStartJobFailed]] when
+    * it happens. Result fails if any job fails, other jobs are not affected. Result reports one failure only,
+    * and when it fails depends on scala version - on the first failure (scala 2.13, 3) or
+    * when the jobs before the failed one have completed (scala 2.12).
+    */
   protected def runOnStartJobs(): Future[Any] = {
     val jobNames = onStartJobs
     if (jobNames.nonEmpty) {
       implicit val ec: ExecutionContext = system.dispatcher
-      Future.sequence(jobNames.map(doJob(_, Map())): Seq[Future[Any]])
+      Future.sequence(jobNames.map { jobName =>
+        val run = doJob(jobName, Map())
+        run.failed.foreach { error =>
+          try onStartJobFailed(jobName, error)
+          catch { case NonFatal(e) => logger.error(s"Failed to report on-start job '$jobName' failure", e) }
+        }
+        run
+      }: Seq[Future[Any]])
     } else Future.successful(NoResult)
   }
+
+  /** Called when on-start job fails, independently of other on-start jobs. Logs the error. */
+  protected def onStartJobFailed(jobName: String, error: Throwable): Unit =
+    logger.error(s"On-start job '$jobName' failed", error)
 
   def doJob(jobName: String, params: Map[String, Any]): Future[Any] = {
     try invokeFunction(WabaseScheduler.executor, Seq(

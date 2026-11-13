@@ -36,8 +36,9 @@ class WabaseServer(
     if (enableDeferredRequests)
       new WabaseDeferredControl(wabase)(wabase.actorSystem)
     else null
-  new WabaseScheduler(wabase.app, wabase.actorSystem).init().failed.foreach {
-    logger.error(s"Error occured initializing wabase scheduler", _)
+  // failure of each on-start job is logged by the scheduler when it happens
+  new WabaseScheduler(wabase.app, wabase.actorSystem).init().failed.foreach { e =>
+    logger.error(s"Wabase scheduler on-start jobs failed: ${e.getMessage}")
   }(wabase.actorSystem.dispatcher)
   private val service         = new WabaseService
 
