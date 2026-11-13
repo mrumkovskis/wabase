@@ -241,6 +241,16 @@ update:  # decoding failure is not restarted by reader restart
 - msg read from={:topic topic, 0 partition} restart={'50ms' min_backoff, '100ms' max_backoff, 0 random_factor}
 
 
+name: msg_foreach_recover
+fields:
+- topic
+- group
+get:  # message processing failure handled by recover - stream continues, message is committed
+- foreach msg read group=:group from=:topic committer=true to={:value = 'c'}:
+  - org.wabase.MsgOpsTestFunctions.recordFailOnB
+  - recover 'failed ' || :value
+
+
 name: msg_send_restart
 fields:
 - src

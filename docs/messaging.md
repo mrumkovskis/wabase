@@ -22,6 +22,7 @@ events and committed, so that processing continues where it stopped.
   - [Send filter](#send-filter)
 - [Multi send - fan-out](#multi-send---fan-out)
 - [Restart on failure](#restart-on-failure)
+  - [Consumer jobs](#consumer-jobs)
 - [Server sent events](#server-sent-events)
 - [Admin calls](#admin-calls)
 - [Headers](#headers)
@@ -565,6 +566,53 @@ Reader configuration errors (e.g. missing group) fail `msg read` - they are not 
 Decoding failure is permanent - it is not restarted, see [decoding errors](#decoding-errors). Other permanent
 failures of the reader are repeated until max restarts are exhausted.
 
+### Consumer jobs
+
+A [job](view-actions.md#job) consuming messages into the database runs until its stream fails. There is no
+`msg send`, so `msg send restart` cannot be used - failures are handled by `msg read restart`,
+[recover](view-actions.md#recover) and the job schedule:
+
+```yaml
+name: order_consumer
+job:
+- foreach msg read group='orders' from='orders' committer=true restart=true:
+  - transaction:
+    - =order[id = :id] {status = :status}
+  - recover:   # failed message is recorded and committed, the stream continues
+    - +order_failure {order_id, msg_offset} {:id, :__metadata.offset}
+```
+
+| Failure | Handling |
+|---|---|
+| reader (broker connection), committing | `msg read restart` |
+| processing of a message (foreach body) | `recover` step in foreach body |
+| parameter error, decoding failure | permanent - the job fails ([decoding errors](#decoding-errors) can be skipped) |
+| the job has failed | the job is started again by its schedule |
+
+- `recover` in foreach body - changes of the failed steps are rolled back, recover expression is executed with
+  bind variables of the message (failure - `wabase_error`), its result is the body result. The message is committed
+  and the stream continues with the next message. Without `recover` processing failure fails the stream and the job.
+- `recover` handles every failure of the guarded steps, also the ones not caused by the message (e.g. database
+  not available) - the message is committed and is not processed again. Use
+  [rethrow](view-actions.md#rethrow) for failures which must stop the job instead; its message is not committed.
+- a restart cannot get past a message which always fails - it is read and fails again. Handle it with `recover`.
+- a failed job is not started again by itself. `app.job.on-start-job` starts the job once, on application start -
+  its failure is logged. To start the job again after a failure, schedule it instead:
+
+```
+app.job.scheduler-initializer = org.wabase.scheduler.FixedRateScheduler.init
+app.job.schedules.order_consumer { interval = 1m, initial-delay = 5s }
+```
+
+- a scheduled start is rejected while the job is running on this node (`app.job.queue-size = 0`), so the job is
+  started on the first schedule after it has failed or completed. It continues from the committed offset.
+- do not specify a scheduled job in `app.job.on-start-job` as well - on-start jobs are not run by the job actor,
+  so the schedule would start the job once more.
+- several nodes - with `DefaultWabaseJobStatusController` one node runs the job, the other nodes are rejected
+  by its running lock. The lock is taken over when it is older than `app.job.max-time`, so after that time
+  the job is started on another node too. With `NoOpWabaseJobStatusController` each node runs the job
+  (consumers of the same group share partitions).
+
 ## Server sent events
 
 An action returning a messaging result (`msg read`, foreach on `msg read`) responds with server sent events
@@ -666,7 +714,8 @@ trait Control {
 - `msg send` sends one message per element to one topic - use [multi send](#multi-send---fan-out) for several
   destinations or several messages per element.
 - encoders cannot add headers to outgoing messages (headers can be set with `msg send headers=`).
-- `msg read` `restart` with `committer` does not restart processing failures - use `msg send` `restart`.
+- `msg read` `restart` with `committer` does not restart processing failures - use `msg send` `restart`, for
+  jobs without `msg send` see [consumer jobs](#consumer-jobs).
 
 ## Future improvements
 

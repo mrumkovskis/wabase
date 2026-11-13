@@ -501,6 +501,15 @@ class MsgOpsSpecs extends FlatSpec with Matchers with TestQuereaseInitializer {
     MsgOpsTestFunctions.recorded.asScala.toList shouldBe List("a", "b")
   }
 
+  it should "continue and commit after processing failure handled by recover" in {
+    val topic = newTopic()
+    send(topic, "a", "b", "c")
+    MsgOpsTestFunctions.recorded.clear()
+    read("msg_foreach_recover", Map("topic" -> topic, "group" -> "g-recover")) shouldBe List("a", "failed b", "c")
+    await(provider.admin.committedOffsets("g-recover", Set(TopicPartition(topic, 0)))) shouldBe
+      Map(TopicPartition(topic, 0) -> OffsetAndMetadata(3, null))
+  }
+
   it should "restart committing read after reader failure until max restarts" in {
     import scala.jdk.CollectionConverters._
     val topic = newTopic()
