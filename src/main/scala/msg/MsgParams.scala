@@ -24,8 +24,24 @@ object MsgParams {
   val ScalarColumn = ""
 
   val RestartColumns = Seq("min_backoff", "max_backoff", "random_factor", "max_restarts", "max_restarts_within")
-  /** Restart defaults - min backoff 1s, max backoff 30s, random factor 0.2, unlimited restarts */
-  val DefaultRestart: RestartSettings = RestartSettings(1.second, 30.seconds, 0.2)
+  /** Restart defaults - min backoff 1s, max backoff 30s, random factor 0.2, unlimited restarts, restart count
+    * (which also increases backoff) is reset when an attempt has run for max backoff, see [[restartSettings]]. */
+  val DefaultRestart: RestartSettings = restartSettings(1.second, 30.seconds, 0.2)
+
+  /** Restart settings. Restart count is reset when an attempt has run for `maxRestartsWithin` without failure -
+    * backoff starts from `minBackoff` again and `maxRestarts` are counted anew. Default is max backoff (pekko
+    * default is min backoff - an attempt which fails later than that, e.g. consumer failing on the same message
+    * after group join, would be restarted with min backoff forever, never reaching max restarts).
+    */
+  def restartSettings(
+    minBackoff: FiniteDuration,
+    maxBackoff: FiniteDuration,
+    randomFactor: Double,
+    maxRestarts: Option[Int] = None,
+    maxRestartsWithin: Option[FiniteDuration] = None,
+  ): RestartSettings =
+    RestartSettings(minBackoff, maxBackoff, randomFactor)
+      .withMaxRestarts(maxRestarts.getOrElse(Int.MaxValue), maxRestartsWithin.getOrElse(maxBackoff))
 
   private val UnnamedColumnRegex = "_\\d+".r
   /** Scalar value column or tresql unaliased column (`_1`, `_2`, ...) */
@@ -161,16 +177,14 @@ object MsgParams {
         val row = p.columns(r, RestartColumns)
         def dur(c: String) = row.get(c).map(p.duration(c, _)).flatMap(Option(_))
         val d = DefaultRestart
-        val s = RestartSettings(
+        Some(restartSettings(
           dur("min_backoff").getOrElse(d.minBackoff),
           dur("max_backoff").getOrElse(d.maxBackoff),
           row.get("random_factor").map(p.double("random_factor", _)).flatMap(Option(_)).map(_.doubleValue)
             .getOrElse(d.randomFactor),
-        )
-        Some(row.get("max_restarts").map(p.int("max_restarts", _)).flatMap(Option(_)) match {
-          case Some(n) => s.withMaxRestarts(n, dur("max_restarts_within").getOrElse(s.minBackoff))
-          case None => s
-        })
+          row.get("max_restarts").map(p.int("max_restarts", _)).flatMap(Option(_)).map(_.intValue),
+          dur("max_restarts_within"),
+        ))
     }
   }
 

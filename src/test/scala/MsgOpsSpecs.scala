@@ -600,6 +600,14 @@ class MsgOpsSpecs extends FlatSpec with Matchers with TestQuereaseInitializer {
     millis should be < 5000L
     intercept[MsgParamException](action("msg_send_restart", Map("src" -> src, "dst" -> "d"), "insert"))
       .getMessage should startWith ("msg send parameter evaluation failed")
+    val (toErr, toMillis) = timed(intercept[MsgParamException](
+      action("msg_send_restart", Map("src" -> src, "dst" -> "d"), "update")))
+    toErr.getMessage should startWith ("msg read parameter 'to' evaluation failed: Missing bind variable: valu")
+    toMillis should be < 5000L
+    val (filterErr, filterMillis) = timed(intercept[MsgParamException](
+      action("msg_send_restart", Map("src" -> src, "dst" -> "d"), "delete")))
+    filterErr.getMessage should startWith ("msg send parameter 'filter' evaluation failed: Missing bind variable: valu")
+    filterMillis should be < 5000L
   }
 
   it should "require messaging result for msg send restart" in {

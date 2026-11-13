@@ -222,6 +222,8 @@ the provider is closed. Such a stream can be streamed (server sent events, `msg 
 
 - `to={<boolean expression>}` - evaluated for each message, the message for which it is true is the last one
   (inclusive). Comparison must be enclosed in braces - top level `:value = 'end'` is tresql assignment.
+  Missing bind variable (misspelled variable, field missing in the message) is a parameter error - permanent,
+  not restarted with `restart`; the same applies to `commit_metadata`.
 - `timeout={<duration> within}` - total stream duration.
 - `timeout={<duration> idle}` - max time waiting for the next message, also if no message arrives at all. Time
   spent processing messages (slow foreach body, slow http client) is not counted.
@@ -411,6 +413,8 @@ message is committed, like message filtered out by foreach body:
   rows) - map fields or `value`, like foreach item. Operation scope variables are accessible with `..` prefix.
   Incoming message metadata is not available after foreach - use `if` in foreach body instead.
 - comparison must be enclosed in braces, like `msg read` `to`.
+- missing bind variable (misspelled variable, field missing in the element) is a parameter error - permanent, not
+  restarted with `restart`.
 - evaluated with operation's [database resources](#database-resources) - concurrently with reading of query result
   rows on the same connection, JDBC driver must be thread safe.
 
@@ -506,8 +510,14 @@ restart={'1s' min_backoff, '30s' max_backoff, 0.2 random_factor, 10 max_restarts
 ```
 
 Columns are optional, defaults - min backoff 1s, max backoff 30s, random factor 0.2, unlimited restarts;
-`max_restarts_within` defaults to min backoff. Failures are restarted, completion (`to`, `timeout`) is not. After max
+`max_restarts_within` defaults to max backoff. Failures are restarted, completion (`to`, `timeout`) is not. After max
 restarts the operation fails with the last failure.
+
+Restarts are counted, each restart increases the backoff (from min to max backoff). The count is reset when an
+attempt has run for `max_restarts_within` without failure - backoff starts from min backoff again and
+`max_restarts` are counted anew. So `max_restarts_within` must be longer than the time an attempt which fails every
+time takes to fail (e.g. group join and processing of a message which always fails), otherwise such attempts are
+restarted with min backoff forever. It can be specified without `max_restarts`.
 
 - `msg read restart` without `committer` - restarts the reader. It reads from its subscription start again
   (committed offset, specified offset or `auto.offset.reset`), so messages before the failure may be emitted again.

@@ -68,8 +68,9 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
       // pipeline (reading, processing, committing), when messaging result is consumed. Otherwise reader is restarted.
       val withinDeadline = new AtomicReference[Deadline] // set by the first attempt - restarts do not extend `within`
       val pipelineRestart = params.restart.filter(_ => params.committer.isDefined)
-      def commitMetadata(in: InMessage): String = MsgReadParams.commitMetadata(evalMsgParam(
-        op.commitMetadata, messageScope(in, params.keyName, scope).toBindeableMap(env), msgRes))
+      def commitMetadata(in: InMessage): String = MsgReadParams.commitMetadata(evalElementParam(
+        "read", "commit_metadata", op.commitMetadata,
+        messageScope(in, params.keyName, scope).toBindeableMap(env), msgRes))
       def readerSource: Source[Any, Control] =
         if (params.atMostOnce) reader.atMostOnceSource(sub)
         else if (params.committer.isEmpty) reader.source(sub)
@@ -325,7 +326,7 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
       : Future[Seq[OutMessage]] = {
       val isSent =
         if (d.op.filter == null) Future.successful(true)
-        else Future(MsgSendParams.isSent(evalMsgParam(d.op.filter, bindVars(), msgRes)))
+        else Future(MsgSendParams.isSent(evalElementParam("send", "filter", d.op.filter, bindVars(), msgRes)))
       isSent.flatMap {
         case false => Future.successful(Nil)
         case true if d.op.action == null =>
@@ -374,7 +375,7 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
   private def sendParams(op: Action.MsgSend, bindVars: Map[String, Any], res: Resources): MsgSendParams = {
     val Seq(to, key, headers, usingCodecs) =
       try evalMsgParams(Seq(op.to, op.key, op.headers, op.using), bindVars, res) catch {
-        case NonFatal(e) if causes(e).exists(_.isInstanceOf[org.tresql.MissingBindVariableException]) =>
+        case NonFatal(e) if isMissingBindVariable(e) =>
           throw new MsgParamException(s"msg send parameter evaluation failed: ${e.getMessage}", e)
       }
     MsgSendParams.fromValues(to, key, headers, usingCodecs)
@@ -382,6 +383,21 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
 
   private def causes(e: Throwable): Iterator[Throwable] =
     Iterator.iterate(e)(_.getCause).takeWhile(_ != null).take(32)
+  private def isMissingBindVariable(e: Throwable): Boolean =
+    causes(e).exists(_.isInstanceOf[org.tresql.MissingBindVariableException])
+
+  /** Evaluates parameter of msg operation which is evaluated per element (message) - msg read `to`,
+    * `commit_metadata`, msg send `filter`, see [[evalMsgParam]]. Missing bind variable (misspelled variable, field
+    * missing in the element, operation variable without `..` prefix in msg send parameter) is reported as
+    * [[MsgParamException]] - parameter error, not restarted, see [[restartMessaging]].
+    */
+  private def evalElementParam(
+    op: String, name: String, t: Action.Tresql, bindVars: Map[String, Any], res: Resources,
+  ): Any =
+    try evalMsgParam(t, bindVars, res) catch {
+      case NonFatal(e) if isMissingBindVariable(e) =>
+        throw new MsgParamException(s"msg $op parameter '$name' evaluation failed: ${e.getMessage}", e)
+    }
 
   /** Outgoing message of element - msg send parameters are evaluated with element bind variables
     * (see [[sendParams]]), see [[outMessage]].
@@ -565,7 +581,7 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
       case el if terminated.get => Future.successful((el, false))
       case el => calls(Future {
         val bindVars = messageScope(inMessage(el), keyName, scope).toBindeableMap(context.env)
-        (el, MsgReadParams.isLast(evalMsgParam(to, bindVars, res)))
+        (el, MsgReadParams.isLast(evalElementParam("read", "to", to, bindVars, res)))
       }(qr.ec))
     }
 
@@ -587,7 +603,8 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
     else {
       import qr.ec
       def isSent(el: Any): Future[Boolean] = calls(Future {
-        MsgSendParams.isSent(evalMsgParam(filter, elementScope(el, keyName, scope).toBindeableMap(context.env), res))
+        MsgSendParams.isSent(evalElementParam("send", "filter", filter,
+          elementScope(el, keyName, scope).toBindeableMap(context.env), res))
       })
       Flow[Any].mapAsync(1) {
         case cm@CommittableMessage(null, _) => Future.successful(Some(cm))

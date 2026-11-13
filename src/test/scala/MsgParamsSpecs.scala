@@ -135,7 +135,14 @@ class MsgParamsSpecs extends FlatSpec with Matchers {
       ((100.millis, 2.seconds, 0.5, 3, 1.minute))
     val partial = restart(Map("max_restarts" -> 2)).get
     (partial.minBackoff, partial.maxBackoff, partial.maxRestarts, partial.maxRestartsWithin) shouldBe
-      ((1.second, 30.seconds, 2, 1.second))
+      ((1.second, 30.seconds, 2, 30.seconds))
+    // restart count reset - max backoff by default, also without max restarts
+    val d = MsgParams.DefaultRestart
+    (d.maxRestarts, d.maxRestartsWithin) shouldBe ((Int.MaxValue, 30.seconds))
+    val backoff = restart(Map("min_backoff" -> "2s", "max_backoff" -> "10s")).get
+    (backoff.maxRestarts, backoff.maxRestartsWithin) shouldBe ((Int.MaxValue, 10.seconds))
+    val within = restart(Map("max_restarts_within" -> "5 minutes")).get
+    (within.maxRestarts, within.maxRestartsWithin) shouldBe ((Int.MaxValue, 5.minutes))
     err(restart(Map("min_backof" -> "1s"))) shouldBe "msg read parameter 'restart': unknown column 'min_backof', " +
       "allowed: min_backoff, max_backoff, random_factor, max_restarts, max_restarts_within"
     val committing = MsgReadParams.fromValues(null, "t", null, true, null, null, null, true)

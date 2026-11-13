@@ -258,6 +258,12 @@ count:  # parameter error (unknown codec) is not restarted
 insert: # missing bind variable (operation variable without '..') is not restarted
 - msg send to=:dst restart={'50ms' min_backoff, '100ms' max_backoff, 0 random_factor}
     msg read from={:src topic, 0 partition} timeout={'5s' idle}
+update: # missing bind variable of msg read 'to' is not restarted
+- msg send to=:'..'.dst restart={'50ms' min_backoff, '100ms' max_backoff, 0 random_factor}
+    msg read from={:src topic, 0 partition} to={:valu = 'x'} timeout={'5s' idle}
+delete: # missing bind variable of filter is not restarted
+- msg send to=:'..'.dst filter={:valu = 'x'} restart={'50ms' min_backoff, '100ms' max_backoff, 0 random_factor}
+    msg read from={:src topic, 0 partition} timeout={'5s' idle}
 
 
 name: msg_review_fixes
