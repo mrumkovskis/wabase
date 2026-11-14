@@ -15,7 +15,7 @@ name: msg_read_map
 fields:
 - topic
 get:
-- msg read from={:topic topic} key='k' to={:id = 2 & :k = 'k2'} timeout={'10s' within}
+- msg read from={:topic topic} to={:id = 2 & :__metadata.key = 'k2'} timeout={'10s' within}
 
 
 name: msg_read_metadata
@@ -296,9 +296,9 @@ fields:
 - dst
 - group
 - skip
-get:  # forward filtered messages keeping key, filtered messages committed; key bind variable
-- msg send to=:'..'.dst filter={:status != 'draft' & :k != 'k4'}
-    msg read group=:group from=:src committer=true key='k' to={:status = 'end'}
+get:  # forward filtered messages keeping key, filtered messages committed; message key in filter
+- msg send to=:'..'.dst filter={:status != 'draft' & :__metadata.key != 'k4'}
+    msg read group=:group from=:src committer=true to={:status = 'end'}
 list: # filter rows - map fields, parent scope with '..'
 - msg send to=:'..'.dst filter={:id::int != :'..'.skip::int} ({1 id} ++ {2 id} ++ {3 id})
 
@@ -339,7 +339,7 @@ fields:
 - dst2
 get:  # routing (filter, operation), transformation, copy; committing messaging source
 - msg multi send:
-  - msg read group=:group from=:src committer=true key='k' to={:status = 'end'}
+  - msg read group=:group from=:src committer=true to={:status = 'end'}
   - to:
     - msg send to=:'..'.eu filter={:region = 'eu'}
     - msg send to=:'..'.us key={'id' name}:

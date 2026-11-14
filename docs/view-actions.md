@@ -1407,7 +1407,6 @@ msg read [<[provider name]>]
   [timeout = {<duration> within, <duration> idle}]
   [committer = true | {delivery, max_batch, max_interval, parallelism, commit_when}]
   [commit_metadata = <string expression>]              # evaluated for each message
-  [key = <key variable name>]                          # message key bind variable
   [using = <value codec> | {<key codec> key, <value codec> value}]
   [restart = true | {min_backoff, max_backoff, random_factor, max_restarts, max_restarts_within}]
   [at_most_once = true | false]
@@ -1421,7 +1420,8 @@ see [named arguments](#named-arguments) and [parameter evaluation](messaging.md#
 - comparison must be enclosed in curly braces - `to={:value = 'end'}`, top level `:value = 'end'` is tresql
   assignment.
 - `to`, `commit_metadata` and foreach body are evaluated for each message with [message bind
-  variables](messaging.md#message-bind-variables) - value fields or `value`, `__metadata`, key under `key` name.
+  variables](messaging.md#message-bind-variables) - value fields or `value`, `__metadata` (message key -
+  `:__metadata.key`).
 - provider name - default provider (`main`) if omitted.
 - `committer` and `at_most_once = true` are mutually exclusive.
 - `restart` restarts the reader on failure, with `committer` - reading, processing and committing after reader and

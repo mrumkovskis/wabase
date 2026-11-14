@@ -182,7 +182,6 @@ msg read [<provider>]
   [timeout={<duration> within, <duration> idle}]
   [committer=<committer settings or true>]
   [commit_metadata=<string expression>]
-  [key=<key variable name>]
   [using=<codec names>]
   [restart=<restart settings or true>]
   [at_most_once=<true|false>]
@@ -244,8 +243,8 @@ Tresql evaluated per message (`to`, `commit_metadata`, foreach body) gets messag
 - map value - its fields, other value - `value`; with foreach item variable (`foreach m in msg read ...`) - value
   under item variable,
 - `__metadata` - map `{topic, partition, offset, timestamp, key, headers}`, headers are list of `{name, value}`,
-- `__idx` - message index (foreach body only), filtered and skipped messages are not counted,
-- message key under name specified by `key` parameter, if value has no such field.
+  e.g. message key - `:__metadata.key`,
+- `__idx` - message index (foreach body only), filtered and skipped messages are not counted.
 
 Like foreach item scope, the scope is not transparent - operation scope variables are accessible with `..` prefix,
 e.g. `to={:value = :'..'.last}`.
@@ -409,7 +408,7 @@ message is committed, like message filtered out by foreach body:
 ```
 
 - bind variables - for incoming message (`msg read` without foreach) [message bind
-  variables](#message-bind-variables) (value fields, `__metadata`, message key under `msg read` `key` name), so
+  variables](#message-bind-variables) (value fields, `__metadata`), so
   forwarded messages are filtered without transformation, keeping their key; for other elements (foreach result,
   rows) - map fields or `value`, like foreach item. Operation scope variables are accessible with `..` prefix.
   Incoming message metadata is not available after foreach - use `if` in foreach body instead.

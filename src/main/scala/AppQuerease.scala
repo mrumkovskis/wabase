@@ -88,7 +88,6 @@ case class SourceResult(src: Source[QuereaseResult, _], toBindableValue: Quereas
   *                   after foreach, foreach body result (any value) or CommittableMessage of it
   * @param committer  present if source elements are committable, committables must be committed when stream is
   *                   consumed
-  * @param keyName    msg read `key` parameter - name of message bind variable for message key, or null
   * @param restart    msg read `restart` of committable source - reading, processing and committing are restarted
   *                   together on reader and commit failures, see [[org.wabase.msg.MsgStreams.restartPipeline]]
   *                   (restart of non committable source is part of `source`)
@@ -100,7 +99,6 @@ case class SourceResult(src: Source[QuereaseResult, _], toBindableValue: Quereas
 case class MessagingResult(
   source: () => Source[Any, Control],
   committer: Option[MsgCommitter],
-  keyName: String = null,
   restart: Option[RestartSettings] = None,
   cleanup: Option[Throwable] => Unit = _ => (),
 ) extends QuereaseResult

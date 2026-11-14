@@ -21,7 +21,7 @@ class MsgOpsParserSpecs extends FlatSpec with Matchers {
   it should "parse all parameters" in {
     op("""msg read [kafka-2] group='g' from={'t' topic, 0 partition, 5 offset} to=:value = 'end'
          |  timeout={'10s' within, '3s' idle} committer={1 max_batch} commit_metadata=:value
-         |  key='id' using={'string' key, 'avro' value} restart={'1s' min_backoff, 3 max_restarts}
+         |  using={'string' key, 'avro' value} restart={'1s' min_backoff, 3 max_restarts}
          |  at_most_once=false""".stripMargin) match {
       case r: MsgRead =>
         r.providerName      shouldBe "kafka-2"
@@ -31,7 +31,6 @@ class MsgOpsParserSpecs extends FlatSpec with Matchers {
         n(r.timeout)        shouldBe n("null{'10s' within, '3s' idle}")
         n(r.committer)      shouldBe n("null{1 max_batch}")
         n(r.commitMetadata) shouldBe n(":value")
-        n(r.key)            shouldBe n("'id'")
         n(r.using)          shouldBe n("null{'string' key, 'avro' value}")
         n(r.restart)        shouldBe n("null{'1s' min_backoff, 3 max_restarts}")
         n(r.atMostOnce)     shouldBe n("false")

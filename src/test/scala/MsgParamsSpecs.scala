@@ -63,7 +63,6 @@ class MsgParamsSpecs extends FlatSpec with Matchers {
       timeout = Map("within" -> "5s", "idle" -> 300),
       committer = Map("max_batch" -> BigDecimal(10), "max_interval" -> "2s", "delivery" -> "SendAndForget",
         "commit_when" -> "NextOffsetObserved"),
-      key = List(Map("k" -> "msg_key")),
       usingCodecs = Map("key" -> "json", "value" -> "avro"),
       atMostOnce = null,
     )
@@ -73,7 +72,6 @@ class MsgParamsSpecs extends FlatSpec with Matchers {
     p.keyCodec shouldBe "json"
     p.valueCodec shouldBe "avro"
     p.atMostOnce shouldBe false
-    p.keyName shouldBe "msg_key"
     val cc = p.committerConfig.getConfig(MsgReadParams.CommitterPath)
     cc.getInt("max-batch") shouldBe 10
     cc.getDuration("max-interval").toMillis shouldBe 2000
@@ -81,24 +79,24 @@ class MsgParamsSpecs extends FlatSpec with Matchers {
     cc.getString("when") shouldBe "NextOffsetObserved"
     p.readerConfig.getDuration(MsgProvider.StopTimeoutPath).toMillis shouldBe 0
 
-    val minimal = MsgReadParams.fromValues(null, "t", null, null, null, null, null)
+    val minimal = MsgReadParams.fromValues(null, "t", null, null, null, null)
     minimal shouldBe MsgReadParams(Topics(Set("t"), None))
     minimal.readerConfig.isEmpty shouldBe true
     minimal.committerConfig.isEmpty shouldBe true
 
     // boolean committer shorthand, value codec shorthand, idle only
-    val p2 = MsgReadParams.fromValues(null, "t", Map("idle" -> "1 second"), Map("_1" -> true), null, "avro", false)
+    val p2 = MsgReadParams.fromValues(null, "t", Map("idle" -> "1 second"), Map("_1" -> true), "avro", false)
     p2.committer.map(_.isEmpty) shouldBe Some(true)
     p2.within shouldBe None
     p2.idle shouldBe Some(1.second)
     (p2.keyCodec, p2.valueCodec) shouldBe ((null, "avro"))
-    MsgReadParams.fromValues(null, "t", null, false, null, Map("key" -> "string", "value" -> null), true) shouldBe
+    MsgReadParams.fromValues(null, "t", null, false, Map("key" -> "string", "value" -> null), true) shouldBe
       MsgReadParams(Topics(Set("t"), None), keyCodec = "string", atMostOnce = true)
   }
 
   it should "report invalid parameters" in {
     def read(group: Any = null, timeout: Any = null, committer: Any = null, usingCodecs: Any = null, amo: Any = null) =
-      MsgReadParams.fromValues(group, "t", timeout, committer, null, usingCodecs, amo)
+      MsgReadParams.fromValues(group, "t", timeout, committer, usingCodecs, amo)
     err(read(group = 1)) shouldBe "msg read parameter 'group': string expected, got java.lang.Integer: 1"
     err(read(group = List(Map("a" -> "x"), Map("a" -> "y")))) shouldBe
       "msg read parameter 'group': single row expected, got 2 rows"
@@ -125,7 +123,7 @@ class MsgParamsSpecs extends FlatSpec with Matchers {
   }
 
   it should "evaluate restart settings" in {
-    def restart(r: Any) = MsgReadParams.fromValues(null, "t", null, null, null, null, null, r).restart
+    def restart(r: Any) = MsgReadParams.fromValues(null, "t", null, null, null, null, r).restart
     restart(null) shouldBe None
     restart(false) shouldBe None
     restart(Map("_1" -> true)) shouldBe Some(MsgParams.DefaultRestart)
@@ -145,13 +143,13 @@ class MsgParamsSpecs extends FlatSpec with Matchers {
     (within.maxRestarts, within.maxRestartsWithin) shouldBe ((Int.MaxValue, 5.minutes))
     err(restart(Map("min_backof" -> "1s"))) shouldBe "msg read parameter 'restart': unknown column 'min_backof', " +
       "allowed: min_backoff, max_backoff, random_factor, max_restarts, max_restarts_within"
-    val committing = MsgReadParams.fromValues(null, "t", null, true, null, null, null, true)
+    val committing = MsgReadParams.fromValues(null, "t", null, true, null, null, true)
     (committing.committer.isDefined, committing.restart.isDefined) shouldBe ((true, true))
     MsgSendParams.sendRestart(Map("max_restarts" -> 1)).map(_.maxRestarts) shouldBe Some(1)
   }
 
   it should "evaluate decode error strategy" in {
-    def params(d: Any) = MsgReadParams.fromValues(null, "t", null, null, null, null, null, null, d)
+    def params(d: Any) = MsgReadParams.fromValues(null, "t", null, null, null, null, null, d)
     params(null).decodeError shouldBe None
     params(null).readerConfig.hasPath("decode-error") shouldBe false
     params("fail").decodeError shouldBe Some("fail")

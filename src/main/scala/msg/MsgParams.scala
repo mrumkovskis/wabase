@@ -204,13 +204,12 @@ object MsgParams {
 
 import MsgParams._
 
-/** Evaluated msg read parameters, evaluated once per operation (`to`, `key`, `commit_metadata` are evaluated per
+/** Evaluated msg read parameters, evaluated once per operation (`to`, `commit_metadata` are evaluated per
   * message, by operation implementation).
   *
   * @param committer   committer config (path `committer`), `None` - messages are not committed
   * @param keyCodec    key codec name or null - resolved from configuration
   * @param valueCodec  value codec name or null - resolved from configuration
-  * @param keyName     name of message bind variable for message key or null
   * @param restart     restart on failure with backoff - of reader source, with `committer` - of reading, processing
   *                    and committing (reader and commit failures), `None` - no restart
   */
@@ -222,7 +221,6 @@ case class MsgReadParams(
   keyCodec: String = null,
   valueCodec: String = null,
   atMostOnce: Boolean = false,
-  keyName: String = null,
   restart: Option[RestartSettings] = None,
   decodeError: Option[String] = None,
 ) {
@@ -261,7 +259,6 @@ object MsgReadParams {
     from: Any,
     timeout: Any,
     committer: Any,
-    key: Any,
     usingCodecs: Any,
     atMostOnce: Any,
     restart: Any = null,
@@ -291,13 +288,11 @@ object MsgReadParams {
     val amo = amp.boolean(ScalarColumn, amp.single(atMostOnce)) == java.lang.Boolean.TRUE
     if (amo && committerConfig.isDefined)
       amp.error("'committer' and 'at_most_once' are mutually exclusive")
-    val kp = Param(Op, "key")
-    val keyName = kp.string(ScalarColumn, kp.single(key))
     val (kc, vc) = codecNames(Op, usingCodecs)
     val dp = Param(Op, "decode_error")
     val de = Option(dp.string(ScalarColumn, dp.single(decodeError)))
       .map(v => MsgProvider.decodeErrorSkip(v).fold[String](dp.error(_), _ => v))
-    MsgReadParams(subscription(from, g), within, idle, committerConfig, kc, vc, amo, keyName,
+    MsgReadParams(subscription(from, g), within, idle, committerConfig, kc, vc, amo,
       restartParam(Op, restart), de)
   }
 
