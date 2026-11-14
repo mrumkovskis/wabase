@@ -576,9 +576,16 @@ class MsgOpsSpecs extends FlatSpec with Matchers with TestQuereaseInitializer {
     MsgOpsTestFunctions.recorded.asScala.toList.takeRight(3) shouldBe List("a:0", "b:1", "c:2")
   }
 
-  it should "fail msg read on reader configuration error, not restart it" in {
+  it should "not restart msg send on reader configuration error" in {
     val (e, millis) = timed(intercept[RuntimeException](
       action("msg_read_commit_restart", Map("topic" -> newTopic()), "delete")))
+    e.getMessage should include ("group is required")
+    millis should be < 5000L
+  }
+
+  it should "not restart reader on reader configuration error" in {
+    val (e, millis) = timed(intercept[RuntimeException](
+      read("msg_read_restart", Map("src" -> newTopic()), "list")))
     e.getMessage should include ("group is required")
     millis should be < 5000L
   }

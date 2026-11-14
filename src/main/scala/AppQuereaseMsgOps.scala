@@ -71,7 +71,9 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
       def commitMetadata(in: InMessage): String = MsgReadParams.commitMetadata(evalElementParam(
         "read", "commit_metadata", op.commitMetadata,
         messageScope(in, params.keyName, scope).toBindeableMap(env), msgRes))
-      def readerSource: Source[Any, Control] =
+      // reader source build failure is reader configuration error (e.g. missing group) - permanent, not restarted
+      // (by msg read restart, restart of consumer of the result). Source is built when the result is consumed.
+      def readerSource: Source[Any, Control] = try {
         if (params.atMostOnce) reader.atMostOnceSource(sub)
         else if (params.committer.isEmpty) reader.source(sub)
         else if (op.commitMetadata == null) reader.committableSource(sub)
@@ -79,11 +81,10 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
           try commitMetadata(in) catch { // per message evaluation is not a reader failure - not restarted
             case NonFatal(e) if pipelineRestart.isDefined => throw MsgStreams.ProcessingFailure(e)
           })
+      } catch {
+        case NonFatal(e) => throw new MsgParamException(s"msg read reader configuration error: ${e.getMessage}", e)
+      }
       val toCalls = new MsgStreams.Sequential
-      // the first reader source is built here, so that reader configuration error (e.g. missing group) fails
-      // msg read - not consumer of the result, where it would be restarted
-      val firstReader = new AtomicReference[Source[Any, Control]](readerSource)
-      def nextReader(): Source[Any, Control] = Option(firstReader.getAndSet(null)).getOrElse(readerSource)
       def source(): Source[Any, Control] = if (Option(withinDeadline.get).exists(_.isOverdue())) {
         // `within` expired during restart backoff - stream completes, consumer is not created
         Source.empty[Any].mapMaterializedValue(_ => new Control {
@@ -92,8 +93,8 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
         })
       } else {
         val messages =
-          if (pipelineRestart.isDefined) nextReader().via(MsgStreams.readerFailures)
-          else params.restart.map(MsgStreams.restartOnFailure(_)(() => nextReader())).getOrElse(nextReader())
+          if (pipelineRestart.isDefined) readerSource.via(MsgStreams.readerFailures)
+          else params.restart.map(MsgStreams.restartOnFailure(_)(() => readerSource)).getOrElse(readerSource)
         val within = params.within.map { w =>
           withinDeadline.compareAndSet(null, w.fromNow)
           withinDeadline.get.timeLeft max Duration.Zero

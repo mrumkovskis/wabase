@@ -193,6 +193,8 @@ fields:
 get:  # reader failure (flaky provider) restarts reader - messages before failure are read again
 - msg send to=:'..'.dst msg read [flaky] from={:src topic, 0 partition}
     restart={'50ms' min_backoff, '100ms' max_backoff, 0 random_factor, 2 max_restarts, '10s' max_restarts_within}
+list:  # reader configuration error (missing group) is not restarted
+- msg read [nogroup] from=:src restart={'50ms' min_backoff, '100ms' max_backoff, 0 random_factor}
 
 
 name: msg_read_commit_restart
@@ -216,7 +218,7 @@ update:  # foreach index starts from 0 for each attempt
 - msgs = foreach msg read [flaky] group=:group from=:topic committer=true to={:value = 'c'} restart={'50ms' min_backoff, '100ms' max_backoff, 0 random_factor}:
   - org.wabase.MsgOpsTestFunctions.recordIdx
 - :msgs.size
-delete:  # reader configuration error (missing group) fails msg read - not restarted by msg send restart
+delete:  # reader configuration error (missing group) is not restarted by msg send restart
 - msg send to='x' restart={'50ms' min_backoff, '100ms' max_backoff, 0 random_factor}:
   - msg read [nogroup] from=:topic committer=true
 

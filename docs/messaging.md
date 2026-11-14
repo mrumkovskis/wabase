@@ -561,7 +561,9 @@ processing of the stream restarted by `msg read restart` starts. Its message was
 again. `msg send restart` evaluates the operation again, so processing of its operation (foreach body, `to`) left
 running by the failed stream may overlap with processing of the restarted stream, on the same connection.
 
-Reader configuration errors (e.g. missing group) fail `msg read` - they are not restarted.
+Reader configuration errors (e.g. missing group) are permanent - they are not restarted (by `msg read restart`,
+`msg send restart`). The error is reported when messages are consumed (`foreach`, `msg send`, next step, response
+stream), not by `msg read` itself.
 
 Decoding failure is permanent - it is not restarted, see [decoding errors](#decoding-errors). Other permanent
 failures of the reader are repeated until max restarts are exhausted.

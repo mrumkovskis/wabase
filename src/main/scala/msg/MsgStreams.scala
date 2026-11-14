@@ -71,14 +71,18 @@ object MsgStreams {
   def isPermanent(e: Throwable): Boolean = e.isInstanceOf[MsgParamException] || e.isInstanceOf[MsgDecodingException]
 
   /** Restarts source on failure with backoff ([[RestartSource.onFailuresWithBackoff]]), source completion is not
-    * restarted, permanent failure ([[isPermanent]]) is not restarted.
+    * restarted, permanent failure ([[isPermanent]]) is not restarted. Source build failure is handled as
+    * stream failure - restarted unless permanent.
     * Materialized control stops current source and prevents further restarts.
     * Source can be materialized once (materialized control is shared).
     */
   def restartOnFailure[T](settings: RestartSettings)(source: () => Source[T, Control]): Source[T, Control] = {
     val control = new RestartControl
     val restartSettings = settings.withRestartOn((e: Throwable) => !isPermanent(e))
-    RestartSource.onFailuresWithBackoff(restartSettings)(() => source().mapMaterializedValue(control.set))
+    RestartSource.onFailuresWithBackoff(restartSettings) { () =>
+      try source().mapMaterializedValue(control.set)
+      catch { case NonFatal(e) => Source.failed[T](e) }
+    }
       .mapMaterializedValue(_ => control)
   }
 
