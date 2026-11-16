@@ -219,7 +219,6 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
         case None =>
           source
             .via(filter)
-            .collect { case v if v != null => v }
             .mapAsync(1)(message(_).map((_, NotUsed)))
             .via(sender.flow[NotUsed])
             .map(_ => sent.incrementAndGet())
@@ -746,7 +745,7 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
   private def messagingValues(mr: MessagingResult)(implicit ec: ExecutionContext): Source[Any, Control] =
     messagingStream[Any](mr) { source =>
       mr.committer match {
-        case None => source.map(messageValue).filter(_ != null)
+        case None => source.map(messageValue)
         case Some(committer) =>
           val committed = Promise[Done]() // pipeline is built for each run (attempt)
           source
