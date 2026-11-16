@@ -1632,15 +1632,36 @@ job_res = call test_job1
 #### Job queue
 
 Scheduled ticks and `startJob` / `startJobAction` are handled by `WabaseJobActor`, which runs
-one instance of a job name at a time. Further requests for that job name, while it is running
-on this actor, are kept in a queue of at most `app.job.queue-size` waiting runs (default `0`,
-which disables the queue). The run in progress does not take a slot. A waiting run with the
-same parameters is kept once — a duplicate request is not added again. When the running job
-finishes, the oldest waiting run of that job name is started. Different job names run
-independently, each with its own queue.
+one instance of a job name at a time. Further requests for that job name are kept in a queue
+of at most `app.job.queue-size` waiting runs (default `0`, which disables the queue). The run
+in progress does not take a slot. A waiting run with the same parameters is kept once — a
+duplicate request is not added again. When a run finishes, the oldest waiting run of that job
+name is started. Different job names are queued separately.
 
-A request that is not queued (the queue is disabled or full, or another node holds the running
-lock) is rejected. `call` runs a job in the current action and does not use this queue.
+`app.job.queue` chooses where waiting runs are kept:
+
+| Queue | Class | Waiting runs |
+| --- | --- | --- |
+| Database (default) | `org.wabase.WabaseDbJobQueueFactory` | In `cron_job_queue`, shared by every node that uses `app.job.job-status-cp`. A running lock held on another node is queued. Any node can start the oldest waiting run once the lock is free. |
+| In memory | `org.wabase.InMemoryWabaseJobQueueFactory` | On this node only. A request is queued only while this actor is already running that job name. A running lock held on another node is rejected. |
+
+The database queue needs tables `cron_job_queue` (`id` long, primary key; `job_name` string 60;
+`params` bytes; `enqueued_time` dateTime) and `cron_job_queue_seq` (one row, `id` int primary
+key, `next_id` long). `next_id` allocates queue ids. Updating that row locks queue changes so
+two nodes do not take the same run. Use `DefaultWabaseJobStatusController` with the database
+queue so the same job name does not run on two nodes at once. Parameters are written with
+`ObjectOutputStream` and read with `ObjectInputStream`, the same way a deferred request is
+stored. Object keys are sorted, so map key order does not matter. Values must be
+`Serializable`. The started run receives the deserialized value.
+
+Each node looks for database-queued runs every `app.job.queue-poll-interval` (default 5 seconds).
+`0` or null disables polling. The node that finishes a job starts the next waiting run without
+waiting for the poll. `app.job.clean-jobs-on-start` does not delete queued runs, so a restart
+does not drop work queued for another node.
+
+A request that is not queued (the queue is disabled or full, or the in-memory queue and another
+node holds the running lock) is rejected. `call` runs a job in the current action and does not
+use this queue.
 
 ### rethrow
 

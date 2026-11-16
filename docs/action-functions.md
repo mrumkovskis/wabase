@@ -60,10 +60,14 @@ Asks the scheduler actor (configuration parameter `app.job.actor-name`) to start
 taken from the parameters expression, which must return a map. If it is omitted, the current
 action data is passed.
 
-While that job name is running on this node, further requests can be queued up to
+While that job name is running, further requests can be queued up to
 `app.job.queue-size` waiting runs (default `0` disables the queue). The run in progress
 does not take a slot. A waiting run with the same parameters is kept once — a duplicate
-is not added. Different job names are queued separately. See [job queue](view-actions.md#job-queue).
+is not added. Different job names are queued separately. The default queue is
+`org.wabase.WabaseDbJobQueueFactory`: waiting runs are stored in the database so
+another node can start them. `app.job.queue = org.wabase.InMemoryWabaseJobQueueFactory`
+keeps the queue in memory on this node and rejects a request when another node holds
+the running lock. See [job queue](view-actions.md#job-queue).
 
 Returns http status code as int:
 
@@ -71,7 +75,7 @@ Returns http status code as int:
 | --- | --- |
 | `200` | Job started. |
 | `202` | Job queued. It will run after the current run. Same parameters already waiting are not added again; the response is still `202`. |
-| `409` | Job is already running and this request was not queued (queue disabled or full, or the running lock is held on another node). |
+| `409` | Job is already running and this request was not queued (queue disabled or full, or, with the in-memory queue, the running lock is held on another node). |
 | `404` | Job not found. |
 
 Scheduler must respond within 5 seconds, otherwise the action fails.

@@ -32,3 +32,25 @@ pk:
 idx:
 - start_time
 - job_name, start_time
+
+
+table:    cron_job_queue
+comments: Waiting job runs shared by all nodes. params is a Java object serialization.
+columns:
+- id                  ! long
+- job_name            ! 60
+- params              ! bytes
+- enqueued_time       ! dateTime
+pk:
+- id
+idx:
+- job_name, id
+
+
+table:    cron_job_queue_seq
+comments: One row (id = 1). next_id allocates cron_job_queue ids. Updating the row locks queue changes.
+columns:
+- id                  ! int = 1
+- next_id             ! long = 0
+pk:
+- id

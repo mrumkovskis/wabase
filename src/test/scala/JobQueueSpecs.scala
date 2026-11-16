@@ -67,6 +67,9 @@ class JobQueueSpecs
     queueSize: Int,
   ) extends WabaseJobActor(wabase, scheduler, statusController, new QuietJobStatusLogger) {
     override protected def jobQueueSize: Int = queueSize
+    /** These tests cover the in-memory queue. The config default is the database queue. */
+    override protected def jobQueueFactory: WabaseJobQueueFactory =
+      new InMemoryWabaseJobQueueFactory
   }
 
   private class SwitchableJobStatusController extends NoOpWabaseJobStatusController {

@@ -39,7 +39,23 @@ progress does not take a slot. A waiting run with the same parameters is kept on
 a duplicate is not added. When the running job finishes, the oldest waiting run of
 that job name is started. `startJob` / `startJobAction` return `202` when the request
 was queued (including a duplicate of a run already waiting) and `409` when it was not
-queued (queue disabled or full, or the running lock is held on another node).
+queued (queue disabled or full, or, with the in-memory queue, the running lock is
+held on another node).
+
+Database-backed job queue is the default (`app.job.queue = org.wabase.WabaseDbJobQueueFactory`).
+Waiting runs are stored in `cron_job_queue` (pool `app.job.job-status-cp`) so any node can start them.
+`cron_job_queue_seq` is one row: `next_id` allocates ids and updating the row locks
+queue changes. `org.wabase.InMemoryWabaseJobQueueFactory` keeps the queue on this
+node and rejects a running lock held on another node. With the database queue, a running
+lock held on another node is queued (until `app.job.queue-size`) instead of rejected.
+Nodes look for waiting runs every `app.job.queue-poll-interval` (default 5 seconds;
+`0` disables polling). The node that finishes a job starts the next waiting run
+without waiting for the poll. Use `DefaultWabaseJobStatusController` so the same
+job name does not run on two nodes. Parameters are stored in `cron_job_queue.params`
+(`bytes`) with `ObjectOutputStream`, the same way a deferred request is stored.
+Object keys are sorted, so map key order does not matter. Values must be
+`Serializable`. `app.job.clean-jobs-on-start` does not delete
+queued runs. Documented in `docs/view-actions.md`.
 
 Swagger `components.schemas` includes only types `$ref`'d from generated paths
 (and nested `$ref`s of those schemas). Views with `api` whose paths are skipped

@@ -187,6 +187,7 @@ object JobStatusControllerSpecsHelper {
   }
 
   def clearDb(): Unit = newTransaction { implicit res =>
+    Query("cron_job_queue - []")
     Query("cron_job_status - []")
     Query("cron_job_history - []")
   }

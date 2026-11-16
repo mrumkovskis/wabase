@@ -2,7 +2,7 @@ package org.wabase
 
 import com.typesafe.config.{Config, ConfigValueType}
 import com.typesafe.scalalogging.Logger
-import org.apache.pekko.actor.{Actor, ActorRef, ActorSystem, Props}
+import org.apache.pekko.actor.{Actor, ActorRef, ActorSystem, Cancellable, Props}
 import org.slf4j.LoggerFactory
 import org.wabase.WabaseScheduler.{JobNotFound, JobQueued, JobRunning, JobStarted, Messages, Tick}
 import org.tresql._
@@ -11,6 +11,7 @@ import org.wabase.ds.PoolName
 
 import scala.collection.mutable
 import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.duration._
 import scala.jdk.CollectionConverters._
 import scala.language.existentials
 import scala.util.control.NonFatal
@@ -101,8 +102,9 @@ object WabaseScheduler {
   case object JobStarted extends Messages
   /** Job will run after the current run. Added to the queue, or the same parameters were already waiting. */
   case object JobQueued extends Messages
-  /** Job was not started and was not queued. It is already running and the queue is disabled or full,
-    * or another node holds the running lock.
+  /** Job was not started and was not queued. It is already running and the queue is disabled or full.
+    * The default database queue stores a request when another node holds the running lock.
+    * The in-memory queue rejects that request.
     */
   case object JobRunning extends Messages
   /** message to inform sender that no such job exists */
@@ -224,16 +226,39 @@ object WabaseJobQueue {
   case object Disabled extends Result
 }
 
+/** Builds the per-job-name queue used by [[WabaseJobActor]].
+  *
+  * Configure with `app.job.queue`. The default, [[WabaseDbJobQueueFactory]],
+  * stores waiting runs in `cron_job_queue` so another node can start them.
+  * [[InMemoryWabaseJobQueueFactory]] keeps them on this node.
+  */
+trait WabaseJobQueueFactory {
+  def create(jobName: String, maxSize: Int): WabaseJobQueue
+  /** Queue a request when another node holds the running lock, instead of rejecting it. */
+  def acceptsWhenLockHeldElsewhere: Boolean = false
+  /** Job names that have a waiting run. Empty for the in-memory queue. */
+  def pendingJobNames: Seq[String] = Nil
+}
+
+/** In-memory queues. One [[WabaseJobQueue]] per job name, on this node only. */
+class InMemoryWabaseJobQueueFactory extends WabaseJobQueueFactory {
+  def create(jobName: String, maxSize: Int): WabaseJobQueue = new WabaseJobQueue(maxSize)
+}
+
 /** Receives [[WabaseScheduler.Tick]] and runs the job.
   *
   * One instance of a job name runs at a time. Further ticks for that name, while this
-  * actor is running it, are kept in a [[WabaseJobQueue]] of at most `app.job.queue-size`
+  * actor is running it, are kept in a queue of at most `app.job.queue-size`
   * waiting runs (the run in progress does not take a slot). Equal parameters already
   * waiting are not added again. `0` disables the queue. When the running job finishes,
   * the oldest waiting run of that name is started. Different job names run independently.
   *
-  * A tick is queued only while this actor is already executing that job name. A running
-  * lock held on another node is rejected, and the next tick tries again.
+  * `app.job.queue` chooses the queue. The default stores it in the database and
+  * queues a request while another node holds the running lock, so whichever node
+  * is free can run it. Nodes also look for waiting runs every
+  * `app.job.queue-poll-interval`. [[InMemoryWabaseJobQueueFactory]] keeps the
+  * queue on this node: a tick is queued only while this actor is already
+  * executing that job name, and a running lock held on another node is rejected.
   */
 class WabaseJobActor(
   wabase: AppBase[_],
@@ -247,13 +272,53 @@ class WabaseJobActor(
   /** Maximum waiting runs per job name. `0` disables the queue. */
   protected def jobQueueSize: Int = configuredJobQueueSize
 
+  /** How often to look for database-queued runs. `0` disables polling. */
+  protected def queuePollInterval: FiniteDuration = {
+    val key = "app.job.queue-poll-interval"
+    if (config.getIsNull(key)) Duration.Zero
+    else {
+      val interval = toFiniteDuration(config.getDuration(key))
+      if (interval < Duration.Zero) Duration.Zero else interval
+    }
+  }
+
+  @annotation.nowarn("msg=Manifest")
+  private def loadJobQueueFactory: WabaseJobQueueFactory = {
+    val key = "app.job.queue"
+    if (config.getIsNull(key) ||
+        config.getString(key) == classOf[InMemoryWabaseJobQueueFactory].getName)
+      new InMemoryWabaseJobQueueFactory
+    else
+      getObjectOrNewInstance[WabaseJobQueueFactory](
+        config, key, "job queue",
+        Seq(wabase.dbAccess), Seq(classOf[DbAccess]))
+  }
+
+  private lazy val configuredJobQueueFactory: WabaseJobQueueFactory = loadJobQueueFactory
+
+  /** Queue implementation. Tests supply a factory that shares one database. */
+  protected def jobQueueFactory: WabaseJobQueueFactory = configuredJobQueueFactory
+
   private val running = mutable.Set.empty[String]
   private val queues = mutable.Map.empty[String, WabaseJobQueue]
+  private var queueDrain: Option[Cancellable] = None
 
   private case class JobFinished(jobName: String)
+  /** Wake this actor to start waiting runs stored in the shared queue. */
+  protected case object DrainJobQueue
 
   override def preStart(): Unit = {
     context.system.log.info(s"Wabase job control actor started...")
+    if (jobQueueSize > 0 && jobQueueFactory.acceptsWhenLockHeldElsewhere) {
+      val interval = queuePollInterval
+      context.system.log.info(
+        s"Database job queue enabled, at most $jobQueueSize waiting runs per job" +
+          (if (interval > Duration.Zero) s", poll interval $interval" else ", polling disabled"))
+      self ! DrainJobQueue
+      if (interval > Duration.Zero)
+        queueDrain = Some(context.system.scheduler.scheduleAtFixedRate(
+          interval, interval, self, DrainJobQueue)(context.dispatcher))
+    }
   }
 
   override def receive: Receive = {
@@ -266,28 +331,69 @@ class WabaseJobActor(
     case JobFinished(jobName) =>
       running -= jobName
       tryStartQueued(jobName)
+    case DrainJobQueue =>
+      drainWaitingJobs()
   }
 
   override def postStop(): Unit = {
+    queueDrain.foreach(_.cancel())
     context.system.log.info(s"Wabase job control actor stopped")
   }
 
+  private def drainWaitingJobs(): Unit =
+    try {
+      jobQueueFactory.pendingJobNames.foreach { name =>
+        try tryStartQueued(name)
+        catch {
+          case NonFatal(e) =>
+            context.system.log.error(e, s"Failed to start queued job '$name'")
+        }
+      }
+    } catch {
+      case NonFatal(e) =>
+        context.system.log.error(e, "Failed to read the job queue")
+    }
+
   private def queueFor(jobName: String): WabaseJobQueue =
-    queues.getOrElseUpdate(jobName, new WabaseJobQueue(jobQueueSize))
+    queues.getOrElseUpdate(jobName, jobQueueFactory.create(jobName, jobQueueSize))
 
   private def accept(jobName: String, params: Map[String, Any]): Messages = {
     val stableParams = params.toMap
+    if (jobQueueFactory.acceptsWhenLockHeldElsewhere)
+      acceptShared(jobName, stableParams)
+    else acceptLocal(jobName, stableParams)
+  }
+
+  /** In-memory queue. A lock held on another node is not queued. */
+  private def acceptLocal(jobName: String, params: Map[String, Any]): Messages =
     if (running.contains(jobName))
-      replyFor(jobName, queueFor(jobName).offer(stableParams))
+      replyFor(jobName, queueFor(jobName).offer(params))
     else queues.get(jobName).filter(_.size > 0) match {
       case Some(q) =>
-        val offered = q.offer(stableParams)
+        val offered = q.offer(params)
         tryStartQueued(jobName) match {
-          case Some(started) if started == stableParams => JobStarted
+          case Some(started) if started == params => JobStarted
           case _ => replyFor(jobName, offered)
         }
       case None =>
-        startNow(jobName, stableParams)
+        startNow(jobName, params)
+    }
+
+  /** Database queue. A lock held on another node is queued, and this node starts
+    * the oldest waiting run when it is free.
+    */
+  private def acceptShared(jobName: String, params: Map[String, Any]): Messages = {
+    val q = queueFor(jobName)
+    if (running.contains(jobName))
+      replyFor(jobName, q.offer(params))
+    else if (q.maxSize <= 0)
+      startNow(jobName, params)
+    else {
+      val offered = q.offer(params)
+      tryStartQueued(jobName) match {
+        case Some(started) if started == params => JobStarted
+        case _ => replyFor(jobName, offered)
+      }
     }
   }
 
@@ -307,16 +413,27 @@ class WabaseJobActor(
       JobRunning
   }
 
-  /** Start the oldest waiting run, if this actor is not already running `jobName`. */
+  /** Start the oldest waiting run, if this actor is not already running `jobName`.
+    * A run taken from the queue is put back when it cannot be started.
+    */
   private def tryStartQueued(jobName: String): Option[Map[String, Any]] =
     if (running.contains(jobName)) None
     else queueFor(jobName).poll() match {
       case None => None
       case Some(params) =>
-        startNow(jobName, params) match {
+        val started =
+          try startNow(jobName, params)
+          catch { case NonFatal(e) =>
+            context.system.log.error(e, s"Failed to start queued job '$jobName'")
+            JobRunning
+          }
+        started match {
           case JobStarted => Some(params)
           case _ =>
-            queueFor(jobName).offerFront(params)
+            try queueFor(jobName).offerFront(params)
+            catch { case NonFatal(e) =>
+              context.system.log.error(e, s"Failed to put job '$jobName' back on the queue")
+            }
             None
         }
     }
