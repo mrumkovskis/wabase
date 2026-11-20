@@ -18,7 +18,7 @@ object ActionHandlers {
   def doRequest(handlerName: String, ctx: WabaseRequestContext): Future[HttpResponse] = {
     val (cn, fn) = classNameFunctionName(handlerName)
     val key = WabaseService.keyAfterSegment(ctx.req.uri.path, handlerName)
-    WabaseService.buildRequestHandler(cn, fn, Nil, null)(ctx.copy(key = key))
+    WabaseService.buildRequestHandler(cn, fn, _ => Nil, null)(ctx.copy(key = key))
   }
 
   def startJob(jobName: String, ctx: WabaseRequestContext): Future[HttpResponse] = {

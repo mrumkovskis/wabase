@@ -358,19 +358,17 @@ object WabaseService extends Loggable {
   }
 
   def buildRequestHandlerChain(inv: Action.Invocation, innerHandler: RequestHandler): RequestHandler = {
-    inv.args match {
-      case inv_args => inv_args.splitAt(inv_args.size - 1) match {
-        case (args, List(innerInv: Action.Invocation)) =>
-          buildRequestHandler(inv.className, inv.function, HandlerArgsParser.argValues(args),
-            buildRequestHandlerChain(innerInv, innerHandler))
-        case _ =>
-          buildRequestHandler(inv.className, inv.function, HandlerArgsParser.argValues(inv_args), innerHandler)
-      }
+    inv.args.splitAt(inv.args.size - 1) match {
+      case (args, List(innerInv: Action.Invocation)) =>
+        buildRequestHandler(inv.className, inv.function, HandlerArgsParser.argResolver(args),
+          buildRequestHandlerChain(innerInv, innerHandler))
+      case _ =>
+        buildRequestHandler(inv.className, inv.function, HandlerArgsParser.argResolver(inv.args), innerHandler)
     }
   }
 
   def buildRequestHandler(cn: String, fn: String,
-                          invocationArgs: List[HandlerArgsParser.HandlerArg],
+                          invocationArgs: WabaseRequestContext => List[Any],
                           ih: RequestHandler): RequestHandler = wrc => {
     wrc.logger.debug(s"Invoking handler $cn.$fn for request: ${wrc.req}")
     implicit val ec: ExecutionContext = wrc.as.dispatcher
@@ -387,7 +385,7 @@ object WabaseService extends Loggable {
   def handlerParameters(
     wrc: WabaseRequestContext,
     innerHandler: RequestHandler,
-    invocationArgs: List[HandlerArgsParser.HandlerArg],
+    invocationArgs: WabaseRequestContext => List[Any],
     missingHandlerError: => Nothing,
   ): (Seq[(Class[_], () => Any)], InvocationParameterFun) = {
     implicit val ec: ExecutionContext = wrc.as.dispatcher
@@ -409,14 +407,7 @@ object WabaseService extends Loggable {
       (classOf[String], () => toStringEntityDecoder(wrc)),
     )
 
-    val paramFunction = invocationArgs.map {
-      case HandlerArgsParser.StringArg(s) => s
-      case HandlerArgsParser.RegexGroupRef(nr) =>
-        pathMatchedGroups(wrc).flatMap(_.lift(nr - 1))
-          .getOrElse(sys.error(
-              s"Group nr '$nr' not found in route '${wrc.route.path}' for path '${wrc.req.uri.path}'"))
-      case HandlerArgsParser.NumberArg(n) => n
-    }.zipWithIndex.map { case (value, idx) =>
+    val paramFunction = invocationArgs(wrc).zipWithIndex.map { case (value, idx) =>
       { case (par, i) if idx == i => wrc.wabase.qe.convertToType(value, par.getType) }:InvocationParameterFun
     }.foldLeft(PartialFunction.empty[InvocationParameter, Any])(_ orElse _) orElse
       AppQuerease.dtoParameterFromMapF(() => toMapEntityDecoder(wrc))(wrc.wabase.qio)
@@ -512,6 +503,18 @@ object HandlerArgsParser extends QueryParsers {
   def argValues(args: List[Action.Op]): List[HandlerArg] = args.map {
     case t: Action.Tresql => parsArg(t.tresql)
     case x => sys.error(s"Invalid handler arg: '$x'. Only string constants or regexp group refs allowed")
+  }
+  /** Parses args eagerly, returns function resolving regex group refs against request path */
+  def argResolver(args: List[Action.Op]): WabaseRequestContext => List[Any] = {
+    val parsed = argValues(args)
+    wrc => parsed.map {
+      case StringArg(s) => s
+      case RegexGroupRef(nr) =>
+        WabaseService.pathMatchedGroups(wrc).flatMap(_.lift(nr - 1))
+          .getOrElse(sys.error(
+            s"Group nr '$nr' not found in route '${wrc.route.path}' for path '${wrc.req.uri.path}'"))
+      case NumberArg(n) => n
+    }
   }
 }
 
