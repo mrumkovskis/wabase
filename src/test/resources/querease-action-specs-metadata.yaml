@@ -1534,7 +1534,7 @@ job:
 
 
 name: test_job2
-api: save, get
+api: save, get, delete
 job:
 - +simple_table {id = nextval('seq'), value = :value}
 save:
@@ -1543,6 +1543,8 @@ save:
 - status :result
 get:
 - as any unique simple_table[value = :value]{count(*) count}
+delete:
+- call this
 
 
 name: recursive_job
@@ -2452,3 +2454,8 @@ get:                            # msg send block form
   - :x
 - res = msg send to={'t' topic}:
   - "'B'"
+
+
+# route
+on: /([\w:]+)(.*)     # first group - view name, second - optional key
+do: doAction($1)

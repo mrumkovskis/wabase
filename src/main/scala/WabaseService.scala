@@ -21,6 +21,7 @@ import org.wabase.ds.QueryTimeout
 import scala.annotation.tailrec
 import scala.concurrent.{ExecutionContext, Future}
 import scala.jdk.CollectionConverters._
+import scala.reflect.ClassTag
 import scala.util.Try
 import scala.util.control.NonFatal
 import scala.util.parsing.input.CharSequenceReader
@@ -183,6 +184,11 @@ object WabaseService extends Loggable {
     case h: HttpHeader if h.is(lowerCaseName) => Some(h.value)
     case _                                    => None
   }
+
+  def optionalHeaderValueByType[T <: HttpHeader: ClassTag](msg: HttpMessage): Option[T] =
+    optionalHttpHeaderValuePF(msg) ({
+      case x if implicitly[ClassTag[T]].runtimeClass.isAssignableFrom(x.getClass) => x.asInstanceOf[T]
+    })
 
   def optionalCookie(req: HttpRequest)(name: String): Option[String] = {
     optionalHttpHeaderValue(req)({

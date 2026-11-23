@@ -21,14 +21,12 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
     override implicit lazy val httpClients: WabaseHttpClients =
       WabaseHttpClients(Map("default-wabase-http-client" -> (_ => server.handle)))
   }
-  implicit val serverSystem: ActorSystem  = ActorSystem("wabase-server")
-  implicit val ec: ExecutionContext = serverSystem.dispatcher
-  val wabase = new WA(serverSystem)
-  val server = new WabaseServer(wabase, invokeBeforeStart = null, enableServerNotifications = false, enableDeferredRequests = false)
+  import TestWabaseServer._
+  private val server = TestWabaseServer(new WA(as))
 
   DbDrivers.loadDrivers
 
-  private def response(req: HttpRequest) = Await.result(server.handle(req), 5.seconds)
+  private def response = TestWabaseServer.responseSync(server)(_)
 
   protected def callRoute(
     url: String,
@@ -38,16 +36,12 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
   ) = entityForRequest(HttpRequest(method = method, uri = url, entity = data), decoder)
 
   protected def entityForRequest(req: HttpRequest, decoder: String => Any = identity) =
-    decoder(WabaseTestHandlers.entity(response(req)))
+    decoder(entity(response(req)))
 
   protected def statusAndEntityForRequest(req: HttpRequest, decoder: String => Any = identity) = {
     val resp = response(req)
-    (resp.status, decoder(WabaseTestHandlers.entity(resp)))
+    (resp.status, decoder(entity(resp)))
   }
-
-  protected def encodeJs(value: Any) = ResultEncoder.encodeAnyToJsonString(value)
-
-  protected def decodeJs(js: String) = CborOrJsonAnyValueDecoder.decode(ByteString(js))
 
   it should "do wabase service routes" in {
     callRoute("/simple") shouldBe "Simple handler response"
@@ -161,7 +155,7 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
     val x = (1 to 3).scanLeft(enc_session) { (enc_ses, _) =>
       Thread.sleep(10) // ensure that session expiration time changes
       resp = response(authReq(enc_ses, Get("/restricted/user_principal")))
-      decodeJs(WabaseTestHandlers.entity(resp)) shouldBe Map("id" -> 10, "roles" ->  List("admin", "guest", "operator"))
+      decodeJs(entity(resp)) shouldBe Map("id" -> 10, "roles" ->  List("admin", "guest", "operator"))
       encryptedSession(resp)
     }.reduce {(s1, s2) => decSes(s1).expirationTime should be < decSes(s2).expirationTime; s2}
 
@@ -273,6 +267,8 @@ object UserParameterProviderFactory extends AppQuerease.InjectionParametersProvi
 
 object WabaseTestHandlers {
 
+  import TestWabaseServer.entity
+
   def simpleHandler(ctx: WabaseRequestContext) =
     Future.successful { HttpResponse(entity = "Simple handler response") }
 
@@ -368,8 +364,4 @@ object WabaseTestHandlers {
   def error = throw new IllegalArgumentException("Error")
   def authError = throw new AuthenticationException("bad")
   def csrfException = throw new CSRFException("bad")
-
-  // helper function
-  def entity(msg: HttpMessage)(implicit ec: ExecutionContext, as: ActorSystem): String =
-    Await.result(msg.entity.toStrict(1.second).map(_.data.utf8String), 1.second)
 }

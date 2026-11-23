@@ -142,7 +142,7 @@ class RouteTests extends FlatSpec with Matchers with ScalatestRouteTest {
 
   it should "fail properly" in {
     implicit val exceptionHandler = service.appExceptionHandler
-    implicit val user: TestUsr = null
+    implicit val user: WabaseUser = null
     val route = Route.seal((service.crudPath) {
       service.crudAction
     })

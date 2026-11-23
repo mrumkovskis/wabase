@@ -26,7 +26,7 @@ import scala.concurrent.duration._
 class CrudTestService(system: ActorSystem, testApp: TestApp) extends TestAppService(system) {
   override def initApp          = testApp
   override def initFileStreamer = testApp
-  implicit val user: TestUsr    = null
+  implicit val user: WabaseUser    = null
   implicit val exceptionHandler: ExceptionHandler = appExceptionHandler
   implicit val rejectionHandler: RejectionHandler = RejectionHandler.default
   implicit val state:            ApplicationState = ApplicationState(Map.empty)

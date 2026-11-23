@@ -3,10 +3,10 @@ package org.wabase
 import java.sql.{Connection, DriverManager}
 import org.mojoz.metadata.in.YamlMd
 import org.mojoz.metadata.out.DdlGenerator
-import org.mojoz.querease.{TresqlMetadata, ValidationMessage}
+import org.mojoz.querease.ValidationMessage
 import org.scalatest.{BeforeAndAfterAll, Suite}
 import org.tresql.dialects.HSQLDialect
-import org.tresql.{Dialect, LogTopic, Logging, QueryBuilder, Resources, ResourcesTemplate, ThreadLocalResources}
+import org.tresql.{Dialect, QueryBuilder, ResourcesTemplate, ThreadLocalResources}
 
 import java.text.SimpleDateFormat
 import java.util.Date

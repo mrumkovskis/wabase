@@ -97,7 +97,7 @@ class FileUploadSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitial
 
   def uploadPath = "/upload"
   def downloadPath(id: Number, sha: String) = s"download/$id/$sha"
-  val usr = TestUsr(1)
+  val usr = WabaseUser(Map("id" -> 1))
 
   implicit val routeTimeout: RouteTestTimeout = RouteTestTimeout(FiniteDuration(5, duration.SECONDS))
   implicit val responseTimeout: Duration = Duration("5s")
@@ -157,7 +157,7 @@ class FileUploadSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitial
   }
 
   private def saveFile(content: String): Future[AppFileStreamer.FileInfo] = {
-    implicit val user: TestUsr = usr
+    implicit val user: WabaseUser = usr
     Source.single(ByteString(content)).runWith(app.fileSink("test.txt", "text/plain"))
   }
   private def storedPath(fi: AppFileStreamer.FileInfo): String =
@@ -251,7 +251,7 @@ class FileUploadSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitial
   }
 
   it should "upload, deduplicate and download file with S3 storage" in {
-    implicit val user: TestUsr = usr
+    implicit val user: WabaseUser = usr
     val content = "File upload specs - S3 storage"
     def upload = Await.result(
       Source.single(ByteString(content)).runWith(s3App.fileSink("s3.txt", "text/plain")), responseTimeout)

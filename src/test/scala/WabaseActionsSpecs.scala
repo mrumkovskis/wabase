@@ -7,7 +7,6 @@ import org.apache.pekko.http.scaladsl.marshalling.Marshal
 import org.apache.pekko.http.scaladsl.model.HttpHeader.ParsingResult.Ok
 import org.apache.pekko.http.scaladsl.model.headers.{`Content-Disposition`, `Set-Cookie`}
 import org.apache.pekko.http.scaladsl.model.{AttributeKey, ContentType, ContentTypes, HttpEntity, HttpHeader, HttpRequest, HttpResponse, MessageEntity, Multipart, StatusCodes}
-import org.apache.pekko.http.scaladsl.server.Route
 import org.apache.pekko.http.scaladsl.testkit.ScalatestRouteTest
 import org.apache.pekko.http.scaladsl.unmarshalling.Unmarshal
 import org.apache.pekko.stream.scaladsl.{Source, StreamConverters}
@@ -125,23 +124,16 @@ object WabaseActionsSpecs {
 }
 
 class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseInitializer with AsyncFlatSpecLike
-  with ScalatestRouteTest {
+  with ScalatestRouteTest with WabaseRouteTest {
   import WabaseActionsSpecs._
 
   val mailBox = new MailBox
 
   override def dbNamePrefix: String = "wabase_db"
 
-  class WabaseActionsService(as: ActorSystem) extends TestAppServiceNoDeferred(as) {
-    val route = crudAction(user)
-    override def initFileStreamer: TestApp = WabaseActionsSpecs.this.app
-  }
-
-  var app: TestApp = _
-  var service: WabaseActionsService = _
-  var wabaseScheduler: WabaseScheduler = _
-
-  private implicit val as: ActorSystem = ActorSystem("wabase-action-specs")
+  var app: TestApp with Execution = _
+  var server: WabaseServer = _
+  var route: HttpRequest => Future[HttpResponse] = _
 
   override def beforeAll(): Unit = {
     querease = new TestQuerease("/querease-action-specs-metadata.yaml") {
@@ -160,7 +152,8 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       override protected def initQuerease: AppQuerease = querease
       override protected def initQuereaseIo: AppQuereaseIo[Dto] = new AppQuereaseIo[Dto](querease)
     }
-    app = new TestApp {
+    app = new TestApp with Execution {
+      override val actorSystem: ActorSystem = implicitly[ActorSystem]
       override val DefaultCp: PoolName = PoolName("wabase_db")
       override def dbAccessDelegate = db
       override protected def initQuerease = querease
@@ -188,18 +181,13 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         ConfigFactory.parseString(s"files.root = $root_path")
           .withFallback(FileStreamerConfig.configs("main"))
       override implicit lazy val fileStreamers: WabaseFileStreamers = WabaseFileStreamers(
-        Map("main" -> app.fileStreamer)
+        Map("main" -> this.fileStreamer)
       )
       override implicit lazy val httpClients: WabaseHttpClients =
-        WabaseHttpClients(Map("default-wabase-http-client" -> (_ => Route.toFunction(service.route)(service.actorSystem)(_))))
+        WabaseHttpClients(Map("default-wabase-http-client" -> (_ => route)))
     }
-    val myApp = app
-
-    service = new WabaseActionsService(as) {
-      override def initApp = myApp
-    }
-    wabaseScheduler = new WabaseScheduler(app, as)
-    wabaseScheduler.init()
+    server = TestWabaseServer(app)
+    route = TestWabaseServer.response(server)(_)
   }
 
   override def afterAll(): Unit = {
@@ -213,7 +201,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     super.afterAll()
   }
 
-  private implicit val user: TestUsr = TestUsr(100)
+  private implicit val user: WabaseUser = WabaseUser(Map("id" -> 100))
   private implicit val timeout: QueryTimeout = QueryTimeout(10)
   private implicit val defaultCp: PoolName = PoolName(dbNamePrefix)
 
@@ -227,17 +215,12 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
                             unwrapException: Boolean = true,
                           ) = {
     implicit val state = ApplicationState(env)
-    implicit val fileStreamer: AppFileStreamer[TestUsr] = app
     implicit val httpReq: HttpRequest = null
     implicit val log: Logger = Logger(LoggerFactory.getLogger(s"$view.$action"))
     app.doWabaseAction(action, view, keyValues, params, values)
       .map(_.result)
       .flatMap(processResult(_, view, removeIdsFlag))
       .transform(identity, { case e: QuereaseActionException if unwrapException => e.getCause case e => e })
-  }
-
-  protected def doJob(jobName: String, params: Map[String, Any]): Future[Any] = {
-    wabaseScheduler.doJob(jobName, params)
   }
 
   protected def processResult(r: QuereaseResult, view: String, removeIdsFlag: Boolean): Future[Any] = r match {
@@ -248,12 +231,12 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         if (sr.resultFilter == null) new ResultRenderer.ViewFieldFilter(view, app.qe.nameToViewDef)
         else sr.resultFilter
       implicit val marshaller: org.apache.pekko.http.scaladsl.marshalling.ToEntityMarshaller[QuereaseSerializedResult] =
-        service.toEntityQuereaseSerializedResultMarshaller(view, filter)
+        app.toEntityQuereaseSerializedResultMarshaller(view, filter)
       Marshal(sr).to[MessageEntity]
         .flatMap { entity =>
           if (filter.name == view) {
-            implicit val unmarshaller_1 = service.toMapUnmarshallerForView(view)
-            implicit val unmarshaller_2 = service.toSeqOfMapsUnmarshallerForView(view)
+            implicit val unmarshaller_1 = app.toMapUnmarshallerForView(view)
+            implicit val unmarshaller_2 = app.toSeqOfMapsUnmarshallerForView(view)
             if  (sr.isCollection)
               Unmarshal(entity).to[Seq[Map[String, Any]]]
             else Unmarshal(entity).to[Map[String, Any]]
@@ -782,7 +765,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         _ shouldBe MapResult(Map("nr" -> 2.5))
       }
       t3 <- doAction("count", "invocation_test_1", Map()).map {
-        _ shouldBe StringResult("0")
+        _ shouldBe StringResult("1")
       }
       t4 <- doAction("get", "invocation_test_2", Map(), keyValues = Seq("ignored")).map {
         _ shouldBe Map("key" -> "key_val", "value" -> "value_val")
@@ -797,7 +780,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         _ shouldBe Seq(Map("key" -> "key_val", "value" -> "value_val"))
       }
       t8 <- doAction("delete", "invocation_test_2", Map("java_key" -> "java_value"), keyValues = Seq("x")).map {
-        _ shouldBe MapResult(Map("java_key" -> "java_value", "key" -> "x"))
+        _ shouldBe MapResult(Map("java_key" -> "java_value", "key" -> "x", "current_user" -> Map("id" -> 100)))
       }
       t9 <- doAction("count", "invocation_test_2", Map())
         .map(_ shouldBe StringResult("value value") )
@@ -1441,10 +1424,8 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
         doAction("delete", "cols_filter_test_1", Map.empty, keyValues = Seq(id))
     } yield t5
   }
-
+  import TestWabaseServer.responseTimeout
   it should "render template" in {
-    implicit val user: TestUsr = TestUsr(100)
-    val route = service.crudAction
     for {
       t1 <-
         doAction("get", "template_test1", Map("name" -> "Dzidzis"))
@@ -1460,12 +1441,12 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
             fa.filename shouldBe "file name"
             new String(fa.content) should startWith("Hello Boris!")
           }
-      t4 <-
-        Put("/template_test1?name=Joe",
-          createEntity("'Hello {{name}} in {{action}}!'", ContentTypes.`text/plain(UTF-8)`)) ~> route ~> check {
-          entityAs[String] shouldBe "'Hello Joe in update!'"
-          header[`Content-Disposition`].flatMap(_.params.get("filename")) shouldBe Option("file name")
-        }
+      t4 <- Future(Put("/template_test1?name=Joe", createEntity("'Hello {{name}} in {{action}}!'",
+        ContentTypes.`text/plain(UTF-8)`)) ~> route) map { resp =>
+          TestWabaseServer.entity(resp) shouldBe "'Hello Joe in update!'"
+          WabaseService.optionalHeaderValueByType[`Content-Disposition`](resp)
+            .flatMap(_.params.get("filename")) shouldBe Option("file name")
+      }
       t5 <-
         doAction("delete", "template_test1", Map("name" -> "Migel"))
           .map(_ shouldBe StringTemplateResult("Hello Migel in delete!"))
@@ -1611,7 +1592,7 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       t2 <-
         doAction("get", "job_call_test1", Map("name" -> "John"))
           .map(_ shouldBe ResponseResult(200, ResultValue(StringResult("Hello John from test_job1!"))))
-      t3 <- doJob("test_job2", Map("value" -> "ABC")).map(_ shouldBe NoResult)
+      t3 <- doAction("delete", "test_job2", Map("value" -> "ABC")).map(_ shouldBe NoResult)
       t4 <- doAction("list", "job_call_test1", Map("name" -> "ABC"))
         .map(_ shouldBe List(Map("value" -> "ABC")))
       t5 <- doAction("insert", "job_call_test1",
@@ -1730,7 +1711,6 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
   )
 
   it should "do wabase routes and return results" in {
-    implicit val user: TestUsr = TestUsr(100)
     /*
     * Cannot test since resources marshaller since 'resource.txt' file used in test not found from classloader which is used by
     * pekko-http FileAndResourceDirectives.getFromResource method.
@@ -1738,38 +1718,30 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
     * classOf[Marshalling].getResource("/resource.txt") - WORKS
     * classOf[Marshalling].getClassLoader.getResource("/resource.txt") - DOES NOT WORK
     */
-    val route = service.crudAction
-    Delete("/invocation_test_3/0") ~> route ~> check {
-      val r = entityAs[String]
-      jsonAssert(r, Map("1" -> Map("key" -> "value")))
+    Delete("/invocation_test_3/0") ~> route ~> checkResponse { resp =>
+      jsonAssert(resp.entityString, Map("1" -> Map("key" -> "value")))
     }
-    Get("/new/invocation_test_3") ~> route ~> check {
-      val r = entityAs[String]
-      jsonAssert(r, List(Map("1" -> List(Map("key1" -> "value1"))), Map("2" -> List(Map("key2" -> "value2")))))
+    Get("/invocation_test_3:new") ~> route ~> checkResponse { resp =>
+      jsonAssert(resp.entityString,
+        List(Map("1" -> List(Map("key1" -> "value1"))), Map("2" -> List(Map("key2" -> "value2")))))
     }
-    Get("/invocation_test_3/0") ~> route ~> check {
-      val r = entityAs[String]
-      jsonAssert(r, Seq(1, 2, 3))
+    Get("/invocation_test_3/0") ~> route ~> checkResponse { resp =>
+      jsonAssert(resp.entityString, Seq(1, 2, 3))
     }
-    Get("/invocation_test_3") ~> route ~> check {
-      val r = entityAs[String]
-      jsonAssert(r, Seq(Map("name" -> "Kizis"), Map("name" -> "Ala"), Map("name" -> "Ola")))
+    Get("/invocation_test_3") ~> route ~> checkResponse { resp =>
+      jsonAssert(resp.entityString, Seq(Map("name" -> "Kizis"), Map("name" -> "Ala"), Map("name" -> "Ola")))
     }
-    Get("/fake_key_test/123/456") ~> route ~> check {
-      val r = entityAs[String]
-      jsonAssert(r, Map("id" -> 123, "sha_256" -> "456"))
+    Get("/fake_key_test/123/456") ~> route ~> checkResponse { resp =>
+      jsonAssert(resp.entityString, Map("id" -> 123, "sha_256" -> "456"))
     }
-    Get("/typed_fake_key_test/123/456") ~> route ~> check {
-      val r = entityAs[String]
-      jsonAssert(r, Map("id" -> "123", "sha_256" -> "456"))
+    Get("/typed_fake_key_test/123/456") ~> route ~> checkResponse { resp =>
+      jsonAssert(resp.entityString, Map("id" -> "123", "sha_256" -> "456"))
     }
-    Get("/fake_key_field_syntax_test/123/456") ~> route ~> check {
-      val r = entityAs[String]
-      jsonAssert(r, Map("id" -> "123", "sha_256" -> "456"))
+    Get("/fake_key_field_syntax_test/123/456") ~> route ~> checkResponse { resp =>
+      jsonAssert(resp.entityString, Map("id" -> "123", "sha_256" -> "456"))
     }
-    Get("/count/invocation_test_3") ~> route ~> check {
-      val r = entityAs[String]
-      jsonAssert(r, Seq(
+    Get("/invocation_test_3:count") ~> route ~> checkResponse { resp =>
+      jsonAssert(resp.entityString, Seq(
         Map("id" -> 1, "name" -> "Kizis", "sex" -> "M", "birthdate" -> "1977-04-10"),
         Map("id" -> 2, "name" -> "Ala", "sex" -> "F", "birthdate" -> "1955-07-01"),
         Map("id" -> 3, "name" -> "Ola", "sex" -> "F", "birthdate" -> "1988-10-09"),
@@ -1780,9 +1752,8 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       WabaseHttpClient.fileUploadForm(createEntity("Field value2", ContentTypes.`text/plain(UTF-8)`), null, "field2"),
       WabaseHttpClient.fileUploadForm(createEntity("Hi people!", ContentTypes.`text/plain(UTF-8)`), "test1.txt", "file1"),
       WabaseHttpClient.fileUploadForm(createEntity("How are you!", ContentTypes.`text/plain(UTF-8)`), "test2.txt", "file2"),
-    )) ~> route ~> check {
-      val r = entityAs[String]
-      jsonAssert(r, Seq(
+    )) ~> route ~> checkResponse { resp =>
+      jsonAssert(resp.entityString, Seq(
         Map("name" -> "field1", "value" -> "Field value1"),
         Map("name" -> "field2", "value" -> "Field value2"),
         Map("name" -> "test1.txt", "value" -> "228c55536f6bcca78166c30c29199c4b6a52c8ed560cdc1db62ec1ac8af5df30"),
@@ -1790,118 +1761,105 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       ))
     }
     Put("/extract_parts_test/test-upd.txt", createEntity("Hi people again!", ContentTypes.`text/plain(UTF-8)`)) ~>
-      route ~> check {
-      val r = entityAs[String]
-      jsonAssert(r, Map("file" -> "test-upd.txt", "sha_256" -> "4744b699460641b88c590e8a9c089970345ffcce056501652b06ec166c01b666"))
+      route ~> checkResponse { resp =>
+      jsonAssert(resp.entityString, Map("file" -> "test-upd.txt", "sha_256" -> "4744b699460641b88c590e8a9c089970345ffcce056501652b06ec166c01b666"))
     }
     Post("/extract_parts_test2", WabaseHttpClient
-      .fileUploadForm(createEntity("Hi people!", ContentTypes.`text/plain(UTF-8)`), "test.txt")) ~> route ~> check {
-      val r = entityAs[String]
-      jsonAssert(r, Seq(Map("file" -> "test.txt", "sha_256" -> "228c55536f6bcca78166c30c29199c4b6a52c8ed560cdc1db62ec1ac8af5df30")))
+      .fileUploadForm(createEntity("Hi people!", ContentTypes.`text/plain(UTF-8)`), "test.txt")) ~> route ~> checkResponse { resp =>
+      jsonAssert(resp.entityString, Seq(Map("file" -> "test.txt", "sha_256" -> "228c55536f6bcca78166c30c29199c4b6a52c8ed560cdc1db62ec1ac8af5df30")))
     }
     Post("/extract_parts_test2", WabaseHttpClient
-      .fileUploadForm(createEntity("Hi people!" * 150, ContentTypes.`text/plain(UTF-8)`), "test.txt")) ~> route ~> check {
-      status == StatusCodes.ContentTooLarge
+      .fileUploadForm(createEntity("Hi people!" * 150, ContentTypes.`text/plain(UTF-8)`), "test.txt")) ~> route ~> checkResponse { resp =>
+      resp.status shouldBe StatusCodes.ContentTooLarge
     }
     Post("/extract_parts_test3", concatForms(
       WabaseHttpClient.fileUploadForm(createEntity("Hi people!", ContentTypes.`text/plain(UTF-8)`), "test1.txt", "file1"),
       WabaseHttpClient.fileUploadForm(createEntity("How are you!", ContentTypes.`text/plain(UTF-8)`), "test2.txt", "file2"),
-    )) ~> route ~> check {
-      val r = entityAs[String]
-      jsonAssert(r, Seq(
+    )) ~> route ~> checkResponse { resp =>
+      jsonAssert(resp.entityString, Seq(
         Map("name" -> "test1.txt", "value" -> "228c55536f6bcca78166c30c29199c4b6a52c8ed560cdc1db62ec1ac8af5df30"),
         Map("name" -> "test2.txt", "value" -> "8be8a3875c871e2f3990640f18d914836152dfacfd34880a13358e04c6471ea9")
       ))
     }
     Put("/extract_parts_test3/uri-name.txt", createEntity("Hi from source file!", ContentTypes.`text/plain(UTF-8)`)) ~>
-      route ~> check {
-      val r = entityAs[String]
-      jsonAssert(r, Map("file" -> "stored_name.txt",
+      route ~> checkResponse { resp =>
+      jsonAssert(resp.entityString, Map("file" -> "stored_name.txt",
         "sha_256" -> "6c6e0ca48acee8667dc863d27ec4d85b73baa2eb81a395cb62039445c55536c4"))
     }
     var fileId: Any = null
     var fileSha: Any = null
     Put("/upload_test/file.txt", createEntity("upload download", ContentTypes.`text/plain(UTF-8)`)) ~>
-      route ~> check {
-        val r = decodeJs(entityAs[String]).asInstanceOf[Map[String, Any]]
+      route ~> checkResponse { resp =>
+        val r = decodeJs(resp.entityString).asInstanceOf[Map[String, Any]]
         fileId = r("id")
         fileSha = r("sha_256")
         val filename = r("filename")
         filename shouldBe "file.txt"
       }
-    Get(s"/download_test/$fileId/$fileSha") ~> route ~> check {
-      val r = entityAs[String]
-      r shouldBe "upload download"
+    Get(s"/download_test/$fileId/$fileSha") ~> route ~> checkResponse { resp =>
+      resp.entityString shouldBe "upload download"
     }
-    Get(s"/http_with_limit_test/$fileId/$fileSha") ~> route ~> check {
-      an [Exception] should be thrownBy entityAs[String]
+    Get(s"/http_with_limit_test/$fileId/$fileSha") ~> route ~> checkResponse { resp =>
+      an [Exception] should be thrownBy resp.entityString
     }
     Post("/custom_decoder_test", createEntity("id,value\n1,hello", ContentTypes.`text/plain(UTF-8)`)) ~>
-      route ~> check {
-      val r = entityAs[String]
-      jsonAssert(r, List(Map("id" -> "1", "value" -> "hello")))
+      route ~> checkResponse { resp =>
+      jsonAssert(resp.entityString, List(Map("id" -> "1", "value" -> "hello")))
     }
     Post("/default_decoder_test",
       createEntity(ResultEncoder.encodeToJsonString(Map("id" -> "1", "value" -> "hello")), ContentTypes.`application/json`)) ~>
-      route ~> check {
-      val r = entityAs[String]
-      jsonAssert(r, Map("id" -> "1", "value" -> "hello"))
+      route ~> checkResponse { resp =>
+      jsonAssert(resp.entityString, Map("id" -> "1", "value" -> "hello"))
     }
     Post("/default_decoder_test",
       createEntity("id=1&value=hello", ContentTypes.`application/x-www-form-urlencoded`)) ~>
-      route ~> check {
-      val r = entityAs[String]
-      jsonAssert(r, Map("id" -> "1", "value" -> "hello"))
+      route ~> checkResponse { resp =>
+      jsonAssert(resp.entityString, Map("id" -> "1", "value" -> "hello"))
     }
   }
 
   it should "extract entity" in {
-    implicit val user: TestUsr = TestUsr(100)
-    val route = service.crudAction
     Put("/extract_http_entity_test1",
-      HttpEntity(ContentTypes.`text/plain(UTF-8)`, ByteString("Good morning!"))) ~> route ~> check {
-      val r = entityAs[String]
-      r shouldBe "Good morning!"
+      HttpEntity(ContentTypes.`text/plain(UTF-8)`, ByteString("Good morning!"))) ~> route ~> checkResponse { resp =>
+      resp.entityString shouldBe "Good morning!"
     }
     Post("/extract_http_entity_test2",
-      HttpEntity(ContentTypes.`text/plain(UTF-8)`, ByteString("Good afternoon!"))) ~> route ~> check {
-      val r = entityAs[String]
-      r shouldBe "Good afternoon!"
+      HttpEntity(ContentTypes.`text/plain(UTF-8)`, ByteString("Good afternoon!"))) ~> route ~> checkResponse { resp =>
+      resp.entityString shouldBe "Good afternoon!"
     }
     Post("/invocation_keep_result_test",
-      HttpEntity(ContentTypes.`text/plain(UTF-8)`, ByteString("Good evening!"))) ~> route ~> check {
-      val r = entityAs[String]
-      r shouldBe "Good evening!"
+      HttpEntity(ContentTypes.`text/plain(UTF-8)`, ByteString("Good evening!"))) ~> route ~> checkResponse { resp =>
+      resp.entityString shouldBe "Good evening!"
     }
     Post("/extract_http_entity_test3",
-      HttpEntity(ContentTypes.`application/json`, ByteString("""[{"name": "A"}, {"name": "B"}]"""))) ~> route ~> check {
-      jsonAssert(entityAs[String], List(Map("name" -> "A A"), Map("name" -> "B B")))
+      HttpEntity(ContentTypes.`application/json`, ByteString("""[{"name": "A"}, {"name": "B"}]"""))) ~> route ~> checkResponse { resp =>
+      jsonAssert(resp.entityString, List(Map("name" -> "A A"), Map("name" -> "B B")))
     }
     Put("/extract_http_entity_test3",
-      HttpEntity(ContentTypes.`application/json`, ByteString("""[{"name": "A"}, {"name": "B"}]"""))) ~> route ~> check {
-      jsonAssert(entityAs[String], List(Map("name" -> "A-A"), Map("name" -> "B-B")))
+      HttpEntity(ContentTypes.`application/json`, ByteString("""[{"name": "A"}, {"name": "B"}]"""))) ~> route ~> checkResponse { resp =>
+      jsonAssert(resp.entityString, List(Map("name" -> "A-A"), Map("name" -> "B-B")))
     }
-    Post("/extract_http_entity_test4", HttpEntity.Empty) ~> route ~> check {
-      jsonAssert(entityAs[String], List(
+    Post("/extract_http_entity_test4", HttpEntity.Empty) ~> route ~> checkResponse { resp =>
+      jsonAssert(resp.entityString, List(
         Map("name" -> "N1 N1", "surname" -> "S1 S1"),
         Map("name" -> "N2 N2", "surname" -> "S2 S2"))
       )
     }
-    Put("/extract_http_entity_test4", HttpEntity.Empty) ~> route ~> check {
-      jsonAssert(entityAs[String], List(
+    Put("/extract_http_entity_test4", HttpEntity.Empty) ~> route ~> checkResponse { resp =>
+      jsonAssert(resp.entityString, List(
         Map("name" -> "N1-N1", "surname" -> "S1-S1"),
         Map("name" -> "N2-N2", "surname" -> "S2-S2"))
       )
     }
-    Post("/extract_csv_http_entity_test", HttpEntity.Empty) ~> route ~> check {
-      jsonAssert(entityAs[String], List(
+    Post("/extract_csv_http_entity_test", HttpEntity.Empty) ~> route ~> checkResponse { resp =>
+      jsonAssert(resp.entityString, List(
         Map("name" -> "N1 N1", "surname" -> "S1 S1"),
         Map("name" -> "N2 N2", "surname" -> "S2 S2"))
       )
     }
     Put("/extract_csv_http_entity_test",
-      HttpEntity(ContentTypes.`text/csv(UTF-8)`, ByteString("name,surname\nn1,s1\nn2,s2\n"))) ~> route ~> check {
-      jsonAssert(entityAs[String],  List(
+      HttpEntity(ContentTypes.`text/csv(UTF-8)`, ByteString("name,surname\nn1,s1\nn2,s2\n"))) ~> route ~> checkResponse { resp =>
+      jsonAssert(resp.entityString,  List(
         Map("name" -> "n1-n1", "surname" -> "s1-s1"),
         Map("name" -> "n2-n2", "surname" -> "s2-s2"),
       ))
@@ -1918,8 +1876,8 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
             |    <name>Name2</name><surname>Surname2</surname>
             |  </record>
             |</data>
-            |""".stripMargin))) ~> route ~> check {
-      jsonAssert(entityAs[String],  List(
+            |""".stripMargin))) ~> route ~> checkResponse { resp =>
+      jsonAssert(resp.entityString,  List(
         Map("name" -> "Name1-Name1", "surname" -> "Surname1-Surname1"),
         Map("name" -> "Name2-Name2", "surname" -> "Surname2-Surname2"),
       ))
@@ -1936,8 +1894,8 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
             |    <name>Name2</name><surname>Surname2</surname>
             |  </record>
             |</data>
-            |""".stripMargin))) ~> route ~> check {
-      jsonAssert(entityAs[String],  List(
+            |""".stripMargin))) ~> route ~> checkResponse { resp =>
+      jsonAssert(resp.entityString,  List(
         Map("name" -> "Name1", "surname" -> "Surname1"),
         Map("name" -> "Name2", "surname" -> "Surname2"),
       ))
@@ -1945,75 +1903,67 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
   }
 
   it should "set response headers" in {
-    implicit val user: TestUsr = TestUsr(4)
-    val route = service.crudAction
-    Get("/set_headers_test1") ~> route ~> check {
-      headers.collect { case `Set-Cookie`(c) => (c.name, (c.value, c.path, c.expires.map(_.toString()))) }
+    Get("/set_headers_test1") ~> route ~> checkResponse { resp =>
+      resp.headers.collect { case `Set-Cookie`(c) => (c.name, (c.value, c.path, c.expires.map(_.toString()))) }
         .toMap shouldBe Map(
           "deleme" -> ("", Some("test_path"), Some("1800-01-01T00:00:00")),
           "test" ->   ("test_val", None, Some("2025-02-02T23:10:05"))
         )
-      header("header1") shouldBe Some(HttpHeader.parse("header1", "value1").asInstanceOf[Ok].header)
-      header("header2") shouldBe Some(HttpHeader.parse("header2", "value2").asInstanceOf[Ok].header)
-      response.attribute(AttributeKey[WabaseUser](WabaseAuthentication.WabaseUserAttributeName)) shouldBe Some(WabaseUser(Map("attr1" -> "val1", "attr2" -> "val2")))
+      resp.headerNamed("header1") shouldBe Some(HttpHeader.parse("header1", "value1").asInstanceOf[Ok].header)
+      resp.headerNamed("header2") shouldBe Some(HttpHeader.parse("header2", "value2").asInstanceOf[Ok].header)
+      resp.attribute(AttributeKey[WabaseUser](WabaseAuthentication.WabaseUserAttributeName)) shouldBe Some(WabaseUser(Map("attr1" -> "val1", "attr2" -> "val2")))
     }
-    Get("/set_headers_test2") ~> route ~> check {
-      headers.collect {
+    Get("/set_headers_test2") ~> route ~> checkResponse { resp =>
+      resp.headers.collect {
         case `Set-Cookie`(c) => (c.name, (c.value, c.secure, c.httpOnly, c.maxAge, c.expires.map(_.toString()), c.domain))
       }.toMap shouldBe Map(
         "x" -> ("", false, false, None, Some("1800-01-01T00:00:00"), Some("abc.com")),
         "test" -> ("test_val", true, true, Some(1000), None, None),
         "test1" -> ("test_val1", false, false, None, Some("2025-04-03T13:30:25"), None)
       )
-      header("h1") shouldBe Some(HttpHeader.parse("h1", "v1").asInstanceOf[Ok].header)
-      header("h2") shouldBe Some(HttpHeader.parse("h2", "v2").asInstanceOf[Ok].header)
-      header("location") shouldBe Some(HttpHeader.parse("location", "/redirect_path/view").asInstanceOf[Ok].header)
+      resp.headerNamed("h1") shouldBe Some(HttpHeader.parse("h1", "v1").asInstanceOf[Ok].header)
+      resp.headerNamed("h2") shouldBe Some(HttpHeader.parse("h2", "v2").asInstanceOf[Ok].header)
+      resp.headerNamed("location") shouldBe Some(HttpHeader.parse("location", "/redirect_path/view").asInstanceOf[Ok].header)
     }
-    Get("/set_headers_test3") ~> route ~> check {
-      header("response_header_name") shouldBe Some(HttpHeader.parse("response_header_name", "response_header_value").asInstanceOf[Ok].header)
-      jsonAssert(entityAs[String], List(Map("RN" -> "r1", "C" -> "v1"), Map("RN" -> "r2", "C" -> "v2")))
+    Get("/set_headers_test3") ~> route ~> checkResponse { resp =>
+      resp.headerNamed("response_header_name") shouldBe Some(HttpHeader.parse("response_header_name", "response_header_value").asInstanceOf[Ok].header)
+      jsonAssert(resp.entityString, List(Map("RN" -> "r1", "C" -> "v1"), Map("RN" -> "r2", "C" -> "v2")))
     }
-    Get("/set_headers_test4") ~> route ~> check {
-      headers.collect {
+    Get("/set_headers_test4") ~> route ~> checkResponse { resp =>
+      resp.headers.collect {
         case `Set-Cookie`(c) => (c.name, (c.value, c.secure, c.httpOnly, c.expires.map(_.toString())))
       }.toMap shouldBe Map("my_cookie" -> ("my_cookie_value", false, false, Some("2025-03-05T09:37:40")))
-      jsonAssert(entityAs[String], "http://wabase.org/")
+      jsonAssert(resp.entityString, "http://wabase.org/")
     }
   }
 
   it should "bind querease results to tresql" in {
-    implicit val user: TestUsr = TestUsr(100)
-    val route = service.crudAction
     Post("/source_tresql_binding_test1",
-      HttpEntity(ContentTypes.`text/plain(UTF-8)`, ByteString("This is stream!"))) ~> route ~> check {
-      val r = entityAs[String]
-      r shouldBe "This is stream!"
+      HttpEntity(ContentTypes.`text/plain(UTF-8)`, ByteString("This is stream!"))) ~> route ~> checkResponse { resp =>
+      resp.entityString shouldBe "This is stream!"
     }
     Put("/source_tresql_binding_test1", concatForms(
       WabaseHttpClient.fileUploadForm(createEntity("Stream field 1", ContentTypes.`text/plain(UTF-8)`), "file1", "f1"),
       WabaseHttpClient.fileUploadForm(createEntity("Stream field 2", ContentTypes.`text/plain(UTF-8)`), "file2", "f2"),
       WabaseHttpClient.fileUploadForm(createEntity("Stream field 3", ContentTypes.`text/plain(UTF-8)`), "file3", "f3"),
-    )) ~> route ~> check {
-      val r = entityAs[String]
-      jsonAssert(r, Seq("Stream field 1", "Stream field 2", "Stream field 3"))
+    )) ~> route ~> checkResponse { resp =>
+      jsonAssert(resp.entityString, Seq("Stream field 1", "Stream field 2", "Stream field 3"))
     }
   }
 
   it should "foreach as an expression" in {
-    implicit val user: TestUsr = TestUsr(100)
-    val route = service.crudAction
-    Get("/foreach_test_3:count") ~> route ~> check {
-      jsonAssert(entityAs[String], Seq(2, 3, 4))
+    Get("/foreach_test_3:count") ~> route ~> checkResponse { resp =>
+      jsonAssert(resp.entityString, Seq(2, 3, 4))
     }
-    Post("/foreach_test_3") ~> route ~> check {
-      jsonAssert(entityAs[String], List(
+    Post("/foreach_test_3") ~> route ~> checkResponse { resp =>
+      jsonAssert(resp.entityString, List(
         "foreach_test_1 top_upd", "foreach_test_1.ch_1 child1_upd",
         "foreach_test_1.ch_2 child2_upd", "foreach_test_2 old",
         "foreach_test_2.1 new", "foreach_test_2.1.ch_2 new child", "if_test_1 no_value"
       ))
     }
-    Get("/foreach_outer_scope_test") ~> route ~> check {
-      jsonAssert(entityAs[String], List("correct"))
+    Get("/foreach_outer_scope_test") ~> route ~> checkResponse { resp =>
+      jsonAssert(resp.entityString, List("correct"))
     }
   }
 
@@ -2063,10 +2013,8 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
   }
 
   it should "create hierarchy from recursive query" in {
-    implicit val user: TestUsr = TestUsr(4)
-    val route = service.crudAction
-    Get("/hierarchy_test") ~> route ~> check {
-      jsonAssert(entityAs[String],  Seq(
+    Get("/hierarchy_test") ~> route ~> checkResponse { resp =>
+      jsonAssert(resp.entityString,  Seq(
         Map("value" -> "v1", "level" -> 1, "children" -> Seq(
           Map("value" -> "v11", "level" -> 2, "children" -> Seq(
             Map("value" -> "v111", "level" -> 3)

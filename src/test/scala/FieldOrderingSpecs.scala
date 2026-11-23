@@ -8,7 +8,7 @@ import scala.collection.immutable.TreeMap
 class FieldOrderingSpecs extends FlatSpec with Matchers {
   behavior of "FieldOrderingSpecs"
 
-  object FieldOrderingTestApp extends AppBase[TestUsr] with NoAudit[TestUsr]
+  object FieldOrderingTestApp extends AppBase[WabaseUser] with NoAudit[WabaseUser]
       with DbAccess with PostgreSqlConstraintMessage {
     object FieldOrdTestQuerease extends TestQuerease("/constraint-message-spec.yaml")
 

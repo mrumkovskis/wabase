@@ -8,21 +8,20 @@ import org.wabase.WabaseService.Wabase
 
 import scala.concurrent.Future
 
-case class TestUsr(id: Long) {
-  def toMap: Map[String, Any] = Map("id" -> id)
-}
-
 object TestDbAccess extends DbAccess with QuereaseProvider with Loggable {
   override protected def tresqlMetadata = DefaultAppQuerease.tresqlMetadata
 }
 
-trait TestApp extends AppBase[TestUsr] with NoAudit[TestUsr] with PostgreSqlConstraintMessage
-  with DbAccessDelegate with AppFileStreamer[TestUsr] with AppConfig {
+trait TestApp extends AppBase[WabaseUser] with NoAudit[WabaseUser] with PostgreSqlConstraintMessage
+  with DbAccessDelegate with AppFileStreamer[WabaseUser] with Marshalling with AppProvider[WabaseUser] with AppConfig {
   override protected def initQuerease = new TestQuerease("/no-metadata.yaml")
   override def dbAccessDelegate: DbAccess = TestDbAccess
   override def useLegacyFlow(viewName: String, actionName: String): Boolean = viewName endsWith "_legacy_flow"
   override def check[C <: RequestContext[_]](ctx: C, clazz: Class[_]): Unit = {}
   override def relevant[C <: RequestContext[_]](ctx: C, clazz: Class[_]) = ctx
+  // Members declared in org.wabase.AppProvider
+  override type App = AppBase[WabaseUser]
+  override protected def initApp: App = this
 }
 
 object TestAuthorization extends WabaseAuthorization {
@@ -74,14 +73,14 @@ class TestAppLogMessageNoiseDetector extends EventEvaluatorBase[ILoggingEvent] {
 }
 
 class TestAppService(val actorSystem: ActorSystem) extends Execution
-    with AppServiceBase[TestUsr]
-    with AppFileServiceBase[TestUsr]
+    with AppServiceBase[WabaseUser]
+    with AppFileServiceBase[WabaseUser]
     with AppConfig
     with AppVersion
-    with DefaultAppExceptionHandler[TestUsr]
+    with DefaultAppExceptionHandler[WabaseUser]
     with DefaultWsInitialEventsPublisher
     with ServerNotifications
-    with Authentication[TestUsr]
+    with Authentication[WabaseUser]
     with DeferredControl
     with NoServerStatistics
     with Loggable
@@ -89,7 +88,7 @@ class TestAppService(val actorSystem: ActorSystem) extends Execution
   override type App = TestApp
   override def initApp: App = TestApp
   override def initFileStreamer: TestApp = TestApp
-  override def encodeSession(session: Authentication.Session[TestUsr]): String = ???
+  override def encodeSession(session: Authentication.Session[WabaseUser]): String = ???
   override def decodeSession(session: String) = ???
   override def signInUser = ???
   override def appVersion: String = "TEST"
@@ -98,19 +97,19 @@ class TestAppService(val actorSystem: ActorSystem) extends Execution
 }
 
 class TestAppServiceNoDeferred(val actorSystem: ActorSystem) extends Execution
-  with AppServiceBase[TestUsr]
-  with AppFileServiceBase[TestUsr]
+  with AppServiceBase[WabaseUser]
+  with AppFileServiceBase[WabaseUser]
   with AppConfig
   with AppVersion
-  with Authentication[TestUsr]
+  with Authentication[WabaseUser]
   with ConstantQueryTimeout
   with NoServerStatistics
   with Loggable
   with CSRFDefence {
   override type App = TestApp
   override def initApp: App = TestApp
-  override def initFileStreamer: AppFileStreamer[TestUsr] = TestApp
-  override def encodeSession(session: Authentication.Session[TestUsr]): String = ???
+  override def initFileStreamer: AppFileStreamer[WabaseUser] = TestApp
+  override def encodeSession(session: Authentication.Session[WabaseUser]): String = ???
   override def decodeSession(session: String) = ???
   override def signInUser = ???
   override def appVersion: String = "TEST"

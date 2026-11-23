@@ -36,7 +36,7 @@ class DeferredTests extends AnyFlatSpec with Matchers with TestQuereaseInitializ
   var deferredResultFileRootPath: String = _
 
   implicit val queryTimeout: QueryTimeout = QueryTimeout(10)
-  implicit def userToString(user: TestUsr): String = user.id.toString
+  implicit def userToString(user: WabaseUser): String = user.id.toString
 
   private val deferredTestsDb = "deferred-tests"
   override protected def dbNamePrefix: String = deferredTestsDb
@@ -79,7 +79,7 @@ class DeferredTests extends AnyFlatSpec with Matchers with TestQuereaseInitializ
       override lazy val defaultTimeout = FiniteDuration(60, SECONDS)
 
       override def listOrGetAction(viewName: String)(
-        implicit user: TestUsr, state: ApplicationState, timeout: QueryTimeout): Route =
+        implicit user: WabaseUser, state: ApplicationState, timeout: QueryTimeout): Route =
         complete(s"$viewName:${timeout.timeoutSeconds}")
       override protected def initDeferredStorage = {
         val wfs = WabaseFileStreamers(Map("deferred-requests" -> new FileStreamer(appl.fileStreamerConfig, app)))
@@ -150,7 +150,7 @@ class DeferredTests extends AnyFlatSpec with Matchers with TestQuereaseInitializ
   }
 
   "The deferred directive" should "work" in {
-    implicit val user = TestUsr(1)
+    implicit val user: WabaseUser = WabaseUser(Map("id" -> 1))
     val route = service.wsNotificationsAction(user.id.toString) ~
       service.deferred(user) { path("deferred-req" / LongNumber) { id =>
         complete {
@@ -212,7 +212,7 @@ class DeferredTests extends AnyFlatSpec with Matchers with TestQuereaseInitializ
   }
 
   "The enableDeferred directive" should "work" in {
-    implicit val user = TestUsr(2)
+    implicit val user: WabaseUser = WabaseUser(Map("id" -> 2))
     val route = handleExceptions(service.appExceptionHandler) {
       service.wsNotificationsAction(user.id.toString) ~ pathPrefix("data") {
         service.enableDeferred(user) {
@@ -311,7 +311,7 @@ class DeferredTests extends AnyFlatSpec with Matchers with TestQuereaseInitializ
   }
 
   "The deferred directive" should "properly handle exceptions" in {
-    implicit val user = TestUsr(3)
+    implicit val user: WabaseUser = WabaseUser(Map("id" -> 3))
 
     def err_route(err: Throwable) = service.deferred(user) {
       complete(throw err)
@@ -349,7 +349,7 @@ class DeferredTests extends AnyFlatSpec with Matchers with TestQuereaseInitializ
   }
 
   "The deferred directive" should "support deferred modules" in {
-    implicit val user = TestUsr(3)
+    implicit val user: WabaseUser = WabaseUser(Map("id" -> 3))
 
     def defered_route(module: String, idx: Int) = service.deferred(user, module) {
       complete(s"$module call ($idx)")
