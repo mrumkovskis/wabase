@@ -142,6 +142,23 @@ holds route `recover` handlers, see [Error handling](#error-handling).
 | --- | --- |
 | `audit` | Takes inner handler, records request and response of the wrapped chain to the audit db pool (`audit-pool-name`). |
 
+Records are not inserted during the request. They are appended to a buffer, and a background reader
+inserts them into the audit database. `app.audit-queue.implementation` selects the buffer:
+
+- `file` (default) appends to files under `app.audit-queue.path`. That directory must be local disk,
+  not a network or temporary path, and must not be shared by several nodes.
+- `message` publishes each record to `app.audit-queue.topic` through messaging provider
+  `app.audit-queue.provider` (default `main`) and reads it back with consumer group
+  `app.audit-queue.group`. The provider is configured under `msg-provider`, see
+  [messaging](messaging.md). Several nodes can share one topic. The reader inserts a batch and
+  commits it before saving the next batch. Delivery is at least once: a record can be inserted
+  again when it was saved but not yet committed. `AuditBuffer.writeRecord` returns a future that completes when the buffer has
+  accepted the record. For the message buffer that is provider acceptance, and the future fails
+  after `app.audit-queue.send-timeout`. Optional `app.audit-queue.partition` pins every record to
+  one partition.
+
+A write that the buffer does not accept stops the process. The file reader keeps the same behavior.
+
 ### CSRF defence
 
 `CSRFHandlers`

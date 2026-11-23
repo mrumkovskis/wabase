@@ -18,21 +18,77 @@ import scala.concurrent.{ExecutionContextExecutor, Future}
 import scala.concurrent.duration._
 import scala.util.{Failure, Success}
 
+/** Durable buffer of serialized audit records.
+  * [[AuditBuffer.writeRecord]] completes when the buffer has accepted the record.
+  * A background reader inserts accepted records into the audit database.
+  * The file implementation is [[BufferedAudit]]. The messaging implementation is [[MessageBufferedAudit]].
+  */
+trait AuditBuffer {
+  /** Accepts one serialized audit record.
+    * The future completes when the record is durable in the buffer: flushed to a file, or accepted by the
+    * messaging provider. It fails when the buffer rejects the record.
+    */
+  def writeRecord(record: ByteString): Future[Unit]
+}
+
+/** File-based audit buffer. Records are appended to files under the writer's root path
+  * and inserted into the audit database by [[BufferedAuditReader]].
+  */
 class BufferedAudit(
   val writer: BufferedAuditWriter,
   val reader: BufferedAuditReader,
-) {}
+) extends AuditBuffer {
+  /** Flushes the record on the caller thread, then returns a completed future. */
+  override def writeRecord(record: ByteString): Future[Unit] =
+    try {
+      writer.writeRecord(record)
+      Future.successful(())
+    } catch {
+      case util.control.NonFatal(ex) => Future.failed(ex)
+    }
+}
 object BufferedAudit {
+  val FileImplementation = "file"
+  val MessageImplementation = "message"
+  private val ImplementationPath = "app.audit-queue.implementation"
+
   sealed trait Notification
   case object Notification extends Notification
+
+  /** File-based buffer */
   def apply(saveAuditRecords: (Seq[ByteString]) => Future[Unit])(implicit system: ActorSystem): BufferedAudit = {
     val writer = new BufferedAuditWriter
     val reader = new BufferedAuditReader(writer, saveAuditRecords)
     new BufferedAudit(writer, reader)
   }
+
+  /** `file` or `message`, from `app.audit-queue.implementation` */
+  def implementation(cfg: com.typesafe.config.Config = config): String =
+    cfg.getString(ImplementationPath)
+
+  /** Buffer selected by [[implementation]]. File is the default. `message` sends records through
+    * the configured messaging provider and reads them back, see [[MessageBufferedAudit]].
+    */
+  def configured(saveAuditRecords: Seq[ByteString] => Future[Unit])(implicit system: ActorSystem): AuditBuffer = {
+    val impl = implementation()
+    impl match {
+      case FileImplementation =>
+        val ba = apply(saveAuditRecords)
+        Files.createDirectories(ba.writer.rootPath)
+        ba
+      case MessageImplementation =>
+        MessageBufferedAudit(saveAuditRecords)
+      case other =>
+        sys.error(s"Unsupported $ImplementationPath '$other'. " +
+          s"Supported values: $FileImplementation, $MessageImplementation")
+    }
+  }
 }
 import BufferedAudit._
 
+/** Appends audit records to files under [[rootPath]]. A new file starts when the current one
+  * would grow past [[maxFileSize]]. [[writeRecord]] blocks until the bytes are flushed.
+  */
 class BufferedAuditWriter(
   val rootPath: Path         = new File(config.getString("app.audit-queue.path")).toPath,
   val filenamePrefix: String = "audit-queue-",

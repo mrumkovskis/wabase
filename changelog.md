@@ -5,6 +5,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+HTTP audit can buffer records in a messaging provider. `app.audit-queue.implementation = message`
+sends each record to `app.audit-queue.topic` through `app.audit-queue.provider` (default `main`)
+and a background reader in group `app.audit-queue.group` inserts a batch into the audit database
+and commits that batch before it saves the next one. Delivery is at least once. `AuditBuffer.writeRecord` returns a future that
+completes when the buffer has accepted the record. The file queue remains the default
+(`implementation = file`, path `app.audit-queue.path`). Documented in `docs/routes.md`.
+
 View actions support an `auth` step. The step builds a tresql check from the auth expressions
 of the executing action and fails with `AuthorizationException` (http `403`) when the check
 returns no row, or a single value that is false or null. Bind-variable and literal auth is

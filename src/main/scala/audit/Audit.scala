@@ -16,7 +16,6 @@ import org.wabase.WabaseService.RequestHandler
 import org.wabase.ds.PoolName
 import org.wabase.{CborOrJsonAnyValueDecoder, DbAccess, DefaultAppQuerease, DefaultAppQuereaseIo, Loggable, ResultEncoder, TresqlResourcesConf, WabaseRequestContext, WabaseServer, config, invokeFunction}
 
-import java.nio.file.Files
 import java.time.Instant
 import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.util.matching.Regex
@@ -104,11 +103,8 @@ class Audit extends Loggable {
     }
   }
 
-  protected lazy val bufferedAudit = {
-    val ba = BufferedAudit(saveAuditRecordsBatchToDatabase)
-    Files.createDirectories(ba.writer.rootPath)
-    ba
-  }
+  protected lazy val bufferedAudit: AuditBuffer =
+    BufferedAudit.configured(saveAuditRecordsBatchToDatabase)
 
   protected def renderHeader(header: HttpHeader): String =
     s"${header.name}: ${header.value}"
@@ -154,9 +150,9 @@ class Audit extends Loggable {
     )
   }
 
-  def bufferedAuditWriteRecord(record: AuditRecord) = {
+  def bufferedAuditWriteRecord(record: AuditRecord): Future[Unit] = {
     val serialized = Json.encode(record).to[ByteString].result
-    bufferedAudit.writer.writeRecord(serialized)
+    bufferedAudit.writeRecord(serialized)
   }
 
   protected def shouldCaptureAndPromise(contentLengthOption: Option[Long]): (Boolean, Promise[ByteString]) = {
@@ -197,7 +193,7 @@ class Audit extends Loggable {
     }
   }
 
-  def audit(ctx: WabaseRequestContext, response: HttpResponse): Unit = {
+  def audit(ctx: WabaseRequestContext, response: HttpResponse): Future[Unit] = {
     val record = createAuditRecord(ctx, response)
     bufferedAuditWriteRecord(record)
   }
@@ -244,10 +240,7 @@ class Audit extends Loggable {
           }
         )
 
-        val auditF = for {
-          reqC <- reqPromise.future
-          respC <- respPromise.future
-        } yield {
+        val auditF = reqPromise.future.zip(respPromise.future).flatMap { case (reqC, respC) =>
           val reqWithEnt = ctx.req.addAttribute(AuditEntityKey, HttpEntity.Strict(ctx.req.entity.contentType, reqC))
           val respWithEnt = response.addAttribute(AuditEntityKey, HttpEntity.Strict(response.entity.contentType, respC))
           audit(ctx.copy(req = reqWithEnt), respWithEnt)
