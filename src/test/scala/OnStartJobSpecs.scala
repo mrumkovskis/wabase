@@ -108,9 +108,9 @@ class OnStartJobSpecs
   it should "report failure of a job which fails to start" in {
     val scheduler = new RecordingScheduler(List("job1")) {
       override def doJob(jobName: String, params: Map[String, Any]): Future[Any] =
-        Future.failed(new RuntimeException("no start"))
+        Future.failed(new RuntimeException("boom: no start"))
     }
-    the[RuntimeException] thrownBy Await.result(scheduler.run(), 3.seconds) should have message "no start"
-    scheduler.nextFailure() shouldBe ("job1" -> "no start")
+    the[RuntimeException] thrownBy Await.result(scheduler.run(), 3.seconds) should have message "boom: no start"
+    scheduler.nextFailure() shouldBe ("job1" -> "boom: no start")
   }
 }

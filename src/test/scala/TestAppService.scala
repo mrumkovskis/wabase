@@ -44,6 +44,8 @@ class TestAppLogMessageNoiseDetector extends EventEvaluatorBase[ILoggingEvent] {
     "Job 'test_job1' interval 0",
     "Job 'no_interval_job' has no interval",
     "No app.job.schedules configured",
+    // KafkaProviderSpecs, MsgOpsSpecs read undecodable messages with decode-error = skip intentionally
+    "Kafka provider 'main': message skipped. Failed to decode message value at ",
   )
   /** (starts with, contains) pairs, for messages too general to be hidden by start alone */
   private val badStartsWithContaining = Seq(
@@ -60,9 +62,15 @@ class TestAppLogMessageNoiseDetector extends EventEvaluatorBase[ILoggingEvent] {
     "JSON String longer than configured maximum of 1048576 characters",
     "Array length 2 is greater than the configured maximum of 1",
   )
+  /** Job specs (e.g. OnStartJobSpecs) fail jobs on purpose with RuntimeException("boom...") */
+  private def isIntentionalBoom(event: ILoggingEvent): Boolean = {
+    val t = event.getThrowableProxy
+    t != null && t.getClassName == "java.lang.RuntimeException" &&
+      t.getMessage != null && t.getMessage.startsWith("boom")
+  }
   override def evaluate(event: ILoggingEvent): Boolean = {
     val msg = event.getFormattedMessage
-    msg != null && (
+    isIntentionalBoom(event) || msg != null && (
       badStartsWith.exists(msg.startsWith) ||
       badStartsWithContaining.exists { case (start, part) => msg.startsWith(start) && msg.contains(part) } ||
       (event.getThreadName != null &&
