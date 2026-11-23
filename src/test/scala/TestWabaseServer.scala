@@ -9,10 +9,6 @@ import scala.concurrent.duration.{Duration, DurationInt, FiniteDuration}
 import scala.concurrent.{Await, ExecutionContext, Future}
 
 trait WabaseRouteTest extends RouteTest { this: TestFrameworkInterface =>
-  //  implicit object InjectIntoWabaseRoute extends TildeArrow[HttpRequest, Future[HttpResponse]] {
-  //    type Out = Future[HttpResponse]
-  //    override def apply(request: HttpRequest, f: HttpRequest => Future[HttpResponse]): Out = f(request)
-  //  }
   implicit def injectIntoWabaseRoute(implicit timeout: FiniteDuration):
     TildeArrow[HttpRequest, Future[HttpResponse]] { type Out = HttpResponse } =
     new TildeArrow[HttpRequest, Future[HttpResponse]] {

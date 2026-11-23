@@ -25,7 +25,7 @@ class DbJobQueueSpecs
     with Eventually {
 
   import DbJobQueueSpecs._
-  import JobStatusControllerSpecsHelper._
+  import DbJobQueueSpecs.JobQueueSpecsDb._
 
   implicit override val patienceConfig: PatienceConfig =
     PatienceConfig(timeout = Span(5, Seconds), interval = Span(15, Millis))
@@ -327,9 +327,12 @@ class DbJobQueueSpecs
 }
 
 object DbJobQueueSpecs {
-  /** Shared by both test actors. Talks to the job-status-test pool. */
+  /** Own pool, not shared with JobStatusControllerSpecs, since specs run in parallel */
+  object JobQueueSpecsDb extends JobStatusSpecsDb("job-queue-test")
+
+  /** Shared by both test actors. Talks to the job-queue-test pool. */
   object QueueFactory extends WabaseJobQueueFactory {
-    import JobStatusControllerSpecsHelper._
+    import JobQueueSpecsDb._
     def create(jobName: String, maxSize: Int): WabaseJobQueue =
       new WabaseDbJobQueue(db, jobStatusCp, jobName, maxSize)
     override def acceptsWhenLockHeldElsewhere: Boolean = true

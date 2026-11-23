@@ -155,9 +155,7 @@ class JobStatusControllerSpecs extends FlatSpec with Matchers with BeforeAndAfte
   }
 }
 
-object JobStatusControllerSpecsHelper {
-  DbDrivers.loadDrivers
-
+object JobStatusSpecsDb {
   object JobStatusSpecsQuerease extends AppQuerease {
     override lazy val yamlMetadata = YamlMd.fromResource("/job-status-specs-metadata.yaml")
   }
@@ -166,14 +164,20 @@ object JobStatusControllerSpecsHelper {
     override protected def tresqlMetadata = JobStatusSpecsQuerease.tresqlMetadata
     override protected def initQuereaseIo: AppQuereaseIo[Dto] = new AppQuereaseIo[Dto](JobStatusSpecsQuerease)
   }
+}
+
+/** Job status tables in pool `poolName`. Specs run in parallel, so each spec needs its own pool (database). */
+class JobStatusSpecsDb(poolName: String) {
+  import JobStatusSpecsDb._
+  DbDrivers.loadDrivers
 
   val db = new JobStatusDbAccess
-  val jobStatusCp = PoolName("job-status-test")
+  val jobStatusCp = PoolName(poolName)
   val controller = new DefaultWabaseJobStatusController(db) {
-    override val jobStatusCp: PoolName = PoolName("job-status-test")
+    override val jobStatusCp: PoolName = PoolName(poolName)
   }
   val jobStatusLogger = new WabaseJobStatusHistoryLogger(db) {
-    override val jobStatusCp: PoolName = PoolName("job-status-test")
+    override val jobStatusCp: PoolName = PoolName(poolName)
   }
 
   val schemaSql: String = DdlGenerator.hsqldb().schema(JobStatusSpecsQuerease.tableMetadata.tableDefs)
@@ -216,3 +220,5 @@ object JobStatusControllerSpecsHelper {
     Query("cron_job_status[job_name = ?]{count(1)}", name).unique[Long] == 1
   }
 }
+
+object JobStatusControllerSpecsHelper extends JobStatusSpecsDb("job-status-test")
