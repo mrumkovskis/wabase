@@ -104,25 +104,6 @@ class TestAppService(val actorSystem: ActorSystem) extends Execution
     app.fileStreamers, this)(actorSystem)
 }
 
-class TestAppServiceNoDeferred(val actorSystem: ActorSystem) extends Execution
-  with AppServiceBase[WabaseUser]
-  with AppFileServiceBase[WabaseUser]
-  with AppConfig
-  with AppVersion
-  with Authentication[WabaseUser]
-  with ConstantQueryTimeout
-  with NoServerStatistics
-  with Loggable
-  with CSRFDefence {
-  override type App = TestApp
-  override def initApp: App = TestApp
-  override def initFileStreamer: AppFileStreamer[WabaseUser] = TestApp
-  override def encodeSession(session: Authentication.Session[WabaseUser]): String = ???
-  override def decodeSession(session: String) = ???
-  override def signInUser = ???
-  override def appVersion: String = "TEST"
-}
-
 object YamlUtils {
   def parseYamlData(yamlStr: String): Any = {
     import org.snakeyaml.engine.v2.api.LoadSettings

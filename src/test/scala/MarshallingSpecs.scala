@@ -25,9 +25,9 @@ class MarshallingSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
 
   var streamerConfQe: QuereaseProvider with AppFileStreamerConfig = _
 
-  var service: TestAppService = _
+  var appl: TestApp = _
 
-  var service2: TestAppService = _
+  var appl2: TestApp = _
 
   override def beforeAll(): Unit = {
     querease = new TestQuerease("/json-decoder-specs-metadata.yaml") {
@@ -42,28 +42,22 @@ class MarshallingSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
 
     super.beforeAll()
 
-    val appl = new TestApp {
+    appl = new TestApp {
       override protected def initQuerease = querease
       override def dbAccessDelegate: DbAccess = db
     }
 
-    service = new TestAppService(system) {
-      override def initApp: App = appl
-    }
-
-    service2 = new TestAppService(system) {
-      override def initApp: App = new TestApp {
-        override protected def initQuerease = new TestQuerease("/json-decoder-specs-metadata.yaml") {
-          override lazy val viewNameToClassMap = JsonDecoderSpecs.viewNameToClass
-          override val tresqlUri: TresqlUri = new TresqlUri(keyInQuery = false)
-        }
-        override def dbAccessDelegate: DbAccess = db
+    appl2 = new TestApp {
+      override protected def initQuerease = new TestQuerease("/json-decoder-specs-metadata.yaml") {
+        override lazy val viewNameToClassMap = JsonDecoderSpecs.viewNameToClass
+        override val tresqlUri: TresqlUri = new TresqlUri(keyInQuery = false)
       }
+      override def dbAccessDelegate: DbAccess = db
     }
   }
 
   it should "marshal dto" in {
-    val svc = service
+    val svc = appl
     import svc.{dtoMarshaller, dtoSeqMarshaller}
     var entity: MessageEntity = null
     var entityFuture: Future[MessageEntity] = null
@@ -80,7 +74,7 @@ class MarshallingSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
   }
 
   it should "marshal wabase result according to view" in {
-    val svc = service
+    val svc = appl
     import svc.app.qe
     import svc.{dtoUnmarshaller, toResponseWabaseResultMarshaller, mapForViewMarshaller, seqOfMapsForViewMarshaller}
     var httpResponse: HttpResponse = null
@@ -141,7 +135,7 @@ class MarshallingSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
   }
 
   it should "marshal number result" in {
-    val svc = service
+    val svc = appl
     import svc.toEntityQuereaseLongResultMarshaller
     var entity: HttpEntity = null
     var response: Future[HttpResponse] = null
@@ -154,7 +148,7 @@ class MarshallingSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
   }
 
   it should "marshal status result, key in query" in {
-    val svc = service
+    val svc = appl
     implicit val sm: ToResponseMarshaller[ResponseResult] = Marshaller { implicit ec =>sr =>
       svc.toResponseQuereaseResponseResultMarshaller(svc.app.WabaseResult(null, sr))(sr)
     }
@@ -239,7 +233,7 @@ class MarshallingSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
   }
 
   it should "marshal status result, key in path" in {
-    val svc = service2
+    val svc = appl2
     implicit val sm: ToResponseMarshaller[ResponseResult] = Marshaller { implicit ec =>sr =>
       svc.toResponseQuereaseResponseResultMarshaller(svc.app.WabaseResult(null, sr))(sr)
     }
@@ -324,7 +318,7 @@ class MarshallingSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
   }
 
   it should "marshal conf result to json" in {
-    val svc = service2
+    val svc = appl2
     import svc.toEntityConfResultMarshaller
     def response(cr: ConfResult) = Await.result(
       Marshal(cr).to[HttpEntity]
@@ -364,7 +358,7 @@ class MarshallingSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
   }
 
   it should "marshal template result" in {
-    val svc = service
+    val svc = appl
     import svc.toResponseTemplateResultMarshaller
     def response(tr: TemplateResult) = Await.result(
       Marshal(tr).to[HttpResponse], 1.second
@@ -390,7 +384,7 @@ class MarshallingSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     import org.apache.pekko.stream.scaladsl.Source
     import org.wabase.msg.{CommittableMessage, Header, InMessage}
     import scala.jdk.CollectionConverters._
-    val svc = service
+    val svc = appl
     import svc.toResponseWabaseResultMarshaller
     val ctx = svc.app.AppActionContext(null, null, null, null, null)(null, null, null, system, null, null, logger)
     val control = new TestMsgControl
@@ -416,7 +410,7 @@ class MarshallingSpecs extends AnyFlatSpec with Matchers with TestQuereaseInitia
     import org.apache.pekko.stream.scaladsl.{Sink, Source}
     val control = new TestMsgControl
     val mr = MessagingResult(() => Source.repeat[Any]("x").mapMaterializedValue(_ => control), None)
-    Await.result(service.app.qe.messagingSource(mr)(system.dispatcher).take(2).runWith(Sink.seq), 5.seconds) shouldBe
+    Await.result(appl.qe.messagingSource(mr)(system.dispatcher).take(2).runWith(Sink.seq), 5.seconds) shouldBe
       List("x", "x") // take - cancellation like client disconnect
     Await.result(control.stopped.future, 5.seconds)
   }
