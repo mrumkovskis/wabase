@@ -39,54 +39,34 @@ object MessageBufferedAudit {
     sendTimeout: FiniteDuration,
   )
 
-  private val settingDefaults: Config = ConfigFactory.parseString(
-    s"""provider = ${MsgProviderConfig.defaultProviderName}
-       |topic = audit
-       |group = audit
-       |send-timeout = 30s
-       |""".stripMargin)
-
   /** `app.audit-queue` keys used by the buffer itself, not passed to the reader. */
   val bufferKeys: Seq[String] =
     Seq("implementation", "path", "provider", "topic", "group", "partition", "send-timeout", "committer")
 
-  /** Reader config: `app.audit-queue` without [[bufferKeys]], for example kafka `consumer` settings
-    * or `decode-error`. Default `stop-timeout = 0s`: do not wait for commits after the consumer is cancelled.
-    * Restart stops the consumer after the attempt ends, see [[MsgStreams.restartPipeline]].
+  /** Reader config: `app.audit-queue` without [[bufferKeys]], for example `stop-timeout`,
+    * `decode-error`, or kafka `consumer` settings. Restart stops the consumer after the attempt ends,
+    * see [[MsgStreams.restartPipeline]].
     */
-  def readerConfig(cfg: Config): Config = {
-    val defaults = ConfigFactory.parseString(s"${MsgProvider.StopTimeoutPath} = 0s")
-    if (cfg == null) defaults
-    else bufferKeys.foldLeft(cfg)(_ withoutPath _).withFallback(defaults)
-  }
+  def readerConfig(cfg: Config): Config =
+    if (cfg == null) ConfigFactory.empty
+    else bufferKeys.foldLeft(cfg)(_ withoutPath _)
 
-  /** Committer for one saved database batch. The reader commits a whole batch before it saves the next one,
-    * and the committer flushes when that batch ends, so `max-batch` only sets how many commit requests a batch takes.
-    * Default `max-batch` equals the reader default `maxBatchSize`: one commit per batch.
-    * An `app.audit-queue.committer` object overrides these keys (`max-batch`, `max-interval`, `parallelism`).
+  /** Committer for one saved database batch (`app.audit-queue.committer`). The reader commits a whole batch
+    * before it saves the next one, and the committer flushes when that batch ends, so `max-batch` sets how many
+    * commit requests a batch takes. Empty when `cfg` is null or has no `committer` object.
     */
-  def committerConfig(cfg: Config): Config = {
-    val defaults = ConfigFactory.parseString(
-      """committer {
-        |  max-batch = 100
-        |  max-interval = 10ms
-        |  parallelism = 1
-        |}""".stripMargin)
-    if (cfg != null && cfg.hasPath("committer"))
-      cfg.getConfig("committer").atPath("committer").withFallback(defaults)
-    else defaults
-  }
+  def committerConfig(cfg: Config): Config =
+    if (cfg != null && cfg.hasPath("committer")) cfg.getConfig("committer").atPath("committer")
+    else ConfigFactory.empty
 
-  def settings(cfg: Config): Settings = {
-    val c = Option(cfg).getOrElse(ConfigFactory.empty).withFallback(settingDefaults)
-    Settings(
-      provider    = c.getString("provider"),
-      topic       = c.getString("topic"),
-      group       = c.getString("group"),
-      partition   = if (cfg != null && cfg.hasPath("partition")) Some(cfg.getInt("partition")) else None,
-      sendTimeout = c.getDuration("send-timeout"),
-    )
-  }
+  /** `provider`, `topic`, `group` and `send-timeout` are required. `partition` is optional. */
+  def settings(cfg: Config): Settings = Settings(
+    provider    = cfg.getString("provider"),
+    topic       = cfg.getString("topic"),
+    group       = cfg.getString("group"),
+    partition   = if (cfg.hasPath("partition")) Some(cfg.getInt("partition")) else None,
+    sendTimeout = cfg.getDuration("send-timeout"),
+  )
 
   /** Reader and writer for `app.audit-queue`, using providers of the running server. */
   def apply(saveAuditRecords: Seq[ByteString] => Future[Unit])(implicit system: ActorSystem): MessageBufferedAudit =
@@ -135,7 +115,7 @@ class MessageBufferedAuditWriter(
   val topic: String,
   val partition: Option[Int] = None,
   val key: Any = null,
-  val sendTimeout: FiniteDuration = 30.seconds,
+  val sendTimeout: FiniteDuration = config.getDuration("app.audit-queue.send-timeout"),
   val exitOnFailure: Boolean = true,
   val senderConfig: Config = ConfigFactory.empty,
 )(implicit val system: ActorSystem) extends Loggable {
@@ -198,8 +178,8 @@ class MessageBufferedAuditReader(
     maxBackoff   = 5.minutes,
     randomFactor = 0.2,
   ),
-  val readerConfig: Config = ConfigFactory.parseString(s"${MsgProvider.StopTimeoutPath} = 0s"),
-  val committerConfig: Config = MessageBufferedAudit.committerConfig(ConfigFactory.empty),
+  val readerConfig: Config = MessageBufferedAudit.readerConfig(config.getConfig("app.audit-queue")),
+  val committerConfig: Config = MessageBufferedAudit.committerConfig(config.getConfig("app.audit-queue")),
 )(implicit val system: ActorSystem) extends Loggable {
   implicit val ec: ExecutionContextExecutor = system.dispatcher
   private implicit val mat: Materializer = SystemMaterializer(system).materializer

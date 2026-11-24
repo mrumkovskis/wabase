@@ -205,7 +205,15 @@ class BufferedAuditSpecs extends FlatSpec with Matchers with Eventually {
     custom.getString("consumer.kafka-clients.auto.offset.reset") shouldBe "latest"
     MessageBufferedAudit.bufferKeys.filter(custom.hasPath) shouldBe Nil
 
-    MessageBufferedAudit.readerConfig(null).getDuration(MsgProvider.StopTimeoutPath) shouldBe java.time.Duration.ZERO
+    MessageBufferedAudit.readerConfig(null).isEmpty shouldBe true
+    val committer = MessageBufferedAudit.committerConfig(ConfigFactory.load().getConfig("app.audit-queue"))
+    committer.getInt("committer.max-batch") shouldBe 100
+    committer.getDuration("committer.max-interval").toMillis shouldBe 10
+    committer.getInt("committer.parallelism") shouldBe 1
+    MessageBufferedAudit.committerConfig(null).isEmpty shouldBe true
+    val partial = MessageBufferedAudit.committerConfig(ConfigFactory.parseString("committer.max-batch = 5"))
+    partial.getInt("committer.max-batch") shouldBe 5
+    partial.hasPath("committer.max-interval") shouldBe false
   }
 
   it should "deliver records published to a messaging provider, retrying failed batches" in {
