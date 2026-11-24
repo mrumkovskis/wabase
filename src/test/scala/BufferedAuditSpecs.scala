@@ -244,6 +244,29 @@ class BufferedAuditSpecs extends FlatSpec with Matchers with Eventually {
       consumer.consumedRecords.toSet shouldBe expected.toSet
     }
     reader.topic shouldBe "audit"
+    Await.result(reader.stop(), 5.seconds) shouldBe Done
+  }
+
+  it should "complete message reader when provider source completes, without restart" in {
+    val provider = new InMemoryAuditMsgProvider
+    val saved = new ConcurrentLinkedQueue[String]
+    val writer = new MessageBufferedAuditWriter(provider, topic = "audit-completes", exitOnFailure = false)
+    val reader = new MessageBufferedAuditReader(
+      provider,
+      topic            = "audit-completes",
+      group            = "audit",
+      saveAuditRecords = records => { records.foreach(r => saved.add(r.utf8String)); Future.unit },
+      maxBatchDelay    = 20.millis,
+      restartSettings  = RestartSettings(minBackoff = 5.millis, maxBackoff = 10.millis, randomFactor = 0),
+    )
+    Await.result(writer.writeRecord(ByteString("r1")), 5.seconds)
+    eventually(timeout(5.seconds), interval(20.millis)) { saved.toArray.toList shouldBe List("r1") }
+    provider.completeSources.set(true)
+    Await.result(reader.done, 5.seconds) shouldBe Done
+    provider.completeSources.set(false)
+    Await.result(writer.writeRecord(ByteString("r2")), 5.seconds)
+    Thread.sleep(200)
+    saved.toArray.toList shouldBe List("r1")
   }
 
   it should "fail a message write when the provider rejects it and exitOnFailure is off" in {
@@ -275,6 +298,8 @@ class InMemoryAuditMsgProvider extends MsgProvider {
   private var nextOffset = 0L
   @volatile private var committedOffset = -1L
   val failSends = new AtomicBoolean(false)
+  /** Reader sources complete, as provider sources do when provider is closed */
+  val completeSources = new AtomicBoolean(false)
 
   private def append(topic: String, value: Array[Byte]): Long = lock.synchronized {
     val offset = nextOffset
@@ -308,7 +333,7 @@ class InMemoryAuditMsgProvider extends MsgProvider {
         }
         val stopped = new AtomicBoolean(false)
         Source.tick(0.millis, 10.millis, ())
-          .takeWhile(_ => !stopped.get)
+          .takeWhile(_ => !stopped.get && !completeSources.get)
           .statefulMapConcat { () =>
             var next = committedOffset + 1
             (_: Unit) => {

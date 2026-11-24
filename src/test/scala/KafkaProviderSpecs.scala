@@ -325,7 +325,7 @@ class KafkaProviderSpecs extends FlatSpec with Matchers with BeforeAndAfterAll {
       val auditCfg = ConfigFactory.load().getConfig("app.audit-queue")
       val saved = new java.util.concurrent.ConcurrentLinkedQueue[String]
       val batches = new AtomicInteger
-      new MessageBufferedAuditReader(
+      val reader = new MessageBufferedAuditReader(
         counting,
         topic            = topic,
         group            = "g-audit",
@@ -346,6 +346,7 @@ class KafkaProviderSpecs extends FlatSpec with Matchers with BeforeAndAfterAll {
       await(p.admin.committedOffsets("g-audit", Set(tp))) shouldBe Map(tp -> OffsetAndMetadata(recordCount, null))
       batches.get should be >= 3 // maxBatchSize 100
       commits.get shouldBe batches.get
+      await(reader.stop())
     } finally await(p.close())
   }
 

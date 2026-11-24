@@ -46,6 +46,8 @@ class TestAppLogMessageNoiseDetector extends EventEvaluatorBase[ILoggingEvent] {
     "No app.job.schedules configured",
     // KafkaProviderSpecs, MsgOpsSpecs read undecodable messages with decode-error = skip intentionally
     "Kafka provider 'main': message skipped. Failed to decode message value at ",
+    // BufferedAuditSpecs completes reader source intentionally
+    "Audit message reader of topic 'audit-completes', group 'audit' completed",
   )
   /** (starts with, contains) pairs, for messages too general to be hidden by start alone */
   private val badStartsWithContaining = Seq(

@@ -2,8 +2,9 @@ package org.wabase
 package audit
 
 import com.typesafe.config.{Config, ConfigFactory}
+import org.apache.pekko.Done
 import org.apache.pekko.actor.ActorSystem
-import org.apache.pekko.stream.scaladsl.{Sink, Source}
+import org.apache.pekko.stream.scaladsl.{Keep, Sink, Source}
 import org.apache.pekko.stream.{ActorAttributes, Attributes, Materializer, RestartSettings, SystemMaterializer}
 import org.apache.pekko.util.ByteString
 import org.wabase.msg._
@@ -182,6 +183,8 @@ class MessageBufferedAuditWriter(
   * then commits that batch before the next one is saved. A failed batch is not committed.
   * Reading, saving and committing restart together with backoff, from the last committed offset.
   * A value that is not bytes fails the stream and is not retried until the process starts again.
+  * Reading ends with [[stop]], with a permanent failure, or when the provider source completes (for example,
+  * provider is closed) - it is logged and not restarted.
   */
 class MessageBufferedAuditReader(
   val provider: MsgProvider,
@@ -243,9 +246,25 @@ class MessageBufferedAuditReader(
       }
       .named("audit-message-reader")
       .addAttributes(Attributes(ActorAttributes.IODispatcher))
-  }.runWith(Sink.ignore)
+  }.toMat(Sink.ignore)(Keep.both).run()
 
-  auditReader.failed.foreach { ex =>
-    logger.error("Audit message reader stopped", ex)
+  @volatile private var stopRequested = false
+
+  /** Completes when the reader has stopped, fails with the cause of a permanent failure. */
+  val done: Future[Done] = auditReader._2
+
+  /** Stops reading. Batch in progress is not committed and is read again by the next reader of the group. */
+  def stop(): Future[Done] = {
+    stopRequested = true
+    auditReader._1.stop().flatMap(_ => done)
+  }
+
+  done.onComplete {
+    case Success(_) if stopRequested =>
+      logger.info(s"Audit message reader of topic '$topic', group '$group' stopped")
+    case Success(_) =>
+      logger.warn(s"Audit message reader of topic '$topic', group '$group' completed, audit records are no longer read")
+    case Failure(ex) =>
+      logger.error(s"Audit message reader of topic '$topic', group '$group' stopped", ex)
   }
 }
