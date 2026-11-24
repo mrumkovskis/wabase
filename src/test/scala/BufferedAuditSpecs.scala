@@ -186,6 +186,28 @@ class BufferedAuditSpecs extends FlatSpec with Matchers with Eventually {
       "app.audit-queue.implementation = message")) shouldBe BufferedAudit.MessageImplementation
   }
 
+  it should "pass reader settings from message buffer config" in {
+    val defaults = MessageBufferedAudit.readerConfig(ConfigFactory.load().getConfig("app.audit-queue"))
+    defaults.getDuration(MsgProvider.StopTimeoutPath) shouldBe java.time.Duration.ZERO
+    defaults.getString("consumer.kafka-clients.auto.offset.reset") shouldBe "earliest"
+    MessageBufferedAudit.bufferKeys.filter(defaults.hasPath) shouldBe Nil
+
+    val custom = MessageBufferedAudit.readerConfig(ConfigFactory.parseString(
+      """provider = other
+        |topic = t
+        |committer.max-batch = 5
+        |stop-timeout = 3s
+        |decode-error = skip
+        |consumer.kafka-clients.auto.offset.reset = latest
+        |""".stripMargin))
+    custom.getDuration(MsgProvider.StopTimeoutPath) shouldBe java.time.Duration.ofSeconds(3)
+    custom.getString("decode-error") shouldBe "skip"
+    custom.getString("consumer.kafka-clients.auto.offset.reset") shouldBe "latest"
+    MessageBufferedAudit.bufferKeys.filter(custom.hasPath) shouldBe Nil
+
+    MessageBufferedAudit.readerConfig(null).getDuration(MsgProvider.StopTimeoutPath) shouldBe java.time.Duration.ZERO
+  }
+
   it should "deliver records published to a messaging provider, retrying failed batches" in {
     val provider = new InMemoryAuditMsgProvider
     val consumer = new RecordConsumer(

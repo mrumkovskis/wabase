@@ -45,15 +45,18 @@ object MessageBufferedAudit {
        |send-timeout = 30s
        |""".stripMargin)
 
-  /** Reader config: do not wait for commits after the consumer is cancelled.
+  /** `app.audit-queue` keys used by the buffer itself, not passed to the reader. */
+  val bufferKeys: Seq[String] =
+    Seq("implementation", "path", "provider", "topic", "group", "partition", "send-timeout", "committer")
+
+  /** Reader config: `app.audit-queue` without [[bufferKeys]], for example kafka `consumer` settings
+    * or `decode-error`. Default `stop-timeout = 0s`: do not wait for commits after the consumer is cancelled.
     * Restart stops the consumer after the attempt ends, see [[MsgStreams.restartPipeline]].
     */
   def readerConfig(cfg: Config): Config = {
     val defaults = ConfigFactory.parseString(s"${MsgProvider.StopTimeoutPath} = 0s")
-    if (cfg != null && cfg.hasPath(MsgProvider.StopTimeoutPath))
-      ConfigFactory.empty.withValue(
-        MsgProvider.StopTimeoutPath, cfg.getValue(MsgProvider.StopTimeoutPath)).withFallback(defaults)
-    else defaults
+    if (cfg == null) defaults
+    else bufferKeys.foldLeft(cfg)(_ withoutPath _).withFallback(defaults)
   }
 
   /** Commit each offset before the next database batch, so a crash replays as little as possible.

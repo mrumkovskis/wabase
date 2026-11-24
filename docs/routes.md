@@ -155,7 +155,10 @@ inserts them into the audit database. `app.audit-queue.implementation` selects t
   again when it was saved but not yet committed. `AuditBuffer.writeRecord` returns a future that completes when the buffer has
   accepted the record. For the message buffer that is provider acceptance, and the future fails
   after `app.audit-queue.send-timeout`. Optional `app.audit-queue.partition` pins every record to
-  one partition.
+  one partition. Other `app.audit-queue` keys configure the reader and override `msg-provider`
+  settings, for example `consumer.kafka-clients`. By default a group with no committed offset reads
+  from the start of the topic (`consumer.kafka-clients.auto.offset.reset = earliest`), so records
+  written before the reader joined are not skipped.
 
 A write that the buffer does not accept stops the process. The file reader keeps the same behavior.
 

@@ -8,7 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 HTTP audit can buffer records in a messaging provider. `app.audit-queue.implementation = message`
 sends each record to `app.audit-queue.topic` through `app.audit-queue.provider` (default `main`)
 and a background reader in group `app.audit-queue.group` inserts a batch into the audit database
-and commits that batch before it saves the next one. Delivery is at least once. `AuditBuffer.writeRecord` returns a future that
+and commits that batch before it saves the next one. Delivery is at least once. Other
+`app.audit-queue` keys configure the reader, and a group with no committed offset reads from
+the start of the topic (`consumer.kafka-clients.auto.offset.reset = earliest`). `AuditBuffer.writeRecord` returns a future that
 completes when the buffer has accepted the record. The file queue remains the default
 (`implementation = file`, path `app.audit-queue.path`). Documented in `docs/routes.md`.
 
