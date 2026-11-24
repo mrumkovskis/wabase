@@ -163,6 +163,9 @@ inserts them into the audit database. `app.audit-queue.implementation` selects t
 A write that the buffer does not accept stops the process, and so does a buffer that cannot be
 created on the first audit record (for example, the messaging provider is not configured). The file reader keeps the same behavior.
 
+The buffer and its reader start on the first audit record after the process starts. Records left in
+the buffer by the previous run are saved to the audit database after that.
+
 ### CSRF defence
 
 `CSRFHandlers`
