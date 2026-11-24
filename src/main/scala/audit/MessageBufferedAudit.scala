@@ -59,13 +59,15 @@ object MessageBufferedAudit {
     else bufferKeys.foldLeft(cfg)(_ withoutPath _).withFallback(defaults)
   }
 
-  /** Commit each offset before the next database batch, so a crash replays as little as possible.
+  /** Committer for one saved database batch. The reader commits a whole batch before it saves the next one,
+    * and the committer flushes when that batch ends, so `max-batch` only sets how many commit requests a batch takes.
+    * Default `max-batch` equals the reader default `maxBatchSize`: one commit per batch.
     * An `app.audit-queue.committer` object overrides these keys (`max-batch`, `max-interval`, `parallelism`).
     */
   def committerConfig(cfg: Config): Config = {
     val defaults = ConfigFactory.parseString(
       """committer {
-        |  max-batch = 1
+        |  max-batch = 100
         |  max-interval = 10ms
         |  parallelism = 1
         |}""".stripMargin)

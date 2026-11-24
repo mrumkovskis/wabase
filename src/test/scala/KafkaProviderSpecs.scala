@@ -298,6 +298,57 @@ class KafkaProviderSpecs extends FlatSpec with Matchers with BeforeAndAfterAll {
     await(done)
   }
 
+  it should "deliver audit records written before the audit reader joined, one commit per saved batch" in {
+    import org.apache.pekko.util.ByteString
+    import org.wabase.audit.{MessageBufferedAudit, MessageBufferedAuditReader, MessageBufferedAuditWriter}
+    val topic = newTopic()
+    // provider default is kafka auto.offset.reset = latest, audit reader config must override it
+    val p = WabaseMsgProviders.createProvider(
+      "audit", providerConfig.withoutPath("consumer.kafka-clients.auto.offset.reset"), system)
+    val commits = new AtomicInteger
+    val counting = new MsgProvider {
+      def createReader(config: Config, keyDecoder: MsgDecoder, valueDecoder: MsgDecoder) =
+        p.createReader(config, keyDecoder, valueDecoder)
+      def createSender(config: Config) = p.createSender(config)
+      def createCommitter(config: Config) = new MsgCommitter {
+        def flow = p.createCommitter(config).flow.map { d => commits.incrementAndGet(); d }
+      }
+      def admin = p.admin
+      def codecs = p.codecs
+      def close() = p.close()
+    }
+    try {
+      val writer = new MessageBufferedAuditWriter(p, topic, sendTimeout = 10.seconds, exitOnFailure = false)
+      val recordCount = 250
+      (1 to recordCount).foreach(i => await(writer.writeRecord(ByteString(s"r$i"))))
+
+      val auditCfg = ConfigFactory.load().getConfig("app.audit-queue")
+      val saved = new java.util.concurrent.ConcurrentLinkedQueue[String]
+      val batches = new AtomicInteger
+      new MessageBufferedAuditReader(
+        counting,
+        topic            = topic,
+        group            = "g-audit",
+        saveAuditRecords = records => {
+          batches.incrementAndGet()
+          records.foreach(r => saved.add(r.utf8String))
+          Future.successful(())
+        },
+        readerConfig     = MessageBufferedAudit.readerConfig(auditCfg),
+        committerConfig  = MessageBufferedAudit.committerConfig(auditCfg),
+      )
+      val tp = TopicPartition(topic, 0)
+      val deadline = System.currentTimeMillis + 30000
+      while (await(p.admin.committedOffsets("g-audit", Set(tp))).get(tp).map(_.offset) != Some(recordCount.toLong) &&
+             System.currentTimeMillis < deadline)
+        Thread.sleep(50)
+      saved.toArray.toList shouldBe (1 to recordCount).map(i => s"r$i").toList
+      await(p.admin.committedOffsets("g-audit", Set(tp))) shouldBe Map(tp -> OffsetAndMetadata(recordCount, null))
+      batches.get should be >= 3 // maxBatchSize 100
+      commits.get shouldBe batches.get
+    } finally await(p.close())
+  }
+
   it should "provide topic metadata and offsets" in {
     val topic = newTopic(partitions = 2)
     send(topic, "a", "b", "c")
