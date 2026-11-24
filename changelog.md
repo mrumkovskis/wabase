@@ -13,6 +13,10 @@ and commits that batch before it saves the next one. Delivery is at least once. 
 the start of the topic (`consumer.kafka-clients.auto.offset.reset = earliest`). `AuditBuffer.writeRecord` returns a future that
 completes when the buffer has accepted the record. The file queue remains the default
 (`implementation = file`, path `app.audit-queue.path`). Documented in `docs/routes.md`.
+Breaking: `Audit.audit(ctx, response)` and `Audit.bufferedAuditWriteRecord` return `Future[Unit]`
+(was `Unit`), completed when the buffer has accepted the record - overrides must return the future.
+`Audit.bufferedAudit` is `AuditBuffer` (was `BufferedAudit`), it has no `writer` and `reader` -
+use `bufferedAudit.writeRecord`, or match on `BufferedAudit` / `MessageBufferedAudit` for them.
 
 View actions support an `auth` step. The step builds a tresql check from the auth expressions
 of the executing action and fails with `AuthorizationException` (http `403`) when the check
