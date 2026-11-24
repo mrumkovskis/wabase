@@ -103,8 +103,18 @@ class Audit extends Loggable {
     }
   }
 
+  /** Created on first audit record. If it cannot be created (for example, messaging provider of
+    * `app.audit-queue` is not configured), records cannot be buffered - the process exits,
+    * as it does when the buffer does not accept a record.
+    */
   protected lazy val bufferedAudit: AuditBuffer =
-    BufferedAudit.configured(saveAuditRecordsBatchToDatabase)
+    try BufferedAudit.configured(saveAuditRecordsBatchToDatabase)
+    catch {
+      case util.control.NonFatal(ex) =>
+        logger.error("Failed to create audit buffer, exiting", ex)
+        System.exit(-1)
+        throw ex
+    }
 
   protected def renderHeader(header: HttpHeader): String =
     s"${header.name}: ${header.value}"

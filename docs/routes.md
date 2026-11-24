@@ -160,7 +160,8 @@ inserts them into the audit database. `app.audit-queue.implementation` selects t
   from the start of the topic (`consumer.kafka-clients.auto.offset.reset = earliest`), so records
   written before the reader joined are not skipped.
 
-A write that the buffer does not accept stops the process. The file reader keeps the same behavior.
+A write that the buffer does not accept stops the process, and so does a buffer that cannot be
+created on the first audit record (for example, the messaging provider is not configured). The file reader keeps the same behavior.
 
 ### CSRF defence
 
