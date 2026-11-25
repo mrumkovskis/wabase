@@ -200,12 +200,10 @@ class AppQuerease extends Querease with AppMetadata with AppQuereaseMsgOps with 
   @annotation.nowarn("msg=Manifest")
   protected def createEmailSender: WabaseEmail =
     getObjectOrNewInstance[WabaseEmail](config, "app.email.sender", "email sender")
-  protected def evaluatorConn(): Connection = {
-    val evaluatorPoolName = config.getString("app.wabase.evaluator.pool")
+  private lazy val evaluatorPoolName = config.getString("app.wabase.evaluator.pool")
+  protected def evaluatorConn(): Connection =
     ConnectionPools(PoolName(evaluatorPoolName)).getConnection
-  }
   protected def evaluatorResources(defaultResources: Resources): Resources = {
-    val evaluatorPoolName = config.getString("app.wabase.evaluator.pool")
     TresqlResourcesConf.confs.get(evaluatorPoolName).map(_.dialect).orNull match {
       case null    => defaultResources
       case dialect => defaultResources.withDialect(dialect)
