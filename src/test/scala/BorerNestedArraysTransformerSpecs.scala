@@ -139,7 +139,7 @@ class BorerNestedArraysTransformerSpecs extends FlatSpec with Matchers with Befo
     assertJsonBody(runTransform(jsonDocument, Json, cborCfg, jsonCfg))
   }
 
-  // borer 1.7.2 through 1.18.0 keep maxTextStringLength and maxByteStringLength on
+  // borer 1.7.2 through 1.19.0 keep maxTextStringLength and maxByteStringLength on
   // Cbor.DecodingConfig but never read them. A large CBOR text string therefore
   // round-trips under the default config. Array length is enforced, so that is what
   // shows the CBOR config is actually passed to the reader.
