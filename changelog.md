@@ -199,7 +199,7 @@ Tresql upgraded to 13.6.0. `Result.rowView` exposes the current row as `RowLike`
 `Result`, so nested results can be distinguished when traversing from outside.
 Array select (`|[…]`) with more than one column returns a map per element instead of a vector.
 
-Mojoz upgraded to 7.2.1. View fields keep their table when `column` is set and a column of that
+Mojoz upgraded to 7.2.2. View fields keep their table when `column` is set and a column of that
 name exists on the table. Querease 10.2.1 CRUD for column-stored views is included.
 
 Extra view metadata can be loaded via `app.wabase-extra-metadata.loader` (default

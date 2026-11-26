@@ -74,7 +74,7 @@ lazy val commonSettings = Seq(
       "com.typesafe"               %% "ssl-config-core"       % "0.7.2",
       "com.zaxxer"                  % "HikariCP"              % "7.1.0",
       "ch.qos.logback"              % "logback-classic"       % "1.6.6",
-      "org.mojoz"                  %% "mojoz"                 % "7.2.1",
+      "org.mojoz"                  %% "mojoz"                 % "7.2.2",
       "org.mojoz"                  %% "querease"              % "11.0.0-SNAPSHOT",
       "commons-validator"           % "commons-validator"     % "1.11.0",
       "org.postgresql"              % "postgresql"            % "42.7.14",
