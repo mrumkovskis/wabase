@@ -5,6 +5,9 @@ response:   [
     "Field \"%s\" must not be empty": "Field \"%s\" must not be empty"
   },
   {
+    "Field \"%1$s\" is mandatory.": "Field \"%1$s\" is mandatory."
+  },
+  {
     "ends with": "ends with"
   },
   {
@@ -51,9 +54,6 @@ response:   [
   },
   {
     "Record not found, cannot edit": "Record not found, cannot edit"
-  },
-  {
-    "Field %1$s is mandatory.": "Field \"%1$s\" is mandatory."
   },
   {
     "Field \"%1$s\" value must be from available value list.": "Field \"%1$s\" value must be from available value list."

@@ -26,13 +26,13 @@ response:   [
     "it yaml en only": "YAML en only"
   },
   {
-    "Field %1$s is mandatory.": "Field \"%1$s\" is mandatory."
-  },
-  {
     "from": "from"
   },
   {
     "Field \"%s\" must not be empty": "Field \"%s\" must not be empty"
+  },
+  {
+    "Field \"%1$s\" is mandatory.": "Field \"%1$s\" is mandatory."
   },
   {
     "Authentication failed": "Authentication failed"

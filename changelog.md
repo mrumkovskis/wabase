@@ -194,6 +194,9 @@ User facing message templates are available as constants - `AppBase.RecordNotFou
 `AppFileStreamer.CannotProcessFileMessage`.
 Fixed i18n resource key `Field "%1$s" value must be from available value list.` (had redundant `$`, so enum validation
 message was not translated) and removed invalid key `Error (validation "%1$s")` (unescaped `:` in key).
+`FieldRequiredMessage` key is `Field "%1$s" is mandatory.` Quotes around the field name match the other field
+validation messages. English and Latvian translation values are unchanged. The previous key
+`Field %1$s is mandatory.` is no longer used.
 
 Tresql upgraded to 13.6.0. `Result.rowView` exposes the current row as `RowLike` that is not a
 `Result`, so nested results can be distinguished when traversing from outside.

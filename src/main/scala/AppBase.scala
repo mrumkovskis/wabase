@@ -30,7 +30,7 @@ object AppBase {
 
   /* User facing message templates, registered in wabase_en and wabase_lv resource bundles */
   val RecordNotFoundCannotEditMessage = "Record not found, cannot edit"
-  val FieldRequiredMessage            = """Field %1$s is mandatory."""
+  val FieldRequiredMessage            = """Field "%1$s" is mandatory."""
   val FieldValueTooLongMessage        = """Field "%1$s" value length %2$s exceeds maximum limit %3$s."""
   val FieldValueNotInEnumMessage      = """Field "%1$s" value must be from available value list."""
   val BadEmailAddressMessage          = """Field "%1$s" is not valid e-mail address"""

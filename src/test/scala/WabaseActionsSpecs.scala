@@ -2165,14 +2165,14 @@ class WabaseActionsSpecs extends AsyncFlatSpec with Matchers with TestQuereaseIn
       ))
     ).map { ex =>
       ex.details shouldBe List(
-        ValidationResult(List("name"), List(vm("""Field %1$s is mandatory.""", "Name"))),
-        ValidationResult(List("accounts", 0, "number"), List(vm("""Field %1$s is mandatory.""", "Number"))),
+        ValidationResult(List("name"), List(vm("""Field "%1$s" is mandatory.""", "Name"))),
+        ValidationResult(List("accounts", 0, "number"), List(vm("""Field "%1$s" is mandatory.""", "Number"))),
         ValidationResult(List("accounts", 1, "number"), List(vm("""Field "%1$s" value length %2$s exceeds maximum limit %3$s.""", "Number", "65", "64"))),
       )
       // message templates formatted with parameters, for logging
       ex.getMessage shouldBe List(
-        """Field Name is mandatory.""",
-        """Field Number is mandatory.""",
+        """Field "Name" is mandatory.""",
+        """Field "Number" is mandatory.""",
         """Field "Number" value length 65 exceeds maximum limit 64.""",
       ).mkString("\n")
     }

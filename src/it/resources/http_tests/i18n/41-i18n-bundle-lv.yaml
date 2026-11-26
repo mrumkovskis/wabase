@@ -5,6 +5,9 @@ response:   [
     "Field \"%s\" must not be empty": "Lauks \"%s\" ir obligāts."
   },
   {
+    "Field \"%1$s\" is mandatory.": "Lauks \"%1$s\" ir obligāts."
+  },
+  {
     "ends with": "beidzas ar"
   },
   {
@@ -51,9 +54,6 @@ response:   [
   },
   {
     "Record not found, cannot edit": "Ierakstu nevar labot, jo to neizdodas atrast"
-  },
-  {
-    "Field %1$s is mandatory.": "Lauks \"%1$s\" ir obligāts."
   },
   {
     "Field \"%1$s\" value must be from available value list.": "Lauka \"%1$s\" vērtība neatbilst pieļaujamo vērtību sarakstam."
