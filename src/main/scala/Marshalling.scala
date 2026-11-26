@@ -528,9 +528,9 @@ trait QuereaseResultMarshalling { this: AppProvider[_] with QuereaseMarshalling 
   }
 
   /** Server sent events stream of messaging result - events are created with server notifications event function
-    * (`app.server-notifications.event-function`, default [[ServerNotifications.createServerEvent]] - string as is,
+    * (`app.server-notifications.event-function`, default [[org.wabase.ServerNotifications.createServerEvent createServerEvent]] - string as is,
     * other values as json; incoming message - [[org.wabase.msg.InMessage.toMap]]),
-    * see [[AppQuereaseMsgOps.messagingSource]]. Response headers like server notifications - no caching,
+    * see [[org.wabase.AppQuereaseMsgOps.messagingSource messagingSource]]. Response headers like server notifications - no caching,
     * no proxy buffering.
     */
   implicit def toResponseMessagingResultMarshaller(implicit as: ActorSystem): ToResponseMarshaller[MessagingResult] =
