@@ -156,7 +156,7 @@ trait MsgSender {
 }
 
 /** Specifies messages to be read.
-  * Group subscriptions ([[Topics]], [[TopicPattern]]) require group,
+  * Group subscriptions ([[Subscription.Topics Topics]], [[Subscription.TopicPattern TopicPattern]]) require group,
   * for manual partition assignments group is required only if messages are committed.
   */
 sealed trait Subscription {

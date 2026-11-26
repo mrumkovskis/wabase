@@ -81,7 +81,7 @@ case class TresqlSingleRowResult(row: RowLike) extends QuereaseCloseableResult {
 case class MapResult(result: Map[String, Any]) extends QuereaseResult
 case class IteratorResult(result: Iterator[Any]) extends QuereaseCloseableResult
 case class SourceResult(src: Source[QuereaseResult, _], toBindableValue: QuereaseResult => Future[Any]) extends QuereaseCloseableResult
-/** Result of msg read operation (and foreach on it), consumed with [[AppQuereaseMsgOps.runMessaging]],
+/** Result of msg read operation (and foreach on it), consumed with `AppQuereaseMsgOps.runMessaging`,
   * [[AppQuereaseMsgOps.messagingSource]] or by msg send operations.
   * @param source     creates source of the stream, called for each attempt if stream is restarted (`restart`).
   *                   Elements - [[org.wabase.msg.InMessage]], [[org.wabase.msg.CommittableMessage]] of InMessage or,
@@ -94,7 +94,7 @@ case class SourceResult(src: Source[QuereaseResult, _], toBindableValue: Quereas
   * @param cleanup    called when the stream terminates (completes, fails - with the failure, or is cancelled).
   * Message processing (per message tresql, foreach body) uses db resources of the operation - when messaging result
   * is returned by action (or `db` block), the resources are released when its stream terminates, see
-  * [[AppQuereaseMsgOps.withCleanup]].
+  * `AppQuereaseMsgOps.withCleanup`.
   */
 case class MessagingResult(
   source: () => Source[Any, Control],

@@ -25,13 +25,13 @@ import scala.util.control.NonFatal
   *
   * Message processing (per message tresql, foreach body) runs with resources of the operation - action's (or `db`
   * block's) connection, evaluator connection if there is none (explicit db view). Messaging result returned by
-  * action keeps the resources until its stream terminates (see AppQuerease.processResult, [[withCleanup]]),
+  * action keeps the resources until its stream terminates (see AppQuerease.processResult, `withCleanup`),
   * see docs/messaging.md, Database resources.
   */
 trait AppQuereaseMsgOps { this: AppQuerease =>
   import AppQuereaseMsgOps._
 
-  /** Creates [[MessagingResult]] - messages are read when result is consumed (see [[runMessaging]]). */
+  /** Creates [[MessagingResult]] - messages are read when result is consumed (see `runMessaging`). */
   protected def doMsgRead(
     op: Action.MsgRead,
     scope: Scope,
@@ -397,7 +397,7 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
     }
 
   /** Outgoing message of element - msg send parameters are evaluated with element bind variables
-    * (see [[sendParams]]), see [[outMessage]].
+    * (see `sendParams`), see [[outMessage]].
     */
   protected def sendMessage(
     op: Action.MsgSend,
@@ -416,9 +416,9 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
       case (_, v) => outMessage(v, params, provider)
     }
 
-  /** Outgoing message from result element, see [[MsgSendParams.outMessage]], with encoders of `using` codecs
+  /** Outgoing message from result element, see [[org.wabase.msg.MsgSendParams.outMessage MsgSendParams.outMessage]], with encoders of `using` codecs
     * (sender's - from configuration, if not specified).
-    * [[InMessage]] (msg read without foreach) is forwarded - its value is sent, its key is retained
+    * [[org.wabase.msg.InMessage InMessage]] (msg read without foreach) is forwarded - its value is sent, its key is retained
     * if `key` parameter is not specified.
     */
   protected def outMessage(value: Any, params: MsgSendParams, provider: MsgProvider): OutMessage = {
@@ -526,7 +526,7 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
     }
   }
 
-  /** Calls provider admin ([[MsgAdmin]]), returns rows ([[IteratorResult]]), see [[MsgAdminParams]] for argument
+  /** Calls provider admin ([[org.wabase.msg.MsgAdmin MsgAdmin]]), returns rows ([[IteratorResult]]), see [[org.wabase.msg.MsgAdminParams MsgAdminParams]] for argument
     * and result row columns.
     */
   protected def doMsgAdmin(
@@ -581,7 +581,7 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
       }(qr.ec))
     }
 
-  /** msg send `filter` evaluation for each element (see [[MsgSendParams.isSent]]) with [[elementScope]] bind
+  /** msg send `filter` evaluation for each element (see [[org.wabase.msg.MsgSendParams.isSent MsgSendParams.isSent]]) with [[elementScope]] bind
     * variables. Element which is not sent is dropped, committable message is retained with `null` message,
     * so that its committable is committed. Identity flow if filter is null.
     * @param res    operation's resources - tresql is evaluated on its connection, evaluator connection if none
@@ -622,7 +622,7 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
   }
 
   /** Message bind variables - value under `itVar` if specified (foreach `<var> in`), otherwise map value fields or
-    * `value`, metadata ([[InMessage.metadata]]) as `__metadata` (message key - `__metadata.key`), foreach item index
+    * `value`, metadata ([[org.wabase.msg.InMessage.metadata InMessage.metadata]]) as `__metadata` (message key - `__metadata.key`), foreach item index
     * as `__idx` if not negative.
     * Like foreach item scope, scope is not transparent - parent variables are accessible with `..` prefix.
     */
@@ -645,7 +645,7 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
   /** Foreach on [[MessagingResult]] - body is executed for each message, result is MessagingResult of body results
     * (committable - `CommittableMessage(body result, committable)`), or fold result if fold op is specified.
     * Body runs with operation's resources (action's or `db` block's connection), see [[messageScope]] for message
-    * bind variables (elements which are not [[InMessage]] - result of previous foreach - are bound like foreach items).
+    * bind variables (elements which are not [[org.wabase.msg.InMessage InMessage]] - result of previous foreach - are bound like foreach items).
     * Body result `null` or no result filters message out - it is not emitted, but committable is still committed.
     * Body is executed for one message at a time, also across stream restarts (msg read `restart`) - body left
     * running by failed stream completes before body of the restarted stream starts.
@@ -770,7 +770,7 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
     }
 
   /** Runs messaging result into sink of element values, stops consumer after stream completes, see
-    * [[messagingValues]], [[MsgStreams.run]]. Returned future completes after all messages are committed.
+    * `messagingValues`, [[MsgStreams.run]]. Returned future completes after all messages are committed.
     */
   private[wabase] def runMessaging[M](mr: MessagingResult, sink: Sink[Any, Future[M]])(implicit
     qr: QuereaseResources): Future[M] = {
@@ -779,8 +779,8 @@ trait AppQuereaseMsgOps { this: AppQuerease =>
   }
 
   /** Source of messaging result element values for streams run by others (http entity - SSE marshaller), see
-    * [[messagingValues]] - messages are committed as they are emitted (not acknowledged by the receiver).
-    * Consumer is stopped ([[Control.stop]]) after stream terminates (completes, fails or is cancelled, e.g. http
+    * `messagingValues` - messages are committed as they are emitted (not acknowledged by the receiver).
+    * Consumer is stopped ([[org.wabase.msg.Control.stop Control.stop]]) after stream terminates (completes, fails or is cancelled, e.g. http)
     * client disconnects) and pending commits complete.
     */
   def messagingSource(mr: MessagingResult)(implicit ec: ExecutionContext): Source[Any, NotUsed] =
@@ -843,7 +843,7 @@ object AppQuereaseMsgOps {
   private type ElementMessage = Any => Future[OutMessage]
   /** Message bind variable of non map message value */
   val ValueVar = "value"
-  /** Message bind variable of message metadata, see [[InMessage.metadata]] */
+  /** Message bind variable of message metadata, see [[org.wabase.msg.InMessage.metadata InMessage.metadata]] */
   val MetadataVar = "__metadata"
   /** Foreach item index bind variable */
   val IdxVar = "__idx"

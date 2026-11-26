@@ -57,7 +57,7 @@ object MsgStreams {
   }
 
   /** Stops consumer ([[Control.stop]]) after source terminates (completes, fails or is cancelled), for sources run
-    * by others (for example, inside [[RestartSource]]), where materialized control is not accessible.
+    * by others (for example, inside [[org.apache.pekko.stream.scaladsl.RestartSource RestartSource]]), where materialized control is not accessible.
     */
   def stopOnTermination[T](source: Source[T, Control]): Source[T, NotUsed] =
     source.watchTermination()(Keep.both).mapMaterializedValue { case (control, terminated) =>
@@ -66,11 +66,11 @@ object MsgStreams {
     }
 
   /** Permanent failure - repeated if stream is restarted, so it is not restarted: parameter error
-    * ([[MsgParamException]]), decoding failure ([[MsgDecodingException]] - the same message would fail again).
+    * ([[MsgParams.MsgParamException MsgParamException]]), decoding failure ([[MsgDecodingException]] - the same message would fail again).
     */
   def isPermanent(e: Throwable): Boolean = e.isInstanceOf[MsgParamException] || e.isInstanceOf[MsgDecodingException]
 
-  /** Restarts source on failure with backoff ([[RestartSource.onFailuresWithBackoff]]), source completion is not
+  /** Restarts source on failure with backoff ([[org.apache.pekko.stream.scaladsl.RestartSource.onFailuresWithBackoff[T](settings:* onFailuresWithBackoff]]), source completion is not
     * restarted, permanent failure ([[isPermanent]]) is not restarted. Source build failure is handled as
     * stream failure - restarted unless permanent.
     * Materialized control stops current source and prevents further restarts.

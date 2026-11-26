@@ -37,7 +37,7 @@ class WabaseDbJobQueue(
   override def loggerName: String = "wabase.job-queue"
 
   /** Bytes stored in `cron_job_queue.params`. Object keys are sorted, so map iteration
-    * order does not change the bytes. Values are written with [[ObjectOutputStream]],
+    * order does not change the bytes. Values are written with [[java.io.ObjectOutputStream ObjectOutputStream]],
     * the same way deferred requests are stored. A subclass that overrides this must
     * override [[decodeParams]] with the matching reader. Values must be
     * [[java.io.Serializable]]. Map keys must be strings.
@@ -50,14 +50,14 @@ class WabaseDbJobQueue(
     bos.toByteArray
   }
 
-  /** Reads bytes from [[encodeParams]] with [[ObjectInputStream]]. */
+  /** Reads bytes from [[encodeParams]] with [[java.io.ObjectInputStream ObjectInputStream]]. */
   protected def decodeParams(encoded: Array[Byte]): Map[String, Any] = {
     val in = new ObjectInputStream(new ByteArrayInputStream(encoded))
     try in.readObject.asInstanceOf[Map[String, Any]]
     finally in.close()
   }
 
-  /** Maps become [[ListMap]]s with sorted string keys so serialization does not
+  /** Maps become [[scala.collection.immutable.ListMap ListMap]]s with sorted string keys so serialization does not
     * depend on map iteration order. Map keys must be strings.
     */
   protected def canonicalize(value: Any): Any = value match {

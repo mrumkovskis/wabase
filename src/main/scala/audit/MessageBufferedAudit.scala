@@ -30,7 +30,7 @@ class MessageBufferedAudit(
 }
 
 object MessageBufferedAudit {
-  /** `app.audit-queue` keys used by [[apply]]. */
+  /** `app.audit-queue` keys used by [[apply(saveAuditRecords:Seq[org\.apache\.pekko\.util\.ByteString]=>scala\.concurrent\.Future[Unit])* apply]]. */
   case class Settings(
     provider: String,
     topic: String,
@@ -45,7 +45,7 @@ object MessageBufferedAudit {
 
   /** Reader config: `app.audit-queue` without [[bufferKeys]], for example `stop-timeout`,
     * `decode-error`, or kafka `consumer` settings. Restart stops the consumer after the attempt ends,
-    * see [[MsgStreams.restartPipeline]].
+    * see [[org.wabase.msg.MsgStreams.restartPipeline MsgStreams.restartPipeline]].
     */
   def readerConfig(cfg: Config): Config =
     if (cfg == null) ConfigFactory.empty
@@ -106,7 +106,7 @@ object MessageBufferedAudit {
 }
 
 /** Publishes one audit record. The returned future completes when the provider accepts it,
-  * or fails after [[sendTimeout]]. The record bytes are the message value, encoded with [[BytesMsgCodec]].
+  * or fails after [[sendTimeout]]. The record bytes are the message value, encoded with [[org.wabase.msg.BytesMsgCodec BytesMsgCodec]].
   * On failure the process exits when [[exitOnFailure]] is set, as [[BufferedAuditWriter]] does
   * when a file write fails.
   */

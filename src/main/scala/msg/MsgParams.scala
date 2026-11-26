@@ -251,7 +251,7 @@ object MsgReadParams {
     * @param key         name of message bind variable for message key
     * @param usingCodecs row - `key`, `value` codec names or value codec name
     * @param atMostOnce  boolean, `null` - false
-    * @param restart     restart settings, see [[MsgParams.restartParam]]
+    * @param restart     restart settings, see `MsgParams.restartParam`
     * @param decodeError `'fail'` or `'skip'` - see [[MsgProvider.DecodeErrorPath]], `null` - provider configuration
     */
   def fromValues(

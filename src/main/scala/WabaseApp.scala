@@ -71,7 +71,7 @@ trait WabaseApp[User] {
     }
     WabaseHttpClients(HttpClientConfig.httpClientFactory.createHttpClients)
   }
-  /** Messaging providers, see [[MsgProviderConfig]]. Providers are closed on actor system coordinated shutdown.
+  /** Messaging providers, see [[org.wabase.msg.MsgProviderConfig MsgProviderConfig]]. Providers are closed on actor system coordinated shutdown.
     * If no providers are configured, actor system is not used.
     */
   implicit lazy val msgProviders: WabaseMsgProviders = {
