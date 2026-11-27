@@ -108,11 +108,7 @@ trait WabaseApp[User] {
     val httpReq:  HttpRequest,
     val log:      Logger,   // cannot use name logger - unable to find implicit value
   ) {
-    lazy val env: Map[String, Any] = state ++
-      Option(httpReq)
-        .flatMap(WabaseAuthentication.session)
-        .map(sid => Seq(WabaseAuthentication.SessionCookieName -> sid))
-        .getOrElse(Nil) ++ current_user_param(user)
+    lazy val env: Map[String, Any] = WabaseApp.this.actionEnv(httpReq, state, user)
     def withResultFilter(resFil: ResultRenderer.ResultFilter): AppActionContext =
       copy(resultFilter = resFil)
   }
@@ -121,6 +117,13 @@ trait WabaseApp[User] {
 
   /** Override to request serialized result source in AppActionContext, e.g., for auditing */
   protected def shouldAddResultToContext(context: AppActionContext): Boolean = false
+
+  def actionEnv(httpReq: HttpRequest, state: ApplicationState, user: User): Map[String, Any] =
+    state ++
+      Option(httpReq)
+        .flatMap(WabaseAuthentication.session)
+        .map(sid => Seq(WabaseAuthentication.SessionCookieName -> sid))
+        .getOrElse(Nil) ++ current_user_param(user)
 
   def doWabaseAction(
     httpAction: String,

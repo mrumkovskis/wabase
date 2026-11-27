@@ -1,7 +1,7 @@
 package org.wabase.handlers
 
 import org.apache.pekko.http.scaladsl.marshalling.Marshal
-import org.apache.pekko.http.scaladsl.model.{HttpEntity, HttpMethods, HttpRequest, HttpResponse, StatusCode, StatusCodes}
+import org.apache.pekko.http.scaladsl.model.{HttpEntity, HttpMethods, HttpResponse, StatusCode, StatusCodes}
 import org.wabase._
 import org.wabase.WabaseService.{addResultFilter, error, toMapForViewEntityDecoder, withReqMaxContentSize, withReqTimeout}
 import org.wabase.handlers.ResponseHandlers.okResponse
@@ -18,7 +18,7 @@ object ActionHandlers {
   def doRequest(handlerName: String, ctx: WabaseRequestContext): Future[HttpResponse] = {
     val (cn, fn) = classNameFunctionName(handlerName)
     val key = WabaseService.keyAfterSegment(ctx.req.uri.path, handlerName)
-    WabaseService.buildRequestHandler(cn, fn, _ => Nil, null)(ctx.copy(key = key))
+    WabaseService.buildRequestHandler(cn, fn, Nil, null)(ctx.copy(key = key))
   }
 
   def startJob(jobName: String, ctx: WabaseRequestContext): Future[HttpResponse] = {
@@ -44,21 +44,7 @@ object ActionHandlers {
     }
   }
 
-  private val QueryParamsDecoder: HttpRequest => Map[String, Any] =
-    if (config.getIsNull("app.query-parameters-decoder")) null
-    else invokeFunction(config.getString("app.query-parameters-decoder"), Nil)(
-      scala.concurrent.ExecutionContext.Implicits.global).asInstanceOf[HttpRequest => Map[String, Any]]
   def doAction(view_action: String, reqCtx: WabaseRequestContext): Future[HttpResponse] = {
-    def extractParams(ctx: WabaseRequestContext) = {
-      import ctx._
-      AppServiceBase.filterParams(
-        wabase.qe.metadataConventions,
-        AppServiceBase.NamesForInts,
-        AppServiceBase.escapeReflectedXss,
-        QueryParamsDecoder,
-        req,
-      )
-    }
     def dwa(ctx: WabaseRequestContext, params: Map[String, Any]) = {
       if (ctx.viewName == null || !ctx.wabase.qe.nameToViewDef.contains(ctx.viewName))
         if (ctx.viewName != null)
@@ -80,7 +66,7 @@ object ActionHandlers {
       if (ctxWithView.applicationState == null)
         ctxWithView.copy(applicationState = handlers.RequestHandlers.extractState(ctxWithView))
       else ctxWithView
-    val params = extractParams(ctxWithViewAndState)
+    val params = WabaseService.extractParams(ctxWithViewAndState)
     val ctxWithViewAndStateAndFilter =
       if (ctxWithViewAndState.resultFilter == null)
         addResultFilter(ctxWithViewAndState, params)

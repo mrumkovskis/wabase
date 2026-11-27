@@ -12,10 +12,11 @@ import org.apache.pekko.http.scaladsl.model.{ContentType, ContentTypes, DateTime
 import org.apache.pekko.http.scaladsl.unmarshalling.Unmarshaller
 import org.mojoz.metadata.ViewDef
 import org.slf4j.LoggerFactory
+import org.tresql.{ArrayResult, Query, Result, SingleValueResult, ast}
 import org.tresql.parsing.QueryParsers
 import org.wabase.AppMetadata.{Action, RouteDef}
 import org.wabase.swagger.WabaseSwaggerGenerator
-import org.wabase.WabaseService.Wabase
+import org.wabase.WabaseService.{Wabase, extractParams, pathSegments}
 import org.wabase.ds.QueryTimeout
 
 import scala.annotation.tailrec
@@ -215,6 +216,21 @@ object WabaseService extends Loggable {
     case Path.Segment(h, t) => h :: pathSegments(t)
   }
 
+  private val QueryParamsDecoder: HttpRequest => Map[String, Any] =
+    if (config.getIsNull("app.query-parameters-decoder")) null
+    else invokeFunction(config.getString("app.query-parameters-decoder"), Nil)(
+      scala.concurrent.ExecutionContext.Implicits.global).asInstanceOf[HttpRequest => Map[String, Any]]
+  def extractParams(ctx: WabaseRequestContext): Map[String, Any] = {
+    import ctx._
+    AppServiceBase.filterParams(
+      wabase.qe.metadataConventions,
+      AppServiceBase.NamesForInts,
+      AppServiceBase.escapeReflectedXss,
+      QueryParamsDecoder,
+      req,
+    )
+  }
+
   def complete(ctx: WabaseRequestContext, marshallable: => ToResponseMarshallable): Future[HttpResponse] =
     marshallable(ctx.req)(ctx.as.dispatcher)
 
@@ -366,15 +382,15 @@ object WabaseService extends Loggable {
   def buildRequestHandlerChain(inv: Action.Invocation, innerHandler: RequestHandler): RequestHandler = {
     inv.args.splitAt(inv.args.size - 1) match {
       case (args, List(innerInv: Action.Invocation)) =>
-        buildRequestHandler(inv.className, inv.function, HandlerArgsParser.argResolver(args),
+        buildRequestHandler(inv.className, inv.function, HandlerArgs.argResolver(inv.function, args),
           buildRequestHandlerChain(innerInv, innerHandler))
       case _ =>
-        buildRequestHandler(inv.className, inv.function, HandlerArgsParser.argResolver(inv.args), innerHandler)
+        buildRequestHandler(inv.className, inv.function, HandlerArgs.argResolver(inv.function, inv.args), innerHandler)
     }
   }
 
   def buildRequestHandler(cn: String, fn: String,
-                          invocationArgs: WabaseRequestContext => List[Any],
+                          invocationArgs: List[WabaseRequestContext => InvocationParameterFun],
                           ih: RequestHandler): RequestHandler = wrc => {
     wrc.logger.debug(s"Invoking handler $cn.$fn for request: ${wrc.req}")
     implicit val ec: ExecutionContext = wrc.as.dispatcher
@@ -391,7 +407,7 @@ object WabaseService extends Loggable {
   def handlerParameters(
     wrc: WabaseRequestContext,
     innerHandler: RequestHandler,
-    invocationArgs: WabaseRequestContext => List[Any],
+    invocationArgs: List[WabaseRequestContext => InvocationParameterFun],
     missingHandlerError: => Nothing,
   ): (Seq[(Class[_], () => Any)], InvocationParameterFun) = {
     implicit val ec: ExecutionContext = wrc.as.dispatcher
@@ -413,9 +429,8 @@ object WabaseService extends Loggable {
       (classOf[String], () => toStringEntityDecoder(wrc)),
     )
 
-    val paramFunction = invocationArgs(wrc).zipWithIndex.map { case (value, idx) =>
-      { case (par, i) if idx == i => wrc.wabase.qe.convertToType(value, par.getType) }:InvocationParameterFun
-    }.foldLeft(PartialFunction.empty[InvocationParameter, Any])(_ orElse _) orElse
+    val paramFunction = invocationArgs.map(_(wrc))
+      .foldLeft(PartialFunction.empty[InvocationParameter, Any])(_ orElse _) orElse
       AppQuerease.dtoParameterFromMapF(() => toMapEntityDecoder(wrc))(wrc.wabase.qio)
 
     (paramList, paramFunction)
@@ -487,11 +502,12 @@ object WabaseService extends Loggable {
   def error(status: StatusCode, msg: String) = throw new HttpException(status, msg)
 }
 
-object HandlerArgsParser extends QueryParsers {
-  trait HandlerArg
+object HandlerArgs extends QueryParsers {
+  sealed trait HandlerArg
   case class RegexGroupRef(nr: Int) extends HandlerArg
   case class StringArg(str: String) extends HandlerArg
   case class NumberArg(value: Long) extends HandlerArg
+  case class TresqlArg(tresql: String, dbs: List[ast.Db] = Nil) extends HandlerArg
   def groupRef: MemParser[RegexGroupRef] = "\\$(\\d+)".r ^^ {
     gr => RegexGroupRef(gr.substring(1).toInt)
   } named "regex-group-arg"
@@ -503,24 +519,69 @@ object HandlerArgsParser extends QueryParsers {
   def parsArg(value: String): HandlerArg = {
     phrase(arg)(new CharSequenceReader(value)) match {
       case Success(r, _) => r
-      case x => sys.error(x.toString)
+      case _ => TresqlArg(value)
     }
   }
   def argValues(args: List[Action.Op]): List[HandlerArg] = args.map {
-    case t: Action.Tresql => parsArg(t.tresql)
+    case t: Action.Tresql => parsArg(t.tresql) match { case ta: TresqlArg => ta.copy(dbs = t.dbs) case x => x }
     case x => sys.error(s"Invalid handler arg: '$x'. Only string constants or regexp group refs allowed")
   }
-  /** Parses args eagerly, returns function resolving regex group refs against request path */
-  def argResolver(args: List[Action.Op]): WabaseRequestContext => List[Any] = {
+  /** Parses args eagerly, returns List of functions resolving arg values */
+  def argResolver(fn: String, args: List[Action.Op]): List[WabaseRequestContext => InvocationParameterFun] = {
     val parsed = argValues(args)
-    wrc => parsed.map {
-      case StringArg(s) => s
-      case RegexGroupRef(nr) =>
-        WabaseService.pathMatchedGroups(wrc).flatMap(_.lift(nr - 1))
-          .getOrElse(sys.error(
-            s"Group nr '$nr' not found in route '${wrc.route.path}' for path '${wrc.req.uri.path}'"))
-      case NumberArg(n) => n
+    parsed.zipWithIndex.map { case (a, idx) =>
+      a match {
+        case StringArg(s)       => paramFun(idx, _ => s)
+        case RegexGroupRef(nr)  => paramFun(idx, resolveRegexGroupRefArg(nr))
+        case NumberArg(n)       => paramFun(idx, _ => n)
+        case TresqlArg(t, dbs)  => resolveTresqlArg(idx, fn, t, dbs)
+      }
     }
+  }
+
+  private def paramFun(idx: Int, valueFun: WabaseRequestContext => Any): WabaseRequestContext => InvocationParameterFun =
+    wrc => { case (par, i) if idx == i => wrc.wabase.qe.convertToType(valueFun(wrc), par.getType) }
+
+  private def resolveRegexGroupRefArg(nr: Int)(wrc: WabaseRequestContext) =
+    WabaseService.pathMatchedGroups(wrc).flatMap(_.lift(nr - 1))
+      .getOrElse(sys.error(
+        s"Group nr '$nr' not found in route '${wrc.route.path}' for path '${wrc.req.uri.path}'"))
+
+  private def resolveTresqlArg(
+    idx: Int, fn: String, tresql: String, dbs: List[ast.Db]
+  ): WabaseRequestContext => InvocationParameterFun = wrc => {
+    case (par, i) if idx == i =>
+      import wrc._
+      val extraDb = dbs.map(d => DbAccessKey(d.db))
+      val rf = wabase.resourceFactory(null: ViewDef, wrc.logger.underlying.getName, queryTimeout)
+      wabase.withConn(template = rf.resources, extraDb = extraDb) { res =>
+        val applSt = Option(applicationState).getOrElse(ApplicationState(Map()))
+        val bindVars = extractParams(wrc) ++ Map("__path" -> pathSegments(req.uri.path)) ++
+          wabase.actionEnv(req, applSt, user)
+        val result = TresqlResult(Query(tresql)(res.withParams(bindVars)))
+        val singleRow = classOf[Dto].isAssignableFrom(par.getType) || classOf[Map[_, _]].isAssignableFrom(par.getType)
+        def resToAny(tr: QuereaseResult) = tr match {
+          case TresqlResult(tr: Result[_]) => tr match {
+            case SingleValueResult(v) => v
+            case ar: ArrayResult[_] => ar.values.toVector
+            case r: Result[_] =>
+              val rows = r.toListOfMaps
+              if (!singleRow) rows else rows match {
+                case Nil        => null
+                case row :: Nil => row
+                case _          => sys.error(s"Handler arg ${i + 1} of $fn expects single row, got ${rows.size} rows")
+              }
+          }
+          case x => sys.error(s"Unexpected result type for handler arg of $fn: $x")
+        }
+        AppQuerease.explicitInvocationParameter(result, i, fn)(
+          wabase.qe, qr => Future.successful(resToAny(qr)))(wabase.executionContext, wabase.qio)
+          .andThen {
+            case r@(_: Result[_] | _: QuereaseResult) => sys.error(s"Argument $r, not supported for function $fn, since result will be closed. " +
+              s"Please use Seq[Map[String, Any]] argument i.e. result.toListOfMaps")
+            case x => x
+          } (par -> i)
+      }
   }
 }
 

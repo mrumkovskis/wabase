@@ -99,6 +99,37 @@ do:       doAction $1
 on:       GET /(null_test)/(.*)
 do:       doAction $1
 
+# tresql handler args
+on:       /tresql-arg/scalar/(\w+)
+do:       org.wabase.WabaseTestHandlers.tresqlScalarArg('Hello ' || :name, $1)
+
+on:       /tresql-arg/user
+do:       testAuth org.wabase.WabaseTestHandlers.tresqlScalarArg(:current_user.name, 'user')
+
+on:       /tresql-arg/any
+do:       org.wabase.WabaseTestHandlers.tresqlAnyArg({1 id, 'x' name})
+
+on:       /tresql-arg/dto-array
+do:       org.wabase.WabaseTestHandlers.tresqlDtoArrayArg({1 id, 'x' name})
+
+on:       /tresql-arg/dto
+do:       org.wabase.WabaseTestHandlers.tresqlDtoArg({1 id, 'x' name})
+
+on:       /tresql-arg/map
+do:       org.wabase.WabaseTestHandlers.tresqlMapArg({1 id, 'x' name})
+
+on:       /tresql-arg/dto-none
+do:       org.wabase.WabaseTestHandlers.tresqlDtoArg(({1 id, 'x' name}) r [r.id = 2] {r.id, r.name})
+
+on:       /tresql-arg/dto-many
+do:       org.wabase.WabaseTestHandlers.tresqlDtoArg(({1 id, 'x' name} ++ {2 id, 'y' name}) r {r.id, r.name})
+
+on:       /tresql-arg/dto-array-many
+do:       org.wabase.WabaseTestHandlers.tresqlDtoArrayArg(({1 id, 'x' name} ++ {2 id, 'y' name}) r {r.id, r.name})
+
+on:       /tresql-arg/iterator
+do:       org.wabase.WabaseTestHandlers.tresqlIteratorArg({1 id})
+
 ################# views ###############
 
 name: view1

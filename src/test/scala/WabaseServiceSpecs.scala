@@ -4,15 +4,13 @@ import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.client.RequestBuilding
 import org.apache.pekko.http.scaladsl.client.RequestBuilding.{Get, Head, Options, Post, Put}
 import org.apache.pekko.http.scaladsl.model.headers.{Allow, BasicHttpCredentials, Cookie, HttpCookiePair, `Set-Cookie`}
-import org.apache.pekko.http.scaladsl.model.{HttpEntity, HttpMessage, HttpMethod, HttpMethods, HttpRequest, HttpResponse, RequestEntity, StatusCodes, Uri}
-import org.apache.pekko.util.ByteString
+import org.apache.pekko.http.scaladsl.model.{HttpEntity, HttpMethod, HttpMethods, HttpRequest, HttpResponse, RequestEntity, StatusCodes, Uri}
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import org.wabase.WabaseService.MediaTypes
 import org.wabase.handlers.CSRFException
 
-import scala.concurrent.duration.DurationInt
-import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.concurrent.{ExecutionContext, Future}
 
 class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
 
@@ -205,6 +203,25 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
     callRoute("/static_resources/") shouldBe "Resource: static_resources/null from uri: /static_resources/"
   }
 
+  it should "resolve tresql handler args" in {
+    callRoute("/tresql-arg/scalar/k?name=Ann") shouldBe "Hello Ann / k"
+    callRoute("/tresql-arg/user") shouldBe "Test user / user"
+    callRoute("/tresql-arg/user?current_user=evil") shouldBe "Test user / user"
+    callRoute("/tresql-arg/any", decoder = decodeJs) shouldBe List(Map("id" -> 1, "name" -> "x"))
+    callRoute("/tresql-arg/dto-array") shouldBe "1:x"
+    // fails with "... since result will be closed" (logged, not exposed in response)
+    response(Get("/tresql-arg/iterator")).status shouldBe StatusCodes.InternalServerError
+  }
+
+  it should "resolve single row tresql handler args to dto and map" in {
+    callRoute("/tresql-arg/dto") shouldBe "1:x"
+    callRoute("/tresql-arg/map", decoder = decodeJs) shouldBe Map("id" -> 1, "name" -> "x")
+    callRoute("/tresql-arg/dto-none") shouldBe "no row"
+    // fails with "... expects single row, got 2 rows" (logged, not exposed in response)
+    response(Get("/tresql-arg/dto-many")).status shouldBe StatusCodes.InternalServerError
+    callRoute("/tresql-arg/dto-array-many") shouldBe "1:x,2:y"
+  }
+
   it should "extract application state" in {
     def res(cookies: HttpCookiePair *) = entityForRequest(
       HttpRequest(
@@ -350,6 +367,13 @@ object WabaseTestHandlers {
   }
 
   def staticResources(dir: String, file: String)(uri: Uri) = s"Resource: $dir/$file from uri: ${uri.path}"
+
+  def tresqlScalarArg(s: String, key: String) = s"$s / $key"
+  def tresqlAnyArg(a: Any) = ResultEncoder.encodeAnyToJsonString(a)
+  def tresqlDtoArrayArg(a: Array[View1]) = a.map(d => s"${d.id}:${d.name}").mkString(",")
+  def tresqlDtoArg(d: View1) = Option(d).map(d => s"${d.id}:${d.name}").getOrElse("no row")
+  def tresqlMapArg(m: Map[String, Any]) = ResultEncoder.encodeAnyToJsonString(m)
+  def tresqlIteratorArg(it: Iterator[_]) = "unreachable"
 
   def errorHandler(ctx: WabaseRequestContext): WabaseService.ErrorHandler = {
     ({

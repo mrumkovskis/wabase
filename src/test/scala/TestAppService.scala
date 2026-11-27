@@ -36,6 +36,9 @@ class TestAppLogMessageNoiseDetector extends EventEvaluatorBase[ILoggingEvent] {
   private val badStartsWith = Set(
     "[GET /error]",
     "[GET /public/querease_action_exception]",
+    // WabaseServiceSpecs tresql handler args fail on purpose
+    "[GET /tresql-arg/iterator]",
+    "[GET /tresql-arg/dto-many]",
     "Error during processing of request: 'Action: extract_parts_test2.insert",
     "request timeout is defined for view person_health, however",
     "Failed to release savepoint on db connection",

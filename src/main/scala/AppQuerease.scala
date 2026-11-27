@@ -2362,7 +2362,7 @@ object AppQuerease {
   def explicitInvocationParameter(qr: QuereaseResult, idx: Int, function: String)(
     qe: AppQuerease,
     qrToAny: QuereaseResult => Future[_],
-  )(implicit resources: QuereaseResources): InvocationParameterFun = {
+  )(implicit ec: ExecutionContext, qio: AppQuereaseIo[Dto]): InvocationParameterFun = {
     val tresqlResult = qr match { case TresqlResult(result) => result case _ => null }
     ({ // convert TresqlResult to primitive value
       case (par, i) if i == idx && tresqlResult != null &&
@@ -2375,7 +2375,8 @@ object AppQuerease {
           } else null finally r.close()
         }
     }: InvocationParameterFun) orElse ({ // convert TresqlResult to org.tresql.Result
-      case (par, i) if i == idx && tresqlResult != null && par.getType.isAssignableFrom(classOf[Result[_]]) =>
+      case (par, i) if i == idx && tresqlResult != null && par.getType.isAssignableFrom(tresqlResult.getClass)
+        && (classOf[Iterator[_]].isAssignableFrom(par.getType) || classOf[RowLike].isAssignableFrom(par.getType)) =>
         tresqlResult
     }: InvocationParameterFun) orElse {
       case (par, i) if i == idx => convertResultToParType(par.getType, qr)(
@@ -2387,10 +2388,9 @@ object AppQuerease {
 
   def convertResultToParType(parType: Class[_], qr: QuereaseResult)(
     qrToAny: QuereaseResult => Future[_], error: () => Nothing)(
-    implicit resources: QuereaseResources): Any = {
-    if (parType.isAssignableFrom(qr.getClass)) qr
+    implicit ec: ExecutionContext, qio: AppQuereaseIo[Dto]): Any = {
+    if (parType.isAssignableFrom(qr.getClass) && classOf[QuereaseResult].isAssignableFrom(parType)) qr
     else {
-      import resources._
       def cf(r: Any): Any = r match {
         case null if !parType.isPrimitive => null
         case x if parType.isAssignableFrom(x.getClass) => x
