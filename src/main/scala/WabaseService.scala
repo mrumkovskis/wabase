@@ -507,19 +507,30 @@ object HandlerArgs extends QueryParsers {
   case class RegexGroupRef(nr: Int) extends HandlerArg
   case class StringArg(str: String) extends HandlerArg
   case class NumberArg(value: Long) extends HandlerArg
-  case class TresqlArg(tresql: String, dbs: List[ast.Db] = Nil) extends HandlerArg
-  def groupRef: MemParser[RegexGroupRef] = "\\$(\\d+)".r ^^ {
+  case class TresqlArg(tresql: String, groupRefs: List[Int] = Nil, dbs: List[ast.Db] = Nil) extends HandlerArg
+  private val group_ref_regex = "\\$(\\d+)".r
+  private def groupRefVarName(nr: Int) = s"__group_$nr"
+  def groupRef: MemParser[RegexGroupRef] =  group_ref_regex ^^ {
     gr => RegexGroupRef(gr.substring(1).toInt)
   } named "regex-group-arg"
   def nullArg: MemParser[StringArg] = "null" ^^ (_ => StringArg(null)) named "null-arg"
   def stringArg: MemParser[StringArg] = stringLiteral ^^ StringArg.apply named "string-arg"
   def numberArg: MemParser[NumberArg] = "\\d+".r ^^ (v => NumberArg(v.toLong)) named "number-arg"
   def arg: MemParser[HandlerArg] = (stringArg | groupRef | numberArg | nullArg)
-    .withFailureMessage("Handler argument must be either string literal or regexp group ref - $<group nr> or long number.")
+    .withFailureMessage("Handler argument must be either string literal, regexp group ref - $<group nr>, long number or tresql expression.")
   def parsArg(value: String): HandlerArg = {
     phrase(arg)(new CharSequenceReader(value)) match {
       case Success(r, _) => r
-      case _ => TresqlArg(value)
+      case _ => if (group_ref_regex.findFirstIn(value).isDefined) {
+        var groupRefs: List[Int] = Nil
+        val exp = transformer {
+          case ast.Obj(ast.Ident(List(gr)),null,null,null,false) if group_ref_regex.pattern.matcher(gr).matches() =>
+            val nr = gr.substring(1).toInt
+            groupRefs ::= nr
+            ast.Variable(groupRefVarName(nr), Nil, opt = false)
+        } (parseExp(value))
+        TresqlArg(exp.tresql, groupRefs.distinct.reverse)
+      } else TresqlArg(value)
     }
   }
   def argValues(args: List[Action.Op]): List[HandlerArg] = args.map {
@@ -534,7 +545,7 @@ object HandlerArgs extends QueryParsers {
         case StringArg(s)       => paramFun(idx, _ => s)
         case RegexGroupRef(nr)  => paramFun(idx, resolveRegexGroupRefArg(nr))
         case NumberArg(n)       => paramFun(idx, _ => n)
-        case TresqlArg(t, dbs)  => resolveTresqlArg(idx, fn, t, dbs)
+        case t: TresqlArg       => resolveTresqlArg(idx, fn, t)
       }
     }
   }
@@ -548,17 +559,18 @@ object HandlerArgs extends QueryParsers {
         s"Group nr '$nr' not found in route '${wrc.route.path}' for path '${wrc.req.uri.path}'"))
 
   private def resolveTresqlArg(
-    idx: Int, fn: String, tresql: String, dbs: List[ast.Db]
+    idx: Int, fn: String, arg: TresqlArg
   ): WabaseRequestContext => InvocationParameterFun = wrc => {
     case (par, i) if idx == i =>
       import wrc._
-      val extraDb = dbs.map(d => DbAccessKey(d.db))
+      val extraDb = arg.dbs.map(d => DbAccessKey(d.db))
       val rf = wabase.resourceFactory(null: ViewDef, wrc.logger.underlying.getName, queryTimeout)
       wabase.withConn(template = rf.resources, extraDb = extraDb) { res =>
         val applSt = Option(applicationState).getOrElse(ApplicationState(Map()))
-        val bindVars = extractParams(wrc) ++ Map("__path" -> pathSegments(req.uri.path)) ++
+        val bindVars = extractParams(wrc) ++ Map("__path" -> pathSegments(req.uri.path)) ++ arg.groupRefs
+            .map { nr => groupRefVarName(nr) -> resolveRegexGroupRefArg(nr)(wrc) }.toMap ++
           wabase.actionEnv(req, applSt, user)
-        val result = TresqlResult(Query(tresql)(res.withParams(bindVars)))
+        val result = TresqlResult(Query(arg.tresql)(res.withParams(bindVars)))
         val singleRow = classOf[Dto].isAssignableFrom(par.getType) || classOf[Map[_, _]].isAssignableFrom(par.getType)
         def resToAny(tr: QuereaseResult) = tr match {
           case TresqlResult(tr: Result[_]) => tr match {

@@ -205,6 +205,9 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
 
   it should "resolve tresql handler args" in {
     callRoute("/tresql-arg/scalar/k?name=Ann") shouldBe "Hello Ann / k"
+    callRoute("/tresql-arg/group-ref-single/a") shouldBe "<a> / x"
+    callRoute("/tresql-arg/group-ref/a/b?name=Ann") shouldBe "a-b-a-Ann / b"
+    callRoute("/tresql-arg/group-ref/b/a?name=Ann") shouldBe "b-a-b-Ann / a"
     callRoute("/tresql-arg/user") shouldBe "Test user / user"
     callRoute("/tresql-arg/user?current_user=evil") shouldBe "Test user / user"
     callRoute("/tresql-arg/any", decoder = decodeJs) shouldBe List(Map("id" -> 1, "name" -> "x"))

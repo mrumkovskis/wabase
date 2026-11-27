@@ -1,6 +1,7 @@
 # Route processing
 
 - [Handlers](#handlers)
+  - [Tresql parameters](#tresql-parameters)
   - [Handler implementation](#handler-implementation)
   - [Handler aliases](#handler-aliases)
 - [Provided handlers](#provided-handlers)
@@ -48,8 +49,9 @@ Handlers can have ordered and injectable (implicit) parameters. Ordered paramete
 must be specified in route `do` expression, injectable parameters are provided
 automatically.
 
-An ordered parameter can be a string constant, a number constant, `null`, or a
-reference to a path regexp group like `$<group nr>`. Such parameters are put in comma
+An ordered parameter can be a string constant, a number constant, `null`, a
+reference to a path regexp group like `$<group nr>`, or a tresql expression, see
+[Tresql parameters](#tresql-parameters). Such parameters are put in comma
 separated parentheses, for example `response(200, 'slow done')`.
 
 The last ordered parameter can instead be an inner handler invocation. It is written
@@ -72,6 +74,38 @@ do: wabase.app.BusinessScenariosSpecs.requestInfo
 
 `sleepAndRespond` above is not a wabase handler — it is an application defined alias, as
 declared in the integration test `reference.conf`. See [Handler aliases](#handler-aliases).
+
+### Tresql parameters
+
+Any ordered parameter that is not a constant or a lone group ref is evaluated
+as a tresql expression for each request, before the handler is invoked.
+Bind variables available in the expression:
+
+- request parameters, for example `:name` from `?name=Ann`
+- `:__path` – path segments
+- `$<group nr>` – path regexp group, bound as a variable (it can be repeated
+  and used in any order, request parameters cannot override it)
+- action environment – application state, session, `:current_user`
+  (request parameters cannot override these either)
+
+The result is converted to the handler parameter type:
+
+| Parameter type | Value |
+|---|---|
+| scalar (`String`, `Long`, …) | single value (first column of the first row) |
+| `Dto` or `Map[String, Any]` | single row, `null` if no rows, error if more than one |
+| `Array`/`Seq` of `Dto` or maps | all rows |
+| `Iterator`, `Result` | not supported – the result is closed after evaluation |
+
+Child queries with a database prefix (`|db:…`) get a connection to that
+database.
+
+Example:
+
+```yaml
+on: /greet/(\w+)
+do: greet('Hello ' || :name || ' from ' || $1, :current_user.name)
+```
 
 ### Handler implementation
 

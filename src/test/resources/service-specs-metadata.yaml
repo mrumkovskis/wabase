@@ -103,6 +103,12 @@ do:       doAction $1
 on:       /tresql-arg/scalar/(\w+)
 do:       org.wabase.WabaseTestHandlers.tresqlScalarArg('Hello ' || :name, $1)
 
+on:       /tresql-arg/group-ref/(\w+)/(\w+)
+do:       org.wabase.WabaseTestHandlers.tresqlScalarArg($1 || '-' || $2 || '-' || $1 || '-' || :name, $2)
+
+on:       /tresql-arg/group-ref-single/(\w+)
+do:       org.wabase.WabaseTestHandlers.tresqlScalarArg('<' || $1 || '>', 'x')
+
 on:       /tresql-arg/user
 do:       testAuth org.wabase.WabaseTestHandlers.tresqlScalarArg(:current_user.name, 'user')
 
