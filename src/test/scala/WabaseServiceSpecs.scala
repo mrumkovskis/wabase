@@ -20,7 +20,8 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
       WabaseHttpClients(Map("default-wabase-http-client" -> (_ => server.handle)))
   }
   import TestWabaseServer._
-  private val server = TestWabaseServer(new WA(as))
+  private val wa = new WA(as)
+  private val server = TestWabaseServer(wa)
 
   DbDrivers.loadDrivers
 
@@ -208,6 +209,13 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
     callRoute("/tresql-arg/group-ref-single/a") shouldBe "<a> / x"
     callRoute("/tresql-arg/group-ref/a/b?name=Ann") shouldBe "a-b-a-Ann / b"
     callRoute("/tresql-arg/group-ref/b/a?name=Ann") shouldBe "b-a-b-Ann / a"
+    callRoute("/tresql-arg/group-ref-nested/x/b") shouldBe "b:x.b / x"
+    callRoute("/tresql-arg/group-ref-nested/y/c") shouldBe "c:y.c / y"
+    callRoute("/tresql-arg/path/a/b") shouldBe "a+b+a / 4"
+    callRoute("/tresql-arg/macro?name=Ann") shouldBe "Hello Ann / m"
+    callRoute("/tresql-arg/macro") shouldBe "Hello nobody / m"
+    callRoute("/tresql-arg/macro-group-ref/a/b?name=Ann") shouldBe "b-Ann/b / a"
+    callRoute("/tresql-arg/macro-group-ref/a/b") shouldBe "a/b / a"
     callRoute("/tresql-arg/user") shouldBe "Test user / user"
     callRoute("/tresql-arg/user?current_user=evil") shouldBe "Test user / user"
     callRoute("/tresql-arg/any", decoder = decodeJs) shouldBe List(Map("id" -> 1, "name" -> "x"))
@@ -223,6 +231,13 @@ class WabaseServiceSpecs extends AnyFlatSpec with Matchers {
     // fails with "... expects single row, got 2 rows" (logged, not exposed in response)
     response(Get("/tresql-arg/dto-many")).status shouldBe StatusCodes.InternalServerError
     callRoute("/tresql-arg/dto-array-many") shouldBe "1:x,2:y"
+  }
+
+  it should "build request handler chain once per route" in {
+    val inv = wa.qe.routeDefs.find(_.path.toString.contains("group-ref-nested")).get.requestHandler
+    WabaseService.requestHandlerChain(inv) should be theSameInstanceAs WabaseService.requestHandlerChain(inv)
+    callRoute("/tresql-arg/group-ref-nested/x/b") shouldBe "b:x.b / x"
+    WabaseService.requestHandlerChain(inv) should be theSameInstanceAs WabaseService.requestHandlerChain(inv)
   }
 
   it should "extract application state" in {

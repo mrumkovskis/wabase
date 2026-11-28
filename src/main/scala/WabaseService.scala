@@ -20,6 +20,7 @@ import org.wabase.WabaseService.{Wabase, extractParams, pathSegments}
 import org.wabase.ds.QueryTimeout
 
 import scala.annotation.tailrec
+import scala.collection.concurrent.TrieMap
 import scala.concurrent.{ExecutionContext, Future}
 import scala.jdk.CollectionConverters._
 import scala.reflect.ClassTag
@@ -158,11 +159,19 @@ object WabaseService extends Loggable {
       headers = List(Allow(allowedMethods.toList.sortBy(_.value))),
     )
 
+  /** Request handler chains built once per route handler invocation. Routes come from metadata,
+    * so the map's size is bounded by the number of distinct handler invocations. */
+  private val requestHandlerChains = TrieMap[Action.Invocation, RequestHandler]()
+
+  /** Returns request handler chain for route handler invocation, building and caching it on first use */
+  def requestHandlerChain(inv: Action.Invocation): RequestHandler =
+    requestHandlerChains.getOrElseUpdate(inv, buildRequestHandlerChain(inv, null))
+
   def doRoute(ctx: WabaseRequestContext)(implicit as: ActorSystem): Future[HttpResponse] = {
     implicit val ec: ExecutionContext = as.dispatcher
     val errorHandler = WabaseService.sealedErrorHandler(WabaseService.errorHandler(ctx))(ctx)
     try {
-      val handler = buildRequestHandlerChain(ctx.route.requestHandler, null)
+      val handler = requestHandlerChain(ctx.route.requestHandler)
       handler(ctx).recoverWith(errorHandler)
     } catch { case NonFatal(e) => errorHandler(e) }
   }
@@ -537,7 +546,8 @@ object HandlerArgs extends QueryParsers {
     case t: Action.Tresql => parsArg(t.tresql) match { case ta: TresqlArg => ta.copy(dbs = t.dbs) case x => x }
     case x => sys.error(s"Invalid handler arg: '$x'. Only string constants or regexp group refs allowed")
   }
-  /** Parses args eagerly, returns List of functions resolving arg values */
+  /** Parses args eagerly (once per route, see `WabaseService.requestHandlerChain`),
+    * returns List of functions resolving arg values */
   def argResolver(fn: String, args: List[Action.Op]): List[WabaseRequestContext => InvocationParameterFun] = {
     val parsed = argValues(args)
     parsed.zipWithIndex.map { case (a, idx) =>

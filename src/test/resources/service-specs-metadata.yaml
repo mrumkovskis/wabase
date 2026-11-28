@@ -109,6 +109,22 @@ do:       org.wabase.WabaseTestHandlers.tresqlScalarArg($1 || '-' || $2 || '-' |
 on:       /tresql-arg/group-ref-single/(\w+)
 do:       org.wabase.WabaseTestHandlers.tresqlScalarArg('<' || $1 || '>', 'x')
 
+# group refs inside function args and subquery filter, not in textual order
+on:       /tresql-arg/group-ref-nested/(\w+)/(\w+)
+do:       org.wabase.WabaseTestHandlers.tresqlScalarArg(coalesce($2, '-') || ':' || (({1 id, 'x' name} ++ {2 id, 'y' name}) r [r.name = $1] {r.name || '.' || $2}), $1)
+
+# path segments (0-based) via :__path
+on:       /tresql-arg/path/(\w+)/(\w+)
+do:       org.wabase.WabaseTestHandlers.tresqlScalarArg(:__path.2 || '+' || :__path.3 || '+' || $1, :__path.size)
+
+# tresql macros in handler args
+on:       /tresql-arg/macro
+do:       org.wabase.WabaseTestHandlers.tresqlScalarArg(if_defined_or_else(:name?, 'Hello ' || :name, 'Hello nobody'), 'm')
+
+# group refs inside a macro which drops one of its branches
+on:       /tresql-arg/macro-group-ref/(\w+)/(\w+)
+do:       org.wabase.WabaseTestHandlers.tresqlScalarArg(if_defined_or_else(:name?, $2 || '-' || :name, $1) || '/' || $2, $1)
+
 on:       /tresql-arg/user
 do:       testAuth org.wabase.WabaseTestHandlers.tresqlScalarArg(:current_user.name, 'user')
 

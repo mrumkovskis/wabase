@@ -82,7 +82,8 @@ as a tresql expression for each request, before the handler is invoked.
 Bind variables available in the expression:
 
 - request parameters, for example `:name` from `?name=Ann`
-- `:__path` – path segments
+- `:__path` – path segments, indexed from 0, for example for `/person/7`
+  `:__path.0` is `person`, `:__path.1` is `7` and `:__path.size` is `2`
 - `$<group nr>` – path regexp group, bound as a variable (it can be repeated
   and used in any order, request parameters cannot override it)
 - action environment – application state, session, `:current_user`
